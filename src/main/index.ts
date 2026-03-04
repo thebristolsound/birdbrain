@@ -3,9 +3,10 @@ import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { initDatabase, closeDatabase } from '@main/services/database'
 import { initStorage } from '@main/services/storage'
+import { startCaptureServer, stopCaptureServer, setMainWindow } from '@main/services/captureServer'
 import { registerIpcHandlers } from '@main/ipcHandlers'
 
-function createWindow(): void {
+function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -34,9 +35,11 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
+
+  return mainWindow
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // Initialize database
   const userDataPath = app.getPath('userData')
   initDatabase(join(userDataPath, 'birdbrain.db'))
@@ -45,11 +48,17 @@ app.whenReady().then(() => {
   // Register IPC handlers
   registerIpcHandlers()
 
-  createWindow()
+  // Start capture server
+  await startCaptureServer()
+
+  // Create window and connect to capture server
+  const mainWindow = createWindow()
+  setMainWindow(mainWindow)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow()
+      const win = createWindow()
+      setMainWindow(win)
     }
   })
 })
@@ -61,5 +70,6 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  stopCaptureServer()
   closeDatabase()
 })

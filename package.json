@@ -47,7 +47,9 @@
     ]
   },
   "dependencies": {
+    "@hono/node-server": "^1.19.10",
     "better-sqlite3": "^12.6.2",
+    "hono": "^4.12.4",
     "uuid": "^11.1.0"
   },
   "devDependencies": {

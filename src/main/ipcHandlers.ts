@@ -1,0 +1,42 @@
+import { ipcMain } from 'electron'
+import { IPC_CHANNELS } from '@shared/ipc'
+import type {
+  CreateCaseParams,
+  UpdateCaseParams,
+  CreateTagParams,
+  UpdateTagParams,
+  CaptureTagParams
+} from '@shared/ipc'
+import * as db from '@main/services/database'
+
+export function registerIpcHandlers(): void {
+  // Cases
+  ipcMain.handle(IPC_CHANNELS.CASES_LIST, () => db.listCases())
+  ipcMain.handle(IPC_CHANNELS.CASES_GET, (_, id: string) => db.getCase(id))
+  ipcMain.handle(IPC_CHANNELS.CASES_CREATE, (_, params: CreateCaseParams) => db.createCase(params))
+  ipcMain.handle(IPC_CHANNELS.CASES_UPDATE, (_, params: UpdateCaseParams) => db.updateCase(params))
+  ipcMain.handle(IPC_CHANNELS.CASES_DELETE, (_, id: string) => db.deleteCase(id))
+
+  // Captures
+  ipcMain.handle(IPC_CHANNELS.CAPTURES_LIST, (_, caseId: string) => db.listCaptures(caseId))
+  ipcMain.handle(IPC_CHANNELS.CAPTURES_GET, (_, id: string) => db.getCapture(id))
+  ipcMain.handle(IPC_CHANNELS.CAPTURES_DELETE, (_, id: string) => db.deleteCapture(id))
+
+  // Tags
+  ipcMain.handle(IPC_CHANNELS.TAGS_LIST, () => db.listTags())
+  ipcMain.handle(IPC_CHANNELS.TAGS_CREATE, (_, params: CreateTagParams) => db.createTag(params))
+  ipcMain.handle(IPC_CHANNELS.TAGS_UPDATE, (_, params: UpdateTagParams) => db.updateTag(params))
+  ipcMain.handle(IPC_CHANNELS.TAGS_DELETE, (_, id: string) => db.deleteTag(id))
+  ipcMain.handle(IPC_CHANNELS.TAGS_ADD_TO_CAPTURE, (_, params: CaptureTagParams) =>
+    db.addTagToCapture(params)
+  )
+  ipcMain.handle(IPC_CHANNELS.TAGS_REMOVE_FROM_CAPTURE, (_, params: CaptureTagParams) =>
+    db.removeTagFromCapture(params)
+  )
+  ipcMain.handle(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, (_, captureId: string) =>
+    db.getTagsForCapture(captureId)
+  )
+
+  // Search
+  ipcMain.handle(IPC_CHANNELS.SEARCH, (_, query: string) => db.searchCaptures(query))
+}

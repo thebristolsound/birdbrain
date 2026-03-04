@@ -1,6 +1,9 @@
 import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
+import { initDatabase, closeDatabase } from '@main/services/database'
+import { initStorage } from '@main/services/storage'
+import { registerIpcHandlers } from '@main/ipcHandlers'
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -34,6 +37,14 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  // Initialize database
+  const userDataPath = app.getPath('userData')
+  initDatabase(join(userDataPath, 'birdbrain.db'))
+  initStorage(join(userDataPath, 'captures'))
+
+  // Register IPC handlers
+  registerIpcHandlers()
+
   createWindow()
 
   app.on('activate', () => {
@@ -47,4 +58,8 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+app.on('before-quit', () => {
+  closeDatabase()
 })

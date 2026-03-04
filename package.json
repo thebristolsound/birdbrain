@@ -1,0 +1,72 @@
+{
+  "name": "birdbrain",
+  "version": "0.1.0",
+  "description": "Open source web investigation & capture tool",
+  "main": "./out/main/index.js",
+  "author": "Matt Donovan",
+  "license": "MIT",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "postinstall": "electron-builder install-app-deps",
+    "build:extension": "vite build --config extension/vite.config.ts",
+    "dev:extension": "vite build --config extension/vite.config.ts --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint . --ext .ts,.tsx",
+    "format": "prettier --write \"src/**/*.{ts,tsx}\" \"extension/**/*.{ts,tsx}\""
+  },
+  "build": {
+    "appId": "com.birdbrain.app",
+    "productName": "Birdbrain",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ]
+    }
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@electron-toolkit/preload": "^3.0.1",
+    "@electron-toolkit/utils": "^4.0.0",
+    "@eslint/js": "^9.39.3",
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/uuid": "^10.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "electron": "^33.3.1",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^3.0.0",
+    "eslint": "^9.17.0",
+    "eslint-config-prettier": "^10.0.1",
+    "postcss": "^8.4.49",
+    "prettier": "^3.4.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.56.1",
+    "vite": "^6.0.0",
+    "vitest": "^3.0.0"
+  }
+}

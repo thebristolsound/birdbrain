@@ -1,0 +1,20 @@
+node_modules/
+dist/
+out/
+.env
+.env.*
+*.local
+extension/dist/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python cache
+Python/

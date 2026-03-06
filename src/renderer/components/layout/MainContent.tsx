@@ -3,6 +3,7 @@ import { Dashboard } from '@renderer/components/dashboard/Dashboard'
 import { CaseOverview } from '@renderer/components/cases/CaseOverview'
 import { CaptureViewer } from '@renderer/components/captures/CaptureViewer'
 import { SettingsView } from '@renderer/components/settings/SettingsView'
+import { CaseAnalysis } from '@renderer/components/analysis/CaseAnalysis'
 
 export function MainContent() {
   const { activeView } = useAppStore()
@@ -12,6 +13,7 @@ export function MainContent() {
       {activeView === 'dashboard' && <Dashboard />}
       {activeView === 'case-overview' && <CaseOverview />}
       {activeView === 'capture-viewer' && <CaptureViewer />}
+      {activeView === 'case-analysis' && <CaseAnalysis />}
       {activeView === 'settings' && <SettingsView />}
     </main>
   )

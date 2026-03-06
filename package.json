@@ -49,6 +49,7 @@
   "dependencies": {
     "@hono/node-server": "^1.19.10",
     "better-sqlite3": "^12.6.2",
+    "d3-force": "^3.0.0",
     "hono": "^4.12.4",
     "uuid": "^11.1.0",
     "zustand": "^5.0.11"
@@ -59,6 +60,7 @@
     "@eslint/js": "^9.39.3",
     "@tailwindcss/vite": "^4.0.0",
     "@types/better-sqlite3": "^7.6.13",
+    "@types/d3-force": "^3.0.10",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/uuid": "^10.0.0",

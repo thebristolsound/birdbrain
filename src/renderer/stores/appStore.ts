@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type ActiveView = 'dashboard' | 'case-overview' | 'capture-viewer' | 'settings'
+export type ActiveView = 'dashboard' | 'case-overview' | 'capture-viewer' | 'case-analysis' | 'settings'
 
 interface AppState {
   activeCaseId: string | null

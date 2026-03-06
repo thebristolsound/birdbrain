@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useAppStore } from '@renderer/stores/appStore'
 import { useCaptures } from '@renderer/hooks/useCaptures'
+import { ExportDialog } from '@renderer/components/export/ExportDialog'
 import type { Case } from '@shared/types'
 
 export function CaseOverview() {
-  const { activeCaseId } = useAppStore()
+  const { activeCaseId, setActiveView } = useAppStore()
   const { captures } = useCaptures(activeCaseId)
   const [caseData, setCaseData] = useState<Case | null>(null)
+  const [showExport, setShowExport] = useState(false)
 
   useEffect(() => {
     if (activeCaseId) {
@@ -67,6 +69,26 @@ export function CaseOverview() {
           <div className="text-sm text-neutral-400">Entities</div>
         </div>
       </div>
+
+      {/* Actions */}
+      <div className="flex gap-2">
+        <button
+          onClick={() => setActiveView('case-analysis')}
+          className="rounded bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500"
+        >
+          Analyze Case
+        </button>
+        <button
+          onClick={() => setShowExport(true)}
+          className="rounded border border-neutral-700 bg-neutral-800 px-4 py-2 text-sm text-neutral-300 hover:bg-neutral-700"
+        >
+          Export
+        </button>
+      </div>
+
+      {showExport && caseData && (
+        <ExportDialog caseId={caseData.id} caseName={caseData.name} onClose={() => setShowExport(false)} />
+      )}
 
       {/* Top Domains */}
       {topDomains.length > 0 && (

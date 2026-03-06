@@ -91,6 +91,21 @@ function migrate(db: Database.Database): void {
     `)
     db.pragma('user_version = 1')
   }
+
+  if (version < 2) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS case_analyses (
+        id TEXT PRIMARY KEY,
+        case_id TEXT NOT NULL,
+        model_used TEXT,
+        result TEXT NOT NULL,
+        token_usage INTEGER,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+      );
+    `)
+    db.pragma('user_version = 2')
+  }
 }
 
 // --- Cases ---
@@ -317,6 +332,48 @@ export function insertEntity(entity: Omit<Entity, 'id' | 'createdAt'>): Entity {
 export function deleteEntitiesByCapture(captureId: string): number {
   const result = getDb().prepare('DELETE FROM entities WHERE capture_id = ?').run(captureId)
   return result.changes
+}
+
+// --- Case Analyses ---
+
+export interface CaseAnalysis {
+  id: string
+  caseId: string
+  modelUsed: string | null
+  result: string
+  tokenUsage: number | null
+  createdAt: string
+}
+
+export function getCaseAnalysis(caseId: string): CaseAnalysis | undefined {
+  const row = getDb()
+    .prepare('SELECT * FROM case_analyses WHERE case_id = ? ORDER BY created_at DESC LIMIT 1')
+    .get(caseId) as Record<string, unknown> | undefined
+  if (!row) return undefined
+  return {
+    id: row.id as string,
+    caseId: row.case_id as string,
+    modelUsed: (row.model_used as string) || null,
+    result: row.result as string,
+    tokenUsage: (row.token_usage as number) || null,
+    createdAt: row.created_at as string
+  }
+}
+
+export function insertCaseAnalysis(params: {
+  caseId: string
+  modelUsed?: string
+  result: string
+  tokenUsage?: number
+}): CaseAnalysis {
+  const id = uuid()
+  const now = new Date().toISOString()
+  getDb()
+    .prepare(
+      'INSERT INTO case_analyses (id, case_id, model_used, result, token_usage, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+    )
+    .run(id, params.caseId, params.modelUsed ?? null, params.result, params.tokenUsage ?? null, now)
+  return getCaseAnalysis(params.caseId)!
 }
 
 // --- Row mappers ---

@@ -8,7 +8,7 @@ import type {
   UpdateTagParams,
   CaptureTagParams
 } from '@shared/ipc'
-import type { Case, Capture, Tag, Entity, BirdbrainSettings, OpenRouterModel } from '@shared/types'
+import type { Case, Capture, Tag, Entity, EntityGraph, CaseAnalysisResult, BirdbrainSettings, OpenRouterModel, ExportOptions } from '@shared/types'
 
 const birdbrain = {
   cases: {
@@ -60,7 +60,18 @@ const birdbrain = {
     extractEntities: (captureId: string): Promise<Entity[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.AI_EXTRACT_ENTITIES, captureId),
     getEntities: (captureId: string): Promise<Entity[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.AI_GET_ENTITIES, captureId)
+      ipcRenderer.invoke(IPC_CHANNELS.AI_GET_ENTITIES, captureId),
+    buildGraph: (caseId: string): Promise<EntityGraph> =>
+      ipcRenderer.invoke(IPC_CHANNELS.AI_BUILD_GRAPH, caseId),
+    analyzeCase: (caseId: string): Promise<CaseAnalysisResult> =>
+      ipcRenderer.invoke(IPC_CHANNELS.AI_ANALYZE_CASE, caseId),
+    getAnalysis: (caseId: string): Promise<CaseAnalysisResult | null> =>
+      ipcRenderer.invoke(IPC_CHANNELS.AI_GET_ANALYSIS, caseId)
+  },
+
+  export: {
+    generateReport: (caseId: string, options: ExportOptions): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, options)
   },
 
   // Event listeners (main -> renderer)

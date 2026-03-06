@@ -37,9 +37,16 @@ export const IPC_CHANNELS = {
   // AI
   AI_EXTRACT_ENTITIES: 'ai:extractEntities',
   AI_GET_ENTITIES: 'ai:getEntities',
+  AI_BUILD_GRAPH: 'ai:buildGraph',
+  AI_ANALYZE_CASE: 'ai:analyzeCase',
+  AI_GET_ANALYSIS: 'ai:getAnalysis',
+
+  // Export
+  EXPORT_GENERATE: 'export:generate',
 
   // Events (main -> renderer)
   EXTRACTION_COMPLETE: 'event:extractionComplete',
+  EXPORT_PROGRESS: 'event:exportProgress',
   NEW_CAPTURE: 'event:newCapture',
   SESSION_STATE_CHANGED: 'event:sessionStateChanged'
 } as const

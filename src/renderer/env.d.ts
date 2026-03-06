@@ -1,4 +1,4 @@
-import type { Case, Capture, Tag, Entity, BirdbrainSettings, OpenRouterModel } from '@shared/types'
+import type { Case, Capture, Tag, Entity, EntityGraph, CaseAnalysisResult, BirdbrainSettings, OpenRouterModel, ExportOptions } from '@shared/types'
 import type {
   CreateCaseParams,
   UpdateCaseParams,
@@ -41,6 +41,12 @@ interface BirdbrainAPI {
   ai: {
     extractEntities(captureId: string): Promise<Entity[]>
     getEntities(captureId: string): Promise<Entity[]>
+    buildGraph(caseId: string): Promise<EntityGraph>
+    analyzeCase(caseId: string): Promise<CaseAnalysisResult>
+    getAnalysis(caseId: string): Promise<CaseAnalysisResult | null>
+  }
+  export: {
+    generateReport(caseId: string, options: ExportOptions): Promise<void>
   }
   onNewCapture(callback: (capture: Capture) => void): () => void
 }

@@ -43,6 +43,27 @@ export interface Entity {
   createdAt: string
 }
 
+export interface BirdbrainSettings {
+  openRouterApiKey: string | null
+  defaultModel: string
+  autoExtractEntities: boolean
+  captureScreenshots: boolean
+  captureHtml: boolean
+  dedupeWindowSeconds: number
+  ignoredUrlPatterns: string[]
+  storagePath: string
+  maxStorageMb: number | null
+  theme: 'dark' | 'light'
+  sidebarWidth: number
+}
+
+export interface OpenRouterModel {
+  id: string
+  name: string
+  contextLength: number
+  pricing: { prompt: string; completion: string }
+}
+
 export type EntityType =
   | 'person'
   | 'organization'

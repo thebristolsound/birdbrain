@@ -5,6 +5,7 @@ import { initDatabase, closeDatabase } from '@main/services/database'
 import { initStorage } from '@main/services/storage'
 import { startCaptureServer, stopCaptureServer, setMainWindow } from '@main/services/captureServer'
 import { registerIpcHandlers } from '@main/ipcHandlers'
+import { initSettings } from '@main/services/settings'
 
 function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
@@ -44,6 +45,7 @@ app.whenReady().then(async () => {
   const userDataPath = app.getPath('userData')
   initDatabase(join(userDataPath, 'birdbrain.db'))
   initStorage(join(userDataPath, 'captures'))
+  initSettings(userDataPath)
 
   // Register IPC handlers
   registerIpcHandlers()

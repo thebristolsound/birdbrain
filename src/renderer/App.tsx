@@ -1,9 +1,14 @@
+import { TopBar } from '@renderer/components/layout/TopBar'
+import { Sidebar } from '@renderer/components/layout/Sidebar'
+import { MainContent } from '@renderer/components/layout/MainContent'
+
 function App(): React.JSX.Element {
   return (
-    <div className="flex h-screen items-center justify-center bg-neutral-950 text-neutral-100">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold text-amber-500">Birdbrain</h1>
-        <p className="mt-2 font-mono text-sm text-neutral-400">v0.1.0</p>
+    <div className="flex h-screen flex-col bg-neutral-950 text-neutral-100">
+      <TopBar />
+      <div className="flex flex-1 overflow-hidden">
+        <Sidebar />
+        <MainContent />
       </div>
     </div>
   )

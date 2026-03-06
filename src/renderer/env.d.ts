@@ -1,4 +1,4 @@
-import type { Case, Capture, Tag } from '@shared/types'
+import type { Case, Capture, Tag, Entity, BirdbrainSettings, OpenRouterModel } from '@shared/types'
 import type {
   CreateCaseParams,
   UpdateCaseParams,
@@ -19,6 +19,7 @@ interface BirdbrainAPI {
     list(caseId: string): Promise<Capture[]>
     get(id: string): Promise<Capture | undefined>
     delete(id: string): Promise<boolean>
+    getContent(captureId: string, type: 'html' | 'png' | 'txt'): Promise<string | null>
   }
   tags: {
     list(): Promise<Tag[]>
@@ -30,6 +31,17 @@ interface BirdbrainAPI {
     getForCapture(captureId: string): Promise<Tag[]>
   }
   search(query: string): Promise<Capture[]>
+  settings: {
+    get(): Promise<BirdbrainSettings>
+    update(partial: Partial<BirdbrainSettings>): Promise<BirdbrainSettings>
+    reset(): Promise<BirdbrainSettings>
+    testOpenRouter(apiKey: string): Promise<boolean>
+    listModels(apiKey: string): Promise<OpenRouterModel[]>
+  }
+  ai: {
+    extractEntities(captureId: string): Promise<Entity[]>
+    getEntities(captureId: string): Promise<Entity[]>
+  }
   onNewCapture(callback: (capture: Capture) => void): () => void
 }
 

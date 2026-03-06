@@ -8,7 +8,7 @@ import type {
   UpdateTagParams,
   CaptureTagParams
 } from '@shared/ipc'
-import type { Case, Capture, Tag } from '@shared/types'
+import type { Case, Capture, Tag, Entity, BirdbrainSettings, OpenRouterModel } from '@shared/types'
 
 const birdbrain = {
   cases: {
@@ -25,7 +25,9 @@ const birdbrain = {
       ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_LIST, caseId),
     get: (id: string): Promise<Capture | undefined> =>
       ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_GET, id),
-    delete: (id: string): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_DELETE, id)
+    delete: (id: string): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_DELETE, id),
+    getContent: (captureId: string, type: 'html' | 'png' | 'txt'): Promise<string | null> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_GET_CONTENT, captureId, type)
   },
   tags: {
     list: (): Promise<Tag[]> => ipcRenderer.invoke(IPC_CHANNELS.TAGS_LIST),
@@ -42,6 +44,24 @@ const birdbrain = {
       ipcRenderer.invoke(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, captureId)
   },
   search: (query: string): Promise<Capture[]> => ipcRenderer.invoke(IPC_CHANNELS.SEARCH, query),
+
+  settings: {
+    get: (): Promise<BirdbrainSettings> => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET),
+    update: (partial: Partial<BirdbrainSettings>): Promise<BirdbrainSettings> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_UPDATE, partial),
+    reset: (): Promise<BirdbrainSettings> => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_RESET),
+    testOpenRouter: (apiKey: string): Promise<boolean> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_TEST_OPENROUTER, apiKey),
+    listModels: (apiKey: string): Promise<OpenRouterModel[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_LIST_MODELS, apiKey)
+  },
+
+  ai: {
+    extractEntities: (captureId: string): Promise<Entity[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.AI_EXTRACT_ENTITIES, captureId),
+    getEntities: (captureId: string): Promise<Entity[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.AI_GET_ENTITIES, captureId)
+  },
 
   // Event listeners (main -> renderer)
   onNewCapture: (callback: (capture: Capture) => void) => {

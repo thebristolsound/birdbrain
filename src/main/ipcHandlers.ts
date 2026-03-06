@@ -8,6 +8,11 @@ import type {
   CaptureTagParams
 } from '@shared/ipc'
 import * as db from '@main/services/database'
+import * as storage from '@main/services/storage'
+import * as settings from '@main/services/settings'
+import * as openrouter from '@main/services/openrouter'
+import { extractEntities } from '@main/services/ai/entityExtraction'
+import type { BirdbrainSettings } from '@shared/types'
 
 export function registerIpcHandlers(): void {
   // Cases
@@ -37,6 +42,40 @@ export function registerIpcHandlers(): void {
     db.getTagsForCapture(captureId)
   )
 
+  // Captures - get content
+  ipcMain.handle(
+    IPC_CHANNELS.CAPTURES_GET_CONTENT,
+    (_, captureId: string, type: 'html' | 'png' | 'txt') => {
+      const capture = db.getCapture(captureId)
+      if (!capture) return null
+      const buffer = storage.readCaptureFile(capture.caseId, captureId, type)
+      if (!buffer) return null
+      if (type === 'png') return buffer.toString('base64')
+      return buffer.toString('utf-8')
+    }
+  )
+
   // Search
   ipcMain.handle(IPC_CHANNELS.SEARCH, (_, query: string) => db.searchCaptures(query))
+
+  // Settings
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_GET, () => settings.getSettings())
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_UPDATE, (_, partial: Partial<BirdbrainSettings>) =>
+    settings.updateSettings(partial)
+  )
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_RESET, () => settings.resetSettings())
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_TEST_OPENROUTER, (_, apiKey: string) =>
+    openrouter.testApiKey(apiKey)
+  )
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_LIST_MODELS, (_, apiKey: string) =>
+    openrouter.listModels(apiKey)
+  )
+
+  // AI
+  ipcMain.handle(IPC_CHANNELS.AI_EXTRACT_ENTITIES, (_, captureId: string) =>
+    extractEntities(captureId)
+  )
+  ipcMain.handle(IPC_CHANNELS.AI_GET_ENTITIES, (_, captureId: string) =>
+    db.getEntitiesByCapture(captureId)
+  )
 }

@@ -27,7 +27,19 @@ export const IPC_CHANNELS = {
   // Search
   SEARCH: 'search:query',
 
+  // Settings
+  SETTINGS_GET: 'settings:get',
+  SETTINGS_UPDATE: 'settings:update',
+  SETTINGS_RESET: 'settings:reset',
+  SETTINGS_TEST_OPENROUTER: 'settings:testOpenRouter',
+  SETTINGS_LIST_MODELS: 'settings:listModels',
+
+  // AI
+  AI_EXTRACT_ENTITIES: 'ai:extractEntities',
+  AI_GET_ENTITIES: 'ai:getEntities',
+
   // Events (main -> renderer)
+  EXTRACTION_COMPLETE: 'event:extractionComplete',
   NEW_CAPTURE: 'event:newCapture',
   SESSION_STATE_CHANGED: 'event:sessionStateChanged'
 } as const

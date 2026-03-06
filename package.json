@@ -50,7 +50,8 @@
     "@hono/node-server": "^1.19.10",
     "better-sqlite3": "^12.6.2",
     "hono": "^4.12.4",
-    "uuid": "^11.1.0"
+    "uuid": "^11.1.0",
+    "zustand": "^5.0.11"
   },
   "devDependencies": {
     "@electron-toolkit/preload": "^3.0.1",

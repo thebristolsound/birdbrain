@@ -1,10 +1,12 @@
-import type { Case, Capture, Tag, Entity, EntityGraph, CaseAnalysisResult, BirdbrainSettings, OpenRouterModel, ExportOptions } from '@shared/types'
+import type { Case, Capture, Tag, Entity, EntityGraph, CaseAnalysisResult, BirdbrainSettings, OpenRouterModel, ExportOptions, Selector, ActiveCaseSelectors } from '@shared/types'
 import type {
   CreateCaseParams,
   UpdateCaseParams,
   CreateTagParams,
   UpdateTagParams,
-  CaptureTagParams
+  CaptureTagParams,
+  CreateSelectorParams,
+  UpdateSelectorParams
 } from '@shared/ipc'
 
 interface BirdbrainAPI {
@@ -29,6 +31,14 @@ interface BirdbrainAPI {
     addToCapture(params: CaptureTagParams): Promise<void>
     removeFromCapture(params: CaptureTagParams): Promise<void>
     getForCapture(captureId: string): Promise<Tag[]>
+  }
+  selectors: {
+    list(caseId: string): Promise<Selector[]>
+    get(id: string): Promise<Selector | undefined>
+    create(params: CreateSelectorParams): Promise<Selector>
+    update(params: UpdateSelectorParams): Promise<Selector | undefined>
+    delete(id: string): Promise<boolean>
+    listActive(): Promise<ActiveCaseSelectors[]>
   }
   search(query: string): Promise<Capture[]>
   settings: {

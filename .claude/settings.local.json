@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(E:/dev/birdbrain/**)",
+      "Bash(pnpm test)",
+      "Bash(pnpm test:*)",
+      "Bash(pnpm build:*)",
+      "Bash(pnpm build:extension:*)",
+      "Bash(pnpm dev)",
+      "Bash(pnpm dev:*)",
+      "Bash(node:*)"
+    ]
+  }
+}

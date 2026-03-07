@@ -14,6 +14,8 @@ function Popup(): React.JSX.Element {
   const [activeCase, setActiveCase] = useState<{ id: string; name: string } | null>(null)
   const [cases, setCases] = useState<CaseInfo[]>([])
   const [captureCount, setCaptureCount] = useState(0)
+  const [activeSelectorCount, setActiveSelectorCount] = useState(0)
+  const [activeCaseCount, setActiveCaseCount] = useState(0)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -31,6 +33,14 @@ function Popup(): React.JSX.Element {
       if (status.running) {
         const caseList = await getCases()
         setCases(caseList)
+
+        // Get selector state from background
+        chrome.runtime.sendMessage({ type: 'GET_STATE' }, (state) => {
+          if (state) {
+            setActiveSelectorCount(state.activeSelectorCount || 0)
+            setActiveCaseCount(state.activeCaseCount || 0)
+          }
+        })
       }
     } catch {
       setConnected(false)
@@ -89,9 +99,17 @@ function Popup(): React.JSX.Element {
         <div style={{ fontSize: '12px', color: '#a3a3a3', marginBottom: '4px' }}>
           Case: {activeCase.name}
         </div>
-        <div style={{ fontSize: '12px', color: '#a3a3a3', marginBottom: '16px' }}>
+        <div style={{ fontSize: '12px', color: '#a3a3a3', marginBottom: '4px' }}>
           Captures: {captureCount}
         </div>
+        {activeSelectorCount > 0 && (
+          <div style={{ fontSize: '11px', color: '#737373', marginBottom: '16px' }}>
+            Selectors: {activeSelectorCount} active across {activeCaseCount} case{activeCaseCount !== 1 ? 's' : ''}
+          </div>
+        )}
+        {activeSelectorCount === 0 && (
+          <div style={{ marginBottom: '16px' }} />
+        )}
         <button onClick={handleStopCapture} style={{ ...buttonStyle, background: '#ef4444' }}>
           Stop Capturing
         </button>

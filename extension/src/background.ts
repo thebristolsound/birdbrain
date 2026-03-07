@@ -1,4 +1,10 @@
-import { checkConnection, getStatus, sendCapture } from '@extension/utils/api'
+import {
+  checkConnection,
+  getStatus,
+  sendCapture,
+  getActiveSelectors,
+  sendSelectorCapture
+} from '@extension/utils/api'
 
 // URL patterns to ignore
 const DEFAULT_IGNORE = [
@@ -15,9 +21,25 @@ const DEFAULT_IGNORE = [
 const dedupeMap = new Map<string, number>()
 const DEDUPE_WINDOW_MS = 60_000
 
+// Selector capture dedupe: caseId:url -> timestamp
+const selectorDedupeMap = new Map<string, number>()
+
 let connected = false
 let sessionActive = false
 let captureCount = 0
+
+// Selector state
+let activeSelectors: Array<{
+  caseId: string
+  caseName: string
+  selectors: Array<{
+    id: string
+    pattern: string
+    isRegex: boolean
+    enabled: boolean
+  }>
+}> = []
+let autoCaptureMode: string = 'notify'
 
 // --- Connection management ---
 
@@ -28,6 +50,7 @@ async function checkStatus(): Promise<void> {
     connected = status.running
     sessionActive = status.sessionActive
     captureCount = status.captureCount
+    autoCaptureMode = status.autoCaptureMode || 'notify'
 
     if (connected && !wasConnected) {
       updateIcon('connected')
@@ -38,9 +61,17 @@ async function checkStatus(): Promise<void> {
     if (sessionActive) {
       updateIcon('active')
       chrome.action.setBadgeText({ text: String(captureCount) })
+
+      // Fetch active selectors when session is active
+      try {
+        activeSelectors = await getActiveSelectors()
+      } catch {
+        activeSelectors = []
+      }
     } else if (connected) {
       updateIcon('connected')
       chrome.action.setBadgeText({ text: '' })
+      activeSelectors = []
     }
   } catch {
     connected = false
@@ -67,6 +98,13 @@ function shouldCapture(url: string): boolean {
   const lastCapture = dedupeMap.get(url)
   if (lastCapture && Date.now() - lastCapture < DEDUPE_WINDOW_MS) return false
 
+  return true
+}
+
+function shouldSelectorCapture(caseId: string, url: string): boolean {
+  const key = `${caseId}:${url}`
+  const last = selectorDedupeMap.get(key)
+  if (last && Date.now() - last < DEDUPE_WINDOW_MS) return false
   return true
 }
 
@@ -110,10 +148,108 @@ async function captureTab(tabId: number, url: string): Promise<void> {
   }
 }
 
+async function handleSelectorCapture(
+  tabId: number,
+  url: string,
+  caseId: string
+): Promise<void> {
+  if (!shouldSelectorCapture(caseId, url)) return
+
+  try {
+    const pageData = await chrome.tabs.sendMessage(tabId, { type: 'EXTRACT_PAGE' }) as {
+      html: string
+      title: string
+      textContent: string
+    }
+
+    let screenshot: string | undefined
+    try {
+      screenshot = await chrome.tabs.captureVisibleTab({ format: 'png' })
+      screenshot = screenshot.replace(/^data:image\/png;base64,/, '')
+    } catch {
+      // Screenshot may fail
+    }
+
+    await sendSelectorCapture({
+      caseId,
+      url,
+      title: pageData.title,
+      html: pageData.html,
+      screenshot,
+      timestamp: new Date().toISOString(),
+      textContent: pageData.textContent,
+      matchedSelectors: []
+    })
+
+    selectorDedupeMap.set(`${caseId}:${url}`, Date.now())
+  } catch (err) {
+    console.error('Selector capture failed:', err)
+  }
+}
+
+async function checkSelectorsOnTab(tabId: number, url: string): Promise<void> {
+  if (activeSelectors.length === 0) return
+  if (DEFAULT_IGNORE.some((pattern) => pattern.test(url))) return
+
+  try {
+    const matches = await chrome.tabs.sendMessage(tabId, {
+      type: 'CHECK_SELECTORS',
+      selectors: activeSelectors
+    }) as Array<{
+      selectorId: string
+      caseId: string
+      caseName: string
+      pattern: string
+      matchText: string
+      context: string
+      index: number
+    }>
+
+    if (!matches || matches.length === 0) return
+
+    // Group matches by case
+    const caseMatches = new Map<string, typeof matches>()
+    for (const m of matches) {
+      if (!caseMatches.has(m.caseId)) caseMatches.set(m.caseId, [])
+      caseMatches.get(m.caseId)!.push(m)
+    }
+
+    // Update badge to show match count
+    chrome.action.setBadgeText({ text: String(matches.length) })
+    chrome.action.setBadgeBackgroundColor({ color: '#3b82f6' })
+
+    if (autoCaptureMode === 'auto') {
+      // Auto-capture for each matching case
+      for (const [caseId] of caseMatches) {
+        handleSelectorCapture(tabId, url, caseId)
+      }
+    } else {
+      // Notify mode — show notification
+      const caseNames = [...new Set(matches.map((m) => m.caseName))]
+      chrome.notifications.create({
+        type: 'basic',
+        iconUrl: 'icons/icon-128.png',
+        title: 'Birdbrain: Selector Matches',
+        message: `${matches.length} match${matches.length !== 1 ? 'es' : ''} found for: ${caseNames.join(', ')}`
+      })
+    }
+  } catch {
+    // Content script may not be ready
+  }
+}
+
 // Listen for page load completions
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.status === 'complete' && tab.url && shouldCapture(tab.url)) {
-    captureTab(tabId, tab.url)
+  if (changeInfo.status === 'complete' && tab.url) {
+    // Existing session capture
+    if (shouldCapture(tab.url)) {
+      captureTab(tabId, tab.url)
+    }
+
+    // Selector matching (independent of session capture)
+    if (sessionActive && activeSelectors.length > 0) {
+      checkSelectorsOnTab(tabId, tab.url)
+    }
   }
 })
 
@@ -143,19 +279,46 @@ function updateIcon(state: IconState): void {
   }
 }
 
-// --- Message handling from popup ---
+// --- Message handling from popup and content script ---
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'GET_STATE') {
-    sendResponse({ connected, sessionActive, captureCount })
+    sendResponse({
+      connected,
+      sessionActive,
+      captureCount,
+      activeSelectorCount: activeSelectors.reduce(
+        (sum, g) => sum + g.selectors.length,
+        0
+      ),
+      activeCaseCount: activeSelectors.length
+    })
   }
+
+  if (message.type === 'SELECTOR_CAPTURE' && sender.tab?.id && sender.tab?.url) {
+    handleSelectorCapture(sender.tab.id, sender.tab.url, message.caseId)
+  }
+
   return true
 })
 
-// Clear dedupe map when session stops
+// Clear state when session stops
 chrome.runtime.onMessage.addListener((message) => {
   if (message.type === 'SESSION_STOPPED') {
     dedupeMap.clear()
+    selectorDedupeMap.clear()
     captureCount = 0
+    activeSelectors = []
+
+    // Clear highlights on all tabs
+    chrome.tabs.query({}, (tabs) => {
+      for (const tab of tabs) {
+        if (tab.id) {
+          chrome.tabs.sendMessage(tab.id, { type: 'CLEAR_HIGHLIGHTS' }).catch(() => {
+            // Tab may not have content script
+          })
+        }
+      }
+    })
   }
 })

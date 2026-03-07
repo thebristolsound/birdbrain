@@ -7,6 +7,7 @@ import { IPC_CHANNELS } from '@shared/ipc'
 import * as db from '@main/services/database'
 import { saveCapture } from '@main/services/storage'
 import { hashContent } from '@main/services/hash'
+import { getSettings } from '@main/services/settings'
 
 const DEFAULT_PORT = 19845
 
@@ -63,11 +64,13 @@ function createApp(): Hono {
       notifyExtensionConnection(true)
     }
     const activeCase = state.activeCaseId ? db.getCase(state.activeCaseId) : null
+    const settings = getSettings()
     return c.json({
       running: true,
       activeCase: activeCase ? { id: activeCase.id, name: activeCase.name } : null,
       sessionActive: state.sessionActive,
-      captureCount: state.captureCount
+      captureCount: state.captureCount,
+      autoCaptureMode: settings.autoCaptureMode
     })
   })
 
@@ -160,6 +163,56 @@ function createApp(): Hono {
     } catch (err) {
       console.error('Capture error:', err)
       return c.json({ error: 'Failed to process capture' }, 500)
+    }
+  })
+
+  // List active selectors across all non-archived cases
+  app.get('/api/selectors/active', (c) => {
+    const activeSelectors = db.listActiveSelectors()
+    return c.json(activeSelectors)
+  })
+
+  // Receive selector-triggered capture from extension
+  app.post('/api/captures/selector', async (c) => {
+    try {
+      const body = await c.req.json()
+      const { caseId, url, title, html, screenshot, timestamp, headers, textContent } = body
+
+      if (!caseId || !url || !html) {
+        return c.json({ error: 'Missing required fields: caseId, url, html' }, 400)
+      }
+
+      const hash = hashContent(html)
+
+      // Save files to disk
+      const screenshotBuffer = screenshot ? Buffer.from(screenshot, 'base64') : undefined
+      const captureId = crypto.randomUUID()
+
+      const paths = saveCapture(caseId, captureId, html, screenshotBuffer, textContent)
+
+      // Insert into database using the same ID as the files
+      const capture = db.insertCapture({
+        id: captureId,
+        caseId,
+        url,
+        title: title || url,
+        hash,
+        timestamp: timestamp || new Date().toISOString(),
+        htmlPath: paths.htmlPath,
+        screenshotPath: paths.screenshotPath,
+        headers: headers ? JSON.stringify(headers) : undefined,
+        textContent
+      })
+
+      // Notify renderer of new capture
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IPC_CHANNELS.NEW_CAPTURE, capture)
+      }
+
+      return c.json({ captureId: capture.id, hash, status: 'ok' })
+    } catch (err) {
+      console.error('Selector capture error:', err)
+      return c.json({ error: 'Failed to process selector capture' }, 500)
     }
   })
 

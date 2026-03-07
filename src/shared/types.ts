@@ -55,6 +55,7 @@ export interface BirdbrainSettings {
   maxStorageMb: number | null
   theme: 'dark' | 'light'
   sidebarWidth: number
+  autoCaptureMode: AutoCaptureMode
 }
 
 export interface OpenRouterModel {
@@ -124,6 +125,34 @@ export interface HashVerification {
   computedHash: string
   status: 'verified' | 'tampered' | 'missing'
 }
+
+export interface Selector {
+  id: string
+  caseId: string
+  pattern: string
+  isRegex: boolean
+  enabled: boolean
+  label?: string
+  createdAt: string
+}
+
+export interface SelectorMatch {
+  selectorId: string
+  caseId: string
+  caseName: string
+  pattern: string
+  matchText: string
+  context: string
+  index: number
+}
+
+export interface ActiveCaseSelectors {
+  caseId: string
+  caseName: string
+  selectors: Selector[]
+}
+
+export type AutoCaptureMode = 'auto' | 'notify' | 'per-case'
 
 export type EntityType =
   | 'person'

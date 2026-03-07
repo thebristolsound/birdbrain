@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { BirdbrainSettings } from '@shared/types'
+import type { BirdbrainSettings, AutoCaptureMode } from '@shared/types'
 
 interface CapturePreferencesProps {
   settings: BirdbrainSettings
@@ -95,6 +95,32 @@ export function CapturePreferences({ settings, onUpdate }: CapturePreferencesPro
                   &times;
                 </button>
               </div>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-sm text-neutral-400">Selector auto-capture mode</label>
+          <div className="space-y-1">
+            {([
+              ['auto', 'Auto-capture', 'Automatically capture pages with selector matches'],
+              ['notify', 'Notify only', 'Show a notification when matches are found'],
+              ['per-case', 'Per-case', 'Configure capture behavior per case']
+            ] as [AutoCaptureMode, string, string][]).map(([value, label, desc]) => (
+              <label key={value} className="flex items-start gap-2 cursor-pointer rounded p-1.5 hover:bg-neutral-800">
+                <input
+                  type="radio"
+                  name="autoCaptureMode"
+                  value={value}
+                  checked={settings.autoCaptureMode === value}
+                  onChange={() => onUpdate({ autoCaptureMode: value })}
+                  className="mt-0.5"
+                />
+                <div>
+                  <div className="text-sm text-neutral-300">{label}</div>
+                  <div className="text-xs text-neutral-500">{desc}</div>
+                </div>
+              </label>
             ))}
           </div>
         </div>

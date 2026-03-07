@@ -4,7 +4,7 @@ import { CaptureList } from '@renderer/components/captures/CaptureList'
 import { TagList } from '@renderer/components/tags/TagList'
 
 export function Sidebar() {
-  const { sidebarCollapsed, activeCaseId } = useAppStore()
+  const { sidebarCollapsed, activeCaseId, setActiveView } = useAppStore()
 
   if (sidebarCollapsed) return null
 
@@ -19,6 +19,13 @@ export function Sidebar() {
       )}
       <div className="border-t border-neutral-800" />
       <TagList />
+      <div className="border-t border-neutral-800" />
+      <button
+        onClick={() => setActiveView('selectors-overview')}
+        className="px-4 py-2 text-left text-sm text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
+      >
+        Selectors
+      </button>
     </aside>
   )
 }

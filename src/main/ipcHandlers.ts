@@ -5,7 +5,9 @@ import type {
   UpdateCaseParams,
   CreateTagParams,
   UpdateTagParams,
-  CaptureTagParams
+  CaptureTagParams,
+  CreateSelectorParams,
+  UpdateSelectorParams
 } from '@shared/ipc'
 import * as db from '@main/services/database'
 import * as storage from '@main/services/storage'
@@ -44,6 +46,18 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, (_, captureId: string) =>
     db.getTagsForCapture(captureId)
   )
+
+  // Selectors
+  ipcMain.handle(IPC_CHANNELS.SELECTORS_LIST, (_, caseId: string) => db.listSelectors(caseId))
+  ipcMain.handle(IPC_CHANNELS.SELECTORS_GET, (_, id: string) => db.getSelector(id))
+  ipcMain.handle(IPC_CHANNELS.SELECTORS_CREATE, (_, params: CreateSelectorParams) =>
+    db.createSelector(params)
+  )
+  ipcMain.handle(IPC_CHANNELS.SELECTORS_UPDATE, (_, params: UpdateSelectorParams) =>
+    db.updateSelector(params)
+  )
+  ipcMain.handle(IPC_CHANNELS.SELECTORS_DELETE, (_, id: string) => db.deleteSelector(id))
+  ipcMain.handle(IPC_CHANNELS.SELECTORS_LIST_ACTIVE, () => db.listActiveSelectors())
 
   // Captures - get content
   ipcMain.handle(

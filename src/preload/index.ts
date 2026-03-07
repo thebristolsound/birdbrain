@@ -6,9 +6,11 @@ import type {
   UpdateCaseParams,
   CreateTagParams,
   UpdateTagParams,
-  CaptureTagParams
+  CaptureTagParams,
+  CreateSelectorParams,
+  UpdateSelectorParams
 } from '@shared/ipc'
-import type { Case, Capture, Tag, Entity, EntityGraph, CaseAnalysisResult, BirdbrainSettings, OpenRouterModel, ExportOptions } from '@shared/types'
+import type { Case, Capture, Tag, Entity, EntityGraph, CaseAnalysisResult, BirdbrainSettings, OpenRouterModel, ExportOptions, Selector, ActiveCaseSelectors } from '@shared/types'
 
 const birdbrain = {
   cases: {
@@ -43,6 +45,21 @@ const birdbrain = {
     getForCapture: (captureId: string): Promise<Tag[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, captureId)
   },
+  selectors: {
+    list: (caseId: string): Promise<Selector[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_LIST, caseId),
+    get: (id: string): Promise<Selector | undefined> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_GET, id),
+    create: (params: CreateSelectorParams): Promise<Selector> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_CREATE, params),
+    update: (params: UpdateSelectorParams): Promise<Selector | undefined> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_UPDATE, params),
+    delete: (id: string): Promise<boolean> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_DELETE, id),
+    listActive: (): Promise<ActiveCaseSelectors[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_LIST_ACTIVE)
+  },
+
   search: (query: string): Promise<Capture[]> => ipcRenderer.invoke(IPC_CHANNELS.SEARCH, query),
 
   settings: {

@@ -4,6 +4,7 @@ import { CaseOverview } from '@renderer/components/cases/CaseOverview'
 import { CaptureViewer } from '@renderer/components/captures/CaptureViewer'
 import { SettingsView } from '@renderer/components/settings/SettingsView'
 import { CaseAnalysis } from '@renderer/components/analysis/CaseAnalysis'
+import { SelectorsOverview } from '@renderer/components/selectors/SelectorsOverview'
 
 export function MainContent() {
   const { activeView } = useAppStore()
@@ -14,6 +15,7 @@ export function MainContent() {
       {activeView === 'case-overview' && <CaseOverview />}
       {activeView === 'capture-viewer' && <CaptureViewer />}
       {activeView === 'case-analysis' && <CaseAnalysis />}
+      {activeView === 'selectors-overview' && <SelectorsOverview />}
       {activeView === 'settings' && <SettingsView />}
     </main>
   )

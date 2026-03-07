@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAppStore } from '@renderer/stores/appStore'
 import { useCaptures } from '@renderer/hooks/useCaptures'
 import { ExportDialog } from '@renderer/components/export/ExportDialog'
+import { SelectorList } from '@renderer/components/selectors/SelectorList'
 import type { Case } from '@shared/types'
 
 export function CaseOverview() {
@@ -89,6 +90,9 @@ export function CaseOverview() {
       {showExport && caseData && (
         <ExportDialog caseId={caseData.id} caseName={caseData.name} onClose={() => setShowExport(false)} />
       )}
+
+      {/* Selectors */}
+      {activeCaseId && <SelectorList caseId={activeCaseId} />}
 
       {/* Top Domains */}
       {topDomains.length > 0 && (

@@ -5,6 +5,7 @@ interface StatusResponse {
   activeCase: { id: string; name: string } | null
   sessionActive: boolean
   captureCount: number
+  autoCaptureMode?: string
 }
 
 interface CaseInfo {
@@ -60,6 +61,53 @@ export async function sendCapture(data: {
   textContent?: string
 }): Promise<CaptureResult> {
   return request('/api/captures', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  })
+}
+
+interface SelectorInfo {
+  id: string
+  caseId: string
+  pattern: string
+  isRegex: boolean
+  enabled: boolean
+  label?: string
+  createdAt: string
+}
+
+interface ActiveCaseSelectors {
+  caseId: string
+  caseName: string
+  selectors: SelectorInfo[]
+}
+
+interface SelectorMatchInfo {
+  selectorId: string
+  caseId: string
+  caseName: string
+  pattern: string
+  matchText: string
+  context: string
+  index: number
+}
+
+export async function getActiveSelectors(): Promise<ActiveCaseSelectors[]> {
+  return request('/api/selectors/active')
+}
+
+export async function sendSelectorCapture(data: {
+  caseId: string
+  url: string
+  title: string
+  html: string
+  screenshot?: string
+  timestamp: string
+  headers?: Record<string, string>
+  textContent?: string
+  matchedSelectors: SelectorMatchInfo[]
+}): Promise<CaptureResult> {
+  return request('/api/captures/selector', {
     method: 'POST',
     body: JSON.stringify(data)
   })

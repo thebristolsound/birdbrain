@@ -1,12 +1,14 @@
 import Database from 'better-sqlite3'
 import { v4 as uuid } from 'uuid'
-import type { Case, Capture, Tag, Entity } from '@shared/types'
+import type { Case, Capture, Tag, Entity, Selector, ActiveCaseSelectors } from '@shared/types'
 import type {
   CreateCaseParams,
   UpdateCaseParams,
   CreateTagParams,
   UpdateTagParams,
-  CaptureTagParams
+  CaptureTagParams,
+  CreateSelectorParams,
+  UpdateSelectorParams
 } from '@shared/ipc'
 
 let db: Database.Database
@@ -105,6 +107,23 @@ function migrate(db: Database.Database): void {
       );
     `)
     db.pragma('user_version = 2')
+  }
+
+  if (version < 3) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS selectors (
+        id TEXT PRIMARY KEY,
+        case_id TEXT NOT NULL,
+        pattern TEXT NOT NULL,
+        is_regex INTEGER DEFAULT 0,
+        enabled INTEGER DEFAULT 1,
+        label TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_selectors_case_id ON selectors(case_id);
+    `)
+    db.pragma('user_version = 3')
   }
 }
 
@@ -376,6 +395,78 @@ export function insertCaseAnalysis(params: {
   return getCaseAnalysis(params.caseId)!
 }
 
+// --- Selectors ---
+
+export function listSelectors(caseId: string): Selector[] {
+  const rows = getDb()
+    .prepare('SELECT * FROM selectors WHERE case_id = ? ORDER BY created_at DESC')
+    .all(caseId) as Array<Record<string, unknown>>
+  return rows.map(rowToSelector)
+}
+
+export function getSelector(id: string): Selector | undefined {
+  const row = getDb().prepare('SELECT * FROM selectors WHERE id = ?').get(id) as
+    | Record<string, unknown>
+    | undefined
+  return row ? rowToSelector(row) : undefined
+}
+
+export function createSelector(params: CreateSelectorParams): Selector {
+  const id = uuid()
+  const now = new Date().toISOString()
+  getDb()
+    .prepare(
+      'INSERT INTO selectors (id, case_id, pattern, is_regex, label, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+    )
+    .run(id, params.caseId, params.pattern, params.isRegex ? 1 : 0, params.label ?? null, now)
+  return getSelector(id)!
+}
+
+export function updateSelector(params: UpdateSelectorParams): Selector | undefined {
+  const existing = getSelector(params.id)
+  if (!existing) return undefined
+  getDb()
+    .prepare('UPDATE selectors SET pattern = ?, is_regex = ?, enabled = ?, label = ? WHERE id = ?')
+    .run(
+      params.pattern ?? existing.pattern,
+      params.isRegex !== undefined ? (params.isRegex ? 1 : 0) : (existing.isRegex ? 1 : 0),
+      params.enabled !== undefined ? (params.enabled ? 1 : 0) : (existing.enabled ? 1 : 0),
+      params.label !== undefined ? params.label : existing.label ?? null,
+      params.id
+    )
+  return getSelector(params.id)
+}
+
+export function deleteSelector(id: string): boolean {
+  const result = getDb().prepare('DELETE FROM selectors WHERE id = ?').run(id)
+  return result.changes > 0
+}
+
+export function listActiveSelectors(): ActiveCaseSelectors[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT s.*, c.name as case_name FROM selectors s
+       JOIN cases c ON s.case_id = c.id
+       WHERE s.enabled = 1 AND c.archived = 0
+       ORDER BY c.name, s.created_at DESC`
+    )
+    .all() as Array<Record<string, unknown>>
+
+  const grouped = new Map<string, ActiveCaseSelectors>()
+  for (const row of rows) {
+    const caseId = row.case_id as string
+    if (!grouped.has(caseId)) {
+      grouped.set(caseId, {
+        caseId,
+        caseName: row.case_name as string,
+        selectors: []
+      })
+    }
+    grouped.get(caseId)!.selectors.push(rowToSelector(row))
+  }
+  return Array.from(grouped.values())
+}
+
 // --- Row mappers ---
 
 function rowToCase(row: Record<string, unknown>): Case {
@@ -400,6 +491,18 @@ function rowToCapture(row: Record<string, unknown>): Capture {
     hash: row.hash as string,
     timestamp: row.timestamp as string,
     headers: (row.headers as string) || undefined,
+    createdAt: row.created_at as string
+  }
+}
+
+function rowToSelector(row: Record<string, unknown>): Selector {
+  return {
+    id: row.id as string,
+    caseId: row.case_id as string,
+    pattern: row.pattern as string,
+    isRegex: row.is_regex === 1,
+    enabled: row.enabled === 1,
+    label: (row.label as string) || undefined,
     createdAt: row.created_at as string
   }
 }

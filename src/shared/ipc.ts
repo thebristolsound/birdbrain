@@ -44,6 +44,14 @@ export const IPC_CHANNELS = {
   // Export
   EXPORT_GENERATE: 'export:generate',
 
+  // Selectors
+  SELECTORS_LIST: 'selectors:list',
+  SELECTORS_GET: 'selectors:get',
+  SELECTORS_CREATE: 'selectors:create',
+  SELECTORS_UPDATE: 'selectors:update',
+  SELECTORS_DELETE: 'selectors:delete',
+  SELECTORS_LIST_ACTIVE: 'selectors:listActive',
+
   // Events (main -> renderer)
   EXTRACTION_COMPLETE: 'event:extractionComplete',
   EXPORT_PROGRESS: 'event:exportProgress',
@@ -81,6 +89,21 @@ export interface UpdateTagParams {
 export interface CaptureTagParams {
   captureId: string
   tagId: string
+}
+
+export interface CreateSelectorParams {
+  caseId: string
+  pattern: string
+  isRegex?: boolean
+  label?: string
+}
+
+export interface UpdateSelectorParams {
+  id: string
+  pattern?: string
+  isRegex?: boolean
+  enabled?: boolean
+  label?: string
 }
 
 export interface SaveCaptureParams {

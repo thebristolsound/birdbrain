@@ -15,7 +15,8 @@ const DEFAULT_SETTINGS: BirdbrainSettings = {
   storagePath: '',
   maxStorageMb: null,
   theme: 'dark',
-  sidebarWidth: 300
+  sidebarWidth: 300,
+  autoCaptureMode: 'notify'
 }
 
 export function initSettings(userDataPath: string): void {

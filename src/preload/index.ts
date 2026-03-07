@@ -79,6 +79,18 @@ const birdbrain = {
     const handler = (_: unknown, capture: Capture) => callback(capture)
     ipcRenderer.on(IPC_CHANNELS.NEW_CAPTURE, handler)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.NEW_CAPTURE, handler)
+  },
+
+  onSessionStateChanged: (callback: (state: { sessionActive: boolean; activeCaseId: string | null; captureCount: number }) => void) => {
+    const handler = (_: unknown, state: { sessionActive: boolean; activeCaseId: string | null; captureCount: number }) => callback(state)
+    ipcRenderer.on(IPC_CHANNELS.SESSION_STATE_CHANGED, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.SESSION_STATE_CHANGED, handler)
+  },
+
+  onExtensionConnection: (callback: (data: { connected: boolean }) => void) => {
+    const handler = (_: unknown, data: { connected: boolean }) => callback(data)
+    ipcRenderer.on(IPC_CHANNELS.EXTENSION_CONNECTION, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.EXTENSION_CONNECTION, handler)
   }
 }
 

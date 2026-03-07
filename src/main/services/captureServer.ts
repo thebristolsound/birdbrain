@@ -14,6 +14,7 @@ interface SessionState {
   activeCaseId: string | null
   sessionActive: boolean
   captureCount: number
+  extensionLastSeen: number
 }
 
 let server: Server | null = null
@@ -22,7 +23,8 @@ let mainWindow: BrowserWindow | null = null
 const state: SessionState = {
   activeCaseId: null,
   sessionActive: false,
-  captureCount: 0
+  captureCount: 0,
+  extensionLastSeen: 0
 }
 
 export function getSessionState(): SessionState {
@@ -33,6 +35,7 @@ export function resetSessionState(): void {
   state.activeCaseId = null
   state.sessionActive = false
   state.captureCount = 0
+  state.extensionLastSeen = 0
 }
 
 export function setMainWindow(win: BrowserWindow): void {
@@ -52,8 +55,13 @@ function createApp(): Hono {
     })
   )
 
-  // Status endpoint
+  // Status endpoint — also tracks extension connection
   app.get('/api/status', (c) => {
+    const wasConnected = Date.now() - state.extensionLastSeen < 10000
+    state.extensionLastSeen = Date.now()
+    if (!wasConnected) {
+      notifyExtensionConnection(true)
+    }
     const activeCase = state.activeCaseId ? db.getCase(state.activeCaseId) : null
     return c.json({
       running: true,
@@ -127,8 +135,9 @@ function createApp(): Hono {
 
       const paths = saveCapture(caseId, captureId, html, screenshotBuffer, textContent)
 
-    // Insert into database
+    // Insert into database using the same ID as the files
     const capture = db.insertCapture({
+      id: captureId,
       caseId,
       url,
       title: title || url,
@@ -188,5 +197,30 @@ function notifySessionChange(): void {
       activeCaseId: state.activeCaseId,
       captureCount: state.captureCount
     })
+  }
+}
+
+function notifyExtensionConnection(connected: boolean): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(IPC_CHANNELS.EXTENSION_CONNECTION, { connected })
+  }
+}
+
+let extensionCheckInterval: ReturnType<typeof setInterval> | null = null
+
+export function startExtensionConnectionCheck(): void {
+  extensionCheckInterval = setInterval(() => {
+    const connected = Date.now() - state.extensionLastSeen < 10000
+    if (!connected && state.extensionLastSeen > 0) {
+      notifyExtensionConnection(false)
+      state.extensionLastSeen = 0
+    }
+  }, 5000)
+}
+
+export function stopExtensionConnectionCheck(): void {
+  if (extensionCheckInterval) {
+    clearInterval(extensionCheckInterval)
+    extensionCheckInterval = null
   }
 }

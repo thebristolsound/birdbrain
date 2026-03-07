@@ -48,7 +48,8 @@ export const IPC_CHANNELS = {
   EXTRACTION_COMPLETE: 'event:extractionComplete',
   EXPORT_PROGRESS: 'event:exportProgress',
   NEW_CAPTURE: 'event:newCapture',
-  SESSION_STATE_CHANGED: 'event:sessionStateChanged'
+  SESSION_STATE_CHANGED: 'event:sessionStateChanged',
+  EXTENSION_CONNECTION: 'event:extensionConnection'
 } as const
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS]

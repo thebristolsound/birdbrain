@@ -16,8 +16,24 @@ Thumbs.db
 *.swp
 *.swo
 
+# TypeScript build artifacts
+*.tsbuildinfo
+electron.vite.config.js
+electron.vite.config.d.ts
+vitest.config.js
+vitest.config.d.ts
+extension/src/**/*.js
+extension/src/**/*.d.ts
+extension/vite.config.js
+extension/vite.config.d.ts
+tests/**/*.js
+tests/**/*.d.ts
+
 # Python cache
 Python/
 
 # Specs (from birdbrain-specs repo)
 specs/
+.serena
+build/config.gypi
+.claude/settings.local.json

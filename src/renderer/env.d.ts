@@ -49,6 +49,8 @@ interface BirdbrainAPI {
     generateReport(caseId: string, options: ExportOptions): Promise<void>
   }
   onNewCapture(callback: (capture: Capture) => void): () => void
+  onSessionStateChanged(callback: (state: { sessionActive: boolean; activeCaseId: string | null; captureCount: number }) => void): () => void
+  onExtensionConnection(callback: (data: { connected: boolean }) => void): () => void
 }
 
 declare global {

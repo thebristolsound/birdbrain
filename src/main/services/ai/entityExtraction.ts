@@ -42,14 +42,20 @@ If no entities are found, respond with: {"entities": []}
 Do not include any text before or after the JSON.`
 
 export async function extractEntities(captureId: string): Promise<Entity[]> {
+  console.log(`[AI] Starting entity extraction for capture ${captureId}`)
+
   const capture = db.getCapture(captureId)
   if (!capture) throw new Error(`Capture not found: ${captureId}`)
 
   // Read text content
   const textBuffer = readCaptureFile(capture.caseId, captureId, 'txt')
   const text = textBuffer?.toString('utf-8')
-  if (!text?.trim()) return []
+  if (!text?.trim()) {
+    console.warn(`[AI] No text content found for capture ${captureId} — cannot extract entities`)
+    throw new Error('No text content available for this capture. The page may not have had extractable text.')
+  }
 
+  console.log(`[AI] Text content loaded (${text.length} chars), sending to LLM...`)
   const truncatedText = truncateForContext(text)
 
   // Send to LLM
@@ -57,12 +63,15 @@ export async function extractEntities(captureId: string): Promise<Entity[]> {
     { role: 'system', content: EXTRACTION_PROMPT },
     { role: 'user', content: truncatedText }
   ])
+  console.log(`[AI] LLM response received (${result.content.length} chars)`)
 
   // Parse response
   let entities = parseEntitiesResponse(result.content)
 
   // Retry once if JSON is malformed
   if (!entities) {
+    console.warn(`[AI] Failed to parse LLM response, retrying...`)
+    console.warn(`[AI] Raw response: ${result.content.slice(0, 500)}`)
     result = await sendPrompt([
       { role: 'system', content: EXTRACTION_PROMPT },
       { role: 'user', content: truncatedText },
@@ -70,9 +79,14 @@ export async function extractEntities(captureId: string): Promise<Entity[]> {
       { role: 'user', content: 'Your response was not valid JSON. Please respond with ONLY valid JSON matching the specified format.' }
     ])
     entities = parseEntitiesResponse(result.content)
+    if (!entities) {
+      console.error(`[AI] Retry also failed to parse. Raw: ${result.content.slice(0, 500)}`)
+      throw new Error('Failed to parse AI response as valid JSON after retry')
+    }
   }
 
-  if (!entities || entities.length === 0) return []
+  console.log(`[AI] Parsed ${entities.length} entities from response`)
+  if (entities.length === 0) return []
 
   // Clear existing entities for this capture (re-extraction)
   db.deleteEntitiesByCapture(captureId)
@@ -91,6 +105,7 @@ export async function extractEntities(captureId: string): Promise<Entity[]> {
     stored.push(saved)
   }
 
+  console.log(`[AI] Stored ${stored.length} entities in database`)
   return stored
 }
 

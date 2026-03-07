@@ -182,8 +182,8 @@ export interface InsertCaptureParams {
   textContent?: string
 }
 
-export function insertCapture(params: InsertCaptureParams): Capture {
-  const id = uuid()
+export function insertCapture(params: InsertCaptureParams & { id?: string }): Capture {
+  const id = params.id || uuid()
   const now = new Date().toISOString()
   const d = getDb()
 

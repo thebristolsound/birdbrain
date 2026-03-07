@@ -3,7 +3,7 @@ import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { initDatabase, closeDatabase } from '@main/services/database'
 import { initStorage } from '@main/services/storage'
-import { startCaptureServer, stopCaptureServer, setMainWindow } from '@main/services/captureServer'
+import { startCaptureServer, stopCaptureServer, setMainWindow, startExtensionConnectionCheck, stopExtensionConnectionCheck } from '@main/services/captureServer'
 import { registerIpcHandlers } from '@main/ipcHandlers'
 import { initSettings } from '@main/services/settings'
 
@@ -50,8 +50,9 @@ app.whenReady().then(async () => {
   // Register IPC handlers
   registerIpcHandlers()
 
-  // Start capture server
+  // Start capture server and extension connection monitor
   await startCaptureServer()
+  startExtensionConnectionCheck()
 
   // Create window and connect to capture server
   const mainWindow = createWindow()
@@ -72,6 +73,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  stopExtensionConnectionCheck()
   stopCaptureServer()
   closeDatabase()
 })

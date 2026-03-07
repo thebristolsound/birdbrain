@@ -18,6 +18,7 @@ export function CaptureViewer() {
   const [showTagMenu, setShowTagMenu] = useState(false)
   const [entities, setEntities] = useState<Entity[]>([])
   const [extracting, setExtracting] = useState(false)
+  const [extractionError, setExtractionError] = useState<string | null>(null)
   const [entityFilter, setEntityFilter] = useState<string>('all')
 
   useEffect(() => {
@@ -170,11 +171,14 @@ export function CaptureViewer() {
                 onClick={async () => {
                   if (!selectedCaptureId) return
                   setExtracting(true)
+                  setExtractionError(null)
                   try {
                     const result = await window.birdbrain.ai.extractEntities(selectedCaptureId)
                     setEntities(result)
                   } catch (err) {
+                    const message = err instanceof Error ? err.message : String(err)
                     console.error('Extraction failed:', err)
+                    setExtractionError(message)
                   } finally {
                     setExtracting(false)
                   }
@@ -198,7 +202,12 @@ export function CaptureViewer() {
               )}
               <span className="text-xs text-neutral-500">{entities.length} entities</span>
             </div>
-            {entities.length === 0 && !extracting && (
+            {extractionError && (
+              <div className="mb-3 rounded border border-red-800 bg-red-900/30 px-3 py-2 text-sm text-red-400">
+                {extractionError}
+              </div>
+            )}
+            {entities.length === 0 && !extracting && !extractionError && (
               <p className="text-center text-sm text-neutral-500">
                 No entities extracted yet. Click "Extract Entities" to analyze this capture.
               </p>

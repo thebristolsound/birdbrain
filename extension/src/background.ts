@@ -73,6 +73,13 @@ async function checkStatus(): Promise<void> {
       chrome.action.setBadgeText({ text: '' })
       activeSelectors = []
     }
+
+    // Update context menu enabled state
+    chrome.contextMenus.update(CONTEXT_MENU_ID, {
+      enabled: connected && sessionActive
+    }).catch(() => {
+      // Menu may not exist yet
+    })
   } catch {
     connected = false
     sessionActive = false
@@ -87,6 +94,28 @@ setInterval(() => {
 
 // Initial check
 checkStatus()
+
+// --- Context menu for manual capture ---
+
+const CONTEXT_MENU_ID = 'birdbrain-capture-page'
+
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.create({
+    id: CONTEXT_MENU_ID,
+    title: 'Capture with Birdbrain',
+    contexts: ['page'],
+    enabled: false
+  })
+})
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId !== CONTEXT_MENU_ID) return
+  if (!tab?.id || !tab.url) return
+  if (!sessionActive || !connected) return
+
+  // Manual capture — skip dedupe (user explicitly chose to capture)
+  captureTab(tab.id, tab.url)
+})
 
 // --- Capture orchestration ---
 

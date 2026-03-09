@@ -20,6 +20,7 @@ const DEFAULT_IGNORE = [
 // Deduplication: url -> timestamp of last capture
 const dedupeMap = new Map<string, number>()
 const DEDUPE_WINDOW_MS = 60_000
+const CONTEXT_MENU_ID = 'birdbrain-capture-page'
 
 // Selector capture dedupe: caseId:url -> timestamp
 const selectorDedupeMap = new Map<string, number>()
@@ -97,8 +98,6 @@ checkStatus()
 
 // --- Context menu for manual capture ---
 
-const CONTEXT_MENU_ID = 'birdbrain-capture-page'
-
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: CONTEXT_MENU_ID,
@@ -112,6 +111,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId !== CONTEXT_MENU_ID) return
   if (!tab?.id || !tab.url) return
   if (!sessionActive || !connected) return
+  if (DEFAULT_IGNORE.some((pattern) => pattern.test(tab.url!))) return
 
   // Manual capture — skip dedupe (user explicitly chose to capture)
   captureTab(tab.id, tab.url)

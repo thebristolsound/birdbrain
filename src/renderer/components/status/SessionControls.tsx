@@ -8,6 +8,8 @@ export function SessionControls() {
 
   if (!connectedToExtension) return null
 
+  const activeCase = cases.find((c) => c.id === activeCaseId)
+
   const handleToggleSession = async () => {
     if (sessionActive) {
       await fetch('http://127.0.0.1:19845/api/session/stop', { method: 'POST' })
@@ -34,17 +36,25 @@ export function SessionControls() {
           </option>
         ))}
       </select>
-      <button
-        onClick={handleToggleSession}
-        disabled={!activeCaseId}
-        className={`rounded px-3 py-1 text-xs font-medium ${
-          sessionActive
-            ? 'bg-red-600 text-white hover:bg-red-500'
-            : 'bg-amber-600 text-white hover:bg-amber-500'
-        } disabled:opacity-50`}
-      >
-        {sessionActive ? 'Stop' : 'Start'}
-      </button>
+      <label className="flex cursor-pointer items-center gap-1.5">
+        <span className="text-xs text-neutral-400">Auto-Capture</span>
+        <button
+          onClick={handleToggleSession}
+          disabled={!activeCaseId}
+          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-50 ${
+            sessionActive ? 'bg-amber-600' : 'bg-neutral-600'
+          }`}
+        >
+          <span
+            className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
+              sessionActive ? 'translate-x-4.5' : 'translate-x-0.5'
+            }`}
+          />
+        </button>
+      </label>
+      {sessionActive && activeCase && (
+        <span className="text-xs text-neutral-500">{activeCase.name}</span>
+      )}
     </div>
   )
 }

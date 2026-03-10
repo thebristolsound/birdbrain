@@ -6,6 +6,8 @@ interface StatusResponse {
   sessionActive: boolean
   captureCount: number
   autoCaptureMode?: string
+  cases?: Array<{ id: string; name: string }>
+  ignoredUrlPatterns?: string[]
 }
 
 interface CaseInfo {
@@ -61,6 +63,22 @@ export async function sendCapture(data: {
   textContent?: string
 }): Promise<CaptureResult> {
   return request('/api/captures', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  })
+}
+
+export async function sendManualCapture(data: {
+  caseId: string
+  url: string
+  title: string
+  html: string
+  screenshot?: string
+  timestamp: string
+  headers?: Record<string, string>
+  textContent?: string
+}): Promise<CaptureResult> {
+  return request('/api/captures/manual', {
     method: 'POST',
     body: JSON.stringify(data)
   })

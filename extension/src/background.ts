@@ -2,6 +2,7 @@ import {
   checkConnection,
   getStatus,
   sendCapture,
+  sendManualCapture,
   getActiveSelectors,
   sendSelectorCapture
 } from '@extension/utils/api'
@@ -41,6 +42,9 @@ let activeSelectors: Array<{
   }>
 }> = []
 let autoCaptureMode: string = 'notify'
+let availableCases: Array<{ id: string; name: string }> = []
+let activeCaseId: string | null = null
+let userIgnoredPatterns: string[] = []
 
 // --- Connection management ---
 
@@ -52,6 +56,9 @@ async function checkStatus(): Promise<void> {
     sessionActive = status.sessionActive
     captureCount = status.captureCount
     autoCaptureMode = status.autoCaptureMode || 'notify'
+    availableCases = status.cases || []
+    activeCaseId = status.activeCase?.id || null
+    userIgnoredPatterns = status.ignoredUrlPatterns || []
 
     if (connected && !wasConnected) {
       updateIcon('connected')
@@ -77,7 +84,7 @@ async function checkStatus(): Promise<void> {
 
     // Update context menu enabled state
     chrome.contextMenus.update(CONTEXT_MENU_ID, {
-      enabled: connected && sessionActive
+      enabled: connected
     }).catch(() => {
       // Menu may not exist yet
     })
@@ -107,21 +114,43 @@ chrome.runtime.onInstalled.addListener(() => {
   })
 })
 
-chrome.contextMenus.onClicked.addListener((info, tab) => {
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId !== CONTEXT_MENU_ID) return
   if (!tab?.id || !tab.url) return
-  if (!sessionActive || !connected) return
+  if (!connected) return
   if (DEFAULT_IGNORE.some((pattern) => pattern.test(tab.url!))) return
+  if (isIgnoredByUser(tab.url!)) return
 
-  // Manual capture — skip dedupe (user explicitly chose to capture)
-  captureTab(tab.id, tab.url)
+  const targetCaseId = activeCaseId
+  if (!targetCaseId) {
+    console.warn('[Birdbrain] Manual capture skipped: no active case')
+    return
+  }
+
+  manualCaptureTab(tab.id, tab.url, targetCaseId)
 })
 
 // --- Capture orchestration ---
 
+function isIgnoredByUser(url: string): boolean {
+  for (const pattern of userIgnoredPatterns) {
+    try {
+      if (pattern.startsWith('/') && pattern.lastIndexOf('/') > 0) {
+        const lastSlash = pattern.lastIndexOf('/')
+        const re = new RegExp(pattern.slice(1, lastSlash), pattern.slice(lastSlash + 1))
+        if (re.test(url)) return true
+      } else {
+        if (url.includes(pattern)) return true
+      }
+    } catch { /* skip */ }
+  }
+  return false
+}
+
 function shouldCapture(url: string): boolean {
   if (!sessionActive || !connected) return false
   if (DEFAULT_IGNORE.some((pattern) => pattern.test(url))) return false
+  if (isIgnoredByUser(url)) return false
 
   // Dedupe check
   const lastCapture = dedupeMap.get(url)
@@ -177,6 +206,36 @@ async function captureTab(tabId: number, url: string): Promise<void> {
   }
 }
 
+async function manualCaptureTab(tabId: number, url: string, caseId: string): Promise<void> {
+  try {
+    const pageData = await chrome.tabs.sendMessage(tabId, { type: 'EXTRACT_PAGE' }) as {
+      html: string
+      title: string
+      textContent: string
+    }
+
+    let screenshot: string | undefined
+    try {
+      screenshot = await chrome.tabs.captureVisibleTab({ format: 'png' })
+      screenshot = screenshot.replace(/^data:image\/png;base64,/, '')
+    } catch {
+      // Screenshot capture can fail (e.g., chrome:// pages)
+    }
+
+    await sendManualCapture({
+      caseId,
+      url,
+      title: pageData.title,
+      html: pageData.html,
+      screenshot,
+      timestamp: new Date().toISOString(),
+      textContent: pageData.textContent
+    })
+  } catch (err) {
+    console.error('[Birdbrain] Manual capture failed:', err)
+  }
+}
+
 async function handleSelectorCapture(
   tabId: number,
   url: string,
@@ -219,6 +278,7 @@ async function handleSelectorCapture(
 async function checkSelectorsOnTab(tabId: number, url: string): Promise<void> {
   if (activeSelectors.length === 0) return
   if (DEFAULT_IGNORE.some((pattern) => pattern.test(url))) return
+  if (isIgnoredByUser(url)) return
 
   try {
     const matches = await chrome.tabs.sendMessage(tabId, {
@@ -320,7 +380,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         (sum, g) => sum + g.selectors.length,
         0
       ),
-      activeCaseCount: activeSelectors.length
+      activeCaseCount: activeSelectors.length,
+      activeCaseId,
+      availableCases
+    })
+  }
+
+  if (message.type === 'MANUAL_CAPTURE' && message.tabId && message.caseId) {
+    chrome.tabs.get(message.tabId, (tab) => {
+      if (tab?.url) {
+        manualCaptureTab(message.tabId, tab.url, message.caseId)
+      }
     })
   }
 

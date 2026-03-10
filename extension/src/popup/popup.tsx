@@ -66,6 +66,13 @@ function Popup(): React.JSX.Element {
     chrome.runtime.sendMessage({ type: 'SESSION_STOPPED' })
   }
 
+  async function handleManualCapture(): Promise<void> {
+    if (!activeCase) return
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+    if (!tab?.id) return
+    chrome.runtime.sendMessage({ type: 'MANUAL_CAPTURE', tabId: tab.id, caseId: activeCase.id })
+  }
+
   if (loading) {
     return <div style={{ textAlign: 'center', padding: '20px', color: '#737373' }}>Loading...</div>
   }
@@ -94,7 +101,7 @@ function Popup(): React.JSX.Element {
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
           <span style={{ color: '#ef4444', fontSize: '12px' }}>●</span>
-          <span style={{ fontWeight: 600, fontSize: '14px' }}>Recording</span>
+          <span style={{ fontWeight: 600, fontSize: '14px' }}>Auto-Capture Active</span>
         </div>
         <div style={{ fontSize: '12px', color: '#a3a3a3', marginBottom: '4px' }}>
           Case: {activeCase.name}
@@ -110,8 +117,11 @@ function Popup(): React.JSX.Element {
         {activeSelectorCount === 0 && (
           <div style={{ marginBottom: '16px' }} />
         )}
+        <button onClick={handleManualCapture} style={{ ...buttonStyle, marginBottom: '8px' }}>
+          Capture This Page
+        </button>
         <button onClick={handleStopCapture} style={{ ...buttonStyle, background: '#ef4444' }}>
-          Stop Capturing
+          Stop Auto-Capture
         </button>
       </div>
     )
@@ -159,15 +169,28 @@ function Popup(): React.JSX.Element {
       )}
 
       <button
-        onClick={handleStartCapture}
+        onClick={handleManualCapture}
         disabled={!activeCase}
         style={{
           ...buttonStyle,
+          marginBottom: '8px',
           opacity: activeCase ? 1 : 0.5,
           cursor: activeCase ? 'pointer' : 'not-allowed'
         }}
       >
-        Start Capturing
+        Capture This Page
+      </button>
+      <button
+        onClick={handleStartCapture}
+        disabled={!activeCase}
+        style={{
+          ...buttonStyle,
+          background: '#22c55e',
+          opacity: activeCase ? 1 : 0.5,
+          cursor: activeCase ? 'pointer' : 'not-allowed'
+        }}
+      >
+        Start Auto-Capture
       </button>
     </div>
   )

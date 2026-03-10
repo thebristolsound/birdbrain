@@ -43,6 +43,23 @@ export function setMainWindow(win: BrowserWindow): void {
   mainWindow = win
 }
 
+function isUrlBlacklisted(url: string, patterns: string[]): string | null {
+  for (const pattern of patterns) {
+    try {
+      if (pattern.startsWith('/') && pattern.lastIndexOf('/') > 0) {
+        const lastSlash = pattern.lastIndexOf('/')
+        const re = new RegExp(pattern.slice(1, lastSlash), pattern.slice(lastSlash + 1))
+        if (re.test(url)) return pattern
+      } else {
+        if (url.includes(pattern)) return pattern
+      }
+    } catch {
+      // Invalid pattern, skip
+    }
+  }
+  return null
+}
+
 function createApp(): Hono {
   const app = new Hono()
 
@@ -65,12 +82,15 @@ function createApp(): Hono {
     }
     const activeCase = state.activeCaseId ? db.getCase(state.activeCaseId) : null
     const settings = getSettings()
+    const allCases = db.listCases()
     return c.json({
       running: true,
       activeCase: activeCase ? { id: activeCase.id, name: activeCase.name } : null,
       sessionActive: state.sessionActive,
       captureCount: state.captureCount,
-      autoCaptureMode: settings.autoCaptureMode
+      autoCaptureMode: settings.autoCaptureMode,
+      cases: allCases.map((cs) => ({ id: cs.id, name: cs.name })),
+      ignoredUrlPatterns: settings.ignoredUrlPatterns
     })
   })
 
@@ -129,6 +149,12 @@ function createApp(): Hono {
         return c.json({ error: 'Missing required fields: url, html' }, 400)
       }
 
+      const captureSettings = getSettings()
+      const blocked = isUrlBlacklisted(url, captureSettings.ignoredUrlPatterns)
+      if (blocked) {
+        return c.json({ error: 'URL blocked by ignored pattern', pattern: blocked }, 403)
+      }
+
       const hash = hashContent(html)
       const caseId = state.activeCaseId
 
@@ -182,6 +208,12 @@ function createApp(): Hono {
         return c.json({ error: 'Missing required fields: caseId, url, html' }, 400)
       }
 
+      const selectorSettings = getSettings()
+      const selectorBlocked = isUrlBlacklisted(url, selectorSettings.ignoredUrlPatterns)
+      if (selectorBlocked) {
+        return c.json({ error: 'URL blocked by ignored pattern', pattern: selectorBlocked }, 403)
+      }
+
       const hash = hashContent(html)
 
       // Save files to disk
@@ -216,6 +248,59 @@ function createApp(): Hono {
     }
   })
 
+  // Manual capture — session-independent
+  app.post('/api/captures/manual', async (c) => {
+    try {
+      const body = await c.req.json()
+      const { caseId, url, title, html, screenshot, timestamp, headers, textContent } = body
+
+      if (!caseId || !url || !html) {
+        return c.json({ error: 'Missing required fields: caseId, url, html' }, 400)
+      }
+
+      // Validate case exists and is not archived
+      const caseData = db.getCase(caseId)
+      if (!caseData) {
+        return c.json({ error: 'Case not found' }, 404)
+      }
+
+      const manualSettings = getSettings()
+      const manualBlocked = isUrlBlacklisted(url, manualSettings.ignoredUrlPatterns)
+      if (manualBlocked) {
+        return c.json({ error: 'URL blocked by ignored pattern', pattern: manualBlocked }, 403)
+      }
+
+      const hash = hashContent(html)
+      const screenshotBuffer = screenshot ? Buffer.from(screenshot, 'base64') : undefined
+      const captureId = crypto.randomUUID()
+
+      const paths = saveCapture(caseId, captureId, html, screenshotBuffer, textContent)
+
+      const capture = db.insertCapture({
+        id: captureId,
+        caseId,
+        url,
+        title: title || url,
+        hash,
+        timestamp: timestamp || new Date().toISOString(),
+        htmlPath: paths.htmlPath,
+        screenshotPath: paths.screenshotPath,
+        headers: headers ? JSON.stringify(headers) : undefined,
+        textContent
+      })
+
+      // Notify renderer of new capture
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IPC_CHANNELS.NEW_CAPTURE, capture)
+      }
+
+      return c.json({ captureId: capture.id, hash, status: 'ok' })
+    } catch (err) {
+      console.error('Manual capture error:', err)
+      return c.json({ error: 'Failed to process manual capture' }, 500)
+    }
+  })
+
   return app
 }
 
@@ -236,11 +321,18 @@ export function startCaptureServer(port: number = DEFAULT_PORT): Promise<void> {
   })
 }
 
-export function stopCaptureServer(): void {
-  if (server) {
-    server.close()
-    server = null
-  }
+export function stopCaptureServer(): Promise<void> {
+  return new Promise((resolve) => {
+    if (server) {
+      server.closeAllConnections()
+      server.close(() => {
+        server = null
+        resolve()
+      })
+    } else {
+      resolve()
+    }
+  })
 }
 
 function notifySessionChange(): void {

@@ -9,13 +9,16 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
-    "rebuild:electron": "electron-builder install-app-deps",
+    "postinstall": "electron-rebuild -f",
+    "rebuild:electron": "electron-rebuild -f",
     "build:extension": "vite build --config extension/vite.config.ts",
     "dev:extension": "vite build --config extension/vite.config.ts --watch",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint . --ext .ts,.tsx",
-    "format": "prettier --write \"src/**/*.{ts,tsx}\" \"extension/**/*.{ts,tsx}\""
+    "format": "prettier --write \"src/**/*.{ts,tsx}\" \"extension/**/*.{ts,tsx}\"",
+    "test:e2e": "npx playwright test",
+    "test:e2e:debug": "npx playwright test --debug"
   },
   "build": {
     "appId": "com.birdbrain.app",
@@ -57,7 +60,9 @@
   "devDependencies": {
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^4.0.0",
+    "@electron/rebuild": "^4.0.3",
     "@eslint/js": "^9.39.3",
+    "@playwright/test": "^1.58.2",
     "@tailwindcss/vite": "^4.0.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/d3-force": "^3.0.10",

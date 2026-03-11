@@ -14,6 +14,7 @@ export function CaseList() {
       <div className="flex items-center justify-between px-3 py-2">
         <span className="text-xs font-semibold uppercase tracking-wider text-neutral-500">Cases</span>
         <button
+          data-testid="new-case-btn"
           onClick={() => setShowCreate(true)}
           className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
           title="New case"

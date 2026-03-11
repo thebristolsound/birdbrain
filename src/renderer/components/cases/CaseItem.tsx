@@ -32,6 +32,7 @@ export function CaseItem({ caseData, isActive, isRecording, onClick, onDelete, o
 
   return (
     <div
+      data-testid="case-item"
       className={`group relative flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer ${
         isActive ? 'bg-neutral-800 text-neutral-100' : 'text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-200'
       }`}
@@ -66,6 +67,7 @@ export function CaseItem({ caseData, isActive, isRecording, onClick, onDelete, o
           <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
           <div className="absolute left-full top-0 z-50 ml-1 rounded border border-neutral-700 bg-neutral-800 py-1 shadow-lg">
             <button
+              data-testid="case-rename-btn"
               className="block w-full px-3 py-1 text-left text-xs text-neutral-300 hover:bg-neutral-700"
               onClick={(e) => {
                 e.stopPropagation()
@@ -77,6 +79,7 @@ export function CaseItem({ caseData, isActive, isRecording, onClick, onDelete, o
               Rename
             </button>
             <button
+              data-testid="case-delete-btn"
               className="block w-full px-3 py-1 text-left text-xs text-red-400 hover:bg-neutral-700"
               onClick={(e) => {
                 e.stopPropagation()

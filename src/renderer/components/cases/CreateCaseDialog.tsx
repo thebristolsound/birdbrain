@@ -31,6 +31,7 @@ export function CreateCaseDialog({ onClose }: CreateCaseDialogProps) {
           <div>
             <label className="mb-1 block text-sm text-neutral-400">Name</label>
             <input
+              data-testid="case-name-input"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -42,6 +43,7 @@ export function CreateCaseDialog({ onClose }: CreateCaseDialogProps) {
           <div>
             <label className="mb-1 block text-sm text-neutral-400">Description (optional)</label>
             <textarea
+              data-testid="case-description-input"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-amber-600"
@@ -58,6 +60,7 @@ export function CreateCaseDialog({ onClose }: CreateCaseDialogProps) {
               Cancel
             </button>
             <button
+              data-testid="case-create-btn"
               type="submit"
               disabled={!name.trim()}
               className="rounded bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-500 disabled:opacity-50"

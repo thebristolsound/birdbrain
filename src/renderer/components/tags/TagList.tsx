@@ -12,6 +12,7 @@ export function TagList() {
       <div className="flex items-center justify-between px-3 py-2">
         <span className="text-xs font-semibold uppercase tracking-wider text-neutral-500">Tags</span>
         <button
+          data-testid="manage-tags-btn"
           onClick={() => setShowManager(true)}
           className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
           title="Manage tags"

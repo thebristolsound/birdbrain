@@ -11,7 +11,7 @@ export function Dashboard() {
   const recentCases = cases.slice(0, 5)
 
   return (
-    <div className="mx-auto max-w-2xl space-y-8">
+    <div data-testid="dashboard" className="mx-auto max-w-2xl space-y-8">
       <div>
         <h1 className="text-3xl font-bold text-amber-500">Birdbrain</h1>
         <p className="mt-1 text-neutral-400">Web investigation & capture tool</p>

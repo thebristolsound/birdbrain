@@ -42,7 +42,7 @@ function createWindow(): BrowserWindow {
 
 app.whenReady().then(async () => {
   // Initialize database
-  const userDataPath = app.getPath('userData')
+  const userDataPath = process.env.BIRDBRAIN_USER_DATA || app.getPath('userData')
   initDatabase(join(userDataPath, 'birdbrain.db'))
   initStorage(join(userDataPath, 'captures'))
   initSettings(userDataPath)

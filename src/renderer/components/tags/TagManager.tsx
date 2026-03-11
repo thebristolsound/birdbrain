@@ -29,6 +29,7 @@ export function TagManager({ onClose }: TagManagerProps) {
         {/* Create new tag */}
         <div className="mb-4 flex items-center gap-2">
           <input
+            data-testid="tag-name-input"
             type="text"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
@@ -39,6 +40,7 @@ export function TagManager({ onClose }: TagManagerProps) {
           <div className="flex gap-1">
             {TAG_COLORS.map((c) => (
               <button
+                data-testid="tag-color-swatch"
                 key={c}
                 onClick={() => setNewColor(c)}
                 className={`h-5 w-5 rounded-full ${newColor === c ? 'ring-2 ring-white ring-offset-1 ring-offset-neutral-900' : ''}`}
@@ -47,6 +49,7 @@ export function TagManager({ onClose }: TagManagerProps) {
             ))}
           </div>
           <button
+            data-testid="tag-add-btn"
             onClick={handleCreate}
             disabled={!newName.trim()}
             className="rounded bg-amber-600 px-2 py-1.5 text-sm text-white hover:bg-amber-500 disabled:opacity-50"
@@ -56,12 +59,13 @@ export function TagManager({ onClose }: TagManagerProps) {
         </div>
 
         {/* Existing tags */}
-        <div className="max-h-48 space-y-1 overflow-y-auto">
+        <div data-testid="tag-manager" className="max-h-48 space-y-1 overflow-y-auto">
           {tags.map((tag) => (
             <div key={tag.id} className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-neutral-800">
               <span className="h-3 w-3 rounded-full" style={{ backgroundColor: tag.color || '#f59e0b' }} />
               <span className="flex-1 text-sm text-neutral-300">{tag.name}</span>
               <button
+                data-testid="tag-delete-btn"
                 onClick={() => deleteTag(tag.id)}
                 className="text-xs text-neutral-600 hover:text-red-400"
               >
@@ -73,6 +77,7 @@ export function TagManager({ onClose }: TagManagerProps) {
 
         <div className="mt-4 flex justify-end">
           <button
+            data-testid="tag-done-btn"
             onClick={onClose}
             className="rounded px-3 py-1.5 text-sm text-neutral-400 hover:text-neutral-200"
           >

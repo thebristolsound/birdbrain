@@ -21,6 +21,9 @@ export function CaseAnalysis() {
     ]).then(([g, a]) => {
       setGraph(g)
       setAnalysis(a)
+    }).catch((err) => {
+      console.error('Failed to load analysis data:', err)
+    }).finally(() => {
       setLoading(false)
     })
   }, [activeCaseId])

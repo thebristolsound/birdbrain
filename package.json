@@ -18,7 +18,9 @@
     "format": "prettier --write \"src/**/*.{ts,tsx}\" \"extension/**/*.{ts,tsx}\"",
     "pretest:e2e": "electron-vite build",
     "test:e2e": "npx playwright test",
-    "test:e2e:debug": "npx playwright test --debug"
+    "test:e2e:debug": "npx playwright test --debug",
+    "pretest:e2e": "pnpm build",
+    "pretest:e2e:debug": "pnpm build"
   },
   "build": {
     "appId": "com.birdbrain.app",
@@ -53,7 +55,7 @@
     "@hono/node-server": "^1.19.10",
     "better-sqlite3": "^12.6.2",
     "d3-force": "^3.0.0",
-    "hono": "^4.12.4",
+    "hono": "^4.12.7",
     "uuid": "^11.1.0",
     "zustand": "^5.0.11"
   },

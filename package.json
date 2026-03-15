@@ -9,7 +9,6 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
-    "postinstall": "electron-rebuild -f",
     "rebuild:electron": "electron-rebuild -f",
     "build:extension": "vite build --config extension/vite.config.ts",
     "dev:extension": "vite build --config extension/vite.config.ts --watch",

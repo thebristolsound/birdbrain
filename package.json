@@ -18,7 +18,9 @@
     "lint": "eslint . --ext .ts,.tsx",
     "format": "prettier --write \"src/**/*.{ts,tsx}\" \"extension/**/*.{ts,tsx}\"",
     "test:e2e": "npx playwright test",
-    "test:e2e:debug": "npx playwright test --debug"
+    "test:e2e:debug": "npx playwright test --debug",
+    "pretest:e2e": "pnpm build",
+    "pretest:e2e:debug": "pnpm build"
   },
   "build": {
     "appId": "com.birdbrain.app",

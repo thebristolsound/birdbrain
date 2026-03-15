@@ -1,6 +1,7 @@
 import { sendPrompt } from './openrouter'
 import { buildEntityGraph } from './relationships'
 import * as db from '@main/services/database'
+import { getSettings } from '@main/services/settings'
 import type { CaseAnalysisResult } from '@shared/types'
 
 const ANALYSIS_PROMPT = `You are an OSINT investigation analyst for the Birdbrain investigation tool.
@@ -105,7 +106,7 @@ ${captureSummary || 'No captures.'}`
   // Cache in database
   db.insertCaseAnalysis({
     caseId,
-    modelUsed: db.getDb() ? undefined : undefined, // Will use settings model
+    modelUsed: getSettings().defaultModel,
     result: JSON.stringify(analysis),
     tokenUsage: result.usage.totalTokens
   })

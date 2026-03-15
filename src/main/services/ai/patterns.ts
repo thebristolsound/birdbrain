@@ -106,7 +106,7 @@ ${captureSummary || 'No captures.'}`
   // Cache in database
   db.insertCaseAnalysis({
     caseId,
-    modelUsed: getSettings().defaultModel
+    modelUsed: getSettings().defaultModel,
     result: JSON.stringify(analysis),
     tokenUsage: result.usage.totalTokens
   })

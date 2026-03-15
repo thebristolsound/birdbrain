@@ -51,6 +51,10 @@ export function SessionControls() {
       <label className="flex cursor-pointer items-center gap-1.5">
         <span className="text-xs text-neutral-400">Auto-Capture</span>
         <button
+          type="button"
+          role="switch"
+          aria-checked={sessionActive}
+          aria-label="Auto-Capture"
           onClick={handleToggleSession}
           disabled={!activeCaseId}
           className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-50 ${
@@ -59,7 +63,7 @@ export function SessionControls() {
         >
           <span
             className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
-              sessionActive ? 'translate-x-4.5' : 'translate-x-0.5'
+              sessionActive ? 'translate-x-[18px]' : 'translate-x-0.5'
             }`}
           />
         </button>

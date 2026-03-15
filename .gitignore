@@ -37,3 +37,7 @@ specs/
 .serena
 build/config.gypi
 .claude/settings.local.json
+
+# Playwright
+test-results/
+playwright-report/

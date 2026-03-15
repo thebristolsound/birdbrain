@@ -16,18 +16,23 @@ export function SelectorsOverview() {
   }, [])
 
   async function loadData() {
-    const caseList = await window.birdbrain.cases.list()
-    setCases(caseList)
+    try {
+      const caseList = await window.birdbrain.cases.list()
+      setCases(caseList)
 
-    const all: SelectorWithCase[] = []
-    for (const c of caseList) {
-      const selectors = await window.birdbrain.selectors.list(c.id)
-      for (const s of selectors) {
-        all.push({ ...s, caseName: c.name })
+      const all: SelectorWithCase[] = []
+      for (const c of caseList) {
+        const selectors = await window.birdbrain.selectors.list(c.id)
+        for (const s of selectors) {
+          all.push({ ...s, caseName: c.name })
+        }
       }
+      setAllSelectors(all)
+    } catch (err) {
+      console.error('Failed to load selectors:', err)
+    } finally {
+      setLoading(false)
     }
-    setAllSelectors(all)
-    setLoading(false)
   }
 
   const filtered = filterCaseId

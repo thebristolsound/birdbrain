@@ -72,8 +72,8 @@ app.on('window-all-closed', () => {
   }
 })
 
-app.on('before-quit', () => {
+app.on('before-quit', async () => {
   stopExtensionConnectionCheck()
-  stopCaptureServer()
+  await stopCaptureServer()
   closeDatabase()
 })

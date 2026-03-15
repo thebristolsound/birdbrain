@@ -3,7 +3,7 @@ import { createRequire } from 'module'
 
 const require = createRequire(import.meta.url)
 
-export function setup() {
+function setup() {
   try {
     // require('better-sqlite3') only loads the JS wrapper.
     // The native .node binary is loaded lazily when a Database is instantiated,
@@ -28,7 +28,7 @@ export function setup() {
   }
 }
 
-export function teardown() {
+function teardown() {
   try {
     execSync('npx electron-builder install-app-deps', {
       stdio: 'inherit',

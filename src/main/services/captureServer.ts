@@ -80,16 +80,31 @@ function createApp(): Hono {
     if (!wasConnected) {
       notifyExtensionConnection(true)
     }
+    const query = c.req.query()
+    const includeCasesParam = query.includeCases
+    let includeCases: boolean
+    if (typeof includeCasesParam === 'undefined') {
+      // Backwards-compatible default: include cases when no query param is provided
+      includeCases = true
+    } else if (typeof includeCasesParam === 'string') {
+      const val = includeCasesParam.toLowerCase()
+      // Explicitly disable only when clearly false/zero
+      includeCases = !(val === '0' || val === 'false')
+    } else {
+      includeCases = true
+    }
     const activeCase = state.activeCaseId ? db.getCase(state.activeCaseId) : null
     const settings = getSettings()
-    const allCases = db.listCases()
+    const allCases = includeCases ? db.listCases() : null
     return c.json({
       running: true,
       activeCase: activeCase ? { id: activeCase.id, name: activeCase.name } : null,
       sessionActive: state.sessionActive,
       captureCount: state.captureCount,
       autoCaptureMode: settings.autoCaptureMode,
-      cases: allCases.map((cs) => ({ id: cs.id, name: cs.name })),
+      cases: includeCases && allCases
+        ? allCases.map((cs) => ({ id: cs.id, name: cs.name }))
+        : [],
       ignoredUrlPatterns: settings.ignoredUrlPatterns
     })
   })

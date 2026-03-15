@@ -263,6 +263,9 @@ function createApp(): Hono {
       if (!caseData) {
         return c.json({ error: 'Case not found' }, 404)
       }
+      if (caseData.archived) {
+        return c.json({ error: 'Case is archived' }, 400)
+      }
 
       const manualSettings = getSettings()
       const manualBlocked = isUrlBlacklisted(url, manualSettings.ignoredUrlPatterns)

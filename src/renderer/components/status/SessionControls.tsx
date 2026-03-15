@@ -11,26 +11,30 @@ export function SessionControls() {
   const activeCase = cases.find((c) => c.id === activeCaseId)
 
   const handleToggleSession = async () => {
-    if (sessionActive) {
-      const res = await fetch('http://127.0.0.1:19845/api/session/stop', { method: 'POST' })
-      if (!res.ok) {
-        console.error('Failed to stop session:', res.status)
-        return
+    try {
+      if (sessionActive) {
+        const res = await fetch('http://127.0.0.1:19845/api/session/stop', { method: 'POST' })
+        if (!res.ok) {
+          console.error('Failed to stop session:', res.status)
+          return
+        }
+        setSessionActive(false)
+      } else {
+        if (!activeCaseId) return
+        const activateRes = await fetch(`http://127.0.0.1:19845/api/cases/${activeCaseId}/activate`, { method: 'POST' })
+        if (!activateRes.ok) {
+          console.error('Failed to activate case:', activateRes.status)
+          return
+        }
+        const startRes = await fetch('http://127.0.0.1:19845/api/session/start', { method: 'POST' })
+        if (!startRes.ok) {
+          console.error('Failed to start session:', startRes.status)
+          return
+        }
+        setSessionActive(true)
       }
-      setSessionActive(false)
-    } else {
-      if (!activeCaseId) return
-      const activateRes = await fetch(`http://127.0.0.1:19845/api/cases/${activeCaseId}/activate`, { method: 'POST' })
-      if (!activateRes.ok) {
-        console.error('Failed to activate case:', activateRes.status)
-        return
-      }
-      const startRes = await fetch('http://127.0.0.1:19845/api/session/start', { method: 'POST' })
-      if (!startRes.ok) {
-        console.error('Failed to start session:', startRes.status)
-        return
-      }
-      setSessionActive(true)
+    } catch (error) {
+      console.error('Failed to toggle session:', error)
     }
   }
 

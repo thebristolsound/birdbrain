@@ -82,10 +82,17 @@ function createApp(): Hono {
     }
     const query = c.req.query()
     const includeCasesParam = query.includeCases
-    const includeCases =
-      typeof includeCasesParam === 'string' &&
-      (includeCasesParam === '1' ||
-        includeCasesParam.toLowerCase() === 'true')
+    let includeCases: boolean
+    if (typeof includeCasesParam === 'undefined') {
+      // Backwards-compatible default: include cases when no query param is provided
+      includeCases = true
+    } else if (typeof includeCasesParam === 'string') {
+      const val = includeCasesParam.toLowerCase()
+      // Explicitly disable only when clearly false/zero
+      includeCases = !(val === '0' || val === 'false')
+    } else {
+      includeCases = true
+    }
     const activeCase = state.activeCaseId ? db.getCase(state.activeCaseId) : null
     const settings = getSettings()
     const allCases = includeCases ? db.listCases() : null

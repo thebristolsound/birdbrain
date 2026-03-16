@@ -16,10 +16,9 @@
     "test:watch": "vitest",
     "lint": "eslint . --ext .ts,.tsx",
     "format": "prettier --write \"src/**/*.{ts,tsx}\" \"extension/**/*.{ts,tsx}\"",
-    "pretest:e2e": "electron-vite build",
+    "pretest:e2e": "pnpm build",
     "test:e2e": "npx playwright test",
     "test:e2e:debug": "npx playwright test --debug",
-    "pretest:e2e": "pnpm build",
     "pretest:e2e:debug": "pnpm build"
   },
   "build": {
@@ -54,6 +53,7 @@
   "dependencies": {
     "@hono/node-server": "^1.19.10",
     "better-sqlite3": "^12.6.2",
+    "compromise": "^14.15.0",
     "d3-force": "^3.0.0",
     "hono": "^4.12.7",
     "uuid": "^11.1.0",

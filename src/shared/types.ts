@@ -40,6 +40,7 @@ export interface Entity {
   value: string
   context?: string
   confidence?: number
+  source?: 'rule' | 'ai'
   createdAt: string
 }
 
@@ -47,6 +48,8 @@ export interface BirdbrainSettings {
   openRouterApiKey: string | null
   defaultModel: string
   autoExtractEntities: boolean
+  enabledEntityTypes: EntityType[]
+  minEntityConfidence: number
   captureScreenshots: boolean
   captureHtml: boolean
   dedupeWindowSeconds: number

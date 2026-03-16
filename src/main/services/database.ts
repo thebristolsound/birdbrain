@@ -125,6 +125,14 @@ function migrate(db: Database.Database): void {
     `)
     db.pragma('user_version = 3')
   }
+
+  if (version < 4) {
+    db.exec(`
+      ALTER TABLE entities ADD COLUMN source TEXT NOT NULL DEFAULT 'ai';
+      CREATE INDEX IF NOT EXISTS idx_entities_capture_source ON entities(capture_id, source);
+    `)
+    db.pragma('user_version = 4')
+  }
 }
 
 // --- Cases ---
@@ -342,15 +350,27 @@ export function insertEntity(entity: Omit<Entity, 'id' | 'createdAt'>): Entity {
   const now = new Date().toISOString()
   getDb()
     .prepare(
-      'INSERT INTO entities (id, capture_id, type, value, context, confidence, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO entities (id, capture_id, type, value, context, confidence, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     )
-    .run(id, entity.captureId, entity.type, entity.value, entity.context ?? null, entity.confidence ?? null, now)
-  return { id, ...entity, createdAt: now }
+    .run(id, entity.captureId, entity.type, entity.value, entity.context ?? null, entity.confidence ?? null, entity.source ?? 'ai', now)
+  return { id, ...entity, source: entity.source ?? 'ai', createdAt: now }
 }
 
 export function deleteEntitiesByCapture(captureId: string): number {
   const result = getDb().prepare('DELETE FROM entities WHERE capture_id = ?').run(captureId)
   return result.changes
+}
+
+export function deleteEntitiesByCaptureAndSource(captureId: string, source: 'rule' | 'ai'): number {
+  const result = getDb().prepare('DELETE FROM entities WHERE capture_id = ? AND source = ?').run(captureId, source)
+  return result.changes
+}
+
+export function getEntitiesByCaptureAndSource(captureId: string, source: 'rule' | 'ai'): Entity[] {
+  const rows = getDb()
+    .prepare('SELECT * FROM entities WHERE capture_id = ? AND source = ? ORDER BY type, value')
+    .all(captureId, source) as Array<Record<string, unknown>>
+  return rows.map(rowToEntity)
 }
 
 // --- Case Analyses ---
@@ -515,6 +535,7 @@ function rowToEntity(row: Record<string, unknown>): Entity {
     value: row.value as string,
     context: (row.context as string) || undefined,
     confidence: (row.confidence as number) || undefined,
+    source: (row.source as 'rule' | 'ai') || 'ai',
     createdAt: row.created_at as string
   }
 }

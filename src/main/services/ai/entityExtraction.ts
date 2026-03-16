@@ -41,6 +41,14 @@ Respond with ONLY valid JSON in this exact format:
 If no entities are found, respond with: {"entities": []}
 Do not include any text before or after the JSON.`
 
+export function shouldSkipEntity(
+  type: string,
+  value: string,
+  existingEntities: Array<{ type: string; value: string }>
+): boolean {
+  return existingEntities.some(e => e.type === type && e.value === value)
+}
+
 export async function extractEntities(captureId: string): Promise<Entity[]> {
   console.log(`[AI] Starting entity extraction for capture ${captureId}`)
 
@@ -88,19 +96,22 @@ export async function extractEntities(captureId: string): Promise<Entity[]> {
   console.log(`[AI] Parsed ${entities.length} entities from response`)
   if (entities.length === 0) return []
 
-  // Clear existing entities for this capture (re-extraction)
-  db.deleteEntitiesByCapture(captureId)
+  // Clear existing AI entities for this capture (preserve rule-based ones)
+  db.deleteEntitiesByCaptureAndSource(captureId, 'ai')
+  const existingRuleEntities = db.getEntitiesByCaptureAndSource(captureId, 'rule')
 
   // Store in database
   const stored: Entity[] = []
   for (const entity of entities) {
     if (!isValidEntityType(entity.type) || !entity.value?.trim()) continue
+    if (shouldSkipEntity(entity.type, entity.value.trim(), existingRuleEntities)) continue
     const saved = db.insertEntity({
       captureId,
       type: entity.type,
       value: entity.value.trim(),
       context: entity.context?.trim(),
-      confidence: typeof entity.confidence === 'number' ? Math.min(1, Math.max(0, entity.confidence)) : undefined
+      confidence: typeof entity.confidence === 'number' ? Math.min(1, Math.max(0, entity.confidence)) : undefined,
+      source: 'ai'
     })
     stored.push(saved)
   }

@@ -54,14 +54,16 @@ describe('appStore', () => {
   })
 
   describe('goToDashboard', () => {
-    it('resets to dashboard mode and clears case/capture', () => {
+    it('resets to dashboard mode and clears case/capture/settings', () => {
       useAppStore.getState().selectCase('case-1')
       useAppStore.getState().selectCapture('cap-1')
+      useAppStore.getState().toggleSettings()
       useAppStore.getState().goToDashboard()
       const state = useAppStore.getState()
       expect(state.appMode).toBe('dashboard')
       expect(state.activeCaseId).toBeNull()
       expect(state.selectedCaptureId).toBeNull()
+      expect(state.settingsOpen).toBe(false)
     })
   })
 

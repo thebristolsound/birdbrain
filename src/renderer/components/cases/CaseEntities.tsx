@@ -36,6 +36,9 @@ export function CaseEntities() {
     ).then((results) => {
       setEntities(results.flat())
       setLoading(false)
+    }).catch((err) => {
+      console.error('Failed to load entities:', err)
+      setLoading(false)
     })
   }, [activeCaseId, captureIds])
 

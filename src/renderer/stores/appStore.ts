@@ -53,7 +53,7 @@ export const useAppStore = create<AppState>((set) => ({
   setActiveTab: (tab) => set({ activeCaseTab: tab }),
 
   goToDashboard: () =>
-    set({ activeCaseId: null, appMode: 'dashboard', selectedCaptureId: null }),
+    set({ activeCaseId: null, appMode: 'dashboard', selectedCaptureId: null, settingsOpen: false }),
 
   toggleSettings: () => set((s) => ({ settingsOpen: !s.settingsOpen }))
 }))

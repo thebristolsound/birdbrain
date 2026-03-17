@@ -6,7 +6,9 @@ export function SearchBar() {
   const [expanded, setExpanded] = useState(false)
   const [query, setQuery] = useState('')
   const { results, searching, search, clear } = useSearch()
-  const { selectCapture, setSearchQuery } = useAppStore()
+  const selectCase = useAppStore((s) => s.selectCase)
+  const navigateToCapture = useAppStore((s) => s.navigateToCapture)
+  const setSearchQuery = useAppStore((s) => s.setSearchQuery)
   const inputRef = useRef<HTMLInputElement>(null)
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>()
 
@@ -78,7 +80,8 @@ export function SearchBar() {
             <button
               key={cap.id}
               onClick={() => {
-                selectCapture(cap.id)
+                selectCase(cap.caseId)
+                navigateToCapture(cap.id)
                 handleClose()
               }}
               className="block w-full px-3 py-2 text-left hover:bg-neutral-700"

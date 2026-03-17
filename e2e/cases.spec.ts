@@ -31,12 +31,12 @@ test.describe('Cases CRUD', () => {
   })
 
   // TODO: Add rename/delete to new UI (dashboard case cards or case workspace header)
-  test.skip('can rename a case', async ({ page }) => {
+  test.skip('can rename a case', async () => {
     // Rename via context menu was removed with sidebar
     // Needs to be re-implemented in the new UI
   })
 
-  test.skip('can delete a case', async ({ page }) => {
+  test.skip('can delete a case', async () => {
     // Delete via context menu was removed with sidebar
     // Needs to be re-implemented in the new UI
   })

@@ -208,7 +208,7 @@ export function CaptureViewer() {
                 </select>
               )}
               <span className="text-xs text-neutral-500">
-                {entities.filter((e) => (e.confidence ?? 1.0) >= minConfidence).length} of {entities.length} entities
+                {entities.filter((e) => (e.confidence ?? 0) >= minConfidence).length} of {entities.length} entities
               </span>
             </div>
             {extractionError && (
@@ -224,7 +224,7 @@ export function CaptureViewer() {
             {entities.length > 0 && (
               <div className="space-y-1">
                 {entities
-                  .filter((e) => (e.confidence ?? 1.0) >= minConfidence)
+                  .filter((e) => (e.confidence ?? 0) >= minConfidence)
                   .filter((e) => entityFilter === 'all' || e.type === entityFilter)
                   .map((entity) => (
                     <div key={entity.id} className="flex items-center gap-3 rounded bg-neutral-800/50 px-3 py-2">

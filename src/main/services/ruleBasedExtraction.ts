@@ -35,6 +35,11 @@ const REGEX_PATTERNS: Partial<Record<EntityType, PatternDef[]>> = {
       confidence: 0.9,
       validate: (match: string) => {
         const digits = match.replace(/\D/g, '')
+        // Explicitly reject IPv4-shaped strings like "192.168.1.1"
+        const ipv4Like = /^\s*\d{1,3}(?:\.\d{1,3}){3}\s*$/
+        if (ipv4Like.test(match)) {
+          return false
+        }
         return digits.length >= 7 && digits.length <= 15
       }
     }

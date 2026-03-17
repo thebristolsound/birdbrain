@@ -238,7 +238,13 @@ function createApp(): Hono {
     })
 
     state.captureCount++
-    runRuleBasedExtraction(capture.id, textContent)
+    setImmediate(() => {
+      try {
+        runRuleBasedExtraction(capture.id, textContent)
+      } catch (err) {
+        console.error('Rule-based extraction error for capture', capture.id, err)
+      }
+    })
 
     // Notify renderer of new capture
     if (mainWindow && !mainWindow.isDestroyed()) {

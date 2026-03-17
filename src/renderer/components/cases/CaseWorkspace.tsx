@@ -6,6 +6,7 @@ import { CaptureViewer } from '@renderer/components/captures/CaptureViewer'
 import { CaptureList } from '@renderer/components/captures/CaptureList'
 import { CaseAnalysis } from '@renderer/components/analysis/CaseAnalysis'
 import { SelectorsOverview } from '@renderer/components/selectors/SelectorsOverview'
+import { CaseEntities } from '@renderer/components/cases/CaseEntities'
 
 const tabs: { id: CaseTab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
@@ -73,9 +74,7 @@ export function CaseWorkspace() {
             </div>
           </div>
         )}
-        {activeCaseTab === 'entities' && (
-          <div className="text-neutral-500">Entities view — coming in Task 7</div>
-        )}
+        {activeCaseTab === 'entities' && <CaseEntities />}
         {activeCaseTab === 'analysis' && <CaseAnalysis />}
         {activeCaseTab === 'selectors' && <SelectorsOverview />}
       </div>

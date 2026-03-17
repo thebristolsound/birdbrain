@@ -6,7 +6,8 @@ import { SelectorList } from '@renderer/components/selectors/SelectorList'
 import type { Case } from '@shared/types'
 
 export function CaseOverview() {
-  const { activeCaseId, setActiveView } = useAppStore()
+  const activeCaseId = useAppStore((s) => s.activeCaseId)
+  const setActiveTab = useAppStore((s) => s.setActiveTab)
   const { captures } = useCaptures(activeCaseId)
   const [caseData, setCaseData] = useState<Case | null>(null)
   const [showExport, setShowExport] = useState(false)
@@ -74,7 +75,7 @@ export function CaseOverview() {
       {/* Actions */}
       <div className="flex gap-2">
         <button
-          onClick={() => setActiveView('case-analysis')}
+          onClick={() => setActiveTab('analysis')}
           className="rounded bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500"
         >
           Analyze Case

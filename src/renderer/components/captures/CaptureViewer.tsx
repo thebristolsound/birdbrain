@@ -20,6 +20,13 @@ export function CaptureViewer() {
   const [extracting, setExtracting] = useState(false)
   const [extractionError, setExtractionError] = useState<string | null>(null)
   const [entityFilter, setEntityFilter] = useState<string>('all')
+  const [minConfidence, setMinConfidence] = useState(0.5)
+
+  useEffect(() => {
+    window.birdbrain.settings.get().then((s) => {
+      setMinConfidence(s.minEntityConfidence ?? 0.5)
+    })
+  }, [])
 
   useEffect(() => {
     if (selectedCaptureId) {
@@ -200,7 +207,9 @@ export function CaptureViewer() {
                   ))}
                 </select>
               )}
-              <span className="text-xs text-neutral-500">{entities.length} entities</span>
+              <span className="text-xs text-neutral-500">
+                {entities.filter((e) => (e.confidence ?? 0) >= minConfidence).length} of {entities.length} entities
+              </span>
             </div>
             {extractionError && (
               <div className="mb-3 rounded border border-red-800 bg-red-900/30 px-3 py-2 text-sm text-red-400">
@@ -215,6 +224,7 @@ export function CaptureViewer() {
             {entities.length > 0 && (
               <div className="space-y-1">
                 {entities
+                  .filter((e) => (e.confidence ?? 0) >= minConfidence)
                   .filter((e) => entityFilter === 'all' || e.type === entityFilter)
                   .map((entity) => (
                     <div key={entity.id} className="flex items-center gap-3 rounded bg-neutral-800/50 px-3 py-2">
@@ -235,6 +245,13 @@ export function CaptureViewer() {
                           </span>
                         </div>
                       )}
+                      <span className={`shrink-0 rounded px-1.5 py-0.5 text-xs ${
+                        entity.source === 'rule'
+                          ? 'bg-emerald-900/50 text-emerald-400'
+                          : 'bg-blue-900/50 text-blue-400'
+                      }`}>
+                        {entity.source === 'rule' ? 'Rule' : 'AI'}
+                      </span>
                     </div>
                   ))}
               </div>

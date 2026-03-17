@@ -8,6 +8,8 @@ import * as db from '@main/services/database'
 import { saveCapture } from '@main/services/storage'
 import { hashContent } from '@main/services/hash'
 import { getSettings } from '@main/services/settings'
+import { extractEntitiesRuleBased } from '@main/services/ruleBasedExtraction'
+import type { EntityType } from '@shared/types'
 
 const DEFAULT_PORT = 19845
 
@@ -27,6 +29,8 @@ const state: SessionState = {
   captureCount: 0,
   extensionLastSeen: 0
 }
+
+let cachedEnabledEntityTypes: EntityType[] | null = null
 
 export function getSessionState(): SessionState {
   return { ...state }
@@ -58,6 +62,46 @@ function isUrlBlacklisted(url: string, patterns: string[]): string | null {
     }
   }
   return null
+}
+
+function runRuleBasedExtraction(captureId: string, textContent: string | undefined): void {
+  if (!textContent?.trim()) return
+
+  try {
+    if (!cachedEnabledEntityTypes) {
+      const settings = getSettings()
+      cachedEnabledEntityTypes = settings.enabledEntityTypes || []
+    }
+
+    const enabledTypes: EntityType[] = cachedEnabledEntityTypes
+    if (!enabledTypes || enabledTypes.length === 0) return
+
+    const entities = extractEntitiesRuleBased(textContent, enabledTypes)
+    if (entities.length === 0) return
+
+    for (const entity of entities) {
+      db.insertEntity({
+        captureId,
+        type: entity.type,
+        value: entity.value,
+        context: entity.context,
+        confidence: entity.confidence,
+        source: 'rule'
+      })
+    }
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC_CHANNELS.EXTRACTION_COMPLETE, {
+        captureId,
+        entityCount: entities.length,
+        source: 'rule'
+      })
+    }
+
+    console.log(`[Rule] Extracted ${entities.length} entities from capture ${captureId}`)
+  } catch (err) {
+    console.error(`[Rule] Entity extraction failed for capture ${captureId}:`, err)
+  }
 }
 
 function createApp(): Hono {
@@ -194,6 +238,13 @@ function createApp(): Hono {
     })
 
     state.captureCount++
+    setImmediate(() => {
+      try {
+        runRuleBasedExtraction(capture.id, textContent)
+      } catch (err) {
+        console.error('Rule-based extraction error for capture', capture.id, err)
+      }
+    })
 
     // Notify renderer of new capture
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -251,6 +302,8 @@ function createApp(): Hono {
         textContent
       })
 
+      runRuleBasedExtraction(capture.id, textContent)
+
       // Notify renderer of new capture
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(IPC_CHANNELS.NEW_CAPTURE, capture)
@@ -306,6 +359,8 @@ function createApp(): Hono {
         headers: headers ? JSON.stringify(headers) : undefined,
         textContent
       })
+
+      runRuleBasedExtraction(capture.id, textContent)
 
       // Notify renderer of new capture
       if (mainWindow && !mainWindow.isDestroyed()) {

@@ -47,6 +47,12 @@ export function setMainWindow(win: BrowserWindow): void {
   mainWindow = win
 }
 
+function globToRegex(pattern: string): RegExp {
+  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+  const withWildcards = escaped.replace(/\*/g, '.*').replace(/\?/g, '.')
+  return new RegExp(withWildcards, 'i')
+}
+
 function isUrlBlacklisted(url: string, patterns: string[]): string | null {
   for (const pattern of patterns) {
     try {
@@ -54,6 +60,8 @@ function isUrlBlacklisted(url: string, patterns: string[]): string | null {
         const lastSlash = pattern.lastIndexOf('/')
         const re = new RegExp(pattern.slice(1, lastSlash), pattern.slice(lastSlash + 1))
         if (re.test(url)) return pattern
+      } else if (pattern.includes('*') || pattern.includes('?')) {
+        if (globToRegex(pattern).test(url)) return pattern
       } else {
         if (url.includes(pattern)) return pattern
       }

@@ -132,6 +132,12 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 
 // --- Capture orchestration ---
 
+function globToRegex(pattern: string): RegExp {
+  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+  const withWildcards = escaped.replace(/\*/g, '.*').replace(/\?/g, '.')
+  return new RegExp(withWildcards, 'i')
+}
+
 function isIgnoredByUser(url: string): boolean {
   for (const pattern of userIgnoredPatterns) {
     try {
@@ -139,6 +145,8 @@ function isIgnoredByUser(url: string): boolean {
         const lastSlash = pattern.lastIndexOf('/')
         const re = new RegExp(pattern.slice(1, lastSlash), pattern.slice(lastSlash + 1))
         if (re.test(url)) return true
+      } else if (pattern.includes('*') || pattern.includes('?')) {
+        if (globToRegex(pattern).test(url)) return true
       } else {
         if (url.includes(pattern)) return true
       }

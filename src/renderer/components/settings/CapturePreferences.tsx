@@ -75,7 +75,7 @@ export function CapturePreferences({ settings, onUpdate }: CapturePreferencesPro
               onChange={(e) => setNewPattern(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && addPattern()}
               className="flex-1 rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 font-mono text-sm text-neutral-100 outline-none focus:border-amber-600"
-              placeholder="*.google.com/search*"
+              placeholder="e.g. *.google.com or facebook.com"
             />
             <button
               onClick={addPattern}
@@ -84,6 +84,11 @@ export function CapturePreferences({ settings, onUpdate }: CapturePreferencesPro
               Add
             </button>
           </div>
+          <p className="mb-2 text-xs text-neutral-600">
+            Substring (<code className="text-neutral-500">google.com</code>),
+            wildcards (<code className="text-neutral-500">*.facebook.com*</code>),
+            or regex (<code className="text-neutral-500">/pattern/i</code>)
+          </p>
           <div className="space-y-1">
             {settings.ignoredUrlPatterns.map((pattern, i) => (
               <div key={i} className="flex items-center justify-between rounded bg-neutral-800 px-2 py-1">

@@ -343,4 +343,65 @@ describe('captureServer', () => {
     })
     expect(allowedRes.status).toBe(200)
   })
+
+  it('blacklist supports glob/wildcard patterns', async () => {
+    const testCase = createCase({ name: 'Glob Blacklist' })
+    await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
+    await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
+
+    updateSettings({ ignoredUrlPatterns: ['*.facebook.com*'] })
+
+    const blockedRes = await fetch(`${baseUrl}/api/captures`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: 'https://www.facebook.com/some/page',
+        title: 'FB',
+        html: '<html>fb</html>'
+      })
+    })
+    expect(blockedRes.status).toBe(403)
+
+    const allowedRes = await fetch(`${baseUrl}/api/captures`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: 'https://example.com/page',
+        title: 'Example',
+        html: '<html>ok</html>'
+      })
+    })
+    expect(allowedRes.status).toBe(200)
+  })
+
+  it('blacklist glob pattern with ? wildcard matches single character', async () => {
+    const testCase = createCase({ name: 'Glob Question' })
+    await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
+    await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
+
+    updateSettings({ ignoredUrlPatterns: ['example.com/user?'] })
+
+    const blockedRes = await fetch(`${baseUrl}/api/captures`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: 'https://example.com/userA',
+        title: 'User A',
+        html: '<html>a</html>'
+      })
+    })
+    expect(blockedRes.status).toBe(403)
+
+    const allowedRes = await fetch(`${baseUrl}/api/captures`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: 'https://example.com/users',
+        title: 'Users',
+        html: '<html>users</html>'
+      })
+    })
+    // 'users' ends with 's' which matches the '?' — still blocked
+    expect(allowedRes.status).toBe(403)
+  })
 })

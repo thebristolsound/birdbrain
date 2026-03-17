@@ -8,16 +8,17 @@ interface CaptureListProps {
 
 export function CaptureList({ caseId }: CaptureListProps) {
   const { captures } = useCaptures(caseId)
-  const { selectedCaptureId, selectCapture } = useAppStore()
+  const selectedCaptureId = useAppStore((s) => s.selectedCaptureId)
+  const selectCapture = useAppStore((s) => s.selectCapture)
 
   return (
-    <div className="flex flex-col">
+    <div className="flex h-full flex-col">
       <div className="px-3 py-2">
         <span className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
           Captures ({captures.length})
         </span>
       </div>
-      <div className="max-h-64 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto">
         {captures.map((cap) => (
           <CaptureItem
             key={cap.id}

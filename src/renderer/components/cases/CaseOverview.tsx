@@ -1,22 +1,79 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAppStore } from '@renderer/stores/appStore'
 import { useCaptures } from '@renderer/hooks/useCaptures'
+import { useCases } from '@renderer/hooks/useCases'
 import { ExportDialog } from '@renderer/components/export/ExportDialog'
-import { SelectorList } from '@renderer/components/selectors/SelectorList'
 import type { Case } from '@shared/types'
 
 export function CaseOverview() {
   const activeCaseId = useAppStore((s) => s.activeCaseId)
   const setActiveTab = useAppStore((s) => s.setActiveTab)
   const { captures } = useCaptures(activeCaseId)
+  const { updateCase } = useCases()
   const [caseData, setCaseData] = useState<Case | null>(null)
   const [showExport, setShowExport] = useState(false)
 
+  // Editable name state
+  const [editingName, setEditingName] = useState(false)
+  const [nameValue, setNameValue] = useState('')
+  const nameInputRef = useRef<HTMLInputElement>(null)
+
+  // Editable description state
+  const [editingDesc, setEditingDesc] = useState(false)
+  const [descValue, setDescValue] = useState('')
+  const descInputRef = useRef<HTMLTextAreaElement>(null)
+
   useEffect(() => {
     if (activeCaseId) {
-      window.birdbrain.cases.get(activeCaseId).then((c) => setCaseData(c ?? null))
+      window.birdbrain.cases.get(activeCaseId).then((c) => {
+        if (c) {
+          setCaseData(c)
+          setNameValue(c.name)
+          setDescValue(c.description ?? '')
+        } else {
+          setCaseData(null)
+        }
+      })
     }
   }, [activeCaseId])
+
+  useEffect(() => {
+    if (editingName && nameInputRef.current) {
+      nameInputRef.current.focus()
+      nameInputRef.current.select()
+    }
+  }, [editingName])
+
+  useEffect(() => {
+    if (editingDesc && descInputRef.current) {
+      descInputRef.current.focus()
+    }
+  }, [editingDesc])
+
+  async function saveName() {
+    if (!caseData) return
+    const trimmed = nameValue.trim()
+    if (!trimmed || trimmed === caseData.name) {
+      setNameValue(caseData.name)
+      setEditingName(false)
+      return
+    }
+    const updated = await updateCase({ id: caseData.id, name: trimmed })
+    if (updated) setCaseData(updated)
+    setEditingName(false)
+  }
+
+  async function saveDesc() {
+    if (!caseData) return
+    const trimmed = descValue.trim()
+    if (trimmed === (caseData.description ?? '')) {
+      setEditingDesc(false)
+      return
+    }
+    const updated = await updateCase({ id: caseData.id, description: trimmed })
+    if (updated) setCaseData(updated)
+    setEditingDesc(false)
+  }
 
   if (!caseData) {
     return <div className="text-neutral-500">Loading case...</div>
@@ -46,12 +103,64 @@ export function CaseOverview() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
+      {/* Editable case name and description */}
       <div>
-        <h1 className="text-2xl font-bold text-neutral-100">{caseData.name}</h1>
-        {caseData.description && <p className="mt-1 text-neutral-400">{caseData.description}</p>}
+        {editingName ? (
+          <input
+            ref={nameInputRef}
+            value={nameValue}
+            onChange={(e) => setNameValue(e.target.value)}
+            onBlur={saveName}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') saveName()
+              if (e.key === 'Escape') {
+                setNameValue(caseData.name)
+                setEditingName(false)
+              }
+            }}
+            className="w-full rounded border border-neutral-600 bg-neutral-800 px-2 py-1 text-2xl font-bold text-neutral-100 focus:border-amber-500 focus:outline-none"
+          />
+        ) : (
+          <h1
+            className="cursor-pointer text-2xl font-bold text-neutral-100 hover:text-amber-400"
+            title="Click to edit"
+            onClick={() => setEditingName(true)}
+          >
+            {caseData.name}
+          </h1>
+        )}
+
+        {editingDesc ? (
+          <textarea
+            ref={descInputRef}
+            value={descValue}
+            onChange={(e) => setDescValue(e.target.value)}
+            onBlur={saveDesc}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setDescValue(caseData.description ?? '')
+                setEditingDesc(false)
+              }
+            }}
+            rows={3}
+            className="mt-1 w-full resize-none rounded border border-neutral-600 bg-neutral-800 px-2 py-1 text-sm text-neutral-300 focus:border-amber-500 focus:outline-none"
+          />
+        ) : (
+          <p
+            className="mt-1 cursor-pointer text-neutral-400 hover:text-neutral-300"
+            title="Click to edit"
+            onClick={() => setEditingDesc(true)}
+          >
+            {caseData.description || (
+              <span className="italic text-neutral-600">Add a description...</span>
+            )}
+          </p>
+        )}
+
         {dateRange && (
           <p className="mt-1 font-mono text-xs text-neutral-600">
-            {new Date(dateRange.first).toLocaleDateString()} — {new Date(dateRange.last).toLocaleDateString()}
+            {new Date(dateRange.first).toLocaleDateString()} —{' '}
+            {new Date(dateRange.last).toLocaleDateString()}
           </p>
         )}
       </div>
@@ -92,18 +201,20 @@ export function CaseOverview() {
         <ExportDialog caseId={caseData.id} caseName={caseData.name} onClose={() => setShowExport(false)} />
       )}
 
-      {/* Selectors */}
-      {activeCaseId && <SelectorList caseId={activeCaseId} />}
-
       {/* Top Domains */}
       {topDomains.length > 0 && (
         <div>
           <h2 className="mb-3 text-lg font-semibold text-neutral-200">Top Domains</h2>
           <div className="space-y-2">
             {topDomains.map(([domain, count]) => (
-              <div key={domain} className="flex items-center justify-between rounded border border-neutral-800 bg-neutral-900 px-3 py-2">
+              <div
+                key={domain}
+                className="flex items-center justify-between rounded border border-neutral-800 bg-neutral-900 px-3 py-2"
+              >
                 <span className="font-mono text-sm text-neutral-300">{domain}</span>
-                <span className="text-sm text-neutral-500">{count} capture{count !== 1 ? 's' : ''}</span>
+                <span className="text-sm text-neutral-500">
+                  {count} capture{count !== 1 ? 's' : ''}
+                </span>
               </div>
             ))}
           </div>

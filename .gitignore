@@ -33,7 +33,7 @@ tests/**/*.d.ts
 Python/
 
 # Specs (from birdbrain-specs repo)
-specs/
+
 .serena
 build/config.gypi
 .claude/settings.local.json
@@ -41,3 +41,6 @@ build/config.gypi
 # Playwright
 test-results/
 playwright-report/
+
+# Worktrees
+.worktrees/

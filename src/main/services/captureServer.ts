@@ -30,6 +30,8 @@ const state: SessionState = {
   extensionLastSeen: 0
 }
 
+let cachedEnabledEntityTypes: EntityType[] | null = null
+
 export function getSessionState(): SessionState {
   return { ...state }
 }
@@ -66,8 +68,12 @@ function runRuleBasedExtraction(captureId: string, textContent: string | undefin
   if (!textContent?.trim()) return
 
   try {
-    const settings = getSettings()
-    const enabledTypes: EntityType[] = settings.enabledEntityTypes
+    if (!cachedEnabledEntityTypes) {
+      const settings = getSettings()
+      cachedEnabledEntityTypes = settings.enabledEntityTypes || []
+    }
+
+    const enabledTypes: EntityType[] = cachedEnabledEntityTypes
     if (!enabledTypes || enabledTypes.length === 0) return
 
     const entities = extractEntitiesRuleBased(textContent, enabledTypes)

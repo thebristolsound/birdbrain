@@ -10,7 +10,7 @@ const DEFAULT_SETTINGS: BirdbrainSettings = {
   autoExtractEntities: false,
   enabledEntityTypes: [
     'email', 'phone', 'domain', 'ip_address', 'username',
-    'crypto_wallet', 'person', 'organization', 'date'
+    'crypto_wallet'
   ] as EntityType[],
   minEntityConfidence: 0.5,
   captureScreenshots: true,

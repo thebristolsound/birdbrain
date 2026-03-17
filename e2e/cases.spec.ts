@@ -2,7 +2,7 @@ import { test, expect } from './fixtures/electronApp'
 
 test.describe('Cases CRUD', () => {
   test('can create a new case', async ({ page }) => {
-    // Open create dialog
+    // Click new case on dashboard
     await page.click('[data-testid="new-case-btn"]')
 
     // Fill in case details
@@ -12,71 +12,32 @@ test.describe('Cases CRUD', () => {
     // Submit
     await page.click('[data-testid="case-create-btn"]')
 
-    // Verify case appears on page
+    // Verify case workspace loads with case name
     await expect(page.locator('text=Test Investigation')).toBeVisible()
-
-    // Verify we navigated to case overview
-    await expect(page.locator('h1:has-text("Test Investigation")')).toBeVisible()
   })
 
-  test('case appears in the sidebar list', async ({ page }) => {
-    // Create a case first
+  test('case appears on dashboard after creation', async ({ page }) => {
+    // Create a case
     await page.click('[data-testid="new-case-btn"]')
     await page.fill('[data-testid="case-name-input"]', 'Listed Case')
     await page.click('[data-testid="case-create-btn"]')
 
-    // Reload so sidebar CaseList re-mounts and fetches from DB
+    // Go back to dashboard
     await page.reload()
     await page.waitForLoadState('domcontentloaded')
 
-    // Verify it's in the sidebar
-    await expect(page.locator('[data-testid="case-item"]:has-text("Listed Case")')).toBeVisible()
+    // Verify case card appears on dashboard
+    await expect(page.locator('[data-testid="case-card"]:has-text("Listed Case")')).toBeVisible()
   })
 
-  test('can rename a case via context menu', async ({ page }) => {
-    // Create a case
-    await page.click('[data-testid="new-case-btn"]')
-    await page.fill('[data-testid="case-name-input"]', 'Old Name')
-    await page.click('[data-testid="case-create-btn"]')
-
-    // Reload so sidebar shows the new case
-    await page.reload()
-    await page.waitForLoadState('domcontentloaded')
-
-    // Right-click to open context menu
-    await page.click('[data-testid="case-item"]:has-text("Old Name")', { button: 'right' })
-
-    // Click rename
-    await page.click('[data-testid="case-rename-btn"]')
-
-    // Clear and type new name
-    const input = page.locator('[data-testid="case-item"] input')
-    await input.fill('New Name')
-    await input.press('Enter')
-
-    // Verify renamed
-    await expect(page.locator('[data-testid="case-item"]:has-text("New Name")')).toBeVisible()
-    await expect(page.locator('[data-testid="case-item"]:has-text("Old Name")')).not.toBeVisible()
+  // TODO: Add rename/delete to new UI (dashboard case cards or case workspace header)
+  test.skip('can rename a case', async ({ page }) => {
+    // Rename via context menu was removed with sidebar
+    // Needs to be re-implemented in the new UI
   })
 
-  test('can delete a case via context menu', async ({ page }) => {
-    // Create a case
-    await page.click('[data-testid="new-case-btn"]')
-    await page.fill('[data-testid="case-name-input"]', 'Doomed Case')
-    await page.click('[data-testid="case-create-btn"]')
-
-    // Reload so sidebar shows the new case
-    await page.reload()
-    await page.waitForLoadState('domcontentloaded')
-
-    // Verify it exists
-    await expect(page.locator('[data-testid="case-item"]:has-text("Doomed Case")')).toBeVisible()
-
-    // Right-click and delete
-    await page.click('[data-testid="case-item"]:has-text("Doomed Case")', { button: 'right' })
-    await page.click('[data-testid="case-delete-btn"]')
-
-    // Verify removed
-    await expect(page.locator('[data-testid="case-item"]:has-text("Doomed Case")')).not.toBeVisible()
+  test.skip('can delete a case', async ({ page }) => {
+    // Delete via context menu was removed with sidebar
+    // Needs to be re-implemented in the new UI
   })
 })

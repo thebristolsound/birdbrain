@@ -60,6 +60,7 @@ export function Dashboard() {
       {/* Quick Actions */}
       <div>
         <button
+          data-testid="new-case-btn"
           onClick={() => setShowCreate(true)}
           className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500"
         >
@@ -75,6 +76,7 @@ export function Dashboard() {
             {recentCases.map((c) => (
               <button
                 key={c.id}
+                data-testid="case-card"
                 onClick={() => selectCase(c.id)}
                 className="w-full rounded-lg border border-neutral-800 bg-neutral-900 p-3 text-left transition hover:border-amber-800"
               >

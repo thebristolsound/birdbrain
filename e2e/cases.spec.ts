@@ -35,6 +35,8 @@ test.describe('Cases CRUD', () => {
     await page.click('[data-testid="new-case-btn"]')
     await page.fill('[data-testid="case-name-input"]', 'Original Name')
     await page.click('[data-testid="case-create-btn"]')
+    // Wait for dialog to close before reloading
+    await expect(page.locator('[data-testid="case-create-btn"]')).not.toBeVisible()
 
     // Go back to dashboard
     await page.reload()
@@ -57,6 +59,7 @@ test.describe('Cases CRUD', () => {
 
     // Verify the renamed case is visible on the dashboard
     await expect(page.locator('[data-testid="case-card"]:has-text("Renamed Case")')).toBeVisible()
+    await expect(page.locator('[data-testid="case-card"]:has-text("Original Name")')).not.toBeVisible()
   })
 
   test('can delete a case', async ({ page }) => {
@@ -64,6 +67,8 @@ test.describe('Cases CRUD', () => {
     await page.click('[data-testid="new-case-btn"]')
     await page.fill('[data-testid="case-name-input"]', 'To Be Deleted')
     await page.click('[data-testid="case-create-btn"]')
+    // Wait for dialog to close before reloading
+    await expect(page.locator('[data-testid="case-create-btn"]')).not.toBeVisible()
 
     // Go back to dashboard
     await page.reload()
@@ -78,7 +83,7 @@ test.describe('Cases CRUD', () => {
     await page.click('[data-testid="case-card-delete-btn"]')
 
     // Confirm deletion
-    await page.click('[data-testid="case-card-delete-confirm-btn"]')
+    await card.locator('[data-testid="case-card-delete-confirm-btn"]').click()
 
     // Verify the case is no longer visible on the dashboard
     await expect(page.locator('[data-testid="case-card"]:has-text("To Be Deleted")')).not.toBeVisible()

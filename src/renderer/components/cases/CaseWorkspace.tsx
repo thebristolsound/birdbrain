@@ -66,8 +66,7 @@ export function CaseWorkspace() {
               onBlur={handleRenameSubmit}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
-                  e.preventDefault()
-                  handleRenameSubmit()
+                  e.currentTarget.blur()
                 } else if (e.key === 'Escape') {
                   setRenaming(false)
                   setRenameValue('')
@@ -94,6 +93,8 @@ export function CaseWorkspace() {
               }}
               className="flex h-7 w-7 items-center justify-center rounded text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200"
               aria-label="Case menu"
+              aria-expanded={menuOpen}
+              aria-haspopup="true"
             >
               ⋮
             </button>
@@ -137,6 +138,7 @@ export function CaseWorkspace() {
                         onClick={(e) => {
                           e.stopPropagation()
                           setMenuOpen(false)
+                          setConfirming(false)
                           setRenaming(true)
                           setRenameValue(activeCase.name)
                         }}

@@ -19,7 +19,7 @@ import { analyzeCase, getCachedAnalysis } from '@main/services/ai/patterns'
 import { generateReport } from '@main/services/export'
 import type { BirdbrainSettings, ExportOptions } from '@shared/types'
 
-interface IpcResult<T = unknown> {
+type IpcResult<T = unknown> = {
   ok: true
   data: T
 } | {

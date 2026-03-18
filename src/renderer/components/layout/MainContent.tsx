@@ -10,7 +10,9 @@ export function MainContent() {
   if (settingsOpen) {
     return (
       <main className="flex-1 overflow-auto bg-neutral-950">
-        <SettingsView />
+        <div className="p-6">
+          <SettingsView />
+        </div>
       </main>
     )
   }

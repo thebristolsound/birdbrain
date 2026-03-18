@@ -68,6 +68,7 @@ export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS]
 export interface CreateCaseParams {
   name: string
   description?: string
+  type?: 'crypto' | 'malware' | 'fraud' | 'custom'
 }
 
 export interface UpdateCaseParams {

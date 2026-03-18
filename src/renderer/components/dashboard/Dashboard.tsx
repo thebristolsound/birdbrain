@@ -1,7 +1,6 @@
 import { useState, useCallback, useMemo } from 'react'
 import { useCases } from '@renderer/hooks/useCases'
 import { useAppStore } from '@renderer/stores/appStore'
-import { CreateCaseDialog } from '@renderer/components/cases/CreateCaseDialog'
 import {
   Plus,
   FolderOpen,
@@ -15,8 +14,7 @@ import {
 
 export function Dashboard() {
   const { cases, updateCase, deleteCase } = useCases()
-  const { selectCase, connectedToExtension, activeCaseId, goToDashboard } = useAppStore()
-  const [showCreate, setShowCreate] = useState(false)
+  const { selectCase, connectedToExtension, activeCaseId, goToDashboard, goToNewCaseWizard } = useAppStore()
 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
@@ -67,7 +65,7 @@ export function Dashboard() {
         </div>
         <button
           data-testid="new-case-btn"
-          onClick={() => setShowCreate(true)}
+          onClick={goToNewCaseWizard}
           className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-indigo-600/20 hover:bg-indigo-500"
         >
           <Plus className="h-4 w-4" />
@@ -270,7 +268,6 @@ export function Dashboard() {
         </div>
       )}
 
-      {showCreate && <CreateCaseDialog onClose={() => setShowCreate(false)} />}
     </div>
   )
 }

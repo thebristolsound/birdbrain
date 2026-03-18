@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type AppMode = 'dashboard' | 'case-workspace'
+export type AppMode = 'dashboard' | 'case-workspace' | 'new-case-wizard'
 export type CaseTab = 'overview' | 'captures' | 'entities' | 'analysis' | 'selectors'
 
 interface AppState {
@@ -25,6 +25,7 @@ interface AppState {
   navigateToCapture: (id: string) => void
   setActiveTab: (tab: CaseTab) => void
   goToDashboard: () => void
+  goToNewCaseWizard: () => void
   toggleSettings: () => void
   addSelectorFilter: (selectorId: string) => void
   removeSelectorFilter: (selectorId: string) => void
@@ -62,6 +63,8 @@ export const useAppStore = create<AppState>((set) => ({
 
   goToDashboard: () =>
     set({ activeCaseId: null, appMode: 'dashboard', selectedCaptureId: null, settingsOpen: false }),
+
+  goToNewCaseWizard: () => set({ appMode: 'new-case-wizard', settingsOpen: false }),
 
   toggleSettings: () => set((s) => ({ settingsOpen: !s.settingsOpen })),
 

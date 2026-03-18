@@ -158,6 +158,15 @@ function migrate(db: Database.Database): void {
       db.pragma('user_version = 5')
     })()
   }
+
+  if (version < 6) {
+    db.transaction(() => {
+      db.exec(`
+        ALTER TABLE cases ADD COLUMN type TEXT DEFAULT 'custom';
+      `)
+      db.pragma('user_version = 6')
+    })()
+  }
 }
 
 // --- Cases ---
@@ -180,8 +189,8 @@ export function createCase(params: CreateCaseParams): Case {
   const id = uuid()
   const now = new Date().toISOString()
   getDb()
-    .prepare('INSERT INTO cases (id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
-    .run(id, params.name, params.description ?? null, now, now)
+    .prepare('INSERT INTO cases (id, name, description, type, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(id, params.name, params.description ?? null, params.type ?? 'custom', now, now)
   return getCase(id)!
 }
 
@@ -628,6 +637,7 @@ function rowToCase(row: Record<string, unknown>): Case {
     id: row.id as string,
     name: row.name as string,
     description: (row.description as string) || undefined,
+    type: (row.type as Case['type']) || 'custom',
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
     archived: row.archived === 1

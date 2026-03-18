@@ -4,6 +4,7 @@ export interface Case {
   id: string
   name: string
   description?: string
+  type?: 'crypto' | 'malware' | 'fraud' | 'custom'
   createdAt: string
   updatedAt: string
   archived: boolean

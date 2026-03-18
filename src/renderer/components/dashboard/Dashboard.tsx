@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { useCases } from '@renderer/hooks/useCases'
 import { useAppStore } from '@renderer/stores/appStore'
 import { CreateCaseDialog } from '@renderer/components/cases/CreateCaseDialog'
@@ -12,22 +12,8 @@ export function Dashboard() {
   const [editName, setEditName] = useState('')
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
 
   const recentCases = cases.slice(0, 5)
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpenId(null)
-        setDeletingId(null)
-      }
-    }
-    if (menuOpenId !== null) {
-      document.addEventListener('mousedown', handleClick)
-    }
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [menuOpenId])
 
   const handleRenameSubmit = useCallback(
     async (id: string) => {
@@ -122,6 +108,10 @@ export function Dashboard() {
         <div>
           <h2 className="mb-3 text-lg font-semibold text-neutral-200">Recent Cases</h2>
           <div className="space-y-2">
+            {/* Overlay to close menu when clicking outside */}
+            {menuOpenId !== null && (
+              <div className="fixed inset-0 z-40" onClick={() => setMenuOpenId(null)} />
+            )}
             {recentCases.map((c) => (
               <div
                 key={c.id}
@@ -129,13 +119,13 @@ export function Dashboard() {
                 className="group relative w-full rounded-lg border border-neutral-800 bg-neutral-900 transition hover:border-amber-800"
               >
                 {/* Clickable card area */}
-                <button
-                  onClick={() => selectCase(c.id)}
-                  className="w-full p-3 pr-10 text-left"
+                <div
+                  onClick={() => !editingId && selectCase(c.id)}
+                  className="w-full cursor-pointer p-3 pr-10 text-left"
                 >
                   {editingId === c.id ? (
                     <input
-                      data-testid="case-name-input"
+                      data-testid="case-rename-input"
                       className="w-full rounded border border-amber-600 bg-neutral-800 px-2 py-0.5 font-medium text-neutral-200 focus:outline-none"
                       value={editName}
                       autoFocus
@@ -161,7 +151,7 @@ export function Dashboard() {
                   <div className="mt-1 font-mono text-xs text-neutral-600">
                     Updated {new Date(c.updatedAt).toLocaleDateString()}
                   </div>
-                </button>
+                </div>
 
                 {/* Kebab menu button */}
                 <button
@@ -184,10 +174,7 @@ export function Dashboard() {
 
                 {/* Dropdown menu */}
                 {menuOpenId === c.id && (
-                  <div
-                    ref={menuRef}
-                    className="absolute right-2 top-9 z-10 min-w-[120px] rounded-lg border border-neutral-700 bg-neutral-800 py-1 shadow-lg"
-                  >
+                  <div className="absolute right-2 top-9 z-50 min-w-[120px] rounded-lg border border-neutral-700 bg-neutral-800 py-1 shadow-lg">
                     {deletingId === c.id ? (
                       <div className="flex items-center gap-2 px-3 py-2">
                         <span className="text-sm text-neutral-300">Delete?</span>

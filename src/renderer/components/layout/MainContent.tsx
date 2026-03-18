@@ -9,7 +9,7 @@ export function MainContent() {
 
   if (settingsOpen) {
     return (
-      <main className="flex-1 overflow-auto bg-neutral-950">
+      <main className="flex-1 overflow-auto bg-black">
         <div className="p-6">
           <SettingsView />
         </div>
@@ -18,7 +18,7 @@ export function MainContent() {
   }
 
   return (
-    <main className="flex-1 overflow-auto bg-neutral-950">
+    <main className="flex-1 overflow-auto bg-black">
       {appMode === 'dashboard' && (
         <div className="p-6">
           <Dashboard />

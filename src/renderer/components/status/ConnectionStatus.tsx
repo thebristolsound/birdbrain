@@ -1,30 +1,25 @@
 import { useAppStore } from '@renderer/stores/appStore'
 
 export function ConnectionStatus() {
-  const { connectedToExtension, sessionActive, activeCaseId } = useAppStore()
+  const { connectedToExtension, sessionActive } = useAppStore()
 
   if (sessionActive) {
-    return (
-      <div className="flex items-center gap-2 rounded-full bg-red-950/50 px-3 py-1">
-        <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
-        <span className="text-xs font-medium text-red-400">Recording</span>
-      </div>
-    )
+    return null
   }
 
   if (connectedToExtension) {
     return (
-      <div className="flex items-center gap-2 rounded-full bg-green-950/50 px-3 py-1">
-        <span className="h-2 w-2 rounded-full bg-green-500" />
-        <span className="text-xs font-medium text-green-400">Connected</span>
+      <div className="flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1">
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+        <span className="text-[11px] font-medium text-emerald-400">Connected</span>
       </div>
     )
   }
 
   return (
-    <div className="flex items-center gap-2 rounded-full bg-neutral-800 px-3 py-1">
-      <span className="h-2 w-2 rounded-full bg-neutral-500" />
-      <span className="text-xs font-medium text-neutral-500">Waiting for extension</span>
+    <div className="flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-800 px-2.5 py-1">
+      <span className="h-1.5 w-1.5 rounded-full bg-slate-500" />
+      <span className="text-[11px] font-medium text-slate-500">Waiting for extension</span>
     </div>
   )
 }

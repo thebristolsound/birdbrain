@@ -74,18 +74,18 @@ function Popup(): React.JSX.Element {
   }
 
   if (loading) {
-    return <div style={{ textAlign: 'center', padding: '20px', color: '#737373' }}>Loading...</div>
+    return <div style={{ textAlign: 'center', padding: '20px', color: '#64748b' }}>Loading...</div>
   }
 
   // Disconnected state
   if (!connected) {
     return (
       <div style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: '24px', marginBottom: '8px' }}>⚠️</div>
+        <span style={{ display: 'inline-block', fontSize: '24px', marginBottom: '8px', color: '#f59e0b' }}>!</span>
         <h2 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '8px' }}>
           Birdbrain not found
         </h2>
-        <p style={{ fontSize: '12px', color: '#737373', marginBottom: '16px' }}>
+        <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '16px' }}>
           Make sure the Birdbrain desktop app is running.
         </p>
         <button onClick={checkStatus} style={buttonStyle}>
@@ -103,14 +103,14 @@ function Popup(): React.JSX.Element {
           <span style={{ color: '#ef4444', fontSize: '12px' }}>●</span>
           <span style={{ fontWeight: 600, fontSize: '14px' }}>Auto-Capture Active</span>
         </div>
-        <div style={{ fontSize: '12px', color: '#a3a3a3', marginBottom: '4px' }}>
+        <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '4px' }}>
           Case: {activeCase.name}
         </div>
-        <div style={{ fontSize: '12px', color: '#a3a3a3', marginBottom: '4px' }}>
+        <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '4px' }}>
           Captures: {captureCount}
         </div>
         {activeSelectorCount > 0 && (
-          <div style={{ fontSize: '11px', color: '#737373', marginBottom: '16px' }}>
+          <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '16px' }}>
             Selectors: {activeSelectorCount} active across {activeCaseCount} case{activeCaseCount !== 1 ? 's' : ''}
           </div>
         )}
@@ -130,13 +130,13 @@ function Popup(): React.JSX.Element {
   // Connected, inactive state
   return (
     <div>
-      <h2 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', color: '#22c55e' }}>
+      <h2 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', color: '#10b981' }}>
         Birdbrain Connected
       </h2>
 
       {cases.length > 0 ? (
         <>
-          <div style={{ fontSize: '12px', color: '#a3a3a3', marginBottom: '8px' }}>
+          <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '8px' }}>
             Select case:
           </div>
           <div style={{ marginBottom: '12px' }}>
@@ -149,13 +149,13 @@ function Popup(): React.JSX.Element {
                   cursor: 'pointer',
                   borderRadius: '4px',
                   fontSize: '13px',
-                  background: activeCase?.id === c.id ? '#292524' : 'transparent',
-                  border: activeCase?.id === c.id ? '1px solid #f59e0b' : '1px solid transparent',
+                  background: activeCase?.id === c.id ? '#1e293b' : 'transparent',
+                  border: activeCase?.id === c.id ? '1px solid #4f46e5' : '1px solid transparent',
                   marginBottom: '4px'
                 }}
               >
                 {c.name}
-                <span style={{ fontSize: '11px', color: '#737373', marginLeft: '8px' }}>
+                <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '8px' }}>
                   ({c.captureCount})
                 </span>
               </div>
@@ -163,7 +163,7 @@ function Popup(): React.JSX.Element {
           </div>
         </>
       ) : (
-        <p style={{ fontSize: '12px', color: '#737373', marginBottom: '12px' }}>
+        <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>
           No cases yet. Create one in the Birdbrain app.
         </p>
       )}
@@ -185,7 +185,7 @@ function Popup(): React.JSX.Element {
         disabled={!activeCase}
         style={{
           ...buttonStyle,
-          background: '#22c55e',
+          background: '#10b981',
           opacity: activeCase ? 1 : 0.5,
           cursor: activeCase ? 'pointer' : 'not-allowed'
         }}
@@ -200,9 +200,9 @@ const buttonStyle: React.CSSProperties = {
   width: '100%',
   padding: '8px 16px',
   border: 'none',
-  borderRadius: '6px',
-  background: '#f59e0b',
-  color: '#0a0a0a',
+  borderRadius: '10px',
+  background: '#4f46e5',
+  color: '#ffffff',
   fontWeight: 600,
   fontSize: '13px',
   cursor: 'pointer'

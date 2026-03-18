@@ -29,14 +29,14 @@ export function EntityExtractionConfig({ settings, onUpdate }: EntityExtractionC
   }
 
   return (
-    <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-      <h2 className="mb-4 text-lg font-semibold text-neutral-200">Entity Extraction</h2>
-      <p className="mb-4 text-sm text-neutral-400">
+    <section className="neu-card rounded-2xl p-5">
+      <h2 className="mb-4 text-lg font-semibold text-slate-200">Entity Extraction</h2>
+      <p className="mb-4 text-sm text-slate-400">
         Rule-based extraction runs automatically on every capture without requiring an AI API key.
       </p>
 
       <div className="mb-5">
-        <label className="mb-2 block text-sm text-neutral-400">Enabled Entity Types</label>
+        <label className="mb-2 block text-sm text-slate-400">Enabled Entity Types</label>
         <div className="grid grid-cols-2 gap-2">
           {ENTITY_TYPE_LABELS.map(({ type, label, method }) => (
             <label key={type} className="flex items-center gap-2 cursor-pointer">
@@ -46,9 +46,9 @@ export function EntityExtractionConfig({ settings, onUpdate }: EntityExtractionC
                 onChange={() => toggleType(type)}
                 className="rounded"
               />
-              <span className="text-sm text-neutral-300">{label}</span>
+              <span className="text-sm text-slate-300">{label}</span>
               {method === 'nlp' && (
-                <span className="rounded bg-amber-900/50 px-1.5 py-0.5 text-xs text-amber-400">
+                <span className="rounded bg-indigo-900/50 px-1.5 py-0.5 text-xs text-indigo-400">
                   NLP
                 </span>
               )}
@@ -58,7 +58,7 @@ export function EntityExtractionConfig({ settings, onUpdate }: EntityExtractionC
       </div>
 
       <div>
-        <label className="mb-2 block text-sm text-neutral-400">
+        <label className="mb-2 block text-sm text-slate-400">
           Minimum Confidence Threshold: {Math.round(confidence * 100)}%
         </label>
         <input
@@ -67,9 +67,9 @@ export function EntityExtractionConfig({ settings, onUpdate }: EntityExtractionC
           max="100"
           value={Math.round(confidence * 100)}
           onChange={(e) => onUpdate({ minEntityConfidence: Number(e.target.value) / 100 })}
-          className="w-full accent-amber-600"
+          className="w-full accent-indigo-600"
         />
-        <div className="mt-1 flex justify-between text-xs text-neutral-500">
+        <div className="mt-1 flex justify-between text-xs text-slate-500">
           <span>0%</span>
           <span>50%</span>
           <span>100%</span>

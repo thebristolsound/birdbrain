@@ -5,7 +5,7 @@ import { useTags } from '@renderer/hooks/useTags'
 import { TagBadge } from '@renderer/components/tags/TagBadge'
 import type { Capture, Tag, Entity } from '@shared/types'
 
-type ViewTab = 'screenshot' | 'html' | 'text' | 'metadata' | 'entities'
+type ViewTab = 'screenshot' | 'page' | 'source' | 'text' | 'metadata' | 'entities'
 
 export function CaptureViewer() {
   const { selectedCaptureId, activeCaseId } = useAppStore()
@@ -41,7 +41,10 @@ export function CaptureViewer() {
     if (!selectedCaptureId) return
     setContent(null)
     const type =
-      activeTab === 'screenshot' ? 'png' : activeTab === 'html' ? 'html' : activeTab === 'text' ? 'txt' : null
+      activeTab === 'screenshot' ? 'png'
+        : activeTab === 'page' || activeTab === 'source' ? 'html'
+        : activeTab === 'text' ? 'txt'
+        : null
     if (type) {
       getContent(selectedCaptureId, type).then(setContent)
     }
@@ -78,7 +81,8 @@ export function CaptureViewer() {
 
   const tabs: { id: ViewTab; label: string }[] = [
     { id: 'screenshot', label: 'Screenshot' },
-    { id: 'html', label: 'HTML' },
+    { id: 'page', label: 'Page' },
+    { id: 'source', label: 'Source' },
     { id: 'text', label: 'Text' },
     { id: 'metadata', label: 'Metadata' },
     { id: 'entities', label: 'Entities' }
@@ -143,7 +147,20 @@ export function CaptureViewer() {
             <div className="text-neutral-500">No screenshot available</div>
           )
         )}
-        {activeTab === 'html' && (
+        {activeTab === 'page' && (
+          content ? (
+            <iframe
+              sandbox="allow-same-origin"
+              srcDoc={content}
+              className="h-full w-full rounded border-0 bg-white"
+              style={{ minHeight: '500px' }}
+              title="Archived page"
+            />
+          ) : (
+            <div className="text-neutral-500">No HTML available</div>
+          )
+        )}
+        {activeTab === 'source' && (
           content ? (
             <pre className="whitespace-pre-wrap break-all font-mono text-xs text-neutral-300">{content}</pre>
           ) : (

@@ -19,23 +19,83 @@ import { analyzeCase, getCachedAnalysis } from '@main/services/ai/patterns'
 import { generateReport } from '@main/services/export'
 import type { BirdbrainSettings, ExportOptions } from '@shared/types'
 
+interface IpcResult<T = unknown> {
+  ok: true
+  data: T
+} | {
+  ok: false
+  error: string
+  code?: string
+}
+
+function ipcResult<T>(data: T): IpcResult<T> {
+  return { ok: true, data }
+}
+
+function ipcError(err: unknown): IpcResult<never> {
+  const sqliteErr = err as { code?: string; message?: string }
+  if (sqliteErr.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+    return { ok: false, error: 'A record with that value already exists', code: sqliteErr.code }
+  }
+  if (sqliteErr.code === 'SQLITE_CONSTRAINT_FOREIGNKEY') {
+    return { ok: false, error: 'Referenced record does not exist', code: sqliteErr.code }
+  }
+  if (sqliteErr.code === 'SQLITE_BUSY') {
+    return { ok: false, error: 'Database is busy, please try again', code: sqliteErr.code }
+  }
+  if (typeof sqliteErr.code === 'string' && sqliteErr.code.startsWith('SQLITE_')) {
+    return { ok: false, error: sqliteErr.message ?? 'Database error', code: sqliteErr.code }
+  }
+  throw err
+}
+
 export function registerIpcHandlers(): void {
   // Cases
   ipcMain.handle(IPC_CHANNELS.CASES_LIST, () => db.listCases())
   ipcMain.handle(IPC_CHANNELS.CASES_GET, (_, id: string) => db.getCase(id))
-  ipcMain.handle(IPC_CHANNELS.CASES_CREATE, (_, params: CreateCaseParams) => db.createCase(params))
-  ipcMain.handle(IPC_CHANNELS.CASES_UPDATE, (_, params: UpdateCaseParams) => db.updateCase(params))
+  ipcMain.handle(IPC_CHANNELS.CASES_CREATE, (_, params: CreateCaseParams) => {
+    try {
+      return ipcResult(db.createCase(params))
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+  ipcMain.handle(IPC_CHANNELS.CASES_UPDATE, (_, params: UpdateCaseParams) => {
+    try {
+      return ipcResult(db.updateCase(params))
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
   ipcMain.handle(IPC_CHANNELS.CASES_DELETE, (_, id: string) => db.deleteCase(id))
 
   // Captures
   ipcMain.handle(IPC_CHANNELS.CAPTURES_LIST, (_, caseId: string) => db.listCaptures(caseId))
   ipcMain.handle(IPC_CHANNELS.CAPTURES_GET, (_, id: string) => db.getCapture(id))
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_DELETE, (_, id: string) => db.deleteCapture(id))
+  ipcMain.handle(IPC_CHANNELS.CAPTURES_DELETE, (_, id: string) => {
+    try {
+      return ipcResult(db.deleteCapture(id))
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
 
   // Tags
   ipcMain.handle(IPC_CHANNELS.TAGS_LIST, () => db.listTags())
-  ipcMain.handle(IPC_CHANNELS.TAGS_CREATE, (_, params: CreateTagParams) => db.createTag(params))
-  ipcMain.handle(IPC_CHANNELS.TAGS_UPDATE, (_, params: UpdateTagParams) => db.updateTag(params))
+  ipcMain.handle(IPC_CHANNELS.TAGS_CREATE, (_, params: CreateTagParams) => {
+    try {
+      return ipcResult(db.createTag(params))
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+  ipcMain.handle(IPC_CHANNELS.TAGS_UPDATE, (_, params: UpdateTagParams) => {
+    try {
+      return ipcResult(db.updateTag(params))
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
   ipcMain.handle(IPC_CHANNELS.TAGS_DELETE, (_, id: string) => db.deleteTag(id))
   ipcMain.handle(IPC_CHANNELS.TAGS_ADD_TO_CAPTURE, (_, params: CaptureTagParams) =>
     db.addTagToCapture(params)
@@ -50,14 +110,37 @@ export function registerIpcHandlers(): void {
   // Selectors
   ipcMain.handle(IPC_CHANNELS.SELECTORS_LIST, (_, caseId: string) => db.listSelectors(caseId))
   ipcMain.handle(IPC_CHANNELS.SELECTORS_GET, (_, id: string) => db.getSelector(id))
-  ipcMain.handle(IPC_CHANNELS.SELECTORS_CREATE, (_, params: CreateSelectorParams) =>
-    db.createSelector(params)
-  )
+  ipcMain.handle(IPC_CHANNELS.SELECTORS_CREATE, (_, params: CreateSelectorParams) => {
+    try {
+      const selector = db.createSelector(params)
+      // Retroactively match against existing captures
+      const captures = db.listCaptures(params.caseId)
+      const captureTexts: Array<{ captureId: string; text: string }> = []
+      for (const cap of captures) {
+        const buffer = storage.readCaptureFile(params.caseId, cap.id, 'txt')
+        if (buffer) {
+          captureTexts.push({ captureId: cap.id, text: buffer.toString('utf-8') })
+        }
+      }
+      if (captureTexts.length > 0) {
+        db.matchSelectorAgainstCaptures(selector.id, captureTexts)
+      }
+      return ipcResult(selector)
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
   ipcMain.handle(IPC_CHANNELS.SELECTORS_UPDATE, (_, params: UpdateSelectorParams) =>
     db.updateSelector(params)
   )
   ipcMain.handle(IPC_CHANNELS.SELECTORS_DELETE, (_, id: string) => db.deleteSelector(id))
   ipcMain.handle(IPC_CHANNELS.SELECTORS_LIST_ACTIVE, () => db.listActiveSelectors())
+  ipcMain.handle(IPC_CHANNELS.SELECTORS_MATCH_COUNTS, (_, caseId: string) =>
+    db.getSelectorMatchCounts(caseId)
+  )
+  ipcMain.handle(IPC_CHANNELS.SELECTORS_MATCHING_CAPTURES, (_, caseId: string, selectorIds: string[]) =>
+    db.getCapturesMatchingSelectors(caseId, selectorIds)
+  )
 
   // Captures - get content
   ipcMain.handle(

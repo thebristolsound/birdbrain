@@ -12,14 +12,29 @@ import type {
 } from '@shared/ipc'
 import type { Case, Capture, Tag, Entity, EntityGraph, CaseAnalysisResult, BirdbrainSettings, OpenRouterModel, ExportOptions, Selector, ActiveCaseSelectors } from '@shared/types'
 
+// Unwrap IpcResult from handlers that return structured results
+async function unwrapIpc<T>(promise: Promise<unknown>): Promise<T> {
+  const result = await promise
+  if (result && typeof result === 'object' && 'ok' in result) {
+    if ((result as { ok: boolean }).ok) {
+      return (result as { ok: true; data: T }).data
+    }
+    const err = result as { ok: false; error: string; code?: string }
+    const error = new Error(err.error)
+    ;(error as unknown as { code?: string }).code = err.code
+    throw error
+  }
+  return result as T
+}
+
 const birdbrain = {
   cases: {
     list: (): Promise<Case[]> => ipcRenderer.invoke(IPC_CHANNELS.CASES_LIST),
     get: (id: string): Promise<Case | undefined> => ipcRenderer.invoke(IPC_CHANNELS.CASES_GET, id),
     create: (params: CreateCaseParams): Promise<Case> =>
-      ipcRenderer.invoke(IPC_CHANNELS.CASES_CREATE, params),
+      unwrapIpc<Case>(ipcRenderer.invoke(IPC_CHANNELS.CASES_CREATE, params)),
     update: (params: UpdateCaseParams): Promise<Case | undefined> =>
-      ipcRenderer.invoke(IPC_CHANNELS.CASES_UPDATE, params),
+      unwrapIpc<Case | undefined>(ipcRenderer.invoke(IPC_CHANNELS.CASES_UPDATE, params)),
     delete: (id: string): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.CASES_DELETE, id)
   },
   captures: {
@@ -27,16 +42,16 @@ const birdbrain = {
       ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_LIST, caseId),
     get: (id: string): Promise<Capture | undefined> =>
       ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_GET, id),
-    delete: (id: string): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_DELETE, id),
+    delete: (id: string): Promise<boolean> => unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_DELETE, id)),
     getContent: (captureId: string, type: 'html' | 'png' | 'txt'): Promise<string | null> =>
       ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_GET_CONTENT, captureId, type)
   },
   tags: {
     list: (): Promise<Tag[]> => ipcRenderer.invoke(IPC_CHANNELS.TAGS_LIST),
     create: (params: CreateTagParams): Promise<Tag> =>
-      ipcRenderer.invoke(IPC_CHANNELS.TAGS_CREATE, params),
+      unwrapIpc<Tag>(ipcRenderer.invoke(IPC_CHANNELS.TAGS_CREATE, params)),
     update: (params: UpdateTagParams): Promise<Tag | undefined> =>
-      ipcRenderer.invoke(IPC_CHANNELS.TAGS_UPDATE, params),
+      unwrapIpc<Tag | undefined>(ipcRenderer.invoke(IPC_CHANNELS.TAGS_UPDATE, params)),
     delete: (id: string): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.TAGS_DELETE, id),
     addToCapture: (params: CaptureTagParams): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.TAGS_ADD_TO_CAPTURE, params),
@@ -51,13 +66,17 @@ const birdbrain = {
     get: (id: string): Promise<Selector | undefined> =>
       ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_GET, id),
     create: (params: CreateSelectorParams): Promise<Selector> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_CREATE, params),
+      unwrapIpc<Selector>(ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_CREATE, params)),
     update: (params: UpdateSelectorParams): Promise<Selector | undefined> =>
       ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_UPDATE, params),
     delete: (id: string): Promise<boolean> =>
       ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_DELETE, id),
     listActive: (): Promise<ActiveCaseSelectors[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_LIST_ACTIVE)
+      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_LIST_ACTIVE),
+    matchCounts: (caseId: string): Promise<Record<string, number>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_MATCH_COUNTS, caseId),
+    matchingCaptures: (caseId: string, selectorIds: string[]): Promise<string[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_MATCHING_CAPTURES, caseId, selectorIds)
   },
 
   search: (query: string): Promise<Capture[]> => ipcRenderer.invoke(IPC_CHANNELS.SEARCH, query),

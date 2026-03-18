@@ -12,6 +12,8 @@ interface AppState {
   connectedToExtension: boolean
   selectedCaptureId: string | null
   searchQuery: string
+  activeSelectorFilters: string[]
+  filteredCaptureIds: string[] | null
 
   setActiveCaseId: (id: string | null) => void
   setSessionActive: (active: boolean) => void
@@ -24,6 +26,10 @@ interface AppState {
   setActiveTab: (tab: CaseTab) => void
   goToDashboard: () => void
   toggleSettings: () => void
+  addSelectorFilter: (selectorId: string) => void
+  removeSelectorFilter: (selectorId: string) => void
+  clearSelectorFilters: () => void
+  setFilteredCaptureIds: (ids: string[] | null) => void
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -35,6 +41,8 @@ export const useAppStore = create<AppState>((set) => ({
   connectedToExtension: false,
   selectedCaptureId: null,
   searchQuery: '',
+  activeSelectorFilters: [],
+  filteredCaptureIds: null,
 
   setActiveCaseId: (id) => set({ activeCaseId: id }),
   setSessionActive: (active) => set({ sessionActive: active }),
@@ -55,5 +63,26 @@ export const useAppStore = create<AppState>((set) => ({
   goToDashboard: () =>
     set({ activeCaseId: null, appMode: 'dashboard', selectedCaptureId: null, settingsOpen: false }),
 
-  toggleSettings: () => set((s) => ({ settingsOpen: !s.settingsOpen }))
+  toggleSettings: () => set((s) => ({ settingsOpen: !s.settingsOpen })),
+
+  addSelectorFilter: (selectorId) =>
+    set((s) => ({
+      activeSelectorFilters: s.activeSelectorFilters.includes(selectorId)
+        ? s.activeSelectorFilters
+        : [...s.activeSelectorFilters, selectorId]
+    })),
+
+  removeSelectorFilter: (selectorId) =>
+    set((s) => {
+      const updated = s.activeSelectorFilters.filter((id) => id !== selectorId)
+      return {
+        activeSelectorFilters: updated,
+        filteredCaptureIds: updated.length === 0 ? null : s.filteredCaptureIds
+      }
+    }),
+
+  clearSelectorFilters: () =>
+    set({ activeSelectorFilters: [], filteredCaptureIds: null }),
+
+  setFilteredCaptureIds: (ids) => set({ filteredCaptureIds: ids })
 }))

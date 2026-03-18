@@ -2,6 +2,7 @@
 // Extracts page data when asked by the background script
 // Handles selector matching and inline highlighting
 
+import { freezeDry } from 'freeze-dry'
 import { showSidebar, removeSidebar } from './sidebar'
 
 interface SelectorInfo {
@@ -245,11 +246,24 @@ function removeHighlights(): void {
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'EXTRACT_PAGE') {
-    sendResponse({
-      html: document.documentElement.outerHTML,
-      title: document.title,
-      textContent: document.body?.innerText || ''
-    })
+    const title = document.title
+    const textContent = document.body?.innerText || ''
+
+    freezeDry(document)
+      .then((html) => {
+        sendResponse({ html, title, textContent })
+      })
+      .catch(() => {
+        // Fallback to raw outerHTML if freeze-dry fails
+        sendResponse({
+          html: document.documentElement.outerHTML,
+          title,
+          textContent
+        })
+      })
+
+    // Don't call sendResponse synchronously — the async handlers above will
+    return
   }
 
   if (message.type === 'CHECK_SELECTORS') {

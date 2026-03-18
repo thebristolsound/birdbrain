@@ -56,6 +56,7 @@
     "better-sqlite3": "^12.6.2",
     "compromise": "^14.15.0",
     "d3-force": "^3.0.0",
+    "freeze-dry": "^1.0.0",
     "hono": "^4.12.7",
     "uuid": "^11.1.0",
     "zustand": "^5.0.11"

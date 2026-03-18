@@ -8,6 +8,8 @@ import { CaptureList } from '@renderer/components/captures/CaptureList'
 import { CaseAnalysis } from '@renderer/components/analysis/CaseAnalysis'
 import { SelectorsOverview } from '@renderer/components/selectors/SelectorsOverview'
 import { CaseEntities } from '@renderer/components/cases/CaseEntities'
+import { SelectorFilterBar } from '@renderer/components/selectors/SelectorFilterBar'
+import { useSelectorFilters } from '@renderer/hooks/useSelectorFilters'
 
 const tabs: { id: CaseTab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
@@ -29,6 +31,8 @@ export function CaseWorkspace() {
   const [renaming, setRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState('')
   const [confirming, setConfirming] = useState(false)
+
+  useSelectorFilters(activeCaseId)
 
   const activeCase = cases.find((c) => c.id === activeCaseId)
 
@@ -189,12 +193,15 @@ export function CaseWorkspace() {
       <div className="flex-1 overflow-auto p-6">
         {activeCaseTab === 'overview' && <CaseOverview />}
         {activeCaseTab === 'captures' && (
-          <div className="flex h-full gap-4">
+          <div className="flex h-full flex-col gap-2">
+            <SelectorFilterBar />
+            <div className="flex flex-1 gap-4">
             <div className="w-[30%] overflow-y-auto">
               <CaptureList caseId={activeCaseId} />
             </div>
             <div className="flex-1 overflow-y-auto">
               <CaptureViewer />
+            </div>
             </div>
           </div>
         )}

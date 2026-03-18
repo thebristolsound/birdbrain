@@ -39,6 +39,8 @@ interface BirdbrainAPI {
     update(params: UpdateSelectorParams): Promise<Selector | undefined>
     delete(id: string): Promise<boolean>
     listActive(): Promise<ActiveCaseSelectors[]>
+    matchCounts(caseId: string): Promise<Record<string, number>>
+    matchingCaptures(caseId: string, selectorIds: string[]): Promise<string[]>
   }
   search(query: string): Promise<Capture[]>
   settings: {

@@ -20,6 +20,9 @@ importers:
       d3-force:
         specifier: ^3.0.0
         version: 3.0.0
+      freeze-dry:
+        specifier: ^1.0.0
+        version: 1.0.0
       hono:
         specifier: ^4.12.7
         version: 4.12.7
@@ -193,6 +196,10 @@ packages:
     engines: {node: '>=6.9.0'}
     peerDependencies:
       '@babel/core': ^7.0.0-0
+
+  '@babel/runtime@7.29.2':
+    resolution: {integrity: sha512-JiDShH45zKHWyGe4ZNVRrCjBz8Nh9TMmZG1kh4QTK8hCBTWBi8Da+i7s1fJw7/lYpM4ccepSNfqzZ/QvABBi5g==}
+    engines: {node: '>=6.9.0'}
 
   '@babel/template@7.28.6':
     resolution: {integrity: sha512-YA6Ma2KsCdGb+WC6UpBVFJGXL58MDA6oyONbjyF/+5sBgxY/dwkhLogbMT2GXXyU84/IhRw/2D1Os1B/giz+BQ==}
@@ -1359,6 +1366,16 @@ packages:
     os: [darwin]
     hasBin: true
 
+  doctype-to-string@git+https://code.treora.com/gerben/doctype-to-string#010edc8e5872b125d0da160dbf3957c92680e485:
+    resolution: {commit: 010edc8e5872b125d0da160dbf3957c92680e485, repo: https://code.treora.com/gerben/doctype-to-string, type: git}
+    version: 0.1.4
+
+  document-outerhtml@0.1.4:
+    resolution: {integrity: sha512-nKO6NKyJ+dpDajS6+HOAUc+AeNdDmiHLfYF9lt8dlCpNdCHAR5aMlVIOYSCcMA1nyko7FL+VwdiUaTuN3QrzwA==}
+
+  domnode-at-path@1.0.0:
+    resolution: {integrity: sha512-TYeZhR9eOkOXjHT62tucK8NBGtrx937vMDR69LV1nJbJ16n7JqhgYNF9SvGhlWvUS28TxlNr8vL08WTNq6qdCw==}
+
   dotenv-expand@11.0.7:
     resolution: {integrity: sha512-zIHwmZPRshsCdpMDyVsqGmgyP0yT8GAgXUnkdAoJisxvf33k7yO6OuoKmcTGuXPWSsm8Oh88nZicRLA9Y0rUeA==}
     engines: {node: '>=12'}
@@ -1585,8 +1602,16 @@ packages:
     resolution: {integrity: sha512-f7ccFPK3SXFHpx15UIGyRJ/FJQctuKZ0zVuN3frBo4HnK3cay9VEW0R6yPYFHC0AgqhukPzKjq22t5DmAyqGyw==}
     engines: {node: '>=16'}
 
+  flat-options@0.1.3:
+    resolution: {integrity: sha512-z1vH9mb4ly55dWUZZFUeLNqhFWhwSQNngHpK8RQOhFuNw/sWcNDZhkHl3GS1YTHiYxB5qvcbSRbH7X6ThzX9UA==}
+    engines: {node: '>=6'}
+
   flatted@3.3.4:
     resolution: {integrity: sha512-3+mMldrTAPdta5kjX2G2J7iX4zxtnwpdA8Tr2ZSjkyPSanvbZAcy6flmtnXbEybHrDcU9641lxrMfFuUxVz9vA==}
+
+  flatten@1.0.3:
+    resolution: {integrity: sha512-dVsPA/UwQ8+2uoFe5GHtiBMu48dWLTdsuEd7CKGlZlD78r1TTWBvDuFaFGKCo/ZfEr95Uk56vZoX86OsHkUeIg==}
+    deprecated: flatten is deprecated in favor of utility frameworks such as lodash.
 
   foreground-child@3.3.1:
     resolution: {integrity: sha512-gIXjKqtFuWEgzFRJA9WCQeSJLZDjgJUOMCMzxtvFq/37KojM1BFGufqsCy0r4qSQmYLsZYMeyRqzIWOMup03sw==}
@@ -1598,6 +1623,9 @@ packages:
 
   fraction.js@5.3.4:
     resolution: {integrity: sha512-1X1NTtiJphryn/uLQz3whtY6jK3fTqoE3ohKs0tT+Ujr1W59oopxmoEh7Lu5p6vBaPbgoM0bzveAW4Qi5RyWDQ==}
+
+  freeze-dry@1.0.0:
+    resolution: {integrity: sha512-F8fIBSZknky6+jOnWIu0hqp82F0mRceqENoSMlmM9dzF1AAhxHAJXG6cr60rmSz4Eteia7siji1vlzWSC4FgOQ==}
 
   fs-constants@1.0.0:
     resolution: {integrity: sha512-y6OAwoSIf7FyjMIv94u+b5rdheZEjzR63GTyZJm5qh4Bi+2YgwLCcI/fPFZkL5PSixOt6ZNKm+w+Hfp/Bciwow==}
@@ -1798,6 +1826,9 @@ packages:
   indent-string@4.0.0:
     resolution: {integrity: sha512-EdDDZu4A2OyIK7Lr/2zG+w5jmbuk1DVBnEwREQvBzspBJkCEbRa8GxU1lghYcaGJCnRWibjDXlq779X1/y5xwg==}
     engines: {node: '>=8'}
+
+  indexes-of@1.0.1:
+    resolution: {integrity: sha512-bup+4tap3Hympa+JBJUG7XuOsdNQ6fxt0MHyXMKuLBKn0OqsTfvUxkUrroEX1+B2VsSHvCjiIcZVxRtYa4nllA==}
 
   infer-owner@1.0.4:
     resolution: {integrity: sha512-IClj+Xz94+d7irH5qRyfJonOdfTzuDaifE6ZPWfx0N0+/ATZCbuTPq2prFl526urkQd90WyUKIh1DfBQ2hMz9A==}
@@ -2060,6 +2091,12 @@ packages:
     resolution: {integrity: sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==}
     engines: {node: '>= 0.4'}
 
+  memoize-one@5.2.1:
+    resolution: {integrity: sha512-zYiwtZUcYyXKo/np96AGZAckk+FWWsUdJ3cHGGmld7+AhvcWmQyGCYUh1hc4Q/pkOhb65dQR/pqCyK0cOaHz4Q==}
+
+  memoize-weak@1.0.2:
+    resolution: {integrity: sha512-gj39xkrjEw7nCn4nJ1M5ms6+MyMlyiGmttzsqAUsAKn6bYKwuTHh/AO3cKPF8IBrTIYTxb0wWXFs3E//Y8VoWQ==}
+
   mime-db@1.52.0:
     resolution: {integrity: sha512-sPU4uV7dYlvtWJxwwxHD0PuihVNiE7TyAbQ5SWxDCB9mUYvOgroQOwYQQOKPJ8CIbE+1ETVlOoK1UC2nU3gYvg==}
     engines: {node: '>= 0.6'}
@@ -2149,6 +2186,10 @@ packages:
 
   ms@2.1.3:
     resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
+
+  mutable-proxy@1.0.0:
+    resolution: {integrity: sha512-4OvNRr1DJpy2QuDUV74m+BWZ//n4gG4bmd21MzDSPqHEidIDWqwyOjcadU1LBMO3vXYGurVKjfBrxrSQIHFu9A==}
+    engines: {node: '>=6.X.X', npm: '>=3.X.X'}
 
   nanoid@3.3.11:
     resolution: {integrity: sha512-N8SpfPUnUp1bK+PMYW8qSWdl9U+wwNWI4QKxOYDy9JAro3WMX7p2OeVRF9v+347pnakNevPmiHhNmZ2HbFA76w==}
@@ -2259,6 +2300,9 @@ packages:
     resolution: {integrity: sha512-Xa4Nw17FS9ApQFJ9umLiJS4orGjm7ZzwUrwamcGQuHSzDyth9boKDaycYdDcZDuqYATXw4HFXgaqWTctW/v1HA==}
     engines: {node: '>=16 || 14 >=14.18'}
 
+  path-to-domnode@1.0.1:
+    resolution: {integrity: sha512-ND5pCLB+ZPY60TlyfQqXx5IGAEuS2Ml6sEc2MBk8Ml7C9EGrgG1ajeDfmrPq2RfjK17ypkG20mThPF7kk8EnZQ==}
+
   pathe@2.0.3:
     resolution: {integrity: sha512-WUjGcAqP1gQacoQe+OBJsFA7Ld4DyXuUIjZ5cc75cLHvJ7dtNsTugphxIADwspS+AraAUePCKrSVtPLFj/F88w==}
 
@@ -2296,6 +2340,10 @@ packages:
 
   postcss-value-parser@4.2.0:
     resolution: {integrity: sha512-1NNCs6uurfkVbeXG4S8JFT9t19m45ICnif8zWLd5oPSZ50QnwMfK+H3jv408d4jw/7Bttv5axS5IiHoLaVNHeQ==}
+
+  postcss-values-parser@1.5.0:
+    resolution: {integrity: sha512-3M3p+2gMp0AH3da530TlX8kiO1nxdTnc3C6vr8dMxRLIlh8UYkz0/wcwptSXjhtx2Fr0TySI7a+BHDQ8NL7LaQ==}
+    engines: {node: '>=4'}
 
   postcss@8.5.8:
     resolution: {integrity: sha512-OW/rX8O/jXnm82Ey1k44pObPtdblfiuWnrd8X7GJ7emImCOstunGbXUpp7HdBrFQX6rJzn3sPT397Wp5aCwCHg==}
@@ -2376,6 +2424,9 @@ packages:
 
   readdir-glob@1.1.3:
     resolution: {integrity: sha512-v05I2k7xN8zXvPD9N+z/uhXPaj0sUFCe2rcWZIpBsqxfP7xXFQ0tipAd/wjj1YxWyWtUS5IDJpOG82JKt2EAVA==}
+
+  relative-to-absolute-iri@1.0.8:
+    resolution: {integrity: sha512-U1TmhrhCmXKkDL9mI8gBbF5TN6TKcuv28k5+H3gMCAjoz0TyyHAICHlaGDZsTEBSu2Y3HhDKc8e6X9n33qeIqA==}
 
   require-directory@2.1.1:
     resolution: {integrity: sha512-fGxEI7+wsG9xrvdjsrlmL22OMTTiHRwAMroiEeMgq8gzoLC/PQr7RsRDSTLUg/bZAZtF+TVIkHc6/4RIKrui+Q==}
@@ -2659,6 +2710,9 @@ packages:
 
   undici-types@7.18.2:
     resolution: {integrity: sha512-AsuCzffGHJybSaRrmr5eHr81mwJU3kjw6M+uprWvCXiNeN9SOGwQ3Jn8jb8m3Z6izVgknn1R0FTCEAP2QrLY/w==}
+
+  uniq@1.0.1:
+    resolution: {integrity: sha512-Gw+zz50YNKPDKXs+9d+aKAjVwpjNwqzvNpLigIruT4HA9lMZNdMqs9x07kKHB/L9WRzqp4+DlTU5s4wG2esdoA==}
 
   unique-filename@2.0.1:
     resolution: {integrity: sha512-ODWHtkkdx3IAR+veKxFV+VBkUMcN+FaqzUUd7IZzt+0zhDZFPFxhlqwPF3YQvMHx1TD0tdgYl+kuPnJ8E6ql7A==}
@@ -2951,6 +3005,8 @@ snapshots:
     dependencies:
       '@babel/core': 7.29.0
       '@babel/helper-plugin-utils': 7.28.6
+
+  '@babel/runtime@7.29.2': {}
 
   '@babel/template@7.28.6':
     dependencies:
@@ -4161,6 +4217,14 @@ snapshots:
       verror: 1.10.1
     optional: true
 
+  doctype-to-string@git+https://code.treora.com/gerben/doctype-to-string#010edc8e5872b125d0da160dbf3957c92680e485: {}
+
+  document-outerhtml@0.1.4:
+    dependencies:
+      doctype-to-string: git+https://code.treora.com/gerben/doctype-to-string#010edc8e5872b125d0da160dbf3957c92680e485
+
+  domnode-at-path@1.0.0: {}
+
   dotenv-expand@11.0.7:
     dependencies:
       dotenv: 16.6.1
@@ -4449,7 +4513,11 @@ snapshots:
       flatted: 3.3.4
       keyv: 4.5.4
 
+  flat-options@0.1.3: {}
+
   flatted@3.3.4: {}
+
+  flatten@1.0.3: {}
 
   foreground-child@3.3.1:
     dependencies:
@@ -4465,6 +4533,20 @@ snapshots:
       mime-types: 2.1.35
 
   fraction.js@5.3.4: {}
+
+  freeze-dry@1.0.0:
+    dependencies:
+      '@babel/runtime': 7.29.2
+      document-outerhtml: 0.1.4
+      domnode-at-path: 1.0.0
+      flat-options: 0.1.3
+      memoize-one: 5.2.1
+      memoize-weak: 1.0.2
+      mutable-proxy: 1.0.0
+      path-to-domnode: 1.0.1
+      postcss: 8.5.8
+      postcss-values-parser: 1.5.0
+      relative-to-absolute-iri: 1.0.8
 
   fs-constants@1.0.0: {}
 
@@ -4704,6 +4786,8 @@ snapshots:
 
   indent-string@4.0.0: {}
 
+  indexes-of@1.0.1: {}
+
   infer-owner@1.0.4: {}
 
   inflight@1.0.6:
@@ -4924,6 +5008,10 @@ snapshots:
 
   math-intrinsics@1.1.0: {}
 
+  memoize-one@5.2.1: {}
+
+  memoize-weak@1.0.2: {}
+
   mime-db@1.52.0: {}
 
   mime-types@2.1.35:
@@ -4998,6 +5086,8 @@ snapshots:
   mkdirp@1.0.4: {}
 
   ms@2.1.3: {}
+
+  mutable-proxy@1.0.0: {}
 
   nanoid@3.3.11: {}
 
@@ -5115,6 +5205,8 @@ snapshots:
       lru-cache: 10.4.3
       minipass: 7.1.3
 
+  path-to-domnode@1.0.1: {}
+
   pathe@2.0.3: {}
 
   pathval@2.0.1: {}
@@ -5142,6 +5234,12 @@ snapshots:
       xmlbuilder: 15.1.1
 
   postcss-value-parser@4.2.0: {}
+
+  postcss-values-parser@1.5.0:
+    dependencies:
+      flatten: 1.0.3
+      indexes-of: 1.0.1
+      uniq: 1.0.1
 
   postcss@8.5.8:
     dependencies:
@@ -5229,6 +5327,8 @@ snapshots:
   readdir-glob@1.1.3:
     dependencies:
       minimatch: 5.1.9
+
+  relative-to-absolute-iri@1.0.8: {}
 
   require-directory@2.1.1: {}
 
@@ -5529,6 +5629,8 @@ snapshots:
   undici-types@6.21.0: {}
 
   undici-types@7.18.2: {}
+
+  uniq@1.0.1: {}
 
   unique-filename@2.0.1:
     dependencies:

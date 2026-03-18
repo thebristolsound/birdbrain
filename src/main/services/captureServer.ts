@@ -252,6 +252,13 @@ function createApp(): Hono {
       } catch (err) {
         console.error('Rule-based extraction error for capture', capture.id, err)
       }
+      try {
+        if (textContent) {
+          db.matchSelectorsForCapture(capture.id, caseId, textContent)
+        }
+      } catch (err) {
+        console.error('Selector matching error for capture', capture.id, err)
+      }
     })
 
     // Notify renderer of new capture
@@ -311,6 +318,9 @@ function createApp(): Hono {
       })
 
       runRuleBasedExtraction(capture.id, textContent)
+      if (textContent) {
+        db.matchSelectorsForCapture(capture.id, caseId, textContent)
+      }
 
       // Notify renderer of new capture
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -369,6 +379,9 @@ function createApp(): Hono {
       })
 
       runRuleBasedExtraction(capture.id, textContent)
+      if (textContent) {
+        db.matchSelectorsForCapture(capture.id, caseId, textContent)
+      }
 
       // Notify renderer of new capture
       if (mainWindow && !mainWindow.isDestroyed()) {

@@ -51,6 +51,8 @@ export const IPC_CHANNELS = {
   SELECTORS_UPDATE: 'selectors:update',
   SELECTORS_DELETE: 'selectors:delete',
   SELECTORS_LIST_ACTIVE: 'selectors:listActive',
+  SELECTORS_MATCH_COUNTS: 'selectors:matchCounts',
+  SELECTORS_MATCHING_CAPTURES: 'selectors:matchingCaptures',
 
   // Events (main -> renderer)
   EXTRACTION_COMPLETE: 'event:extractionComplete',

@@ -17,6 +17,7 @@ export function initDatabase(dbPath: string): Database.Database {
   db = new Database(dbPath)
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')
+  db.pragma('busy_timeout = 5000')
   migrate(db)
   return db
 }
@@ -36,102 +37,126 @@ function migrate(db: Database.Database): void {
   const version = db.pragma('user_version', { simple: true }) as number
 
   if (version < 1) {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS cases (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        description TEXT,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        archived INTEGER DEFAULT 0
-      );
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS cases (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          archived INTEGER DEFAULT 0
+        );
 
-      CREATE TABLE IF NOT EXISTS captures (
-        id TEXT PRIMARY KEY,
-        case_id TEXT NOT NULL,
-        url TEXT NOT NULL,
-        title TEXT,
-        html_path TEXT,
-        screenshot_path TEXT,
-        hash TEXT NOT NULL,
-        timestamp TEXT NOT NULL,
-        headers TEXT,
-        created_at TEXT NOT NULL,
-        FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
-      );
+        CREATE TABLE IF NOT EXISTS captures (
+          id TEXT PRIMARY KEY,
+          case_id TEXT NOT NULL,
+          url TEXT NOT NULL,
+          title TEXT,
+          html_path TEXT,
+          screenshot_path TEXT,
+          hash TEXT NOT NULL,
+          timestamp TEXT NOT NULL,
+          headers TEXT,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+        );
 
-      CREATE TABLE IF NOT EXISTS tags (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL UNIQUE,
-        color TEXT
-      );
+        CREATE TABLE IF NOT EXISTS tags (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL UNIQUE,
+          color TEXT
+        );
 
-      CREATE TABLE IF NOT EXISTS capture_tags (
-        capture_id TEXT NOT NULL,
-        tag_id TEXT NOT NULL,
-        PRIMARY KEY (capture_id, tag_id),
-        FOREIGN KEY (capture_id) REFERENCES captures(id) ON DELETE CASCADE,
-        FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
-      );
+        CREATE TABLE IF NOT EXISTS capture_tags (
+          capture_id TEXT NOT NULL,
+          tag_id TEXT NOT NULL,
+          PRIMARY KEY (capture_id, tag_id),
+          FOREIGN KEY (capture_id) REFERENCES captures(id) ON DELETE CASCADE,
+          FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+        );
 
-      CREATE VIRTUAL TABLE IF NOT EXISTS captures_fts USING fts5(
-        title,
-        url,
-        content
-      );
+        CREATE VIRTUAL TABLE IF NOT EXISTS captures_fts USING fts5(
+          title,
+          url,
+          content
+        );
 
-      CREATE TABLE IF NOT EXISTS entities (
-        id TEXT PRIMARY KEY,
-        capture_id TEXT NOT NULL,
-        type TEXT NOT NULL,
-        value TEXT NOT NULL,
-        context TEXT,
-        confidence REAL,
-        created_at TEXT NOT NULL,
-        FOREIGN KEY (capture_id) REFERENCES captures(id) ON DELETE CASCADE
-      );
-    `)
-    db.pragma('user_version = 1')
+        CREATE TABLE IF NOT EXISTS entities (
+          id TEXT PRIMARY KEY,
+          capture_id TEXT NOT NULL,
+          type TEXT NOT NULL,
+          value TEXT NOT NULL,
+          context TEXT,
+          confidence REAL,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (capture_id) REFERENCES captures(id) ON DELETE CASCADE
+        );
+      `)
+      db.pragma('user_version = 1')
+    })()
   }
 
   if (version < 2) {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS case_analyses (
-        id TEXT PRIMARY KEY,
-        case_id TEXT NOT NULL,
-        model_used TEXT,
-        result TEXT NOT NULL,
-        token_usage INTEGER,
-        created_at TEXT NOT NULL,
-        FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
-      );
-    `)
-    db.pragma('user_version = 2')
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS case_analyses (
+          id TEXT PRIMARY KEY,
+          case_id TEXT NOT NULL,
+          model_used TEXT,
+          result TEXT NOT NULL,
+          token_usage INTEGER,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+        );
+      `)
+      db.pragma('user_version = 2')
+    })()
   }
 
   if (version < 3) {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS selectors (
-        id TEXT PRIMARY KEY,
-        case_id TEXT NOT NULL,
-        pattern TEXT NOT NULL,
-        is_regex INTEGER DEFAULT 0,
-        enabled INTEGER DEFAULT 1,
-        label TEXT,
-        created_at TEXT NOT NULL,
-        FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
-      );
-      CREATE INDEX IF NOT EXISTS idx_selectors_case_id ON selectors(case_id);
-    `)
-    db.pragma('user_version = 3')
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS selectors (
+          id TEXT PRIMARY KEY,
+          case_id TEXT NOT NULL,
+          pattern TEXT NOT NULL,
+          is_regex INTEGER DEFAULT 0,
+          enabled INTEGER DEFAULT 1,
+          label TEXT,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_selectors_case_id ON selectors(case_id);
+      `)
+      db.pragma('user_version = 3')
+    })()
   }
 
   if (version < 4) {
-    db.exec(`
-      ALTER TABLE entities ADD COLUMN source TEXT NOT NULL DEFAULT 'ai';
-      CREATE INDEX IF NOT EXISTS idx_entities_capture_source ON entities(capture_id, source);
-    `)
-    db.pragma('user_version = 4')
+    db.transaction(() => {
+      db.exec(`
+        ALTER TABLE entities ADD COLUMN source TEXT NOT NULL DEFAULT 'ai';
+        CREATE INDEX IF NOT EXISTS idx_entities_capture_source ON entities(capture_id, source);
+      `)
+      db.pragma('user_version = 4')
+    })()
+  }
+
+  if (version < 5) {
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS selector_matches (
+          selector_id TEXT NOT NULL,
+          capture_id TEXT NOT NULL,
+          PRIMARY KEY (selector_id, capture_id),
+          FOREIGN KEY (selector_id) REFERENCES selectors(id) ON DELETE CASCADE,
+          FOREIGN KEY (capture_id) REFERENCES captures(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_selector_matches_capture ON selector_matches(capture_id);
+      `)
+      db.pragma('user_version = 5')
+    })()
   }
 }
 
@@ -209,56 +234,65 @@ export interface InsertCaptureParams {
   textContent?: string
 }
 
-export function insertCapture(params: InsertCaptureParams & { id?: string }): Capture {
+export const insertCapture = function(params: InsertCaptureParams & { id?: string }): Capture {
   const id = params.id || uuid()
   const now = new Date().toISOString()
   const d = getDb()
 
-  d.prepare(
-    `INSERT INTO captures (id, case_id, url, title, html_path, screenshot_path, hash, timestamp, headers, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(
-    id,
-    params.caseId,
-    params.url,
-    params.title,
-    params.htmlPath ?? null,
-    params.screenshotPath ?? null,
-    params.hash,
-    params.timestamp,
-    params.headers ?? null,
-    now
-  )
-
-  // Insert into FTS index
-  if (params.textContent || params.title || params.url) {
-    d.prepare('INSERT INTO captures_fts (rowid, title, url, content) VALUES (?, ?, ?, ?)').run(
-      d.prepare('SELECT rowid FROM captures WHERE id = ?').get(id)?.rowid,
-      params.title ?? '',
+  const run = d.transaction(() => {
+    d.prepare(
+      `INSERT INTO captures (id, case_id, url, title, html_path, screenshot_path, hash, timestamp, headers, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      id,
+      params.caseId,
       params.url,
-      params.textContent ?? ''
+      params.title,
+      params.htmlPath ?? null,
+      params.screenshotPath ?? null,
+      params.hash,
+      params.timestamp,
+      params.headers ?? null,
+      now
     )
-  }
 
-  // Touch the case's updated_at
-  d.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(now, params.caseId)
+    // Insert into FTS index
+    if (params.textContent || params.title || params.url) {
+      const rowid = (d.prepare('SELECT rowid FROM captures WHERE id = ?').get(id) as { rowid: number })?.rowid
+      d.prepare('INSERT INTO captures_fts (rowid, title, url, content) VALUES (?, ?, ?, ?)').run(
+        rowid,
+        params.title ?? '',
+        params.url,
+        params.textContent ?? ''
+      )
+    }
 
+    // Touch the case's updated_at
+    d.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(now, params.caseId)
+  })
+
+  run()
   return getCapture(id)!
 }
 
 export function deleteCapture(id: string): boolean {
+  const d = getDb()
   const capture = getCapture(id)
   if (!capture) return false
 
-  // Delete FTS entry
-  const row = getDb().prepare('SELECT rowid FROM captures WHERE id = ?').get(id) as
-    | { rowid: number }
-    | undefined
-  if (row) {
-    getDb().prepare('DELETE FROM captures_fts WHERE rowid = ?').run(row.rowid)
-  }
+  const run = d.transaction(() => {
+    // Delete FTS entry
+    const row = d.prepare('SELECT rowid FROM captures WHERE id = ?').get(id) as
+      | { rowid: number }
+      | undefined
+    if (row) {
+      d.prepare('DELETE FROM captures_fts WHERE rowid = ?').run(row.rowid)
+    }
 
-  const result = getDb().prepare('DELETE FROM captures WHERE id = ?').run(id)
+    return d.prepare('DELETE FROM captures WHERE id = ?').run(id)
+  })
+
+  const result = run()
   return result.changes > 0
 }
 
@@ -485,6 +519,106 @@ export function listActiveSelectors(): ActiveCaseSelectors[] {
     grouped.get(caseId)!.selectors.push(rowToSelector(row))
   }
   return Array.from(grouped.values())
+}
+
+// --- Selector Matches ---
+
+export function matchSelectorsForCapture(captureId: string, caseId: string, textContent: string): void {
+  const selectors = listSelectors(caseId)
+  const d = getDb()
+  const insertStmt = d.prepare(
+    'INSERT OR IGNORE INTO selector_matches (selector_id, capture_id) VALUES (?, ?)'
+  )
+
+  const run = d.transaction(() => {
+    for (const sel of selectors) {
+      if (!sel.enabled) continue
+      try {
+        let matched = false
+        if (sel.isRegex) {
+          const re = new RegExp(sel.pattern, 'gi')
+          matched = re.test(textContent)
+        } else {
+          matched = textContent.toLowerCase().includes(sel.pattern.toLowerCase())
+        }
+        if (matched) {
+          insertStmt.run(sel.id, captureId)
+        }
+      } catch {
+        // Invalid regex — skip
+      }
+    }
+  })
+
+  run()
+}
+
+export function matchSelectorAgainstCaptures(
+  selectorId: string,
+  captureTexts: Array<{ captureId: string; text: string }>
+): void {
+  const sel = getSelector(selectorId)
+  if (!sel) return
+
+  const d = getDb()
+  const insertStmt = d.prepare(
+    'INSERT OR IGNORE INTO selector_matches (selector_id, capture_id) VALUES (?, ?)'
+  )
+
+  const run = d.transaction(() => {
+    for (const { captureId, text } of captureTexts) {
+      try {
+        let matched = false
+        if (sel.isRegex) {
+          const re = new RegExp(sel.pattern, 'gi')
+          matched = re.test(text)
+        } else {
+          matched = text.toLowerCase().includes(sel.pattern.toLowerCase())
+        }
+        if (matched) {
+          insertStmt.run(selectorId, captureId)
+        }
+      } catch {
+        // Invalid regex — skip
+      }
+    }
+  })
+
+  run()
+}
+
+export function getSelectorMatchCounts(caseId: string): Record<string, number> {
+  const rows = getDb()
+    .prepare(
+      `SELECT sm.selector_id, COUNT(*) as count
+       FROM selector_matches sm
+       JOIN selectors s ON sm.selector_id = s.id
+       WHERE s.case_id = ?
+       GROUP BY sm.selector_id`
+    )
+    .all(caseId) as Array<{ selector_id: string; count: number }>
+
+  const result: Record<string, number> = {}
+  for (const row of rows) {
+    result[row.selector_id] = row.count
+  }
+  return result
+}
+
+export function getCapturesMatchingSelectors(caseId: string, selectorIds: string[]): string[] {
+  if (selectorIds.length === 0) return []
+
+  const placeholders = selectorIds.map(() => '?').join(',')
+  const rows = getDb()
+    .prepare(
+      `SELECT DISTINCT sm.capture_id
+       FROM selector_matches sm
+       JOIN selectors s ON sm.selector_id = s.id
+       WHERE s.case_id = ? AND sm.selector_id IN (${placeholders})`
+    )
+    .all(caseId, ...selectorIds) as Array<{ capture_id: string }>
+
+  return rows.map((r) => r.capture_id)
 }
 
 // --- Row mappers ---

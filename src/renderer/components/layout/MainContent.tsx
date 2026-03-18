@@ -1,22 +1,30 @@
 import { useAppStore } from '@renderer/stores/appStore'
 import { Dashboard } from '@renderer/components/dashboard/Dashboard'
-import { CaseOverview } from '@renderer/components/cases/CaseOverview'
-import { CaptureViewer } from '@renderer/components/captures/CaptureViewer'
+import { CaseWorkspace } from '@renderer/components/cases/CaseWorkspace'
 import { SettingsView } from '@renderer/components/settings/SettingsView'
-import { CaseAnalysis } from '@renderer/components/analysis/CaseAnalysis'
-import { SelectorsOverview } from '@renderer/components/selectors/SelectorsOverview'
 
 export function MainContent() {
-  const { activeView } = useAppStore()
+  const appMode = useAppStore((s) => s.appMode)
+  const settingsOpen = useAppStore((s) => s.settingsOpen)
+
+  if (settingsOpen) {
+    return (
+      <main className="flex-1 overflow-auto bg-neutral-950">
+        <div className="p-6">
+          <SettingsView />
+        </div>
+      </main>
+    )
+  }
 
   return (
-    <main className="flex-1 overflow-auto bg-neutral-950 p-6">
-      {activeView === 'dashboard' && <Dashboard />}
-      {activeView === 'case-overview' && <CaseOverview />}
-      {activeView === 'capture-viewer' && <CaptureViewer />}
-      {activeView === 'case-analysis' && <CaseAnalysis />}
-      {activeView === 'selectors-overview' && <SelectorsOverview />}
-      {activeView === 'settings' && <SettingsView />}
+    <main className="flex-1 overflow-auto bg-neutral-950">
+      {appMode === 'dashboard' && (
+        <div className="p-6">
+          <Dashboard />
+        </div>
+      )}
+      {appMode === 'case-workspace' && <CaseWorkspace />}
     </main>
   )
 }

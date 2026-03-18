@@ -6,7 +6,7 @@ function App(): React.JSX.Element {
   useServerStatus()
 
   return (
-    <div className="flex h-screen flex-col bg-neutral-950 text-neutral-100">
+    <div className="flex h-screen flex-col bg-black text-slate-300">
       <TopBar />
       <div className="flex flex-1 overflow-hidden">
         <MainContent />

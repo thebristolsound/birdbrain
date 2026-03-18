@@ -79,7 +79,7 @@ export function EntityGraph({ graph, onNodeClick }: EntityGraphProps) {
 
   if (graph.nodes.length === 0) {
     return (
-      <div className="flex h-64 items-center justify-center text-neutral-500">
+      <div className="flex h-64 items-center justify-center text-slate-500">
         No entities to visualize. Extract entities from captures first.
       </div>
     )
@@ -93,7 +93,7 @@ export function EntityGraph({ graph, onNodeClick }: EntityGraphProps) {
         ref={svgRef}
         width="100%"
         height={dimensions.height}
-        className="rounded border border-neutral-800 bg-neutral-900"
+        className="rounded border border-white/[0.06] bg-slate-900"
       >
         {/* Edges */}
         {links.map((link, i) => {
@@ -151,12 +151,12 @@ export function EntityGraph({ graph, onNodeClick }: EntityGraphProps) {
 
       {/* Hover tooltip */}
       {hoveredNode && (
-        <div className="absolute left-4 top-4 rounded border border-neutral-700 bg-neutral-800 p-3 shadow-lg">
-          <div className="text-sm font-medium text-neutral-200">{hoveredNode.node.value}</div>
-          <div className="mt-1 text-xs text-neutral-400">
+        <div className="absolute left-4 top-4 rounded border border-white/[0.08] bg-slate-800 p-3 shadow-lg">
+          <div className="text-sm font-medium text-slate-200">{hoveredNode.node.value}</div>
+          <div className="mt-1 text-xs text-slate-400">
             Type: {hoveredNode.node.type} | Seen {hoveredNode.node.occurrences}x in {hoveredNode.node.captureIds.length} capture(s)
           </div>
-          <div className="mt-0.5 font-mono text-xs text-neutral-500">
+          <div className="mt-0.5 font-mono text-xs text-slate-500">
             {new Date(hoveredNode.node.firstSeen).toLocaleDateString()} — {new Date(hoveredNode.node.lastSeen).toLocaleDateString()}
           </div>
         </div>
@@ -167,7 +167,7 @@ export function EntityGraph({ graph, onNodeClick }: EntityGraphProps) {
         {Object.entries(TYPE_COLORS)
           .filter(([type]) => graph.nodes.some((n) => n.type === type))
           .map(([type, color]) => (
-            <div key={type} className="flex items-center gap-1 text-xs text-neutral-500">
+            <div key={type} className="flex items-center gap-1 text-xs text-slate-500">
               <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
               {type}
             </div>

@@ -41,16 +41,16 @@ export function CaseAnalysis() {
     }
   }
 
-  if (loading) return <div className="text-neutral-500">Loading...</div>
+  if (loading) return <div className="text-slate-500">Loading...</div>
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-neutral-100">Case Analysis</h1>
+        <h1 className="text-2xl font-bold text-white">Case Analysis</h1>
         <button
           onClick={handleAnalyze}
           disabled={analyzing}
-          className="rounded bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500 disabled:opacity-50"
+          className="rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
         >
           {analyzing ? 'Analyzing...' : analysis ? 'Re-analyze Case' : 'Analyze Case'}
         </button>
@@ -59,7 +59,7 @@ export function CaseAnalysis() {
       {/* Entity Graph */}
       {graph && (
         <div>
-          <h2 className="mb-3 text-lg font-semibold text-neutral-200">Entity Graph</h2>
+          <h2 className="mb-3 text-lg font-semibold text-slate-200">Entity Graph</h2>
           <EntityGraph graph={graph} />
         </div>
       )}
@@ -71,11 +71,11 @@ export function CaseAnalysis() {
       {analysis && <InsightsPanel analysis={analysis} />}
 
       {!analysis && !analyzing && (
-        <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-6 text-center">
-          <p className="text-neutral-400">
+        <div className="rounded-lg border border-white/[0.06] bg-slate-900 p-6 text-center">
+          <p className="text-slate-400">
             Click "Analyze Case" to generate AI-powered insights about entity relationships and patterns.
           </p>
-          <p className="mt-1 text-xs text-neutral-600">
+          <p className="mt-1 text-xs text-slate-600">
             This sends entity data to OpenRouter and uses API tokens.
           </p>
         </div>

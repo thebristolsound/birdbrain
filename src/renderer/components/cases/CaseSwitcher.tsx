@@ -8,7 +8,7 @@ export function CaseSwitcher() {
   const activeCaseId = useAppStore((s) => s.activeCaseId)
   const sessionActive = useAppStore((s) => s.sessionActive)
   const selectCase = useAppStore((s) => s.selectCase)
-  const { cases } = useCases()
+  const { cases, loading } = useCases()
 
   const activeCase = cases.find((c) => c.id === activeCaseId)
 
@@ -23,12 +23,18 @@ export function CaseSwitcher() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [open])
 
+  if (loading) {
+    return <span className="text-sm font-semibold text-neutral-400">Loading…</span>
+  }
+
   if (!activeCase) return null
 
   return (
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
         className="flex items-center gap-1 text-sm font-semibold text-neutral-100 hover:text-white"
       >
         {activeCase.name}

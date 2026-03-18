@@ -23,7 +23,7 @@ export function CaseWorkspace() {
   const setActiveTab = useAppStore((s) => s.setActiveTab)
   const sessionActive = useAppStore((s) => s.sessionActive)
   const goToDashboard = useAppStore((s) => s.goToDashboard)
-  const { cases, updateCase, deleteCase } = useCases()
+  const { cases, loading, updateCase, deleteCase } = useCases()
 
   const [menuOpen, setMenuOpen] = useState(false)
   const [renaming, setRenaming] = useState(false)
@@ -49,7 +49,15 @@ export function CaseWorkspace() {
     goToDashboard()
   }, [activeCaseId, deleteCase, goToDashboard])
 
-  if (!activeCaseId || !activeCase) return null
+  if (!activeCaseId) return null
+
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center text-neutral-500">Loading case…</div>
+    )
+  }
+
+  if (!activeCase) return null
 
   return (
     <div className="flex h-full flex-col">

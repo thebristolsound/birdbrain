@@ -24,7 +24,13 @@ export function CaseEntities() {
   capturesRef.current = captures
 
   useEffect(() => {
-    if (!activeCaseId || !captureIds) return
+    if (!activeCaseId) return
+    if (!captureIds) {
+      setEntities([])
+      setExpandedEntity(null)
+      setLoading(false)
+      return
+    }
     setLoading(true)
 
     // Load entities for all captures in the case

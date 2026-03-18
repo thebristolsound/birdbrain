@@ -120,7 +120,15 @@ export function Dashboard() {
               >
                 {/* Clickable card area */}
                 <div
+                  role="button"
+                  tabIndex={editingId === c.id ? -1 : 0}
                   onClick={() => !editingId && selectCase(c.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      if (!editingId) selectCase(c.id)
+                    }
+                  }}
                   className="w-full cursor-pointer p-3 pr-10 text-left"
                 >
                   {editingId === c.id ? (

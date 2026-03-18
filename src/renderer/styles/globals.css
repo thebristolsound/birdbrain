@@ -1,46 +1,73 @@
 @import "tailwindcss";
+@import "@fontsource-variable/plus-jakarta-sans";
+@import "@fontsource-variable/dm-sans";
+@import "@fontsource-variable/jetbrains-mono";
 
 @theme {
+  --color-indigo-300: #a5b4fc;
+  --color-indigo-400: #818cf8;
+  --color-indigo-500: #6366f1;
+  --color-indigo-600: #4f46e5;
+  --color-indigo-700: #4338ca;
+
   --color-amber-400: #fbbf24;
   --color-amber-500: #f59e0b;
   --color-amber-600: #d97706;
-  --color-green-400: #4ade80;
-  --color-green-500: #22c55e;
-  --color-green-800: #166534;
-  --color-green-950: #052e16;
+
+  --color-emerald-400: #34d399;
+  --color-emerald-500: #10b981;
+  --color-emerald-700: #047857;
+
   --color-red-400: #f87171;
   --color-red-500: #ef4444;
   --color-red-600: #dc2626;
-  --color-red-950: #450a0a;
-  --color-neutral-100: #f5f5f5;
-  --color-neutral-200: #e5e5e5;
-  --color-neutral-300: #d4d4d4;
-  --color-neutral-400: #a3a3a3;
-  --color-neutral-500: #737373;
-  --color-neutral-600: #525252;
-  --color-neutral-700: #404040;
-  --color-neutral-800: #262626;
-  --color-neutral-900: #171717;
-  --color-neutral-950: #0a0a0a;
+
+  --color-teal-500: #14b8a6;
+
+  --color-slate-100: #f1f5f9;
+  --color-slate-200: #e2e8f0;
+  --color-slate-300: #cbd5e1;
+  --color-slate-400: #94a3b8;
+  --color-slate-500: #64748b;
+  --color-slate-600: #475569;
+  --color-slate-700: #334155;
+  --color-slate-800: #1e293b;
+  --color-slate-900: #0f172a;
+
+  --font-display: "Plus Jakarta Sans Variable", sans-serif;
+  --font-body: "DM Sans Variable", sans-serif;
+  --font-mono: "JetBrains Mono Variable", monospace;
 }
 
 body {
-  @apply bg-neutral-950 text-neutral-100;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  @apply bg-black text-slate-300;
+  font-family: var(--font-body);
 }
 
-/* Scrollbar styling for dark theme */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #334155; border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
-::-webkit-scrollbar-track {
-  background: transparent;
+.anim-in { animation: fadeIn 0.4s ease-out forwards; opacity: 0; }
+
+.neu-card {
+  background: #1e293b;
+  border: 1px solid rgba(255,255,255,0.06);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.4), 0 4px 12px rgba(0,0,0,0.3);
 }
-::-webkit-scrollbar-thumb {
-  background: #404040;
-  border-radius: 3px;
+.neu-card-hover:hover {
+  box-shadow: 0 2px 12px rgba(0,0,0,0.5), 0 8px 24px rgba(0,0,0,0.4);
+  transform: translateY(-1px);
 }
-::-webkit-scrollbar-thumb:hover {
-  background: #525252;
+
+.glow-indigo {
+  box-shadow: 0 0 20px rgba(99,102,241,0.25), 0 0 60px rgba(99,102,241,0.08);
+}
+.glow-indigo-btn {
+  box-shadow: 0 4px 20px rgba(99,102,241,0.4), 0 0 40px rgba(99,102,241,0.12);
 }

@@ -22,7 +22,7 @@ const STYLES = `
     all: initial;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: 13px;
-    color: #e5e5e5;
+    color: #e2e8f0;
   }
 
   .sidebar {
@@ -31,8 +31,8 @@ const STYLES = `
     right: 0;
     width: 320px;
     height: 100vh;
-    background: #1a1a1a;
-    border-left: 1px solid #333;
+    background: #000000;
+    border-left: 1px solid rgba(255,255,255,0.08);
     z-index: 2147483647;
     display: flex;
     flex-direction: column;
@@ -44,8 +44,8 @@ const STYLES = `
     align-items: center;
     justify-content: space-between;
     padding: 12px 16px;
-    border-bottom: 1px solid #333;
-    background: #222;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    background: #0f172a;
   }
 
   .header-title {
@@ -55,8 +55,8 @@ const STYLES = `
   }
 
   .header-count {
-    background: #f59e0b;
-    color: #0a0a0a;
+    background: #4f46e5;
+    color: #ffffff;
     font-size: 11px;
     font-weight: 700;
     padding: 2px 8px;
@@ -67,7 +67,7 @@ const STYLES = `
   .collapse-btn {
     background: none;
     border: none;
-    color: #737373;
+    color: #64748b;
     cursor: pointer;
     font-size: 18px;
     padding: 4px;
@@ -75,7 +75,7 @@ const STYLES = `
   }
 
   .collapse-btn:hover {
-    color: #e5e5e5;
+    color: #e2e8f0;
   }
 
   .matches-container {
@@ -93,19 +93,19 @@ const STYLES = `
     align-items: center;
     justify-content: space-between;
     padding: 8px 16px;
-    background: #252525;
-    border-bottom: 1px solid #333;
+    background: #0f172a;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
   }
 
   .case-name {
     font-weight: 600;
     font-size: 12px;
-    color: #f59e0b;
+    color: #4f46e5;
   }
 
   .capture-btn {
-    background: #f59e0b;
-    color: #0a0a0a;
+    background: #4f46e5;
+    color: #ffffff;
     border: none;
     font-size: 11px;
     font-weight: 600;
@@ -115,35 +115,35 @@ const STYLES = `
   }
 
   .capture-btn:hover {
-    background: #d97706;
+    background: #4338ca;
   }
 
   .match-item {
     padding: 8px 16px;
-    border-bottom: 1px solid #2a2a2a;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
     cursor: pointer;
   }
 
   .match-item:hover {
-    background: #252525;
+    background: rgba(255,255,255,0.1);
   }
 
   .match-pattern {
     font-family: monospace;
     font-size: 11px;
-    color: #a3a3a3;
+    color: #94a3b8;
     margin-bottom: 4px;
   }
 
   .match-text {
     font-weight: 600;
-    color: #fbbf24;
+    color: #818cf8;
     font-size: 13px;
   }
 
   .match-context {
     font-size: 11px;
-    color: #737373;
+    color: #64748b;
     margin-top: 4px;
     line-height: 1.4;
     word-break: break-word;
@@ -156,8 +156,8 @@ const STYLES = `
     width: 48px;
     height: 48px;
     border-radius: 50%;
-    background: #f59e0b;
-    color: #0a0a0a;
+    background: #4f46e5;
+    color: #ffffff;
     font-weight: 700;
     font-size: 16px;
     display: flex;
@@ -170,7 +170,7 @@ const STYLES = `
   }
 
   .badge:hover {
-    background: #d97706;
+    background: #4338ca;
     transform: scale(1.1);
   }
 
@@ -179,7 +179,7 @@ const STYLES = `
   }
 
   .matches-container::-webkit-scrollbar-track {
-    background: #1a1a1a;
+    background: #000000;
   }
 
   .matches-container::-webkit-scrollbar-thumb {

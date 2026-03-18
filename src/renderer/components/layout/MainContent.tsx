@@ -1,6 +1,7 @@
 import { useAppStore } from '@renderer/stores/appStore'
 import { Dashboard } from '@renderer/components/dashboard/Dashboard'
 import { CaseWorkspace } from '@renderer/components/cases/CaseWorkspace'
+import { NewCaseWizard } from '@renderer/components/cases/NewCaseWizard'
 import { SettingsView } from '@renderer/components/settings/SettingsView'
 
 export function MainContent() {
@@ -9,7 +10,7 @@ export function MainContent() {
 
   if (settingsOpen) {
     return (
-      <main className="flex-1 overflow-auto bg-neutral-950">
+      <main className="flex-1 overflow-auto bg-black">
         <div className="p-6">
           <SettingsView />
         </div>
@@ -17,8 +18,16 @@ export function MainContent() {
     )
   }
 
+  if (appMode === 'new-case-wizard') {
+    return (
+      <main className="flex-1 overflow-auto bg-black">
+        <NewCaseWizard />
+      </main>
+    )
+  }
+
   return (
-    <main className="flex-1 overflow-auto bg-neutral-950">
+    <main className="flex-1 overflow-auto bg-black">
       {appMode === 'dashboard' && (
         <div className="p-6">
           <Dashboard />

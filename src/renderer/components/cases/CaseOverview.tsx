@@ -3,6 +3,16 @@ import { useAppStore } from '@renderer/stores/appStore'
 import { useCaptures } from '@renderer/hooks/useCaptures'
 import { useCases } from '@renderer/hooks/useCases'
 import { ExportDialog } from '@renderer/components/export/ExportDialog'
+import {
+  Camera,
+  Globe,
+  Fingerprint,
+  Sparkles,
+  FileOutput,
+  Zap,
+  Pencil,
+  ChevronRight
+} from 'lucide-react'
 import type { Case } from '@shared/types'
 
 export function CaseOverview() {
@@ -76,7 +86,7 @@ export function CaseOverview() {
   }
 
   if (!caseData) {
-    return <div className="text-neutral-500">Loading case...</div>
+    return <div className="text-slate-500">Loading case...</div>
   }
 
   // Compute top domains
@@ -102,139 +112,199 @@ export function CaseOverview() {
       : null
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      {/* Editable case name and description */}
-      <div>
-        {editingName ? (
-          <input
-            ref={nameInputRef}
-            value={nameValue}
-            onChange={(e) => setNameValue(e.target.value)}
-            onBlur={saveName}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') saveName()
-              if (e.key === 'Escape') {
-                setNameValue(caseData.name)
-                setEditingName(false)
-              }
-            }}
-            className="w-full rounded border border-neutral-600 bg-neutral-800 px-2 py-1 text-2xl font-bold text-neutral-100 focus:border-amber-500 focus:outline-none"
-          />
-        ) : (
-          <h1
-            className="cursor-pointer text-2xl font-bold text-neutral-100 hover:text-amber-400"
-            title="Click to edit"
-            onClick={() => setEditingName(true)}
-          >
-            {caseData.name}
-          </h1>
-        )}
+    <div className="flex gap-6">
+      {/* Main content */}
+      <div className="min-w-0 flex-1 space-y-6">
+        {/* Editable case name and description */}
+        <div>
+          {editingName ? (
+            <input
+              ref={nameInputRef}
+              value={nameValue}
+              onChange={(e) => setNameValue(e.target.value)}
+              onBlur={saveName}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') saveName()
+                if (e.key === 'Escape') {
+                  setNameValue(caseData.name)
+                  setEditingName(false)
+                }
+              }}
+              className="w-full rounded border border-indigo-500 bg-slate-800 px-2 py-1 font-display text-2xl font-extrabold text-white focus:outline-none"
+            />
+          ) : (
+            <h1
+              className="group cursor-pointer font-display text-2xl font-extrabold text-white"
+              title="Click to edit"
+              onClick={() => setEditingName(true)}
+            >
+              {caseData.name}
+              <Pencil className="ml-2 inline-block h-4 w-4 text-slate-500 opacity-0 transition-opacity group-hover:opacity-100" />
+            </h1>
+          )}
 
-        {editingDesc ? (
-          <textarea
-            ref={descInputRef}
-            value={descValue}
-            onChange={(e) => setDescValue(e.target.value)}
-            onBlur={saveDesc}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                setDescValue(caseData.description ?? '')
-                setEditingDesc(false)
-              }
-            }}
-            rows={3}
-            className="mt-1 w-full resize-none rounded border border-neutral-600 bg-neutral-800 px-2 py-1 text-sm text-neutral-300 focus:border-amber-500 focus:outline-none"
-          />
-        ) : (
-          <p
-            className="mt-1 cursor-pointer text-neutral-400 hover:text-neutral-300"
-            title="Click to edit"
-            onClick={() => setEditingDesc(true)}
-          >
-            {caseData.description || (
-              <span className="italic text-neutral-600">Add a description...</span>
-            )}
-          </p>
-        )}
+          {editingDesc ? (
+            <textarea
+              ref={descInputRef}
+              value={descValue}
+              onChange={(e) => setDescValue(e.target.value)}
+              onBlur={saveDesc}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setDescValue(caseData.description ?? '')
+                  setEditingDesc(false)
+                }
+              }}
+              rows={3}
+              className="mt-1 w-full resize-none rounded border border-indigo-500 bg-slate-800 px-2 py-1 text-sm text-slate-300 focus:outline-none"
+            />
+          ) : (
+            <p
+              className="mt-1 cursor-pointer text-slate-400 hover:text-slate-300"
+              title="Click to edit"
+              onClick={() => setEditingDesc(true)}
+            >
+              {caseData.description || (
+                <span className="italic text-slate-600">Add a description...</span>
+              )}
+            </p>
+          )}
 
-        {dateRange && (
-          <p className="mt-1 font-mono text-xs text-neutral-600">
-            {new Date(dateRange.first).toLocaleDateString()} —{' '}
-            {new Date(dateRange.last).toLocaleDateString()}
-          </p>
+          {dateRange && (
+            <p className="mt-1 font-mono text-xs text-slate-600">
+              {new Date(dateRange.first).toLocaleDateString()} —{' '}
+              {new Date(dateRange.last).toLocaleDateString()}
+            </p>
+          )}
+        </div>
+
+        {/* Stat cards */}
+        <div className="grid grid-cols-3 gap-4">
+          <div className="neu-card rounded-2xl p-5">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10">
+                <Camera className="h-5 w-5 text-indigo-400" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-white">{captures.length}</div>
+                <div className="text-sm text-slate-400">Captures</div>
+              </div>
+            </div>
+          </div>
+          <div className="neu-card rounded-2xl p-5">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10">
+                <Globe className="h-5 w-5 text-indigo-400" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-white">{topDomains.length}</div>
+                <div className="text-sm text-slate-400">Domains</div>
+              </div>
+            </div>
+          </div>
+          <div className="neu-card rounded-2xl p-5">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10">
+                <Fingerprint className="h-5 w-5 text-indigo-400" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-white">0</div>
+                <div className="text-sm text-slate-400">Entities</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Capture Timeline */}
+        {captures.length > 0 && (
+          <div>
+            <h2 className="mb-3 text-lg font-semibold text-slate-200">Capture Timeline</h2>
+            <div className="neu-card flex h-8 gap-px overflow-hidden rounded-2xl">
+              {captures.slice(0, 50).map((cap) => (
+                <div
+                  key={cap.id}
+                  className="flex-1 bg-indigo-500/15 hover:bg-indigo-500"
+                  title={`${cap.title}\n${new Date(cap.timestamp).toLocaleString()}`}
+                />
+              ))}
+            </div>
+          </div>
         )}
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-          <div className="text-2xl font-bold text-neutral-100">{captures.length}</div>
-          <div className="text-sm text-neutral-400">Captures</div>
+      {/* Right sidebar */}
+      <div className="w-80 shrink-0 space-y-4">
+        {/* Quick Actions */}
+        <div className="neu-card rounded-2xl p-4">
+          <h3 className="mb-3 text-sm font-semibold text-slate-300">Quick Actions</h3>
+          <div className="space-y-2">
+            <button
+              onClick={() => setActiveTab('analysis')}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 py-2.5 text-sm font-medium text-white hover:bg-indigo-500"
+            >
+              <Sparkles className="h-4 w-4" />
+              Analyze Case
+            </button>
+            <button
+              onClick={() => setShowExport(true)}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-slate-800 py-2.5 text-sm font-medium text-slate-300 hover:bg-slate-700"
+            >
+              <FileOutput className="h-4 w-4" />
+              Export Report
+            </button>
+          </div>
         </div>
-        <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-          <div className="text-2xl font-bold text-neutral-100">{topDomains.length}</div>
-          <div className="text-sm text-neutral-400">Domains</div>
-        </div>
-        <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-          <div className="text-2xl font-bold text-neutral-100">0</div>
-          <div className="text-sm text-neutral-400">Entities</div>
-        </div>
-      </div>
 
-      {/* Actions */}
-      <div className="flex gap-2">
-        <button
-          onClick={() => setActiveTab('analysis')}
-          className="rounded bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500"
-        >
-          Analyze Case
-        </button>
-        <button
-          onClick={() => setShowExport(true)}
-          className="rounded border border-neutral-700 bg-neutral-800 px-4 py-2 text-sm text-neutral-300 hover:bg-neutral-700"
-        >
-          Export
-        </button>
+        {/* Top Domains */}
+        {topDomains.length > 0 && (
+          <div className="neu-card rounded-2xl p-4">
+            <h3 className="mb-3 text-sm font-semibold text-slate-300">Top Domains</h3>
+            <div className="space-y-2">
+              {topDomains.map(([domain, count]) => (
+                <div
+                  key={domain}
+                  className="flex items-center gap-2"
+                >
+                  <Globe className="h-4 w-4 shrink-0 text-slate-500" />
+                  <span className="min-w-0 flex-1 truncate font-mono text-sm text-slate-300">
+                    {domain}
+                  </span>
+                  <span className="shrink-0 rounded-full bg-slate-800 px-2 py-0.5 text-xs text-slate-400">
+                    {count}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Investigation Health */}
+        <div className="neu-card rounded-2xl p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <Zap className="h-4 w-4 text-indigo-400" />
+            <h3 className="text-sm font-semibold text-slate-300">Investigation Health</h3>
+          </div>
+          <div>
+            <div className="mb-1 flex items-center justify-between text-xs">
+              <span className="text-slate-400">AI Extraction Coverage</span>
+              <span className="text-slate-500">0%</span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-slate-800">
+              <div
+                className="h-full rounded-full bg-indigo-500 transition-all"
+                style={{ width: '0%' }}
+              />
+            </div>
+          </div>
+        </div>
       </div>
 
       {showExport && caseData && (
-        <ExportDialog caseId={caseData.id} caseName={caseData.name} onClose={() => setShowExport(false)} />
-      )}
-
-      {/* Top Domains */}
-      {topDomains.length > 0 && (
-        <div>
-          <h2 className="mb-3 text-lg font-semibold text-neutral-200">Top Domains</h2>
-          <div className="space-y-2">
-            {topDomains.map(([domain, count]) => (
-              <div
-                key={domain}
-                className="flex items-center justify-between rounded border border-neutral-800 bg-neutral-900 px-3 py-2"
-              >
-                <span className="font-mono text-sm text-neutral-300">{domain}</span>
-                <span className="text-sm text-neutral-500">
-                  {count} capture{count !== 1 ? 's' : ''}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Capture Timeline */}
-      {captures.length > 0 && (
-        <div>
-          <h2 className="mb-3 text-lg font-semibold text-neutral-200">Capture Timeline</h2>
-          <div className="flex h-8 gap-px overflow-hidden rounded border border-neutral-800 bg-neutral-900">
-            {captures.slice(0, 50).map((cap) => (
-              <div
-                key={cap.id}
-                className="flex-1 bg-amber-600/60 hover:bg-amber-500"
-                title={`${cap.title}\n${new Date(cap.timestamp).toLocaleString()}`}
-              />
-            ))}
-          </div>
-        </div>
+        <ExportDialog
+          caseId={caseData.id}
+          caseName={caseData.name}
+          onClose={() => setShowExport(false)}
+        />
       )}
     </div>
   )

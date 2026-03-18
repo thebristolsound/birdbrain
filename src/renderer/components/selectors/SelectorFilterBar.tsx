@@ -18,19 +18,19 @@ export function SelectorFilterBar() {
   if (activeSelectorFilters.length === 0) return null
 
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-neutral-800 bg-neutral-900/50 px-3 py-2">
-      <span className="text-xs text-neutral-500">Filtered by:</span>
+    <div className="flex items-center gap-2 rounded-lg border border-white/[0.06] bg-slate-900/50 px-3 py-2">
+      <span className="text-xs text-slate-500">Filtered by:</span>
       {activeSelectorFilters.map((id) => {
         const sel = selectors.find((s) => s.id === id)
         return (
           <span
             key={id}
-            className="inline-flex items-center gap-1 rounded-full bg-amber-600/20 px-2.5 py-0.5 text-xs text-amber-400"
+            className="inline-flex items-center gap-1 rounded-full bg-indigo-600/20 px-2.5 py-0.5 text-xs text-indigo-400"
           >
             {sel?.label || sel?.pattern || id.slice(0, 8)}
             <button
               onClick={() => removeSelectorFilter(id)}
-              className="ml-0.5 text-amber-500 hover:text-amber-300"
+              className="ml-0.5 text-indigo-500 hover:text-indigo-300"
             >
               &times;
             </button>
@@ -39,7 +39,7 @@ export function SelectorFilterBar() {
       })}
       <button
         onClick={clearSelectorFilters}
-        className="text-xs text-neutral-500 hover:text-neutral-300"
+        className="text-xs text-slate-500 hover:text-slate-300"
       >
         Clear all
       </button>

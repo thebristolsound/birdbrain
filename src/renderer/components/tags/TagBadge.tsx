@@ -1,4 +1,5 @@
 import type { Tag } from '@shared/types'
+import { X } from 'lucide-react'
 
 interface TagBadgeProps {
   tag: Tag
@@ -7,15 +8,24 @@ interface TagBadgeProps {
 }
 
 export function TagBadge({ tag, onClick, removable }: TagBadgeProps) {
+  const color = tag.color || '#f59e0b'
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs text-neutral-300 cursor-pointer hover:bg-neutral-700"
-      style={{ backgroundColor: `${tag.color || '#f59e0b'}20` }}
+      className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-medium transition-transform hover:scale-[1.04] cursor-default"
+      style={{
+        background: `${color}18`,
+        color: color,
+        border: `1px solid ${color}20`
+      }}
       onClick={onClick}
     >
-      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: tag.color || '#f59e0b' }} />
+      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
       {tag.name}
-      {removable && <span className="ml-0.5 text-neutral-500">&times;</span>}
+      {removable && (
+        <button className="ml-0.5 hover:opacity-70 transition-opacity">
+          <X className="h-2.5 w-2.5" />
+        </button>
+      )}
     </span>
   )
 }

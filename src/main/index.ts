@@ -15,7 +15,7 @@ function createWindow(): BrowserWindow {
     minHeight: 600,
     show: false,
     title: 'Birdbrain',
-    backgroundColor: '#0a0a0a',
+    backgroundColor: '#000000',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false

@@ -8,7 +8,7 @@ interface TagManagerProps {
 }
 
 export function TagManager({ onClose }: TagManagerProps) {
-  const { tags, createTag, updateTag, deleteTag } = useTags()
+  const { tags, createTag, deleteTag } = useTags()
   const [newName, setNewName] = useState('')
   const [newColor, setNewColor] = useState(TAG_COLORS[0])
 
@@ -21,10 +21,10 @@ export function TagManager({ onClose }: TagManagerProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
-        className="w-96 rounded-lg border border-neutral-700 bg-neutral-900 p-6"
+        className="neu-card w-96 rounded-2xl p-6"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="mb-4 text-lg font-semibold text-neutral-100">Manage Tags</h2>
+        <h2 className="mb-4 text-lg font-semibold text-white">Manage Tags</h2>
 
         {/* Create new tag */}
         <div className="mb-4 flex items-center gap-2">
@@ -34,7 +34,7 @@ export function TagManager({ onClose }: TagManagerProps) {
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-            className="flex-1 rounded border border-neutral-700 bg-neutral-800 px-2 py-1.5 text-sm text-neutral-100 outline-none focus:border-amber-600"
+            className="flex-1 rounded border border-white/[0.08] bg-slate-800 px-2 py-1.5 text-sm text-white outline-none focus:border-indigo-500"
             placeholder="New tag name..."
           />
           <div className="flex gap-1">
@@ -43,7 +43,7 @@ export function TagManager({ onClose }: TagManagerProps) {
                 data-testid="tag-color-swatch"
                 key={c}
                 onClick={() => setNewColor(c)}
-                className={`h-5 w-5 rounded-full ${newColor === c ? 'ring-2 ring-white ring-offset-1 ring-offset-neutral-900' : ''}`}
+                className={`h-5 w-5 rounded-full ${newColor === c ? 'ring-2 ring-white ring-offset-1 ring-offset-slate-900' : ''}`}
                 style={{ backgroundColor: c }}
               />
             ))}
@@ -52,7 +52,7 @@ export function TagManager({ onClose }: TagManagerProps) {
             data-testid="tag-add-btn"
             onClick={handleCreate}
             disabled={!newName.trim()}
-            className="rounded bg-amber-600 px-2 py-1.5 text-sm text-white hover:bg-amber-500 disabled:opacity-50"
+            className="rounded bg-indigo-600 px-2 py-1.5 text-sm text-white hover:bg-indigo-500 disabled:opacity-50"
           >
             Add
           </button>
@@ -61,13 +61,13 @@ export function TagManager({ onClose }: TagManagerProps) {
         {/* Existing tags */}
         <div data-testid="tag-manager" className="max-h-48 space-y-1 overflow-y-auto">
           {tags.map((tag) => (
-            <div key={tag.id} className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-neutral-800">
+            <div key={tag.id} className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-white/[0.04]">
               <span className="h-3 w-3 rounded-full" style={{ backgroundColor: tag.color || '#f59e0b' }} />
-              <span className="flex-1 text-sm text-neutral-300">{tag.name}</span>
+              <span className="flex-1 text-sm text-slate-300">{tag.name}</span>
               <button
                 data-testid="tag-delete-btn"
                 onClick={() => deleteTag(tag.id)}
-                className="text-xs text-neutral-600 hover:text-red-400"
+                className="text-xs text-slate-600 hover:text-red-400"
               >
                 Delete
               </button>
@@ -79,7 +79,7 @@ export function TagManager({ onClose }: TagManagerProps) {
           <button
             data-testid="tag-done-btn"
             onClick={onClose}
-            className="rounded px-3 py-1.5 text-sm text-neutral-400 hover:text-neutral-200"
+            className="rounded px-3 py-1.5 text-sm text-slate-400 hover:text-slate-200"
           >
             Done
           </button>

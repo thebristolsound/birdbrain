@@ -52,24 +52,24 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
-        className="w-[28rem] rounded-lg border border-neutral-700 bg-neutral-900 p-6"
+        className="neu-card w-[28rem] rounded-2xl p-6"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="mb-4 text-lg font-semibold text-neutral-100">Export Case</h2>
+        <h2 className="mb-4 text-lg font-semibold text-white">Export Case</h2>
 
         {/* Format */}
         <div className="mb-4">
-          <label className="mb-1 block text-sm text-neutral-400">Format</label>
+          <label className="mb-1 block text-sm text-slate-400">Format</label>
           <div className="flex gap-2">
             <button
               onClick={() => setFormat('html')}
-              className={`rounded px-4 py-2 text-sm ${format === 'html' ? 'bg-amber-600 text-white' : 'bg-neutral-800 text-neutral-400'}`}
+              className={`rounded px-4 py-2 text-sm ${format === 'html' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400'}`}
             >
               HTML
             </button>
             <button
               onClick={() => setFormat('pdf')}
-              className={`rounded px-4 py-2 text-sm ${format === 'pdf' ? 'bg-amber-600 text-white' : 'bg-neutral-800 text-neutral-400'}`}
+              className={`rounded px-4 py-2 text-sm ${format === 'pdf' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400'}`}
             >
               PDF
             </button>
@@ -78,7 +78,7 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
 
         {/* Include checkboxes */}
         <div className="mb-4">
-          <label className="mb-2 block text-sm text-neutral-400">Include</label>
+          <label className="mb-2 block text-sm text-slate-400">Include</label>
           <div className="space-y-2">
             {([
               ['captures', 'Captures'],
@@ -94,7 +94,7 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
                   onChange={() => toggleInclude(key)}
                   className="rounded"
                 />
-                <span className="text-sm text-neutral-300">{label}</span>
+                <span className="text-sm text-slate-300">{label}</span>
               </label>
             ))}
           </div>
@@ -102,19 +102,19 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
 
         {/* Investigator */}
         <div className="mb-4">
-          <label className="mb-1 block text-sm text-neutral-400">Investigator Name</label>
+          <label className="mb-1 block text-sm text-slate-400">Investigator Name</label>
           <input
             type="text"
             value={investigatorName}
             onChange={(e) => setInvestigatorName(e.target.value)}
-            className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-amber-600"
+            className="w-full rounded border border-white/[0.08] bg-slate-800 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500"
             placeholder="Your name..."
           />
         </div>
 
         {/* Progress */}
         {progress && (
-          <div className="mb-4 rounded bg-neutral-800 px-3 py-2 text-sm text-neutral-400">
+          <div className="mb-4 rounded bg-slate-800 px-3 py-2 text-sm text-slate-400">
             {progress}
           </div>
         )}
@@ -123,14 +123,14 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
         <div className="flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="rounded px-3 py-1.5 text-sm text-neutral-400 hover:text-neutral-200"
+            className="rounded px-3 py-1.5 text-sm text-slate-400 hover:text-slate-200"
           >
             {exporting ? 'Close' : 'Cancel'}
           </button>
           <button
             onClick={handleExport}
             disabled={exporting}
-            className="rounded bg-amber-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-amber-500 disabled:opacity-50"
+            className="rounded bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
           >
             {exporting ? 'Exporting...' : 'Export'}
           </button>

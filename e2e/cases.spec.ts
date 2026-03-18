@@ -88,4 +88,26 @@ test.describe('Cases CRUD', () => {
     // Verify the case is no longer visible on the dashboard
     await expect(page.locator('[data-testid="case-card"]:has-text("To Be Deleted")')).not.toBeVisible()
   })
+
+  test('can rename a case from workspace header', async ({ page }) => {
+    // Create a case and navigate into it
+    await page.click('[data-testid="new-case-btn"]')
+    await page.fill('[data-testid="case-name-input"]', 'Workspace Rename Test')
+    await page.click('[data-testid="case-create-btn"]')
+    await expect(page.locator('[data-testid="case-create-btn"]')).not.toBeVisible()
+
+    // Open the workspace header menu
+    await page.click('[data-testid="case-header-menu-btn"]')
+
+    // Click rename
+    await page.click('[data-testid="case-header-rename-btn"]')
+
+    // Fill in new name and submit
+    await expect(page.locator('[data-testid="case-header-rename-input"]')).toBeVisible()
+    await page.fill('[data-testid="case-header-rename-input"]', 'Workspace Renamed')
+    await page.press('[data-testid="case-header-rename-input"]', 'Enter')
+
+    // Verify new name is shown in header
+    await expect(page.locator('text=Workspace Renamed')).toBeVisible()
+  })
 })

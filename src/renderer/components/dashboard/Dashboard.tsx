@@ -110,7 +110,7 @@ export function Dashboard() {
           <div className="space-y-2">
             {/* Overlay to close menu when clicking outside */}
             {menuOpenId !== null && (
-              <div className="fixed inset-0 z-40" onClick={() => setMenuOpenId(null)} />
+              <div className="fixed inset-0 z-40" onClick={() => { setMenuOpenId(null); setDeletingId(null) }} />
             )}
             {recentCases.map((c) => (
               <div

@@ -1,52 +1,50 @@
-import type { EntityNode } from '@shared/types'
-
-interface EntityTimelineProps {
-  nodes: EntityNode[]
+interface TimelineEntry {
+  observation: string
+  significance: string
 }
 
-export function EntityTimeline({ nodes }: EntityTimelineProps) {
-  if (nodes.length === 0) return null
+interface EntityTimelineProps {
+  entries: TimelineEntry[]
+}
 
-  const sorted = [...nodes].sort((a, b) => a.firstSeen.localeCompare(b.firstSeen))
-  const earliest = sorted[0].firstSeen
-  const latest = sorted.reduce((max, n) => (n.lastSeen > max ? n.lastSeen : max), earliest)
+const DOT_STYLES = [
+  'bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.4)]',
+  'bg-purple-400 shadow-[0_0_6px_rgba(167,139,250,0.3)]',
+  'bg-indigo-500 shadow-[0_0_6px_rgba(99,102,241,0.3)]'
+]
 
-  const timeRange = new Date(latest).getTime() - new Date(earliest).getTime()
-  if (timeRange === 0) return null
+const DATE_STYLES = [
+  'text-indigo-400',
+  'text-purple-400',
+  'text-indigo-500'
+]
 
-  const getPosition = (timestamp: string) => {
-    return ((new Date(timestamp).getTime() - new Date(earliest).getTime()) / timeRange) * 100
-  }
+export function EntityTimeline({ entries }: EntityTimelineProps) {
+  if (entries.length === 0) return null
 
   return (
-    <div>
-      <h3 className="mb-3 text-sm font-semibold text-slate-200">Entity Timeline</h3>
-      <div className="space-y-1">
-        {sorted.slice(0, 20).map((node) => {
-          const startPos = getPosition(node.firstSeen)
-          const endPos = getPosition(node.lastSeen)
-          const width = Math.max(endPos - startPos, 1)
-          return (
-            <div key={`${node.type}::${node.value}`} className="flex items-center gap-2">
-              <span className="w-32 shrink-0 truncate text-xs text-slate-400" title={node.value}>
-                {node.value}
-              </span>
-              <div className="relative h-4 flex-1 rounded bg-slate-800">
-                <div
-                  className="absolute h-full rounded bg-indigo-500/15"
-                  style={{ left: `${startPos}%`, width: `${width}%` }}
-                  title={`${new Date(node.firstSeen).toLocaleDateString()} — ${new Date(node.lastSeen).toLocaleDateString()}`}
-                />
-              </div>
-              <span className="w-6 shrink-0 text-right text-xs text-slate-600">{node.occurrences}</span>
+    <div className="space-y-3">
+      {entries.map((entry, i) => {
+        const dotStyle = DOT_STYLES[i % DOT_STYLES.length]
+        const dateStyle = DATE_STYLES[i % DATE_STYLES.length]
+        const isLast = i === entries.length - 1
+        return (
+          <div key={i} className="flex gap-3">
+            <div className="flex flex-col items-center">
+              <div className={`mt-1.5 h-2 w-2 rounded-full ${dotStyle}`} />
+              {!isLast && <div className="w-px flex-1 bg-indigo-400/20" />}
             </div>
-          )
-        })}
-      </div>
-      <div className="mt-1 flex justify-between text-xs text-slate-600">
-        <span>{new Date(earliest).toLocaleDateString()}</span>
-        <span>{new Date(latest).toLocaleDateString()}</span>
-      </div>
+            <div className={isLast ? '' : 'pb-3'}>
+              <span className={`font-mono text-[10px] font-medium ${dateStyle}`}>
+                {entry.significance}
+              </span>
+              <p className="mt-1 text-[11px] leading-relaxed text-slate-300">
+                {entry.observation}
+              </p>
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }

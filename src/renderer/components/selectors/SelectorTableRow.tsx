@@ -1,0 +1,244 @@
+import { Fragment, useState } from 'react'
+import { FlaskConical, Trash2, Globe } from 'lucide-react'
+import type { Selector } from '@shared/types'
+import { useAppStore } from '@renderer/stores/appStore'
+import { highlightRegexSyntax, testPatternAgainstText, type MatchResult } from './selectorUtils'
+
+interface MatchPreview {
+  captureTitle: string
+  captureUrl: string
+  matches: MatchResult[]
+}
+
+interface SelectorTableRowProps {
+  selector: Selector
+  matchCount: number
+  isExpanded: boolean
+  onToggleExpand: () => void
+  onToggleEnabled: () => void
+  onDelete: () => void
+  caseId: string
+}
+
+export function SelectorTableRow({
+  selector,
+  matchCount,
+  isExpanded,
+  onToggleExpand,
+  onToggleEnabled,
+  onDelete,
+  caseId
+}: SelectorTableRowProps) {
+  const activeSelectorFilters = useAppStore((s) => s.activeSelectorFilters)
+  const addSelectorFilter = useAppStore((s) => s.addSelectorFilter)
+  const removeSelectorFilter = useAppStore((s) => s.removeSelectorFilter)
+  const [previews, setPreviews] = useState<MatchPreview[] | null>(null)
+  const [loadingPreviews, setLoadingPreviews] = useState(false)
+
+  const isFilterActive = activeSelectorFilters.includes(selector.id)
+
+  async function handleToggleExpand() {
+    if (!isExpanded && !previews) {
+      setLoadingPreviews(true)
+      try {
+        const captureIds = await window.birdbrain.selectors.matchingCaptures(caseId, [selector.id])
+        const captures = await window.birdbrain.captures.list(caseId)
+        const matching = captures.filter((c) => captureIds.includes(c.id)).slice(0, 3)
+        const results: MatchPreview[] = []
+
+        for (const capture of matching) {
+          try {
+            const text = await window.birdbrain.captures.getContent(capture.id, 'txt')
+            if (!text) continue
+            const matches = testPatternAgainstText(selector.pattern, selector.isRegex, text, 5)
+            if (matches.length > 0) {
+              results.push({
+                captureTitle: capture.title || capture.url,
+                captureUrl: capture.url,
+                matches
+              })
+            }
+          } catch {
+            // skip
+          }
+        }
+
+        setPreviews(results)
+      } catch (err) {
+        console.error('Failed to load previews:', err)
+        setPreviews([])
+      } finally {
+        setLoadingPreviews(false)
+      }
+    }
+    onToggleExpand()
+  }
+
+  function handleFilterToggle(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (isFilterActive) {
+      removeSelectorFilter(selector.id)
+    } else {
+      addSelectorFilter(selector.id)
+    }
+  }
+
+  return (
+    <Fragment>
+      <tr
+        className={`border-b border-white/[0.06] transition-colors hover:bg-white/[0.03] ${
+          !selector.enabled ? 'opacity-35' : ''
+        }`}
+      >
+        {/* On toggle */}
+        <td className="px-4 py-2.5">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={selector.enabled}
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleEnabled()
+            }}
+            className={`relative inline-flex h-[18px] w-[34px] items-center rounded-full transition-colors ${
+              selector.enabled ? 'bg-indigo-600' : 'bg-slate-600'
+            }`}
+          >
+            <span
+              className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
+                selector.enabled ? 'translate-x-[16px]' : 'translate-x-0.5'
+              }`}
+            />
+          </button>
+        </td>
+
+        {/* Pattern */}
+        <td className="px-4 py-2.5">
+          {selector.isRegex ? (
+            <span className="inline-block rounded-lg border border-white/[0.06] bg-black px-2 py-1 font-mono text-xs">
+              {highlightRegexSyntax(selector.pattern)}
+            </span>
+          ) : (
+            <span className="font-mono text-xs text-orange-400">{selector.pattern}</span>
+          )}
+        </td>
+
+        {/* Type badge */}
+        <td className="px-4 py-2.5">
+          {selector.isRegex ? (
+            <span className="rounded-md border border-indigo-500/20 bg-indigo-500/15 px-1.5 py-0.5 text-[10px] font-mono font-medium text-indigo-300">
+              regex
+            </span>
+          ) : (
+            <span className="rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-mono text-slate-400">
+              string
+            </span>
+          )}
+        </td>
+
+        {/* Label */}
+        <td className="px-4 py-2.5 text-xs text-slate-400">
+          {selector.label || '\u2014'}
+        </td>
+
+        {/* Match count */}
+        <td className="px-4 py-2.5">
+          <span
+            className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+              matchCount > 0
+                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
+                : 'bg-white/[0.06] text-slate-400'
+            }`}
+          >
+            {matchCount}
+          </span>
+        </td>
+
+        {/* Filter */}
+        <td className="px-4 py-2.5">
+          <button
+            onClick={handleFilterToggle}
+            className={`rounded-full px-2.5 py-0.5 text-[10px] font-medium transition-colors ${
+              isFilterActive
+                ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
+                : 'text-slate-500 hover:text-slate-300 border border-transparent hover:border-white/[0.08]'
+            }`}
+          >
+            {isFilterActive ? 'Active' : 'Apply'}
+          </button>
+        </td>
+
+        {/* Actions */}
+        <td className="px-4 py-2.5">
+          <div className="flex items-center gap-1">
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                handleToggleExpand()
+              }}
+              className="rounded-lg p-1 text-slate-600 hover:bg-indigo-500/10 hover:text-indigo-400"
+              title="Test matches"
+            >
+              <FlaskConical className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onDelete()
+              }}
+              className="rounded-lg p-1 text-slate-600 hover:bg-red-500/10 hover:text-red-400"
+              title="Delete"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </td>
+      </tr>
+
+      {/* Expanded match preview */}
+      {isExpanded && (
+        <tr>
+          <td colSpan={7} className="bg-white/[0.02] px-4 py-3">
+            <div className="expand-panel">
+              {loadingPreviews ? (
+                <p className="text-xs text-slate-500">Loading previews...</p>
+              ) : previews && previews.length > 0 ? (
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {previews.map((preview, idx) => (
+                    <div
+                      key={idx}
+                      className="min-w-[250px] max-w-[300px] shrink-0 rounded-lg border border-white/[0.06] bg-slate-800 p-3"
+                    >
+                      <div className="mb-2 flex items-center gap-1.5 text-[10px] text-slate-500">
+                        <Globe className="h-3 w-3" />
+                        <span className="truncate">{preview.captureUrl}</span>
+                      </div>
+                      {preview.matches.slice(0, 2).map((m, mi) => (
+                        <p key={mi} className="mb-1 font-mono text-[11px] text-slate-400">
+                          ...{m.context.slice(0, m.index > 25 ? 25 : m.index)}
+                          <span className="rounded bg-indigo-500/30 px-0.5 text-indigo-200">
+                            {m.matchText}
+                          </span>
+                          {m.context.slice((m.index > 25 ? 25 : m.index) + m.matchText.length)}...
+                        </p>
+                      ))}
+                    </div>
+                  ))}
+                  {matchCount > previews.length && (
+                    <div className="flex min-w-[120px] items-center justify-center rounded-lg border border-white/[0.06] bg-slate-800/50 p-3">
+                      <span className="text-xs text-slate-500">
+                        +{matchCount - previews.length} more
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500">No match previews available.</p>
+              )}
+            </div>
+          </td>
+        </tr>
+      )}
+    </Fragment>
+  )
+}

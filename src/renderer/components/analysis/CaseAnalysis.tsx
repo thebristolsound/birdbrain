@@ -1,16 +1,26 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAppStore } from '@renderer/stores/appStore'
 import { EntityGraph } from './EntityGraph'
 import { InsightsPanel } from './InsightsPanel'
-import { EntityTimeline } from './EntityTimeline'
-import type { EntityGraph as EntityGraphData, CaseAnalysisResult } from '@shared/types'
+import { GraphToolbar } from './GraphToolbar'
+import { GraphLegend } from './GraphLegend'
+import { GraphZoomControls } from './GraphZoomControls'
+import type { GraphLayout } from './GraphZoomControls'
+import type { EntityGraph as EntityGraphData, CaseAnalysisResult, EntityType } from '@shared/types'
 
 export function CaseAnalysis() {
   const { activeCaseId } = useAppStore()
+
+  // Data state
   const [graph, setGraph] = useState<EntityGraphData | null>(null)
   const [analysis, setAnalysis] = useState<CaseAnalysisResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
+
+  // Graph interaction state
+  const [zoom, setZoom] = useState(100)
+  const [layout, setLayout] = useState<GraphLayout>('force')
+  const [activeTypes, setActiveTypes] = useState<Set<EntityType>>(new Set())
 
   useEffect(() => {
     if (!activeCaseId) return
@@ -18,17 +28,24 @@ export function CaseAnalysis() {
     Promise.all([
       window.birdbrain.ai.buildGraph(activeCaseId),
       window.birdbrain.ai.getAnalysis(activeCaseId)
-    ]).then(([g, a]) => {
-      setGraph(g)
-      setAnalysis(a)
-    }).catch((err) => {
-      console.error('Failed to load analysis data:', err)
-    }).finally(() => {
-      setLoading(false)
-    })
+    ])
+      .then(([g, a]) => {
+        setGraph(g)
+        setAnalysis(a)
+        if (g) {
+          const types = new Set(g.nodes.map((n) => n.type))
+          setActiveTypes(types)
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load analysis data:', err)
+      })
+      .finally(() => {
+        setLoading(false)
+      })
   }, [activeCaseId])
 
-  const handleAnalyze = async () => {
+  const handleAnalyze = useCallback(async () => {
     if (!activeCaseId) return
     setAnalyzing(true)
     try {
@@ -39,47 +56,106 @@ export function CaseAnalysis() {
     } finally {
       setAnalyzing(false)
     }
+  }, [activeCaseId])
+
+  const handleToggleType = useCallback((type: EntityType) => {
+    setActiveTypes((prev) => {
+      const next = new Set(prev)
+      if (next.has(type)) {
+        next.delete(type)
+      } else {
+        next.add(type)
+      }
+      return next
+    })
+  }, [])
+
+  const handleCenter = useCallback(() => {
+    setZoom(100)
+  }, [])
+
+  const handleFitToView = useCallback(() => {
+    setZoom(100)
+  }, [])
+
+  const handleExportSvg = useCallback(() => {
+    const svg = document.querySelector('.entity-graph-svg') as SVGSVGElement | null
+    if (!svg) return
+    const serializer = new XMLSerializer()
+    const svgStr = serializer.serializeToString(svg)
+    const blob = new Blob([svgStr], { type: 'image/svg+xml' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'entity-graph.svg'
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [])
+
+  const handleFullscreen = useCallback(() => {
+    const graphEl = document.querySelector('.analysis-graph-panel') as HTMLElement | null
+    if (!graphEl) return
+    if (document.fullscreenElement) {
+      document.exitFullscreen()
+    } else {
+      graphEl.requestFullscreen()
+    }
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center text-slate-500">Loading…</div>
+    )
   }
 
-  if (loading) return <div className="text-slate-500">Loading...</div>
-
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white">Case Analysis</h1>
-        <button
-          onClick={handleAnalyze}
-          disabled={analyzing}
-          className="rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
-        >
-          {analyzing ? 'Analyzing...' : analysis ? 'Re-analyze Case' : 'Analyze Case'}
-        </button>
+    <div className="flex h-full overflow-hidden">
+      {/* Left: Entity Graph */}
+      <div className="analysis-graph-panel flex flex-1 flex-col overflow-hidden">
+        <GraphToolbar
+          nodeCount={graph ? graph.nodes.filter((n) => activeTypes.has(n.type)).length : 0}
+          edgeCount={graph ? graph.edges.length : 0}
+          analyzing={analyzing}
+          onReanalyze={handleAnalyze}
+          onExportSvg={handleExportSvg}
+          onFullscreen={handleFullscreen}
+        />
+
+        {graph && graph.nodes.length > 0 && (
+          <GraphLegend
+            nodes={graph.nodes}
+            activeTypes={activeTypes}
+            onToggleType={handleToggleType}
+          />
+        )}
+
+        {graph ? (
+          <EntityGraph
+            graph={graph}
+            activeTypes={activeTypes}
+            zoom={zoom}
+          />
+        ) : (
+          <div className="flex flex-1 items-center justify-center text-slate-500">
+            No graph data available. Extract entities from captures first.
+          </div>
+        )}
+
+        <GraphZoomControls
+          zoom={zoom}
+          layout={layout}
+          onZoomChange={setZoom}
+          onCenter={handleCenter}
+          onFitToView={handleFitToView}
+          onLayoutChange={setLayout}
+        />
       </div>
 
-      {/* Entity Graph */}
-      {graph && (
-        <div>
-          <h2 className="mb-3 text-lg font-semibold text-slate-200">Entity Graph</h2>
-          <EntityGraph graph={graph} />
-        </div>
-      )}
-
-      {/* Entity Timeline */}
-      {graph && graph.nodes.length > 0 && <EntityTimeline nodes={graph.nodes} />}
-
-      {/* AI Insights */}
-      {analysis && <InsightsPanel analysis={analysis} />}
-
-      {!analysis && !analyzing && (
-        <div className="rounded-lg border border-white/[0.06] bg-slate-900 p-6 text-center">
-          <p className="text-slate-400">
-            Click "Analyze Case" to generate AI-powered insights about entity relationships and patterns.
-          </p>
-          <p className="mt-1 text-xs text-slate-600">
-            This sends entity data to OpenRouter and uses API tokens.
-          </p>
-        </div>
-      )}
+      {/* Right: AI Insights */}
+      <InsightsPanel
+        analysis={analysis}
+        analyzing={analyzing}
+      />
     </div>
   )
 }

@@ -83,3 +83,24 @@ body {
   50% { box-shadow: 0 0 0 4px rgba(99,102,241,0.1); }
 }
 .test-active { animation: softPulse 2s ease-in-out infinite; }
+
+/* Entity graph node effects */
+@keyframes glowPulse {
+  0%, 100% { filter: drop-shadow(0 0 6px var(--glow-color)); }
+  50% { filter: drop-shadow(0 0 12px var(--glow-color)); }
+}
+
+@keyframes nodePulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.graph-node { transition: filter 0.2s ease; }
+.graph-node:hover { animation: nodePulse 1s ease-in-out infinite; cursor: pointer; }
+
+.graph-edge { stroke-linecap: round; }
+
+.legend-chip { transition: all 0.15s ease; cursor: pointer; }
+
+.cluster-card { transition: all 0.15s ease; }
+.cluster-card:hover { background: #263244; }

@@ -3,7 +3,36 @@ import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
 import { copyFileSync, mkdirSync, cpSync } from 'fs'
 
-export default defineConfig({
+// Content script must be built as IIFE (Chrome content_scripts don't support ES modules).
+// Background + popup can use ES modules (background declares "type": "module" in manifest).
+const isContentBuild = process.env.BUILD_TARGET === 'content'
+
+const contentConfig = defineConfig({
+  esbuild: {
+    charset: 'ascii'
+  },
+  build: {
+    outDir: resolve(__dirname, 'dist'),
+    emptyOutDir: false,
+    modulePreload: false,
+    rollupOptions: {
+      input: {
+        content: resolve(__dirname, 'src/content.ts')
+      },
+      output: {
+        format: 'iife',
+        entryFileNames: '[name].js'
+      }
+    }
+  },
+  resolve: {
+    alias: {
+      '@extension': resolve(__dirname, 'src')
+    }
+  }
+})
+
+const mainConfig = defineConfig({
   plugins: [
     react(),
     {
@@ -34,7 +63,6 @@ export default defineConfig({
     rollupOptions: {
       input: {
         background: resolve(__dirname, 'src/background.ts'),
-        content: resolve(__dirname, 'src/content.ts'),
         popup: resolve(__dirname, 'src/popup/popup.html')
       },
       output: {
@@ -50,3 +78,5 @@ export default defineConfig({
     }
   }
 })
+
+export default isContentBuild ? contentConfig : mainConfig

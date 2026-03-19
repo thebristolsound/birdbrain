@@ -249,7 +249,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     const title = document.title
     const textContent = document.body?.innerText || ''
 
-    freezeDry(document)
+    freezeDry(document, {
+      timeout: 10000,
+      addMetadata: true
+    })
       .then((html) => {
         sendResponse({ html, title, textContent })
       })
@@ -262,8 +265,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         })
       })
 
-    // Don't call sendResponse synchronously — the async handlers above will
-    return
+    // Return true to keep the message channel open for the async sendResponse
+    return true
   }
 
   if (message.type === 'CHECK_SELECTORS') {

@@ -44,3 +44,7 @@ playwright-report/
 
 # Worktrees
 .worktrees/
+.superdesign
+.agents
+specs
+docs/superpowers

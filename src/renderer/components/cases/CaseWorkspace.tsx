@@ -93,11 +93,14 @@ export function CaseWorkspace() {
             <CaptureViewer />
           </div>
         </div>
+      ) : activeCaseTab === 'analysis' ? (
+        <div className="flex flex-1 overflow-hidden">
+          <CaseAnalysis />
+        </div>
       ) : (
         <div className="flex-1 overflow-auto p-6">
           {activeCaseTab === 'overview' && <CaseOverview />}
           {activeCaseTab === 'entities' && <CaseEntities />}
-          {activeCaseTab === 'analysis' && <CaseAnalysis />}
           {activeCaseTab === 'selectors' && <SelectorsOverview />}
         </div>
       )}

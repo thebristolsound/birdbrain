@@ -14,7 +14,8 @@ export function Dashboard() {
     connectedToExtension,
     activeCaseId,
     sessionActive,
-    goToNewCaseWizard
+    goToNewCaseWizard,
+    goToDashboard
   } = useAppStore()
 
   const recentCasesRef = useRef<HTMLDivElement>(null)
@@ -33,8 +34,11 @@ export function Dashboard() {
   const handleDeleteCase = useCallback(
     async (id: string) => {
       await deleteCase(id)
+      if (activeCaseId === id) {
+        goToDashboard()
+      }
     },
-    [deleteCase]
+    [activeCaseId, deleteCase, goToDashboard]
   )
 
   return (

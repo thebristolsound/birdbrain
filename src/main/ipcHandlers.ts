@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { app, ipcMain } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
 import type {
   CreateCaseParams,
@@ -50,6 +50,9 @@ function ipcError(err: unknown): IpcResult<never> {
 }
 
 export function registerIpcHandlers(): void {
+  // App
+  ipcMain.handle(IPC_CHANNELS.APP_GET_VERSION, () => app.getVersion())
+
   // Cases
   ipcMain.handle(IPC_CHANNELS.CASES_LIST, () => db.listCases())
   ipcMain.handle(IPC_CHANNELS.CASES_GET, (_, id: string) => db.getCase(id))

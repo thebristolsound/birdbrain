@@ -2,6 +2,9 @@
 // Every IPC call between renderer and main process goes through these channels
 
 export const IPC_CHANNELS = {
+  // App
+  APP_GET_VERSION: 'app:getVersion',
+
   // Cases
   CASES_LIST: 'cases:list',
   CASES_GET: 'cases:get',

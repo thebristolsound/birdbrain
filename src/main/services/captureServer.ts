@@ -335,10 +335,20 @@ function createApp(): Hono {
         textContent
       })
 
-      runRuleBasedExtraction(capture.id, textContent)
-      if (textContent) {
-        db.matchSelectorsForCapture(capture.id, caseId, textContent)
-      }
+      setImmediate(() => {
+        try {
+          runRuleBasedExtraction(capture.id, textContent)
+        } catch (err) {
+          console.error('Rule-based extraction error for capture', capture.id, err)
+        }
+        try {
+          if (textContent) {
+            db.matchSelectorsForCapture(capture.id, caseId, textContent)
+          }
+        } catch (err) {
+          console.error('Selector matching error for capture', capture.id, err)
+        }
+      })
 
       // Notify renderer of new capture
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -396,10 +406,20 @@ function createApp(): Hono {
         textContent
       })
 
-      runRuleBasedExtraction(capture.id, textContent)
-      if (textContent) {
-        db.matchSelectorsForCapture(capture.id, caseId, textContent)
-      }
+      setImmediate(() => {
+        try {
+          runRuleBasedExtraction(capture.id, textContent)
+        } catch (err) {
+          console.error('Rule-based extraction error for capture', capture.id, err)
+        }
+        try {
+          if (textContent) {
+            db.matchSelectorsForCapture(capture.id, caseId, textContent)
+          }
+        } catch (err) {
+          console.error('Selector matching error for capture', capture.id, err)
+        }
+      })
 
       // Notify renderer of new capture
       if (mainWindow && !mainWindow.isDestroyed()) {

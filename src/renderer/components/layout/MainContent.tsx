@@ -28,11 +28,7 @@ export function MainContent() {
 
   return (
     <main className="flex-1 overflow-auto bg-black">
-      {appMode === 'dashboard' && (
-        <div className="p-6">
-          <Dashboard />
-        </div>
-      )}
+      {appMode === 'dashboard' && <Dashboard />}
       {appMode === 'case-workspace' && <CaseWorkspace />}
     </main>
   )

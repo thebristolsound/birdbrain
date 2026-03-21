@@ -1,4 +1,4 @@
-import { Radar, ChevronRight, Settings } from 'lucide-react'
+import { Radar, ChevronRight, Settings, Bell } from 'lucide-react'
 import { useAppStore } from '@renderer/stores/appStore'
 import { SearchBar } from '@renderer/components/search/SearchBar'
 import { SessionControls } from '@renderer/components/status/SessionControls'
@@ -26,6 +26,7 @@ export function TopBar() {
           <span className="font-display text-sm font-extrabold tracking-tight text-white">
             Birdbrain
           </span>
+          <span className="ml-1 rounded border border-slate-800 bg-slate-900 px-1.5 py-0.5 font-mono text-[10px] font-medium text-slate-500">v2.0</span>
         </div>
 
         {appMode === 'case-workspace' && (
@@ -46,28 +47,45 @@ export function TopBar() {
 
       <div className="flex-1" />
 
-      <SearchBar />
+      {appMode === 'dashboard' ? (
+        <div className="flex items-center gap-3">
+          <button className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-900 hover:text-slate-300 transition-colors">
+            <Bell className="h-4 w-4" />
+          </button>
+          <button
+            onClick={toggleSettings}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-900 hover:text-slate-300 transition-colors"
+            title="Settings"
+          >
+            <Settings className="h-4 w-4" />
+          </button>
+        </div>
+      ) : (
+        <>
+          <SearchBar />
 
-      <div className="flex items-center gap-2">
-        <SessionControls />
+          <div className="flex items-center gap-2">
+            <SessionControls />
 
-        {sessionActive && (
-          <div className="flex items-center gap-1.5 rounded-full border border-red-500/20 bg-red-500/10 px-2.5 py-1">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" />
-            <span className="text-[11px] font-medium text-red-400">Recording</span>
+            {sessionActive && (
+              <div className="flex items-center gap-1.5 rounded-full border border-red-500/20 bg-red-500/10 px-2.5 py-1">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" />
+                <span className="text-[11px] font-medium text-red-400">Recording</span>
+              </div>
+            )}
+
+            <ConnectionStatus />
+
+            <button
+              onClick={toggleSettings}
+              className="rounded p-1.5 text-slate-400 hover:bg-white/[0.06] hover:text-slate-200"
+              title="Settings"
+            >
+              <Settings className="h-4 w-4" />
+            </button>
           </div>
-        )}
-
-        <ConnectionStatus />
-
-        <button
-          onClick={toggleSettings}
-          className="rounded p-1.5 text-slate-400 hover:bg-white/[0.06] hover:text-slate-200"
-          title="Settings"
-        >
-          <Settings className="h-4 w-4" />
-        </button>
-      </div>
+        </>
+      )}
     </header>
   )
 }

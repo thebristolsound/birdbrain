@@ -50,6 +50,9 @@ function ipcError(err: unknown): IpcResult<never> {
 }
 
 export function registerIpcHandlers(): void {
+  // App
+  ipcMain.handle(IPC_CHANNELS.APP_GET_VERSION, () => process.env.npm_package_version ?? '0.0.0')
+
   // Cases
   ipcMain.handle(IPC_CHANNELS.CASES_LIST, () => db.listCases())
   ipcMain.handle(IPC_CHANNELS.CASES_GET, (_, id: string) => db.getCase(id))

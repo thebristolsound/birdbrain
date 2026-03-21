@@ -8,11 +8,11 @@ import {
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
   const mins = Math.floor(diff / 60000)
-  if (mins < 60) return `${mins} min ago`
+  if (mins < 60) return `${mins} ${mins === 1 ? 'minute' : 'minutes'} ago`
   const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours} hours ago`
+  if (hours < 24) return `${hours} ${hours === 1 ? 'hour' : 'hours'} ago`
   const days = Math.floor(hours / 24)
-  return `${days} days ago`
+  return `${days} ${days === 1 ? 'day' : 'days'} ago`
 }
 
 const CASE_ICONS: Record<string, { icon: typeof FolderOpen; bgClass: string; iconClass: string }> = {
@@ -25,8 +25,8 @@ const DEFAULT_ICON = { icon: FolderOpen, bgClass: 'bg-indigo-950/50 border borde
 interface CaseCardProps {
   caseData: Case
   isRecording: boolean
-  captureCount: number
-  entityCount: number
+  captureCount?: number
+  entityCount?: number
   onClick: () => void
   onRename: (id: string, name: string) => void
   onDelete: (id: string) => void
@@ -80,8 +80,17 @@ export function CaseCard({
 
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-label={`Open case ${caseData.name}`}
       className={`anim-scale ${animDelay} neu-card rounded-2xl p-5 cursor-pointer group relative`}
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onClick()
+        }
+      }}
     >
       {/* Top row */}
       <div className="flex justify-between mb-4">
@@ -132,11 +141,11 @@ export function CaseCard({
       <div className="flex items-center gap-4 mb-3">
         <div className="flex items-center gap-1.5">
           <Camera className="h-3 w-3 text-slate-600" />
-          <span className="text-[11px] font-bold text-slate-300">{captureCount}</span>
+          <span className="text-[11px] font-bold text-slate-300">{captureCount ?? '—'}</span>
         </div>
         <div className="flex items-center gap-1.5">
           <Fingerprint className="h-3 w-3 text-slate-600" />
-          <span className="text-[11px] font-bold text-slate-300">{entityCount}</span>
+          <span className="text-[11px] font-bold text-slate-300">{entityCount ?? '—'}</span>
         </div>
       </div>
 
@@ -149,6 +158,8 @@ export function CaseCard({
       {/* Context menu */}
       <div ref={menuRef} className="absolute right-2 top-2">
         <button
+          type="button"
+          aria-label="Case actions"
           className="opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-slate-800 transition-all"
           onClick={(e) => {
             e.stopPropagation()
@@ -166,6 +177,7 @@ export function CaseCard({
                 <p className="text-[11px] text-red-400 font-bold mb-2">Delete?</p>
                 <div className="flex gap-1.5">
                   <button
+                    type="button"
                     className="flex-1 text-[10px] font-bold px-2 py-1 rounded bg-red-950/60 text-red-400 border border-red-800/40 hover:bg-red-900/60"
                     onClick={(e) => {
                       e.stopPropagation()
@@ -177,6 +189,7 @@ export function CaseCard({
                     Confirm
                   </button>
                   <button
+                    type="button"
                     className="flex-1 text-[10px] font-bold px-2 py-1 rounded bg-slate-800 text-slate-400 hover:bg-slate-700"
                     onClick={(e) => {
                       e.stopPropagation()
@@ -190,6 +203,7 @@ export function CaseCard({
             ) : (
               <>
                 <button
+                  type="button"
                   className="w-full text-left px-3 py-1.5 text-[11px] text-slate-300 hover:bg-slate-800 hover:text-slate-100"
                   onClick={(e) => {
                     e.stopPropagation()
@@ -200,6 +214,7 @@ export function CaseCard({
                   Rename
                 </button>
                 <button
+                  type="button"
                   className="w-full text-left px-3 py-1.5 text-[11px] text-red-400 hover:bg-slate-800 hover:text-red-300"
                   onClick={(e) => {
                     e.stopPropagation()

@@ -28,6 +28,9 @@ async function unwrapIpc<T>(promise: Promise<unknown>): Promise<T> {
 }
 
 const birdbrain = {
+  app: {
+    getVersion: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.APP_GET_VERSION)
+  },
   cases: {
     list: (): Promise<Case[]> => ipcRenderer.invoke(IPC_CHANNELS.CASES_LIST),
     get: (id: string): Promise<Case | undefined> => ipcRenderer.invoke(IPC_CHANNELS.CASES_GET, id),

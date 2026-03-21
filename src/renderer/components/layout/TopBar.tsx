@@ -1,5 +1,6 @@
 import { Radar, ChevronRight, Settings, Bell } from 'lucide-react'
 import { useAppStore } from '@renderer/stores/appStore'
+import { useAppVersion } from '@renderer/hooks/useAppVersion'
 import { SearchBar } from '@renderer/components/search/SearchBar'
 import { SessionControls } from '@renderer/components/status/SessionControls'
 import { ConnectionStatus } from '@renderer/components/status/ConnectionStatus'
@@ -12,6 +13,7 @@ export function TopBar() {
   const goToDashboard = useAppStore((s) => s.goToDashboard)
   const toggleSettings = useAppStore((s) => s.toggleSettings)
   const { cases } = useCases()
+  const appVersion = useAppVersion()
 
   const activeCase = cases.find((c) => c.id === activeCaseId)
 
@@ -26,7 +28,7 @@ export function TopBar() {
           <span className="font-display text-sm font-extrabold tracking-tight text-white">
             Birdbrain
           </span>
-          <span className="ml-1 rounded border border-slate-800 bg-slate-900 px-1.5 py-0.5 font-mono text-[10px] font-medium text-slate-500">v2.0</span>
+          <span className="ml-1 rounded border border-slate-800 bg-slate-900 px-1.5 py-0.5 font-mono text-[10px] font-medium text-slate-500">{`v${appVersion}`}</span>
         </div>
 
         {appMode === 'case-workspace' && (
@@ -49,7 +51,13 @@ export function TopBar() {
 
       {appMode === 'dashboard' ? (
         <div className="flex items-center gap-3">
-          <button className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-900 hover:text-slate-300 transition-colors">
+          <button
+            type="button"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-colors opacity-60 cursor-not-allowed"
+            disabled
+            aria-label="Notifications (coming soon)"
+            title="Notifications (coming soon)"
+          >
             <Bell className="h-4 w-4" />
           </button>
           <button

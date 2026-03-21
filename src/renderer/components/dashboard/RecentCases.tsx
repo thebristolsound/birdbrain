@@ -1,3 +1,4 @@
+import { useMemo, useState, useEffect } from 'react'
 import { Plus, ArrowRight } from 'lucide-react'
 import type { Case } from '@shared/types'
 import { CaseCard } from './CaseCard'
@@ -21,6 +22,45 @@ export function RecentCases({
   onRenameCase,
   onDeleteCase
 }: RecentCasesProps) {
+  const [statsByCaseId, setStatsByCaseId] = useState<Record<string, { captureCount: number; entityCount: number }>>({})
+  const displayedCases = useMemo(() => cases.slice(0, 3), [cases])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadStats() {
+      const entries = await Promise.all(
+        displayedCases.map(async (c) => {
+          const captures = await window.birdbrain.captures.list(c.id)
+          const entities = await Promise.all(
+            captures.map((capture) => window.birdbrain.ai.getEntities(capture.id))
+          )
+          return [
+            c.id,
+            {
+              captureCount: captures.length,
+              entityCount: entities.reduce((sum, arr) => sum + arr.length, 0)
+            }
+          ] as const
+        })
+      )
+
+      if (!cancelled) {
+        setStatsByCaseId(Object.fromEntries(entries))
+      }
+    }
+
+    void loadStats().catch(() => {
+      if (!cancelled) {
+        setStatsByCaseId({})
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [displayedCases])
+
   return (
     <section className="px-8 pb-12">
       <div className="max-w-5xl mx-auto">
@@ -33,20 +73,26 @@ export function RecentCases({
               {cases.length} active
             </span>
           </div>
-          <button className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-indigo-400 hover:text-indigo-300 transition-colors">
+          <button
+            type="button"
+            className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-indigo-400 transition-colors opacity-60 cursor-not-allowed"
+            disabled
+            aria-label="View all cases (coming soon)"
+            title="View all cases (coming soon)"
+          >
             <span>View All</span>
             <ArrowRight className="h-3.5 w-3.5" />
           </button>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-          {cases.slice(0, 3).map((c, i) => (
+          {displayedCases.map((c, i) => (
             <CaseCard
               key={c.id}
               caseData={c}
               isRecording={sessionActive && c.id === activeCaseId}
-              captureCount={0}
-              entityCount={0}
+              captureCount={statsByCaseId[c.id]?.captureCount}
+              entityCount={statsByCaseId[c.id]?.entityCount}
               onClick={() => onSelectCase(c.id)}
               onRename={onRenameCase}
               onDelete={onDeleteCase}
@@ -54,9 +100,11 @@ export function RecentCases({
             />
           ))}
 
-          <div
+          <button
+            type="button"
             onClick={onNewCase}
             className="anim-scale d8 new-case-card cursor-pointer rounded-2xl border-2 border-dashed p-5 transition-all flex flex-col items-center justify-center text-center min-h-[260px] group"
+            aria-label="Start a new investigation"
           >
             <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-indigo-800/50 bg-indigo-950 transition-colors group-hover:bg-indigo-900">
               <Plus className="h-6 w-6 text-indigo-400 transition-transform duration-300 group-hover:rotate-90" />
@@ -67,7 +115,7 @@ export function RecentCases({
             <p className="text-[11px] text-indigo-600 leading-relaxed">
               Start a fresh case with<br />guided setup
             </p>
-          </div>
+          </button>
         </div>
       </div>
     </section>

@@ -48,11 +48,25 @@ export function ExtensionBanner({ connected }: ExtensionBannerProps) {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <button className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-display font-bold text-xs rounded-xl shadow-lg shadow-indigo-500/30 transition-all active:scale-[0.98]">
+            <button
+              type="button"
+              className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white font-display font-bold text-xs rounded-xl shadow-lg shadow-indigo-500/30 opacity-60 cursor-not-allowed"
+              disabled
+              aria-disabled="true"
+              aria-label="Install extension (coming soon)"
+              title="Install extension (coming soon)"
+            >
               <Download className="h-3.5 w-3.5" />
               Install Extension
             </button>
-            <button className="text-[11px] font-bold text-indigo-400 hover:text-indigo-300 transition-colors">
+            <button
+              type="button"
+              className="text-[11px] font-bold text-indigo-400 opacity-60 cursor-not-allowed"
+              disabled
+              aria-disabled="true"
+              aria-label="Learn more about extension (coming soon)"
+              title="Learn more about extension (coming soon)"
+            >
               Learn More →
             </button>
           </div>

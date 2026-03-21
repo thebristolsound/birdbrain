@@ -10,6 +10,9 @@ import type {
 } from '@shared/ipc'
 
 interface BirdbrainAPI {
+  app: {
+    getVersion(): Promise<string>
+  }
   cases: {
     list(): Promise<Case[]>
     get(id: string): Promise<Case | undefined>

@@ -399,6 +399,21 @@ export function insertEntity(entity: Omit<Entity, 'id' | 'createdAt'>): Entity {
   return { id, ...entity, source: entity.source ?? 'ai', createdAt: now }
 }
 
+export function insertEntitiesBatch(entities: Array<Omit<Entity, 'id' | 'createdAt'>>): void {
+  if (entities.length === 0) return
+  const d = getDb()
+  const stmt = d.prepare(
+    'INSERT INTO entities (id, capture_id, type, value, context, confidence, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  )
+  const run = d.transaction(() => {
+    const now = new Date().toISOString()
+    for (const e of entities) {
+      stmt.run(uuid(), e.captureId, e.type, e.value, e.context ?? null, e.confidence ?? null, e.source ?? 'ai', now)
+    }
+  })
+  run()
+}
+
 export function deleteEntitiesByCapture(captureId: string): number {
   const result = getDb().prepare('DELETE FROM entities WHERE capture_id = ?').run(captureId)
   return result.changes

@@ -87,16 +87,16 @@ function runRuleBasedExtraction(captureId: string, textContent: string | undefin
     const entities = extractEntitiesRuleBased(textContent, enabledTypes)
     if (entities.length === 0) return
 
-    for (const entity of entities) {
-      db.insertEntity({
+    db.insertEntitiesBatch(
+      entities.map(e => ({
         captureId,
-        type: entity.type,
-        value: entity.value,
-        context: entity.context,
-        confidence: entity.confidence,
-        source: 'rule'
-      })
-    }
+        type: e.type,
+        value: e.value,
+        context: e.context,
+        confidence: e.confidence,
+        source: 'rule' as const
+      }))
+    )
 
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC_CHANNELS.EXTRACTION_COMPLETE, {

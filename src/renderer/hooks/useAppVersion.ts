@@ -10,7 +10,8 @@ export function useAppVersion() {
       .then((v) => {
         if (mounted && v) setVersion(v)
       })
-      .catch(() => {
+      .catch((error) => {
+        console.error('Failed to load app version', error)
         if (mounted) setVersion('0.0.0')
       })
     return () => {

@@ -3,6 +3,8 @@ import { Plus, ArrowRight } from 'lucide-react'
 import type { Case } from '@shared/types'
 import { CaseCard } from './CaseCard'
 
+const MAX_DISPLAYED_CASES = 3
+
 interface RecentCasesProps {
   cases: Case[]
   activeCaseId: string | null
@@ -22,8 +24,8 @@ export function RecentCases({
   onRenameCase,
   onDeleteCase
 }: RecentCasesProps) {
-  const [statsByCaseId, setStatsByCaseId] = useState<Record<string, { captureCount: number; entityCount: number }>>({})
-  const displayedCases = useMemo(() => cases.slice(0, 3), [cases])
+  const [statsByCaseId, setStatsByCaseId] = useState<Record<string, { captureCount: number }>>({})
+  const displayedCases = useMemo(() => cases.slice(0, MAX_DISPLAYED_CASES), [cases])
 
   useEffect(() => {
     let cancelled = false
@@ -32,14 +34,10 @@ export function RecentCases({
       const entries = await Promise.all(
         displayedCases.map(async (c) => {
           const captures = await window.birdbrain.captures.list(c.id)
-          const entities = await Promise.all(
-            captures.map((capture) => window.birdbrain.ai.getEntities(capture.id))
-          )
           return [
             c.id,
             {
-              captureCount: captures.length,
-              entityCount: entities.reduce((sum, arr) => sum + arr.length, 0)
+              captureCount: captures.length
             }
           ] as const
         })
@@ -50,7 +48,8 @@ export function RecentCases({
       }
     }
 
-    void loadStats().catch(() => {
+    void loadStats().catch((error) => {
+      console.error('Failed to load recent case stats', error)
       if (!cancelled) {
         setStatsByCaseId({})
       }
@@ -92,7 +91,6 @@ export function RecentCases({
               caseData={c}
               isRecording={sessionActive && c.id === activeCaseId}
               captureCount={statsByCaseId[c.id]?.captureCount}
-              entityCount={statsByCaseId[c.id]?.entityCount}
               onClick={() => onSelectCase(c.id)}
               onRename={onRenameCase}
               onDelete={onDeleteCase}
@@ -103,7 +101,7 @@ export function RecentCases({
           <button
             type="button"
             onClick={onNewCase}
-            className="anim-scale d8 new-case-card cursor-pointer rounded-2xl border-2 border-dashed p-5 transition-all flex flex-col items-center justify-center text-center min-h-[260px] group"
+            className="anim-scale d8 new-case-card rounded-2xl border-2 border-dashed p-5 transition-all flex flex-col items-center justify-center text-center min-h-[260px] group"
             aria-label="Start a new investigation"
           >
             <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-indigo-800/50 bg-indigo-950 transition-colors group-hover:bg-indigo-900">

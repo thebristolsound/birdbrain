@@ -141,11 +141,29 @@ export function CaseCard({
       <div className="flex items-center gap-4 mb-3">
         <div className="flex items-center gap-1.5">
           <Camera className="h-3 w-3 text-slate-600" />
-          <span className="text-[11px] font-bold text-slate-300">{captureCount ?? '—'}</span>
+          <span
+            className="text-[11px] font-bold text-slate-300"
+            aria-label={
+              captureCount === undefined
+                ? 'Capture count unavailable'
+                : `${captureCount} ${captureCount === 1 ? 'capture' : 'captures'}`
+            }
+          >
+            {captureCount ?? 'N/A'}
+          </span>
         </div>
         <div className="flex items-center gap-1.5">
           <Fingerprint className="h-3 w-3 text-slate-600" />
-          <span className="text-[11px] font-bold text-slate-300">{entityCount ?? '—'}</span>
+          <span
+            className="text-[11px] font-bold text-slate-300"
+            aria-label={
+              entityCount === undefined
+                ? 'Entity count unavailable'
+                : `${entityCount} ${entityCount === 1 ? 'entity' : 'entities'}`
+            }
+          >
+            {entityCount ?? 'N/A'}
+          </span>
         </div>
       </div>
 

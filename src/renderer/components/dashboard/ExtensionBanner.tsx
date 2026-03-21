@@ -52,7 +52,6 @@ export function ExtensionBanner({ connected }: ExtensionBannerProps) {
               type="button"
               className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white font-display font-bold text-xs rounded-xl shadow-lg shadow-indigo-500/30 opacity-60 cursor-not-allowed"
               disabled
-              aria-disabled="true"
               aria-label="Install extension (coming soon)"
               title="Install extension (coming soon)"
             >
@@ -63,7 +62,6 @@ export function ExtensionBanner({ connected }: ExtensionBannerProps) {
               type="button"
               className="text-[11px] font-bold text-indigo-400 opacity-60 cursor-not-allowed"
               disabled
-              aria-disabled="true"
               aria-label="Learn more about extension (coming soon)"
               title="Learn more about extension (coming soon)"
             >

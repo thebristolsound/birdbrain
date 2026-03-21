@@ -3,6 +3,7 @@ import {
   getStatus,
   sendCapture,
   sendManualCapture,
+  updateCaptureHtml,
   getActiveSelectors,
   sendSelectorCapture
 } from '@extension/utils/api'
@@ -216,7 +217,11 @@ async function captureTab(tabId: number, url: string): Promise<void> {
 
 async function manualCaptureTab(tabId: number, url: string, caseId: string): Promise<void> {
   try {
-    const pageData = await chrome.tabs.sendMessage(tabId, { type: 'EXTRACT_PAGE' }) as {
+    // Show capturing toast immediately
+    chrome.tabs.sendMessage(tabId, { type: 'SHOW_CAPTURE_TOAST' }).catch(() => {})
+
+    // Phase 1: Fast extraction (outerHTML, no freeze-dry)
+    const pageData = await chrome.tabs.sendMessage(tabId, { type: 'EXTRACT_PAGE_FAST' }) as {
       html: string
       title: string
       textContent: string
@@ -230,7 +235,8 @@ async function manualCaptureTab(tabId: number, url: string, caseId: string): Pro
       // Screenshot capture can fail (e.g., chrome:// pages)
     }
 
-    await sendManualCapture({
+    // Send fast capture to server — appears in app immediately
+    const result = await sendManualCapture({
       caseId,
       url,
       title: pageData.title,
@@ -239,8 +245,34 @@ async function manualCaptureTab(tabId: number, url: string, caseId: string): Pro
       timestamp: new Date().toISOString(),
       textContent: pageData.textContent
     })
+
+    // Update toast to success
+    chrome.tabs.sendMessage(tabId, {
+      type: 'UPDATE_CAPTURE_TOAST',
+      status: 'success'
+    }).catch(() => {})
+
+    // Update badge (intentional addition — manual captures were not updating badge count before)
+    captureCount++
+    chrome.action.setBadgeText({ text: String(captureCount) })
+
+    // Phase 2: Background freeze-dry and HTML update
+    chrome.tabs.sendMessage(tabId, { type: 'EXTRACT_PAGE' })
+      .then(async (archivedData: { html: string }) => {
+        if (archivedData?.html && archivedData.html !== pageData.html) {
+          await updateCaptureHtml(result.captureId, caseId, archivedData.html)
+        }
+      })
+      .catch((err) => {
+        console.warn('[Birdbrain] Background freeze-dry failed:', err)
+      })
   } catch (err) {
     console.error('[Birdbrain] Manual capture failed:', err)
+    // Update toast to error
+    chrome.tabs.sendMessage(tabId, {
+      type: 'UPDATE_CAPTURE_TOAST',
+      status: 'error'
+    }).catch(() => {})
   }
 }
 

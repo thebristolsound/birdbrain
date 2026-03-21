@@ -50,6 +50,11 @@ export function saveCapture(
   return { htmlPath, screenshotPath, textPath }
 }
 
+export function updateCaptureHtml(caseId: string, captureId: string, html: string): void {
+  const dir = ensureCaseDir(caseId)
+  writeFileSync(join(dir, `${captureId}.html`), html, 'utf-8')
+}
+
 export function getCapturePath(
   caseId: string,
   captureId: string,

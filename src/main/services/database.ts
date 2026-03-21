@@ -305,6 +305,10 @@ export function deleteCapture(id: string): boolean {
   return result.changes > 0
 }
 
+export function updateCaptureHash(captureId: string, hash: string): void {
+  getDb().prepare('UPDATE captures SET hash = ? WHERE id = ?').run(hash, captureId)
+}
+
 export function getCaptureCount(caseId: string): number {
   const row = getDb()
     .prepare('SELECT COUNT(*) as count FROM captures WHERE case_id = ?')

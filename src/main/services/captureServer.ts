@@ -5,7 +5,7 @@ import type { Server } from 'http'
 import type { BrowserWindow } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
 import * as db from '@main/services/database'
-import { saveCapture } from '@main/services/storage'
+import { saveCapture, updateCaptureHtml } from '@main/services/storage'
 import { hashContent } from '@main/services/hash'
 import { getSettings } from '@main/services/settings'
 import { extractEntitiesRuleBased } from '@main/services/ruleBasedExtraction'
@@ -120,7 +120,7 @@ function createApp(): Hono {
     '*',
     cors({
       origin: ['chrome-extension://*', 'http://localhost:*', 'http://127.0.0.1:*'],
-      allowMethods: ['GET', 'POST'],
+      allowMethods: ['GET', 'POST', 'PATCH'],
       allowHeaders: ['Content-Type']
     })
   )
@@ -430,6 +430,35 @@ function createApp(): Hono {
     } catch (err) {
       console.error('Manual capture error:', err)
       return c.json({ error: 'Failed to process manual capture' }, 500)
+    }
+  })
+
+  app.patch('/api/captures/:id/html', async (c) => {
+    try {
+      const captureId = c.req.param('id')
+      const body = await c.req.json()
+      const { html, caseId } = body
+
+      if (!html || !caseId) {
+        return c.json({ error: 'Missing required fields: html, caseId' }, 400)
+      }
+
+      const capture = db.getCapture(captureId)
+      if (!capture) {
+        return c.json({ error: 'Capture not found' }, 404)
+      }
+
+      // Overwrite HTML file on disk
+      updateCaptureHtml(caseId, captureId, html)
+
+      // Update hash in database
+      const hash = hashContent(html)
+      db.updateCaptureHash(captureId, hash)
+
+      return c.json({ status: 'ok', captureId, hash })
+    } catch (err) {
+      console.error('HTML update error:', err)
+      return c.json({ error: 'Failed to update capture HTML' }, 500)
     }
   })
 

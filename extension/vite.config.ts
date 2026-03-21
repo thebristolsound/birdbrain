@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite'
+import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
 import { copyFileSync, mkdirSync, cpSync } from 'fs'
@@ -34,6 +35,7 @@ const contentConfig = defineConfig({
 
 const mainConfig = defineConfig({
   plugins: [
+    tailwindcss(),
     react(),
     {
       name: 'copy-extension-assets',

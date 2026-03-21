@@ -173,6 +173,24 @@ function createApp(): Hono {
     )
   })
 
+  // Entity summary for a case
+  app.get('/api/cases/:id/entities/summary', (c) => {
+    const caseId = c.req.param('id')
+    const rows = db.getDb().prepare(`
+      SELECT type, COUNT(*) as count
+      FROM entities
+      WHERE capture_id IN (SELECT id FROM captures WHERE case_id = ?)
+      GROUP BY type
+      ORDER BY count DESC
+    `).all(caseId) as { type: string; count: number }[]
+
+    return c.json(rows.map(r => ({
+      type: r.type,
+      count: r.count,
+      color: ''
+    })))
+  })
+
   // Activate a case
   app.post('/api/cases/:id/activate', (c) => {
     const id = c.req.param('id')

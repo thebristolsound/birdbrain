@@ -112,7 +112,7 @@ function runRuleBasedExtraction(captureId: string, textContent: string | undefin
   }
 }
 
-function schedulePostCaptureWork(captureId: string, caseId: string, textContent: string | undefined): void {
+function schedulePostCaptureWork(captureId: string, caseId: string, source: CaptureSource, url: string, textContent: string | undefined): void {
   setImmediate(() => {
     try {
       runRuleBasedExtraction(captureId, textContent)
@@ -126,6 +126,13 @@ function schedulePostCaptureWork(captureId: string, caseId: string, textContent:
     } catch (err) {
       console.error('Selector matching error for capture', captureId, err)
     }
+    emitCaptureEvent({
+      type: 'extraction_done',
+      captureId,
+      source,
+      url,
+      timestamp: new Date().toISOString()
+    })
   })
 }
 
@@ -332,7 +339,7 @@ function createApp(): Hono {
         state.captureCount++
       }
 
-      schedulePostCaptureWork(capture.id, caseId, textContent)
+      schedulePostCaptureWork(capture.id, caseId, source, url, textContent)
 
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(IPC_CHANNELS.NEW_CAPTURE, capture)

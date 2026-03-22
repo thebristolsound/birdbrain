@@ -308,6 +308,9 @@ function createApp(): Hono {
         if (!caseData) {
           return c.json({ error: 'Case not found' }, 404)
         }
+        if (caseData.archived) {
+          return c.json({ error: 'Case is archived' }, 400)
+        }
         caseId = body.caseId
       } else {
         return c.json({ error: `Invalid source: ${source}` }, 400)

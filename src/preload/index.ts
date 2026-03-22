@@ -10,7 +10,7 @@ import type {
   CreateSelectorParams,
   UpdateSelectorParams
 } from '@shared/ipc'
-import type { Case, Capture, Tag, Entity, EntityGraph, CaseAnalysisResult, BirdbrainSettings, OpenRouterModel, ExportOptions, Selector, ActiveCaseSelectors } from '@shared/types'
+import type { Case, Capture, Tag, Entity, EntityGraph, CaseAnalysisResult, BirdbrainSettings, OpenRouterModel, ExportOptions, Selector, ActiveCaseSelectors, CaptureEvent } from '@shared/types'
 
 // Unwrap IpcResult from handlers that return structured results
 async function unwrapIpc<T>(promise: Promise<unknown>): Promise<T> {
@@ -127,7 +127,19 @@ const birdbrain = {
     const handler = (_: unknown, data: { connected: boolean }) => callback(data)
     ipcRenderer.on(IPC_CHANNELS.EXTENSION_CONNECTION, handler)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.EXTENSION_CONNECTION, handler)
-  }
+  },
+
+  onCaptureActivity: (callback: (event: CaptureEvent) => void) => {
+    const handler = (_: unknown, event: CaptureEvent) => callback(event)
+    ipcRenderer.on(IPC_CHANNELS.CAPTURE_ACTIVITY, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.CAPTURE_ACTIVITY, handler)
+  },
+
+  testPipeline: (): Promise<{ success: boolean; durationMs: number; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_TEST_PIPELINE),
+
+  testHttp: (): Promise<{ success: boolean; durationMs: number; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_TEST_HTTP)
 }
 
 contextBridge.exposeInMainWorld('electron', electronAPI)

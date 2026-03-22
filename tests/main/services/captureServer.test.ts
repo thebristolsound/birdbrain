@@ -534,6 +534,16 @@ describe('captureServer', () => {
     expect(allowedRes.status).toBe(200)
   })
 
+  it('GET /api/captures/test returns pipeline health', async () => {
+    createCase({ name: 'Pipeline Test Case' })
+
+    const res = await fetch(`${baseUrl}/api/captures/test`)
+    const data = await res.json()
+    expect(data.success).toBe(true)
+    expect(data.durationMs).toBeGreaterThanOrEqual(0)
+    expect(data.error).toBeUndefined()
+  })
+
   it('blacklist glob pattern with ? wildcard matches single character', async () => {
     const testCase = createCase({ name: 'Glob Question' })
     await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })

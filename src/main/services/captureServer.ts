@@ -362,6 +362,59 @@ function createApp(): Hono {
     return c.json(activeSelectors)
   })
 
+  // Test pipeline endpoint
+  app.get('/api/captures/test', async (c) => {
+    const startTime = Date.now()
+    let testCaptureId: string | null = null
+
+    try {
+      // Find any case to use for test
+      const cases = db.listCases()
+      if (cases.length === 0) {
+        return c.json({ success: false, durationMs: 0, error: 'No cases exist — create a case first' })
+      }
+      const testCaseId = cases[0].id
+
+      // Create test capture
+      const testHtml = `<html><body>Birdbrain pipeline test ${Date.now()}</body></html>`
+      const hash = hashContent(testHtml)
+      testCaptureId = crypto.randomUUID()
+
+      const paths = saveCapture(testCaseId, testCaptureId, testHtml, undefined, undefined)
+
+      db.insertCapture({
+        id: testCaptureId,
+        caseId: testCaseId,
+        url: 'birdbrain://pipeline-test',
+        title: 'Pipeline Test',
+        hash,
+        timestamp: new Date().toISOString(),
+        htmlPath: paths.htmlPath,
+        screenshotPath: undefined,
+        headers: undefined,
+        textContent: undefined
+      })
+
+      // Verify by reading back
+      const capture = db.getCapture(testCaptureId)
+      if (!capture) {
+        return c.json({ success: false, durationMs: Date.now() - startTime, error: 'Test capture not found in DB after insert' })
+      }
+      if (capture.hash !== hash) {
+        return c.json({ success: false, durationMs: Date.now() - startTime, error: 'Hash mismatch after insert' })
+      }
+
+      return c.json({ success: true, durationMs: Date.now() - startTime })
+    } catch (err) {
+      return c.json({ success: false, durationMs: Date.now() - startTime, error: String(err) })
+    } finally {
+      // Cleanup
+      if (testCaptureId) {
+        try { db.deleteCapture(testCaptureId) } catch { /* best effort */ }
+      }
+    }
+  })
+
   return app
 }
 

@@ -1,7 +1,7 @@
 const TOAST_ID = 'birdbrain-capture-toast'
 
 interface ToastOptions {
-  status: 'capturing' | 'success' | 'error'
+  status: 'capturing' | 'success' | 'degraded' | 'error' | 'skipped'
   message?: string
 }
 
@@ -53,6 +53,12 @@ const TOAST_STYLES = `
   .toast.error {
     border-color: rgba(239, 68, 68, 0.4);
   }
+  .toast.degraded {
+    border-color: rgba(251, 191, 36, 0.4);
+  }
+  .toast.skipped {
+    border-color: rgba(148, 163, 184, 0.4);
+  }
   .spinner {
     width: 14px;
     height: 14px;
@@ -75,12 +81,16 @@ export function showToast(options: ToastOptions): void {
   const icon =
     options.status === 'capturing' ? '<div class="spinner"></div>'
     : options.status === 'success' ? '<span class="icon">&#10003;</span>'
+    : options.status === 'degraded' ? '<span class="icon">&#9888;</span>'
+    : options.status === 'skipped' ? '<span class="icon">&#8505;</span>'
     : '<span class="icon">&#10007;</span>'
 
   const message =
     options.message ??
-    (options.status === 'capturing' ? 'Capturing...'
-    : options.status === 'success' ? 'Captured!'
+    (options.status === 'capturing' ? 'Capturing page...'
+    : options.status === 'success' ? 'Page captured'
+    : options.status === 'degraded' ? 'Captured (basic snapshot)'
+    : options.status === 'skipped' ? 'Already captured'
     : 'Capture failed')
 
   const statusClass = options.status === 'capturing' ? '' : options.status
@@ -113,8 +123,15 @@ export function updateToast(options: ToastOptions): void {
 
   showToast(options)
 
-  if (options.status === 'success' || options.status === 'error') {
-    removeTimeout = setTimeout(removeToast, 2000)
+  const dismissMs =
+    options.status === 'success' ? 3000
+    : options.status === 'degraded' ? 5000
+    : options.status === 'skipped' ? 2000
+    : options.status === 'error' ? 5000
+    : 0
+
+  if (dismissMs > 0) {
+    removeTimeout = setTimeout(removeToast, dismissMs)
   }
 }
 

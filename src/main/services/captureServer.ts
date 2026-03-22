@@ -11,7 +11,7 @@ import { getSettings } from '@main/services/settings'
 import { extractEntitiesRuleBased } from '@main/services/ruleBasedExtraction'
 import type { CaptureEvent, CaptureSource, EntityType } from '@shared/types'
 
-const DEFAULT_PORT = 19845
+export const CAPTURE_SERVER_PORT = 19845
 
 interface SessionState {
   activeCaseId: string | null
@@ -426,7 +426,7 @@ function createApp(): Hono {
   return app
 }
 
-export function startCaptureServer(port: number = DEFAULT_PORT): Promise<void> {
+export function startCaptureServer(port: number = CAPTURE_SERVER_PORT): Promise<void> {
   return new Promise((resolve) => {
     const app = createApp()
     server = serve(

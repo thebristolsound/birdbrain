@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { CaptureEvent } from '@shared/types'
 
 export type AppMode = 'dashboard' | 'case-workspace' | 'new-case-wizard'
 export type CaseTab = 'overview' | 'captures' | 'entities' | 'analysis' | 'selectors'
@@ -14,6 +15,13 @@ interface AppState {
   searchQuery: string
   activeSelectorFilters: string[]
   filteredCaptureIds: string[] | null
+  captureEvents: CaptureEvent[]
+  captureStats: {
+    successCount: number
+    failCount: number
+    skipCount: number
+    lastError?: { message: string; timestamp: string }
+  }
 
   setActiveCaseId: (id: string | null) => void
   setSessionActive: (active: boolean) => void
@@ -31,6 +39,8 @@ interface AppState {
   removeSelectorFilter: (selectorId: string) => void
   clearSelectorFilters: () => void
   setFilteredCaptureIds: (ids: string[] | null) => void
+  addCaptureEvent: (event: CaptureEvent) => void
+  clearCaptureEvents: () => void
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -44,6 +54,8 @@ export const useAppStore = create<AppState>((set) => ({
   searchQuery: '',
   activeSelectorFilters: [],
   filteredCaptureIds: null,
+  captureEvents: [],
+  captureStats: { successCount: 0, failCount: 0, skipCount: 0 },
 
   setActiveCaseId: (id) => set({ activeCaseId: id }),
   setSessionActive: (active) => set({ sessionActive: active }),
@@ -87,5 +99,21 @@ export const useAppStore = create<AppState>((set) => ({
   clearSelectorFilters: () =>
     set({ activeSelectorFilters: [], filteredCaptureIds: null }),
 
-  setFilteredCaptureIds: (ids) => set({ filteredCaptureIds: ids })
+  setFilteredCaptureIds: (ids) => set({ filteredCaptureIds: ids }),
+
+  addCaptureEvent: (event) =>
+    set((s) => {
+      const events = [event, ...s.captureEvents].slice(0, 50)
+      const stats = { ...s.captureStats }
+      if (event.type === 'stored') stats.successCount++
+      if (event.type === 'failed') {
+        stats.failCount++
+        stats.lastError = { message: event.error || 'Unknown error', timestamp: event.timestamp }
+      }
+      if (event.type === 'skipped') stats.skipCount++
+      return { captureEvents: events, captureStats: stats }
+    }),
+
+  clearCaptureEvents: () =>
+    set({ captureEvents: [], captureStats: { successCount: 0, failCount: 0, skipCount: 0 } })
 }))

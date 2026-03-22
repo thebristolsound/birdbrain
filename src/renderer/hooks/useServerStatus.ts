@@ -2,7 +2,8 @@ import { useEffect } from 'react'
 import { useAppStore } from '@renderer/stores/appStore'
 
 export function useServerStatus() {
-  const { setConnectedToExtension, setSessionActive, setActiveCaseId } = useAppStore()
+  const { setConnectedToExtension, setSessionActive, setActiveCaseId, addCaptureEvent } =
+    useAppStore()
 
   useEffect(() => {
     const unsubExtension = window.birdbrain.onExtensionConnection(({ connected }) => {
@@ -16,9 +17,14 @@ export function useServerStatus() {
       }
     })
 
+    const unsubCapture = window.birdbrain.onCaptureActivity((event) => {
+      addCaptureEvent(event)
+    })
+
     return () => {
       unsubExtension()
       unsubSession()
+      unsubCapture()
     }
-  }, [setConnectedToExtension, setSessionActive, setActiveCaseId])
+  }, [setConnectedToExtension, setSessionActive, setActiveCaseId, addCaptureEvent])
 }

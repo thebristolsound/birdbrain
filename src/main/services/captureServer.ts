@@ -441,15 +441,21 @@ function createApp(): Hono {
     try {
       const captureId = c.req.param('id')
       const body = await c.req.json()
-      const { html, caseId } = body
+      const { html, caseId: bodyCaseId } = body
 
-      if (!html || !caseId) {
-        return c.json({ error: 'Missing required fields: html, caseId' }, 400)
+      if (!html) {
+        return c.json({ error: 'Missing required field: html' }, 400)
       }
 
       const capture = db.getCapture(captureId)
       if (!capture) {
         return c.json({ error: 'Capture not found' }, 404)
+      }
+
+      // Derive caseId from DB — never trust the request body for filesystem paths
+      const caseId = capture.caseId
+      if (bodyCaseId && bodyCaseId !== caseId) {
+        return c.json({ error: 'caseId does not match capture' }, 400)
       }
 
       // Overwrite HTML file on disk

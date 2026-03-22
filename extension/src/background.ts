@@ -245,10 +245,6 @@ async function manualCaptureTab(tabId: number, url: string, caseId: string): Pro
       status: 'success'
     }).catch(() => {})
 
-    // Update badge (intentional addition — manual captures were not updating badge count before)
-    captureCount++
-    chrome.action.setBadgeText({ text: String(captureCount) })
-
     // Phase 2: Background freeze-dry and HTML update
     chrome.tabs.sendMessage(tabId, { type: 'EXTRACT_PAGE' })
       .then(async (archivedData: { html: string }) => {

@@ -89,9 +89,15 @@ export function showToast(options: ToastOptions): void {
     <style>${TOAST_STYLES}</style>
     <div class="toast ${statusClass}">
       ${icon}
-      <span>${message}</span>
+      <span class="message"></span>
     </div>
   `
+
+  // Set message via textContent to prevent DOM XSS
+  const messageEl = shadow.querySelector('.message') as HTMLSpanElement | null
+  if (messageEl) {
+    messageEl.textContent = message
+  }
 
   requestAnimationFrame(() => {
     const toast = shadow.querySelector('.toast') as HTMLElement

@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { initDatabase, closeDatabase, createCase, listCaptures } from '@main/services/database'
+import { initDatabase, closeDatabase, createCase, listCaptures, getCapture } from '@main/services/database'
+import { readCaptureFile } from '@main/services/storage'
 import { initStorage } from '@main/services/storage'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { startCaptureServer, stopCaptureServer, getSessionState, resetSessionState } from '@main/services/captureServer'
@@ -403,5 +404,149 @@ describe('captureServer', () => {
     })
     // 'users' ends with 's' which matches the '?' — still blocked
     expect(allowedRes.status).toBe(403)
+  })
+
+  // --- PATCH /api/captures/:id/html ---
+
+  it('PATCH /api/captures/:id/html updates stored HTML and hash', async () => {
+    const testCase = createCase({ name: 'Patch Test' })
+
+    // Create a capture first via manual endpoint
+    const createRes = await fetch(`${baseUrl}/api/captures/manual`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        caseId: testCase.id,
+        url: 'https://example.com/patch',
+        title: 'Patch Page',
+        html: '<html><body>Original</body></html>',
+        timestamp: new Date().toISOString()
+      })
+    })
+    const createData = await createRes.json()
+    const captureId = createData.captureId
+    const originalHash = createData.hash
+
+    // Patch the HTML
+    const patchRes = await fetch(`${baseUrl}/api/captures/${captureId}/html`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        html: '<html><body>Updated freeze-dried</body></html>',
+        caseId: testCase.id
+      })
+    })
+
+    expect(patchRes.status).toBe(200)
+    const patchData = await patchRes.json()
+    expect(patchData.status).toBe('ok')
+    expect(patchData.captureId).toBe(captureId)
+    expect(patchData.hash).not.toBe(originalHash)
+
+    // Verify file on disk was updated
+    const content = readCaptureFile(testCase.id, captureId, 'html')
+    expect(content?.toString()).toBe('<html><body>Updated freeze-dried</body></html>')
+
+    // Verify hash in DB was updated
+    const capture = getCapture(captureId)
+    expect(capture?.hash).toBe(patchData.hash)
+  })
+
+  it('PATCH /api/captures/:id/html returns 404 for unknown capture', async () => {
+    const res = await fetch(`${baseUrl}/api/captures/nonexistent-id/html`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        html: '<html>test</html>'
+      })
+    })
+    expect(res.status).toBe(404)
+  })
+
+  it('PATCH /api/captures/:id/html returns 400 when caseId does not match', async () => {
+    const testCase = createCase({ name: 'Mismatch Test' })
+
+    const createRes = await fetch(`${baseUrl}/api/captures/manual`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        caseId: testCase.id,
+        url: 'https://example.com/mismatch',
+        title: 'Mismatch',
+        html: '<html>original</html>',
+        timestamp: new Date().toISOString()
+      })
+    })
+    const createData = await createRes.json()
+
+    const res = await fetch(`${baseUrl}/api/captures/${createData.captureId}/html`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        html: '<html>updated</html>',
+        caseId: 'wrong-case-id'
+      })
+    })
+    expect(res.status).toBe(400)
+    const data = await res.json()
+    expect(data.error).toContain('does not match')
+  })
+
+  it('PATCH /api/captures/:id/html returns 400 without html field', async () => {
+    const testCase = createCase({ name: 'No HTML Test' })
+
+    const createRes = await fetch(`${baseUrl}/api/captures/manual`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        caseId: testCase.id,
+        url: 'https://example.com/nohtml',
+        title: 'No HTML',
+        html: '<html>original</html>',
+        timestamp: new Date().toISOString()
+      })
+    })
+    const createData = await createRes.json()
+
+    const res = await fetch(`${baseUrl}/api/captures/${createData.captureId}/html`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        caseId: testCase.id
+      })
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('PATCH /api/captures/:id/html works without caseId in body (derives from DB)', async () => {
+    const testCase = createCase({ name: 'No CaseId Body Test' })
+
+    const createRes = await fetch(`${baseUrl}/api/captures/manual`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        caseId: testCase.id,
+        url: 'https://example.com/nocaseid',
+        title: 'No CaseId',
+        html: '<html>original</html>',
+        timestamp: new Date().toISOString()
+      })
+    })
+    const createData = await createRes.json()
+
+    const res = await fetch(`${baseUrl}/api/captures/${createData.captureId}/html`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        html: '<html>updated without caseId</html>'
+      })
+    })
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(data.status).toBe('ok')
+
+    // Verify file was updated correctly
+    const content = readCaptureFile(testCase.id, createData.captureId, 'html')
+    expect(content?.toString()).toBe('<html>updated without caseId</html>')
   })
 })

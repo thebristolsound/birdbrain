@@ -156,3 +156,10 @@ export async function getEntitySummary(caseId: string): Promise<EntityTypeSummar
     return []
   }
 }
+
+export async function updateCaptureHtml(captureId: string, caseId: string, html: string): Promise<{ status: string }> {
+  return request(`/api/captures/${captureId}/html`, {
+    method: 'PATCH',
+    body: JSON.stringify({ html, caseId })
+  })
+}

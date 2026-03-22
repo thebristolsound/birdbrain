@@ -4,6 +4,7 @@
 
 import { freezeDry } from 'freeze-dry'
 import { showSidebar, removeSidebar } from './sidebar'
+import { showToast, updateToast } from './toast'
 
 interface SelectorInfo {
   id: string
@@ -245,6 +246,26 @@ function removeHighlights(): void {
 // --- Message handlers ---
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message.type === 'EXTRACT_PAGE_FAST') {
+    const title = document.title
+    const textContent = document.body?.innerText || ''
+    const html = document.documentElement.outerHTML
+    sendResponse({ html, title, textContent })
+    return
+  }
+
+  if (message.type === 'SHOW_CAPTURE_TOAST') {
+    showToast({ status: 'capturing' })
+    sendResponse({ ok: true })
+    return
+  }
+
+  if (message.type === 'UPDATE_CAPTURE_TOAST') {
+    updateToast({ status: message.status, message: message.message })
+    sendResponse({ ok: true })
+    return
+  }
+
   if (message.type === 'EXTRACT_PAGE') {
     const title = document.title
     const textContent = document.body?.innerText || ''

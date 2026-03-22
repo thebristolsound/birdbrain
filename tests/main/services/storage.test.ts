@@ -5,6 +5,7 @@ import { tmpdir } from 'os'
 import {
   initStorage,
   saveCapture,
+  updateCaptureHtml,
   getCapturePath,
   readCaptureFile,
   deleteCaptureFiles,
@@ -80,5 +81,25 @@ describe('storage', () => {
   it('creates nested case directory automatically', () => {
     saveCapture('new-case', 'cap-1', '<html>test</html>')
     expect(existsSync(join(tempDir, 'new-case'))).toBe(true)
+  })
+
+  it('updateCaptureHtml overwrites existing HTML file', () => {
+    const originalHtml = '<html><body>Original</body></html>'
+    const updatedHtml = '<html><body>Updated freeze-dried</body></html>'
+
+    saveCapture('case-1', 'cap-1', originalHtml)
+    expect(readCaptureFile('case-1', 'cap-1', 'html')?.toString()).toBe(originalHtml)
+
+    updateCaptureHtml('case-1', 'cap-1', updatedHtml)
+    expect(readCaptureFile('case-1', 'cap-1', 'html')?.toString()).toBe(updatedHtml)
+  })
+
+  it('updateCaptureHtml creates file even if case dir already exists', () => {
+    // Create case dir via saveCapture with a different capture
+    saveCapture('case-1', 'cap-1', '<html>first</html>')
+
+    // Update a different capture in the same case dir
+    updateCaptureHtml('case-1', 'cap-2', '<html>new file</html>')
+    expect(readCaptureFile('case-1', 'cap-2', 'html')?.toString()).toBe('<html>new file</html>')
   })
 })

@@ -305,6 +305,10 @@ export function deleteCapture(id: string): boolean {
   return result.changes > 0
 }
 
+export function updateCaptureHash(captureId: string, hash: string): void {
+  getDb().prepare('UPDATE captures SET hash = ? WHERE id = ?').run(hash, captureId)
+}
+
 export function getCaptureCount(caseId: string): number {
   const row = getDb()
     .prepare('SELECT COUNT(*) as count FROM captures WHERE case_id = ?')
@@ -397,6 +401,21 @@ export function insertEntity(entity: Omit<Entity, 'id' | 'createdAt'>): Entity {
     )
     .run(id, entity.captureId, entity.type, entity.value, entity.context ?? null, entity.confidence ?? null, entity.source ?? 'ai', now)
   return { id, ...entity, source: entity.source ?? 'ai', createdAt: now }
+}
+
+export function insertEntitiesBatch(entities: Array<Omit<Entity, 'id' | 'createdAt'>>): void {
+  if (entities.length === 0) return
+  const d = getDb()
+  const stmt = d.prepare(
+    'INSERT INTO entities (id, capture_id, type, value, context, confidence, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  )
+  const run = d.transaction(() => {
+    const now = new Date().toISOString()
+    for (const e of entities) {
+      stmt.run(uuid(), e.captureId, e.type, e.value, e.context ?? null, e.confidence ?? null, e.source ?? 'ai', now)
+    }
+  })
+  run()
 }
 
 export function deleteEntitiesByCapture(captureId: string): number {

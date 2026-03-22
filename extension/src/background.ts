@@ -3,6 +3,7 @@ import {
   getStatus,
   sendCapture,
   sendManualCapture,
+  updateCaptureHtml,
   getActiveSelectors,
   sendSelectorCapture
 } from '@extension/utils/api'
@@ -216,21 +217,20 @@ async function captureTab(tabId: number, url: string): Promise<void> {
 
 async function manualCaptureTab(tabId: number, url: string, caseId: string): Promise<void> {
   try {
-    const pageData = await chrome.tabs.sendMessage(tabId, { type: 'EXTRACT_PAGE' }) as {
-      html: string
-      title: string
-      textContent: string
-    }
+    chrome.tabs.sendMessage(tabId, { type: 'SHOW_CAPTURE_TOAST' }).catch(() => {})
 
-    let screenshot: string | undefined
-    try {
-      screenshot = await chrome.tabs.captureVisibleTab({ format: 'png' })
-      screenshot = screenshot.replace(/^data:image\/png;base64,/, '')
-    } catch {
-      // Screenshot capture can fail (e.g., chrome:// pages)
-    }
+    // Phase 1: Fast extraction + screenshot in parallel
+    const [pageData, rawScreenshot] = await Promise.all([
+      chrome.tabs.sendMessage(tabId, { type: 'EXTRACT_PAGE_FAST' }) as Promise<{
+        html: string
+        title: string
+        textContent: string
+      }>,
+      chrome.tabs.captureVisibleTab({ format: 'png' }).catch(() => undefined)
+    ])
+    const screenshot = rawScreenshot?.replace(/^data:image\/png;base64,/, '')
 
-    await sendManualCapture({
+    const result = await sendManualCapture({
       caseId,
       url,
       title: pageData.title,
@@ -239,8 +239,28 @@ async function manualCaptureTab(tabId: number, url: string, caseId: string): Pro
       timestamp: new Date().toISOString(),
       textContent: pageData.textContent
     })
+
+    chrome.tabs.sendMessage(tabId, {
+      type: 'UPDATE_CAPTURE_TOAST',
+      status: 'success'
+    }).catch(() => {})
+
+    // Phase 2: Background freeze-dry and HTML update
+    chrome.tabs.sendMessage(tabId, { type: 'EXTRACT_PAGE' })
+      .then(async (archivedData: { html: string }) => {
+        if (archivedData?.html && archivedData.html !== pageData.html) {
+          await updateCaptureHtml(result.captureId, caseId, archivedData.html)
+        }
+      })
+      .catch((err) => {
+        console.warn('[Birdbrain] Background freeze-dry failed:', err)
+      })
   } catch (err) {
     console.error('[Birdbrain] Manual capture failed:', err)
+    chrome.tabs.sendMessage(tabId, {
+      type: 'UPDATE_CAPTURE_TOAST',
+      status: 'error'
+    }).catch(() => {})
   }
 }
 

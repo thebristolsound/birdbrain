@@ -5,7 +5,7 @@ import type { Server } from 'http'
 import type { BrowserWindow } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
 import * as db from '@main/services/database'
-import { saveCapture } from '@main/services/storage'
+import { saveCapture, updateCaptureHtml } from '@main/services/storage'
 import { hashContent } from '@main/services/hash'
 import { getSettings } from '@main/services/settings'
 import { extractEntitiesRuleBased } from '@main/services/ruleBasedExtraction'
@@ -87,16 +87,16 @@ function runRuleBasedExtraction(captureId: string, textContent: string | undefin
     const entities = extractEntitiesRuleBased(textContent, enabledTypes)
     if (entities.length === 0) return
 
-    for (const entity of entities) {
-      db.insertEntity({
+    db.insertEntitiesBatch(
+      entities.map(e => ({
         captureId,
-        type: entity.type,
-        value: entity.value,
-        context: entity.context,
-        confidence: entity.confidence,
+        type: e.type,
+        value: e.value,
+        context: e.context,
+        confidence: e.confidence,
         source: 'rule'
-      })
-    }
+      }))
+    )
 
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC_CHANNELS.EXTRACTION_COMPLETE, {
@@ -112,6 +112,23 @@ function runRuleBasedExtraction(captureId: string, textContent: string | undefin
   }
 }
 
+function schedulePostCaptureWork(captureId: string, caseId: string, textContent: string | undefined): void {
+  setImmediate(() => {
+    try {
+      runRuleBasedExtraction(captureId, textContent)
+    } catch (err) {
+      console.error('Rule-based extraction error for capture', captureId, err)
+    }
+    try {
+      if (textContent) {
+        db.matchSelectorsForCapture(captureId, caseId, textContent)
+      }
+    } catch (err) {
+      console.error('Selector matching error for capture', captureId, err)
+    }
+  })
+}
+
 function createApp(): Hono {
   const app = new Hono()
 
@@ -120,7 +137,7 @@ function createApp(): Hono {
     '*',
     cors({
       origin: ['chrome-extension://*', 'http://localhost:*', 'http://127.0.0.1:*'],
-      allowMethods: ['GET', 'POST'],
+      allowMethods: ['GET', 'POST', 'PATCH'],
       allowHeaders: ['Content-Type']
     })
   )
@@ -264,20 +281,7 @@ function createApp(): Hono {
     })
 
     state.captureCount++
-    setImmediate(() => {
-      try {
-        runRuleBasedExtraction(capture.id, textContent)
-      } catch (err) {
-        console.error('Rule-based extraction error for capture', capture.id, err)
-      }
-      try {
-        if (textContent) {
-          db.matchSelectorsForCapture(capture.id, caseId, textContent)
-        }
-      } catch (err) {
-        console.error('Selector matching error for capture', capture.id, err)
-      }
-    })
+    schedulePostCaptureWork(capture.id, caseId, textContent)
 
     // Notify renderer of new capture
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -335,10 +339,20 @@ function createApp(): Hono {
         textContent
       })
 
-      runRuleBasedExtraction(capture.id, textContent)
-      if (textContent) {
-        db.matchSelectorsForCapture(capture.id, caseId, textContent)
-      }
+      setImmediate(() => {
+        try {
+          runRuleBasedExtraction(capture.id, textContent)
+        } catch (err) {
+          console.error('Rule-based extraction error for capture', capture.id, err)
+        }
+        try {
+          if (textContent) {
+            db.matchSelectorsForCapture(capture.id, caseId, textContent)
+          }
+        } catch (err) {
+          console.error('Selector matching error for capture', capture.id, err)
+        }
+      })
 
       // Notify renderer of new capture
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -396,10 +410,20 @@ function createApp(): Hono {
         textContent
       })
 
-      runRuleBasedExtraction(capture.id, textContent)
-      if (textContent) {
-        db.matchSelectorsForCapture(capture.id, caseId, textContent)
-      }
+      setImmediate(() => {
+        try {
+          runRuleBasedExtraction(capture.id, textContent)
+        } catch (err) {
+          console.error('Rule-based extraction error for capture', capture.id, err)
+        }
+        try {
+          if (textContent) {
+            db.matchSelectorsForCapture(capture.id, caseId, textContent)
+          }
+        } catch (err) {
+          console.error('Selector matching error for capture', capture.id, err)
+        }
+      })
 
       // Notify renderer of new capture
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -410,6 +434,41 @@ function createApp(): Hono {
     } catch (err) {
       console.error('Manual capture error:', err)
       return c.json({ error: 'Failed to process manual capture' }, 500)
+    }
+  })
+
+  app.patch('/api/captures/:id/html', async (c) => {
+    try {
+      const captureId = c.req.param('id')
+      const body = await c.req.json()
+      const { html, caseId: bodyCaseId } = body
+
+      if (!html) {
+        return c.json({ error: 'Missing required field: html' }, 400)
+      }
+
+      const capture = db.getCapture(captureId)
+      if (!capture) {
+        return c.json({ error: 'Capture not found' }, 404)
+      }
+
+      // Derive caseId from DB — never trust the request body for filesystem paths
+      const caseId = capture.caseId
+      if (bodyCaseId && bodyCaseId !== caseId) {
+        return c.json({ error: 'caseId does not match capture' }, 400)
+      }
+
+      // Overwrite HTML file on disk
+      updateCaptureHtml(caseId, captureId, html)
+
+      // Update hash in database
+      const hash = hashContent(html)
+      db.updateCaptureHash(captureId, hash)
+
+      return c.json({ status: 'ok', captureId, hash })
+    } catch (err) {
+      console.error('HTML update error:', err)
+      return c.json({ error: 'Failed to update capture HTML' }, 500)
     }
   })
 

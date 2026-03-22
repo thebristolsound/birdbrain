@@ -2,11 +2,11 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { initDatabase, closeDatabase, createCase, listCaptures, getCapture } from '@main/services/database'
+import { initDatabase, closeDatabase, createCase, updateCase, listCaptures, getCapture, getEntitiesByCapture } from '@main/services/database'
 import { readCaptureFile } from '@main/services/storage'
 import { initStorage } from '@main/services/storage'
 import { initSettings, updateSettings } from '@main/services/settings'
-import { startCaptureServer, stopCaptureServer, getSessionState, resetSessionState } from '@main/services/captureServer'
+import { startCaptureServer, stopCaptureServer, getSessionState, resetSessionState, invalidateEntityTypeCache } from '@main/services/captureServer'
 
 let nextPort = 19846
 
@@ -21,6 +21,7 @@ describe('captureServer', () => {
     initStorage(join(tempDir, 'captures'))
     initSettings(tempDir)
     resetSessionState()
+    invalidateEntityTypeCache()
     baseUrl = `http://127.0.0.1:${port}`
     await startCaptureServer(port)
   })
@@ -548,5 +549,313 @@ describe('captureServer', () => {
     // Verify file was updated correctly
     const content = readCaptureFile(testCase.id, createData.captureId, 'html')
     expect(content?.toString()).toBe('<html>updated without caseId</html>')
+  })
+
+  // --- Selector capture endpoint ---
+
+  it('POST /api/captures/selector stores a capture', async () => {
+    const testCase = createCase({ name: 'Selector Test' })
+
+    const res = await fetch(`${baseUrl}/api/captures/selector`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        caseId: testCase.id,
+        url: 'https://example.com/selector',
+        title: 'Selector Page',
+        html: '<html><body>Selector match</body></html>',
+        timestamp: new Date().toISOString(),
+        textContent: 'Selector match'
+      })
+    })
+
+    const data = await res.json()
+    expect(res.status).toBe(200)
+    expect(data.status).toBe('ok')
+    expect(data.captureId).toBeDefined()
+    expect(data.hash).toHaveLength(64)
+
+    // Verify in DB
+    const captures = listCaptures(testCase.id)
+    expect(captures).toHaveLength(1)
+    expect(captures[0].url).toBe('https://example.com/selector')
+  })
+
+  it('POST /api/captures/selector returns 400 without caseId', async () => {
+    const res = await fetch(`${baseUrl}/api/captures/selector`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: 'https://example.com',
+        html: '<html>test</html>'
+      })
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('POST /api/captures/selector returns 400 without url', async () => {
+    const testCase = createCase({ name: 'Selector No URL' })
+    const res = await fetch(`${baseUrl}/api/captures/selector`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        caseId: testCase.id,
+        html: '<html>test</html>'
+      })
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('POST /api/captures/selector returns 400 without html', async () => {
+    const testCase = createCase({ name: 'Selector No HTML' })
+    const res = await fetch(`${baseUrl}/api/captures/selector`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        caseId: testCase.id,
+        url: 'https://example.com'
+      })
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('POST /api/captures/selector does not increment session capture count', async () => {
+    const testCase = createCase({ name: 'Selector Count' })
+    await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
+    await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
+
+    await fetch(`${baseUrl}/api/captures/selector`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        caseId: testCase.id,
+        url: 'https://example.com/sel',
+        html: '<html>sel</html>'
+      })
+    })
+
+    const state = getSessionState()
+    expect(state.captureCount).toBe(0)
+  })
+
+  // --- Manual capture: archived case ---
+
+  it('POST /api/captures/manual returns 400 for archived case', async () => {
+    const testCase = createCase({ name: 'Archive Test' })
+    updateCase({ id: testCase.id, archived: true })
+
+    const res = await fetch(`${baseUrl}/api/captures/manual`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        caseId: testCase.id,
+        url: 'https://example.com/archived',
+        html: '<html>archived</html>'
+      })
+    })
+    expect(res.status).toBe(400)
+    const data = await res.json()
+    expect(data.error).toContain('archived')
+  })
+
+  // --- Status endpoint: includeCases query param ---
+
+  it('GET /api/status?includeCases=0 omits cases list', async () => {
+    createCase({ name: 'Hidden Case' })
+
+    const res = await fetch(`${baseUrl}/api/status?includeCases=0`)
+    const data = await res.json()
+    expect(data.running).toBe(true)
+    expect(data.cases).toEqual([])
+  })
+
+  it('GET /api/status?includeCases=false omits cases list', async () => {
+    createCase({ name: 'Hidden Case' })
+
+    const res = await fetch(`${baseUrl}/api/status?includeCases=false`)
+    const data = await res.json()
+    expect(data.cases).toEqual([])
+  })
+
+  it('GET /api/status?includeCases=1 includes cases list', async () => {
+    createCase({ name: 'Visible Case' })
+
+    const res = await fetch(`${baseUrl}/api/status?includeCases=1`)
+    const data = await res.json()
+    expect(data.cases).toHaveLength(1)
+    expect(data.cases[0].name).toBe('Visible Case')
+  })
+
+  it('GET /api/status without includeCases param includes cases by default', async () => {
+    createCase({ name: 'Default Case' })
+
+    const res = await fetch(`${baseUrl}/api/status`)
+    const data = await res.json()
+    expect(data.cases).toHaveLength(1)
+  })
+
+  // --- processCapture: title defaults to url ---
+
+  it('POST /api/captures uses url as title when title is omitted', async () => {
+    const testCase = createCase({ name: 'No Title Test' })
+    await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
+    await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
+
+    await fetch(`${baseUrl}/api/captures`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: 'https://example.com/no-title',
+        html: '<html>no title</html>'
+      })
+    })
+
+    const captures = listCaptures(testCase.id)
+    expect(captures).toHaveLength(1)
+    expect(captures[0].title).toBe('https://example.com/no-title')
+  })
+
+  // --- processCapture: consistent hash across endpoints ---
+
+  it('all capture endpoints produce consistent hashes for identical HTML', async () => {
+    const testCase = createCase({ name: 'Hash Consistency' })
+    await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
+    await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
+
+    const html = '<html><body>identical content</body></html>'
+
+    const autoRes = await fetch(`${baseUrl}/api/captures`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: 'https://a.com', html })
+    })
+    const autoData = await autoRes.json()
+
+    const selectorRes = await fetch(`${baseUrl}/api/captures/selector`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ caseId: testCase.id, url: 'https://b.com', html })
+    })
+    const selectorData = await selectorRes.json()
+
+    const manualRes = await fetch(`${baseUrl}/api/captures/manual`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ caseId: testCase.id, url: 'https://c.com', html })
+    })
+    const manualData = await manualRes.json()
+
+    expect(autoData.hash).toBe(selectorData.hash)
+    expect(selectorData.hash).toBe(manualData.hash)
+  })
+
+  // --- Entity type cache invalidation ---
+
+  it('invalidateEntityTypeCache allows settings changes to take effect', async () => {
+    const testCase = createCase({ name: 'Cache Invalidation' })
+
+    // Enable only email extraction initially
+    updateSettings({ enabledEntityTypes: ['email'] })
+
+    // First capture with email — triggers cache population
+    const res1 = await fetch(`${baseUrl}/api/captures/manual`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        caseId: testCase.id,
+        url: 'https://example.com/page1',
+        html: '<html>page1</html>',
+        textContent: 'Contact us at test@example.com or 192.168.1.1'
+      })
+    })
+    const data1 = await res1.json()
+
+    // Wait for setImmediate post-capture work
+    await new Promise(resolve => setTimeout(resolve, 100))
+
+    const entities1 = getEntitiesByCapture(data1.captureId)
+    const emailEntities1 = entities1.filter(e => e.type === 'email')
+    const ipEntities1 = entities1.filter(e => e.type === 'ip_address')
+    expect(emailEntities1.length).toBeGreaterThan(0)
+    expect(ipEntities1.length).toBe(0)
+
+    // Change settings to also include ip_address, then invalidate cache
+    updateSettings({ enabledEntityTypes: ['email', 'ip_address'] })
+    invalidateEntityTypeCache()
+
+    // Second capture should now extract IP addresses too
+    const res2 = await fetch(`${baseUrl}/api/captures/manual`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        caseId: testCase.id,
+        url: 'https://example.com/page2',
+        html: '<html>page2</html>',
+        textContent: 'Contact us at test2@example.com or 10.0.0.1'
+      })
+    })
+    const data2 = await res2.json()
+
+    await new Promise(resolve => setTimeout(resolve, 100))
+
+    const entities2 = getEntitiesByCapture(data2.captureId)
+    const ipEntities2 = entities2.filter(e => e.type === 'ip_address')
+    expect(ipEntities2.length).toBeGreaterThan(0)
+  })
+
+  // --- POST /api/captures missing fields ---
+
+  it('POST /api/captures returns 400 without url', async () => {
+    const testCase = createCase({ name: 'No URL' })
+    await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
+    await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
+
+    const res = await fetch(`${baseUrl}/api/captures`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html: '<html>test</html>' })
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('POST /api/captures returns 400 without html', async () => {
+    const testCase = createCase({ name: 'No HTML' })
+    await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
+    await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
+
+    const res = await fetch(`${baseUrl}/api/captures`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: 'https://example.com' })
+    })
+    expect(res.status).toBe(400)
+  })
+
+  // --- POST /api/captures/manual missing url/html ---
+
+  it('POST /api/captures/manual returns 400 without url', async () => {
+    const testCase = createCase({ name: 'Manual No URL' })
+    const res = await fetch(`${baseUrl}/api/captures/manual`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        caseId: testCase.id,
+        html: '<html>test</html>'
+      })
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('POST /api/captures/manual returns 400 without html', async () => {
+    const testCase = createCase({ name: 'Manual No HTML' })
+    const res = await fetch(`${baseUrl}/api/captures/manual`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        caseId: testCase.id,
+        url: 'https://example.com'
+      })
+    })
+    expect(res.status).toBe(400)
   })
 })

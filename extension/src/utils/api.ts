@@ -1,3 +1,5 @@
+import type { ActiveCaseSelectors, SelectorMatchInfo } from '@extension/types'
+
 const BASE_URL = 'http://127.0.0.1:19845'
 
 interface StatusResponse {
@@ -36,8 +38,9 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json() as Promise<T>
 }
 
-export async function getStatus(): Promise<StatusResponse> {
-  return request('/api/status')
+export async function getStatus(opts?: { includeCases?: boolean }): Promise<StatusResponse> {
+  const params = opts?.includeCases === false ? '?includeCases=0' : ''
+  return request(`/api/status${params}`)
 }
 
 export async function getCases(): Promise<CaseInfo[]> {
@@ -85,32 +88,6 @@ export async function sendManualCapture(data: {
     method: 'POST',
     body: JSON.stringify(data)
   })
-}
-
-interface SelectorInfo {
-  id: string
-  caseId: string
-  pattern: string
-  isRegex: boolean
-  enabled: boolean
-  label?: string
-  createdAt: string
-}
-
-interface ActiveCaseSelectors {
-  caseId: string
-  caseName: string
-  selectors: SelectorInfo[]
-}
-
-interface SelectorMatchInfo {
-  selectorId: string
-  caseId: string
-  caseName: string
-  pattern: string
-  matchText: string
-  context: string
-  index: number
 }
 
 export async function getActiveSelectors(): Promise<ActiveCaseSelectors[]> {

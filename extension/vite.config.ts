@@ -51,6 +51,7 @@ const mainConfig = defineConfig({
           let html = readFileSync(nestedPopup, 'utf-8')
           html = html.replace(/src="[^"]*popup\.js"/g, 'src="./popup.js"')
           html = html.replace(/href="[^"]*chunks\//g, 'href="./chunks/')
+          html = html.replace(/href="[^"]*assets\//g, 'href="./assets/')
           writeFileSync(resolve(dist, 'popup.html'), html)
           rmSync(resolve(dist, 'extension'), { recursive: true, force: true })
         } catch {}

@@ -1,6 +1,6 @@
 {
   "name": "birdbrain",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "description": "Open source web investigation & capture tool",
   "main": "./out/main/index.js",
   "author": "Matt Donovan",
@@ -20,18 +20,29 @@
     "pretest:e2e": "pnpm build",
     "test:e2e": "npx playwright test",
     "test:e2e:debug": "npx playwright test --debug",
-    "pretest:e2e:debug": "pnpm build"
+    "pretest:e2e:debug": "pnpm build",
+    "package": "electron-vite build && electron-builder --win"
   },
   "build": {
     "appId": "com.birdbrain.app",
     "productName": "Birdbrain",
     "directories": {
-      "output": "dist"
+      "output": "dist",
+      "buildResources": "resources"
     },
+    "icon": "resources/icon.ico",
     "win": {
       "target": [
-        "nsis"
+        "nsis",
+        "portable"
       ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     },
     "mac": {
       "target": [

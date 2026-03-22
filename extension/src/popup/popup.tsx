@@ -359,7 +359,7 @@ function Popup(): React.JSX.Element {
 
   async function checkStatus(): Promise<void> {
     try {
-      const status = await getStatus()
+      const status = await getStatus({ includeCases: false })
       setConnected(status.running)
       setSessionActive(status.sessionActive)
       setActiveCase(status.activeCase)

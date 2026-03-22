@@ -13,6 +13,7 @@ import * as db from '@main/services/database'
 import * as storage from '@main/services/storage'
 import * as settings from '@main/services/settings'
 import * as openrouter from '@main/services/openrouter'
+import * as captureServer from '@main/services/captureServer'
 import { extractEntities } from '@main/services/ai/entityExtraction'
 import { buildEntityGraph } from '@main/services/ai/relationships'
 import { analyzeCase, getCachedAnalysis } from '@main/services/ai/patterns'
@@ -160,9 +161,11 @@ export function registerIpcHandlers(): void {
 
   // Settings
   ipcMain.handle(IPC_CHANNELS.SETTINGS_GET, () => settings.getSettings())
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_UPDATE, (_, partial: Partial<BirdbrainSettings>) =>
-    settings.updateSettings(partial)
-  )
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_UPDATE, (_, partial: Partial<BirdbrainSettings>) => {
+    const updated = settings.updateSettings(partial)
+    captureServer.invalidateEntityTypeCache()
+    return updated
+  })
   ipcMain.handle(IPC_CHANNELS.SETTINGS_RESET, () => settings.resetSettings())
   ipcMain.handle(IPC_CHANNELS.SETTINGS_TEST_OPENROUTER, (_, apiKey: string) =>
     openrouter.testApiKey(apiKey)

@@ -96,13 +96,16 @@ async function checkStatus(): Promise<void> {
   }
 }
 
-// Poll for status
-setInterval(() => {
-  checkStatus()
-}, connected ? 30_000 : 5_000)
+// Poll for status with dynamic interval based on connection state
+function scheduleStatusCheck(): void {
+  setTimeout(async () => {
+    await checkStatus()
+    scheduleStatusCheck()
+  }, connected ? 30_000 : 5_000)
+}
 
-// Initial check
-checkStatus()
+// Initial check, then start self-scheduling loop
+checkStatus().then(() => scheduleStatusCheck())
 
 // --- Context menu for manual capture ---
 
@@ -133,6 +136,9 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 
 // --- Capture orchestration ---
 
+// NOTE: This function is duplicated in src/main/services/captureServer.ts.
+// Keep both copies in sync — they cannot share code because they run in
+// different processes with separate build pipelines.
 function globToRegex(pattern: string): RegExp {
   const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&')
   const withWildcards = escaped.replace(/\*/g, '.*').replace(/\?/g, '.')

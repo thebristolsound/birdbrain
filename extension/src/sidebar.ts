@@ -1,15 +1,7 @@
 // Birdbrain Selector Sidebar — Shadow DOM overlay for match results
 // OLED Dark Mode design from SuperDesign draft 4fb645e0
 
-interface SelectorMatchInfo {
-  selectorId: string
-  caseId: string
-  caseName: string
-  pattern: string
-  matchText: string
-  context: string
-  index: number
-}
+import type { SelectorMatchInfo } from './types'
 
 const SIDEBAR_ID = 'birdbrain-selector-sidebar'
 const BADGE_ID = 'birdbrain-selector-badge'

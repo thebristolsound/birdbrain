@@ -50,6 +50,7 @@ export function TopBar() {
 
       {appMode === 'dashboard' ? (
         <div className="flex items-center gap-3">
+          <CaptureHealth />
           <button className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-900 hover:text-slate-300 transition-colors">
             <Bell className="h-4 w-4" />
           </button>

@@ -380,6 +380,8 @@ function createApp(): Hono {
       const hash = hashContent(testHtml)
       testCaptureId = crypto.randomUUID()
 
+      emitCaptureEvent({ type: 'received', source: 'manual', url: 'birdbrain://pipeline-test', timestamp: new Date().toISOString() })
+
       const paths = saveCapture(testCaseId, testCaptureId, testHtml, undefined, undefined)
 
       db.insertCapture({
@@ -404,7 +406,10 @@ function createApp(): Hono {
         return c.json({ success: false, durationMs: Date.now() - startTime, error: 'Hash mismatch after insert' })
       }
 
-      return c.json({ success: true, durationMs: Date.now() - startTime })
+      const durationMs = Date.now() - startTime
+      emitCaptureEvent({ type: 'stored', captureId: testCaptureId!, source: 'manual', url: 'birdbrain://pipeline-test', timestamp: new Date().toISOString(), durationMs })
+
+      return c.json({ success: true, durationMs })
     } catch (err) {
       return c.json({ success: false, durationMs: Date.now() - startTime, error: String(err) })
     } finally {

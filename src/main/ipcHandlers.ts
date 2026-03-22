@@ -90,13 +90,15 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  // HTTP test (loopback through capture server)
+  // HTTP test (verifies Hono server is reachable)
   ipcMain.handle(IPC_CHANNELS.CAPTURES_TEST_HTTP, async () => {
+    const start = Date.now()
     try {
-      const res = await fetch(`http://127.0.0.1:${19845}/api/captures/test`)
-      return res.json()
+      const res = await fetch(`http://127.0.0.1:${19845}/api/status`)
+      const ok = res.ok
+      return { success: ok, durationMs: Date.now() - start, error: ok ? undefined : `HTTP ${res.status}` }
     } catch (err) {
-      return { success: false, durationMs: 0, error: String(err) }
+      return { success: false, durationMs: Date.now() - start, error: String(err) }
     }
   })
 

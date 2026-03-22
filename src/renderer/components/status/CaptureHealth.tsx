@@ -143,7 +143,12 @@ export function CaptureHealth() {
                 No capture activity yet
               </div>
             ) : (
-              captureEvents.map((event, i) => <EventRow key={i} event={event} />)
+              captureEvents.map((event) => (
+                <EventRow
+                  key={`${event.captureId}-${event.timestamp}-${event.type}`}
+                  event={event}
+                />
+              ))
             )}
           </div>
 

@@ -163,7 +163,7 @@ interface CaptureEvent {
 
 New component: `src/renderer/components/status/CaptureHealth.tsx`
 
-Accessible via a clickable indicator in the bottom status bar that expands to a popover panel.
+Accessible via a clickable indicator in the top header bar (alongside the existing ConnectionStatus and SessionControls) that expands to a popover panel.
 
 **Contents:**
 1. **Connection indicator** — extension connected / disconnected (existing, reuse)

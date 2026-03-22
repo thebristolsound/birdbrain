@@ -94,7 +94,7 @@ function runRuleBasedExtraction(captureId: string, textContent: string | undefin
         value: e.value,
         context: e.context,
         confidence: e.confidence,
-        source: 'rule' as const
+        source: 'rule'
       }))
     )
 
@@ -110,6 +110,23 @@ function runRuleBasedExtraction(captureId: string, textContent: string | undefin
   } catch (err) {
     console.error(`[Rule] Entity extraction failed for capture ${captureId}:`, err)
   }
+}
+
+function schedulePostCaptureWork(captureId: string, caseId: string, textContent: string | undefined): void {
+  setImmediate(() => {
+    try {
+      runRuleBasedExtraction(captureId, textContent)
+    } catch (err) {
+      console.error('Rule-based extraction error for capture', captureId, err)
+    }
+    try {
+      if (textContent) {
+        db.matchSelectorsForCapture(captureId, caseId, textContent)
+      }
+    } catch (err) {
+      console.error('Selector matching error for capture', captureId, err)
+    }
+  })
 }
 
 function createApp(): Hono {
@@ -264,20 +281,7 @@ function createApp(): Hono {
     })
 
     state.captureCount++
-    setImmediate(() => {
-      try {
-        runRuleBasedExtraction(capture.id, textContent)
-      } catch (err) {
-        console.error('Rule-based extraction error for capture', capture.id, err)
-      }
-      try {
-        if (textContent) {
-          db.matchSelectorsForCapture(capture.id, caseId, textContent)
-        }
-      } catch (err) {
-        console.error('Selector matching error for capture', capture.id, err)
-      }
-    })
+    schedulePostCaptureWork(capture.id, caseId, textContent)
 
     // Notify renderer of new capture
     if (mainWindow && !mainWindow.isDestroyed()) {

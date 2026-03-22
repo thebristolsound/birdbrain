@@ -217,25 +217,19 @@ async function captureTab(tabId: number, url: string): Promise<void> {
 
 async function manualCaptureTab(tabId: number, url: string, caseId: string): Promise<void> {
   try {
-    // Show capturing toast immediately
     chrome.tabs.sendMessage(tabId, { type: 'SHOW_CAPTURE_TOAST' }).catch(() => {})
 
-    // Phase 1: Fast extraction (outerHTML, no freeze-dry)
-    const pageData = await chrome.tabs.sendMessage(tabId, { type: 'EXTRACT_PAGE_FAST' }) as {
-      html: string
-      title: string
-      textContent: string
-    }
+    // Phase 1: Fast extraction + screenshot in parallel
+    const [pageData, rawScreenshot] = await Promise.all([
+      chrome.tabs.sendMessage(tabId, { type: 'EXTRACT_PAGE_FAST' }) as Promise<{
+        html: string
+        title: string
+        textContent: string
+      }>,
+      chrome.tabs.captureVisibleTab({ format: 'png' }).catch(() => undefined)
+    ])
+    const screenshot = rawScreenshot?.replace(/^data:image\/png;base64,/, '')
 
-    let screenshot: string | undefined
-    try {
-      screenshot = await chrome.tabs.captureVisibleTab({ format: 'png' })
-      screenshot = screenshot.replace(/^data:image\/png;base64,/, '')
-    } catch {
-      // Screenshot capture can fail (e.g., chrome:// pages)
-    }
-
-    // Send fast capture to server — appears in app immediately
     const result = await sendManualCapture({
       caseId,
       url,
@@ -246,7 +240,6 @@ async function manualCaptureTab(tabId: number, url: string, caseId: string): Pro
       textContent: pageData.textContent
     })
 
-    // Update toast to success
     chrome.tabs.sendMessage(tabId, {
       type: 'UPDATE_CAPTURE_TOAST',
       status: 'success'
@@ -268,7 +261,6 @@ async function manualCaptureTab(tabId: number, url: string, caseId: string): Pro
       })
   } catch (err) {
     console.error('[Birdbrain] Manual capture failed:', err)
-    // Update toast to error
     chrome.tabs.sendMessage(tabId, {
       type: 'UPDATE_CAPTURE_TOAST',
       status: 'error'

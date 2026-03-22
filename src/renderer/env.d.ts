@@ -1,4 +1,4 @@
-import type { Case, Capture, Tag, Entity, EntityGraph, CaseAnalysisResult, BirdbrainSettings, OpenRouterModel, ExportOptions, Selector, ActiveCaseSelectors } from '@shared/types'
+import type { Case, Capture, Tag, Entity, EntityGraph, CaseAnalysisResult, BirdbrainSettings, OpenRouterModel, ExportOptions, Selector, ActiveCaseSelectors, CaptureEvent } from '@shared/types'
 import type {
   CreateCaseParams,
   UpdateCaseParams,
@@ -63,6 +63,9 @@ interface BirdbrainAPI {
   onNewCapture(callback: (capture: Capture) => void): () => void
   onSessionStateChanged(callback: (state: { sessionActive: boolean; activeCaseId: string | null; captureCount: number }) => void): () => void
   onExtensionConnection(callback: (data: { connected: boolean }) => void): () => void
+  onCaptureActivity(callback: (event: CaptureEvent) => void): () => void
+  testPipeline(): Promise<{ success: boolean; durationMs: number; error?: string }>
+  testHttp(): Promise<{ success: boolean; durationMs: number; error?: string }>
 }
 
 declare global {

@@ -90,6 +90,16 @@ export function registerIpcHandlers(): void {
     }
   })
 
+  // HTTP test (loopback through capture server)
+  ipcMain.handle(IPC_CHANNELS.CAPTURES_TEST_HTTP, async () => {
+    try {
+      const res = await fetch(`http://127.0.0.1:${19845}/api/captures/test`)
+      return res.json()
+    } catch (err) {
+      return { success: false, durationMs: 0, error: String(err) }
+    }
+  })
+
   // Tags
   ipcMain.handle(IPC_CHANNELS.TAGS_LIST, () => db.listTags())
   ipcMain.handle(IPC_CHANNELS.TAGS_CREATE, (_, params: CreateTagParams) => {

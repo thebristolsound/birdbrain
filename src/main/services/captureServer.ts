@@ -12,6 +12,7 @@ import { extractEntitiesRuleBased } from '@main/services/ruleBasedExtraction'
 import type { CaptureEvent, CaptureSource, EntityType } from '@shared/types'
 
 const DEFAULT_PORT = 19845
+const VALID_CAPTURE_SOURCES: CaptureSource[] = ['auto', 'manual', 'selector']
 
 interface SessionState {
   activeCaseId: string | null
@@ -257,7 +258,7 @@ function createApp(): Hono {
     let capturedUrl = ''
     try {
       const body = await c.req.json()
-      source = body.source || 'auto'
+      source = VALID_CAPTURE_SOURCES.includes(body.source) ? (body.source as CaptureSource) : 'auto'
       const { url, title, html, screenshot, timestamp, headers, textContent, matchedSelectors } = body
       capturedUrl = url || ''
 

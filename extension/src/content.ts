@@ -246,14 +246,6 @@ function removeHighlights(): void {
 // --- Message handlers ---
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message.type === 'EXTRACT_PAGE_FAST') {
-    const title = document.title
-    const textContent = document.body?.innerText || ''
-    const html = document.documentElement.outerHTML
-    sendResponse({ html, title, textContent })
-    return
-  }
-
   if (message.type === 'SHOW_CAPTURE_TOAST') {
     showToast({ status: 'capturing' })
     sendResponse({ ok: true })
@@ -275,18 +267,17 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       addMetadata: true
     })
       .then((html) => {
-        sendResponse({ html, title, textContent })
+        sendResponse({ html, title, textContent, degraded: false })
       })
       .catch(() => {
-        // Fallback to raw outerHTML if freeze-dry fails
         sendResponse({
           html: document.documentElement.outerHTML,
           title,
-          textContent
+          textContent,
+          degraded: true
         })
       })
 
-    // Return true to keep the message channel open for the async sendResponse
     return true
   }
 

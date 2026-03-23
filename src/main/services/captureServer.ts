@@ -5,14 +5,13 @@ import type { Server } from 'http'
 import type { BrowserWindow } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
 import * as db from '@main/services/database'
-import { saveCapture } from '@main/services/storage'
+import { saveCapture, deleteCaptureFiles } from '@main/services/storage'
 import { hashContent } from '@main/services/hash'
 import { getSettings } from '@main/services/settings'
 import { extractEntitiesRuleBased } from '@main/services/ruleBasedExtraction'
 import type { CaptureEvent, CaptureSource, EntityType } from '@shared/types'
 
-const DEFAULT_PORT = 19845
-const VALID_CAPTURE_SOURCES: CaptureSource[] = ['auto', 'manual', 'selector']
+export const CAPTURE_SERVER_PORT = 19845
 
 interface SessionState {
   activeCaseId: string | null
@@ -385,6 +384,7 @@ function createApp(): Hono {
   app.get('/api/captures/test', async (c) => {
     const startTime = Date.now()
     let testCaptureId: string | null = null
+    let testCaseId: string | null = null
 
     try {
       // Find any case to use for test
@@ -392,7 +392,7 @@ function createApp(): Hono {
       if (cases.length === 0) {
         return c.json({ success: false, durationMs: 0, error: 'No cases exist — create a case first' })
       }
-      const testCaseId = cases[0].id
+      testCaseId = cases[0].id
 
       // Create test capture
       const testHtml = `<html><body>Birdbrain pipeline test ${Date.now()}</body></html>`
@@ -436,13 +436,16 @@ function createApp(): Hono {
       if (testCaptureId) {
         try { db.deleteCapture(testCaptureId) } catch { /* best effort */ }
       }
+      if (testCaseId && testCaptureId) {
+        try { deleteCaptureFiles(testCaseId, testCaptureId) } catch { /* best effort */ }
+      }
     }
   })
 
   return app
 }
 
-export function startCaptureServer(port: number = DEFAULT_PORT): Promise<void> {
+export function startCaptureServer(port: number = CAPTURE_SERVER_PORT): Promise<void> {
   return new Promise((resolve) => {
     const app = createApp()
     server = serve(

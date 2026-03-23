@@ -19,11 +19,7 @@ import {
   addTagToCapture,
   removeTagFromCapture,
   getTagsForCapture,
-  searchCaptures,
-  getEntitiesByCapture,
-  insertEntity,
-  insertEntitiesBatch,
-  deleteEntitiesByCapture
+  searchCaptures
 } from '@main/services/database'
 
 describe('database', () => {
@@ -238,112 +234,4 @@ describe('database', () => {
     })
   })
 
-  describe('entities', () => {
-    it('inserts and retrieves entities for a capture', () => {
-      const c = createCase({ name: 'Test' })
-      const cap = insertCapture({
-        caseId: c.id,
-        url: 'https://example.com',
-        title: 'Example',
-        hash: 'h1',
-        timestamp: new Date().toISOString()
-      })
-
-      insertEntity({
-        captureId: cap.id,
-        type: 'person',
-        value: 'John Smith',
-        context: 'John Smith is the CEO',
-        confidence: 0.95
-      })
-
-      const entities = getEntitiesByCapture(cap.id)
-      expect(entities).toHaveLength(1)
-      expect(entities[0].value).toBe('John Smith')
-      expect(entities[0].type).toBe('person')
-      expect(entities[0].confidence).toBe(0.95)
-    })
-
-    it('batch inserts multiple entities in a transaction', () => {
-      const c = createCase({ name: 'Test' })
-      const cap = insertCapture({
-        caseId: c.id,
-        url: 'https://example.com',
-        title: 'Example',
-        hash: 'h1',
-        timestamp: new Date().toISOString()
-      })
-
-      insertEntitiesBatch([
-        { captureId: cap.id, type: 'email', value: 'a@test.com', source: 'rule' },
-        { captureId: cap.id, type: 'domain', value: 'example.com', source: 'rule' },
-        { captureId: cap.id, type: 'person', value: 'Jane Doe', confidence: 0.8 }
-      ])
-
-      const entities = getEntitiesByCapture(cap.id)
-      expect(entities).toHaveLength(3)
-
-      const email = entities.find(e => e.type === 'email')
-      expect(email?.value).toBe('a@test.com')
-      expect(email?.source).toBe('rule')
-
-      // Default source should be 'ai' when not specified
-      const person = entities.find(e => e.type === 'person')
-      expect(person?.value).toBe('Jane Doe')
-      expect(person?.source).toBe('ai')
-      expect(person?.confidence).toBe(0.8)
-    })
-
-    it('batch insert with empty array is a no-op', () => {
-      const c = createCase({ name: 'Test' })
-      const cap = insertCapture({
-        caseId: c.id,
-        url: 'https://example.com',
-        title: 'Example',
-        hash: 'h1',
-        timestamp: new Date().toISOString()
-      })
-
-      insertEntitiesBatch([])
-      expect(getEntitiesByCapture(cap.id)).toHaveLength(0)
-    })
-
-    it('batch insert shares created_at timestamp across all rows', () => {
-      const c = createCase({ name: 'Test' })
-      const cap = insertCapture({
-        caseId: c.id,
-        url: 'https://example.com',
-        title: 'Example',
-        hash: 'h1',
-        timestamp: new Date().toISOString()
-      })
-
-      insertEntitiesBatch([
-        { captureId: cap.id, type: 'email', value: 'a@test.com', source: 'rule' },
-        { captureId: cap.id, type: 'email', value: 'b@test.com', source: 'rule' }
-      ])
-
-      const entities = getEntitiesByCapture(cap.id)
-      expect(entities).toHaveLength(2)
-      expect(entities[0].createdAt).toBe(entities[1].createdAt)
-    })
-
-    it('deletes entities by capture', () => {
-      const c = createCase({ name: 'Test' })
-      const cap = insertCapture({
-        caseId: c.id,
-        url: 'https://example.com',
-        title: 'Example',
-        hash: 'h1',
-        timestamp: new Date().toISOString()
-      })
-
-      insertEntity({ captureId: cap.id, type: 'email', value: 'test@test.com' })
-      insertEntity({ captureId: cap.id, type: 'domain', value: 'example.com' })
-
-      const deleted = deleteEntitiesByCapture(cap.id)
-      expect(deleted).toBe(2)
-      expect(getEntitiesByCapture(cap.id)).toHaveLength(0)
-    })
-  })
 })

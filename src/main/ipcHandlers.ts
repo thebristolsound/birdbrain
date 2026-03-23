@@ -13,9 +13,6 @@ import * as db from '@main/services/database'
 import * as storage from '@main/services/storage'
 import * as settings from '@main/services/settings'
 import * as openrouter from '@main/services/openrouter'
-import { extractEntities } from '@main/services/ai/entityExtraction'
-import { buildEntityGraph } from '@main/services/ai/relationships'
-import { analyzeCase, getCachedAnalysis } from '@main/services/ai/patterns'
 import { generateReport } from '@main/services/export'
 import { CAPTURE_SERVER_PORT } from '@main/services/captureServer'
 import type { BirdbrainSettings, ExportOptions } from '@shared/types'
@@ -201,17 +198,6 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.SETTINGS_LIST_MODELS, (_, apiKey: string) =>
     openrouter.listModels(apiKey)
   )
-
-  // AI
-  ipcMain.handle(IPC_CHANNELS.AI_EXTRACT_ENTITIES, (_, captureId: string) =>
-    extractEntities(captureId)
-  )
-  ipcMain.handle(IPC_CHANNELS.AI_GET_ENTITIES, (_, captureId: string) =>
-    db.getEntitiesByCapture(captureId)
-  )
-  ipcMain.handle(IPC_CHANNELS.AI_BUILD_GRAPH, (_, caseId: string) => buildEntityGraph(caseId))
-  ipcMain.handle(IPC_CHANNELS.AI_ANALYZE_CASE, (_, caseId: string) => analyzeCase(caseId))
-  ipcMain.handle(IPC_CHANNELS.AI_GET_ANALYSIS, (_, caseId: string) => getCachedAnalysis(caseId))
 
   // Export
   ipcMain.handle(IPC_CHANNELS.EXPORT_GENERATE, (_, caseId: string, options: ExportOptions) =>

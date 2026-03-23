@@ -69,51 +69,10 @@ export interface OpenRouterModel {
   pricing: { prompt: string; completion: string }
 }
 
-export interface EntityNode {
-  type: EntityType
-  value: string
-  captureIds: string[]
-  firstSeen: string
-  lastSeen: string
-  occurrences: number
-}
-
-export interface EntityEdge {
-  source: string
-  target: string
-  captureIds: string[]
-  weight: number
-}
-
-export interface EntityGraph {
-  nodes: EntityNode[]
-  edges: EntityEdge[]
-}
-
-export interface CaseAnalysisResult {
-  clusters: Array<{
-    name: string
-    entities: string[]
-    summary: string
-  }>
-  timeline: Array<{
-    observation: string
-    significance: string
-  }>
-  suggestions: Array<{
-    type: string
-    description: string
-    relatedCaptures: string[]
-  }>
-  summary: string
-}
-
 export interface ExportOptions {
   format: 'html' | 'pdf'
   include: {
     captures: boolean
-    entities: boolean
-    aiAnalysis: boolean
     screenshots: boolean
     auditTrail: boolean
   }

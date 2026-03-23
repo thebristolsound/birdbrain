@@ -2,16 +2,7 @@ import { writeFileSync, readFileSync, existsSync } from 'fs'
 import * as db from '@main/services/database'
 import { getCapturePath, readCaptureFile } from '@main/services/storage'
 import { hashContent } from '@main/services/hash'
-import { buildEntityGraph } from '@main/services/ai/relationships'
-import { getCachedAnalysis } from '@main/services/ai/patterns'
-import type {
-  ExportOptions,
-  HashVerification,
-  Capture,
-  Entity,
-  CaseAnalysisResult,
-  EntityGraph
-} from '@shared/types'
+import type { ExportOptions, HashVerification, Capture } from '@shared/types'
 
 interface ExportData {
   caseName: string
@@ -20,9 +11,6 @@ interface ExportData {
   investigatorName: string
   exportTimestamp: string
   captures: Capture[]
-  entities: Map<string, Entity[]>
-  analysis: CaseAnalysisResult | null
-  graph: EntityGraph | null
   verifications: HashVerification[]
   screenshots: Map<string, string> // captureId -> base64
 }
@@ -82,25 +70,8 @@ export async function generateReport(
     investigatorName: options.investigatorName,
     exportTimestamp: new Date().toISOString(),
     captures,
-    entities: new Map(),
-    analysis: null,
-    graph: null,
     verifications: [],
     screenshots: new Map()
-  }
-
-  if (options.include.entities) {
-    onProgress?.('Loading entities...', 30)
-    for (const cap of captures) {
-      const entities = db.getEntitiesByCapture(cap.id)
-      if (entities.length > 0) data.entities.set(cap.id, entities)
-    }
-  }
-
-  if (options.include.aiAnalysis) {
-    onProgress?.('Loading analysis...', 40)
-    data.analysis = getCachedAnalysis(caseId)
-    data.graph = buildEntityGraph(caseId)
   }
 
   if (options.include.auditTrail) {
@@ -150,8 +121,6 @@ function buildHtmlReport(data: ExportData, options: ExportOptions): string {
       }
     })
   )
-  let totalEntities = 0
-  data.entities.forEach((e) => (totalEntities += e.length))
 
   sections.push(`
     <div class="section">
@@ -159,9 +128,7 @@ function buildHtmlReport(data: ExportData, options: ExportOptions): string {
       <table>
         <tr><td>Total Captures</td><td>${data.captures.length}</td></tr>
         <tr><td>Unique Domains</td><td>${domainSet.size}</td></tr>
-        <tr><td>Entities Found</td><td>${totalEntities}</td></tr>
       </table>
-      ${data.analysis?.summary ? `<p class="ai-summary">${esc(data.analysis.summary)}</p>` : ''}
     </div>
   `)
 
@@ -191,82 +158,6 @@ function buildHtmlReport(data: ExportData, options: ExportOptions): string {
     `)
   }
 
-  // Entity Index
-  if (options.include.entities && totalEntities > 0) {
-    const allEntities: Entity[] = []
-    data.entities.forEach((ents) => allEntities.push(...ents))
-    const byType = new Map<string, Entity[]>()
-    for (const e of allEntities) {
-      if (!byType.has(e.type)) byType.set(e.type, [])
-      byType.get(e.type)!.push(e)
-    }
-
-    sections.push(`
-      <div class="section">
-        <h2>Entity Index</h2>
-        ${Array.from(byType.entries())
-          .map(
-            ([type, entities]) => `
-          <h3>${esc(type)} (${entities.length})</h3>
-          <table class="full-width">
-            <thead><tr><th>Value</th><th>Confidence</th><th>Context</th></tr></thead>
-            <tbody>
-              ${entities
-                .map(
-                  (e) => `
-                <tr>
-                  <td>${esc(e.value)}</td>
-                  <td>${e.confidence ? `${Math.round(e.confidence * 100)}%` : '-'}</td>
-                  <td class="context">${e.context ? esc(e.context) : '-'}</td>
-                </tr>
-              `
-                )
-                .join('')}
-            </tbody>
-          </table>
-        `
-          )
-          .join('')}
-      </div>
-    `)
-  }
-
-  // AI Insights
-  if (options.include.aiAnalysis && data.analysis) {
-    const a = data.analysis
-    sections.push(`
-      <div class="section">
-        <h2>AI Analysis</h2>
-        ${
-          a.clusters.length > 0
-            ? `
-          <h3>Entity Clusters</h3>
-          ${a.clusters
-            .map(
-              (c) => `
-            <div class="card">
-              <strong>${esc(c.name)}</strong>
-              <p>Entities: ${c.entities.map((e) => esc(e)).join(', ')}</p>
-              <p>${esc(c.summary)}</p>
-            </div>
-          `
-            )
-            .join('')}
-        `
-            : ''
-        }
-        ${
-          a.suggestions.length > 0
-            ? `
-          <h3>Suggestions</h3>
-          <ul>${a.suggestions.map((s) => `<li><strong>[${esc(s.type)}]</strong> ${esc(s.description)}</li>`).join('')}</ul>
-        `
-            : ''
-        }
-      </div>
-    `)
-  }
-
   // Capture Details with screenshots
   if (options.include.captures && options.include.screenshots) {
     sections.push(`
@@ -275,20 +166,12 @@ function buildHtmlReport(data: ExportData, options: ExportOptions): string {
         ${data.captures
           .map((c) => {
             const screenshot = data.screenshots.get(c.id)
-            const entities = data.entities.get(c.id) || []
             return `
             <div class="capture-detail">
               <h3>${esc(c.title)}</h3>
               <p class="mono url">${esc(c.url)}</p>
               <p class="mono">${new Date(c.timestamp).toLocaleString()}</p>
               ${screenshot ? `<img src="data:image/png;base64,${screenshot}" alt="Screenshot" class="screenshot" />` : ''}
-              ${
-                entities.length > 0
-                  ? `
-                <p><strong>Entities:</strong> ${entities.map((e) => `${esc(e.value)} (${e.type})`).join(', ')}</p>
-              `
-                  : ''
-              }
             </div>
           `
           })
@@ -376,5 +259,3 @@ function esc(str: string): string {
     .replace(/"/g, '&quot;')
 }
 
-// Re-export Entity type needed by the template
-type Entity = import('@shared/types').Entity

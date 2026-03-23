@@ -12,8 +12,6 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
   const [investigatorName, setInvestigatorName] = useState('')
   const [include, setInclude] = useState({
     captures: true,
-    entities: true,
-    aiAnalysis: true,
     screenshots: true,
     auditTrail: true
   })
@@ -83,8 +81,6 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
             {(
               [
                 ['captures', 'Captures'],
-                ['entities', 'Entities'],
-                ['aiAnalysis', 'AI Analysis'],
                 ['screenshots', 'Screenshots'],
                 ['auditTrail', 'Audit Trail']
               ] as const

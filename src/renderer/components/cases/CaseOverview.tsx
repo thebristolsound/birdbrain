@@ -3,16 +3,7 @@ import { useAppStore } from '@renderer/stores/appStore'
 import { useCaptures } from '@renderer/hooks/useCaptures'
 import { useCases } from '@renderer/hooks/useCases'
 import { ExportDialog } from '@renderer/components/export/ExportDialog'
-import {
-  Camera,
-  Globe,
-  Fingerprint,
-  Sparkles,
-  FileOutput,
-  Zap,
-  Pencil,
-  ChevronRight
-} from 'lucide-react'
+import { Camera, Globe, Fingerprint, FileOutput, Zap, Pencil, ChevronRight } from 'lucide-react'
 import type { Case } from '@shared/types'
 
 export function CaseOverview() {
@@ -238,13 +229,6 @@ export function CaseOverview() {
         <div className="neu-card rounded-2xl p-4">
           <h3 className="mb-3 text-sm font-semibold text-slate-300">Quick Actions</h3>
           <div className="space-y-2">
-            <button
-              onClick={() => setActiveTab('analysis')}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 py-2.5 text-sm font-medium text-white hover:bg-indigo-500"
-            >
-              <Sparkles className="h-4 w-4" />
-              Analyze Case
-            </button>
             <button
               onClick={() => setShowExport(true)}
               className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-slate-800 py-2.5 text-sm font-medium text-slate-300 hover:bg-slate-700"

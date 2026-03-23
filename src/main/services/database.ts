@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3'
 import { v4 as uuid } from 'uuid'
-import type { Case, Capture, Tag, Entity, Selector, ActiveCaseSelectors } from '@shared/types'
+import type { Case, Capture, Tag, Selector, ActiveCaseSelectors } from '@shared/types'
 import type {
   CreateCaseParams,
   UpdateCaseParams,
@@ -389,120 +389,6 @@ export function searchCaptures(query: string): Capture[] {
   return rows.map(rowToCapture)
 }
 
-// --- Entities ---
-
-export function getEntitiesByCapture(captureId: string): Entity[] {
-  const rows = getDb()
-    .prepare('SELECT * FROM entities WHERE capture_id = ? ORDER BY type, value')
-    .all(captureId) as Array<Record<string, unknown>>
-  return rows.map(rowToEntity)
-}
-
-export function insertEntity(entity: Omit<Entity, 'id' | 'createdAt'>): Entity {
-  const id = uuid()
-  const now = new Date().toISOString()
-  getDb()
-    .prepare(
-      'INSERT INTO entities (id, capture_id, type, value, context, confidence, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-    )
-    .run(
-      id,
-      entity.captureId,
-      entity.type,
-      entity.value,
-      entity.context ?? null,
-      entity.confidence ?? null,
-      entity.source ?? 'ai',
-      now
-    )
-  return { id, ...entity, source: entity.source ?? 'ai', createdAt: now }
-}
-
-export function insertEntitiesBatch(entities: Array<Omit<Entity, 'id' | 'createdAt'>>): void {
-  if (entities.length === 0) return
-  const d = getDb()
-  const stmt = d.prepare(
-    'INSERT INTO entities (id, capture_id, type, value, context, confidence, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  )
-  const run = d.transaction(() => {
-    const now = new Date().toISOString()
-    for (const e of entities) {
-      stmt.run(
-        uuid(),
-        e.captureId,
-        e.type,
-        e.value,
-        e.context ?? null,
-        e.confidence ?? null,
-        e.source ?? 'ai',
-        now
-      )
-    }
-  })
-  run()
-}
-
-export function deleteEntitiesByCapture(captureId: string): number {
-  const result = getDb().prepare('DELETE FROM entities WHERE capture_id = ?').run(captureId)
-  return result.changes
-}
-
-export function deleteEntitiesByCaptureAndSource(captureId: string, source: 'rule' | 'ai'): number {
-  const result = getDb()
-    .prepare('DELETE FROM entities WHERE capture_id = ? AND source = ?')
-    .run(captureId, source)
-  return result.changes
-}
-
-export function getEntitiesByCaptureAndSource(captureId: string, source: 'rule' | 'ai'): Entity[] {
-  const rows = getDb()
-    .prepare('SELECT * FROM entities WHERE capture_id = ? AND source = ? ORDER BY type, value')
-    .all(captureId, source) as Array<Record<string, unknown>>
-  return rows.map(rowToEntity)
-}
-
-// --- Case Analyses ---
-
-export interface CaseAnalysis {
-  id: string
-  caseId: string
-  modelUsed: string | null
-  result: string
-  tokenUsage: number | null
-  createdAt: string
-}
-
-export function getCaseAnalysis(caseId: string): CaseAnalysis | undefined {
-  const row = getDb()
-    .prepare('SELECT * FROM case_analyses WHERE case_id = ? ORDER BY created_at DESC LIMIT 1')
-    .get(caseId) as Record<string, unknown> | undefined
-  if (!row) return undefined
-  return {
-    id: row.id as string,
-    caseId: row.case_id as string,
-    modelUsed: (row.model_used as string) || null,
-    result: row.result as string,
-    tokenUsage: (row.token_usage as number) || null,
-    createdAt: row.created_at as string
-  }
-}
-
-export function insertCaseAnalysis(params: {
-  caseId: string
-  modelUsed?: string
-  result: string
-  tokenUsage?: number
-}): CaseAnalysis {
-  const id = uuid()
-  const now = new Date().toISOString()
-  getDb()
-    .prepare(
-      'INSERT INTO case_analyses (id, case_id, model_used, result, token_usage, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-    )
-    .run(id, params.caseId, params.modelUsed ?? null, params.result, params.tokenUsage ?? null, now)
-  return getCaseAnalysis(params.caseId)!
-}
-
 // --- Selectors ---
 
 export function listSelectors(caseId: string): Selector[] {
@@ -720,15 +606,3 @@ function rowToSelector(row: Record<string, unknown>): Selector {
   }
 }
 
-function rowToEntity(row: Record<string, unknown>): Entity {
-  return {
-    id: row.id as string,
-    captureId: row.capture_id as string,
-    type: row.type as Entity['type'],
-    value: row.value as string,
-    context: (row.context as string) || undefined,
-    confidence: (row.confidence as number) || undefined,
-    source: (row.source as 'rule' | 'ai') || 'ai',
-    createdAt: row.created_at as string
-  }
-}

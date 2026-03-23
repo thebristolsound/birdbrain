@@ -14,9 +14,6 @@ import type {
   Case,
   Capture,
   Tag,
-  Entity,
-  EntityGraph,
-  CaseAnalysisResult,
   BirdbrainSettings,
   OpenRouterModel,
   ExportOptions,
@@ -103,19 +100,6 @@ const birdbrain = {
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_TEST_OPENROUTER, apiKey),
     listModels: (apiKey: string): Promise<OpenRouterModel[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_LIST_MODELS, apiKey)
-  },
-
-  ai: {
-    extractEntities: (captureId: string): Promise<Entity[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.AI_EXTRACT_ENTITIES, captureId),
-    getEntities: (captureId: string): Promise<Entity[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.AI_GET_ENTITIES, captureId),
-    buildGraph: (caseId: string): Promise<EntityGraph> =>
-      ipcRenderer.invoke(IPC_CHANNELS.AI_BUILD_GRAPH, caseId),
-    analyzeCase: (caseId: string): Promise<CaseAnalysisResult> =>
-      ipcRenderer.invoke(IPC_CHANNELS.AI_ANALYZE_CASE, caseId),
-    getAnalysis: (caseId: string): Promise<CaseAnalysisResult | null> =>
-      ipcRenderer.invoke(IPC_CHANNELS.AI_GET_ANALYSIS, caseId)
   },
 
   export: {

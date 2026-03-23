@@ -258,8 +258,23 @@ function createApp(): Hono {
     let capturedUrl = ''
     try {
       const body = await c.req.json()
-      source = VALID_CAPTURE_SOURCES.includes(body.source) ? (body.source as CaptureSource) : 'auto'
-      const { url, title, html, screenshot, timestamp, headers, textContent, matchedSelectors } = body
+      // Validate that the request body is a non-null object
+      if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+        return c.json({ error: 'Invalid request body: expected JSON object' }, 400)
+      }
+
+      const rawSource = (body as any).source
+      source = VALID_CAPTURE_SOURCES.includes(rawSource) ? (rawSource as CaptureSource) : 'auto'
+      const { url, title, html, screenshot, timestamp, headers, textContent, matchedSelectors } = body as {
+        url?: string
+        title?: string
+        html?: string
+        screenshot?: string
+        timestamp?: string
+        headers?: Record<string, unknown>
+        textContent?: string
+        matchedSelectors?: unknown
+      }
       capturedUrl = url || ''
 
       // 1. Common validation

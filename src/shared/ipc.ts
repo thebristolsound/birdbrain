@@ -59,7 +59,12 @@ export const IPC_CHANNELS = {
   EXPORT_PROGRESS: 'event:exportProgress',
   NEW_CAPTURE: 'event:newCapture',
   SESSION_STATE_CHANGED: 'event:sessionStateChanged',
-  EXTENSION_CONNECTION: 'event:extensionConnection'
+  EXTENSION_CONNECTION: 'event:extensionConnection',
+
+  // Capture pipeline observability
+  CAPTURE_ACTIVITY: 'event:captureActivity',
+  CAPTURES_TEST_PIPELINE: 'captures:testPipeline',
+  CAPTURES_TEST_HTTP: 'captures:testHttp'
 } as const
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS]

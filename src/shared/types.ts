@@ -170,3 +170,16 @@ export type EntityType =
   | 'username'
   | 'crypto_wallet'
   | 'custom'
+
+export type CaptureSource = 'auto' | 'manual' | 'selector'
+
+export interface CaptureEvent {
+  type: 'received' | 'stored' | 'failed' | 'skipped' | 'extraction_done'
+  captureId?: string
+  source: CaptureSource
+  url: string
+  timestamp: string
+  error?: string
+  skipReason?: string
+  durationMs?: number
+}

@@ -3,6 +3,7 @@ import { useAppStore } from '@renderer/stores/appStore'
 import { SearchBar } from '@renderer/components/search/SearchBar'
 import { SessionControls } from '@renderer/components/status/SessionControls'
 import { ConnectionStatus } from '@renderer/components/status/ConnectionStatus'
+import { CaptureHealth } from '@renderer/components/status/CaptureHealth'
 import { useCases } from '@renderer/hooks/useCases'
 
 export function TopBar() {
@@ -49,6 +50,7 @@ export function TopBar() {
 
       {appMode === 'dashboard' ? (
         <div className="flex items-center gap-3">
+          <CaptureHealth />
           <button className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-900 hover:text-slate-300 transition-colors">
             <Bell className="h-4 w-4" />
           </button>
@@ -75,6 +77,7 @@ export function TopBar() {
             )}
 
             <ConnectionStatus />
+            <CaptureHealth />
 
             <button
               onClick={toggleSettings}

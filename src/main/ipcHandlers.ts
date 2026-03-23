@@ -17,6 +17,7 @@ import { extractEntities } from '@main/services/ai/entityExtraction'
 import { buildEntityGraph } from '@main/services/ai/relationships'
 import { analyzeCase, getCachedAnalysis } from '@main/services/ai/patterns'
 import { generateReport } from '@main/services/export'
+import { CAPTURE_SERVER_PORT } from '@main/services/captureServer'
 import type { BirdbrainSettings, ExportOptions } from '@shared/types'
 
 type IpcResult<T = unknown> = {
@@ -77,6 +78,28 @@ export function registerIpcHandlers(): void {
       return ipcResult(db.deleteCapture(id))
     } catch (err) {
       return ipcError(err)
+    }
+  })
+
+  // Capture pipeline test
+  ipcMain.handle(IPC_CHANNELS.CAPTURES_TEST_PIPELINE, async () => {
+    try {
+      const res = await fetch(`http://127.0.0.1:${CAPTURE_SERVER_PORT}/api/captures/test`)
+      return res.json()
+    } catch (err) {
+      return { success: false, durationMs: 0, error: String(err) }
+    }
+  })
+
+  // HTTP test (verifies Hono server is reachable)
+  ipcMain.handle(IPC_CHANNELS.CAPTURES_TEST_HTTP, async () => {
+    const start = Date.now()
+    try {
+      const res = await fetch(`http://127.0.0.1:${CAPTURE_SERVER_PORT}/api/status`)
+      const ok = res.ok
+      return { success: ok, durationMs: Date.now() - start, error: ok ? undefined : `HTTP ${res.status}` }
+    } catch (err) {
+      return { success: false, durationMs: Date.now() - start, error: String(err) }
     }
   })
 

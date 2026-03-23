@@ -2,10 +2,7 @@ import {
   checkConnection,
   getStatus,
   sendCapture,
-  sendManualCapture,
-  updateCaptureHtml,
-  getActiveSelectors,
-  sendSelectorCapture
+  getActiveSelectors
 } from '@extension/utils/api'
 
 // URL patterns to ignore
@@ -196,6 +193,7 @@ async function captureTab(tabId: number, url: string): Promise<void> {
 
     // Send to local server
     await sendCapture({
+      source: 'auto',
       url,
       title: pageData.title,
       html: pageData.html,
@@ -219,18 +217,20 @@ async function manualCaptureTab(tabId: number, url: string, caseId: string): Pro
   try {
     chrome.tabs.sendMessage(tabId, { type: 'SHOW_CAPTURE_TOAST' }).catch(() => {})
 
-    // Phase 1: Fast extraction + screenshot in parallel
+    // Single extraction: freeze-dry with fallback + screenshot in parallel
     const [pageData, rawScreenshot] = await Promise.all([
-      chrome.tabs.sendMessage(tabId, { type: 'EXTRACT_PAGE_FAST' }) as Promise<{
+      chrome.tabs.sendMessage(tabId, { type: 'EXTRACT_PAGE' }) as Promise<{
         html: string
         title: string
         textContent: string
+        degraded: boolean
       }>,
       chrome.tabs.captureVisibleTab({ format: 'png' }).catch(() => undefined)
     ])
     const screenshot = rawScreenshot?.replace(/^data:image\/png;base64,/, '')
 
-    const result = await sendManualCapture({
+    await sendCapture({
+      source: 'manual',
       caseId,
       url,
       title: pageData.title,
@@ -242,24 +242,27 @@ async function manualCaptureTab(tabId: number, url: string, caseId: string): Pro
 
     chrome.tabs.sendMessage(tabId, {
       type: 'UPDATE_CAPTURE_TOAST',
-      status: 'success'
+      status: pageData.degraded ? 'degraded' : 'success'
     }).catch(() => {})
-
-    // Phase 2: Background freeze-dry and HTML update
-    chrome.tabs.sendMessage(tabId, { type: 'EXTRACT_PAGE' })
-      .then(async (archivedData: { html: string }) => {
-        if (archivedData?.html && archivedData.html !== pageData.html) {
-          await updateCaptureHtml(result.captureId, caseId, archivedData.html)
-        }
-      })
-      .catch((err) => {
-        console.warn('[Birdbrain] Background freeze-dry failed:', err)
-      })
   } catch (err) {
     console.error('[Birdbrain] Manual capture failed:', err)
+
+    // Categorize error for user-facing message
+    let message = 'Capture failed'
+    if (err && typeof err === 'object' && 'status' in err) {
+      const apiErr = err as { status: number; detail: string }
+      if (apiErr.status === 400) message = `Capture rejected: ${apiErr.detail}`
+      else if (apiErr.status === 403) message = 'URL is blacklisted'
+      else if (apiErr.status === 404) message = 'Case not found'
+      else if (apiErr.status === 500) message = 'Server error — check Birdbrain app'
+    } else if (err instanceof TypeError) {
+      message = "Can't reach Birdbrain — is it running?"
+    }
+
     chrome.tabs.sendMessage(tabId, {
       type: 'UPDATE_CAPTURE_TOAST',
-      status: 'error'
+      status: 'error',
+      message
     }).catch(() => {})
   }
 }
@@ -286,7 +289,8 @@ async function handleSelectorCapture(
       // Screenshot may fail
     }
 
-    await sendSelectorCapture({
+    await sendCapture({
+      source: 'selector',
       caseId,
       url,
       title: pageData.title,

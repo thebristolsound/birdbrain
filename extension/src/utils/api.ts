@@ -1,5 +1,15 @@
 const BASE_URL = 'http://127.0.0.1:19845'
 
+export class ApiError extends Error {
+  status: number
+  detail: string
+  constructor(status: number, statusText: string, detail: string) {
+    super(`Request failed: ${status} ${statusText}`)
+    this.status = status
+    this.detail = detail
+  }
+}
+
 interface StatusResponse {
   running: boolean
   activeCase: { id: string; name: string } | null
@@ -20,71 +30,7 @@ interface CaptureResult {
   captureId: string
   hash: string
   status: string
-}
-
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers
-    }
-  })
-  if (!res.ok) {
-    throw new Error(`Request failed: ${res.status} ${res.statusText}`)
-  }
-  return res.json() as Promise<T>
-}
-
-export async function getStatus(): Promise<StatusResponse> {
-  return request('/api/status')
-}
-
-export async function getCases(): Promise<CaseInfo[]> {
-  return request('/api/cases')
-}
-
-export async function activateCase(id: string): Promise<{ status: string; case: { id: string; name: string } }> {
-  return request(`/api/cases/${id}/activate`, { method: 'POST' })
-}
-
-export async function startSession(): Promise<{ status: string; sessionActive: boolean }> {
-  return request('/api/session/start', { method: 'POST' })
-}
-
-export async function stopSession(): Promise<{ status: string; sessionActive: boolean }> {
-  return request('/api/session/stop', { method: 'POST' })
-}
-
-export async function sendCapture(data: {
-  url: string
-  title: string
-  html: string
-  screenshot?: string
-  timestamp: string
-  headers?: Record<string, string>
-  textContent?: string
-}): Promise<CaptureResult> {
-  return request('/api/captures', {
-    method: 'POST',
-    body: JSON.stringify(data)
-  })
-}
-
-export async function sendManualCapture(data: {
-  caseId: string
-  url: string
-  title: string
-  html: string
-  screenshot?: string
-  timestamp: string
-  headers?: Record<string, string>
-  textContent?: string
-}): Promise<CaptureResult> {
-  return request('/api/captures/manual', {
-    method: 'POST',
-    body: JSON.stringify(data)
-  })
+  source: string
 }
 
 interface SelectorInfo {
@@ -113,12 +59,48 @@ interface SelectorMatchInfo {
   index: number
 }
 
-export async function getActiveSelectors(): Promise<ActiveCaseSelectors[]> {
-  return request('/api/selectors/active')
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers
+    }
+  })
+  if (!res.ok) {
+    let detail = res.statusText
+    try {
+      const body = await res.json()
+      detail = body.error || detail
+    } catch { /* no JSON body */ }
+    throw new ApiError(res.status, res.statusText, detail)
+  }
+  return res.json() as Promise<T>
 }
 
-export async function sendSelectorCapture(data: {
-  caseId: string
+export async function getStatus(): Promise<StatusResponse> {
+  return request('/api/status')
+}
+
+export async function getCases(): Promise<CaseInfo[]> {
+  return request('/api/cases')
+}
+
+export async function activateCase(id: string): Promise<{ status: string; case: { id: string; name: string } }> {
+  return request(`/api/cases/${id}/activate`, { method: 'POST' })
+}
+
+export async function startSession(): Promise<{ status: string; sessionActive: boolean }> {
+  return request('/api/session/start', { method: 'POST' })
+}
+
+export async function stopSession(): Promise<{ status: string; sessionActive: boolean }> {
+  return request('/api/session/stop', { method: 'POST' })
+}
+
+export async function sendCapture(data: {
+  source: 'auto' | 'manual' | 'selector'
+  caseId?: string
   url: string
   title: string
   html: string
@@ -126,12 +108,20 @@ export async function sendSelectorCapture(data: {
   timestamp: string
   headers?: Record<string, string>
   textContent?: string
-  matchedSelectors: SelectorMatchInfo[]
+  matchedSelectors?: SelectorMatchInfo[]
 }): Promise<CaptureResult> {
-  return request('/api/captures/selector', {
+  return request('/api/captures', {
     method: 'POST',
     body: JSON.stringify(data)
   })
+}
+
+export async function testCapturePipeline(): Promise<{ success: boolean; durationMs: number; error?: string }> {
+  return request('/api/captures/test')
+}
+
+export async function getActiveSelectors(): Promise<ActiveCaseSelectors[]> {
+  return request('/api/selectors/active')
 }
 
 export async function checkConnection(): Promise<boolean> {
@@ -155,11 +145,4 @@ export async function getEntitySummary(caseId: string): Promise<EntityTypeSummar
   } catch {
     return []
   }
-}
-
-export async function updateCaptureHtml(captureId: string, caseId: string, html: string): Promise<{ status: string }> {
-  return request(`/api/captures/${captureId}/html`, {
-    method: 'PATCH',
-    body: JSON.stringify({ html, caseId })
-  })
 }

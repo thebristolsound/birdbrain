@@ -5,13 +5,13 @@ import type { Server } from 'http'
 import type { BrowserWindow } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
 import * as db from '@main/services/database'
-import { saveCapture, updateCaptureHtml } from '@main/services/storage'
+import { saveCapture, deleteCaptureFiles } from '@main/services/storage'
 import { hashContent } from '@main/services/hash'
 import { getSettings } from '@main/services/settings'
 import { extractEntitiesRuleBased } from '@main/services/ruleBasedExtraction'
-import type { EntityType } from '@shared/types'
+import type { CaptureEvent, CaptureSource, EntityType } from '@shared/types'
 
-const DEFAULT_PORT = 19845
+export const CAPTURE_SERVER_PORT = 19845
 
 interface SessionState {
   activeCaseId: string | null
@@ -112,7 +112,7 @@ function runRuleBasedExtraction(captureId: string, textContent: string | undefin
   }
 }
 
-function schedulePostCaptureWork(captureId: string, caseId: string, textContent: string | undefined): void {
+function schedulePostCaptureWork(captureId: string, caseId: string, source: CaptureSource, url: string, textContent: string | undefined): void {
   setImmediate(() => {
     try {
       runRuleBasedExtraction(captureId, textContent)
@@ -126,7 +126,20 @@ function schedulePostCaptureWork(captureId: string, caseId: string, textContent:
     } catch (err) {
       console.error('Selector matching error for capture', captureId, err)
     }
+    emitCaptureEvent({
+      type: 'extraction_done',
+      captureId,
+      source,
+      url,
+      timestamp: new Date().toISOString()
+    })
   })
+}
+
+function emitCaptureEvent(event: CaptureEvent): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(IPC_CHANNELS.CAPTURE_ACTIVITY, event)
+  }
 }
 
 function createApp(): Hono {
@@ -137,7 +150,7 @@ function createApp(): Hono {
     '*',
     cors({
       origin: ['chrome-extension://*', 'http://localhost:*', 'http://127.0.0.1:*'],
-      allowMethods: ['GET', 'POST', 'PATCH'],
+      allowMethods: ['GET', 'POST'],
       allowHeaders: ['Content-Type']
     })
   )
@@ -237,60 +250,126 @@ function createApp(): Hono {
     return c.json({ status: 'ok', sessionActive: false })
   })
 
-  // Receive capture from extension
+  // Unified capture endpoint
   app.post('/api/captures', async (c) => {
-    if (!state.activeCaseId) {
-      return c.json({ error: 'No active case' }, 400)
-    }
-
+    const startTime = Date.now()
+    let source: CaptureSource = 'auto'
+    let capturedUrl = ''
     try {
       const body = await c.req.json()
-      const { url, title, html, screenshot, timestamp, headers, textContent } = body
+      // Validate that the request body is a non-null object
+      if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+        return c.json({ error: 'Invalid request body: expected JSON object' }, 400)
+      }
 
+      const rawSource = (body as any).source
+      source = VALID_CAPTURE_SOURCES.includes(rawSource) ? (rawSource as CaptureSource) : 'auto'
+      const { url, title, html, screenshot, timestamp, headers, textContent, matchedSelectors } = body as {
+        url?: string
+        title?: string
+        html?: string
+        screenshot?: string
+        timestamp?: string
+        headers?: Record<string, unknown>
+        textContent?: string
+        matchedSelectors?: unknown
+      }
+      capturedUrl = url || ''
+
+      // 1. Common validation
       if (!url || !html) {
         return c.json({ error: 'Missing required fields: url, html' }, 400)
       }
 
+      // 2. URL blacklist
       const captureSettings = getSettings()
       const blocked = isUrlBlacklisted(url, captureSettings.ignoredUrlPatterns)
       if (blocked) {
+        emitCaptureEvent({ type: 'skipped', source, url, timestamp: new Date().toISOString(), skipReason: `Blacklisted: ${blocked}` })
         return c.json({ error: 'URL blocked by ignored pattern', pattern: blocked }, 403)
       }
 
-      const hash = hashContent(html)
-      const caseId = state.activeCaseId
+      // 3. Source-specific validation
+      let caseId: string
 
-      // Save files to disk
+      if (source === 'auto') {
+        if (!state.sessionActive) {
+          return c.json({ error: 'No active session' }, 400)
+        }
+        if (!state.activeCaseId) {
+          return c.json({ error: 'No active case' }, 400)
+        }
+        caseId = state.activeCaseId
+      } else if (source === 'manual') {
+        if (!body.caseId) {
+          return c.json({ error: 'Missing required field: caseId' }, 400)
+        }
+        const caseData = db.getCase(body.caseId)
+        if (!caseData) {
+          return c.json({ error: 'Case not found' }, 404)
+        }
+        if (caseData.archived) {
+          return c.json({ error: 'Case is archived' }, 400)
+        }
+        caseId = body.caseId
+      } else if (source === 'selector') {
+        if (!body.caseId) {
+          return c.json({ error: 'Missing required field: caseId' }, 400)
+        }
+        if (!matchedSelectors) {
+          return c.json({ error: 'Missing required field: matchedSelectors' }, 400)
+        }
+        const caseData = db.getCase(body.caseId)
+        if (!caseData) {
+          return c.json({ error: 'Case not found' }, 404)
+        }
+        if (caseData.archived) {
+          return c.json({ error: 'Case is archived' }, 400)
+        }
+        caseId = body.caseId
+      } else {
+        return c.json({ error: `Invalid source: ${source}` }, 400)
+      }
+
+      emitCaptureEvent({ type: 'received', source, url, timestamp: new Date().toISOString() })
+
+      // 4. Shared pipeline
+      const hash = hashContent(html)
       const screenshotBuffer = screenshot ? Buffer.from(screenshot, 'base64') : undefined
       const captureId = crypto.randomUUID()
 
       const paths = saveCapture(caseId, captureId, html, screenshotBuffer, textContent)
 
-    // Insert into database using the same ID as the files
-    const capture = db.insertCapture({
-      id: captureId,
-      caseId,
-      url,
-      title: title || url,
-      hash,
-      timestamp: timestamp || new Date().toISOString(),
-      htmlPath: paths.htmlPath,
-      screenshotPath: paths.screenshotPath,
-      headers: headers ? JSON.stringify(headers) : undefined,
-      textContent
-    })
+      const capture = db.insertCapture({
+        id: captureId,
+        caseId,
+        url,
+        title: title || url,
+        hash,
+        timestamp: timestamp || new Date().toISOString(),
+        htmlPath: paths.htmlPath,
+        screenshotPath: paths.screenshotPath,
+        headers: headers ? JSON.stringify(headers) : undefined,
+        textContent
+      })
 
-    state.captureCount++
-    schedulePostCaptureWork(capture.id, caseId, textContent)
+      if (source === 'auto') {
+        state.captureCount++
+      }
 
-    // Notify renderer of new capture
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send(IPC_CHANNELS.NEW_CAPTURE, capture)
-    }
+      schedulePostCaptureWork(capture.id, caseId, source, url, textContent)
 
-      return c.json({ captureId: capture.id, hash, status: 'ok' })
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IPC_CHANNELS.NEW_CAPTURE, capture)
+      }
+
+      const durationMs = Date.now() - startTime
+      emitCaptureEvent({ type: 'stored', captureId: capture.id, source, url, timestamp: new Date().toISOString(), durationMs })
+
+      return c.json({ captureId: capture.id, hash, status: 'ok', source })
     } catch (err) {
       console.error('Capture error:', err)
+      emitCaptureEvent({ type: 'failed', source, url: capturedUrl, timestamp: new Date().toISOString(), error: String(err) })
       return c.json({ error: 'Failed to process capture' }, 500)
     }
   })
@@ -301,181 +380,72 @@ function createApp(): Hono {
     return c.json(activeSelectors)
   })
 
-  // Receive selector-triggered capture from extension
-  app.post('/api/captures/selector', async (c) => {
+  // Test pipeline endpoint
+  app.get('/api/captures/test', async (c) => {
+    const startTime = Date.now()
+    let testCaptureId: string | null = null
+    let testCaseId: string | null = null
+
     try {
-      const body = await c.req.json()
-      const { caseId, url, title, html, screenshot, timestamp, headers, textContent } = body
-
-      if (!caseId || !url || !html) {
-        return c.json({ error: 'Missing required fields: caseId, url, html' }, 400)
+      // Find any case to use for test
+      const cases = db.listCases()
+      if (cases.length === 0) {
+        return c.json({ success: false, durationMs: 0, error: 'No cases exist — create a case first' })
       }
+      testCaseId = cases[0].id
 
-      const selectorSettings = getSettings()
-      const selectorBlocked = isUrlBlacklisted(url, selectorSettings.ignoredUrlPatterns)
-      if (selectorBlocked) {
-        return c.json({ error: 'URL blocked by ignored pattern', pattern: selectorBlocked }, 403)
-      }
+      // Create test capture
+      const testHtml = `<html><body>Birdbrain pipeline test ${Date.now()}</body></html>`
+      const hash = hashContent(testHtml)
+      testCaptureId = crypto.randomUUID()
 
-      const hash = hashContent(html)
+      emitCaptureEvent({ type: 'received', source: 'manual', url: 'birdbrain://pipeline-test', timestamp: new Date().toISOString() })
 
-      // Save files to disk
-      const screenshotBuffer = screenshot ? Buffer.from(screenshot, 'base64') : undefined
-      const captureId = crypto.randomUUID()
+      const paths = saveCapture(testCaseId, testCaptureId, testHtml, undefined, undefined)
 
-      const paths = saveCapture(caseId, captureId, html, screenshotBuffer, textContent)
-
-      // Insert into database using the same ID as the files
-      const capture = db.insertCapture({
-        id: captureId,
-        caseId,
-        url,
-        title: title || url,
+      db.insertCapture({
+        id: testCaptureId,
+        caseId: testCaseId,
+        url: 'birdbrain://pipeline-test',
+        title: 'Pipeline Test',
         hash,
-        timestamp: timestamp || new Date().toISOString(),
+        timestamp: new Date().toISOString(),
         htmlPath: paths.htmlPath,
-        screenshotPath: paths.screenshotPath,
-        headers: headers ? JSON.stringify(headers) : undefined,
-        textContent
+        screenshotPath: undefined,
+        headers: undefined,
+        textContent: undefined
       })
 
-      setImmediate(() => {
-        try {
-          runRuleBasedExtraction(capture.id, textContent)
-        } catch (err) {
-          console.error('Rule-based extraction error for capture', capture.id, err)
-        }
-        try {
-          if (textContent) {
-            db.matchSelectorsForCapture(capture.id, caseId, textContent)
-          }
-        } catch (err) {
-          console.error('Selector matching error for capture', capture.id, err)
-        }
-      })
-
-      // Notify renderer of new capture
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(IPC_CHANNELS.NEW_CAPTURE, capture)
-      }
-
-      return c.json({ captureId: capture.id, hash, status: 'ok' })
-    } catch (err) {
-      console.error('Selector capture error:', err)
-      return c.json({ error: 'Failed to process selector capture' }, 500)
-    }
-  })
-
-  // Manual capture — session-independent
-  app.post('/api/captures/manual', async (c) => {
-    try {
-      const body = await c.req.json()
-      const { caseId, url, title, html, screenshot, timestamp, headers, textContent } = body
-
-      if (!caseId || !url || !html) {
-        return c.json({ error: 'Missing required fields: caseId, url, html' }, 400)
-      }
-
-      // Validate case exists and is not archived
-      const caseData = db.getCase(caseId)
-      if (!caseData) {
-        return c.json({ error: 'Case not found' }, 404)
-      }
-      if (caseData.archived) {
-        return c.json({ error: 'Case is archived' }, 400)
-      }
-
-      const manualSettings = getSettings()
-      const manualBlocked = isUrlBlacklisted(url, manualSettings.ignoredUrlPatterns)
-      if (manualBlocked) {
-        return c.json({ error: 'URL blocked by ignored pattern', pattern: manualBlocked }, 403)
-      }
-
-      const hash = hashContent(html)
-      const screenshotBuffer = screenshot ? Buffer.from(screenshot, 'base64') : undefined
-      const captureId = crypto.randomUUID()
-
-      const paths = saveCapture(caseId, captureId, html, screenshotBuffer, textContent)
-
-      const capture = db.insertCapture({
-        id: captureId,
-        caseId,
-        url,
-        title: title || url,
-        hash,
-        timestamp: timestamp || new Date().toISOString(),
-        htmlPath: paths.htmlPath,
-        screenshotPath: paths.screenshotPath,
-        headers: headers ? JSON.stringify(headers) : undefined,
-        textContent
-      })
-
-      setImmediate(() => {
-        try {
-          runRuleBasedExtraction(capture.id, textContent)
-        } catch (err) {
-          console.error('Rule-based extraction error for capture', capture.id, err)
-        }
-        try {
-          if (textContent) {
-            db.matchSelectorsForCapture(capture.id, caseId, textContent)
-          }
-        } catch (err) {
-          console.error('Selector matching error for capture', capture.id, err)
-        }
-      })
-
-      // Notify renderer of new capture
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(IPC_CHANNELS.NEW_CAPTURE, capture)
-      }
-
-      return c.json({ captureId: capture.id, hash, status: 'ok' })
-    } catch (err) {
-      console.error('Manual capture error:', err)
-      return c.json({ error: 'Failed to process manual capture' }, 500)
-    }
-  })
-
-  app.patch('/api/captures/:id/html', async (c) => {
-    try {
-      const captureId = c.req.param('id')
-      const body = await c.req.json()
-      const { html, caseId: bodyCaseId } = body
-
-      if (!html) {
-        return c.json({ error: 'Missing required field: html' }, 400)
-      }
-
-      const capture = db.getCapture(captureId)
+      // Verify by reading back
+      const capture = db.getCapture(testCaptureId)
       if (!capture) {
-        return c.json({ error: 'Capture not found' }, 404)
+        return c.json({ success: false, durationMs: Date.now() - startTime, error: 'Test capture not found in DB after insert' })
+      }
+      if (capture.hash !== hash) {
+        return c.json({ success: false, durationMs: Date.now() - startTime, error: 'Hash mismatch after insert' })
       }
 
-      // Derive caseId from DB — never trust the request body for filesystem paths
-      const caseId = capture.caseId
-      if (bodyCaseId && bodyCaseId !== caseId) {
-        return c.json({ error: 'caseId does not match capture' }, 400)
-      }
+      const durationMs = Date.now() - startTime
+      emitCaptureEvent({ type: 'stored', captureId: testCaptureId!, source: 'manual', url: 'birdbrain://pipeline-test', timestamp: new Date().toISOString(), durationMs })
 
-      // Overwrite HTML file on disk
-      updateCaptureHtml(caseId, captureId, html)
-
-      // Update hash in database
-      const hash = hashContent(html)
-      db.updateCaptureHash(captureId, hash)
-
-      return c.json({ status: 'ok', captureId, hash })
+      return c.json({ success: true, durationMs })
     } catch (err) {
-      console.error('HTML update error:', err)
-      return c.json({ error: 'Failed to update capture HTML' }, 500)
+      return c.json({ success: false, durationMs: Date.now() - startTime, error: String(err) })
+    } finally {
+      // Cleanup
+      if (testCaptureId) {
+        try { db.deleteCapture(testCaptureId) } catch { /* best effort */ }
+      }
+      if (testCaseId && testCaptureId) {
+        try { deleteCaptureFiles(testCaseId, testCaptureId) } catch { /* best effort */ }
+      }
     }
   })
 
   return app
 }
 
-export function startCaptureServer(port: number = DEFAULT_PORT): Promise<void> {
+export function startCaptureServer(port: number = CAPTURE_SERVER_PORT): Promise<void> {
   return new Promise((resolve) => {
     const app = createApp()
     server = serve(

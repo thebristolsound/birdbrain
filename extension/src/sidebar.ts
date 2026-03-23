@@ -665,7 +665,8 @@ function buildEntitiesSection(matches: SelectorMatchInfo[]): string {
     html += '<div class="entity-group">'
     // Type header
     html += '<div class="entity-type-header">'
-    html += '<span class="entity-type-icon" style="color:' + config.color + '">' + config.icon + '</span>'
+    html +=
+      '<span class="entity-type-icon" style="color:' + config.color + '">' + config.icon + '</span>'
     html += '<span class="entity-type-label">' + escapeHtml(config.label) + '</span>'
     html += '<span class="entity-type-count">' + uniqueValues.size + ' found</span>'
     html += '</div>'
@@ -674,12 +675,18 @@ function buildEntitiesSection(matches: SelectorMatchInfo[]): string {
     html += '<div class="entity-card">'
     for (const [value, m] of uniqueValues) {
       const valueClass = isMonoValue(type) ? 'entity-value-mono' : 'entity-value'
-      const displayValue = value.length > 24
-        ? value.substring(0, 6) + '...' + value.substring(value.length - 4)
-        : value
+      const displayValue =
+        value.length > 24
+          ? value.substring(0, 6) + '...' + value.substring(value.length - 4)
+          : value
       html += '<div class="entity-row" data-match-index="' + m.index + '">'
       html += '<span class="' + valueClass + '">' + escapeHtml(displayValue) + '</span>'
-      html += '<span class="entity-badge ' + config.badgeClass + '">' + escapeHtml(config.badgeLabel) + '</span>'
+      html +=
+        '<span class="entity-badge ' +
+        config.badgeClass +
+        '">' +
+        escapeHtml(config.badgeLabel) +
+        '</span>'
       html += '</div>'
     }
     html += '</div>'

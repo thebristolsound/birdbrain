@@ -9,7 +9,11 @@ const DEFAULT_SETTINGS: BirdbrainSettings = {
   defaultModel: 'anthropic/claude-sonnet-4',
   autoExtractEntities: false,
   enabledEntityTypes: [
-    'email', 'phone', 'domain', 'ip_address', 'username',
+    'email',
+    'phone',
+    'domain',
+    'ip_address',
+    'username',
     'crypto_wallet'
   ] as EntityType[],
   minEntityConfidence: 0.5,

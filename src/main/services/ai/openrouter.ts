@@ -58,20 +58,26 @@ export async function sendPrompt(
 
       if (res.status === 429) {
         const backoff = INITIAL_BACKOFF_MS * Math.pow(2, attempt)
-        console.warn(`[OpenRouter] Rate limited (429), retrying in ${backoff}ms (attempt ${attempt + 1}/${MAX_RETRIES})`)
+        console.warn(
+          `[OpenRouter] Rate limited (429), retrying in ${backoff}ms (attempt ${attempt + 1}/${MAX_RETRIES})`
+        )
         await new Promise((resolve) => setTimeout(resolve, backoff))
         continue
       }
 
       if (!res.ok) {
         const body = await res.text().catch(() => '')
-        console.error(`[OpenRouter] API error: ${res.status} ${res.statusText} — ${body.slice(0, 300)}`)
+        console.error(
+          `[OpenRouter] API error: ${res.status} ${res.statusText} — ${body.slice(0, 300)}`
+        )
         throw new Error(`OpenRouter API error: ${res.status} ${res.statusText}`)
       }
 
       const data: OpenRouterResponse = await res.json()
       const content = data.choices?.[0]?.message?.content || ''
-      console.log(`[OpenRouter] Response received (${content.length} chars, ${data.usage?.total_tokens || '?'} tokens)`)
+      console.log(
+        `[OpenRouter] Response received (${content.length} chars, ${data.usage?.total_tokens || '?'} tokens)`
+      )
 
       return {
         content,
@@ -85,7 +91,9 @@ export async function sendPrompt(
       lastError = err as Error
       if (attempt < MAX_RETRIES - 1) {
         const backoff = INITIAL_BACKOFF_MS * Math.pow(2, attempt)
-        console.warn(`[OpenRouter] Error: ${lastError.message}, retrying in ${backoff}ms (attempt ${attempt + 1}/${MAX_RETRIES})`)
+        console.warn(
+          `[OpenRouter] Error: ${lastError.message}, retrying in ${backoff}ms (attempt ${attempt + 1}/${MAX_RETRIES})`
+        )
         await new Promise((resolve) => setTimeout(resolve, backoff))
       }
     }

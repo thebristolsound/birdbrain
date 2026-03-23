@@ -62,10 +62,7 @@ export function CaptureItem({ capture, isSelected, onClick }: CaptureItemProps) 
             background: `linear-gradient(to bottom right, ${color.from}, ${color.to})`
           }}
         >
-          <div
-            className="h-1 w-full rounded-full"
-            style={{ backgroundColor: color.bar }}
-          />
+          <div className="h-1 w-full rounded-full" style={{ backgroundColor: color.bar }} />
           <div
             className="h-1 w-3/4 rounded-full"
             style={{ backgroundColor: color.bar, opacity: 0.7 }}
@@ -80,9 +77,7 @@ export function CaptureItem({ capture, isSelected, onClick }: CaptureItemProps) 
           <div className="truncate text-sm font-medium text-slate-200">
             {capture.title || hostname}
           </div>
-          <div className="mt-0.5 truncate font-mono text-[11px] text-slate-500">
-            {hostname}
-          </div>
+          <div className="mt-0.5 truncate font-mono text-[11px] text-slate-500">{hostname}</div>
           <div className="mt-0.5 text-[11px] text-slate-600">
             {formatTimestamp(capture.timestamp)}
           </div>

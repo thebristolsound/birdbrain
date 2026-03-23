@@ -142,17 +142,21 @@ export function CaseEntities() {
         const capEntities: Entity[] = await window.birdbrain.ai.getEntities(cap.id)
         return capEntities.map((e) => ({ ...e, captureTitle: cap.title || cap.url }))
       })
-    ).then((results) => {
-      setEntities(results.flat())
-      setLoading(false)
-    }).catch((err) => {
-      console.error('Failed to load entities:', err)
-      setLoading(false)
-    })
+    )
+      .then((results) => {
+        setEntities(results.flat())
+        setLoading(false)
+      })
+      .catch((err) => {
+        console.error('Failed to load entities:', err)
+        setLoading(false)
+      })
   }, [activeCaseId, captureIds])
 
   // Reset page when filters change
-  useEffect(() => { setPage(1) }, [typeFilter, sourceFilter, minConfidence, searchQuery])
+  useEffect(() => {
+    setPage(1)
+  }, [typeFilter, sourceFilter, minConfidence, searchQuery])
 
   // Deduplicate by value+type, aggregate captures
   const aggregated = useMemo(() => {
@@ -190,8 +194,8 @@ export function CaseEntities() {
     return counts
   }, [aggregated])
 
-  const types = useMemo(() =>
-    [...typeCounts.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t),
+  const types = useMemo(
+    () => [...typeCounts.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t),
     [typeCounts]
   )
 
@@ -300,9 +304,11 @@ export function CaseEntities() {
     if (sortField !== field) {
       return <ArrowUpDown className="h-2.5 w-2.5 text-slate-600" />
     }
-    return sortDir === 'desc'
-      ? <ArrowDown className="h-2.5 w-2.5 text-indigo-400" />
-      : <ArrowUp className="h-2.5 w-2.5 text-indigo-400" />
+    return sortDir === 'desc' ? (
+      <ArrowDown className="h-2.5 w-2.5 text-indigo-400" />
+    ) : (
+      <ArrowUp className="h-2.5 w-2.5 text-indigo-400" />
+    )
   }
 
   function renderPagination() {
@@ -331,7 +337,9 @@ export function CaseEntities() {
         </button>
         {pages.map((p, i) =>
           p === '...' ? (
-            <span key={`ellipsis-${i}`} className="text-[11px] text-slate-600">&hellip;</span>
+            <span key={`ellipsis-${i}`} className="text-[11px] text-slate-600">
+              &hellip;
+            </span>
           ) : (
             <button
               key={p}
@@ -496,7 +504,9 @@ export function CaseEntities() {
                 <input
                   type="checkbox"
                   checked={allPageSelected}
-                  ref={(el) => { if (el) el.indeterminate = somePageSelected && !allPageSelected }}
+                  ref={(el) => {
+                    if (el) el.indeterminate = somePageSelected && !allPageSelected
+                  }}
                   onChange={toggleSelectAll}
                   className="h-3.5 w-3.5 rounded border-slate-600 bg-neutral-800 text-indigo-600"
                 />
@@ -580,12 +590,16 @@ export function CaseEntities() {
                       />
                     </td>
                     <td className="px-3.5 py-3.5">
-                      <span className={`text-xs font-semibold text-white ${isMono ? 'font-mono' : ''}`}>
+                      <span
+                        className={`text-xs font-semibold text-white ${isMono ? 'font-mono' : ''}`}
+                      >
                         {entity.value}
                       </span>
                     </td>
                     <td className="px-3 py-3">
-                      <span className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-semibold ${getBadgeClass(entity.type)}`}>
+                      <span
+                        className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-semibold ${getBadgeClass(entity.type)}`}
+                      >
                         <span className={`h-2 w-2 rounded-full ${getDotClass(entity.type)}`} />
                         {getTypeLabel(entity.type)}
                       </span>
@@ -644,7 +658,11 @@ export function CaseEntities() {
                           <div className="flex gap-2 overflow-x-auto pb-1">
                             {capIds.slice(0, 4).map((cap) => {
                               let hostname = ''
-                              try { hostname = new URL(cap.url).hostname } catch { hostname = cap.url }
+                              try {
+                                hostname = new URL(cap.url).hostname
+                              } catch {
+                                hostname = cap.url
+                              }
                               return (
                                 <button
                                   key={cap.id}
@@ -703,9 +721,7 @@ export function CaseEntities() {
         <div className="flex items-center gap-3">
           {selectedKeys.size > 0 ? (
             <>
-              <span className="text-[11px] text-slate-500">
-                {selectedKeys.size} selected
-              </span>
+              <span className="text-[11px] text-slate-500">{selectedKeys.size} selected</span>
               <div className="h-4 w-px bg-white/[0.08]" />
               <button className="flex items-center gap-1 text-[11px] font-medium text-slate-400 transition-colors hover:text-slate-200">
                 <Link className="h-2.5 w-2.5" />

@@ -88,7 +88,7 @@ function runRuleBasedExtraction(captureId: string, textContent: string | undefin
     if (entities.length === 0) return
 
     db.insertEntitiesBatch(
-      entities.map(e => ({
+      entities.map((e) => ({
         captureId,
         type: e.type,
         value: e.value,
@@ -112,7 +112,13 @@ function runRuleBasedExtraction(captureId: string, textContent: string | undefin
   }
 }
 
-function schedulePostCaptureWork(captureId: string, caseId: string, source: CaptureSource, url: string, textContent: string | undefined): void {
+function schedulePostCaptureWork(
+  captureId: string,
+  caseId: string,
+  source: CaptureSource,
+  url: string,
+  textContent: string | undefined
+): void {
   setImmediate(() => {
     try {
       runRuleBasedExtraction(captureId, textContent)
@@ -184,9 +190,7 @@ function createApp(): Hono {
       sessionActive: state.sessionActive,
       captureCount: state.captureCount,
       autoCaptureMode: settings.autoCaptureMode,
-      cases: includeCases && allCases
-        ? allCases.map((cs) => ({ id: cs.id, name: cs.name }))
-        : [],
+      cases: includeCases && allCases ? allCases.map((cs) => ({ id: cs.id, name: cs.name })) : [],
       ignoredUrlPatterns: settings.ignoredUrlPatterns
     })
   })
@@ -206,19 +210,26 @@ function createApp(): Hono {
   // Entity summary for a case
   app.get('/api/cases/:id/entities/summary', (c) => {
     const caseId = c.req.param('id')
-    const rows = db.getDb().prepare(`
+    const rows = db
+      .getDb()
+      .prepare(
+        `
       SELECT type, COUNT(*) as count
       FROM entities
       WHERE capture_id IN (SELECT id FROM captures WHERE case_id = ?)
       GROUP BY type
       ORDER BY count DESC
-    `).all(caseId) as { type: string; count: number }[]
+    `
+      )
+      .all(caseId) as { type: string; count: number }[]
 
-    return c.json(rows.map(r => ({
-      type: r.type,
-      count: r.count,
-      color: ''
-    })))
+    return c.json(
+      rows.map((r) => ({
+        type: r.type,
+        count: r.count,
+        color: ''
+      }))
+    )
   })
 
   // Activate a case
@@ -264,16 +275,17 @@ function createApp(): Hono {
 
       const rawSource = (body as any).source
       source = VALID_CAPTURE_SOURCES.includes(rawSource) ? (rawSource as CaptureSource) : 'auto'
-      const { url, title, html, screenshot, timestamp, headers, textContent, matchedSelectors } = body as {
-        url?: string
-        title?: string
-        html?: string
-        screenshot?: string
-        timestamp?: string
-        headers?: Record<string, unknown>
-        textContent?: string
-        matchedSelectors?: unknown
-      }
+      const { url, title, html, screenshot, timestamp, headers, textContent, matchedSelectors } =
+        body as {
+          url?: string
+          title?: string
+          html?: string
+          screenshot?: string
+          timestamp?: string
+          headers?: Record<string, unknown>
+          textContent?: string
+          matchedSelectors?: unknown
+        }
       capturedUrl = url || ''
 
       // 1. Common validation
@@ -285,7 +297,13 @@ function createApp(): Hono {
       const captureSettings = getSettings()
       const blocked = isUrlBlacklisted(url, captureSettings.ignoredUrlPatterns)
       if (blocked) {
-        emitCaptureEvent({ type: 'skipped', source, url, timestamp: new Date().toISOString(), skipReason: `Blacklisted: ${blocked}` })
+        emitCaptureEvent({
+          type: 'skipped',
+          source,
+          url,
+          timestamp: new Date().toISOString(),
+          skipReason: `Blacklisted: ${blocked}`
+        })
         return c.json({ error: 'URL blocked by ignored pattern', pattern: blocked }, 403)
       }
 
@@ -364,12 +382,25 @@ function createApp(): Hono {
       }
 
       const durationMs = Date.now() - startTime
-      emitCaptureEvent({ type: 'stored', captureId: capture.id, source, url, timestamp: new Date().toISOString(), durationMs })
+      emitCaptureEvent({
+        type: 'stored',
+        captureId: capture.id,
+        source,
+        url,
+        timestamp: new Date().toISOString(),
+        durationMs
+      })
 
       return c.json({ captureId: capture.id, hash, status: 'ok', source })
     } catch (err) {
       console.error('Capture error:', err)
-      emitCaptureEvent({ type: 'failed', source, url: capturedUrl, timestamp: new Date().toISOString(), error: String(err) })
+      emitCaptureEvent({
+        type: 'failed',
+        source,
+        url: capturedUrl,
+        timestamp: new Date().toISOString(),
+        error: String(err)
+      })
       return c.json({ error: 'Failed to process capture' }, 500)
     }
   })
@@ -390,7 +421,11 @@ function createApp(): Hono {
       // Find any case to use for test
       const cases = db.listCases()
       if (cases.length === 0) {
-        return c.json({ success: false, durationMs: 0, error: 'No cases exist — create a case first' })
+        return c.json({
+          success: false,
+          durationMs: 0,
+          error: 'No cases exist — create a case first'
+        })
       }
       testCaseId = cases[0].id
 
@@ -399,7 +434,12 @@ function createApp(): Hono {
       const hash = hashContent(testHtml)
       testCaptureId = crypto.randomUUID()
 
-      emitCaptureEvent({ type: 'received', source: 'manual', url: 'birdbrain://pipeline-test', timestamp: new Date().toISOString() })
+      emitCaptureEvent({
+        type: 'received',
+        source: 'manual',
+        url: 'birdbrain://pipeline-test',
+        timestamp: new Date().toISOString()
+      })
 
       const paths = saveCapture(testCaseId, testCaptureId, testHtml, undefined, undefined)
 
@@ -419,14 +459,29 @@ function createApp(): Hono {
       // Verify by reading back
       const capture = db.getCapture(testCaptureId)
       if (!capture) {
-        return c.json({ success: false, durationMs: Date.now() - startTime, error: 'Test capture not found in DB after insert' })
+        return c.json({
+          success: false,
+          durationMs: Date.now() - startTime,
+          error: 'Test capture not found in DB after insert'
+        })
       }
       if (capture.hash !== hash) {
-        return c.json({ success: false, durationMs: Date.now() - startTime, error: 'Hash mismatch after insert' })
+        return c.json({
+          success: false,
+          durationMs: Date.now() - startTime,
+          error: 'Hash mismatch after insert'
+        })
       }
 
       const durationMs = Date.now() - startTime
-      emitCaptureEvent({ type: 'stored', captureId: testCaptureId!, source: 'manual', url: 'birdbrain://pipeline-test', timestamp: new Date().toISOString(), durationMs })
+      emitCaptureEvent({
+        type: 'stored',
+        captureId: testCaptureId!,
+        source: 'manual',
+        url: 'birdbrain://pipeline-test',
+        timestamp: new Date().toISOString(),
+        durationMs
+      })
 
       return c.json({ success: true, durationMs })
     } catch (err) {
@@ -434,10 +489,18 @@ function createApp(): Hono {
     } finally {
       // Cleanup
       if (testCaptureId) {
-        try { db.deleteCapture(testCaptureId) } catch { /* best effort */ }
+        try {
+          db.deleteCapture(testCaptureId)
+        } catch {
+          /* best effort */
+        }
       }
       if (testCaseId && testCaptureId) {
-        try { deleteCaptureFiles(testCaseId, testCaptureId) } catch { /* best effort */ }
+        try {
+          deleteCaptureFiles(testCaseId, testCaptureId)
+        } catch {
+          /* best effort */
+        }
       }
     }
   })

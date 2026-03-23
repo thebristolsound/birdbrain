@@ -116,7 +116,8 @@ export function InsightsPanel({ analysis, analyzing, lastAnalyzedAt }: InsightsP
         {!analysis && !analyzing && (
           <div className="rounded-xl border border-white/[0.06] bg-slate-800/50 p-6 text-center">
             <p className="text-sm text-slate-400">
-              Click "Re-analyze" to generate AI-powered insights about entity relationships and patterns.
+              Click "Re-analyze" to generate AI-powered insights about entity relationships and
+              patterns.
             </p>
             <p className="mt-1 text-xs text-slate-600">
               This sends entity data to OpenRouter and uses API tokens.
@@ -169,8 +170,12 @@ export function InsightsPanel({ analysis, analyzing, lastAnalyzedAt }: InsightsP
                     >
                       <div className="mb-2 flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <span className={`h-2.5 w-2.5 rounded-full ${CLUSTER_DOTS[i % CLUSTER_DOTS.length]}`} />
-                          <span className="text-xs font-semibold text-slate-100">{cluster.name}</span>
+                          <span
+                            className={`h-2.5 w-2.5 rounded-full ${CLUSTER_DOTS[i % CLUSTER_DOTS.length]}`}
+                          />
+                          <span className="text-xs font-semibold text-slate-100">
+                            {cluster.name}
+                          </span>
                         </div>
                         <ChevronRight className="h-3.5 w-3.5 text-slate-600" />
                       </div>

@@ -50,11 +50,11 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div
-        className="neu-card w-[28rem] rounded-2xl p-6"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      onClick={onClose}
+    >
+      <div className="neu-card w-[28rem] rounded-2xl p-6" onClick={(e) => e.stopPropagation()}>
         <h2 className="mb-4 text-lg font-semibold text-white">Export Case</h2>
 
         {/* Format */}
@@ -80,13 +80,15 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
         <div className="mb-4">
           <label className="mb-2 block text-sm text-slate-400">Include</label>
           <div className="space-y-2">
-            {([
-              ['captures', 'Captures'],
-              ['entities', 'Entities'],
-              ['aiAnalysis', 'AI Analysis'],
-              ['screenshots', 'Screenshots'],
-              ['auditTrail', 'Audit Trail']
-            ] as const).map(([key, label]) => (
+            {(
+              [
+                ['captures', 'Captures'],
+                ['entities', 'Entities'],
+                ['aiAnalysis', 'AI Analysis'],
+                ['screenshots', 'Screenshots'],
+                ['auditTrail', 'Audit Trail']
+              ] as const
+            ).map(([key, label]) => (
               <label key={key} className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"

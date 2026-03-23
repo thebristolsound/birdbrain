@@ -5,11 +5,16 @@ import type { CaptureEvent } from '@shared/types'
 
 function EventIcon({ type }: { type: CaptureEvent['type'] }) {
   switch (type) {
-    case 'stored': return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-    case 'failed': return <XCircle className="h-3.5 w-3.5 text-red-400" />
-    case 'skipped': return <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
-    case 'received': return <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" />
-    case 'extraction_done': return <Zap className="h-3.5 w-3.5 text-indigo-400" />
+    case 'stored':
+      return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+    case 'failed':
+      return <XCircle className="h-3.5 w-3.5 text-red-400" />
+    case 'skipped':
+      return <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
+    case 'received':
+      return <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" />
+    case 'extraction_done':
+      return <Zap className="h-3.5 w-3.5 text-indigo-400" />
   }
 }
 
@@ -143,7 +148,9 @@ export function CaptureHealth() {
                 No capture activity yet
               </div>
             ) : (
-              captureEvents.map((event, i) => <EventRow key={`${event.timestamp}-${event.type}-${i}`} event={event} />)
+              captureEvents.map((event, i) => (
+                <EventRow key={`${event.timestamp}-${event.type}-${i}`} event={event} />
+              ))
             )}
           </div>
 

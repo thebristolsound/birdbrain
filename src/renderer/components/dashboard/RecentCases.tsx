@@ -65,7 +65,9 @@ export function RecentCases({
               New Investigation
             </h3>
             <p className="text-[11px] text-indigo-600 leading-relaxed">
-              Start a fresh case with<br />guided setup
+              Start a fresh case with
+              <br />
+              guided setup
             </p>
           </div>
         </div>

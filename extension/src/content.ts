@@ -138,28 +138,24 @@ function highlightMatches(matches: SelectorMatchResult[]): void {
   }
 
   // Walk text nodes and wrap matches
-  const walker = document.createTreeWalker(
-    document.body,
-    NodeFilter.SHOW_TEXT,
-    {
-      acceptNode(node) {
-        // Skip script/style/our own elements
-        const parent = node.parentElement
-        if (!parent) return NodeFilter.FILTER_REJECT
-        const tag = parent.tagName
-        if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT') {
-          return NodeFilter.FILTER_REJECT
-        }
-        if (parent.closest(`#birdbrain-selector-sidebar`)) {
-          return NodeFilter.FILTER_REJECT
-        }
-        if (parent.classList.contains(HIGHLIGHT_CLASS)) {
-          return NodeFilter.FILTER_REJECT
-        }
-        return NodeFilter.FILTER_ACCEPT
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      // Skip script/style/our own elements
+      const parent = node.parentElement
+      if (!parent) return NodeFilter.FILTER_REJECT
+      const tag = parent.tagName
+      if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT') {
+        return NodeFilter.FILTER_REJECT
       }
+      if (parent.closest(`#birdbrain-selector-sidebar`)) {
+        return NodeFilter.FILTER_REJECT
+      }
+      if (parent.classList.contains(HIGHLIGHT_CLASS)) {
+        return NodeFilter.FILTER_REJECT
+      }
+      return NodeFilter.FILTER_ACCEPT
     }
-  )
+  })
 
   const textNodes: Text[] = []
   let node: Node | null

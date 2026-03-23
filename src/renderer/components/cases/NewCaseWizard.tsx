@@ -4,11 +4,36 @@ import { useCases } from '@renderer/hooks/useCases'
 import { FolderPlus, Bitcoin, Bug, ShieldAlert, Settings2, ArrowLeft } from 'lucide-react'
 
 const SELECTOR_PRESETS = [
-  { id: 'email', label: 'Email Addresses', pattern: '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}', isRegex: true },
-  { id: 'crypto', label: 'Crypto Addresses', pattern: '(0x[a-fA-F0-9]{40}|[13][a-km-zA-HJ-NP-Z1-9]{25,34}|bc1[a-zA-HJ-NP-Z0-9]{39,59})', isRegex: true },
-  { id: 'ip', label: 'IP Addresses', pattern: '\\b\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\b', isRegex: true },
-  { id: 'domain', label: 'Domain Names', pattern: '\\b[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\\.[a-zA-Z]{2,})+\\b', isRegex: true },
-  { id: 'phone', label: 'Phone Numbers', pattern: '\\+?\\d{1,4}[-.\\s]?\\(?\\d{1,3}\\)?[-.\\s]?\\d{1,4}[-.\\s]?\\d{1,9}', isRegex: true },
+  {
+    id: 'email',
+    label: 'Email Addresses',
+    pattern: '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}',
+    isRegex: true
+  },
+  {
+    id: 'crypto',
+    label: 'Crypto Addresses',
+    pattern: '(0x[a-fA-F0-9]{40}|[13][a-km-zA-HJ-NP-Z1-9]{25,34}|bc1[a-zA-HJ-NP-Z0-9]{39,59})',
+    isRegex: true
+  },
+  {
+    id: 'ip',
+    label: 'IP Addresses',
+    pattern: '\\b\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\b',
+    isRegex: true
+  },
+  {
+    id: 'domain',
+    label: 'Domain Names',
+    pattern: '\\b[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\\.[a-zA-Z]{2,})+\\b',
+    isRegex: true
+  },
+  {
+    id: 'phone',
+    label: 'Phone Numbers',
+    pattern: '\\+?\\d{1,4}[-.\\s]?\\(?\\d{1,3}\\)?[-.\\s]?\\d{1,4}[-.\\s]?\\d{1,9}',
+    isRegex: true
+  },
   { id: 'username', label: 'Usernames', pattern: '@[a-zA-Z0-9_]{1,15}', isRegex: true }
 ]
 
@@ -40,7 +65,11 @@ export function NewCaseWizard() {
     setSubmitting(true)
 
     try {
-      const newCase = await createCase({ name: name.trim(), description: description.trim() || undefined, type: caseType })
+      const newCase = await createCase({
+        name: name.trim(),
+        description: description.trim() || undefined,
+        type: caseType
+      })
 
       for (const presetId of selectedSelectors) {
         const preset = SELECTOR_PRESETS.find((p) => p.id === presetId)
@@ -98,9 +127,7 @@ export function NewCaseWizard() {
 
         {/* Description */}
         <div className="mb-6">
-          <label className="mb-1.5 block text-sm font-medium text-slate-300">
-            Description
-          </label>
+          <label className="mb-1.5 block text-sm font-medium text-slate-300">Description</label>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -130,7 +157,9 @@ export function NewCaseWizard() {
                   }`}
                 >
                   <Icon className={`h-5 w-5 ${selected ? 'text-indigo-400' : 'text-slate-400'}`} />
-                  <span className={`text-sm font-medium ${selected ? 'text-white' : 'text-slate-300'}`}>
+                  <span
+                    className={`text-sm font-medium ${selected ? 'text-white' : 'text-slate-300'}`}
+                  >
                     {t.label}
                   </span>
                 </button>
@@ -141,9 +170,7 @@ export function NewCaseWizard() {
 
         {/* Initial Selectors */}
         <div className="mb-8">
-          <label className="mb-3 block text-sm font-medium text-slate-300">
-            Initial Selectors
-          </label>
+          <label className="mb-3 block text-sm font-medium text-slate-300">Initial Selectors</label>
           <div className="flex flex-wrap gap-2">
             {SELECTOR_PRESETS.map((preset) => {
               const selected = selectedSelectors.includes(preset.id)

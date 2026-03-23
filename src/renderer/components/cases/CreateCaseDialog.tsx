@@ -15,13 +15,19 @@ export function CreateCaseDialog({ onClose }: CreateCaseDialogProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim()) return
-    const newCase = await createCase({ name: name.trim(), description: description.trim() || undefined })
+    const newCase = await createCase({
+      name: name.trim(),
+      description: description.trim() || undefined
+    })
     selectCase(newCase.id)
     onClose()
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      onClick={onClose}
+    >
       <div
         className="w-96 rounded-lg border border-neutral-700 bg-neutral-900 p-6"
         onClick={(e) => e.stopPropagation()}

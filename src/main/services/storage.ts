@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, writeFileSync, readFileSync, unlinkSync, readdirSync, statSync } from 'fs'
+import {
+  existsSync,
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+  unlinkSync,
+  readdirSync,
+  statSync
+} from 'fs'
 import { join } from 'path'
 
 let storageRoot: string

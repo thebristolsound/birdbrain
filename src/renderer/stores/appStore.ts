@@ -63,13 +63,11 @@ export const useAppStore = create<AppState>((set) => ({
   setSelectedCaptureId: (id) => set({ selectedCaptureId: id }),
   setSearchQuery: (query) => set({ searchQuery: query }),
 
-  selectCase: (id) =>
-    set({ activeCaseId: id, appMode: 'case-workspace', selectedCaptureId: null }),
+  selectCase: (id) => set({ activeCaseId: id, appMode: 'case-workspace', selectedCaptureId: null }),
 
   selectCapture: (id) => set({ selectedCaptureId: id }),
 
-  navigateToCapture: (id) =>
-    set({ activeCaseTab: 'captures', selectedCaptureId: id }),
+  navigateToCapture: (id) => set({ activeCaseTab: 'captures', selectedCaptureId: id }),
 
   setActiveTab: (tab) => set({ activeCaseTab: tab }),
 
@@ -96,8 +94,7 @@ export const useAppStore = create<AppState>((set) => ({
       }
     }),
 
-  clearSelectorFilters: () =>
-    set({ activeSelectorFilters: [], filteredCaptureIds: null }),
+  clearSelectorFilters: () => set({ activeSelectorFilters: [], filteredCaptureIds: null }),
 
   setFilteredCaptureIds: (ids) => set({ filteredCaptureIds: ids }),
 

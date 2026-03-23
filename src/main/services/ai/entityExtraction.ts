@@ -46,7 +46,7 @@ export function shouldSkipEntity(
   value: string,
   existingEntities: Array<{ type: string; value: string }>
 ): boolean {
-  return existingEntities.some(e => e.type === type && e.value === value)
+  return existingEntities.some((e) => e.type === type && e.value === value)
 }
 
 export async function extractEntities(captureId: string): Promise<Entity[]> {
@@ -60,7 +60,9 @@ export async function extractEntities(captureId: string): Promise<Entity[]> {
   const text = textBuffer?.toString('utf-8')
   if (!text?.trim()) {
     console.warn(`[AI] No text content found for capture ${captureId} — cannot extract entities`)
-    throw new Error('No text content available for this capture. The page may not have had extractable text.')
+    throw new Error(
+      'No text content available for this capture. The page may not have had extractable text.'
+    )
   }
 
   console.log(`[AI] Text content loaded (${text.length} chars), sending to LLM...`)
@@ -84,7 +86,11 @@ export async function extractEntities(captureId: string): Promise<Entity[]> {
       { role: 'system', content: EXTRACTION_PROMPT },
       { role: 'user', content: truncatedText },
       { role: 'assistant', content: result.content },
-      { role: 'user', content: 'Your response was not valid JSON. Please respond with ONLY valid JSON matching the specified format.' }
+      {
+        role: 'user',
+        content:
+          'Your response was not valid JSON. Please respond with ONLY valid JSON matching the specified format.'
+      }
     ])
     entities = parseEntitiesResponse(result.content)
     if (!entities) {
@@ -110,7 +116,10 @@ export async function extractEntities(captureId: string): Promise<Entity[]> {
       type: entity.type,
       value: entity.value.trim(),
       context: entity.context?.trim(),
-      confidence: typeof entity.confidence === 'number' ? Math.min(1, Math.max(0, entity.confidence)) : undefined,
+      confidence:
+        typeof entity.confidence === 'number'
+          ? Math.min(1, Math.max(0, entity.confidence))
+          : undefined,
       source: 'ai'
     })
     stored.push(saved)
@@ -158,8 +167,17 @@ export function parseEntitiesResponse(content: string): ExtractedEntity[] | null
 }
 
 const VALID_ENTITY_TYPES: Set<string> = new Set([
-  'person', 'organization', 'email', 'phone', 'domain',
-  'ip_address', 'address', 'date', 'username', 'crypto_wallet', 'custom'
+  'person',
+  'organization',
+  'email',
+  'phone',
+  'domain',
+  'ip_address',
+  'address',
+  'date',
+  'username',
+  'crypto_wallet',
+  'custom'
 ])
 
 function isValidEntityType(type: string): type is EntityType {

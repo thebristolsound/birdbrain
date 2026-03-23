@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
-import { getStatus, getCases, activateCase, startSession, stopSession, getEntitySummary } from '@extension/utils/api'
+import {
+  getStatus,
+  getCases,
+  activateCase,
+  startSession,
+  stopSession,
+  getEntitySummary
+} from '@extension/utils/api'
 import type { EntityTypeSummary } from '@extension/utils/api'
 import './popup.css'
 
@@ -19,7 +26,15 @@ function Header() {
     <header className="flex items-center justify-between px-4 h-12 sticky top-0 z-10 bg-d-header border-b border-d-border">
       <div className="flex items-center gap-2">
         <div className="w-6 h-6 rounded-md bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
-          <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            className="w-3 h-3 text-white"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <circle cx="12" cy="12" r="10" />
             <circle cx="12" cy="12" r="6" />
             <circle cx="12" cy="12" r="2" />
@@ -29,13 +44,23 @@ function Header() {
             <line x1="20" y1="12" x2="22" y2="12" />
           </svg>
         </div>
-        <span className="font-display font-extrabold text-sm tracking-tight text-white">Birdbrain</span>
+        <span className="font-display font-extrabold text-sm tracking-tight text-white">
+          Birdbrain
+        </span>
       </div>
       <button
         onClick={handleClose}
         className="w-7 h-7 flex items-center justify-center rounded-md text-d-text-muted hover:text-red-400 hover:bg-red-500/10 transition-colors"
       >
-        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg
+          className="w-4 h-4"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
           <line x1="18" y1="6" x2="6" y2="18" />
           <line x1="6" y1="6" x2="18" y2="18" />
         </svg>
@@ -75,7 +100,15 @@ function StatusCard({
       </div>
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-white/[0.04] border border-d-border text-d-text-muted">
-          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            className="w-5 h-5"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <circle cx="12" cy="12" r="10" />
             <line x1="2" y1="12" x2="22" y2="12" />
             <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
@@ -106,16 +139,24 @@ function StatsGrid({
   return (
     <section className="animate-fade-up-delay-1 grid grid-cols-2 gap-3">
       <div className="rounded-xl p-3 bg-d-card border border-d-border dark-card-glow">
-        <span className="text-[9px] font-bold uppercase block mb-1 text-d-text-muted">Captures</span>
+        <span className="text-[9px] font-bold uppercase block mb-1 text-d-text-muted">
+          Captures
+        </span>
         <div className="flex items-baseline gap-1">
-          <span className="text-lg font-display font-extrabold text-indigo-400 stat-glow">{captureCount}</span>
+          <span className="text-lg font-display font-extrabold text-indigo-400 stat-glow">
+            {captureCount}
+          </span>
           <span className="text-[10px] text-d-text-muted">active</span>
         </div>
       </div>
       <div className="rounded-xl p-3 bg-d-card border border-d-border dark-card-glow">
-        <span className="text-[9px] font-bold uppercase block mb-1 text-d-text-muted">Selectors</span>
+        <span className="text-[9px] font-bold uppercase block mb-1 text-d-text-muted">
+          Selectors
+        </span>
         <div className="flex items-baseline gap-1">
-          <span className="text-lg font-display font-extrabold text-white stat-glow">{selectorCount}</span>
+          <span className="text-lg font-display font-extrabold text-white stat-glow">
+            {selectorCount}
+          </span>
           <span className="text-[10px] text-d-text-muted">matching</span>
         </div>
       </div>
@@ -147,9 +188,7 @@ function EntityHighlights({ entities }: { entities: EntityTypeSummary[] }) {
         <h4 className="text-[10px] font-bold uppercase tracking-wider text-d-text-muted">
           Entity Highlights
         </h4>
-        <span className="text-[10px] font-semibold text-indigo-400">
-          {total} detected
-        </span>
+        <span className="text-[10px] font-semibold text-indigo-400">{total} detected</span>
       </div>
       <div className="rounded-2xl p-3 space-y-2.5 bg-d-card border border-d-border dark-card-glow">
         {entities.map((entity) => {
@@ -212,7 +251,15 @@ function Footer({
             disabled={!activeCase}
             className="flex-1 h-10 flex items-center justify-center gap-2 rounded-xl font-display font-bold text-xs active:scale-[0.98] transition-all bg-indigo-600 hover:bg-indigo-500 text-white shadow-dark-btn btn-glow-pulse disabled:opacity-40 disabled:animate-none disabled:shadow-none"
           >
-            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              className="w-3 h-3"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <circle cx="12" cy="12" r="10" />
             </svg>
             Start Capture
@@ -225,7 +272,15 @@ function Footer({
             className="w-10 h-10 flex items-center justify-center rounded-xl active:scale-[0.98] transition-colors bg-white/[0.04] border border-d-border text-d-text-secondary hover:bg-white/[0.08] hover:text-white"
             title="Capture this page"
           >
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              className="w-4 h-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
               <circle cx="12" cy="13" r="4" />
             </svg>
@@ -237,7 +292,15 @@ function Footer({
           className="w-10 h-10 flex items-center justify-center rounded-xl active:scale-[0.98] transition-colors bg-white/[0.04] border border-d-border text-d-text-secondary hover:bg-white/[0.08] hover:text-white"
           title="Settings"
         >
-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            className="w-4 h-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <circle cx="12" cy="12" r="3" />
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
           </svg>
@@ -309,7 +372,15 @@ function DisconnectedView({ onRetry }: { onRetry: () => void }) {
       <Header />
       <main className="p-4 flex-1 flex flex-col items-center justify-center py-12">
         <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mb-4">
-          <svg className="w-6 h-6 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            className="w-6 h-6 text-amber-500"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
             <line x1="12" y1="9" x2="12" y2="13" />
             <line x1="12" y1="17" x2="12.01" y2="17" />
@@ -421,7 +492,13 @@ function Popup(): React.JSX.Element {
     return (
       <div className="flex flex-col w-[320px] font-body bg-d-body text-d-text items-center justify-center py-16">
         <div className="w-6 h-6 rounded-md bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/30 animate-pulse">
-          <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+          <svg
+            className="w-3 h-3 text-white"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+          >
             <circle cx="12" cy="12" r="10" />
             <circle cx="12" cy="12" r="6" />
             <circle cx="12" cy="12" r="2" />
@@ -448,11 +525,7 @@ function Popup(): React.JSX.Element {
             currentDomain={currentDomain}
           />
         ) : (
-          <CaseSelector
-            cases={cases}
-            activeCase={activeCase}
-            onSelect={handleActivateCase}
-          />
+          <CaseSelector cases={cases} activeCase={activeCase} onSelect={handleActivateCase} />
         )}
 
         <StatsGrid captureCount={captureCount} selectorCount={activeSelectorCount} />

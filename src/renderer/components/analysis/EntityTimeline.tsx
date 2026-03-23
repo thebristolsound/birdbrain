@@ -13,11 +13,7 @@ const DOT_STYLES = [
   'bg-indigo-500 shadow-[0_0_6px_rgba(99,102,241,0.3)]'
 ]
 
-const DATE_STYLES = [
-  'text-indigo-400',
-  'text-purple-400',
-  'text-indigo-500'
-]
+const DATE_STYLES = ['text-indigo-400', 'text-purple-400', 'text-indigo-500']
 
 export function EntityTimeline({ entries }: EntityTimelineProps) {
   if (entries.length === 0) return null
@@ -38,9 +34,7 @@ export function EntityTimeline({ entries }: EntityTimelineProps) {
               <span className={`font-mono text-[10px] font-medium ${dateStyle}`}>
                 {entry.significance}
               </span>
-              <p className="mt-1 text-[11px] leading-relaxed text-slate-300">
-                {entry.observation}
-              </p>
+              <p className="mt-1 text-[11px] leading-relaxed text-slate-300">{entry.observation}</p>
             </div>
           </div>
         )

@@ -2,7 +2,10 @@ import { Radar, Github } from 'lucide-react'
 
 export function DashboardFooter() {
   return (
-    <footer className="anim-in border-t border-white/[0.06] px-8 py-6" style={{ animationDelay: '1.2s' }}>
+    <footer
+      className="anim-in border-t border-white/[0.06] px-8 py-6"
+      style={{ animationDelay: '1.2s' }}
+    >
       <div className="max-w-5xl mx-auto flex items-center justify-between">
         {/* Left: logo + version text */}
         <div className="flex items-center gap-2">

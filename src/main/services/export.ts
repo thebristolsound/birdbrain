@@ -4,7 +4,14 @@ import { getCapturePath, readCaptureFile } from '@main/services/storage'
 import { hashContent } from '@main/services/hash'
 import { buildEntityGraph } from '@main/services/ai/relationships'
 import { getCachedAnalysis } from '@main/services/ai/patterns'
-import type { ExportOptions, HashVerification, Capture, Entity, CaseAnalysisResult, EntityGraph } from '@shared/types'
+import type {
+  ExportOptions,
+  HashVerification,
+  Capture,
+  Entity,
+  CaseAnalysisResult,
+  EntityGraph
+} from '@shared/types'
 
 interface ExportData {
   caseName: string
@@ -68,9 +75,10 @@ export async function generateReport(
   const data: ExportData = {
     caseName: caseData.name,
     caseDescription: caseData.description,
-    dateRange: captures.length > 0
-      ? { first: captures[captures.length - 1].timestamp, last: captures[0].timestamp }
-      : null,
+    dateRange:
+      captures.length > 0
+        ? { first: captures[captures.length - 1].timestamp, last: captures[0].timestamp }
+        : null,
     investigatorName: options.investigatorName,
     exportTimestamp: new Date().toISOString(),
     captures,
@@ -133,7 +141,15 @@ function buildHtmlReport(data: ExportData, options: ExportOptions): string {
   `)
 
   // Summary
-  const domainSet = new Set(data.captures.map((c) => { try { return new URL(c.url).hostname } catch { return '' } }))
+  const domainSet = new Set(
+    data.captures.map((c) => {
+      try {
+        return new URL(c.url).hostname
+      } catch {
+        return ''
+      }
+    })
+  )
   let totalEntities = 0
   data.entities.forEach((e) => (totalEntities += e.length))
 
@@ -157,14 +173,18 @@ function buildHtmlReport(data: ExportData, options: ExportOptions): string {
         <table class="full-width">
           <thead><tr><th>Timestamp</th><th>Title</th><th>URL</th><th>Hash</th></tr></thead>
           <tbody>
-            ${data.captures.map((c) => `
+            ${data.captures
+              .map(
+                (c) => `
               <tr>
                 <td class="mono">${new Date(c.timestamp).toLocaleString()}</td>
                 <td>${esc(c.title)}</td>
                 <td class="mono url">${esc(c.url)}</td>
                 <td class="mono hash">${c.hash.slice(0, 12)}...</td>
               </tr>
-            `).join('')}
+            `
+              )
+              .join('')}
           </tbody>
         </table>
       </div>
@@ -184,21 +204,29 @@ function buildHtmlReport(data: ExportData, options: ExportOptions): string {
     sections.push(`
       <div class="section">
         <h2>Entity Index</h2>
-        ${Array.from(byType.entries()).map(([type, entities]) => `
+        ${Array.from(byType.entries())
+          .map(
+            ([type, entities]) => `
           <h3>${esc(type)} (${entities.length})</h3>
           <table class="full-width">
             <thead><tr><th>Value</th><th>Confidence</th><th>Context</th></tr></thead>
             <tbody>
-              ${entities.map((e) => `
+              ${entities
+                .map(
+                  (e) => `
                 <tr>
                   <td>${esc(e.value)}</td>
                   <td>${e.confidence ? `${Math.round(e.confidence * 100)}%` : '-'}</td>
                   <td class="context">${e.context ? esc(e.context) : '-'}</td>
                 </tr>
-              `).join('')}
+              `
+                )
+                .join('')}
             </tbody>
           </table>
-        `).join('')}
+        `
+          )
+          .join('')}
       </div>
     `)
   }
@@ -209,20 +237,32 @@ function buildHtmlReport(data: ExportData, options: ExportOptions): string {
     sections.push(`
       <div class="section">
         <h2>AI Analysis</h2>
-        ${a.clusters.length > 0 ? `
+        ${
+          a.clusters.length > 0
+            ? `
           <h3>Entity Clusters</h3>
-          ${a.clusters.map((c) => `
+          ${a.clusters
+            .map(
+              (c) => `
             <div class="card">
               <strong>${esc(c.name)}</strong>
               <p>Entities: ${c.entities.map((e) => esc(e)).join(', ')}</p>
               <p>${esc(c.summary)}</p>
             </div>
-          `).join('')}
-        ` : ''}
-        ${a.suggestions.length > 0 ? `
+          `
+            )
+            .join('')}
+        `
+            : ''
+        }
+        ${
+          a.suggestions.length > 0
+            ? `
           <h3>Suggestions</h3>
           <ul>${a.suggestions.map((s) => `<li><strong>[${esc(s.type)}]</strong> ${esc(s.description)}</li>`).join('')}</ul>
-        ` : ''}
+        `
+            : ''
+        }
       </div>
     `)
   }
@@ -232,21 +272,27 @@ function buildHtmlReport(data: ExportData, options: ExportOptions): string {
     sections.push(`
       <div class="section">
         <h2>Capture Details</h2>
-        ${data.captures.map((c) => {
-          const screenshot = data.screenshots.get(c.id)
-          const entities = data.entities.get(c.id) || []
-          return `
+        ${data.captures
+          .map((c) => {
+            const screenshot = data.screenshots.get(c.id)
+            const entities = data.entities.get(c.id) || []
+            return `
             <div class="capture-detail">
               <h3>${esc(c.title)}</h3>
               <p class="mono url">${esc(c.url)}</p>
               <p class="mono">${new Date(c.timestamp).toLocaleString()}</p>
               ${screenshot ? `<img src="data:image/png;base64,${screenshot}" alt="Screenshot" class="screenshot" />` : ''}
-              ${entities.length > 0 ? `
+              ${
+                entities.length > 0
+                  ? `
                 <p><strong>Entities:</strong> ${entities.map((e) => `${esc(e.value)} (${e.type})`).join(', ')}</p>
-              ` : ''}
+              `
+                  : ''
+              }
             </div>
           `
-        }).join('')}
+          })
+          .join('')}
       </div>
     `)
   }
@@ -259,7 +305,9 @@ function buildHtmlReport(data: ExportData, options: ExportOptions): string {
         <table class="full-width">
           <thead><tr><th>Status</th><th>Title</th><th>URL</th><th>Stored Hash</th><th>Computed Hash</th></tr></thead>
           <tbody>
-            ${data.verifications.map((v) => `
+            ${data.verifications
+              .map(
+                (v) => `
               <tr class="verify-${v.status}">
                 <td>${v.status === 'verified' ? '✓' : v.status === 'tampered' ? '⚠' : '✗'} ${v.status}</td>
                 <td>${esc(v.title)}</td>
@@ -267,7 +315,9 @@ function buildHtmlReport(data: ExportData, options: ExportOptions): string {
                 <td class="mono hash">${v.storedHash.slice(0, 16)}...</td>
                 <td class="mono hash">${v.computedHash ? v.computedHash.slice(0, 16) + '...' : '-'}</td>
               </tr>
-            `).join('')}
+            `
+              )
+              .join('')}
           </tbody>
         </table>
       </div>

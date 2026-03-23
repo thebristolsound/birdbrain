@@ -50,7 +50,10 @@ export async function analyzeCase(caseId: string): Promise<CaseAnalysisResult> {
 
   // Build context for the LLM
   const entitySummary = graph.nodes
-    .map((n) => `- [${n.type}] "${n.value}" (seen ${n.occurrences}x, in ${n.captureIds.length} captures)`)
+    .map(
+      (n) =>
+        `- [${n.type}] "${n.value}" (seen ${n.occurrences}x, in ${n.captureIds.length} captures)`
+    )
     .join('\n')
 
   const edgeSummary = graph.edges
@@ -89,7 +92,10 @@ ${captureSummary || 'No captures.'}`
       { role: 'system', content: ANALYSIS_PROMPT },
       { role: 'user', content: userMessage },
       { role: 'assistant', content: result.content },
-      { role: 'user', content: 'Your response was not valid JSON. Please respond with ONLY valid JSON.' }
+      {
+        role: 'user',
+        content: 'Your response was not valid JSON. Please respond with ONLY valid JSON.'
+      }
     ])
     analysis = parseAnalysisResponse(retry.content)
   }

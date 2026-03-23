@@ -40,8 +40,18 @@ export function SearchBar() {
         onClick={() => setExpanded(true)}
         className="flex items-center gap-2 rounded px-3 py-1 text-sm text-slate-500 hover:text-slate-300"
       >
-        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        <svg
+          className="h-4 w-4"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+          />
         </svg>
         Search...
       </button>
@@ -51,8 +61,18 @@ export function SearchBar() {
   return (
     <div className="relative max-w-md">
       <div className="flex items-center rounded border border-white/[0.08] bg-slate-800 focus-within:border-indigo-500/40 focus-within:ring-2 focus-within:ring-indigo-500/25">
-        <svg className="ml-2 h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        <svg
+          className="ml-2 h-4 w-4 text-slate-500"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+          />
         </svg>
         <input
           ref={inputRef}
@@ -73,9 +93,7 @@ export function SearchBar() {
       {/* Results dropdown */}
       {query && (results.length > 0 || searching) && (
         <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded border border-white/[0.08] bg-slate-800 shadow-lg">
-          {searching && (
-            <div className="px-3 py-2 text-xs text-slate-500">Searching...</div>
-          )}
+          {searching && <div className="px-3 py-2 text-xs text-slate-500">Searching...</div>}
           {results.map((cap) => (
             <button
               key={cap.id}

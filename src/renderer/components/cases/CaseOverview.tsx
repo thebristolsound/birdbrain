@@ -261,10 +261,7 @@ export function CaseOverview() {
             <h3 className="mb-3 text-sm font-semibold text-slate-300">Top Domains</h3>
             <div className="space-y-2">
               {topDomains.map(([domain, count]) => (
-                <div
-                  key={domain}
-                  className="flex items-center gap-2"
-                >
+                <div key={domain} className="flex items-center gap-2">
                   <Globe className="h-4 w-4 shrink-0 text-slate-500" />
                   <span className="min-w-0 flex-1 truncate font-mono text-sm text-slate-300">
                     {domain}

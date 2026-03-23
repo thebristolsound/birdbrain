@@ -85,13 +85,16 @@ export function CapturePreferences({ settings, onUpdate }: CapturePreferencesPro
             </button>
           </div>
           <p className="mb-2 text-xs text-slate-500">
-            Substring (<code className="text-slate-400">google.com</code>),
-            wildcards (<code className="text-slate-400">*.facebook.com*</code>),
-            or regex (<code className="text-slate-400">/pattern/i</code>)
+            Substring (<code className="text-slate-400">google.com</code>), wildcards (
+            <code className="text-slate-400">*.facebook.com*</code>), or regex (
+            <code className="text-slate-400">/pattern/i</code>)
           </p>
           <div className="space-y-1">
             {settings.ignoredUrlPatterns.map((pattern, i) => (
-              <div key={i} className="flex items-center justify-between rounded bg-slate-800 px-2 py-1">
+              <div
+                key={i}
+                className="flex items-center justify-between rounded bg-slate-800 px-2 py-1"
+              >
                 <span className="font-mono text-xs text-slate-400">{pattern}</span>
                 <button
                   onClick={() => removePattern(i)}
@@ -107,12 +110,17 @@ export function CapturePreferences({ settings, onUpdate }: CapturePreferencesPro
         <div>
           <label className="mb-1 block text-sm text-slate-400">Selector auto-capture mode</label>
           <div className="space-y-1">
-            {([
-              ['auto', 'Auto-capture', 'Automatically capture pages with selector matches'],
-              ['notify', 'Notify only', 'Show a notification when matches are found'],
-              ['per-case', 'Per-case', 'Configure capture behavior per case']
-            ] as [AutoCaptureMode, string, string][]).map(([value, label, desc]) => (
-              <label key={value} className="flex items-start gap-2 cursor-pointer rounded p-1.5 hover:bg-white/[0.06]">
+            {(
+              [
+                ['auto', 'Auto-capture', 'Automatically capture pages with selector matches'],
+                ['notify', 'Notify only', 'Show a notification when matches are found'],
+                ['per-case', 'Per-case', 'Configure capture behavior per case']
+              ] as [AutoCaptureMode, string, string][]
+            ).map(([value, label, desc]) => (
+              <label
+                key={value}
+                className="flex items-start gap-2 cursor-pointer rounded p-1.5 hover:bg-white/[0.06]"
+              >
                 <input
                   type="radio"
                   name="autoCaptureMode"

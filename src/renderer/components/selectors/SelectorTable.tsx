@@ -24,9 +24,7 @@ export function SelectorTable({ selectors, matchCounts, onRefresh, caseId }: Sel
     if (searchFilter) {
       const q = searchFilter.toLowerCase()
       result = result.filter(
-        (s) =>
-          s.pattern.toLowerCase().includes(q) ||
-          (s.label && s.label.toLowerCase().includes(q))
+        (s) => s.pattern.toLowerCase().includes(q) || (s.label && s.label.toLowerCase().includes(q))
       )
     }
     result = [...result].sort((a, b) => {
@@ -125,9 +123,7 @@ export function SelectorTable({ selectors, matchCounts, onRefresh, caseId }: Sel
               selector={sel}
               matchCount={matchCounts[sel.id] || 0}
               isExpanded={expandedRowId === sel.id}
-              onToggleExpand={() =>
-                setExpandedRowId((prev) => (prev === sel.id ? null : sel.id))
-              }
+              onToggleExpand={() => setExpandedRowId((prev) => (prev === sel.id ? null : sel.id))}
               onToggleEnabled={() => handleToggleEnabled(sel)}
               onDelete={() => handleDelete(sel.id)}
               caseId={caseId}

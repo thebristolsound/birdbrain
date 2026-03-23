@@ -15,7 +15,12 @@ interface CreateSelectorCardProps {
   caseId: string
 }
 
-export function CreateSelectorCard({ isOpen, onToggle, onCreated, caseId }: CreateSelectorCardProps) {
+export function CreateSelectorCard({
+  isOpen,
+  onToggle,
+  onCreated,
+  caseId
+}: CreateSelectorCardProps) {
   const [pattern, setPattern] = useState('')
   const [isRegex, setIsRegex] = useState(false)
   const [label, setLabel] = useState('')
@@ -100,10 +105,7 @@ export function CreateSelectorCard({ isOpen, onToggle, onCreated, caseId }: Crea
 
   return (
     <div className="neu-card rounded-2xl">
-      <button
-        onClick={onToggle}
-        className="flex w-full items-center gap-3 px-5 py-4 text-left"
-      >
+      <button onClick={onToggle} className="flex w-full items-center gap-3 px-5 py-4 text-left">
         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-500/15">
           <Crosshair className="h-4 w-4 text-indigo-400" />
         </div>
@@ -157,9 +159,7 @@ export function CreateSelectorCard({ isOpen, onToggle, onCreated, caseId }: Crea
                   .*
                 </button>
               </div>
-              {regexError && (
-                <p className="mt-1 text-xs text-red-400">{regexError}</p>
-              )}
+              {regexError && <p className="mt-1 text-xs text-red-400">{regexError}</p>}
             </div>
 
             {/* Label input */}

@@ -18,16 +18,11 @@ export function CaptureList({ caseId }: CaptureListProps) {
   const [searchQuery, setSearchQuery] = useState('')
 
   const displayedCaptures = (
-    filteredCaptureIds
-      ? captures.filter((c) => filteredCaptureIds.includes(c.id))
-      : captures
+    filteredCaptureIds ? captures.filter((c) => filteredCaptureIds.includes(c.id)) : captures
   ).filter((c) => {
     if (!searchQuery) return true
     const q = searchQuery.toLowerCase()
-    return (
-      (c.title?.toLowerCase().includes(q)) ||
-      c.url.toLowerCase().includes(q)
-    )
+    return c.title?.toLowerCase().includes(q) || c.url.toLowerCase().includes(q)
   })
 
   return (
@@ -60,11 +55,11 @@ export function CaptureList({ caseId }: CaptureListProps) {
         {activeSelectorFilters.length > 0 && (
           <div className="mt-1.5 flex items-center gap-1 rounded-md border border-indigo-500/20 bg-indigo-500/10 px-2 py-1 text-[11px] text-indigo-300">
             <Crosshair className="h-3 w-3" />
-            <span>{activeSelectorFilters.length} selector filter{activeSelectorFilters.length !== 1 ? 's' : ''} active</span>
-            <button
-              onClick={clearSelectorFilters}
-              className="ml-auto hover:text-indigo-200"
-            >
+            <span>
+              {activeSelectorFilters.length} selector filter
+              {activeSelectorFilters.length !== 1 ? 's' : ''} active
+            </span>
+            <button onClick={clearSelectorFilters} className="ml-auto hover:text-indigo-200">
               <X className="h-3 w-3" />
             </button>
           </div>

@@ -3,7 +3,13 @@ import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { initDatabase, closeDatabase } from '@main/services/database'
 import { initStorage } from '@main/services/storage'
-import { startCaptureServer, stopCaptureServer, setMainWindow, startExtensionConnectionCheck, stopExtensionConnectionCheck } from '@main/services/captureServer'
+import {
+  startCaptureServer,
+  stopCaptureServer,
+  setMainWindow,
+  startExtensionConnectionCheck,
+  stopExtensionConnectionCheck
+} from '@main/services/captureServer'
 import { registerIpcHandlers } from '@main/ipcHandlers'
 import { initSettings } from '@main/services/settings'
 

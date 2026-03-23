@@ -189,7 +189,9 @@ export function createCase(params: CreateCaseParams): Case {
   const id = uuid()
   const now = new Date().toISOString()
   getDb()
-    .prepare('INSERT INTO cases (id, name, description, type, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+    .prepare(
+      'INSERT INTO cases (id, name, description, type, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+    )
     .run(id, params.name, params.description ?? null, params.type ?? 'custom', now, now)
   return getCase(id)!
 }
@@ -199,11 +201,13 @@ export function updateCase(params: UpdateCaseParams): Case | undefined {
   if (!existing) return undefined
   const now = new Date().toISOString()
   getDb()
-    .prepare('UPDATE cases SET name = ?, description = ?, archived = ?, updated_at = ? WHERE id = ?')
+    .prepare(
+      'UPDATE cases SET name = ?, description = ?, archived = ?, updated_at = ? WHERE id = ?'
+    )
     .run(
       params.name ?? existing.name,
       params.description ?? existing.description ?? null,
-      params.archived !== undefined ? (params.archived ? 1 : 0) : (existing.archived ? 1 : 0),
+      params.archived !== undefined ? (params.archived ? 1 : 0) : existing.archived ? 1 : 0,
       now,
       params.id
     )
@@ -243,7 +247,7 @@ export interface InsertCaptureParams {
   textContent?: string
 }
 
-export const insertCapture = function(params: InsertCaptureParams & { id?: string }): Capture {
+export const insertCapture = function (params: InsertCaptureParams & { id?: string }): Capture {
   const id = params.id || uuid()
   const now = new Date().toISOString()
   const d = getDb()
@@ -267,7 +271,9 @@ export const insertCapture = function(params: InsertCaptureParams & { id?: strin
 
     // Insert into FTS index
     if (params.textContent || params.title || params.url) {
-      const rowid = (d.prepare('SELECT rowid FROM captures WHERE id = ?').get(id) as { rowid: number })?.rowid
+      const rowid = (
+        d.prepare('SELECT rowid FROM captures WHERE id = ?').get(id) as { rowid: number }
+      )?.rowid
       d.prepare('INSERT INTO captures_fts (rowid, title, url, content) VALUES (?, ?, ?, ?)').run(
         rowid,
         params.title ?? '',
@@ -399,7 +405,16 @@ export function insertEntity(entity: Omit<Entity, 'id' | 'createdAt'>): Entity {
     .prepare(
       'INSERT INTO entities (id, capture_id, type, value, context, confidence, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     )
-    .run(id, entity.captureId, entity.type, entity.value, entity.context ?? null, entity.confidence ?? null, entity.source ?? 'ai', now)
+    .run(
+      id,
+      entity.captureId,
+      entity.type,
+      entity.value,
+      entity.context ?? null,
+      entity.confidence ?? null,
+      entity.source ?? 'ai',
+      now
+    )
   return { id, ...entity, source: entity.source ?? 'ai', createdAt: now }
 }
 
@@ -412,7 +427,16 @@ export function insertEntitiesBatch(entities: Array<Omit<Entity, 'id' | 'created
   const run = d.transaction(() => {
     const now = new Date().toISOString()
     for (const e of entities) {
-      stmt.run(uuid(), e.captureId, e.type, e.value, e.context ?? null, e.confidence ?? null, e.source ?? 'ai', now)
+      stmt.run(
+        uuid(),
+        e.captureId,
+        e.type,
+        e.value,
+        e.context ?? null,
+        e.confidence ?? null,
+        e.source ?? 'ai',
+        now
+      )
     }
   })
   run()
@@ -424,7 +448,9 @@ export function deleteEntitiesByCapture(captureId: string): number {
 }
 
 export function deleteEntitiesByCaptureAndSource(captureId: string, source: 'rule' | 'ai'): number {
-  const result = getDb().prepare('DELETE FROM entities WHERE capture_id = ? AND source = ?').run(captureId, source)
+  const result = getDb()
+    .prepare('DELETE FROM entities WHERE capture_id = ? AND source = ?')
+    .run(captureId, source)
   return result.changes
 }
 
@@ -511,9 +537,9 @@ export function updateSelector(params: UpdateSelectorParams): Selector | undefin
     .prepare('UPDATE selectors SET pattern = ?, is_regex = ?, enabled = ?, label = ? WHERE id = ?')
     .run(
       params.pattern ?? existing.pattern,
-      params.isRegex !== undefined ? (params.isRegex ? 1 : 0) : (existing.isRegex ? 1 : 0),
-      params.enabled !== undefined ? (params.enabled ? 1 : 0) : (existing.enabled ? 1 : 0),
-      params.label !== undefined ? params.label : existing.label ?? null,
+      params.isRegex !== undefined ? (params.isRegex ? 1 : 0) : existing.isRegex ? 1 : 0,
+      params.enabled !== undefined ? (params.enabled ? 1 : 0) : existing.enabled ? 1 : 0,
+      params.label !== undefined ? params.label : (existing.label ?? null),
       params.id
     )
   return getSelector(params.id)
@@ -551,7 +577,11 @@ export function listActiveSelectors(): ActiveCaseSelectors[] {
 
 // --- Selector Matches ---
 
-export function matchSelectorsForCapture(captureId: string, caseId: string, textContent: string): void {
+export function matchSelectorsForCapture(
+  captureId: string,
+  caseId: string,
+  textContent: string
+): void {
   const selectors = listSelectors(caseId)
   const d = getDb()
   const insertStmt = d.prepare(

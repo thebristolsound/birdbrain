@@ -9,7 +9,7 @@ const steps = [
     iconColor: 'text-emerald-400',
     title: 'Add Selectors',
     description:
-      'Define regex patterns or entity types to automatically extract from captured pages.',
+      'Define regex patterns or entity types to automatically extract from captured pages.'
   },
   {
     number: 2,
@@ -19,7 +19,7 @@ const steps = [
     iconColor: 'text-amber-400',
     title: 'Capture Pages',
     description:
-      'Browse the web with our extension. Screenshots, source code, and metadata are saved automatically.',
+      'Browse the web with our extension. Screenshots, source code, and metadata are saved automatically.'
   },
   {
     number: 3,
@@ -29,7 +29,7 @@ const steps = [
     iconColor: 'text-sky-400',
     title: 'Analyze Entities',
     description:
-      'AI-powered entity extraction builds relationship graphs and identifies clusters automatically.',
+      'AI-powered entity extraction builds relationship graphs and identifies clusters automatically.'
   },
   {
     number: 4,
@@ -40,8 +40,8 @@ const steps = [
     title: 'Export Reports',
     description:
       'Generate structured intelligence reports with entity summaries, timelines, and relationship maps.',
-    style: { animationDelay: '1s' },
-  },
+    style: { animationDelay: '1s' }
+  }
 ]
 
 export function QuickStartGuide() {
@@ -60,11 +60,7 @@ export function QuickStartGuide() {
 
         <div className="grid grid-cols-4 gap-5">
           {steps.map((step) => (
-            <div
-              key={step.number}
-              className={`anim-up ${step.delay} group`}
-              style={step.style}
-            >
+            <div key={step.number} className={`anim-up ${step.delay} group`} style={step.style}>
               <div className="neu-card rounded-2xl p-5 h-full">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-display font-extrabold text-xs flex-shrink-0 shadow-md shadow-indigo-500/20">
@@ -85,9 +81,7 @@ export function QuickStartGuide() {
                 <h4 className="font-display font-bold text-sm text-slate-50 mb-1.5">
                   {step.title}
                 </h4>
-                <p className="text-[11px] text-slate-500 leading-relaxed">
-                  {step.description}
-                </p>
+                <p className="text-[11px] text-slate-500 leading-relaxed">{step.description}</p>
               </div>
             </div>
           ))}

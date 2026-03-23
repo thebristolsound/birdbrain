@@ -86,10 +86,13 @@ export function CaptureViewer() {
     if (!selectedCaptureId) return
     setContent(null)
     const type =
-      activeTab === 'screenshot' ? 'png'
-        : activeTab === 'page' || activeTab === 'source' ? 'html'
-        : activeTab === 'text' ? 'txt'
-        : null
+      activeTab === 'screenshot'
+        ? 'png'
+        : activeTab === 'page' || activeTab === 'source'
+          ? 'html'
+          : activeTab === 'text'
+            ? 'txt'
+            : null
     if (type) {
       getContent(selectedCaptureId, type).then(setContent)
     }
@@ -205,8 +208,8 @@ export function CaptureViewer() {
 
       {/* B) Content area */}
       <div className="flex-1 overflow-auto p-4">
-        {activeTab === 'screenshot' && (
-          content ? (
+        {activeTab === 'screenshot' &&
+          (content ? (
             <div className="neu-card rounded-2xl overflow-hidden">
               {/* Fake browser chrome */}
               <div className="flex items-center gap-2 border-b border-white/[0.06] bg-slate-800/50 px-3 py-2">
@@ -223,10 +226,9 @@ export function CaptureViewer() {
             </div>
           ) : (
             <div className="text-slate-500">No screenshot available</div>
-          )
-        )}
-        {activeTab === 'page' && (
-          content ? (
+          ))}
+        {activeTab === 'page' &&
+          (content ? (
             <iframe
               sandbox="allow-same-origin"
               srcDoc={content}
@@ -236,22 +238,21 @@ export function CaptureViewer() {
             />
           ) : (
             <div className="text-slate-500">No HTML available</div>
-          )
-        )}
-        {activeTab === 'source' && (
-          content ? (
-            <pre className="whitespace-pre-wrap break-all font-mono text-xs text-slate-400">{content}</pre>
+          ))}
+        {activeTab === 'source' &&
+          (content ? (
+            <pre className="whitespace-pre-wrap break-all font-mono text-xs text-slate-400">
+              {content}
+            </pre>
           ) : (
             <div className="text-slate-500">No HTML available</div>
-          )
-        )}
-        {activeTab === 'text' && (
-          content ? (
+          ))}
+        {activeTab === 'text' &&
+          (content ? (
             <pre className="whitespace-pre-wrap font-mono text-sm text-slate-400">{content}</pre>
           ) : (
             <div className="text-slate-500">No text content available</div>
-          )
-        )}
+          ))}
         {activeTab === 'metadata' && (
           <div className="space-y-3 font-mono text-sm">
             <MetadataRow label="URL" value={capture.url} />
@@ -261,7 +262,9 @@ export function CaptureViewer() {
             {capture.headers && (
               <div>
                 <div className="text-slate-500">Headers</div>
-                <pre className="mt-1 whitespace-pre-wrap text-xs text-slate-500">{capture.headers}</pre>
+                <pre className="mt-1 whitespace-pre-wrap text-xs text-slate-500">
+                  {capture.headers}
+                </pre>
               </div>
             )}
           </div>
@@ -275,7 +278,8 @@ export function CaptureViewer() {
             )}
             {entities.length === 0 && !extracting && !extractionError && (
               <p className="text-center text-sm text-slate-500">
-                No entities extracted yet. Click &quot;Extract Entities&quot; to analyze this capture.
+                No entities extracted yet. Click &quot;Extract Entities&quot; to analyze this
+                capture.
               </p>
             )}
             {entities.length > 0 && (
@@ -287,11 +291,14 @@ export function CaptureViewer() {
                 >
                   <option value="all">All types</option>
                   {[...new Set(entities.map((e) => e.type))].map((type) => (
-                    <option key={type} value={type}>{type}</option>
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
                   ))}
                 </select>
                 <span className="text-xs text-slate-500">
-                  {entities.filter((e) => (e.confidence ?? 0) >= minConfidence).length} of {entities.length} entities
+                  {entities.filter((e) => (e.confidence ?? 0) >= minConfidence).length} of{' '}
+                  {entities.length} entities
                 </span>
               </div>
             )}
@@ -301,11 +308,16 @@ export function CaptureViewer() {
                   .filter((e) => (e.confidence ?? 0) >= minConfidence)
                   .filter((e) => entityFilter === 'all' || e.type === entityFilter)
                   .map((entity) => (
-                    <div key={entity.id} className="flex items-center gap-3 rounded-lg bg-white/[0.03] border border-white/[0.06] px-3 py-2">
+                    <div
+                      key={entity.id}
+                      className="flex items-center gap-3 rounded-lg bg-white/[0.03] border border-white/[0.06] px-3 py-2"
+                    >
                       <span className="w-24 shrink-0 rounded-md bg-white/[0.06] px-2 py-0.5 text-center text-xs text-slate-400">
                         {entity.type}
                       </span>
-                      <span className="flex-1 text-sm font-medium text-slate-200">{entity.value}</span>
+                      <span className="flex-1 text-sm font-medium text-slate-200">
+                        {entity.value}
+                      </span>
                       {entity.confidence !== undefined && (
                         <div className="flex items-center gap-1">
                           <div className="h-1.5 w-16 rounded-full bg-white/[0.06]">
@@ -319,11 +331,13 @@ export function CaptureViewer() {
                           </span>
                         </div>
                       )}
-                      <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-xs ${
-                        entity.source === 'rule'
-                          ? 'bg-emerald-500/10 text-emerald-400'
-                          : 'bg-blue-500/10 text-blue-400'
-                      }`}>
+                      <span
+                        className={`shrink-0 rounded-md px-1.5 py-0.5 text-xs ${
+                          entity.source === 'rule'
+                            ? 'bg-emerald-500/10 text-emerald-400'
+                            : 'bg-blue-500/10 text-blue-400'
+                        }`}
+                      >
                         {entity.source === 'rule' ? 'Rule' : 'AI'}
                       </span>
                     </div>
@@ -392,12 +406,7 @@ export function CaptureViewer() {
         <div className="flex items-center gap-2 px-3 py-2">
           <TagIcon className="h-3.5 w-3.5 text-slate-600" />
           {captureTags.map((tag) => (
-            <TagBadge
-              key={tag.id}
-              tag={tag}
-              onClick={() => handleToggleTag(tag.id)}
-              removable
-            />
+            <TagBadge key={tag.id} tag={tag} onClick={() => handleToggleTag(tag.id)} removable />
           ))}
           <div className="relative">
             <button
@@ -429,9 +438,8 @@ export function CaptureViewer() {
                         {tag.name}
                       </button>
                     ))}
-                  {allTags.filter((t) => !captureTags.some((ct) => ct.id === t.id)).length === 0 && (
-                    <div className="px-3 py-1 text-xs text-slate-500">No more tags</div>
-                  )}
+                  {allTags.filter((t) => !captureTags.some((ct) => ct.id === t.id)).length ===
+                    0 && <div className="px-3 py-1 text-xs text-slate-500">No more tags</div>}
                 </div>
               </>
             )}
@@ -444,9 +452,7 @@ export function CaptureViewer() {
           <span className="text-[11px] text-slate-600">
             {currentIndex + 1} / {captures.length}
           </span>
-          <span className="text-[11px] text-slate-700">
-            ← →
-          </span>
+          <span className="text-[11px] text-slate-700">← →</span>
         </div>
       </div>
     </main>

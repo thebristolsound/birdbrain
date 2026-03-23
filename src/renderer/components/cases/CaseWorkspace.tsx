@@ -9,13 +9,7 @@ import { CaseAnalysis } from '@renderer/components/analysis/CaseAnalysis'
 import { SelectorsOverview } from '@renderer/components/selectors/SelectorsOverview'
 import { CaseEntities } from '@renderer/components/cases/CaseEntities'
 import { useSelectorFilters } from '@renderer/hooks/useSelectorFilters'
-import {
-  LayoutDashboard,
-  Layers,
-  Fingerprint,
-  Brain,
-  Crosshair
-} from 'lucide-react'
+import { LayoutDashboard, Layers, Fingerprint, Brain, Crosshair } from 'lucide-react'
 
 const tabs: { id: CaseTab; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -40,9 +34,7 @@ export function CaseWorkspace() {
 
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center text-neutral-500">
-        Loading case…
-      </div>
+      <div className="flex h-full items-center justify-center text-neutral-500">Loading case…</div>
     )
   }
 
@@ -70,9 +62,7 @@ export function CaseWorkspace() {
               {tab.id === 'captures' && (
                 <span
                   className={`ml-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
-                    isActive
-                      ? 'bg-indigo-500/20 text-indigo-300'
-                      : 'bg-slate-800 text-slate-400'
+                    isActive ? 'bg-indigo-500/20 text-indigo-300' : 'bg-slate-800 text-slate-400'
                   }`}
                 >
                   {captures.length}

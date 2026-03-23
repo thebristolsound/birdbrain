@@ -72,7 +72,9 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     try {
       const body = await res.json()
       detail = body.error || detail
-    } catch { /* no JSON body */ }
+    } catch {
+      /* no JSON body */
+    }
     throw new ApiError(res.status, res.statusText, detail)
   }
   return res.json() as Promise<T>
@@ -86,7 +88,9 @@ export async function getCases(): Promise<CaseInfo[]> {
   return request('/api/cases')
 }
 
-export async function activateCase(id: string): Promise<{ status: string; case: { id: string; name: string } }> {
+export async function activateCase(
+  id: string
+): Promise<{ status: string; case: { id: string; name: string } }> {
   return request(`/api/cases/${id}/activate`, { method: 'POST' })
 }
 
@@ -116,7 +120,11 @@ export async function sendCapture(data: {
   })
 }
 
-export async function testCapturePipeline(): Promise<{ success: boolean; durationMs: number; error?: string }> {
+export async function testCapturePipeline(): Promise<{
+  success: boolean
+  durationMs: number
+  error?: string
+}> {
   return request('/api/captures/test')
 }
 

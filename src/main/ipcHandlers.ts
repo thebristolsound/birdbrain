@@ -20,14 +20,16 @@ import { generateReport } from '@main/services/export'
 import { CAPTURE_SERVER_PORT } from '@main/services/captureServer'
 import type { BirdbrainSettings, ExportOptions } from '@shared/types'
 
-type IpcResult<T = unknown> = {
-  ok: true
-  data: T
-} | {
-  ok: false
-  error: string
-  code?: string
-}
+type IpcResult<T = unknown> =
+  | {
+      ok: true
+      data: T
+    }
+  | {
+      ok: false
+      error: string
+      code?: string
+    }
 
 function ipcResult<T>(data: T): IpcResult<T> {
   return { ok: true, data }
@@ -97,7 +99,11 @@ export function registerIpcHandlers(): void {
     try {
       const res = await fetch(`http://127.0.0.1:${CAPTURE_SERVER_PORT}/api/status`)
       const ok = res.ok
-      return { success: ok, durationMs: Date.now() - start, error: ok ? undefined : `HTTP ${res.status}` }
+      return {
+        success: ok,
+        durationMs: Date.now() - start,
+        error: ok ? undefined : `HTTP ${res.status}`
+      }
     } catch (err) {
       return { success: false, durationMs: Date.now() - start, error: String(err) }
     }
@@ -161,8 +167,10 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.SELECTORS_MATCH_COUNTS, (_, caseId: string) =>
     db.getSelectorMatchCounts(caseId)
   )
-  ipcMain.handle(IPC_CHANNELS.SELECTORS_MATCHING_CAPTURES, (_, caseId: string, selectorIds: string[]) =>
-    db.getCapturesMatchingSelectors(caseId, selectorIds)
+  ipcMain.handle(
+    IPC_CHANNELS.SELECTORS_MATCHING_CAPTURES,
+    (_, caseId: string, selectorIds: string[]) =>
+      db.getCapturesMatchingSelectors(caseId, selectorIds)
   )
 
   // Captures - get content
@@ -201,15 +209,9 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.AI_GET_ENTITIES, (_, captureId: string) =>
     db.getEntitiesByCapture(captureId)
   )
-  ipcMain.handle(IPC_CHANNELS.AI_BUILD_GRAPH, (_, caseId: string) =>
-    buildEntityGraph(caseId)
-  )
-  ipcMain.handle(IPC_CHANNELS.AI_ANALYZE_CASE, (_, caseId: string) =>
-    analyzeCase(caseId)
-  )
-  ipcMain.handle(IPC_CHANNELS.AI_GET_ANALYSIS, (_, caseId: string) =>
-    getCachedAnalysis(caseId)
-  )
+  ipcMain.handle(IPC_CHANNELS.AI_BUILD_GRAPH, (_, caseId: string) => buildEntityGraph(caseId))
+  ipcMain.handle(IPC_CHANNELS.AI_ANALYZE_CASE, (_, caseId: string) => analyzeCase(caseId))
+  ipcMain.handle(IPC_CHANNELS.AI_GET_ANALYSIS, (_, caseId: string) => getCachedAnalysis(caseId))
 
   // Export
   ipcMain.handle(IPC_CHANNELS.EXPORT_GENERATE, (_, caseId: string, options: ExportOptions) =>

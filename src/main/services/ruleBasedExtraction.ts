@@ -15,11 +15,50 @@ interface PatternDef {
 }
 
 const COMMON_TLDS = new Set([
-  'com', 'org', 'net', 'edu', 'gov', 'mil', 'int',
-  'io', 'co', 'us', 'uk', 'ca', 'au', 'de', 'fr', 'jp', 'cn', 'ru', 'br', 'in',
-  'info', 'biz', 'name', 'pro', 'museum', 'coop', 'aero',
-  'me', 'tv', 'cc', 'ws', 'mobi', 'tel', 'asia', 'jobs', 'travel',
-  'xyz', 'online', 'site', 'tech', 'store', 'app', 'dev', 'cloud'
+  'com',
+  'org',
+  'net',
+  'edu',
+  'gov',
+  'mil',
+  'int',
+  'io',
+  'co',
+  'us',
+  'uk',
+  'ca',
+  'au',
+  'de',
+  'fr',
+  'jp',
+  'cn',
+  'ru',
+  'br',
+  'in',
+  'info',
+  'biz',
+  'name',
+  'pro',
+  'museum',
+  'coop',
+  'aero',
+  'me',
+  'tv',
+  'cc',
+  'ws',
+  'mobi',
+  'tel',
+  'asia',
+  'jobs',
+  'travel',
+  'xyz',
+  'online',
+  'site',
+  'tech',
+  'store',
+  'app',
+  'dev',
+  'cloud'
 ])
 
 const REGEX_PATTERNS: Partial<Record<EntityType, PatternDef[]>> = {
@@ -200,8 +239,8 @@ export function extractEntitiesRuleBased(
 ): ExtractedEntity[] {
   if (!text?.trim() || enabledTypes.length === 0) return []
 
-  const regexTypes = enabledTypes.filter(t => !NLP_TYPES.has(t))
-  const nlpTypes = enabledTypes.filter(t => NLP_TYPES.has(t))
+  const regexTypes = enabledTypes.filter((t) => !NLP_TYPES.has(t))
+  const nlpTypes = enabledTypes.filter((t) => NLP_TYPES.has(t))
 
   const regexResults = extractWithRegex(text, regexTypes)
   const nlpResults = nlpTypes.length > 0 ? extractWithNlp(text, nlpTypes) : []

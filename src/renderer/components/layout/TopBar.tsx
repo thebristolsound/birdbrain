@@ -27,21 +27,18 @@ export function TopBar() {
           <span className="font-display text-sm font-extrabold tracking-tight text-white">
             Birdbrain
           </span>
-          <span className="ml-1 rounded border border-slate-800 bg-slate-900 px-1.5 py-0.5 font-mono text-[10px] font-medium text-slate-500">v2.0</span>
+          <span className="ml-1 rounded border border-slate-800 bg-slate-900 px-1.5 py-0.5 font-mono text-[10px] font-medium text-slate-500">
+            v2.0
+          </span>
         </div>
 
         {appMode === 'case-workspace' && (
           <div className="flex items-center gap-1.5 text-sm">
-            <button
-              onClick={goToDashboard}
-              className="text-slate-500 hover:text-slate-300"
-            >
+            <button onClick={goToDashboard} className="text-slate-500 hover:text-slate-300">
               Investigations
             </button>
             <ChevronRight className="h-3.5 w-3.5 text-slate-600" />
-            <span className="text-slate-300">
-              {activeCase?.name ?? 'Untitled'}
-            </span>
+            <span className="text-slate-300">{activeCase?.name ?? 'Untitled'}</span>
           </div>
         )}
       </div>

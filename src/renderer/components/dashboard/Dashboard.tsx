@@ -9,13 +9,8 @@ import { DashboardFooter } from './DashboardFooter'
 
 export function Dashboard() {
   const { cases, updateCase, deleteCase } = useCases()
-  const {
-    selectCase,
-    connectedToExtension,
-    activeCaseId,
-    sessionActive,
-    goToNewCaseWizard
-  } = useAppStore()
+  const { selectCase, connectedToExtension, activeCaseId, sessionActive, goToNewCaseWizard } =
+    useAppStore()
 
   const recentCasesRef = useRef<HTMLDivElement>(null)
 
@@ -39,10 +34,7 @@ export function Dashboard() {
 
   return (
     <div data-testid="dashboard" className="grid-bg min-h-full">
-      <HeroSection
-        onNewInvestigation={goToNewCaseWizard}
-        onOpenRecent={handleOpenRecent}
-      />
+      <HeroSection onNewInvestigation={goToNewCaseWizard} onOpenRecent={handleOpenRecent} />
 
       <div ref={recentCasesRef}>
         <RecentCases

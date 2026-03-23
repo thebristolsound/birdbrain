@@ -10,7 +10,20 @@ import type {
   CreateSelectorParams,
   UpdateSelectorParams
 } from '@shared/ipc'
-import type { Case, Capture, Tag, Entity, EntityGraph, CaseAnalysisResult, BirdbrainSettings, OpenRouterModel, ExportOptions, Selector, ActiveCaseSelectors, CaptureEvent } from '@shared/types'
+import type {
+  Case,
+  Capture,
+  Tag,
+  Entity,
+  EntityGraph,
+  CaseAnalysisResult,
+  BirdbrainSettings,
+  OpenRouterModel,
+  ExportOptions,
+  Selector,
+  ActiveCaseSelectors,
+  CaptureEvent
+} from '@shared/types'
 
 // Unwrap IpcResult from handlers that return structured results
 async function unwrapIpc<T>(promise: Promise<unknown>): Promise<T> {
@@ -42,7 +55,8 @@ const birdbrain = {
       ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_LIST, caseId),
     get: (id: string): Promise<Capture | undefined> =>
       ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_GET, id),
-    delete: (id: string): Promise<boolean> => unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_DELETE, id)),
+    delete: (id: string): Promise<boolean> =>
+      unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_DELETE, id)),
     getContent: (captureId: string, type: 'html' | 'png' | 'txt'): Promise<string | null> =>
       ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_GET_CONTENT, captureId, type)
   },
@@ -69,8 +83,7 @@ const birdbrain = {
       unwrapIpc<Selector>(ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_CREATE, params)),
     update: (params: UpdateSelectorParams): Promise<Selector | undefined> =>
       ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_UPDATE, params),
-    delete: (id: string): Promise<boolean> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_DELETE, id),
+    delete: (id: string): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_DELETE, id),
     listActive: (): Promise<ActiveCaseSelectors[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_LIST_ACTIVE),
     matchCounts: (caseId: string): Promise<Record<string, number>> =>
@@ -117,8 +130,17 @@ const birdbrain = {
     return () => ipcRenderer.removeListener(IPC_CHANNELS.NEW_CAPTURE, handler)
   },
 
-  onSessionStateChanged: (callback: (state: { sessionActive: boolean; activeCaseId: string | null; captureCount: number }) => void) => {
-    const handler = (_: unknown, state: { sessionActive: boolean; activeCaseId: string | null; captureCount: number }) => callback(state)
+  onSessionStateChanged: (
+    callback: (state: {
+      sessionActive: boolean
+      activeCaseId: string | null
+      captureCount: number
+    }) => void
+  ) => {
+    const handler = (
+      _: unknown,
+      state: { sessionActive: boolean; activeCaseId: string | null; captureCount: number }
+    ) => callback(state)
     ipcRenderer.on(IPC_CHANNELS.SESSION_STATE_CHANGED, handler)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.SESSION_STATE_CHANGED, handler)
   },

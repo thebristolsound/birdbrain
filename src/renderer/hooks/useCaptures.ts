@@ -39,12 +39,9 @@ export function useCaptures(caseId: string | null) {
     [refresh]
   )
 
-  const getContent = useCallback(
-    async (captureId: string, type: 'html' | 'png' | 'txt') => {
-      return window.birdbrain.captures.getContent(captureId, type)
-    },
-    []
-  )
+  const getContent = useCallback(async (captureId: string, type: 'html' | 'png' | 'txt') => {
+    return window.birdbrain.captures.getContent(captureId, type)
+  }, [])
 
   return { captures, loading, refresh, deleteCapture, getContent }
 }

@@ -55,5 +55,15 @@ export function useTags() {
     return window.birdbrain.tags.getForCapture(captureId)
   }, [])
 
-  return { tags, loading, refresh, createTag, updateTag, deleteTag, addToCapture, removeFromCapture, getForCapture }
+  return {
+    tags,
+    loading,
+    refresh,
+    createTag,
+    updateTag,
+    deleteTag,
+    addToCapture,
+    removeFromCapture,
+    getForCapture
+  }
 }

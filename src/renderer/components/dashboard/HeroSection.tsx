@@ -42,13 +42,21 @@ export function HeroSection({ onNewInvestigation, onOpenRecent }: HeroSectionPro
         </div>
 
         <p className="anim-in d5 text-[11px] text-slate-600">
-          <kbd className="px-1.5 py-0.5 rounded border border-slate-700 bg-slate-900 font-mono text-[10px] font-medium text-slate-400">Ctrl</kbd>
+          <kbd className="px-1.5 py-0.5 rounded border border-slate-700 bg-slate-900 font-mono text-[10px] font-medium text-slate-400">
+            Ctrl
+          </kbd>
           {' + '}
-          <kbd className="px-1.5 py-0.5 rounded border border-slate-700 bg-slate-900 font-mono text-[10px] font-medium text-slate-400">N</kbd>
+          <kbd className="px-1.5 py-0.5 rounded border border-slate-700 bg-slate-900 font-mono text-[10px] font-medium text-slate-400">
+            N
+          </kbd>
           <span className="ml-1.5">to create · </span>
-          <kbd className="px-1.5 py-0.5 rounded border border-slate-700 bg-slate-900 font-mono text-[10px] font-medium text-slate-400">Ctrl</kbd>
+          <kbd className="px-1.5 py-0.5 rounded border border-slate-700 bg-slate-900 font-mono text-[10px] font-medium text-slate-400">
+            Ctrl
+          </kbd>
           {' + '}
-          <kbd className="px-1.5 py-0.5 rounded border border-slate-700 bg-slate-900 font-mono text-[10px] font-medium text-slate-400">K</kbd>
+          <kbd className="px-1.5 py-0.5 rounded border border-slate-700 bg-slate-900 font-mono text-[10px] font-medium text-slate-400">
+            K
+          </kbd>
           <span className="ml-1.5">to search</span>
         </p>
       </div>

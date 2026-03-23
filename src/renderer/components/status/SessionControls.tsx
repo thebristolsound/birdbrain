@@ -21,7 +21,10 @@ export function SessionControls() {
         setSessionActive(false)
       } else {
         if (!activeCaseId) return
-        const activateRes = await fetch(`http://127.0.0.1:19845/api/cases/${activeCaseId}/activate`, { method: 'POST' })
+        const activateRes = await fetch(
+          `http://127.0.0.1:19845/api/cases/${activeCaseId}/activate`,
+          { method: 'POST' }
+        )
         if (!activateRes.ok) {
           console.error('Failed to activate case:', activateRes.status)
           return

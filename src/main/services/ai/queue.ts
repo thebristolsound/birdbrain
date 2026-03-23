@@ -20,7 +20,12 @@ export function initQueue(
 
 export function enqueue(captureId: string): void {
   // Avoid duplicates (pending or running)
-  if (queue.some((j) => j.captureId === captureId && (j.status === 'pending' || j.status === 'running'))) return
+  if (
+    queue.some(
+      (j) => j.captureId === captureId && (j.status === 'pending' || j.status === 'running')
+    )
+  )
+    return
   queue.push({ captureId, status: 'pending' })
   processNext()
 }

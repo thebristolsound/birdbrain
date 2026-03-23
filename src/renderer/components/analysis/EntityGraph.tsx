@@ -78,7 +78,12 @@ export function EntityGraph({ graph, activeTypes, zoom, onNodeClick }: EntityGra
       }))
 
     const sim = forceSimulation(simNodes as any)
-      .force('link', forceLink(simLinks as any).id((d: any) => d.id).distance(80))
+      .force(
+        'link',
+        forceLink(simLinks as any)
+          .id((d: any) => d.id)
+          .distance(80)
+      )
       .force('charge', forceManyBody().strength(-200))
       .force('center', forceCenter(dimensions.width / 2, dimensions.height / 2))
       .force('collide', forceCollide().radius(20))
@@ -88,7 +93,9 @@ export function EntityGraph({ graph, activeTypes, zoom, onNodeClick }: EntityGra
       setLinks([...simLinks])
     })
 
-    return () => { sim.stop() }
+    return () => {
+      sim.stop()
+    }
   }, [graph, activeTypes, dimensions])
 
   if (graph.nodes.length === 0) {
@@ -113,12 +120,19 @@ export function EntityGraph({ graph, activeTypes, zoom, onNodeClick }: EntityGra
         {/* Grid */}
         <defs>
           <pattern id="analysis-grid" width="40" height="40" patternUnits="userSpaceOnUse">
-            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="0.5" />
+            <path
+              d="M 40 0 L 0 0 0 40"
+              fill="none"
+              stroke="rgba(255,255,255,0.03)"
+              strokeWidth="0.5"
+            />
           </pattern>
         </defs>
         <rect width="100%" height="100%" fill="url(#analysis-grid)" />
 
-        <g transform={`scale(${scale}) translate(${(1 - scale) * dimensions.width / 2 / scale}, ${(1 - scale) * dimensions.height / 2 / scale})`}>
+        <g
+          transform={`scale(${scale}) translate(${((1 - scale) * dimensions.width) / 2 / scale}, ${((1 - scale) * dimensions.height) / 2 / scale})`}
+        >
           {/* Edges */}
           {links.map((link, i) => {
             const s = link.source as SimNode
@@ -156,13 +170,7 @@ export function EntityGraph({ graph, activeTypes, zoom, onNodeClick }: EntityGra
                 }}
               >
                 {/* Outer glow ring */}
-                <circle
-                  cx={node.x}
-                  cy={node.y}
-                  r={radius + 4}
-                  fill={color}
-                  opacity={0.12}
-                />
+                <circle cx={node.x} cy={node.y} r={radius + 4} fill={color} opacity={0.12} />
                 {/* Main node */}
                 <circle
                   cx={node.x}
@@ -220,13 +228,15 @@ export function EntityGraph({ graph, activeTypes, zoom, onNodeClick }: EntityGra
             <div className="flex justify-between text-[10px]">
               <span className="text-slate-500">Occurrences</span>
               <span className="font-medium text-slate-300">
-                {hoveredNode.node.occurrences} capture{hoveredNode.node.occurrences !== 1 ? 's' : ''}
+                {hoveredNode.node.occurrences} capture
+                {hoveredNode.node.occurrences !== 1 ? 's' : ''}
               </span>
             </div>
             <div className="flex justify-between text-[10px]">
               <span className="text-slate-500">Connections</span>
               <span className="font-medium text-slate-300">
-                {hoveredNode.node.captureIds.length} capture{hoveredNode.node.captureIds.length !== 1 ? 's' : ''}
+                {hoveredNode.node.captureIds.length} capture
+                {hoveredNode.node.captureIds.length !== 1 ? 's' : ''}
               </span>
             </div>
             <div className="flex justify-between text-[10px]">

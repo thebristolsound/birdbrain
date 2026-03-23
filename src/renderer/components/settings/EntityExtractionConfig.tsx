@@ -23,7 +23,7 @@ export function EntityExtractionConfig({ settings, onUpdate }: EntityExtractionC
 
   const toggleType = (type: EntityType) => {
     const updated = enabledTypes.includes(type)
-      ? enabledTypes.filter(t => t !== type)
+      ? enabledTypes.filter((t) => t !== type)
       : [...enabledTypes, type]
     onUpdate({ enabledEntityTypes: updated })
   }

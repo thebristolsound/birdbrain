@@ -137,9 +137,7 @@ export function SelectorTableRow({
         </td>
 
         {/* Label */}
-        <td className="px-4 py-2.5 text-xs text-slate-400">
-          {selector.label || '\u2014'}
-        </td>
+        <td className="px-4 py-2.5 text-xs text-slate-400">{selector.label || '\u2014'}</td>
 
         {/* Match count */}
         <td className="px-4 py-2.5">

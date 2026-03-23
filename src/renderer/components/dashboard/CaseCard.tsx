@@ -1,8 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
 import type { Case } from '@shared/types'
 import {
-  Camera, Fingerprint, ArrowUpRight,
-  ShieldAlert, Users, FolderOpen, MoreVertical
+  Camera,
+  Fingerprint,
+  ArrowUpRight,
+  ShieldAlert,
+  Users,
+  FolderOpen,
+  MoreVertical
 } from 'lucide-react'
 
 function timeAgo(dateStr: string): string {
@@ -15,12 +20,29 @@ function timeAgo(dateStr: string): string {
   return `${days} days ago`
 }
 
-const CASE_ICONS: Record<string, { icon: typeof FolderOpen; bgClass: string; iconClass: string }> = {
-  crypto: { icon: FolderOpen, bgClass: 'bg-amber-950/50 border border-amber-800/30', iconClass: 'text-amber-400' },
-  malware: { icon: ShieldAlert, bgClass: 'bg-sky-950/50 border border-sky-800/30', iconClass: 'text-sky-400' },
-  fraud: { icon: Users, bgClass: 'bg-pink-950/50 border border-pink-800/30', iconClass: 'text-pink-400' },
+const CASE_ICONS: Record<string, { icon: typeof FolderOpen; bgClass: string; iconClass: string }> =
+  {
+    crypto: {
+      icon: FolderOpen,
+      bgClass: 'bg-amber-950/50 border border-amber-800/30',
+      iconClass: 'text-amber-400'
+    },
+    malware: {
+      icon: ShieldAlert,
+      bgClass: 'bg-sky-950/50 border border-sky-800/30',
+      iconClass: 'text-sky-400'
+    },
+    fraud: {
+      icon: Users,
+      bgClass: 'bg-pink-950/50 border border-pink-800/30',
+      iconClass: 'text-pink-400'
+    }
+  }
+const DEFAULT_ICON = {
+  icon: FolderOpen,
+  bgClass: 'bg-indigo-950/50 border border-indigo-800/30',
+  iconClass: 'text-indigo-400'
 }
-const DEFAULT_ICON = { icon: FolderOpen, bgClass: 'bg-indigo-950/50 border border-indigo-800/30', iconClass: 'text-indigo-400' }
 
 interface CaseCardProps {
   caseData: Case
@@ -49,7 +71,11 @@ export function CaseCard({
   const inputRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
-  const { icon: IconComponent, bgClass, iconClass } = CASE_ICONS[caseData.type ?? ''] ?? DEFAULT_ICON
+  const {
+    icon: IconComponent,
+    bgClass,
+    iconClass
+  } = CASE_ICONS[caseData.type ?? ''] ?? DEFAULT_ICON
 
   useEffect(() => {
     if (editingName !== null && inputRef.current) {

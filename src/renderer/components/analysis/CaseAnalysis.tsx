@@ -103,9 +103,7 @@ export function CaseAnalysis() {
   }, [])
 
   if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center text-slate-500">Loading…</div>
-    )
+    return <div className="flex h-full items-center justify-center text-slate-500">Loading…</div>
   }
 
   return (
@@ -130,11 +128,7 @@ export function CaseAnalysis() {
         )}
 
         {graph ? (
-          <EntityGraph
-            graph={graph}
-            activeTypes={activeTypes}
-            zoom={zoom}
-          />
+          <EntityGraph graph={graph} activeTypes={activeTypes} zoom={zoom} />
         ) : (
           <div className="flex flex-1 items-center justify-center text-slate-500">
             No graph data available. Extract entities from captures first.
@@ -152,10 +146,7 @@ export function CaseAnalysis() {
       </div>
 
       {/* Right: AI Insights */}
-      <InsightsPanel
-        analysis={analysis}
-        analyzing={analyzing}
-      />
+      <InsightsPanel analysis={analysis} analyzing={analyzing} />
     </div>
   )
 }

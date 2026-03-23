@@ -1,9 +1,4 @@
-import {
-  checkConnection,
-  getStatus,
-  sendCapture,
-  getActiveSelectors
-} from '@extension/utils/api'
+import { checkConnection, getStatus, sendCapture, getActiveSelectors } from '@extension/utils/api'
 
 // URL patterns to ignore
 const DEFAULT_IGNORE = [
@@ -81,11 +76,13 @@ async function checkStatus(): Promise<void> {
     }
 
     // Update context menu enabled state
-    chrome.contextMenus.update(CONTEXT_MENU_ID, {
-      enabled: connected
-    }).catch(() => {
-      // Menu may not exist yet
-    })
+    chrome.contextMenus
+      .update(CONTEXT_MENU_ID, {
+        enabled: connected
+      })
+      .catch(() => {
+        // Menu may not exist yet
+      })
   } catch {
     connected = false
     sessionActive = false
@@ -94,9 +91,12 @@ async function checkStatus(): Promise<void> {
 }
 
 // Poll for status
-setInterval(() => {
-  checkStatus()
-}, connected ? 30_000 : 5_000)
+setInterval(
+  () => {
+    checkStatus()
+  },
+  connected ? 30_000 : 5_000
+)
 
 // Initial check
 checkStatus()
@@ -148,7 +148,9 @@ function isIgnoredByUser(url: string): boolean {
       } else {
         if (url.includes(pattern)) return true
       }
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
   return false
 }
@@ -175,7 +177,7 @@ function shouldSelectorCapture(caseId: string, url: string): boolean {
 async function captureTab(tabId: number, url: string): Promise<void> {
   try {
     // Extract page content via content script
-    const pageData = await chrome.tabs.sendMessage(tabId, { type: 'EXTRACT_PAGE' }) as {
+    const pageData = (await chrome.tabs.sendMessage(tabId, { type: 'EXTRACT_PAGE' })) as {
       html: string
       title: string
       textContent: string
@@ -240,10 +242,12 @@ async function manualCaptureTab(tabId: number, url: string, caseId: string): Pro
       textContent: pageData.textContent
     })
 
-    chrome.tabs.sendMessage(tabId, {
-      type: 'UPDATE_CAPTURE_TOAST',
-      status: pageData.degraded ? 'degraded' : 'success'
-    }).catch(() => {})
+    chrome.tabs
+      .sendMessage(tabId, {
+        type: 'UPDATE_CAPTURE_TOAST',
+        status: pageData.degraded ? 'degraded' : 'success'
+      })
+      .catch(() => {})
   } catch (err) {
     console.error('[Birdbrain] Manual capture failed:', err)
 
@@ -259,23 +263,21 @@ async function manualCaptureTab(tabId: number, url: string, caseId: string): Pro
       message = "Can't reach Birdbrain — is it running?"
     }
 
-    chrome.tabs.sendMessage(tabId, {
-      type: 'UPDATE_CAPTURE_TOAST',
-      status: 'error',
-      message
-    }).catch(() => {})
+    chrome.tabs
+      .sendMessage(tabId, {
+        type: 'UPDATE_CAPTURE_TOAST',
+        status: 'error',
+        message
+      })
+      .catch(() => {})
   }
 }
 
-async function handleSelectorCapture(
-  tabId: number,
-  url: string,
-  caseId: string
-): Promise<void> {
+async function handleSelectorCapture(tabId: number, url: string, caseId: string): Promise<void> {
   if (!shouldSelectorCapture(caseId, url)) return
 
   try {
-    const pageData = await chrome.tabs.sendMessage(tabId, { type: 'EXTRACT_PAGE' }) as {
+    const pageData = (await chrome.tabs.sendMessage(tabId, { type: 'EXTRACT_PAGE' })) as {
       html: string
       title: string
       textContent: string
@@ -313,10 +315,10 @@ async function checkSelectorsOnTab(tabId: number, url: string): Promise<void> {
   if (isIgnoredByUser(url)) return
 
   try {
-    const matches = await chrome.tabs.sendMessage(tabId, {
+    const matches = (await chrome.tabs.sendMessage(tabId, {
       type: 'CHECK_SELECTORS',
       selectors: activeSelectors
-    }) as Array<{
+    })) as Array<{
       selectorId: string
       caseId: string
       caseName: string
@@ -408,10 +410,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       connected,
       sessionActive,
       captureCount,
-      activeSelectorCount: activeSelectors.reduce(
-        (sum, g) => sum + g.selectors.length,
-        0
-      ),
+      activeSelectorCount: activeSelectors.reduce((sum, g) => sum + g.selectors.length, 0),
       activeCaseCount: activeSelectors.length,
       activeCaseId,
       availableCases

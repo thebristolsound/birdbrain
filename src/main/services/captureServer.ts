@@ -8,10 +8,14 @@ import * as db from '@main/services/database'
 import { saveCapture, deleteCaptureFiles } from '@main/services/storage'
 import { hashContent } from '@main/services/hash'
 import { getSettings } from '@main/services/settings'
-import { extractEntitiesRuleBased } from '@main/services/ruleBasedExtraction'
-import type { CaptureEvent, CaptureSource, EntityType } from '@shared/types'
+import type { CaptureEvent, CaptureSource } from '@shared/types'
 
 export const CAPTURE_SERVER_PORT = 19845
+const VALID_CAPTURE_SOURCES: CaptureSource[] = ['auto', 'manual', 'selector']
+
+// Manual capture dedup: "caseId:url" -> timestamp of last accepted capture
+const manualDedup = new Map<string, number>()
+const MANUAL_DEDUPE_WINDOW_MS = 5_000
 
 interface SessionState {
   activeCaseId: string | null
@@ -30,8 +34,6 @@ const state: SessionState = {
   extensionLastSeen: 0
 }
 
-let cachedEnabledEntityTypes: EntityType[] | null = null
-
 export function getSessionState(): SessionState {
   return { ...state }
 }
@@ -41,6 +43,7 @@ export function resetSessionState(): void {
   state.sessionActive = false
   state.captureCount = 0
   state.extensionLastSeen = 0
+  manualDedup.clear()
 }
 
 export function setMainWindow(win: BrowserWindow): void {
@@ -72,46 +75,6 @@ function isUrlBlacklisted(url: string, patterns: string[]): string | null {
   return null
 }
 
-function runRuleBasedExtraction(captureId: string, textContent: string | undefined): void {
-  if (!textContent?.trim()) return
-
-  try {
-    if (!cachedEnabledEntityTypes) {
-      const settings = getSettings()
-      cachedEnabledEntityTypes = settings.enabledEntityTypes || []
-    }
-
-    const enabledTypes: EntityType[] = cachedEnabledEntityTypes
-    if (!enabledTypes || enabledTypes.length === 0) return
-
-    const entities = extractEntitiesRuleBased(textContent, enabledTypes)
-    if (entities.length === 0) return
-
-    db.insertEntitiesBatch(
-      entities.map((e) => ({
-        captureId,
-        type: e.type,
-        value: e.value,
-        context: e.context,
-        confidence: e.confidence,
-        source: 'rule'
-      }))
-    )
-
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send(IPC_CHANNELS.EXTRACTION_COMPLETE, {
-        captureId,
-        entityCount: entities.length,
-        source: 'rule'
-      })
-    }
-
-    console.log(`[Rule] Extracted ${entities.length} entities from capture ${captureId}`)
-  } catch (err) {
-    console.error(`[Rule] Entity extraction failed for capture ${captureId}:`, err)
-  }
-}
-
 function schedulePostCaptureWork(
   captureId: string,
   caseId: string,
@@ -120,11 +83,6 @@ function schedulePostCaptureWork(
   textContent: string | undefined
 ): void {
   setImmediate(() => {
-    try {
-      runRuleBasedExtraction(captureId, textContent)
-    } catch (err) {
-      console.error('Rule-based extraction error for capture', captureId, err)
-    }
     try {
       if (textContent) {
         db.matchSelectorsForCapture(captureId, caseId, textContent)
@@ -155,7 +113,16 @@ function createApp(): Hono {
   app.use(
     '*',
     cors({
-      origin: ['chrome-extension://*', 'http://localhost:*', 'http://127.0.0.1:*'],
+      origin: (origin) => {
+        if (
+          origin.startsWith('chrome-extension://') ||
+          origin.startsWith('http://localhost:') ||
+          origin.startsWith('http://127.0.0.1:')
+        ) {
+          return origin
+        }
+        return undefined as unknown as string
+      },
       allowMethods: ['GET', 'POST'],
       allowHeaders: ['Content-Type']
     })
@@ -203,31 +170,6 @@ function createApp(): Hono {
         id: cs.id,
         name: cs.name,
         captureCount: db.getCaptureCount(cs.id)
-      }))
-    )
-  })
-
-  // Entity summary for a case
-  app.get('/api/cases/:id/entities/summary', (c) => {
-    const caseId = c.req.param('id')
-    const rows = db
-      .getDb()
-      .prepare(
-        `
-      SELECT type, COUNT(*) as count
-      FROM entities
-      WHERE capture_id IN (SELECT id FROM captures WHERE case_id = ?)
-      GROUP BY type
-      ORDER BY count DESC
-    `
-      )
-      .all(caseId) as { type: string; count: number }[]
-
-    return c.json(
-      rows.map((r) => ({
-        type: r.type,
-        count: r.count,
-        color: ''
       }))
     )
   })
@@ -347,6 +289,23 @@ function createApp(): Hono {
         caseId = body.caseId
       } else {
         return c.json({ error: `Invalid source: ${source}` }, 400)
+      }
+
+      // Dedup check for manual captures
+      if (source === 'manual') {
+        const dedupeKey = `${caseId}:${url}`
+        const lastSeen = manualDedup.get(dedupeKey)
+        if (lastSeen && Date.now() - lastSeen < MANUAL_DEDUPE_WINDOW_MS) {
+          emitCaptureEvent({
+            type: 'skipped',
+            source,
+            url,
+            timestamp: new Date().toISOString(),
+            skipReason: 'Duplicate manual capture'
+          })
+          return c.json({ error: 'Duplicate capture', status: 'skipped' }, 409)
+        }
+        manualDedup.set(dedupeKey, Date.now())
       }
 
       emitCaptureEvent({ type: 'received', source, url, timestamp: new Date().toISOString() })

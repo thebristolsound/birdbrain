@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -575,5 +575,159 @@ describe('captureServer', () => {
     })
     // 'users' ends with 's' which matches the '?' — still blocked
     expect(allowedRes.status).toBe(403)
+  })
+
+  // --- Manual capture dedup tests ---
+
+  function manualCaptureBody(caseId: string, url = 'https://example.com/page', html = '<html>test</html>') {
+    return JSON.stringify({
+      source: 'manual',
+      caseId,
+      url,
+      title: 'Test',
+      html,
+      timestamp: new Date().toISOString()
+    })
+  }
+
+  it('source=manual rejects duplicate within 5s window', async () => {
+    const testCase = createCase({ name: 'Dedup Test' })
+    const headers = { 'Content-Type': 'application/json' }
+    const body = manualCaptureBody(testCase.id)
+
+    const first = await fetch(`${baseUrl}/api/captures`, { method: 'POST', headers, body })
+    expect(first.status).toBe(200)
+
+    const second = await fetch(`${baseUrl}/api/captures`, { method: 'POST', headers, body })
+    expect(second.status).toBe(409)
+    const data = await second.json()
+    expect(data.error).toContain('Duplicate')
+
+    const captures = listCaptures(testCase.id)
+    expect(captures).toHaveLength(1)
+  })
+
+  it('source=manual allows same URL after dedup window expires', async () => {
+    const testCase = createCase({ name: 'Dedup Expiry' })
+    const headers = { 'Content-Type': 'application/json' }
+    const url = 'https://example.com/expiry-test'
+    const body = manualCaptureBody(testCase.id, url)
+
+    const first = await fetch(`${baseUrl}/api/captures`, { method: 'POST', headers, body })
+    expect(first.status).toBe(200)
+
+    // Advance time past the 5s window
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    vi.advanceTimersByTime(6000)
+    vi.useRealTimers()
+
+    const second = await fetch(`${baseUrl}/api/captures`, { method: 'POST', headers, body })
+    expect(second.status).toBe(200)
+
+    const captures = listCaptures(testCase.id)
+    expect(captures).toHaveLength(2)
+  })
+
+  it('source=manual allows different URLs in same case within window', async () => {
+    const testCase = createCase({ name: 'Dedup Diff URL' })
+    const headers = { 'Content-Type': 'application/json' }
+
+    const first = await fetch(`${baseUrl}/api/captures`, {
+      method: 'POST',
+      headers,
+      body: manualCaptureBody(testCase.id, 'https://example.com/page-a')
+    })
+    expect(first.status).toBe(200)
+
+    const second = await fetch(`${baseUrl}/api/captures`, {
+      method: 'POST',
+      headers,
+      body: manualCaptureBody(testCase.id, 'https://example.com/page-b')
+    })
+    expect(second.status).toBe(200)
+
+    const captures = listCaptures(testCase.id)
+    expect(captures).toHaveLength(2)
+  })
+
+  it('source=manual allows same URL in different cases within window', async () => {
+    const caseA = createCase({ name: 'Case A' })
+    const caseB = createCase({ name: 'Case B' })
+    const headers = { 'Content-Type': 'application/json' }
+    const url = 'https://example.com/shared-page'
+
+    const first = await fetch(`${baseUrl}/api/captures`, {
+      method: 'POST',
+      headers,
+      body: manualCaptureBody(caseA.id, url)
+    })
+    expect(first.status).toBe(200)
+
+    const second = await fetch(`${baseUrl}/api/captures`, {
+      method: 'POST',
+      headers,
+      body: manualCaptureBody(caseB.id, url)
+    })
+    expect(second.status).toBe(200)
+  })
+
+  it('source=auto is not affected by manual dedup', async () => {
+    const testCase = createCase({ name: 'Auto No Dedup' })
+    await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
+    await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
+    const headers = { 'Content-Type': 'application/json' }
+    const url = 'https://example.com/auto-page'
+    const autoBody = JSON.stringify({
+      source: 'auto',
+      url,
+      title: 'Auto',
+      html: '<html>auto</html>'
+    })
+
+    const first = await fetch(`${baseUrl}/api/captures`, { method: 'POST', headers, body: autoBody })
+    expect(first.status).toBe(200)
+
+    const second = await fetch(`${baseUrl}/api/captures`, { method: 'POST', headers, body: autoBody })
+    expect(second.status).toBe(200)
+
+    const captures = listCaptures(testCase.id)
+    expect(captures).toHaveLength(2)
+  })
+
+  it('source=selector is not affected by manual dedup', async () => {
+    const testCase = createCase({ name: 'Selector No Dedup' })
+    const headers = { 'Content-Type': 'application/json' }
+    const selectorBody = JSON.stringify({
+      source: 'selector',
+      caseId: testCase.id,
+      url: 'https://example.com/selector-page',
+      title: 'Selector',
+      html: '<html>selector</html>',
+      matchedSelectors: ['h1']
+    })
+
+    const first = await fetch(`${baseUrl}/api/captures`, { method: 'POST', headers, body: selectorBody })
+    expect(first.status).toBe(200)
+
+    const second = await fetch(`${baseUrl}/api/captures`, { method: 'POST', headers, body: selectorBody })
+    expect(second.status).toBe(200)
+
+    const captures = listCaptures(testCase.id)
+    expect(captures).toHaveLength(2)
+  })
+
+  it('manual dedup state is cleared by resetSessionState', async () => {
+    const testCase = createCase({ name: 'Dedup Reset' })
+    const headers = { 'Content-Type': 'application/json' }
+    const body = manualCaptureBody(testCase.id)
+
+    const first = await fetch(`${baseUrl}/api/captures`, { method: 'POST', headers, body })
+    expect(first.status).toBe(200)
+
+    // Without reset, this would be 409
+    resetSessionState()
+
+    const second = await fetch(`${baseUrl}/api/captures`, { method: 'POST', headers, body })
+    expect(second.status).toBe(200)
   })
 })

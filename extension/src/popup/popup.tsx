@@ -1,14 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
-import {
-  getStatus,
-  getCases,
-  activateCase,
-  startSession,
-  stopSession,
-  getEntitySummary
-} from '@extension/utils/api'
-import type { EntityTypeSummary } from '@extension/utils/api'
+import { getStatus, getCases, activateCase, startSession, stopSession } from '@extension/utils/api'
 import './popup.css'
 
 interface CaseInfo {
@@ -164,59 +156,6 @@ function StatsGrid({
   )
 }
 
-// ---------- Entity Highlights ----------
-
-const ENTITY_COLORS: Record<string, string> = {
-  person: '#f59e0b',
-  crypto_wallet: '#eab308',
-  email: '#22c55e',
-  organization: '#38bdf8',
-  phone: '#a78bfa',
-  ip_address: '#f87171',
-  url: '#818cf8',
-  username: '#fb923c'
-}
-
-function EntityHighlights({ entities }: { entities: EntityTypeSummary[] }) {
-  if (entities.length === 0) return null
-
-  const total = entities.reduce((sum, e) => sum + e.count, 0)
-
-  return (
-    <section className="animate-fade-up-delay-2">
-      <div className="flex items-center justify-between mb-2">
-        <h4 className="text-[10px] font-bold uppercase tracking-wider text-d-text-muted">
-          Entity Highlights
-        </h4>
-        <span className="text-[10px] font-semibold text-indigo-400">{total} detected</span>
-      </div>
-      <div className="rounded-2xl p-3 space-y-2.5 bg-d-card border border-d-border dark-card-glow">
-        {entities.map((entity) => {
-          const color = entity.color || ENTITY_COLORS[entity.type.toLowerCase()] || '#94a3b8'
-          const label = entity.type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-          return (
-            <div key={entity.type} className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <span
-                  className="w-2.5 h-2.5 rounded-full entity-dot"
-                  style={{ backgroundColor: color, color }}
-                />
-                <span className="text-[11px] font-medium text-d-text">{label}</span>
-              </div>
-              <span
-                className="text-[10px] font-bold px-1.5 py-0.5 rounded"
-                style={{ color, backgroundColor: `${color}15` }}
-              >
-                x{entity.count}
-              </span>
-            </div>
-          )
-        })}
-      </div>
-    </section>
-  )
-}
-
 // ---------- Footer ----------
 
 function Footer({
@@ -224,13 +163,15 @@ function Footer({
   activeCase,
   onStartCapture,
   onStopCapture,
-  onManualCapture
+  onManualCapture,
+  capturing
 }: {
   sessionActive: boolean
   activeCase: { id: string; name: string } | null
   onStartCapture: () => void
   onStopCapture: () => void
   onManualCapture: () => void
+  capturing: boolean
 }) {
   return (
     <footer className="p-4 mt-auto bg-d-header border-t border-d-border">
@@ -269,7 +210,8 @@ function Footer({
         {activeCase && (
           <button
             onClick={onManualCapture}
-            className="w-10 h-10 flex items-center justify-center rounded-xl active:scale-[0.98] transition-colors bg-white/[0.04] border border-d-border text-d-text-secondary hover:bg-white/[0.08] hover:text-white"
+            disabled={capturing}
+            className="w-10 h-10 flex items-center justify-center rounded-xl active:scale-[0.98] transition-colors bg-white/[0.04] border border-d-border text-d-text-secondary hover:bg-white/[0.08] hover:text-white disabled:opacity-40"
             title="Capture this page"
           >
             <svg
@@ -411,8 +353,8 @@ function Popup(): React.JSX.Element {
   const [captureCount, setCaptureCount] = useState(0)
   const [activeSelectorCount, setActiveSelectorCount] = useState(0)
   const [currentDomain, setCurrentDomain] = useState('')
-  const [entities, setEntities] = useState<EntityTypeSummary[]>([])
   const [loading, setLoading] = useState(true)
+  const [capturing, setCapturing] = useState(false)
 
   useEffect(() => {
     checkStatus()
@@ -446,15 +388,6 @@ function Popup(): React.JSX.Element {
           }
         })
 
-        // Fetch entity summary if there's an active case
-        if (status.activeCase) {
-          try {
-            const entityData = await getEntitySummary(status.activeCase.id)
-            setEntities(entityData)
-          } catch {
-            setEntities([])
-          }
-        }
       }
     } catch {
       setConnected(false)
@@ -481,10 +414,15 @@ function Popup(): React.JSX.Element {
   }
 
   async function handleManualCapture(): Promise<void> {
-    if (!activeCase) return
+    if (!activeCase || capturing) return
+    setCapturing(true)
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-    if (!tab?.id) return
+    if (!tab?.id) {
+      setCapturing(false)
+      return
+    }
     chrome.runtime.sendMessage({ type: 'MANUAL_CAPTURE', tabId: tab.id, caseId: activeCase.id })
+    setTimeout(() => setCapturing(false), 3000)
   }
 
   // Loading
@@ -529,8 +467,6 @@ function Popup(): React.JSX.Element {
         )}
 
         <StatsGrid captureCount={captureCount} selectorCount={activeSelectorCount} />
-
-        <EntityHighlights entities={entities} />
       </main>
       <Footer
         sessionActive={sessionActive}
@@ -538,6 +474,7 @@ function Popup(): React.JSX.Element {
         onStartCapture={handleStartCapture}
         onStopCapture={handleStopCapture}
         onManualCapture={handleManualCapture}
+        capturing={capturing}
       />
     </div>
   )

@@ -19,6 +19,9 @@ const CONTEXT_MENU_ID = 'birdbrain-capture-page'
 // Selector capture dedupe: caseId:url -> timestamp
 const selectorDedupeMap = new Map<string, number>()
 
+// Manual capture in-flight guard: tabId:caseId -> true while capture is in progress
+const pendingManualCaptures = new Set<string>()
+
 let connected = false
 let sessionActive = false
 let captureCount = 0
@@ -216,6 +219,9 @@ async function captureTab(tabId: number, url: string): Promise<void> {
 }
 
 async function manualCaptureTab(tabId: number, url: string, caseId: string): Promise<void> {
+  const key = `${tabId}:${caseId}`
+  if (pendingManualCaptures.has(key)) return
+  pendingManualCaptures.add(key)
   try {
     chrome.tabs.sendMessage(tabId, { type: 'SHOW_CAPTURE_TOAST' }).catch(() => {})
 
@@ -270,6 +276,8 @@ async function manualCaptureTab(tabId: number, url: string, caseId: string): Pro
         message
       })
       .catch(() => {})
+  } finally {
+    pendingManualCaptures.delete(key)
   }
 }
 
@@ -423,10 +431,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         manualCaptureTab(message.tabId, tab.url, message.caseId)
       }
     })
-  }
-
-  if (message.type === 'SELECTOR_CAPTURE' && sender.tab?.id && sender.tab?.url) {
-    handleSelectorCapture(sender.tab.id, sender.tab.url, message.caseId)
   }
 
   return true

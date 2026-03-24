@@ -387,7 +387,6 @@ function Popup(): React.JSX.Element {
             setActiveSelectorCount(state.activeSelectorCount || 0)
           }
         })
-
       }
     } catch {
       setConnected(false)

@@ -1,13 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import type { Case } from '@shared/types'
-import {
-  Camera,
-  ArrowUpRight,
-  ShieldAlert,
-  Users,
-  FolderOpen,
-  MoreVertical
-} from 'lucide-react'
+import { Camera, ArrowUpRight, ShieldAlert, Users, FolderOpen, MoreVertical } from 'lucide-react'
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()

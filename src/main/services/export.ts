@@ -258,4 +258,3 @@ function esc(str: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
 }
-

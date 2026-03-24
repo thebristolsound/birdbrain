@@ -86,27 +86,24 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle(
-    IPC_CHANNELS.CAPTURES_DOWNLOAD,
-    async (_, captureId: string, caseId: string) => {
-      try {
-        const capture = db.getCapture(captureId)
-        if (!capture) return ipcResult(null)
-        const { canceled, filePath } = await dialog.showSaveDialog({
-          defaultPath: `${capture.title || 'capture'}.html`,
-          filters: [{ name: 'HTML', extensions: ['html'] }]
-        })
-        if (canceled || !filePath) return ipcResult(null)
-        const buffer = storage.readCaptureFile(caseId, captureId, 'html')
-        if (!buffer) return { ok: false, error: 'HTML file not found' }
-        const { writeFileSync } = await import('fs')
-        writeFileSync(filePath, buffer)
-        return ipcResult(filePath)
-      } catch (err) {
-        return ipcError(err)
-      }
+  ipcMain.handle(IPC_CHANNELS.CAPTURES_DOWNLOAD, async (_, captureId: string, caseId: string) => {
+    try {
+      const capture = db.getCapture(captureId)
+      if (!capture) return ipcResult(null)
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        defaultPath: `${capture.title || 'capture'}.html`,
+        filters: [{ name: 'HTML', extensions: ['html'] }]
+      })
+      if (canceled || !filePath) return ipcResult(null)
+      const buffer = storage.readCaptureFile(caseId, captureId, 'html')
+      if (!buffer) return { ok: false, error: 'HTML file not found' }
+      const { writeFileSync } = await import('fs')
+      writeFileSync(filePath, buffer)
+      return ipcResult(filePath)
+    } catch (err) {
+      return ipcError(err)
     }
-  )
+  })
 
   ipcMain.handle(IPC_CHANNELS.CAPTURES_OPEN_EXTERNAL, async (_, url: string) => {
     await shell.openExternal(url)

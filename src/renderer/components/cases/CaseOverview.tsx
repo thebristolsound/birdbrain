@@ -275,16 +275,18 @@ export function CaseOverview() {
               <span className="text-slate-500">
                 {selectorCoverage.total > 0
                   ? Math.round((selectorCoverage.matched / selectorCoverage.total) * 100)
-                  : 0}%
+                  : 0}
+                %
               </span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-slate-800">
               <div
                 className="h-full rounded-full bg-indigo-500 transition-all"
                 style={{
-                  width: selectorCoverage.total > 0
-                    ? `${Math.round((selectorCoverage.matched / selectorCoverage.total) * 100)}%`
-                    : '0%'
+                  width:
+                    selectorCoverage.total > 0
+                      ? `${Math.round((selectorCoverage.matched / selectorCoverage.total) * 100)}%`
+                      : '0%'
                 }}
               />
             </div>

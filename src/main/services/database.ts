@@ -642,4 +642,3 @@ function rowToSelector(row: Record<string, unknown>): Selector {
     createdAt: row.created_at as string
   }
 }
-

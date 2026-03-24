@@ -312,7 +312,6 @@ export function CaptureViewer() {
               </button>
             )
           })}
-
         </div>
 
         {/* Tag bar */}

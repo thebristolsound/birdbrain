@@ -3,7 +3,7 @@ import { useAppStore } from '@renderer/stores/appStore'
 import { useCaptures } from '@renderer/hooks/useCaptures'
 import { useCases } from '@renderer/hooks/useCases'
 import { ExportDialog } from '@renderer/components/export/ExportDialog'
-import { Camera, Globe, Fingerprint, FileOutput, Zap, Pencil, ChevronRight } from 'lucide-react'
+import { Camera, Globe, Tags, FileOutput, Crosshair, Pencil, ChevronRight } from 'lucide-react'
 import type { Case } from '@shared/types'
 
 export function CaseOverview() {
@@ -13,6 +13,8 @@ export function CaseOverview() {
   const { updateCase } = useCases()
   const [caseData, setCaseData] = useState<Case | null>(null)
   const [showExport, setShowExport] = useState(false)
+  const [tagCount, setTagCount] = useState(0)
+  const [selectorCoverage, setSelectorCoverage] = useState({ matched: 0, total: 0 })
 
   // Editable name state
   const [editingName, setEditingName] = useState(false)
@@ -35,6 +37,8 @@ export function CaseOverview() {
           setCaseData(null)
         }
       })
+      window.birdbrain.tags.countForCase(activeCaseId).then(setTagCount)
+      window.birdbrain.selectors.coverage(activeCaseId).then(setSelectorCoverage)
     }
   }, [activeCaseId])
 
@@ -196,11 +200,11 @@ export function CaseOverview() {
           <div className="neu-card rounded-2xl p-5">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10">
-                <Fingerprint className="h-5 w-5 text-indigo-400" />
+                <Tags className="h-5 w-5 text-indigo-400" />
               </div>
               <div>
-                <div className="text-2xl font-bold text-white">0</div>
-                <div className="text-sm text-slate-400">Entities</div>
+                <div className="text-2xl font-bold text-white">{tagCount}</div>
+                <div className="text-sm text-slate-400">Tags</div>
               </div>
             </div>
           </div>
@@ -259,21 +263,29 @@ export function CaseOverview() {
           </div>
         )}
 
-        {/* Investigation Health */}
+        {/* Coverage */}
         <div className="neu-card rounded-2xl p-4">
           <div className="mb-3 flex items-center gap-2">
-            <Zap className="h-4 w-4 text-indigo-400" />
-            <h3 className="text-sm font-semibold text-slate-300">Investigation Health</h3>
+            <Crosshair className="h-4 w-4 text-indigo-400" />
+            <h3 className="text-sm font-semibold text-slate-300">Coverage</h3>
           </div>
           <div>
             <div className="mb-1 flex items-center justify-between text-xs">
-              <span className="text-slate-400">AI Extraction Coverage</span>
-              <span className="text-slate-500">0%</span>
+              <span className="text-slate-400">Selector Coverage</span>
+              <span className="text-slate-500">
+                {selectorCoverage.total > 0
+                  ? Math.round((selectorCoverage.matched / selectorCoverage.total) * 100)
+                  : 0}%
+              </span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-slate-800">
               <div
                 className="h-full rounded-full bg-indigo-500 transition-all"
-                style={{ width: '0%' }}
+                style={{
+                  width: selectorCoverage.total > 0
+                    ? `${Math.round((selectorCoverage.matched / selectorCoverage.total) * 100)}%`
+                    : '0%'
+                }}
               />
             </div>
           </div>

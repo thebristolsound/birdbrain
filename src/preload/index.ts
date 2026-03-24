@@ -69,7 +69,9 @@ const birdbrain = {
     removeFromCapture: (params: CaptureTagParams): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.TAGS_REMOVE_FROM_CAPTURE, params),
     getForCapture: (captureId: string): Promise<Tag[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, captureId)
+      ipcRenderer.invoke(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, captureId),
+    countForCase: (caseId: string): Promise<number> =>
+      ipcRenderer.invoke(IPC_CHANNELS.TAGS_COUNT_FOR_CASE, caseId)
   },
   selectors: {
     list: (caseId: string): Promise<Selector[]> =>
@@ -86,7 +88,9 @@ const birdbrain = {
     matchCounts: (caseId: string): Promise<Record<string, number>> =>
       ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_MATCH_COUNTS, caseId),
     matchingCaptures: (caseId: string, selectorIds: string[]): Promise<string[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_MATCHING_CAPTURES, caseId, selectorIds)
+      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_MATCHING_CAPTURES, caseId, selectorIds),
+    coverage: (caseId: string): Promise<{ matched: number; total: number }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_COVERAGE, caseId)
   },
 
   search: (query: string): Promise<Capture[]> => ipcRenderer.invoke(IPC_CHANNELS.SEARCH, query),

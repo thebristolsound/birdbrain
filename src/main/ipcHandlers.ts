@@ -132,6 +132,9 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, (_, captureId: string) =>
     db.getTagsForCapture(captureId)
   )
+  ipcMain.handle(IPC_CHANNELS.TAGS_COUNT_FOR_CASE, (_, caseId: string) =>
+    db.getTagCountForCase(caseId)
+  )
 
   // Selectors
   ipcMain.handle(IPC_CHANNELS.SELECTORS_LIST, (_, caseId: string) => db.listSelectors(caseId))
@@ -168,6 +171,9 @@ export function registerIpcHandlers(): void {
     IPC_CHANNELS.SELECTORS_MATCHING_CAPTURES,
     (_, caseId: string, selectorIds: string[]) =>
       db.getCapturesMatchingSelectors(caseId, selectorIds)
+  )
+  ipcMain.handle(IPC_CHANNELS.SELECTORS_COVERAGE, (_, caseId: string) =>
+    db.getSelectorCoverage(caseId)
   )
 
   // Captures - get content

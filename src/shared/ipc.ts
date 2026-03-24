@@ -23,6 +23,7 @@ export const IPC_CHANNELS = {
   TAGS_ADD_TO_CAPTURE: 'tags:addToCapture',
   TAGS_REMOVE_FROM_CAPTURE: 'tags:removeFromCapture',
   TAGS_GET_FOR_CAPTURE: 'tags:getForCapture',
+  TAGS_COUNT_FOR_CASE: 'tags:countForCase',
 
   // Search
   SEARCH: 'search:query',
@@ -46,6 +47,7 @@ export const IPC_CHANNELS = {
   SELECTORS_LIST_ACTIVE: 'selectors:listActive',
   SELECTORS_MATCH_COUNTS: 'selectors:matchCounts',
   SELECTORS_MATCHING_CAPTURES: 'selectors:matchingCaptures',
+  SELECTORS_COVERAGE: 'selectors:coverage',
 
   // Events (main -> renderer)
   EXPORT_PROGRESS: 'event:exportProgress',

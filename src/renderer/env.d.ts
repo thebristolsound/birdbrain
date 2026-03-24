@@ -41,6 +41,7 @@ interface BirdbrainAPI {
     addToCapture(params: CaptureTagParams): Promise<void>
     removeFromCapture(params: CaptureTagParams): Promise<void>
     getForCapture(captureId: string): Promise<Tag[]>
+    countForCase(caseId: string): Promise<number>
   }
   selectors: {
     list(caseId: string): Promise<Selector[]>
@@ -51,6 +52,7 @@ interface BirdbrainAPI {
     listActive(): Promise<ActiveCaseSelectors[]>
     matchCounts(caseId: string): Promise<Record<string, number>>
     matchingCaptures(caseId: string, selectorIds: string[]): Promise<string[]>
+    coverage(caseId: string): Promise<{ matched: number; total: number }>
   }
   search(query: string): Promise<Capture[]>
   settings: {

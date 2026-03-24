@@ -57,6 +57,7 @@ export function CaptureViewer() {
   const [content, setContent] = useState<string | null>(null)
   const [captureTags, setCaptureTags] = useState<Tag[]>([])
   const [showTagMenu, setShowTagMenu] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   useEffect(() => {
     if (selectedCaptureId) {
@@ -96,6 +97,30 @@ export function CaptureViewer() {
     },
     [selectedCaptureId, captureTags, addToCapture, removeFromCapture, getForCapture]
   )
+
+  const handleDownload = async () => {
+    if (!selectedCaptureId || !activeCaseId) return
+    await window.birdbrain.captures.download(selectedCaptureId, activeCaseId)
+  }
+
+  const handleOpenExternal = async () => {
+    if (!capture) return
+    await window.birdbrain.captures.openExternal(capture.url)
+  }
+
+  const handleDelete = async () => {
+    if (!selectedCaptureId || !activeCaseId) return
+    const deletedId = selectedCaptureId
+    await window.birdbrain.captures.delete(deletedId)
+    setShowDeleteConfirm(false)
+    // Navigate away: pick sibling capture or clear selection
+    const remaining = captures.filter((c) => c.id !== deletedId)
+    if (remaining.length > 0) {
+      useAppStore.getState().selectCapture(remaining[0].id)
+    } else {
+      useAppStore.getState().setSelectedCaptureId(null)
+    }
+  }
 
   // Navigation
   const currentIndex = captures.findIndex((c) => c.id === selectedCaptureId)
@@ -175,16 +200,25 @@ export function CaptureViewer() {
             <ShieldCheck className="h-3 w-3" />
             Verified
           </span>
-          <button className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-white/[0.06] hover:text-slate-300">
-            {/* TODO: download handler */}
+          <button
+            onClick={handleDownload}
+            title="Download capture"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-white/[0.06] hover:text-slate-300"
+          >
             <Download className="h-3.5 w-3.5" />
           </button>
-          <button className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-white/[0.06] hover:text-slate-300">
-            {/* TODO: open external handler */}
+          <button
+            onClick={handleOpenExternal}
+            title="Open URL in browser"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-white/[0.06] hover:text-slate-300"
+          >
             <ExternalLink className="h-3.5 w-3.5" />
           </button>
-          <button className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-white/[0.06] hover:text-red-400">
-            {/* TODO: delete handler */}
+          <button
+            onClick={() => setShowDeleteConfirm(true)}
+            title="Delete capture"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-white/[0.06] hover:text-red-400"
+          >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -334,6 +368,34 @@ export function CaptureViewer() {
           <span className="text-[11px] text-slate-700">← →</span>
         </div>
       </div>
+
+      {showDeleteConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+          onClick={() => setShowDeleteConfirm(false)}
+        >
+          <div className="neu-card w-80 rounded-2xl p-5" onClick={(e) => e.stopPropagation()}>
+            <h3 className="mb-2 text-sm font-semibold text-white">Delete Capture?</h3>
+            <p className="mb-4 text-xs text-slate-400">
+              This will permanently remove the capture and its files. This cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="rounded px-3 py-1.5 text-sm text-slate-400 hover:text-slate-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-500"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }

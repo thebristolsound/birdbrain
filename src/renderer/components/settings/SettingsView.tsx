@@ -1,18 +1,16 @@
 import { useState, useEffect } from 'react'
 import type { BirdbrainSettings } from '@shared/types'
 import { AIConfig } from './AIConfig'
-import { EntityExtractionConfig } from './EntityExtractionConfig'
 import { CapturePreferences } from './CapturePreferences'
 import { StorageConfig } from './StorageConfig'
 import { AppearanceConfig } from './AppearanceConfig'
 import { About } from './About'
-import { Key, Fingerprint, Camera, HardDrive, Palette, Info } from 'lucide-react'
+import { Key, Camera, HardDrive, Palette, Info } from 'lucide-react'
 
-type SettingsTab = 'ai' | 'entities' | 'capture' | 'storage' | 'appearance' | 'about'
+type SettingsTab = 'ai' | 'capture' | 'storage' | 'appearance' | 'about'
 
 const settingsTabs: { id: SettingsTab; label: string; icon: typeof Key }[] = [
   { id: 'ai', label: 'API Keys', icon: Key },
-  { id: 'entities', label: 'Entity Extraction', icon: Fingerprint },
   { id: 'capture', label: 'Capture', icon: Camera },
   { id: 'storage', label: 'Storage', icon: HardDrive },
   { id: 'appearance', label: 'Appearance', icon: Palette },
@@ -38,8 +36,6 @@ export function SettingsView() {
     switch (activeTab) {
       case 'ai':
         return <AIConfig settings={settings} onUpdate={handleUpdate} />
-      case 'entities':
-        return <EntityExtractionConfig settings={settings} onUpdate={handleUpdate} />
       case 'capture':
         return <CapturePreferences settings={settings} onUpdate={handleUpdate} />
       case 'storage':

@@ -22,7 +22,7 @@ Electron + React + Chrome Extension + SQLite (better-sqlite3).
 
 ### Process model
 
-- **Main process** (`src/main/`) - Electron main, SQLite database, Hono capture server, AI services
+- **Main process** (`src/main/`) - Electron main, SQLite database, Hono capture server, settings, export
 - **Preload** (`src/preload/`) - IPC bridge exposing typed channels to renderer
 - **Renderer** (`src/renderer/`) - React 19 + Tailwind v4 + Zustand UI
 - **Chrome extension** (`extension/`) - Content script + background + popup that sends captures to the Hono server
@@ -30,14 +30,13 @@ Electron + React + Chrome Extension + SQLite (better-sqlite3).
 ### Key directories
 
 ```
-src/main/services/        # Core services: database, captureServer, storage, export, settings, AI
-src/main/services/ai/     # AI pipeline: entityExtraction, relationships, patterns, queue, openrouter
+src/main/services/        # Core services: database, captureServer, storage, export, settings
 src/main/ipcHandlers.ts   # All IPC handler registrations
-src/shared/types.ts       # Shared TypeScript types (Case, Capture, Tag, Entity)
+src/shared/types.ts       # Shared TypeScript types (Case, Capture, Tag, Selector)
 src/shared/ipc.ts         # IPC channel definitions and payload types
 src/renderer/stores/      # Zustand store (appStore.ts)
 src/renderer/hooks/       # React hooks (useCases, useCaptures, useTags, useSearch, useServerStatus)
-src/renderer/components/  # UI organized by feature: cases, captures, tags, search, analysis, export, settings, layout, status
+src/renderer/components/  # UI organized by feature: cases, captures, tags, search, selectors, export, settings, layout, status
 extension/src/            # Chrome extension source (background, content, popup, utils/api)
 ```
 
@@ -49,15 +48,15 @@ extension/src/            # Chrome extension source (background, content, popup,
 
 ### IPC pattern
 
-All renderer↔main communication uses typed IPC channels defined in `src/shared/ipc.ts`. Channels follow `domain:action` naming (e.g., `cases:create`, `ai:extractEntities`). Event channels (main→renderer) use `event:` prefix.
+All renderer↔main communication uses typed IPC channels defined in `src/shared/ipc.ts`. Channels follow `domain:action` naming (e.g., `cases:create`, `selectors:create`). Event channels (main→renderer) use `event:` prefix.
 
 ### Database
 
-SQLite via better-sqlite3 with WAL mode. Schema migrations use `user_version` pragma in `src/main/services/database.ts`. Tables: cases, captures, tags, capture_tags, entities, entity_relationships, analysis_results.
+SQLite via better-sqlite3 with WAL mode. Schema migrations use `user_version` pragma in `src/main/services/database.ts`. Tables: cases, captures, tags, capture_tags, selectors, selector_matches, captures_fts.
 
-### AI services
+### AI services (planned)
 
-AI features use OpenRouter API (`src/main/services/ai/openrouter.ts`). Pipeline: entity extraction → relationship mapping → pattern detection. Jobs processed via async queue (`src/main/services/ai/queue.ts`).
+AI features are being redesigned. OpenRouter integration (`src/main/services/openrouter.ts`) is retained for future use.
 
 ### Capture server
 

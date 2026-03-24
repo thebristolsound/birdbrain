@@ -167,6 +167,17 @@ function migrate(db: Database.Database): void {
       db.pragma('user_version = 6')
     })()
   }
+
+  if (version < 7) {
+    db.transaction(() => {
+      db.exec(`
+        DROP INDEX IF EXISTS idx_entities_capture_source;
+        DROP TABLE IF EXISTS entities;
+        DROP TABLE IF EXISTS case_analyses;
+      `)
+      db.pragma('user_version = 7')
+    })()
+  }
 }
 
 // --- Cases ---
@@ -375,6 +386,18 @@ export function getTagsForCapture(captureId: string): Tag[] {
     .all(captureId) as Tag[]
 }
 
+export function getTagCountForCase(caseId: string): number {
+  const row = getDb()
+    .prepare(
+      `SELECT COUNT(DISTINCT ct.tag_id) as count
+       FROM capture_tags ct
+       JOIN captures c ON ct.capture_id = c.id
+       WHERE c.case_id = ?`
+    )
+    .get(caseId) as { count: number } | undefined
+  return row?.count ?? 0
+}
+
 // --- Search ---
 
 export function searchCaptures(query: string): Capture[] {
@@ -563,6 +586,20 @@ export function getCapturesMatchingSelectors(caseId: string, selectorIds: string
     .all(caseId, ...selectorIds) as Array<{ capture_id: string }>
 
   return rows.map((r) => r.capture_id)
+}
+
+export function getSelectorCoverage(caseId: string): { matched: number; total: number } {
+  const total = getCaptureCount(caseId)
+  if (total === 0) return { matched: 0, total: 0 }
+  const row = getDb()
+    .prepare(
+      `SELECT COUNT(DISTINCT sm.capture_id) as matched
+       FROM selector_matches sm
+       JOIN captures c ON sm.capture_id = c.id
+       WHERE c.case_id = ?`
+    )
+    .get(caseId) as { matched: number } | undefined
+  return { matched: row?.matched ?? 0, total }
 }
 
 // --- Row mappers ---

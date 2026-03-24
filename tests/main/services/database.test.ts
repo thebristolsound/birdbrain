@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import {
   initDatabase,
   closeDatabase,
+  getDb,
   listCases,
   getCase,
   createCase,
@@ -19,7 +20,11 @@ import {
   addTagToCapture,
   removeTagFromCapture,
   getTagsForCapture,
-  searchCaptures
+  searchCaptures,
+  getTagCountForCase,
+  getSelectorCoverage,
+  createSelector,
+  matchSelectorAgainstCaptures
 } from '@main/services/database'
 
 describe('database', () => {
@@ -231,6 +236,86 @@ describe('database', () => {
 
       const results = searchCaptures('Unique')
       expect(results).toHaveLength(1)
+    })
+  })
+
+  describe('migration v7 - drop entity tables', () => {
+    it('drops entities and case_analyses tables', () => {
+      const tables = getDb()
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('entities', 'case_analyses')"
+        )
+        .all()
+      expect(tables).toHaveLength(0)
+    })
+
+    it('sets user_version to 7', () => {
+      const version = getDb().pragma('user_version', { simple: true })
+      expect(version).toBe(7)
+    })
+  })
+
+  describe('case metrics', () => {
+    it('counts distinct tags for a case', () => {
+      const c = createCase({ name: 'Tag Count Test' })
+      const cap1 = insertCapture({
+        caseId: c.id,
+        url: 'https://a.com',
+        title: 'A',
+        hash: 'h1',
+        timestamp: new Date().toISOString()
+      })
+      const cap2 = insertCapture({
+        caseId: c.id,
+        url: 'https://b.com',
+        title: 'B',
+        hash: 'h2',
+        timestamp: new Date().toISOString()
+      })
+      const tag1 = createTag({ name: 'important' })
+      const tag2 = createTag({ name: 'reviewed' })
+      addTagToCapture({ captureId: cap1.id, tagId: tag1.id })
+      addTagToCapture({ captureId: cap1.id, tagId: tag2.id })
+      addTagToCapture({ captureId: cap2.id, tagId: tag1.id })
+
+      expect(getTagCountForCase(c.id)).toBe(2)
+    })
+
+    it('returns 0 for case with no tags', () => {
+      const c = createCase({ name: 'No Tags' })
+      expect(getTagCountForCase(c.id)).toBe(0)
+    })
+
+    it('computes selector coverage', () => {
+      const c = createCase({ name: 'Coverage Test' })
+      const cap1 = insertCapture({
+        caseId: c.id,
+        url: 'https://a.com',
+        title: 'A',
+        hash: 'cov1',
+        timestamp: new Date().toISOString()
+      })
+      insertCapture({
+        caseId: c.id,
+        url: 'https://b.com',
+        title: 'B',
+        hash: 'cov2',
+        timestamp: new Date().toISOString()
+      })
+      const sel = createSelector({ caseId: c.id, pattern: 'a\\.com', isRegex: true, label: 'test' })
+      matchSelectorAgainstCaptures(sel.id, [
+        { captureId: cap1.id, text: 'visit https://a.com today' }
+      ])
+
+      const cov = getSelectorCoverage(c.id)
+      expect(cov.total).toBe(2)
+      expect(cov.matched).toBe(1)
+    })
+
+    it('returns zero coverage for empty case', () => {
+      const c = createCase({ name: 'Empty' })
+      const cov = getSelectorCoverage(c.id)
+      expect(cov).toEqual({ matched: 0, total: 0 })
     })
   })
 

@@ -78,8 +78,8 @@ function isUrlBlacklisted(url: string, patterns: string[]): string | null {
 function schedulePostCaptureWork(
   captureId: string,
   caseId: string,
-  source: CaptureSource,
-  url: string,
+  _source: CaptureSource,
+  _url: string,
   textContent: string | undefined
 ): void {
   setImmediate(() => {
@@ -90,13 +90,6 @@ function schedulePostCaptureWork(
     } catch (err) {
       console.error('Selector matching error for capture', captureId, err)
     }
-    emitCaptureEvent({
-      type: 'extraction_done',
-      captureId,
-      source,
-      url,
-      timestamp: new Date().toISOString()
-    })
   })
 }
 

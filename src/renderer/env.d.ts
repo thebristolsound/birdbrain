@@ -32,6 +32,8 @@ interface BirdbrainAPI {
     get(id: string): Promise<Capture | undefined>
     delete(id: string): Promise<boolean>
     getContent(captureId: string, type: 'html' | 'png' | 'txt'): Promise<string | null>
+    download(captureId: string, caseId: string): Promise<{ ok: boolean; data?: string; error?: string }>
+    openExternal(url: string): Promise<void>
   }
   tags: {
     list(): Promise<Tag[]>

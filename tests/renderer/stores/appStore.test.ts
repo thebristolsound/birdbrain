@@ -69,8 +69,8 @@ describe('appStore', () => {
 
   describe('setActiveTab', () => {
     it('changes the active case tab', () => {
-      useAppStore.getState().setActiveTab('entities')
-      expect(useAppStore.getState().activeCaseTab).toBe('entities')
+      useAppStore.getState().setActiveTab('selectors')
+      expect(useAppStore.getState().activeCaseTab).toBe('selectors')
     })
   })
 
@@ -89,7 +89,7 @@ describe('appStore', () => {
   describe('navigateToCapture', () => {
     it('switches to captures tab and sets capture id', () => {
       useAppStore.getState().selectCase('case-1')
-      useAppStore.getState().setActiveTab('entities')
+      useAppStore.getState().setActiveTab('selectors')
       useAppStore.getState().navigateToCapture('cap-1')
       const state = useAppStore.getState()
       expect(state.activeCaseTab).toBe('captures')

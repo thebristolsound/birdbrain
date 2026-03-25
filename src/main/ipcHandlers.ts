@@ -106,7 +106,31 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle(IPC_CHANNELS.CAPTURES_OPEN_EXTERNAL, async (_, url: string) => {
-    await shell.openExternal(url)
+    try {
+      let parsed: URL
+      try {
+        parsed = new URL(url)
+      } catch {
+        return {
+          ok: false,
+          error: 'Invalid URL',
+          code: 'INVALID_URL'
+        } as IpcResult
+      }
+
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return {
+          ok: false,
+          error: 'URL protocol not allowed',
+          code: 'INVALID_URL_PROTOCOL'
+        } as IpcResult
+      }
+
+      await shell.openExternal(url)
+      return ipcResult(true)
+    } catch (err) {
+      return ipcError(err)
+    }
   })
 
   // Capture pipeline test

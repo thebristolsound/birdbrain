@@ -86,7 +86,7 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_DOWNLOAD, async (_, captureId: string, caseId: string) => {
+  ipcMain.handle(IPC_CHANNELS.CAPTURES_DOWNLOAD, async (_, captureId: string) => {
     try {
       const capture = db.getCapture(captureId)
       if (!capture) return ipcResult(null)
@@ -95,7 +95,7 @@ export function registerIpcHandlers(): void {
         filters: [{ name: 'HTML', extensions: ['html'] }]
       })
       if (canceled || !filePath) return ipcResult(null)
-      const buffer = storage.readCaptureFile(caseId, captureId, 'html')
+      const buffer = storage.readCaptureFile(capture.caseId, captureId, 'html')
       if (!buffer) return { ok: false, error: 'HTML file not found' }
       const { writeFileSync } = await import('fs')
       writeFileSync(filePath, buffer)

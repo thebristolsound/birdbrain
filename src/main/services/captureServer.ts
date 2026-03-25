@@ -209,7 +209,13 @@ function createApp(): Hono {
       }
 
       const rawSource = (body as any).source
-      source = VALID_CAPTURE_SOURCES.includes(rawSource) ? (rawSource as CaptureSource) : 'auto'
+      if (rawSource === undefined || rawSource === null) {
+        source = 'auto'
+      } else if (VALID_CAPTURE_SOURCES.includes(rawSource)) {
+        source = rawSource as CaptureSource
+      } else {
+        return c.json({ error: `Invalid source: ${rawSource}` }, 400)
+      }
       const { url, title, html, screenshot, timestamp, headers, textContent, matchedSelectors } =
         body as {
           url?: string
@@ -280,8 +286,6 @@ function createApp(): Hono {
           return c.json({ error: 'Case is archived' }, 400)
         }
         caseId = body.caseId
-      } else {
-        return c.json({ error: `Invalid source: ${source}` }, 400)
       }
 
       // Dedup check for manual captures

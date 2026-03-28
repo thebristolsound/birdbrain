@@ -345,6 +345,25 @@ describe('captureServer', () => {
     expect(data.error).toContain('url, html')
   })
 
+  it('returns 400 for unknown source value', async () => {
+    const testCase = createCase({ name: 'Unknown Source Test' })
+    await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
+    await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
+
+    const res = await fetch(`${baseUrl}/api/captures`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source: 'typoed-source',
+        url: 'https://example.com',
+        html: '<html>test</html>'
+      })
+    })
+    expect(res.status).toBe(400)
+    const data = await res.json()
+    expect(data.error).toContain('Invalid source')
+  })
+
   it('defaults source to auto when not provided (backwards compat)', async () => {
     const testCase = createCase({ name: 'Default Source' })
     await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })

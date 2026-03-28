@@ -3,7 +3,6 @@
 // Handles selector matching and inline highlighting
 
 import { freezeDry } from 'freeze-dry'
-import { showSidebar, removeSidebar } from './sidebar'
 import { showToast, updateToast } from './toast'
 
 interface SelectorInfo {
@@ -147,9 +146,6 @@ function highlightMatches(matches: SelectorMatchResult[]): void {
       if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT') {
         return NodeFilter.FILTER_REJECT
       }
-      if (parent.closest(`#birdbrain-selector-sidebar`)) {
-        return NodeFilter.FILTER_REJECT
-      }
       if (parent.classList.contains(HIGHLIGHT_CLASS)) {
         return NodeFilter.FILTER_REJECT
       }
@@ -214,6 +210,8 @@ function highlightMatches(matches: SelectorMatchResult[]): void {
       mark.className = HIGHLIGHT_CLASS
       mark.dataset.matchIndex = String(r.matchIndex)
       mark.textContent = text.slice(r.start, r.end)
+      mark.style.cursor = 'pointer'
+      mark.addEventListener('click', () => {})
       fragment.appendChild(mark)
       lastEnd = r.end
     }
@@ -283,13 +281,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
     // Remove previous highlights
     removeHighlights()
-    removeSidebar()
 
     const matches = matchSelectors(text, selectors)
 
     if (matches.length > 0) {
       highlightMatches(matches)
-      showSidebar(matches)
     }
 
     sendResponse(matches)
@@ -297,7 +293,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message.type === 'CLEAR_HIGHLIGHTS') {
     removeHighlights()
-    removeSidebar()
     sendResponse({ ok: true })
   }
 

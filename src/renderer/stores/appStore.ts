@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { CaptureEvent } from '@shared/types'
 
 export type AppMode = 'dashboard' | 'case-workspace' | 'new-case-wizard'
-export type CaseTab = 'overview' | 'captures' | 'entities' | 'analysis' | 'selectors'
+export type CaseTab = 'overview' | 'captures' | 'selectors'
 
 interface AppState {
   activeCaseId: string | null
@@ -57,13 +57,21 @@ export const useAppStore = create<AppState>((set) => ({
   captureEvents: [],
   captureStats: { successCount: 0, failCount: 0, skipCount: 0 },
 
-  setActiveCaseId: (id) => set({ activeCaseId: id }),
+  setActiveCaseId: (id) => {
+    set({ activeCaseId: id })
+    if (id) {
+      fetch(`http://127.0.0.1:19845/api/cases/${id}/activate`, { method: 'POST' }).catch(() => {})
+    }
+  },
   setSessionActive: (active) => set({ sessionActive: active }),
   setConnectedToExtension: (connected) => set({ connectedToExtension: connected }),
   setSelectedCaptureId: (id) => set({ selectedCaptureId: id }),
   setSearchQuery: (query) => set({ searchQuery: query }),
 
-  selectCase: (id) => set({ activeCaseId: id, appMode: 'case-workspace', selectedCaptureId: null }),
+  selectCase: (id) => {
+    set({ activeCaseId: id, appMode: 'case-workspace', selectedCaptureId: null })
+    fetch(`http://127.0.0.1:19845/api/cases/${id}/activate`, { method: 'POST' }).catch(() => {})
+  },
 
   selectCapture: (id) => set({ selectedCaptureId: id }),
 

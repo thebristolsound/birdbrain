@@ -14,9 +14,6 @@ import type {
   Case,
   Capture,
   Tag,
-  Entity,
-  EntityGraph,
-  CaseAnalysisResult,
   BirdbrainSettings,
   OpenRouterModel,
   ExportOptions,
@@ -58,7 +55,11 @@ const birdbrain = {
     delete: (id: string): Promise<boolean> =>
       unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_DELETE, id)),
     getContent: (captureId: string, type: 'html' | 'png' | 'txt'): Promise<string | null> =>
-      ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_GET_CONTENT, captureId, type)
+      ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_GET_CONTENT, captureId, type),
+    download: (captureId: string): Promise<unknown> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_DOWNLOAD, captureId),
+    openExternal: (url: string): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_OPEN_EXTERNAL, url)
   },
   tags: {
     list: (): Promise<Tag[]> => ipcRenderer.invoke(IPC_CHANNELS.TAGS_LIST),
@@ -72,7 +73,9 @@ const birdbrain = {
     removeFromCapture: (params: CaptureTagParams): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.TAGS_REMOVE_FROM_CAPTURE, params),
     getForCapture: (captureId: string): Promise<Tag[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, captureId)
+      ipcRenderer.invoke(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, captureId),
+    countForCase: (caseId: string): Promise<number> =>
+      ipcRenderer.invoke(IPC_CHANNELS.TAGS_COUNT_FOR_CASE, caseId)
   },
   selectors: {
     list: (caseId: string): Promise<Selector[]> =>
@@ -89,7 +92,9 @@ const birdbrain = {
     matchCounts: (caseId: string): Promise<Record<string, number>> =>
       ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_MATCH_COUNTS, caseId),
     matchingCaptures: (caseId: string, selectorIds: string[]): Promise<string[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_MATCHING_CAPTURES, caseId, selectorIds)
+      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_MATCHING_CAPTURES, caseId, selectorIds),
+    coverage: (caseId: string): Promise<{ matched: number; total: number }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_COVERAGE, caseId)
   },
 
   search: (query: string): Promise<Capture[]> => ipcRenderer.invoke(IPC_CHANNELS.SEARCH, query),
@@ -103,19 +108,6 @@ const birdbrain = {
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_TEST_OPENROUTER, apiKey),
     listModels: (apiKey: string): Promise<OpenRouterModel[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_LIST_MODELS, apiKey)
-  },
-
-  ai: {
-    extractEntities: (captureId: string): Promise<Entity[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.AI_EXTRACT_ENTITIES, captureId),
-    getEntities: (captureId: string): Promise<Entity[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.AI_GET_ENTITIES, captureId),
-    buildGraph: (caseId: string): Promise<EntityGraph> =>
-      ipcRenderer.invoke(IPC_CHANNELS.AI_BUILD_GRAPH, caseId),
-    analyzeCase: (caseId: string): Promise<CaseAnalysisResult> =>
-      ipcRenderer.invoke(IPC_CHANNELS.AI_ANALYZE_CASE, caseId),
-    getAnalysis: (caseId: string): Promise<CaseAnalysisResult | null> =>
-      ipcRenderer.invoke(IPC_CHANNELS.AI_GET_ANALYSIS, caseId)
   },
 
   export: {

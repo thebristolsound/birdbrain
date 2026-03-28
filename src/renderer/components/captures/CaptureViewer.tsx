@@ -3,7 +3,7 @@ import { useAppStore } from '@renderer/stores/appStore'
 import { useCaptures } from '@renderer/hooks/useCaptures'
 import { useTags } from '@renderer/hooks/useTags'
 import { TagBadge } from '@renderer/components/tags/TagBadge'
-import type { Capture, Tag, Entity } from '@shared/types'
+import type { Capture, Tag } from '@shared/types'
 import {
   ChevronLeft,
   ChevronRight,
@@ -16,21 +16,18 @@ import {
   Code,
   FileText,
   Info,
-  Fingerprint,
-  Sparkles,
   Tag as TagIcon,
   Plus
 } from 'lucide-react'
 
-type ViewTab = 'screenshot' | 'page' | 'source' | 'text' | 'metadata' | 'entities'
+type ViewTab = 'screenshot' | 'page' | 'source' | 'text' | 'metadata'
 
 const TAB_ICONS: Record<ViewTab, typeof Image> = {
   screenshot: Image,
   page: Globe,
   source: Code,
   text: FileText,
-  metadata: Info,
-  entities: Fingerprint
+  metadata: Info
 }
 
 const TAB_LABELS: Record<ViewTab, string> = {
@@ -38,8 +35,7 @@ const TAB_LABELS: Record<ViewTab, string> = {
   page: 'Page',
   source: 'Source',
   text: 'Text',
-  metadata: 'Metadata',
-  entities: 'Entities'
+  metadata: 'Metadata'
 }
 
 function formatViewerTimestamp(ts: string): string {
@@ -61,23 +57,12 @@ export function CaptureViewer() {
   const [content, setContent] = useState<string | null>(null)
   const [captureTags, setCaptureTags] = useState<Tag[]>([])
   const [showTagMenu, setShowTagMenu] = useState(false)
-  const [entities, setEntities] = useState<Entity[]>([])
-  const [extracting, setExtracting] = useState(false)
-  const [extractionError, setExtractionError] = useState<string | null>(null)
-  const [entityFilter, setEntityFilter] = useState<string>('all')
-  const [minConfidence, setMinConfidence] = useState(0.5)
-
-  useEffect(() => {
-    window.birdbrain.settings.get().then((s) => {
-      setMinConfidence(s.minEntityConfidence ?? 0.5)
-    })
-  }, [])
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   useEffect(() => {
     if (selectedCaptureId) {
       window.birdbrain.captures.get(selectedCaptureId).then((c) => setCapture(c ?? null))
       getForCapture(selectedCaptureId).then(setCaptureTags)
-      window.birdbrain.ai.getEntities(selectedCaptureId).then(setEntities)
     }
   }, [selectedCaptureId, getForCapture])
 
@@ -113,6 +98,30 @@ export function CaptureViewer() {
     [selectedCaptureId, captureTags, addToCapture, removeFromCapture, getForCapture]
   )
 
+  const handleDownload = async () => {
+    if (!selectedCaptureId) return
+    await window.birdbrain.captures.download(selectedCaptureId)
+  }
+
+  const handleOpenExternal = async () => {
+    if (!capture) return
+    await window.birdbrain.captures.openExternal(capture.url)
+  }
+
+  const handleDelete = async () => {
+    if (!selectedCaptureId || !activeCaseId) return
+    const deletedId = selectedCaptureId
+    await window.birdbrain.captures.delete(deletedId)
+    setShowDeleteConfirm(false)
+    // Navigate away: pick sibling capture or clear selection
+    const remaining = captures.filter((c) => c.id !== deletedId)
+    if (remaining.length > 0) {
+      useAppStore.getState().selectCapture(remaining[0].id)
+    } else {
+      useAppStore.getState().setSelectedCaptureId(null)
+    }
+  }
+
   // Navigation
   const currentIndex = captures.findIndex((c) => c.id === selectedCaptureId)
   const { selectCapture } = useAppStore()
@@ -143,7 +152,7 @@ export function CaptureViewer() {
     )
   }
 
-  const tabs: ViewTab[] = ['screenshot', 'page', 'source', 'text', 'metadata', 'entities']
+  const tabs: ViewTab[] = ['screenshot', 'page', 'source', 'text', 'metadata']
 
   let hostname = ''
   try {
@@ -191,16 +200,25 @@ export function CaptureViewer() {
             <ShieldCheck className="h-3 w-3" />
             Verified
           </span>
-          <button className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-white/[0.06] hover:text-slate-300">
-            {/* TODO: download handler */}
+          <button
+            onClick={handleDownload}
+            title="Download capture"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-white/[0.06] hover:text-slate-300"
+          >
             <Download className="h-3.5 w-3.5" />
           </button>
-          <button className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-white/[0.06] hover:text-slate-300">
-            {/* TODO: open external handler */}
+          <button
+            onClick={handleOpenExternal}
+            title="Open URL in browser"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-white/[0.06] hover:text-slate-300"
+          >
             <ExternalLink className="h-3.5 w-3.5" />
           </button>
-          <button className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-white/[0.06] hover:text-red-400">
-            {/* TODO: delete handler */}
+          <button
+            onClick={() => setShowDeleteConfirm(true)}
+            title="Delete capture"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-white/[0.06] hover:text-red-400"
+          >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -269,83 +287,6 @@ export function CaptureViewer() {
             )}
           </div>
         )}
-        {activeTab === 'entities' && (
-          <div>
-            {extractionError && (
-              <div className="mb-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-400">
-                {extractionError}
-              </div>
-            )}
-            {entities.length === 0 && !extracting && !extractionError && (
-              <p className="text-center text-sm text-slate-500">
-                No entities extracted yet. Click &quot;Extract Entities&quot; to analyze this
-                capture.
-              </p>
-            )}
-            {entities.length > 0 && (
-              <div className="mb-3 flex items-center gap-3">
-                <select
-                  value={entityFilter}
-                  onChange={(e) => setEntityFilter(e.target.value)}
-                  className="rounded-lg border border-white/[0.06] bg-white/[0.03] px-2 py-1 text-xs text-slate-300"
-                >
-                  <option value="all">All types</option>
-                  {[...new Set(entities.map((e) => e.type))].map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </select>
-                <span className="text-xs text-slate-500">
-                  {entities.filter((e) => (e.confidence ?? 0) >= minConfidence).length} of{' '}
-                  {entities.length} entities
-                </span>
-              </div>
-            )}
-            {entities.length > 0 && (
-              <div className="space-y-1">
-                {entities
-                  .filter((e) => (e.confidence ?? 0) >= minConfidence)
-                  .filter((e) => entityFilter === 'all' || e.type === entityFilter)
-                  .map((entity) => (
-                    <div
-                      key={entity.id}
-                      className="flex items-center gap-3 rounded-lg bg-white/[0.03] border border-white/[0.06] px-3 py-2"
-                    >
-                      <span className="w-24 shrink-0 rounded-md bg-white/[0.06] px-2 py-0.5 text-center text-xs text-slate-400">
-                        {entity.type}
-                      </span>
-                      <span className="flex-1 text-sm font-medium text-slate-200">
-                        {entity.value}
-                      </span>
-                      {entity.confidence !== undefined && (
-                        <div className="flex items-center gap-1">
-                          <div className="h-1.5 w-16 rounded-full bg-white/[0.06]">
-                            <div
-                              className="h-full rounded-full bg-indigo-500"
-                              style={{ width: `${entity.confidence * 100}%` }}
-                            />
-                          </div>
-                          <span className="text-xs text-slate-500">
-                            {Math.round(entity.confidence * 100)}%
-                          </span>
-                        </div>
-                      )}
-                      <span
-                        className={`shrink-0 rounded-md px-1.5 py-0.5 text-xs ${
-                          entity.source === 'rule'
-                            ? 'bg-emerald-500/10 text-emerald-400'
-                            : 'bg-blue-500/10 text-blue-400'
-                        }`}
-                      >
-                        {entity.source === 'rule' ? 'Rule' : 'AI'}
-                      </span>
-                    </div>
-                  ))}
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {/* C) Bottom panel */}
@@ -365,41 +306,12 @@ export function CaptureViewer() {
               >
                 <Icon className="h-3.5 w-3.5" />
                 {TAB_LABELS[tab]}
-                {tab === 'entities' && entities.length > 0 && (
-                  <span className="ml-0.5 rounded-full bg-indigo-500/20 px-1.5 text-[10px] text-indigo-400">
-                    {entities.length}
-                  </span>
-                )}
                 {isActive && (
                   <span className="absolute bottom-0 left-1/2 h-0.5 w-6 -translate-x-1/2 rounded-full bg-indigo-400" />
                 )}
               </button>
             )
           })}
-
-          {/* Extract Entities button */}
-          <button
-            onClick={async () => {
-              if (!selectedCaptureId) return
-              setExtracting(true)
-              setExtractionError(null)
-              try {
-                const result = await window.birdbrain.ai.extractEntities(selectedCaptureId)
-                setEntities(result)
-              } catch (err) {
-                const message = err instanceof Error ? err.message : String(err)
-                console.error('Extraction failed:', err)
-                setExtractionError(message)
-              } finally {
-                setExtracting(false)
-              }
-            }}
-            disabled={extracting}
-            className="ml-auto flex items-center gap-1.5 rounded-lg border border-indigo-500/30 bg-indigo-500/15 px-2.5 py-1 text-[11px] font-medium text-indigo-300 glow-indigo-btn hover:bg-indigo-500/25 disabled:opacity-50"
-          >
-            <Sparkles className="h-3 w-3" />
-            {extracting ? 'Extracting...' : entities.length > 0 ? 'Re-extract' : 'Extract Entities'}
-          </button>
         </div>
 
         {/* Tag bar */}
@@ -455,6 +367,34 @@ export function CaptureViewer() {
           <span className="text-[11px] text-slate-700">← →</span>
         </div>
       </div>
+
+      {showDeleteConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+          onClick={() => setShowDeleteConfirm(false)}
+        >
+          <div className="neu-card w-80 rounded-2xl p-5" onClick={(e) => e.stopPropagation()}>
+            <h3 className="mb-2 text-sm font-semibold text-white">Delete Capture?</h3>
+            <p className="mb-4 text-xs text-slate-400">
+              This will permanently remove the capture and its files. This cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="rounded px-3 py-1.5 text-sm text-slate-400 hover:text-slate-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-500"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }

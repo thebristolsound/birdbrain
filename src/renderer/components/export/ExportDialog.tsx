@@ -8,12 +8,10 @@ interface ExportDialogProps {
 }
 
 export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
-  const [format, setFormat] = useState<'html' | 'pdf'>('html')
+  const format = 'html' as const
   const [investigatorName, setInvestigatorName] = useState('')
   const [include, setInclude] = useState({
     captures: true,
-    entities: true,
-    aiAnalysis: true,
     screenshots: true,
     auditTrail: true
   })
@@ -22,7 +20,7 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
 
   const handleExport = async () => {
     // Use a default path for now (proper save dialog would need electron dialog IPC)
-    const ext = format === 'pdf' ? 'pdf' : 'html'
+    const ext = 'html'
     const safeName = caseName.replace(/[^a-zA-Z0-9-_]/g, '_')
     const outputPath = `${safeName}_report.${ext}`
 
@@ -57,25 +55,6 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
       <div className="neu-card w-[28rem] rounded-2xl p-6" onClick={(e) => e.stopPropagation()}>
         <h2 className="mb-4 text-lg font-semibold text-white">Export Case</h2>
 
-        {/* Format */}
-        <div className="mb-4">
-          <label className="mb-1 block text-sm text-slate-400">Format</label>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setFormat('html')}
-              className={`rounded px-4 py-2 text-sm ${format === 'html' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400'}`}
-            >
-              HTML
-            </button>
-            <button
-              onClick={() => setFormat('pdf')}
-              className={`rounded px-4 py-2 text-sm ${format === 'pdf' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400'}`}
-            >
-              PDF
-            </button>
-          </div>
-        </div>
-
         {/* Include checkboxes */}
         <div className="mb-4">
           <label className="mb-2 block text-sm text-slate-400">Include</label>
@@ -83,8 +62,6 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
             {(
               [
                 ['captures', 'Captures'],
-                ['entities', 'Entities'],
-                ['aiAnalysis', 'AI Analysis'],
                 ['screenshots', 'Screenshots'],
                 ['auditTrail', 'Audit Trail']
               ] as const

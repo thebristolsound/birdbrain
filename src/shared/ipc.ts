@@ -14,6 +14,8 @@ export const IPC_CHANNELS = {
   CAPTURES_GET: 'captures:get',
   CAPTURES_DELETE: 'captures:delete',
   CAPTURES_GET_CONTENT: 'captures:getContent',
+  CAPTURES_DOWNLOAD: 'captures:download',
+  CAPTURES_OPEN_EXTERNAL: 'captures:openExternal',
 
   // Tags
   TAGS_LIST: 'tags:list',
@@ -23,6 +25,7 @@ export const IPC_CHANNELS = {
   TAGS_ADD_TO_CAPTURE: 'tags:addToCapture',
   TAGS_REMOVE_FROM_CAPTURE: 'tags:removeFromCapture',
   TAGS_GET_FOR_CAPTURE: 'tags:getForCapture',
+  TAGS_COUNT_FOR_CASE: 'tags:countForCase',
 
   // Search
   SEARCH: 'search:query',
@@ -33,13 +36,6 @@ export const IPC_CHANNELS = {
   SETTINGS_RESET: 'settings:reset',
   SETTINGS_TEST_OPENROUTER: 'settings:testOpenRouter',
   SETTINGS_LIST_MODELS: 'settings:listModels',
-
-  // AI
-  AI_EXTRACT_ENTITIES: 'ai:extractEntities',
-  AI_GET_ENTITIES: 'ai:getEntities',
-  AI_BUILD_GRAPH: 'ai:buildGraph',
-  AI_ANALYZE_CASE: 'ai:analyzeCase',
-  AI_GET_ANALYSIS: 'ai:getAnalysis',
 
   // Export
   EXPORT_GENERATE: 'export:generate',
@@ -53,9 +49,9 @@ export const IPC_CHANNELS = {
   SELECTORS_LIST_ACTIVE: 'selectors:listActive',
   SELECTORS_MATCH_COUNTS: 'selectors:matchCounts',
   SELECTORS_MATCHING_CAPTURES: 'selectors:matchingCaptures',
+  SELECTORS_COVERAGE: 'selectors:coverage',
 
   // Events (main -> renderer)
-  EXTRACTION_COMPLETE: 'event:extractionComplete',
   EXPORT_PROGRESS: 'event:exportProgress',
   NEW_CAPTURE: 'event:newCapture',
   SESSION_STATE_CHANGED: 'event:sessionStateChanged',

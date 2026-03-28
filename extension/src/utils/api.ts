@@ -140,17 +140,3 @@ export async function checkConnection(): Promise<boolean> {
     return false
   }
 }
-
-export interface EntityTypeSummary {
-  type: string
-  count: number
-  color: string
-}
-
-export async function getEntitySummary(caseId: string): Promise<EntityTypeSummary[]> {
-  try {
-    return await request(`/api/cases/${caseId}/entities/summary`)
-  } catch {
-    return []
-  }
-}

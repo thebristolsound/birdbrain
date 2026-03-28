@@ -22,7 +22,6 @@ describe('settings', () => {
     const settings = getSettings()
     expect(settings.openRouterApiKey).toBeNull()
     expect(settings.defaultModel).toBe('anthropic/claude-sonnet-4')
-    expect(settings.autoExtractEntities).toBe(false)
     expect(settings.captureScreenshots).toBe(true)
     expect(settings.captureHtml).toBe(true)
     expect(settings.dedupeWindowSeconds).toBe(60)
@@ -30,10 +29,9 @@ describe('settings', () => {
   })
 
   it('updates settings and persists them', () => {
-    updateSettings({ openRouterApiKey: 'sk-test-123', autoExtractEntities: true })
+    updateSettings({ openRouterApiKey: 'sk-test-123' })
     const settings = getSettings()
     expect(settings.openRouterApiKey).toBe('sk-test-123')
-    expect(settings.autoExtractEntities).toBe(true)
     // Other defaults remain
     expect(settings.captureScreenshots).toBe(true)
     expect(settings.dedupeWindowSeconds).toBe(60)

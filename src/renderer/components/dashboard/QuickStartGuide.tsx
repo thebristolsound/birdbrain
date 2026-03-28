@@ -1,4 +1,4 @@
-import { Compass, Crosshair, Camera, Brain, FileOutput, Check } from 'lucide-react'
+import { Compass, Crosshair, Camera, Tags, FileOutput, Check } from 'lucide-react'
 
 const steps = [
   {
@@ -24,12 +24,12 @@ const steps = [
   {
     number: 3,
     delay: 'd9',
-    icon: Brain,
+    icon: Tags,
     bg: 'bg-sky-950/50 border border-sky-800/30',
     iconColor: 'text-sky-400',
-    title: 'Analyze Entities',
+    title: 'Review & Tag',
     description:
-      'AI-powered entity extraction builds relationship graphs and identifies clusters automatically.'
+      'Organize captures with tags. Selectors automatically match patterns across your evidence.'
   },
   {
     number: 4,
@@ -39,7 +39,7 @@ const steps = [
     iconColor: 'text-indigo-400',
     title: 'Export Reports',
     description:
-      'Generate structured intelligence reports with entity summaries, timelines, and relationship maps.',
+      'Generate structured intelligence reports with capture timelines, screenshots, and audit trails.',
     style: { animationDelay: '1s' }
   }
 ]

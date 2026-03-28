@@ -2,9 +2,6 @@ import type {
   Case,
   Capture,
   Tag,
-  Entity,
-  EntityGraph,
-  CaseAnalysisResult,
   BirdbrainSettings,
   OpenRouterModel,
   ExportOptions,
@@ -35,6 +32,11 @@ interface BirdbrainAPI {
     get(id: string): Promise<Capture | undefined>
     delete(id: string): Promise<boolean>
     getContent(captureId: string, type: 'html' | 'png' | 'txt'): Promise<string | null>
+    download(
+      captureId: string,
+      caseId: string
+    ): Promise<{ ok: boolean; data?: string; error?: string }>
+    openExternal(url: string): Promise<void>
   }
   tags: {
     list(): Promise<Tag[]>
@@ -44,6 +46,7 @@ interface BirdbrainAPI {
     addToCapture(params: CaptureTagParams): Promise<void>
     removeFromCapture(params: CaptureTagParams): Promise<void>
     getForCapture(captureId: string): Promise<Tag[]>
+    countForCase(caseId: string): Promise<number>
   }
   selectors: {
     list(caseId: string): Promise<Selector[]>
@@ -54,6 +57,7 @@ interface BirdbrainAPI {
     listActive(): Promise<ActiveCaseSelectors[]>
     matchCounts(caseId: string): Promise<Record<string, number>>
     matchingCaptures(caseId: string, selectorIds: string[]): Promise<string[]>
+    coverage(caseId: string): Promise<{ matched: number; total: number }>
   }
   search(query: string): Promise<Capture[]>
   settings: {
@@ -62,13 +66,6 @@ interface BirdbrainAPI {
     reset(): Promise<BirdbrainSettings>
     testOpenRouter(apiKey: string): Promise<boolean>
     listModels(apiKey: string): Promise<OpenRouterModel[]>
-  }
-  ai: {
-    extractEntities(captureId: string): Promise<Entity[]>
-    getEntities(captureId: string): Promise<Entity[]>
-    buildGraph(caseId: string): Promise<EntityGraph>
-    analyzeCase(caseId: string): Promise<CaseAnalysisResult>
-    getAnalysis(caseId: string): Promise<CaseAnalysisResult | null>
   }
   export: {
     generateReport(caseId: string, options: ExportOptions): Promise<void>

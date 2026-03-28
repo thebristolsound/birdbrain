@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { ipcMain, dialog, shell } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
 import type {
   CreateCaseParams,
@@ -13,9 +13,6 @@ import * as db from '@main/services/database'
 import * as storage from '@main/services/storage'
 import * as settings from '@main/services/settings'
 import * as openrouter from '@main/services/openrouter'
-import { extractEntities } from '@main/services/ai/entityExtraction'
-import { buildEntityGraph } from '@main/services/ai/relationships'
-import { analyzeCase, getCachedAnalysis } from '@main/services/ai/patterns'
 import { generateReport } from '@main/services/export'
 import { CAPTURE_SERVER_PORT } from '@main/services/captureServer'
 import type { BirdbrainSettings, ExportOptions } from '@shared/types'
@@ -77,7 +74,60 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.CAPTURES_GET, (_, id: string) => db.getCapture(id))
   ipcMain.handle(IPC_CHANNELS.CAPTURES_DELETE, (_, id: string) => {
     try {
-      return ipcResult(db.deleteCapture(id))
+      const capture = db.getCapture(id)
+      if (!capture) return ipcResult(false)
+      const deleted = db.deleteCapture(id)
+      if (deleted) {
+        storage.deleteCaptureFiles(capture.caseId, id)
+      }
+      return ipcResult(deleted)
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.CAPTURES_DOWNLOAD, async (_, captureId: string) => {
+    try {
+      const capture = db.getCapture(captureId)
+      if (!capture) return ipcResult(null)
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        defaultPath: `${capture.title || 'capture'}.html`,
+        filters: [{ name: 'HTML', extensions: ['html'] }]
+      })
+      if (canceled || !filePath) return ipcResult(null)
+      const buffer = storage.readCaptureFile(capture.caseId, captureId, 'html')
+      if (!buffer) return { ok: false, error: 'HTML file not found' }
+      const { writeFileSync } = await import('fs')
+      writeFileSync(filePath, buffer)
+      return ipcResult(filePath)
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.CAPTURES_OPEN_EXTERNAL, async (_, url: string) => {
+    try {
+      let parsed: URL
+      try {
+        parsed = new URL(url)
+      } catch {
+        return {
+          ok: false,
+          error: 'Invalid URL',
+          code: 'INVALID_URL'
+        } as IpcResult
+      }
+
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return {
+          ok: false,
+          error: 'URL protocol not allowed',
+          code: 'INVALID_URL_PROTOCOL'
+        } as IpcResult
+      }
+
+      await shell.openExternal(url)
+      return ipcResult(true)
     } catch (err) {
       return ipcError(err)
     }
@@ -135,6 +185,9 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, (_, captureId: string) =>
     db.getTagsForCapture(captureId)
   )
+  ipcMain.handle(IPC_CHANNELS.TAGS_COUNT_FOR_CASE, (_, caseId: string) =>
+    db.getTagCountForCase(caseId)
+  )
 
   // Selectors
   ipcMain.handle(IPC_CHANNELS.SELECTORS_LIST, (_, caseId: string) => db.listSelectors(caseId))
@@ -172,6 +225,9 @@ export function registerIpcHandlers(): void {
     (_, caseId: string, selectorIds: string[]) =>
       db.getCapturesMatchingSelectors(caseId, selectorIds)
   )
+  ipcMain.handle(IPC_CHANNELS.SELECTORS_COVERAGE, (_, caseId: string) =>
+    db.getSelectorCoverage(caseId)
+  )
 
   // Captures - get content
   ipcMain.handle(
@@ -201,17 +257,6 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.SETTINGS_LIST_MODELS, (_, apiKey: string) =>
     openrouter.listModels(apiKey)
   )
-
-  // AI
-  ipcMain.handle(IPC_CHANNELS.AI_EXTRACT_ENTITIES, (_, captureId: string) =>
-    extractEntities(captureId)
-  )
-  ipcMain.handle(IPC_CHANNELS.AI_GET_ENTITIES, (_, captureId: string) =>
-    db.getEntitiesByCapture(captureId)
-  )
-  ipcMain.handle(IPC_CHANNELS.AI_BUILD_GRAPH, (_, caseId: string) => buildEntityGraph(caseId))
-  ipcMain.handle(IPC_CHANNELS.AI_ANALYZE_CASE, (_, caseId: string) => analyzeCase(caseId))
-  ipcMain.handle(IPC_CHANNELS.AI_GET_ANALYSIS, (_, caseId: string) => getCachedAnalysis(caseId))
 
   // Export
   ipcMain.handle(IPC_CHANNELS.EXPORT_GENERATE, (_, caseId: string, options: ExportOptions) =>

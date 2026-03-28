@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Activity, CheckCircle2, XCircle, AlertTriangle, Loader2, Zap } from 'lucide-react'
+import { Activity, CheckCircle2, XCircle, AlertTriangle, Loader2 } from 'lucide-react'
 import { useAppStore } from '@renderer/stores/appStore'
 import type { CaptureEvent } from '@shared/types'
 
@@ -13,8 +13,6 @@ function EventIcon({ type }: { type: CaptureEvent['type'] }) {
       return <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
     case 'received':
       return <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" />
-    case 'extraction_done':
-      return <Zap className="h-3.5 w-3.5 text-indigo-400" />
   }
 }
 

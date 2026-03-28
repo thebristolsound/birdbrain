@@ -1,14 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import type { Case } from '@shared/types'
-import {
-  Camera,
-  Fingerprint,
-  ArrowUpRight,
-  ShieldAlert,
-  Users,
-  FolderOpen,
-  MoreVertical
-} from 'lucide-react'
+import { Camera, ArrowUpRight, ShieldAlert, Users, FolderOpen, MoreVertical } from 'lucide-react'
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -48,7 +40,6 @@ interface CaseCardProps {
   caseData: Case
   isRecording: boolean
   captureCount: number
-  entityCount: number
   onClick: () => void
   onRename: (id: string, name: string) => void
   onDelete: (id: string) => void
@@ -59,7 +50,6 @@ export function CaseCard({
   caseData,
   isRecording,
   captureCount,
-  entityCount,
   onClick,
   onRename,
   onDelete,
@@ -159,10 +149,6 @@ export function CaseCard({
         <div className="flex items-center gap-1.5">
           <Camera className="h-3 w-3 text-slate-600" />
           <span className="text-[11px] font-bold text-slate-300">{captureCount}</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <Fingerprint className="h-3 w-3 text-slate-600" />
-          <span className="text-[11px] font-bold text-slate-300">{entityCount}</span>
         </div>
       </div>
 

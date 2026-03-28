@@ -5,17 +5,13 @@ import { useCaptures } from '@renderer/hooks/useCaptures'
 import { CaseOverview } from '@renderer/components/cases/CaseOverview'
 import { CaptureViewer } from '@renderer/components/captures/CaptureViewer'
 import { CaptureList } from '@renderer/components/captures/CaptureList'
-import { CaseAnalysis } from '@renderer/components/analysis/CaseAnalysis'
 import { SelectorsOverview } from '@renderer/components/selectors/SelectorsOverview'
-import { CaseEntities } from '@renderer/components/cases/CaseEntities'
 import { useSelectorFilters } from '@renderer/hooks/useSelectorFilters'
-import { LayoutDashboard, Layers, Fingerprint, Brain, Crosshair } from 'lucide-react'
+import { LayoutDashboard, Layers, Crosshair } from 'lucide-react'
 
 const tabs: { id: CaseTab; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'captures', label: 'Captures', icon: Layers },
-  { id: 'entities', label: 'Entities', icon: Fingerprint },
-  { id: 'analysis', label: 'Analysis', icon: Brain },
   { id: 'selectors', label: 'Selectors', icon: Crosshair }
 ]
 
@@ -83,14 +79,9 @@ export function CaseWorkspace() {
             <CaptureViewer />
           </div>
         </div>
-      ) : activeCaseTab === 'analysis' ? (
-        <div className="flex flex-1 overflow-hidden">
-          <CaseAnalysis />
-        </div>
       ) : (
         <div className="flex-1 overflow-auto p-6">
           {activeCaseTab === 'overview' && <CaseOverview />}
-          {activeCaseTab === 'entities' && <CaseEntities />}
           {activeCaseTab === 'selectors' && <SelectorsOverview />}
         </div>
       )}

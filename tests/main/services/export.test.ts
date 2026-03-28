@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync, readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { initDatabase, closeDatabase, createCase, insertCapture, insertEntity } from '../../../src/main/services/database'
+import { initDatabase, closeDatabase, createCase, insertCapture } from '../../../src/main/services/database'
 import { initStorage, saveCapture } from '../../../src/main/services/storage'
 import { hashContent } from '../../../src/main/services/hash'
 import { verifyCaptures, generateReport } from '../../../src/main/services/export'
@@ -88,21 +88,11 @@ describe('export', () => {
       htmlPath: join(caseId, `${captureId}.html`)
     })
 
-    insertEntity({ captureId: insertCapture({
-      caseId,
-      url: 'https://example2.com',
-      title: 'Page 2',
-      hash: 'hash2',
-      timestamp: '2024-01-02T00:00:00Z'
-    }).id, type: 'person', value: 'John Smith', confidence: 0.95 })
-
     const outputPath = join(tempDir, 'report.html')
     const options: ExportOptions = {
       format: 'html',
       include: {
         captures: true,
-        entities: true,
-        aiAnalysis: false,
         screenshots: false,
         auditTrail: true
       },
@@ -135,8 +125,6 @@ describe('export', () => {
       format: 'html',
       include: {
         captures: true,
-        entities: false,
-        aiAnalysis: false,
         screenshots: false,
         auditTrail: false
       },
@@ -147,7 +135,6 @@ describe('export', () => {
     await generateReport(caseId, options)
     const content = readFileSync(outputPath, 'utf-8')
     expect(content).toContain('Export Test Case')
-    expect(content).not.toContain('Entity Index')
     expect(content).not.toContain('Audit Trail')
   })
 
@@ -163,7 +150,7 @@ describe('export', () => {
     const outputPath = join(tempDir, 'escaped.html')
     await generateReport(caseId, {
       format: 'html',
-      include: { captures: true, entities: false, aiAnalysis: false, screenshots: false, auditTrail: false },
+      include: { captures: true, screenshots: false, auditTrail: false },
       investigatorName: 'Test',
       outputPath
     })

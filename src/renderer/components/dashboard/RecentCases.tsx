@@ -46,7 +46,6 @@ export function RecentCases({
               caseData={c}
               isRecording={sessionActive && c.id === activeCaseId}
               captureCount={0}
-              entityCount={0}
               onClick={() => onSelectCase(c.id)}
               onRename={onRenameCase}
               onDelete={onDeleteCase}

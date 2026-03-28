@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import {
   initDatabase,
   closeDatabase,
+  getDb,
   listCases,
   getCase,
   createCase,
@@ -20,10 +21,10 @@ import {
   removeTagFromCapture,
   getTagsForCapture,
   searchCaptures,
-  getEntitiesByCapture,
-  insertEntity,
-  insertEntitiesBatch,
-  deleteEntitiesByCapture
+  getTagCountForCase,
+  getSelectorCoverage,
+  createSelector,
+  matchSelectorAgainstCaptures
 } from '@main/services/database'
 
 describe('database', () => {
@@ -238,112 +239,84 @@ describe('database', () => {
     })
   })
 
-  describe('entities', () => {
-    it('inserts and retrieves entities for a capture', () => {
-      const c = createCase({ name: 'Test' })
-      const cap = insertCapture({
-        caseId: c.id,
-        url: 'https://example.com',
-        title: 'Example',
-        hash: 'h1',
-        timestamp: new Date().toISOString()
-      })
-
-      insertEntity({
-        captureId: cap.id,
-        type: 'person',
-        value: 'John Smith',
-        context: 'John Smith is the CEO',
-        confidence: 0.95
-      })
-
-      const entities = getEntitiesByCapture(cap.id)
-      expect(entities).toHaveLength(1)
-      expect(entities[0].value).toBe('John Smith')
-      expect(entities[0].type).toBe('person')
-      expect(entities[0].confidence).toBe(0.95)
+  describe('migration v7 - drop entity tables', () => {
+    it('drops entities and case_analyses tables', () => {
+      const tables = getDb()
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('entities', 'case_analyses')"
+        )
+        .all()
+      expect(tables).toHaveLength(0)
     })
 
-    it('batch inserts multiple entities in a transaction', () => {
-      const c = createCase({ name: 'Test' })
-      const cap = insertCapture({
-        caseId: c.id,
-        url: 'https://example.com',
-        title: 'Example',
-        hash: 'h1',
-        timestamp: new Date().toISOString()
-      })
-
-      insertEntitiesBatch([
-        { captureId: cap.id, type: 'email', value: 'a@test.com', source: 'rule' },
-        { captureId: cap.id, type: 'domain', value: 'example.com', source: 'rule' },
-        { captureId: cap.id, type: 'person', value: 'Jane Doe', confidence: 0.8 }
-      ])
-
-      const entities = getEntitiesByCapture(cap.id)
-      expect(entities).toHaveLength(3)
-
-      const email = entities.find(e => e.type === 'email')
-      expect(email?.value).toBe('a@test.com')
-      expect(email?.source).toBe('rule')
-
-      // Default source should be 'ai' when not specified
-      const person = entities.find(e => e.type === 'person')
-      expect(person?.value).toBe('Jane Doe')
-      expect(person?.source).toBe('ai')
-      expect(person?.confidence).toBe(0.8)
-    })
-
-    it('batch insert with empty array is a no-op', () => {
-      const c = createCase({ name: 'Test' })
-      const cap = insertCapture({
-        caseId: c.id,
-        url: 'https://example.com',
-        title: 'Example',
-        hash: 'h1',
-        timestamp: new Date().toISOString()
-      })
-
-      insertEntitiesBatch([])
-      expect(getEntitiesByCapture(cap.id)).toHaveLength(0)
-    })
-
-    it('batch insert shares created_at timestamp across all rows', () => {
-      const c = createCase({ name: 'Test' })
-      const cap = insertCapture({
-        caseId: c.id,
-        url: 'https://example.com',
-        title: 'Example',
-        hash: 'h1',
-        timestamp: new Date().toISOString()
-      })
-
-      insertEntitiesBatch([
-        { captureId: cap.id, type: 'email', value: 'a@test.com', source: 'rule' },
-        { captureId: cap.id, type: 'email', value: 'b@test.com', source: 'rule' }
-      ])
-
-      const entities = getEntitiesByCapture(cap.id)
-      expect(entities).toHaveLength(2)
-      expect(entities[0].createdAt).toBe(entities[1].createdAt)
-    })
-
-    it('deletes entities by capture', () => {
-      const c = createCase({ name: 'Test' })
-      const cap = insertCapture({
-        caseId: c.id,
-        url: 'https://example.com',
-        title: 'Example',
-        hash: 'h1',
-        timestamp: new Date().toISOString()
-      })
-
-      insertEntity({ captureId: cap.id, type: 'email', value: 'test@test.com' })
-      insertEntity({ captureId: cap.id, type: 'domain', value: 'example.com' })
-
-      const deleted = deleteEntitiesByCapture(cap.id)
-      expect(deleted).toBe(2)
-      expect(getEntitiesByCapture(cap.id)).toHaveLength(0)
+    it('sets user_version to 7', () => {
+      const version = getDb().pragma('user_version', { simple: true })
+      expect(version).toBe(7)
     })
   })
+
+  describe('case metrics', () => {
+    it('counts distinct tags for a case', () => {
+      const c = createCase({ name: 'Tag Count Test' })
+      const cap1 = insertCapture({
+        caseId: c.id,
+        url: 'https://a.com',
+        title: 'A',
+        hash: 'h1',
+        timestamp: new Date().toISOString()
+      })
+      const cap2 = insertCapture({
+        caseId: c.id,
+        url: 'https://b.com',
+        title: 'B',
+        hash: 'h2',
+        timestamp: new Date().toISOString()
+      })
+      const tag1 = createTag({ name: 'important' })
+      const tag2 = createTag({ name: 'reviewed' })
+      addTagToCapture({ captureId: cap1.id, tagId: tag1.id })
+      addTagToCapture({ captureId: cap1.id, tagId: tag2.id })
+      addTagToCapture({ captureId: cap2.id, tagId: tag1.id })
+
+      expect(getTagCountForCase(c.id)).toBe(2)
+    })
+
+    it('returns 0 for case with no tags', () => {
+      const c = createCase({ name: 'No Tags' })
+      expect(getTagCountForCase(c.id)).toBe(0)
+    })
+
+    it('computes selector coverage', () => {
+      const c = createCase({ name: 'Coverage Test' })
+      const cap1 = insertCapture({
+        caseId: c.id,
+        url: 'https://a.com',
+        title: 'A',
+        hash: 'cov1',
+        timestamp: new Date().toISOString()
+      })
+      insertCapture({
+        caseId: c.id,
+        url: 'https://b.com',
+        title: 'B',
+        hash: 'cov2',
+        timestamp: new Date().toISOString()
+      })
+      const sel = createSelector({ caseId: c.id, pattern: 'a\\.com', isRegex: true, label: 'test' })
+      matchSelectorAgainstCaptures(sel.id, [
+        { captureId: cap1.id, text: 'visit https://a.com today' }
+      ])
+
+      const cov = getSelectorCoverage(c.id)
+      expect(cov.total).toBe(2)
+      expect(cov.matched).toBe(1)
+    })
+
+    it('returns zero coverage for empty case', () => {
+      const c = createCase({ name: 'Empty' })
+      const cov = getSelectorCoverage(c.id)
+      expect(cov).toEqual({ matched: 0, total: 0 })
+    })
+  })
+
 })

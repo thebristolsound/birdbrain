@@ -1,22 +1,12 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import type { BirdbrainSettings, EntityType } from '@shared/types'
+import type { BirdbrainSettings } from '@shared/types'
 
 let settingsPath: string
 
 const DEFAULT_SETTINGS: BirdbrainSettings = {
   openRouterApiKey: null,
   defaultModel: 'anthropic/claude-sonnet-4',
-  autoExtractEntities: false,
-  enabledEntityTypes: [
-    'email',
-    'phone',
-    'domain',
-    'ip_address',
-    'username',
-    'crypto_wallet'
-  ] as EntityType[],
-  minEntityConfidence: 0.5,
   captureScreenshots: true,
   captureHtml: true,
   dedupeWindowSeconds: 60,
@@ -24,7 +14,6 @@ const DEFAULT_SETTINGS: BirdbrainSettings = {
   storagePath: '',
   maxStorageMb: null,
   theme: 'dark',
-  sidebarWidth: 300,
   autoCaptureMode: 'notify'
 }
 

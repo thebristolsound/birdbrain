@@ -56,8 +56,8 @@ const birdbrain = {
       unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_DELETE, id)),
     getContent: (captureId: string, type: 'html' | 'png' | 'txt'): Promise<string | null> =>
       ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_GET_CONTENT, captureId, type),
-    download: (captureId: string, caseId: string): Promise<unknown> =>
-      ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_DOWNLOAD, captureId, caseId),
+    download: (captureId: string): Promise<unknown> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_DOWNLOAD, captureId),
     openExternal: (url: string): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_OPEN_EXTERNAL, url)
   },

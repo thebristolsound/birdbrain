@@ -99,8 +99,8 @@ export function CaptureViewer() {
   )
 
   const handleDownload = async () => {
-    if (!selectedCaptureId || !activeCaseId) return
-    await window.birdbrain.captures.download(selectedCaptureId, activeCaseId)
+    if (!selectedCaptureId) return
+    await window.birdbrain.captures.download(selectedCaptureId)
   }
 
   const handleOpenExternal = async () => {

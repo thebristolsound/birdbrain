@@ -1,19 +1,35 @@
+import { useState } from 'react'
 import { useAppStore } from '@renderer/stores/appStore'
 import { useCases } from '@renderer/hooks/useCases'
+import { CAPTURE_SERVER_BASE_URL } from '@shared/constants'
 
 export function SessionControls() {
   const { sessionActive, setSessionActive, activeCaseId, setActiveCaseId, connectedToExtension } =
     useAppStore()
   const { cases } = useCases()
+  const [toggling, setToggling] = useState(false)
 
   if (!connectedToExtension) return null
 
   const activeCase = cases.find((c) => c.id === activeCaseId)
 
+  const handleCaseSelect = async (id: string | null) => {
+    setActiveCaseId(id)
+    if (id) {
+      try {
+        await fetch(`${CAPTURE_SERVER_BASE_URL}/api/cases/${id}/activate`, { method: 'POST' })
+      } catch (error) {
+        console.error('Failed to activate case on server:', error)
+      }
+    }
+  }
+
   const handleToggleSession = async () => {
+    if (toggling) return
+    setToggling(true)
     try {
       if (sessionActive) {
-        const res = await fetch('http://127.0.0.1:19845/api/session/stop', { method: 'POST' })
+        const res = await fetch(`${CAPTURE_SERVER_BASE_URL}/api/session/stop`, { method: 'POST' })
         if (!res.ok) {
           console.error('Failed to stop session:', res.status)
           return
@@ -22,14 +38,16 @@ export function SessionControls() {
       } else {
         if (!activeCaseId) return
         const activateRes = await fetch(
-          `http://127.0.0.1:19845/api/cases/${activeCaseId}/activate`,
+          `${CAPTURE_SERVER_BASE_URL}/api/cases/${activeCaseId}/activate`,
           { method: 'POST' }
         )
         if (!activateRes.ok) {
           console.error('Failed to activate case:', activateRes.status)
           return
         }
-        const startRes = await fetch('http://127.0.0.1:19845/api/session/start', { method: 'POST' })
+        const startRes = await fetch(`${CAPTURE_SERVER_BASE_URL}/api/session/start`, {
+          method: 'POST'
+        })
         if (!startRes.ok) {
           console.error('Failed to start session:', startRes.status)
           return
@@ -38,6 +56,8 @@ export function SessionControls() {
       }
     } catch (error) {
       console.error('Failed to toggle session:', error)
+    } finally {
+      setToggling(false)
     }
   }
 
@@ -45,7 +65,7 @@ export function SessionControls() {
     <div className="flex items-center gap-2">
       <select
         value={activeCaseId || ''}
-        onChange={(e) => setActiveCaseId(e.target.value || null)}
+        onChange={(e) => handleCaseSelect(e.target.value || null)}
         className="rounded border border-white/[0.08] bg-slate-800 px-2 py-1 text-xs text-slate-300 outline-none"
       >
         <option value="">Select case...</option>
@@ -63,7 +83,7 @@ export function SessionControls() {
           aria-checked={sessionActive}
           aria-label="Auto-Capture"
           onClick={handleToggleSession}
-          disabled={!activeCaseId}
+          disabled={!activeCaseId || toggling}
           className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-50 ${
             sessionActive ? 'bg-indigo-600' : 'bg-slate-600'
           }`}

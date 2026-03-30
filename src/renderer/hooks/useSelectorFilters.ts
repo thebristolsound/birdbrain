@@ -11,12 +11,22 @@ export function useSelectorFilters(caseId: string | null) {
       return
     }
 
+    let cancelled = false
+
     window.birdbrain.selectors
       .matchingCaptures(caseId, activeSelectorFilters)
-      .then(setFilteredCaptureIds)
-      .catch((err) => {
-        console.error('Failed to fetch matching captures:', err)
-        setFilteredCaptureIds(null)
+      .then((ids) => {
+        if (!cancelled) setFilteredCaptureIds(ids)
       })
+      .catch((err) => {
+        if (!cancelled) {
+          console.error('Failed to fetch matching captures:', err)
+          setFilteredCaptureIds(null)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [caseId, activeSelectorFilters, setFilteredCaptureIds])
 }

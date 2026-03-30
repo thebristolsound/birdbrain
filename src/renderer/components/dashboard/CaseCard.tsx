@@ -5,11 +5,12 @@ import { Camera, ArrowUpRight, ShieldAlert, Users, FolderOpen, MoreVertical } fr
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
   const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'Just now'
   if (mins < 60) return `${mins} min ago`
   const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours} hours ago`
+  if (hours < 24) return `${hours} hour${hours !== 1 ? 's' : ''} ago`
   const days = Math.floor(hours / 24)
-  return `${days} days ago`
+  return `${days} day${days !== 1 ? 's' : ''} ago`
 }
 
 const CASE_ICONS: Record<string, { icon: typeof FolderOpen; bgClass: string; iconClass: string }> =
@@ -39,6 +40,7 @@ const DEFAULT_ICON = {
 interface CaseCardProps {
   caseData: Case
   isRecording: boolean
+  isActive: boolean
   captureCount: number
   onClick: () => void
   onRename: (id: string, name: string) => void
@@ -49,6 +51,7 @@ interface CaseCardProps {
 export function CaseCard({
   caseData,
   isRecording,
+  isActive,
   captureCount,
   onClick,
   onRename,
@@ -112,12 +115,12 @@ export function CaseCard({
             <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
             <span className="text-[9px] font-bold text-red-400">Recording</span>
           </div>
-        ) : (
+        ) : isActive ? (
           <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-950/60 border border-emerald-800/40">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
             <span className="text-[9px] font-bold text-emerald-400">Active</span>
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* Title */}

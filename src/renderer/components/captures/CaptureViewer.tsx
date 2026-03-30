@@ -22,6 +22,8 @@ import {
 
 type ViewTab = 'screenshot' | 'page' | 'source' | 'text' | 'metadata'
 
+const TABS: ViewTab[] = ['screenshot', 'page', 'source', 'text', 'metadata']
+
 const TAB_ICONS: Record<ViewTab, typeof Image> = {
   screenshot: Image,
   page: Globe,
@@ -124,13 +126,13 @@ export function CaptureViewer() {
 
   // Navigation
   const currentIndex = captures.findIndex((c) => c.id === selectedCaptureId)
-  const { selectCapture } = useAppStore()
-  const goPrev = () => {
+  const selectCapture = useAppStore((s) => s.selectCapture)
+  const goPrev = useCallback(() => {
     if (currentIndex > 0) selectCapture(captures[currentIndex - 1].id)
-  }
-  const goNext = () => {
+  }, [currentIndex, captures, selectCapture])
+  const goNext = useCallback(() => {
     if (currentIndex < captures.length - 1) selectCapture(captures[currentIndex + 1].id)
-  }
+  }, [currentIndex, captures, selectCapture])
 
   // Keyboard navigation
   useEffect(() => {
@@ -142,7 +144,7 @@ export function CaptureViewer() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  })
+  }, [goPrev, goNext])
 
   if (!capture) {
     return (
@@ -152,7 +154,7 @@ export function CaptureViewer() {
     )
   }
 
-  const tabs: ViewTab[] = ['screenshot', 'page', 'source', 'text', 'metadata']
+  const tabs = TABS
 
   let hostname = ''
   try {

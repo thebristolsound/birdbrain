@@ -45,7 +45,8 @@ const birdbrain = {
       unwrapIpc<Case>(ipcRenderer.invoke(IPC_CHANNELS.CASES_CREATE, params)),
     update: (params: UpdateCaseParams): Promise<Case | undefined> =>
       unwrapIpc<Case | undefined>(ipcRenderer.invoke(IPC_CHANNELS.CASES_UPDATE, params)),
-    delete: (id: string): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.CASES_DELETE, id)
+    delete: (id: string): Promise<boolean> =>
+      unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.CASES_DELETE, id))
   },
   captures: {
     list: (caseId: string): Promise<Capture[]> =>
@@ -56,10 +57,12 @@ const birdbrain = {
       unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_DELETE, id)),
     getContent: (captureId: string, type: 'html' | 'png' | 'txt'): Promise<string | null> =>
       ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_GET_CONTENT, captureId, type),
-    download: (captureId: string): Promise<unknown> =>
-      ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_DOWNLOAD, captureId),
+    download: (captureId: string): Promise<string | null> =>
+      unwrapIpc<string | null>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_DOWNLOAD, captureId)),
     openExternal: (url: string): Promise<void> =>
-      ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_OPEN_EXTERNAL, url)
+      unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_OPEN_EXTERNAL, url)),
+    countsByCase: (): Promise<Record<string, number>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_COUNTS_BY_CASE)
   },
   tags: {
     list: (): Promise<Tag[]> => ipcRenderer.invoke(IPC_CHANNELS.TAGS_LIST),
@@ -67,11 +70,12 @@ const birdbrain = {
       unwrapIpc<Tag>(ipcRenderer.invoke(IPC_CHANNELS.TAGS_CREATE, params)),
     update: (params: UpdateTagParams): Promise<Tag | undefined> =>
       unwrapIpc<Tag | undefined>(ipcRenderer.invoke(IPC_CHANNELS.TAGS_UPDATE, params)),
-    delete: (id: string): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.TAGS_DELETE, id),
+    delete: (id: string): Promise<boolean> =>
+      unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.TAGS_DELETE, id)),
     addToCapture: (params: CaptureTagParams): Promise<void> =>
-      ipcRenderer.invoke(IPC_CHANNELS.TAGS_ADD_TO_CAPTURE, params),
+      unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.TAGS_ADD_TO_CAPTURE, params)),
     removeFromCapture: (params: CaptureTagParams): Promise<void> =>
-      ipcRenderer.invoke(IPC_CHANNELS.TAGS_REMOVE_FROM_CAPTURE, params),
+      unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.TAGS_REMOVE_FROM_CAPTURE, params)),
     getForCapture: (captureId: string): Promise<Tag[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, captureId),
     countForCase: (caseId: string): Promise<number> =>
@@ -85,8 +89,9 @@ const birdbrain = {
     create: (params: CreateSelectorParams): Promise<Selector> =>
       unwrapIpc<Selector>(ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_CREATE, params)),
     update: (params: UpdateSelectorParams): Promise<Selector | undefined> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_UPDATE, params),
-    delete: (id: string): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_DELETE, id),
+      unwrapIpc<Selector | undefined>(ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_UPDATE, params)),
+    delete: (id: string): Promise<boolean> =>
+      unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_DELETE, id)),
     listActive: (): Promise<ActiveCaseSelectors[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_LIST_ACTIVE),
     matchCounts: (caseId: string): Promise<Record<string, number>> =>
@@ -112,7 +117,7 @@ const birdbrain = {
 
   export: {
     generateReport: (caseId: string, options: ExportOptions): Promise<void> =>
-      ipcRenderer.invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, options)
+      unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, options))
   },
 
   // Event listeners (main -> renderer)

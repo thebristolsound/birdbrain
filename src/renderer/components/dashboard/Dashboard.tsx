@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react'
+import { useRef, useState, useEffect, useCallback } from 'react'
 import { useCases } from '@renderer/hooks/useCases'
 import { useAppStore } from '@renderer/stores/appStore'
 import { HeroSection } from './HeroSection'
@@ -13,6 +13,11 @@ export function Dashboard() {
     useAppStore()
 
   const recentCasesRef = useRef<HTMLDivElement>(null)
+  const [captureCounts, setCaptureCounts] = useState<Record<string, number>>({})
+
+  useEffect(() => {
+    window.birdbrain.captures.countsByCase().then(setCaptureCounts)
+  }, [cases])
 
   const handleOpenRecent = useCallback(() => {
     recentCasesRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -41,6 +46,7 @@ export function Dashboard() {
           cases={cases}
           activeCaseId={activeCaseId}
           sessionActive={sessionActive}
+          captureCounts={captureCounts}
           onSelectCase={selectCase}
           onNewCase={goToNewCaseWizard}
           onRenameCase={handleRenameCase}

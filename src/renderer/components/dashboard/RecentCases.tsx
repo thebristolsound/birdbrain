@@ -6,6 +6,7 @@ interface RecentCasesProps {
   cases: Case[]
   activeCaseId: string | null
   sessionActive: boolean
+  captureCounts: Record<string, number>
   onSelectCase: (id: string) => void
   onNewCase: () => void
   onRenameCase: (id: string, name: string) => void
@@ -16,6 +17,7 @@ export function RecentCases({
   cases,
   activeCaseId,
   sessionActive,
+  captureCounts,
   onSelectCase,
   onNewCase,
   onRenameCase,
@@ -30,7 +32,7 @@ export function RecentCases({
               Recent Cases
             </h2>
             <span className="rounded-full border border-slate-800 bg-slate-900 px-2 py-0.5 font-mono text-[10px] font-medium text-slate-500">
-              {cases.length} active
+              {cases.length} {cases.length === 1 ? 'case' : 'cases'}
             </span>
           </div>
           <button className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-indigo-400 hover:text-indigo-300 transition-colors">
@@ -45,7 +47,8 @@ export function RecentCases({
               key={c.id}
               caseData={c}
               isRecording={sessionActive && c.id === activeCaseId}
-              captureCount={0}
+              isActive={!sessionActive && c.id === activeCaseId}
+              captureCount={captureCounts[c.id] || 0}
               onClick={() => onSelectCase(c.id)}
               onRename={onRenameCase}
               onDelete={onDeleteCase}

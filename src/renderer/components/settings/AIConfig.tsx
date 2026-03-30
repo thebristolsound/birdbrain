@@ -5,6 +5,7 @@ interface AIConfigProps {
   onUpdate: (partial: Partial<BirdbrainSettings>) => Promise<void>
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function AIConfig(_props: AIConfigProps) {
   return (
     <section className="neu-card rounded-2xl p-5">

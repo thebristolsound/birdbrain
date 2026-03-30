@@ -10,6 +10,7 @@ import type {
   CreateSelectorParams,
   UpdateSelectorParams
 } from '@shared/ipc'
+import { safeRegexTest } from '@main/services/safeRegex'
 
 let db: Database.Database
 
@@ -282,11 +283,12 @@ export const insertCapture = function (params: InsertCaptureParams & { id?: stri
 
     // Insert into FTS index
     if (params.textContent || params.title || params.url) {
-      const rowid = (
-        d.prepare('SELECT rowid FROM captures WHERE id = ?').get(id) as { rowid: number }
-      )?.rowid
+      const row = d.prepare('SELECT rowid FROM captures WHERE id = ?').get(id) as
+        | { rowid: number }
+        | undefined
+      if (!row) throw new Error(`Failed to retrieve rowid for capture ${id}`)
       d.prepare('INSERT INTO captures_fts (rowid, title, url, content) VALUES (?, ?, ?, ?)').run(
-        rowid,
+        row.rowid,
         params.title ?? '',
         params.url,
         params.textContent ?? ''
@@ -331,6 +333,17 @@ export function getCaptureCount(caseId: string): number {
     .prepare('SELECT COUNT(*) as count FROM captures WHERE case_id = ?')
     .get(caseId) as { count: number }
   return row.count
+}
+
+export function getCaptureCountsByCase(): Record<string, number> {
+  const rows = getDb()
+    .prepare('SELECT case_id, COUNT(*) as count FROM captures GROUP BY case_id')
+    .all() as Array<{ case_id: string; count: number }>
+  const counts: Record<string, number> = {}
+  for (const row of rows) {
+    counts[row.case_id] = row.count
+  }
+  return counts
 }
 
 // --- Tags ---
@@ -503,8 +516,7 @@ export function matchSelectorsForCapture(
       try {
         let matched = false
         if (sel.isRegex) {
-          const re = new RegExp(sel.pattern, 'gi')
-          matched = re.test(textContent)
+          matched = safeRegexTest(sel.pattern, 'gi', textContent)
         } else {
           matched = textContent.toLowerCase().includes(sel.pattern.toLowerCase())
         }
@@ -537,8 +549,7 @@ export function matchSelectorAgainstCaptures(
       try {
         let matched = false
         if (sel.isRegex) {
-          const re = new RegExp(sel.pattern, 'gi')
-          matched = re.test(text)
+          matched = safeRegexTest(sel.pattern, 'gi', text)
         } else {
           matched = text.toLowerCase().includes(sel.pattern.toLowerCase())
         }

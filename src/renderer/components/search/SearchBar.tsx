@@ -10,7 +10,7 @@ export function SearchBar() {
   const navigateToCapture = useAppStore((s) => s.navigateToCapture)
   const setSearchQuery = useAppStore((s) => s.setSearchQuery)
   const inputRef = useRef<HTMLInputElement>(null)
-  const timeoutRef = useRef<ReturnType<typeof setTimeout>>()
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   useEffect(() => {
     if (expanded && inputRef.current) {

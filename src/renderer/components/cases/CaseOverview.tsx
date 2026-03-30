@@ -3,12 +3,11 @@ import { useAppStore } from '@renderer/stores/appStore'
 import { useCaptures } from '@renderer/hooks/useCaptures'
 import { useCases } from '@renderer/hooks/useCases'
 import { ExportDialog } from '@renderer/components/export/ExportDialog'
-import { Camera, Globe, Tags, FileOutput, Crosshair, Pencil, ChevronRight } from 'lucide-react'
+import { Camera, Globe, Tags, FileOutput, Crosshair, Pencil } from 'lucide-react'
 import type { Case } from '@shared/types'
 
 export function CaseOverview() {
   const activeCaseId = useAppStore((s) => s.activeCaseId)
-  const setActiveTab = useAppStore((s) => s.setActiveTab)
   const { captures } = useCaptures(activeCaseId)
   const { updateCase } = useCases()
   const [caseData, setCaseData] = useState<Case | null>(null)

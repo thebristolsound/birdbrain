@@ -13,15 +13,8 @@ export function SessionControls() {
 
   const activeCase = cases.find((c) => c.id === activeCaseId)
 
-  const handleCaseSelect = async (id: string | null) => {
+  const handleCaseSelect = (id: string | null) => {
     setActiveCaseId(id)
-    if (id) {
-      try {
-        await fetch(`${CAPTURE_SERVER_BASE_URL}/api/cases/${id}/activate`, { method: 'POST' })
-      } catch (error) {
-        console.error('Failed to activate case on server:', error)
-      }
-    }
   }
 
   const handleToggleSession = async () => {

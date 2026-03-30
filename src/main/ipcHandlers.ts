@@ -92,7 +92,13 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_COUNTS_BY_CASE, () => db.getCaptureCountsByCase())
+  ipcMain.handle(IPC_CHANNELS.CAPTURES_COUNTS_BY_CASE, () => {
+    try {
+      return ipcResult(db.getCaptureCountsByCase())
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
 
   ipcMain.handle(IPC_CHANNELS.CAPTURES_DOWNLOAD, async (_, captureId: string) => {
     try {
@@ -135,7 +141,7 @@ export function registerIpcHandlers(): void {
       }
 
       await shell.openExternal(url)
-      return ipcResult(true)
+      return ipcResult(undefined)
     } catch (err) {
       return ipcError(err)
     }

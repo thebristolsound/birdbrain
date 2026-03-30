@@ -62,7 +62,7 @@ const birdbrain = {
     openExternal: (url: string): Promise<void> =>
       unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_OPEN_EXTERNAL, url)),
     countsByCase: (): Promise<Record<string, number>> =>
-      ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_COUNTS_BY_CASE)
+      unwrapIpc<Record<string, number>>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_COUNTS_BY_CASE))
   },
   tags: {
     list: (): Promise<Tag[]> => ipcRenderer.invoke(IPC_CHANNELS.TAGS_LIST),

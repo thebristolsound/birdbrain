@@ -16,7 +16,18 @@ export function Dashboard() {
   const [captureCounts, setCaptureCounts] = useState<Record<string, number>>({})
 
   useEffect(() => {
-    window.birdbrain.captures.countsByCase().then(setCaptureCounts)
+    let cancelled = false
+    window.birdbrain.captures
+      .countsByCase()
+      .then((counts) => {
+        if (!cancelled) setCaptureCounts(counts)
+      })
+      .catch((err) => {
+        if (!cancelled) console.error('Failed to load capture counts:', err)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [cases])
 
   const handleOpenRecent = useCallback(() => {

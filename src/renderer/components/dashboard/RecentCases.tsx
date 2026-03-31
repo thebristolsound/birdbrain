@@ -4,8 +4,6 @@ import { CaseCard } from './CaseCard'
 
 interface RecentCasesProps {
   cases: Case[]
-  activeCaseId: string | null
-  sessionActive: boolean
   captureCounts: Record<string, number>
   onSelectCase: (id: string) => void
   onNewCase: () => void
@@ -15,8 +13,6 @@ interface RecentCasesProps {
 
 export function RecentCases({
   cases,
-  activeCaseId,
-  sessionActive,
   captureCounts,
   onSelectCase,
   onNewCase,
@@ -46,8 +42,8 @@ export function RecentCases({
             <CaseCard
               key={c.id}
               caseData={c}
-              isRecording={sessionActive && c.id === activeCaseId}
-              isActive={!sessionActive && c.id === activeCaseId}
+              isRecording={false}
+              isActive={false}
               captureCount={captureCounts[c.id] || 0}
               onClick={() => onSelectCase(c.id)}
               onRename={onRenameCase}

@@ -1,41 +1,25 @@
-import { useState, useEffect } from 'react'
-import type { Selector } from '@shared/types'
+import { useState } from 'react'
+import { useParams } from '@tanstack/react-router'
+import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '@renderer/stores/appStore'
-import { useCaptures } from '@renderer/hooks/useCaptures'
+import {
+  selectorsQueryOptions,
+  selectorMatchCountsQueryOptions,
+  capturesQueryOptions
+} from '@renderer/lib/queries'
 import { CreateSelectorCard } from './CreateSelectorCard'
 import { SelectorTable } from './SelectorTable'
 import { SelectorFilterFooter } from './SelectorFilterFooter'
 
 export function SelectorsOverview() {
-  const activeCaseId = useAppStore((s) => s.activeCaseId)
+  const { caseId } = useParams({ strict: false })
   const filteredCaptureIds = useAppStore((s) => s.filteredCaptureIds)
-  const [selectors, setSelectors] = useState<Selector[]>([])
-  const [matchCounts, setMatchCounts] = useState<Record<string, number>>({})
-  const [loading, setLoading] = useState(true)
+  const { data: selectors = [], isLoading } = useQuery(selectorsQueryOptions(caseId!))
+  const { data: matchCounts = {} } = useQuery(selectorMatchCountsQueryOptions(caseId!))
+  const { data: captures = [] } = useQuery(capturesQueryOptions(caseId!))
   const [showCreateForm, setShowCreateForm] = useState(false)
-  const { captures } = useCaptures(activeCaseId)
 
-  useEffect(() => {
-    if (activeCaseId) loadSelectors(activeCaseId)
-  }, [activeCaseId])
-
-  async function loadSelectors(caseId: string) {
-    setLoading(true)
-    try {
-      const [result, counts] = await Promise.all([
-        window.birdbrain.selectors.list(caseId),
-        window.birdbrain.selectors.matchCounts(caseId)
-      ])
-      setSelectors(result)
-      setMatchCounts(counts)
-    } catch (err) {
-      console.error('Failed to load selectors:', err)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  if (loading) {
+  if (isLoading) {
     return <div className="text-slate-500">Loading selectors...</div>
   }
 
@@ -46,9 +30,8 @@ export function SelectorsOverview() {
         onToggle={() => setShowCreateForm((v) => !v)}
         onCreated={() => {
           setShowCreateForm(false)
-          if (activeCaseId) loadSelectors(activeCaseId)
         }}
-        caseId={activeCaseId!}
+        caseId={caseId!}
       />
 
       {selectors.length === 0 ? (
@@ -59,8 +42,8 @@ export function SelectorsOverview() {
         <SelectorTable
           selectors={selectors}
           matchCounts={matchCounts}
-          onRefresh={() => activeCaseId && loadSelectors(activeCaseId)}
-          caseId={activeCaseId!}
+          onRefresh={() => {}}
+          caseId={caseId!}
         />
       )}
 

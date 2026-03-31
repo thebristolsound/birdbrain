@@ -1,24 +1,23 @@
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useParams } from '@tanstack/react-router'
 import { useAppStore } from '@renderer/stores/appStore'
-import { useCases } from '@renderer/hooks/useCases'
+import { casesQueryOptions } from '@renderer/lib/queries'
 import { CAPTURE_SERVER_BASE_URL } from '@shared/constants'
 
 export function SessionControls() {
   const sessionActive = useAppStore((s) => s.sessionActive)
   const setSessionActive = useAppStore((s) => s.setSessionActive)
-  const activeCaseId = useAppStore((s) => s.activeCaseId)
-  const setActiveCaseId = useAppStore((s) => s.setActiveCaseId)
   const connectedToExtension = useAppStore((s) => s.connectedToExtension)
-  const { cases } = useCases()
+  const { data: cases = [] } = useQuery(casesQueryOptions)
   const [toggling, setToggling] = useState(false)
+
+  const params = useParams({ strict: false })
+  const activeCaseId = (params as { caseId?: string }).caseId ?? null
 
   if (!connectedToExtension) return null
 
   const activeCase = cases.find((c) => c.id === activeCaseId)
-
-  const handleCaseSelect = (id: string | null) => {
-    setActiveCaseId(id)
-  }
 
   const handleToggleSession = async () => {
     if (toggling) return
@@ -59,18 +58,6 @@ export function SessionControls() {
 
   return (
     <div className="flex items-center gap-2">
-      <select
-        value={activeCaseId || ''}
-        onChange={(e) => handleCaseSelect(e.target.value || null)}
-        className="rounded border border-white/[0.08] bg-slate-800 px-2 py-1 text-xs text-slate-300 outline-none"
-      >
-        <option value="">Select case...</option>
-        {cases.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.name}
-          </option>
-        ))}
-      </select>
       <label className="flex cursor-pointer items-center gap-1.5">
         <span className="text-xs text-slate-400">Auto-Capture</span>
         <button

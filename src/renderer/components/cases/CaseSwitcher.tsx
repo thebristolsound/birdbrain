@@ -1,14 +1,17 @@
 import { useState, useRef, useEffect } from 'react'
+import { useNavigate, useParams } from '@tanstack/react-router'
+import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '@renderer/stores/appStore'
-import { useCases } from '@renderer/hooks/useCases'
+import { casesQueryOptions } from '@renderer/lib/queries'
 
 export function CaseSwitcher() {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
-  const activeCaseId = useAppStore((s) => s.activeCaseId)
+  const navigate = useNavigate()
+  const params = useParams({ strict: false })
+  const activeCaseId = (params as { caseId?: string }).caseId ?? null
   const sessionActive = useAppStore((s) => s.sessionActive)
-  const selectCase = useAppStore((s) => s.selectCase)
-  const { cases, loading } = useCases()
+  const { data: cases = [], isLoading } = useQuery(casesQueryOptions)
 
   const activeCase = cases.find((c) => c.id === activeCaseId)
 
@@ -23,8 +26,8 @@ export function CaseSwitcher() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [open])
 
-  if (loading) {
-    return <span className="text-sm font-semibold text-neutral-400">Loading…</span>
+  if (isLoading) {
+    return <span className="text-sm font-semibold text-neutral-400">Loading...</span>
   }
 
   if (!activeCase) return null
@@ -47,7 +50,7 @@ export function CaseSwitcher() {
             <button
               key={c.id}
               onClick={() => {
-                selectCase(c.id)
+                navigate({ to: '/cases/$caseId', params: { caseId: c.id } })
                 setOpen(false)
               }}
               className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-neutral-700 ${

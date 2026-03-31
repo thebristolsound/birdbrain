@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { useTags } from '@renderer/hooks/useTags'
+import { useQuery } from '@tanstack/react-query'
+import { tagsQueryOptions, useTagsMutations } from '@renderer/lib/queries'
 
 const TAG_COLORS = [
   '#f59e0b',
@@ -17,13 +18,14 @@ interface TagManagerProps {
 }
 
 export function TagManager({ onClose }: TagManagerProps) {
-  const { tags, createTag, deleteTag } = useTags()
+  const { data: tags = [] } = useQuery(tagsQueryOptions)
+  const { create, remove } = useTagsMutations()
   const [newName, setNewName] = useState('')
   const [newColor, setNewColor] = useState(TAG_COLORS[0])
 
   const handleCreate = async () => {
     if (!newName.trim()) return
-    await createTag({ name: newName.trim(), color: newColor })
+    await create.mutateAsync({ name: newName.trim(), color: newColor })
     setNewName('')
   }
 
@@ -81,7 +83,7 @@ export function TagManager({ onClose }: TagManagerProps) {
               <span className="flex-1 text-sm text-slate-300">{tag.name}</span>
               <button
                 data-testid="tag-delete-btn"
-                onClick={() => deleteTag(tag.id)}
+                onClick={() => remove.mutate(tag.id)}
                 className="text-xs text-slate-600 hover:text-red-400"
               >
                 Delete

@@ -1,6 +1,12 @@
-import { useRef, useState, useEffect, useCallback } from 'react'
-import { useCases } from '@renderer/hooks/useCases'
+import { useRef, useCallback } from 'react'
+import { useNavigate } from '@tanstack/react-router'
+import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '@renderer/stores/appStore'
+import {
+  casesQueryOptions,
+  captureCountsQueryOptions,
+  useCasesMutations
+} from '@renderer/lib/queries'
 import { HeroSection } from './HeroSection'
 import { RecentCases } from './RecentCases'
 import { QuickStartGuide } from './QuickStartGuide'
@@ -8,30 +14,24 @@ import { ExtensionBanner } from './ExtensionBanner'
 import { DashboardFooter } from './DashboardFooter'
 
 export function Dashboard() {
-  const { cases, updateCase, deleteCase } = useCases()
-  const selectCase = useAppStore((s) => s.selectCase)
+  const navigate = useNavigate()
+  const { data: cases = [] } = useQuery(casesQueryOptions)
+  const { data: captureCounts = {} } = useQuery(captureCountsQueryOptions)
+  const { update, remove } = useCasesMutations()
   const connectedToExtension = useAppStore((s) => s.connectedToExtension)
-  const activeCaseId = useAppStore((s) => s.activeCaseId)
-  const sessionActive = useAppStore((s) => s.sessionActive)
-  const goToNewCaseWizard = useAppStore((s) => s.goToNewCaseWizard)
 
   const recentCasesRef = useRef<HTMLDivElement>(null)
-  const [captureCounts, setCaptureCounts] = useState<Record<string, number>>({})
 
-  useEffect(() => {
-    let cancelled = false
-    window.birdbrain.captures
-      .countsByCase()
-      .then((counts) => {
-        if (!cancelled) setCaptureCounts(counts)
-      })
-      .catch((err) => {
-        if (!cancelled) console.error('Failed to load capture counts:', err)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [cases.length])
+  const handleSelectCase = useCallback(
+    (id: string) => {
+      navigate({ to: '/cases/$caseId', params: { caseId: id } })
+    },
+    [navigate]
+  )
+
+  const handleNewCase = useCallback(() => {
+    navigate({ to: '/cases/new' })
+  }, [navigate])
 
   const handleOpenRecent = useCallback(() => {
     recentCasesRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -39,30 +39,28 @@ export function Dashboard() {
 
   const handleRenameCase = useCallback(
     async (id: string, name: string) => {
-      await updateCase({ id, name })
+      await update.mutateAsync({ id, name })
     },
-    [updateCase]
+    [update]
   )
 
   const handleDeleteCase = useCallback(
     async (id: string) => {
-      await deleteCase(id)
+      await remove.mutateAsync(id)
     },
-    [deleteCase]
+    [remove]
   )
 
   return (
     <div data-testid="dashboard" className="grid-bg min-h-full">
-      <HeroSection onNewInvestigation={goToNewCaseWizard} onOpenRecent={handleOpenRecent} />
+      <HeroSection onNewInvestigation={handleNewCase} onOpenRecent={handleOpenRecent} />
 
       <div ref={recentCasesRef}>
         <RecentCases
           cases={cases}
-          activeCaseId={activeCaseId}
-          sessionActive={sessionActive}
           captureCounts={captureCounts}
-          onSelectCase={selectCase}
-          onNewCase={goToNewCaseWizard}
+          onSelectCase={handleSelectCase}
+          onNewCase={handleNewCase}
           onRenameCase={handleRenameCase}
           onDeleteCase={handleDeleteCase}
         />

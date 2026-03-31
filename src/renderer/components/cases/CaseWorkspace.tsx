@@ -1,13 +1,12 @@
-import { useAppStore } from '@renderer/stores/appStore'
-import type { CaseTab } from '@renderer/stores/appStore'
-import { useCases } from '@renderer/hooks/useCases'
-import { useCaptures } from '@renderer/hooks/useCaptures'
-import { CaseOverview } from '@renderer/components/cases/CaseOverview'
-import { CaptureViewer } from '@renderer/components/captures/CaptureViewer'
-import { CaptureList } from '@renderer/components/captures/CaptureList'
-import { SelectorsOverview } from '@renderer/components/selectors/SelectorsOverview'
+import { useEffect } from 'react'
+import { useParams, Link, Outlet, useMatchRoute } from '@tanstack/react-router'
+import { useQuery } from '@tanstack/react-query'
+import { casesQueryOptions, capturesQueryOptions } from '@renderer/lib/queries'
 import { useSelectorFilters } from '@renderer/hooks/useSelectorFilters'
 import { LayoutDashboard, Layers, Crosshair } from 'lucide-react'
+import { CAPTURE_SERVER_BASE_URL } from '@shared/constants'
+
+type CaseTab = 'overview' | 'captures' | 'selectors'
 
 const tabs: { id: CaseTab; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -16,25 +15,36 @@ const tabs: { id: CaseTab; label: string; icon: typeof LayoutDashboard }[] = [
 ]
 
 export function CaseWorkspace() {
-  const activeCaseId = useAppStore((s) => s.activeCaseId)
-  const activeCaseTab = useAppStore((s) => s.activeCaseTab)
-  const setActiveTab = useAppStore((s) => s.setActiveTab)
-  const { cases, loading } = useCases()
-  const { captures } = useCaptures(activeCaseId)
+  const { caseId } = useParams({ strict: false })
+  const matchRoute = useMatchRoute()
+  const { data: cases = [], isLoading } = useQuery(casesQueryOptions)
+  const { data: captures = [] } = useQuery(capturesQueryOptions(caseId!))
 
-  useSelectorFilters(activeCaseId)
+  useSelectorFilters(caseId!)
 
-  const activeCase = cases.find((c) => c.id === activeCaseId)
+  // Activate case on the capture server when entering workspace
+  useEffect(() => {
+    if (caseId) {
+      fetch(`${CAPTURE_SERVER_BASE_URL}/api/cases/${caseId}/activate`, { method: 'POST' }).catch(
+        (err) => console.error('Failed to activate case on server:', err)
+      )
+    }
+  }, [caseId])
 
-  if (!activeCaseId) return null
+  const activeCase = cases.find((c) => c.id === caseId)
 
-  if (loading) {
+  if (!caseId) return null
+
+  if (isLoading) {
     return (
-      <div className="flex h-full items-center justify-center text-neutral-500">Loading case…</div>
+      <div className="flex h-full items-center justify-center text-neutral-500">Loading case...</div>
     )
   }
 
   if (!activeCase) return null
+
+  const isCaptures = matchRoute({ to: '/cases/$caseId/captures', fuzzy: true }) !== false
+  const isSelectors = matchRoute({ to: '/cases/$caseId/selectors', fuzzy: true }) !== false
 
   return (
     <div className="flex h-full flex-col">
@@ -42,11 +52,21 @@ export function CaseWorkspace() {
       <div className="h-11 shrink-0 flex items-end gap-0.5 border-b px-5 bg-slate-900 border-white/[0.06]">
         {tabs.map((tab) => {
           const Icon = tab.icon
-          const isActive = activeCaseTab === tab.id
+          const isActive =
+            (tab.id === 'overview' && !isCaptures && !isSelectors) ||
+            (tab.id === 'captures' && isCaptures) ||
+            (tab.id === 'selectors' && isSelectors)
           return (
-            <button
+            <Link
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              to={
+                tab.id === 'overview'
+                  ? '/cases/$caseId'
+                  : tab.id === 'captures'
+                    ? '/cases/$caseId/captures'
+                    : '/cases/$caseId/selectors'
+              }
+              params={{ caseId: caseId! }}
               className={`flex items-center gap-1.5 rounded-t-lg px-4 py-2 text-xs font-medium transition-colors ${
                 isActive
                   ? 'bg-indigo-500/15 font-semibold text-indigo-400'
@@ -64,25 +84,17 @@ export function CaseWorkspace() {
                   {captures.length}
                 </span>
               )}
-            </button>
+            </Link>
           )
         })}
       </div>
 
       {/* Tab content */}
-      {activeCaseTab === 'captures' ? (
-        <div className="flex flex-1 overflow-hidden">
-          <div className="w-[30%] overflow-y-auto">
-            <CaptureList caseId={activeCaseId} />
-          </div>
-          <div className="flex-1 overflow-y-auto">
-            <CaptureViewer />
-          </div>
-        </div>
+      {isCaptures ? (
+        <Outlet />
       ) : (
         <div className="flex-1 overflow-auto p-6">
-          {activeCaseTab === 'overview' && <CaseOverview />}
-          {activeCaseTab === 'selectors' && <SelectorsOverview />}
+          <Outlet />
         </div>
       )}
     </div>

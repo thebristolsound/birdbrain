@@ -1,20 +1,23 @@
 import { Radar, ChevronRight, Settings, Bell } from 'lucide-react'
+import { Link, useNavigate, useParams, useMatchRoute } from '@tanstack/react-router'
+import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '@renderer/stores/appStore'
 import { SearchBar } from '@renderer/components/search/SearchBar'
 import { SessionControls } from '@renderer/components/status/SessionControls'
 import { ConnectionStatus } from '@renderer/components/status/ConnectionStatus'
 import { CaptureHealth } from '@renderer/components/status/CaptureHealth'
-import { useCases } from '@renderer/hooks/useCases'
+import { casesQueryOptions } from '@renderer/lib/queries'
 
 export function TopBar() {
-  const appMode = useAppStore((s) => s.appMode)
-  const activeCaseId = useAppStore((s) => s.activeCaseId)
+  const navigate = useNavigate()
+  const matchRoute = useMatchRoute()
   const sessionActive = useAppStore((s) => s.sessionActive)
-  const goToDashboard = useAppStore((s) => s.goToDashboard)
-  const toggleSettings = useAppStore((s) => s.toggleSettings)
-  const { cases } = useCases()
+  const { data: cases = [] } = useQuery(casesQueryOptions)
 
-  const activeCase = cases.find((c) => c.id === activeCaseId)
+  const caseMatch = matchRoute({ to: '/cases/$caseId', fuzzy: true })
+  const isDashboard = matchRoute({ to: '/' }) !== false && !caseMatch
+  const activeCaseId = caseMatch ? (caseMatch as { caseId: string }).caseId : null
+  const activeCase = activeCaseId ? cases.find((c) => c.id === activeCaseId) : null
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-3 border-b border-white/[0.06] bg-slate-900 px-4">
@@ -32,11 +35,11 @@ export function TopBar() {
           </span>
         </div>
 
-        {appMode === 'case-workspace' && (
+        {activeCaseId && (
           <div className="flex items-center gap-1.5 text-sm">
-            <button onClick={goToDashboard} className="text-slate-500 hover:text-slate-300">
+            <Link to="/" className="text-slate-500 hover:text-slate-300">
               Investigations
-            </button>
+            </Link>
             <ChevronRight className="h-3.5 w-3.5 text-slate-600" />
             <span className="text-slate-300">{activeCase?.name ?? 'Untitled'}</span>
           </div>
@@ -45,14 +48,14 @@ export function TopBar() {
 
       <div className="flex-1" />
 
-      {appMode === 'dashboard' ? (
+      {isDashboard ? (
         <div className="flex items-center gap-3">
           <CaptureHealth />
           <button className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-900 hover:text-slate-300 transition-colors">
             <Bell className="h-4 w-4" />
           </button>
           <button
-            onClick={toggleSettings}
+            onClick={() => navigate({ to: '/settings' })}
             className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-900 hover:text-slate-300 transition-colors"
             title="Settings"
           >
@@ -77,7 +80,7 @@ export function TopBar() {
             <CaptureHealth />
 
             <button
-              onClick={toggleSettings}
+              onClick={() => navigate({ to: '/settings' })}
               className="rounded p-1.5 text-slate-400 hover:bg-white/[0.06] hover:text-slate-200"
               title="Settings"
             >

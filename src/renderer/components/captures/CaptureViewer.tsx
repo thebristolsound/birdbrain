@@ -51,7 +51,8 @@ function formatViewerTimestamp(ts: string): string {
 }
 
 export function CaptureViewer() {
-  const { selectedCaptureId, activeCaseId } = useAppStore()
+  const selectedCaptureId = useAppStore((s) => s.selectedCaptureId)
+  const activeCaseId = useAppStore((s) => s.activeCaseId)
   const { captures, getContent } = useCaptures(activeCaseId)
   const { tags: allTags, addToCapture, removeFromCapture, getForCapture } = useTags()
   const [activeTab, setActiveTab] = useState<ViewTab>('screenshot')

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAppStore } from '@renderer/stores/appStore'
 import { useCaptures } from '@renderer/hooks/useCaptures'
 import { useCases } from '@renderer/hooks/useCases'
@@ -26,19 +26,27 @@ export function CaseOverview() {
   const descInputRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
-    if (activeCaseId) {
-      window.birdbrain.cases.get(activeCaseId).then((c) => {
-        if (c) {
-          setCaseData(c)
-          setNameValue(c.name)
-          setDescValue(c.description ?? '')
-        } else {
-          setCaseData(null)
-        }
-      })
-      window.birdbrain.tags.countForCase(activeCaseId).then(setTagCount)
-      window.birdbrain.selectors.coverage(activeCaseId).then(setSelectorCoverage)
-    }
+    if (!activeCaseId) return
+    let cancelled = false
+
+    Promise.all([
+      window.birdbrain.cases.get(activeCaseId),
+      window.birdbrain.tags.countForCase(activeCaseId),
+      window.birdbrain.selectors.coverage(activeCaseId)
+    ]).then(([c, tc, sc]) => {
+      if (cancelled) return
+      if (c) {
+        setCaseData(c)
+        setNameValue(c.name)
+        setDescValue(c.description ?? '')
+      } else {
+        setCaseData(null)
+      }
+      setTagCount(tc)
+      setSelectorCoverage(sc)
+    })
+
+    return () => { cancelled = true }
   }, [activeCaseId])
 
   useEffect(() => {
@@ -83,27 +91,26 @@ export function CaseOverview() {
     return <div className="text-slate-500">Loading case...</div>
   }
 
-  // Compute top domains
-  const domainCounts: Record<string, number> = {}
-  for (const cap of captures) {
-    try {
-      const domain = new URL(cap.url).hostname
-      domainCounts[domain] = (domainCounts[domain] || 0) + 1
-    } catch {
-      // skip invalid URLs
+  const { topDomains, dateRange } = useMemo(() => {
+    const domainCounts: Record<string, number> = {}
+    for (const cap of captures) {
+      try {
+        const domain = new URL(cap.url).hostname
+        domainCounts[domain] = (domainCounts[domain] || 0) + 1
+      } catch {
+        // skip invalid URLs
+      }
     }
-  }
-  const topDomains = Object.entries(domainCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
+    const topDomains = Object.entries(domainCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
 
-  const dateRange =
-    captures.length > 0
-      ? {
-          first: captures[captures.length - 1].timestamp,
-          last: captures[0].timestamp
-        }
+    const dateRange = captures.length > 0
+      ? { first: captures[captures.length - 1].timestamp, last: captures[0].timestamp }
       : null
+
+    return { topDomains, dateRange }
+  }, [captures])
 
   return (
     <div className="flex gap-6">

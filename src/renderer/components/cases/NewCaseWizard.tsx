@@ -45,7 +45,8 @@ const CASE_TYPES = [
 ]
 
 export function NewCaseWizard() {
-  const { goToDashboard, selectCase } = useAppStore()
+  const goToDashboard = useAppStore((s) => s.goToDashboard)
+  const selectCase = useAppStore((s) => s.selectCase)
   const { createCase } = useCases()
 
   const [name, setName] = useState('')

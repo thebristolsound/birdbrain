@@ -179,6 +179,16 @@ function migrate(db: Database.Database): void {
       db.pragma('user_version = 7')
     })()
   }
+
+  if (version < 8) {
+    db.transaction(() => {
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_captures_case_id ON captures(case_id);
+        CREATE INDEX IF NOT EXISTS idx_capture_tags_tag_id ON capture_tags(tag_id);
+      `)
+      db.pragma('user_version = 8')
+    })()
+  }
 }
 
 // --- Cases ---

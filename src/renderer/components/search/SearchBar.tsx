@@ -13,6 +13,12 @@ export function SearchBar() {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    }
+  }, [])
+
+  useEffect(() => {
     if (expanded && inputRef.current) {
       inputRef.current.focus()
     }

@@ -249,9 +249,35 @@ describe('database', () => {
       expect(tables).toHaveLength(0)
     })
 
-    it('sets user_version to 7', () => {
+    it('sets user_version to 7 after v7 migration', () => {
+      // v8 migration runs immediately after, so final version is 8
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(7)
+      expect(version).toBe(8)
+    })
+  })
+
+  describe('migration v8 - performance indexes', () => {
+    it('creates idx_captures_case_id index', () => {
+      const idx = getDb()
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_captures_case_id'"
+        )
+        .get()
+      expect(idx).toBeDefined()
+    })
+
+    it('creates idx_capture_tags_tag_id index', () => {
+      const idx = getDb()
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_capture_tags_tag_id'"
+        )
+        .get()
+      expect(idx).toBeDefined()
+    })
+
+    it('sets user_version to 8', () => {
+      const version = getDb().pragma('user_version', { simple: true })
+      expect(version).toBe(8)
     })
   })
 

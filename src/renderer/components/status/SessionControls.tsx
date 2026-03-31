@@ -4,8 +4,11 @@ import { useCases } from '@renderer/hooks/useCases'
 import { CAPTURE_SERVER_BASE_URL } from '@shared/constants'
 
 export function SessionControls() {
-  const { sessionActive, setSessionActive, activeCaseId, setActiveCaseId, connectedToExtension } =
-    useAppStore()
+  const sessionActive = useAppStore((s) => s.sessionActive)
+  const setSessionActive = useAppStore((s) => s.setSessionActive)
+  const activeCaseId = useAppStore((s) => s.activeCaseId)
+  const setActiveCaseId = useAppStore((s) => s.setActiveCaseId)
+  const connectedToExtension = useAppStore((s) => s.connectedToExtension)
   const { cases } = useCases()
   const [toggling, setToggling] = useState(false)
 

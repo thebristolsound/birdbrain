@@ -1,7 +1,8 @@
 import { useAppStore } from '@renderer/stores/appStore'
 
 export function ConnectionStatus() {
-  const { connectedToExtension, sessionActive } = useAppStore()
+  const connectedToExtension = useAppStore((s) => s.connectedToExtension)
+  const sessionActive = useAppStore((s) => s.sessionActive)
 
   if (sessionActive) {
     return null

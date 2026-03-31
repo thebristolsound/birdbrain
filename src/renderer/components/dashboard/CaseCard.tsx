@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, memo } from 'react'
 import type { Case } from '@shared/types'
 import { Camera, ArrowUpRight, ShieldAlert, Users, FolderOpen, MoreVertical } from 'lucide-react'
 
@@ -48,7 +48,7 @@ interface CaseCardProps {
   animDelay?: string
 }
 
-export function CaseCard({
+export const CaseCard = memo(function CaseCard({
   caseData,
   isRecording,
   isActive,
@@ -230,4 +230,4 @@ export function CaseCard({
       </div>
     </div>
   )
-}
+})

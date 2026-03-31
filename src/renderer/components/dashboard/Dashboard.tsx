@@ -9,8 +9,11 @@ import { DashboardFooter } from './DashboardFooter'
 
 export function Dashboard() {
   const { cases, updateCase, deleteCase } = useCases()
-  const { selectCase, connectedToExtension, activeCaseId, sessionActive, goToNewCaseWizard } =
-    useAppStore()
+  const selectCase = useAppStore((s) => s.selectCase)
+  const connectedToExtension = useAppStore((s) => s.connectedToExtension)
+  const activeCaseId = useAppStore((s) => s.activeCaseId)
+  const sessionActive = useAppStore((s) => s.sessionActive)
+  const goToNewCaseWizard = useAppStore((s) => s.goToNewCaseWizard)
 
   const recentCasesRef = useRef<HTMLDivElement>(null)
   const [captureCounts, setCaptureCounts] = useState<Record<string, number>>({})
@@ -28,7 +31,7 @@ export function Dashboard() {
     return () => {
       cancelled = true
     }
-  }, [cases])
+  }, [cases.length])
 
   const handleOpenRecent = useCallback(() => {
     recentCasesRef.current?.scrollIntoView({ behavior: 'smooth' })

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { CaptureEvent } from '@shared/types'
+import { CAPTURE_SERVER_BASE_URL } from '@shared/constants'
 
 export type AppMode = 'dashboard' | 'case-workspace' | 'new-case-wizard'
 export type CaseTab = 'overview' | 'captures' | 'selectors'
@@ -60,7 +61,9 @@ export const useAppStore = create<AppState>((set) => ({
   setActiveCaseId: (id) => {
     set({ activeCaseId: id })
     if (id) {
-      fetch(`http://127.0.0.1:19845/api/cases/${id}/activate`, { method: 'POST' }).catch(() => {})
+      fetch(`${CAPTURE_SERVER_BASE_URL}/api/cases/${id}/activate`, { method: 'POST' }).catch((err) =>
+        console.error('Failed to activate case on server:', err)
+      )
     }
   },
   setSessionActive: (active) => set({ sessionActive: active }),
@@ -70,7 +73,9 @@ export const useAppStore = create<AppState>((set) => ({
 
   selectCase: (id) => {
     set({ activeCaseId: id, appMode: 'case-workspace', selectedCaptureId: null })
-    fetch(`http://127.0.0.1:19845/api/cases/${id}/activate`, { method: 'POST' }).catch(() => {})
+    fetch(`${CAPTURE_SERVER_BASE_URL}/api/cases/${id}/activate`, { method: 'POST' }).catch((err) =>
+        console.error('Failed to activate case on server:', err)
+      )
   },
 
   selectCapture: (id) => set({ selectedCaptureId: id }),

@@ -1,6 +1,6 @@
-import { writeFileSync, readFileSync, existsSync } from 'fs'
+import { writeFileSync } from 'fs'
 import * as db from '@main/services/database'
-import { getCapturePath, readCaptureFile } from '@main/services/storage'
+import { readCaptureFile } from '@main/services/storage'
 import { hashContent } from '@main/services/hash'
 import type { ExportOptions, HashVerification, Capture } from '@shared/types'
 

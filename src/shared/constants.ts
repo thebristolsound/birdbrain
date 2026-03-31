@@ -1,0 +1,2 @@
+export const CAPTURE_SERVER_PORT = 19845
+export const CAPTURE_SERVER_BASE_URL = `http://127.0.0.1:${CAPTURE_SERVER_PORT}`

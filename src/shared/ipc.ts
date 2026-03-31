@@ -16,6 +16,7 @@ export const IPC_CHANNELS = {
   CAPTURES_GET_CONTENT: 'captures:getContent',
   CAPTURES_DOWNLOAD: 'captures:download',
   CAPTURES_OPEN_EXTERNAL: 'captures:openExternal',
+  CAPTURES_COUNTS_BY_CASE: 'captures:countsByCase',
 
   // Tags
   TAGS_LIST: 'tags:list',

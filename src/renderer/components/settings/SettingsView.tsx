@@ -35,7 +35,7 @@ export function SettingsView() {
   const renderContent = () => {
     switch (activeTab) {
       case 'ai':
-        return <AIConfig settings={settings} onUpdate={handleUpdate} />
+        return <AIConfig />
       case 'capture':
         return <CapturePreferences settings={settings} onUpdate={handleUpdate} />
       case 'storage':

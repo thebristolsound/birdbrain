@@ -1,11 +1,11 @@
 import type { BirdbrainSettings } from '@shared/types'
 
-interface AIConfigProps {
+export interface AIConfigProps {
   settings: BirdbrainSettings
   onUpdate: (partial: Partial<BirdbrainSettings>) => Promise<void>
 }
 
-export function AIConfig(_props: AIConfigProps) {
+export function AIConfig() {
   return (
     <section className="neu-card rounded-2xl p-5">
       <h2 className="mb-4 text-lg font-semibold text-slate-200">AI Configuration</h2>

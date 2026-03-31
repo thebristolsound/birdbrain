@@ -67,7 +67,13 @@ export function registerIpcHandlers(): void {
       return ipcError(err)
     }
   })
-  ipcMain.handle(IPC_CHANNELS.CASES_DELETE, (_, id: string) => db.deleteCase(id))
+  ipcMain.handle(IPC_CHANNELS.CASES_DELETE, (_, id: string) => {
+    try {
+      return ipcResult(db.deleteCase(id))
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
 
   // Captures
   ipcMain.handle(IPC_CHANNELS.CAPTURES_LIST, (_, caseId: string) => db.listCaptures(caseId))
@@ -81,6 +87,14 @@ export function registerIpcHandlers(): void {
         storage.deleteCaptureFiles(capture.caseId, id)
       }
       return ipcResult(deleted)
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.CAPTURES_COUNTS_BY_CASE, () => {
+    try {
+      return ipcResult(db.getCaptureCountsByCase())
     } catch (err) {
       return ipcError(err)
     }
@@ -127,7 +141,7 @@ export function registerIpcHandlers(): void {
       }
 
       await shell.openExternal(url)
-      return ipcResult(true)
+      return ipcResult(undefined)
     } catch (err) {
       return ipcError(err)
     }
@@ -175,13 +189,29 @@ export function registerIpcHandlers(): void {
       return ipcError(err)
     }
   })
-  ipcMain.handle(IPC_CHANNELS.TAGS_DELETE, (_, id: string) => db.deleteTag(id))
-  ipcMain.handle(IPC_CHANNELS.TAGS_ADD_TO_CAPTURE, (_, params: CaptureTagParams) =>
-    db.addTagToCapture(params)
-  )
-  ipcMain.handle(IPC_CHANNELS.TAGS_REMOVE_FROM_CAPTURE, (_, params: CaptureTagParams) =>
-    db.removeTagFromCapture(params)
-  )
+  ipcMain.handle(IPC_CHANNELS.TAGS_DELETE, (_, id: string) => {
+    try {
+      return ipcResult(db.deleteTag(id))
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+  ipcMain.handle(IPC_CHANNELS.TAGS_ADD_TO_CAPTURE, (_, params: CaptureTagParams) => {
+    try {
+      db.addTagToCapture(params)
+      return ipcResult(undefined)
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+  ipcMain.handle(IPC_CHANNELS.TAGS_REMOVE_FROM_CAPTURE, (_, params: CaptureTagParams) => {
+    try {
+      db.removeTagFromCapture(params)
+      return ipcResult(undefined)
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
   ipcMain.handle(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, (_, captureId: string) =>
     db.getTagsForCapture(captureId)
   )
@@ -212,10 +242,20 @@ export function registerIpcHandlers(): void {
       return ipcError(err)
     }
   })
-  ipcMain.handle(IPC_CHANNELS.SELECTORS_UPDATE, (_, params: UpdateSelectorParams) =>
-    db.updateSelector(params)
-  )
-  ipcMain.handle(IPC_CHANNELS.SELECTORS_DELETE, (_, id: string) => db.deleteSelector(id))
+  ipcMain.handle(IPC_CHANNELS.SELECTORS_UPDATE, (_, params: UpdateSelectorParams) => {
+    try {
+      return ipcResult(db.updateSelector(params))
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+  ipcMain.handle(IPC_CHANNELS.SELECTORS_DELETE, (_, id: string) => {
+    try {
+      return ipcResult(db.deleteSelector(id))
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
   ipcMain.handle(IPC_CHANNELS.SELECTORS_LIST_ACTIVE, () => db.listActiveSelectors())
   ipcMain.handle(IPC_CHANNELS.SELECTORS_MATCH_COUNTS, (_, caseId: string) =>
     db.getSelectorMatchCounts(caseId)
@@ -259,7 +299,12 @@ export function registerIpcHandlers(): void {
   )
 
   // Export
-  ipcMain.handle(IPC_CHANNELS.EXPORT_GENERATE, (_, caseId: string, options: ExportOptions) =>
-    generateReport(caseId, options)
-  )
+  ipcMain.handle(IPC_CHANNELS.EXPORT_GENERATE, async (_, caseId: string, options: ExportOptions) => {
+    try {
+      await generateReport(caseId, options)
+      return ipcResult(undefined)
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
 }

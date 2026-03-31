@@ -10,7 +10,9 @@ import { hashContent } from '@main/services/hash'
 import { getSettings } from '@main/services/settings'
 import type { CaptureEvent, CaptureSource } from '@shared/types'
 
-export const CAPTURE_SERVER_PORT = 19845
+import { CAPTURE_SERVER_PORT } from '@shared/constants'
+import { safeRegexTest } from '@main/services/safeRegex'
+export { CAPTURE_SERVER_PORT }
 const VALID_CAPTURE_SOURCES: CaptureSource[] = ['auto', 'manual', 'selector']
 
 // Manual capture dedup: "caseId:url" -> timestamp of last accepted capture
@@ -61,8 +63,9 @@ function isUrlBlacklisted(url: string, patterns: string[]): string | null {
     try {
       if (pattern.startsWith('/') && pattern.lastIndexOf('/') > 0) {
         const lastSlash = pattern.lastIndexOf('/')
-        const re = new RegExp(pattern.slice(1, lastSlash), pattern.slice(lastSlash + 1))
-        if (re.test(url)) return pattern
+        const regexBody = pattern.slice(1, lastSlash)
+        const flags = pattern.slice(lastSlash + 1)
+        if (safeRegexTest(regexBody, flags, url)) return pattern
       } else if (pattern.includes('*') || pattern.includes('?')) {
         if (globToRegex(pattern).test(url)) return pattern
       } else {
@@ -175,6 +178,7 @@ function createApp(): Hono {
       return c.json({ error: 'Case not found' }, 404)
     }
     state.activeCaseId = id
+    notifySessionChange()
     return c.json({ status: 'ok', case: { id: caseData.id, name: caseData.name } })
   })
 
@@ -208,7 +212,7 @@ function createApp(): Hono {
         return c.json({ error: 'Invalid request body: expected JSON object' }, 400)
       }
 
-      const rawSource = (body as any).source
+      const rawSource = (body as Record<string, unknown>).source
       if (rawSource === undefined || rawSource === null) {
         source = 'auto'
       } else if (VALID_CAPTURE_SOURCES.includes(rawSource)) {

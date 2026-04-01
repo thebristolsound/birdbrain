@@ -1,19 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useAppStore } from '@renderer/stores/appStore'
-import { useCaptures } from '@renderer/hooks/useCaptures'
-import { useCases } from '@renderer/hooks/useCases'
+import { useParams } from '@tanstack/react-router'
+import { useQuery } from '@tanstack/react-query'
+import {
+  caseQueryOptions,
+  capturesQueryOptions,
+  tagCountForCaseQueryOptions,
+  selectorCoverageQueryOptions,
+  useCasesMutations
+} from '@renderer/lib/queries'
 import { ExportDialog } from '@renderer/components/export/ExportDialog'
 import { Camera, Globe, Tags, FileOutput, Crosshair, Pencil } from 'lucide-react'
-import type { Case } from '@shared/types'
 
 export function CaseOverview() {
-  const activeCaseId = useAppStore((s) => s.activeCaseId)
-  const { captures } = useCaptures(activeCaseId)
-  const { updateCase } = useCases()
-  const [caseData, setCaseData] = useState<Case | null>(null)
+  const { caseId } = useParams({ strict: false })
+  const { data: caseData } = useQuery(caseQueryOptions(caseId!))
+  const { data: captures = [] } = useQuery(capturesQueryOptions(caseId!))
+  const { data: tagCount = 0 } = useQuery(tagCountForCaseQueryOptions(caseId!))
+  const { data: selectorCoverage = { matched: 0, total: 0 } } = useQuery(
+    selectorCoverageQueryOptions(caseId!)
+  )
+  const { update } = useCasesMutations()
   const [showExport, setShowExport] = useState(false)
-  const [tagCount, setTagCount] = useState(0)
-  const [selectorCoverage, setSelectorCoverage] = useState({ matched: 0, total: 0 })
 
   // Editable name state
   const [editingName, setEditingName] = useState(false)
@@ -26,28 +33,11 @@ export function CaseOverview() {
   const descInputRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
-    if (!activeCaseId) return
-    let cancelled = false
-
-    Promise.all([
-      window.birdbrain.cases.get(activeCaseId),
-      window.birdbrain.tags.countForCase(activeCaseId),
-      window.birdbrain.selectors.coverage(activeCaseId)
-    ]).then(([c, tc, sc]) => {
-      if (cancelled) return
-      if (c) {
-        setCaseData(c)
-        setNameValue(c.name)
-        setDescValue(c.description ?? '')
-      } else {
-        setCaseData(null)
-      }
-      setTagCount(tc)
-      setSelectorCoverage(sc)
-    })
-
-    return () => { cancelled = true }
-  }, [activeCaseId])
+    if (caseData) {
+      setNameValue(caseData.name)
+      setDescValue(caseData.description ?? '')
+    }
+  }, [caseData])
 
   useEffect(() => {
     if (editingName && nameInputRef.current) {
@@ -70,8 +60,7 @@ export function CaseOverview() {
       setEditingName(false)
       return
     }
-    const updated = await updateCase({ id: caseData.id, name: trimmed })
-    if (updated) setCaseData(updated)
+    await update.mutateAsync({ id: caseData.id, name: trimmed })
     setEditingName(false)
   }
 
@@ -82,8 +71,7 @@ export function CaseOverview() {
       setEditingDesc(false)
       return
     }
-    const updated = await updateCase({ id: caseData.id, description: trimmed })
-    if (updated) setCaseData(updated)
+    await update.mutateAsync({ id: caseData.id, description: trimmed })
     setEditingDesc(false)
   }
 
@@ -105,9 +93,10 @@ export function CaseOverview() {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
 
-    const dateRange = captures.length > 0
-      ? { first: captures[captures.length - 1].timestamp, last: captures[0].timestamp }
-      : null
+    const dateRange =
+      captures.length > 0
+        ? { first: captures[captures.length - 1].timestamp, last: captures[0].timestamp }
+        : null
 
     return { topDomains, dateRange }
   }, [captures])

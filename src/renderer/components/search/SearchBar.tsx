@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useNavigate } from '@tanstack/react-router'
 import { useAppStore } from '@renderer/stores/appStore'
 import { useSearch } from '@renderer/hooks/useSearch'
 
@@ -6,9 +7,9 @@ export function SearchBar() {
   const [expanded, setExpanded] = useState(false)
   const [query, setQuery] = useState('')
   const { results, searching, search, clear } = useSearch()
-  const selectCase = useAppStore((s) => s.selectCase)
-  const navigateToCapture = useAppStore((s) => s.navigateToCapture)
+  const navigate = useNavigate()
   const setSearchQuery = useAppStore((s) => s.setSearchQuery)
+  const selectCapture = useAppStore((s) => s.selectCapture)
   const inputRef = useRef<HTMLInputElement>(null)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
@@ -104,8 +105,11 @@ export function SearchBar() {
             <button
               key={cap.id}
               onClick={() => {
-                selectCase(cap.caseId)
-                navigateToCapture(cap.id)
+                selectCapture(cap.id)
+                navigate({
+                  to: '/cases/$caseId/captures',
+                  params: { caseId: cap.caseId }
+                })
                 handleClose()
               }}
               className="block w-full px-3 py-2 text-left hover:bg-white/[0.06]"

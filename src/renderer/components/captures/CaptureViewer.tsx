@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useParams } from '@tanstack/react-router'
+import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '@renderer/stores/appStore'
-import { useCaptures } from '@renderer/hooks/useCaptures'
-import { useTags } from '@renderer/hooks/useTags'
+import { capturesQueryOptions, tagsQueryOptions, tagsForCaptureQueryOptions, useTagsMutations, useCapturesMutations } from '@renderer/lib/queries'
 import { TagBadge } from '@renderer/components/tags/TagBadge'
-import type { Capture, Tag } from '@shared/types'
+import type { Capture } from '@shared/types'
 import {
   ChevronLeft,
   ChevronRight,
@@ -51,23 +52,32 @@ function formatViewerTimestamp(ts: string): string {
 }
 
 export function CaptureViewer() {
+  const { caseId } = useParams({ from: '/cases/$caseId/captures' })
   const selectedCaptureId = useAppStore((s) => s.selectedCaptureId)
-  const activeCaseId = useAppStore((s) => s.activeCaseId)
-  const { captures, getContent } = useCaptures(activeCaseId)
-  const { tags: allTags, addToCapture, removeFromCapture, getForCapture } = useTags()
+  const selectCapture = useAppStore((s) => s.selectCapture)
+  const { data: captures = [] } = useQuery(capturesQueryOptions(caseId))
+  const { data: allTags = [] } = useQuery(tagsQueryOptions)
+  const { data: captureTags = [] } = useQuery(tagsForCaptureQueryOptions(selectedCaptureId ?? ''))
+  const { addToCapture, removeFromCapture } = useTagsMutations()
+  const { remove: deleteCaptureMutation } = useCapturesMutations(caseId)
+
   const [activeTab, setActiveTab] = useState<ViewTab>('screenshot')
   const [capture, setCapture] = useState<Capture | null>(null)
   const [content, setContent] = useState<string | null>(null)
-  const [captureTags, setCaptureTags] = useState<Tag[]>([])
   const [showTagMenu, setShowTagMenu] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   useEffect(() => {
     if (selectedCaptureId) {
-      window.birdbrain.captures.get(selectedCaptureId).then((c) => setCapture(c ?? null))
-      getForCapture(selectedCaptureId).then(setCaptureTags)
+      window.birdbrain.captures
+        .get(selectedCaptureId)
+        .then((c) => setCapture(c ?? null))
+        .catch((err) => console.error('Failed to load capture:', err))
+    } else {
+      setCapture(null)
+      setContent(null)
     }
-  }, [selectedCaptureId, getForCapture])
+  }, [selectedCaptureId])
 
   // Load content when tab changes
   useEffect(() => {
@@ -82,23 +92,24 @@ export function CaptureViewer() {
             ? 'txt'
             : null
     if (type) {
-      getContent(selectedCaptureId, type).then(setContent)
+      window.birdbrain.captures
+        .getContent(selectedCaptureId, type)
+        .then(setContent)
+        .catch((err) => console.error('Failed to load capture content:', err))
     }
-  }, [selectedCaptureId, activeTab, getContent])
+  }, [selectedCaptureId, activeTab])
 
   const handleToggleTag = useCallback(
     async (tagId: string) => {
       if (!selectedCaptureId) return
       const hasTag = captureTags.some((t) => t.id === tagId)
       if (hasTag) {
-        await removeFromCapture(selectedCaptureId, tagId)
+        await removeFromCapture.mutateAsync({ captureId: selectedCaptureId, tagId })
       } else {
-        await addToCapture(selectedCaptureId, tagId)
+        await addToCapture.mutateAsync({ captureId: selectedCaptureId, tagId })
       }
-      const updated = await getForCapture(selectedCaptureId)
-      setCaptureTags(updated)
     },
-    [selectedCaptureId, captureTags, addToCapture, removeFromCapture, getForCapture]
+    [selectedCaptureId, captureTags, addToCapture, removeFromCapture]
   )
 
   const handleDownload = async () => {
@@ -112,14 +123,14 @@ export function CaptureViewer() {
   }
 
   const handleDelete = async () => {
-    if (!selectedCaptureId || !activeCaseId) return
+    if (!selectedCaptureId) return
     const deletedId = selectedCaptureId
-    await window.birdbrain.captures.delete(deletedId)
+    await deleteCaptureMutation.mutateAsync(deletedId)
     setShowDeleteConfirm(false)
     // Navigate away: pick sibling capture or clear selection
     const remaining = captures.filter((c) => c.id !== deletedId)
     if (remaining.length > 0) {
-      useAppStore.getState().selectCapture(remaining[0].id)
+      selectCapture(remaining[0].id)
     } else {
       useAppStore.getState().setSelectedCaptureId(null)
     }
@@ -127,7 +138,6 @@ export function CaptureViewer() {
 
   // Navigation
   const currentIndex = captures.findIndex((c) => c.id === selectedCaptureId)
-  const selectCapture = useAppStore((s) => s.selectCapture)
   const goPrev = useCallback(() => {
     if (currentIndex > 0) selectCapture(captures[currentIndex - 1].id)
   }, [currentIndex, captures, selectCapture])

@@ -1,4 +1,5 @@
 import { Filter, X, XCircle } from 'lucide-react'
+import { useNavigate, useParams } from '@tanstack/react-router'
 import type { Selector } from '@shared/types'
 import { useAppStore } from '@renderer/stores/appStore'
 
@@ -16,7 +17,9 @@ export function SelectorFilterFooter({
   const activeSelectorFilters = useAppStore((s) => s.activeSelectorFilters)
   const removeSelectorFilter = useAppStore((s) => s.removeSelectorFilter)
   const clearSelectorFilters = useAppStore((s) => s.clearSelectorFilters)
-  const setActiveTab = useAppStore((s) => s.setActiveTab)
+  const navigate = useNavigate()
+  const params = useParams({ strict: false })
+  const caseId = (params as { caseId?: string }).caseId
 
   if (activeSelectorFilters.length === 0) return null
 
@@ -52,7 +55,11 @@ export function SelectorFilterFooter({
 
       <div className="flex items-center gap-2">
         <button
-          onClick={() => setActiveTab('captures')}
+          onClick={() => {
+            if (caseId) {
+              navigate({ to: '/cases/$caseId/captures', params: { caseId } })
+            }
+          }}
           className="rounded-lg bg-indigo-600 px-3 py-1 text-xs font-medium text-white hover:bg-indigo-500"
         >
           View in Captures

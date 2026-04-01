@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { useAppStore } from '@renderer/stores/appStore'
-import { useCases } from '@renderer/hooks/useCases'
+import { useNavigate } from '@tanstack/react-router'
+import { useCasesMutations } from '@renderer/lib/queries'
 import { FolderPlus, Bitcoin, Bug, ShieldAlert, Settings2, ArrowLeft } from 'lucide-react'
 
 const SELECTOR_PRESETS = [
@@ -45,9 +45,8 @@ const CASE_TYPES = [
 ]
 
 export function NewCaseWizard() {
-  const goToDashboard = useAppStore((s) => s.goToDashboard)
-  const selectCase = useAppStore((s) => s.selectCase)
-  const { createCase } = useCases()
+  const navigate = useNavigate()
+  const { create } = useCasesMutations()
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -66,7 +65,7 @@ export function NewCaseWizard() {
     setSubmitting(true)
 
     try {
-      const newCase = await createCase({
+      const newCase = await create.mutateAsync({
         name: name.trim(),
         description: description.trim() || undefined,
         type: caseType
@@ -84,7 +83,7 @@ export function NewCaseWizard() {
         }
       }
 
-      selectCase(newCase.id)
+      navigate({ to: '/cases/$caseId', params: { caseId: newCase.id } })
     } catch {
       setSubmitting(false)
     }
@@ -195,7 +194,7 @@ export function NewCaseWizard() {
         {/* Footer */}
         <div className="flex items-center justify-between border-t border-white/[0.06] pt-6">
           <button
-            onClick={goToDashboard}
+            onClick={() => navigate({ to: '/' })}
             className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm text-slate-400 transition hover:bg-white/[0.04] hover:text-slate-200"
           >
             <ArrowLeft className="h-4 w-4" />

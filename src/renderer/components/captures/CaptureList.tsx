@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Search, ArrowUpDown, Filter, Crosshair, X } from 'lucide-react'
-import { useCaptures } from '@renderer/hooks/useCaptures'
+import { useQuery } from '@tanstack/react-query'
+import { capturesQueryOptions } from '@renderer/lib/queries'
 import { useAppStore } from '@renderer/stores/appStore'
 import { CaptureItem } from './CaptureItem'
 
@@ -9,7 +10,7 @@ interface CaptureListProps {
 }
 
 export function CaptureList({ caseId }: CaptureListProps) {
-  const { captures } = useCaptures(caseId)
+  const { data: captures = [] } = useQuery(capturesQueryOptions(caseId))
   const selectedCaptureId = useAppStore((s) => s.selectedCaptureId)
   const selectCapture = useAppStore((s) => s.selectCapture)
   const filteredCaptureIds = useAppStore((s) => s.filteredCaptureIds)

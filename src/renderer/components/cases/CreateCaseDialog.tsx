@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { useCases } from '@renderer/hooks/useCases'
-import { useAppStore } from '@renderer/stores/appStore'
+import { useNavigate } from '@tanstack/react-router'
+import { useCasesMutations } from '@renderer/lib/queries'
 
 interface CreateCaseDialogProps {
   onClose: () => void
@@ -9,17 +9,17 @@ interface CreateCaseDialogProps {
 export function CreateCaseDialog({ onClose }: CreateCaseDialogProps) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const { createCase } = useCases()
-  const { selectCase } = useAppStore()
+  const { create } = useCasesMutations()
+  const navigate = useNavigate()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim()) return
-    const newCase = await createCase({
+    const newCase = await create.mutateAsync({
       name: name.trim(),
       description: description.trim() || undefined
     })
-    selectCase(newCase.id)
+    navigate({ to: '/cases/$caseId', params: { caseId: newCase.id } })
     onClose()
   }
 

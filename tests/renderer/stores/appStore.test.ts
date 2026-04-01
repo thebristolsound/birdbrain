@@ -3,114 +3,136 @@ import { useAppStore } from '@renderer/stores/appStore'
 
 describe('appStore', () => {
   beforeEach(() => {
-    // Reset store to initial state between tests
     useAppStore.setState({
-      activeCaseId: null,
-      appMode: 'dashboard',
-      activeCaseTab: 'overview',
-      settingsOpen: false,
       sessionActive: false,
       connectedToExtension: false,
       selectedCaptureId: null,
-      searchQuery: ''
+      searchQuery: '',
+      activeSelectorFilters: [],
+      filteredCaptureIds: null,
+      captureEvents: [],
+      captureStats: { successCount: 0, failCount: 0, skipCount: 0 }
     })
   })
 
   describe('initial state', () => {
-    it('starts in dashboard mode with overview tab', () => {
+    it('starts with no selection and session inactive', () => {
       const state = useAppStore.getState()
-      expect(state.appMode).toBe('dashboard')
-      expect(state.activeCaseTab).toBe('overview')
-      expect(state.activeCaseId).toBeNull()
       expect(state.selectedCaptureId).toBeNull()
-      expect(state.settingsOpen).toBe(false)
-    })
-  })
-
-  describe('selectCase', () => {
-    it('switches to case-workspace mode and sets case id', () => {
-      useAppStore.getState().selectCase('case-1')
-      const state = useAppStore.getState()
-      expect(state.appMode).toBe('case-workspace')
-      expect(state.activeCaseId).toBe('case-1')
-      expect(state.selectedCaptureId).toBeNull()
-    })
-
-    it('preserves current activeCaseTab when switching cases', () => {
-      useAppStore.getState().selectCase('case-1')
-      useAppStore.getState().setActiveTab('captures')
-      useAppStore.getState().selectCase('case-2')
-      const state = useAppStore.getState()
-      expect(state.activeCaseTab).toBe('captures')
-      expect(state.activeCaseId).toBe('case-2')
-    })
-
-    it('clears selectedCaptureId when switching cases', () => {
-      useAppStore.getState().selectCase('case-1')
-      useAppStore.getState().selectCapture('cap-1')
-      useAppStore.getState().selectCase('case-2')
-      expect(useAppStore.getState().selectedCaptureId).toBeNull()
-    })
-  })
-
-  describe('goToDashboard', () => {
-    it('resets to dashboard mode and clears case/capture/settings', () => {
-      useAppStore.getState().selectCase('case-1')
-      useAppStore.getState().selectCapture('cap-1')
-      useAppStore.getState().toggleSettings()
-      useAppStore.getState().goToDashboard()
-      const state = useAppStore.getState()
-      expect(state.appMode).toBe('dashboard')
-      expect(state.activeCaseId).toBeNull()
-      expect(state.selectedCaptureId).toBeNull()
-      expect(state.settingsOpen).toBe(false)
-    })
-  })
-
-  describe('setActiveTab', () => {
-    it('changes the active case tab', () => {
-      useAppStore.getState().setActiveTab('selectors')
-      expect(useAppStore.getState().activeCaseTab).toBe('selectors')
+      expect(state.sessionActive).toBe(false)
+      expect(state.connectedToExtension).toBe(false)
+      expect(state.searchQuery).toBe('')
     })
   })
 
   describe('selectCapture', () => {
-    it('sets selectedCaptureId without changing mode or tab', () => {
-      useAppStore.getState().selectCase('case-1')
-      useAppStore.getState().setActiveTab('captures')
+    it('sets selectedCaptureId', () => {
       useAppStore.getState().selectCapture('cap-1')
-      const state = useAppStore.getState()
-      expect(state.selectedCaptureId).toBe('cap-1')
-      expect(state.appMode).toBe('case-workspace')
-      expect(state.activeCaseTab).toBe('captures')
+      expect(useAppStore.getState().selectedCaptureId).toBe('cap-1')
     })
   })
 
-  describe('navigateToCapture', () => {
-    it('switches to captures tab and sets capture id', () => {
-      useAppStore.getState().selectCase('case-1')
-      useAppStore.getState().setActiveTab('selectors')
-      useAppStore.getState().navigateToCapture('cap-1')
-      const state = useAppStore.getState()
-      expect(state.activeCaseTab).toBe('captures')
-      expect(state.selectedCaptureId).toBe('cap-1')
+  describe('session state', () => {
+    it('sets sessionActive', () => {
+      useAppStore.getState().setSessionActive(true)
+      expect(useAppStore.getState().sessionActive).toBe(true)
+    })
+
+    it('sets connectedToExtension', () => {
+      useAppStore.getState().setConnectedToExtension(true)
+      expect(useAppStore.getState().connectedToExtension).toBe(true)
     })
   })
 
-  describe('toggleSettings', () => {
-    it('toggles settingsOpen without changing appMode', () => {
-      useAppStore.getState().selectCase('case-1')
-      useAppStore.getState().toggleSettings()
-      const state = useAppStore.getState()
-      expect(state.settingsOpen).toBe(true)
-      expect(state.appMode).toBe('case-workspace')
-      expect(state.activeCaseId).toBe('case-1')
+  describe('selector filters', () => {
+    it('adds a selector filter', () => {
+      useAppStore.getState().addSelectorFilter('sel-1')
+      expect(useAppStore.getState().activeSelectorFilters).toEqual(['sel-1'])
     })
 
-    it('toggles back to closed', () => {
-      useAppStore.getState().toggleSettings()
-      useAppStore.getState().toggleSettings()
-      expect(useAppStore.getState().settingsOpen).toBe(false)
+    it('does not duplicate selector filters', () => {
+      useAppStore.getState().addSelectorFilter('sel-1')
+      useAppStore.getState().addSelectorFilter('sel-1')
+      expect(useAppStore.getState().activeSelectorFilters).toEqual(['sel-1'])
+    })
+
+    it('removes a selector filter', () => {
+      useAppStore.getState().addSelectorFilter('sel-1')
+      useAppStore.getState().addSelectorFilter('sel-2')
+      useAppStore.getState().removeSelectorFilter('sel-1')
+      expect(useAppStore.getState().activeSelectorFilters).toEqual(['sel-2'])
+    })
+
+    it('clears filteredCaptureIds when last filter removed', () => {
+      useAppStore.getState().addSelectorFilter('sel-1')
+      useAppStore.getState().setFilteredCaptureIds(['cap-1'])
+      useAppStore.getState().removeSelectorFilter('sel-1')
+      expect(useAppStore.getState().filteredCaptureIds).toBeNull()
+    })
+
+    it('clears all selector filters', () => {
+      useAppStore.getState().addSelectorFilter('sel-1')
+      useAppStore.getState().addSelectorFilter('sel-2')
+      useAppStore.getState().setFilteredCaptureIds(['cap-1'])
+      useAppStore.getState().clearSelectorFilters()
+      expect(useAppStore.getState().activeSelectorFilters).toEqual([])
+      expect(useAppStore.getState().filteredCaptureIds).toBeNull()
+    })
+  })
+
+  describe('capture events', () => {
+    it('adds capture events and updates stats', () => {
+      useAppStore.getState().addCaptureEvent({
+        type: 'stored',
+        captureId: 'cap-1',
+        caseId: 'case-1',
+        url: 'https://example.com',
+        timestamp: new Date().toISOString()
+      })
+      const state = useAppStore.getState()
+      expect(state.captureEvents).toHaveLength(1)
+      expect(state.captureStats.successCount).toBe(1)
+    })
+
+    it('tracks failed events', () => {
+      useAppStore.getState().addCaptureEvent({
+        type: 'failed',
+        captureId: 'cap-1',
+        caseId: 'case-1',
+        url: 'https://example.com',
+        timestamp: new Date().toISOString(),
+        error: 'Network error'
+      })
+      const state = useAppStore.getState()
+      expect(state.captureStats.failCount).toBe(1)
+      expect(state.captureStats.lastError?.message).toBe('Network error')
+    })
+
+    it('limits events to 50', () => {
+      for (let i = 0; i < 60; i++) {
+        useAppStore.getState().addCaptureEvent({
+          type: 'stored',
+          captureId: `cap-${i}`,
+          caseId: 'case-1',
+          url: 'https://example.com',
+          timestamp: new Date().toISOString()
+        })
+      }
+      expect(useAppStore.getState().captureEvents).toHaveLength(50)
+    })
+
+    it('clears events and stats', () => {
+      useAppStore.getState().addCaptureEvent({
+        type: 'stored',
+        captureId: 'cap-1',
+        caseId: 'case-1',
+        url: 'https://example.com',
+        timestamp: new Date().toISOString()
+      })
+      useAppStore.getState().clearCaptureEvents()
+      const state = useAppStore.getState()
+      expect(state.captureEvents).toHaveLength(0)
+      expect(state.captureStats.successCount).toBe(0)
     })
   })
 })

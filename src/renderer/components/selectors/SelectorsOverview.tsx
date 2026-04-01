@@ -1,23 +1,30 @@
 import { useState } from 'react'
 import { useParams } from '@tanstack/react-router'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAppStore } from '@renderer/stores/appStore'
 import {
   selectorsQueryOptions,
   selectorMatchCountsQueryOptions,
-  capturesQueryOptions
+  capturesQueryOptions,
+  queryKeys
 } from '@renderer/lib/queries'
 import { CreateSelectorCard } from './CreateSelectorCard'
 import { SelectorTable } from './SelectorTable'
 import { SelectorFilterFooter } from './SelectorFilterFooter'
 
 export function SelectorsOverview() {
-  const { caseId } = useParams({ strict: false })
+  const { caseId } = useParams({ from: '/cases/$caseId/selectors' })
+  const queryClient = useQueryClient()
   const filteredCaptureIds = useAppStore((s) => s.filteredCaptureIds)
-  const { data: selectors = [], isLoading } = useQuery(selectorsQueryOptions(caseId!))
-  const { data: matchCounts = {} } = useQuery(selectorMatchCountsQueryOptions(caseId!))
-  const { data: captures = [] } = useQuery(capturesQueryOptions(caseId!))
+  const { data: selectors = [], isLoading } = useQuery(selectorsQueryOptions(caseId))
+  const { data: matchCounts = {} } = useQuery(selectorMatchCountsQueryOptions(caseId))
+  const { data: captures = [] } = useQuery(capturesQueryOptions(caseId))
   const [showCreateForm, setShowCreateForm] = useState(false)
+
+  function handleRefresh() {
+    queryClient.invalidateQueries({ queryKey: queryKeys.selectors(caseId) })
+    queryClient.invalidateQueries({ queryKey: queryKeys.selectorMatchCounts(caseId) })
+  }
 
   if (isLoading) {
     return <div className="text-slate-500">Loading selectors...</div>
@@ -30,8 +37,9 @@ export function SelectorsOverview() {
         onToggle={() => setShowCreateForm((v) => !v)}
         onCreated={() => {
           setShowCreateForm(false)
+          handleRefresh()
         }}
-        caseId={caseId!}
+        caseId={caseId}
       />
 
       {selectors.length === 0 ? (
@@ -42,8 +50,8 @@ export function SelectorsOverview() {
         <SelectorTable
           selectors={selectors}
           matchCounts={matchCounts}
-          onRefresh={() => {}}
-          caseId={caseId!}
+          onRefresh={handleRefresh}
+          caseId={caseId}
         />
       )}
 

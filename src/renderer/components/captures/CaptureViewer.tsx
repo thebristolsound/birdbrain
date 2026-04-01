@@ -52,14 +52,14 @@ function formatViewerTimestamp(ts: string): string {
 }
 
 export function CaptureViewer() {
-  const { caseId } = useParams({ strict: false })
+  const { caseId } = useParams({ from: '/cases/$caseId/captures' })
   const selectedCaptureId = useAppStore((s) => s.selectedCaptureId)
   const selectCapture = useAppStore((s) => s.selectCapture)
-  const { data: captures = [] } = useQuery(capturesQueryOptions(caseId!))
+  const { data: captures = [] } = useQuery(capturesQueryOptions(caseId))
   const { data: allTags = [] } = useQuery(tagsQueryOptions)
-  const { data: captureTags = [] } = useQuery(tagsForCaptureQueryOptions(selectedCaptureId!))
+  const { data: captureTags = [] } = useQuery(tagsForCaptureQueryOptions(selectedCaptureId ?? ''))
   const { addToCapture, removeFromCapture } = useTagsMutations()
-  const { remove: deleteCaptureMutation } = useCapturesMutations(caseId!)
+  const { remove: deleteCaptureMutation } = useCapturesMutations(caseId)
 
   const [activeTab, setActiveTab] = useState<ViewTab>('screenshot')
   const [capture, setCapture] = useState<Capture | null>(null)
@@ -73,6 +73,9 @@ export function CaptureViewer() {
         .get(selectedCaptureId)
         .then((c) => setCapture(c ?? null))
         .catch((err) => console.error('Failed to load capture:', err))
+    } else {
+      setCapture(null)
+      setContent(null)
     }
   }, [selectedCaptureId])
 

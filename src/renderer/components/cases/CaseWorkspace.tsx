@@ -15,12 +15,12 @@ const tabs: { id: CaseTab; label: string; icon: typeof LayoutDashboard }[] = [
 ]
 
 export function CaseWorkspace() {
-  const { caseId } = useParams({ strict: false })
+  const { caseId } = useParams({ from: '/cases/$caseId' })
   const matchRoute = useMatchRoute()
   const { data: cases = [], isLoading } = useQuery(casesQueryOptions)
-  const { data: captures = [] } = useQuery(capturesQueryOptions(caseId!))
+  const { data: captures = [] } = useQuery(capturesQueryOptions(caseId))
 
-  useSelectorFilters(caseId!)
+  useSelectorFilters(caseId)
 
   // Activate case on the capture server when entering workspace
   useEffect(() => {
@@ -32,8 +32,6 @@ export function CaseWorkspace() {
   }, [caseId])
 
   const activeCase = cases.find((c) => c.id === caseId)
-
-  if (!caseId) return null
 
   if (isLoading) {
     return (
@@ -66,7 +64,7 @@ export function CaseWorkspace() {
                     ? '/cases/$caseId/captures'
                     : '/cases/$caseId/selectors'
               }
-              params={{ caseId: caseId! }}
+              params={{ caseId: caseId }}
               className={`flex items-center gap-1.5 rounded-t-lg px-4 py-2 text-xs font-medium transition-colors ${
                 isActive
                   ? 'bg-indigo-500/15 font-semibold text-indigo-400'

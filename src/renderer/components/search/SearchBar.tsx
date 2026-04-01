@@ -2,7 +2,6 @@ import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useAppStore } from '@renderer/stores/appStore'
 import { useSearch } from '@renderer/hooks/useSearch'
-import { CAPTURE_SERVER_BASE_URL } from '@shared/constants'
 
 export function SearchBar() {
   const [expanded, setExpanded] = useState(false)
@@ -106,9 +105,6 @@ export function SearchBar() {
             <button
               key={cap.id}
               onClick={() => {
-                fetch(`${CAPTURE_SERVER_BASE_URL}/api/cases/${cap.caseId}/activate`, {
-                  method: 'POST'
-                }).catch((err) => console.error('Failed to activate case on server:', err))
                 selectCapture(cap.id)
                 navigate({
                   to: '/cases/$caseId/captures',

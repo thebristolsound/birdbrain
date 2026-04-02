@@ -132,6 +132,22 @@ export async function getActiveSelectors(): Promise<ActiveCaseSelectors[]> {
   return request('/api/selectors/active')
 }
 
+interface CreateSelectorResult {
+  selector: SelectorInfo
+  status: string
+}
+
+export async function createSelector(params: {
+  caseId: string
+  pattern: string
+  label?: string
+}): Promise<CreateSelectorResult> {
+  return request('/api/selectors', {
+    method: 'POST',
+    body: JSON.stringify(params)
+  })
+}
+
 export async function checkConnection(): Promise<boolean> {
   try {
     const status = await getStatus()

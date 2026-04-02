@@ -2,7 +2,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { initDatabase, closeDatabase, createCase, updateCase, listCaptures } from '@main/services/database'
+import {
+  initDatabase,
+  closeDatabase,
+  createCase,
+  updateCase,
+  listCaptures,
+  listSelectors,
+  getSelectorMatchCounts
+} from '@main/services/database'
 import { initStorage } from '@main/services/storage'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { startCaptureServer, stopCaptureServer, getSessionState, resetSessionState } from '@main/services/captureServer'
@@ -748,5 +756,200 @@ describe('captureServer', () => {
 
     const second = await fetch(`${baseUrl}/api/captures`, { method: 'POST', headers, body })
     expect(second.status).toBe(200)
+  })
+
+  // --- POST /api/selectors (create selector from extension) ---
+
+  async function activateSessionForCase(caseId: string) {
+    await fetch(`${baseUrl}/api/cases/${caseId}/activate`, { method: 'POST' })
+    await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
+  }
+
+  it('POST /api/selectors creates a literal selector', async () => {
+    const testCase = createCase({ name: 'Selector Create Test' })
+    await activateSessionForCase(testCase.id)
+
+    const res = await fetch(`${baseUrl}/api/selectors`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        caseId: testCase.id,
+        pattern: 'suspicious transaction',
+        label: 'from example.com'
+      })
+    })
+
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(data.status).toBe('ok')
+    expect(data.selector).toBeDefined()
+    expect(data.selector.pattern).toBe('suspicious transaction')
+    expect(data.selector.isRegex).toBe(false)
+    expect(data.selector.enabled).toBe(true)
+    expect(data.selector.label).toBe('from example.com')
+    expect(data.selector.caseId).toBe(testCase.id)
+    expect(data.selector.id).toBeDefined()
+    expect(data.selector.createdAt).toBeDefined()
+
+    // Verify it persisted in the database
+    const selectors = listSelectors(testCase.id)
+    expect(selectors).toHaveLength(1)
+    expect(selectors[0].pattern).toBe('suspicious transaction')
+  })
+
+  it('POST /api/selectors returns 400 without active session', async () => {
+    const testCase = createCase({ name: 'No Session Selector' })
+
+    const res = await fetch(`${baseUrl}/api/selectors`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        caseId: testCase.id,
+        pattern: 'test pattern'
+      })
+    })
+
+    expect(res.status).toBe(400)
+    const data = await res.json()
+    expect(data.error).toContain('session')
+  })
+
+  it('POST /api/selectors returns 400 for empty pattern', async () => {
+    const testCase = createCase({ name: 'Empty Pattern' })
+    await activateSessionForCase(testCase.id)
+
+    const res = await fetch(`${baseUrl}/api/selectors`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        caseId: testCase.id,
+        pattern: ''
+      })
+    })
+
+    expect(res.status).toBe(400)
+    const data = await res.json()
+    expect(data.error).toContain('pattern')
+  })
+
+  it('POST /api/selectors returns 400 for missing pattern', async () => {
+    const testCase = createCase({ name: 'Missing Pattern' })
+    await activateSessionForCase(testCase.id)
+
+    const res = await fetch(`${baseUrl}/api/selectors`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        caseId: testCase.id
+      })
+    })
+
+    expect(res.status).toBe(400)
+  })
+
+  it('POST /api/selectors returns 400 for missing caseId', async () => {
+    const testCase = createCase({ name: 'Missing CaseId' })
+    await activateSessionForCase(testCase.id)
+
+    const res = await fetch(`${baseUrl}/api/selectors`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pattern: 'test'
+      })
+    })
+
+    expect(res.status).toBe(400)
+    const data = await res.json()
+    expect(data.error).toContain('caseId')
+  })
+
+  it('POST /api/selectors returns 404 for unknown case', async () => {
+    const testCase = createCase({ name: 'Unknown Case Selector' })
+    await activateSessionForCase(testCase.id)
+
+    const res = await fetch(`${baseUrl}/api/selectors`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        caseId: 'nonexistent-case-id',
+        pattern: 'test'
+      })
+    })
+
+    expect(res.status).toBe(404)
+    const data = await res.json()
+    expect(data.error).toContain('Case not found')
+  })
+
+  it('POST /api/selectors schedules retroactive matching', async () => {
+    const testCase = createCase({ name: 'Retro Match Test' })
+    await activateSessionForCase(testCase.id)
+
+    // Create a capture with text content that contains the pattern
+    await fetch(`${baseUrl}/api/captures`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source: 'auto',
+        url: 'https://example.com/page1',
+        title: 'Page 1',
+        html: '<html><body>suspicious transaction detected here</body></html>',
+        timestamp: new Date().toISOString(),
+        textContent: 'suspicious transaction detected here'
+      })
+    })
+
+    // Create another capture without the pattern
+    await fetch(`${baseUrl}/api/captures`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source: 'auto',
+        url: 'https://example.com/page2',
+        title: 'Page 2',
+        html: '<html><body>nothing interesting</body></html>',
+        timestamp: new Date().toISOString(),
+        textContent: 'nothing interesting'
+      })
+    })
+
+    // Now create a selector that matches the first capture
+    const res = await fetch(`${baseUrl}/api/selectors`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        caseId: testCase.id,
+        pattern: 'suspicious transaction'
+      })
+    })
+
+    expect(res.status).toBe(200)
+    const data = await res.json()
+
+    // Wait for setImmediate to complete retroactive matching
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    // Check that the selector matched the first capture
+    const matchCounts = getSelectorMatchCounts(testCase.id)
+    expect(matchCounts[data.selector.id]).toBe(1)
+  })
+
+  it('POST /api/selectors creates selector without label', async () => {
+    const testCase = createCase({ name: 'No Label' })
+    await activateSessionForCase(testCase.id)
+
+    const res = await fetch(`${baseUrl}/api/selectors`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        caseId: testCase.id,
+        pattern: 'test pattern'
+      })
+    })
+
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(data.selector.label).toBeUndefined()
   })
 })

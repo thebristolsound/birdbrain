@@ -5,7 +5,7 @@ import type { Server } from 'http'
 import type { BrowserWindow } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
 import * as db from '@main/services/database'
-import { saveCapture, deleteCaptureFiles } from '@main/services/storage'
+import { saveCapture, deleteCaptureFiles, readCaptureFile } from '@main/services/storage'
 import { hashContent } from '@main/services/hash'
 import { getSettings } from '@main/services/settings'
 import type { CaptureEvent, CaptureSource } from '@shared/types'
@@ -369,6 +369,68 @@ function createApp(): Hono {
   app.get('/api/selectors/active', (c) => {
     const activeSelectors = db.listActiveSelectors()
     return c.json(activeSelectors)
+  })
+
+  // Create a selector from the extension (highlighted text)
+  app.post('/api/selectors', async (c) => {
+    try {
+      const body = await c.req.json()
+      if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+        return c.json({ error: 'Invalid request body: expected JSON object' }, 400)
+      }
+
+      const { caseId, pattern, label } = body as {
+        caseId?: string
+        pattern?: string
+        label?: string
+      }
+
+      if (!state.sessionActive) {
+        return c.json({ error: 'No active session' }, 400)
+      }
+      if (!caseId) {
+        return c.json({ error: 'Missing required field: caseId' }, 400)
+      }
+      if (!pattern || typeof pattern !== 'string' || pattern.trim() === '') {
+        return c.json({ error: 'Missing or empty required field: pattern' }, 400)
+      }
+
+      const caseData = db.getCase(caseId)
+      if (!caseData) {
+        return c.json({ error: 'Case not found' }, 404)
+      }
+
+      const selector = db.createSelector({
+        caseId,
+        pattern: pattern.trim(),
+        isRegex: false,
+        label: label || undefined
+      })
+
+      // Schedule retroactive matching asynchronously
+      setImmediate(() => {
+        try {
+          const captures = db.listCaptures(caseId)
+          const captureTexts: Array<{ captureId: string; text: string }> = []
+          for (const cap of captures) {
+            const buffer = readCaptureFile(caseId, cap.id, 'txt')
+            if (buffer) {
+              captureTexts.push({ captureId: cap.id, text: buffer.toString('utf-8') })
+            }
+          }
+          if (captureTexts.length > 0) {
+            db.matchSelectorAgainstCaptures(selector.id, captureTexts)
+          }
+        } catch (err) {
+          console.error('Retroactive selector matching error:', err)
+        }
+      })
+
+      return c.json({ selector, status: 'ok' })
+    } catch (err) {
+      console.error('Create selector error:', err)
+      return c.json({ error: 'Failed to create selector' }, 500)
+    }
   })
 
   // Test pipeline endpoint

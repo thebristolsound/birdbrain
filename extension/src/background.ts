@@ -1,4 +1,4 @@
-import { checkConnection, getStatus, sendCapture, getActiveSelectors } from '@extension/utils/api'
+import { checkConnection, getStatus, sendCapture, getActiveSelectors, createSelector } from '@extension/utils/api'
 
 // URL patterns to ignore
 const DEFAULT_IGNORE = [
@@ -15,6 +15,7 @@ const DEFAULT_IGNORE = [
 const dedupeMap = new Map<string, number>()
 const DEDUPE_WINDOW_MS = 60_000
 const CONTEXT_MENU_ID = 'birdbrain-capture-page'
+const SELECTOR_CONTEXT_MENU_ID = 'birdbrain-create-selector'
 
 // Selector capture dedupe: caseId:url -> timestamp
 const selectorDedupeMap = new Map<string, number>()
@@ -86,6 +87,13 @@ async function checkStatus(): Promise<void> {
       .catch(() => {
         // Menu may not exist yet
       })
+    chrome.contextMenus
+      .update(SELECTOR_CONTEXT_MENU_ID, {
+        enabled: connected && sessionActive && !!activeCaseId
+      })
+      .catch(() => {
+        // Menu may not exist yet
+      })
   } catch {
     connected = false
     sessionActive = false
@@ -113,9 +121,77 @@ chrome.runtime.onInstalled.addListener(() => {
     contexts: ['page'],
     enabled: false
   })
+  chrome.contextMenus.create({
+    id: SELECTOR_CONTEXT_MENU_ID,
+    title: 'Create Selector from Selection',
+    contexts: ['selection'],
+    enabled: false
+  })
 })
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (info.menuItemId === SELECTOR_CONTEXT_MENU_ID) {
+    if (!tab?.id || !tab.url) return
+    if (!connected || !sessionActive) return
+    if (!activeCaseId) return
+
+    const selectedText = info.selectionText?.trim()
+    if (!selectedText) return
+
+    // Derive label from page hostname
+    let label: string | undefined
+    try {
+      label = `from ${new URL(tab.url).hostname}`
+    } catch {
+      // Invalid URL, skip label
+    }
+
+    // Show "creating" toast
+    chrome.tabs
+      .sendMessage(tab.id, {
+        type: 'SHOW_CAPTURE_TOAST',
+        status: 'capturing',
+        message: 'Creating selector...'
+      })
+      .catch(() => {})
+
+    try {
+      await createSelector({
+        caseId: activeCaseId,
+        pattern: selectedText,
+        label
+      })
+
+      chrome.tabs
+        .sendMessage(tab.id, {
+          type: 'UPDATE_CAPTURE_TOAST',
+          status: 'success',
+          message: 'Selector created'
+        })
+        .catch(() => {})
+    } catch (err) {
+      console.error('[Birdbrain] Create selector failed:', err)
+
+      let message = 'Failed to create selector'
+      if (err && typeof err === 'object' && 'status' in err) {
+        const apiErr = err as { status: number; detail: string }
+        if (apiErr.status === 400) message = `Selector rejected: ${apiErr.detail}`
+        else if (apiErr.status === 404) message = 'Case not found'
+      } else if (err instanceof TypeError) {
+        message = "Can't reach Birdbrain — is it running?"
+      }
+
+      chrome.tabs
+        .sendMessage(tab.id, {
+          type: 'UPDATE_CAPTURE_TOAST',
+          status: 'error',
+          message
+        })
+        .catch(() => {})
+    }
+    return
+  }
+
   if (info.menuItemId !== CONTEXT_MENU_ID) return
   if (!tab?.id || !tab.url) return
   if (!connected) return

@@ -9,7 +9,19 @@ permissions:
   contents: write
 
 jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') }}
+
   build-app:
+    needs: create-release
     strategy:
       fail-fast: false
       matrix:
@@ -45,10 +57,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ matrix.glob }}
-          draft: false
-          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') }}
 
   build-extension:
+    needs: create-release
     runs-on: ubuntu-latest
 
     steps:
@@ -73,5 +84,3 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/birdbrain-extension.zip
-          draft: false
-          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') }}

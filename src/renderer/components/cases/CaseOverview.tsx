@@ -75,10 +75,6 @@ export function CaseOverview() {
     setEditingDesc(false)
   }
 
-  if (!caseData) {
-    return <div className="text-slate-500">Loading case...</div>
-  }
-
   const { topDomains, dateRange } = useMemo(() => {
     const domainCounts: Record<string, number> = {}
     for (const cap of captures) {
@@ -100,6 +96,10 @@ export function CaseOverview() {
 
     return { topDomains, dateRange }
   }, [captures])
+
+  if (!caseData) {
+    return <div className="text-slate-500">Loading case...</div>
+  }
 
   return (
     <div className="flex gap-6">

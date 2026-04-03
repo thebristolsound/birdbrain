@@ -391,11 +391,11 @@ function createApp(): Hono {
         label?: string
       }
 
-      if (!state.sessionActive) {
-        return c.json({ error: 'No active session' }, 400)
-      }
       if (!caseId) {
         return c.json({ error: 'Missing required field: caseId' }, 400)
+      }
+      if (!state.activeCaseId) {
+        return c.json({ error: 'No active case selected' }, 400)
       }
       if (caseId !== state.activeCaseId) {
         return c.json({ error: 'caseId does not match active case' }, 400)

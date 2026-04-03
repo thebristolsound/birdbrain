@@ -34,10 +34,13 @@ jobs:
           cache: pnpm
 
       - uses: actions/setup-python@v5
+        id: setup-python
         with:
           python-version: '3.12'
 
       - run: pnpm install
+        env:
+          npm_config_python: ${{ steps.setup-python.outputs.python-path }}
 
       - name: Build and package
         run: pnpm ${{ matrix.script }}

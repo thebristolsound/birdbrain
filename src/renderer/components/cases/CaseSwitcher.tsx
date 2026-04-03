@@ -27,7 +27,7 @@ export function CaseSwitcher() {
   }, [open])
 
   if (isLoading) {
-    return <span className="text-sm font-semibold text-neutral-400">Loading...</span>
+    return <span className="text-sm font-semibold text-text-muted">Loading...</span>
   }
 
   if (!activeCase) return null
@@ -38,14 +38,14 @@ export function CaseSwitcher() {
         onClick={() => setOpen(!open)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className="flex items-center gap-1 text-sm font-semibold text-neutral-100 hover:text-white"
+        className="flex items-center gap-1 text-sm font-semibold text-text-primary hover:text-text-primary"
       >
         {activeCase.name}
-        <span className="text-xs text-neutral-500">▾</span>
+        <span className="text-xs text-text-muted">▾</span>
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 w-64 rounded-lg border border-neutral-700 bg-neutral-800 py-1 shadow-xl">
+        <div className="absolute left-0 top-full z-50 mt-1 w-64 rounded-lg border border-border-strong bg-elevated py-1 shadow-xl">
           {cases.map((c) => (
             <button
               key={c.id}
@@ -53,8 +53,8 @@ export function CaseSwitcher() {
                 navigate({ to: '/cases/$caseId', params: { caseId: c.id } })
                 setOpen(false)
               }}
-              className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-neutral-700 ${
-                c.id === activeCaseId ? 'bg-neutral-700/50 text-white' : 'text-neutral-300'
+              className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-elevated ${
+                c.id === activeCaseId ? 'bg-accent-subtle text-text-primary' : 'text-text-secondary'
               }`}
             >
               {sessionActive && c.id === activeCaseId && (

@@ -1,4 +1,4 @@
-import { Radar, ChevronRight, Settings, Bell } from 'lucide-react'
+import { Radar, ChevronRight, Settings, Bell, Sun, Moon } from 'lucide-react'
 import { Link, useNavigate, useMatchRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '@renderer/stores/appStore'
@@ -7,12 +7,14 @@ import { SessionControls } from '@renderer/components/status/SessionControls'
 import { ConnectionStatus } from '@renderer/components/status/ConnectionStatus'
 import { CaptureHealth } from '@renderer/components/status/CaptureHealth'
 import { casesQueryOptions } from '@renderer/lib/queries'
+import { useTheme } from '@renderer/hooks/useTheme'
 
 export function TopBar() {
   const navigate = useNavigate()
   const matchRoute = useMatchRoute()
   const sessionActive = useAppStore((s) => s.sessionActive)
   const { data: cases = [] } = useQuery(casesQueryOptions)
+  const { theme, toggleTheme } = useTheme()
 
   const caseMatch = matchRoute({ to: '/cases/$caseId', fuzzy: true })
   const isDashboard = matchRoute({ to: '/' }) !== false && !caseMatch
@@ -20,28 +22,28 @@ export function TopBar() {
   const activeCase = activeCaseId ? cases.find((c) => c.id === activeCaseId) : null
 
   return (
-    <header className="flex h-14 shrink-0 items-center gap-3 border-b border-white/[0.06] bg-slate-900 px-4">
+    <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-surface px-4">
       {/* Logo + Breadcrumb */}
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2">
-          <div className="glow-indigo flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-600">
+          <div className="glow-indigo flex h-7 w-7 items-center justify-center rounded-lg bg-accent">
             <Radar className="h-4 w-4 text-white" />
           </div>
-          <span className="font-display text-sm font-extrabold tracking-tight text-white">
+          <span className="font-display text-sm font-extrabold tracking-tight text-text-primary">
             Birdbrain
           </span>
-          <span className="ml-1 rounded border border-slate-800 bg-slate-900 px-1.5 py-0.5 font-mono text-[10px] font-medium text-slate-500">
+          <span className="ml-1 rounded border border-border-strong bg-surface px-1.5 py-0.5 font-mono text-[10px] font-medium text-text-muted">
             v2.0
           </span>
         </div>
 
         {activeCaseId && (
           <div className="flex items-center gap-1.5 text-sm">
-            <Link to="/" className="text-slate-500 hover:text-slate-300">
+            <Link to="/" className="text-text-muted hover:text-text-secondary">
               Investigations
             </Link>
-            <ChevronRight className="h-3.5 w-3.5 text-slate-600" />
-            <span className="text-slate-300">{activeCase?.name ?? 'Untitled'}</span>
+            <ChevronRight className="h-3.5 w-3.5 text-text-faint" />
+            <span className="text-text-secondary">{activeCase?.name ?? 'Untitled'}</span>
           </div>
         )}
       </div>
@@ -51,12 +53,19 @@ export function TopBar() {
       {isDashboard ? (
         <div className="flex items-center gap-3">
           <CaptureHealth />
-          <button className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-900 hover:text-slate-300 transition-colors">
+          <button className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted hover:bg-elevated hover:text-text-secondary transition-colors">
             <Bell className="h-4 w-4" />
           </button>
           <button
+            onClick={toggleTheme}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted hover:bg-elevated hover:text-accent transition-all duration-300"
+            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </button>
+          <button
             onClick={() => navigate({ to: '/settings' })}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-900 hover:text-slate-300 transition-colors"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted hover:bg-elevated hover:text-text-secondary transition-colors"
             title="Settings"
           >
             <Settings className="h-4 w-4" />
@@ -80,8 +89,16 @@ export function TopBar() {
             <CaptureHealth />
 
             <button
+              onClick={toggleTheme}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-text-muted hover:bg-elevated hover:text-accent transition-all duration-300"
+              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </button>
+
+            <button
               onClick={() => navigate({ to: '/settings' })}
-              className="rounded p-1.5 text-slate-400 hover:bg-white/[0.06] hover:text-slate-200"
+              className="rounded p-1.5 text-text-muted hover:bg-elevated hover:text-text-secondary"
               title="Settings"
             >
               <Settings className="h-4 w-4" />

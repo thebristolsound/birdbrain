@@ -24,8 +24,8 @@ function EventRow({ event }: { event: CaptureEvent }) {
     <div className="flex items-start gap-2 px-3 py-1.5 text-[11px]">
       <EventIcon type={event.type} />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-slate-300">{urlShort}</div>
-        <div className="flex gap-2 text-slate-500">
+        <div className="truncate text-text-secondary">{urlShort}</div>
+        <div className="flex gap-2 text-text-muted">
           <span>{event.source}</span>
           <span>{time}</span>
           {event.durationMs !== undefined && <span>{event.durationMs}ms</span>}
@@ -88,7 +88,7 @@ export function CaptureHealth() {
             ? 'border-red-500/20 bg-red-500/10 text-red-400'
             : captureStats.successCount > 0
               ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
-              : 'border-slate-700 bg-slate-800 text-slate-500'
+              : 'border-border-strong bg-elevated text-text-muted'
         }`}
         title="Capture pipeline health"
       >
@@ -98,43 +98,43 @@ export function CaptureHealth() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-2 w-96 rounded-lg border border-white/[0.06] bg-slate-900 shadow-xl">
-          <div className="flex items-center justify-between border-b border-white/[0.06] px-3 py-2">
-            <span className="text-xs font-medium text-slate-300">Capture Pipeline</span>
+        <div className="absolute right-0 top-full z-50 mt-2 w-96 rounded-lg border border-border bg-surface shadow-xl">
+          <div className="flex items-center justify-between border-b border-border px-3 py-2">
+            <span className="text-xs font-medium text-text-secondary">Capture Pipeline</span>
             <button
               onClick={clearCaptureEvents}
-              className="text-[10px] text-slate-500 hover:text-slate-300"
+              className="text-[10px] text-text-muted hover:text-text-secondary"
             >
               Clear
             </button>
           </div>
 
-          <div className="flex gap-4 border-b border-white/[0.06] px-3 py-2 text-[11px]">
+          <div className="flex gap-4 border-b border-border px-3 py-2 text-[11px]">
             <div className="flex items-center gap-1.5">
               <span
                 className={`h-1.5 w-1.5 rounded-full ${connectedToExtension ? 'bg-emerald-500' : 'bg-slate-500'}`}
               />
-              <span className="text-slate-400">
+              <span className="text-text-muted">
                 {connectedToExtension ? 'Extension' : 'No extension'}
               </span>
             </div>
             <div className="flex items-center gap-1.5">
               <span
-                className={`h-1.5 w-1.5 rounded-full ${sessionActive ? 'animate-pulse bg-red-500' : 'bg-slate-500'}`}
+                className={`h-1.5 w-1.5 rounded-full ${sessionActive ? 'animate-pulse bg-red-500' : 'bg-text-muted'}`}
               />
-              <span className="text-slate-400">{sessionActive ? 'Recording' : 'Idle'}</span>
+              <span className="text-text-muted">{sessionActive ? 'Recording' : 'Idle'}</span>
             </div>
-            <div className="text-slate-500">
+            <div className="text-text-muted">
               {captureStats.successCount}ok / {captureStats.failCount}fail /{' '}
               {captureStats.skipCount}skip
             </div>
           </div>
 
           {captureStats.lastError && (
-            <div className="border-b border-white/[0.06] px-3 py-2">
+            <div className="border-b border-border px-3 py-2">
               <div className="text-[10px] font-medium text-red-400">Last error</div>
-              <div className="text-[11px] text-slate-400">{captureStats.lastError.message}</div>
-              <div className="text-[10px] text-slate-600">
+              <div className="text-[11px] text-text-muted">{captureStats.lastError.message}</div>
+              <div className="text-[10px] text-text-faint">
                 {new Date(captureStats.lastError.timestamp).toLocaleTimeString()}
               </div>
             </div>
@@ -142,7 +142,7 @@ export function CaptureHealth() {
 
           <div className="max-h-60 overflow-y-auto">
             {captureEvents.length === 0 ? (
-              <div className="px-3 py-6 text-center text-[11px] text-slate-600">
+              <div className="px-3 py-6 text-center text-[11px] text-text-faint">
                 No capture activity yet
               </div>
             ) : (
@@ -152,18 +152,18 @@ export function CaptureHealth() {
             )}
           </div>
 
-          <div className="flex gap-2 border-t border-white/[0.06] px-3 py-2">
+          <div className="flex gap-2 border-t border-border px-3 py-2">
             <button
               onClick={runPipelineTest}
               disabled={testing}
-              className="flex-1 rounded bg-slate-800 px-2 py-1.5 text-[11px] text-slate-300 hover:bg-slate-700 disabled:opacity-50"
+              className="flex-1 rounded bg-elevated px-2 py-1.5 text-[11px] text-text-secondary hover:bg-elevated disabled:opacity-50"
             >
               {testing ? 'Testing...' : 'Test Pipeline'}
             </button>
             <button
               onClick={runHttpTest}
               disabled={testing}
-              className="flex-1 rounded bg-slate-800 px-2 py-1.5 text-[11px] text-slate-300 hover:bg-slate-700 disabled:opacity-50"
+              className="flex-1 rounded bg-elevated px-2 py-1.5 text-[11px] text-text-secondary hover:bg-elevated disabled:opacity-50"
             >
               {testing ? 'Testing...' : 'Test HTTP'}
             </button>

@@ -120,16 +120,16 @@ export function CaseOverview() {
                   setEditingName(false)
                 }
               }}
-              className="w-full rounded border border-indigo-500 bg-slate-800 px-2 py-1 font-display text-2xl font-extrabold text-white focus:outline-none"
+              className="w-full rounded border border-accent bg-elevated px-2 py-1 font-display text-2xl font-extrabold text-text-primary focus:outline-none"
             />
           ) : (
             <h1
-              className="group cursor-pointer font-display text-2xl font-extrabold text-white"
+              className="group cursor-pointer font-display text-2xl font-extrabold text-text-primary"
               title="Click to edit"
               onClick={() => setEditingName(true)}
             >
               {caseData.name}
-              <Pencil className="ml-2 inline-block h-4 w-4 text-slate-500 opacity-0 transition-opacity group-hover:opacity-100" />
+              <Pencil className="ml-2 inline-block h-4 w-4 text-text-muted opacity-0 transition-opacity group-hover:opacity-100" />
             </h1>
           )}
 
@@ -146,22 +146,22 @@ export function CaseOverview() {
                 }
               }}
               rows={3}
-              className="mt-1 w-full resize-none rounded border border-indigo-500 bg-slate-800 px-2 py-1 text-sm text-slate-300 focus:outline-none"
+              className="mt-1 w-full resize-none rounded border border-accent bg-elevated px-2 py-1 text-sm text-text-secondary focus:outline-none"
             />
           ) : (
             <p
-              className="mt-1 cursor-pointer text-slate-400 hover:text-slate-300"
+              className="mt-1 cursor-pointer text-text-muted hover:text-text-secondary"
               title="Click to edit"
               onClick={() => setEditingDesc(true)}
             >
               {caseData.description || (
-                <span className="italic text-slate-600">Add a description...</span>
+                <span className="italic text-text-faint">Add a description...</span>
               )}
             </p>
           )}
 
           {dateRange && (
-            <p className="mt-1 font-mono text-xs text-slate-600">
+            <p className="mt-1 font-mono text-xs text-text-faint">
               {new Date(dateRange.first).toLocaleDateString()} —{' '}
               {new Date(dateRange.last).toLocaleDateString()}
             </p>
@@ -172,34 +172,34 @@ export function CaseOverview() {
         <div className="grid grid-cols-3 gap-4">
           <div className="neu-card rounded-2xl p-5">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10">
-                <Camera className="h-5 w-5 text-indigo-400" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-subtle">
+                <Camera className="h-5 w-5 text-accent" />
               </div>
               <div>
-                <div className="text-2xl font-bold text-white">{captures.length}</div>
-                <div className="text-sm text-slate-400">Captures</div>
+                <div className="text-2xl font-bold text-text-primary">{captures.length}</div>
+                <div className="text-sm text-text-muted">Captures</div>
               </div>
             </div>
           </div>
           <div className="neu-card rounded-2xl p-5">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10">
-                <Globe className="h-5 w-5 text-indigo-400" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-subtle">
+                <Globe className="h-5 w-5 text-accent" />
               </div>
               <div>
-                <div className="text-2xl font-bold text-white">{topDomains.length}</div>
-                <div className="text-sm text-slate-400">Domains</div>
+                <div className="text-2xl font-bold text-text-primary">{topDomains.length}</div>
+                <div className="text-sm text-text-muted">Domains</div>
               </div>
             </div>
           </div>
           <div className="neu-card rounded-2xl p-5">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10">
-                <Tags className="h-5 w-5 text-indigo-400" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-subtle">
+                <Tags className="h-5 w-5 text-accent" />
               </div>
               <div>
-                <div className="text-2xl font-bold text-white">{tagCount}</div>
-                <div className="text-sm text-slate-400">Tags</div>
+                <div className="text-2xl font-bold text-text-primary">{tagCount}</div>
+                <div className="text-sm text-text-muted">Tags</div>
               </div>
             </div>
           </div>
@@ -208,12 +208,12 @@ export function CaseOverview() {
         {/* Capture Timeline */}
         {captures.length > 0 && (
           <div>
-            <h2 className="mb-3 text-lg font-semibold text-slate-200">Capture Timeline</h2>
+            <h2 className="mb-3 text-lg font-semibold text-text-primary">Capture Timeline</h2>
             <div className="neu-card flex h-8 gap-px overflow-hidden rounded-2xl">
               {captures.slice(0, 50).map((cap) => (
                 <div
                   key={cap.id}
-                  className="flex-1 bg-indigo-500/15 hover:bg-indigo-500"
+                  className="flex-1 bg-accent-subtle hover:bg-accent-hover"
                   title={`${cap.title}\n${new Date(cap.timestamp).toLocaleString()}`}
                 />
               ))}
@@ -226,11 +226,11 @@ export function CaseOverview() {
       <div className="w-80 shrink-0 space-y-4">
         {/* Quick Actions */}
         <div className="neu-card rounded-2xl p-4">
-          <h3 className="mb-3 text-sm font-semibold text-slate-300">Quick Actions</h3>
+          <h3 className="mb-3 text-sm font-semibold text-text-secondary">Quick Actions</h3>
           <div className="space-y-2">
             <button
               onClick={() => setShowExport(true)}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-slate-800 py-2.5 text-sm font-medium text-slate-300 hover:bg-slate-700"
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-border-strong bg-elevated py-2.5 text-sm font-medium text-text-secondary hover:bg-elevated"
             >
               <FileOutput className="h-4 w-4" />
               Export Report
@@ -241,15 +241,15 @@ export function CaseOverview() {
         {/* Top Domains */}
         {topDomains.length > 0 && (
           <div className="neu-card rounded-2xl p-4">
-            <h3 className="mb-3 text-sm font-semibold text-slate-300">Top Domains</h3>
+            <h3 className="mb-3 text-sm font-semibold text-text-secondary">Top Domains</h3>
             <div className="space-y-2">
               {topDomains.map(([domain, count]) => (
                 <div key={domain} className="flex items-center gap-2">
-                  <Globe className="h-4 w-4 shrink-0 text-slate-500" />
-                  <span className="min-w-0 flex-1 truncate font-mono text-sm text-slate-300">
+                  <Globe className="h-4 w-4 shrink-0 text-text-muted" />
+                  <span className="min-w-0 flex-1 truncate font-mono text-sm text-text-secondary">
                     {domain}
                   </span>
-                  <span className="shrink-0 rounded-full bg-slate-800 px-2 py-0.5 text-xs text-slate-400">
+                  <span className="shrink-0 rounded-full bg-elevated px-2 py-0.5 text-xs text-text-muted">
                     {count}
                   </span>
                 </div>
@@ -261,22 +261,22 @@ export function CaseOverview() {
         {/* Coverage */}
         <div className="neu-card rounded-2xl p-4">
           <div className="mb-3 flex items-center gap-2">
-            <Crosshair className="h-4 w-4 text-indigo-400" />
-            <h3 className="text-sm font-semibold text-slate-300">Coverage</h3>
+            <Crosshair className="h-4 w-4 text-accent" />
+            <h3 className="text-sm font-semibold text-text-secondary">Coverage</h3>
           </div>
           <div>
             <div className="mb-1 flex items-center justify-between text-xs">
-              <span className="text-slate-400">Selector Coverage</span>
-              <span className="text-slate-500">
+              <span className="text-text-muted">Selector Coverage</span>
+              <span className="text-text-muted">
                 {selectorCoverage.total > 0
                   ? Math.round((selectorCoverage.matched / selectorCoverage.total) * 100)
                   : 0}
                 %
               </span>
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-slate-800">
+            <div className="h-2 overflow-hidden rounded-full bg-elevated">
               <div
-                className="h-full rounded-full bg-indigo-500 transition-all"
+                className="h-full rounded-full bg-accent transition-all"
                 style={{
                   width:
                     selectorCoverage.total > 0

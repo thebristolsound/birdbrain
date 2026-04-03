@@ -50,8 +50,8 @@ export function CaptureItem({ capture, isSelected, onClick }: CaptureItemProps) 
       onClick={onClick}
       className={`w-full rounded-xl border p-2 text-left transition-colors ${
         isSelected
-          ? 'border-indigo-500/35 bg-indigo-500/15'
-          : 'border-transparent hover:bg-white/[0.04]'
+          ? 'border-accent/35 bg-accent-subtle'
+          : 'border-transparent hover:bg-elevated'
       }`}
     >
       <div className="flex gap-2">
@@ -74,11 +74,11 @@ export function CaptureItem({ capture, isSelected, onClick }: CaptureItemProps) 
         </div>
         {/* Text */}
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium text-slate-200">
+          <div className="truncate text-sm font-medium text-text-secondary">
             {capture.title || hostname}
           </div>
-          <div className="mt-0.5 truncate font-mono text-[11px] text-slate-500">{hostname}</div>
-          <div className="mt-0.5 text-[11px] text-slate-600">
+          <div className="mt-0.5 truncate font-mono text-[11px] text-text-muted">{hostname}</div>
+          <div className="mt-0.5 text-[11px] text-text-faint">
             {formatTimestamp(capture.timestamp)}
           </div>
         </div>

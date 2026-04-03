@@ -13,7 +13,7 @@ const DEFAULT_SETTINGS: BirdbrainSettings = {
   ignoredUrlPatterns: [],
   storagePath: '',
   maxStorageMb: null,
-  theme: 'dark',
+  theme: 'light',
   autoCaptureMode: 'notify'
 }
 

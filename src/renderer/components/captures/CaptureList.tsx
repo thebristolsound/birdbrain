@@ -27,40 +27,40 @@ export function CaptureList({ caseId }: CaptureListProps) {
   })
 
   return (
-    <aside className="flex w-[300px] shrink-0 flex-col border-r bg-slate-900 border-white/[0.06]">
+    <aside className="flex w-[300px] shrink-0 flex-col border-r bg-surface border-border">
       {/* Header: search + sort/filter + selector indicator */}
-      <div className="border-b p-2 border-white/[0.06]">
+      <div className="border-b p-2 border-border">
         {/* Search input */}
         <div className="relative">
-          <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
+          <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
           <input
             type="text"
             placeholder="Search captures..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full rounded-lg border border-white/[0.06] bg-white/[0.03] py-1.5 pl-7 pr-2 text-xs text-slate-300 placeholder-slate-600 outline-none focus:border-indigo-500/30"
+            className="w-full rounded-lg border border-border bg-card py-1.5 pl-7 pr-2 text-xs text-text-secondary placeholder-text-faint outline-none focus:border-accent/30"
           />
         </div>
         {/* Sort + Filter buttons */}
         <div className="mt-1.5 flex gap-1">
-          <button className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-slate-500 hover:bg-white/[0.04] hover:text-slate-400">
+          <button className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-text-muted hover:bg-elevated hover:text-text-muted">
             <ArrowUpDown className="h-3 w-3" />
             Sort
           </button>
-          <button className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-slate-500 hover:bg-white/[0.04] hover:text-slate-400">
+          <button className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-text-muted hover:bg-elevated hover:text-text-muted">
             <Filter className="h-3 w-3" />
             Filter
           </button>
         </div>
         {/* Selector filter indicator */}
         {activeSelectorFilters.length > 0 && (
-          <div className="mt-1.5 flex items-center gap-1 rounded-md border border-indigo-500/20 bg-indigo-500/10 px-2 py-1 text-[11px] text-indigo-300">
+          <div className="mt-1.5 flex items-center gap-1 rounded-md border border-accent/20 bg-accent-subtle px-2 py-1 text-[11px] text-accent">
             <Crosshair className="h-3 w-3" />
             <span>
               {activeSelectorFilters.length} selector filter
               {activeSelectorFilters.length !== 1 ? 's' : ''} active
             </span>
-            <button onClick={clearSelectorFilters} className="ml-auto hover:text-indigo-200">
+            <button onClick={clearSelectorFilters} className="ml-auto hover:text-accent">
               <X className="h-3 w-3" />
             </button>
           </div>
@@ -78,15 +78,15 @@ export function CaptureList({ caseId }: CaptureListProps) {
           />
         ))}
         {displayedCaptures.length === 0 && (
-          <div className="px-3 py-4 text-center text-xs text-slate-600">
+          <div className="px-3 py-4 text-center text-xs text-text-faint">
             {filteredCaptureIds ? 'No captures match the active filters' : 'No captures yet'}
           </div>
         )}
       </div>
 
       {/* Footer */}
-      <div className="border-t p-3 bg-slate-900 border-white/[0.06]">
-        <div className="text-center text-[11px] text-slate-500">
+      <div className="border-t p-3 bg-surface border-border">
+        <div className="text-center text-[11px] text-text-muted">
           Showing {displayedCaptures.length} of {captures.length} captures
         </div>
       </div>

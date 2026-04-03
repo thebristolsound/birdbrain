@@ -19,4 +19,24 @@ test.describe('App Lifecycle', () => {
   test('new case button is visible', async ({ page }) => {
     await expect(page.locator('[data-testid="new-case-btn"]')).toBeVisible()
   })
+
+  test('theme toggle persists between reloads', async ({ page }) => {
+    // App should start in light mode (no .dark class)
+    const htmlClass = await page.evaluate(() => document.documentElement.className)
+    expect(htmlClass).not.toContain('dark')
+
+    // Find and click the theme toggle (Moon icon button)
+    const themeToggle = page.locator('button[title="Switch to dark mode"]')
+    await themeToggle.click()
+
+    // Should now have .dark class
+    const darkClass = await page.evaluate(() => document.documentElement.className)
+    expect(darkClass).toContain('dark')
+
+    // Reload and verify persistence
+    await page.reload()
+    await page.waitForLoadState('domcontentloaded')
+    const afterReload = await page.evaluate(() => document.documentElement.className)
+    expect(afterReload).toContain('dark')
+  })
 })

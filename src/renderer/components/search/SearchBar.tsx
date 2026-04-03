@@ -45,7 +45,7 @@ export function SearchBar() {
     return (
       <button
         onClick={() => setExpanded(true)}
-        className="flex items-center gap-2 rounded px-3 py-1 text-sm text-slate-500 hover:text-slate-300"
+        className="flex items-center gap-2 rounded px-3 py-1 text-sm text-text-muted hover:text-text-secondary"
       >
         <svg
           className="h-4 w-4"
@@ -67,9 +67,9 @@ export function SearchBar() {
 
   return (
     <div className="relative max-w-md">
-      <div className="flex items-center rounded border border-white/[0.08] bg-slate-800 focus-within:border-indigo-500/40 focus-within:ring-2 focus-within:ring-indigo-500/25">
+      <div className="flex items-center rounded border border-border-strong bg-elevated focus-within:border-accent/40 focus-within:ring-2 focus-within:ring-accent/25">
         <svg
-          className="ml-2 h-4 w-4 text-slate-500"
+          className="ml-2 h-4 w-4 text-text-muted"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -87,11 +87,11 @@ export function SearchBar() {
           value={query}
           onChange={(e) => handleChange(e.target.value)}
           onKeyDown={(e) => e.key === 'Escape' && handleClose()}
-          className="flex-1 bg-transparent px-2 py-1 text-sm text-slate-100 placeholder:text-slate-600 outline-none"
+          className="flex-1 bg-transparent px-2 py-1 text-sm text-text-primary placeholder:text-text-faint outline-none"
           placeholder="Search captures..."
         />
         {query && (
-          <button onClick={handleClose} className="px-2 text-slate-500 hover:text-slate-300">
+          <button onClick={handleClose} className="px-2 text-text-muted hover:text-text-secondary">
             &times;
           </button>
         )}
@@ -99,8 +99,8 @@ export function SearchBar() {
 
       {/* Results dropdown */}
       {query && (results.length > 0 || searching) && (
-        <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded border border-white/[0.08] bg-slate-800 shadow-lg">
-          {searching && <div className="px-3 py-2 text-xs text-slate-500">Searching...</div>}
+        <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded border border-border-strong bg-elevated shadow-lg">
+          {searching && <div className="px-3 py-2 text-xs text-text-muted">Searching...</div>}
           {results.map((cap) => (
             <button
               key={cap.id}
@@ -112,10 +112,10 @@ export function SearchBar() {
                 })
                 handleClose()
               }}
-              className="block w-full px-3 py-2 text-left hover:bg-white/[0.06]"
+              className="block w-full px-3 py-2 text-left hover:bg-elevated"
             >
-              <div className="truncate text-sm text-slate-200">{cap.title}</div>
-              <div className="truncate font-mono text-xs text-slate-500">{cap.url}</div>
+              <div className="truncate text-sm text-text-primary">{cap.title}</div>
+              <div className="truncate font-mono text-xs text-text-muted">{cap.url}</div>
             </button>
           ))}
         </div>

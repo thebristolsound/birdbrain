@@ -864,7 +864,7 @@ describe('captureServer', () => {
     expect(data.error).toContain('caseId')
   })
 
-  it('POST /api/selectors returns 404 for unknown case', async () => {
+  it('POST /api/selectors returns 400 for caseId not matching active case', async () => {
     const testCase = createCase({ name: 'Unknown Case Selector' })
     await activateSessionForCase(testCase.id)
 
@@ -877,9 +877,9 @@ describe('captureServer', () => {
       })
     })
 
-    expect(res.status).toBe(404)
+    expect(res.status).toBe(400)
     const data = await res.json()
-    expect(data.error).toContain('Case not found')
+    expect(data.error).toContain('active case')
   })
 
   it('POST /api/selectors returns 400 for archived case', async () => {
@@ -899,6 +899,25 @@ describe('captureServer', () => {
     expect(res.status).toBe(400)
     const data = await res.json()
     expect(data.error).toContain('archived')
+  })
+
+  it('POST /api/selectors returns 400 when caseId does not match active case', async () => {
+    const activeCase = createCase({ name: 'Active Case Mismatch' })
+    const otherCase = createCase({ name: 'Other Case' })
+    await activateSessionForCase(activeCase.id)
+
+    const res = await fetch(`${baseUrl}/api/selectors`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        caseId: otherCase.id,
+        pattern: 'test pattern'
+      })
+    })
+
+    expect(res.status).toBe(400)
+    const data = await res.json()
+    expect(data.error).toContain('active case')
   })
 
   it('POST /api/selectors schedules retroactive matching', async () => {

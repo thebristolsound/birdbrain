@@ -391,6 +391,9 @@ function createApp(): Hono {
       if (!caseId) {
         return c.json({ error: 'Missing required field: caseId' }, 400)
       }
+      if (caseId !== state.activeCaseId) {
+        return c.json({ error: 'caseId does not match active case' }, 400)
+      }
       if (!pattern || typeof pattern !== 'string' || pattern.trim() === '') {
         return c.json({ error: 'Missing or empty required field: pattern' }, 400)
       }

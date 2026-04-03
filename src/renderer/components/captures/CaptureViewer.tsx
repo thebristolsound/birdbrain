@@ -159,7 +159,7 @@ export function CaptureViewer() {
 
   if (!capture) {
     return (
-      <main className="flex flex-1 items-center justify-center bg-black text-slate-500">
+      <main className="flex flex-1 items-center justify-center bg-canvas text-text-muted">
         Select a capture to view
       </main>
     )
@@ -175,33 +175,33 @@ export function CaptureViewer() {
   }
 
   return (
-    <main className="flex flex-1 flex-col overflow-hidden bg-black">
+    <main className="flex flex-1 flex-col overflow-hidden bg-canvas">
       {/* A) Viewer header */}
-      <div className="flex items-center gap-3 border-b border-white/[0.06] px-4 py-3">
+      <div className="flex items-center gap-3 border-b border-border px-4 py-3">
         {/* Prev/Next nav */}
         <button
           onClick={goPrev}
           disabled={currentIndex <= 0}
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-white/[0.06] hover:text-slate-200 disabled:opacity-30"
+          className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted hover:bg-elevated hover:text-text-primary disabled:opacity-30"
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
         <button
           onClick={goNext}
           disabled={currentIndex >= captures.length - 1}
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-white/[0.06] hover:text-slate-200 disabled:opacity-30"
+          className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted hover:bg-elevated hover:text-text-primary disabled:opacity-30"
         >
           <ChevronRight className="h-4 w-4" />
         </button>
 
         {/* Title + URL + timestamp */}
         <div className="min-w-0 flex-1">
-          <h2 className="truncate font-display text-sm font-bold text-white">
+          <h2 className="truncate font-display text-sm font-bold text-text-primary">
             {capture.title || hostname}
           </h2>
           <div className="flex items-center gap-2">
-            <span className="truncate font-mono text-[11px] text-slate-500">{capture.url}</span>
-            <span className="shrink-0 text-[11px] text-slate-600">
+            <span className="truncate font-mono text-[11px] text-text-muted">{capture.url}</span>
+            <span className="shrink-0 text-[11px] text-text-faint">
               {formatViewerTimestamp(capture.timestamp)}
             </span>
           </div>
@@ -216,21 +216,21 @@ export function CaptureViewer() {
           <button
             onClick={handleDownload}
             title="Download capture"
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-white/[0.06] hover:text-slate-300"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted hover:bg-elevated hover:text-text-secondary"
           >
             <Download className="h-3.5 w-3.5" />
           </button>
           <button
             onClick={handleOpenExternal}
             title="Open URL in browser"
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-white/[0.06] hover:text-slate-300"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted hover:bg-elevated hover:text-text-secondary"
           >
             <ExternalLink className="h-3.5 w-3.5" />
           </button>
           <button
             onClick={() => setShowDeleteConfirm(true)}
             title="Delete capture"
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-white/[0.06] hover:text-red-400"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted hover:bg-elevated hover:text-red-400"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
@@ -243,46 +243,46 @@ export function CaptureViewer() {
           (content ? (
             <div className="neu-card rounded-2xl overflow-hidden">
               {/* Fake browser chrome */}
-              <div className="flex items-center gap-2 border-b border-white/[0.06] bg-slate-800/50 px-3 py-2">
+              <div className="flex items-center gap-2 border-b border-border bg-elevated px-3 py-2">
                 <div className="flex gap-1.5">
                   <span className="h-2.5 w-2.5 rounded-full bg-red-500/60" />
                   <span className="h-2.5 w-2.5 rounded-full bg-yellow-500/60" />
                   <span className="h-2.5 w-2.5 rounded-full bg-green-500/60" />
                 </div>
-                <div className="flex-1 rounded-md bg-white/[0.06] px-3 py-0.5 text-[11px] font-mono text-slate-500 truncate">
+                <div className="flex-1 rounded-md bg-surface px-3 py-0.5 text-[11px] font-mono text-text-muted truncate">
                   {capture.url}
                 </div>
               </div>
               <img src={`data:image/png;base64,${content}`} alt="Screenshot" className="w-full" />
             </div>
           ) : (
-            <div className="text-slate-500">No screenshot available</div>
+            <div className="text-text-muted">No screenshot available</div>
           ))}
         {activeTab === 'page' &&
           (content ? (
             <iframe
               sandbox="allow-same-origin"
               srcDoc={content}
-              className="h-full w-full rounded-xl border border-white/[0.06] bg-white"
+              className="h-full w-full rounded-xl border border-border bg-white"
               style={{ minHeight: '500px' }}
               title="Archived page"
             />
           ) : (
-            <div className="text-slate-500">No HTML available</div>
+            <div className="text-text-muted">No HTML available</div>
           ))}
         {activeTab === 'source' &&
           (content ? (
-            <pre className="whitespace-pre-wrap break-all font-mono text-xs text-slate-400">
+            <pre className="whitespace-pre-wrap break-all font-mono text-xs text-text-muted">
               {content}
             </pre>
           ) : (
-            <div className="text-slate-500">No HTML available</div>
+            <div className="text-text-muted">No HTML available</div>
           ))}
         {activeTab === 'text' &&
           (content ? (
-            <pre className="whitespace-pre-wrap font-mono text-sm text-slate-400">{content}</pre>
+            <pre className="whitespace-pre-wrap font-mono text-sm text-text-muted">{content}</pre>
           ) : (
-            <div className="text-slate-500">No text content available</div>
+            <div className="text-text-muted">No text content available</div>
           ))}
         {activeTab === 'metadata' && (
           <div className="space-y-3 font-mono text-sm">
@@ -292,8 +292,8 @@ export function CaptureViewer() {
             <MetadataRow label="Created" value={new Date(capture.createdAt).toLocaleString()} />
             {capture.headers && (
               <div>
-                <div className="text-slate-500">Headers</div>
-                <pre className="mt-1 whitespace-pre-wrap text-xs text-slate-500">
+                <div className="text-text-muted">Headers</div>
+                <pre className="mt-1 whitespace-pre-wrap text-xs text-text-muted">
                   {capture.headers}
                 </pre>
               </div>
@@ -303,9 +303,9 @@ export function CaptureViewer() {
       </div>
 
       {/* C) Bottom panel */}
-      <div className="border-t border-white/[0.06] bg-slate-900/50">
+      <div className="border-t border-border bg-surface">
         {/* Sub-tabs row */}
-        <div className="flex items-center gap-1 border-b border-white/[0.06] px-3">
+        <div className="flex items-center gap-1 border-b border-border px-3">
           {tabs.map((tab) => {
             const Icon = TAB_ICONS[tab]
             const isActive = activeTab === tab
@@ -314,13 +314,13 @@ export function CaptureViewer() {
                 key={tab}
                 onClick={() => setActiveTab(tab)}
                 className={`relative flex items-center gap-1.5 px-3 py-2.5 text-[11px] font-medium transition-colors ${
-                  isActive ? 'text-indigo-400' : 'text-slate-500 hover:text-slate-300'
+                  isActive ? 'text-accent' : 'text-text-muted hover:text-text-secondary'
                 }`}
               >
                 <Icon className="h-3.5 w-3.5" />
                 {TAB_LABELS[tab]}
                 {isActive && (
-                  <span className="absolute bottom-0 left-1/2 h-0.5 w-6 -translate-x-1/2 rounded-full bg-indigo-400" />
+                  <span className="absolute bottom-0 left-1/2 h-0.5 w-6 -translate-x-1/2 rounded-full bg-accent" />
                 )}
               </button>
             )
@@ -329,14 +329,14 @@ export function CaptureViewer() {
 
         {/* Tag bar */}
         <div className="flex items-center gap-2 px-3 py-2">
-          <TagIcon className="h-3.5 w-3.5 text-slate-600" />
+          <TagIcon className="h-3.5 w-3.5 text-text-faint" />
           {captureTags.map((tag) => (
             <TagBadge key={tag.id} tag={tag} onClick={() => handleToggleTag(tag.id)} removable />
           ))}
           <div className="relative">
             <button
               onClick={() => setShowTagMenu(!showTagMenu)}
-              className="flex items-center gap-1 rounded-lg border border-dashed border-white/[0.08] px-2 py-1 text-[11px] text-slate-500 hover:border-white/[0.15] hover:text-slate-400"
+              className="flex items-center gap-1 rounded-lg border border-dashed border-border-strong px-2 py-1 text-[11px] text-text-muted hover:border-accent/30 hover:text-text-muted"
             >
               <Plus className="h-3 w-3" />
               Add tag
@@ -344,7 +344,7 @@ export function CaptureViewer() {
             {showTagMenu && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setShowTagMenu(false)} />
-                <div className="absolute bottom-full left-0 z-50 mb-1 rounded-lg border border-white/[0.06] bg-slate-800 py-1 shadow-lg">
+                <div className="absolute bottom-full left-0 z-50 mb-1 rounded-lg border border-border bg-elevated py-1 shadow-lg">
                   {allTags
                     .filter((t) => !captureTags.some((ct) => ct.id === t.id))
                     .map((tag) => (
@@ -354,7 +354,7 @@ export function CaptureViewer() {
                           handleToggleTag(tag.id)
                           setShowTagMenu(false)
                         }}
-                        className="flex w-full items-center gap-2 px-3 py-1 text-left text-xs text-slate-300 hover:bg-white/[0.06]"
+                        className="flex w-full items-center gap-2 px-3 py-1 text-left text-xs text-text-secondary hover:bg-elevated"
                       >
                         <span
                           className="h-2 w-2 rounded-full"
@@ -364,7 +364,7 @@ export function CaptureViewer() {
                       </button>
                     ))}
                   {allTags.filter((t) => !captureTags.some((ct) => ct.id === t.id)).length ===
-                    0 && <div className="px-3 py-1 text-xs text-slate-500">No more tags</div>}
+                    0 && <div className="px-3 py-1 text-xs text-text-muted">No more tags</div>}
                 </div>
               </>
             )}
@@ -374,10 +374,10 @@ export function CaptureViewer() {
           <div className="flex-1" />
 
           {/* Capture position + keyboard hints */}
-          <span className="text-[11px] text-slate-600">
+          <span className="text-[11px] text-text-faint">
             {currentIndex + 1} / {captures.length}
           </span>
-          <span className="text-[11px] text-slate-700">← →</span>
+          <span className="text-[11px] text-text-faint">← →</span>
         </div>
       </div>
 
@@ -387,14 +387,14 @@ export function CaptureViewer() {
           onClick={() => setShowDeleteConfirm(false)}
         >
           <div className="neu-card w-80 rounded-2xl p-5" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-2 text-sm font-semibold text-white">Delete Capture?</h3>
-            <p className="mb-4 text-xs text-slate-400">
+            <h3 className="mb-2 text-sm font-semibold text-text-primary">Delete Capture?</h3>
+            <p className="mb-4 text-xs text-text-muted">
               This will permanently remove the capture and its files. This cannot be undone.
             </p>
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setShowDeleteConfirm(false)}
-                className="rounded px-3 py-1.5 text-sm text-slate-400 hover:text-slate-200"
+                className="rounded px-3 py-1.5 text-sm text-text-muted hover:text-text-primary"
               >
                 Cancel
               </button>
@@ -415,8 +415,8 @@ export function CaptureViewer() {
 function MetadataRow({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="text-slate-500">{label}</div>
-      <div className="break-all text-slate-300">{value}</div>
+      <div className="text-text-muted">{label}</div>
+      <div className="break-all text-text-secondary">{value}</div>
     </div>
   )
 }

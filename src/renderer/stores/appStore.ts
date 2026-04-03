@@ -5,6 +5,7 @@ interface AppState {
   sessionActive: boolean
   connectedToExtension: boolean
   selectedCaptureId: string | null
+  selectedCaptureIds: Set<string>
   searchQuery: string
   activeSelectorFilters: string[]
   filteredCaptureIds: string[] | null
@@ -21,6 +22,9 @@ interface AppState {
   setSelectedCaptureId: (id: string | null) => void
   setSearchQuery: (query: string) => void
   selectCapture: (id: string) => void
+  toggleCaptureSelection: (id: string) => void
+  selectAllCaptures: (ids: string[]) => void
+  clearCaptureSelection: () => void
   addSelectorFilter: (selectorId: string) => void
   removeSelectorFilter: (selectorId: string) => void
   clearSelectorFilters: () => void
@@ -33,6 +37,7 @@ export const useAppStore = create<AppState>((set) => ({
   sessionActive: false,
   connectedToExtension: false,
   selectedCaptureId: null,
+  selectedCaptureIds: new Set(),
   searchQuery: '',
   activeSelectorFilters: [],
   filteredCaptureIds: null,
@@ -45,6 +50,21 @@ export const useAppStore = create<AppState>((set) => ({
   setSearchQuery: (query) => set({ searchQuery: query }),
 
   selectCapture: (id) => set({ selectedCaptureId: id }),
+
+  toggleCaptureSelection: (id) =>
+    set((s) => {
+      const newSet = new Set(s.selectedCaptureIds)
+      if (newSet.has(id)) {
+        newSet.delete(id)
+      } else {
+        newSet.add(id)
+      }
+      return { selectedCaptureIds: newSet }
+    }),
+
+  selectAllCaptures: (ids) => set({ selectedCaptureIds: new Set(ids) }),
+
+  clearCaptureSelection: () => set({ selectedCaptureIds: new Set() }),
 
   addSelectorFilter: (selectorId) =>
     set((s) => ({

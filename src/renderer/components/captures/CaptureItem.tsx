@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Star } from 'lucide-react'
+import { Star, Check } from 'lucide-react'
 import type { Capture, Selector } from '@shared/types'
 import { useCaptureThumbnail } from '@renderer/hooks/useCaptureThumbnail'
 
@@ -38,6 +38,9 @@ interface CaptureItemProps {
   onClick: () => void
   isFavorite?: boolean
   onToggleFavorite?: (e: React.MouseEvent) => void
+  isMultiSelected?: boolean
+  onToggleMultiSelect?: (e: React.MouseEvent) => void
+  showCheckbox?: boolean
 }
 
 export function CaptureItem({
@@ -45,7 +48,10 @@ export function CaptureItem({
   isSelected,
   onClick,
   isFavorite = false,
-  onToggleFavorite
+  onToggleFavorite,
+  isMultiSelected = false,
+  onToggleMultiSelect,
+  showCheckbox = false
 }: CaptureItemProps) {
   const [matchingSelectors, setMatchingSelectors] = useState<Selector[]>([])
   const { thumbnail } = useCaptureThumbnail(capture.id)
@@ -76,6 +82,26 @@ export function CaptureItem({
       }`}
     >
       <div className="flex gap-2">
+        {/* Checkbox for multi-select */}
+        {showCheckbox && onToggleMultiSelect && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleMultiSelect(e)
+            }}
+            className="shrink-0 mt-1"
+          >
+            <div
+              className={`h-4 w-4 rounded border-2 flex items-center justify-center transition-colors ${
+                isMultiSelected
+                  ? 'bg-accent border-accent'
+                  : 'border-border bg-card hover:border-accent/50'
+              }`}
+            >
+              {isMultiSelected && <Check className="h-3 w-3 text-white" />}
+            </div>
+          </button>
+        )}
         {/* Thumbnail */}
         <div className="h-12 w-16 shrink-0 rounded-lg overflow-hidden flex items-center justify-center bg-gray-900/50">
           {thumbnail ? (

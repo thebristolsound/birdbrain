@@ -482,27 +482,39 @@ export function deleteSelector(id: string): boolean {
   return result.changes > 0
 }
 
-export function listActiveSelectors(): ActiveCaseSelectors[] {
-  const rows = getDb()
-    .prepare(
-      `SELECT s.*, c.name as case_name FROM selectors s
-       JOIN cases c ON s.case_id = c.id
-       WHERE s.enabled = 1 AND c.archived = 0
-       ORDER BY c.name, s.created_at DESC`
-    )
-    .all() as Array<Record<string, unknown>>
+export function listActiveSelectors(caseId?: string): ActiveCaseSelectors[] {
+  let rows: Array<Record<string, unknown>>
+  if (caseId) {
+    rows = getDb()
+      .prepare(
+        `SELECT s.*, c.name as case_name FROM selectors s
+         JOIN cases c ON s.case_id = c.id
+         WHERE s.case_id = ? AND s.enabled = 1 AND c.archived = 0
+         ORDER BY s.created_at DESC`
+      )
+      .all(caseId) as Array<Record<string, unknown>>
+  } else {
+    rows = getDb()
+      .prepare(
+        `SELECT s.*, c.name as case_name FROM selectors s
+         JOIN cases c ON s.case_id = c.id
+         WHERE s.enabled = 1 AND c.archived = 0
+         ORDER BY c.name, s.created_at DESC`
+      )
+      .all() as Array<Record<string, unknown>>
+  }
 
   const grouped = new Map<string, ActiveCaseSelectors>()
   for (const row of rows) {
-    const caseId = row.case_id as string
-    if (!grouped.has(caseId)) {
-      grouped.set(caseId, {
-        caseId,
+    const id = row.case_id as string
+    if (!grouped.has(id)) {
+      grouped.set(id, {
+        caseId: id,
         caseName: row.case_name as string,
         selectors: []
       })
     }
-    grouped.get(caseId)!.selectors.push(rowToSelector(row))
+    grouped.get(id)!.selectors.push(rowToSelector(row))
   }
   return Array.from(grouped.values())
 }

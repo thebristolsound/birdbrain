@@ -24,7 +24,8 @@ import {
   getTagCountForCase,
   getSelectorCoverage,
   createSelector,
-  matchSelectorAgainstCaptures
+  matchSelectorAgainstCaptures,
+  listActiveSelectors
 } from '@main/services/database'
 
 describe('database', () => {
@@ -342,6 +343,36 @@ describe('database', () => {
       const c = createCase({ name: 'Empty' })
       const cov = getSelectorCoverage(c.id)
       expect(cov).toEqual({ matched: 0, total: 0 })
+    })
+  })
+
+  describe('listActiveSelectors', () => {
+    it('returns only selectors for the specified case', () => {
+      const case1 = createCase({ name: 'Case A' })
+      const case2 = createCase({ name: 'Case B' })
+      createSelector({ caseId: case1.id, pattern: 'alpha' })
+      createSelector({ caseId: case2.id, pattern: 'beta' })
+
+      const result = listActiveSelectors(case1.id)
+      expect(result).toHaveLength(1)
+      expect(result[0].caseId).toBe(case1.id)
+      expect(result[0].selectors).toHaveLength(1)
+      expect(result[0].selectors[0].pattern).toBe('alpha')
+    })
+
+    it('returns all enabled selectors when no caseId given', () => {
+      const case1 = createCase({ name: 'Case A' })
+      const case2 = createCase({ name: 'Case B' })
+      createSelector({ caseId: case1.id, pattern: 'alpha' })
+      createSelector({ caseId: case2.id, pattern: 'beta' })
+
+      const result = listActiveSelectors()
+      expect(result).toHaveLength(2)
+    })
+
+    it('returns empty array for unknown caseId', () => {
+      const result = listActiveSelectors('nonexistent')
+      expect(result).toHaveLength(0)
     })
   })
 

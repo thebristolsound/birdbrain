@@ -49,6 +49,7 @@ async function checkStatus(): Promise<void> {
   try {
     const status = await getStatus()
     const wasConnected = connected
+    const previousCaseId = activeCaseId
     connected = status.running
     sessionActive = status.sessionActive
     captureCount = status.captureCount
@@ -71,7 +72,7 @@ async function checkStatus(): Promise<void> {
       chrome.action.setBadgeText({ text: '' })
     }
 
-    // Fetch active selectors whenever connected (not just during session)
+    // Fetch active selectors whenever connected
     if (connected) {
       try {
         activeSelectors = await getActiveSelectors()
@@ -82,21 +83,39 @@ async function checkStatus(): Promise<void> {
       activeSelectors = []
     }
 
+    // If active case changed, clear old highlights and re-scan active tab
+    if (connected && activeCaseId !== previousCaseId) {
+      // Clear highlights on all tabs
+      chrome.tabs.query({}, (tabs) => {
+        for (const t of tabs) {
+          if (t.id) {
+            chrome.tabs.sendMessage(t.id, { type: 'CLEAR_HIGHLIGHTS' }).catch(() => {})
+          }
+        }
+      })
+
+      // Re-scan the active tab with new case's selectors
+      if (activeCaseId && activeSelectors.length > 0) {
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+          const activeTab = tabs[0]
+          if (activeTab?.id && activeTab.url) {
+            checkSelectorsOnTab(activeTab.id, activeTab.url)
+          }
+        })
+      }
+    }
+
     // Update context menu enabled state
     chrome.contextMenus
       .update(CONTEXT_MENU_ID, {
         enabled: connected && !!activeCaseId
       })
-      .catch(() => {
-        // Menu may not exist yet
-      })
+      .catch(() => {})
     chrome.contextMenus
       .update(SELECTOR_CONTEXT_MENU_ID, {
         enabled: connected && !!activeCaseId
       })
-      .catch(() => {
-        // Menu may not exist yet
-      })
+      .catch(() => {})
   } catch {
     connected = false
     sessionActive = false

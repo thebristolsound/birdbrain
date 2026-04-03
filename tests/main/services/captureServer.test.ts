@@ -882,6 +882,25 @@ describe('captureServer', () => {
     expect(data.error).toContain('Case not found')
   })
 
+  it('POST /api/selectors returns 400 for archived case', async () => {
+    const testCase = createCase({ name: 'Archived Selector' })
+    updateCase({ id: testCase.id, archived: true })
+    await activateSessionForCase(testCase.id)
+
+    const res = await fetch(`${baseUrl}/api/selectors`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        caseId: testCase.id,
+        pattern: 'test pattern'
+      })
+    })
+
+    expect(res.status).toBe(400)
+    const data = await res.json()
+    expect(data.error).toContain('archived')
+  })
+
   it('POST /api/selectors schedules retroactive matching', async () => {
     const testCase = createCase({ name: 'Retro Match Test' })
     await activateSessionForCase(testCase.id)

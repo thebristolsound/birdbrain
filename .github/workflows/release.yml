@@ -9,32 +9,65 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    runs-on: windows-latest
+  build-app:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            script: package:win
+            glob: dist/*.exe
+          - os: macos-latest
+            script: package:mac
+            glob: dist/*.dmg
+
+    runs-on: ${{ matrix.os }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: pnpm
 
-      - name: Install dependencies
-        run: pnpm install
+      - run: pnpm install
 
       - name: Build and package
-        run: pnpm package
+        run: pnpm ${{ matrix.script }}
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            dist/*.exe
+          files: ${{ matrix.glob }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') }}
+
+  build-extension:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install
+
+      - name: Build Chrome extension
+        run: pnpm build:extension
+
+      - name: Zip extension
+        run: mkdir -p dist && cd extension/dist && zip -r ../../dist/birdbrain-extension.zip .
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/birdbrain-extension.zip
           draft: false
           prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') }}

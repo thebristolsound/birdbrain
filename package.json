@@ -20,7 +20,10 @@
     "pretest:e2e": "pnpm build",
     "test:e2e": "npx playwright test",
     "test:e2e:debug": "npx playwright test --debug",
-    "pretest:e2e:debug": "pnpm build"
+    "pretest:e2e:debug": "pnpm build",
+    "package": "electron-vite build && electron-builder --publish never",
+    "package:win": "electron-vite build && electron-builder --win --publish never",
+    "package:mac": "electron-vite build && electron-builder --mac --publish never"
   },
   "build": {
     "appId": "com.birdbrain.app",

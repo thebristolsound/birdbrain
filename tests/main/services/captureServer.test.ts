@@ -6,6 +6,7 @@ import {
   initDatabase,
   closeDatabase,
   createCase,
+  createSelector,
   updateCase,
   listCaptures,
   listSelectors,
@@ -1029,5 +1030,32 @@ describe('captureServer', () => {
     expect(res.status).toBe(200)
     const data = await res.json()
     expect(data.selector.label).toBeUndefined()
+  })
+
+  it('GET /api/selectors/active returns only selectors for active case', async () => {
+    const case1 = createCase({ name: 'Active Case' })
+    const case2 = createCase({ name: 'Other Case' })
+    createSelector({ caseId: case1.id, pattern: 'target-person' })
+    createSelector({ caseId: case2.id, pattern: 'other-person' })
+
+    // Activate case1
+    await fetch(`${baseUrl}/api/cases/${case1.id}/activate`, { method: 'POST' })
+
+    const res = await fetch(`${baseUrl}/api/selectors/active`)
+    const data = await res.json()
+    expect(data).toHaveLength(1)
+    expect(data[0].caseId).toBe(case1.id)
+    expect(data[0].selectors).toHaveLength(1)
+    expect(data[0].selectors[0].pattern).toBe('target-person')
+  })
+
+  it('GET /api/selectors/active returns empty when no case active', async () => {
+    const case1 = createCase({ name: 'Some Case' })
+    createSelector({ caseId: case1.id, pattern: 'some-pattern' })
+
+    // Don't activate any case
+    const res = await fetch(`${baseUrl}/api/selectors/active`)
+    const data = await res.json()
+    expect(data).toEqual([])
   })
 })

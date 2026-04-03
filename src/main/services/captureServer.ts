@@ -365,9 +365,12 @@ function createApp(): Hono {
     }
   })
 
-  // List active selectors across all non-archived cases
+  // List active selectors for the active case only
   app.get('/api/selectors/active', (c) => {
-    const activeSelectors = db.listActiveSelectors()
+    if (!state.activeCaseId) {
+      return c.json([])
+    }
+    const activeSelectors = db.listActiveSelectors(state.activeCaseId)
     return c.json(activeSelectors)
   })
 

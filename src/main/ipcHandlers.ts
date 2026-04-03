@@ -14,7 +14,7 @@ import * as storage from '@main/services/storage'
 import * as settings from '@main/services/settings'
 import * as openrouter from '@main/services/openrouter'
 import { generateReport } from '@main/services/export'
-import { CAPTURE_SERVER_PORT } from '@main/services/captureServer'
+import { CAPTURE_SERVER_PORT, getSessionState } from '@main/services/captureServer'
 import type { BirdbrainSettings, ExportOptions } from '@shared/types'
 
 type IpcResult<T = unknown> =
@@ -256,7 +256,10 @@ export function registerIpcHandlers(): void {
       return ipcError(err)
     }
   })
-  ipcMain.handle(IPC_CHANNELS.SELECTORS_LIST_ACTIVE, () => db.listActiveSelectors())
+  ipcMain.handle(IPC_CHANNELS.SELECTORS_LIST_ACTIVE, () => {
+    const { activeCaseId } = getSessionState()
+    return db.listActiveSelectors(activeCaseId ?? undefined)
+  })
   ipcMain.handle(IPC_CHANNELS.SELECTORS_MATCH_COUNTS, (_, caseId: string) =>
     db.getSelectorMatchCounts(caseId)
   )

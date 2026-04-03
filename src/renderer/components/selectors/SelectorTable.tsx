@@ -70,27 +70,27 @@ export function SelectorTable({ selectors, matchCounts, onRefresh, caseId }: Sel
   return (
     <div className="neu-card rounded-2xl overflow-hidden">
       {/* Header bar */}
-      <div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-3">
+      <div className="flex items-center justify-between border-b border-border px-5 py-3">
         <div className="flex items-center gap-2">
-          <h3 className="font-display text-sm font-semibold text-slate-100">Active Selectors</h3>
-          <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] font-semibold text-indigo-300">
+          <h3 className="font-display text-sm font-semibold text-text-primary">Active Selectors</h3>
+          <span className="rounded-full bg-accent-subtle px-2 py-0.5 text-[10px] font-semibold text-accent">
             {selectors.length}
           </span>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-600" />
+            <Search className="absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-text-muted" />
             <input
               type="text"
               value={searchFilter}
               onChange={(e) => setSearchFilter(e.target.value)}
               placeholder="Filter selectors..."
-              className="rounded-lg border border-white/[0.06] bg-black py-1 pl-7 pr-3 text-xs text-slate-300 placeholder-slate-600 focus:border-indigo-500/40 focus:outline-none"
+              className="rounded-lg border border-border bg-canvas py-1 pl-7 pr-3 text-xs text-text-secondary placeholder-text-faint focus:border-accent/40 focus:outline-none"
             />
           </div>
           <button
             onClick={() => handleSort(sortBy)}
-            className="rounded-lg border border-white/[0.06] p-1.5 text-slate-500 hover:bg-white/[0.04] hover:text-slate-300"
+            className="rounded-lg border border-border p-1.5 text-text-muted hover:bg-elevated hover:text-text-secondary"
             title="Toggle sort direction"
           >
             <ArrowUpDown className="h-3.5 w-3.5" />
@@ -101,13 +101,13 @@ export function SelectorTable({ selectors, matchCounts, onRefresh, caseId }: Sel
       {/* Table */}
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-white/[0.06] bg-white/[0.02] text-left text-[11px] uppercase tracking-wider text-slate-500">
+          <tr className="border-b border-border bg-surface text-left text-[11px] uppercase tracking-wider text-text-muted">
             <th className="w-16 px-4 py-2 font-medium">On</th>
             <th className="px-4 py-2 font-medium">Pattern</th>
             <th className="w-20 px-4 py-2 font-medium">Type</th>
             <th className="px-4 py-2 font-medium">Label</th>
             <th
-              className="w-24 cursor-pointer px-4 py-2 font-medium hover:text-slate-300"
+              className="w-24 cursor-pointer px-4 py-2 font-medium hover:text-text-secondary"
               onClick={() => handleSort('matches')}
             >
               Matches {sortBy === 'matches' && (sortDir === 'desc' ? '↓' : '↑')}

@@ -27,7 +27,7 @@ export function SelectorsOverview() {
   }
 
   if (isLoading) {
-    return <div className="text-slate-500">Loading selectors...</div>
+    return <div className="text-text-muted">Loading selectors...</div>
   }
 
   return (
@@ -43,7 +43,7 @@ export function SelectorsOverview() {
       />
 
       {selectors.length === 0 ? (
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-text-muted">
           No selectors found. Create one to start matching captures.
         </p>
       ) : (

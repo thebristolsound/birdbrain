@@ -26,17 +26,17 @@ export function SelectorFilterFooter({
   const activeSelectors = selectors.filter((s) => activeSelectorFilters.includes(s.id))
 
   return (
-    <div className="sticky bottom-0 flex items-center gap-4 border-t border-white/[0.06] bg-slate-900 px-5 py-3">
+    <div className="sticky bottom-0 flex items-center gap-4 border-t border-border bg-surface px-5 py-3">
       <div className="flex items-center gap-2">
-        <Filter className="h-3.5 w-3.5 text-indigo-400" />
-        <span className="text-xs font-medium text-slate-400">Active cross-filters:</span>
+        <Filter className="h-3.5 w-3.5 text-accent" />
+        <span className="text-xs font-medium text-text-muted">Active cross-filters:</span>
       </div>
 
       <div className="flex flex-1 flex-wrap items-center gap-1.5">
         {activeSelectors.map((sel) => (
           <span
             key={sel.id}
-            className="inline-flex items-center gap-1 rounded-full bg-indigo-500/15 px-2.5 py-0.5 text-xs text-indigo-300"
+            className="inline-flex items-center gap-1 rounded-full bg-accent-subtle px-2.5 py-0.5 text-xs text-accent"
           >
             {sel.label || sel.pattern}
             <button
@@ -49,7 +49,7 @@ export function SelectorFilterFooter({
         ))}
       </div>
 
-      <span className="text-xs text-slate-500">
+      <span className="text-xs text-text-muted">
         Showing {filteredCount} of {totalCaptures} captures
       </span>
 
@@ -60,13 +60,13 @@ export function SelectorFilterFooter({
               navigate({ to: '/cases/$caseId/captures', params: { caseId } })
             }
           }}
-          className="rounded-lg bg-indigo-600 px-3 py-1 text-xs font-medium text-white hover:bg-indigo-500"
+          className="rounded-lg bg-accent px-3 py-1 text-xs font-medium text-white hover:bg-accent-hover"
         >
           View in Captures
         </button>
         <button
           onClick={clearSelectorFilters}
-          className="flex items-center gap-1 rounded-lg border border-white/[0.08] px-2.5 py-1 text-xs text-slate-400 hover:bg-white/[0.04] hover:text-slate-200"
+          className="flex items-center gap-1 rounded-lg border border-border-strong px-2.5 py-1 text-xs text-text-muted hover:bg-elevated hover:text-text-primary"
         >
           <XCircle className="h-3 w-3" />
           Clear All

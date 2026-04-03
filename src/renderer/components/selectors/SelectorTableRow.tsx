@@ -86,7 +86,7 @@ export function SelectorTableRow({
   return (
     <Fragment>
       <tr
-        className={`border-b border-white/[0.06] transition-colors hover:bg-white/[0.03] ${
+        className={`border-b border-border transition-colors hover:bg-surface ${
           !selector.enabled ? 'opacity-35' : ''
         }`}
       >
@@ -101,7 +101,7 @@ export function SelectorTableRow({
               onToggleEnabled()
             }}
             className={`relative inline-flex h-[18px] w-[34px] items-center rounded-full transition-colors ${
-              selector.enabled ? 'bg-indigo-600' : 'bg-slate-600'
+              selector.enabled ? 'bg-accent' : 'bg-slate-600'
             }`}
           >
             <span
@@ -115,7 +115,7 @@ export function SelectorTableRow({
         {/* Pattern */}
         <td className="px-4 py-2.5">
           {selector.isRegex ? (
-            <span className="inline-block rounded-lg border border-white/[0.06] bg-black px-2 py-1 font-mono text-xs">
+            <span className="inline-block rounded-lg border border-border bg-canvas px-2 py-1 font-mono text-xs">
               {highlightRegexSyntax(selector.pattern)}
             </span>
           ) : (
@@ -126,26 +126,26 @@ export function SelectorTableRow({
         {/* Type badge */}
         <td className="px-4 py-2.5">
           {selector.isRegex ? (
-            <span className="rounded-md border border-indigo-500/20 bg-indigo-500/15 px-1.5 py-0.5 text-[10px] font-mono font-medium text-indigo-300">
+            <span className="rounded-md border border-accent/20 bg-accent-subtle px-1.5 py-0.5 text-[10px] font-mono font-medium text-accent">
               regex
             </span>
           ) : (
-            <span className="rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-mono text-slate-400">
+            <span className="rounded-md bg-surface px-1.5 py-0.5 text-[10px] font-mono text-text-muted">
               string
             </span>
           )}
         </td>
 
         {/* Label */}
-        <td className="px-4 py-2.5 text-xs text-slate-400">{selector.label || '\u2014'}</td>
+        <td className="px-4 py-2.5 text-xs text-text-muted">{selector.label || '\u2014'}</td>
 
         {/* Match count */}
         <td className="px-4 py-2.5">
           <span
             className={`rounded-full px-2 py-0.5 text-xs font-medium ${
               matchCount > 0
-                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
-                : 'bg-white/[0.06] text-slate-400'
+                ? 'bg-accent text-white shadow-lg shadow-indigo-600/20'
+                : 'bg-surface text-text-muted'
             }`}
           >
             {matchCount}
@@ -158,8 +158,8 @@ export function SelectorTableRow({
             onClick={handleFilterToggle}
             className={`rounded-full px-2.5 py-0.5 text-[10px] font-medium transition-colors ${
               isFilterActive
-                ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
-                : 'text-slate-500 hover:text-slate-300 border border-transparent hover:border-white/[0.08]'
+                ? 'bg-accent-subtle text-accent border border-accent/30'
+                : 'text-text-muted hover:text-text-secondary border border-transparent hover:border-border-strong'
             }`}
           >
             {isFilterActive ? 'Active' : 'Apply'}
@@ -174,7 +174,7 @@ export function SelectorTableRow({
                 e.stopPropagation()
                 handleToggleExpand()
               }}
-              className="rounded-lg p-1 text-slate-600 hover:bg-indigo-500/10 hover:text-indigo-400"
+              className="rounded-lg p-1 text-text-muted hover:bg-accent-subtle hover:text-accent"
               title="Test matches"
             >
               <FlaskConical className="h-3.5 w-3.5" />
@@ -184,7 +184,7 @@ export function SelectorTableRow({
                 e.stopPropagation()
                 onDelete()
               }}
-              className="rounded-lg p-1 text-slate-600 hover:bg-red-500/10 hover:text-red-400"
+              className="rounded-lg p-1 text-text-muted hover:bg-red-500/10 hover:text-red-400"
               title="Delete"
             >
               <Trash2 className="h-3.5 w-3.5" />
@@ -196,23 +196,23 @@ export function SelectorTableRow({
       {/* Expanded match preview */}
       {isExpanded && (
         <tr>
-          <td colSpan={7} className="bg-white/[0.02] px-4 py-3">
+          <td colSpan={7} className="bg-surface px-4 py-3">
             <div className="expand-panel">
               {loadingPreviews ? (
-                <p className="text-xs text-slate-500">Loading previews...</p>
+                <p className="text-xs text-text-muted">Loading previews...</p>
               ) : previews && previews.length > 0 ? (
                 <div className="flex gap-2 overflow-x-auto pb-1">
                   {previews.map((preview, idx) => (
                     <div
                       key={idx}
-                      className="min-w-[250px] max-w-[300px] shrink-0 rounded-lg border border-white/[0.06] bg-slate-800 p-3"
+                      className="min-w-[250px] max-w-[300px] shrink-0 rounded-lg border border-border bg-elevated p-3"
                     >
-                      <div className="mb-2 flex items-center gap-1.5 text-[10px] text-slate-500">
+                      <div className="mb-2 flex items-center gap-1.5 text-[10px] text-text-muted">
                         <Globe className="h-3 w-3" />
                         <span className="truncate">{preview.captureUrl}</span>
                       </div>
                       {preview.matches.slice(0, 2).map((m, mi) => (
-                        <p key={mi} className="mb-1 font-mono text-[11px] text-slate-400">
+                        <p key={mi} className="mb-1 font-mono text-[11px] text-text-muted">
                           ...{m.context.slice(0, m.index > 25 ? 25 : m.index)}
                           <span className="rounded bg-indigo-500/30 px-0.5 text-indigo-200">
                             {m.matchText}
@@ -223,15 +223,15 @@ export function SelectorTableRow({
                     </div>
                   ))}
                   {matchCount > previews.length && (
-                    <div className="flex min-w-[120px] items-center justify-center rounded-lg border border-white/[0.06] bg-slate-800/50 p-3">
-                      <span className="text-xs text-slate-500">
+                    <div className="flex min-w-[120px] items-center justify-center rounded-lg border border-border bg-elevated p-3">
+                      <span className="text-xs text-text-muted">
                         +{matchCount - previews.length} more
                       </span>
                     </div>
                   )}
                 </div>
               ) : (
-                <p className="text-xs text-slate-500">No match previews available.</p>
+                <p className="text-xs text-text-muted">No match previews available.</p>
               )}
             </div>
           </td>

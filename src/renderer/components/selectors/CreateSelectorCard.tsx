@@ -106,29 +106,29 @@ export function CreateSelectorCard({
   return (
     <div className="neu-card rounded-2xl">
       <button onClick={onToggle} className="flex w-full items-center gap-3 px-5 py-4 text-left">
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-500/15">
-          <Crosshair className="h-4 w-4 text-indigo-400" />
+        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-subtle">
+          <Crosshair className="h-4 w-4 text-accent" />
         </div>
         <div className="flex-1">
-          <h3 className="font-display text-sm font-semibold text-slate-100">Create New Selector</h3>
-          <p className="text-xs text-slate-500">Define patterns to match across captures</p>
+          <h3 className="font-display text-sm font-semibold text-text-primary">Create New Selector</h3>
+          <p className="text-xs text-text-muted">Define patterns to match across captures</p>
         </div>
         {isOpen ? (
-          <ChevronUp className="h-4 w-4 text-slate-500" />
+          <ChevronUp className="h-4 w-4 text-text-muted" />
         ) : (
-          <ChevronDown className="h-4 w-4 text-slate-500" />
+          <ChevronDown className="h-4 w-4 text-text-muted" />
         )}
       </button>
 
       {isOpen && (
-        <div className="expand-panel border-t border-white/[0.06] px-5 pb-5 pt-4 space-y-4">
+        <div className="expand-panel border-t border-border px-5 pb-5 pt-4 space-y-4">
           <div className="grid grid-cols-12 gap-4">
             {/* Pattern input */}
             <div className="col-span-6">
-              <label className="mb-1 block text-xs font-medium text-slate-400">Pattern</label>
+              <label className="mb-1 block text-xs font-medium text-text-muted">Pattern</label>
               <div className="flex items-center gap-2">
                 <div className="relative flex-1">
-                  <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-600" />
+                  <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
                   <input
                     type="text"
                     value={pattern}
@@ -137,7 +137,7 @@ export function CreateSelectorCard({
                       if (isRegex) validateRegex(e.target.value)
                     }}
                     placeholder={isRegex ? 'e.g. \\b\\d{3}-\\d{3}-\\d{4}\\b' : 'e.g. John Doe'}
-                    className="w-full rounded-xl border border-white/[0.08] bg-black py-1.5 pl-8 pr-3 font-mono text-sm text-slate-200 placeholder-slate-600 focus:border-indigo-500/40 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
+                    className="w-full rounded-xl border border-border-strong bg-canvas py-1.5 pl-8 pr-3 font-mono text-sm text-text-primary placeholder-text-faint focus:border-accent/40 focus:outline-none focus:ring-2 focus:ring-accent/25"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') handleCreate()
                     }}
@@ -152,8 +152,8 @@ export function CreateSelectorCard({
                   }}
                   className={`shrink-0 rounded-full px-2.5 py-1 font-mono text-xs font-medium transition-colors ${
                     isRegex
-                      ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
-                      : 'bg-white/[0.04] text-slate-500 border border-white/[0.06] hover:text-slate-300'
+                      ? 'bg-accent-subtle text-accent border border-accent/30'
+                      : 'bg-surface text-text-muted border border-border hover:text-text-secondary'
                   }`}
                 >
                   .*
@@ -164,13 +164,13 @@ export function CreateSelectorCard({
 
             {/* Label input */}
             <div className="col-span-4">
-              <label className="mb-1 block text-xs font-medium text-slate-400">Label</label>
+              <label className="mb-1 block text-xs font-medium text-text-muted">Label</label>
               <input
                 type="text"
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
                 placeholder="e.g. Phone numbers"
-                className="w-full rounded-xl border border-white/[0.08] bg-black px-3 py-1.5 text-sm text-slate-200 placeholder-slate-600 focus:border-indigo-500/40 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
+                className="w-full rounded-xl border border-border-strong bg-canvas px-3 py-1.5 text-sm text-text-primary placeholder-text-faint focus:border-accent/40 focus:outline-none focus:ring-2 focus:ring-accent/25"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleCreate()
                 }}
@@ -182,7 +182,7 @@ export function CreateSelectorCard({
               <button
                 onClick={handleTest}
                 disabled={!pattern.trim() || !!regexError || testing}
-                className="flex items-center gap-1 rounded-lg border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/[0.08] disabled:opacity-40"
+                className="flex items-center gap-1 rounded-lg border border-border-strong bg-surface px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:bg-elevated disabled:opacity-40"
               >
                 <FlaskConical className="h-3.5 w-3.5" />
                 {testing ? '...' : 'Test'}
@@ -190,7 +190,7 @@ export function CreateSelectorCard({
               <button
                 onClick={handleCreate}
                 disabled={!pattern.trim() || !!regexError || creating}
-                className="flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-xs font-medium text-white shadow-lg shadow-indigo-600/20 hover:bg-indigo-500 disabled:opacity-50"
+                className="flex items-center gap-1 rounded-lg bg-accent px-2.5 py-1.5 text-xs font-medium text-white shadow-lg shadow-indigo-600/20 hover:bg-accent-hover disabled:opacity-50"
               >
                 <Plus className="h-3.5 w-3.5" />
                 {creating ? '...' : 'Create'}
@@ -200,27 +200,27 @@ export function CreateSelectorCard({
 
           {/* Live Test Preview */}
           {testResults !== null && (
-            <div className="test-active rounded-xl border border-indigo-500/20 bg-indigo-500/[0.04] p-4">
+            <div className="test-active rounded-xl border border-accent/20 bg-accent-subtle p-4">
               <div className="mb-3 flex items-center gap-2">
-                <FlaskConical className="h-4 w-4 text-indigo-400" />
-                <span className="text-xs font-medium text-indigo-300">Live Preview</span>
-                <span className="rounded-full bg-indigo-500/20 px-2 py-0.5 text-[10px] font-semibold text-indigo-300">
+                <FlaskConical className="h-4 w-4 text-accent" />
+                <span className="text-xs font-medium text-accent">Live Preview</span>
+                <span className="rounded-full bg-accent-subtle px-2 py-0.5 text-[10px] font-semibold text-accent">
                   {totalMatches} match{totalMatches !== 1 ? 'es' : ''}
                 </span>
               </div>
 
               {testResults.length === 0 ? (
-                <p className="text-xs text-slate-500">No matches found in the first 10 captures.</p>
+                <p className="text-xs text-text-muted">No matches found in the first 10 captures.</p>
               ) : (
                 <div className="space-y-2">
                   {testResults.slice(0, 5).map((result, idx) => (
                     <div
                       key={idx}
-                      className="rounded-lg border border-white/[0.06] bg-slate-800 p-3"
+                      className="rounded-lg border border-border bg-elevated p-3"
                     >
-                      <p className="mb-1 truncate text-xs text-slate-400">{result.captureTitle}</p>
+                      <p className="mb-1 truncate text-xs text-text-muted">{result.captureTitle}</p>
                       {result.matches.slice(0, 3).map((m, mi) => (
-                        <p key={mi} className="font-mono text-xs text-slate-300">
+                        <p key={mi} className="font-mono text-xs text-text-secondary">
                           ...{m.context.slice(0, m.index > 25 ? 25 : m.index)}
                           <span className="rounded bg-indigo-500/30 px-0.5 text-indigo-200">
                             {m.matchText}
@@ -229,14 +229,14 @@ export function CreateSelectorCard({
                         </p>
                       ))}
                       {result.matches.length > 3 && (
-                        <p className="mt-1 text-[10px] text-slate-500">
+                        <p className="mt-1 text-[10px] text-text-muted">
                           +{result.matches.length - 3} more matches
                         </p>
                       )}
                     </div>
                   ))}
                   {testResults.length > 5 && (
-                    <p className="text-xs text-indigo-400">
+                    <p className="text-xs text-accent">
                       View all {totalMatches} matches across {testResults.length} captures
                     </p>
                   )}

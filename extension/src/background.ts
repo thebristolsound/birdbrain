@@ -155,6 +155,13 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       })
       .catch(() => {})
 
+    chrome.tabs
+      .sendMessage(tab.id, {
+        type: 'UPDATE_CAPTURE_TOAST',
+        status: 'capturing',
+        message: 'Creating selector...'
+      })
+      .catch(() => {})
     try {
       await createSelector({
         caseId: activeCaseId,

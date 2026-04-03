@@ -24,8 +24,9 @@ const args = [
   '--dist-url=https://electronjs.org/headers'
 ]
 
-const pythonPath = process.env.npm_config_python || process.env.PYTHON
+const pythonPath = process.env.PYTHON_PATH || process.env.npm_config_python
 if (pythonPath) {
+  console.log(`Using Python: ${pythonPath}`)
   args.push(`--python=${pythonPath}`)
 }
 

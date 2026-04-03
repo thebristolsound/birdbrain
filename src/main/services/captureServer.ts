@@ -5,7 +5,7 @@ import type { Server } from 'http'
 import type { BrowserWindow } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
 import * as db from '@main/services/database'
-import { saveCapture, deleteCaptureFiles } from '@main/services/storage'
+import { saveCapture, deleteCaptureFiles, readCaptureFile } from '@main/services/storage'
 import { hashContent } from '@main/services/hash'
 import { getSettings } from '@main/services/settings'
 import type { CaptureEvent, CaptureSource } from '@shared/types'
@@ -369,6 +369,98 @@ function createApp(): Hono {
   app.get('/api/selectors/active', (c) => {
     const activeSelectors = db.listActiveSelectors()
     return c.json(activeSelectors)
+  })
+
+  // Create a selector from the extension (highlighted text)
+  app.post('/api/selectors', async (c) => {
+    try {
+      let body: unknown
+      try {
+        body = await c.req.json()
+      } catch (err) {
+        console.warn('Create selector invalid JSON:', err)
+        return c.json({ error: 'Invalid JSON' }, 400)
+      }
+      if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+        return c.json({ error: 'Invalid request body: expected JSON object' }, 400)
+      }
+
+      const { caseId, pattern, label } = body as {
+        caseId?: string
+        pattern?: string
+        label?: string
+      }
+
+      if (!state.sessionActive) {
+        return c.json({ error: 'No active session' }, 400)
+      }
+      if (!caseId) {
+        return c.json({ error: 'Missing required field: caseId' }, 400)
+      }
+      if (caseId !== state.activeCaseId) {
+        return c.json({ error: 'caseId does not match active case' }, 400)
+      }
+      if (!pattern || typeof pattern !== 'string' || pattern.trim() === '') {
+        return c.json({ error: 'Missing or empty required field: pattern' }, 400)
+      }
+
+      const caseData = db.getCase(caseId)
+      if (!caseData) {
+        return c.json({ error: 'Case not found' }, 404)
+      }
+      if (caseData.archived) {
+        return c.json({ error: 'Case is archived' }, 400)
+      }
+
+      const selector = db.createSelector({
+        caseId,
+        pattern: pattern.trim(),
+        isRegex: false,
+        label: typeof label === 'string' && label.trim() !== '' ? label.trim() : undefined
+      })
+
+      // Schedule retroactive matching in chunks to avoid blocking the main thread
+      setImmediate(() => {
+        try {
+          const MAX_RETRO_CAPTURES = 500
+          const CHUNK_SIZE = 50
+          const allCaptures = db.listCaptures(caseId)
+          const captures = allCaptures.slice(0, MAX_RETRO_CAPTURES)
+
+          const processChunk = (index: number) => {
+            const end = Math.min(index + CHUNK_SIZE, captures.length)
+            const captureTexts: Array<{ captureId: string; text: string }> = []
+
+            for (let i = index; i < end; i++) {
+              const cap = captures[i]
+              const buffer = readCaptureFile(caseId, cap.id, 'txt')
+              if (buffer) {
+                captureTexts.push({ captureId: cap.id, text: buffer.toString('utf-8') })
+              }
+            }
+
+            if (captureTexts.length > 0) {
+              db.matchSelectorAgainstCaptures(selector.id, captureTexts)
+            }
+
+            if (end < captures.length) {
+              setImmediate(() => processChunk(end))
+            }
+          }
+
+          if (captures.length > 0) {
+            processChunk(0)
+          }
+        } catch (err) {
+          console.error('Retroactive selector matching error:', err)
+        }
+      })
+
+      return c.json({ selector, status: 'ok' })
+    } catch (err) {
+      console.error('Create selector error:', err)
+      return c.json({ error: 'Failed to create selector' }, 500)
+    }
   })
 
   // Test pipeline endpoint

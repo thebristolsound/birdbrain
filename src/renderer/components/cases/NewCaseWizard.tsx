@@ -93,26 +93,26 @@ export function NewCaseWizard() {
     <div className="mx-auto max-w-2xl py-12 px-6">
       {/* Progress indicator */}
       <div className="mb-8 flex items-center justify-center gap-2">
-        <div className="h-2 w-8 rounded-full bg-indigo-500" />
-        <div className="h-2 w-2 rounded-full bg-white/[0.15]" />
-        <div className="h-2 w-2 rounded-full bg-white/[0.15]" />
+        <div className="h-2 w-8 rounded-full bg-accent" />
+        <div className="h-2 w-2 rounded-full bg-elevated" />
+        <div className="h-2 w-2 rounded-full bg-elevated" />
       </div>
 
       {/* Card */}
       <div className="neu-card rounded-2xl p-8">
         <div className="mb-6 flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10">
-            <FolderPlus className="h-5 w-5 text-indigo-400" />
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-subtle">
+            <FolderPlus className="h-5 w-5 text-accent" />
           </div>
           <div>
-            <h2 className="font-display text-lg font-bold text-white">New Investigation</h2>
-            <p className="text-sm text-slate-400">Set up your case details</p>
+            <h2 className="font-display text-lg font-bold text-text-primary">New Investigation</h2>
+            <p className="text-sm text-text-muted">Set up your case details</p>
           </div>
         </div>
 
         {/* Investigation Name */}
         <div className="mb-4">
-          <label className="mb-1.5 block text-sm font-medium text-slate-300">
+          <label className="mb-1.5 block text-sm font-medium text-text-secondary">
             Investigation Name
           </label>
           <input
@@ -120,26 +120,26 @@ export function NewCaseWizard() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Phishing Campaign Analysis"
-            className="w-full rounded-xl border border-white/[0.08] bg-slate-800 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-indigo-500 focus:outline-none"
+            className="w-full rounded-xl border border-border-strong bg-elevated px-4 py-2.5 text-sm text-text-primary placeholder-text-muted focus:border-accent focus:outline-none"
             autoFocus
           />
         </div>
 
         {/* Description */}
         <div className="mb-6">
-          <label className="mb-1.5 block text-sm font-medium text-slate-300">Description</label>
+          <label className="mb-1.5 block text-sm font-medium text-text-secondary">Description</label>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Brief description of this investigation..."
             rows={3}
-            className="w-full resize-none rounded-xl border border-white/[0.08] bg-slate-800 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-indigo-500 focus:outline-none"
+            className="w-full resize-none rounded-xl border border-border-strong bg-elevated px-4 py-2.5 text-sm text-text-primary placeholder-text-muted focus:border-accent focus:outline-none"
           />
         </div>
 
         {/* Investigation Type */}
         <div className="mb-6">
-          <label className="mb-3 block text-sm font-medium text-slate-300">
+          <label className="mb-3 block text-sm font-medium text-text-secondary">
             Investigation Type
           </label>
           <div className="grid grid-cols-2 gap-3">
@@ -152,13 +152,13 @@ export function NewCaseWizard() {
                   onClick={() => setCaseType(t.id)}
                   className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition ${
                     selected
-                      ? 'border-indigo-500 bg-indigo-500/10'
-                      : 'border-white/[0.08] bg-slate-800 hover:border-white/[0.15]'
+                      ? 'border-accent bg-accent-subtle'
+                      : 'border-border-strong bg-elevated hover:border-accent/30'
                   }`}
                 >
-                  <Icon className={`h-5 w-5 ${selected ? 'text-indigo-400' : 'text-slate-400'}`} />
+                  <Icon className={`h-5 w-5 ${selected ? 'text-accent' : 'text-text-muted'}`} />
                   <span
-                    className={`text-sm font-medium ${selected ? 'text-white' : 'text-slate-300'}`}
+                    className={`text-sm font-medium ${selected ? 'text-white' : 'text-text-secondary'}`}
                   >
                     {t.label}
                   </span>
@@ -170,7 +170,7 @@ export function NewCaseWizard() {
 
         {/* Initial Selectors */}
         <div className="mb-8">
-          <label className="mb-3 block text-sm font-medium text-slate-300">Initial Selectors</label>
+          <label className="mb-3 block text-sm font-medium text-text-secondary">Initial Selectors</label>
           <div className="flex flex-wrap gap-2">
             {SELECTOR_PRESETS.map((preset) => {
               const selected = selectedSelectors.includes(preset.id)
@@ -180,8 +180,8 @@ export function NewCaseWizard() {
                   onClick={() => toggleSelector(preset.id)}
                   className={`rounded-lg border px-3 py-1.5 text-sm transition ${
                     selected
-                      ? 'bg-indigo-500/10 border-indigo-500/25 text-white'
-                      : 'bg-slate-800 border-white/[0.08] text-slate-400 hover:border-white/[0.15] hover:text-slate-300'
+                      ? 'bg-accent-subtle border-accent/25 text-white'
+                      : 'bg-elevated border-border-strong text-text-muted hover:border-accent/30 hover:text-text-secondary'
                   }`}
                 >
                   {preset.label}
@@ -192,10 +192,10 @@ export function NewCaseWizard() {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-white/[0.06] pt-6">
+        <div className="flex items-center justify-between border-t border-border pt-6">
           <button
             onClick={() => navigate({ to: '/' })}
-            className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm text-slate-400 transition hover:bg-white/[0.04] hover:text-slate-200"
+            className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm text-text-muted transition hover:bg-elevated hover:text-text-primary"
           >
             <ArrowLeft className="h-4 w-4" />
             Cancel
@@ -203,7 +203,7 @@ export function NewCaseWizard() {
           <button
             onClick={handleSubmit}
             disabled={!name.trim() || submitting}
-            className="rounded-xl bg-indigo-600 px-6 py-2 text-sm font-medium text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="rounded-xl bg-accent px-6 py-2 text-sm font-medium text-white shadow-lg shadow-accent/20 transition hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {submitting ? 'Creating...' : 'Create Case'}
           </button>

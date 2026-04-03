@@ -29,30 +29,30 @@ export function CreateCaseDialog({ onClose }: CreateCaseDialogProps) {
       onClick={onClose}
     >
       <div
-        className="w-96 rounded-lg border border-neutral-700 bg-neutral-900 p-6"
+        className="w-96 rounded-lg border border-border-strong bg-card p-6"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="mb-4 text-lg font-semibold text-neutral-100">New Case</h2>
+        <h2 className="mb-4 text-lg font-semibold text-text-primary">New Case</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="mb-1 block text-sm text-neutral-400">Name</label>
+            <label className="mb-1 block text-sm text-text-muted">Name</label>
             <input
               data-testid="case-name-input"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-amber-600"
+              className="w-full rounded border border-border-strong bg-elevated px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
               placeholder="Investigation name..."
               autoFocus
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm text-neutral-400">Description (optional)</label>
+            <label className="mb-1 block text-sm text-text-muted">Description (optional)</label>
             <textarea
               data-testid="case-description-input"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-amber-600"
+              className="w-full rounded border border-border-strong bg-elevated px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
               placeholder="What is this investigation about?"
               rows={3}
             />
@@ -61,7 +61,7 @@ export function CreateCaseDialog({ onClose }: CreateCaseDialogProps) {
             <button
               type="button"
               onClick={onClose}
-              className="rounded px-3 py-1.5 text-sm text-neutral-400 hover:text-neutral-200"
+              className="rounded px-3 py-1.5 text-sm text-text-muted hover:text-text-primary"
             >
               Cancel
             </button>
@@ -69,7 +69,7 @@ export function CreateCaseDialog({ onClose }: CreateCaseDialogProps) {
               data-testid="case-create-btn"
               type="submit"
               disabled={!name.trim()}
-              className="rounded bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-500 disabled:opacity-50"
+              className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
             >
               Create
             </button>

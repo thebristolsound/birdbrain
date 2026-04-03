@@ -158,7 +158,7 @@ export function NewCaseWizard() {
                 >
                   <Icon className={`h-5 w-5 ${selected ? 'text-accent' : 'text-text-muted'}`} />
                   <span
-                    className={`text-sm font-medium ${selected ? 'text-white' : 'text-text-secondary'}`}
+                    className={`text-sm font-medium ${selected ? 'text-text-primary' : 'text-text-secondary'}`}
                   >
                     {t.label}
                   </span>
@@ -180,7 +180,7 @@ export function NewCaseWizard() {
                   onClick={() => toggleSelector(preset.id)}
                   className={`rounded-lg border px-3 py-1.5 text-sm transition ${
                     selected
-                      ? 'bg-accent-subtle border-accent/25 text-white'
+                      ? 'bg-accent-subtle border-accent/25 text-text-primary'
                       : 'bg-elevated border-border-strong text-text-muted hover:border-accent/30 hover:text-text-secondary'
                   }`}
                 >

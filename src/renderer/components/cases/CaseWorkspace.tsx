@@ -35,7 +35,7 @@ export function CaseWorkspace() {
 
   if (isLoading) {
     return (
-      <div className="flex h-full items-center justify-center text-neutral-500">Loading case...</div>
+      <div className="flex h-full items-center justify-center text-text-muted">Loading case...</div>
     )
   }
 
@@ -47,7 +47,7 @@ export function CaseWorkspace() {
   return (
     <div className="flex h-full flex-col">
       {/* Tab bar */}
-      <div className="h-11 shrink-0 flex items-end gap-0.5 border-b px-5 bg-slate-900 border-white/[0.06]">
+      <div className="h-11 shrink-0 flex items-end gap-0.5 border-b px-5 bg-surface border-border">
         {tabs.map((tab) => {
           const Icon = tab.icon
           const isActive =
@@ -67,8 +67,8 @@ export function CaseWorkspace() {
               params={{ caseId: caseId }}
               className={`flex items-center gap-1.5 rounded-t-lg px-4 py-2 text-xs font-medium transition-colors ${
                 isActive
-                  ? 'bg-indigo-500/15 font-semibold text-indigo-400'
-                  : 'text-slate-500 hover:text-slate-200 hover:bg-white/[0.04]'
+                  ? 'bg-accent-subtle font-semibold text-accent'
+                  : 'text-text-muted hover:text-text-primary hover:bg-elevated'
               }`}
             >
               <Icon className="h-3.5 w-3.5" />
@@ -76,7 +76,7 @@ export function CaseWorkspace() {
               {tab.id === 'captures' && (
                 <span
                   className={`ml-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
-                    isActive ? 'bg-indigo-500/20 text-indigo-300' : 'bg-slate-800 text-slate-400'
+                    isActive ? 'bg-accent-subtle text-accent' : 'bg-elevated text-text-muted'
                   }`}
                 >
                   {captures.length}

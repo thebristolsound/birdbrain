@@ -38,7 +38,7 @@ export function CaseSwitcher() {
         onClick={() => setOpen(!open)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className="flex items-center gap-1 text-sm font-semibold text-text-primary hover:text-white"
+        className="flex items-center gap-1 text-sm font-semibold text-text-primary hover:text-text-primary"
       >
         {activeCase.name}
         <span className="text-xs text-text-muted">▾</span>
@@ -54,7 +54,7 @@ export function CaseSwitcher() {
                 setOpen(false)
               }}
               className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-elevated ${
-                c.id === activeCaseId ? 'bg-accent-subtle text-white' : 'text-text-secondary'
+                c.id === activeCaseId ? 'bg-accent-subtle text-text-primary' : 'text-text-secondary'
               }`}
             >
               {sessionActive && c.id === activeCaseId && (

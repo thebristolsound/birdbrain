@@ -419,10 +419,7 @@ function createApp(): Hono {
           const MAX_RETRO_CAPTURES = 500
           const CHUNK_SIZE = 50
           const allCaptures = db.listCaptures(caseId)
-          const startIndex = allCaptures.length > MAX_RETRO_CAPTURES
-            ? allCaptures.length - MAX_RETRO_CAPTURES
-            : 0
-          const captures = allCaptures.slice(startIndex)
+          const captures = allCaptures.slice(0, MAX_RETRO_CAPTURES)
 
           const processChunk = (index: number) => {
             const end = Math.min(index + CHUNK_SIZE, captures.length)

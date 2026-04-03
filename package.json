@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Open source web investigation & capture tool",
   "main": "./out/main/index.js",
+  "packageManager": "pnpm@10.28.2",
   "author": "Matt Donovan",
   "license": "MIT",
   "scripts": {

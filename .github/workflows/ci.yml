@@ -23,6 +23,26 @@ jobs:
 
       - run: pnpm lint
 
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install
+
+      - name: Typecheck main + renderer
+        run: npx tsc -b --noEmit
+
+      - name: Typecheck extension
+        run: npx tsc --noEmit -p extension/tsconfig.json
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -34,6 +54,9 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
+
+      - name: Install native build dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential python3
 
       - run: pnpm install
 
@@ -58,3 +81,29 @@ jobs:
 
       - name: Build Chrome extension
         run: pnpm build:extension
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install native build dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential python3
+
+      - run: pnpm install
+
+      - name: Install Playwright
+        run: npx playwright install --with-deps
+
+      - name: Build app
+        run: pnpm build
+
+      - name: Run E2E tests
+        run: xvfb-run --auto-servernum npx playwright test

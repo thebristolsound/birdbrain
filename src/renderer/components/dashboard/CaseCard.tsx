@@ -99,6 +99,7 @@ export const CaseCard = memo(function CaseCard({
 
   return (
     <div
+      data-testid="case-card"
       className={`anim-scale ${animDelay} neu-card rounded-2xl p-5 cursor-pointer group relative`}
       onClick={onClick}
     >
@@ -127,6 +128,7 @@ export const CaseCard = memo(function CaseCard({
       {editingName !== null ? (
         <input
           ref={inputRef}
+          data-testid="case-rename-input"
           className="font-display font-bold text-sm text-slate-50 mb-1 bg-transparent border border-slate-700 rounded px-1 py-0.5 w-full outline-none focus:border-indigo-500"
           defaultValue={editingName}
           onClick={(e) => e.stopPropagation()}
@@ -164,6 +166,7 @@ export const CaseCard = memo(function CaseCard({
       {/* Context menu */}
       <div ref={menuRef} className="absolute right-2 top-2">
         <button
+          data-testid="case-card-menu-btn"
           className="opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-slate-800 transition-all"
           onClick={(e) => {
             e.stopPropagation()
@@ -181,6 +184,7 @@ export const CaseCard = memo(function CaseCard({
                 <p className="text-[11px] text-red-400 font-bold mb-2">Delete?</p>
                 <div className="flex gap-1.5">
                   <button
+                    data-testid="case-card-delete-confirm-btn"
                     className="flex-1 text-[10px] font-bold px-2 py-1 rounded bg-red-950/60 text-red-400 border border-red-800/40 hover:bg-red-900/60"
                     onClick={(e) => {
                       e.stopPropagation()
@@ -205,6 +209,7 @@ export const CaseCard = memo(function CaseCard({
             ) : (
               <>
                 <button
+                  data-testid="case-card-rename-btn"
                   className="w-full text-left px-3 py-1.5 text-[11px] text-slate-300 hover:bg-slate-800 hover:text-slate-100"
                   onClick={(e) => {
                     e.stopPropagation()
@@ -215,6 +220,7 @@ export const CaseCard = memo(function CaseCard({
                   Rename
                 </button>
                 <button
+                  data-testid="case-card-delete-btn"
                   className="w-full text-left px-3 py-1.5 text-[11px] text-red-400 hover:bg-slate-800 hover:text-red-300"
                   onClick={(e) => {
                     e.stopPropagation()

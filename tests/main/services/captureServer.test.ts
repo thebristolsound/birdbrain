@@ -798,7 +798,7 @@ describe('captureServer', () => {
     expect(selectors[0].pattern).toBe('suspicious transaction')
   })
 
-  it('POST /api/selectors returns 400 without active session', async () => {
+  it('POST /api/selectors returns 400 without active case', async () => {
     const testCase = createCase({ name: 'No Session Selector' })
 
     const res = await fetch(`${baseUrl}/api/selectors`, {
@@ -812,7 +812,7 @@ describe('captureServer', () => {
 
     expect(res.status).toBe(400)
     const data = await res.json()
-    expect(data.error).toContain('session')
+    expect(data.error).toContain('active case')
   })
 
   it('POST /api/selectors returns 400 for empty pattern', async () => {

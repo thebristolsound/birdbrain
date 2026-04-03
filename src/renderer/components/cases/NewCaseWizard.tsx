@@ -116,6 +116,7 @@ export function NewCaseWizard() {
             Investigation Name
           </label>
           <input
+            data-testid="case-name-input"
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -129,6 +130,7 @@ export function NewCaseWizard() {
         <div className="mb-6">
           <label className="mb-1.5 block text-sm font-medium text-slate-300">Description</label>
           <textarea
+            data-testid="case-description-input"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Brief description of this investigation..."
@@ -201,6 +203,7 @@ export function NewCaseWizard() {
             Cancel
           </button>
           <button
+            data-testid="case-create-btn"
             onClick={handleSubmit}
             disabled={!name.trim() || submitting}
             className="rounded-xl bg-indigo-600 px-6 py-2 text-sm font-medium text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"

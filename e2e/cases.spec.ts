@@ -2,28 +2,31 @@ import { test, expect } from './fixtures/electronApp'
 
 test.describe('Cases CRUD', () => {
   test('can create a new case', async ({ page }) => {
-    // Click new case on dashboard
+    // Click new case on dashboard hero
     await page.click('[data-testid="new-case-btn"]')
 
-    // Fill in case details
+    // Fill in case details on the wizard page
     await page.fill('[data-testid="case-name-input"]', 'Test Investigation')
     await page.fill('[data-testid="case-description-input"]', 'A test case for E2E')
 
     // Submit
     await page.click('[data-testid="case-create-btn"]')
 
-    // Verify case workspace loads with case name
-    await expect(page.locator('text=Test Investigation')).toBeVisible()
+    // Verify case workspace loads with case name in heading
+    await expect(page.getByRole('heading', { name: 'Test Investigation' })).toBeVisible()
   })
 
   test('case appears on dashboard after creation', async ({ page }) => {
-    // Create a case
+    // Create a case via the wizard
     await page.click('[data-testid="new-case-btn"]')
     await page.fill('[data-testid="case-name-input"]', 'Listed Case')
     await page.click('[data-testid="case-create-btn"]')
 
-    // Go back to dashboard
-    await page.reload()
+    // Wait for navigation to case workspace
+    await expect(page.getByRole('heading', { name: 'Listed Case' })).toBeVisible()
+
+    // Navigate home via breadcrumb
+    await page.click('text=Investigations')
     await page.waitForLoadState('domcontentloaded')
 
     // Verify case card appears on dashboard
@@ -35,11 +38,10 @@ test.describe('Cases CRUD', () => {
     await page.click('[data-testid="new-case-btn"]')
     await page.fill('[data-testid="case-name-input"]', 'Original Name')
     await page.click('[data-testid="case-create-btn"]')
-    // Wait for dialog to close before reloading
-    await expect(page.locator('[data-testid="case-create-btn"]')).not.toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Original Name' })).toBeVisible()
 
-    // Go back to dashboard
-    await page.reload()
+    // Go back to dashboard via breadcrumb
+    await page.click('text=Investigations')
     await page.waitForLoadState('domcontentloaded')
 
     // Hover over the case card to reveal the kebab menu
@@ -67,11 +69,10 @@ test.describe('Cases CRUD', () => {
     await page.click('[data-testid="new-case-btn"]')
     await page.fill('[data-testid="case-name-input"]', 'To Be Deleted')
     await page.click('[data-testid="case-create-btn"]')
-    // Wait for dialog to close before reloading
-    await expect(page.locator('[data-testid="case-create-btn"]')).not.toBeVisible()
+    await expect(page.getByRole('heading', { name: 'To Be Deleted' })).toBeVisible()
 
-    // Go back to dashboard
-    await page.reload()
+    // Go back to dashboard via breadcrumb
+    await page.click('text=Investigations')
     await page.waitForLoadState('domcontentloaded')
 
     // Hover over the case card to reveal the kebab menu
@@ -88,5 +89,4 @@ test.describe('Cases CRUD', () => {
     // Verify the case is no longer visible on the dashboard
     await expect(page.locator('[data-testid="case-card"]:has-text("To Be Deleted")')).not.toBeVisible()
   })
-
 })

@@ -26,6 +26,7 @@ export function HeroSection({ onNewInvestigation, onOpenRecent }: HeroSectionPro
 
         <div className="anim-up d4 flex items-center justify-center gap-4 mb-6">
           <button
+            data-testid="new-case-btn"
             onClick={onNewInvestigation}
             className="group flex items-center gap-3 px-7 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-display font-bold text-sm rounded-2xl shadow-lg shadow-indigo-500/40 hover:shadow-xl hover:shadow-indigo-500/50 transition-all active:scale-[0.98]"
           >

@@ -33,8 +33,8 @@ const CASE_ICONS: Record<string, { icon: typeof FolderOpen; bgClass: string; ico
   }
 const DEFAULT_ICON = {
   icon: FolderOpen,
-  bgClass: 'bg-indigo-950/50 border border-indigo-800/30',
-  iconClass: 'text-indigo-400'
+  bgClass: 'bg-accent-subtle border border-accent/20',
+  iconClass: 'text-accent'
 }
 
 interface CaseCardProps {
@@ -127,7 +127,7 @@ export const CaseCard = memo(function CaseCard({
       {editingName !== null ? (
         <input
           ref={inputRef}
-          className="font-display font-bold text-sm text-slate-50 mb-1 bg-transparent border border-slate-700 rounded px-1 py-0.5 w-full outline-none focus:border-indigo-500"
+          className="font-display font-bold text-sm text-text-primary mb-1 bg-transparent border border-border-strong rounded px-1 py-0.5 w-full outline-none focus:border-accent"
           defaultValue={editingName}
           onClick={(e) => e.stopPropagation()}
           onBlur={(e) => handleRenameSubmit(e.target.value)}
@@ -137,45 +137,45 @@ export const CaseCard = memo(function CaseCard({
           }}
         />
       ) : (
-        <h3 className="font-display font-bold text-sm text-slate-50 mb-1 group-hover:text-indigo-400 transition-colors">
+        <h3 className="font-display font-bold text-sm text-text-primary mb-1 group-hover:text-accent transition-colors">
           {caseData.name}
         </h3>
       )}
 
       {/* Description */}
-      <p className="text-[11px] text-slate-500 leading-relaxed mb-4 line-clamp-2">
+      <p className="text-[11px] text-text-muted leading-relaxed mb-4 line-clamp-2">
         {caseData.description || 'No description'}
       </p>
 
       {/* Stats row */}
       <div className="flex items-center gap-4 mb-3">
         <div className="flex items-center gap-1.5">
-          <Camera className="h-3 w-3 text-slate-600" />
-          <span className="text-[11px] font-bold text-slate-300">{captureCount}</span>
+          <Camera className="h-3 w-3 text-text-faint" />
+          <span className="text-[11px] font-bold text-text-secondary">{captureCount}</span>
         </div>
       </div>
 
       {/* Footer */}
-      <div className="mt-4 pt-3 border-t border-slate-800/60 flex justify-between items-center">
-        <span className="text-[10px] text-slate-600">Updated {timeAgo(caseData.updatedAt)}</span>
-        <ArrowUpRight className="h-4 w-4 text-slate-700 group-hover:text-indigo-400 transition-colors" />
+      <div className="mt-4 pt-3 border-t border-border-strong flex justify-between items-center">
+        <span className="text-[10px] text-text-faint">Updated {timeAgo(caseData.updatedAt)}</span>
+        <ArrowUpRight className="h-4 w-4 text-text-faint group-hover:text-accent transition-colors" />
       </div>
 
       {/* Context menu */}
       <div ref={menuRef} className="absolute right-2 top-2">
         <button
-          className="opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-slate-800 transition-all"
+          className="opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-elevated transition-all"
           onClick={(e) => {
             e.stopPropagation()
             setMenuOpen(!menuOpen)
             setDeletingId(null)
           }}
         >
-          <MoreVertical className="h-4 w-4 text-slate-500" />
+          <MoreVertical className="h-4 w-4 text-text-muted" />
         </button>
 
         {menuOpen && (
-          <div className="absolute right-0 top-8 z-50 w-32 rounded-lg bg-slate-900 border border-slate-800 shadow-xl py-1">
+          <div className="absolute right-0 top-8 z-50 w-32 rounded-lg bg-surface border border-border-strong shadow-xl py-1">
             {deletingId === caseData.id ? (
               <div className="px-2 py-1.5">
                 <p className="text-[11px] text-red-400 font-bold mb-2">Delete?</p>
@@ -192,7 +192,7 @@ export const CaseCard = memo(function CaseCard({
                     Confirm
                   </button>
                   <button
-                    className="flex-1 text-[10px] font-bold px-2 py-1 rounded bg-slate-800 text-slate-400 hover:bg-slate-700"
+                    className="flex-1 text-[10px] font-bold px-2 py-1 rounded bg-elevated text-text-muted hover:bg-elevated"
                     onClick={(e) => {
                       e.stopPropagation()
                       setDeletingId(null)
@@ -205,7 +205,7 @@ export const CaseCard = memo(function CaseCard({
             ) : (
               <>
                 <button
-                  className="w-full text-left px-3 py-1.5 text-[11px] text-slate-300 hover:bg-slate-800 hover:text-slate-100"
+                  className="w-full text-left px-3 py-1.5 text-[11px] text-text-secondary hover:bg-elevated hover:text-text-primary"
                   onClick={(e) => {
                     e.stopPropagation()
                     setEditingName(caseData.name)
@@ -215,7 +215,7 @@ export const CaseCard = memo(function CaseCard({
                   Rename
                 </button>
                 <button
-                  className="w-full text-left px-3 py-1.5 text-[11px] text-red-400 hover:bg-slate-800 hover:text-red-300"
+                  className="w-full text-left px-3 py-1.5 text-[11px] text-red-400 hover:bg-elevated hover:text-red-300"
                   onClick={(e) => {
                     e.stopPropagation()
                     setDeletingId(caseData.id)

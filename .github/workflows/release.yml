@@ -33,14 +33,10 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
-      - uses: actions/setup-python@v5
-        id: setup-python
-        with:
-          python-version: '3.12'
+      - name: Install Python setuptools (needed for node-gyp)
+        run: python3 -m pip install --break-system-packages setuptools || pip3 install --break-system-packages setuptools || true
 
       - run: pnpm install
-        env:
-          PYTHON_PATH: ${{ steps.setup-python.outputs.python-path }}
 
       - name: Build and package
         run: pnpm ${{ matrix.script }}

@@ -17,13 +17,16 @@ const electronVersion = require('electron/package.json').version
 
 console.log(`Rebuilding better-sqlite3 for Electron ${electronVersion} at ${sqlite3Dir}`)
 
-execFileSync(
-  'npx',
-  [
-    'node-gyp', 'rebuild',
-    `--runtime=electron`,
-    `--target=${electronVersion}`,
-    '--dist-url=https://electronjs.org/headers'
-  ],
-  { cwd: sqlite3Dir, stdio: 'inherit', shell: true }
-)
+const args = [
+  'node-gyp', 'rebuild',
+  `--runtime=electron`,
+  `--target=${electronVersion}`,
+  '--dist-url=https://electronjs.org/headers'
+]
+
+const pythonPath = process.env.npm_config_python || process.env.PYTHON
+if (pythonPath) {
+  args.push(`--python=${pythonPath}`)
+}
+
+execFileSync('npx', args, { cwd: sqlite3Dir, stdio: 'inherit', shell: true })

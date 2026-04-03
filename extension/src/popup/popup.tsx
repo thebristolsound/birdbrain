@@ -284,24 +284,26 @@ function CaseSelector({
   return (
     <section className="animate-fade-up">
       <h4 className="text-[10px] font-bold uppercase tracking-wider text-d-text-muted mb-2">
-        Select Case
+        Active Case
       </h4>
-      <div className="rounded-2xl overflow-hidden bg-d-card border border-d-border dark-card-glow">
+      <select
+        value={activeCase?.id ?? ''}
+        onChange={(e) => {
+          if (e.target.value) onSelect(e.target.value)
+        }}
+        className="w-full rounded-xl px-3 py-2.5 text-xs font-medium bg-d-card border border-d-border text-white appearance-none cursor-pointer hover:bg-white/[0.04] transition-colors focus:outline-none focus:ring-1 focus:ring-indigo-500"
+      >
+        {!activeCase && (
+          <option value="" disabled>
+            Select a case...
+          </option>
+        )}
         {cases.map((c) => (
-          <button
-            key={c.id}
-            onClick={() => onSelect(c.id)}
-            className={`w-full flex items-center justify-between px-3 py-2.5 text-left transition-colors ${
-              activeCase?.id === c.id
-                ? 'bg-indigo-600/15 border-l-2 border-l-indigo-500 text-white'
-                : 'text-d-text-secondary hover:bg-white/[0.04] hover:text-d-text border-l-2 border-l-transparent'
-            }`}
-          >
-            <span className="text-xs font-medium truncate">{c.name}</span>
-            <span className="text-[10px] text-d-text-muted ml-2 shrink-0">{c.captureCount}</span>
-          </button>
+          <option key={c.id} value={c.id}>
+            {c.name} ({c.captureCount})
+          </option>
         ))}
-      </div>
+      </select>
     </section>
   )
 }
@@ -455,14 +457,14 @@ function Popup(): React.JSX.Element {
     <div className="flex flex-col w-[320px] font-body bg-d-body text-d-text">
       <Header />
       <main className="p-4 space-y-3.5">
-        {activeCase ? (
+        <CaseSelector cases={cases} activeCase={activeCase} onSelect={handleActivateCase} />
+
+        {activeCase && (
           <StatusCard
             sessionActive={sessionActive}
             activeCase={activeCase}
             currentDomain={currentDomain}
           />
-        ) : (
-          <CaseSelector cases={cases} activeCase={activeCase} onSelect={handleActivateCase} />
         )}
 
         <StatsGrid captureCount={captureCount} selectorCount={activeSelectorCount} />

@@ -8,6 +8,7 @@ import {
   statSync
 } from 'fs'
 import { join } from 'path'
+import { nativeImage } from 'electron'
 
 let storageRoot: string
 
@@ -89,6 +90,11 @@ export function deleteCaptureFiles(caseId: string, captureId: string): void {
       unlinkSync(path)
     }
   }
+  // Also delete thumbnail if it exists
+  const thumbPath = join(getStorageRoot(), caseId, `${captureId}_thumb.webp`)
+  if (existsSync(thumbPath)) {
+    unlinkSync(thumbPath)
+  }
 }
 
 export function getCaseStorageSize(caseId: string): number {
@@ -102,4 +108,44 @@ export function getCaseStorageSize(caseId: string): number {
     totalSize += stat.size
   }
   return totalSize
+}
+
+export function getThumbnail(caseId: string, captureId: string): Buffer | null {
+  const thumbPath = join(getStorageRoot(), caseId, `${captureId}_thumb.webp`)
+
+  // Return existing thumbnail if it exists
+  if (existsSync(thumbPath)) {
+    return readFileSync(thumbPath)
+  }
+
+  // Try to generate thumbnail from screenshot
+  const screenshotPath = getCapturePath(caseId, captureId, 'png')
+  if (!existsSync(screenshotPath)) {
+    return null
+  }
+
+  try {
+    const screenshot = readFileSync(screenshotPath)
+    const image = nativeImage.createFromBuffer(screenshot)
+
+    // Resize to ~160x100px thumbnail (maintaining aspect ratio)
+    const size = image.getSize()
+    const targetWidth = 160
+    const targetHeight = Math.round((size.height / size.width) * targetWidth)
+
+    const resized = image.resize({
+      width: targetWidth,
+      height: targetHeight,
+      quality: 'good'
+    })
+
+    // Save as WebP for better compression
+    const thumbBuffer = resized.toJPEG(75) // Use JPEG at 75% quality
+    writeFileSync(thumbPath, thumbBuffer)
+
+    return thumbBuffer
+  } catch (error) {
+    console.error(`Failed to generate thumbnail for ${captureId}:`, error)
+    return null
+  }
 }

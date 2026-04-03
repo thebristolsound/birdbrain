@@ -3,6 +3,7 @@ import { Search, ArrowUpDown, Filter, Crosshair, X } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { capturesQueryOptions } from '@renderer/lib/queries'
 import { useAppStore } from '@renderer/stores/appStore'
+import { useFavorites } from '@renderer/hooks/useFavorites'
 import { CaptureItem } from './CaptureItem'
 
 interface CaptureListProps {
@@ -16,6 +17,7 @@ export function CaptureList({ caseId }: CaptureListProps) {
   const filteredCaptureIds = useAppStore((s) => s.filteredCaptureIds)
   const activeSelectorFilters = useAppStore((s) => s.activeSelectorFilters)
   const clearSelectorFilters = useAppStore((s) => s.clearSelectorFilters)
+  const { favorites, toggleFavorite } = useFavorites(caseId)
   const [searchQuery, setSearchQuery] = useState('')
 
   const displayedCaptures = (
@@ -75,6 +77,8 @@ export function CaptureList({ caseId }: CaptureListProps) {
             capture={cap}
             isSelected={cap.id === selectedCaptureId}
             onClick={() => selectCapture(cap.id)}
+            isFavorite={favorites.has(cap.id)}
+            onToggleFavorite={() => toggleFavorite(cap.id)}
           />
         ))}
         {displayedCaptures.length === 0 && (

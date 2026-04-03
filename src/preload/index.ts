@@ -57,12 +57,22 @@ const birdbrain = {
       unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_DELETE, id)),
     getContent: (captureId: string, type: 'html' | 'png' | 'txt'): Promise<string | null> =>
       ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_GET_CONTENT, captureId, type),
+    getThumbnail: (captureId: string): Promise<string | null> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_GET_THUMBNAIL, captureId),
+    getMatchingSelectors: (captureId: string): Promise<Selector[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_GET_MATCHING_SELECTORS, captureId),
     download: (captureId: string): Promise<string | null> =>
       unwrapIpc<string | null>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_DOWNLOAD, captureId)),
     openExternal: (url: string): Promise<void> =>
       unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_OPEN_EXTERNAL, url)),
     countsByCase: (): Promise<Record<string, number>> =>
-      unwrapIpc<Record<string, number>>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_COUNTS_BY_CASE))
+      unwrapIpc<Record<string, number>>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_COUNTS_BY_CASE)),
+    toggleFavorite: (captureId: string): Promise<boolean> =>
+      unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_TOGGLE_FAVORITE, captureId)),
+    isFavorite: (captureId: string): Promise<boolean> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_IS_FAVORITE, captureId),
+    listFavorites: (caseId: string): Promise<string[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_LIST_FAVORITES, caseId)
   },
   tags: {
     list: (): Promise<Tag[]> => ipcRenderer.invoke(IPC_CHANNELS.TAGS_LIST),

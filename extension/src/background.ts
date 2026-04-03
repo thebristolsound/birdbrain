@@ -179,6 +179,16 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
           message: 'Selector created'
         })
         .catch(() => {})
+
+      // Re-fetch selectors and rehighlight current page
+      try {
+        activeSelectors = await getActiveSelectors()
+        if (tab.url) {
+          checkSelectorsOnTab(tab.id, tab.url)
+        }
+      } catch {
+        // Non-critical — highlights will appear on next page load
+      }
     } catch (err) {
       console.error('[Birdbrain] Create selector failed:', err)
 
@@ -440,15 +450,6 @@ async function checkSelectorsOnTab(tabId: number, url: string): Promise<void> {
       for (const [caseId] of caseMatches) {
         handleSelectorCapture(tabId, url, caseId)
       }
-    } else {
-      // Notify mode — show notification
-      const caseNames = [...new Set(matches.map((m) => m.caseName))]
-      chrome.notifications.create({
-        type: 'basic',
-        iconUrl: 'icons/icon-128.png',
-        title: 'Birdbrain: Selector Matches',
-        message: `${matches.length} match${matches.length !== 1 ? 'es' : ''} found for: ${caseNames.join(', ')}`
-      })
     }
   } catch {
     // Content script may not be ready

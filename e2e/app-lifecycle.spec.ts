@@ -1,7 +1,7 @@
 import { test, expect } from './fixtures/electronApp'
 
 test.describe('App Lifecycle', () => {
-  test('launches and shows main window', async ({ electronApp, page }) => {
+  test('launches and shows main window', async ({ electronApp }) => {
     const windows = electronApp.windows()
     expect(windows.length).toBe(1)
   })

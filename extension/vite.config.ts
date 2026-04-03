@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
-import { copyFileSync, mkdirSync, cpSync } from 'fs'
+import { copyFileSync, mkdirSync, cpSync, readFileSync, writeFileSync, rmSync } from 'fs'
 
 // Content script must be built as IIFE (Chrome content_scripts don't support ES modules).
 // Background + popup can use ES modules (background declares "type": "module" in manifest).
@@ -47,13 +47,12 @@ const mainConfig = defineConfig({
         // Move popup.html from nested path to dist root, fix relative paths
         const nestedPopup = resolve(dist, 'extension', 'src', 'popup', 'popup.html')
         try {
-          const { readFileSync, writeFileSync, rmSync } = require('fs')
           let html = readFileSync(nestedPopup, 'utf-8')
           html = html.replace(/src="[^"]*popup\.js"/g, 'src="./popup.js"')
           html = html.replace(/href="[^"]*chunks\//g, 'href="./chunks/')
           writeFileSync(resolve(dist, 'popup.html'), html)
           rmSync(resolve(dist, 'extension'), { recursive: true, force: true })
-        } catch {}
+        } catch { /* popup.html may not exist in content-only builds */ }
       }
     }
   ],

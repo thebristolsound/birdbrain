@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { setSettingsPath, getSettings, updateSettings, resetSettings, getDefaultSettings } from '../../../src/main/services/settings'
+import { writeFileSync } from 'fs'
+import { setSettingsPath, getSettings, updateSettings, resetSettings } from '../../../src/main/services/settings'
 
 describe('settings', () => {
   let tempDir: string
@@ -60,7 +61,6 @@ describe('settings', () => {
   })
 
   it('handles corrupted settings file gracefully', () => {
-    const { writeFileSync } = require('fs')
     writeFileSync(settingsFile, '{invalid json', 'utf-8')
     const settings = getSettings()
     // Falls back to defaults

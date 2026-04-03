@@ -1,5 +1,5 @@
 import { Radar, ChevronRight, Settings, Bell } from 'lucide-react'
-import { Link, useNavigate, useParams, useMatchRoute } from '@tanstack/react-router'
+import { Link, useNavigate, useMatchRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '@renderer/stores/appStore'
 import { SearchBar } from '@renderer/components/search/SearchBar'

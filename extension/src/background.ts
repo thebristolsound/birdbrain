@@ -1,4 +1,4 @@
-import { checkConnection, getStatus, sendCapture, getActiveSelectors, createSelector } from '@extension/utils/api'
+import { getStatus, sendCapture, getActiveSelectors, createSelector } from '@extension/utils/api'
 
 // URL patterns to ignore
 const DEFAULT_IGNORE = [
@@ -66,30 +66,33 @@ async function checkStatus(): Promise<void> {
     if (sessionActive) {
       updateIcon('active')
       chrome.action.setBadgeText({ text: String(captureCount) })
+    } else if (connected) {
+      updateIcon('connected')
+      chrome.action.setBadgeText({ text: '' })
+    }
 
-      // Fetch active selectors when session is active
+    // Fetch active selectors whenever connected (not just during session)
+    if (connected) {
       try {
         activeSelectors = await getActiveSelectors()
       } catch {
         activeSelectors = []
       }
-    } else if (connected) {
-      updateIcon('connected')
-      chrome.action.setBadgeText({ text: '' })
+    } else {
       activeSelectors = []
     }
 
     // Update context menu enabled state
     chrome.contextMenus
       .update(CONTEXT_MENU_ID, {
-        enabled: connected
+        enabled: connected && !!activeCaseId
       })
       .catch(() => {
         // Menu may not exist yet
       })
     chrome.contextMenus
       .update(SELECTOR_CONTEXT_MENU_ID, {
-        enabled: connected && sessionActive && !!activeCaseId
+        enabled: connected && !!activeCaseId
       })
       .catch(() => {
         // Menu may not exist yet
@@ -132,7 +135,7 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === SELECTOR_CONTEXT_MENU_ID) {
     if (!tab?.id || !tab.url) return
-    if (!connected || !sessionActive) return
+    if (!connected) return
     if (!activeCaseId) return
 
     const selectedText = info.selectionText?.trim()

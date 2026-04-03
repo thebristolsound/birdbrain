@@ -53,11 +53,11 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
       onClick={onClose}
     >
       <div className="neu-card w-[28rem] rounded-2xl p-6" onClick={(e) => e.stopPropagation()}>
-        <h2 className="mb-4 text-lg font-semibold text-white">Export Case</h2>
+        <h2 className="mb-4 text-lg font-semibold text-text-primary">Export Case</h2>
 
         {/* Include checkboxes */}
         <div className="mb-4">
-          <label className="mb-2 block text-sm text-slate-400">Include</label>
+          <label className="mb-2 block text-sm text-text-muted">Include</label>
           <div className="space-y-2">
             {(
               [
@@ -73,7 +73,7 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
                   onChange={() => toggleInclude(key)}
                   className="rounded"
                 />
-                <span className="text-sm text-slate-300">{label}</span>
+                <span className="text-sm text-text-secondary">{label}</span>
               </label>
             ))}
           </div>
@@ -81,19 +81,19 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
 
         {/* Investigator */}
         <div className="mb-4">
-          <label className="mb-1 block text-sm text-slate-400">Investigator Name</label>
+          <label className="mb-1 block text-sm text-text-muted">Investigator Name</label>
           <input
             type="text"
             value={investigatorName}
             onChange={(e) => setInvestigatorName(e.target.value)}
-            className="w-full rounded border border-white/[0.08] bg-slate-800 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500"
+            className="w-full rounded border border-border-strong bg-elevated px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
             placeholder="Your name..."
           />
         </div>
 
         {/* Progress */}
         {progress && (
-          <div className="mb-4 rounded bg-slate-800 px-3 py-2 text-sm text-slate-400">
+          <div className="mb-4 rounded bg-elevated px-3 py-2 text-sm text-text-muted">
             {progress}
           </div>
         )}
@@ -102,14 +102,14 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
         <div className="flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="rounded px-3 py-1.5 text-sm text-slate-400 hover:text-slate-200"
+            className="rounded px-3 py-1.5 text-sm text-text-muted hover:text-text-primary"
           >
             {exporting ? 'Close' : 'Cancel'}
           </button>
           <button
             onClick={handleExport}
             disabled={exporting}
-            className="rounded bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+            className="rounded bg-accent px-4 py-1.5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
           >
             {exporting ? 'Exporting...' : 'Export'}
           </button>

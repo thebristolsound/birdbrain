@@ -30,7 +30,7 @@ export function SettingsView() {
     setSettings(updated)
   }
 
-  if (!settings) return <div className="text-slate-500">Loading settings...</div>
+  if (!settings) return <div className="text-text-muted">Loading settings...</div>
 
   const renderContent = () => {
     switch (activeTab) {
@@ -49,7 +49,7 @@ export function SettingsView() {
 
   return (
     <div className="flex h-full">
-      <nav className="w-48 shrink-0 border-r border-white/[0.06] p-3">
+      <nav className="w-48 shrink-0 border-r border-border p-3">
         <div className="space-y-1">
           {settingsTabs.map(({ id, label, icon: Icon }) => (
             <button
@@ -57,8 +57,8 @@ export function SettingsView() {
               onClick={() => setActiveTab(id)}
               className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm rounded-lg ${
                 activeTab === id
-                  ? 'bg-indigo-500/15 text-indigo-400 font-semibold'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'
+                  ? 'bg-accent-subtle text-accent font-semibold'
+                  : 'text-text-muted hover:text-text-primary hover:bg-elevated'
               }`}
             >
               <Icon size={16} />

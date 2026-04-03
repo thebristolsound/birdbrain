@@ -59,7 +59,7 @@ export function SessionControls() {
   return (
     <div className="flex items-center gap-2">
       <label className="flex cursor-pointer items-center gap-1.5">
-        <span className="text-xs text-slate-400">Auto-Capture</span>
+        <span className="text-xs text-text-muted">Auto-Capture</span>
         <button
           type="button"
           role="switch"
@@ -68,7 +68,7 @@ export function SessionControls() {
           onClick={handleToggleSession}
           disabled={!activeCaseId || toggling}
           className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-50 ${
-            sessionActive ? 'bg-indigo-600' : 'bg-slate-600'
+            sessionActive ? 'bg-accent' : 'bg-text-faint'
           }`}
         >
           <span
@@ -79,7 +79,7 @@ export function SessionControls() {
         </button>
       </label>
       {sessionActive && activeCase && (
-        <span className="text-xs text-slate-500">{activeCase.name}</span>
+        <span className="text-xs text-text-muted">{activeCase.name}</span>
       )}
     </div>
   )

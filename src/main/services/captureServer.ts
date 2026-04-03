@@ -413,19 +413,40 @@ function createApp(): Hono {
         label: typeof label === 'string' && label.trim() !== '' ? label.trim() : undefined
       })
 
-      // Schedule retroactive matching asynchronously
+      // Schedule retroactive matching in chunks to avoid blocking the main thread
       setImmediate(() => {
         try {
-          const captures = db.listCaptures(caseId)
-          const captureTexts: Array<{ captureId: string; text: string }> = []
-          for (const cap of captures) {
-            const buffer = readCaptureFile(caseId, cap.id, 'txt')
-            if (buffer) {
-              captureTexts.push({ captureId: cap.id, text: buffer.toString('utf-8') })
+          const MAX_RETRO_CAPTURES = 500
+          const CHUNK_SIZE = 50
+          const allCaptures = db.listCaptures(caseId)
+          const startIndex = allCaptures.length > MAX_RETRO_CAPTURES
+            ? allCaptures.length - MAX_RETRO_CAPTURES
+            : 0
+          const captures = allCaptures.slice(startIndex)
+
+          const processChunk = (index: number) => {
+            const end = Math.min(index + CHUNK_SIZE, captures.length)
+            const captureTexts: Array<{ captureId: string; text: string }> = []
+
+            for (let i = index; i < end; i++) {
+              const cap = captures[i]
+              const buffer = readCaptureFile(caseId, cap.id, 'txt')
+              if (buffer) {
+                captureTexts.push({ captureId: cap.id, text: buffer.toString('utf-8') })
+              }
+            }
+
+            if (captureTexts.length > 0) {
+              db.matchSelectorAgainstCaptures(selector.id, captureTexts)
+            }
+
+            if (end < captures.length) {
+              setImmediate(() => processChunk(end))
             }
           }
-          if (captureTexts.length > 0) {
-            db.matchSelectorAgainstCaptures(selector.id, captureTexts)
+
+          if (captures.length > 0) {
+            processChunk(0)
           }
         } catch (err) {
           console.error('Retroactive selector matching error:', err)

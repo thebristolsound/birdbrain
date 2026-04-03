@@ -33,9 +33,9 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
-      - name: Install Python setuptools (needed for node-gyp)
-        if: runner.os == 'macOS'
-        run: pip3 install setuptools
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
       - run: pnpm install
 

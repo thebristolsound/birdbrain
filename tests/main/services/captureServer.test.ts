@@ -965,11 +965,13 @@ describe('captureServer', () => {
     expect(res.status).toBe(200)
     const data = await res.json()
 
-    // Wait for setImmediate to complete retroactive matching
-    await new Promise((resolve) => setTimeout(resolve, 50))
-
-    // Check that the selector matched the first capture
-    const matchCounts = getSelectorMatchCounts(testCase.id)
+    // Poll for retroactive matching to complete (chunked processing may need multiple ticks)
+    let matchCounts = getSelectorMatchCounts(testCase.id)
+    const deadline = Date.now() + 2000
+    while (matchCounts[data.selector.id] !== 1 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      matchCounts = getSelectorMatchCounts(testCase.id)
+    }
     expect(matchCounts[data.selector.id]).toBe(1)
   })
 

@@ -410,7 +410,7 @@ function createApp(): Hono {
         caseId,
         pattern: pattern.trim(),
         isRegex: false,
-        label: label || undefined
+        label: typeof label === 'string' && label.trim() !== '' ? label.trim() : undefined
       })
 
       // Schedule retroactive matching asynchronously

@@ -973,6 +973,44 @@ describe('captureServer', () => {
     expect(matchCounts[data.selector.id]).toBe(1)
   })
 
+  it('POST /api/selectors ignores non-string label', async () => {
+    const testCase = createCase({ name: 'Bad Label Type' })
+    await activateSessionForCase(testCase.id)
+
+    const res = await fetch(`${baseUrl}/api/selectors`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        caseId: testCase.id,
+        pattern: 'test',
+        label: 12345
+      })
+    })
+
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(data.selector.label).toBeUndefined()
+  })
+
+  it('POST /api/selectors trims whitespace-only label to undefined', async () => {
+    const testCase = createCase({ name: 'Whitespace Label' })
+    await activateSessionForCase(testCase.id)
+
+    const res = await fetch(`${baseUrl}/api/selectors`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        caseId: testCase.id,
+        pattern: 'test',
+        label: '   '
+      })
+    })
+
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(data.selector.label).toBeUndefined()
+  })
+
   it('POST /api/selectors creates selector without label', async () => {
     const testCase = createCase({ name: 'No Label' })
     await activateSessionForCase(testCase.id)

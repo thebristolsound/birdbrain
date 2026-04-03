@@ -374,7 +374,13 @@ function createApp(): Hono {
   // Create a selector from the extension (highlighted text)
   app.post('/api/selectors', async (c) => {
     try {
-      const body = await c.req.json()
+      let body: unknown
+      try {
+        body = await c.req.json()
+      } catch (err) {
+        console.warn('Create selector invalid JSON:', err)
+        return c.json({ error: 'Invalid JSON' }, 400)
+      }
       if (body === null || typeof body !== 'object' || Array.isArray(body)) {
         return c.json({ error: 'Invalid request body: expected JSON object' }, 400)
       }

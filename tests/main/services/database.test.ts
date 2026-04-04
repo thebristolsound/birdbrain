@@ -27,6 +27,8 @@ import {
   createSelector,
   matchSelectorAgainstCaptures,
   listActiveSelectors,
+  listSelectors,
+  bulkCreateSelectors,
   createNote,
   getNote,
   listNotes,
@@ -452,6 +454,44 @@ describe('database', () => {
     it('returns empty array for unknown caseId', () => {
       const result = listActiveSelectors('nonexistent')
       expect(result).toHaveLength(0)
+    })
+  })
+
+  describe('bulkCreateSelectors', () => {
+    it('inserts all selectors in one transaction and returns them in input order', () => {
+      const c = createCase({ name: 'Bulk Case' })
+      const created = bulkCreateSelectors([
+        { caseId: c.id, pattern: 'alpha', isRegex: false, label: 'A' },
+        { caseId: c.id, pattern: 'beta', isRegex: true },
+        { caseId: c.id, pattern: 'gamma', isRegex: false, label: 'C' }
+      ])
+      expect(created).toHaveLength(3)
+      expect(created[0].pattern).toBe('alpha')
+      expect(created[0].label).toBe('A')
+      expect(created[1].pattern).toBe('beta')
+      expect(created[1].isRegex).toBe(true)
+      expect(created[2].pattern).toBe('gamma')
+
+      const listed = listSelectors(c.id)
+      expect(listed).toHaveLength(3)
+    })
+
+    it('returns empty array when given no input', () => {
+      const result = bulkCreateSelectors([])
+      expect(result).toEqual([])
+    })
+
+    it('rolls back all inserts if any insert fails', () => {
+      const c = createCase({ name: 'Rollback Case' })
+      // The second insert references a non-existent case_id, violating the foreign key.
+      expect(() =>
+        bulkCreateSelectors([
+          { caseId: c.id, pattern: 'ok' },
+          { caseId: 'does-not-exist', pattern: 'bad' }
+        ])
+      ).toThrow()
+      // Transaction should have rolled back — no selectors inserted for the valid case either.
+      expect(listSelectors(c.id)).toHaveLength(0)
     })
   })
 

@@ -536,6 +536,25 @@ export function createSelector(params: CreateSelectorParams): Selector {
   return getSelector(id)!
 }
 
+export function bulkCreateSelectors(params: CreateSelectorParams[]): Selector[] {
+  if (params.length === 0) return []
+  const d = getDb()
+  const now = new Date().toISOString()
+  const insert = d.prepare(
+    'INSERT INTO selectors (id, case_id, pattern, is_regex, label, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+  )
+  const ids: string[] = []
+  const run = d.transaction(() => {
+    for (const p of params) {
+      const id = uuid()
+      insert.run(id, p.caseId, p.pattern, p.isRegex ? 1 : 0, p.label ?? null, now)
+      ids.push(id)
+    }
+  })
+  run()
+  return ids.map((id) => getSelector(id)!)
+}
+
 export function updateSelector(params: UpdateSelectorParams): Selector | undefined {
   const existing = getSelector(params.id)
   if (!existing) return undefined

@@ -57,6 +57,15 @@ export const IPC_CHANNELS = {
   SELECTORS_MATCHING_CAPTURES: 'selectors:matchingCaptures',
   SELECTORS_COVERAGE: 'selectors:coverage',
 
+  // Notes
+  NOTES_LIST: 'notes:list',
+  NOTES_GET: 'notes:get',
+  NOTES_CREATE: 'notes:create',
+  NOTES_UPDATE: 'notes:update',
+  NOTES_DELETE: 'notes:delete',
+  NOTES_COUNT: 'notes:count',
+  NOTES_SEARCH: 'notes:search',
+
   // Events (main -> renderer)
   EXPORT_PROGRESS: 'event:exportProgress',
   NEW_CAPTURE: 'event:newCapture',

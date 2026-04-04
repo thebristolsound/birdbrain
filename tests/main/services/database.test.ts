@@ -22,6 +22,7 @@ import {
   getTagsForCapture,
   searchCaptures,
   getTagCountForCase,
+  getTagUsageCountsForCase,
   getSelectorCoverage,
   createSelector,
   matchSelectorAgainstCaptures,
@@ -343,6 +344,52 @@ describe('database', () => {
     it('returns 0 for case with no tags', () => {
       const c = createCase({ name: 'No Tags' })
       expect(getTagCountForCase(c.id)).toBe(0)
+    })
+
+    it('returns per-tag usage counts scoped to a case', () => {
+      const caseA = createCase({ name: 'Case A' })
+      const caseB = createCase({ name: 'Case B' })
+
+      const capA1 = insertCapture({
+        caseId: caseA.id,
+        url: 'https://a1.com',
+        title: 'A1',
+        hash: 'ha1',
+        timestamp: new Date().toISOString()
+      })
+      const capA2 = insertCapture({
+        caseId: caseA.id,
+        url: 'https://a2.com',
+        title: 'A2',
+        hash: 'ha2',
+        timestamp: new Date().toISOString()
+      })
+      const capB1 = insertCapture({
+        caseId: caseB.id,
+        url: 'https://b1.com',
+        title: 'B1',
+        hash: 'hb1',
+        timestamp: new Date().toISOString()
+      })
+
+      const tagRed = createTag({ name: 'red' })
+      const tagBlue = createTag({ name: 'blue' })
+
+      addTagToCapture({ captureId: capA1.id, tagId: tagRed.id })
+      addTagToCapture({ captureId: capA2.id, tagId: tagRed.id })
+      addTagToCapture({ captureId: capA1.id, tagId: tagBlue.id })
+      addTagToCapture({ captureId: capB1.id, tagId: tagRed.id })
+
+      const counts = getTagUsageCountsForCase(caseA.id)
+      expect(counts[tagRed.id]).toBe(2)
+      expect(counts[tagBlue.id]).toBe(1)
+      // caseB's usage should not leak into caseA's counts
+      expect(Object.keys(counts)).toHaveLength(2)
+    })
+
+    it('returns empty object when case has no tagged captures', () => {
+      const c = createCase({ name: 'No Tags' })
+      expect(getTagUsageCountsForCase(c.id)).toEqual({})
     })
 
     it('computes selector coverage', () => {

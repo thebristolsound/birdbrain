@@ -478,6 +478,23 @@ export function getTagCountForCase(caseId: string): number {
   return row?.count ?? 0
 }
 
+export function getTagUsageCountsForCase(caseId: string): Record<string, number> {
+  const rows = getDb()
+    .prepare(
+      `SELECT ct.tag_id, COUNT(*) as count
+       FROM capture_tags ct
+       JOIN captures c ON ct.capture_id = c.id
+       WHERE c.case_id = ?
+       GROUP BY ct.tag_id`
+    )
+    .all(caseId) as Array<{ tag_id: string; count: number }>
+  const result: Record<string, number> = {}
+  for (const row of rows) {
+    result[row.tag_id] = row.count
+  }
+  return result
+}
+
 // --- Search ---
 
 export function searchCaptures(query: string): Capture[] {

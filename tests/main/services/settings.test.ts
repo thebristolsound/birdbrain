@@ -26,7 +26,7 @@ describe('settings', () => {
     expect(settings.captureScreenshots).toBe(true)
     expect(settings.captureHtml).toBe(true)
     expect(settings.dedupeWindowSeconds).toBe(60)
-    expect(settings.theme).toBe('dark')
+    expect(settings.theme).toBe('light')
   })
 
   it('updates settings and persists them', () => {
@@ -64,7 +64,7 @@ describe('settings', () => {
     writeFileSync(settingsFile, '{invalid json', 'utf-8')
     const settings = getSettings()
     // Falls back to defaults
-    expect(settings.theme).toBe('dark')
+    expect(settings.theme).toBe('light')
   })
 
   it('preserves ignored URL patterns', () => {

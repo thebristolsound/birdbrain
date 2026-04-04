@@ -215,7 +215,7 @@ function createApp(): Hono {
       const rawSource = (body as Record<string, unknown>).source
       if (rawSource === undefined || rawSource === null) {
         source = 'auto'
-      } else if (VALID_CAPTURE_SOURCES.includes(rawSource)) {
+      } else if (VALID_CAPTURE_SOURCES.includes(rawSource as CaptureSource)) {
         source = rawSource as CaptureSource
       } else {
         return c.json({ error: `Invalid source: ${rawSource}` }, 400)
@@ -253,7 +253,7 @@ function createApp(): Hono {
       }
 
       // 3. Source-specific validation
-      let caseId: string
+      let caseId = ''
 
       if (source === 'auto') {
         if (!state.sessionActive) {
@@ -576,7 +576,7 @@ export function startCaptureServer(port: number = CAPTURE_SERVER_PORT): Promise<
         console.log(`Birdbrain capture server running on http://127.0.0.1:${port}`)
         resolve()
       }
-    )
+    ) as unknown as Server
   })
 }
 

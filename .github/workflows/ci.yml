@@ -37,8 +37,11 @@ jobs:
 
       - run: pnpm install
 
-      - name: Typecheck main + renderer
-        run: npx tsc -b --noEmit
+      - name: Typecheck main + preload + shared
+        run: npx tsc --noEmit -p tsconfig.node.json
+
+      - name: Typecheck renderer
+        run: npx tsc --noEmit -p tsconfig.web.json
 
       - name: Typecheck extension
         run: npx tsc --noEmit -p extension/tsconfig.json
@@ -94,8 +97,12 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
-      - name: Install native build dependencies
-        run: sudo apt-get update && sudo apt-get install -y build-essential python3
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential python3 \
+            libgtk-3-0 libnotify-dev libnss3 libxss1 \
+            libasound2t64 libxtst6 xauth libgbm1 libsecret-1-0
 
       - run: pnpm install
 

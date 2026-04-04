@@ -11,7 +11,7 @@ import { join } from 'path'
 
 // Lazy-load nativeImage to avoid breaking node tests
 function getNativeImage() {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   return require('electron').nativeImage
 }
 

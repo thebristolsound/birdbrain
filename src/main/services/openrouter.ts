@@ -18,7 +18,7 @@ export async function listModels(apiKey: string): Promise<OpenRouterModel[]> {
     headers: { Authorization: `Bearer ${apiKey}` }
   })
   if (!res.ok) throw new Error(`OpenRouter API error: ${res.status}`)
-  const data = await res.json()
+  const data = (await res.json()) as { data?: Record<string, unknown>[] }
 
   return (data.data || []).map((m: Record<string, unknown>) => ({
     id: m.id as string,

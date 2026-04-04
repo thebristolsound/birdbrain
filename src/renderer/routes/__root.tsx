@@ -16,10 +16,10 @@ import { SettingsView } from '@renderer/components/settings/SettingsView'
 const rootRoute = createRootRoute({
   component: function RootLayout() {
     return (
-      <div className="flex h-screen flex-col bg-black text-slate-300">
+      <div className="flex h-screen flex-col bg-canvas text-text-secondary">
         <TopBar />
         <div className="flex flex-1 overflow-hidden">
-          <main className="flex-1 overflow-auto bg-black">
+          <main className="flex-1 overflow-auto bg-canvas">
             <Outlet />
           </main>
         </div>

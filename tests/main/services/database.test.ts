@@ -251,9 +251,9 @@ describe('database', () => {
     })
 
     it('sets user_version to 7 after v7 migration', () => {
-      // v8 migration runs immediately after, so final version is 8
+      // v8 and v9 migrations run immediately after, so final version is 9
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(8)
+      expect(version).toBe(9)
     })
   })
 
@@ -277,8 +277,34 @@ describe('database', () => {
     })
 
     it('sets user_version to 8', () => {
+      // v9 migration runs immediately after, so final version is 9
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(8)
+      expect(version).toBe(9)
+    })
+  })
+
+  describe('migration v9 - capture favorites', () => {
+    it('creates capture_favorites table', () => {
+      const table = getDb()
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='capture_favorites'"
+        )
+        .get()
+      expect(table).toBeDefined()
+    })
+
+    it('creates idx_capture_favorites_created index', () => {
+      const idx = getDb()
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_capture_favorites_created'"
+        )
+        .get()
+      expect(idx).toBeDefined()
+    })
+
+    it('sets user_version to 9', () => {
+      const version = getDb().pragma('user_version', { simple: true })
+      expect(version).toBe(9)
     })
   })
 

@@ -73,7 +73,7 @@ export async function sendPrompt(
         throw new Error(`OpenRouter API error: ${res.status} ${res.statusText}`)
       }
 
-      const data: OpenRouterResponse = await res.json()
+      const data = (await res.json()) as OpenRouterResponse
       const content = data.choices?.[0]?.message?.content || ''
       console.log(
         `[OpenRouter] Response received (${content.length} chars, ${data.usage?.total_tokens || '?'} tokens)`

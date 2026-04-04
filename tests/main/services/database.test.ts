@@ -31,7 +31,8 @@ import {
   listNotes,
   deleteNote,
   getNoteCount,
-  updateNote
+  updateNote,
+  searchNotes
 } from '@main/services/database'
 
 describe('database', () => {
@@ -632,6 +633,58 @@ describe('database', () => {
 
     it('returns undefined when updating a missing note', () => {
       expect(updateNote({ id: 'nonexistent', title: 'x' })).toBeUndefined()
+    })
+  })
+
+  describe('notes search (FTS)', () => {
+    it('finds notes matching a query in body', () => {
+      const c = createCase({ name: 'C' })
+      createNote({ caseId: c.id, title: 'alpha', body: 'mentions something interesting' })
+      createNote({ caseId: c.id, title: 'beta', body: 'unrelated content' })
+      const results = searchNotes(c.id, 'interesting')
+      expect(results).toHaveLength(1)
+      expect(results[0].title).toBe('alpha')
+    })
+
+    it('finds notes matching a query in title', () => {
+      const c = createCase({ name: 'C' })
+      createNote({ caseId: c.id, title: 'zebra report', body: 'body' })
+      createNote({ caseId: c.id, title: 'other', body: 'body' })
+      const results = searchNotes(c.id, 'zebra')
+      expect(results).toHaveLength(1)
+      expect(results[0].title).toBe('zebra report')
+    })
+
+    it('scopes search to the given case', () => {
+      const a = createCase({ name: 'A' })
+      const b = createCase({ name: 'B' })
+      createNote({ caseId: a.id, title: 'term', body: 'x' })
+      createNote({ caseId: b.id, title: 'term', body: 'x' })
+      const results = searchNotes(a.id, 'term')
+      expect(results).toHaveLength(1)
+      expect(results[0].caseId).toBe(a.id)
+    })
+
+    it('returns empty array for empty query', () => {
+      const c = createCase({ name: 'C' })
+      createNote({ caseId: c.id, title: 'x', body: 'y' })
+      expect(searchNotes(c.id, '')).toEqual([])
+    })
+
+    it('reflects updates via FTS triggers', () => {
+      const c = createCase({ name: 'C' })
+      const n = createNote({ caseId: c.id, title: 'original', body: 'body' })
+      updateNote({ id: n.id, title: 'changed' })
+      expect(searchNotes(c.id, 'original')).toHaveLength(0)
+      expect(searchNotes(c.id, 'changed')).toHaveLength(1)
+    })
+
+    it('reflects deletes via FTS triggers', () => {
+      const c = createCase({ name: 'C' })
+      const n = createNote({ caseId: c.id, title: 'temp', body: 'body' })
+      expect(searchNotes(c.id, 'temp')).toHaveLength(1)
+      deleteNote(n.id)
+      expect(searchNotes(c.id, 'temp')).toHaveLength(0)
     })
   })
 })

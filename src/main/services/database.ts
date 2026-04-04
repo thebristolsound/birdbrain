@@ -850,6 +850,19 @@ export function getNoteCount(caseId: string): number {
   return row.count
 }
 
+export function searchNotes(caseId: string, query: string): Note[] {
+  if (!query.trim()) return []
+  const rows = getDb()
+    .prepare(
+      `SELECT n.* FROM notes n
+       JOIN notes_fts ON notes_fts.rowid = n.rowid
+       WHERE notes_fts MATCH ? AND n.case_id = ?
+       ORDER BY rank`
+    )
+    .all(query, caseId) as Array<Record<string, unknown>>
+  return rows.map(rowToNote)
+}
+
 function rowToNote(row: Record<string, unknown>): Note {
   return {
     id: row.id as string,

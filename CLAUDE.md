@@ -1,6 +1,6 @@
-﻿# Birdbrain
+# Birdbrain
 
-Open source web investigation & capture tool.
+Open source web investigation & capture tool. Electron desktop app with a companion Chrome extension for capturing and analyzing web content.
 
 ## Commands
 
@@ -8,36 +8,44 @@ Open source web investigation & capture tool.
 - `pnpm build` - Build the Electron app
 - `pnpm build:extension` - Build the Chrome extension
 - `pnpm dev:extension` - Build Chrome extension in watch mode
-- `pnpm test` - Run tests (vitest)
+- `pnpm test` - Run tests (vitest, via Electron runtime)
 - `pnpm test:watch` - Run tests in watch mode
 - `pnpm lint` - ESLint (.ts, .tsx)
 - `pnpm format` - Prettier format src/ and extension/
 - `pnpm rebuild:electron` - Rebuild native deps (better-sqlite3)
-- `pnpm test:e2e` - Run E2E tests (Playwright + Electron)
+- `pnpm test:e2e` - Run E2E tests (Playwright + Electron, runs `pnpm build` first)
 - `pnpm test:e2e:debug` - Run E2E tests with Playwright inspector
+- `pnpm package` / `pnpm package:win` / `pnpm package:mac` - Package for distribution
 
 ## Architecture
 
-Electron + React + Chrome Extension + SQLite (better-sqlite3).
+Electron + React 19 + TanStack Router + React Query + Chrome Extension + SQLite (better-sqlite3).
 
 ### Process model
 
 - **Main process** (`src/main/`) - Electron main, SQLite database, Hono capture server, settings, export
-- **Preload** (`src/preload/`) - IPC bridge exposing typed channels to renderer
-- **Renderer** (`src/renderer/`) - React 19 + Tailwind v4 + Zustand UI
-- **Chrome extension** (`extension/`) - Content script + background + popup that sends captures to the Hono server
+- **Preload** (`src/preload/`) - IPC bridge exposing typed channels to renderer via `window.birdbrain`
+- **Renderer** (`src/renderer/`) - React 19 + Tailwind v4 + Zustand + TanStack Router + React Query
+- **Chrome extension** (`extension/`) - Content script + background service worker + popup that sends captures to the Hono server
 
 ### Key directories
 
 ```
-src/main/services/        # Core services: database, captureServer, storage, export, settings
-src/main/ipcHandlers.ts   # All IPC handler registrations
-src/shared/types.ts       # Shared TypeScript types (Case, Capture, Tag, Selector)
-src/shared/ipc.ts         # IPC channel definitions and payload types
-src/renderer/stores/      # Zustand store (appStore.ts)
-src/renderer/hooks/       # React hooks (useCases, useCaptures, useTags, useSearch, useServerStatus)
-src/renderer/components/  # UI organized by feature: cases, captures, tags, search, selectors, export, settings, layout, status
-extension/src/            # Chrome extension source (background, content, popup, utils/api)
+src/main/services/           # Core services: database, captureServer, storage, export, settings, hash, safeRegex, openrouter
+src/main/services/ai/       # AI services (OpenRouter client, being redesigned)
+src/main/ipcHandlers.ts     # All IPC handler registrations
+src/shared/types.ts         # Shared TypeScript types (Case, Capture, Tag, Selector, Settings, etc.)
+src/shared/ipc.ts           # IPC channel definitions and payload types (~54 channels)
+src/shared/constants.ts     # Constants (CAPTURE_SERVER_PORT=19845)
+src/renderer/routes/        # TanStack Router route definitions
+src/renderer/stores/        # Zustand store (appStore.ts)
+src/renderer/hooks/         # React hooks (useTheme, useCaptureThumbnail, useFavorites, useSearch, useSelectorFilters, useServerStatus)
+src/renderer/lib/           # React Query client and query/mutation factories
+src/renderer/components/    # UI organized by feature (10 directories, ~34 components)
+extension/src/              # Chrome extension source (background, content, popup, utils/api, toast)
+tests/                      # Vitest unit tests
+e2e/                        # Playwright E2E tests
+docs/                       # Design docs and specs
 ```
 
 ### Path aliases
@@ -50,17 +58,94 @@ extension/src/            # Chrome extension source (background, content, popup,
 
 All renderer↔main communication uses typed IPC channels defined in `src/shared/ipc.ts`. Channels follow `domain:action` naming (e.g., `cases:create`, `selectors:create`). Event channels (main→renderer) use `event:` prefix.
 
+**Domains:** cases (5), captures (12), tags (8), search (1), settings (4+), export (1), selectors (9), events (4+), testing (2).
+
+The preload script exposes these via `window.birdbrain` with typed invoke/on methods.
+
+### Routing
+
+TanStack Router (`@tanstack/react-router`) with the following route tree:
+
+```
+/ → Dashboard
+/settings → SettingsView
+/cases/new → NewCaseWizard
+/cases/$caseId → CaseWorkspace (layout with tabs)
+  ├── / → CaseOverview
+  ├── /captures → CaptureList + CaptureViewer (split view)
+  └── /selectors → SelectorsOverview
+```
+
+Root layout in `__root.tsx` renders TopBar + main content area.
+
+### Data fetching
+
+React Query (`@tanstack/react-query`) manages all server state. Configuration in `src/renderer/lib/`:
+- `queryClient.ts` - retry=false, staleTime=30s, refetchOnWindowFocus=false
+- `queries.ts` - Query key factory, typed query options, and domain-specific mutation hooks (useCasesMutations, useCapturesMutations, etc.) with automatic cache invalidation
+
+### State management
+
+Zustand store (`src/renderer/stores/appStore.ts`) for UI-only state:
+- Session state (sessionActive, connectedToExtension)
+- Selection state (selectedCaptureId, selectedCaptureIds)
+- Search and filter state (searchQuery, activeSelectorFilters, filteredCaptureIds)
+- Capture activity (captureEvents, captureStats)
+
 ### Database
 
-SQLite via better-sqlite3 with WAL mode. Schema migrations use `user_version` pragma in `src/main/services/database.ts`. Tables: cases, captures, tags, capture_tags, selectors, selector_matches, captures_fts.
+SQLite via better-sqlite3 with WAL mode. Schema migrations use `user_version` pragma (currently v1-v9) in `src/main/services/database.ts`.
 
-### AI services (planned)
+**Tables:** cases, captures, tags, capture_tags, selectors, selector_matches, captures_fts (FTS5), capture_favorites.
 
-AI features are being redesigned. OpenRouter integration (`src/main/services/openrouter.ts`) is retained for future use.
+**Indexes:** idx_captures_case_id, idx_capture_tags_tag_id, idx_selectors_case_id, idx_selector_matches_capture, idx_capture_favorites_created.
+
+### Theme system
+
+Light/dark theme support using CSS custom properties and Tailwind v4:
+
+- **CSS tokens** (`src/renderer/styles/globals.css`) - `@theme` block defines semantic color variables (canvas, text, accent, border, surface, etc.) with light/dark variants via `.dark` class
+- **useTheme hook** (`src/renderer/hooks/useTheme.ts`) - Manages theme state, localStorage persistence, `dark` class on `<html>`, 400ms transition animations, and IPC sync to settings
+- **Flash prevention** - Inline script in HTML prevents theme flicker on load
+- **Component convention** - All components use semantic token classes (e.g., `bg-canvas`, `text-text-primary`, `border-border`) instead of raw Tailwind colors
 
 ### Capture server
 
-Hono HTTP server (`src/main/services/captureServer.ts`) receives captures from the Chrome extension. Captures are stored as files on disk with SHA-256 hash verification.
+Hono HTTP server (`src/main/services/captureServer.ts`) on port 19845 receives captures from the Chrome extension. Captures are stored as files on disk organized by case directory with SHA-256 hash verification.
+
+### Chrome extension
+
+Located in `extension/src/`:
+- **background.ts** - Service worker managing extension state and tab capture events
+- **content.ts** - Injected into pages for HTML/screenshot capture and selector detection
+- **popup/** - React-based popup UI with case selector and capture controls
+- **utils/api.ts** - HTTP client targeting `http://127.0.0.1:19845`
+
+Built separately via `pnpm build:extension` (uses `extension/vite.config.ts`).
+
+### AI services
+
+OpenRouter integration (`src/main/services/openrouter.ts`) provides `testApiKey()` and `listModels()`. AI analysis features are being redesigned - previous entity extraction and case analysis tables were removed in migration v7. Settings persist `openRouterApiKey` and `defaultModel`.
+
+### UI components
+
+Organized into 10 feature directories under `src/renderer/components/`:
+
+- **captures/** - CaptureItem, CaptureList, CaptureViewer
+- **cases/** - CaseOverview, CaseSwitcher, CaseWorkspace, CreateCaseDialog, NewCaseWizard
+- **dashboard/** - Dashboard, CaseCard, DashboardFooter, ExtensionBanner, HeroSection, QuickStartGuide, RecentCases
+- **export/** - ExportDialog
+- **layout/** - TopBar
+- **search/** - SearchBar
+- **selectors/** - CreateSelectorCard, SelectorFilterFooter, SelectorTable, SelectorTableRow, SelectorsOverview
+- **settings/** - SettingsView, AIConfig, AppearanceConfig, CapturePreferences, StorageConfig, About
+- **status/** - CaptureHealth, ConnectionStatus, SessionControls
+- **tags/** - TagBadge, TagManager
+
+## Testing
+
+- **Unit tests** (`tests/`) - Vitest running via Electron runtime (`ELECTRON_RUN_AS_NODE=1`). Config in `vitest.config.ts` (node environment, globals enabled). Covers database, services, store, types.
+- **E2E tests** (`e2e/`) - Playwright with Electron. Config in `playwright.config.ts` (30s timeout, 1 worker, trace on-first-retry). Requires `pnpm build` first (handled by `pretest:e2e` script).
 
 ## Code style
 
@@ -71,3 +156,5 @@ Hono HTTP server (`src/main/services/captureServer.ts`) receives captures from t
 - 2-space indent
 - TypeScript strict mode
 - React JSX transform (no React import needed)
+- ESLint 9 flat config with TypeScript ESLint + Prettier
+- Use semantic theme tokens instead of raw color values in components

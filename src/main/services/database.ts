@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3'
 import { v4 as uuid } from 'uuid'
-import type { Case, Capture, Tag, Selector, ActiveCaseSelectors } from '@shared/types'
+import type { Case, Capture, Tag, Selector, ActiveCaseSelectors, Note } from '@shared/types'
 import type {
   CreateCaseParams,
   UpdateCaseParams,
@@ -8,7 +8,9 @@ import type {
   UpdateTagParams,
   CaptureTagParams,
   CreateSelectorParams,
-  UpdateSelectorParams
+  UpdateSelectorParams,
+  CreateNoteParams,
+  UpdateNoteParams
 } from '@shared/ipc'
 import { safeRegexTest } from '@main/services/safeRegex'
 
@@ -201,6 +203,47 @@ function migrate(db: Database.Database): void {
         CREATE INDEX IF NOT EXISTS idx_capture_favorites_created ON capture_favorites(created_at DESC);
       `)
       db.pragma('user_version = 9')
+    })()
+  }
+
+  if (version < 10) {
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS notes (
+          id TEXT PRIMARY KEY,
+          case_id TEXT NOT NULL,
+          capture_id TEXT,
+          title TEXT NOT NULL DEFAULT '',
+          body TEXT NOT NULL DEFAULT '',
+          source_url TEXT,
+          screenshot_path TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+          FOREIGN KEY (capture_id) REFERENCES captures(id) ON DELETE SET NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_notes_case_id ON notes(case_id);
+        CREATE INDEX IF NOT EXISTS idx_notes_capture_id ON notes(capture_id);
+
+        CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
+          title,
+          body,
+          content=notes,
+          content_rowid=rowid
+        );
+
+        CREATE TRIGGER IF NOT EXISTS notes_ai AFTER INSERT ON notes BEGIN
+          INSERT INTO notes_fts(rowid, title, body) VALUES (new.rowid, new.title, new.body);
+        END;
+        CREATE TRIGGER IF NOT EXISTS notes_ad AFTER DELETE ON notes BEGIN
+          INSERT INTO notes_fts(notes_fts, rowid, title, body) VALUES('delete', old.rowid, old.title, old.body);
+        END;
+        CREATE TRIGGER IF NOT EXISTS notes_au AFTER UPDATE ON notes BEGIN
+          INSERT INTO notes_fts(notes_fts, rowid, title, body) VALUES('delete', old.rowid, old.title, old.body);
+          INSERT INTO notes_fts(rowid, title, body) VALUES (new.rowid, new.title, new.body);
+        END;
+      `)
+      db.pragma('user_version = 10')
     })()
   }
 }
@@ -683,9 +726,7 @@ export function toggleFavorite(captureId: string): boolean {
 }
 
 export function isFavorite(captureId: string): boolean {
-  const row = getDb()
-    .prepare('SELECT 1 FROM capture_favorites WHERE capture_id = ?')
-    .get(captureId)
+  const row = getDb().prepare('SELECT 1 FROM capture_favorites WHERE capture_id = ?').get(captureId)
   return !!row
 }
 
@@ -741,5 +782,97 @@ function rowToSelector(row: Record<string, unknown>): Selector {
     enabled: row.enabled === 1,
     label: (row.label as string) || undefined,
     createdAt: row.created_at as string
+  }
+}
+
+// --- Notes ---
+
+export function listNotes(caseId: string): Note[] {
+  const rows = getDb()
+    .prepare('SELECT * FROM notes WHERE case_id = ? ORDER BY created_at DESC')
+    .all(caseId) as Array<Record<string, unknown>>
+  return rows.map(rowToNote)
+}
+
+export function getNote(id: string): Note | undefined {
+  const row = getDb().prepare('SELECT * FROM notes WHERE id = ?').get(id) as
+    | Record<string, unknown>
+    | undefined
+  return row ? rowToNote(row) : undefined
+}
+
+export function createNote(params: CreateNoteParams): Note {
+  const id = uuid()
+  const now = new Date().toISOString()
+  getDb()
+    .prepare(
+      `INSERT INTO notes (id, case_id, capture_id, title, body, source_url, screenshot_path, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      id,
+      params.caseId,
+      params.captureId ?? null,
+      params.title ?? '',
+      params.body ?? '',
+      params.sourceUrl ?? null,
+      params.screenshotPath ?? null,
+      now,
+      now
+    )
+  return getNote(id)!
+}
+
+export function updateNote(params: UpdateNoteParams): Note | undefined {
+  const existing = getNote(params.id)
+  if (!existing) return undefined
+  const now = new Date().toISOString()
+  getDb()
+    .prepare('UPDATE notes SET title = ?, body = ?, updated_at = ? WHERE id = ?')
+    .run(
+      params.title !== undefined ? params.title : existing.title,
+      params.body !== undefined ? params.body : existing.body,
+      now,
+      params.id
+    )
+  return getNote(params.id)
+}
+
+export function deleteNote(id: string): boolean {
+  const result = getDb().prepare('DELETE FROM notes WHERE id = ?').run(id)
+  return result.changes > 0
+}
+
+export function getNoteCount(caseId: string): number {
+  const row = getDb()
+    .prepare('SELECT COUNT(*) as count FROM notes WHERE case_id = ?')
+    .get(caseId) as { count: number }
+  return row.count
+}
+
+export function searchNotes(caseId: string, query: string): Note[] {
+  if (!query.trim()) return []
+  const rows = getDb()
+    .prepare(
+      `SELECT n.* FROM notes n
+       JOIN notes_fts ON notes_fts.rowid = n.rowid
+       WHERE notes_fts MATCH ? AND n.case_id = ?
+       ORDER BY rank`
+    )
+    .all(query, caseId) as Array<Record<string, unknown>>
+  return rows.map(rowToNote)
+}
+
+function rowToNote(row: Record<string, unknown>): Note {
+  return {
+    id: row.id as string,
+    caseId: row.case_id as string,
+    captureId: (row.capture_id as string) || undefined,
+    title: row.title as string,
+    body: row.body as string,
+    sourceUrl: (row.source_url as string) || undefined,
+    screenshotPath: (row.screenshot_path as string) || undefined,
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string
   }
 }

@@ -25,7 +25,14 @@ import {
   getSelectorCoverage,
   createSelector,
   matchSelectorAgainstCaptures,
-  listActiveSelectors
+  listActiveSelectors,
+  createNote,
+  getNote,
+  listNotes,
+  deleteNote,
+  getNoteCount,
+  updateNote,
+  searchNotes
 } from '@main/services/database'
 
 describe('database', () => {
@@ -251,9 +258,9 @@ describe('database', () => {
     })
 
     it('sets user_version to 7 after v7 migration', () => {
-      // v8 and v9 migrations run immediately after, so final version is 9
+      // v8, v9, and v10 migrations run immediately after, so final version is 10
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(9)
+      expect(version).toBe(10)
     })
   })
 
@@ -277,18 +284,16 @@ describe('database', () => {
     })
 
     it('sets user_version to 8', () => {
-      // v9 migration runs immediately after, so final version is 9
+      // v9 and v10 migrations run immediately after, so final version is 10
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(9)
+      expect(version).toBe(10)
     })
   })
 
   describe('migration v9 - capture favorites', () => {
     it('creates capture_favorites table', () => {
       const table = getDb()
-        .prepare(
-          "SELECT name FROM sqlite_master WHERE type='table' AND name='capture_favorites'"
-        )
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='capture_favorites'")
         .get()
       expect(table).toBeDefined()
     })
@@ -303,8 +308,9 @@ describe('database', () => {
     })
 
     it('sets user_version to 9', () => {
+      // v10 migration runs immediately after, so final version is 10
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(9)
+      expect(version).toBe(10)
     })
   })
 
@@ -402,4 +408,284 @@ describe('database', () => {
     })
   })
 
+  describe('notes schema (migration 10)', () => {
+    it('creates notes table with expected columns', () => {
+      const cols = getDb().prepare("PRAGMA table_info('notes')").all() as Array<{
+        name: string
+        notnull: number
+        dflt_value: string | null
+      }>
+      const names = cols.map((c) => c.name)
+      expect(names).toEqual(
+        expect.arrayContaining([
+          'id',
+          'case_id',
+          'capture_id',
+          'title',
+          'body',
+          'source_url',
+          'screenshot_path',
+          'created_at',
+          'updated_at'
+        ])
+      )
+      // title and body have defaults and NOT NULL
+      const title = cols.find((c) => c.name === 'title')!
+      expect(title.notnull).toBe(1)
+      expect(title.dflt_value).toBe("''")
+      const body = cols.find((c) => c.name === 'body')!
+      expect(body.notnull).toBe(1)
+      expect(body.dflt_value).toBe("''")
+      // capture_id is nullable
+      const captureId = cols.find((c) => c.name === 'capture_id')!
+      expect(captureId.notnull).toBe(0)
+    })
+
+    it('creates indexes on case_id and capture_id', () => {
+      const idx = getDb()
+        .prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='notes'")
+        .all() as Array<{ name: string }>
+      const names = idx.map((i) => i.name)
+      expect(names).toContain('idx_notes_case_id')
+      expect(names).toContain('idx_notes_capture_id')
+    })
+
+    it('creates notes_fts virtual table', () => {
+      const tbl = getDb()
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='notes_fts'")
+        .get() as { name: string } | undefined
+      expect(tbl).toBeDefined()
+    })
+
+    it('creates insert/update/delete triggers for notes_fts sync', () => {
+      const triggers = getDb()
+        .prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name='notes'")
+        .all() as Array<{ name: string }>
+      const names = triggers.map((t) => t.name)
+      expect(names).toContain('notes_ai')
+      expect(names).toContain('notes_ad')
+      expect(names).toContain('notes_au')
+    })
+
+    it('sets capture_id to NULL when referenced capture is deleted', () => {
+      const c = createCase({ name: 'Case' })
+      const cap = insertCapture({
+        caseId: c.id,
+        url: 'https://example.com',
+        title: 'Example',
+        hash: 'abc',
+        timestamp: new Date().toISOString()
+      })
+      // Insert via raw SQL to directly exercise the FK `ON DELETE SET NULL` behavior,
+      // independent of the createNote helper.
+      getDb()
+        .prepare(
+          'INSERT INTO notes (id, case_id, capture_id, title, body, source_url, screenshot_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        )
+        .run(
+          'note1',
+          c.id,
+          cap.id,
+          'T',
+          'B',
+          'https://example.com',
+          null,
+          '2024-01-01T00:00:00Z',
+          '2024-01-01T00:00:00Z'
+        )
+      // Delete the capture
+      deleteCapture(cap.id)
+      const row = getDb().prepare('SELECT capture_id FROM notes WHERE id = ?').get('note1') as {
+        capture_id: string | null
+      }
+      expect(row.capture_id).toBeNull()
+    })
+
+    it('cascades delete when case is deleted', () => {
+      const c = createCase({ name: 'Case' })
+      getDb()
+        .prepare(
+          'INSERT INTO notes (id, case_id, capture_id, title, body, source_url, screenshot_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        )
+        .run(
+          'note2',
+          c.id,
+          null,
+          'T',
+          'B',
+          null,
+          null,
+          '2024-01-01T00:00:00Z',
+          '2024-01-01T00:00:00Z'
+        )
+      deleteCase(c.id)
+      const row = getDb().prepare('SELECT * FROM notes WHERE id = ?').get('note2')
+      expect(row).toBeUndefined()
+    })
+  })
+
+  describe('notes CRUD', () => {
+    it('creates a note with minimal params', () => {
+      const c = createCase({ name: 'C' })
+      const n = createNote({ caseId: c.id })
+      expect(n.id).toBeDefined()
+      expect(n.caseId).toBe(c.id)
+      expect(n.title).toBe('')
+      expect(n.body).toBe('')
+      expect(n.captureId).toBeUndefined()
+      expect(n.sourceUrl).toBeUndefined()
+      expect(n.screenshotPath).toBeUndefined()
+      expect(n.createdAt).toBeDefined()
+      expect(n.updatedAt).toBe(n.createdAt)
+    })
+
+    it('creates a note with all fields', () => {
+      const c = createCase({ name: 'C' })
+      const cap = insertCapture({
+        caseId: c.id,
+        url: 'https://example.com',
+        title: 'Example',
+        hash: 'abc',
+        timestamp: new Date().toISOString()
+      })
+      const n = createNote({
+        caseId: c.id,
+        captureId: cap.id,
+        title: 'My note',
+        body: 'Observation body',
+        sourceUrl: 'https://example.com',
+        screenshotPath: 'path/to/shot.png'
+      })
+      expect(n.title).toBe('My note')
+      expect(n.body).toBe('Observation body')
+      expect(n.captureId).toBe(cap.id)
+      expect(n.sourceUrl).toBe('https://example.com')
+      expect(n.screenshotPath).toBe('path/to/shot.png')
+    })
+
+    it('retrieves a note by id', () => {
+      const c = createCase({ name: 'C' })
+      const created = createNote({ caseId: c.id, title: 'T', body: 'B' })
+      const got = getNote(created.id)
+      expect(got).toEqual(created)
+    })
+
+    it('returns undefined for missing note', () => {
+      expect(getNote('nonexistent')).toBeUndefined()
+    })
+
+    it('lists notes for a case ordered by created_at DESC', async () => {
+      const c = createCase({ name: 'C' })
+      const first = createNote({ caseId: c.id, title: 'First' })
+      await new Promise((r) => setTimeout(r, 5))
+      const second = createNote({ caseId: c.id, title: 'Second' })
+      const list = listNotes(c.id)
+      expect(list).toHaveLength(2)
+      expect(list[0].id).toBe(second.id)
+      expect(list[1].id).toBe(first.id)
+    })
+
+    it('lists only notes for the given case', () => {
+      const a = createCase({ name: 'A' })
+      const b = createCase({ name: 'B' })
+      createNote({ caseId: a.id, title: 'A-1' })
+      createNote({ caseId: b.id, title: 'B-1' })
+      expect(listNotes(a.id)).toHaveLength(1)
+      expect(listNotes(a.id)[0].title).toBe('A-1')
+    })
+
+    it('deletes a note', () => {
+      const c = createCase({ name: 'C' })
+      const n = createNote({ caseId: c.id })
+      expect(deleteNote(n.id)).toBe(true)
+      expect(getNote(n.id)).toBeUndefined()
+    })
+
+    it('returns false when deleting a missing note', () => {
+      expect(deleteNote('nonexistent')).toBe(false)
+    })
+
+    it('counts notes for a case', () => {
+      const c = createCase({ name: 'C' })
+      expect(getNoteCount(c.id)).toBe(0)
+      createNote({ caseId: c.id })
+      createNote({ caseId: c.id })
+      expect(getNoteCount(c.id)).toBe(2)
+    })
+
+    it('updates a note title and body', async () => {
+      const c = createCase({ name: 'C' })
+      const n = createNote({ caseId: c.id, title: 'old', body: 'old body' })
+      await new Promise((r) => setTimeout(r, 5))
+      const updated = updateNote({ id: n.id, title: 'new', body: 'new body' })
+      expect(updated?.title).toBe('new')
+      expect(updated?.body).toBe('new body')
+      expect(updated?.updatedAt).not.toBe(n.updatedAt)
+      expect(updated?.createdAt).toBe(n.createdAt)
+    })
+
+    it('preserves unset fields on update', () => {
+      const c = createCase({ name: 'C' })
+      const n = createNote({ caseId: c.id, title: 'keep', body: 'original' })
+      const updated = updateNote({ id: n.id, body: 'new body only' })
+      expect(updated?.title).toBe('keep')
+      expect(updated?.body).toBe('new body only')
+    })
+
+    it('returns undefined when updating a missing note', () => {
+      expect(updateNote({ id: 'nonexistent', title: 'x' })).toBeUndefined()
+    })
+  })
+
+  describe('notes search (FTS)', () => {
+    it('finds notes matching a query in body', () => {
+      const c = createCase({ name: 'C' })
+      createNote({ caseId: c.id, title: 'alpha', body: 'mentions something interesting' })
+      createNote({ caseId: c.id, title: 'beta', body: 'unrelated content' })
+      const results = searchNotes(c.id, 'interesting')
+      expect(results).toHaveLength(1)
+      expect(results[0].title).toBe('alpha')
+    })
+
+    it('finds notes matching a query in title', () => {
+      const c = createCase({ name: 'C' })
+      createNote({ caseId: c.id, title: 'zebra report', body: 'body' })
+      createNote({ caseId: c.id, title: 'other', body: 'body' })
+      const results = searchNotes(c.id, 'zebra')
+      expect(results).toHaveLength(1)
+      expect(results[0].title).toBe('zebra report')
+    })
+
+    it('scopes search to the given case', () => {
+      const a = createCase({ name: 'A' })
+      const b = createCase({ name: 'B' })
+      createNote({ caseId: a.id, title: 'term', body: 'x' })
+      createNote({ caseId: b.id, title: 'term', body: 'x' })
+      const results = searchNotes(a.id, 'term')
+      expect(results).toHaveLength(1)
+      expect(results[0].caseId).toBe(a.id)
+    })
+
+    it('returns empty array for empty query', () => {
+      const c = createCase({ name: 'C' })
+      createNote({ caseId: c.id, title: 'x', body: 'y' })
+      expect(searchNotes(c.id, '')).toEqual([])
+    })
+
+    it('reflects updates via FTS triggers', () => {
+      const c = createCase({ name: 'C' })
+      const n = createNote({ caseId: c.id, title: 'original', body: 'body' })
+      updateNote({ id: n.id, title: 'changed' })
+      expect(searchNotes(c.id, 'original')).toHaveLength(0)
+      expect(searchNotes(c.id, 'changed')).toHaveLength(1)
+    })
+
+    it('reflects deletes via FTS triggers', () => {
+      const c = createCase({ name: 'C' })
+      const n = createNote({ caseId: c.id, title: 'temp', body: 'body' })
+      expect(searchNotes(c.id, 'temp')).toHaveLength(1)
+      deleteNote(n.id)
+      expect(searchNotes(c.id, 'temp')).toHaveLength(0)
+    })
+  })
 })

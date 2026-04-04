@@ -7,7 +7,9 @@ import type {
   UpdateTagParams,
   CaptureTagParams,
   CreateSelectorParams,
-  UpdateSelectorParams
+  UpdateSelectorParams,
+  CreateNoteParams,
+  UpdateNoteParams
 } from '@shared/ipc'
 import * as db from '@main/services/database'
 import * as storage from '@main/services/storage'
@@ -272,6 +274,41 @@ export function registerIpcHandlers(): void {
     db.getSelectorCoverage(caseId)
   )
 
+  // Notes
+  ipcMain.handle(IPC_CHANNELS.NOTES_LIST, (_, caseId: string) => db.listNotes(caseId))
+  ipcMain.handle(IPC_CHANNELS.NOTES_GET, (_, id: string) => db.getNote(id))
+  ipcMain.handle(IPC_CHANNELS.NOTES_CREATE, (_, params: CreateNoteParams) => {
+    try {
+      return ipcResult(db.createNote(params))
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+  ipcMain.handle(IPC_CHANNELS.NOTES_UPDATE, (_, params: UpdateNoteParams) => {
+    try {
+      return ipcResult(db.updateNote(params))
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+  ipcMain.handle(IPC_CHANNELS.NOTES_DELETE, (_, id: string) => {
+    try {
+      return ipcResult(db.deleteNote(id))
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+  ipcMain.handle(IPC_CHANNELS.NOTES_COUNT, (_, caseId: string) => db.getNoteCount(caseId))
+  ipcMain.handle(IPC_CHANNELS.NOTES_SEARCH, (_, caseId: string, query: string) => {
+    try {
+      return db.searchNotes(caseId, query)
+    } catch {
+      // FTS5 can throw on malformed queries (e.g. unmatched quotes, reserved keywords).
+      // Return empty results so the UI gracefully handles bad input.
+      return []
+    }
+  })
+
   // Captures - get content
   ipcMain.handle(
     IPC_CHANNELS.CAPTURES_GET_CONTENT,
@@ -346,12 +383,15 @@ export function registerIpcHandlers(): void {
   )
 
   // Export
-  ipcMain.handle(IPC_CHANNELS.EXPORT_GENERATE, async (_, caseId: string, options: ExportOptions) => {
-    try {
-      await generateReport(caseId, options)
-      return ipcResult(undefined)
-    } catch (err) {
-      return ipcError(err)
+  ipcMain.handle(
+    IPC_CHANNELS.EXPORT_GENERATE,
+    async (_, caseId: string, options: ExportOptions) => {
+      try {
+        await generateReport(caseId, options)
+        return ipcResult(undefined)
+      } catch (err) {
+        return ipcError(err)
+      }
     }
-  })
+  )
 }

@@ -2,7 +2,13 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '@renderer/stores/appStore'
-import { capturesQueryOptions, tagsQueryOptions, tagsForCaptureQueryOptions, useTagsMutations, useCapturesMutations } from '@renderer/lib/queries'
+import {
+  capturesQueryOptions,
+  tagsQueryOptions,
+  tagsForCaptureQueryOptions,
+  useTagsMutations,
+  useCapturesMutations
+} from '@renderer/lib/queries'
 import { TagBadge } from '@renderer/components/tags/TagBadge'
 import type { Capture } from '@shared/types'
 import {
@@ -18,8 +24,10 @@ import {
   FileText,
   Info,
   Tag as TagIcon,
-  Plus
+  Plus,
+  StickyNote
 } from 'lucide-react'
+import { AddNoteModal } from '@renderer/components/notes/AddNoteModal'
 
 type ViewTab = 'screenshot' | 'page' | 'source' | 'text' | 'metadata'
 
@@ -66,6 +74,7 @@ export function CaptureViewer() {
   const [content, setContent] = useState<string | null>(null)
   const [showTagMenu, setShowTagMenu] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showAddNote, setShowAddNote] = useState(false)
 
   useEffect(() => {
     if (selectedCaptureId) {
@@ -213,6 +222,14 @@ export function CaptureViewer() {
             <ShieldCheck className="h-3 w-3" />
             Verified
           </span>
+          <button
+            data-testid="add-note-button"
+            onClick={() => setShowAddNote(true)}
+            title="Add note"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted hover:bg-elevated hover:text-text-secondary"
+          >
+            <StickyNote className="h-3.5 w-3.5" />
+          </button>
           <button
             onClick={handleDownload}
             title="Download capture"
@@ -408,6 +425,14 @@ export function CaptureViewer() {
           </div>
         </div>
       )}
+      <AddNoteModal
+        open={showAddNote}
+        caseId={caseId}
+        captureId={capture.id}
+        captureTitle={capture.title || ''}
+        captureUrl={capture.url}
+        onClose={() => setShowAddNote(false)}
+      />
     </main>
   )
 }

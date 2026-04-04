@@ -8,7 +8,9 @@ import type {
   UpdateTagParams,
   CaptureTagParams,
   CreateSelectorParams,
-  UpdateSelectorParams
+  UpdateSelectorParams,
+  CreateNoteParams,
+  UpdateNoteParams
 } from '@shared/ipc'
 import type {
   Case,
@@ -19,7 +21,8 @@ import type {
   ExportOptions,
   Selector,
   ActiveCaseSelectors,
-  CaptureEvent
+  CaptureEvent,
+  Note
 } from '@shared/types'
 
 // Unwrap IpcResult from handlers that return structured results
@@ -110,6 +113,20 @@ const birdbrain = {
       ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_MATCHING_CAPTURES, caseId, selectorIds),
     coverage: (caseId: string): Promise<{ matched: number; total: number }> =>
       ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_COVERAGE, caseId)
+  },
+  notes: {
+    list: (caseId: string): Promise<Note[]> => ipcRenderer.invoke(IPC_CHANNELS.NOTES_LIST, caseId),
+    get: (id: string): Promise<Note | undefined> => ipcRenderer.invoke(IPC_CHANNELS.NOTES_GET, id),
+    create: (params: CreateNoteParams): Promise<Note> =>
+      unwrapIpc<Note>(ipcRenderer.invoke(IPC_CHANNELS.NOTES_CREATE, params)),
+    update: (params: UpdateNoteParams): Promise<Note | undefined> =>
+      unwrapIpc<Note | undefined>(ipcRenderer.invoke(IPC_CHANNELS.NOTES_UPDATE, params)),
+    delete: (id: string): Promise<boolean> =>
+      unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.NOTES_DELETE, id)),
+    count: (caseId: string): Promise<number> =>
+      ipcRenderer.invoke(IPC_CHANNELS.NOTES_COUNT, caseId),
+    search: (caseId: string, query: string): Promise<Note[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.NOTES_SEARCH, caseId, query)
   },
 
   search: (query: string): Promise<Capture[]> => ipcRenderer.invoke(IPC_CHANNELS.SEARCH, query),

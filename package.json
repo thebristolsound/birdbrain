@@ -80,6 +80,7 @@
     "@tanstack/react-query-devtools": "^5.96.0",
     "@tanstack/router-devtools": "^1.166.11",
     "@types/better-sqlite3": "^7.6.13",
+    "@types/chrome": "^0.1.39",
     "@types/d3-force": "^3.0.10",
     "@types/node": "^25.5.2",
     "@types/react": "^19.0.0",

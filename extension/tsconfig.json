@@ -11,7 +11,10 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "outDir": "./dist",
-    "lib": ["ES2022", "DOM"]
+    "lib": ["ES2022", "DOM"],
+    "paths": {
+      "@extension/*": ["./src/*"]
+    }
   },
   "include": ["src/**/*"]
 }

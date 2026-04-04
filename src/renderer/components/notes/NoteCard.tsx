@@ -34,11 +34,24 @@ export function NoteCard({ note, caseId }: NoteCardProps) {
   // screenshotPath column exists for Hunchly import compatibility but isn't rendered yet —
   // always fall back to the linked capture's thumbnail when a captureId is present.
   useEffect(() => {
-    if (!note.captureId) return
+    let isCurrent = true
+    if (!note.captureId) {
+      setThumbnail(null)
+      return () => {
+        isCurrent = false
+      }
+    }
     window.birdbrain.captures
       .getThumbnail(note.captureId)
-      .then(setThumbnail)
-      .catch(() => setThumbnail(null))
+      .then((next) => {
+        if (isCurrent) setThumbnail(next)
+      })
+      .catch(() => {
+        if (isCurrent) setThumbnail(null)
+      })
+    return () => {
+      isCurrent = false
+    }
   }, [note.captureId])
 
   async function handleSave() {

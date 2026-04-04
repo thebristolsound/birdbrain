@@ -18,8 +18,13 @@ export function NotesOverview() {
   }, [searchInput])
 
   const { data: allNotes = [], isLoading } = useQuery(notesQueryOptions(caseId))
-  const { data: searchResults = [] } = useQuery(notesSearchQueryOptions(caseId, debouncedQuery))
+  const {
+    data: searchResults = [],
+    isLoading: isSearchLoading,
+    isFetching: isSearchFetching
+  } = useQuery(notesSearchQueryOptions(caseId, debouncedQuery))
 
+  const isSearching = debouncedQuery.length > 0 && (isSearchLoading || isSearchFetching)
   const notes = debouncedQuery.length > 0 ? searchResults : allNotes
 
   if (isLoading) {
@@ -47,7 +52,9 @@ export function NotesOverview() {
         onCreated={() => setShowCreateForm(false)}
       />
 
-      {notes.length === 0 ? (
+      {isSearching ? (
+        <p className="py-8 text-center text-sm text-text-muted">Searching notes...</p>
+      ) : notes.length === 0 ? (
         <p className="py-8 text-center text-sm text-text-muted">
           {debouncedQuery.length > 0
             ? `No notes match "${debouncedQuery}"`

@@ -229,11 +229,25 @@ export const notesSearchQueryOptions = (caseId: string, query: string) =>
 export function useNotesMutations(caseId: string) {
   const queryClient = useQueryClient()
 
+  const invalidateSearch = () =>
+    queryClient.invalidateQueries({
+      predicate: (q) => {
+        const key = q.queryKey
+        return (
+          Array.isArray(key) &&
+          key[0] === 'notes' &&
+          key[1] === 'search' &&
+          key[2] === caseId
+        )
+      }
+    })
+
   const create = useMutation({
     mutationFn: (params: CreateNoteParams) => window.birdbrain.notes.create(params),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.notes(caseId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.noteCount(caseId) })
+      invalidateSearch()
     }
   })
 
@@ -241,6 +255,7 @@ export function useNotesMutations(caseId: string) {
     mutationFn: (params: UpdateNoteParams) => window.birdbrain.notes.update(params),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.notes(caseId) })
+      invalidateSearch()
     }
   })
 
@@ -249,6 +264,7 @@ export function useNotesMutations(caseId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.notes(caseId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.noteCount(caseId) })
+      invalidateSearch()
     }
   })
 

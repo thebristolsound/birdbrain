@@ -476,7 +476,8 @@ describe('database', () => {
         hash: 'abc',
         timestamp: new Date().toISOString()
       })
-      // Insert a note linked to the capture using raw SQL (createNote doesn't exist yet)
+      // Insert via raw SQL to directly exercise the FK `ON DELETE SET NULL` behavior,
+      // independent of the createNote helper.
       getDb()
         .prepare(
           'INSERT INTO notes (id, case_id, capture_id, title, body, source_url, screenshot_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'

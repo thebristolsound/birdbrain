@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3'
 import { v4 as uuid } from 'uuid'
-import type { Case, Capture, Tag, Selector, ActiveCaseSelectors, Note } from '@shared/types'
+import type { Case, Capture, Tag, Selector, ActiveCaseSelectors, Note, SelectorMatchExportRow } from '@shared/types'
 import type {
   CreateCaseParams,
   UpdateCaseParams,
@@ -726,6 +726,39 @@ export function getSelectorCoverage(caseId: string): { matched: number; total: n
     )
     .get(caseId) as { matched: number } | undefined
   return { matched: row?.matched ?? 0, total }
+}
+
+export function getSelectorMatchesForExport(caseId: string): SelectorMatchExportRow[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT s.pattern as selectorPattern,
+              s.label as selectorLabel,
+              s.is_regex as isRegex,
+              c.url as captureUrl,
+              c.title as captureTitle,
+              c.timestamp as captureTimestamp
+       FROM selector_matches sm
+       JOIN selectors s ON sm.selector_id = s.id
+       JOIN captures c ON sm.capture_id = c.id
+       WHERE s.case_id = ?
+       ORDER BY s.pattern, c.timestamp DESC`
+    )
+    .all(caseId) as Array<{
+    selectorPattern: string
+    selectorLabel: string | null
+    isRegex: number
+    captureUrl: string
+    captureTitle: string | null
+    captureTimestamp: string
+  }>
+  return rows.map((r) => ({
+    selectorPattern: r.selectorPattern,
+    selectorLabel: r.selectorLabel,
+    isRegex: r.isRegex === 1,
+    captureUrl: r.captureUrl,
+    captureTitle: r.captureTitle,
+    captureTimestamp: r.captureTimestamp
+  }))
 }
 
 export function getCaptureMatchingSelectors(captureId: string): Selector[] {

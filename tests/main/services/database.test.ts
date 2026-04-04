@@ -29,6 +29,7 @@ import {
   listActiveSelectors,
   listSelectors,
   bulkCreateSelectors,
+  getSelectorMatchesForExport,
   createNote,
   getNote,
   listNotes,
@@ -492,6 +493,67 @@ describe('database', () => {
       ).toThrow()
       // Transaction should have rolled back — no selectors inserted for the valid case either.
       expect(listSelectors(c.id)).toHaveLength(0)
+    })
+  })
+
+  describe('getSelectorMatchesForExport', () => {
+    it('returns joined selector+capture rows scoped to one case', () => {
+      const c = createCase({ name: 'Export Case' })
+      const other = createCase({ name: 'Other Case' })
+
+      const cap1 = insertCapture({
+        caseId: c.id,
+        url: 'https://example.com/a',
+        title: 'Page A',
+        hash: 'h1',
+        timestamp: '2026-01-01T00:00:00.000Z'
+      })
+      const cap2 = insertCapture({
+        caseId: c.id,
+        url: 'https://example.com/b',
+        title: 'Page B',
+        hash: 'h2',
+        timestamp: '2026-01-02T00:00:00.000Z'
+      })
+      const otherCap = insertCapture({
+        caseId: other.id,
+        url: 'https://other.com',
+        title: 'Other',
+        hash: 'oh1',
+        timestamp: '2026-01-03T00:00:00.000Z'
+      })
+
+      const sel = createSelector({
+        caseId: c.id,
+        pattern: 'example',
+        isRegex: false,
+        label: 'Example matcher'
+      })
+      const otherSel = createSelector({ caseId: other.id, pattern: 'other' })
+
+      matchSelectorAgainstCaptures(sel.id, [
+        { captureId: cap1.id, text: 'example content' },
+        { captureId: cap2.id, text: 'another example here' }
+      ])
+      matchSelectorAgainstCaptures(otherSel.id, [{ captureId: otherCap.id, text: 'other' }])
+
+      const rows = getSelectorMatchesForExport(c.id)
+      expect(rows).toHaveLength(2)
+      // Ordered by s.pattern, then c.timestamp DESC
+      expect(rows[0].selectorPattern).toBe('example')
+      expect(rows[0].selectorLabel).toBe('Example matcher')
+      expect(rows[0].isRegex).toBe(false)
+      expect(rows[0].captureUrl).toBe('https://example.com/b')
+      expect(rows[0].captureTitle).toBe('Page B')
+      expect(rows[0].captureTimestamp).toBe('2026-01-02T00:00:00.000Z')
+      expect(rows[1].captureUrl).toBe('https://example.com/a')
+      // Other case's match must not leak in.
+      expect(rows.find((r) => r.captureUrl === 'https://other.com')).toBeUndefined()
+    })
+
+    it('returns empty array when case has no matches', () => {
+      const c = createCase({ name: 'No Matches' })
+      expect(getSelectorMatchesForExport(c.id)).toEqual([])
     })
   })
 

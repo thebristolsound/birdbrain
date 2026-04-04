@@ -6,10 +6,25 @@ export function useFavorites(caseId: string) {
   const queryClient = useQueryClient()
 
   useEffect(() => {
+    let cancelled = false
+    setFavorites(new Set())
+
     window.birdbrain.captures
       .listFavorites(caseId)
-      .then((ids) => setFavorites(new Set(ids)))
-      .catch((err) => console.error('Failed to load favorites:', err))
+      .then((ids) => {
+        if (!cancelled) {
+          setFavorites(new Set(ids))
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.error('Failed to load favorites:', err)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [caseId])
 
   const toggleFavorite = async (captureId: string) => {

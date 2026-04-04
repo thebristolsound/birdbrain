@@ -73,9 +73,17 @@ export function CaptureItem({
   const color = getThumbColor(capture.url)
 
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
-      className={`w-full rounded-xl border p-2 text-left transition-colors ${
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onClick()
+        }
+      }}
+      className={`w-full rounded-xl border p-2 text-left transition-colors cursor-pointer ${
         isSelected
           ? 'border-accent/35 bg-accent-subtle'
           : 'border-transparent hover:bg-elevated'
@@ -89,6 +97,9 @@ export function CaptureItem({
               e.stopPropagation()
               onToggleMultiSelect(e)
             }}
+            aria-label={isMultiSelected ? 'Deselect capture' : 'Select capture'}
+            aria-checked={isMultiSelected}
+            role="checkbox"
             className="shrink-0 mt-1"
           >
             <div
@@ -138,6 +149,8 @@ export function CaptureItem({
                   e.stopPropagation()
                   onToggleFavorite(e)
                 }}
+                aria-label={isFavorite ? 'Unfavorite capture' : 'Favorite capture'}
+                aria-pressed={isFavorite}
                 className="shrink-0 p-0.5 rounded hover:bg-elevated/50 transition-colors"
               >
                 <Star
@@ -176,6 +189,6 @@ export function CaptureItem({
           </div>
         </div>
       </div>
-    </button>
+    </div>
   )
 }

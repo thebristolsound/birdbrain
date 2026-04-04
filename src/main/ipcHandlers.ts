@@ -287,11 +287,16 @@ export function registerIpcHandlers(): void {
 
   // Captures - get thumbnail
   ipcMain.handle(IPC_CHANNELS.CAPTURES_GET_THUMBNAIL, (_, captureId: string) => {
-    const capture = db.getCapture(captureId)
-    if (!capture) return null
-    const buffer = storage.getThumbnail(capture.caseId, captureId)
-    if (!buffer) return null
-    return buffer.toString('base64')
+    try {
+      const capture = db.getCapture(captureId)
+      if (!capture) return null
+      const buffer = storage.getThumbnail(capture.caseId, captureId)
+      if (!buffer) return null
+      return buffer.toString('base64')
+    } catch (err) {
+      console.error('Error getting thumbnail:', err)
+      return null
+    }
   })
 
   // Captures - get matching selectors
@@ -309,11 +314,19 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle(IPC_CHANNELS.CAPTURES_IS_FAVORITE, (_, captureId: string) => {
-    return db.isFavorite(captureId)
+    try {
+      return ipcResult(db.isFavorite(captureId))
+    } catch (err) {
+      return ipcError(err)
+    }
   })
 
   ipcMain.handle(IPC_CHANNELS.CAPTURES_LIST_FAVORITES, (_, caseId: string) => {
-    return db.listFavorites(caseId)
+    try {
+      return ipcResult(db.listFavorites(caseId))
+    } catch (err) {
+      return ipcError(err)
+    }
   })
 
   // Search

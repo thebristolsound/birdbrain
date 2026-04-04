@@ -7,21 +7,29 @@ export function useCaptureThumbnail(captureId: string | null) {
   useEffect(() => {
     if (!captureId) {
       setThumbnail(null)
+      setLoading(false)
       return
     }
 
     let cancelled = false
+    setThumbnail(null)
     setLoading(true)
 
     window.birdbrain.captures
       .getThumbnail(captureId)
       .then((data) => {
-        if (!cancelled && data) {
-          setThumbnail(`data:image/jpeg;base64,${data}`)
+        if (!cancelled) {
+          if (data) {
+            setThumbnail(`data:image/jpeg;base64,${data}`)
+          } else {
+            setThumbnail(null)
+          }
         }
       })
       .catch((err) => {
-        console.error('Failed to load thumbnail:', err)
+        if (!cancelled) {
+          console.error('Failed to load thumbnail:', err)
+        }
       })
       .finally(() => {
         if (!cancelled) {

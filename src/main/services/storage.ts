@@ -8,7 +8,12 @@ import {
   statSync
 } from 'fs'
 import { join } from 'path'
-import { nativeImage } from 'electron'
+
+// Lazy-load nativeImage to avoid breaking node tests
+function getNativeImage() {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  return require('electron').nativeImage
+}
 
 let storageRoot: string
 
@@ -91,7 +96,7 @@ export function deleteCaptureFiles(caseId: string, captureId: string): void {
     }
   }
   // Also delete thumbnail if it exists
-  const thumbPath = join(getStorageRoot(), caseId, `${captureId}_thumb.webp`)
+  const thumbPath = join(getStorageRoot(), caseId, `${captureId}_thumb.jpg`)
   if (existsSync(thumbPath)) {
     unlinkSync(thumbPath)
   }
@@ -111,7 +116,7 @@ export function getCaseStorageSize(caseId: string): number {
 }
 
 export function getThumbnail(caseId: string, captureId: string): Buffer | null {
-  const thumbPath = join(getStorageRoot(), caseId, `${captureId}_thumb.webp`)
+  const thumbPath = join(getStorageRoot(), caseId, `${captureId}_thumb.jpg`)
 
   // Return existing thumbnail if it exists
   if (existsSync(thumbPath)) {
@@ -126,10 +131,21 @@ export function getThumbnail(caseId: string, captureId: string): Buffer | null {
 
   try {
     const screenshot = readFileSync(screenshotPath)
+    const nativeImage = getNativeImage()
     const image = nativeImage.createFromBuffer(screenshot)
 
-    // Resize to ~160x100px thumbnail (maintaining aspect ratio)
+    // Guard against invalid/empty images
+    if (image.isEmpty()) {
+      return null
+    }
+
     const size = image.getSize()
+    // Guard against zero-width images to avoid divide-by-zero
+    if (size.width === 0 || size.height === 0) {
+      return null
+    }
+
+    // Resize to ~160x100px thumbnail (maintaining aspect ratio)
     const targetWidth = 160
     const targetHeight = Math.round((size.height / size.width) * targetWidth)
 
@@ -139,8 +155,8 @@ export function getThumbnail(caseId: string, captureId: string): Buffer | null {
       quality: 'good'
     })
 
-    // Save as WebP for better compression
-    const thumbBuffer = resized.toJPEG(75) // Use JPEG at 75% quality
+    // Save as JPEG at 75% quality
+    const thumbBuffer = resized.toJPEG(75)
     writeFileSync(thumbPath, thumbBuffer)
 
     return thumbBuffer

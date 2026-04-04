@@ -7,7 +7,8 @@ import type {
   ExportOptions,
   Selector,
   ActiveCaseSelectors,
-  CaptureEvent
+  CaptureEvent,
+  Note
 } from '@shared/types'
 import type {
   CreateCaseParams,
@@ -16,7 +17,9 @@ import type {
   UpdateTagParams,
   CaptureTagParams,
   CreateSelectorParams,
-  UpdateSelectorParams
+  UpdateSelectorParams,
+  CreateNoteParams,
+  UpdateNoteParams
 } from '@shared/ipc'
 
 interface BirdbrainAPI {
@@ -61,6 +64,15 @@ interface BirdbrainAPI {
     matchCounts(caseId: string): Promise<Record<string, number>>
     matchingCaptures(caseId: string, selectorIds: string[]): Promise<string[]>
     coverage(caseId: string): Promise<{ matched: number; total: number }>
+  }
+  notes: {
+    list(caseId: string): Promise<Note[]>
+    get(id: string): Promise<Note | undefined>
+    create(params: CreateNoteParams): Promise<Note>
+    update(params: UpdateNoteParams): Promise<Note | undefined>
+    delete(id: string): Promise<boolean>
+    count(caseId: string): Promise<number>
+    search(caseId: string, query: string): Promise<Note[]>
   }
   search(query: string): Promise<Capture[]>
   settings: {

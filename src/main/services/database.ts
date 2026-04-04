@@ -203,6 +203,47 @@ function migrate(db: Database.Database): void {
       db.pragma('user_version = 9')
     })()
   }
+
+  if (version < 10) {
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS notes (
+          id TEXT PRIMARY KEY,
+          case_id TEXT NOT NULL,
+          capture_id TEXT,
+          title TEXT NOT NULL DEFAULT '',
+          body TEXT NOT NULL DEFAULT '',
+          source_url TEXT,
+          screenshot_path TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+          FOREIGN KEY (capture_id) REFERENCES captures(id) ON DELETE SET NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_notes_case_id ON notes(case_id);
+        CREATE INDEX IF NOT EXISTS idx_notes_capture_id ON notes(capture_id);
+
+        CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
+          title,
+          body,
+          content=notes,
+          content_rowid=rowid
+        );
+
+        CREATE TRIGGER IF NOT EXISTS notes_ai AFTER INSERT ON notes BEGIN
+          INSERT INTO notes_fts(rowid, title, body) VALUES (new.rowid, new.title, new.body);
+        END;
+        CREATE TRIGGER IF NOT EXISTS notes_ad AFTER DELETE ON notes BEGIN
+          INSERT INTO notes_fts(notes_fts, rowid, title, body) VALUES('delete', old.rowid, old.title, old.body);
+        END;
+        CREATE TRIGGER IF NOT EXISTS notes_au AFTER UPDATE ON notes BEGIN
+          INSERT INTO notes_fts(notes_fts, rowid, title, body) VALUES('delete', old.rowid, old.title, old.body);
+          INSERT INTO notes_fts(rowid, title, body) VALUES (new.rowid, new.title, new.body);
+        END;
+      `)
+      db.pragma('user_version = 10')
+    })()
+  }
 }
 
 // --- Cases ---

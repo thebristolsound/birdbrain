@@ -251,9 +251,9 @@ describe('database', () => {
     })
 
     it('sets user_version to 7 after v7 migration', () => {
-      // v8 and v9 migrations run immediately after, so final version is 9
+      // v8, v9, and v10 migrations run immediately after, so final version is 10
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(9)
+      expect(version).toBe(10)
     })
   })
 
@@ -277,9 +277,9 @@ describe('database', () => {
     })
 
     it('sets user_version to 8', () => {
-      // v9 migration runs immediately after, so final version is 9
+      // v9 and v10 migrations run immediately after, so final version is 10
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(9)
+      expect(version).toBe(10)
     })
   })
 
@@ -303,8 +303,9 @@ describe('database', () => {
     })
 
     it('sets user_version to 9', () => {
+      // v10 migration runs immediately after, so final version is 10
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(9)
+      expect(version).toBe(10)
     })
   })
 
@@ -402,4 +403,118 @@ describe('database', () => {
     })
   })
 
+  describe('notes schema (migration 10)', () => {
+    it('creates notes table with expected columns', () => {
+      const cols = getDb().prepare("PRAGMA table_info('notes')").all() as Array<{
+        name: string
+        notnull: number
+        dflt_value: string | null
+      }>
+      const names = cols.map((c) => c.name)
+      expect(names).toEqual(
+        expect.arrayContaining([
+          'id',
+          'case_id',
+          'capture_id',
+          'title',
+          'body',
+          'source_url',
+          'screenshot_path',
+          'created_at',
+          'updated_at'
+        ])
+      )
+      // title and body have defaults and NOT NULL
+      const title = cols.find((c) => c.name === 'title')!
+      expect(title.notnull).toBe(1)
+      expect(title.dflt_value).toBe("''")
+      const body = cols.find((c) => c.name === 'body')!
+      expect(body.notnull).toBe(1)
+      expect(body.dflt_value).toBe("''")
+      // capture_id is nullable
+      const captureId = cols.find((c) => c.name === 'capture_id')!
+      expect(captureId.notnull).toBe(0)
+    })
+
+    it('creates indexes on case_id and capture_id', () => {
+      const idx = getDb()
+        .prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='notes'")
+        .all() as Array<{ name: string }>
+      const names = idx.map((i) => i.name)
+      expect(names).toContain('idx_notes_case_id')
+      expect(names).toContain('idx_notes_capture_id')
+    })
+
+    it('creates notes_fts virtual table', () => {
+      const tbl = getDb()
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='notes_fts'")
+        .get() as { name: string } | undefined
+      expect(tbl).toBeDefined()
+    })
+
+    it('creates insert/update/delete triggers for notes_fts sync', () => {
+      const triggers = getDb()
+        .prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name='notes'")
+        .all() as Array<{ name: string }>
+      const names = triggers.map((t) => t.name)
+      expect(names).toContain('notes_ai')
+      expect(names).toContain('notes_ad')
+      expect(names).toContain('notes_au')
+    })
+
+    it('sets capture_id to NULL when referenced capture is deleted', () => {
+      const c = createCase({ name: 'Case' })
+      const cap = insertCapture({
+        caseId: c.id,
+        url: 'https://example.com',
+        title: 'Example',
+        hash: 'abc',
+        timestamp: new Date().toISOString()
+      })
+      // Insert a note linked to the capture using raw SQL (createNote doesn't exist yet)
+      getDb()
+        .prepare(
+          'INSERT INTO notes (id, case_id, capture_id, title, body, source_url, screenshot_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        )
+        .run(
+          'note1',
+          c.id,
+          cap.id,
+          'T',
+          'B',
+          'https://example.com',
+          null,
+          '2024-01-01T00:00:00Z',
+          '2024-01-01T00:00:00Z'
+        )
+      // Delete the capture
+      deleteCapture(cap.id)
+      const row = getDb().prepare('SELECT capture_id FROM notes WHERE id = ?').get('note1') as {
+        capture_id: string | null
+      }
+      expect(row.capture_id).toBeNull()
+    })
+
+    it('cascades delete when case is deleted', () => {
+      const c = createCase({ name: 'Case' })
+      getDb()
+        .prepare(
+          'INSERT INTO notes (id, case_id, capture_id, title, body, source_url, screenshot_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        )
+        .run(
+          'note2',
+          c.id,
+          null,
+          'T',
+          'B',
+          null,
+          null,
+          '2024-01-01T00:00:00Z',
+          '2024-01-01T00:00:00Z'
+        )
+      deleteCase(c.id)
+      const row = getDb().prepare('SELECT * FROM notes WHERE id = ?').get('note2')
+      expect(row).toBeUndefined()
+    })
+  })
 })

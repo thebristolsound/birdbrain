@@ -30,7 +30,8 @@ import {
   getNote,
   listNotes,
   deleteNote,
-  getNoteCount
+  getNoteCount,
+  updateNote
 } from '@main/services/database'
 
 describe('database', () => {
@@ -608,6 +609,29 @@ describe('database', () => {
       createNote({ caseId: c.id })
       createNote({ caseId: c.id })
       expect(getNoteCount(c.id)).toBe(2)
+    })
+
+    it('updates a note title and body', async () => {
+      const c = createCase({ name: 'C' })
+      const n = createNote({ caseId: c.id, title: 'old', body: 'old body' })
+      await new Promise((r) => setTimeout(r, 5))
+      const updated = updateNote({ id: n.id, title: 'new', body: 'new body' })
+      expect(updated?.title).toBe('new')
+      expect(updated?.body).toBe('new body')
+      expect(updated?.updatedAt).not.toBe(n.updatedAt)
+      expect(updated?.createdAt).toBe(n.createdAt)
+    })
+
+    it('preserves unset fields on update', () => {
+      const c = createCase({ name: 'C' })
+      const n = createNote({ caseId: c.id, title: 'keep', body: 'original' })
+      const updated = updateNote({ id: n.id, body: 'new body only' })
+      expect(updated?.title).toBe('keep')
+      expect(updated?.body).toBe('new body only')
+    })
+
+    it('returns undefined when updating a missing note', () => {
+      expect(updateNote({ id: 'nonexistent', title: 'x' })).toBeUndefined()
     })
   })
 })

@@ -9,7 +9,8 @@ import type {
   CaptureTagParams,
   CreateSelectorParams,
   UpdateSelectorParams,
-  CreateNoteParams
+  CreateNoteParams,
+  UpdateNoteParams
 } from '@shared/ipc'
 import { safeRegexTest } from '@main/services/safeRegex'
 
@@ -820,6 +821,21 @@ export function createNote(params: CreateNoteParams): Note {
       now
     )
   return getNote(id)!
+}
+
+export function updateNote(params: UpdateNoteParams): Note | undefined {
+  const existing = getNote(params.id)
+  if (!existing) return undefined
+  const now = new Date().toISOString()
+  getDb()
+    .prepare('UPDATE notes SET title = ?, body = ?, updated_at = ? WHERE id = ?')
+    .run(
+      params.title !== undefined ? params.title : existing.title,
+      params.body !== undefined ? params.body : existing.body,
+      now,
+      params.id
+    )
+  return getNote(params.id)
 }
 
 export function deleteNote(id: string): boolean {

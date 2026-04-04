@@ -511,7 +511,23 @@ Expected: FAIL — `updateNote is not a function`
 
 - [ ] **Step 3: Add `updateNote` to `src/main/services/database.ts`**
 
-Insert after `createNote` in the Notes section:
+First, add `UpdateNoteParams` back to the `@shared/ipc` import (it was deferred from Task 2 because it would have been an unused import):
+
+```typescript
+import type {
+  CreateCaseParams,
+  UpdateCaseParams,
+  CreateTagParams,
+  UpdateTagParams,
+  CaptureTagParams,
+  CreateSelectorParams,
+  UpdateSelectorParams,
+  CreateNoteParams,
+  UpdateNoteParams
+} from '@shared/ipc'
+```
+
+Then insert after `createNote` in the Notes section:
 
 ```typescript
 export function updateNote(params: UpdateNoteParams): Note | undefined {

@@ -9,7 +9,8 @@ import type {
   CreateSelectorParams,
   UpdateSelectorParams,
   CreateNoteParams,
-  UpdateNoteParams
+  UpdateNoteParams,
+  BulkCreateSelectorsParams
 } from '@shared/ipc'
 import * as db from '@main/services/database'
 import * as storage from '@main/services/storage'
@@ -220,6 +221,9 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.TAGS_COUNT_FOR_CASE, (_, caseId: string) =>
     db.getTagCountForCase(caseId)
   )
+  ipcMain.handle(IPC_CHANNELS.TAGS_USAGE_COUNTS_FOR_CASE, (_, caseId: string) =>
+    db.getTagUsageCountsForCase(caseId)
+  )
 
   // Selectors
   ipcMain.handle(IPC_CHANNELS.SELECTORS_LIST, (_, caseId: string) => db.listSelectors(caseId))
@@ -240,6 +244,37 @@ export function registerIpcHandlers(): void {
         db.matchSelectorAgainstCaptures(selector.id, captureTexts)
       }
       return ipcResult(selector)
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+  ipcMain.handle(IPC_CHANNELS.SELECTORS_BULK_CREATE, (_, params: BulkCreateSelectorsParams) => {
+    try {
+      const created = db.bulkCreateSelectors(
+        params.selectors.map((s) => ({
+          caseId: params.caseId,
+          pattern: s.pattern,
+          isRegex: s.isRegex,
+          label: s.label
+        }))
+      )
+      // Load capture texts once and reuse across all new selectors (O(N+M) not O(N*M)).
+      if (created.length > 0) {
+        const captures = db.listCaptures(params.caseId)
+        const captureTexts: Array<{ captureId: string; text: string }> = []
+        for (const cap of captures) {
+          const buffer = storage.readCaptureFile(params.caseId, cap.id, 'txt')
+          if (buffer) {
+            captureTexts.push({ captureId: cap.id, text: buffer.toString('utf-8') })
+          }
+        }
+        if (captureTexts.length > 0) {
+          for (const sel of created) {
+            db.matchSelectorAgainstCaptures(sel.id, captureTexts)
+          }
+        }
+      }
+      return ipcResult(created)
     } catch (err) {
       return ipcError(err)
     }
@@ -273,6 +308,36 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.SELECTORS_COVERAGE, (_, caseId: string) =>
     db.getSelectorCoverage(caseId)
   )
+  ipcMain.handle(IPC_CHANNELS.SELECTORS_EXPORT_MATCHES, async (_, caseId: string) => {
+    try {
+      const caseRow = db.getCase(caseId)
+      if (!caseRow) return ipcResult({ exported: false })
+      const rows = db.getSelectorMatchesForExport(caseId)
+      const { buildCsv } = await import('@main/services/csvEscape')
+      const csv = buildCsv(
+        ['Selector Pattern', 'Selector Label', 'Type', 'Capture URL', 'Capture Title', 'Capture Timestamp'],
+        rows.map((r) => [
+          r.selectorPattern,
+          r.selectorLabel ?? '',
+          r.isRegex ? 'regex' : 'text',
+          r.captureUrl,
+          r.captureTitle ?? '',
+          r.captureTimestamp
+        ])
+      )
+      const safeName = caseRow.name.replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 80) || 'case'
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        defaultPath: `${safeName}_selector_matches.csv`,
+        filters: [{ name: 'CSV', extensions: ['csv'] }]
+      })
+      if (canceled || !filePath) return ipcResult({ exported: false })
+      const { writeFileSync } = await import('fs')
+      writeFileSync(filePath, csv, 'utf-8')
+      return ipcResult({ exported: true, path: filePath })
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
 
   // Notes
   ipcMain.handle(IPC_CHANNELS.NOTES_LIST, (_, caseId: string) => db.listNotes(caseId))

@@ -285,6 +285,50 @@ export function registerIpcHandlers(): void {
     }
   )
 
+  // Captures - get thumbnail
+  ipcMain.handle(IPC_CHANNELS.CAPTURES_GET_THUMBNAIL, (_, captureId: string) => {
+    try {
+      const capture = db.getCapture(captureId)
+      if (!capture) return null
+      const buffer = storage.getThumbnail(capture.caseId, captureId)
+      if (!buffer) return null
+      return buffer.toString('base64')
+    } catch (err) {
+      console.error('Error getting thumbnail:', err)
+      return null
+    }
+  })
+
+  // Captures - get matching selectors
+  ipcMain.handle(IPC_CHANNELS.CAPTURES_GET_MATCHING_SELECTORS, (_, captureId: string) => {
+    return db.getCaptureMatchingSelectors(captureId)
+  })
+
+  // Captures - favorites
+  ipcMain.handle(IPC_CHANNELS.CAPTURES_TOGGLE_FAVORITE, (_, captureId: string) => {
+    try {
+      return ipcResult(db.toggleFavorite(captureId))
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.CAPTURES_IS_FAVORITE, (_, captureId: string) => {
+    try {
+      return ipcResult(db.isFavorite(captureId))
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.CAPTURES_LIST_FAVORITES, (_, caseId: string) => {
+    try {
+      return ipcResult(db.listFavorites(caseId))
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+
   // Search
   ipcMain.handle(IPC_CHANNELS.SEARCH, (_, query: string) => db.searchCaptures(query))
 

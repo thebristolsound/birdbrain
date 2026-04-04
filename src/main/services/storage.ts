@@ -9,6 +9,12 @@ import {
 } from 'fs'
 import { join } from 'path'
 
+// Lazy-load nativeImage to avoid breaking node tests
+function getNativeImage() {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  return require('electron').nativeImage
+}
+
 let storageRoot: string
 
 export function initStorage(root: string): void {
@@ -89,6 +95,11 @@ export function deleteCaptureFiles(caseId: string, captureId: string): void {
       unlinkSync(path)
     }
   }
+  // Also delete thumbnail if it exists
+  const thumbPath = join(getStorageRoot(), caseId, `${captureId}_thumb.jpg`)
+  if (existsSync(thumbPath)) {
+    unlinkSync(thumbPath)
+  }
 }
 
 export function getCaseStorageSize(caseId: string): number {
@@ -102,4 +113,55 @@ export function getCaseStorageSize(caseId: string): number {
     totalSize += stat.size
   }
   return totalSize
+}
+
+export function getThumbnail(caseId: string, captureId: string): Buffer | null {
+  const thumbPath = join(getStorageRoot(), caseId, `${captureId}_thumb.jpg`)
+
+  // Return existing thumbnail if it exists
+  if (existsSync(thumbPath)) {
+    return readFileSync(thumbPath)
+  }
+
+  // Try to generate thumbnail from screenshot
+  const screenshotPath = getCapturePath(caseId, captureId, 'png')
+  if (!existsSync(screenshotPath)) {
+    return null
+  }
+
+  try {
+    const screenshot = readFileSync(screenshotPath)
+    const nativeImage = getNativeImage()
+    const image = nativeImage.createFromBuffer(screenshot)
+
+    // Guard against invalid/empty images
+    if (image.isEmpty()) {
+      return null
+    }
+
+    const size = image.getSize()
+    // Guard against zero-width images to avoid divide-by-zero
+    if (size.width === 0 || size.height === 0) {
+      return null
+    }
+
+    // Resize to ~160x100px thumbnail (maintaining aspect ratio)
+    const targetWidth = 160
+    const targetHeight = Math.round((size.height / size.width) * targetWidth)
+
+    const resized = image.resize({
+      width: targetWidth,
+      height: targetHeight,
+      quality: 'good'
+    })
+
+    // Save as JPEG at 75% quality
+    const thumbBuffer = resized.toJPEG(75)
+    writeFileSync(thumbPath, thumbBuffer)
+
+    return thumbBuffer
+  } catch (error) {
+    console.error(`Failed to generate thumbnail for ${captureId}:`, error)
+    return null
+  }
 }

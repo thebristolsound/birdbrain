@@ -32,9 +32,14 @@ interface BirdbrainAPI {
     get(id: string): Promise<Capture | undefined>
     delete(id: string): Promise<boolean>
     getContent(captureId: string, type: 'html' | 'png' | 'txt'): Promise<string | null>
+    getThumbnail(captureId: string): Promise<string | null>
+    getMatchingSelectors(captureId: string): Promise<Selector[]>
     download(captureId: string): Promise<string | null>
     openExternal(url: string): Promise<void>
     countsByCase(): Promise<Record<string, number>>
+    toggleFavorite(captureId: string): Promise<boolean>
+    isFavorite(captureId: string): Promise<boolean>
+    listFavorites(caseId: string): Promise<string[]>
   }
   tags: {
     list(): Promise<Tag[]>

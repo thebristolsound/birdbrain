@@ -189,6 +189,20 @@ function migrate(db: Database.Database): void {
       db.pragma('user_version = 8')
     })()
   }
+
+  if (version < 9) {
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS capture_favorites (
+          capture_id TEXT PRIMARY KEY,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (capture_id) REFERENCES captures(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_capture_favorites_created ON capture_favorites(created_at DESC);
+      `)
+      db.pragma('user_version = 9')
+    })()
+  }
 }
 
 // --- Cases ---
@@ -633,6 +647,60 @@ export function getSelectorCoverage(caseId: string): { matched: number; total: n
     )
     .get(caseId) as { matched: number } | undefined
   return { matched: row?.matched ?? 0, total }
+}
+
+export function getCaptureMatchingSelectors(captureId: string): Selector[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT s.*
+       FROM selectors s
+       JOIN selector_matches sm ON s.id = sm.selector_id
+       WHERE sm.capture_id = ?
+       ORDER BY s.created_at DESC`
+    )
+    .all(captureId) as Array<Record<string, unknown>>
+
+  return rows.map(rowToSelector)
+}
+
+// --- Favorites ---
+
+export function toggleFavorite(captureId: string): boolean {
+  const existing = getDb()
+    .prepare('SELECT 1 FROM capture_favorites WHERE capture_id = ?')
+    .get(captureId)
+
+  if (existing) {
+    getDb().prepare('DELETE FROM capture_favorites WHERE capture_id = ?').run(captureId)
+    return false
+  } else {
+    const now = new Date().toISOString()
+    getDb()
+      .prepare('INSERT INTO capture_favorites (capture_id, created_at) VALUES (?, ?)')
+      .run(captureId, now)
+    return true
+  }
+}
+
+export function isFavorite(captureId: string): boolean {
+  const row = getDb()
+    .prepare('SELECT 1 FROM capture_favorites WHERE capture_id = ?')
+    .get(captureId)
+  return !!row
+}
+
+export function listFavorites(caseId: string): string[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT cf.capture_id
+       FROM capture_favorites cf
+       JOIN captures c ON cf.capture_id = c.id
+       WHERE c.case_id = ?
+       ORDER BY cf.created_at DESC`
+    )
+    .all(caseId) as Array<{ capture_id: string }>
+
+  return rows.map((r) => r.capture_id)
 }
 
 // --- Row mappers ---

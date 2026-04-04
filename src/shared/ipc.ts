@@ -14,9 +14,14 @@ export const IPC_CHANNELS = {
   CAPTURES_GET: 'captures:get',
   CAPTURES_DELETE: 'captures:delete',
   CAPTURES_GET_CONTENT: 'captures:getContent',
+  CAPTURES_GET_THUMBNAIL: 'captures:getThumbnail',
+  CAPTURES_GET_MATCHING_SELECTORS: 'captures:getMatchingSelectors',
   CAPTURES_DOWNLOAD: 'captures:download',
   CAPTURES_OPEN_EXTERNAL: 'captures:openExternal',
   CAPTURES_COUNTS_BY_CASE: 'captures:countsByCase',
+  CAPTURES_TOGGLE_FAVORITE: 'captures:toggleFavorite',
+  CAPTURES_IS_FAVORITE: 'captures:isFavorite',
+  CAPTURES_LIST_FAVORITES: 'captures:listFavorites',
 
   // Tags
   TAGS_LIST: 'tags:list',

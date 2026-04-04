@@ -100,6 +100,18 @@ export interface ActiveCaseSelectors {
   selectors: Selector[]
 }
 
+export interface Note {
+  id: string
+  caseId: string
+  captureId?: string
+  title: string
+  body: string
+  sourceUrl?: string
+  screenshotPath?: string
+  createdAt: string
+  updatedAt: string
+}
+
 export type AutoCaptureMode = 'auto' | 'notify' | 'per-case'
 
 export type CaptureSource = 'auto' | 'manual' | 'selector'

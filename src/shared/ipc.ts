@@ -116,6 +116,21 @@ export interface UpdateSelectorParams {
   label?: string
 }
 
+export interface CreateNoteParams {
+  caseId: string
+  captureId?: string
+  title?: string
+  body?: string
+  sourceUrl?: string
+  screenshotPath?: string
+}
+
+export interface UpdateNoteParams {
+  id: string
+  title?: string
+  body?: string
+}
+
 export interface SaveCaptureParams {
   caseId: string
   url: string

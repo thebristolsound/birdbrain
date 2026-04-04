@@ -25,7 +25,12 @@ import {
   getSelectorCoverage,
   createSelector,
   matchSelectorAgainstCaptures,
-  listActiveSelectors
+  listActiveSelectors,
+  createNote,
+  getNote,
+  listNotes,
+  deleteNote,
+  getNoteCount
 } from '@main/services/database'
 
 describe('database', () => {
@@ -286,9 +291,7 @@ describe('database', () => {
   describe('migration v9 - capture favorites', () => {
     it('creates capture_favorites table', () => {
       const table = getDb()
-        .prepare(
-          "SELECT name FROM sqlite_master WHERE type='table' AND name='capture_favorites'"
-        )
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='capture_favorites'")
         .get()
       expect(table).toBeDefined()
     })
@@ -515,6 +518,96 @@ describe('database', () => {
       deleteCase(c.id)
       const row = getDb().prepare('SELECT * FROM notes WHERE id = ?').get('note2')
       expect(row).toBeUndefined()
+    })
+  })
+
+  describe('notes CRUD', () => {
+    it('creates a note with minimal params', () => {
+      const c = createCase({ name: 'C' })
+      const n = createNote({ caseId: c.id })
+      expect(n.id).toBeDefined()
+      expect(n.caseId).toBe(c.id)
+      expect(n.title).toBe('')
+      expect(n.body).toBe('')
+      expect(n.captureId).toBeUndefined()
+      expect(n.sourceUrl).toBeUndefined()
+      expect(n.screenshotPath).toBeUndefined()
+      expect(n.createdAt).toBeDefined()
+      expect(n.updatedAt).toBe(n.createdAt)
+    })
+
+    it('creates a note with all fields', () => {
+      const c = createCase({ name: 'C' })
+      const cap = insertCapture({
+        caseId: c.id,
+        url: 'https://example.com',
+        title: 'Example',
+        hash: 'abc',
+        timestamp: new Date().toISOString()
+      })
+      const n = createNote({
+        caseId: c.id,
+        captureId: cap.id,
+        title: 'My note',
+        body: 'Observation body',
+        sourceUrl: 'https://example.com',
+        screenshotPath: 'path/to/shot.png'
+      })
+      expect(n.title).toBe('My note')
+      expect(n.body).toBe('Observation body')
+      expect(n.captureId).toBe(cap.id)
+      expect(n.sourceUrl).toBe('https://example.com')
+      expect(n.screenshotPath).toBe('path/to/shot.png')
+    })
+
+    it('retrieves a note by id', () => {
+      const c = createCase({ name: 'C' })
+      const created = createNote({ caseId: c.id, title: 'T', body: 'B' })
+      const got = getNote(created.id)
+      expect(got).toEqual(created)
+    })
+
+    it('returns undefined for missing note', () => {
+      expect(getNote('nonexistent')).toBeUndefined()
+    })
+
+    it('lists notes for a case ordered by created_at DESC', async () => {
+      const c = createCase({ name: 'C' })
+      const first = createNote({ caseId: c.id, title: 'First' })
+      await new Promise((r) => setTimeout(r, 5))
+      const second = createNote({ caseId: c.id, title: 'Second' })
+      const list = listNotes(c.id)
+      expect(list).toHaveLength(2)
+      expect(list[0].id).toBe(second.id)
+      expect(list[1].id).toBe(first.id)
+    })
+
+    it('lists only notes for the given case', () => {
+      const a = createCase({ name: 'A' })
+      const b = createCase({ name: 'B' })
+      createNote({ caseId: a.id, title: 'A-1' })
+      createNote({ caseId: b.id, title: 'B-1' })
+      expect(listNotes(a.id)).toHaveLength(1)
+      expect(listNotes(a.id)[0].title).toBe('A-1')
+    })
+
+    it('deletes a note', () => {
+      const c = createCase({ name: 'C' })
+      const n = createNote({ caseId: c.id })
+      expect(deleteNote(n.id)).toBe(true)
+      expect(getNote(n.id)).toBeUndefined()
+    })
+
+    it('returns false when deleting a missing note', () => {
+      expect(deleteNote('nonexistent')).toBe(false)
+    })
+
+    it('counts notes for a case', () => {
+      const c = createCase({ name: 'C' })
+      expect(getNoteCount(c.id)).toBe(0)
+      createNote({ caseId: c.id })
+      createNote({ caseId: c.id })
+      expect(getNoteCount(c.id)).toBe(2)
     })
   })
 })

@@ -19,7 +19,8 @@ import type {
   CreateSelectorParams,
   UpdateSelectorParams,
   CreateNoteParams,
-  UpdateNoteParams
+  UpdateNoteParams,
+  BulkCreateSelectorsParams
 } from '@shared/ipc'
 
 interface BirdbrainAPI {
@@ -53,6 +54,7 @@ interface BirdbrainAPI {
     removeFromCapture(params: CaptureTagParams): Promise<void>
     getForCapture(captureId: string): Promise<Tag[]>
     countForCase(caseId: string): Promise<number>
+    usageCountsForCase(caseId: string): Promise<Record<string, number>>
   }
   selectors: {
     list(caseId: string): Promise<Selector[]>
@@ -64,6 +66,8 @@ interface BirdbrainAPI {
     matchCounts(caseId: string): Promise<Record<string, number>>
     matchingCaptures(caseId: string, selectorIds: string[]): Promise<string[]>
     coverage(caseId: string): Promise<{ matched: number; total: number }>
+    bulkCreate(params: BulkCreateSelectorsParams): Promise<Selector[]>
+    exportMatches(caseId: string): Promise<{ exported: boolean; path?: string }>
   }
   notes: {
     list(caseId: string): Promise<Note[]>

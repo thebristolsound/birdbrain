@@ -10,7 +10,8 @@ import type {
   CreateSelectorParams,
   UpdateSelectorParams,
   CreateNoteParams,
-  UpdateNoteParams
+  UpdateNoteParams,
+  BulkCreateSelectorsParams
 } from '@shared/ipc'
 import type {
   Case,
@@ -92,7 +93,9 @@ const birdbrain = {
     getForCapture: (captureId: string): Promise<Tag[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, captureId),
     countForCase: (caseId: string): Promise<number> =>
-      ipcRenderer.invoke(IPC_CHANNELS.TAGS_COUNT_FOR_CASE, caseId)
+      ipcRenderer.invoke(IPC_CHANNELS.TAGS_COUNT_FOR_CASE, caseId),
+    usageCountsForCase: (caseId: string): Promise<Record<string, number>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.TAGS_USAGE_COUNTS_FOR_CASE, caseId)
   },
   selectors: {
     list: (caseId: string): Promise<Selector[]> =>
@@ -112,7 +115,13 @@ const birdbrain = {
     matchingCaptures: (caseId: string, selectorIds: string[]): Promise<string[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_MATCHING_CAPTURES, caseId, selectorIds),
     coverage: (caseId: string): Promise<{ matched: number; total: number }> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_COVERAGE, caseId)
+      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_COVERAGE, caseId),
+    bulkCreate: (params: BulkCreateSelectorsParams): Promise<Selector[]> =>
+      unwrapIpc<Selector[]>(ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_BULK_CREATE, params)),
+    exportMatches: (caseId: string): Promise<{ exported: boolean; path?: string }> =>
+      unwrapIpc<{ exported: boolean; path?: string }>(
+        ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_EXPORT_MATCHES, caseId)
+      )
   },
   notes: {
     list: (caseId: string): Promise<Note[]> => ipcRenderer.invoke(IPC_CHANNELS.NOTES_LIST, caseId),

@@ -32,6 +32,7 @@ export const IPC_CHANNELS = {
   TAGS_REMOVE_FROM_CAPTURE: 'tags:removeFromCapture',
   TAGS_GET_FOR_CAPTURE: 'tags:getForCapture',
   TAGS_COUNT_FOR_CASE: 'tags:countForCase',
+  TAGS_USAGE_COUNTS_FOR_CASE: 'tags:usageCountsForCase',
 
   // Search
   SEARCH: 'search:query',
@@ -56,6 +57,8 @@ export const IPC_CHANNELS = {
   SELECTORS_MATCH_COUNTS: 'selectors:matchCounts',
   SELECTORS_MATCHING_CAPTURES: 'selectors:matchingCaptures',
   SELECTORS_COVERAGE: 'selectors:coverage',
+  SELECTORS_BULK_CREATE: 'selectors:bulkCreate',
+  SELECTORS_EXPORT_MATCHES: 'selectors:exportMatches',
 
   // Notes
   NOTES_LIST: 'notes:list',
@@ -138,6 +141,11 @@ export interface UpdateNoteParams {
   id: string
   title?: string
   body?: string
+}
+
+export interface BulkCreateSelectorsParams {
+  caseId: string
+  selectors: Array<{ pattern: string; isRegex: boolean; label?: string }>
 }
 
 export interface SaveCaptureParams {

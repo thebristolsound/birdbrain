@@ -22,10 +22,14 @@ import {
   getTagsForCapture,
   searchCaptures,
   getTagCountForCase,
+  getTagUsageCountsForCase,
   getSelectorCoverage,
   createSelector,
   matchSelectorAgainstCaptures,
   listActiveSelectors,
+  listSelectors,
+  bulkCreateSelectors,
+  getSelectorMatchesForExport,
   createNote,
   getNote,
   listNotes,
@@ -345,6 +349,52 @@ describe('database', () => {
       expect(getTagCountForCase(c.id)).toBe(0)
     })
 
+    it('returns per-tag usage counts scoped to a case', () => {
+      const caseA = createCase({ name: 'Case A' })
+      const caseB = createCase({ name: 'Case B' })
+
+      const capA1 = insertCapture({
+        caseId: caseA.id,
+        url: 'https://a1.com',
+        title: 'A1',
+        hash: 'ha1',
+        timestamp: new Date().toISOString()
+      })
+      const capA2 = insertCapture({
+        caseId: caseA.id,
+        url: 'https://a2.com',
+        title: 'A2',
+        hash: 'ha2',
+        timestamp: new Date().toISOString()
+      })
+      const capB1 = insertCapture({
+        caseId: caseB.id,
+        url: 'https://b1.com',
+        title: 'B1',
+        hash: 'hb1',
+        timestamp: new Date().toISOString()
+      })
+
+      const tagRed = createTag({ name: 'red' })
+      const tagBlue = createTag({ name: 'blue' })
+
+      addTagToCapture({ captureId: capA1.id, tagId: tagRed.id })
+      addTagToCapture({ captureId: capA2.id, tagId: tagRed.id })
+      addTagToCapture({ captureId: capA1.id, tagId: tagBlue.id })
+      addTagToCapture({ captureId: capB1.id, tagId: tagRed.id })
+
+      const counts = getTagUsageCountsForCase(caseA.id)
+      expect(counts[tagRed.id]).toBe(2)
+      expect(counts[tagBlue.id]).toBe(1)
+      // caseB's usage should not leak into caseA's counts
+      expect(Object.keys(counts)).toHaveLength(2)
+    })
+
+    it('returns empty object when case has no tagged captures', () => {
+      const c = createCase({ name: 'No Tags' })
+      expect(getTagUsageCountsForCase(c.id)).toEqual({})
+    })
+
     it('computes selector coverage', () => {
       const c = createCase({ name: 'Coverage Test' })
       const cap1 = insertCapture({
@@ -405,6 +455,105 @@ describe('database', () => {
     it('returns empty array for unknown caseId', () => {
       const result = listActiveSelectors('nonexistent')
       expect(result).toHaveLength(0)
+    })
+  })
+
+  describe('bulkCreateSelectors', () => {
+    it('inserts all selectors in one transaction and returns them in input order', () => {
+      const c = createCase({ name: 'Bulk Case' })
+      const created = bulkCreateSelectors([
+        { caseId: c.id, pattern: 'alpha', isRegex: false, label: 'A' },
+        { caseId: c.id, pattern: 'beta', isRegex: true },
+        { caseId: c.id, pattern: 'gamma', isRegex: false, label: 'C' }
+      ])
+      expect(created).toHaveLength(3)
+      expect(created[0].pattern).toBe('alpha')
+      expect(created[0].label).toBe('A')
+      expect(created[1].pattern).toBe('beta')
+      expect(created[1].isRegex).toBe(true)
+      expect(created[2].pattern).toBe('gamma')
+
+      const listed = listSelectors(c.id)
+      expect(listed).toHaveLength(3)
+    })
+
+    it('returns empty array when given no input', () => {
+      const result = bulkCreateSelectors([])
+      expect(result).toEqual([])
+    })
+
+    it('rolls back all inserts if any insert fails', () => {
+      const c = createCase({ name: 'Rollback Case' })
+      // The second insert references a non-existent case_id, violating the foreign key.
+      expect(() =>
+        bulkCreateSelectors([
+          { caseId: c.id, pattern: 'ok' },
+          { caseId: 'does-not-exist', pattern: 'bad' }
+        ])
+      ).toThrow()
+      // Transaction should have rolled back — no selectors inserted for the valid case either.
+      expect(listSelectors(c.id)).toHaveLength(0)
+    })
+  })
+
+  describe('getSelectorMatchesForExport', () => {
+    it('returns joined selector+capture rows scoped to one case', () => {
+      const c = createCase({ name: 'Export Case' })
+      const other = createCase({ name: 'Other Case' })
+
+      const cap1 = insertCapture({
+        caseId: c.id,
+        url: 'https://example.com/a',
+        title: 'Page A',
+        hash: 'h1',
+        timestamp: '2026-01-01T00:00:00.000Z'
+      })
+      const cap2 = insertCapture({
+        caseId: c.id,
+        url: 'https://example.com/b',
+        title: 'Page B',
+        hash: 'h2',
+        timestamp: '2026-01-02T00:00:00.000Z'
+      })
+      const otherCap = insertCapture({
+        caseId: other.id,
+        url: 'https://other.com',
+        title: 'Other',
+        hash: 'oh1',
+        timestamp: '2026-01-03T00:00:00.000Z'
+      })
+
+      const sel = createSelector({
+        caseId: c.id,
+        pattern: 'example',
+        isRegex: false,
+        label: 'Example matcher'
+      })
+      const otherSel = createSelector({ caseId: other.id, pattern: 'other' })
+
+      matchSelectorAgainstCaptures(sel.id, [
+        { captureId: cap1.id, text: 'example content' },
+        { captureId: cap2.id, text: 'another example here' }
+      ])
+      matchSelectorAgainstCaptures(otherSel.id, [{ captureId: otherCap.id, text: 'other' }])
+
+      const rows = getSelectorMatchesForExport(c.id)
+      expect(rows).toHaveLength(2)
+      // Ordered by s.pattern, then c.timestamp DESC
+      expect(rows[0].selectorPattern).toBe('example')
+      expect(rows[0].selectorLabel).toBe('Example matcher')
+      expect(rows[0].isRegex).toBe(false)
+      expect(rows[0].captureUrl).toBe('https://example.com/b')
+      expect(rows[0].captureTitle).toBe('Page B')
+      expect(rows[0].captureTimestamp).toBe('2026-01-02T00:00:00.000Z')
+      expect(rows[1].captureUrl).toBe('https://example.com/a')
+      // Other case's match must not leak in.
+      expect(rows.find((r) => r.captureUrl === 'https://other.com')).toBeUndefined()
+    })
+
+    it('returns empty array when case has no matches', () => {
+      const c = createCase({ name: 'No Matches' })
+      expect(getSelectorMatchesForExport(c.id)).toEqual([])
     })
   })
 

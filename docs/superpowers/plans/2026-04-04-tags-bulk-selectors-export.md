@@ -1732,10 +1732,11 @@ test.describe('Bulk Add Selectors', () => {
     // Paste 3 patterns plus a blank line plus a duplicate.
     await page.getByTestId('bulk-add-textarea').fill('alpha\nbeta\n\ngamma\nalpha\n')
 
-    // Live preview: 3 new, 1 duplicate, 1 blank.
+    // Live preview: 3 new, 1 duplicate, 2 blank (the trailing \n after 'alpha' creates
+    // a second empty line, so parseInput counts 2 blank entries).
     await expect(page.getByTestId('bulk-add-new-count')).toHaveText('3')
     await expect(page.getByTestId('bulk-add-dup-count')).toHaveText('1')
-    await expect(page.getByTestId('bulk-add-blank-count')).toHaveText('1')
+    await expect(page.getByTestId('bulk-add-blank-count')).toHaveText('2')
 
     // Submit.
     await page.getByTestId('bulk-add-submit').click()

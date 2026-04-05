@@ -10,6 +10,8 @@ export interface Case {
   archived: boolean
 }
 
+export type CaptureFormat = 'html' | 'mhtml'
+
 export interface Capture {
   id: string
   caseId: string
@@ -21,6 +23,20 @@ export interface Capture {
   timestamp: string
   headers?: string
   createdAt: string
+  // Forensic MHTML fields (populated for format='mhtml', undefined for legacy 'html')
+  format: CaptureFormat
+  mhtmlPath?: string
+  sizeBytes?: number
+  manifestIndex?: number
+  prevHash?: string
+  entryHash?: string
+  toolVersion?: string
+  extensionVersion?: string
+  browserVersion?: string
+  userAgent?: string
+  httpStatus?: number
+  operatorId?: string
+  operatorName?: string
 }
 
 export interface Tag {
@@ -71,7 +87,10 @@ export interface HashVerification {
   title: string
   storedHash: string
   computedHash: string
-  status: 'verified' | 'tampered' | 'missing'
+  status: 'verified' | 'tampered' | 'missing' | 'chain-broken' | 'legacy'
+  manifestIndex?: number
+  chainValid?: boolean
+  reason?: string
 }
 
 export interface Selector {

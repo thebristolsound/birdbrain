@@ -3,10 +3,15 @@ import {
   closeSync,
   openSync,
   statSync,
-  readFileSync
+  readFileSync,
+  writeSync,
+  fsyncSync,
+  truncateSync
 } from 'fs'
 import { join } from 'path'
-import { MANIFEST_FILENAME } from '@shared/constants'
+import { createHash } from 'crypto'
+import { MANIFEST_FILENAME, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
+import { canonicalStringify } from '@main/services/canonicalJson'
 
 export interface ManifestHead {
   prevHash: string
@@ -37,4 +42,75 @@ export function getManifestHead(caseDir: string): ManifestHead {
     entryHash: string
   }
   return { prevHash: last.entryHash, nextIndex: last.index + 1 }
+}
+
+export type ManifestEntryInput =
+  | {
+      type: 'capture'
+      captureId: string
+      caseId: string
+      url: string
+      timestamp: string
+      contentHash: string
+      sizeBytes: number
+      operatorId: string
+      operatorName: string
+      toolVersion: string
+    }
+  | {
+      type: 'deletion'
+      captureId: string
+      caseId: string
+      timestamp: string
+      contentHash: string
+      operatorId: string
+      operatorName: string
+      toolVersion: string
+      reason?: string
+    }
+
+export interface AppendResult {
+  index: number
+  prevHash: string
+  entryHash: string
+  anchorBytes: number
+}
+
+// Write-ahead append: compute hash, append JSONL line, fsync.
+// Caller must call rollbackManifestEntry(anchorBytes) if a later step fails.
+export function appendManifestEntry(
+  caseDir: string,
+  entry: ManifestEntryInput
+): AppendResult {
+  const path = join(caseDir, MANIFEST_FILENAME)
+  const anchorBytes = existsSync(path) ? statSync(path).size : 0
+  const { prevHash, nextIndex } = getManifestHead(caseDir)
+
+  const body: Record<string, unknown> = {
+    ...entry,
+    index: nextIndex,
+    prevHash,
+    schemaVersion: MANIFEST_SCHEMA_VERSION
+  }
+  const canonical = canonicalStringify(body)
+  const entryHash = createHash('sha256').update(canonical).digest('hex')
+  const fullEntry = { ...body, entryHash }
+  const line = JSON.stringify(fullEntry) + '\n'
+
+  const fd = openSync(path, 'a')
+  try {
+    writeSync(fd, line)
+    fsyncSync(fd)
+  } finally {
+    closeSync(fd)
+  }
+
+  return { index: nextIndex, prevHash, entryHash, anchorBytes }
+}
+
+// Truncates the manifest file back to the byte offset captured before append.
+// Used to roll back a write-ahead append when a downstream step fails.
+export function rollbackManifestEntry(caseDir: string, anchorBytes: number): void {
+  const path = join(caseDir, MANIFEST_FILENAME)
+  truncateSync(path, anchorBytes)
 }

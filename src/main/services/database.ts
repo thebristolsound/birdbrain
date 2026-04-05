@@ -749,9 +749,10 @@ export function getSelectorMatchesForExport(caseId: string): SelectorMatchExport
        JOIN selectors s ON sm.selector_id = s.id
        JOIN captures c ON sm.capture_id = c.id
        WHERE s.case_id = ?
+         AND c.case_id = ?
        ORDER BY s.pattern, c.timestamp DESC`
     )
-    .all(caseId) as Array<{
+    .all(caseId, caseId) as Array<{
     selectorPattern: string
     selectorLabel: string | null
     isRegex: number

@@ -100,6 +100,15 @@ export interface ActiveCaseSelectors {
   selectors: Selector[]
 }
 
+export interface SelectorMatchExportRow {
+  selectorPattern: string
+  selectorLabel: string | null
+  isRegex: boolean
+  captureUrl: string
+  captureTitle: string | null
+  captureTimestamp: string
+}
+
 export interface Note {
   id: string
   caseId: string

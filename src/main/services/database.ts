@@ -1,6 +1,14 @@
 import Database from 'better-sqlite3'
 import { v4 as uuid } from 'uuid'
-import type { Case, Capture, Tag, Selector, ActiveCaseSelectors, Note } from '@shared/types'
+import type {
+  Case,
+  Capture,
+  Tag,
+  Selector,
+  ActiveCaseSelectors,
+  Note,
+  SelectorMatchExportRow
+} from '@shared/types'
 import type {
   CreateCaseParams,
   UpdateCaseParams,
@@ -478,6 +486,23 @@ export function getTagCountForCase(caseId: string): number {
   return row?.count ?? 0
 }
 
+export function getTagUsageCountsForCase(caseId: string): Record<string, number> {
+  const rows = getDb()
+    .prepare(
+      `SELECT ct.tag_id, COUNT(*) as count
+       FROM capture_tags ct
+       JOIN captures c ON ct.capture_id = c.id
+       WHERE c.case_id = ?
+       GROUP BY ct.tag_id`
+    )
+    .all(caseId) as Array<{ tag_id: string; count: number }>
+  const result: Record<string, number> = {}
+  for (const row of rows) {
+    result[row.tag_id] = row.count
+  }
+  return result
+}
+
 // --- Search ---
 
 export function searchCaptures(query: string): Capture[] {
@@ -517,6 +542,25 @@ export function createSelector(params: CreateSelectorParams): Selector {
     )
     .run(id, params.caseId, params.pattern, params.isRegex ? 1 : 0, params.label ?? null, now)
   return getSelector(id)!
+}
+
+export function bulkCreateSelectors(params: CreateSelectorParams[]): Selector[] {
+  if (params.length === 0) return []
+  const d = getDb()
+  const now = new Date().toISOString()
+  const insert = d.prepare(
+    'INSERT INTO selectors (id, case_id, pattern, is_regex, label, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+  )
+  const ids: string[] = []
+  const run = d.transaction(() => {
+    for (const p of params) {
+      const id = uuid()
+      insert.run(id, p.caseId, p.pattern, p.isRegex ? 1 : 0, p.label ?? null, now)
+      ids.push(id)
+    }
+  })
+  run()
+  return ids.map((id) => getSelector(id)!)
 }
 
 export function updateSelector(params: UpdateSelectorParams): Selector | undefined {
@@ -690,6 +734,40 @@ export function getSelectorCoverage(caseId: string): { matched: number; total: n
     )
     .get(caseId) as { matched: number } | undefined
   return { matched: row?.matched ?? 0, total }
+}
+
+export function getSelectorMatchesForExport(caseId: string): SelectorMatchExportRow[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT s.pattern as selectorPattern,
+              s.label as selectorLabel,
+              s.is_regex as isRegex,
+              c.url as captureUrl,
+              c.title as captureTitle,
+              c.timestamp as captureTimestamp
+       FROM selector_matches sm
+       JOIN selectors s ON sm.selector_id = s.id
+       JOIN captures c ON sm.capture_id = c.id
+       WHERE s.case_id = ?
+         AND c.case_id = ?
+       ORDER BY s.pattern, c.timestamp DESC`
+    )
+    .all(caseId, caseId) as Array<{
+    selectorPattern: string
+    selectorLabel: string | null
+    isRegex: number
+    captureUrl: string
+    captureTitle: string | null
+    captureTimestamp: string
+  }>
+  return rows.map((r) => ({
+    selectorPattern: r.selectorPattern,
+    selectorLabel: r.selectorLabel,
+    isRegex: r.isRegex === 1,
+    captureUrl: r.captureUrl,
+    captureTitle: r.captureTitle,
+    captureTimestamp: r.captureTimestamp
+  }))
 }
 
 export function getCaptureMatchingSelectors(captureId: string): Selector[] {

@@ -7,6 +7,7 @@ import { CaseOverview } from '@renderer/components/cases/CaseOverview'
 import { CapturesRoute } from '@renderer/routes/cases/$caseId/captures'
 import { SelectorsOverview } from '@renderer/components/selectors/SelectorsOverview'
 import { NotesOverview } from '@renderer/components/notes/NotesOverview'
+import { TagsOverview } from '@renderer/components/tags/TagsOverview'
 import { SettingsView } from '@renderer/components/settings/SettingsView'
 
 // Root layout
@@ -87,10 +88,17 @@ const notesRoute = createRoute({
   component: NotesOverview
 })
 
+// Tags tab
+const tagsRoute = createRoute({
+  getParentRoute: () => caseRoute,
+  path: '/tags',
+  component: TagsOverview
+})
+
 // Build the tree
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   settingsRoute,
   newCaseRoute,
-  caseRoute.addChildren([caseIndexRoute, capturesRoute, selectorsRoute, notesRoute])
+  caseRoute.addChildren([caseIndexRoute, capturesRoute, selectorsRoute, notesRoute, tagsRoute])
 ])

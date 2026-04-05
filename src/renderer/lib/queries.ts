@@ -236,7 +236,8 @@ export function useSelectorsMutations(caseId: string) {
   })
 
   const bulkCreate = useMutation({
-    mutationFn: (params: BulkCreateSelectorsParams) => window.birdbrain.selectors.bulkCreate(params),
+    mutationFn: (params: BulkCreateSelectorsParams) =>
+      window.birdbrain.selectors.bulkCreate(params),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.selectors(caseId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.selectorMatchCounts(caseId) })

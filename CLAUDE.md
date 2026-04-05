@@ -7,7 +7,7 @@ Open source web investigation & capture tool. Electron desktop app with a compan
 - `pnpm dev` - Start Electron app in dev mode (electron-vite)
 - `pnpm build` - Build the Electron app
 - `pnpm build:extension` - Build the Chrome extension
-- `pnpm dev:extension` - Build Chrome extension in watch mode
+- `pnpm dev:extension` - Build Chrome extension in watch mode (background and popup bundles only; does not watch/rebuild the content script IIFE build)
 - `pnpm test` - Run tests (vitest, via Electron runtime)
 - `pnpm test:watch` - Run tests in watch mode
 - `pnpm lint` - ESLint (.ts, .tsx)
@@ -35,7 +35,7 @@ src/main/services/           # Core services: database, captureServer, storage, 
 src/main/services/ai/       # AI services (OpenRouter client, being redesigned)
 src/main/ipcHandlers.ts     # All IPC handler registrations
 src/shared/types.ts         # Shared TypeScript types (Case, Capture, Tag, Selector, Settings, etc.)
-src/shared/ipc.ts           # IPC channel definitions and payload types (~54 channels)
+src/shared/ipc.ts           # IPC channel definitions and payload types
 src/shared/constants.ts     # Constants (CAPTURE_SERVER_PORT=19845)
 src/renderer/routes/        # TanStack Router route definitions
 src/renderer/stores/        # Zustand store (appStore.ts)
@@ -58,7 +58,7 @@ docs/                       # Design docs and specs
 
 All renderer↔main communication uses typed IPC channels defined in `src/shared/ipc.ts`. Channels follow `domain:action` naming (e.g., `cases:create`, `selectors:create`). Event channels (main→renderer) use `event:` prefix.
 
-**Domains:** cases (5), captures (12), tags (8), search (1), settings (4+), export (1), selectors (9), events (4+), testing (2).
+**Domains:** cases (5), captures (12), tags (8), search (1), settings (5), export (1), selectors (9), events (5), testing (2).
 
 The preload script exposes these via `window.birdbrain` with typed invoke/on methods.
 
@@ -107,7 +107,7 @@ Light/dark theme support using CSS custom properties and Tailwind v4:
 - **CSS tokens** (`src/renderer/styles/globals.css`) - `@theme` block defines semantic color variables (canvas, text, accent, border, surface, etc.) with light/dark variants via `.dark` class
 - **useTheme hook** (`src/renderer/hooks/useTheme.ts`) - Manages theme state, localStorage persistence, `dark` class on `<html>`, 400ms transition animations, and IPC sync to settings
 - **Flash prevention** - Inline script in HTML prevents theme flicker on load
-- **Component convention** - All components use semantic token classes (e.g., `bg-canvas`, `text-text-primary`, `border-border`) instead of raw Tailwind colors
+- **Component convention** - Prefer semantic token classes (e.g., `bg-canvas`, `text-text-primary`, `border-border`) over raw Tailwind colors; exceptions include overlays (`bg-black`) and status/severity colors (`bg-red-600`, etc.)
 
 ### Capture server
 
@@ -157,4 +157,4 @@ Organized into 10 feature directories under `src/renderer/components/`:
 - TypeScript strict mode
 - React JSX transform (no React import needed)
 - ESLint 9 flat config with TypeScript ESLint + Prettier
-- Use semantic theme tokens instead of raw color values in components
+- Prefer semantic theme tokens over raw color values in components (exceptions: overlays, status/severity colors)

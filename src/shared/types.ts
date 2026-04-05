@@ -60,6 +60,7 @@ export interface BirdbrainSettings {
   storagePath: string
   maxStorageMb: number | null
   theme: 'dark' | 'light'
+  operatorName: string
   autoCaptureMode: AutoCaptureMode
 }
 

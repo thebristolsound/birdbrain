@@ -4,19 +4,21 @@ import { useQuery } from '@tanstack/react-query'
 import {
   casesQueryOptions,
   capturesQueryOptions,
-  noteCountQueryOptions
+  noteCountQueryOptions,
+  tagCountForCaseQueryOptions
 } from '@renderer/lib/queries'
 import { useSelectorFilters } from '@renderer/hooks/useSelectorFilters'
-import { LayoutDashboard, Layers, Crosshair, StickyNote } from 'lucide-react'
+import { LayoutDashboard, Layers, Crosshair, StickyNote, Tag } from 'lucide-react'
 import { CAPTURE_SERVER_BASE_URL } from '@shared/constants'
 
-type CaseTab = 'overview' | 'captures' | 'selectors' | 'notes'
+type CaseTab = 'overview' | 'captures' | 'selectors' | 'notes' | 'tags'
 
 const tabs: { id: CaseTab; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'captures', label: 'Captures', icon: Layers },
   { id: 'selectors', label: 'Selectors', icon: Crosshair },
-  { id: 'notes', label: 'Notes', icon: StickyNote }
+  { id: 'notes', label: 'Notes', icon: StickyNote },
+  { id: 'tags', label: 'Tags', icon: Tag }
 ]
 
 function tabPath(tab: CaseTab): string {
@@ -29,6 +31,8 @@ function tabPath(tab: CaseTab): string {
       return '/cases/$caseId/selectors'
     case 'notes':
       return '/cases/$caseId/notes'
+    case 'tags':
+      return '/cases/$caseId/tags'
   }
 }
 
@@ -38,6 +42,7 @@ export function CaseWorkspace() {
   const { data: cases = [], isLoading } = useQuery(casesQueryOptions)
   const { data: captures = [] } = useQuery(capturesQueryOptions(caseId))
   const { data: noteCount = 0 } = useQuery(noteCountQueryOptions(caseId))
+  const { data: tagCount = 0 } = useQuery(tagCountForCaseQueryOptions(caseId))
 
   useSelectorFilters(caseId)
 
@@ -63,12 +68,14 @@ export function CaseWorkspace() {
   const isCaptures = matchRoute({ to: '/cases/$caseId/captures', fuzzy: true }) !== false
   const isSelectors = matchRoute({ to: '/cases/$caseId/selectors', fuzzy: true }) !== false
   const isNotes = matchRoute({ to: '/cases/$caseId/notes', fuzzy: true }) !== false
+  const isTags = matchRoute({ to: '/cases/$caseId/tags', fuzzy: true }) !== false
 
   function isTabActive(tab: CaseTab): boolean {
-    if (tab === 'overview') return !isCaptures && !isSelectors && !isNotes
+    if (tab === 'overview') return !isCaptures && !isSelectors && !isNotes && !isTags
     if (tab === 'captures') return isCaptures
     if (tab === 'selectors') return isSelectors
-    return isNotes
+    if (tab === 'notes') return isNotes
+    return isTags
   }
 
   return (
@@ -79,7 +86,13 @@ export function CaseWorkspace() {
           const Icon = tab.icon
           const isActive = isTabActive(tab.id)
           const badgeCount =
-            tab.id === 'captures' ? captures.length : tab.id === 'notes' ? noteCount : null
+            tab.id === 'captures'
+              ? captures.length
+              : tab.id === 'notes'
+                ? noteCount
+                : tab.id === 'tags'
+                  ? tagCount
+                  : null
           return (
             <Link
               key={tab.id}

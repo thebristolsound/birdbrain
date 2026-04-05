@@ -4,9 +4,9 @@ import { tagsQueryOptions, tagUsageCountsForCaseQueryOptions } from '@renderer/l
 import { TagManager } from './TagManager'
 
 export function TagsOverview() {
-  const { caseId } = useParams({ strict: false })
+  const { caseId } = useParams({ from: '/cases/$caseId/tags' })
   const { data: tags = [], isLoading } = useQuery(tagsQueryOptions)
-  const { data: usageCounts = {} } = useQuery(tagUsageCountsForCaseQueryOptions(caseId as string))
+  const { data: usageCounts = {} } = useQuery(tagUsageCountsForCaseQueryOptions(caseId))
 
   if (isLoading) {
     return <div className="text-text-muted">Loading tags...</div>

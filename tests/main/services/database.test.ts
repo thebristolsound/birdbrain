@@ -170,6 +170,51 @@ describe('database', () => {
       const caseAfter = getCase(caseId)!
       expect(caseAfter.updatedAt >= caseBefore.updatedAt).toBe(true)
     })
+
+    it('inserts and retrieves MHTML capture with all forensic fields', () => {
+      const caseId = createCase({ name: 'Forensic Case' }).id
+      const cap = insertCapture({
+        caseId,
+        url: 'https://example.com',
+        title: 'Example',
+        hash: 'a'.repeat(64),
+        timestamp: new Date().toISOString(),
+        format: 'mhtml',
+        mhtmlPath: 'case-id/cap-id.mhtml',
+        sizeBytes: 12345,
+        manifestIndex: 0,
+        prevHash: '',
+        entryHash: 'b'.repeat(64),
+        toolVersion: '0.1.0',
+        extensionVersion: '0.1.0',
+        browserVersion: 'Chrome/120',
+        userAgent: 'Mozilla/5.0',
+        httpStatus: 200,
+        operatorId: '11111111-1111-1111-1111-111111111111',
+        operatorName: 'Det. Smith'
+      })
+
+      const retrieved = getCapture(cap.id)!
+      expect(retrieved.format).toBe('mhtml')
+      expect(retrieved.mhtmlPath).toBe('case-id/cap-id.mhtml')
+      expect(retrieved.sizeBytes).toBe(12345)
+      expect(retrieved.manifestIndex).toBe(0)
+      expect(retrieved.entryHash).toBe('b'.repeat(64))
+      expect(retrieved.toolVersion).toBe('0.1.0')
+      expect(retrieved.operatorName).toBe('Det. Smith')
+    })
+
+    it('defaults legacy captures to format=html', () => {
+      const caseId = createCase({ name: 'Legacy Case' }).id
+      const cap = insertCapture({
+        caseId,
+        url: 'https://example.com',
+        title: 'Example',
+        hash: 'c'.repeat(64),
+        timestamp: new Date().toISOString()
+      })
+      expect(getCapture(cap.id)!.format).toBe('html')
+    })
   })
 
   describe('tags', () => {

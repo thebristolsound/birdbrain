@@ -60,7 +60,7 @@ export function TagsOverview() {
                   </td>
                   <td className="px-4 py-2 text-text-primary">{tag.name}</td>
                   <td
-                    data-testid={`tag-usage-count-${tag.name}`}
+                    data-testid={`tag-usage-count-${tag.id}`}
                     className="px-4 py-2 text-right font-mono text-text-secondary"
                   >
                     {usageCounts[tag.id] ?? 0}

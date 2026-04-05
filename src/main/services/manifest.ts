@@ -114,3 +114,45 @@ export function rollbackManifestEntry(caseDir: string, anchorBytes: number): voi
   const path = join(caseDir, MANIFEST_FILENAME)
   truncateSync(path, anchorBytes)
 }
+
+export interface ChainVerifyResult {
+  valid: boolean
+  brokenAt?: number
+  reason?: string
+}
+
+// Re-reads the manifest, recomputes each entryHash, and checks linkage.
+// Returns the zero-based index of the first broken entry if any.
+export function verifyManifestChain(caseDir: string): ChainVerifyResult {
+  const path = join(caseDir, MANIFEST_FILENAME)
+  if (!existsSync(path) || statSync(path).size === 0) {
+    return { valid: true }
+  }
+  const raw = readFileSync(path, 'utf-8')
+  const lines = raw.split('\n').filter((l) => l.trim().length > 0)
+  let expectedPrev = ''
+  let expectedIndex = 0
+
+  for (let i = 0; i < lines.length; i++) {
+    let entry: Record<string, unknown>
+    try {
+      entry = JSON.parse(lines[i])
+    } catch {
+      return { valid: false, brokenAt: i, reason: 'Invalid JSON' }
+    }
+    const { entryHash, ...body } = entry
+    if (body.index !== expectedIndex) {
+      return { valid: false, brokenAt: i, reason: 'Index mismatch' }
+    }
+    if (body.prevHash !== expectedPrev) {
+      return { valid: false, brokenAt: i, reason: 'Chain link broken' }
+    }
+    const recomputed = createHash('sha256').update(canonicalStringify(body)).digest('hex')
+    if (recomputed !== entryHash) {
+      return { valid: false, brokenAt: i, reason: 'Entry hash mismatch' }
+    }
+    expectedPrev = entryHash as string
+    expectedIndex++
+  }
+  return { valid: true }
+}

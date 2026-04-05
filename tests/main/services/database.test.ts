@@ -262,9 +262,9 @@ describe('database', () => {
     })
 
     it('sets user_version to 7 after v7 migration', () => {
-      // v8, v9, and v10 migrations run immediately after, so final version is 10
+      // v8, v9, v10, and v11 migrations run immediately after, so final version is 11
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(10)
+      expect(version).toBe(11)
     })
   })
 
@@ -288,9 +288,9 @@ describe('database', () => {
     })
 
     it('sets user_version to 8', () => {
-      // v9 and v10 migrations run immediately after, so final version is 10
+      // v9, v10, and v11 migrations run immediately after, so final version is 11
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(10)
+      expect(version).toBe(11)
     })
   })
 
@@ -312,9 +312,9 @@ describe('database', () => {
     })
 
     it('sets user_version to 9', () => {
-      // v10 migration runs immediately after, so final version is 10
+      // v10 and v11 migrations run immediately after, so final version is 11
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(10)
+      expect(version).toBe(11)
     })
   })
 
@@ -783,6 +783,43 @@ describe('database', () => {
 
     it('returns undefined when updating a missing note', () => {
       expect(updateNote({ id: 'nonexistent', title: 'x' })).toBeUndefined()
+    })
+  })
+
+  describe('migration v11 (MHTML columns)', () => {
+    it('adds format column with default html', () => {
+      const caseId = createCase({ name: 'Migration Case' }).id
+      insertCapture({
+        caseId,
+        url: 'https://example.com',
+        title: 'Example',
+        hash: 'deadbeef',
+        timestamp: new Date().toISOString()
+      })
+      const row = getDb()
+        .prepare('SELECT format FROM captures WHERE case_id = ?')
+        .get(caseId) as { format: string }
+      expect(row.format).toBe('html')
+    })
+
+    it('sets user_version to 11', () => {
+      const version = getDb().pragma('user_version', { simple: true }) as number
+      expect(version).toBeGreaterThanOrEqual(11)
+    })
+
+    it('has all MHTML columns', () => {
+      const cols = getDb()
+        .prepare("PRAGMA table_info('captures')")
+        .all() as Array<{ name: string }>
+      const names = cols.map((c) => c.name)
+      const expected = [
+        'format', 'mhtml_path', 'size_bytes', 'manifest_index',
+        'prev_hash', 'entry_hash', 'tool_version', 'extension_version',
+        'browser_version', 'user_agent', 'http_status', 'operator_id', 'operator_name'
+      ]
+      for (const col of expected) {
+        expect(names).toContain(col)
+      }
     })
   })
 

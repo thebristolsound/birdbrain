@@ -254,6 +254,29 @@ function migrate(db: Database.Database): void {
       db.pragma('user_version = 10')
     })()
   }
+
+  if (version < 11) {
+    db.transaction(() => {
+      db.exec(`
+        ALTER TABLE captures ADD COLUMN format TEXT NOT NULL DEFAULT 'html';
+        ALTER TABLE captures ADD COLUMN mhtml_path TEXT;
+        ALTER TABLE captures ADD COLUMN size_bytes INTEGER;
+        ALTER TABLE captures ADD COLUMN manifest_index INTEGER;
+        ALTER TABLE captures ADD COLUMN prev_hash TEXT;
+        ALTER TABLE captures ADD COLUMN entry_hash TEXT;
+        ALTER TABLE captures ADD COLUMN tool_version TEXT;
+        ALTER TABLE captures ADD COLUMN extension_version TEXT;
+        ALTER TABLE captures ADD COLUMN browser_version TEXT;
+        ALTER TABLE captures ADD COLUMN user_agent TEXT;
+        ALTER TABLE captures ADD COLUMN http_status INTEGER;
+        ALTER TABLE captures ADD COLUMN operator_id TEXT;
+        ALTER TABLE captures ADD COLUMN operator_name TEXT;
+        CREATE INDEX IF NOT EXISTS idx_captures_format ON captures(format);
+        CREATE INDEX IF NOT EXISTS idx_captures_manifest_index ON captures(case_id, manifest_index);
+      `)
+      db.pragma('user_version = 11')
+    })()
+  }
 }
 
 // --- Cases ---

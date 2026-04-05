@@ -17,6 +17,7 @@ import * as storage from '@main/services/storage'
 import * as settings from '@main/services/settings'
 import * as openrouter from '@main/services/openrouter'
 import { generateReport } from '@main/services/export'
+import { buildCsv } from '@main/services/csvEscape'
 import { CAPTURE_SERVER_PORT, getSessionState } from '@main/services/captureServer'
 import type { BirdbrainSettings, ExportOptions } from '@shared/types'
 
@@ -313,9 +314,15 @@ export function registerIpcHandlers(): void {
       const caseRow = db.getCase(caseId)
       if (!caseRow) return ipcResult({ exported: false })
       const rows = db.getSelectorMatchesForExport(caseId)
-      const { buildCsv } = await import('@main/services/csvEscape')
       const csv = buildCsv(
-        ['Selector Pattern', 'Selector Label', 'Type', 'Capture URL', 'Capture Title', 'Capture Timestamp'],
+        [
+          'Selector Pattern',
+          'Selector Label',
+          'Type',
+          'Capture URL',
+          'Capture Title',
+          'Capture Timestamp'
+        ],
         rows.map((r) => [
           r.selectorPattern,
           r.selectorLabel ?? '',

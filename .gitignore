@@ -43,6 +43,13 @@ test-results/
 playwright-report/
 
 # Worktrees
-.worktrees/
-.superdesign
+*.worktree*
+
+#AI
 .agents
+.claude
+.cursor
+.zed
+
+
+

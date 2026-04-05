@@ -128,6 +128,7 @@ export const CaseCard = memo(function CaseCard({
       {editingName !== null ? (
         <input
           ref={inputRef}
+          data-testid="case-rename-input"
           className="font-display font-bold text-sm text-text-primary mb-1 bg-transparent border border-border-strong rounded px-1 py-0.5 w-full outline-none focus:border-accent"
           defaultValue={editingName}
           onClick={(e) => e.stopPropagation()}
@@ -165,6 +166,7 @@ export const CaseCard = memo(function CaseCard({
       {/* Context menu */}
       <div ref={menuRef} className="absolute right-2 top-2">
         <button
+          data-testid="case-card-menu-btn"
           className="opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-elevated transition-all"
           onClick={(e) => {
             e.stopPropagation()
@@ -207,6 +209,7 @@ export const CaseCard = memo(function CaseCard({
             ) : (
               <>
                 <button
+                  data-testid="case-card-rename-btn"
                   className="w-full text-left px-3 py-1.5 text-[11px] text-text-secondary hover:bg-elevated hover:text-text-primary"
                   onClick={(e) => {
                     e.stopPropagation()
@@ -217,6 +220,7 @@ export const CaseCard = memo(function CaseCard({
                   Rename
                 </button>
                 <button
+                  data-testid="case-card-delete-btn"
                   className="w-full text-left px-3 py-1.5 text-[11px] text-red-400 hover:bg-elevated hover:text-red-300"
                   onClick={(e) => {
                     e.stopPropagation()

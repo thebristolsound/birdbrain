@@ -102,4 +102,19 @@ describe('storage', () => {
     updateCaptureHtml('case-1', 'cap-2', '<html>new file</html>')
     expect(readCaptureFile('case-1', 'cap-2', 'html')?.toString()).toBe('<html>new file</html>')
   })
+
+  it('returns correct .mhtml path', () => {
+    const path = getCapturePath('case-1', 'cap-1', 'mhtml')
+    expect(path).toContain('cap-1.mhtml')
+  })
+
+  it('deleteCaptureFiles removes .mhtml files too', () => {
+    const dir = join(tempDir, 'case-1')
+    require('fs').mkdirSync(dir, { recursive: true })
+    require('fs').writeFileSync(join(dir, 'cap-1.mhtml'), 'fake mhtml')
+    require('fs').writeFileSync(join(dir, 'cap-1.html'), 'fake html')
+    deleteCaptureFiles('case-1', 'cap-1')
+    expect(existsSync(join(dir, 'cap-1.mhtml'))).toBe(false)
+    expect(existsSync(join(dir, 'cap-1.html'))).toBe(false)
+  })
 })

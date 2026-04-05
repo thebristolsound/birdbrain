@@ -25,13 +25,17 @@ export function TagsOverview() {
 
       <div data-testid="tags-usage-table" className="neu-card rounded-2xl overflow-hidden">
         <div className="flex items-center justify-between border-b border-border px-5 py-3">
-          <h3 className="font-display text-sm font-semibold text-text-primary">Tag Usage in This Case</h3>
+          <h3 className="font-display text-sm font-semibold text-text-primary">
+            Tag Usage in This Case
+          </h3>
           <span className="rounded-full bg-accent-subtle px-2 py-0.5 text-[10px] font-semibold text-accent">
             {sorted.filter((t) => (usageCounts[t.id] ?? 0) > 0).length}
           </span>
         </div>
         {sorted.length === 0 ? (
-          <p className="px-5 py-4 text-sm text-text-muted">No tags yet. Create one above to get started.</p>
+          <p className="px-5 py-4 text-sm text-text-muted">
+            No tags yet. Create one above to get started.
+          </p>
         ) : (
           <table className="w-full text-sm">
             <thead>

@@ -1,6 +1,14 @@
 import Database from 'better-sqlite3'
 import { v4 as uuid } from 'uuid'
-import type { Case, Capture, Tag, Selector, ActiveCaseSelectors, Note, SelectorMatchExportRow } from '@shared/types'
+import type {
+  Case,
+  Capture,
+  Tag,
+  Selector,
+  ActiveCaseSelectors,
+  Note,
+  SelectorMatchExportRow
+} from '@shared/types'
 import type {
   CreateCaseParams,
   UpdateCaseParams,

@@ -17,11 +17,7 @@ interface ParseResult {
   existingDuplicates: number
 }
 
-function parseInput(
-  raw: string,
-  existingSelectors: Selector[],
-  isRegex: boolean
-): ParseResult {
+function parseInput(raw: string, existingSelectors: Selector[], isRegex: boolean): ParseResult {
   const lines = raw.split(/\r?\n/)
   let blankCount = 0
   const seen = new Set<string>()
@@ -129,7 +125,9 @@ export function BulkAddSelectorsModal({
         <div className="mb-4 flex items-start justify-between">
           <div>
             <h2 className="text-lg font-semibold text-text-primary">Bulk Add Selectors</h2>
-            <p className="text-xs text-text-muted">One pattern per line. Blank lines are ignored.</p>
+            <p className="text-xs text-text-muted">
+              One pattern per line. Blank lines are ignored.
+            </p>
           </div>
           <button
             onClick={onClose}
@@ -194,8 +192,8 @@ export function BulkAddSelectorsModal({
           <span data-testid="bulk-add-dup-count">
             {parsed.withinPasteDuplicates + parsed.existingDuplicates}
           </span>{' '}
-          duplicates skipped,{' '}
-          <span data-testid="bulk-add-blank-count">{parsed.blankCount}</span> blank lines skipped
+          duplicates skipped, <span data-testid="bulk-add-blank-count">{parsed.blankCount}</span>{' '}
+          blank lines skipped
           {parsed.existingDuplicates > 0 && (
             <span className="ml-1 text-text-muted">
               ({parsed.existingDuplicates} already exist in this case)

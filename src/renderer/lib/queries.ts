@@ -278,12 +278,7 @@ export function useNotesMutations(caseId: string) {
     queryClient.invalidateQueries({
       predicate: (q) => {
         const key = q.queryKey
-        return (
-          Array.isArray(key) &&
-          key[0] === 'notes' &&
-          key[1] === 'search' &&
-          key[2] === caseId
-        )
+        return Array.isArray(key) && key[0] === 'notes' && key[1] === 'search' && key[2] === caseId
       }
     })
 

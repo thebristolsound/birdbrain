@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { type ChangeEvent, useMemo, useRef, useState } from 'react'
 import { Upload, X } from 'lucide-react'
 import type { Selector } from '@shared/types'
 import { useSelectorsMutations } from '@renderer/lib/queries'
@@ -84,7 +84,7 @@ export function BulkAddSelectorsModal({
     [text, existingSelectors, isRegex]
   )
 
-  async function handleFilePick(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFilePick(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
     const contents = await file.text()

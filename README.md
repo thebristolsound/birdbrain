@@ -1,57 +1,166 @@
-# Birdbrain
+<!-- Improved compatibility of back to top link: See: https://github.com/othneildrew/Best-README-Template/pull/73 -->
+<a id="readme-top"></a>
 
-**Capture the web as evidence.**
+[![Contributors][contributors-shield]][contributors-url]
+[![Forks][forks-shield]][forks-url]
+[![Stargazers][stars-shield]][stars-url]
+[![Issues][issues-shield]][issues-url]
+[![License: MIT][license-shield]][license-url]
+[![Status: Alpha][status-shield]]()
+[![Platform][platform-shield]]()
 
-Birdbrain is a local-first desktop app for investigators who need cryptographically verifiable web captures — not screenshots, not PDFs, but the actual live DOM frozen to a self-contained file, SHA-256 hashed the moment it hits disk. Built for OSINT researchers, journalists, and fraud investigators who can't afford to lose chain of custody.
+<!-- PROJECT LOGO -->
+<br />
+<div align="center">
+  <a href="https://github.com/thebristolsound/birdbrain">
+    <img src="images/logo.png" alt="Birdbrain logo" width="80" height="80">
+  </a>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Status: Alpha](https://img.shields.io/badge/status-alpha-orange.svg)]()
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)]()
-[![Built with Electron](https://img.shields.io/badge/built%20with-Electron-47848F.svg)](https://www.electronjs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg)](https://www.typescriptlang.org/)
+  <h3 align="center">Birdbrain</h3>
 
-> **Early alpha — v0.1.0.** Core capture pipeline, cases, tags, selectors, notes, search, and HTML/PDF export are working. The UI is getting a design refresh. See [Status & Roadmap](#status--roadmap) for what's next.
+  <p align="center">
+    Capture the web as evidence. Local-first, cryptographically verifiable, zero cloud.
+    <br />
+    <a href="https://github.com/thebristolsound/birdbrain/tree/master/docs"><strong>Explore the docs »</strong></a>
+    <br />
+    <br />
+    <a href="https://github.com/thebristolsound/birdbrain/issues/new?labels=bug&template=bug-report---.md">Report Bug</a>
+    &middot;
+    <a href="https://github.com/thebristolsound/birdbrain/issues/new?labels=enhancement&template=feature-request---.md">Request Feature</a>
+  </p>
+</div>
+
+<!-- TABLE OF CONTENTS -->
+<details>
+  <summary>Table of Contents</summary>
+  <ol>
+    <li><a href="#about-the-project">About The Project</a></li>
+    <li><a href="#built-with">Built With</a></li>
+    <li>
+      <a href="#getting-started">Getting Started</a>
+      <ul>
+        <li><a href="#prerequisites">Prerequisites</a></li>
+        <li><a href="#installation">Installation</a></li>
+        <li><a href="#loading-the-chrome-extension">Loading the Chrome Extension</a></li>
+      </ul>
+    </li>
+    <li><a href="#usage">Usage</a></li>
+    <li><a href="#roadmap">Roadmap</a></li>
+    <li><a href="#contributing">Contributing</a></li>
+    <li><a href="#license">License</a></li>
+    <li><a href="#contact">Contact</a></li>
+    <li><a href="#acknowledgments">Acknowledgments</a></li>
+  </ol>
+</details>
 
 ---
 
-## Who is this for?
+## About The Project
 
 You're doing web research that matters — documenting extremist content, tracking fraud networks, investigating a story. You need to prove, later, that a page said what it said when you found it. Screenshots lie. PDFs strip context. Browser history evaporates.
 
-Birdbrain captures the full DOM at investigation time, hashes it immediately, and keeps everything on your machine. No cloud. No accounts. No one else's retention policy.
+**Birdbrain** is a local-first desktop app for investigators who need cryptographically verifiable web captures. Not screenshots, not PDFs — the actual live DOM frozen to a self-contained file, SHA-256 hashed the moment it hits disk. Built for OSINT researchers, journalists, and fraud investigators who can't afford to lose chain of custody.
 
-Think of it as a local-first, open source alternative to commercial tools like Hunchly.
+Everything lives on your machine. No cloud, no accounts, no one else's retention policy. Think of it as a local-first, open source alternative to commercial tools like Hunchly.
 
----
+**Key features:**
 
-## ✨ Features
-
-### Evidence integrity
-- **SHA-256 hashing** — every capture is hashed at the moment of ingestion, stored in SQLite, and can be re-verified at any time to prove nothing was tampered with
-- **Freeze-dry serialization** — pages are rendered to self-contained HTML with CSS, fonts, and images inlined as data URIs; captures open offline, forever, with no external dependencies
-- **Graceful fallback** — if freeze-dry fails, Birdbrain falls back to raw HTML rather than silently dropping the capture
-
-### Investigation workflow
-- **Cases** — organize captures into investigations; selectors and metadata travel with the case
-- **Tags** — apply tags across captures with bulk operations and keyboard-driven workflows
-- **Notes** — attach freeform notes to any capture
+- **SHA-256 integrity** — every capture is hashed at ingestion; re-verify at any time to prove nothing changed
+- **Freeze-dry serialization** — pages become self-contained HTML with CSS, fonts, and images inlined as data URIs; they open offline, forever
+- **Cases** — organize captures into investigations with metadata, selectors, and notes
+- **Selectors** — define regex, glob, or literal string patterns; the extension highlights matches on live pages and can auto-capture when a match is found
+- **Tags & bulk operations** — keyboard-driven tagging across captures
 - **Full-text search** — SQLite FTS5 across all captured content
+- **HTML/PDF export** — generate audit-trail reports with investigator name, timestamps, and per-capture hash verification
+- **Health dashboard** — live ring-buffered capture feed with timings and error categorization
 
-### 🔍 Selectors
-Define regex, glob, or literal string patterns per case. The Chrome extension highlights matches on live pages as you browse and can auto-capture any page that matches — so you don't miss evidence because you weren't watching.
+> **Early alpha — v0.1.0.** Core pipeline, cases, tags, selectors, notes, search, and export are all working. See the [Roadmap](#roadmap) for what's next.
 
-### Observable pipeline
-A live health dashboard shows capture activity in a ring-buffered 50-event feed: received, stored, failed, skipped — with timings and error categorization. Test buttons let you verify the end-to-end pipeline without the extension.
-
-### Export & reporting
-Generate HTML or PDF reports with a full audit trail: investigator name, capture timestamps, and per-capture hash verification status.
-
-### Local-first, zero telemetry
-All captures, metadata, and indexes live in SQLite and flat files on your machine. Nothing leaves unless you export it.
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ---
 
-## 🏗 How it works
+## Built With
+
+| Layer | Technology |
+|---|---|
+| Desktop shell | [Electron 35](https://www.electronjs.org/) + [electron-vite](https://electron-vite.org/) + [electron-builder](https://www.electron.build/) |
+| UI | [React 19](https://react.dev/), [Tailwind CSS v4](https://tailwindcss.com/), [Zustand](https://zustand-demo.pmnd.rs/), [TanStack Router](https://tanstack.com/router), [TanStack Query](https://tanstack.com/query) |
+| Capture server | [Hono 4](https://hono.dev/) (HTTP, runs in Electron main process) |
+| Database | [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) — synchronous, WAL mode, FTS5 |
+| Page serialization | [freeze-dry](https://github.com/WebMemex/freeze-dry) |
+| Language | [TypeScript](https://www.typescriptlang.org/) (strict) |
+| Testing | [Vitest](https://vitest.dev/) (unit), [Playwright](https://playwright.dev/) (E2E against real Electron) |
+| Package manager | [pnpm](https://pnpm.io/) |
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+- **Node.js** 20 or later
+- **pnpm** 9 or later (`npm install -g pnpm`)
+- **Google Chrome** (for the extension)
+
+### Installation
+
+```bash
+# Clone the repo
+git clone https://github.com/thebristolsound/birdbrain.git
+cd birdbrain
+
+# Install dependencies (also rebuilds native modules for your Electron version)
+pnpm install
+
+# Start the desktop app in dev mode with hot reload
+pnpm dev
+```
+
+**Other useful commands:**
+
+```bash
+pnpm build               # Production build
+pnpm package             # Package platform installers (NSIS / DMG / AppImage)
+pnpm test                # Vitest unit tests
+pnpm test:e2e            # Playwright E2E against a built app
+pnpm test:e2e:debug      # Playwright with inspector
+pnpm lint                # ESLint
+pnpm format              # Prettier
+pnpm rebuild:electron    # Rebuild native deps after a Node version upgrade
+```
+
+### Loading the Chrome Extension
+
+```bash
+# Build the extension once
+pnpm build:extension
+
+# Or keep it rebuilding automatically during development
+pnpm dev:extension
+```
+
+Then load it into Chrome:
+
+1. Open `chrome://extensions`
+2. Enable **Developer mode** (toggle in the top-right corner)
+3. Click **Load unpacked**
+4. Select the `extension/dist` directory inside the cloned repo
+5. The Birdbrain icon will appear in your toolbar
+
+The extension talks to the desktop app at `http://localhost:19845`. Start the desktop app first — the extension popup shows connection status so you can confirm the link is live.
+
+> **Note:** Rebuild the extension (`pnpm build:extension`) after any changes to `extension/src/`. The `pnpm dev:extension` watch mode handles this automatically.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+---
+
+## Usage
+
+### How the pipeline works
 
 ```mermaid
 sequenceDiagram
@@ -73,94 +182,20 @@ sequenceDiagram
     UI-->>UI: Re-render capture list
 ```
 
-The extension sends a single POST regardless of capture mode (manual click, auto, or selector match). One endpoint, one pipeline — no drift between modes.
+Click the extension icon to manually capture the current page, or set up **Selectors** in a case to auto-capture any page whose URL or content matches your patterns. Every capture lands in the desktop app, hashed and stored, ready to add to a case, tag, and annotate.
 
-**Dual-layer URL filtering** — the extension filters client-side before sending; the server re-validates on receipt. Defense in depth, supporting regex, glob, and literal substring patterns.
+For a technical deep-dive into the capture pipeline, error handling, selector matching, and hash verification, see [docs/capture-pipeline.md](docs/capture-pipeline.md).
 
-For a full technical deep-dive, see [docs/capture-pipeline.md](docs/capture-pipeline.md).
+### Project structure
 
----
-
-## Tech stack
-
-| Layer | Technology |
-|---|---|
-| Desktop shell | Electron 35 + electron-vite + electron-builder |
-| UI | React 19, Tailwind CSS v4, Zustand, TanStack Router, TanStack Query |
-| Capture server | Hono 4 (HTTP, runs in main process) |
-| Database | better-sqlite3 — synchronous, WAL mode, FTS5 |
-| Page serialization | freeze-dry |
-| Language | TypeScript (strict) |
-| Testing | Vitest (unit), Playwright (E2E against real Electron) |
-| Package manager | pnpm |
-
----
-
-## 🚀 Getting started
-
-### Prerequisites
-
-- Node.js 20+
-- pnpm 9+
-- Google Chrome (for the extension)
-
-### Desktop app
-
-```bash
-# Clone and install
-git clone https://github.com/thebristolsound/birdbrain.git
-cd birdbrain
-pnpm install
-
-# Start in dev mode (Electron + hot reload)
-pnpm dev
-```
-
-```bash
-# Other useful commands
-pnpm build               # Production build
-pnpm package             # Package platform installers via electron-builder
-pnpm test                # Vitest unit tests
-pnpm test:e2e            # Playwright E2E against a built app
-pnpm test:e2e:debug      # Playwright with inspector
-pnpm lint                # ESLint
-pnpm format              # Prettier
-pnpm rebuild:electron    # Rebuild native deps (better-sqlite3) after Node upgrade
-```
-
-### Chrome extension
-
-```bash
-# Build the extension
-pnpm build:extension
-
-# Or watch-mode during development
-pnpm dev:extension
-```
-
----
-
-## Loading the Chrome extension
-
-1. Open Chrome and navigate to `chrome://extensions`
-2. Enable **Developer mode** (toggle in the top-right corner)
-3. Click **Load unpacked**
-4. Select the `extension/dist` directory inside the cloned repo
-5. The Birdbrain icon will appear in your toolbar
-
-The extension connects to the desktop app at `http://localhost:19845`. Start the desktop app first, then browse — the extension's popup shows connection status.
-
-> **Note:** The extension must be rebuilt (`pnpm build:extension`) whenever you make changes to `extension/src/`. The `pnpm dev:extension` watch mode handles this automatically during development.
-
----
-
-## Project structure
+<details>
+<summary>Expand directory tree</summary>
 
 ```
 birdbrain/
 ├── src/
 │   ├── main/                  # Electron main process
-│   │   ├── services/          # Core services
+│   │   ├── services/
 │   │   │   ├── captureServer.ts   # Hono HTTP server (port 19845)
 │   │   │   ├── database.ts        # SQLite + schema migrations
 │   │   │   ├── storage.ts         # File I/O for capture content
@@ -183,40 +218,39 @@ birdbrain/
 │       └── popup/             # Extension popup UI
 ├── e2e/                       # Playwright E2E tests
 ├── tests/                     # Vitest unit tests
-├── docs/                      # Technical documentation
-└── electron.vite.config.ts
+└── docs/                      # Technical documentation
 ```
 
----
+</details>
 
-## 📖 Deep dive
-
-The capture pipeline is documented in detail — architecture decisions, error handling, the selector matching flow, hash verification, and the health dashboard design:
-
-**[docs/capture-pipeline.md](docs/capture-pipeline.md)**
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ---
 
-## Status & roadmap
+## Roadmap
 
-**v0.1.0 — early alpha.** The following are working:
+**v0.1.0 — working now:**
 
-- Full capture pipeline (manual, auto, selector-triggered)
-- Cases, tags, notes, bulk operations
-- Selectors (regex, glob, literal) with live page highlighting
-- SHA-256 integrity and re-verification
-- Full-text search (SQLite FTS5)
-- HTML and PDF export with audit trail
-- Health dashboard with real-time capture feed
+- [x] Full capture pipeline (manual, auto, selector-triggered)
+- [x] Cases, tags, notes, bulk operations
+- [x] Selectors (regex, glob, literal) with live page highlighting
+- [x] SHA-256 integrity and re-verification
+- [x] Full-text search (SQLite FTS5)
+- [x] HTML and PDF export with audit trail
+- [x] Health dashboard with real-time capture feed
 
-**In progress / coming next:**
+**Coming next:**
 
-- UI design refresh
-- AI features (entity extraction, relationship mapping, pattern detection via OpenRouter BYOK) — removed in a recent refactor and being redesigned for the next iteration
-- Hunchly import
-- More export formats
+- [ ] UI design refresh
+- [ ] AI features — entity extraction, relationship mapping, pattern detection via OpenRouter BYOK (removed in a recent refactor; being redesigned for the next iteration)
+- [ ] Hunchly import
+- [ ] Additional export formats
 
 The project is actively developed. Expect breaking changes before 1.0.
+
+See [open issues](https://github.com/thebristolsound/birdbrain/issues) for the full list of proposed features and known bugs.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ---
 
@@ -224,22 +258,69 @@ The project is actively developed. Expect breaking changes before 1.0.
 
 Standard GitHub flow: fork the repo, create a branch, open a PR against `master`.
 
-**Code style** — enforced via ESLint + Prettier:
-- No semicolons
-- Single quotes
-- No trailing commas
-- 100-character print width
-- 2-space indent
-- TypeScript strict mode throughout
+1. Fork the project
+2. Create your feature branch (`git checkout -b feature/my-feature`)
+3. Commit your changes (`git commit -m 'Add my feature'`)
+4. Push to the branch (`git push origin feature/my-feature`)
+5. Open a Pull Request
+
+**Code style** is enforced via ESLint + Prettier:
+
+| Rule | Value |
+|---|---|
+| Semicolons | None |
+| Quotes | Single |
+| Trailing commas | None |
+| Print width | 100 characters |
+| Indent | 2 spaces |
+| TypeScript | Strict mode |
 
 Tests are required for non-trivial changes. Run `pnpm test` for unit tests and `pnpm test:e2e` for end-to-end. Both must pass before a PR will be reviewed.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ---
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Distributed under the MIT License. See [LICENSE](LICENSE) for more information.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ---
 
-*Built by [Matt Donovan](https://github.com/thebristolsound) and contributors.*
+## Contact
+
+Matt Donovan — [@thebristolsound](https://github.com/thebristolsound)
+
+Project link: [https://github.com/thebristolsound/birdbrain](https://github.com/thebristolsound/birdbrain)
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+---
+
+## Acknowledgments
+
+- [freeze-dry](https://github.com/WebMemex/freeze-dry) — the page serialization library that makes offline-complete captures possible
+- [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) — synchronous SQLite bindings that keep the main process simple
+- [Hono](https://hono.dev/) — the lightweight server that receives captures from the extension
+- [electron-vite](https://electron-vite.org/) — fast Vite-based build tooling for Electron
+- [Best-README-Template](https://github.com/othneildrew/Best-README-Template) — README structure
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+---
+
+<!-- MARKDOWN LINKS & IMAGES -->
+[contributors-shield]: https://img.shields.io/github/contributors/thebristolsound/birdbrain.svg?style=for-the-badge
+[contributors-url]: https://github.com/thebristolsound/birdbrain/graphs/contributors
+[forks-shield]: https://img.shields.io/github/forks/thebristolsound/birdbrain.svg?style=for-the-badge
+[forks-url]: https://github.com/thebristolsound/birdbrain/network/members
+[stars-shield]: https://img.shields.io/github/stars/thebristolsound/birdbrain.svg?style=for-the-badge
+[stars-url]: https://github.com/thebristolsound/birdbrain/stargazers
+[issues-shield]: https://img.shields.io/github/issues/thebristolsound/birdbrain.svg?style=for-the-badge
+[issues-url]: https://github.com/thebristolsound/birdbrain/issues
+[license-shield]: https://img.shields.io/github/license/thebristolsound/birdbrain.svg?style=for-the-badge
+[license-url]: https://github.com/thebristolsound/birdbrain/blob/master/LICENSE
+[status-shield]: https://img.shields.io/badge/status-alpha-orange.svg?style=for-the-badge
+[platform-shield]: https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg?style=for-the-badge

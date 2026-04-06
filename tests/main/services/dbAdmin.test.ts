@@ -183,7 +183,7 @@ describe('dbAdmin', () => {
 
   describe('findOrphans', () => {
     it('returns empty report when no orphans exist', () => {
-      const result = findOrphans(':memory:')
+      const result = findOrphans()
       expect(result.dbOrphans).toHaveLength(0)
       expect(result.fileOrphans).toHaveLength(0)
     })

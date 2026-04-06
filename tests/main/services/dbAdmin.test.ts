@@ -1,5 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { initDatabase, closeDatabase, createCase } from '@main/services/database'
+import {
+  initDatabase,
+  closeDatabase,
+  createCase,
+  insertCapture,
+  updateCase,
+  listCases
+} from '@main/services/database'
 import {
   getDbStats,
   getTableRows,
@@ -7,7 +14,12 @@ import {
   ALLOWED_TABLES,
   createRow,
   updateRow,
-  deleteRow
+  deleteRow,
+  vacuumDb,
+  rebuildFts,
+  purgeArchived,
+  findOrphans,
+  exportTableData
 } from '@main/services/dbAdmin'
 
 describe('dbAdmin', () => {
@@ -128,6 +140,71 @@ describe('dbAdmin', () => {
 
     it('throws for FTS tables', () => {
       expect(() => deleteRow('captures_fts', { rowid: '1' })).toThrow('FTS virtual tables')
+    })
+  })
+
+  describe('vacuum', () => {
+    it('runs without error and returns a result', () => {
+      const result = vacuumDb(':memory:')
+      expect(result).toHaveProperty('freedBytes')
+      expect(typeof result.freedBytes).toBe('number')
+    })
+  })
+
+  describe('rebuildFts', () => {
+    it('rebuilds FTS indexes and returns row count', () => {
+      const c = createCase({ name: 'Test' })
+      insertCapture({
+        caseId: c.id,
+        url: 'https://example.com',
+        title: 'Example',
+        hash: 'abc123',
+        timestamp: new Date().toISOString(),
+        textContent: 'hello world'
+      })
+      const result = rebuildFts()
+      expect(result.rowsIndexed).toBeGreaterThanOrEqual(1)
+    })
+  })
+
+  describe('purgeArchived', () => {
+    it('deletes archived cases and returns counts', () => {
+      const active = createCase({ name: 'Active' })
+      const archived = createCase({ name: 'Archived' })
+      updateCase({ id: archived.id, archived: true })
+
+      const result = purgeArchived()
+      expect(result.casesDeleted).toBe(1)
+      const remaining = listCases()
+      expect(remaining).toHaveLength(1)
+      expect(remaining[0].id).toBe(active.id)
+    })
+  })
+
+  describe('findOrphans', () => {
+    it('returns empty report when no orphans exist', () => {
+      const result = findOrphans(':memory:')
+      expect(result.dbOrphans).toHaveLength(0)
+      expect(result.fileOrphans).toHaveLength(0)
+    })
+  })
+
+  describe('exportTableData', () => {
+    it('exports table as CSV string', () => {
+      createRow('tags', { id: 'tag-1', name: 'Urgent', color: '#ff0000' })
+      createRow('tags', { id: 'tag-2', name: 'Review', color: null })
+      const csv = exportTableData('tags', 'csv')
+      expect(csv).toContain('id,name,color')
+      expect(csv).toContain('tag-1')
+      expect(csv).toContain('Urgent')
+    })
+
+    it('exports table as JSON string', () => {
+      createRow('tags', { id: 'tag-1', name: 'Urgent', color: '#ff0000' })
+      const json = exportTableData('tags', 'json')
+      const parsed = JSON.parse(json)
+      expect(parsed).toHaveLength(1)
+      expect(parsed[0].name).toBe('Urgent')
     })
   })
 })

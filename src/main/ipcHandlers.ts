@@ -86,10 +86,46 @@ export function registerIpcHandlers(): void {
     try {
       const capture = db.getCapture(id)
       if (!capture) return ipcResult(false)
-      const deleted = db.deleteCapture(id)
-      if (deleted) {
-        storage.deleteCaptureFiles(capture.caseId, id)
+
+      // For MHTML captures, append a deletion entry to the manifest BEFORE the
+      // DB delete. On DB failure, roll back the manifest entry.
+      if (capture.format === 'mhtml') {
+        const manifestMod =
+          require('@main/services/manifest') as typeof import('@main/services/manifest')
+        const storageMod =
+          require('@main/services/storage') as typeof import('@main/services/storage')
+        const idMod =
+          require('@main/services/installationId') as typeof import('@main/services/installationId')
+        const settingsMod =
+          require('@main/services/settings') as typeof import('@main/services/settings')
+        const pathMod = require('path') as typeof import('path')
+
+        const caseDir = pathMod.join(storageMod.getStorageRoot(), capture.caseId)
+        manifestMod.initManifest(caseDir)
+        const result = manifestMod.appendManifestEntry(caseDir, {
+          type: 'deletion',
+          captureId: id,
+          caseId: capture.caseId,
+          timestamp: new Date().toISOString(),
+          contentHash: capture.hash,
+          operatorId: idMod.getInstallationId(),
+          operatorName: settingsMod.getSettings().operatorName ?? '',
+          toolVersion: process.env.npm_package_version ?? '0.0.0'
+        })
+
+        try {
+          const deleted = db.deleteCapture(id)
+          if (deleted) storage.deleteCaptureFiles(capture.caseId, id)
+          return ipcResult(deleted)
+        } catch (err) {
+          manifestMod.rollbackManifestEntry(caseDir, result.anchorBytes)
+          throw err
+        }
       }
+
+      // Legacy HTML capture - no manifest entry
+      const deleted = db.deleteCapture(id)
+      if (deleted) storage.deleteCaptureFiles(capture.caseId, id)
       return ipcResult(deleted)
     } catch (err) {
       return ipcError(err)

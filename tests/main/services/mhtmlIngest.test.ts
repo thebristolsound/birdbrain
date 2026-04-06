@@ -13,7 +13,7 @@ import {
   getCapture,
   insertCapture
 } from '@main/services/database'
-import { initManifest, verifyManifestChain } from '@main/services/manifest'
+import { initManifest, appendManifestEntry, verifyManifestChain } from '@main/services/manifest'
 
 describe('streamWriteAndHash', () => {
   let tempDir: string
@@ -226,5 +226,63 @@ describe('verifyCapture', () => {
     })
     const r = await verifyCapture(legacy.id)
     expect(r.status).toBe('legacy')
+  })
+})
+
+describe('deletion manifest entry', () => {
+  let tempDir: string
+  let caseId: string
+  let caseDir: string
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-del-'))
+    initStorage(join(tempDir, 'captures'))
+    initDatabase(':memory:')
+    caseId = createCase({ name: 'D' }).id
+    caseDir = join(tempDir, 'captures', caseId)
+    ensureCaseDir(caseId)
+    initManifest(caseDir)
+  })
+
+  afterEach(() => {
+    closeDatabase()
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  it('appends deletion entry after capture entry and chain verifies', async () => {
+    const stream = Readable.from([Buffer.from('x')])
+    const { capture } = await ingestMhtmlCapture({
+      caseId,
+      url: 'https://a',
+      title: 'A',
+      timestamp: '2026-04-05T12:00:00.000Z',
+      stream: stream as unknown as ReadableStream<Uint8Array>,
+      textContent: '',
+      headers: {},
+      browserVersion: '',
+      userAgent: '',
+      httpStatus: 200,
+      extensionVersion: '',
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0'
+    })
+
+    appendManifestEntry(caseDir, {
+      type: 'deletion',
+      captureId: capture.id,
+      caseId,
+      timestamp: '2026-04-05T13:00:00.000Z',
+      contentHash: capture.hash,
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0'
+    })
+
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+    const raw = readFileSync(join(caseDir, 'manifest.jsonl'), 'utf-8')
+    const lines = raw.trim().split('\n')
+    expect(lines).toHaveLength(2)
+    expect(JSON.parse(lines[1]).type).toBe('deletion')
   })
 })

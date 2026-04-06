@@ -4,16 +4,18 @@ import { AIConfig } from './AIConfig'
 import { CapturePreferences } from './CapturePreferences'
 import { StorageConfig } from './StorageConfig'
 import { AppearanceConfig } from './AppearanceConfig'
+import { OperatorConfig } from './OperatorConfig'
 import { About } from './About'
-import { Key, Camera, HardDrive, Palette, Info } from 'lucide-react'
+import { Key, Camera, HardDrive, Palette, Info, UserCircle } from 'lucide-react'
 
-type SettingsTab = 'ai' | 'capture' | 'storage' | 'appearance' | 'about'
+type SettingsTab = 'ai' | 'capture' | 'storage' | 'appearance' | 'operator' | 'about'
 
 const settingsTabs: { id: SettingsTab; label: string; icon: typeof Key }[] = [
   { id: 'ai', label: 'API Keys', icon: Key },
   { id: 'capture', label: 'Capture', icon: Camera },
   { id: 'storage', label: 'Storage', icon: HardDrive },
   { id: 'appearance', label: 'Appearance', icon: Palette },
+  { id: 'operator', label: 'Operator', icon: UserCircle },
   { id: 'about', label: 'About', icon: Info }
 ]
 
@@ -42,6 +44,8 @@ export function SettingsView() {
         return <StorageConfig settings={settings} onUpdate={handleUpdate} />
       case 'appearance':
         return <AppearanceConfig />
+      case 'operator':
+        return <OperatorConfig />
       case 'about':
         return <About />
     }

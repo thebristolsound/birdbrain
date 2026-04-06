@@ -474,6 +474,21 @@ export function registerIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle(IPC_CHANNELS.CAPTURES_GET_MHTML_URL, (_, captureId: string) => {
+    try {
+      const capture = db.getCapture(captureId)
+      if (!capture || !capture.mhtmlPath) return ipcResult<string | null>(null)
+      const { pathToFileURL } = require('url') as typeof import('url')
+      const pathMod = require('path') as typeof import('path')
+      const storageMod =
+        require('@main/services/storage') as typeof import('@main/services/storage')
+      const abs = pathMod.join(storageMod.getStorageRoot(), capture.mhtmlPath)
+      return ipcResult<string | null>(pathToFileURL(abs).toString())
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+
   ipcMain.handle(IPC_CHANNELS.CAPTURES_VERIFY, async (_, captureId: string) => {
     try {
       const mod = await import('@main/services/mhtmlIngest')
@@ -498,6 +513,14 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.SETTINGS_LIST_MODELS, (_, apiKey: string) =>
     openrouter.listModels(apiKey)
   )
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_GET_IDENTITY, () => {
+    const idMod =
+      require('@main/services/installationId') as typeof import('@main/services/installationId')
+    return {
+      installationId: idMod.getInstallationId(),
+      operatorName: settings.getSettings().operatorName ?? ''
+    }
+  })
 
   // Export
   ipcMain.handle(

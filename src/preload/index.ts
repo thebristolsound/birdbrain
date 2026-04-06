@@ -80,6 +80,10 @@ const birdbrain = {
     verify: (captureId: string): Promise<import('@shared/types').HashVerification> =>
       unwrapIpc<import('@shared/types').HashVerification>(
         ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_VERIFY, captureId)
+      ),
+    getMhtmlUrl: (captureId: string): Promise<string | null> =>
+      unwrapIpc<string | null>(
+        ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_GET_MHTML_URL, captureId)
       )
   },
   tags: {
@@ -152,7 +156,9 @@ const birdbrain = {
     testOpenRouter: (apiKey: string): Promise<boolean> =>
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_TEST_OPENROUTER, apiKey),
     listModels: (apiKey: string): Promise<OpenRouterModel[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_LIST_MODELS, apiKey)
+      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_LIST_MODELS, apiKey),
+    getIdentity: (): Promise<{ installationId: string; operatorName: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET_IDENTITY)
   },
 
   export: {

@@ -61,7 +61,9 @@ test.describe('MHTML forensic capture', () => {
     expect(verify.storedHash).toBe(verify.computedHash)
 
     // Check manifest file exists on disk
-    const userData = await electronApp.evaluate(({ app }) => app.getPath('userData'))
+    const userData = await electronApp.evaluate(({ app }) =>
+      process.env.BIRDBRAIN_USER_DATA || app.getPath('userData')
+    )
     const manifestPath = join(userData, 'captures', caseId, 'manifest.jsonl')
     expect(existsSync(manifestPath)).toBe(true)
     const lines = readFileSync(manifestPath, 'utf-8').trim().split('\n')

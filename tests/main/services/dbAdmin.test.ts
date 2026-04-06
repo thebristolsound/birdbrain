@@ -80,6 +80,15 @@ describe('dbAdmin', () => {
     it('throws for an invalid table name', () => {
       expect(() => getTableRows({ table: 'nope', offset: 0, limit: 10 })).toThrow('not allowed')
     })
+
+    it('clamps invalid pagination values', () => {
+      createCase({ name: 'A' })
+      createCase({ name: 'B' })
+      createCase({ name: 'C' })
+      const result = getTableRows({ table: 'cases', offset: -10, limit: -1 })
+      expect(result.rows).toHaveLength(1)
+      expect(result.total).toBe(3)
+    })
   })
 
   describe('ALLOWED_TABLES', () => {
@@ -122,6 +131,12 @@ describe('dbAdmin', () => {
       const result = updateRow('tags', { id: 'nope' }, { name: 'x' })
       expect(result).toBe(false)
     })
+
+    it('returns false when no fields are provided', () => {
+      createRow('tags', { id: 'tag-1', name: 'Old', color: '#000' })
+      const result = updateRow('tags', { id: 'tag-1' }, {})
+      expect(result).toBe(false)
+    })
   })
 
   describe('deleteRow', () => {
@@ -152,7 +167,7 @@ describe('dbAdmin', () => {
   })
 
   describe('rebuildFts', () => {
-    it('rebuilds FTS indexes and returns row count', () => {
+    it('rebuilds FTS indexes and preserves capture text content', () => {
       const c = createCase({ name: 'Test' })
       insertCapture({
         caseId: c.id,
@@ -164,6 +179,8 @@ describe('dbAdmin', () => {
       })
       const result = rebuildFts()
       expect(result.rowsIndexed).toBeGreaterThanOrEqual(1)
+      const rows = getTableRows({ table: 'captures_fts', offset: 0, limit: 10 })
+      expect(rows.rows[0]).toMatchObject({ content: 'hello world' })
     })
   })
 

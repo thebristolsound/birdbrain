@@ -93,6 +93,12 @@ export function getTableRows(params: DbTableRowsParams): DbTableRowsResult {
   assertAllowedTable(params.table)
   const db = getDb()
   const columns = getTableColumns(params.table)
+  const offset = Number.isFinite(params.offset) ? Math.max(0, Math.floor(params.offset)) : 0
+  const limit = Number.isFinite(params.limit)
+    ? Math.min(500, Math.max(1, Math.floor(params.limit)))
+    : 50
+  const pkColumns = columns.filter((c) => c.pk).map((c) => `"${c.name}"`)
+  const orderByClause = pkColumns.length > 0 ? pkColumns.join(', ') : 'rowid'
 
   const countRow = db.prepare(`SELECT COUNT(*) as count FROM "${params.table}"`).get() as {
     count: number
@@ -100,8 +106,8 @@ export function getTableRows(params: DbTableRowsParams): DbTableRowsResult {
   const total = countRow.count
 
   const rows = db
-    .prepare(`SELECT * FROM "${params.table}" LIMIT ? OFFSET ?`)
-    .all(params.limit, params.offset) as Record<string, unknown>[]
+    .prepare(`SELECT * FROM "${params.table}" ORDER BY ${orderByClause} LIMIT ? OFFSET ?`)
+    .all(limit, offset) as Record<string, unknown>[]
 
   return { rows, total, columns }
 }
@@ -136,9 +142,11 @@ export function updateRow(
   assertAllowedTable(table)
   if (FTS_TABLES.has(table)) throw new Error('Cannot update FTS virtual tables directly')
   assertValidColumns(table, data)
+  const dataKeys = Object.keys(data)
+  if (dataKeys.length === 0) return false
 
   const db = getDb()
-  const setClauses = Object.keys(data)
+  const setClauses = dataKeys
     .map((k) => `"${k}" = ?`)
     .join(', ')
   const whereClauses = Object.keys(pk)
@@ -194,33 +202,11 @@ export function vacuumDb(dbPath: string): { freedBytes: number } {
 
 export function rebuildFts(): { rowsIndexed: number } {
   const db = getDb()
-  let rowsIndexed = 0
-
-  // Rebuild captures_fts
-  db.exec('DELETE FROM captures_fts')
-  const captures = db
-    .prepare('SELECT rowid, title, url FROM captures')
-    .all() as Array<{ rowid: number; title: string; url: string }>
-  const insertCaptureFts = db.prepare(
-    'INSERT INTO captures_fts (rowid, title, url, content) VALUES (?, ?, ?, ?)'
-  )
-  for (const row of captures) {
-    insertCaptureFts.run(row.rowid, row.title ?? '', row.url, '')
-    rowsIndexed++
-  }
-
-  // Rebuild notes_fts
-  db.exec('DELETE FROM notes_fts')
-  const notes = db
-    .prepare('SELECT rowid, title, body FROM notes')
-    .all() as Array<{ rowid: number; title: string; body: string }>
-  const insertNoteFts = db.prepare(
-    'INSERT INTO notes_fts (rowid, title, body) VALUES (?, ?, ?)'
-  )
-  for (const row of notes) {
-    insertNoteFts.run(row.rowid, row.title ?? '', row.body ?? '')
-    rowsIndexed++
-  }
+  db.exec("INSERT INTO captures_fts(captures_fts) VALUES ('rebuild')")
+  db.exec("INSERT INTO notes_fts(notes_fts) VALUES ('rebuild')")
+  const captureCount = db.prepare('SELECT COUNT(*) as count FROM captures').get() as { count: number }
+  const noteCount = db.prepare('SELECT COUNT(*) as count FROM notes').get() as { count: number }
+  const rowsIndexed = captureCount.count + noteCount.count
 
   return { rowsIndexed }
 }
@@ -323,8 +309,12 @@ export function cleanOrphans(report: OrphanReport): {
   const db = getDb()
   let dbRecordsRemoved = 0
   let filesRemoved = 0
+  const allowedOrphanTables = new Set(['captures'])
 
   for (const orphan of report.dbOrphans) {
+    if (!allowedOrphanTables.has(orphan.table)) {
+      continue
+    }
     const result = db
       .prepare(`DELETE FROM "${orphan.table}" WHERE id = ?`)
       .run(orphan.id)

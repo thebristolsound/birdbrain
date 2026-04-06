@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { v4 as uuid } from 'uuid'
 import { X } from 'lucide-react'
 
@@ -28,6 +28,8 @@ export function RowEditModal({
   onClose
 }: RowEditModalProps) {
   const [formData, setFormData] = useState<Record<string, string>>({})
+  const closeBtnRef = useRef<HTMLButtonElement>(null)
+  const titleId = 'row-edit-modal-title'
 
   useEffect(() => {
     if (!open) return
@@ -43,6 +45,16 @@ export function RowEditModal({
     }
     setFormData(data)
   }, [open, mode, columns, initialData])
+
+  useEffect(() => {
+    if (!open) return
+    closeBtnRef.current?.focus()
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [open, onClose])
 
   if (!open) return null
 
@@ -68,13 +80,24 @@ export function RowEditModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-lg max-h-[80vh] overflow-y-auto rounded-2xl border border-border bg-canvas p-6 shadow-xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="w-full max-w-lg max-h-[80vh] overflow-y-auto rounded-2xl border border-border bg-canvas p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-text-primary">
+          <h3 id={titleId} className="text-lg font-semibold text-text-primary">
             {mode === 'create' ? 'Create Row' : 'Edit Row'} &mdash; {table}
           </h3>
-          <button onClick={onClose} className="text-text-muted hover:text-text-primary">
+          <button
+            ref={closeBtnRef}
+            onClick={onClose}
+            aria-label="Close row editor"
+            className="text-text-muted hover:text-text-primary"
+          >
             <X size={18} />
           </button>
         </div>

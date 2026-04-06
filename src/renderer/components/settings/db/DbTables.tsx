@@ -40,6 +40,8 @@ export function DbTables() {
   }>({ open: false, pk: {} })
 
   const isFts = FTS_TABLES.has(selectedTable)
+  const editableColumns = data?.columns.filter((c) => !c.pk) ?? []
+  const canEditRows = !isFts && editableColumns.length > 0
 
   async function fetchRows() {
     setLoading(true)
@@ -82,13 +84,18 @@ export function DbTables() {
         await window.birdbrain.db.createRow({ table: selectedTable, data: rowData })
       } else {
         const pk = getPk(editModal.row!)
+        const pkCols = data?.columns.filter((c) => c.pk).map((c) => c.name) ?? []
         // Only send changed fields (exclude PK columns)
         const changedData: Record<string, unknown> = {}
         for (const [key, value] of Object.entries(rowData)) {
-          const pkCols = data?.columns.filter((c) => c.pk).map((c) => c.name) ?? []
           if (!pkCols.includes(key)) {
             changedData[key] = value
           }
+        }
+        if (Object.keys(changedData).length === 0) {
+          setEditModal({ open: false, mode: 'create' })
+          fetchRows()
+          return
         }
         await window.birdbrain.db.updateRow({ table: selectedTable, pk, data: changedData })
       }
@@ -187,7 +194,7 @@ export function DbTables() {
                         )}
                       </td>
                     ))}
-                    {!isFts && (
+                    {canEditRows && (
                       <td className="whitespace-nowrap px-3 py-1.5">
                         <div className="flex gap-1">
                           <button
@@ -212,7 +219,7 @@ export function DbTables() {
                 {data.rows.length === 0 && (
                   <tr>
                     <td
-                      colSpan={data.columns.length + (isFts ? 0 : 1)}
+                      colSpan={data.columns.length + (canEditRows ? 1 : 0)}
                       className="px-3 py-6 text-center text-text-faint"
                     >
                       No rows
@@ -247,7 +254,7 @@ export function DbTables() {
         </>
       )}
 
-      {data && (
+      {data && canEditRows && (
         <RowEditModal
           open={editModal.open}
           mode={editModal.mode}

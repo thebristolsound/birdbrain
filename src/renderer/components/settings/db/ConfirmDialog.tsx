@@ -18,17 +18,35 @@ export function ConfirmDialog({
   onCancel
 }: ConfirmDialogProps) {
   const cancelRef = useRef<HTMLButtonElement>(null)
+  const titleId = 'confirm-dialog-title'
 
   useEffect(() => {
     if (open) cancelRef.current?.focus()
   }, [open])
 
+  useEffect(() => {
+    if (!open) return
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onCancel()
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [open, onCancel])
+
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-md rounded-2xl border border-border bg-canvas p-6 shadow-xl">
-        <h3 className="mb-2 text-lg font-semibold text-text-primary">{title}</h3>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onCancel}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="w-full max-w-md rounded-2xl border border-border bg-canvas p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 id={titleId} className="mb-2 text-lg font-semibold text-text-primary">
+          {title}
+        </h3>
         <p className="mb-6 text-sm text-text-muted whitespace-pre-line">{message}</p>
         <div className="flex justify-end gap-3">
           <button

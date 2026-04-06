@@ -103,6 +103,7 @@ export interface IngestParams {
   operatorId: string
   operatorName: string
   toolVersion: string
+  screenshot?: Buffer
 }
 
 export interface IngestResult {
@@ -132,6 +133,13 @@ export async function ingestMhtmlCapture(params: IngestParams): Promise<IngestRe
     )
   }
 
+  // Write screenshot to disk
+  let screenshotPath: string | undefined
+  if (params.screenshot) {
+    screenshotPath = join(params.caseId, `${captureId}.png`)
+    writeFileSync(join(getStorageRoot(), screenshotPath), params.screenshot)
+  }
+
   const caseDir = join(getStorageRoot(), params.caseId)
   initManifest(caseDir)
   const manifestResult = appendManifestEntry(caseDir, {
@@ -159,6 +167,7 @@ export async function ingestMhtmlCapture(params: IngestParams): Promise<IngestRe
       textContent: params.textContent,
       format: 'mhtml',
       mhtmlPath,
+      screenshotPath,
       sizeBytes,
       manifestIndex: manifestResult.index,
       prevHash: manifestResult.prevHash,
@@ -177,6 +186,9 @@ export async function ingestMhtmlCapture(params: IngestParams): Promise<IngestRe
     await unlink(join(getStorageRoot(), mhtmlPath)).catch(() => {})
     if (params.textContent) {
       await unlink(join(getStorageRoot(), params.caseId, `${captureId}.txt`)).catch(() => {})
+    }
+    if (params.screenshot) {
+      await unlink(join(getStorageRoot(), params.caseId, `${captureId}.png`)).catch(() => {})
     }
     throw err
   }

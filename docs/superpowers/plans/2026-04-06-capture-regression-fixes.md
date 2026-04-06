@@ -452,7 +452,7 @@ async function captureTab(tabId: number, url: string): Promise<void> {
       captureMhtml(tabId),
       chrome.tabs.get(tabId),
       getPlainTextFromTab(tabId),
-      captureScreenshot(tabId)
+      captureScreenshot()
     ])
 
     await sendMhtmlCapture({

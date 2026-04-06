@@ -246,12 +246,6 @@ function createApp(): Hono {
         return c.json({ error: 'Missing required field: url' }, 400)
       }
 
-      const screenshotField = body['screenshot']
-      let screenshotBuffer: Buffer | undefined
-      if (screenshotField instanceof File || screenshotField instanceof Blob) {
-        screenshotBuffer = Buffer.from(await screenshotField.arrayBuffer())
-      }
-
       const captureSettings = getSettings()
       const blocked = isUrlBlacklisted(url, captureSettings.ignoredUrlPatterns)
       if (blocked) {
@@ -295,6 +289,15 @@ function createApp(): Hono {
       }
 
       emitCaptureEvent({ type: 'received', source, url, timestamp: new Date().toISOString() })
+
+      const MAX_SCREENSHOT_SIZE = 10 * 1024 * 1024 // 10 MB
+      const screenshotField = body['screenshot']
+      let screenshotBuffer: Buffer | undefined
+      if (screenshotField instanceof File || screenshotField instanceof Blob) {
+        if (screenshotField.size <= MAX_SCREENSHOT_SIZE) {
+          screenshotBuffer = Buffer.from(await screenshotField.arrayBuffer())
+        }
+      }
 
       const operatorId = getInstallationId()
       const operatorName = captureSettings.operatorName ?? ''

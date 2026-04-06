@@ -38,9 +38,13 @@ async function getPlainTextFromTab(tabId: number): Promise<string> {
   }
 }
 
-async function captureScreenshot(): Promise<Blob | undefined> {
+async function captureScreenshot(tabId: number): Promise<Blob | undefined> {
   try {
-    const dataUrl = await chrome.tabs.captureVisibleTab({ format: 'png' })
+    const tab = await chrome.tabs.get(tabId)
+    if (!tab.active || tab.windowId === chrome.windows.WINDOW_ID_NONE) {
+      return undefined
+    }
+    const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' })
     const res = await fetch(dataUrl)
     return await res.blob()
   } catch {
@@ -346,7 +350,7 @@ async function captureTab(tabId: number, url: string): Promise<void> {
       captureMhtml(tabId),
       chrome.tabs.get(tabId),
       getPlainTextFromTab(tabId),
-      captureScreenshot()
+      captureScreenshot(tabId)
     ])
 
     await sendMhtmlCapture({
@@ -382,7 +386,7 @@ async function manualCaptureTab(tabId: number, url: string, caseId: string): Pro
       captureMhtml(tabId),
       chrome.tabs.get(tabId),
       getPlainTextFromTab(tabId),
-      captureScreenshot()
+      captureScreenshot(tabId)
     ])
 
     await sendMhtmlCapture({
@@ -435,7 +439,7 @@ async function handleSelectorCapture(tabId: number, url: string, caseId: string)
       captureMhtml(tabId),
       chrome.tabs.get(tabId),
       getPlainTextFromTab(tabId),
-      captureScreenshot()
+      captureScreenshot(tabId)
     ])
     await sendMhtmlCapture({
       source: 'selector',

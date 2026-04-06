@@ -1,4 +1,4 @@
-import { ipcMain, dialog, shell } from 'electron'
+import { app, ipcMain, dialog, shell } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
 import type {
   CreateCaseParams,
@@ -12,6 +12,7 @@ import type {
   UpdateNoteParams,
   BulkCreateSelectorsParams
 } from '@shared/ipc'
+import { existsSync } from 'fs'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
 import * as db from '@main/services/database'
@@ -104,13 +105,20 @@ export function registerIpcHandlers(): void {
           contentHash: capture.hash,
           operatorId: getInstallationId(),
           operatorName: settings.getSettings().operatorName ?? '',
-          toolVersion: process.env.npm_package_version ?? '0.0.0'
+          toolVersion:
+            typeof app?.getVersion === 'function'
+              ? app.getVersion()
+              : (process.env.npm_package_version ?? '0.0.0')
         })
 
         try {
           const deleted = db.deleteCapture(id)
-          if (deleted) storage.deleteCaptureFiles(capture.caseId, id)
-          return ipcResult(deleted)
+          if (!deleted) {
+            rollbackManifestEntry(caseDir, result.anchorBytes)
+            return ipcResult(false)
+          }
+          storage.deleteCaptureFiles(capture.caseId, id)
+          return ipcResult(true)
         } catch (err) {
           rollbackManifestEntry(caseDir, result.anchorBytes)
           throw err
@@ -473,6 +481,7 @@ export function registerIpcHandlers(): void {
       const capture = db.getCapture(captureId)
       if (!capture || !capture.mhtmlPath) return ipcResult<string | null>(null)
       const abs = join(storage.getStorageRoot(), capture.mhtmlPath)
+      if (!existsSync(abs)) return ipcResult<string | null>(null)
       return ipcResult<string | null>(pathToFileURL(abs).toString())
     } catch (err) {
       return ipcError(err)

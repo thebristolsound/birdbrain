@@ -1,4 +1,4 @@
-import { createWriteStream, createReadStream } from 'fs'
+import { createWriteStream, createReadStream, type WriteStream } from 'fs'
 import { unlink } from 'fs/promises'
 import { join } from 'path'
 import { createHash, randomUUID } from 'crypto'
@@ -10,6 +10,15 @@ export interface StreamWriteResult {
   mhtmlPath: string // relative path (caseId/captureId.mhtml)
   hash: string
   sizeBytes: number
+}
+
+async function closeAndUnlink(ws: WriteStream, path: string): Promise<void> {
+  if (!ws.destroyed) {
+    const closed = new Promise<void>((resolve) => ws.on('close', resolve))
+    ws.destroy()
+    await closed
+  }
+  await unlink(path).catch(() => {})
 }
 
 // Streams an MHTML upload to disk in a single pass while computing SHA-256.
@@ -48,8 +57,7 @@ export async function streamWriteAndHash(
     for await (const chunk of iterable) {
       size += chunk.byteLength
       if (size > MAX_MHTML_SIZE) {
-        writeStream.destroy()
-        await unlink(absPath).catch(() => {})
+        await closeAndUnlink(writeStream, absPath)
         throw new Error(`MHTML size ${size} exceeds cap of ${MAX_MHTML_SIZE} bytes`)
       }
       hasher.update(chunk)
@@ -60,8 +68,7 @@ export async function streamWriteAndHash(
     writeStream.end()
     await finished(writeStream)
   } catch (err) {
-    writeStream.destroy()
-    await unlink(absPath).catch(() => {})
+    await closeAndUnlink(writeStream, absPath)
     throw err
   }
 

@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { serve } from '@hono/node-server'
 import { cors } from 'hono/cors'
 import type { Server } from 'http'
+import { app } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
 import * as db from '@main/services/database'
@@ -14,6 +15,12 @@ import type { CaptureEvent, CaptureSource } from '@shared/types'
 import { CAPTURE_SERVER_PORT } from '@shared/constants'
 import { safeRegexTest } from '@main/services/safeRegex'
 export { CAPTURE_SERVER_PORT }
+
+function getToolVersion(): string {
+  if (typeof app?.getVersion === 'function') return app.getVersion()
+  return process.env.npm_package_version ?? '0.0.0'
+}
+
 const VALID_CAPTURE_SOURCES: CaptureSource[] = ['auto', 'manual', 'selector']
 
 // Manual capture dedup: "caseId:url" -> timestamp of last accepted capture
@@ -285,7 +292,7 @@ function createApp(): Hono {
 
       const operatorId = getInstallationId()
       const operatorName = captureSettings.operatorName ?? ''
-      const toolVersion = process.env.npm_package_version ?? '0.0.0'
+      const toolVersion = getToolVersion()
 
       const { capture, contentHash } = await ingestMhtmlCapture({
         caseId,
@@ -488,7 +495,7 @@ function createApp(): Hono {
         extensionVersion: '',
         operatorId: getInstallationId(),
         operatorName: getSettings().operatorName ?? '',
-        toolVersion: process.env.npm_package_version ?? '0.0.0'
+        toolVersion: getToolVersion()
       })
       testCaptureId = capture.id
 

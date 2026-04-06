@@ -22,6 +22,18 @@ export function MhtmlViewer({ captureId }: Props) {
       .catch((e) => setError(String(e)))
   }, [captureId])
 
+  useEffect(() => {
+    const wv = ref.current as Electron.WebviewTag | null
+    if (!wv) return
+    const blockNav = (e: Event) => e.preventDefault()
+    wv.addEventListener('will-navigate', blockNav)
+    wv.addEventListener('new-window', blockNav)
+    return () => {
+      wv.removeEventListener('will-navigate', blockNav)
+      wv.removeEventListener('new-window', blockNav)
+    }
+  }, [fileUrl])
+
   if (error) {
     return <div className="p-4 text-sm text-red-400">{error}</div>
   }
@@ -35,7 +47,7 @@ export function MhtmlViewer({ captureId }: Props) {
       src={fileUrl}
       nodeintegration="false"
       allowpopups="false"
-      webpreferences="javascript=no,contextIsolation=yes"
+      webpreferences="javascript=no,contextIsolation=yes,sandbox=yes"
       style={{ width: '100%', height: '100%', minHeight: '500px', background: 'white' }}
     />
   )

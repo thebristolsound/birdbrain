@@ -6,9 +6,10 @@ import { StorageConfig } from './StorageConfig'
 import { AppearanceConfig } from './AppearanceConfig'
 import { OperatorConfig } from './OperatorConfig'
 import { About } from './About'
-import { Key, Camera, HardDrive, Palette, Info, UserCircle } from 'lucide-react'
+import { Key, Camera, HardDrive, Palette, Info, UserCircle, Database } from 'lucide-react'
+import { DatabaseAdmin } from './DatabaseAdmin'
 
-type SettingsTab = 'ai' | 'capture' | 'storage' | 'appearance' | 'operator' | 'about'
+type SettingsTab = 'ai' | 'capture' | 'storage' | 'appearance' | 'operator' | 'database' | 'about'
 
 const settingsTabs: { id: SettingsTab; label: string; icon: typeof Key }[] = [
   { id: 'ai', label: 'API Keys', icon: Key },
@@ -16,6 +17,7 @@ const settingsTabs: { id: SettingsTab; label: string; icon: typeof Key }[] = [
   { id: 'storage', label: 'Storage', icon: HardDrive },
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'operator', label: 'Operator', icon: UserCircle },
+  { id: 'database', label: 'Database', icon: Database },
   { id: 'about', label: 'About', icon: Info }
 ]
 
@@ -46,6 +48,8 @@ export function SettingsView() {
         return <AppearanceConfig />
       case 'operator':
         return <OperatorConfig />
+      case 'database':
+        return <DatabaseAdmin />
       case 'about':
         return <About />
     }

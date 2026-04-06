@@ -11,7 +11,15 @@ import type {
   UpdateSelectorParams,
   CreateNoteParams,
   UpdateNoteParams,
-  BulkCreateSelectorsParams
+  BulkCreateSelectorsParams,
+  DbTableRowsParams,
+  DbCreateRowParams,
+  DbUpdateRowParams,
+  DbRowIdentifier,
+  DbExportTableParams,
+  DbStats,
+  DbTableRowsResult,
+  OrphanReport
 } from '@shared/ipc'
 import type {
   Case,
@@ -164,6 +172,43 @@ const birdbrain = {
   export: {
     generateReport: (caseId: string, options: ExportOptions): Promise<void> =>
       unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, options))
+  },
+
+  db: {
+    stats: (): Promise<DbStats> =>
+      unwrapIpc<DbStats>(ipcRenderer.invoke(IPC_CHANNELS.DB_STATS)),
+    tableRows: (params: DbTableRowsParams): Promise<DbTableRowsResult> =>
+      unwrapIpc<DbTableRowsResult>(ipcRenderer.invoke(IPC_CHANNELS.DB_TABLE_ROWS, params)),
+    createRow: (params: DbCreateRowParams): Promise<Record<string, unknown>> =>
+      unwrapIpc<Record<string, unknown>>(ipcRenderer.invoke(IPC_CHANNELS.DB_CREATE_ROW, params)),
+    updateRow: (params: DbUpdateRowParams): Promise<boolean> =>
+      unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.DB_UPDATE_ROW, params)),
+    deleteRow: (params: DbRowIdentifier): Promise<boolean> =>
+      unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.DB_DELETE_ROW, params)),
+    vacuum: (): Promise<{ freedBytes: number }> =>
+      unwrapIpc<{ freedBytes: number }>(ipcRenderer.invoke(IPC_CHANNELS.DB_VACUUM)),
+    rebuildFts: (): Promise<{ rowsIndexed: number }> =>
+      unwrapIpc<{ rowsIndexed: number }>(ipcRenderer.invoke(IPC_CHANNELS.DB_REBUILD_FTS)),
+    purgeArchived: (): Promise<{ casesDeleted: number; capturesDeleted: number }> =>
+      unwrapIpc<{ casesDeleted: number; capturesDeleted: number }>(
+        ipcRenderer.invoke(IPC_CHANNELS.DB_PURGE_ARCHIVED)
+      ),
+    findOrphans: (): Promise<OrphanReport> =>
+      unwrapIpc<OrphanReport>(ipcRenderer.invoke(IPC_CHANNELS.DB_FIND_ORPHANS)),
+    cleanOrphans: (
+      report: OrphanReport
+    ): Promise<{ dbRecordsRemoved: number; filesRemoved: number }> =>
+      unwrapIpc<{ dbRecordsRemoved: number; filesRemoved: number }>(
+        ipcRenderer.invoke(IPC_CHANNELS.DB_CLEAN_ORPHANS, report)
+      ),
+    backup: (): Promise<{ path: string } | null> =>
+      unwrapIpc<{ path: string } | null>(ipcRenderer.invoke(IPC_CHANNELS.DB_BACKUP)),
+    restore: (): Promise<{ restored: boolean }> =>
+      unwrapIpc<{ restored: boolean }>(ipcRenderer.invoke(IPC_CHANNELS.DB_RESTORE)),
+    exportTable: (params: DbExportTableParams): Promise<{ path: string } | null> =>
+      unwrapIpc<{ path: string } | null>(
+        ipcRenderer.invoke(IPC_CHANNELS.DB_EXPORT_TABLE, params)
+      )
   },
 
   // Event listeners (main -> renderer)

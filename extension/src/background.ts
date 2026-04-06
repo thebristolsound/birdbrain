@@ -38,6 +38,16 @@ async function getPlainTextFromTab(tabId: number): Promise<string> {
   }
 }
 
+async function captureScreenshot(tabId: number): Promise<Blob | undefined> {
+  try {
+    const dataUrl = await chrome.tabs.captureVisibleTab({ format: 'png' })
+    const res = await fetch(dataUrl)
+    return await res.blob()
+  } catch {
+    return undefined
+  }
+}
+
 // URL patterns to ignore
 const DEFAULT_IGNORE = [
   /^chrome:\/\//,
@@ -332,10 +342,11 @@ function shouldSelectorCapture(caseId: string, url: string): boolean {
 
 async function captureTab(tabId: number, url: string): Promise<void> {
   try {
-    const [mhtmlBlob, tab, textContent] = await Promise.all([
+    const [mhtmlBlob, tab, textContent, screenshot] = await Promise.all([
       captureMhtml(tabId),
       chrome.tabs.get(tabId),
-      getPlainTextFromTab(tabId)
+      getPlainTextFromTab(tabId),
+      captureScreenshot(tabId)
     ])
 
     await sendMhtmlCapture({
@@ -344,6 +355,7 @@ async function captureTab(tabId: number, url: string): Promise<void> {
       title: tab.title || url,
       timestamp: new Date().toISOString(),
       textContent,
+      screenshot,
       mhtml: mhtmlBlob,
       browserVersion: getBrowserVersion(),
       userAgent: getUserAgentString(),
@@ -366,10 +378,11 @@ async function manualCaptureTab(tabId: number, url: string, caseId: string): Pro
   try {
     chrome.tabs.sendMessage(tabId, { type: 'SHOW_CAPTURE_TOAST' }).catch(() => {})
 
-    const [mhtmlBlob, tab, textContent] = await Promise.all([
+    const [mhtmlBlob, tab, textContent, screenshot] = await Promise.all([
       captureMhtml(tabId),
       chrome.tabs.get(tabId),
-      getPlainTextFromTab(tabId)
+      getPlainTextFromTab(tabId),
+      captureScreenshot(tabId)
     ])
 
     await sendMhtmlCapture({
@@ -379,6 +392,7 @@ async function manualCaptureTab(tabId: number, url: string, caseId: string): Pro
       title: tab.title || url,
       timestamp: new Date().toISOString(),
       textContent,
+      screenshot,
       mhtml: mhtmlBlob,
       browserVersion: getBrowserVersion(),
       userAgent: getUserAgentString(),
@@ -412,10 +426,11 @@ async function manualCaptureTab(tabId: number, url: string, caseId: string): Pro
 async function handleSelectorCapture(tabId: number, url: string, caseId: string): Promise<void> {
   if (!shouldSelectorCapture(caseId, url)) return
   try {
-    const [mhtmlBlob, tab, textContent] = await Promise.all([
+    const [mhtmlBlob, tab, textContent, screenshot] = await Promise.all([
       captureMhtml(tabId),
       chrome.tabs.get(tabId),
-      getPlainTextFromTab(tabId)
+      getPlainTextFromTab(tabId),
+      captureScreenshot(tabId)
     ])
     await sendMhtmlCapture({
       source: 'selector',
@@ -424,6 +439,7 @@ async function handleSelectorCapture(tabId: number, url: string, caseId: string)
       title: tab.title || url,
       timestamp: new Date().toISOString(),
       textContent,
+      screenshot,
       mhtml: mhtmlBlob,
       browserVersion: getBrowserVersion(),
       userAgent: getUserAgentString(),

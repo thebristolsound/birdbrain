@@ -246,6 +246,12 @@ function createApp(): Hono {
         return c.json({ error: 'Missing required field: url' }, 400)
       }
 
+      const screenshotField = body['screenshot']
+      let screenshotBuffer: Buffer | undefined
+      if (screenshotField instanceof File || screenshotField instanceof Blob) {
+        screenshotBuffer = Buffer.from(await screenshotField.arrayBuffer())
+      }
+
       const captureSettings = getSettings()
       const blocked = isUrlBlacklisted(url, captureSettings.ignoredUrlPatterns)
       if (blocked) {
@@ -308,7 +314,8 @@ function createApp(): Hono {
         extensionVersion,
         operatorId,
         operatorName,
-        toolVersion
+        toolVersion,
+        screenshot: screenshotBuffer
       })
 
       if (source === 'auto') state.captureCount++

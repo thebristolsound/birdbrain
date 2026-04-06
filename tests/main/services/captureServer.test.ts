@@ -667,6 +667,29 @@ describe('captureServer', () => {
     expect(rows[0].format).toBe('mhtml')
   })
 
+  it('stores screenshot alongside MHTML capture', async () => {
+    const c = createCase({ name: 'Screenshot Test' })
+    const screenshotData = Buffer.from('fake-png-screenshot-data')
+
+    const form = new FormData()
+    form.append('source', 'manual')
+    form.append('caseId', c.id)
+    form.append('url', 'https://example.com/with-screenshot')
+    form.append('title', 'Screenshot Page')
+    form.append('timestamp', new Date().toISOString())
+    form.append('textContent', 'page text')
+    form.append('mhtml', new Blob(['<html>ss</html>'], { type: 'multipart/related' }), 'capture.mhtml')
+    form.append('screenshot', new Blob([screenshotData], { type: 'image/png' }), 'screenshot.png')
+
+    const res = await fetch(`${baseUrl}/api/captures`, { method: 'POST', body: form })
+    expect(res.status).toBe(200)
+    const data = await res.json()
+
+    const captures = listCaptures(c.id)
+    expect(captures).toHaveLength(1)
+    expect(captures[0].screenshotPath).toContain('.png')
+  })
+
   // --- POST /api/selectors (create selector from extension) ---
 
   async function activateSessionForCase(caseId: string) {

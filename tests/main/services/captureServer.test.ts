@@ -683,7 +683,7 @@ describe('captureServer', () => {
 
     const res = await fetch(`${baseUrl}/api/captures`, { method: 'POST', body: form })
     expect(res.status).toBe(200)
-    const data = await res.json()
+    await res.json()
 
     const captures = listCaptures(c.id)
     expect(captures).toHaveLength(1)

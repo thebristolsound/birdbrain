@@ -123,6 +123,55 @@ describe('ingestMhtmlCapture', () => {
     expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
   })
 
+  it('writes textContent to .txt file alongside MHTML', async () => {
+    const content = Buffer.from('mhtml payload')
+    const stream = Readable.from([content])
+    const result = await ingestMhtmlCapture({
+      caseId,
+      url: 'https://example.com/text',
+      title: 'Text Test',
+      timestamp: '2026-04-06T12:00:00.000Z',
+      stream: stream as unknown as ReadableStream<Uint8Array>,
+      textContent: 'Hello world extracted text',
+      headers: {},
+      browserVersion: '',
+      userAgent: '',
+      httpStatus: 200,
+      extensionVersion: '',
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0'
+    })
+
+    const txtPath = join(tempDir, 'captures', caseId, `${result.capture.id}.txt`)
+    expect(existsSync(txtPath)).toBe(true)
+    expect(readFileSync(txtPath, 'utf-8')).toBe('Hello world extracted text')
+  })
+
+  it('does not write .txt file when textContent is empty', async () => {
+    const content = Buffer.from('mhtml payload')
+    const stream = Readable.from([content])
+    const result = await ingestMhtmlCapture({
+      caseId,
+      url: 'https://example.com/empty',
+      title: 'Empty Text',
+      timestamp: '2026-04-06T12:00:00.000Z',
+      stream: stream as unknown as ReadableStream<Uint8Array>,
+      textContent: '',
+      headers: {},
+      browserVersion: '',
+      userAgent: '',
+      httpStatus: 200,
+      extensionVersion: '',
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0'
+    })
+
+    const txtPath = join(tempDir, 'captures', caseId, `${result.capture.id}.txt`)
+    expect(existsSync(txtPath)).toBe(false)
+  })
+
   it('rolls back manifest when DB insert fails', async () => {
     const stream = Readable.from([Buffer.from('x')])
     await expect(

@@ -1,4 +1,4 @@
-import { createWriteStream, createReadStream, type WriteStream } from 'fs'
+import { createWriteStream, createReadStream, writeFileSync, type WriteStream } from 'fs'
 import { unlink } from 'fs/promises'
 import { join } from 'path'
 import { createHash, randomUUID } from 'crypto'
@@ -123,6 +123,15 @@ export async function ingestMhtmlCapture(params: IngestParams): Promise<IngestRe
     params.stream
   )
 
+  // Write plain text content to disk for the viewer's Text tab
+  if (params.textContent) {
+    writeFileSync(
+      join(getStorageRoot(), params.caseId, `${captureId}.txt`),
+      params.textContent,
+      'utf-8'
+    )
+  }
+
   const caseDir = join(getStorageRoot(), params.caseId)
   initManifest(caseDir)
   const manifestResult = appendManifestEntry(caseDir, {
@@ -166,6 +175,9 @@ export async function ingestMhtmlCapture(params: IngestParams): Promise<IngestRe
   } catch (err) {
     rollbackManifestEntry(caseDir, manifestResult.anchorBytes)
     await unlink(join(getStorageRoot(), mhtmlPath)).catch(() => {})
+    if (params.textContent) {
+      await unlink(join(getStorageRoot(), params.caseId, `${captureId}.txt`)).catch(() => {})
+    }
     throw err
   }
 }

@@ -81,7 +81,22 @@ export const IPC_CHANNELS = {
   // Capture pipeline observability
   CAPTURE_ACTIVITY: 'event:captureActivity',
   CAPTURES_TEST_PIPELINE: 'captures:testPipeline',
-  CAPTURES_TEST_HTTP: 'captures:testHttp'
+  CAPTURES_TEST_HTTP: 'captures:testHttp',
+
+  // Database Admin
+  DB_STATS: 'db:stats',
+  DB_TABLE_ROWS: 'db:tableRows',
+  DB_CREATE_ROW: 'db:createRow',
+  DB_UPDATE_ROW: 'db:updateRow',
+  DB_DELETE_ROW: 'db:deleteRow',
+  DB_VACUUM: 'db:vacuum',
+  DB_REBUILD_FTS: 'db:rebuildFts',
+  DB_PURGE_ARCHIVED: 'db:purgeArchived',
+  DB_FIND_ORPHANS: 'db:findOrphans',
+  DB_CLEAN_ORPHANS: 'db:cleanOrphans',
+  DB_BACKUP: 'db:backup',
+  DB_RESTORE: 'db:restore',
+  DB_EXPORT_TABLE: 'db:exportTable'
 } as const
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS]
@@ -149,6 +164,58 @@ export interface UpdateNoteParams {
 export interface BulkCreateSelectorsParams {
   caseId: string
   selectors: Array<{ pattern: string; isRegex: boolean; label?: string }>
+}
+
+// --- Database Admin ---
+
+export interface DbStats {
+  schemaVersion: number
+  dbFileSize: number
+  walFileSize: number
+  tables: Array<{ name: string; rowCount: number }>
+}
+
+export interface DbTableRowsParams {
+  table: string
+  offset: number
+  limit: number
+}
+
+export interface DbTableRowsResult {
+  rows: Record<string, unknown>[]
+  total: number
+  columns: Array<{ name: string; type: string; pk: boolean }>
+}
+
+export interface DbRowIdentifier {
+  table: string
+  pk: Record<string, string>
+}
+
+export interface DbCreateRowParams {
+  table: string
+  data: Record<string, unknown>
+}
+
+export interface DbUpdateRowParams {
+  table: string
+  pk: Record<string, string>
+  data: Record<string, unknown>
+}
+
+export interface DbExportTableParams {
+  table: string
+  format: 'csv' | 'json'
+}
+
+export interface OrphanReport {
+  dbOrphans: Array<{
+    table: string
+    id: string
+    caseId: string
+    missingPaths: string[]
+  }>
+  fileOrphans: string[]
 }
 
 export interface SaveCaptureParams {

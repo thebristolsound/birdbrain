@@ -21,7 +21,15 @@ import type {
   UpdateSelectorParams,
   CreateNoteParams,
   UpdateNoteParams,
-  BulkCreateSelectorsParams
+  BulkCreateSelectorsParams,
+  DbStats,
+  DbTableRowsParams,
+  DbTableRowsResult,
+  DbCreateRowParams,
+  DbUpdateRowParams,
+  DbRowIdentifier,
+  DbExportTableParams,
+  OrphanReport
 } from '@shared/ipc'
 
 interface BirdbrainAPI {
@@ -91,6 +99,23 @@ interface BirdbrainAPI {
   }
   export: {
     generateReport(caseId: string, options: ExportOptions): Promise<void>
+  }
+  db: {
+    stats(): Promise<DbStats>
+    tableRows(params: DbTableRowsParams): Promise<DbTableRowsResult>
+    createRow(params: DbCreateRowParams): Promise<Record<string, unknown>>
+    updateRow(params: DbUpdateRowParams): Promise<boolean>
+    deleteRow(params: DbRowIdentifier): Promise<boolean>
+    vacuum(): Promise<{ freedBytes: number }>
+    rebuildFts(): Promise<{ rowsIndexed: number }>
+    purgeArchived(): Promise<{ casesDeleted: number; capturesDeleted: number }>
+    findOrphans(): Promise<OrphanReport>
+    cleanOrphans(
+      report: OrphanReport
+    ): Promise<{ dbRecordsRemoved: number; filesRemoved: number }>
+    backup(): Promise<{ path: string } | null>
+    restore(): Promise<{ restored: boolean }>
+    exportTable(params: DbExportTableParams): Promise<{ path: string } | null>
   }
   onNewCapture(callback: (capture: Capture) => void): () => void
   onSessionStateChanged(

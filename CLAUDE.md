@@ -31,17 +31,17 @@ Electron + React 19 + TanStack Router + React Query + Chrome Extension + SQLite 
 ### Key directories
 
 ```
-src/main/services/           # Core services: database, captureServer, storage, export, settings, hash, safeRegex, openrouter
-src/main/services/ai/       # AI services (OpenRouter client, being redesigned)
+src/main/services/           # Core services: database, captureServer, storage, export, settings, hash, safeRegex, openrouter, canonicalJson, csvEscape, installationId, manifest, mhtmlIngest
+src/main/services/ai/       # AI services (OpenRouter client)
 src/main/ipcHandlers.ts     # All IPC handler registrations
-src/shared/types.ts         # Shared TypeScript types (Case, Capture, Tag, Selector, Settings, etc.)
+src/shared/types.ts         # Shared TypeScript types (Case, Capture, Tag, Selector, Note, Settings, etc.)
 src/shared/ipc.ts           # IPC channel definitions and payload types
-src/shared/constants.ts     # Constants (CAPTURE_SERVER_PORT=19845)
+src/shared/constants.ts     # Constants (CAPTURE_SERVER_PORT, MAX_MHTML_SIZE, MANIFEST_FILENAME, etc.)
 src/renderer/routes/        # TanStack Router route definitions
 src/renderer/stores/        # Zustand store (appStore.ts)
 src/renderer/hooks/         # React hooks (useTheme, useCaptureThumbnail, useFavorites, useSearch, useSelectorFilters, useServerStatus)
 src/renderer/lib/           # React Query client and query/mutation factories
-src/renderer/components/    # UI organized by feature (10 directories, ~34 components)
+src/renderer/components/    # UI organized by feature (11 directories, ~43 components)
 extension/src/              # Chrome extension source (background, content, popup, utils/api, toast)
 tests/                      # Vitest unit tests
 e2e/                        # Playwright E2E tests
@@ -58,7 +58,7 @@ docs/                       # Design docs and specs
 
 All renderer↔main communication uses typed IPC channels defined in `src/shared/ipc.ts`. Channels follow `domain:action` naming (e.g., `cases:create`, `selectors:create`). Event channels (main→renderer) use `event:` prefix.
 
-**Domains:** cases (5), captures (12), tags (8), search (1), settings (5), export (1), selectors (9), events (5), testing (2).
+**Domains:** cases (5), captures (16), tags (9), search (1), settings (6), export (1), selectors (11), notes (7), events (5).
 
 The preload script exposes these via `window.birdbrain` with typed invoke/on methods.
 
@@ -73,7 +73,9 @@ TanStack Router (`@tanstack/react-router`) with the following route tree:
 /cases/$caseId → CaseWorkspace (layout with tabs)
   ├── / → CaseOverview
   ├── /captures → CaptureList + CaptureViewer (split view)
-  └── /selectors → SelectorsOverview
+  ├── /selectors → SelectorsOverview
+  ├── /notes → NotesOverview
+  └── /tags → TagsOverview
 ```
 
 Root layout in `__root.tsx` renders TopBar + main content area.
@@ -94,11 +96,11 @@ Zustand store (`src/renderer/stores/appStore.ts`) for UI-only state:
 
 ### Database
 
-SQLite via better-sqlite3 with WAL mode. Schema migrations use `user_version` pragma (currently v1-v9) in `src/main/services/database.ts`.
+SQLite via better-sqlite3 with WAL mode. Schema migrations use `user_version` pragma (currently v1-v12) in `src/main/services/database.ts`.
 
-**Tables:** cases, captures, tags, capture_tags, selectors, selector_matches, captures_fts (FTS5), capture_favorites.
+**Tables:** cases, captures, tags, capture_tags, selectors, selector_matches, captures_fts (FTS5), capture_favorites, notes, notes_fts (FTS5).
 
-**Indexes:** idx_captures_case_id, idx_capture_tags_tag_id, idx_selectors_case_id, idx_selector_matches_capture, idx_capture_favorites_created.
+**Indexes:** idx_captures_case_id, idx_capture_tags_tag_id, idx_selectors_case_id, idx_selector_matches_capture, idx_capture_favorites_created, idx_captures_format, idx_captures_manifest_index, idx_notes_case_id, idx_notes_capture_id.
 
 ### Theme system
 
@@ -111,7 +113,7 @@ Light/dark theme support using CSS custom properties and Tailwind v4:
 
 ### Capture server
 
-Hono HTTP server (`src/main/services/captureServer.ts`) on port 19845 receives captures from the Chrome extension. Captures are stored as files on disk organized by case directory with SHA-256 hash verification.
+Hono HTTP server (`src/main/services/captureServer.ts`) on port 19845 receives captures from the Chrome extension. Supports both HTML and MHTML forensic capture formats. Captures are stored as files on disk organized by case directory with SHA-256 hash verification and hash-chained audit manifests.
 
 ### Chrome extension
 
@@ -125,22 +127,23 @@ Built separately via `pnpm build:extension` (uses `extension/vite.config.ts`).
 
 ### AI services
 
-OpenRouter integration (`src/main/services/openrouter.ts`) provides `testApiKey()` and `listModels()`. AI analysis features are being redesigned - previous entity extraction and case analysis tables were removed in migration v7. Settings persist `openRouterApiKey` and `defaultModel`.
+OpenRouter integration (`src/main/services/openrouter.ts`) provides `testApiKey()` and `listModels()`. Previous entity extraction and case analysis tables were removed in migration v7. Settings persist `openRouterApiKey` and `defaultModel`.
 
 ### UI components
 
-Organized into 10 feature directories under `src/renderer/components/`:
+Organized into 11 feature directories under `src/renderer/components/`:
 
-- **captures/** - CaptureItem, CaptureList, CaptureViewer
+- **captures/** - CaptureItem, CaptureList, CaptureViewer, MhtmlViewer, ProvenanceBadge
 - **cases/** - CaseOverview, CaseSwitcher, CaseWorkspace, CreateCaseDialog, NewCaseWizard
 - **dashboard/** - Dashboard, CaseCard, DashboardFooter, ExtensionBanner, HeroSection, QuickStartGuide, RecentCases
 - **export/** - ExportDialog
 - **layout/** - TopBar
+- **notes/** - AddNoteModal, CreateNoteCard, NoteCard, NotesOverview
 - **search/** - SearchBar
-- **selectors/** - CreateSelectorCard, SelectorFilterFooter, SelectorTable, SelectorTableRow, SelectorsOverview
-- **settings/** - SettingsView, AIConfig, AppearanceConfig, CapturePreferences, StorageConfig, About
+- **selectors/** - BulkAddSelectorsModal, CreateSelectorCard, SelectorFilterFooter, SelectorTable, SelectorTableRow, SelectorsOverview, selectorUtils.ts
+- **settings/** - SettingsView, AIConfig, AppearanceConfig, CapturePreferences, OperatorConfig, StorageConfig, About
 - **status/** - CaptureHealth, ConnectionStatus, SessionControls
-- **tags/** - TagBadge, TagManager
+- **tags/** - TagBadge, TagManager, TagsOverview
 
 ## Testing
 

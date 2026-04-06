@@ -211,7 +211,8 @@ describe('verifyCapture', () => {
       toolVersion: '0.1.0'
     })
     const absPath = join(tempDir, 'captures', capture.mhtmlPath!)
-    require('fs').writeFileSync(absPath, 'mutated')
+    const { writeFileSync } = await import('fs')
+    writeFileSync(absPath, 'mutated')
     const r = await verifyCapture(capture.id)
     expect(r.status).toBe('tampered')
   })

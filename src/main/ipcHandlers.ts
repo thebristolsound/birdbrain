@@ -12,12 +12,16 @@ import type {
   UpdateNoteParams,
   BulkCreateSelectorsParams
 } from '@shared/ipc'
+import { join } from 'path'
+import { pathToFileURL } from 'url'
 import * as db from '@main/services/database'
 import * as storage from '@main/services/storage'
 import * as settings from '@main/services/settings'
 import * as openrouter from '@main/services/openrouter'
 import { generateReport } from '@main/services/export'
 import { buildCsv } from '@main/services/csvEscape'
+import { initManifest, appendManifestEntry, rollbackManifestEntry } from '@main/services/manifest'
+import { getInstallationId } from '@main/services/installationId'
 import { CAPTURE_SERVER_PORT, getSessionState } from '@main/services/captureServer'
 import type { BirdbrainSettings, ExportOptions } from '@shared/types'
 
@@ -90,26 +94,16 @@ export function registerIpcHandlers(): void {
       // For MHTML captures, append a deletion entry to the manifest BEFORE the
       // DB delete. On DB failure, roll back the manifest entry.
       if (capture.format === 'mhtml') {
-        const manifestMod =
-          require('@main/services/manifest') as typeof import('@main/services/manifest')
-        const storageMod =
-          require('@main/services/storage') as typeof import('@main/services/storage')
-        const idMod =
-          require('@main/services/installationId') as typeof import('@main/services/installationId')
-        const settingsMod =
-          require('@main/services/settings') as typeof import('@main/services/settings')
-        const pathMod = require('path') as typeof import('path')
-
-        const caseDir = pathMod.join(storageMod.getStorageRoot(), capture.caseId)
-        manifestMod.initManifest(caseDir)
-        const result = manifestMod.appendManifestEntry(caseDir, {
+        const caseDir = join(storage.getStorageRoot(), capture.caseId)
+        initManifest(caseDir)
+        const result = appendManifestEntry(caseDir, {
           type: 'deletion',
           captureId: id,
           caseId: capture.caseId,
           timestamp: new Date().toISOString(),
           contentHash: capture.hash,
-          operatorId: idMod.getInstallationId(),
-          operatorName: settingsMod.getSettings().operatorName ?? '',
+          operatorId: getInstallationId(),
+          operatorName: settings.getSettings().operatorName ?? '',
           toolVersion: process.env.npm_package_version ?? '0.0.0'
         })
 
@@ -118,7 +112,7 @@ export function registerIpcHandlers(): void {
           if (deleted) storage.deleteCaptureFiles(capture.caseId, id)
           return ipcResult(deleted)
         } catch (err) {
-          manifestMod.rollbackManifestEntry(caseDir, result.anchorBytes)
+          rollbackManifestEntry(caseDir, result.anchorBytes)
           throw err
         }
       }
@@ -478,11 +472,7 @@ export function registerIpcHandlers(): void {
     try {
       const capture = db.getCapture(captureId)
       if (!capture || !capture.mhtmlPath) return ipcResult<string | null>(null)
-      const { pathToFileURL } = require('url') as typeof import('url')
-      const pathMod = require('path') as typeof import('path')
-      const storageMod =
-        require('@main/services/storage') as typeof import('@main/services/storage')
-      const abs = pathMod.join(storageMod.getStorageRoot(), capture.mhtmlPath)
+      const abs = join(storage.getStorageRoot(), capture.mhtmlPath)
       return ipcResult<string | null>(pathToFileURL(abs).toString())
     } catch (err) {
       return ipcError(err)
@@ -514,10 +504,8 @@ export function registerIpcHandlers(): void {
     openrouter.listModels(apiKey)
   )
   ipcMain.handle(IPC_CHANNELS.SETTINGS_GET_IDENTITY, () => {
-    const idMod =
-      require('@main/services/installationId') as typeof import('@main/services/installationId')
     return {
-      installationId: idMod.getInstallationId(),
+      installationId: getInstallationId(),
       operatorName: settings.getSettings().operatorName ?? ''
     }
   })

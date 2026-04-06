@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, existsSync } from 'fs'
+import { mkdtempSync, rmSync, existsSync, mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import {
@@ -110,9 +110,9 @@ describe('storage', () => {
 
   it('deleteCaptureFiles removes .mhtml files too', () => {
     const dir = join(tempDir, 'case-1')
-    require('fs').mkdirSync(dir, { recursive: true })
-    require('fs').writeFileSync(join(dir, 'cap-1.mhtml'), 'fake mhtml')
-    require('fs').writeFileSync(join(dir, 'cap-1.html'), 'fake html')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'cap-1.mhtml'), 'fake mhtml')
+    writeFileSync(join(dir, 'cap-1.html'), 'fake html')
     deleteCaptureFiles('case-1', 'cap-1')
     expect(existsSync(join(dir, 'cap-1.mhtml'))).toBe(false)
     expect(existsSync(join(dir, 'cap-1.html'))).toBe(false)

@@ -403,6 +403,11 @@ async function manualCaptureTab(tabId: number, url: string, caseId: string): Pro
     chrome.tabs
       .sendMessage(tabId, { type: 'UPDATE_CAPTURE_TOAST', status: 'success' })
       .catch(() => {})
+
+    // Re-evaluate selector highlights after capture
+    if (activeSelectors.length > 0) {
+      checkSelectorsOnTab(tabId, url)
+    }
   } catch (err) {
     console.error('[Birdbrain] Manual capture failed:', err)
     let message = 'Capture failed'

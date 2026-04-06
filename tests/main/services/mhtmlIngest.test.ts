@@ -4,8 +4,15 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { createHash } from 'crypto'
 import { Readable } from 'stream'
-import { initStorage } from '@main/services/storage'
-import { streamWriteAndHash } from '@main/services/mhtmlIngest'
+import { initStorage, ensureCaseDir } from '@main/services/storage'
+import { streamWriteAndHash, ingestMhtmlCapture } from '@main/services/mhtmlIngest'
+import {
+  initDatabase,
+  closeDatabase,
+  createCase,
+  getCapture
+} from '@main/services/database'
+import { initManifest, verifyManifestChain } from '@main/services/manifest'
 
 describe('streamWriteAndHash', () => {
   let tempDir: string
@@ -64,5 +71,81 @@ describe('streamWriteAndHash', () => {
     )
     expect(result.hash).toBe(expected.digest('hex'))
     expect(result.sizeBytes).toBe(64 * 1024 * 10)
+  })
+})
+
+describe('ingestMhtmlCapture', () => {
+  let tempDir: string
+  let caseId: string
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-ingest-pipeline-'))
+    initStorage(join(tempDir, 'captures'))
+    initDatabase(':memory:')
+    caseId = createCase({ name: 'Pipeline' }).id
+    ensureCaseDir(caseId)
+    initManifest(join(tempDir, 'captures', caseId))
+  })
+
+  afterEach(() => {
+    closeDatabase()
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  it('ingests an MHTML capture, writes manifest, inserts DB row', async () => {
+    const content = Buffer.from('From: <Saved by Chrome>\nContent-Type: multipart/related\n\nhi')
+    const stream = Readable.from([content])
+    const result = await ingestMhtmlCapture({
+      caseId,
+      url: 'https://example.com',
+      title: 'Example',
+      timestamp: '2026-04-05T12:00:00.000Z',
+      stream: stream as unknown as ReadableStream<Uint8Array>,
+      textContent: 'hi',
+      headers: { 'content-type': 'text/html' },
+      browserVersion: 'Chrome/120',
+      userAgent: 'Mozilla/5.0',
+      httpStatus: 200,
+      extensionVersion: '0.1.0',
+      operatorId: 'op-1',
+      operatorName: 'Smith',
+      toolVersion: '0.1.0'
+    })
+
+    expect(result.capture.format).toBe('mhtml')
+    expect(result.capture.hash).toBe(result.contentHash)
+    expect(result.capture.manifestIndex).toBe(0)
+    expect(result.capture.entryHash).toMatch(/^[0-9a-f]{64}$/)
+
+    const reloaded = getCapture(result.capture.id)
+    expect(reloaded?.mhtmlPath).toBe(join(caseId, `${result.capture.id}.mhtml`))
+    expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+  })
+
+  it('rolls back manifest when DB insert fails', async () => {
+    const stream = Readable.from([Buffer.from('x')])
+    await expect(
+      ingestMhtmlCapture({
+        caseId: 'does-not-exist',
+        url: 'https://example.com',
+        title: 'x',
+        timestamp: '2026-04-05T12:00:00.000Z',
+        stream: stream as unknown as ReadableStream<Uint8Array>,
+        textContent: 'x',
+        headers: {},
+        browserVersion: '',
+        userAgent: '',
+        httpStatus: 200,
+        extensionVersion: '',
+        operatorId: '',
+        operatorName: '',
+        toolVersion: ''
+      })
+    ).rejects.toThrow()
+
+    const bogusManifest = join(tempDir, 'captures', 'does-not-exist', 'manifest.jsonl')
+    if (existsSync(bogusManifest)) {
+      expect(readFileSync(bogusManifest, 'utf-8')).toBe('')
+    }
   })
 })

@@ -1,9 +1,9 @@
 import { createWriteStream } from 'fs'
 import { unlink } from 'fs/promises'
 import { join } from 'path'
-import { createHash } from 'crypto'
+import { createHash, randomUUID } from 'crypto'
 import { finished } from 'stream/promises'
-import { ensureCaseDir } from '@main/services/storage'
+import { ensureCaseDir, getStorageRoot } from '@main/services/storage'
 import { MAX_MHTML_SIZE } from '@shared/constants'
 
 export interface StreamWriteResult {
@@ -66,4 +66,98 @@ export async function streamWriteAndHash(
   }
 
   return { mhtmlPath: relPath, hash: hasher.digest('hex'), sizeBytes: size }
+}
+
+// ---------------------------------------------------------------------------
+// Full ingest pipeline
+// ---------------------------------------------------------------------------
+
+import * as db from '@main/services/database'
+import {
+  initManifest,
+  appendManifestEntry,
+  rollbackManifestEntry
+} from '@main/services/manifest'
+import type { Capture } from '@shared/types'
+
+export interface IngestParams {
+  caseId: string
+  url: string
+  title: string
+  timestamp: string
+  stream: ReadableStream<Uint8Array>
+  textContent: string
+  headers: Record<string, string>
+  browserVersion: string
+  userAgent: string
+  httpStatus: number
+  extensionVersion: string
+  operatorId: string
+  operatorName: string
+  toolVersion: string
+}
+
+export interface IngestResult {
+  capture: Capture
+  contentHash: string
+}
+
+// End-to-end MHTML ingest:
+// 1. Stream-write + hash to disk
+// 2. Append write-ahead manifest entry (sync fs ops)
+// 3. Synchronously insert DB row with manifest fields
+// 4. On DB failure: rollback manifest + delete file
+export async function ingestMhtmlCapture(params: IngestParams): Promise<IngestResult> {
+  const captureId = randomUUID()
+  const { mhtmlPath, hash, sizeBytes } = await streamWriteAndHash(
+    params.caseId,
+    captureId,
+    params.stream
+  )
+
+  const caseDir = join(getStorageRoot(), params.caseId)
+  initManifest(caseDir)
+  const manifestResult = appendManifestEntry(caseDir, {
+    type: 'capture',
+    captureId,
+    caseId: params.caseId,
+    url: params.url,
+    timestamp: params.timestamp,
+    contentHash: hash,
+    sizeBytes,
+    operatorId: params.operatorId,
+    operatorName: params.operatorName,
+    toolVersion: params.toolVersion
+  })
+
+  try {
+    const capture = db.insertCapture({
+      id: captureId,
+      caseId: params.caseId,
+      url: params.url,
+      title: params.title,
+      hash,
+      timestamp: params.timestamp,
+      headers: JSON.stringify(params.headers),
+      textContent: params.textContent,
+      format: 'mhtml',
+      mhtmlPath,
+      sizeBytes,
+      manifestIndex: manifestResult.index,
+      prevHash: manifestResult.prevHash,
+      entryHash: manifestResult.entryHash,
+      toolVersion: params.toolVersion,
+      extensionVersion: params.extensionVersion,
+      browserVersion: params.browserVersion,
+      userAgent: params.userAgent,
+      httpStatus: params.httpStatus,
+      operatorId: params.operatorId,
+      operatorName: params.operatorName
+    })
+    return { capture, contentHash: hash }
+  } catch (err) {
+    rollbackManifestEntry(caseDir, manifestResult.anchorBytes)
+    await unlink(join(getStorageRoot(), mhtmlPath)).catch(() => {})
+    throw err
+  }
 }

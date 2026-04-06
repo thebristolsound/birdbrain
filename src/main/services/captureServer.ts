@@ -239,7 +239,13 @@ function createApp(): Hono {
       capturedUrl = url
 
       const mhtmlField = body['mhtml']
-      if (!(mhtmlField instanceof File) && !(mhtmlField instanceof Blob)) {
+      // In Node.js, Hono's parseBody returns file-like objects with specific properties
+      // Check for presence of expected file properties instead of instanceof
+      if (
+        !mhtmlField ||
+        typeof mhtmlField !== 'object' ||
+        !('arrayBuffer' in mhtmlField || 'text' in mhtmlField)
+      ) {
         return c.json({ error: 'Missing required field: mhtml (file)' }, 400)
       }
       if (!url) {

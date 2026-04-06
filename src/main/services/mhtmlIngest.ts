@@ -113,9 +113,8 @@ export interface IngestResult {
 
 // End-to-end MHTML ingest:
 // 1. Stream-write + hash to disk
-// 2. Append write-ahead manifest entry (sync fs ops)
-// 3. Synchronously insert DB row with manifest fields
-// 4. On DB failure: rollback manifest + delete file
+// 2. Write sidecar files (.txt, .png), append manifest entry, and insert DB row — all in a single
+//    error-handling block so any failure rolls back the manifest and deletes all written files
 export async function ingestMhtmlCapture(params: IngestParams): Promise<IngestResult> {
   const captureId = randomUUID()
   const { mhtmlPath, hash, sizeBytes } = await streamWriteAndHash(
@@ -124,38 +123,44 @@ export async function ingestMhtmlCapture(params: IngestParams): Promise<IngestRe
     params.stream
   )
 
-  // Write plain text content to disk for the viewer's Text tab
-  if (params.textContent) {
-    writeFileSync(
-      join(getStorageRoot(), params.caseId, `${captureId}.txt`),
-      params.textContent,
-      'utf-8'
-    )
-  }
-
-  // Write screenshot to disk
-  let screenshotPath: string | undefined
-  if (params.screenshot) {
-    screenshotPath = join(params.caseId, `${captureId}.png`)
-    writeFileSync(join(getStorageRoot(), screenshotPath), params.screenshot)
-  }
-
   const caseDir = join(getStorageRoot(), params.caseId)
-  initManifest(caseDir)
-  const manifestResult = appendManifestEntry(caseDir, {
-    type: 'capture',
-    captureId,
-    caseId: params.caseId,
-    url: params.url,
-    timestamp: params.timestamp,
-    contentHash: hash,
-    sizeBytes,
-    operatorId: params.operatorId,
-    operatorName: params.operatorName,
-    toolVersion: params.toolVersion
-  })
+  const txtAbsPath = join(getStorageRoot(), params.caseId, `${captureId}.txt`)
+  const pngRelPath = join(params.caseId, `${captureId}.png`)
+  const pngAbsPath = join(getStorageRoot(), pngRelPath)
+
+  let txtWritten = false
+  let pngWritten = false
+  let manifestResult: ReturnType<typeof appendManifestEntry> | undefined
 
   try {
+    // Write plain text content to disk for the viewer's Text tab
+    if (params.textContent) {
+      writeFileSync(txtAbsPath, params.textContent, 'utf-8')
+      txtWritten = true
+    }
+
+    // Write screenshot to disk
+    let screenshotPath: string | undefined
+    if (params.screenshot) {
+      writeFileSync(pngAbsPath, params.screenshot)
+      pngWritten = true
+      screenshotPath = pngRelPath
+    }
+
+    initManifest(caseDir)
+    manifestResult = appendManifestEntry(caseDir, {
+      type: 'capture',
+      captureId,
+      caseId: params.caseId,
+      url: params.url,
+      timestamp: params.timestamp,
+      contentHash: hash,
+      sizeBytes,
+      operatorId: params.operatorId,
+      operatorName: params.operatorName,
+      toolVersion: params.toolVersion
+    })
+
     const capture = db.insertCapture({
       id: captureId,
       caseId: params.caseId,
@@ -182,13 +187,15 @@ export async function ingestMhtmlCapture(params: IngestParams): Promise<IngestRe
     })
     return { capture, contentHash: hash }
   } catch (err) {
-    rollbackManifestEntry(caseDir, manifestResult.anchorBytes)
-    await unlink(join(getStorageRoot(), mhtmlPath)).catch(() => {})
-    if (params.textContent) {
-      await unlink(join(getStorageRoot(), params.caseId, `${captureId}.txt`)).catch(() => {})
+    if (manifestResult) {
+      rollbackManifestEntry(caseDir, manifestResult.anchorBytes)
     }
-    if (params.screenshot) {
-      await unlink(join(getStorageRoot(), params.caseId, `${captureId}.png`)).catch(() => {})
+    await unlink(join(getStorageRoot(), mhtmlPath)).catch(() => {})
+    if (txtWritten) {
+      await unlink(txtAbsPath).catch(() => {})
+    }
+    if (pngWritten) {
+      await unlink(pngAbsPath).catch(() => {})
     }
     throw err
   }

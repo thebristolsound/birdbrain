@@ -10,8 +10,15 @@ import type {
   UpdateSelectorParams,
   CreateNoteParams,
   UpdateNoteParams,
-  BulkCreateSelectorsParams
+  BulkCreateSelectorsParams,
+  DbTableRowsParams,
+  DbCreateRowParams,
+  DbUpdateRowParams,
+  DbRowIdentifier,
+  DbExportTableParams,
+  OrphanReport
 } from '@shared/ipc'
+import * as dbAdmin from '@main/services/dbAdmin'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
@@ -531,4 +538,145 @@ export function registerIpcHandlers(): void {
       }
     }
   )
+
+  // Database Admin
+  ipcMain.handle(IPC_CHANNELS.DB_STATS, () => {
+    try {
+      const userDataPath = process.env.BIRDBRAIN_USER_DATA || app.getPath('userData')
+      const dbPath = join(userDataPath, 'birdbrain.db')
+      return ipcResult(dbAdmin.getDbStats(dbPath))
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.DB_TABLE_ROWS, (_, params: DbTableRowsParams) => {
+    try {
+      return ipcResult(dbAdmin.getTableRows(params))
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.DB_CREATE_ROW, (_, params: DbCreateRowParams) => {
+    try {
+      return ipcResult(dbAdmin.createRow(params.table, params.data))
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.DB_UPDATE_ROW, (_, params: DbUpdateRowParams) => {
+    try {
+      return ipcResult(dbAdmin.updateRow(params.table, params.pk, params.data))
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.DB_DELETE_ROW, (_, params: DbRowIdentifier) => {
+    try {
+      return ipcResult(dbAdmin.deleteRow(params.table, params.pk))
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.DB_VACUUM, () => {
+    try {
+      const userDataPath = process.env.BIRDBRAIN_USER_DATA || app.getPath('userData')
+      const dbPath = join(userDataPath, 'birdbrain.db')
+      return ipcResult(dbAdmin.vacuumDb(dbPath))
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.DB_REBUILD_FTS, () => {
+    try {
+      return ipcResult(dbAdmin.rebuildFts())
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.DB_PURGE_ARCHIVED, () => {
+    try {
+      return ipcResult(dbAdmin.purgeArchived())
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.DB_FIND_ORPHANS, () => {
+    try {
+      return ipcResult(dbAdmin.findOrphans())
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.DB_CLEAN_ORPHANS, (_, report: OrphanReport) => {
+    try {
+      return ipcResult(dbAdmin.cleanOrphans(report))
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.DB_BACKUP, async () => {
+    try {
+      const userDataPath = process.env.BIRDBRAIN_USER_DATA || app.getPath('userData')
+      const dbPath = join(userDataPath, 'birdbrain.db')
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        defaultPath: 'birdbrain-backup.db',
+        filters: [{ name: 'SQLite Database', extensions: ['db'] }]
+      })
+      if (canceled || !filePath) return ipcResult(null)
+      dbAdmin.backupDatabase(dbPath, filePath)
+      return ipcResult({ path: filePath })
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.DB_RESTORE, async () => {
+    try {
+      const { canceled, filePaths } = await dialog.showOpenDialog({
+        filters: [{ name: 'SQLite Database', extensions: ['db'] }],
+        properties: ['openFile']
+      })
+      if (canceled || filePaths.length === 0) return ipcResult({ restored: false })
+
+      const userDataPath = process.env.BIRDBRAIN_USER_DATA || app.getPath('userData')
+      const dbPath = join(userDataPath, 'birdbrain.db')
+      const { closeDatabase, initDatabase } = await import('@main/services/database')
+      const { copyFileSync } = await import('fs')
+
+      closeDatabase()
+      copyFileSync(filePaths[0], dbPath)
+      initDatabase(dbPath)
+
+      return ipcResult({ restored: true })
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.DB_EXPORT_TABLE, async (_, params: DbExportTableParams) => {
+    try {
+      const content = dbAdmin.exportTableData(params.table, params.format)
+      const ext = params.format === 'csv' ? 'csv' : 'json'
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        defaultPath: `${params.table}.${ext}`,
+        filters: [{ name: ext.toUpperCase(), extensions: [ext] }]
+      })
+      if (canceled || !filePath) return ipcResult(null)
+      const { writeFileSync } = await import('fs')
+      writeFileSync(filePath, content, 'utf-8')
+      return ipcResult({ path: filePath })
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
 }

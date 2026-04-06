@@ -249,7 +249,7 @@ export function purgeArchived(): { casesDeleted: number; capturesDeleted: number
   return { casesDeleted: result.changes, capturesDeleted }
 }
 
-export function findOrphans(dbPath: string): OrphanReport {
+export function findOrphans(): OrphanReport {
   const db = getDb()
   const dbOrphans: OrphanReport['dbOrphans'] = []
   const fileOrphans: string[] = []

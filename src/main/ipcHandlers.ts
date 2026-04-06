@@ -438,6 +438,15 @@ export function registerIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle(IPC_CHANNELS.CAPTURES_VERIFY, async (_, captureId: string) => {
+    try {
+      const mod = await import('@main/services/mhtmlIngest')
+      return ipcResult(await mod.verifyCapture(captureId))
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+
   // Search
   ipcMain.handle(IPC_CHANNELS.SEARCH, (_, query: string) => db.searchCaptures(query))
 

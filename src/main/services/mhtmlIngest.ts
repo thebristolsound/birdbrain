@@ -1,4 +1,4 @@
-import { createWriteStream } from 'fs'
+import { createWriteStream, createReadStream } from 'fs'
 import { unlink } from 'fs/promises'
 import { join } from 'path'
 import { createHash, randomUUID } from 'crypto'
@@ -76,9 +76,10 @@ import * as db from '@main/services/database'
 import {
   initManifest,
   appendManifestEntry,
-  rollbackManifestEntry
+  rollbackManifestEntry,
+  verifyManifestChain
 } from '@main/services/manifest'
-import type { Capture } from '@shared/types'
+import type { Capture, HashVerification } from '@shared/types'
 
 export interface IngestParams {
   caseId: string
@@ -159,5 +160,95 @@ export async function ingestMhtmlCapture(params: IngestParams): Promise<IngestRe
     rollbackManifestEntry(caseDir, manifestResult.anchorBytes)
     await unlink(join(getStorageRoot(), mhtmlPath)).catch(() => {})
     throw err
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Verify capture integrity
+// ---------------------------------------------------------------------------
+
+// Streams the MHTML file from disk, recomputes SHA-256, and checks the manifest chain.
+export async function verifyCapture(captureId: string): Promise<HashVerification> {
+  const capture = db.getCapture(captureId)
+  if (!capture) {
+    return {
+      captureId,
+      url: '',
+      title: '',
+      storedHash: '',
+      computedHash: '',
+      status: 'missing',
+      reason: 'Capture not found'
+    }
+  }
+  if (capture.format !== 'mhtml' || !capture.mhtmlPath) {
+    return {
+      captureId,
+      url: capture.url,
+      title: capture.title,
+      storedHash: capture.hash,
+      computedHash: '',
+      status: 'legacy',
+      reason: 'Legacy HTML capture (pre-MHTML era)'
+    }
+  }
+
+  const absPath = join(getStorageRoot(), capture.mhtmlPath)
+  const hasher = createHash('sha256')
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const rs = createReadStream(absPath)
+      rs.on('data', (chunk) => hasher.update(chunk))
+      rs.on('end', () => resolve())
+      rs.on('error', reject)
+    })
+  } catch (err) {
+    return {
+      captureId,
+      url: capture.url,
+      title: capture.title,
+      storedHash: capture.hash,
+      computedHash: '',
+      status: 'missing',
+      reason: 'MHTML file unreadable: ' + String(err)
+    }
+  }
+  const computed = hasher.digest('hex')
+
+  const chain = verifyManifestChain(join(getStorageRoot(), capture.caseId))
+  if (!chain.valid) {
+    return {
+      captureId,
+      url: capture.url,
+      title: capture.title,
+      storedHash: capture.hash,
+      computedHash: computed,
+      status: 'chain-broken',
+      manifestIndex: capture.manifestIndex,
+      chainValid: false,
+      reason: chain.reason
+    }
+  }
+  if (computed !== capture.hash) {
+    return {
+      captureId,
+      url: capture.url,
+      title: capture.title,
+      storedHash: capture.hash,
+      computedHash: computed,
+      status: 'tampered',
+      manifestIndex: capture.manifestIndex,
+      chainValid: true
+    }
+  }
+  return {
+    captureId,
+    url: capture.url,
+    title: capture.title,
+    storedHash: capture.hash,
+    computedHash: computed,
+    status: 'verified',
+    manifestIndex: capture.manifestIndex,
+    chainValid: true
   }
 }

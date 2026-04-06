@@ -22,6 +22,7 @@ export const IPC_CHANNELS = {
   CAPTURES_TOGGLE_FAVORITE: 'captures:toggleFavorite',
   CAPTURES_IS_FAVORITE: 'captures:isFavorite',
   CAPTURES_LIST_FAVORITES: 'captures:listFavorites',
+  CAPTURES_VERIFY: 'captures:verify',
 
   // Tags
   TAGS_LIST: 'tags:list',

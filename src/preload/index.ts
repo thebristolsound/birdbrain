@@ -76,7 +76,11 @@ const birdbrain = {
     isFavorite: (captureId: string): Promise<boolean> =>
       unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_IS_FAVORITE, captureId)),
     listFavorites: (caseId: string): Promise<string[]> =>
-      unwrapIpc<string[]>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_LIST_FAVORITES, caseId))
+      unwrapIpc<string[]>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_LIST_FAVORITES, caseId)),
+    verify: (captureId: string): Promise<import('@shared/types').HashVerification> =>
+      unwrapIpc<import('@shared/types').HashVerification>(
+        ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_VERIFY, captureId)
+      )
   },
   tags: {
     list: (): Promise<Tag[]> => ipcRenderer.invoke(IPC_CHANNELS.TAGS_LIST),

@@ -5,12 +5,13 @@ import { tmpdir } from 'os'
 import { createHash } from 'crypto'
 import { Readable } from 'stream'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
-import { streamWriteAndHash, ingestMhtmlCapture } from '@main/services/mhtmlIngest'
+import { streamWriteAndHash, ingestMhtmlCapture, verifyCapture } from '@main/services/mhtmlIngest'
 import {
   initDatabase,
   closeDatabase,
   createCase,
-  getCapture
+  getCapture,
+  insertCapture
 } from '@main/services/database'
 import { initManifest, verifyManifestChain } from '@main/services/manifest'
 
@@ -147,5 +148,83 @@ describe('ingestMhtmlCapture', () => {
     if (existsSync(bogusManifest)) {
       expect(readFileSync(bogusManifest, 'utf-8')).toBe('')
     }
+  })
+})
+
+describe('verifyCapture', () => {
+  let tempDir: string
+  let caseId: string
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-verify-'))
+    initStorage(join(tempDir, 'captures'))
+    initDatabase(':memory:')
+    caseId = createCase({ name: 'V' }).id
+    ensureCaseDir(caseId)
+    initManifest(join(tempDir, 'captures', caseId))
+  })
+
+  afterEach(() => {
+    closeDatabase()
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  it('returns verified for intact capture', async () => {
+    const stream = Readable.from([Buffer.from('payload')])
+    const { capture } = await ingestMhtmlCapture({
+      caseId,
+      url: 'https://a',
+      title: 'A',
+      timestamp: '2026-04-05T12:00:00.000Z',
+      stream: stream as unknown as ReadableStream<Uint8Array>,
+      textContent: '',
+      headers: {},
+      browserVersion: '',
+      userAgent: '',
+      httpStatus: 200,
+      extensionVersion: '',
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0'
+    })
+    const r = await verifyCapture(capture.id)
+    expect(r.status).toBe('verified')
+    expect(r.storedHash).toBe(r.computedHash)
+  })
+
+  it('returns tampered when MHTML bytes change', async () => {
+    const stream = Readable.from([Buffer.from('payload')])
+    const { capture } = await ingestMhtmlCapture({
+      caseId,
+      url: 'https://a',
+      title: 'A',
+      timestamp: '2026-04-05T12:00:00.000Z',
+      stream: stream as unknown as ReadableStream<Uint8Array>,
+      textContent: '',
+      headers: {},
+      browserVersion: '',
+      userAgent: '',
+      httpStatus: 200,
+      extensionVersion: '',
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0'
+    })
+    const absPath = join(tempDir, 'captures', capture.mhtmlPath!)
+    require('fs').writeFileSync(absPath, 'mutated')
+    const r = await verifyCapture(capture.id)
+    expect(r.status).toBe('tampered')
+  })
+
+  it('returns legacy for pre-MHTML captures', async () => {
+    const legacy = insertCapture({
+      caseId,
+      url: 'https://legacy',
+      title: 'Legacy',
+      hash: 'x'.repeat(64),
+      timestamp: new Date().toISOString()
+    })
+    const r = await verifyCapture(legacy.id)
+    expect(r.status).toBe('legacy')
   })
 })

@@ -1,4 +1,42 @@
-import { getStatus, sendCapture, getActiveSelectors, createSelector } from '@extension/utils/api'
+import { getStatus, sendMhtmlCapture, getActiveSelectors, createSelector } from '@extension/utils/api'
+
+function captureMhtml(tabId: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    chrome.pageCapture.saveAsMHTML({ tabId }, (blob) => {
+      if (chrome.runtime.lastError || !blob) {
+        reject(new Error(chrome.runtime.lastError?.message || 'pageCapture failed'))
+        return
+      }
+      resolve(blob)
+    })
+  })
+}
+
+function getExtensionVersion(): string {
+  return chrome.runtime.getManifest().version
+}
+
+function getUserAgentString(): string {
+  return typeof navigator !== 'undefined' ? navigator.userAgent : ''
+}
+
+function getBrowserVersion(): string {
+  const match =
+    typeof navigator !== 'undefined' ? navigator.userAgent.match(/Chrome\/(\S+)/) : null
+  return match ? 'Chrome/' + match[1] : ''
+}
+
+async function getPlainTextFromTab(tabId: number): Promise<string> {
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => document.body?.innerText ?? ''
+    })
+    return (results[0]?.result as string) ?? ''
+  } catch {
+    return ''
+  }
+}
 
 // URL patterns to ignore
 const DEFAULT_IGNORE = [
@@ -294,38 +332,26 @@ function shouldSelectorCapture(caseId: string, url: string): boolean {
 
 async function captureTab(tabId: number, url: string): Promise<void> {
   try {
-    // Extract page content via content script
-    const pageData = (await chrome.tabs.sendMessage(tabId, { type: 'EXTRACT_PAGE' })) as {
-      html: string
-      title: string
-      textContent: string
-    }
+    const [mhtmlBlob, tab, textContent] = await Promise.all([
+      captureMhtml(tabId),
+      chrome.tabs.get(tabId),
+      getPlainTextFromTab(tabId)
+    ])
 
-    // Take screenshot
-    let screenshot: string | undefined
-    try {
-      screenshot = await chrome.tabs.captureVisibleTab({ format: 'png' })
-      // Remove data:image/png;base64, prefix
-      screenshot = screenshot.replace(/^data:image\/png;base64,/, '')
-    } catch {
-      // Screenshot may fail (e.g., restricted pages)
-    }
-
-    // Send to local server
-    await sendCapture({
+    await sendMhtmlCapture({
       source: 'auto',
       url,
-      title: pageData.title,
-      html: pageData.html,
-      screenshot,
+      title: tab.title || url,
       timestamp: new Date().toISOString(),
-      textContent: pageData.textContent
+      textContent,
+      mhtml: mhtmlBlob,
+      browserVersion: getBrowserVersion(),
+      userAgent: getUserAgentString(),
+      extensionVersion: getExtensionVersion(),
+      httpStatus: 200
     })
 
-    // Update dedupe map
     dedupeMap.set(url, Date.now())
-
-    // Update badge
     captureCount++
     chrome.action.setBadgeText({ text: String(captureCount) })
   } catch (err) {
@@ -340,56 +366,43 @@ async function manualCaptureTab(tabId: number, url: string, caseId: string): Pro
   try {
     chrome.tabs.sendMessage(tabId, { type: 'SHOW_CAPTURE_TOAST' }).catch(() => {})
 
-    // Single extraction: freeze-dry with fallback + screenshot in parallel
-    const [pageData, rawScreenshot] = await Promise.all([
-      chrome.tabs.sendMessage(tabId, { type: 'EXTRACT_PAGE' }) as Promise<{
-        html: string
-        title: string
-        textContent: string
-        degraded: boolean
-      }>,
-      chrome.tabs.captureVisibleTab({ format: 'png' }).catch(() => undefined)
+    const [mhtmlBlob, tab, textContent] = await Promise.all([
+      captureMhtml(tabId),
+      chrome.tabs.get(tabId),
+      getPlainTextFromTab(tabId)
     ])
-    const screenshot = rawScreenshot?.replace(/^data:image\/png;base64,/, '')
 
-    await sendCapture({
+    await sendMhtmlCapture({
       source: 'manual',
       caseId,
       url,
-      title: pageData.title,
-      html: pageData.html,
-      screenshot,
+      title: tab.title || url,
       timestamp: new Date().toISOString(),
-      textContent: pageData.textContent
+      textContent,
+      mhtml: mhtmlBlob,
+      browserVersion: getBrowserVersion(),
+      userAgent: getUserAgentString(),
+      extensionVersion: getExtensionVersion(),
+      httpStatus: 200
     })
 
     chrome.tabs
-      .sendMessage(tabId, {
-        type: 'UPDATE_CAPTURE_TOAST',
-        status: pageData.degraded ? 'degraded' : 'success'
-      })
+      .sendMessage(tabId, { type: 'UPDATE_CAPTURE_TOAST', status: 'success' })
       .catch(() => {})
   } catch (err) {
     console.error('[Birdbrain] Manual capture failed:', err)
-
-    // Categorize error for user-facing message
     let message = 'Capture failed'
     if (err && typeof err === 'object' && 'status' in err) {
       const apiErr = err as { status: number; detail: string }
-      if (apiErr.status === 400) message = `Capture rejected: ${apiErr.detail}`
+      if (apiErr.status === 400) message = 'Capture rejected: ' + apiErr.detail
       else if (apiErr.status === 403) message = 'URL is blacklisted'
       else if (apiErr.status === 404) message = 'Case not found'
-      else if (apiErr.status === 500) message = 'Server error — check Birdbrain app'
+      else if (apiErr.status === 500) message = 'Server error - check Birdbrain app'
     } else if (err instanceof TypeError) {
-      message = "Can't reach Birdbrain — is it running?"
+      message = "Can't reach Birdbrain - is it running?"
     }
-
     chrome.tabs
-      .sendMessage(tabId, {
-        type: 'UPDATE_CAPTURE_TOAST',
-        status: 'error',
-        message
-      })
+      .sendMessage(tabId, { type: 'UPDATE_CAPTURE_TOAST', status: 'error', message })
       .catch(() => {})
   } finally {
     pendingManualCaptures.delete(key)
@@ -398,35 +411,27 @@ async function manualCaptureTab(tabId: number, url: string, caseId: string): Pro
 
 async function handleSelectorCapture(tabId: number, url: string, caseId: string): Promise<void> {
   if (!shouldSelectorCapture(caseId, url)) return
-
   try {
-    const pageData = (await chrome.tabs.sendMessage(tabId, { type: 'EXTRACT_PAGE' })) as {
-      html: string
-      title: string
-      textContent: string
-    }
-
-    let screenshot: string | undefined
-    try {
-      screenshot = await chrome.tabs.captureVisibleTab({ format: 'png' })
-      screenshot = screenshot.replace(/^data:image\/png;base64,/, '')
-    } catch {
-      // Screenshot may fail
-    }
-
-    await sendCapture({
+    const [mhtmlBlob, tab, textContent] = await Promise.all([
+      captureMhtml(tabId),
+      chrome.tabs.get(tabId),
+      getPlainTextFromTab(tabId)
+    ])
+    await sendMhtmlCapture({
       source: 'selector',
       caseId,
       url,
-      title: pageData.title,
-      html: pageData.html,
-      screenshot,
+      title: tab.title || url,
       timestamp: new Date().toISOString(),
-      textContent: pageData.textContent,
+      textContent,
+      mhtml: mhtmlBlob,
+      browserVersion: getBrowserVersion(),
+      userAgent: getUserAgentString(),
+      extensionVersion: getExtensionVersion(),
+      httpStatus: 200,
       matchedSelectors: []
     })
-
-    selectorDedupeMap.set(`${caseId}:${url}`, Date.now())
+    selectorDedupeMap.set(caseId + ':' + url, Date.now())
   } catch (err) {
     console.error('Selector capture failed:', err)
   }

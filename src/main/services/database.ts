@@ -3,6 +3,7 @@ import { v4 as uuid } from 'uuid'
 import type {
   Case,
   Capture,
+  CaptureFormat,
   Tag,
   Selector,
   ActiveCaseSelectors,
@@ -254,6 +255,29 @@ function migrate(db: Database.Database): void {
       db.pragma('user_version = 10')
     })()
   }
+
+  if (version < 11) {
+    db.transaction(() => {
+      db.exec(`
+        ALTER TABLE captures ADD COLUMN format TEXT NOT NULL DEFAULT 'html';
+        ALTER TABLE captures ADD COLUMN mhtml_path TEXT;
+        ALTER TABLE captures ADD COLUMN size_bytes INTEGER;
+        ALTER TABLE captures ADD COLUMN manifest_index INTEGER;
+        ALTER TABLE captures ADD COLUMN prev_hash TEXT;
+        ALTER TABLE captures ADD COLUMN entry_hash TEXT;
+        ALTER TABLE captures ADD COLUMN tool_version TEXT;
+        ALTER TABLE captures ADD COLUMN extension_version TEXT;
+        ALTER TABLE captures ADD COLUMN browser_version TEXT;
+        ALTER TABLE captures ADD COLUMN user_agent TEXT;
+        ALTER TABLE captures ADD COLUMN http_status INTEGER;
+        ALTER TABLE captures ADD COLUMN operator_id TEXT;
+        ALTER TABLE captures ADD COLUMN operator_name TEXT;
+        CREATE INDEX IF NOT EXISTS idx_captures_format ON captures(format);
+        CREATE INDEX IF NOT EXISTS idx_captures_manifest_index ON captures(case_id, manifest_index);
+      `)
+      db.pragma('user_version = 11')
+    })()
+  }
 }
 
 // --- Cases ---
@@ -332,6 +356,19 @@ export interface InsertCaptureParams {
   screenshotPath?: string
   headers?: string
   textContent?: string
+  format?: 'html' | 'mhtml'
+  mhtmlPath?: string
+  sizeBytes?: number
+  manifestIndex?: number
+  prevHash?: string
+  entryHash?: string
+  toolVersion?: string
+  extensionVersion?: string
+  browserVersion?: string
+  userAgent?: string
+  httpStatus?: number
+  operatorId?: string
+  operatorName?: string
 }
 
 export const insertCapture = function (params: InsertCaptureParams & { id?: string }): Capture {
@@ -341,8 +378,12 @@ export const insertCapture = function (params: InsertCaptureParams & { id?: stri
 
   const run = d.transaction(() => {
     d.prepare(
-      `INSERT INTO captures (id, case_id, url, title, html_path, screenshot_path, hash, timestamp, headers, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO captures (
+         id, case_id, url, title, html_path, screenshot_path, hash, timestamp, headers, created_at,
+         format, mhtml_path, size_bytes, manifest_index, prev_hash, entry_hash,
+         tool_version, extension_version, browser_version, user_agent, http_status,
+         operator_id, operator_name
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       params.caseId,
@@ -353,7 +394,20 @@ export const insertCapture = function (params: InsertCaptureParams & { id?: stri
       params.hash,
       params.timestamp,
       params.headers ?? null,
-      now
+      now,
+      params.format ?? 'html',
+      params.mhtmlPath ?? null,
+      params.sizeBytes ?? null,
+      params.manifestIndex ?? null,
+      params.prevHash ?? null,
+      params.entryHash ?? null,
+      params.toolVersion ?? null,
+      params.extensionVersion ?? null,
+      params.browserVersion ?? null,
+      params.userAgent ?? null,
+      params.httpStatus ?? null,
+      params.operatorId ?? null,
+      params.operatorName ?? null
     )
 
     // Insert into FTS index
@@ -515,6 +569,18 @@ export function searchCaptures(query: string): Capture[] {
     )
     .all(query) as Array<Record<string, unknown>>
   return rows.map(rowToCapture)
+}
+
+export function getCaptureTextContent(captureId: string): string | null {
+  const d = getDb()
+  const row = d.prepare('SELECT rowid FROM captures WHERE id = ?').get(captureId) as
+    | { rowid: number }
+    | undefined
+  if (!row) return null
+  const ftsRow = d.prepare('SELECT content FROM captures_fts WHERE rowid = ?').get(row.rowid) as
+    | { content: string }
+    | undefined
+  return ftsRow?.content || null
 }
 
 // --- Selectors ---
@@ -847,7 +913,20 @@ function rowToCapture(row: Record<string, unknown>): Capture {
     hash: row.hash as string,
     timestamp: row.timestamp as string,
     headers: (row.headers as string) || undefined,
-    createdAt: row.created_at as string
+    createdAt: row.created_at as string,
+    format: ((row.format as string) || 'html') as CaptureFormat,
+    mhtmlPath: (row.mhtml_path as string) || undefined,
+    sizeBytes: (row.size_bytes as number) ?? undefined,
+    manifestIndex: (row.manifest_index as number) ?? undefined,
+    prevHash: (row.prev_hash as string) || undefined,
+    entryHash: (row.entry_hash as string) || undefined,
+    toolVersion: (row.tool_version as string) || undefined,
+    extensionVersion: (row.extension_version as string) || undefined,
+    browserVersion: (row.browser_version as string) || undefined,
+    userAgent: (row.user_agent as string) || undefined,
+    httpStatus: (row.http_status as number) ?? undefined,
+    operatorId: (row.operator_id as string) || undefined,
+    operatorName: (row.operator_name as string) || undefined
   }
 }
 

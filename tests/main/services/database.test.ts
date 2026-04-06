@@ -170,6 +170,51 @@ describe('database', () => {
       const caseAfter = getCase(caseId)!
       expect(caseAfter.updatedAt >= caseBefore.updatedAt).toBe(true)
     })
+
+    it('inserts and retrieves MHTML capture with all forensic fields', () => {
+      const caseId = createCase({ name: 'Forensic Case' }).id
+      const cap = insertCapture({
+        caseId,
+        url: 'https://example.com',
+        title: 'Example',
+        hash: 'a'.repeat(64),
+        timestamp: new Date().toISOString(),
+        format: 'mhtml',
+        mhtmlPath: 'case-id/cap-id.mhtml',
+        sizeBytes: 12345,
+        manifestIndex: 0,
+        prevHash: '',
+        entryHash: 'b'.repeat(64),
+        toolVersion: '0.1.0',
+        extensionVersion: '0.1.0',
+        browserVersion: 'Chrome/120',
+        userAgent: 'Mozilla/5.0',
+        httpStatus: 200,
+        operatorId: '11111111-1111-1111-1111-111111111111',
+        operatorName: 'Det. Smith'
+      })
+
+      const retrieved = getCapture(cap.id)!
+      expect(retrieved.format).toBe('mhtml')
+      expect(retrieved.mhtmlPath).toBe('case-id/cap-id.mhtml')
+      expect(retrieved.sizeBytes).toBe(12345)
+      expect(retrieved.manifestIndex).toBe(0)
+      expect(retrieved.entryHash).toBe('b'.repeat(64))
+      expect(retrieved.toolVersion).toBe('0.1.0')
+      expect(retrieved.operatorName).toBe('Det. Smith')
+    })
+
+    it('defaults legacy captures to format=html', () => {
+      const caseId = createCase({ name: 'Legacy Case' }).id
+      const cap = insertCapture({
+        caseId,
+        url: 'https://example.com',
+        title: 'Example',
+        hash: 'c'.repeat(64),
+        timestamp: new Date().toISOString()
+      })
+      expect(getCapture(cap.id)!.format).toBe('html')
+    })
   })
 
   describe('tags', () => {
@@ -262,9 +307,9 @@ describe('database', () => {
     })
 
     it('sets user_version to 7 after v7 migration', () => {
-      // v8, v9, and v10 migrations run immediately after, so final version is 10
+      // v8, v9, v10, and v11 migrations run immediately after, so final version is 11
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(10)
+      expect(version).toBe(11)
     })
   })
 
@@ -288,9 +333,9 @@ describe('database', () => {
     })
 
     it('sets user_version to 8', () => {
-      // v9 and v10 migrations run immediately after, so final version is 10
+      // v9, v10, and v11 migrations run immediately after, so final version is 11
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(10)
+      expect(version).toBe(11)
     })
   })
 
@@ -312,9 +357,9 @@ describe('database', () => {
     })
 
     it('sets user_version to 9', () => {
-      // v10 migration runs immediately after, so final version is 10
+      // v10 and v11 migrations run immediately after, so final version is 11
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(10)
+      expect(version).toBe(11)
     })
   })
 
@@ -783,6 +828,43 @@ describe('database', () => {
 
     it('returns undefined when updating a missing note', () => {
       expect(updateNote({ id: 'nonexistent', title: 'x' })).toBeUndefined()
+    })
+  })
+
+  describe('migration v11 (MHTML columns)', () => {
+    it('adds format column with default html', () => {
+      const caseId = createCase({ name: 'Migration Case' }).id
+      insertCapture({
+        caseId,
+        url: 'https://example.com',
+        title: 'Example',
+        hash: 'deadbeef',
+        timestamp: new Date().toISOString()
+      })
+      const row = getDb()
+        .prepare('SELECT format FROM captures WHERE case_id = ?')
+        .get(caseId) as { format: string }
+      expect(row.format).toBe('html')
+    })
+
+    it('sets user_version to 11', () => {
+      const version = getDb().pragma('user_version', { simple: true }) as number
+      expect(version).toBeGreaterThanOrEqual(11)
+    })
+
+    it('has all MHTML columns', () => {
+      const cols = getDb()
+        .prepare("PRAGMA table_info('captures')")
+        .all() as Array<{ name: string }>
+      const names = cols.map((c) => c.name)
+      const expected = [
+        'format', 'mhtml_path', 'size_bytes', 'manifest_index',
+        'prev_hash', 'entry_hash', 'tool_version', 'extension_version',
+        'browser_version', 'user_agent', 'http_status', 'operator_id', 'operator_name'
+      ]
+      for (const col of expected) {
+        expect(names).toContain(col)
+      }
     })
   })
 

@@ -8,7 +8,8 @@ import type {
   Selector,
   ActiveCaseSelectors,
   CaptureEvent,
-  Note
+  Note,
+  HashVerification
 } from '@shared/types'
 import type {
   CreateCaseParams,
@@ -44,6 +45,8 @@ interface BirdbrainAPI {
     toggleFavorite(captureId: string): Promise<boolean>
     isFavorite(captureId: string): Promise<boolean>
     listFavorites(caseId: string): Promise<string[]>
+    verify(captureId: string): Promise<HashVerification>
+    getMhtmlUrl(captureId: string): Promise<string | null>
   }
   tags: {
     list(): Promise<Tag[]>
@@ -106,5 +109,20 @@ interface BirdbrainAPI {
 declare global {
   interface Window {
     birdbrain: BirdbrainAPI
+  }
+}
+
+declare namespace JSX {
+  interface IntrinsicElements {
+    webview: React.DetailedHTMLProps<
+      React.HTMLAttributes<HTMLElement> & {
+        src?: string
+        nodeintegration?: string
+        allowpopups?: string
+        webpreferences?: string
+        partition?: string
+      },
+      HTMLElement
+    >
   }
 }

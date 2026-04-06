@@ -65,7 +65,6 @@
     "better-sqlite3": "^12.8.0",
     "compromise": "^14.15.0",
     "d3-force": "^3.0.0",
-    "freeze-dry": "^1.0.0",
     "hono": "^4.12.10",
     "lucide-react": "^0.577.0",
     "uuid": "^11.1.0",

@@ -14,6 +14,7 @@ import {
 } from '@main/services/database'
 import { initStorage } from '@main/services/storage'
 import { initSettings, updateSettings } from '@main/services/settings'
+import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { startCaptureServer, stopCaptureServer, getSessionState, resetSessionState } from '@main/services/captureServer'
 
 let nextPort = 19846
@@ -28,6 +29,8 @@ describe('captureServer', () => {
     initDatabase(':memory:')
     initStorage(join(tempDir, 'captures'))
     initSettings(tempDir)
+    resetInstallationId()
+    initInstallationId(tempDir)
     resetSessionState()
     baseUrl = `http://127.0.0.1:${port}`
     await startCaptureServer(port)
@@ -38,6 +41,13 @@ describe('captureServer', () => {
     closeDatabase()
     rmSync(tempDir, { recursive: true, force: true })
   })
+
+  function postCapture(fields: Record<string, string>, mhtmlContent = '<html>test</html>'): Promise<Response> {
+    const form = new FormData()
+    for (const [k, v] of Object.entries(fields)) form.append(k, v)
+    form.append('mhtml', new Blob([mhtmlContent], { type: 'multipart/related' }), 'capture.mhtml')
+    return fetch(`${baseUrl}/api/captures`, { method: 'POST', body: form })
+  }
 
   it('GET /api/status returns running state', async () => {
     const res = await fetch(`${baseUrl}/api/status`)
@@ -107,18 +117,13 @@ describe('captureServer', () => {
     await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
     await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
 
-    const res = await fetch(`${baseUrl}/api/captures`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source: 'auto',
-        url: 'https://example.com',
-        title: 'Example Page',
-        html: '<html><body>Hello World</body></html>',
-        timestamp: new Date().toISOString(),
-        textContent: 'Hello World'
-      })
-    })
+    const res = await postCapture({
+      source: 'auto',
+      url: 'https://example.com',
+      title: 'Example Page',
+      timestamp: new Date().toISOString(),
+      textContent: 'Hello World'
+    }, '<html><body>Hello World</body></html>')
 
     const data = await res.json()
     expect(data.status).toBe('ok')
@@ -135,14 +140,9 @@ describe('captureServer', () => {
     const testCase = createCase({ name: 'No Session' })
     await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
 
-    const res = await fetch(`${baseUrl}/api/captures`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source: 'auto',
-        url: 'https://example.com',
-        html: '<html>test</html>'
-      })
+    const res = await postCapture({
+      source: 'auto',
+      url: 'https://example.com'
     })
     expect(res.status).toBe(400)
     const data = await res.json()
@@ -150,14 +150,9 @@ describe('captureServer', () => {
   })
 
   it('source=auto rejects without active case', async () => {
-    const res = await fetch(`${baseUrl}/api/captures`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source: 'auto',
-        url: 'https://example.com',
-        html: '<html>test</html>'
-      })
+    const res = await postCapture({
+      source: 'auto',
+      url: 'https://example.com'
     })
     expect(res.status).toBe(400)
   })
@@ -167,27 +162,17 @@ describe('captureServer', () => {
     await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
     await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
 
-    await fetch(`${baseUrl}/api/captures`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source: 'auto',
-        url: 'https://a.com',
-        title: 'A',
-        html: '<html>a</html>'
-      })
-    })
+    await postCapture({
+      source: 'auto',
+      url: 'https://a.com',
+      title: 'A'
+    }, '<html>a</html>')
 
-    await fetch(`${baseUrl}/api/captures`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source: 'auto',
-        url: 'https://b.com',
-        title: 'B',
-        html: '<html>b</html>'
-      })
-    })
+    await postCapture({
+      source: 'auto',
+      url: 'https://b.com',
+      title: 'B'
+    }, '<html>b</html>')
 
     const state = getSessionState()
     expect(state.captureCount).toBe(2)
@@ -196,19 +181,14 @@ describe('captureServer', () => {
   it('source=manual stores capture without active session', async () => {
     const testCase = createCase({ name: 'Manual Test' })
 
-    const res = await fetch(`${baseUrl}/api/captures`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source: 'manual',
-        caseId: testCase.id,
-        url: 'https://example.com/manual',
-        title: 'Manual Page',
-        html: '<html><body>Manual capture</body></html>',
-        timestamp: new Date().toISOString(),
-        textContent: 'Manual capture'
-      })
-    })
+    const res = await postCapture({
+      source: 'manual',
+      caseId: testCase.id,
+      url: 'https://example.com/manual',
+      title: 'Manual Page',
+      timestamp: new Date().toISOString(),
+      textContent: 'Manual capture'
+    }, '<html><body>Manual capture</body></html>')
 
     const data = await res.json()
     expect(res.status).toBe(200)
@@ -227,14 +207,9 @@ describe('captureServer', () => {
   })
 
   it('source=manual returns 400 without caseId', async () => {
-    const res = await fetch(`${baseUrl}/api/captures`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source: 'manual',
-        url: 'https://example.com',
-        html: '<html>test</html>'
-      })
+    const res = await postCapture({
+      source: 'manual',
+      url: 'https://example.com'
     })
     expect(res.status).toBe(400)
     const data = await res.json()
@@ -242,15 +217,10 @@ describe('captureServer', () => {
   })
 
   it('source=manual returns 404 for unknown case', async () => {
-    const res = await fetch(`${baseUrl}/api/captures`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source: 'manual',
-        caseId: 'nonexistent-id',
-        url: 'https://example.com',
-        html: '<html>test</html>'
-      })
+    const res = await postCapture({
+      source: 'manual',
+      caseId: 'nonexistent-id',
+      url: 'https://example.com'
     })
     expect(res.status).toBe(404)
   })
@@ -259,69 +229,37 @@ describe('captureServer', () => {
     const testCase = createCase({ name: 'Archived Case' })
     updateCase({ id: testCase.id, archived: true })
 
-    const res = await fetch(`${baseUrl}/api/captures`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source: 'manual',
-        caseId: testCase.id,
-        url: 'https://example.com',
-        html: '<html>test</html>'
-      })
+    const res = await postCapture({
+      source: 'manual',
+      caseId: testCase.id,
+      url: 'https://example.com'
     })
     expect(res.status).toBe(400)
     const data = await res.json()
     expect(data.error).toContain('archived')
   })
 
-  it('source=selector requires caseId and matchedSelectors', async () => {
-    const testCase = createCase({ name: 'Selector Test' })
-
+  it('source=selector requires caseId', async () => {
     // Missing caseId
-    const res1 = await fetch(`${baseUrl}/api/captures`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source: 'selector',
-        url: 'https://example.com',
-        html: '<html>test</html>',
-        matchedSelectors: ['h1']
-      })
+    const res = await postCapture({
+      source: 'selector',
+      url: 'https://example.com'
     })
-    expect(res1.status).toBe(400)
-
-    // Missing matchedSelectors
-    const res2 = await fetch(`${baseUrl}/api/captures`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source: 'selector',
-        caseId: testCase.id,
-        url: 'https://example.com',
-        html: '<html>test</html>'
-      })
-    })
-    expect(res2.status).toBe(400)
-    const data2 = await res2.json()
-    expect(data2.error).toContain('matchedSelectors')
+    expect(res.status).toBe(400)
+    const data = await res.json()
+    expect(data.error).toContain('caseId')
   })
 
   it('source=selector stores capture', async () => {
     const testCase = createCase({ name: 'Selector Capture' })
 
-    const res = await fetch(`${baseUrl}/api/captures`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source: 'selector',
-        caseId: testCase.id,
-        url: 'https://example.com/selector',
-        title: 'Selector Page',
-        html: '<html><body>Selector content</body></html>',
-        matchedSelectors: ['h1', '.article'],
-        textContent: 'Selector content'
-      })
-    })
+    const res = await postCapture({
+      source: 'selector',
+      caseId: testCase.id,
+      url: 'https://example.com/selector',
+      title: 'Selector Page',
+      textContent: 'Selector content'
+    }, '<html><body>Selector content</body></html>')
 
     const data = await res.json()
     expect(res.status).toBe(200)
@@ -336,22 +274,16 @@ describe('captureServer', () => {
     expect(state.captureCount).toBe(0)
   })
 
-  it('rejects missing url or html', async () => {
+  it('rejects when mhtml field is missing', async () => {
     const testCase = createCase({ name: 'Validation Test' })
     await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
     await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
 
-    const res = await fetch(`${baseUrl}/api/captures`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source: 'auto',
-        url: 'https://example.com'
-      })
-    })
+    const form = new FormData()
+    form.append('source', 'auto')
+    form.append('url', 'https://example.com')
+    const res = await fetch(`${baseUrl}/api/captures`, { method: 'POST', body: form })
     expect(res.status).toBe(400)
-    const data = await res.json()
-    expect(data.error).toContain('url, html')
   })
 
   it('returns 400 for unknown source value', async () => {
@@ -359,42 +291,14 @@ describe('captureServer', () => {
     await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
     await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
 
-    const res = await fetch(`${baseUrl}/api/captures`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source: 'typoed-source',
-        url: 'https://example.com',
-        html: '<html>test</html>'
-      })
-    })
+    const form = new FormData()
+    form.append('source', 'typoed-source')
+    form.append('url', 'https://example.com')
+    form.append('mhtml', new Blob(['<html>test</html>'], { type: 'multipart/related' }), 'capture.mhtml')
+    const res = await fetch(`${baseUrl}/api/captures`, { method: 'POST', body: form })
     expect(res.status).toBe(400)
     const data = await res.json()
     expect(data.error).toContain('Invalid source')
-  })
-
-  it('defaults source to auto when not provided (backwards compat)', async () => {
-    const testCase = createCase({ name: 'Default Source' })
-    await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
-    await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
-
-    const res = await fetch(`${baseUrl}/api/captures`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        url: 'https://example.com/default',
-        title: 'Default',
-        html: '<html>default</html>'
-      })
-    })
-
-    const data = await res.json()
-    expect(res.status).toBe(200)
-    expect(data.source).toBe('auto')
-    expect(data.status).toBe('ok')
-
-    const state = getSessionState()
-    expect(state.captureCount).toBe(1)
   })
 
   // --- Status endpoint ---
@@ -421,16 +325,11 @@ describe('captureServer', () => {
 
     updateSettings({ ignoredUrlPatterns: ['facebook.com'] })
 
-    const res = await fetch(`${baseUrl}/api/captures`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source: 'auto',
-        url: 'https://facebook.com/some-page',
-        title: 'Facebook',
-        html: '<html>fb</html>'
-      })
-    })
+    const res = await postCapture({
+      source: 'auto',
+      url: 'https://facebook.com/some-page',
+      title: 'Facebook'
+    }, '<html>fb</html>')
 
     expect(res.status).toBe(403)
     const data = await res.json()
@@ -444,16 +343,11 @@ describe('captureServer', () => {
 
     updateSettings({ ignoredUrlPatterns: ['facebook.com'] })
 
-    const res = await fetch(`${baseUrl}/api/captures`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source: 'auto',
-        url: 'https://example.com',
-        title: 'Example',
-        html: '<html>example</html>'
-      })
-    })
+    const res = await postCapture({
+      source: 'auto',
+      url: 'https://example.com',
+      title: 'Example'
+    }, '<html>example</html>')
 
     expect(res.status).toBe(200)
     const data = await res.json()
@@ -464,16 +358,11 @@ describe('captureServer', () => {
     const testCase = createCase({ name: 'Manual Blacklist' })
     updateSettings({ ignoredUrlPatterns: ['blocked-site.com'] })
 
-    const res = await fetch(`${baseUrl}/api/captures`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source: 'manual',
-        caseId: testCase.id,
-        url: 'https://blocked-site.com/page',
-        html: '<html>blocked</html>'
-      })
-    })
+    const res = await postCapture({
+      source: 'manual',
+      caseId: testCase.id,
+      url: 'https://blocked-site.com/page'
+    }, '<html>blocked</html>')
 
     expect(res.status).toBe(403)
   })
@@ -482,18 +371,12 @@ describe('captureServer', () => {
     const testCase = createCase({ name: 'Selector Blacklist' })
     updateSettings({ ignoredUrlPatterns: ['spam.org'] })
 
-    const res = await fetch(`${baseUrl}/api/captures`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source: 'selector',
-        caseId: testCase.id,
-        url: 'https://spam.org/content',
-        title: 'Spam',
-        html: '<html>spam</html>',
-        matchedSelectors: ['div']
-      })
-    })
+    const res = await postCapture({
+      source: 'selector',
+      caseId: testCase.id,
+      url: 'https://spam.org/content',
+      title: 'Spam'
+    }, '<html>spam</html>')
 
     expect(res.status).toBe(403)
   })
@@ -505,28 +388,18 @@ describe('captureServer', () => {
 
     updateSettings({ ignoredUrlPatterns: ['/.*\\.pdf$/i'] })
 
-    const blockedRes = await fetch(`${baseUrl}/api/captures`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source: 'auto',
-        url: 'https://example.com/document.pdf',
-        title: 'PDF',
-        html: '<html>pdf</html>'
-      })
-    })
+    const blockedRes = await postCapture({
+      source: 'auto',
+      url: 'https://example.com/document.pdf',
+      title: 'PDF'
+    }, '<html>pdf</html>')
     expect(blockedRes.status).toBe(403)
 
-    const allowedRes = await fetch(`${baseUrl}/api/captures`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source: 'auto',
-        url: 'https://example.com/page.html',
-        title: 'HTML',
-        html: '<html>html</html>'
-      })
-    })
+    const allowedRes = await postCapture({
+      source: 'auto',
+      url: 'https://example.com/page.html',
+      title: 'HTML'
+    }, '<html>html</html>')
     expect(allowedRes.status).toBe(200)
   })
 
@@ -537,28 +410,18 @@ describe('captureServer', () => {
 
     updateSettings({ ignoredUrlPatterns: ['*.facebook.com*'] })
 
-    const blockedRes = await fetch(`${baseUrl}/api/captures`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source: 'auto',
-        url: 'https://www.facebook.com/some/page',
-        title: 'FB',
-        html: '<html>fb</html>'
-      })
-    })
+    const blockedRes = await postCapture({
+      source: 'auto',
+      url: 'https://www.facebook.com/some/page',
+      title: 'FB'
+    }, '<html>fb</html>')
     expect(blockedRes.status).toBe(403)
 
-    const allowedRes = await fetch(`${baseUrl}/api/captures`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source: 'auto',
-        url: 'https://example.com/page',
-        title: 'Example',
-        html: '<html>ok</html>'
-      })
-    })
+    const allowedRes = await postCapture({
+      source: 'auto',
+      url: 'https://example.com/page',
+      title: 'Example'
+    }, '<html>ok</html>')
     expect(allowedRes.status).toBe(200)
   })
 
@@ -579,54 +442,44 @@ describe('captureServer', () => {
 
     updateSettings({ ignoredUrlPatterns: ['example.com/user?'] })
 
-    const blockedRes = await fetch(`${baseUrl}/api/captures`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source: 'auto',
-        url: 'https://example.com/userA',
-        title: 'User A',
-        html: '<html>a</html>'
-      })
-    })
+    const blockedRes = await postCapture({
+      source: 'auto',
+      url: 'https://example.com/userA',
+      title: 'User A'
+    }, '<html>a</html>')
     expect(blockedRes.status).toBe(403)
 
-    const allowedRes = await fetch(`${baseUrl}/api/captures`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source: 'auto',
-        url: 'https://example.com/users',
-        title: 'Users',
-        html: '<html>users</html>'
-      })
-    })
+    const allowedRes = await postCapture({
+      source: 'auto',
+      url: 'https://example.com/users',
+      title: 'Users'
+    }, '<html>users</html>')
     // 'users' ends with 's' which matches the '?' — still blocked
     expect(allowedRes.status).toBe(403)
   })
 
   // --- Manual capture dedup tests ---
 
-  function manualCaptureBody(caseId: string, url = 'https://example.com/page', html = '<html>test</html>') {
-    return JSON.stringify({
-      source: 'manual',
-      caseId,
-      url,
-      title: 'Test',
-      html,
-      timestamp: new Date().toISOString()
-    })
-  }
-
   it('source=manual rejects duplicate within 5s window', async () => {
     const testCase = createCase({ name: 'Dedup Test' })
-    const headers = { 'Content-Type': 'application/json' }
-    const body = manualCaptureBody(testCase.id)
+    const url = 'https://example.com/page'
 
-    const first = await fetch(`${baseUrl}/api/captures`, { method: 'POST', headers, body })
+    const first = await postCapture({
+      source: 'manual',
+      caseId: testCase.id,
+      url,
+      title: 'Test',
+      timestamp: new Date().toISOString()
+    })
     expect(first.status).toBe(200)
 
-    const second = await fetch(`${baseUrl}/api/captures`, { method: 'POST', headers, body })
+    const second = await postCapture({
+      source: 'manual',
+      caseId: testCase.id,
+      url,
+      title: 'Test',
+      timestamp: new Date().toISOString()
+    })
     expect(second.status).toBe(409)
     const data = await second.json()
     expect(data.error).toContain('Duplicate')
@@ -637,11 +490,15 @@ describe('captureServer', () => {
 
   it.skip('source=manual allows same URL after dedup window expires', async () => {
     const testCase = createCase({ name: 'Dedup Expiry' })
-    const headers = { 'Content-Type': 'application/json' }
     const url = 'https://example.com/expiry-test'
-    const body = manualCaptureBody(testCase.id, url)
 
-    const first = await fetch(`${baseUrl}/api/captures`, { method: 'POST', headers, body })
+    const first = await postCapture({
+      source: 'manual',
+      caseId: testCase.id,
+      url,
+      title: 'Test',
+      timestamp: new Date().toISOString()
+    })
     expect(first.status).toBe(200)
 
     // Advance time past the 5s window
@@ -649,7 +506,13 @@ describe('captureServer', () => {
     vi.advanceTimersByTime(6000)
     vi.useRealTimers()
 
-    const second = await fetch(`${baseUrl}/api/captures`, { method: 'POST', headers, body })
+    const second = await postCapture({
+      source: 'manual',
+      caseId: testCase.id,
+      url,
+      title: 'Test',
+      timestamp: new Date().toISOString()
+    })
     expect(second.status).toBe(200)
 
     const captures = listCaptures(testCase.id)
@@ -658,19 +521,22 @@ describe('captureServer', () => {
 
   it('source=manual allows different URLs in same case within window', async () => {
     const testCase = createCase({ name: 'Dedup Diff URL' })
-    const headers = { 'Content-Type': 'application/json' }
 
-    const first = await fetch(`${baseUrl}/api/captures`, {
-      method: 'POST',
-      headers,
-      body: manualCaptureBody(testCase.id, 'https://example.com/page-a')
+    const first = await postCapture({
+      source: 'manual',
+      caseId: testCase.id,
+      url: 'https://example.com/page-a',
+      title: 'Test',
+      timestamp: new Date().toISOString()
     })
     expect(first.status).toBe(200)
 
-    const second = await fetch(`${baseUrl}/api/captures`, {
-      method: 'POST',
-      headers,
-      body: manualCaptureBody(testCase.id, 'https://example.com/page-b')
+    const second = await postCapture({
+      source: 'manual',
+      caseId: testCase.id,
+      url: 'https://example.com/page-b',
+      title: 'Test',
+      timestamp: new Date().toISOString()
     })
     expect(second.status).toBe(200)
 
@@ -681,20 +547,23 @@ describe('captureServer', () => {
   it('source=manual allows same URL in different cases within window', async () => {
     const caseA = createCase({ name: 'Case A' })
     const caseB = createCase({ name: 'Case B' })
-    const headers = { 'Content-Type': 'application/json' }
     const url = 'https://example.com/shared-page'
 
-    const first = await fetch(`${baseUrl}/api/captures`, {
-      method: 'POST',
-      headers,
-      body: manualCaptureBody(caseA.id, url)
+    const first = await postCapture({
+      source: 'manual',
+      caseId: caseA.id,
+      url,
+      title: 'Test',
+      timestamp: new Date().toISOString()
     })
     expect(first.status).toBe(200)
 
-    const second = await fetch(`${baseUrl}/api/captures`, {
-      method: 'POST',
-      headers,
-      body: manualCaptureBody(caseB.id, url)
+    const second = await postCapture({
+      source: 'manual',
+      caseId: caseB.id,
+      url,
+      title: 'Test',
+      timestamp: new Date().toISOString()
     })
     expect(second.status).toBe(200)
   })
@@ -703,19 +572,19 @@ describe('captureServer', () => {
     const testCase = createCase({ name: 'Auto No Dedup' })
     await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
     await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
-    const headers = { 'Content-Type': 'application/json' }
-    const url = 'https://example.com/auto-page'
-    const autoBody = JSON.stringify({
-      source: 'auto',
-      url,
-      title: 'Auto',
-      html: '<html>auto</html>'
-    })
 
-    const first = await fetch(`${baseUrl}/api/captures`, { method: 'POST', headers, body: autoBody })
+    const first = await postCapture({
+      source: 'auto',
+      url: 'https://example.com/auto-page',
+      title: 'Auto'
+    }, '<html>auto</html>')
     expect(first.status).toBe(200)
 
-    const second = await fetch(`${baseUrl}/api/captures`, { method: 'POST', headers, body: autoBody })
+    const second = await postCapture({
+      source: 'auto',
+      url: 'https://example.com/auto-page',
+      title: 'Auto'
+    }, '<html>auto</html>')
     expect(second.status).toBe(200)
 
     const captures = listCaptures(testCase.id)
@@ -724,20 +593,21 @@ describe('captureServer', () => {
 
   it('source=selector is not affected by manual dedup', async () => {
     const testCase = createCase({ name: 'Selector No Dedup' })
-    const headers = { 'Content-Type': 'application/json' }
-    const selectorBody = JSON.stringify({
+
+    const first = await postCapture({
       source: 'selector',
       caseId: testCase.id,
       url: 'https://example.com/selector-page',
-      title: 'Selector',
-      html: '<html>selector</html>',
-      matchedSelectors: ['h1']
-    })
-
-    const first = await fetch(`${baseUrl}/api/captures`, { method: 'POST', headers, body: selectorBody })
+      title: 'Selector'
+    }, '<html>selector</html>')
     expect(first.status).toBe(200)
 
-    const second = await fetch(`${baseUrl}/api/captures`, { method: 'POST', headers, body: selectorBody })
+    const second = await postCapture({
+      source: 'selector',
+      caseId: testCase.id,
+      url: 'https://example.com/selector-page',
+      title: 'Selector'
+    }, '<html>selector</html>')
     expect(second.status).toBe(200)
 
     const captures = listCaptures(testCase.id)
@@ -746,17 +616,55 @@ describe('captureServer', () => {
 
   it('manual dedup state is cleared by resetSessionState', async () => {
     const testCase = createCase({ name: 'Dedup Reset' })
-    const headers = { 'Content-Type': 'application/json' }
-    const body = manualCaptureBody(testCase.id)
 
-    const first = await fetch(`${baseUrl}/api/captures`, { method: 'POST', headers, body })
+    const first = await postCapture({
+      source: 'manual',
+      caseId: testCase.id,
+      url: 'https://example.com/page',
+      title: 'Test',
+      timestamp: new Date().toISOString()
+    })
     expect(first.status).toBe(200)
 
     // Without reset, this would be 409
     resetSessionState()
 
-    const second = await fetch(`${baseUrl}/api/captures`, { method: 'POST', headers, body })
+    const second = await postCapture({
+      source: 'manual',
+      caseId: testCase.id,
+      url: 'https://example.com/page',
+      title: 'Test',
+      timestamp: new Date().toISOString()
+    })
     expect(second.status).toBe(200)
+  })
+
+  // --- MHTML-specific test ---
+
+  it('stores a manual MHTML capture with forensic fields', async () => {
+    const c = createCase({ name: 'MHTML Test' })
+    const mhtmlBytes = '<html><body>mhtml test</body></html>'
+    const res = await postCapture({
+      source: 'manual',
+      caseId: c.id,
+      url: 'https://example.com/mhtml',
+      title: 'MHTML Page',
+      timestamp: new Date().toISOString(),
+      textContent: 'mhtml test',
+      extensionVersion: '0.1.0',
+      browserVersion: 'Chrome/120',
+      userAgent: 'Mozilla/5.0'
+    }, mhtmlBytes)
+
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(data.captureId).toBeDefined()
+    expect(data.hash).toMatch(/^[0-9a-f]{64}$/)
+    expect(data.manifestIndex).toBe(0)
+
+    const rows = listCaptures(c.id)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].format).toBe('mhtml')
   })
 
   // --- POST /api/selectors (create selector from extension) ---
@@ -926,32 +834,22 @@ describe('captureServer', () => {
     await activateSessionForCase(testCase.id)
 
     // Create a capture with text content that contains the pattern
-    await fetch(`${baseUrl}/api/captures`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source: 'auto',
-        url: 'https://example.com/page1',
-        title: 'Page 1',
-        html: '<html><body>suspicious transaction detected here</body></html>',
-        timestamp: new Date().toISOString(),
-        textContent: 'suspicious transaction detected here'
-      })
-    })
+    await postCapture({
+      source: 'auto',
+      url: 'https://example.com/page1',
+      title: 'Page 1',
+      timestamp: new Date().toISOString(),
+      textContent: 'suspicious transaction detected here'
+    }, '<html><body>suspicious transaction detected here</body></html>')
 
     // Create another capture without the pattern
-    await fetch(`${baseUrl}/api/captures`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source: 'auto',
-        url: 'https://example.com/page2',
-        title: 'Page 2',
-        html: '<html><body>nothing interesting</body></html>',
-        timestamp: new Date().toISOString(),
-        textContent: 'nothing interesting'
-      })
-    })
+    await postCapture({
+      source: 'auto',
+      url: 'https://example.com/page2',
+      title: 'Page 2',
+      timestamp: new Date().toISOString(),
+      textContent: 'nothing interesting'
+    }, '<html><body>nothing interesting</body></html>')
 
     // Now create a selector that matches the first capture
     const res = await fetch(`${baseUrl}/api/selectors`, {

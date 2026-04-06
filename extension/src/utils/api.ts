@@ -31,6 +31,7 @@ interface CaptureResult {
   hash: string
   status: string
   source: string
+  manifestIndex?: number
 }
 
 interface SelectorInfo {
@@ -102,22 +103,48 @@ export async function stopSession(): Promise<{ status: string; sessionActive: bo
   return request('/api/session/stop', { method: 'POST' })
 }
 
-export async function sendCapture(data: {
+export async function sendMhtmlCapture(params: {
   source: 'auto' | 'manual' | 'selector'
   caseId?: string
   url: string
   title: string
-  html: string
-  screenshot?: string
   timestamp: string
-  headers?: Record<string, string>
-  textContent?: string
+  textContent: string
+  mhtml: Blob
+  browserVersion: string
+  userAgent: string
+  extensionVersion: string
+  httpStatus?: number
   matchedSelectors?: SelectorMatchInfo[]
 }): Promise<CaptureResult> {
-  return request('/api/captures', {
-    method: 'POST',
-    body: JSON.stringify(data)
-  })
+  const form = new FormData()
+  form.append('source', params.source)
+  if (params.caseId) form.append('caseId', params.caseId)
+  form.append('url', params.url)
+  form.append('title', params.title)
+  form.append('timestamp', params.timestamp)
+  form.append('textContent', params.textContent)
+  form.append('browserVersion', params.browserVersion)
+  form.append('userAgent', params.userAgent)
+  form.append('extensionVersion', params.extensionVersion)
+  if (params.httpStatus !== undefined) form.append('httpStatus', String(params.httpStatus))
+  if (params.matchedSelectors) {
+    form.append('matchedSelectors', JSON.stringify(params.matchedSelectors))
+  }
+  form.append('mhtml', params.mhtml, 'capture.mhtml')
+
+  const res = await fetch(BASE_URL + '/api/captures', { method: 'POST', body: form })
+  if (!res.ok) {
+    let detail = res.statusText
+    try {
+      const body = await res.json()
+      detail = body.error || detail
+    } catch {
+      /* no JSON body */
+    }
+    throw new ApiError(res.status, res.statusText, detail)
+  }
+  return res.json() as Promise<CaptureResult>
 }
 
 export async function testCapturePipeline(): Promise<{

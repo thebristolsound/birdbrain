@@ -29,7 +29,7 @@ export function getStorageRoot(): string {
   return storageRoot
 }
 
-function ensureCaseDir(caseId: string): string {
+export function ensureCaseDir(caseId: string): string {
   const dir = join(getStorageRoot(), caseId)
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true })
@@ -72,16 +72,16 @@ export function updateCaptureHtml(caseId: string, captureId: string, html: strin
 export function getCapturePath(
   caseId: string,
   captureId: string,
-  type: 'html' | 'png' | 'txt'
+  type: 'html' | 'png' | 'txt' | 'mhtml'
 ): string {
-  const ext = type === 'png' ? 'png' : type === 'txt' ? 'txt' : 'html'
+  const ext = type === 'png' ? 'png' : type === 'txt' ? 'txt' : type === 'mhtml' ? 'mhtml' : 'html'
   return join(getStorageRoot(), caseId, `${captureId}.${ext}`)
 }
 
 export function readCaptureFile(
   caseId: string,
   captureId: string,
-  type: 'html' | 'png' | 'txt'
+  type: 'html' | 'png' | 'txt' | 'mhtml'
 ): Buffer | null {
   const path = getCapturePath(caseId, captureId, type)
   if (!existsSync(path)) return null
@@ -89,7 +89,7 @@ export function readCaptureFile(
 }
 
 export function deleteCaptureFiles(caseId: string, captureId: string): void {
-  for (const ext of ['html', 'png', 'txt'] as const) {
+  for (const ext of ['html', 'png', 'txt', 'mhtml'] as const) {
     const path = getCapturePath(caseId, captureId, ext)
     if (existsSync(path)) {
       unlinkSync(path)

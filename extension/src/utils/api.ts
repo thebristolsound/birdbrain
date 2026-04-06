@@ -111,6 +111,7 @@ export async function sendMhtmlCapture(params: {
   timestamp: string
   textContent: string
   mhtml: Blob
+  screenshot?: Blob
   browserVersion: string
   userAgent: string
   extensionVersion: string
@@ -130,6 +131,9 @@ export async function sendMhtmlCapture(params: {
   if (params.httpStatus !== undefined) form.append('httpStatus', String(params.httpStatus))
   if (params.matchedSelectors) {
     form.append('matchedSelectors', JSON.stringify(params.matchedSelectors))
+  }
+  if (params.screenshot) {
+    form.append('screenshot', params.screenshot, 'screenshot.png')
   }
   form.append('mhtml', params.mhtml, 'capture.mhtml')
 

@@ -278,6 +278,23 @@ function migrate(db: Database.Database): void {
       db.pragma('user_version = 11')
     })()
   }
+
+  if (version < 12) {
+    db.transaction(() => {
+      // Rebuild captures_fts to purge stale entries left by CASCADE deletes
+      db.exec(`DELETE FROM captures_fts`)
+      const rows = db
+        .prepare('SELECT rowid, title, url FROM captures')
+        .all() as Array<{ rowid: number; title: string; url: string }>
+      const insert = db.prepare(
+        'INSERT INTO captures_fts (rowid, title, url, content) VALUES (?, ?, ?, ?)'
+      )
+      for (const row of rows) {
+        insert.run(row.rowid, row.title ?? '', row.url, '')
+      }
+      db.pragma('user_version = 12')
+    })()
+  }
 }
 
 // --- Cases ---
@@ -326,7 +343,18 @@ export function updateCase(params: UpdateCaseParams): Case | undefined {
 }
 
 export function deleteCase(id: string): boolean {
-  const result = getDb().prepare('DELETE FROM cases WHERE id = ?').run(id)
+  const d = getDb()
+  const run = d.transaction(() => {
+    // Clean up FTS entries for all captures in this case before CASCADE deletes them
+    d.prepare(
+      `DELETE FROM captures_fts WHERE rowid IN (
+        SELECT rowid FROM captures WHERE case_id = ?
+      )`
+    ).run(id)
+
+    return d.prepare('DELETE FROM cases WHERE id = ?').run(id)
+  })
+  const result = run()
   return result.changes > 0
 }
 

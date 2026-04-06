@@ -571,6 +571,18 @@ export function searchCaptures(query: string): Capture[] {
   return rows.map(rowToCapture)
 }
 
+export function getCaptureTextContent(captureId: string): string | null {
+  const d = getDb()
+  const row = d.prepare('SELECT rowid FROM captures WHERE id = ?').get(captureId) as
+    | { rowid: number }
+    | undefined
+  if (!row) return null
+  const ftsRow = d.prepare('SELECT content FROM captures_fts WHERE rowid = ?').get(row.rowid) as
+    | { content: string }
+    | undefined
+  return ftsRow?.content || null
+}
+
 // --- Selectors ---
 
 export function listSelectors(caseId: string): Selector[] {

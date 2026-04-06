@@ -5,9 +5,10 @@ import type { Server } from 'http'
 import type { BrowserWindow } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
 import * as db from '@main/services/database'
-import { saveCapture, deleteCaptureFiles, readCaptureFile } from '@main/services/storage'
-import { hashContent } from '@main/services/hash'
+import { deleteCaptureFiles, readCaptureFile } from '@main/services/storage'
 import { getSettings } from '@main/services/settings'
+import { ingestMhtmlCapture } from '@main/services/mhtmlIngest'
+import { getInstallationId } from '@main/services/installationId'
 import type { CaptureEvent, CaptureSource } from '@shared/types'
 
 import { CAPTURE_SERVER_PORT } from '@shared/constants'
@@ -200,45 +201,44 @@ function createApp(): Hono {
     return c.json({ status: 'ok', sessionActive: false })
   })
 
-  // Unified capture endpoint
+  // Unified capture endpoint (multipart/form-data with MHTML file)
   app.post('/api/captures', async (c) => {
     const startTime = Date.now()
     let source: CaptureSource = 'auto'
     let capturedUrl = ''
     try {
-      const body = await c.req.json()
-      // Validate that the request body is a non-null object
-      if (body === null || typeof body !== 'object' || Array.isArray(body)) {
-        return c.json({ error: 'Invalid request body: expected JSON object' }, 400)
+      const body = await c.req.parseBody()
+      const rawSource = body['source']
+      if (
+        typeof rawSource !== 'string' ||
+        !VALID_CAPTURE_SOURCES.includes(rawSource as CaptureSource)
+      ) {
+        return c.json({ error: 'Invalid source' }, 400)
+      }
+      source = rawSource as CaptureSource
+      const url = typeof body['url'] === 'string' ? body['url'] : ''
+      const title = typeof body['title'] === 'string' ? body['title'] : url
+      const timestamp =
+        typeof body['timestamp'] === 'string' ? body['timestamp'] : new Date().toISOString()
+      const textContent = typeof body['textContent'] === 'string' ? body['textContent'] : ''
+      const extensionVersion =
+        typeof body['extensionVersion'] === 'string' ? body['extensionVersion'] : ''
+      const browserVersion =
+        typeof body['browserVersion'] === 'string' ? body['browserVersion'] : ''
+      const userAgent = typeof body['userAgent'] === 'string' ? body['userAgent'] : ''
+      const httpStatusRaw = body['httpStatus']
+      const httpStatus = typeof httpStatusRaw === 'string' ? parseInt(httpStatusRaw, 10) || 0 : 0
+      const caseIdField = typeof body['caseId'] === 'string' ? body['caseId'] : ''
+      capturedUrl = url
+
+      const mhtmlField = body['mhtml']
+      if (!(mhtmlField instanceof File) && !(mhtmlField instanceof Blob)) {
+        return c.json({ error: 'Missing required field: mhtml (file)' }, 400)
+      }
+      if (!url) {
+        return c.json({ error: 'Missing required field: url' }, 400)
       }
 
-      const rawSource = (body as Record<string, unknown>).source
-      if (rawSource === undefined || rawSource === null) {
-        source = 'auto'
-      } else if (VALID_CAPTURE_SOURCES.includes(rawSource as CaptureSource)) {
-        source = rawSource as CaptureSource
-      } else {
-        return c.json({ error: `Invalid source: ${rawSource}` }, 400)
-      }
-      const { url, title, html, screenshot, timestamp, headers, textContent, matchedSelectors } =
-        body as {
-          url?: string
-          title?: string
-          html?: string
-          screenshot?: string
-          timestamp?: string
-          headers?: Record<string, unknown>
-          textContent?: string
-          matchedSelectors?: unknown
-        }
-      capturedUrl = url || ''
-
-      // 1. Common validation
-      if (!url || !html) {
-        return c.json({ error: 'Missing required fields: url, html' }, 400)
-      }
-
-      // 2. URL blacklist
       const captureSettings = getSettings()
       const blocked = isUrlBlacklisted(url, captureSettings.ignoredUrlPatterns)
       if (blocked) {
@@ -247,54 +247,26 @@ function createApp(): Hono {
           source,
           url,
           timestamp: new Date().toISOString(),
-          skipReason: `Blacklisted: ${blocked}`
+          skipReason: 'Blacklisted: ' + blocked
         })
         return c.json({ error: 'URL blocked by ignored pattern', pattern: blocked }, 403)
       }
 
-      // 3. Source-specific validation
       let caseId = ''
-
       if (source === 'auto') {
-        if (!state.sessionActive) {
-          return c.json({ error: 'No active session' }, 400)
-        }
-        if (!state.activeCaseId) {
-          return c.json({ error: 'No active case' }, 400)
-        }
+        if (!state.sessionActive) return c.json({ error: 'No active session' }, 400)
+        if (!state.activeCaseId) return c.json({ error: 'No active case' }, 400)
         caseId = state.activeCaseId
-      } else if (source === 'manual') {
-        if (!body.caseId) {
-          return c.json({ error: 'Missing required field: caseId' }, 400)
-        }
-        const caseData = db.getCase(body.caseId)
-        if (!caseData) {
-          return c.json({ error: 'Case not found' }, 404)
-        }
-        if (caseData.archived) {
-          return c.json({ error: 'Case is archived' }, 400)
-        }
-        caseId = body.caseId
-      } else if (source === 'selector') {
-        if (!body.caseId) {
-          return c.json({ error: 'Missing required field: caseId' }, 400)
-        }
-        if (!matchedSelectors) {
-          return c.json({ error: 'Missing required field: matchedSelectors' }, 400)
-        }
-        const caseData = db.getCase(body.caseId)
-        if (!caseData) {
-          return c.json({ error: 'Case not found' }, 404)
-        }
-        if (caseData.archived) {
-          return c.json({ error: 'Case is archived' }, 400)
-        }
-        caseId = body.caseId
+      } else {
+        if (!caseIdField) return c.json({ error: 'Missing required field: caseId' }, 400)
+        const caseData = db.getCase(caseIdField)
+        if (!caseData) return c.json({ error: 'Case not found' }, 404)
+        if (caseData.archived) return c.json({ error: 'Case is archived' }, 400)
+        caseId = caseIdField
       }
 
-      // Dedup check for manual captures
       if (source === 'manual') {
-        const dedupeKey = `${caseId}:${url}`
+        const dedupeKey = caseId + ':' + url
         const lastSeen = manualDedup.get(dedupeKey)
         if (lastSeen && Date.now() - lastSeen < MANUAL_DEDUPE_WINDOW_MS) {
           emitCaptureEvent({
@@ -311,30 +283,28 @@ function createApp(): Hono {
 
       emitCaptureEvent({ type: 'received', source, url, timestamp: new Date().toISOString() })
 
-      // 4. Shared pipeline
-      const hash = hashContent(html)
-      const screenshotBuffer = screenshot ? Buffer.from(screenshot, 'base64') : undefined
-      const captureId = crypto.randomUUID()
+      const operatorId = getInstallationId()
+      const operatorName = captureSettings.operatorName ?? ''
+      const toolVersion = process.env.npm_package_version ?? '0.0.0'
 
-      const paths = saveCapture(caseId, captureId, html, screenshotBuffer, textContent)
-
-      const capture = db.insertCapture({
-        id: captureId,
+      const { capture, contentHash } = await ingestMhtmlCapture({
         caseId,
         url,
-        title: title || url,
-        hash,
-        timestamp: timestamp || new Date().toISOString(),
-        htmlPath: paths.htmlPath,
-        screenshotPath: paths.screenshotPath,
-        headers: headers ? JSON.stringify(headers) : undefined,
-        textContent
+        title,
+        timestamp,
+        stream: mhtmlField.stream(),
+        textContent,
+        headers: {},
+        browserVersion,
+        userAgent,
+        httpStatus,
+        extensionVersion,
+        operatorId,
+        operatorName,
+        toolVersion
       })
 
-      if (source === 'auto') {
-        state.captureCount++
-      }
-
+      if (source === 'auto') state.captureCount++
       schedulePostCaptureWork(capture.id, caseId, source, url, textContent)
 
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -351,7 +321,13 @@ function createApp(): Hono {
         durationMs
       })
 
-      return c.json({ captureId: capture.id, hash, status: 'ok', source })
+      return c.json({
+        captureId: capture.id,
+        hash: contentHash,
+        manifestIndex: capture.manifestIndex,
+        status: 'ok',
+        source
+      })
     } catch (err) {
       console.error('Capture error:', err)
       emitCaptureEvent({
@@ -439,6 +415,12 @@ function createApp(): Hono {
               const buffer = readCaptureFile(caseId, cap.id, 'txt')
               if (buffer) {
                 captureTexts.push({ captureId: cap.id, text: buffer.toString('utf-8') })
+              } else {
+                // MHTML captures store text only in FTS; fall back to FTS content
+                const ftsText = db.getCaptureTextContent(cap.id)
+                if (ftsText) {
+                  captureTexts.push({ captureId: cap.id, text: ftsText })
+                }
               }
             }
 
@@ -471,23 +453,19 @@ function createApp(): Hono {
     const startTime = Date.now()
     let testCaptureId: string | null = null
     let testCaseId: string | null = null
-
     try {
-      // Find any case to use for test
       const cases = db.listCases()
       if (cases.length === 0) {
         return c.json({
           success: false,
           durationMs: 0,
-          error: 'No cases exist — create a case first'
+          error: 'No cases exist - create a case first'
         })
       }
       testCaseId = cases[0].id
-
-      // Create test capture
-      const testHtml = `<html><body>Birdbrain pipeline test ${Date.now()}</body></html>`
-      const hash = hashContent(testHtml)
-      testCaptureId = crypto.randomUUID()
+      const testBody = Buffer.from('<html><body>test</body></html>')
+      const { Readable } = await import('stream')
+      const stream = Readable.from([testBody])
 
       emitCaptureEvent({
         type: 'received',
@@ -496,53 +474,37 @@ function createApp(): Hono {
         timestamp: new Date().toISOString()
       })
 
-      const paths = saveCapture(testCaseId, testCaptureId, testHtml, undefined, undefined)
-
-      db.insertCapture({
-        id: testCaptureId,
+      const { capture } = await ingestMhtmlCapture({
         caseId: testCaseId,
         url: 'birdbrain://pipeline-test',
         title: 'Pipeline Test',
-        hash,
         timestamp: new Date().toISOString(),
-        htmlPath: paths.htmlPath,
-        screenshotPath: undefined,
-        headers: undefined,
-        textContent: undefined
+        stream: stream as unknown as ReadableStream<Uint8Array>,
+        textContent: '',
+        headers: {},
+        browserVersion: '',
+        userAgent: '',
+        httpStatus: 200,
+        extensionVersion: '',
+        operatorId: getInstallationId(),
+        operatorName: getSettings().operatorName ?? '',
+        toolVersion: process.env.npm_package_version ?? '0.0.0'
       })
-
-      // Verify by reading back
-      const capture = db.getCapture(testCaptureId)
-      if (!capture) {
-        return c.json({
-          success: false,
-          durationMs: Date.now() - startTime,
-          error: 'Test capture not found in DB after insert'
-        })
-      }
-      if (capture.hash !== hash) {
-        return c.json({
-          success: false,
-          durationMs: Date.now() - startTime,
-          error: 'Hash mismatch after insert'
-        })
-      }
+      testCaptureId = capture.id
 
       const durationMs = Date.now() - startTime
       emitCaptureEvent({
         type: 'stored',
-        captureId: testCaptureId!,
+        captureId: capture.id,
         source: 'manual',
         url: 'birdbrain://pipeline-test',
         timestamp: new Date().toISOString(),
         durationMs
       })
-
       return c.json({ success: true, durationMs })
     } catch (err) {
       return c.json({ success: false, durationMs: Date.now() - startTime, error: String(err) })
     } finally {
-      // Cleanup
       if (testCaptureId) {
         try {
           db.deleteCapture(testCaptureId)

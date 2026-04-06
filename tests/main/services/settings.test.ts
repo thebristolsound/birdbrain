@@ -72,4 +72,14 @@ describe('settings', () => {
     const settings = getSettings()
     expect(settings.ignoredUrlPatterns).toEqual(['*.google.com', '*.bing.com'])
   })
+
+  it('returns empty operatorName by default', () => {
+    const s = getSettings()
+    expect(s.operatorName).toBe('')
+  })
+
+  it('persists operatorName updates', () => {
+    updateSettings({ operatorName: 'Det. Smith' })
+    expect(getSettings().operatorName).toBe('Det. Smith')
+  })
 })

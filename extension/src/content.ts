@@ -2,7 +2,6 @@
 // Extracts page data when asked by the background script
 // Handles selector matching and inline highlighting
 
-import { freezeDry } from 'freeze-dry'
 import { showToast, updateToast } from './toast'
 
 interface SelectorInfo {
@@ -250,29 +249,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     updateToast({ status: message.status, message: message.message })
     sendResponse({ ok: true })
     return
-  }
-
-  if (message.type === 'EXTRACT_PAGE') {
-    const title = document.title
-    const textContent = document.body?.innerText || ''
-
-    freezeDry(document, {
-      timeout: 10000,
-      addMetadata: true
-    })
-      .then((html) => {
-        sendResponse({ html, title, textContent, degraded: false })
-      })
-      .catch(() => {
-        sendResponse({
-          html: document.documentElement.outerHTML,
-          title,
-          textContent,
-          degraded: true
-        })
-      })
-
-    return true
   }
 
   if (message.type === 'CHECK_SELECTORS') {

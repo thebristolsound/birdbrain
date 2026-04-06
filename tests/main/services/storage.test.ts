@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, existsSync } from 'fs'
+import { mkdtempSync, rmSync, existsSync, mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import {
@@ -101,5 +101,20 @@ describe('storage', () => {
     // Update a different capture in the same case dir
     updateCaptureHtml('case-1', 'cap-2', '<html>new file</html>')
     expect(readCaptureFile('case-1', 'cap-2', 'html')?.toString()).toBe('<html>new file</html>')
+  })
+
+  it('returns correct .mhtml path', () => {
+    const path = getCapturePath('case-1', 'cap-1', 'mhtml')
+    expect(path).toContain('cap-1.mhtml')
+  })
+
+  it('deleteCaptureFiles removes .mhtml files too', () => {
+    const dir = join(tempDir, 'case-1')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'cap-1.mhtml'), 'fake mhtml')
+    writeFileSync(join(dir, 'cap-1.html'), 'fake html')
+    deleteCaptureFiles('case-1', 'cap-1')
+    expect(existsSync(join(dir, 'cap-1.mhtml'))).toBe(false)
+    expect(existsSync(join(dir, 'cap-1.html'))).toBe(false)
   })
 })

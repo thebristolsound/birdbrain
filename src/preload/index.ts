@@ -76,7 +76,15 @@ const birdbrain = {
     isFavorite: (captureId: string): Promise<boolean> =>
       unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_IS_FAVORITE, captureId)),
     listFavorites: (caseId: string): Promise<string[]> =>
-      unwrapIpc<string[]>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_LIST_FAVORITES, caseId))
+      unwrapIpc<string[]>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_LIST_FAVORITES, caseId)),
+    verify: (captureId: string): Promise<import('@shared/types').HashVerification> =>
+      unwrapIpc<import('@shared/types').HashVerification>(
+        ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_VERIFY, captureId)
+      ),
+    getMhtmlUrl: (captureId: string): Promise<string | null> =>
+      unwrapIpc<string | null>(
+        ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_GET_MHTML_URL, captureId)
+      )
   },
   tags: {
     list: (): Promise<Tag[]> => ipcRenderer.invoke(IPC_CHANNELS.TAGS_LIST),
@@ -148,7 +156,9 @@ const birdbrain = {
     testOpenRouter: (apiKey: string): Promise<boolean> =>
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_TEST_OPENROUTER, apiKey),
     listModels: (apiKey: string): Promise<OpenRouterModel[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_LIST_MODELS, apiKey)
+      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_LIST_MODELS, apiKey),
+    getIdentity: (): Promise<{ installationId: string; operatorName: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET_IDENTITY)
   },
 
   export: {

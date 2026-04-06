@@ -22,6 +22,8 @@ export const IPC_CHANNELS = {
   CAPTURES_TOGGLE_FAVORITE: 'captures:toggleFavorite',
   CAPTURES_IS_FAVORITE: 'captures:isFavorite',
   CAPTURES_LIST_FAVORITES: 'captures:listFavorites',
+  CAPTURES_VERIFY: 'captures:verify',
+  CAPTURES_GET_MHTML_URL: 'captures:getMhtmlUrl',
 
   // Tags
   TAGS_LIST: 'tags:list',
@@ -43,6 +45,7 @@ export const IPC_CHANNELS = {
   SETTINGS_RESET: 'settings:reset',
   SETTINGS_TEST_OPENROUTER: 'settings:testOpenRouter',
   SETTINGS_LIST_MODELS: 'settings:listModels',
+  SETTINGS_GET_IDENTITY: 'settings:getIdentity',
 
   // Export
   EXPORT_GENERATE: 'export:generate',

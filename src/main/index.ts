@@ -12,6 +12,7 @@ import {
 } from '@main/services/captureServer'
 import { registerIpcHandlers } from '@main/ipcHandlers'
 import { initSettings } from '@main/services/settings'
+import { initInstallationId } from '@main/services/installationId'
 
 function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
@@ -24,7 +25,8 @@ function createWindow(): BrowserWindow {
     backgroundColor: '#000000',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      sandbox: false,
+      webviewTag: true
     }
   })
 
@@ -52,6 +54,7 @@ app.whenReady().then(async () => {
   initDatabase(join(userDataPath, 'birdbrain.db'))
   initStorage(join(userDataPath, 'captures'))
   initSettings(userDataPath)
+  initInstallationId(userDataPath)
 
   // Register IPC handlers
   registerIpcHandlers()

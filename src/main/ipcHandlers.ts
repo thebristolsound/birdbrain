@@ -1,4 +1,4 @@
-import { ipcMain, dialog, shell } from 'electron'
+import { app, ipcMain, dialog, shell } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
 import type {
   CreateCaseParams,
@@ -12,12 +12,17 @@ import type {
   UpdateNoteParams,
   BulkCreateSelectorsParams
 } from '@shared/ipc'
+import { existsSync } from 'fs'
+import { join } from 'path'
+import { pathToFileURL } from 'url'
 import * as db from '@main/services/database'
 import * as storage from '@main/services/storage'
 import * as settings from '@main/services/settings'
 import * as openrouter from '@main/services/openrouter'
 import { generateReport } from '@main/services/export'
 import { buildCsv } from '@main/services/csvEscape'
+import { initManifest, appendManifestEntry, rollbackManifestEntry } from '@main/services/manifest'
+import { getInstallationId } from '@main/services/installationId'
 import { CAPTURE_SERVER_PORT, getSessionState } from '@main/services/captureServer'
 import type { BirdbrainSettings, ExportOptions } from '@shared/types'
 
@@ -86,10 +91,43 @@ export function registerIpcHandlers(): void {
     try {
       const capture = db.getCapture(id)
       if (!capture) return ipcResult(false)
-      const deleted = db.deleteCapture(id)
-      if (deleted) {
-        storage.deleteCaptureFiles(capture.caseId, id)
+
+      // For MHTML captures, append a deletion entry to the manifest BEFORE the
+      // DB delete. On DB failure, roll back the manifest entry.
+      if (capture.format === 'mhtml') {
+        const caseDir = join(storage.getStorageRoot(), capture.caseId)
+        initManifest(caseDir)
+        const result = appendManifestEntry(caseDir, {
+          type: 'deletion',
+          captureId: id,
+          caseId: capture.caseId,
+          timestamp: new Date().toISOString(),
+          contentHash: capture.hash,
+          operatorId: getInstallationId(),
+          operatorName: settings.getSettings().operatorName ?? '',
+          toolVersion:
+            typeof app?.getVersion === 'function'
+              ? app.getVersion()
+              : (process.env.npm_package_version ?? '0.0.0')
+        })
+
+        try {
+          const deleted = db.deleteCapture(id)
+          if (!deleted) {
+            rollbackManifestEntry(caseDir, result.anchorBytes)
+            return ipcResult(false)
+          }
+          storage.deleteCaptureFiles(capture.caseId, id)
+          return ipcResult(true)
+        } catch (err) {
+          rollbackManifestEntry(caseDir, result.anchorBytes)
+          throw err
+        }
       }
+
+      // Legacy HTML capture - no manifest entry
+      const deleted = db.deleteCapture(id)
+      if (deleted) storage.deleteCaptureFiles(capture.caseId, id)
       return ipcResult(deleted)
     } catch (err) {
       return ipcError(err)
@@ -438,6 +476,27 @@ export function registerIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle(IPC_CHANNELS.CAPTURES_GET_MHTML_URL, (_, captureId: string) => {
+    try {
+      const capture = db.getCapture(captureId)
+      if (!capture || !capture.mhtmlPath) return ipcResult<string | null>(null)
+      const abs = join(storage.getStorageRoot(), capture.mhtmlPath)
+      if (!existsSync(abs)) return ipcResult<string | null>(null)
+      return ipcResult<string | null>(pathToFileURL(abs).toString())
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.CAPTURES_VERIFY, async (_, captureId: string) => {
+    try {
+      const mod = await import('@main/services/mhtmlIngest')
+      return ipcResult(await mod.verifyCapture(captureId))
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+
   // Search
   ipcMain.handle(IPC_CHANNELS.SEARCH, (_, query: string) => db.searchCaptures(query))
 
@@ -453,6 +512,12 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.SETTINGS_LIST_MODELS, (_, apiKey: string) =>
     openrouter.listModels(apiKey)
   )
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_GET_IDENTITY, () => {
+    return {
+      installationId: getInstallationId(),
+      operatorName: settings.getSettings().operatorName ?? ''
+    }
+  })
 
   // Export
   ipcMain.handle(

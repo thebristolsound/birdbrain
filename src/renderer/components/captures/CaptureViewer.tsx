@@ -14,7 +14,6 @@ import type { Capture } from '@shared/types'
 import {
   ChevronLeft,
   ChevronRight,
-  ShieldCheck,
   Download,
   ExternalLink,
   Trash2,
@@ -28,6 +27,8 @@ import {
   StickyNote
 } from 'lucide-react'
 import { AddNoteModal } from '@renderer/components/notes/AddNoteModal'
+import { MhtmlViewer } from '@renderer/components/captures/MhtmlViewer'
+import { ProvenanceBadge } from '@renderer/components/captures/ProvenanceBadge'
 
 type ViewTab = 'screenshot' | 'page' | 'source' | 'text' | 'metadata'
 
@@ -92,6 +93,9 @@ export function CaptureViewer() {
   useEffect(() => {
     if (!selectedCaptureId) return
     setContent(null)
+    // For MHTML captures, the 'page' tab uses MhtmlViewer (file URL); only
+    // source/text/screenshot tabs need raw content fetching.
+    if (capture?.format === 'mhtml' && activeTab === 'page') return
     const type =
       activeTab === 'screenshot'
         ? 'png'
@@ -106,7 +110,7 @@ export function CaptureViewer() {
         .then(setContent)
         .catch((err) => console.error('Failed to load capture content:', err))
     }
-  }, [selectedCaptureId, activeTab])
+  }, [selectedCaptureId, activeTab, capture?.format])
 
   const handleToggleTag = useCallback(
     async (tagId: string) => {
@@ -218,10 +222,7 @@ export function CaptureViewer() {
 
         {/* Right side actions */}
         <div className="flex items-center gap-1">
-          <span className="flex items-center gap-1 rounded-lg bg-emerald-500/10 px-2 py-1 text-[11px] text-emerald-400">
-            <ShieldCheck className="h-3 w-3" />
-            Verified
-          </span>
+          <ProvenanceBadge captureId={capture.id} />
           <button
             data-testid="add-note-button"
             onClick={() => setShowAddNote(true)}
@@ -275,8 +276,12 @@ export function CaptureViewer() {
           ) : (
             <div className="text-text-muted">No screenshot available</div>
           ))}
-        {activeTab === 'page' &&
-          (content ? (
+        {activeTab === 'page' && capture.format === 'mhtml' ? (
+          <div className="h-full w-full rounded-xl border border-border bg-white overflow-hidden">
+            <MhtmlViewer captureId={capture.id} />
+          </div>
+        ) : activeTab === 'page' ? (
+          content ? (
             <iframe
               sandbox="allow-same-origin"
               srcDoc={content}
@@ -286,7 +291,8 @@ export function CaptureViewer() {
             />
           ) : (
             <div className="text-text-muted">No HTML available</div>
-          ))}
+          )
+        ) : null}
         {activeTab === 'source' &&
           (content ? (
             <pre className="whitespace-pre-wrap break-all font-mono text-xs text-text-muted">

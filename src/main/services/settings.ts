@@ -14,6 +14,7 @@ const DEFAULT_SETTINGS: BirdbrainSettings = {
   storagePath: '',
   maxStorageMb: null,
   theme: 'light',
+  operatorName: '',
   autoCaptureMode: 'notify'
 }
 

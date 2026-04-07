@@ -212,7 +212,7 @@ export function CaptureViewer() {
         </div>
 
         {/* Inline tags */}
-        <div className="flex items-center gap-1.5 overflow-hidden">
+        <div className="flex min-w-0 shrink items-center gap-1.5 overflow-hidden">
           <TagIcon className="h-3.5 w-3.5 shrink-0 text-text-faint" />
           {captureTags.map((tag) => (
             <TagBadge key={tag.id} tag={tag} onClick={() => handleToggleTag(tag.id)} removable />

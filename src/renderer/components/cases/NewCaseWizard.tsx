@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
+import { motion } from 'motion/react'
 import { useCasesMutations } from '@renderer/lib/queries'
 import { FolderPlus, Bitcoin, Bug, ShieldAlert, Settings2, ArrowLeft } from 'lucide-react'
 
@@ -99,8 +100,19 @@ export function NewCaseWizard() {
       </div>
 
       {/* Card */}
-      <div className="neu-card rounded-2xl p-8">
-        <div className="mb-6 flex items-center gap-3">
+      <motion.div
+        className="neu-card rounded-2xl p-8"
+        initial="hidden"
+        animate="visible"
+        variants={{
+          hidden: {},
+          visible: { transition: { staggerChildren: 0.06 } }
+        }}
+      >
+        <motion.div
+          className="mb-6 flex items-center gap-3"
+          variants={{ hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0 } }}
+        >
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-subtle">
             <FolderPlus className="h-5 w-5 text-accent" />
           </div>
@@ -108,10 +120,13 @@ export function NewCaseWizard() {
             <h2 className="font-display text-lg font-bold text-text-primary">New Investigation</h2>
             <p className="text-sm text-text-muted">Set up your case details</p>
           </div>
-        </div>
+        </motion.div>
 
         {/* Investigation Name */}
-        <div className="mb-4">
+        <motion.div
+          className="mb-4"
+          variants={{ hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0 } }}
+        >
           <label className="mb-1.5 block text-sm font-medium text-text-secondary">
             Investigation Name
           </label>
@@ -124,10 +139,13 @@ export function NewCaseWizard() {
             className="w-full rounded-xl border border-border-strong bg-elevated px-4 py-2.5 text-sm text-text-primary placeholder-text-muted focus:border-accent focus:outline-none"
             autoFocus
           />
-        </div>
+        </motion.div>
 
         {/* Description */}
-        <div className="mb-6">
+        <motion.div
+          className="mb-6"
+          variants={{ hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0 } }}
+        >
           <label className="mb-1.5 block text-sm font-medium text-text-secondary">Description</label>
           <textarea
             data-testid="case-description-input"
@@ -137,10 +155,13 @@ export function NewCaseWizard() {
             rows={3}
             className="w-full resize-none rounded-xl border border-border-strong bg-elevated px-4 py-2.5 text-sm text-text-primary placeholder-text-muted focus:border-accent focus:outline-none"
           />
-        </div>
+        </motion.div>
 
         {/* Investigation Type */}
-        <div className="mb-6">
+        <motion.div
+          className="mb-6"
+          variants={{ hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0 } }}
+        >
           <label className="mb-3 block text-sm font-medium text-text-secondary">
             Investigation Type
           </label>
@@ -149,9 +170,11 @@ export function NewCaseWizard() {
               const Icon = t.icon
               const selected = caseType === t.id
               return (
-                <button
+                <motion.button
                   key={t.id}
                   onClick={() => setCaseType(t.id)}
+                  whileTap={{ scale: 0.97 }}
+                  whileHover={{ scale: 1.02 }}
                   className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition ${
                     selected
                       ? 'border-accent bg-accent-subtle'
@@ -164,14 +187,17 @@ export function NewCaseWizard() {
                   >
                     {t.label}
                   </span>
-                </button>
+                </motion.button>
               )
             })}
           </div>
-        </div>
+        </motion.div>
 
         {/* Initial Selectors */}
-        <div className="mb-8">
+        <motion.div
+          className="mb-8"
+          variants={{ hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0 } }}
+        >
           <label className="mb-3 block text-sm font-medium text-text-secondary">Initial Selectors</label>
           <div className="flex flex-wrap gap-2">
             {SELECTOR_PRESETS.map((preset) => {
@@ -191,10 +217,13 @@ export function NewCaseWizard() {
               )
             })}
           </div>
-        </div>
+        </motion.div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-border pt-6">
+        <motion.div
+          className="flex items-center justify-between border-t border-border pt-6"
+          variants={{ hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0 } }}
+        >
           <button
             onClick={() => navigate({ to: '/' })}
             className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm text-text-muted transition hover:bg-elevated hover:text-text-primary"
@@ -210,8 +239,8 @@ export function NewCaseWizard() {
           >
             {submitting ? 'Creating...' : 'Create Case'}
           </button>
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
     </div>
   )
 }

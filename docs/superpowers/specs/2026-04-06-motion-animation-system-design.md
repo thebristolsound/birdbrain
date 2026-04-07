@@ -144,18 +144,20 @@ const { celebrate, celebrationProps } = useCompletionCelebration({
 ```
 
 **Celebration styles:**
-- **checkmark** — SVG path draw-on animation. Best for: form submissions, successful saves.
-- **pulse** — Element scales up slightly with a color-wash glow using `springs.bouncy`. Best for: status changes, capture complete.
-- **ripple** — Expanding ring radiates outward from the element. Best for: export complete, batch operations.
+- **checkmark** — Scale and opacity animation. Best for: form submissions, successful saves.
+- **pulse** — Element scales up slightly with a bouncy spring using `springs.bouncy`. Best for: status changes, capture complete.
+- **ripple** — Expanding scale and opacity pulse effect. Best for: export complete, batch operations.
 
 **Usage:** Call `celebrate()` imperatively when operation succeeds. Spread `celebrationProps` on the target element. Animation plays once and cleans up.
 
 ### Reduced-Motion Readiness
 
-All three hooks check an internal `shouldReduceMotion` flag (not wired to UI yet, but architecturally ready):
+Reduced-motion behavior is planned but not yet implemented in the current hook APIs. The architecture is intended to support an internal `shouldReduceMotion` flag in a later pass, with the following target behaviors:
 - `useTheater` — still shows stage labels but skips minimum duration hold
 - `useStagedReveal` — reveals all items at once
 - `useCompletionCelebration` — uses simple opacity flash instead of motion-heavy effects
+
+This keeps the motion system accessibility-ready at the design level while accurately reflecting that the reduced-motion wiring is still deferred.
 
 ## CSS Migration
 

@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useParams } from '@tanstack/react-router'
+import { motion, AnimatePresence } from 'motion/react'
 import { useAppStore } from '@renderer/stores/appStore'
 import { casesQueryOptions } from '@renderer/lib/queries'
+import { presets } from '@renderer/lib/motion'
 import { CAPTURE_SERVER_BASE_URL } from '@shared/constants'
 
 export function SessionControls() {
@@ -78,9 +80,13 @@ export function SessionControls() {
           />
         </button>
       </label>
-      {sessionActive && activeCase && (
-        <span className="text-xs text-text-muted">{activeCase.name}</span>
-      )}
+      <AnimatePresence>
+        {sessionActive && activeCase && (
+          <motion.span className="text-xs text-text-muted" {...presets.fadeIn}>
+            {activeCase.name}
+          </motion.span>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

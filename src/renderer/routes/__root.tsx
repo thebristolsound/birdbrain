@@ -1,6 +1,7 @@
-import { createRootRoute, createRoute, Outlet } from '@tanstack/react-router'
+import { createRootRoute, createRoute, Outlet, useMatches } from '@tanstack/react-router'
+import { AnimatePresence, motion } from 'motion/react'
 import { TopBar } from '@renderer/components/layout/TopBar'
-import { MotionProvider } from '@renderer/lib/motion'
+import { MotionProvider, presets } from '@renderer/lib/motion'
 import { Dashboard } from '@renderer/components/dashboard/Dashboard'
 import { NewCaseWizard } from '@renderer/components/cases/NewCaseWizard'
 import { CaseWorkspace } from '@renderer/components/cases/CaseWorkspace'
@@ -14,13 +15,24 @@ import { SettingsView } from '@renderer/components/settings/SettingsView'
 // Root layout
 const rootRoute = createRootRoute({
   component: function RootLayout() {
+    const matches = useMatches()
+    const routeKey = matches[matches.length - 1]?.id ?? 'root'
+
     return (
       <MotionProvider>
         <div className="flex h-screen flex-col bg-canvas text-text-secondary">
           <TopBar />
           <div className="flex flex-1 overflow-hidden">
             <main className="flex-1 overflow-auto bg-canvas">
-              <Outlet />
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={routeKey}
+                  {...presets.fadeUp}
+                  className="h-full"
+                >
+                  <Outlet />
+                </motion.div>
+              </AnimatePresence>
             </main>
           </div>
         </div>

@@ -1,5 +1,6 @@
 import { createRootRoute, createRoute, Outlet } from '@tanstack/react-router'
 import { TopBar } from '@renderer/components/layout/TopBar'
+import { MotionProvider } from '@renderer/lib/motion'
 import { Dashboard } from '@renderer/components/dashboard/Dashboard'
 import { NewCaseWizard } from '@renderer/components/cases/NewCaseWizard'
 import { CaseWorkspace } from '@renderer/components/cases/CaseWorkspace'
@@ -14,14 +15,16 @@ import { SettingsView } from '@renderer/components/settings/SettingsView'
 const rootRoute = createRootRoute({
   component: function RootLayout() {
     return (
-      <div className="flex h-screen flex-col bg-canvas text-text-secondary">
-        <TopBar />
-        <div className="flex flex-1 overflow-hidden">
-          <main className="flex-1 overflow-auto bg-canvas">
-            <Outlet />
-          </main>
+      <MotionProvider>
+        <div className="flex h-screen flex-col bg-canvas text-text-secondary">
+          <TopBar />
+          <div className="flex flex-1 overflow-hidden">
+            <main className="flex-1 overflow-auto bg-canvas">
+              <Outlet />
+            </main>
+          </div>
         </div>
-      </div>
+      </MotionProvider>
     )
   }
 })

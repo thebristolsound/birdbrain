@@ -1,6 +1,8 @@
 import { Plus, ArrowRight } from 'lucide-react'
+import { motion } from 'motion/react'
 import type { Case } from '@shared/types'
 import { CaseCard } from './CaseCard'
+import { presets } from '@renderer/lib/motion'
 
 interface RecentCasesProps {
   cases: Case[]
@@ -22,7 +24,7 @@ export function RecentCases({
   return (
     <section className="px-8 pb-12">
       <div className="max-w-5xl mx-auto">
-        <div className="anim-up d5 flex items-center justify-between mb-6">
+        <motion.div {...presets.fadeUp} className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <h2 className="font-display font-bold text-lg tracking-tight text-text-primary">
               Recent Cases
@@ -35,26 +37,44 @@ export function RecentCases({
             <span>View All</span>
             <ArrowRight className="h-3.5 w-3.5" />
           </button>
-        </div>
+        </motion.div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-          {cases.slice(0, 3).map((c, i) => (
-            <CaseCard
+        <motion.div
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5"
+          initial="hidden"
+          animate="visible"
+          variants={{
+            hidden: {},
+            visible: { transition: { staggerChildren: 0.06, delayChildren: 0.1 } }
+          }}
+        >
+          {cases.slice(0, 3).map((c) => (
+            <motion.div
               key={c.id}
-              caseData={c}
-              isRecording={false}
-              isActive={false}
-              captureCount={captureCounts[c.id] || 0}
-              onClick={() => onSelectCase(c.id)}
-              onRename={onRenameCase}
-              onDelete={onDeleteCase}
-              animDelay={`d${5 + i}`}
-            />
+              variants={{
+                hidden: { opacity: 0, scale: 0.95 },
+                visible: { opacity: 1, scale: 1 }
+              }}
+            >
+              <CaseCard
+                caseData={c}
+                isRecording={false}
+                isActive={false}
+                captureCount={captureCounts[c.id] || 0}
+                onClick={() => onSelectCase(c.id)}
+                onRename={onRenameCase}
+                onDelete={onDeleteCase}
+              />
+            </motion.div>
           ))}
 
-          <div
+          <motion.div
             onClick={onNewCase}
-            className="anim-scale d8 new-case-card cursor-pointer rounded-2xl border-2 border-dashed p-5 transition-all flex flex-col items-center justify-center text-center min-h-[260px] group"
+            className="new-case-card cursor-pointer rounded-2xl border-2 border-dashed p-5 transition-all flex flex-col items-center justify-center text-center min-h-[260px] group"
+            variants={{
+              hidden: { opacity: 0, scale: 0.95 },
+              visible: { opacity: 1, scale: 1 }
+            }}
           >
             <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-accent/20 bg-accent-subtle transition-colors group-hover:bg-accent-subtle">
               <Plus className="h-6 w-6 text-accent transition-transform duration-300 group-hover:rotate-90" />
@@ -67,8 +87,8 @@ export function RecentCases({
               <br />
               guided setup
             </p>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       </div>
     </section>
   )

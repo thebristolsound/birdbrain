@@ -114,21 +114,6 @@ body {
 html.dark ::-webkit-scrollbar-thumb { background: #334155; }
 html.dark ::-webkit-scrollbar-thumb:hover { background: #475569; }
 
-/* === Animations === */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.anim-in { animation: fadeIn 0.4s ease-out forwards; opacity: 0; }
-
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(16px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-@keyframes scaleIn {
-  from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
-}
 @keyframes float {
   0%, 100% { transform: translateY(0px); }
   50% { transform: translateY(-6px); }
@@ -145,29 +130,6 @@ html.dark ::-webkit-scrollbar-thumb:hover { background: #475569; }
   0%, 100% { box-shadow: var(--shadow-glow); }
   50% { box-shadow: var(--shadow-glow), 0 0 30px rgba(99,102,241,0.15); }
 }
-@keyframes expandIn {
-  from { opacity: 0; max-height: 0; }
-  to { opacity: 1; max-height: 200px; }
-}
-@keyframes softPulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(99,102,241,0.15); }
-  50% { box-shadow: 0 0 0 4px rgba(99,102,241,0.1); }
-}
-
-.anim-up { animation: fadeUp 0.6s ease-out forwards; opacity: 0; }
-.anim-scale { animation: scaleIn 0.5s ease-out forwards; opacity: 0; }
-.expand-panel { animation: expandIn 0.25s ease-out forwards; overflow: hidden; }
-.test-active { animation: softPulse 2s ease-in-out infinite; }
-
-.d1 { animation-delay: 0.1s; }
-.d2 { animation-delay: 0.2s; }
-.d3 { animation-delay: 0.3s; }
-.d4 { animation-delay: 0.4s; }
-.d5 { animation-delay: 0.5s; }
-.d6 { animation-delay: 0.6s; }
-.d7 { animation-delay: 0.7s; }
-.d8 { animation-delay: 0.8s; }
-.d9 { animation-delay: 0.9s; }
 
 /* === Neumorphic cards === */
 .neu-card {

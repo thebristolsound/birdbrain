@@ -9,6 +9,7 @@ import {
   useCasesMutations
 } from '@renderer/lib/queries'
 import { ExportDialog } from '@renderer/components/export/ExportDialog'
+import { AnimatePresence } from 'motion/react'
 import { Camera, Globe, Tags, FileOutput, Crosshair, Pencil } from 'lucide-react'
 
 export function CaseOverview() {
@@ -289,13 +290,15 @@ export function CaseOverview() {
         </div>
       </div>
 
-      {showExport && caseData && (
-        <ExportDialog
-          caseId={caseData.id}
-          caseName={caseData.name}
-          onClose={() => setShowExport(false)}
-        />
-      )}
+      <AnimatePresence>
+        {showExport && caseData && (
+          <ExportDialog
+            caseId={caseData.id}
+            caseName={caseData.name}
+            onClose={() => setShowExport(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }

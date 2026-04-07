@@ -1,7 +1,9 @@
 import { type ChangeEvent, useMemo, useRef, useState } from 'react'
 import { Upload, X } from 'lucide-react'
+import { motion } from 'motion/react'
 import type { Selector } from '@shared/types'
 import { useSelectorsMutations } from '@renderer/lib/queries'
+import { presets } from '@renderer/lib/motion'
 
 interface BulkAddSelectorsModalProps {
   caseId: string
@@ -113,14 +115,16 @@ export function BulkAddSelectorsModal({
   }
 
   return (
-    <div
+    <motion.div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
       onClick={onClose}
+      {...presets.overlay}
     >
-      <div
+      <motion.div
         data-testid="bulk-add-modal"
         className="neu-card w-[32rem] max-w-[90vw] rounded-2xl p-6"
         onClick={(e) => e.stopPropagation()}
+        {...presets.modal}
       >
         <div className="mb-4 flex items-start justify-between">
           <div>
@@ -217,7 +221,7 @@ export function BulkAddSelectorsModal({
             {submitting ? 'Creating...' : `Create All (${parsed.unique.length})`}
           </button>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   )
 }

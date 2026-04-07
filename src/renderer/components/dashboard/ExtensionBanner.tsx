@@ -1,4 +1,6 @@
 import { Puzzle, Download, CheckCircle } from 'lucide-react'
+import { motion } from 'motion/react'
+import { presets } from '@renderer/lib/motion'
 
 interface ExtensionBannerProps {
   connected: boolean
@@ -6,9 +8,10 @@ interface ExtensionBannerProps {
 
 export function ExtensionBanner({ connected }: ExtensionBannerProps) {
   return (
-    <div
-      className="anim-up d9 mt-8 neu-card rounded-2xl p-6 flex items-center justify-between"
-      style={{ animationDelay: '1.1s' }}
+    <motion.div
+      className="mt-8 neu-card rounded-2xl p-6 flex items-center justify-between"
+      {...presets.fadeUp}
+      transition={{ ...presets.fadeUp.transition, delay: 1.1 }}
     >
       {connected ? (
         <>
@@ -58,6 +61,6 @@ export function ExtensionBanner({ connected }: ExtensionBannerProps) {
           </div>
         </>
       )}
-    </div>
+    </motion.div>
   )
 }

@@ -13,6 +13,7 @@ import { CreateSelectorCard } from './CreateSelectorCard'
 import { SelectorTable } from './SelectorTable'
 import { SelectorFilterFooter } from './SelectorFilterFooter'
 import { BulkAddSelectorsModal } from './BulkAddSelectorsModal'
+import { AnimatePresence } from 'motion/react'
 
 export function SelectorsOverview() {
   const { caseId } = useParams({ from: '/cases/$caseId/selectors' })
@@ -102,14 +103,16 @@ export function SelectorsOverview() {
         filteredCount={filteredCaptureIds?.length ?? captures.length}
       />
 
-      {showBulkAddModal && (
-        <BulkAddSelectorsModal
-          caseId={caseId}
-          existingSelectors={selectors}
-          onClose={() => setShowBulkAddModal(false)}
-          onCreated={() => handleRefresh()}
-        />
-      )}
+      <AnimatePresence>
+        {showBulkAddModal && (
+          <BulkAddSelectorsModal
+            caseId={caseId}
+            existingSelectors={selectors}
+            onClose={() => setShowBulkAddModal(false)}
+            onCreated={() => handleRefresh()}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }

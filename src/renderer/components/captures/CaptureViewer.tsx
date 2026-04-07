@@ -314,28 +314,30 @@ export function CaptureViewer() {
       </div>
 
       {/* B) Content area */}
-      <div className="flex-1 overflow-auto p-4">
+      <div className="flex-1 overflow-hidden min-h-0">
         {activeTab === 'screenshot' &&
           (content ? (
-            <div className="neu-card rounded-2xl overflow-hidden">
-              {/* Fake browser chrome */}
-              <div className="flex items-center gap-2 border-b border-border bg-elevated px-3 py-2">
-                <div className="flex gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-full bg-red-500/60" />
-                  <span className="h-2.5 w-2.5 rounded-full bg-yellow-500/60" />
-                  <span className="h-2.5 w-2.5 rounded-full bg-green-500/60" />
+            <div className="h-full overflow-y-auto p-4">
+              <div className="neu-card rounded-2xl overflow-hidden">
+                {/* Fake browser chrome */}
+                <div className="flex items-center gap-2 border-b border-border bg-elevated px-3 py-2">
+                  <div className="flex gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full bg-red-500/60" />
+                    <span className="h-2.5 w-2.5 rounded-full bg-yellow-500/60" />
+                    <span className="h-2.5 w-2.5 rounded-full bg-green-500/60" />
+                  </div>
+                  <div className="flex-1 rounded-md bg-surface px-3 py-0.5 text-[11px] font-mono text-text-muted truncate">
+                    {capture.url}
+                  </div>
                 </div>
-                <div className="flex-1 rounded-md bg-surface px-3 py-0.5 text-[11px] font-mono text-text-muted truncate">
-                  {capture.url}
-                </div>
+                <img src={`data:image/png;base64,${content}`} alt="Screenshot" className="w-full" />
               </div>
-              <img src={`data:image/png;base64,${content}`} alt="Screenshot" className="w-full" />
             </div>
           ) : (
-            <div className="text-text-muted">No screenshot available</div>
+            <div className="p-4 text-text-muted">No screenshot available</div>
           ))}
         {activeTab === 'page' && capture.format === 'mhtml' ? (
-          <div className="h-full w-full rounded-xl border border-border bg-white overflow-hidden">
+          <div className="h-full w-full overflow-hidden">
             <MhtmlViewer captureId={capture.id} />
           </div>
         ) : activeTab === 'page' ? (
@@ -343,42 +345,47 @@ export function CaptureViewer() {
             <iframe
               sandbox="allow-same-origin"
               srcDoc={content}
-              className="h-full w-full rounded-xl border border-border bg-white"
-              style={{ minHeight: '500px' }}
+              className="h-full w-full border-0 bg-white"
               title="Archived page"
             />
           ) : (
-            <div className="text-text-muted">No HTML available</div>
+            <div className="p-4 text-text-muted">No HTML available</div>
           )
         ) : null}
         {activeTab === 'source' &&
           (content ? (
-            <pre className="whitespace-pre-wrap break-all font-mono text-xs text-text-muted">
-              {content}
-            </pre>
+            <div className="h-full overflow-y-auto p-4">
+              <pre className="whitespace-pre-wrap break-all font-mono text-xs text-text-muted">
+                {content}
+              </pre>
+            </div>
           ) : (
-            <div className="text-text-muted">No HTML available</div>
+            <div className="p-4 text-text-muted">No HTML available</div>
           ))}
         {activeTab === 'text' &&
           (content ? (
-            <pre className="whitespace-pre-wrap font-mono text-sm text-text-muted">{content}</pre>
+            <div className="h-full overflow-y-auto p-4">
+              <pre className="whitespace-pre-wrap font-mono text-sm text-text-muted">{content}</pre>
+            </div>
           ) : (
-            <div className="text-text-muted">No text content available</div>
+            <div className="p-4 text-text-muted">No text content available</div>
           ))}
         {activeTab === 'metadata' && (
-          <div className="space-y-3 font-mono text-sm">
-            <MetadataRow label="URL" value={capture.url} />
-            <MetadataRow label="Timestamp" value={new Date(capture.timestamp).toLocaleString()} />
-            <MetadataRow label="Hash (SHA-256)" value={capture.hash} />
-            <MetadataRow label="Created" value={new Date(capture.createdAt).toLocaleString()} />
-            {capture.headers && (
-              <div>
-                <div className="text-text-muted">Headers</div>
-                <pre className="mt-1 whitespace-pre-wrap text-xs text-text-muted">
-                  {capture.headers}
-                </pre>
-              </div>
-            )}
+          <div className="h-full overflow-y-auto p-4">
+            <div className="space-y-3 font-mono text-sm">
+              <MetadataRow label="URL" value={capture.url} />
+              <MetadataRow label="Timestamp" value={new Date(capture.timestamp).toLocaleString()} />
+              <MetadataRow label="Hash (SHA-256)" value={capture.hash} />
+              <MetadataRow label="Created" value={new Date(capture.createdAt).toLocaleString()} />
+              {capture.headers && (
+                <div>
+                  <div className="text-text-muted">Headers</div>
+                  <pre className="mt-1 whitespace-pre-wrap text-xs text-text-muted">
+                    {capture.headers}
+                  </pre>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

@@ -1,7 +1,9 @@
 import { useState } from 'react'
-import { motion } from 'motion/react'
+import { motion, AnimatePresence } from 'motion/react'
 import type { ExportOptions } from '@shared/types'
 import { presets } from '@renderer/lib/motion'
+import { useTheater } from '@renderer/hooks/useTheater'
+import { useCompletionCelebration } from '@renderer/hooks/useCompletionCelebration'
 
 interface ExportDialogProps {
   caseId: string
@@ -18,7 +20,16 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
     auditTrail: true
   })
   const [exporting, setExporting] = useState(false)
-  const [progress, setProgress] = useState('')
+  const [exportComplete, setExportComplete] = useState(false)
+  const [exportError, setExportError] = useState('')
+
+  const theater = useTheater({
+    stages: ['Preparing report...', 'Packaging captures...', 'Writing file...'],
+    minDuration: 800,
+    done: exportComplete
+  })
+
+  const { celebrate, celebrationProps } = useCompletionCelebration({ style: 'ripple' })
 
   const handleExport = async () => {
     const ext = 'html'
@@ -33,12 +44,14 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
     }
 
     setExporting(true)
-    setProgress('Generating report...')
+    setExportComplete(false)
+    setExportError('')
     try {
       await window.birdbrain.export.generateReport(caseId, options)
-      setProgress(`Report saved as ${outputPath}`)
+      setExportComplete(true)
+      celebrate()
     } catch (err) {
-      setProgress(`Error: ${err}`)
+      setExportError(`Error: ${err}`)
     } finally {
       setExporting(false)
     }
@@ -97,10 +110,28 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
           />
         </div>
 
-        {/* Progress */}
-        {progress && (
-          <div className="mb-4 rounded bg-elevated px-3 py-2 text-sm text-text-muted">
-            {progress}
+        {/* Progress / Status */}
+        {exporting && (
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={theater.stage}
+              {...presets.fadeIn}
+              className="mb-4 rounded bg-elevated px-3 py-2 text-sm text-center"
+            >
+              {theater.isComplete ? (
+                <motion.span {...celebrationProps} className="text-emerald-500 font-medium">
+                  Export complete!
+                </motion.span>
+              ) : (
+                <span className="text-text-muted">{theater.stage}</span>
+              )}
+            </motion.div>
+          </AnimatePresence>
+        )}
+
+        {exportError && (
+          <div className="mb-4 rounded bg-elevated px-3 py-2 text-sm text-red-400">
+            {exportError}
           </div>
         )}
 

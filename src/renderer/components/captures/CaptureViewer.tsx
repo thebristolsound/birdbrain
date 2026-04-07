@@ -255,6 +255,29 @@ export function CaptureViewer() {
         </div>
       </div>
 
+      {/* Sub-tabs row */}
+      <div className="flex items-center gap-1 border-b border-border bg-surface px-3">
+        {tabs.map((tab) => {
+          const Icon = TAB_ICONS[tab]
+          const isActive = activeTab === tab
+          return (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`relative flex items-center gap-1.5 px-3 py-2.5 text-[11px] font-medium transition-colors ${
+                isActive ? 'text-accent' : 'text-text-muted hover:text-text-secondary'
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {TAB_LABELS[tab]}
+              {isActive && (
+                <span className="absolute bottom-0 left-1/2 h-0.5 w-6 -translate-x-1/2 rounded-full bg-accent" />
+              )}
+            </button>
+          )
+        })}
+      </div>
+
       {/* B) Content area */}
       <div className="flex-1 overflow-auto p-4">
         {activeTab === 'screenshot' &&
@@ -327,29 +350,6 @@ export function CaptureViewer() {
 
       {/* C) Bottom panel */}
       <div className="border-t border-border bg-surface">
-        {/* Sub-tabs row */}
-        <div className="flex items-center gap-1 border-b border-border px-3">
-          {tabs.map((tab) => {
-            const Icon = TAB_ICONS[tab]
-            const isActive = activeTab === tab
-            return (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`relative flex items-center gap-1.5 px-3 py-2.5 text-[11px] font-medium transition-colors ${
-                  isActive ? 'text-accent' : 'text-text-muted hover:text-text-secondary'
-                }`}
-              >
-                <Icon className="h-3.5 w-3.5" />
-                {TAB_LABELS[tab]}
-                {isActive && (
-                  <span className="absolute bottom-0 left-1/2 h-0.5 w-6 -translate-x-1/2 rounded-full bg-accent" />
-                )}
-              </button>
-            )
-          })}
-        </div>
-
         {/* Tag bar */}
         <div className="flex items-center gap-2 px-3 py-2">
           <TagIcon className="h-3.5 w-3.5 text-text-faint" />

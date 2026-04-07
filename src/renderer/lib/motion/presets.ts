@@ -60,17 +60,14 @@ export const presets = {
   ),
 
   stagger: {
-    initial: 'hidden',
-    animate: 'visible',
-    exit: 'hidden',
-    variants: {
-      hidden: {},
-      visible: {
-        transition: {
-          staggerChildren: STAGGER_INTERVAL
-        }
+    initial: { opacity: 0 },
+    animate: {
+      opacity: 1,
+      transition: {
+        staggerChildren: STAGGER_INTERVAL
       }
-    }
+    },
+    exit: { opacity: 0 }
   },
 
   popover: makePreset(

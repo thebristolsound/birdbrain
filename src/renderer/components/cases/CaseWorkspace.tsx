@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useParams, Link, Outlet, useMatchRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { motion, AnimatePresence } from 'motion/react'
+import { motion } from 'motion/react'
 import {
   casesQueryOptions,
   capturesQueryOptions,
@@ -9,7 +9,6 @@ import {
   tagCountForCaseQueryOptions
 } from '@renderer/lib/queries'
 import { useSelectorFilters } from '@renderer/hooks/useSelectorFilters'
-import { presets } from '@renderer/lib/motion'
 import { LayoutDashboard, Layers, Crosshair, StickyNote, Tag } from 'lucide-react'
 import { CAPTURE_SERVER_BASE_URL } from '@shared/constants'
 
@@ -80,8 +79,6 @@ export function CaseWorkspace() {
     return isTags
   }
 
-  const activeTabId = tabs.find((t) => isTabActive(t.id))?.id ?? 'overview'
-
   return (
     <div className="flex h-full flex-col">
       {/* Tab bar */}
@@ -132,17 +129,13 @@ export function CaseWorkspace() {
       </div>
 
       {/* Tab content */}
-      <AnimatePresence mode="wait">
-        {isCaptures ? (
-          <motion.div key="captures" {...presets.fadeIn} className="flex-1 overflow-hidden">
-            <Outlet />
-          </motion.div>
-        ) : (
-          <motion.div key={activeTabId} {...presets.fadeIn} className="flex-1 overflow-auto p-6">
-            <Outlet />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {isCaptures ? (
+        <Outlet />
+      ) : (
+        <div className="flex-1 overflow-auto p-6">
+          <Outlet />
+        </div>
+      )}
     </div>
   )
 }

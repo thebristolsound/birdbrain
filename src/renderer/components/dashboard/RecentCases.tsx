@@ -1,8 +1,6 @@
 import { Plus, ArrowRight } from 'lucide-react'
-import { motion } from 'motion/react'
 import type { Case } from '@shared/types'
 import { CaseCard } from './CaseCard'
-import { presets } from '@renderer/lib/motion'
 
 interface RecentCasesProps {
   cases: Case[]
@@ -24,7 +22,7 @@ export function RecentCases({
   return (
     <section className="px-8 pb-12">
       <div className="max-w-5xl mx-auto">
-        <motion.div {...presets.fadeUp} className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <h2 className="font-display font-bold text-lg tracking-tight text-text-primary">
               Recent Cases
@@ -37,25 +35,11 @@ export function RecentCases({
             <span>View All</span>
             <ArrowRight className="h-3.5 w-3.5" />
           </button>
-        </motion.div>
+        </div>
 
-        <motion.div
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5"
-          initial="hidden"
-          animate="visible"
-          variants={{
-            hidden: {},
-            visible: { transition: { staggerChildren: 0.06, delayChildren: 0.1 } }
-          }}
-        >
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
           {cases.slice(0, 3).map((c) => (
-            <motion.div
-              key={c.id}
-              variants={{
-                hidden: { opacity: 0, scale: 0.95 },
-                visible: { opacity: 1, scale: 1 }
-              }}
-            >
+            <div key={c.id}>
               <CaseCard
                 caseData={c}
                 isRecording={false}
@@ -65,16 +49,12 @@ export function RecentCases({
                 onRename={onRenameCase}
                 onDelete={onDeleteCase}
               />
-            </motion.div>
+            </div>
           ))}
 
-          <motion.div
+          <div
             onClick={onNewCase}
             className="new-case-card cursor-pointer rounded-2xl border-2 border-dashed p-5 transition-all flex flex-col items-center justify-center text-center min-h-[260px] group"
-            variants={{
-              hidden: { opacity: 0, scale: 0.95 },
-              visible: { opacity: 1, scale: 1 }
-            }}
           >
             <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-accent/20 bg-accent-subtle transition-colors group-hover:bg-accent-subtle">
               <Plus className="h-6 w-6 text-accent transition-transform duration-300 group-hover:rotate-90" />
@@ -87,8 +67,8 @@ export function RecentCases({
               <br />
               guided setup
             </p>
-          </motion.div>
-        </motion.div>
+          </div>
+        </div>
       </div>
     </section>
   )

@@ -1,11 +1,9 @@
 import { useState } from 'react'
 import { Search, ArrowUpDown, Filter, Crosshair, X } from 'lucide-react'
-import { motion, AnimatePresence } from 'motion/react'
 import { useQuery } from '@tanstack/react-query'
 import { capturesQueryOptions } from '@renderer/lib/queries'
 import { useAppStore } from '@renderer/stores/appStore'
 import { useFavorites } from '@renderer/hooks/useFavorites'
-import { useStagedReveal } from '@renderer/hooks/useStagedReveal'
 import { CaptureItem } from './CaptureItem'
 
 interface CaptureListProps {
@@ -28,11 +26,6 @@ export function CaptureList({ caseId }: CaptureListProps) {
     if (!searchQuery) return true
     const q = searchQuery.toLowerCase()
     return c.title?.toLowerCase().includes(q) || c.url.toLowerCase().includes(q)
-  })
-
-  const { containerProps, itemProps } = useStagedReveal({
-    items: displayedCaptures,
-    preset: 'listItem'
   })
 
   return (
@@ -77,26 +70,23 @@ export function CaptureList({ caseId }: CaptureListProps) {
       </div>
 
       {/* Scrollable capture list */}
-      <motion.div className="flex-1 space-y-1 overflow-y-auto p-2" {...containerProps}>
-        <AnimatePresence>
-          {displayedCaptures.map((cap) => (
-            <motion.div key={cap.id} {...itemProps}>
-              <CaptureItem
-                capture={cap}
-                isSelected={cap.id === selectedCaptureId}
-                onClick={() => selectCapture(cap.id)}
-                isFavorite={favorites.has(cap.id)}
-                onToggleFavorite={() => toggleFavorite(cap.id)}
-              />
-            </motion.div>
-          ))}
-        </AnimatePresence>
+      <div className="flex-1 space-y-1 overflow-y-auto p-2">
+        {displayedCaptures.map((cap) => (
+          <CaptureItem
+            key={cap.id}
+            capture={cap}
+            isSelected={cap.id === selectedCaptureId}
+            onClick={() => selectCapture(cap.id)}
+            isFavorite={favorites.has(cap.id)}
+            onToggleFavorite={() => toggleFavorite(cap.id)}
+          />
+        ))}
         {displayedCaptures.length === 0 && (
           <div className="px-3 py-4 text-center text-xs text-text-faint">
             {filteredCaptureIds ? 'No captures match the active filters' : 'No captures yet'}
           </div>
         )}
-      </motion.div>
+      </div>
 
       {/* Footer */}
       <div className="border-t p-3 bg-surface border-border">

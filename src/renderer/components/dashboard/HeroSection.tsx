@@ -1,5 +1,4 @@
 import { Radar, PlusCircle, FolderOpen } from 'lucide-react'
-import { motion } from 'motion/react'
 
 interface HeroSectionProps {
   onNewInvestigation: () => void
@@ -9,55 +8,23 @@ interface HeroSectionProps {
 export function HeroSection({ onNewInvestigation, onOpenRecent }: HeroSectionProps) {
   return (
     <section className="relative pt-16 pb-12 px-8">
-      <motion.div
-        className="max-w-3xl mx-auto text-center"
-        initial="hidden"
-        animate="visible"
-        variants={{
-          hidden: {},
-          visible: { transition: { staggerChildren: 0.08 } }
-        }}
-      >
-        <motion.div
-          className="flex justify-center mb-8"
-          variants={{
-            hidden: { opacity: 0, scale: 0.9 },
-            visible: { opacity: 1, scale: 1 }
-          }}
-        >
+      <div className="max-w-3xl mx-auto text-center">
+        <div className="flex justify-center mb-8">
           <div className="logo-pulse w-16 h-16 rounded-2xl bg-accent flex items-center justify-center">
             <Radar className="h-8 w-8 text-white" />
           </div>
-        </motion.div>
+        </div>
 
-        <motion.h1
-          className="font-display font-extrabold text-4xl tracking-tight text-text-primary mb-3"
-          variants={{
-            hidden: { opacity: 0, y: 16 },
-            visible: { opacity: 1, y: 0 }
-          }}
-        >
+        <h1 className="font-display font-extrabold text-4xl tracking-tight text-text-primary mb-3">
           Welcome to <span className="shimmer-text">Birdbrain</span>
-        </motion.h1>
+        </h1>
 
-        <motion.p
-          className="text-base text-text-muted max-w-lg mx-auto leading-relaxed mb-10"
-          variants={{
-            hidden: { opacity: 0, y: 16 },
-            visible: { opacity: 1, y: 0 }
-          }}
-        >
+        <p className="text-base text-text-muted max-w-lg mx-auto leading-relaxed mb-10">
           Your comprehensive open-source intelligence platform. Capture, extract, and analyze web
           intelligence with precision.
-        </motion.p>
+        </p>
 
-        <motion.div
-          className="flex items-center justify-center gap-4 mb-6"
-          variants={{
-            hidden: { opacity: 0, y: 16 },
-            visible: { opacity: 1, y: 0 }
-          }}
-        >
+        <div className="flex items-center justify-center gap-4 mb-6">
           <button
             data-testid="new-case-btn"
             onClick={onNewInvestigation}
@@ -73,15 +40,9 @@ export function HeroSection({ onNewInvestigation, onOpenRecent }: HeroSectionPro
             <FolderOpen className="h-5 w-5 text-accent" />
             Open Recent Case
           </button>
-        </motion.div>
+        </div>
 
-        <motion.p
-          className="text-[11px] text-text-faint"
-          variants={{
-            hidden: { opacity: 0 },
-            visible: { opacity: 1 }
-          }}
-        >
+        <p className="text-[11px] text-text-faint">
           <kbd className="px-1.5 py-0.5 rounded border border-border-strong bg-surface font-mono text-[10px] font-medium text-text-muted">
             Ctrl
           </kbd>
@@ -98,8 +59,8 @@ export function HeroSection({ onNewInvestigation, onOpenRecent }: HeroSectionPro
             K
           </kbd>
           <span className="ml-1.5">to search</span>
-        </motion.p>
-      </motion.div>
+        </p>
+      </div>
     </section>
   )
 }

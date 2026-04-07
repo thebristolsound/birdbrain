@@ -212,11 +212,13 @@ export function CaptureViewer() {
         </div>
 
         {/* Inline tags */}
-        <div className="flex min-w-0 shrink items-center gap-1.5 overflow-hidden">
-          <TagIcon className="h-3.5 w-3.5 shrink-0 text-text-faint" />
-          {captureTags.map((tag) => (
-            <TagBadge key={tag.id} tag={tag} onClick={() => handleToggleTag(tag.id)} removable />
-          ))}
+        <div className="flex min-w-0 shrink items-center gap-1.5">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
+            <TagIcon className="h-3.5 w-3.5 shrink-0 text-text-faint" />
+            {captureTags.map((tag) => (
+              <TagBadge key={tag.id} tag={tag} onClick={() => handleToggleTag(tag.id)} removable />
+            ))}
+          </div>
           <div className="relative shrink-0">
             <button
               onClick={() => setShowTagMenu(!showTagMenu)}

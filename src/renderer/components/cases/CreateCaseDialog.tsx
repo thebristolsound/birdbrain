@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
+import { motion } from 'motion/react'
 import { useCasesMutations } from '@renderer/lib/queries'
+import { presets } from '@renderer/lib/motion'
 
 interface CreateCaseDialogProps {
   onClose: () => void
@@ -24,13 +26,15 @@ export function CreateCaseDialog({ onClose }: CreateCaseDialogProps) {
   }
 
   return (
-    <div
+    <motion.div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
       onClick={onClose}
+      {...presets.overlay}
     >
-      <div
+      <motion.div
         className="w-96 rounded-lg border border-border-strong bg-card p-6"
         onClick={(e) => e.stopPropagation()}
+        {...presets.modal}
       >
         <h2 className="mb-4 text-lg font-semibold text-text-primary">New Case</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -75,7 +79,7 @@ export function CreateCaseDialog({ onClose }: CreateCaseDialogProps) {
             </button>
           </div>
         </form>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   )
 }

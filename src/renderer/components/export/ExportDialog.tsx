@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import { motion } from 'motion/react'
 import type { ExportOptions } from '@shared/types'
+import { presets } from '@renderer/lib/motion'
 
 interface ExportDialogProps {
   caseId: string
@@ -19,7 +21,6 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
   const [progress, setProgress] = useState('')
 
   const handleExport = async () => {
-    // Use a default path for now (proper save dialog would need electron dialog IPC)
     const ext = 'html'
     const safeName = caseName.replace(/[^a-zA-Z0-9-_]/g, '_')
     const outputPath = `${safeName}_report.${ext}`
@@ -48,11 +49,16 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
   }
 
   return (
-    <div
+    <motion.div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
       onClick={onClose}
+      {...presets.overlay}
     >
-      <div className="neu-card w-[28rem] rounded-2xl p-6" onClick={(e) => e.stopPropagation()}>
+      <motion.div
+        className="neu-card w-[28rem] rounded-2xl p-6"
+        onClick={(e) => e.stopPropagation()}
+        {...presets.modal}
+      >
         <h2 className="mb-4 text-lg font-semibold text-text-primary">Export Case</h2>
 
         {/* Include checkboxes */}
@@ -114,7 +120,7 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
             {exporting ? 'Exporting...' : 'Export'}
           </button>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   )
 }

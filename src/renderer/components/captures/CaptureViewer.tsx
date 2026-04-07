@@ -230,7 +230,7 @@ export function CaptureViewer() {
             {showTagMenu && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setShowTagMenu(false)} />
-                <div className="absolute top-full left-0 z-50 mt-1 rounded-lg border border-border bg-elevated py-1 shadow-lg">
+                <div className="absolute top-full left-0 z-50 mt-1 max-h-[50vh] overflow-y-auto rounded-lg border border-border bg-elevated py-1 shadow-lg">
                   {allTags
                     .filter((t) => !captureTags.some((ct) => ct.id === t.id))
                     .map((tag) => (

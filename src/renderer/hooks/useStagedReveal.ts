@@ -1,4 +1,3 @@
-import { useRef } from 'react'
 import { springs } from '@renderer/lib/motion'
 import { STAGGER_INTERVAL, STAGGER_CAP } from '@renderer/lib/motion'
 
@@ -28,9 +27,6 @@ export function useStagedReveal({
   staggerInterval = STAGGER_INTERVAL,
   preset = 'listItem'
 }: UseStagedRevealOptions) {
-  const prevLengthRef = useRef(items.length)
-  prevLengthRef.current = items.length
-
   const containerProps = {
     initial: 'hidden' as const,
     animate: 'visible' as const,

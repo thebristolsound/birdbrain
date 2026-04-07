@@ -18,6 +18,15 @@ interface TheaterState {
 // Exported for testability — pure state machine with no React dependency
 export function createTheaterMachine(options: Omit<TheaterOptions, 'done' | 'actualProgress'>) {
   const { stages, minDuration = MIN_THEATER_MS, minStageTime = MIN_STAGE_TIME_MS } = options
+
+  // Validation guards
+  if (stages.length === 0) {
+    throw new Error('createTheaterMachine: stages array cannot be empty')
+  }
+  if (minStageTime <= 0) {
+    throw new Error('createTheaterMachine: minStageTime must be greater than 0')
+  }
+
   let elapsed = 0
   let doneSignaled = false
   let doneAt: number | null = null
@@ -31,8 +40,11 @@ export function createTheaterMachine(options: Omit<TheaterOptions, 'done' | 'act
     // Blend paced progress with actual if provided
     const blended = actualProgress > 0 ? Math.max(paceProgress, actualProgress) : paceProgress
 
+    // Force progress to 1 when done is signaled (holds on last stage)
+    const effectiveProgress = doneSignaled ? 1 : blended
+
     // Never go backwards
-    highWaterProgress = Math.max(highWaterProgress, blended)
+    highWaterProgress = Math.max(highWaterProgress, effectiveProgress)
 
     const stageIndex = Math.min(
       Math.floor(highWaterProgress * stages.length),
@@ -74,15 +86,47 @@ export function useTheater(options: TheaterOptions): TheaterState {
     done = false,
     actualProgress = 0
   } = options
+
+  const prevDoneRef = useRef(done)
+  const prevStagesRef = useRef(stages)
+  const prevMinDurationRef = useRef(minDuration)
+  const prevMinStageTimeRef = useRef(minStageTime)
   const machineRef = useRef(createTheaterMachine({ stages, minDuration, minStageTime }))
   const [state, setState] = useState<TheaterState>(() => machineRef.current.getState())
 
+  const resetMachine = () => {
+    machineRef.current = createTheaterMachine({ stages, minDuration, minStageTime })
+    machineRef.current.setActualProgress(actualProgress)
+    setState(machineRef.current.getState())
+  }
+
   useEffect(() => {
-    if (done) machineRef.current.signalDone()
+    const configChanged =
+      prevStagesRef.current !== stages ||
+      prevMinDurationRef.current !== minDuration ||
+      prevMinStageTimeRef.current !== minStageTime
+    const restarted = prevDoneRef.current && !done
+
+    if (configChanged || restarted) {
+      resetMachine()
+    }
+
+    prevDoneRef.current = done
+    prevStagesRef.current = stages
+    prevMinDurationRef.current = minDuration
+    prevMinStageTimeRef.current = minStageTime
+  }, [done, stages, minDuration, minStageTime, actualProgress])
+
+  useEffect(() => {
+    if (done) {
+      machineRef.current.signalDone()
+      setState(machineRef.current.getState())
+    }
   }, [done])
 
   useEffect(() => {
     machineRef.current.setActualProgress(actualProgress)
+    setState(machineRef.current.getState())
   }, [actualProgress])
 
   useEffect(() => {

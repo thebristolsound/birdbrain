@@ -51,7 +51,8 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
       setExportComplete(true)
       celebrate()
     } catch (err) {
-      setExportError(`Error: ${err}`)
+      const message = err instanceof Error ? err.message : String(err)
+      setExportError(`Error: ${message}`)
     } finally {
       setExporting(false)
     }
@@ -111,7 +112,7 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
         </div>
 
         {/* Progress / Status */}
-        {exporting && (
+        {(exporting || exportComplete) && (
           <AnimatePresence mode="wait">
             <motion.div
               key={theater.stage}

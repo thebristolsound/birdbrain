@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { springs } from '@renderer/lib/motion'
 import { CELEBRATION_HOLD_MS } from '@renderer/lib/motion'
 
@@ -24,6 +24,13 @@ export function useCompletionCelebration(options: CompletionCelebrationOptions =
     if (timeoutRef.current) clearTimeout(timeoutRef.current)
     timeoutRef.current = setTimeout(() => setCelebrating(false), holdDuration)
   }, [holdDuration])
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    }
+  }, [])
 
   const celebrationProps: CelebrationProps = celebrating ? getCelebrationAnimation(style) : {}
 

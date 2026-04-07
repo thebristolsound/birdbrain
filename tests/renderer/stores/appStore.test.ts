@@ -121,6 +121,64 @@ describe('appStore', () => {
       expect(useAppStore.getState().captureEvents).toHaveLength(50)
     })
 
+    it('removes received spinner when stored event arrives for same url+source', () => {
+      useAppStore.getState().addCaptureEvent({
+        type: 'received',
+        source: 'auto',
+        url: 'https://example.com',
+        timestamp: new Date().toISOString()
+      })
+      expect(useAppStore.getState().captureEvents).toHaveLength(1)
+
+      useAppStore.getState().addCaptureEvent({
+        type: 'stored',
+        captureId: 'cap-1',
+        source: 'auto',
+        url: 'https://example.com',
+        timestamp: new Date().toISOString()
+      })
+      const events = useAppStore.getState().captureEvents
+      expect(events).toHaveLength(1)
+      expect(events[0].type).toBe('stored')
+    })
+
+    it('removes received spinner when failed event arrives', () => {
+      useAppStore.getState().addCaptureEvent({
+        type: 'received',
+        source: 'manual',
+        url: 'https://example.com',
+        timestamp: new Date().toISOString()
+      })
+      useAppStore.getState().addCaptureEvent({
+        type: 'failed',
+        source: 'manual',
+        url: 'https://example.com',
+        timestamp: new Date().toISOString(),
+        error: 'timeout'
+      })
+      const events = useAppStore.getState().captureEvents
+      expect(events).toHaveLength(1)
+      expect(events[0].type).toBe('failed')
+    })
+
+    it('does not remove received spinner for different url', () => {
+      useAppStore.getState().addCaptureEvent({
+        type: 'received',
+        source: 'auto',
+        url: 'https://other.com',
+        timestamp: new Date().toISOString()
+      })
+      useAppStore.getState().addCaptureEvent({
+        type: 'stored',
+        captureId: 'cap-1',
+        source: 'auto',
+        url: 'https://example.com',
+        timestamp: new Date().toISOString()
+      })
+      const events = useAppStore.getState().captureEvents
+      expect(events).toHaveLength(2)
+    })
+
     it('clears events and stats', () => {
       useAppStore.getState().addCaptureEvent({
         type: 'stored',

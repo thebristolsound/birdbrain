@@ -88,7 +88,17 @@ export const useAppStore = create<AppState>((set) => ({
 
   addCaptureEvent: (event) =>
     set((s) => {
-      const events = [event, ...s.captureEvents].slice(0, 50)
+      let existing = s.captureEvents
+      // Terminal events replace the matching 'received' spinner
+      if (event.type === 'stored' || event.type === 'failed' || event.type === 'skipped') {
+        const idx = existing.findIndex(
+          (e) => e.type === 'received' && e.url === event.url && e.source === event.source
+        )
+        if (idx !== -1) {
+          existing = [...existing.slice(0, idx), ...existing.slice(idx + 1)]
+        }
+      }
+      const events = [event, ...existing].slice(0, 50)
       const stats = { ...s.captureStats }
       if (event.type === 'stored') stats.successCount++
       if (event.type === 'failed') {

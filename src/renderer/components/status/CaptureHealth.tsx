@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Activity, CheckCircle2, XCircle, AlertTriangle, Loader2 } from 'lucide-react'
 import { useAppStore } from '@renderer/stores/appStore'
 import type { CaptureEvent } from '@shared/types'
@@ -39,6 +39,18 @@ function EventRow({ event }: { event: CaptureEvent }) {
 
 export function CaptureHealth() {
   const [open, setOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function handleClick(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [open])
   const [testResult, setTestResult] = useState<{
     success: boolean
     durationMs: number
@@ -80,7 +92,7 @@ export function CaptureHealth() {
   const hasFailures = captureStats.failCount > 0
 
   return (
-    <div className="relative">
+    <div className="relative" ref={containerRef}>
       <button
         onClick={() => setOpen(!open)}
         className={`flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-medium transition-colors ${

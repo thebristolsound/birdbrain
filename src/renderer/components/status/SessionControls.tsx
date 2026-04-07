@@ -75,14 +75,20 @@ export function SessionControls() {
         >
           <span
             className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
-              sessionActive ? 'translate-x-[18px]' : 'translate-x-0.5'
+              sessionActive ? 'translate-x-4.5' : 'translate-x-0.5'
             }`}
           />
         </button>
       </label>
       <AnimatePresence>
         {sessionActive && activeCase && (
-          <motion.span className="text-xs text-text-muted" {...presets.fadeIn}>
+          <motion.span
+            className="text-xs text-text-muted"
+            initial={presets.fadeIn.initial}
+            animate={presets.fadeIn.animate}
+            exit={presets.fadeIn.exit}
+            transition={presets.fadeIn.transition}
+          >
             {activeCase.name}
           </motion.span>
         )}

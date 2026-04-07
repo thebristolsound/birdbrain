@@ -127,21 +127,10 @@ export const tagUsageCountsForCaseQueryOptions = (caseId: string) =>
 export function useTagsMutations() {
   const queryClient = useQueryClient()
 
-  const invalidateAllUsageCounts = () =>
-    queryClient.invalidateQueries({
-      predicate: (q) => {
-        const key = q.queryKey
-        return Array.isArray(key) && key[0] === 'tags' && key[1] === 'usageCounts'
-      }
-    })
-
-  const invalidateAllCaseCounts = () =>
-    queryClient.invalidateQueries({
-      predicate: (q) => {
-        const key = q.queryKey
-        return Array.isArray(key) && key[0] === 'tags' && key[1] === 'caseCount'
-      }
-    })
+  const invalidateTagCounts = () => {
+    queryClient.invalidateQueries({ queryKey: ['tags', 'usageCounts'] })
+    queryClient.invalidateQueries({ queryKey: ['tags', 'caseCount'] })
+  }
 
   const create = useMutation({
     mutationFn: (params: CreateTagParams) => window.birdbrain.tags.create(params),
@@ -157,8 +146,7 @@ export function useTagsMutations() {
     mutationFn: (id: string) => window.birdbrain.tags.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tags })
-      invalidateAllUsageCounts()
-      invalidateAllCaseCounts()
+      invalidateTagCounts()
     }
   })
 
@@ -167,8 +155,7 @@ export function useTagsMutations() {
       window.birdbrain.tags.addToCapture({ captureId, tagId }),
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tagsForCapture(vars.captureId) })
-      invalidateAllUsageCounts()
-      invalidateAllCaseCounts()
+      invalidateTagCounts()
     }
   })
 
@@ -177,8 +164,7 @@ export function useTagsMutations() {
       window.birdbrain.tags.removeFromCapture({ captureId, tagId }),
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tagsForCapture(vars.captureId) })
-      invalidateAllUsageCounts()
-      invalidateAllCaseCounts()
+      invalidateTagCounts()
     }
   })
 
@@ -211,38 +197,31 @@ export const selectorCoverageQueryOptions = (caseId: string) =>
 export function useSelectorsMutations(caseId: string) {
   const queryClient = useQueryClient()
 
+  const invalidateSelectorQueries = () => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.selectors(caseId) })
+    queryClient.invalidateQueries({ queryKey: queryKeys.selectorMatchCounts(caseId) })
+    queryClient.invalidateQueries({ queryKey: queryKeys.selectorCoverage(caseId) })
+  }
+
   const create = useMutation({
     mutationFn: (params: CreateSelectorParams) => window.birdbrain.selectors.create(params),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.selectors(caseId) })
-      queryClient.invalidateQueries({ queryKey: queryKeys.selectorMatchCounts(caseId) })
-    }
+    onSuccess: invalidateSelectorQueries
   })
 
   const update = useMutation({
     mutationFn: (params: UpdateSelectorParams) => window.birdbrain.selectors.update(params),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.selectors(caseId) })
-      queryClient.invalidateQueries({ queryKey: queryKeys.selectorMatchCounts(caseId) })
-    }
+    onSuccess: invalidateSelectorQueries
   })
 
   const remove = useMutation({
     mutationFn: (id: string) => window.birdbrain.selectors.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.selectors(caseId) })
-      queryClient.invalidateQueries({ queryKey: queryKeys.selectorMatchCounts(caseId) })
-    }
+    onSuccess: invalidateSelectorQueries
   })
 
   const bulkCreate = useMutation({
     mutationFn: (params: BulkCreateSelectorsParams) =>
       window.birdbrain.selectors.bulkCreate(params),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.selectors(caseId) })
-      queryClient.invalidateQueries({ queryKey: queryKeys.selectorMatchCounts(caseId) })
-      queryClient.invalidateQueries({ queryKey: queryKeys.selectorCoverage(caseId) })
-    }
+    onSuccess: invalidateSelectorQueries
   })
 
   return { create, update, remove, bulkCreate }
@@ -274,38 +253,25 @@ export const notesSearchQueryOptions = (caseId: string, query: string) =>
 export function useNotesMutations(caseId: string) {
   const queryClient = useQueryClient()
 
-  const invalidateSearch = () =>
-    queryClient.invalidateQueries({
-      predicate: (q) => {
-        const key = q.queryKey
-        return Array.isArray(key) && key[0] === 'notes' && key[1] === 'search' && key[2] === caseId
-      }
-    })
+  const invalidateNoteQueries = () => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.notes(caseId) })
+    queryClient.invalidateQueries({ queryKey: queryKeys.noteCount(caseId) })
+    queryClient.invalidateQueries({ queryKey: ['notes', 'search', caseId] })
+  }
 
   const create = useMutation({
     mutationFn: (params: CreateNoteParams) => window.birdbrain.notes.create(params),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.notes(caseId) })
-      queryClient.invalidateQueries({ queryKey: queryKeys.noteCount(caseId) })
-      invalidateSearch()
-    }
+    onSuccess: invalidateNoteQueries
   })
 
   const update = useMutation({
     mutationFn: (params: UpdateNoteParams) => window.birdbrain.notes.update(params),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.notes(caseId) })
-      invalidateSearch()
-    }
+    onSuccess: invalidateNoteQueries
   })
 
   const remove = useMutation({
     mutationFn: (id: string) => window.birdbrain.notes.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.notes(caseId) })
-      queryClient.invalidateQueries({ queryKey: queryKeys.noteCount(caseId) })
-      invalidateSearch()
-    }
+    onSuccess: invalidateNoteQueries
   })
 
   return { create, update, remove }

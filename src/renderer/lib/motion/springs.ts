@@ -1,26 +1,24 @@
 import type { Transition } from 'motion/react'
 
-type SpringConfig = Extract<Transition, { type: 'spring' }>
-
 export const springs = {
   snappy: {
-    type: 'spring',
+    type: 'spring' as const,
     stiffness: 400,
     damping: 30
   },
   gentle: {
-    type: 'spring',
+    type: 'spring' as const,
     stiffness: 200,
     damping: 24
   },
   bouncy: {
-    type: 'spring',
+    type: 'spring' as const,
     stiffness: 500,
     damping: 15
   },
   molasses: {
-    type: 'spring',
+    type: 'spring' as const,
     stiffness: 120,
     damping: 20
   }
-} as const satisfies Record<string, SpringConfig>
+} satisfies Record<string, Transition>

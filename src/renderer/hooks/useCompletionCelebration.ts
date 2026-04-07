@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
+import type { TargetAndTransition, Transition } from 'motion/react'
 import { springs } from '@renderer/lib/motion'
 import { CELEBRATION_HOLD_MS } from '@renderer/lib/motion'
 
@@ -10,14 +11,14 @@ interface CompletionCelebrationOptions {
 }
 
 interface CelebrationProps {
-  animate?: Record<string, unknown>
-  transition?: Record<string, unknown>
+  animate?: TargetAndTransition
+  transition?: Transition
 }
 
 export function useCompletionCelebration(options: CompletionCelebrationOptions = {}) {
   const { style = 'pulse', holdDuration = CELEBRATION_HOLD_MS } = options
   const [celebrating, setCelebrating] = useState(false)
-  const timeoutRef = useRef<ReturnType<typeof setTimeout>>()
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   const celebrate = useCallback(() => {
     setCelebrating(true)

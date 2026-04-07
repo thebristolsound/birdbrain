@@ -1,4 +1,5 @@
 import { createRootRoute, createRoute, Outlet } from '@tanstack/react-router'
+import { lazy, Suspense } from 'react'
 import { TopBar } from '@renderer/components/layout/TopBar'
 import { MotionProvider } from '@renderer/lib/motion'
 import { Dashboard } from '@renderer/components/dashboard/Dashboard'
@@ -10,6 +11,22 @@ import { SelectorsOverview } from '@renderer/components/selectors/SelectorsOverv
 import { NotesOverview } from '@renderer/components/notes/NotesOverview'
 import { TagsOverview } from '@renderer/components/tags/TagsOverview'
 import { SettingsView } from '@renderer/components/settings/SettingsView'
+
+const TanStackRouterDevtools = import.meta.env.DEV
+  ? lazy(() =>
+      import('@tanstack/router-devtools').then((mod) => ({
+        default: mod.TanStackRouterDevtools
+      }))
+    )
+  : () => null
+
+const ReactQueryDevtools = import.meta.env.DEV
+  ? lazy(() =>
+      import('@tanstack/react-query-devtools').then((mod) => ({
+        default: mod.ReactQueryDevtools
+      }))
+    )
+  : () => null
 
 // Root layout
 const rootRoute = createRootRoute({
@@ -24,6 +41,10 @@ const rootRoute = createRootRoute({
             </main>
           </div>
         </div>
+        <Suspense>
+          <ReactQueryDevtools buttonPosition="bottom-left" />
+          <TanStackRouterDevtools position="bottom-right" />
+        </Suspense>
       </MotionProvider>
     )
   }

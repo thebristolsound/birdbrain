@@ -84,9 +84,7 @@ export function CaptureItem({
         }
       }}
       className={`w-full rounded-xl border p-2 text-left transition-colors cursor-pointer ${
-        isSelected
-          ? 'border-accent/35 bg-accent-subtle'
-          : 'border-transparent hover:bg-elevated'
+        isSelected ? 'border-accent/35 bg-accent-subtle' : 'border-transparent hover:bg-elevated'
       }`}
     >
       <div className="flex gap-2">

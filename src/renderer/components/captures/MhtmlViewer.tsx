@@ -48,7 +48,7 @@ export function MhtmlViewer({ captureId }: Props) {
       nodeintegration="false"
       allowpopups="false"
       webpreferences="javascript=no,contextIsolation=yes,sandbox=yes"
-      style={{ width: '100%', height: '100%', minHeight: '500px', background: 'white' }}
+      style={{ width: '100%', height: '100%', background: 'white' }}
     />
   )
 }

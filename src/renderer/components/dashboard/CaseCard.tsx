@@ -45,7 +45,6 @@ interface CaseCardProps {
   onClick: () => void
   onRename: (id: string, name: string) => void
   onDelete: (id: string) => void
-  animDelay?: string
 }
 
 export const CaseCard = memo(function CaseCard({
@@ -55,8 +54,7 @@ export const CaseCard = memo(function CaseCard({
   captureCount,
   onClick,
   onRename,
-  onDelete,
-  animDelay = 'd5'
+  onDelete
 }: CaseCardProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -100,7 +98,7 @@ export const CaseCard = memo(function CaseCard({
   return (
     <div
       data-testid="case-card"
-      className={`anim-scale ${animDelay} neu-card rounded-2xl p-5 cursor-pointer group relative`}
+      className="neu-card rounded-2xl p-5 cursor-pointer group relative"
       onClick={onClick}
     >
       {/* Top row */}

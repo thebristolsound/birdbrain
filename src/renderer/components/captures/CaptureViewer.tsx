@@ -58,7 +58,7 @@ export function CaptureViewer() {
   const { data: captures = [] } = useQuery(capturesQueryOptions(caseId))
   const { data: allTags = [] } = useQuery(tagsQueryOptions)
   const { data: captureTags = [] } = useQuery(tagsForCaptureQueryOptions(selectedCaptureId ?? ''))
-  const { addToCapture, removeFromCapture } = useTagsMutations()
+  const { create: createTag, addToCapture, removeFromCapture } = useTagsMutations()
   const { remove: deleteCaptureMutation } = useCapturesMutations(caseId)
 
   const [activeTab, setActiveTab] = useState<ViewTab>('screenshot')
@@ -68,6 +68,7 @@ export function CaptureViewer() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showAddNote, setShowAddNote] = useState(false)
   const [showOverflowMenu, setShowOverflowMenu] = useState(false)
+  const [newTagName, setNewTagName] = useState('')
 
   useEffect(() => {
     if (selectedCaptureId) {
@@ -213,50 +214,99 @@ export function CaptureViewer() {
           </div>
         </div>
 
-        {/* Inline tags */}
-        <div className="flex min-w-0 shrink items-center gap-1.5">
-          <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
-            <TagIcon className="h-3.5 w-3.5 shrink-0 text-text-faint" />
-            {captureTags.map((tag) => (
-              <TagBadge key={tag.id} tag={tag} onClick={() => handleToggleTag(tag.id)} removable />
-            ))}
-          </div>
-          <div className="relative shrink-0">
-            <button
-              onClick={() => setShowTagMenu(!showTagMenu)}
-              className="flex items-center gap-1 rounded-lg border border-dashed border-border-strong px-2 py-1 text-[11px] text-text-muted hover:border-accent/30 hover:text-text-muted"
-            >
-              <Plus className="h-3 w-3" />
-              Add tag
-            </button>
-            {showTagMenu && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setShowTagMenu(false)} />
-                <div className="absolute top-full left-0 z-50 mt-1 max-h-[50vh] overflow-y-auto rounded-lg border border-border bg-elevated py-1 shadow-lg">
+        {/* Tag popover trigger */}
+        <div className="relative shrink-0">
+          <button
+            onClick={() => {
+              setShowTagMenu(!showTagMenu)
+              setNewTagName('')
+            }}
+            className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] transition-colors ${
+              captureTags.length > 0
+                ? 'text-text-secondary hover:bg-elevated'
+                : 'text-text-muted hover:bg-elevated hover:text-text-secondary'
+            }`}
+            title="Manage tags"
+          >
+            <TagIcon className="h-3.5 w-3.5" />
+            {captureTags.length > 0 && (
+              <span className="rounded-full bg-accent-subtle px-1.5 text-[10px] font-semibold text-accent">
+                {captureTags.length}
+              </span>
+            )}
+          </button>
+
+          {showTagMenu && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setShowTagMenu(false)} />
+              <div className="absolute right-0 top-full z-50 mt-1 w-56 rounded-lg border border-border-strong bg-card py-1 shadow-xl">
+                {/* Applied tags */}
+                {captureTags.length > 0 && (
+                  <div className="border-b border-border px-3 py-2">
+                    <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-text-faint">
+                      Applied
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {captureTags.map((tag) => (
+                        <TagBadge
+                          key={tag.id}
+                          tag={tag}
+                          onClick={() => handleToggleTag(tag.id)}
+                          removable
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Available tags to add */}
+                <div className="max-h-40 overflow-y-auto py-1">
                   {allTags
                     .filter((t) => !captureTags.some((ct) => ct.id === t.id))
                     .map((tag) => (
                       <button
                         key={tag.id}
-                        onClick={() => {
-                          handleToggleTag(tag.id)
-                          setShowTagMenu(false)
-                        }}
-                        className="flex w-full items-center gap-2 px-3 py-1 text-left text-xs text-text-secondary hover:bg-elevated"
+                        onClick={() => handleToggleTag(tag.id)}
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text-secondary hover:bg-elevated"
                       >
                         <span
-                          className="h-2 w-2 rounded-full"
+                          className="h-2 w-2 shrink-0 rounded-full"
                           style={{ backgroundColor: tag.color || '#f59e0b' }}
                         />
                         {tag.name}
                       </button>
                     ))}
-                  {allTags.filter((t) => !captureTags.some((ct) => ct.id === t.id)).length ===
-                    0 && <div className="px-3 py-1 text-xs text-text-muted">No more tags</div>}
                 </div>
-              </>
-            )}
-          </div>
+
+                {/* Create new tag inline */}
+                <div className="border-t border-border px-3 py-2">
+                  <div className="flex items-center gap-1.5">
+                    <Plus className="h-3 w-3 shrink-0 text-text-faint" />
+                    <input
+                      type="text"
+                      value={newTagName}
+                      onChange={(e) => setNewTagName(e.target.value)}
+                      onKeyDown={async (e) => {
+                        if (e.key === 'Enter' && newTagName.trim()) {
+                          const tag = await createTag.mutateAsync({ name: newTagName.trim() })
+                          if (selectedCaptureId) {
+                            await addToCapture.mutateAsync({
+                              captureId: selectedCaptureId,
+                              tagId: tag.id
+                            })
+                          }
+                          setNewTagName('')
+                        }
+                      }}
+                      placeholder="New tag..."
+                      className="flex-1 bg-transparent text-xs text-text-primary placeholder-text-faint focus:outline-none"
+                      autoFocus
+                    />
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Right side actions */}

@@ -1,4 +1,4 @@
-import { createRootRoute, createRoute, Outlet } from '@tanstack/react-router'
+import { createRootRoute, createRoute, Outlet, redirect } from '@tanstack/react-router'
 import { lazy, Suspense } from 'react'
 import { TopBar } from '@renderer/components/layout/TopBar'
 import { Sidebar } from '@renderer/components/layout/Sidebar'
@@ -6,7 +6,6 @@ import { MotionProvider } from '@renderer/lib/motion'
 import { Dashboard } from '@renderer/components/dashboard/Dashboard'
 import { NewCaseWizard } from '@renderer/components/cases/NewCaseWizard'
 import { CaseWorkspace } from '@renderer/components/cases/CaseWorkspace'
-import { CaseOverview } from '@renderer/components/cases/CaseOverview'
 import { CapturesRoute } from '@renderer/routes/cases/$caseId/captures'
 import { SelectorsOverview } from '@renderer/components/selectors/SelectorsOverview'
 import { NotesOverview } from '@renderer/components/notes/NotesOverview'
@@ -97,11 +96,16 @@ const caseRoute = createRoute({
   component: CaseWorkspace
 })
 
-// Case overview (index of case workspace)
+// Redirect case index to captures
 const caseIndexRoute = createRoute({
   getParentRoute: () => caseRoute,
   path: '/',
-  component: CaseOverview
+  beforeLoad: ({ params }) => {
+    throw redirect({
+      to: '/cases/$caseId/captures',
+      params: { caseId: params.caseId }
+    })
+  }
 })
 
 // Captures tab

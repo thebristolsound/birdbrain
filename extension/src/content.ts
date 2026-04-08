@@ -302,8 +302,8 @@ async function captureFullPage(maxHeight: number): Promise<string> {
     return await blobToDataUrl(blob)
   } finally {
     // Restore sticky elements
-    for (const { el, position } of stickyElements) {
-      el.style.setProperty('position', position)
+    for (const { el } of stickyElements) {
+      el.style.removeProperty('position')
     }
     // Restore scroll position
     window.scrollTo(savedScrollX, savedScrollY)

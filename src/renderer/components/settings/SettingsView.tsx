@@ -29,6 +29,11 @@ export function SettingsView() {
     window.birdbrain.settings.get().then(setSettings)
   }, [])
 
+  // Persist settings as active section for session restore
+  useEffect(() => {
+    window.birdbrain.settings.update({ lastActiveSection: 'settings' })
+  }, [])
+
   const handleUpdate = async (partial: Partial<BirdbrainSettings>) => {
     const updated = await window.birdbrain.settings.update(partial)
     setSettings(updated)

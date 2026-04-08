@@ -236,9 +236,107 @@ function removeHighlights(): void {
   removeHighlightStyles()
 }
 
+async function captureFullPage(maxHeight: number): Promise<string> {
+  const savedScrollX = window.scrollX
+  const savedScrollY = window.scrollY
+
+  const viewportWidth = window.innerWidth
+  const viewportHeight = window.innerHeight
+  const totalHeight = Math.min(document.documentElement.scrollHeight, maxHeight)
+  const sliceCount = Math.ceil(totalHeight / viewportHeight)
+
+  // Hide sticky/fixed elements to prevent them repeating across slices
+  const stickyElements: Array<{ el: HTMLElement; position: string }> = []
+  document.querySelectorAll('*').forEach((el) => {
+    const style = getComputedStyle(el)
+    if (style.position === 'fixed' || style.position === 'sticky') {
+      stickyElements.push({ el: el as HTMLElement, position: style.position })
+    }
+  })
+
+  const slices: Array<{ dataUrl: string; yOffset: number }> = []
+
+  try {
+    for (let i = 0; i < sliceCount; i++) {
+      const yOffset = i * viewportHeight
+
+      // Hide sticky elements after first slice (so headers appear at top)
+      if (i === 1) {
+        for (const { el } of stickyElements) {
+          el.style.setProperty('position', 'relative', 'important')
+        }
+      }
+
+      window.scrollTo(0, yOffset)
+      // Wait for paint to settle
+      await new Promise((r) => setTimeout(r, 150))
+
+      const response = await chrome.runtime.sendMessage({ type: 'REQUEST_VIEWPORT_CAPTURE' })
+      if (response?.dataUrl) {
+        slices.push({ dataUrl: response.dataUrl, yOffset })
+      }
+    }
+
+    // Stitch slices onto OffscreenCanvas
+    const canvas = new OffscreenCanvas(viewportWidth, totalHeight)
+    const ctx = canvas.getContext('2d')!
+
+    for (const slice of slices) {
+      const img = await createImageBitmapFromDataUrl(slice.dataUrl)
+      const drawHeight = Math.min(viewportHeight, totalHeight - slice.yOffset)
+      ctx.drawImage(
+        img,
+        0,
+        0,
+        viewportWidth,
+        drawHeight,
+        0,
+        slice.yOffset,
+        viewportWidth,
+        drawHeight
+      )
+      img.close()
+    }
+
+    const blob = await canvas.convertToBlob({ type: 'image/png' })
+    return await blobToDataUrl(blob)
+  } finally {
+    // Restore sticky elements
+    for (const { el, position } of stickyElements) {
+      el.style.setProperty('position', position)
+    }
+    // Restore scroll position
+    window.scrollTo(savedScrollX, savedScrollY)
+  }
+}
+
+async function createImageBitmapFromDataUrl(dataUrl: string): Promise<ImageBitmap> {
+  const res = await fetch(dataUrl)
+  const blob = await res.blob()
+  return createImageBitmap(blob)
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(blob)
+  })
+}
+
 // --- Message handlers ---
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message.type === 'CAPTURE_FULL_PAGE') {
+    const maxHeight: number = message.maxHeight || 20000
+    captureFullPage(maxHeight).then(
+      (dataUrl) => sendResponse({ screenshot: dataUrl }),
+      (err) => sendResponse({ error: String(err) })
+    )
+    return true // keep channel open for async response
+  }
+
   if (message.type === 'SHOW_CAPTURE_TOAST') {
     showToast({ status: 'capturing' })
     sendResponse({ ok: true })

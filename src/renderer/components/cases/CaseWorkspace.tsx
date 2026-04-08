@@ -11,6 +11,7 @@ import {
 import { useSelectorFilters } from '@renderer/hooks/useSelectorFilters'
 import { LayoutDashboard, Layers, Crosshair, StickyNote, Tag } from 'lucide-react'
 import { CAPTURE_SERVER_BASE_URL } from '@shared/constants'
+import type { BirdbrainSettings } from '@shared/types'
 
 type CaseTab = 'overview' | 'captures' | 'selectors' | 'notes' | 'tags'
 
@@ -47,16 +48,37 @@ export function CaseWorkspace() {
 
   useSelectorFilters(caseId)
 
-  // Activate case on the capture server when entering workspace
+  // Activate case on the capture server + persist session state
   useEffect(() => {
     if (caseId) {
       fetch(`${CAPTURE_SERVER_BASE_URL}/api/cases/${caseId}/activate`, { method: 'POST' }).catch(
         (err) => console.error('Failed to activate case on server:', err)
       )
+      // Persist last active case for session restore
+      window.birdbrain.settings.update({ lastActiveCaseId: caseId })
     }
   }, [caseId])
 
   const activeCase = cases.find((c) => c.id === caseId)
+
+  const isCaptures = matchRoute({ to: '/cases/$caseId/captures', fuzzy: true }) !== false
+  const isSelectors = matchRoute({ to: '/cases/$caseId/selectors', fuzzy: true }) !== false
+  const isNotes = matchRoute({ to: '/cases/$caseId/notes', fuzzy: true }) !== false
+  const isTags = matchRoute({ to: '/cases/$caseId/tags', fuzzy: true }) !== false
+
+  // Persist active section for session restore
+  useEffect(() => {
+    const section: BirdbrainSettings['lastActiveSection'] = isCaptures
+      ? 'captures'
+      : isSelectors
+        ? 'selectors'
+        : isNotes
+          ? 'notes'
+          : isTags
+            ? 'tags'
+            : 'captures'
+    window.birdbrain.settings.update({ lastActiveSection: section })
+  }, [isCaptures, isSelectors, isNotes, isTags])
 
   if (isLoading) {
     return (
@@ -65,11 +87,6 @@ export function CaseWorkspace() {
   }
 
   if (!activeCase) return null
-
-  const isCaptures = matchRoute({ to: '/cases/$caseId/captures', fuzzy: true }) !== false
-  const isSelectors = matchRoute({ to: '/cases/$caseId/selectors', fuzzy: true }) !== false
-  const isNotes = matchRoute({ to: '/cases/$caseId/notes', fuzzy: true }) !== false
-  const isTags = matchRoute({ to: '/cases/$caseId/tags', fuzzy: true }) !== false
 
   function isTabActive(tab: CaseTab): boolean {
     if (tab === 'overview') return !isCaptures && !isSelectors && !isNotes && !isTags

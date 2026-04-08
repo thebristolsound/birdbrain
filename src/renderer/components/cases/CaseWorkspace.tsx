@@ -5,6 +5,7 @@ import { casesQueryOptions } from '@renderer/lib/queries'
 import { useSelectorFilters } from '@renderer/hooks/useSelectorFilters'
 import { CAPTURE_SERVER_BASE_URL } from '@shared/constants'
 import type { BirdbrainSettings } from '@shared/types'
+import { CaseHeader } from '@renderer/components/layout/CaseHeader'
 
 export function CaseWorkspace() {
   const { caseId } = useParams({ from: '/cases/$caseId' })
@@ -55,6 +56,7 @@ export function CaseWorkspace() {
 
   return (
     <div className="flex h-full flex-col">
+      <CaseHeader />
       {isCaptures ? (
         <div className="flex-1 overflow-hidden">
           <Outlet />

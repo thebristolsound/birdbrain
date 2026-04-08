@@ -1,24 +1,20 @@
-import { Radar, Sun, Moon } from 'lucide-react'
+import { Radar, Sun, Moon, ChevronsUpDown } from 'lucide-react'
 import { useMatchRoute } from '@tanstack/react-router'
-import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '@renderer/stores/appStore'
 import { SearchBar } from '@renderer/components/search/SearchBar'
 import { SessionControls } from '@renderer/components/status/SessionControls'
 import { ConnectionStatus } from '@renderer/components/status/ConnectionStatus'
 import { CaptureHealth } from '@renderer/components/status/CaptureHealth'
-import { casesQueryOptions } from '@renderer/lib/queries'
 import { useTheme } from '@renderer/hooks/useTheme'
 
 export function TopBar() {
   const matchRoute = useMatchRoute()
   const sessionActive = useAppStore((s) => s.sessionActive)
   const setCommandPaletteOpen = useAppStore((s) => s.setCommandPaletteOpen)
-  const { data: cases = [] } = useQuery(casesQueryOptions)
   const { theme, toggleTheme } = useTheme()
 
   const caseMatch = matchRoute({ to: '/cases/$caseId', fuzzy: true })
   const activeCaseId = caseMatch ? (caseMatch as { caseId: string }).caseId : null
-  const activeCase = activeCaseId ? cases.find((c) => c.id === activeCaseId) : null
 
   return (
     <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border bg-surface px-4">
@@ -32,15 +28,14 @@ export function TopBar() {
         </span>
       </div>
 
-      {/* Case name (clickable to open command palette) */}
-      {activeCase && (
+      {/* Compact case switcher */}
+      {activeCaseId && (
         <button
           onClick={() => setCommandPaletteOpen(true)}
-          className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-sm font-semibold text-text-secondary hover:bg-elevated hover:text-text-primary transition-colors"
+          className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted hover:bg-elevated hover:text-text-primary transition-colors"
           title="Switch investigation (Ctrl+K)"
         >
-          {activeCase.name}
-          <span className="text-[10px] text-text-faint">▾</span>
+          <ChevronsUpDown className="h-3.5 w-3.5" />
         </button>
       )}
 

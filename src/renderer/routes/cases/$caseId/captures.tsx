@@ -6,7 +6,7 @@ export function CapturesRoute() {
   const { caseId } = useParams({ from: '/cases/$caseId/captures' })
 
   return (
-    <div className="flex flex-1 overflow-hidden">
+    <div className="flex h-full flex-1 overflow-hidden">
       <div className="w-[30%] max-w-xs overflow-y-auto border-r border-border">
         <CaptureList caseId={caseId} />
       </div>

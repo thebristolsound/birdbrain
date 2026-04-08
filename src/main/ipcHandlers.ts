@@ -445,7 +445,10 @@ export function registerIpcHandlers(): void {
       if (!extensionPathExists()) {
         return { ok: false, error: 'Extension directory not found', code: 'EXT_NOT_FOUND' }
       }
-      await shell.openPath(extPath)
+      const openError = await shell.openPath(extPath)
+      if (openError) {
+        return { ok: false, error: openError, code: 'OPEN_PATH_FAILED' }
+      }
       return ipcResult(undefined)
     } catch (err) {
       return ipcError(err)

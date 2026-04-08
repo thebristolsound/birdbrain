@@ -22,14 +22,14 @@ describe('extensionPath', () => {
   })
 
   describe('getExtensionPath', () => {
-    it('returns dev path containing extension/dist when not packaged', async () => {
+    it('returns the exact dev path when not packaged', async () => {
       vi.doMock('electron', () => ({
         app: { isPackaged: false }
       }))
       const { getExtensionPath } = await import('../../../src/main/services/extensionPath')
       const result = getExtensionPath()
-      expect(result).toContain('extension')
-      expect(result).toContain('dist')
+      const expectedPath = join(process.cwd(), 'extension', 'dist')
+      expect(result).toBe(expectedPath)
     })
 
     it('returns resourcesPath/extension when packaged', async () => {

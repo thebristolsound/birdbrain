@@ -6,8 +6,8 @@ export function getExtensionPath(): string {
   if (app.isPackaged) {
     return join(process.resourcesPath, 'extension')
   }
-  // electron-vite compiles main to out/main/, so walk up to project root
-  return join(__dirname, '../../extension/dist')
+  // In dev mode, process.cwd() is the project root
+  return join(process.cwd(), 'extension', 'dist')
 }
 
 export function extensionPathExists(): boolean {

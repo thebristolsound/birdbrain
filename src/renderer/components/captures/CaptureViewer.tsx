@@ -69,6 +69,8 @@ export function CaptureViewer() {
   const [showAddNote, setShowAddNote] = useState(false)
   const [showOverflowMenu, setShowOverflowMenu] = useState(false)
   const [newTagName, setNewTagName] = useState('')
+  const [newTagColor, setNewTagColor] = useState('#f59e0b')
+  const [showColorPicker, setShowColorPicker] = useState(false)
 
   useEffect(() => {
     if (selectedCaptureId) {
@@ -281,14 +283,53 @@ export function CaptureViewer() {
                 {/* Create new tag inline */}
                 <div className="border-t border-border px-3 py-2">
                   <div className="flex items-center gap-1.5">
-                    <Plus className="h-3 w-3 shrink-0 text-text-faint" />
+                    {/* Color swatch — click to expand picker */}
+                    <div className="relative shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setShowColorPicker(!showColorPicker)}
+                        className="flex h-4 w-4 items-center justify-center rounded-full ring-1 ring-border transition-transform hover:scale-110"
+                        style={{ backgroundColor: newTagColor }}
+                        title="Pick color"
+                      />
+                      {showColorPicker && (
+                        <div className="absolute bottom-full left-0 mb-1 flex flex-col gap-1 rounded-lg border border-border-strong bg-card p-1.5 shadow-lg">
+                          {[
+                            '#f59e0b',
+                            '#ef4444',
+                            '#22c55e',
+                            '#3b82f6',
+                            '#a855f7',
+                            '#ec4899',
+                            '#14b8a6',
+                            '#f97316'
+                          ].map((c) => (
+                            <button
+                              key={c}
+                              type="button"
+                              onClick={() => {
+                                setNewTagColor(c)
+                                setShowColorPicker(false)
+                              }}
+                              className={`h-4 w-4 rounded-full transition-transform hover:scale-125 ${
+                                c === newTagColor ? 'ring-2 ring-accent ring-offset-1' : ''
+                              }`}
+                              style={{ backgroundColor: c }}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     <input
                       type="text"
                       value={newTagName}
                       onChange={(e) => setNewTagName(e.target.value)}
                       onKeyDown={async (e) => {
                         if (e.key === 'Enter' && newTagName.trim()) {
-                          const tag = await createTag.mutateAsync({ name: newTagName.trim() })
+                          const tag = await createTag.mutateAsync({
+                            name: newTagName.trim(),
+                            color: newTagColor
+                          })
                           if (selectedCaptureId) {
                             await addToCapture.mutateAsync({
                               captureId: selectedCaptureId,
@@ -300,7 +341,6 @@ export function CaptureViewer() {
                       }}
                       placeholder="New tag..."
                       className="flex-1 bg-transparent text-xs text-text-primary placeholder-text-faint focus:outline-none"
-                      autoFocus
                     />
                   </div>
                 </div>

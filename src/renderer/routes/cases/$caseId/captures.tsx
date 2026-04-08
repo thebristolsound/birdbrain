@@ -10,7 +10,7 @@ export function CapturesRoute() {
       <div className="w-[30%] max-w-xs overflow-y-auto border-r border-border">
         <CaptureList caseId={caseId} />
       </div>
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex min-w-0 flex-1 overflow-hidden">
         <CaptureViewer />
       </div>
     </div>

@@ -12,6 +12,8 @@ import { NotesOverview } from '@renderer/components/notes/NotesOverview'
 import { TagsOverview } from '@renderer/components/tags/TagsOverview'
 import { SettingsView } from '@renderer/components/settings/SettingsView'
 import { useSessionRestore } from '@renderer/hooks/useSessionRestore'
+import { useCommandPalette } from '@renderer/hooks/useCommandPalette'
+import { CommandPalette } from '@renderer/components/layout/CommandPalette'
 
 const TanStackRouterDevtools = import.meta.env.DEV
   ? lazy(() =>
@@ -33,6 +35,7 @@ const ReactQueryDevtools = import.meta.env.DEV
 const rootRoute = createRootRoute({
   component: function RootLayout() {
     const { restoring } = useSessionRestore()
+    useCommandPalette()
 
     if (restoring) {
       return (
@@ -53,6 +56,7 @@ const rootRoute = createRootRoute({
             </main>
           </div>
         </div>
+        <CommandPalette />
         <Suspense>
           <ReactQueryDevtools buttonPosition="bottom-left" />
           <TanStackRouterDevtools position="bottom-right" />

@@ -11,6 +11,7 @@ import { SelectorsOverview } from '@renderer/components/selectors/SelectorsOverv
 import { NotesOverview } from '@renderer/components/notes/NotesOverview'
 import { TagsOverview } from '@renderer/components/tags/TagsOverview'
 import { SettingsView } from '@renderer/components/settings/SettingsView'
+import { useSessionRestore } from '@renderer/hooks/useSessionRestore'
 
 const TanStackRouterDevtools = import.meta.env.DEV
   ? lazy(() =>
@@ -31,6 +32,16 @@ const ReactQueryDevtools = import.meta.env.DEV
 // Root layout
 const rootRoute = createRootRoute({
   component: function RootLayout() {
+    const { restoring } = useSessionRestore()
+
+    if (restoring) {
+      return (
+        <div className="flex h-screen items-center justify-center bg-canvas">
+          <div className="text-text-muted text-sm">Loading workspace...</div>
+        </div>
+      )
+    }
+
     return (
       <MotionProvider>
         <div className="flex h-screen flex-col bg-canvas text-text-secondary">

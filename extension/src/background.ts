@@ -1,4 +1,9 @@
-import { getStatus, sendMhtmlCapture, getActiveSelectors, createSelector } from '@extension/utils/api'
+import {
+  getStatus,
+  sendMhtmlCapture,
+  getActiveSelectors,
+  createSelector
+} from '@extension/utils/api'
 
 function captureMhtml(tabId: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
@@ -21,8 +26,7 @@ function getUserAgentString(): string {
 }
 
 function getBrowserVersion(): string {
-  const match =
-    typeof navigator !== 'undefined' ? navigator.userAgent.match(/Chrome\/(\S+)/) : null
+  const match = typeof navigator !== 'undefined' ? navigator.userAgent.match(/Chrome\/(\S+)/) : null
   return match ? 'Chrome/' + match[1] : ''
 }
 
@@ -94,6 +98,7 @@ let autoCaptureMode: string = 'notify'
 let availableCases: Array<{ id: string; name: string }> = []
 let activeCaseId: string | null = null
 let userIgnoredPatterns: string[] = []
+let captureScreenshotsEnabled = true
 
 // --- Connection management ---
 
@@ -109,6 +114,7 @@ async function checkStatus(): Promise<void> {
     availableCases = status.cases || []
     activeCaseId = status.activeCase?.id || null
     userIgnoredPatterns = status.ignoredUrlPatterns || []
+    captureScreenshotsEnabled = status.captureScreenshots !== false
 
     if (connected && !wasConnected) {
       updateIcon('connected')
@@ -350,7 +356,7 @@ async function captureTab(tabId: number, url: string): Promise<void> {
       captureMhtml(tabId),
       chrome.tabs.get(tabId),
       getPlainTextFromTab(tabId),
-      captureScreenshot(tabId)
+      captureScreenshotsEnabled ? captureScreenshot(tabId) : Promise.resolve(undefined)
     ])
 
     await sendMhtmlCapture({

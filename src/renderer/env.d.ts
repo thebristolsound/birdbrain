@@ -89,6 +89,10 @@ interface BirdbrainAPI {
     count(caseId: string): Promise<number>
     search(caseId: string, query: string): Promise<Note[]>
   }
+  extension: {
+    getPath(): Promise<string>
+    openFolder(): Promise<void>
+  }
   search(query: string): Promise<Capture[]>
   settings: {
     get(): Promise<BirdbrainSettings>
@@ -96,6 +100,7 @@ interface BirdbrainAPI {
     reset(): Promise<BirdbrainSettings>
     testOpenRouter(apiKey: string): Promise<boolean>
     listModels(apiKey: string): Promise<OpenRouterModel[]>
+    getIdentity(): Promise<{ installationId: string; operatorName: string }>
   }
   export: {
     generateReport(caseId: string, options: ExportOptions): Promise<void>
@@ -110,9 +115,7 @@ interface BirdbrainAPI {
     rebuildFts(): Promise<{ rowsIndexed: number }>
     purgeArchived(): Promise<{ casesDeleted: number; capturesDeleted: number }>
     findOrphans(): Promise<OrphanReport>
-    cleanOrphans(
-      report: OrphanReport
-    ): Promise<{ dbRecordsRemoved: number; filesRemoved: number }>
+    cleanOrphans(report: OrphanReport): Promise<{ dbRecordsRemoved: number; filesRemoved: number }>
     backup(): Promise<{ path: string } | null>
     restore(): Promise<{ restored: boolean }>
     exportTable(params: DbExportTableParams): Promise<{ path: string } | null>

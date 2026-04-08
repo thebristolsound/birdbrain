@@ -1,10 +1,18 @@
-import { Puzzle, Download, CheckCircle } from 'lucide-react'
+import { Puzzle, FolderOpen, CheckCircle } from 'lucide-react'
 
 interface ExtensionBannerProps {
   connected: boolean
 }
 
 export function ExtensionBanner({ connected }: ExtensionBannerProps) {
+  const handleOpenFolder = async () => {
+    try {
+      await window.birdbrain.extension.openFolder()
+    } catch (err) {
+      console.error('Failed to open extension folder:', err)
+    }
+  }
+
   return (
     <div className="mt-8 neu-card rounded-2xl p-6 flex items-center justify-between">
       {connected ? (
@@ -45,8 +53,11 @@ export function ExtensionBanner({ connected }: ExtensionBannerProps) {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <button className="flex items-center gap-2 px-5 py-2.5 bg-accent hover:bg-accent-hover text-white font-display font-bold text-xs rounded-xl shadow-lg shadow-indigo-500/30 transition-all active:scale-[0.98]">
-              <Download className="h-3.5 w-3.5" />
+            <button
+              onClick={handleOpenFolder}
+              className="flex items-center gap-2 px-5 py-2.5 bg-accent hover:bg-accent-hover text-white font-display font-bold text-xs rounded-xl shadow-lg shadow-indigo-500/30 transition-all active:scale-[0.98]"
+            >
+              <FolderOpen className="h-3.5 w-3.5" />
               Install Extension
             </button>
             <button className="text-[11px] font-bold text-accent hover:text-accent transition-colors">

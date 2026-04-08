@@ -20,6 +20,11 @@ test.describe('App Lifecycle', () => {
     await expect(page.locator('[data-testid="new-case-btn"]')).toBeVisible()
   })
 
+  test('extension banner shows install button when not connected', async ({ page }) => {
+    await expect(page.getByText('Install the Browser Extension')).toBeVisible()
+    await expect(page.getByText('Install Extension')).toBeVisible()
+  })
+
   test('theme toggle persists between reloads', async ({ page }) => {
     // App should start in light mode (no .dark class)
     const htmlClass = await page.evaluate(() => document.documentElement.className)

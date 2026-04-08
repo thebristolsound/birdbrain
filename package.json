@@ -1,6 +1,6 @@
 {
   "name": "birdbrain",
-  "version": "0.1.0",
+  "version": "1.0.0-beta.1",
   "description": "Open source web investigation & capture tool",
   "main": "./out/main/index.js",
   "packageManager": "pnpm@10.28.2",
@@ -22,9 +22,9 @@
     "test:e2e": "npx playwright test",
     "test:e2e:debug": "npx playwright test --debug",
     "pretest:e2e:debug": "pnpm build",
-    "package": "electron-vite build && electron-builder --publish never",
-    "package:win": "electron-vite build && electron-builder --win --publish never",
-    "package:mac": "electron-vite build && electron-builder --mac --publish never"
+    "package": "pnpm build:extension && electron-vite build && electron-builder --publish never",
+    "package:win": "pnpm build:extension && electron-vite build && electron-builder --win --publish never",
+    "package:mac": "pnpm build:extension && electron-vite build && electron-builder --mac --publish never"
   },
   "build": {
     "appId": "com.birdbrain.app",
@@ -32,6 +32,13 @@
     "directories": {
       "output": "dist"
     },
+    "extraResources": [
+      {
+        "from": "extension/dist",
+        "to": "extension",
+        "filter": ["**/*"]
+      }
+    ],
     "win": {
       "target": [
         "nsis"

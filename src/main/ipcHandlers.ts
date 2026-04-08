@@ -27,6 +27,7 @@ import * as storage from '@main/services/storage'
 import * as settings from '@main/services/settings'
 import * as openrouter from '@main/services/openrouter'
 import { generateReport } from '@main/services/export'
+import { getExtensionPath, extensionPathExists } from '@main/services/extensionPath'
 import { buildCsv } from '@main/services/csvEscape'
 import { initManifest, appendManifestEntry, rollbackManifestEntry } from '@main/services/manifest'
 import { getInstallationId } from '@main/services/installationId'
@@ -423,6 +424,31 @@ export function registerIpcHandlers(): void {
       // FTS5 can throw on malformed queries (e.g. unmatched quotes, reserved keywords).
       // Return empty results so the UI gracefully handles bad input.
       return []
+    }
+  })
+
+  // Extension
+  ipcMain.handle(IPC_CHANNELS.EXTENSION_PATH, () => {
+    try {
+      if (!extensionPathExists()) {
+        return { ok: false, error: 'Extension directory not found', code: 'EXT_NOT_FOUND' }
+      }
+      return ipcResult(getExtensionPath())
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.EXTENSION_OPEN_FOLDER, async () => {
+    try {
+      const extPath = getExtensionPath()
+      if (!extensionPathExists()) {
+        return { ok: false, error: 'Extension directory not found', code: 'EXT_NOT_FOUND' }
+      }
+      await shell.openPath(extPath)
+      return ipcResult(undefined)
+    } catch (err) {
+      return ipcError(err)
     }
   })
 

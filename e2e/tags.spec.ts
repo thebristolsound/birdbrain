@@ -2,17 +2,21 @@ import { test, expect } from './fixtures/electronApp'
 
 test.describe('Tags tab', () => {
   test('navigate to Tags tab, create and delete tags, see usage table', async ({ page }) => {
-    // Create a case via the dashboard wizard.
-    await page.click('[data-testid="new-case-btn"]')
+    // Create a case via the hash router.
+    await page.evaluate(() => {
+      window.location.hash = '/cases/new'
+    })
+    await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
     await page.fill('[data-testid="case-name-input"]', 'Tags E2E Case')
     await page.click('[data-testid="case-create-btn"]')
-    await expect(page.getByRole('heading', { name: 'Tags E2E Case' })).toBeVisible()
+    await page.waitForSelector('[data-testid="case-header-name-btn"]', { timeout: 10000 })
+    await expect(page.locator('[data-testid="case-header-name-btn"]')).toContainText(
+      'Tags E2E Case'
+    )
 
-    // Click the Tags tab (added as a new first-class tab).
-    await page.getByRole('link', { name: 'Tags' }).click()
-
-    // Tab badge should exist and start at 0 (no tags used in this case yet).
-    await expect(page.getByTestId('tab-badge-tags')).toHaveText('0')
+    // Navigate to Tags via the sidebar icon button.
+    await page.click('button[aria-label="Tags"]')
+    await page.waitForURL(/#\/cases\/.+\/tags/)
 
     // Create a tag from the inline manager.
     await page.getByTestId('tag-name-input').fill('important')
@@ -24,9 +28,6 @@ test.describe('Tags tab', () => {
     // The usage table should list the tag with 0 usage in this case.
     await expect(page.getByTestId('tags-usage-table')).toContainText('important')
     await expect(page.getByTestId('tag-usage-count-important')).toHaveText('0')
-
-    // Badge remains 0 because no capture in this case is tagged.
-    await expect(page.getByTestId('tab-badge-tags')).toHaveText('0')
 
     // Create a second tag and confirm it also appears in the usage table.
     await page.getByTestId('tag-name-input').fill('reviewed')

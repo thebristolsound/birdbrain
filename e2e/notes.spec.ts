@@ -2,17 +2,21 @@ import { test, expect } from './fixtures/electronApp'
 
 test.describe('Notes', () => {
   test('create, edit, search, and delete a note', async ({ page }) => {
-    // Create a case via the dashboard wizard
-    await page.click('[data-testid="new-case-btn"]')
+    // Create a case via the hash router
+    await page.evaluate(() => {
+      window.location.hash = '/cases/new'
+    })
+    await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
     await page.fill('[data-testid="case-name-input"]', 'Notes E2E Case')
     await page.click('[data-testid="case-create-btn"]')
-    await expect(page.getByRole('heading', { name: 'Notes E2E Case' })).toBeVisible()
+    await page.waitForSelector('[data-testid="case-header-name-btn"]', { timeout: 10000 })
+    await expect(page.locator('[data-testid="case-header-name-btn"]')).toContainText(
+      'Notes E2E Case'
+    )
 
-    // Click the Notes tab
-    await page.getByRole('link', { name: 'Notes' }).click()
-
-    // The tab badge should exist and show 0 initially
-    await expect(page.getByTestId('tab-badge-notes')).toHaveText('0')
+    // Navigate to Notes via the sidebar icon button
+    await page.click('button[aria-label="Notes"]')
+    await page.waitForURL(/#\/cases\/.+\/notes/)
 
     // Create a note
     await page.getByTestId('notes-new-button').click()
@@ -20,11 +24,10 @@ test.describe('Notes', () => {
     await page.getByTestId('create-note-body').fill('Something interesting about the target')
     await page.getByTestId('create-note-submit').click()
 
-    // Note should appear and badge should update
+    // Note should appear
     await expect(page.getByTestId('notes-list')).toBeVisible()
     await expect(page.getByText('Observation one')).toBeVisible()
     await expect(page.getByText('Something interesting about the target')).toBeVisible()
-    await expect(page.getByTestId('tab-badge-notes')).toHaveText('1')
 
     // Edit the note
     await page.getByTestId('note-edit').first().click()
@@ -48,6 +51,5 @@ test.describe('Notes', () => {
     await page.getByTestId('note-delete').first().click()
     await page.getByTestId('note-confirm-delete').click()
     await expect(page.getByText('Renamed note')).not.toBeVisible()
-    await expect(page.getByTestId('tab-badge-notes')).toHaveText('0')
   })
 })

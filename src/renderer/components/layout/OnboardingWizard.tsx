@@ -36,7 +36,10 @@ export function OnboardingWizard() {
   }
 
   return (
-    <div className="flex h-full items-center justify-center bg-canvas">
+    <div
+      data-testid="onboarding-wizard"
+      className="flex h-full items-center justify-center bg-canvas"
+    >
       <div className="flex w-full max-w-md flex-col items-center">
         {/* Logo */}
         <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-accent shadow-[var(--shadow-btn)]">
@@ -111,6 +114,7 @@ export function OnboardingWizard() {
                 {/* Footer */}
                 <div className="flex justify-end">
                   <button
+                    data-testid="onboarding-skip-btn"
                     onClick={handleContinue}
                     className="flex items-center gap-2 rounded-xl bg-accent px-6 py-2.5 text-sm font-medium text-white shadow-[var(--shadow-btn)] transition hover:bg-accent-hover"
                   >
@@ -153,6 +157,7 @@ export function OnboardingWizard() {
                     Investigation Name
                   </label>
                   <input
+                    data-testid="onboarding-name-input"
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}

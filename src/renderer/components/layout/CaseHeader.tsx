@@ -145,6 +145,7 @@ export function CaseHeader() {
         <div className="flex min-w-0 flex-1 items-center">
           {editingName ? (
             <input
+              data-testid="case-header-name-input"
               ref={nameInputRef}
               value={nameValue}
               onChange={(e) => setNameValue(e.target.value)}
@@ -160,6 +161,7 @@ export function CaseHeader() {
             />
           ) : (
             <button
+              data-testid="case-header-name-btn"
               className="group flex min-w-0 items-center gap-1.5"
               onClick={() => setEditingName(true)}
               title="Click to edit"

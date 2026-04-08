@@ -3,7 +3,9 @@ import { lazy, Suspense } from 'react'
 import { TopBar } from '@renderer/components/layout/TopBar'
 import { Sidebar } from '@renderer/components/layout/Sidebar'
 import { MotionProvider } from '@renderer/lib/motion'
-import { Dashboard } from '@renderer/components/dashboard/Dashboard'
+import { OnboardingWizard } from '@renderer/components/layout/OnboardingWizard'
+import { useQuery } from '@tanstack/react-query'
+import { casesQueryOptions } from '@renderer/lib/queries'
 import { NewCaseWizard } from '@renderer/components/cases/NewCaseWizard'
 import { CaseWorkspace } from '@renderer/components/cases/CaseWorkspace'
 import { CapturesRoute } from '@renderer/routes/cases/$caseId/captures'
@@ -66,11 +68,23 @@ const rootRoute = createRootRoute({
   }
 })
 
-// Dashboard (index)
+// Onboarding / index
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
-  component: Dashboard
+  component: function IndexPage() {
+    const { isLoading } = useQuery(casesQueryOptions)
+
+    if (isLoading) {
+      return (
+        <div className="flex h-full items-center justify-center">
+          <span className="text-sm text-text-muted">Loading...</span>
+        </div>
+      )
+    }
+
+    return <OnboardingWizard />
+  }
 })
 
 // Settings

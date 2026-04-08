@@ -24,7 +24,8 @@ import {
   Info,
   Tag as TagIcon,
   Plus,
-  StickyNote
+  StickyNote,
+  MoreHorizontal
 } from 'lucide-react'
 import { AddNoteModal } from '@renderer/components/notes/AddNoteModal'
 import { MhtmlViewer } from '@renderer/components/captures/MhtmlViewer'
@@ -66,6 +67,7 @@ export function CaptureViewer() {
   const [showTagMenu, setShowTagMenu] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showAddNote, setShowAddNote] = useState(false)
+  const [showOverflowMenu, setShowOverflowMenu] = useState(false)
 
   useEffect(() => {
     if (selectedCaptureId) {
@@ -261,14 +263,6 @@ export function CaptureViewer() {
         <div className="flex items-center gap-1">
           <ProvenanceBadge captureId={capture.id} />
           <button
-            data-testid="add-note-button"
-            onClick={() => setShowAddNote(true)}
-            title="Add note"
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted hover:bg-elevated hover:text-text-secondary"
-          >
-            <StickyNote className="h-3.5 w-3.5" />
-          </button>
-          <button
             onClick={handleDownload}
             title="Download capture"
             className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted hover:bg-elevated hover:text-text-secondary"
@@ -282,13 +276,45 @@ export function CaptureViewer() {
           >
             <ExternalLink className="h-3.5 w-3.5" />
           </button>
-          <button
-            onClick={() => setShowDeleteConfirm(true)}
-            title="Delete capture"
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted hover:bg-elevated hover:text-red-400"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
+
+          {/* Overflow menu */}
+          <div className="relative">
+            <button
+              onClick={() => setShowOverflowMenu(!showOverflowMenu)}
+              title="More actions"
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted hover:bg-elevated hover:text-text-secondary"
+            >
+              <MoreHorizontal className="h-3.5 w-3.5" />
+            </button>
+            {showOverflowMenu && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowOverflowMenu(false)} />
+                <div className="absolute right-0 top-full z-50 mt-1 w-44 rounded-lg border border-border-strong bg-elevated py-1 shadow-lg">
+                  <button
+                    data-testid="add-note-button"
+                    onClick={() => {
+                      setShowAddNote(true)
+                      setShowOverflowMenu(false)
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text-secondary hover:bg-surface"
+                  >
+                    <StickyNote className="h-3.5 w-3.5" />
+                    Add note
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowDeleteConfirm(true)
+                      setShowOverflowMenu(false)
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-red-400 hover:bg-surface"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Delete capture
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 

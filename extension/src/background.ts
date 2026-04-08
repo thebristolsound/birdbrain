@@ -56,6 +56,30 @@ async function captureScreenshot(tabId: number): Promise<Blob | undefined> {
   }
 }
 
+async function captureFullPageScreenshot(tabId: number): Promise<Blob | undefined> {
+  try {
+    const response = await chrome.tabs.sendMessage(tabId, {
+      type: 'CAPTURE_FULL_PAGE',
+      maxHeight: 20000
+    })
+    if (response?.screenshot) {
+      const res = await fetch(response.screenshot)
+      return await res.blob()
+    }
+    if (response?.error) {
+      console.warn(
+        '[Birdbrain] Full-page capture failed, falling back to viewport:',
+        response.error
+      )
+    }
+    // Fallback to viewport capture
+    return captureScreenshot(tabId)
+  } catch {
+    // Content script unreachable — fallback to viewport capture
+    return captureScreenshot(tabId)
+  }
+}
+
 // URL patterns to ignore
 const DEFAULT_IGNORE = [
   /^chrome:\/\//,
@@ -392,7 +416,7 @@ async function manualCaptureTab(tabId: number, url: string, caseId: string): Pro
       captureMhtml(tabId),
       chrome.tabs.get(tabId),
       getPlainTextFromTab(tabId),
-      captureScreenshot(tabId)
+      captureScreenshotsEnabled ? captureFullPageScreenshot(tabId) : Promise.resolve(undefined)
     ])
 
     await sendMhtmlCapture({
@@ -445,7 +469,7 @@ async function handleSelectorCapture(tabId: number, url: string, caseId: string)
       captureMhtml(tabId),
       chrome.tabs.get(tabId),
       getPlainTextFromTab(tabId),
-      captureScreenshot(tabId)
+      captureScreenshotsEnabled ? captureFullPageScreenshot(tabId) : Promise.resolve(undefined)
     ])
     await sendMhtmlCapture({
       source: 'selector',
@@ -555,6 +579,19 @@ function updateIcon(state: IconState): void {
 // --- Message handling from popup and content script ---
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'REQUEST_VIEWPORT_CAPTURE') {
+    if (!sender.tab?.id) {
+      sendResponse({ error: 'No tab ID' })
+      return true
+    }
+    const tab = sender.tab
+    chrome.tabs
+      .captureVisibleTab(tab.windowId!, { format: 'png' })
+      .then((dataUrl) => sendResponse({ dataUrl }))
+      .catch((err) => sendResponse({ error: String(err) }))
+    return true // keep channel open for async
+  }
+
   if (message.type === 'GET_STATE') {
     sendResponse({
       connected,

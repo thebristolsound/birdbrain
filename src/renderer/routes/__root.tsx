@@ -53,7 +53,7 @@ const rootRoute = createRootRoute({
           <TopBar />
           <div className="flex flex-1 overflow-hidden">
             <Sidebar />
-            <main className="flex-1 overflow-auto bg-canvas">
+            <main className="flex-1 overflow-hidden bg-canvas">
               <Outlet />
             </main>
           </div>

@@ -237,6 +237,10 @@ function removeHighlights(): void {
 }
 
 async function captureFullPage(maxHeight: number): Promise<string> {
+  if (typeof OffscreenCanvas === 'undefined') {
+    throw new Error('OffscreenCanvas is not available in this context')
+  }
+
   const savedScrollX = window.scrollX
   const savedScrollY = window.scrollY
 
@@ -245,12 +249,12 @@ async function captureFullPage(maxHeight: number): Promise<string> {
   const totalHeight = Math.min(document.documentElement.scrollHeight, maxHeight)
   const sliceCount = Math.ceil(totalHeight / viewportHeight)
 
-  // Hide sticky/fixed elements to prevent them repeating across slices
-  const stickyElements: Array<{ el: HTMLElement; position: string }> = []
+  // Collect sticky/fixed elements to hide during capture (prevents repetition across slices)
+  const stickyElements: HTMLElement[] = []
   document.querySelectorAll('*').forEach((el) => {
     const style = getComputedStyle(el)
     if (style.position === 'fixed' || style.position === 'sticky') {
-      stickyElements.push({ el: el as HTMLElement, position: style.position })
+      stickyElements.push(el as HTMLElement)
     }
   })
 
@@ -262,18 +266,24 @@ async function captureFullPage(maxHeight: number): Promise<string> {
 
       // Hide sticky elements after first slice (so headers appear at top)
       if (i === 1) {
-        for (const { el } of stickyElements) {
+        for (const el of stickyElements) {
           el.style.setProperty('position', 'relative', 'important')
         }
       }
 
       window.scrollTo(0, yOffset)
-      // Wait for paint to settle
+      // Allow repaint after scroll (covers lazy-loaded content and CSS transitions)
       await new Promise((r) => setTimeout(r, 150))
 
-      const response = await chrome.runtime.sendMessage({ type: 'REQUEST_VIEWPORT_CAPTURE' })
-      if (response?.dataUrl) {
-        slices.push({ dataUrl: response.dataUrl, yOffset })
+      try {
+        const response = await chrome.runtime.sendMessage({ type: 'REQUEST_VIEWPORT_CAPTURE' })
+        if (response?.dataUrl) {
+          slices.push({ dataUrl: response.dataUrl, yOffset })
+        } else {
+          console.warn('[Birdbrain] Viewport capture returned no data for slice', i)
+        }
+      } catch (err) {
+        console.warn('[Birdbrain] Viewport capture failed for slice', i, err)
       }
     }
 
@@ -302,7 +312,7 @@ async function captureFullPage(maxHeight: number): Promise<string> {
     return await blobToDataUrl(blob)
   } finally {
     // Restore sticky elements
-    for (const { el } of stickyElements) {
+    for (const el of stickyElements) {
       el.style.removeProperty('position')
     }
     // Restore scroll position

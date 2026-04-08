@@ -1,6 +1,7 @@
 import { createRootRoute, createRoute, Outlet } from '@tanstack/react-router'
 import { lazy, Suspense } from 'react'
 import { TopBar } from '@renderer/components/layout/TopBar'
+import { Sidebar } from '@renderer/components/layout/Sidebar'
 import { MotionProvider } from '@renderer/lib/motion'
 import { Dashboard } from '@renderer/components/dashboard/Dashboard'
 import { NewCaseWizard } from '@renderer/components/cases/NewCaseWizard'
@@ -47,6 +48,7 @@ const rootRoute = createRootRoute({
         <div className="flex h-screen flex-col bg-canvas text-text-secondary">
           <TopBar />
           <div className="flex flex-1 overflow-hidden">
+            <Sidebar />
             <main className="flex-1 overflow-auto bg-canvas">
               <Outlet />
             </main>

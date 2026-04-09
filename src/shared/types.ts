@@ -54,7 +54,6 @@ export interface BirdbrainSettings {
   openRouterApiKey: string | null
   defaultModel: string
   captureScreenshots: boolean
-  captureHtml: boolean
   dedupeWindowSeconds: number
   ignoredUrlPatterns: string[]
   storagePath: string

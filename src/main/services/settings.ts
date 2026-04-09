@@ -8,7 +8,6 @@ const DEFAULT_SETTINGS: BirdbrainSettings = {
   openRouterApiKey: null,
   defaultModel: 'anthropic/claude-sonnet-4',
   captureScreenshots: true,
-  captureHtml: true,
   dedupeWindowSeconds: 60,
   ignoredUrlPatterns: [],
   storagePath: '',

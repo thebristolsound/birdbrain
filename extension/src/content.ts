@@ -238,7 +238,54 @@ function removeHighlights(): void {
 
 let captureInProgress = false
 
-async function captureFullPage(maxHeight: number): Promise<string> {
+type StickyEntry = { el: HTMLElement; origValue: string; origPriority: string }
+
+const STICKY_FIXED_SELECTORS = [
+  'header',
+  'nav',
+  'footer',
+  '[role="banner"]',
+  '[role="navigation"]',
+  '[class~="sticky"]',
+  '[class~="fixed"]',
+  '[class*="navbar"]',
+  '[class*="topbar"]',
+  '[class*="top-bar"]',
+  '[style*="position:fixed"]',
+  '[style*="position: fixed"]',
+  '[style*="position:sticky"]',
+  '[style*="position: sticky"]'
+].join(', ')
+
+function collectStickyElements(): StickyEntry[] {
+  const entries: StickyEntry[] = []
+  document.querySelectorAll(STICKY_FIXED_SELECTORS).forEach((node) => {
+    const el = node as HTMLElement
+    const style = getComputedStyle(el)
+    if (style.position === 'fixed' || style.position === 'sticky') {
+      entries.push({
+        el,
+        origValue: el.style.getPropertyValue('position'),
+        origPriority: el.style.getPropertyPriority('position')
+      })
+    }
+  })
+  return entries
+}
+
+function restoreStickyElements(entries: StickyEntry[]): void {
+  for (const entry of entries) {
+    if (entry.origValue) {
+      entry.el.style.setProperty('position', entry.origValue, entry.origPriority)
+    } else {
+      entry.el.style.removeProperty('position')
+    }
+  }
+}
+
+const CAPTURE_MAX_BYTES = 100 * 1024 * 1024 // 100 MB raw bitmap budget
+
+async function captureFullPage(maxBytes: number = CAPTURE_MAX_BYTES): Promise<string> {
   if (captureInProgress) {
     throw new Error('Capture already in progress')
   }
@@ -252,53 +299,26 @@ async function captureFullPage(maxHeight: number): Promise<string> {
 
   const viewportWidth = window.innerWidth
   const viewportHeight = window.innerHeight
-  const totalHeight = Math.min(document.documentElement.scrollHeight, maxHeight)
-  const sliceCount = Math.ceil(totalHeight / viewportHeight)
-  // captureVisibleTab returns device-pixel images; scale canvas accordingly
   const dpr = window.devicePixelRatio || 1
-  const bitmapTotalHeight = Math.round(totalHeight * dpr)
+  // Raw bytes per viewport slice: width * height * 4 (RGBA) * dpr^2
+  const bytesPerSlice = viewportWidth * viewportHeight * 4 * dpr * dpr
+  const totalHeight = document.documentElement.scrollHeight
+  const maxSlices = Math.ceil(totalHeight / viewportHeight)
 
-  // Collect sticky/fixed elements to hide during capture (prevents repetition across slices).
-  // Use targeted CSS selectors instead of querySelectorAll('*') to avoid calling getComputedStyle
-  // on every element in the DOM, which is prohibitively expensive on large pages.
-  const STICKY_FIXED_SELECTORS = [
-    'header',
-    'nav',
-    'footer',
-    '[role="banner"]',
-    '[role="navigation"]',
-    // Whole-word class matches avoid false positives (e.g. "unsticky", "prefixed")
-    '[class~="sticky"]',
-    '[class~="fixed"]',
-    // Substring matches are fine for these distinctive compound tokens
-    '[class*="navbar"]',
-    '[class*="topbar"]',
-    '[class*="top-bar"]',
-    // Inline style selectors scoped to position property to avoid unrelated matches
-    '[style*="position:fixed"]',
-    '[style*="position: fixed"]',
-    '[style*="position:sticky"]',
-    '[style*="position: sticky"]',
-  ].join(', ')
-
-  type StickyEntry = { el: HTMLElement; origValue: string; origPriority: string }
-  const stickyElements: StickyEntry[] = []
-  document.querySelectorAll(STICKY_FIXED_SELECTORS).forEach((node) => {
-    const el = node as HTMLElement
-    const style = getComputedStyle(el)
-    if (style.position === 'fixed' || style.position === 'sticky') {
-      stickyElements.push({
-        el,
-        origValue: el.style.getPropertyValue('position'),
-        origPriority: el.style.getPropertyPriority('position'),
-      })
-    }
-  })
+  // Collect sticky/fixed elements to hide during capture
+  const stickyElements = collectStickyElements()
 
   const slices: Array<{ dataUrl: string; yOffset: number }> = []
+  let accumulatedBytes = 0
 
   try {
-    for (let i = 0; i < sliceCount; i++) {
+    for (let i = 0; i < maxSlices; i++) {
+      // Check byte budget before capturing this slice
+      if (accumulatedBytes + bytesPerSlice > maxBytes && slices.length > 0) {
+        console.log('[Birdbrain] Byte budget reached after', slices.length, 'slices')
+        break
+      }
+
       const yOffset = i * viewportHeight
 
       // Hide sticky elements after first slice (so headers appear at top)
@@ -309,13 +329,13 @@ async function captureFullPage(maxHeight: number): Promise<string> {
       }
 
       window.scrollTo(0, yOffset)
-      // Allow repaint after scroll (covers lazy-loaded content and CSS transitions)
       await new Promise((r) => setTimeout(r, 150))
 
       try {
         const response = await chrome.runtime.sendMessage({ type: 'REQUEST_VIEWPORT_CAPTURE' })
         if (response?.dataUrl) {
           slices.push({ dataUrl: response.dataUrl, yOffset })
+          accumulatedBytes += bytesPerSlice
         } else {
           console.warn('[Birdbrain] Viewport capture returned no data for slice', i)
         }
@@ -324,9 +344,12 @@ async function captureFullPage(maxHeight: number): Promise<string> {
       }
     }
 
-    // Stitch slices onto OffscreenCanvas using device-pixel dimensions so HiDPI
-    // displays get a sharp, correctly-cropped output (captureVisibleTab returns
-    // bitmaps in device pixels, not CSS pixels).
+    // Stitch slices onto OffscreenCanvas
+    const capturedHeight =
+      slices.length > 0 ? slices[slices.length - 1].yOffset + viewportHeight : viewportHeight
+    const clampedHeight = Math.min(capturedHeight, totalHeight)
+    const bitmapTotalHeight = Math.round(clampedHeight * dpr)
+
     const canvas = new OffscreenCanvas(Math.round(viewportWidth * dpr), bitmapTotalHeight)
     const ctx = canvas.getContext('2d')!
 
@@ -334,17 +357,7 @@ async function captureFullPage(maxHeight: number): Promise<string> {
       const img = await createImageBitmapFromDataUrl(slice.dataUrl)
       const destY = Math.round(slice.yOffset * dpr)
       const destH = Math.min(img.height, bitmapTotalHeight - destY)
-      ctx.drawImage(
-        img,
-        0,
-        0,
-        img.width,
-        img.height,
-        0,
-        destY,
-        img.width,
-        destH
-      )
+      ctx.drawImage(img, 0, 0, img.width, img.height, 0, destY, img.width, destH)
       img.close()
     }
 
@@ -352,15 +365,7 @@ async function captureFullPage(maxHeight: number): Promise<string> {
     return await blobToDataUrl(blob)
   } finally {
     captureInProgress = false
-    // Restore sticky elements to their original inline position value
-    for (const entry of stickyElements) {
-      if (entry.origValue) {
-        entry.el.style.setProperty('position', entry.origValue, entry.origPriority)
-      } else {
-        entry.el.style.removeProperty('position')
-      }
-    }
-    // Restore scroll position
+    restoreStickyElements(stickyElements)
     window.scrollTo(savedScrollX, savedScrollY)
   }
 }
@@ -384,8 +389,8 @@ function blobToDataUrl(blob: Blob): Promise<string> {
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'CAPTURE_FULL_PAGE') {
-    const maxHeight: number = message.maxHeight || 20000
-    captureFullPage(maxHeight).then(
+    const maxBytes: number = message.maxBytes || CAPTURE_MAX_BYTES
+    captureFullPage(maxBytes).then(
       (dataUrl) => sendResponse({ screenshot: dataUrl }),
       (err) => sendResponse({ error: String(err) })
     )

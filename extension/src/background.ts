@@ -589,6 +589,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ error: 'No tab ID or window ID' })
       return true
     }
+    if (!tab.active) {
+      sendResponse({ error: 'Tab is not the active tab; cannot capture visible tab' })
+      return true
+    }
     chrome.tabs
       .captureVisibleTab(tab.windowId, { format: 'png' })
       .then((dataUrl) => sendResponse({ dataUrl }))

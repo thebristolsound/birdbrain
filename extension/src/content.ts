@@ -254,6 +254,9 @@ async function captureFullPage(maxHeight: number): Promise<string> {
   const viewportHeight = window.innerHeight
   const totalHeight = Math.min(document.documentElement.scrollHeight, maxHeight)
   const sliceCount = Math.ceil(totalHeight / viewportHeight)
+  // captureVisibleTab returns device-pixel images; scale canvas accordingly
+  const dpr = window.devicePixelRatio || 1
+  const bitmapTotalHeight = Math.round(totalHeight * dpr)
 
   // Collect sticky/fixed elements to hide during capture (prevents repetition across slices).
   // Use targeted CSS selectors instead of querySelectorAll('*') to avoid calling getComputedStyle
@@ -321,23 +324,26 @@ async function captureFullPage(maxHeight: number): Promise<string> {
       }
     }
 
-    // Stitch slices onto OffscreenCanvas
-    const canvas = new OffscreenCanvas(viewportWidth, totalHeight)
+    // Stitch slices onto OffscreenCanvas using device-pixel dimensions so HiDPI
+    // displays get a sharp, correctly-cropped output (captureVisibleTab returns
+    // bitmaps in device pixels, not CSS pixels).
+    const canvas = new OffscreenCanvas(Math.round(viewportWidth * dpr), bitmapTotalHeight)
     const ctx = canvas.getContext('2d')!
 
     for (const slice of slices) {
       const img = await createImageBitmapFromDataUrl(slice.dataUrl)
-      const drawHeight = Math.min(viewportHeight, totalHeight - slice.yOffset)
+      const destY = Math.round(slice.yOffset * dpr)
+      const destH = Math.min(img.height, bitmapTotalHeight - destY)
       ctx.drawImage(
         img,
         0,
         0,
-        viewportWidth,
-        drawHeight,
+        img.width,
+        img.height,
         0,
-        slice.yOffset,
-        viewportWidth,
-        drawHeight
+        destY,
+        img.width,
+        destH
       )
       img.close()
     }

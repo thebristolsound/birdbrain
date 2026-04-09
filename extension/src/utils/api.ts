@@ -18,6 +18,7 @@ interface StatusResponse {
   autoCaptureMode?: string
   cases?: Array<{ id: string; name: string }>
   ignoredUrlPatterns?: string[]
+  captureScreenshots?: boolean
 }
 
 interface CaseInfo {

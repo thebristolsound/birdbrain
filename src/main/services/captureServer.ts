@@ -162,7 +162,8 @@ function createApp(): Hono {
       captureCount: state.captureCount,
       autoCaptureMode: settings.autoCaptureMode,
       cases: includeCases && allCases ? allCases.map((cs) => ({ id: cs.id, name: cs.name })) : [],
-      ignoredUrlPatterns: settings.ignoredUrlPatterns
+      ignoredUrlPatterns: settings.ignoredUrlPatterns,
+      captureScreenshots: settings.captureScreenshots
     })
   })
 

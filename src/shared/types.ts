@@ -57,7 +57,6 @@ export interface BirdbrainSettings {
   dedupeWindowSeconds: number
   ignoredUrlPatterns: string[]
   storagePath: string
-  maxStorageMb: number | null
   theme: 'dark' | 'light'
   operatorName: string
   autoCaptureMode: AutoCaptureMode

@@ -11,7 +11,6 @@ const DEFAULT_SETTINGS: BirdbrainSettings = {
   dedupeWindowSeconds: 60,
   ignoredUrlPatterns: [],
   storagePath: '',
-  maxStorageMb: null,
   theme: 'light',
   operatorName: '',
   autoCaptureMode: 'notify',

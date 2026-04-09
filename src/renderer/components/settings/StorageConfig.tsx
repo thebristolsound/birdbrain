@@ -17,22 +17,6 @@ export function StorageConfig({ settings, onUpdate }: StorageConfigProps) {
             {settings.storagePath || 'Default'}
           </div>
         </div>
-
-        <div>
-          <label className="mb-1 block text-sm text-text-muted">
-            Max Storage (MB) — leave empty for unlimited
-          </label>
-          <input
-            type="number"
-            value={settings.maxStorageMb ?? ''}
-            onChange={(e) =>
-              onUpdate({ maxStorageMb: e.target.value ? parseInt(e.target.value) : null })
-            }
-            className="w-32 rounded border border-border-strong bg-elevated px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
-            placeholder="Unlimited"
-            min={0}
-          />
-        </div>
       </div>
     </section>
   )

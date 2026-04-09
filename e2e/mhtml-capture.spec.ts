@@ -6,11 +6,17 @@ import { join } from 'path'
 // Hono server (bypasses the extension — the extension is tested separately).
 test.describe('MHTML forensic capture', () => {
   test('capture is written, hashed, manifested, and verifies', async ({ electronApp, page }) => {
-    // Create a case via the wizard
-    await page.click('[data-testid="new-case-btn"]')
+    // Create a case via the hash router
+    await page.evaluate(() => {
+      window.location.hash = '/cases/new'
+    })
+    await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
     await page.fill('[data-testid="case-name-input"]', 'MHTML E2E Test')
     await page.click('[data-testid="case-create-btn"]')
-    await expect(page.getByRole('heading', { name: 'MHTML E2E Test' })).toBeVisible()
+    await page.waitForSelector('[data-testid="case-header-name-btn"]', { timeout: 10000 })
+    await expect(page.locator('[data-testid="case-header-name-btn"]')).toContainText(
+      'MHTML E2E Test'
+    )
 
     // Get the case ID from the URL
     const url = page.url()
@@ -32,11 +38,7 @@ test.describe('MHTML forensic capture', () => {
         form.append('extensionVersion', '0.1.0')
         form.append('browserVersion', 'Chrome/120')
         form.append('userAgent', 'Mozilla/5.0')
-        form.append(
-          'mhtml',
-          new Blob([content], { type: 'multipart/related' }),
-          'capture.mhtml'
-        )
+        form.append('mhtml', new Blob([content], { type: 'multipart/related' }), 'capture.mhtml')
         const r = await fetch('http://127.0.0.1:19845/api/captures', {
           method: 'POST',
           body: form
@@ -53,7 +55,15 @@ test.describe('MHTML forensic capture', () => {
 
     // Verify the capture via IPC
     const verify = await page.evaluate(async (captureId: string) => {
-      const w = window as unknown as { birdbrain: { captures: { verify: (id: string) => Promise<{ status: string; storedHash: string; computedHash: string }> } } }
+      const w = window as unknown as {
+        birdbrain: {
+          captures: {
+            verify: (
+              id: string
+            ) => Promise<{ status: string; storedHash: string; computedHash: string }>
+          }
+        }
+      }
       return w.birdbrain.captures.verify(captureId)
     }, uploadResult.captureId)
 
@@ -61,8 +71,8 @@ test.describe('MHTML forensic capture', () => {
     expect(verify.storedHash).toBe(verify.computedHash)
 
     // Check manifest file exists on disk
-    const userData = await electronApp.evaluate(({ app }) =>
-      process.env.BIRDBRAIN_USER_DATA || app.getPath('userData')
+    const userData = await electronApp.evaluate(
+      ({ app }) => process.env.BIRDBRAIN_USER_DATA || app.getPath('userData')
     )
     const manifestPath = join(userData, 'captures', caseId, 'manifest.jsonl')
     expect(existsSync(manifestPath)).toBe(true)
@@ -78,7 +88,9 @@ test.describe('MHTML forensic capture', () => {
     writeFileSync(mhtmlPath, 'mutated-content')
 
     const reverify = await page.evaluate(async (captureId: string) => {
-      const w = window as unknown as { birdbrain: { captures: { verify: (id: string) => Promise<{ status: string }> } } }
+      const w = window as unknown as {
+        birdbrain: { captures: { verify: (id: string) => Promise<{ status: string }> } }
+      }
       return w.birdbrain.captures.verify(captureId)
     }, uploadResult.captureId)
 

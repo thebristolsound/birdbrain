@@ -162,7 +162,8 @@ function createApp(): Hono {
       captureCount: state.captureCount,
       autoCaptureMode: settings.autoCaptureMode,
       cases: includeCases && allCases ? allCases.map((cs) => ({ id: cs.id, name: cs.name })) : [],
-      ignoredUrlPatterns: settings.ignoredUrlPatterns
+      ignoredUrlPatterns: settings.ignoredUrlPatterns,
+      captureScreenshots: settings.captureScreenshots
     })
   })
 
@@ -296,7 +297,7 @@ function createApp(): Hono {
 
       emitCaptureEvent({ type: 'received', source, url, timestamp: new Date().toISOString() })
 
-      const MAX_SCREENSHOT_SIZE = 10 * 1024 * 1024 // 10 MB
+      const MAX_SCREENSHOT_SIZE = 100 * 1024 * 1024 // 100 MB
       const screenshotField = body['screenshot']
       let screenshotBuffer: Buffer | undefined
       if (screenshotField instanceof File || screenshotField instanceof Blob) {

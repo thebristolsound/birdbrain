@@ -53,3 +53,4 @@ playwright-report/
 #docs/superpowers
 
 .superdesign
+package-lock.json

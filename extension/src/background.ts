@@ -1,4 +1,9 @@
-import { getStatus, sendMhtmlCapture, getActiveSelectors, createSelector } from '@extension/utils/api'
+import {
+  getStatus,
+  sendMhtmlCapture,
+  getActiveSelectors,
+  createSelector
+} from '@extension/utils/api'
 
 function captureMhtml(tabId: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
@@ -21,8 +26,7 @@ function getUserAgentString(): string {
 }
 
 function getBrowserVersion(): string {
-  const match =
-    typeof navigator !== 'undefined' ? navigator.userAgent.match(/Chrome\/(\S+)/) : null
+  const match = typeof navigator !== 'undefined' ? navigator.userAgent.match(/Chrome\/(\S+)/) : null
   return match ? 'Chrome/' + match[1] : ''
 }
 
@@ -52,6 +56,55 @@ async function captureScreenshot(tabId: number): Promise<Blob | undefined> {
   }
 }
 
+const CAPTURE_MAX_BYTES = 100 * 1024 * 1024 // 100 MB
+
+async function captureFullPageScreenshot(tabId: number): Promise<Blob | undefined> {
+  try {
+    const response = await chrome.tabs.sendMessage(tabId, {
+      type: 'CAPTURE_FULL_PAGE',
+      maxBytes: CAPTURE_MAX_BYTES
+    })
+    if (response?.screenshot) {
+      const res = await fetch(response.screenshot)
+      return await res.blob()
+    }
+    if (response?.error) {
+      console.warn(
+        '[Birdbrain] Full-page capture failed, falling back to viewport:',
+        response.error
+      )
+    }
+    return captureScreenshot(tabId)
+  } catch {
+    return captureScreenshot(tabId)
+  }
+}
+
+async function captureScrollingPageScreenshot(tabId: number): Promise<Blob | undefined> {
+  try {
+    const response = await chrome.tabs.sendMessage(tabId, {
+      type: 'CAPTURE_FULL_PAGE_SCROLLING',
+      maxBytes: CAPTURE_MAX_BYTES,
+      scrollTimeoutMs: 120_000
+    })
+    if (response?.screenshot) {
+      const res = await fetch(response.screenshot)
+      return await res.blob()
+    }
+    if (response?.error) {
+      console.warn(
+        '[Birdbrain] Scrolling capture failed, falling back to full-page:',
+        response.error
+      )
+    }
+    // Fallback to non-scrolling full-page capture
+    return captureFullPageScreenshot(tabId)
+  } catch {
+    // Content script unreachable — fallback
+    return captureFullPageScreenshot(tabId)
+  }
+}
+
 // URL patterns to ignore
 const DEFAULT_IGNORE = [
   /^chrome:\/\//,
@@ -66,7 +119,9 @@ const DEFAULT_IGNORE = [
 // Deduplication: url -> timestamp of last capture
 const dedupeMap = new Map<string, number>()
 const DEDUPE_WINDOW_MS = 60_000
-const CONTEXT_MENU_ID = 'birdbrain-capture-page'
+const CONTEXT_MENU_PARENT_ID = 'birdbrain-parent'
+const CONTEXT_MENU_FULL_PAGE_ID = 'birdbrain-capture-full-page'
+const CONTEXT_MENU_SCROLLING_ID = 'birdbrain-capture-scrolling'
 const SELECTOR_CONTEXT_MENU_ID = 'birdbrain-create-selector'
 
 // Selector capture dedupe: caseId:url -> timestamp
@@ -94,6 +149,7 @@ let autoCaptureMode: string = 'notify'
 let availableCases: Array<{ id: string; name: string }> = []
 let activeCaseId: string | null = null
 let userIgnoredPatterns: string[] = []
+let captureScreenshotsEnabled = true
 
 // --- Connection management ---
 
@@ -109,6 +165,7 @@ async function checkStatus(): Promise<void> {
     availableCases = status.cases || []
     activeCaseId = status.activeCase?.id || null
     userIgnoredPatterns = status.ignoredUrlPatterns || []
+    captureScreenshotsEnabled = status.captureScreenshots !== false
 
     if (connected && !wasConnected) {
       updateIcon('connected')
@@ -158,16 +215,9 @@ async function checkStatus(): Promise<void> {
     }
 
     // Update context menu enabled state
-    chrome.contextMenus
-      .update(CONTEXT_MENU_ID, {
-        enabled: connected && !!activeCaseId
-      })
-      .catch(() => {})
-    chrome.contextMenus
-      .update(SELECTOR_CONTEXT_MENU_ID, {
-        enabled: connected && !!activeCaseId
-      })
-      .catch(() => {})
+    const menuEnabled = connected && !!activeCaseId
+    chrome.contextMenus.update(CONTEXT_MENU_PARENT_ID, { enabled: menuEnabled }).catch(() => {})
+    chrome.contextMenus.update(SELECTOR_CONTEXT_MENU_ID, { enabled: menuEnabled }).catch(() => {})
   } catch {
     connected = false
     sessionActive = false
@@ -190,10 +240,22 @@ checkStatus()
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
-    id: CONTEXT_MENU_ID,
-    title: 'Capture with Birdbrain',
+    id: CONTEXT_MENU_PARENT_ID,
+    title: 'Birdbrain',
     contexts: ['page'],
     enabled: false
+  })
+  chrome.contextMenus.create({
+    id: CONTEXT_MENU_FULL_PAGE_ID,
+    parentId: CONTEXT_MENU_PARENT_ID,
+    title: 'Capture Full Page',
+    contexts: ['page']
+  })
+  chrome.contextMenus.create({
+    id: CONTEXT_MENU_SCROLLING_ID,
+    parentId: CONTEXT_MENU_PARENT_ID,
+    title: 'Capture Full Page (Scrolling)',
+    contexts: ['page']
   })
   chrome.contextMenus.create({
     id: SELECTOR_CONTEXT_MENU_ID,
@@ -283,7 +345,11 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     return
   }
 
-  if (info.menuItemId !== CONTEXT_MENU_ID) return
+  if (
+    info.menuItemId !== CONTEXT_MENU_FULL_PAGE_ID &&
+    info.menuItemId !== CONTEXT_MENU_SCROLLING_ID
+  )
+    return
   if (!tab?.id || !tab.url) return
   if (!connected) return
   if (DEFAULT_IGNORE.some((pattern) => pattern.test(tab.url!))) return
@@ -295,7 +361,8 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     return
   }
 
-  manualCaptureTab(tab.id, tab.url, targetCaseId)
+  const scrolling = info.menuItemId === CONTEXT_MENU_SCROLLING_ID
+  manualCaptureTab(tab.id, tab.url, targetCaseId, scrolling)
 })
 
 // --- Capture orchestration ---
@@ -350,7 +417,7 @@ async function captureTab(tabId: number, url: string): Promise<void> {
       captureMhtml(tabId),
       chrome.tabs.get(tabId),
       getPlainTextFromTab(tabId),
-      captureScreenshot(tabId)
+      captureScreenshotsEnabled ? captureScreenshot(tabId) : Promise.resolve(undefined)
     ])
 
     await sendMhtmlCapture({
@@ -375,7 +442,12 @@ async function captureTab(tabId: number, url: string): Promise<void> {
   }
 }
 
-async function manualCaptureTab(tabId: number, url: string, caseId: string): Promise<void> {
+async function manualCaptureTab(
+  tabId: number,
+  url: string,
+  caseId: string,
+  scrolling: boolean = false
+): Promise<void> {
   const key = `${tabId}:${caseId}`
   if (pendingManualCaptures.has(key)) return
   pendingManualCaptures.add(key)
@@ -386,7 +458,11 @@ async function manualCaptureTab(tabId: number, url: string, caseId: string): Pro
       captureMhtml(tabId),
       chrome.tabs.get(tabId),
       getPlainTextFromTab(tabId),
-      captureScreenshot(tabId)
+      captureScreenshotsEnabled
+        ? scrolling
+          ? captureScrollingPageScreenshot(tabId)
+          : captureFullPageScreenshot(tabId)
+        : Promise.resolve(undefined)
     ])
 
     await sendMhtmlCapture({
@@ -439,7 +515,7 @@ async function handleSelectorCapture(tabId: number, url: string, caseId: string)
       captureMhtml(tabId),
       chrome.tabs.get(tabId),
       getPlainTextFromTab(tabId),
-      captureScreenshot(tabId)
+      captureScreenshotsEnabled ? captureFullPageScreenshot(tabId) : Promise.resolve(undefined)
     ])
     await sendMhtmlCapture({
       source: 'selector',
@@ -549,6 +625,27 @@ function updateIcon(state: IconState): void {
 // --- Message handling from popup and content script ---
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'REQUEST_VIEWPORT_CAPTURE') {
+    const tab = sender.tab
+    if (
+      tab?.id == null ||
+      tab?.windowId == null ||
+      tab.windowId === chrome.windows.WINDOW_ID_NONE
+    ) {
+      sendResponse({ error: 'No tab ID or window ID' })
+      return true
+    }
+    if (!tab.active) {
+      sendResponse({ error: 'Tab is not the active tab; cannot capture visible tab' })
+      return true
+    }
+    chrome.tabs
+      .captureVisibleTab(tab.windowId, { format: 'png' })
+      .then((dataUrl) => sendResponse({ dataUrl }))
+      .catch((err) => sendResponse({ error: String(err) }))
+    return true // keep channel open for async
+  }
+
   if (message.type === 'GET_STATE') {
     sendResponse({
       connected,

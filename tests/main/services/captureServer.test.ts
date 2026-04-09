@@ -15,7 +15,12 @@ import {
 import { initStorage } from '@main/services/storage'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
-import { startCaptureServer, stopCaptureServer, getSessionState, resetSessionState } from '@main/services/captureServer'
+import {
+  startCaptureServer,
+  stopCaptureServer,
+  getSessionState,
+  resetSessionState
+} from '@main/services/captureServer'
 
 let nextPort = 19846
 
@@ -42,7 +47,10 @@ describe('captureServer', () => {
     rmSync(tempDir, { recursive: true, force: true })
   })
 
-  function postCapture(fields: Record<string, string>, mhtmlContent = '<html>test</html>'): Promise<Response> {
+  function postCapture(
+    fields: Record<string, string>,
+    mhtmlContent = '<html>test</html>'
+  ): Promise<Response> {
     const form = new FormData()
     for (const [k, v] of Object.entries(fields)) form.append(k, v)
     form.append('mhtml', new Blob([mhtmlContent], { type: 'multipart/related' }), 'capture.mhtml')
@@ -117,13 +125,16 @@ describe('captureServer', () => {
     await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
     await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
 
-    const res = await postCapture({
-      source: 'auto',
-      url: 'https://example.com',
-      title: 'Example Page',
-      timestamp: new Date().toISOString(),
-      textContent: 'Hello World'
-    }, '<html><body>Hello World</body></html>')
+    const res = await postCapture(
+      {
+        source: 'auto',
+        url: 'https://example.com',
+        title: 'Example Page',
+        timestamp: new Date().toISOString(),
+        textContent: 'Hello World'
+      },
+      '<html><body>Hello World</body></html>'
+    )
 
     const data = await res.json()
     expect(data.status).toBe('ok')
@@ -162,17 +173,23 @@ describe('captureServer', () => {
     await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
     await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
 
-    await postCapture({
-      source: 'auto',
-      url: 'https://a.com',
-      title: 'A'
-    }, '<html>a</html>')
+    await postCapture(
+      {
+        source: 'auto',
+        url: 'https://a.com',
+        title: 'A'
+      },
+      '<html>a</html>'
+    )
 
-    await postCapture({
-      source: 'auto',
-      url: 'https://b.com',
-      title: 'B'
-    }, '<html>b</html>')
+    await postCapture(
+      {
+        source: 'auto',
+        url: 'https://b.com',
+        title: 'B'
+      },
+      '<html>b</html>'
+    )
 
     const state = getSessionState()
     expect(state.captureCount).toBe(2)
@@ -181,14 +198,17 @@ describe('captureServer', () => {
   it('source=manual stores capture without active session', async () => {
     const testCase = createCase({ name: 'Manual Test' })
 
-    const res = await postCapture({
-      source: 'manual',
-      caseId: testCase.id,
-      url: 'https://example.com/manual',
-      title: 'Manual Page',
-      timestamp: new Date().toISOString(),
-      textContent: 'Manual capture'
-    }, '<html><body>Manual capture</body></html>')
+    const res = await postCapture(
+      {
+        source: 'manual',
+        caseId: testCase.id,
+        url: 'https://example.com/manual',
+        title: 'Manual Page',
+        timestamp: new Date().toISOString(),
+        textContent: 'Manual capture'
+      },
+      '<html><body>Manual capture</body></html>'
+    )
 
     const data = await res.json()
     expect(res.status).toBe(200)
@@ -253,13 +273,16 @@ describe('captureServer', () => {
   it('source=selector stores capture', async () => {
     const testCase = createCase({ name: 'Selector Capture' })
 
-    const res = await postCapture({
-      source: 'selector',
-      caseId: testCase.id,
-      url: 'https://example.com/selector',
-      title: 'Selector Page',
-      textContent: 'Selector content'
-    }, '<html><body>Selector content</body></html>')
+    const res = await postCapture(
+      {
+        source: 'selector',
+        caseId: testCase.id,
+        url: 'https://example.com/selector',
+        title: 'Selector Page',
+        textContent: 'Selector content'
+      },
+      '<html><body>Selector content</body></html>'
+    )
 
     const data = await res.json()
     expect(res.status).toBe(200)
@@ -294,7 +317,11 @@ describe('captureServer', () => {
     const form = new FormData()
     form.append('source', 'typoed-source')
     form.append('url', 'https://example.com')
-    form.append('mhtml', new Blob(['<html>test</html>'], { type: 'multipart/related' }), 'capture.mhtml')
+    form.append(
+      'mhtml',
+      new Blob(['<html>test</html>'], { type: 'multipart/related' }),
+      'capture.mhtml'
+    )
     const res = await fetch(`${baseUrl}/api/captures`, { method: 'POST', body: form })
     expect(res.status).toBe(400)
     const data = await res.json()
@@ -314,6 +341,7 @@ describe('captureServer', () => {
     expect(data.cases[0]).toHaveProperty('id')
     expect(data.cases[0]).toHaveProperty('name')
     expect(data.ignoredUrlPatterns).toEqual([])
+    expect(data.captureScreenshots).toBe(true)
   })
 
   // --- Blacklist tests ---
@@ -325,11 +353,14 @@ describe('captureServer', () => {
 
     updateSettings({ ignoredUrlPatterns: ['facebook.com'] })
 
-    const res = await postCapture({
-      source: 'auto',
-      url: 'https://facebook.com/some-page',
-      title: 'Facebook'
-    }, '<html>fb</html>')
+    const res = await postCapture(
+      {
+        source: 'auto',
+        url: 'https://facebook.com/some-page',
+        title: 'Facebook'
+      },
+      '<html>fb</html>'
+    )
 
     expect(res.status).toBe(403)
     const data = await res.json()
@@ -343,11 +374,14 @@ describe('captureServer', () => {
 
     updateSettings({ ignoredUrlPatterns: ['facebook.com'] })
 
-    const res = await postCapture({
-      source: 'auto',
-      url: 'https://example.com',
-      title: 'Example'
-    }, '<html>example</html>')
+    const res = await postCapture(
+      {
+        source: 'auto',
+        url: 'https://example.com',
+        title: 'Example'
+      },
+      '<html>example</html>'
+    )
 
     expect(res.status).toBe(200)
     const data = await res.json()
@@ -358,11 +392,14 @@ describe('captureServer', () => {
     const testCase = createCase({ name: 'Manual Blacklist' })
     updateSettings({ ignoredUrlPatterns: ['blocked-site.com'] })
 
-    const res = await postCapture({
-      source: 'manual',
-      caseId: testCase.id,
-      url: 'https://blocked-site.com/page'
-    }, '<html>blocked</html>')
+    const res = await postCapture(
+      {
+        source: 'manual',
+        caseId: testCase.id,
+        url: 'https://blocked-site.com/page'
+      },
+      '<html>blocked</html>'
+    )
 
     expect(res.status).toBe(403)
   })
@@ -371,12 +408,15 @@ describe('captureServer', () => {
     const testCase = createCase({ name: 'Selector Blacklist' })
     updateSettings({ ignoredUrlPatterns: ['spam.org'] })
 
-    const res = await postCapture({
-      source: 'selector',
-      caseId: testCase.id,
-      url: 'https://spam.org/content',
-      title: 'Spam'
-    }, '<html>spam</html>')
+    const res = await postCapture(
+      {
+        source: 'selector',
+        caseId: testCase.id,
+        url: 'https://spam.org/content',
+        title: 'Spam'
+      },
+      '<html>spam</html>'
+    )
 
     expect(res.status).toBe(403)
   })
@@ -388,18 +428,24 @@ describe('captureServer', () => {
 
     updateSettings({ ignoredUrlPatterns: ['/.*\\.pdf$/i'] })
 
-    const blockedRes = await postCapture({
-      source: 'auto',
-      url: 'https://example.com/document.pdf',
-      title: 'PDF'
-    }, '<html>pdf</html>')
+    const blockedRes = await postCapture(
+      {
+        source: 'auto',
+        url: 'https://example.com/document.pdf',
+        title: 'PDF'
+      },
+      '<html>pdf</html>'
+    )
     expect(blockedRes.status).toBe(403)
 
-    const allowedRes = await postCapture({
-      source: 'auto',
-      url: 'https://example.com/page.html',
-      title: 'HTML'
-    }, '<html>html</html>')
+    const allowedRes = await postCapture(
+      {
+        source: 'auto',
+        url: 'https://example.com/page.html',
+        title: 'HTML'
+      },
+      '<html>html</html>'
+    )
     expect(allowedRes.status).toBe(200)
   })
 
@@ -410,18 +456,24 @@ describe('captureServer', () => {
 
     updateSettings({ ignoredUrlPatterns: ['*.facebook.com*'] })
 
-    const blockedRes = await postCapture({
-      source: 'auto',
-      url: 'https://www.facebook.com/some/page',
-      title: 'FB'
-    }, '<html>fb</html>')
+    const blockedRes = await postCapture(
+      {
+        source: 'auto',
+        url: 'https://www.facebook.com/some/page',
+        title: 'FB'
+      },
+      '<html>fb</html>'
+    )
     expect(blockedRes.status).toBe(403)
 
-    const allowedRes = await postCapture({
-      source: 'auto',
-      url: 'https://example.com/page',
-      title: 'Example'
-    }, '<html>ok</html>')
+    const allowedRes = await postCapture(
+      {
+        source: 'auto',
+        url: 'https://example.com/page',
+        title: 'Example'
+      },
+      '<html>ok</html>'
+    )
     expect(allowedRes.status).toBe(200)
   })
 
@@ -442,18 +494,24 @@ describe('captureServer', () => {
 
     updateSettings({ ignoredUrlPatterns: ['example.com/user?'] })
 
-    const blockedRes = await postCapture({
-      source: 'auto',
-      url: 'https://example.com/userA',
-      title: 'User A'
-    }, '<html>a</html>')
+    const blockedRes = await postCapture(
+      {
+        source: 'auto',
+        url: 'https://example.com/userA',
+        title: 'User A'
+      },
+      '<html>a</html>'
+    )
     expect(blockedRes.status).toBe(403)
 
-    const allowedRes = await postCapture({
-      source: 'auto',
-      url: 'https://example.com/users',
-      title: 'Users'
-    }, '<html>users</html>')
+    const allowedRes = await postCapture(
+      {
+        source: 'auto',
+        url: 'https://example.com/users',
+        title: 'Users'
+      },
+      '<html>users</html>'
+    )
     // 'users' ends with 's' which matches the '?' — still blocked
     expect(allowedRes.status).toBe(403)
   })
@@ -573,18 +631,24 @@ describe('captureServer', () => {
     await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
     await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
 
-    const first = await postCapture({
-      source: 'auto',
-      url: 'https://example.com/auto-page',
-      title: 'Auto'
-    }, '<html>auto</html>')
+    const first = await postCapture(
+      {
+        source: 'auto',
+        url: 'https://example.com/auto-page',
+        title: 'Auto'
+      },
+      '<html>auto</html>'
+    )
     expect(first.status).toBe(200)
 
-    const second = await postCapture({
-      source: 'auto',
-      url: 'https://example.com/auto-page',
-      title: 'Auto'
-    }, '<html>auto</html>')
+    const second = await postCapture(
+      {
+        source: 'auto',
+        url: 'https://example.com/auto-page',
+        title: 'Auto'
+      },
+      '<html>auto</html>'
+    )
     expect(second.status).toBe(200)
 
     const captures = listCaptures(testCase.id)
@@ -594,20 +658,26 @@ describe('captureServer', () => {
   it('source=selector is not affected by manual dedup', async () => {
     const testCase = createCase({ name: 'Selector No Dedup' })
 
-    const first = await postCapture({
-      source: 'selector',
-      caseId: testCase.id,
-      url: 'https://example.com/selector-page',
-      title: 'Selector'
-    }, '<html>selector</html>')
+    const first = await postCapture(
+      {
+        source: 'selector',
+        caseId: testCase.id,
+        url: 'https://example.com/selector-page',
+        title: 'Selector'
+      },
+      '<html>selector</html>'
+    )
     expect(first.status).toBe(200)
 
-    const second = await postCapture({
-      source: 'selector',
-      caseId: testCase.id,
-      url: 'https://example.com/selector-page',
-      title: 'Selector'
-    }, '<html>selector</html>')
+    const second = await postCapture(
+      {
+        source: 'selector',
+        caseId: testCase.id,
+        url: 'https://example.com/selector-page',
+        title: 'Selector'
+      },
+      '<html>selector</html>'
+    )
     expect(second.status).toBe(200)
 
     const captures = listCaptures(testCase.id)
@@ -644,17 +714,20 @@ describe('captureServer', () => {
   it('stores a manual MHTML capture with forensic fields', async () => {
     const c = createCase({ name: 'MHTML Test' })
     const mhtmlBytes = '<html><body>mhtml test</body></html>'
-    const res = await postCapture({
-      source: 'manual',
-      caseId: c.id,
-      url: 'https://example.com/mhtml',
-      title: 'MHTML Page',
-      timestamp: new Date().toISOString(),
-      textContent: 'mhtml test',
-      extensionVersion: '0.1.0',
-      browserVersion: 'Chrome/120',
-      userAgent: 'Mozilla/5.0'
-    }, mhtmlBytes)
+    const res = await postCapture(
+      {
+        source: 'manual',
+        caseId: c.id,
+        url: 'https://example.com/mhtml',
+        title: 'MHTML Page',
+        timestamp: new Date().toISOString(),
+        textContent: 'mhtml test',
+        extensionVersion: '0.1.0',
+        browserVersion: 'Chrome/120',
+        userAgent: 'Mozilla/5.0'
+      },
+      mhtmlBytes
+    )
 
     expect(res.status).toBe(200)
     const data = await res.json()
@@ -678,7 +751,11 @@ describe('captureServer', () => {
     form.append('title', 'Screenshot Page')
     form.append('timestamp', new Date().toISOString())
     form.append('textContent', 'page text')
-    form.append('mhtml', new Blob(['<html>ss</html>'], { type: 'multipart/related' }), 'capture.mhtml')
+    form.append(
+      'mhtml',
+      new Blob(['<html>ss</html>'], { type: 'multipart/related' }),
+      'capture.mhtml'
+    )
     form.append('screenshot', new Blob([screenshotData], { type: 'image/png' }), 'screenshot.png')
 
     const res = await fetch(`${baseUrl}/api/captures`, { method: 'POST', body: form })
@@ -857,22 +934,28 @@ describe('captureServer', () => {
     await activateSessionForCase(testCase.id)
 
     // Create a capture with text content that contains the pattern
-    await postCapture({
-      source: 'auto',
-      url: 'https://example.com/page1',
-      title: 'Page 1',
-      timestamp: new Date().toISOString(),
-      textContent: 'suspicious transaction detected here'
-    }, '<html><body>suspicious transaction detected here</body></html>')
+    await postCapture(
+      {
+        source: 'auto',
+        url: 'https://example.com/page1',
+        title: 'Page 1',
+        timestamp: new Date().toISOString(),
+        textContent: 'suspicious transaction detected here'
+      },
+      '<html><body>suspicious transaction detected here</body></html>'
+    )
 
     // Create another capture without the pattern
-    await postCapture({
-      source: 'auto',
-      url: 'https://example.com/page2',
-      title: 'Page 2',
-      timestamp: new Date().toISOString(),
-      textContent: 'nothing interesting'
-    }, '<html><body>nothing interesting</body></html>')
+    await postCapture(
+      {
+        source: 'auto',
+        url: 'https://example.com/page2',
+        title: 'Page 2',
+        timestamp: new Date().toISOString(),
+        textContent: 'nothing interesting'
+      },
+      '<html><body>nothing interesting</body></html>'
+    )
 
     // Now create a selector that matches the first capture
     const res = await fetch(`${baseUrl}/api/selectors`, {

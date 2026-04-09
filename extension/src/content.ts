@@ -434,10 +434,13 @@ async function captureFullPageScrolling(
 
     // Release the captureInProgress lock so captureFullPage can acquire it
     captureInProgress = false
-    return await captureFullPage(maxBytes)
+    try {
+      return await captureFullPage(maxBytes)
+    } finally {
+      window.scrollTo(savedScrollX, savedScrollY)
+    }
   } catch (err) {
     captureInProgress = false
-    // Restore scroll position on error
     window.scrollTo(savedScrollX, savedScrollY)
     throw err
   }

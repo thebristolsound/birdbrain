@@ -90,9 +90,7 @@ const birdbrain = {
         ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_VERIFY, captureId)
       ),
     getMhtmlUrl: (captureId: string): Promise<string | null> =>
-      unwrapIpc<string | null>(
-        ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_GET_MHTML_URL, captureId)
-      )
+      unwrapIpc<string | null>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_GET_MHTML_URL, captureId))
   },
   tags: {
     list: (): Promise<Tag[]> => ipcRenderer.invoke(IPC_CHANNELS.TAGS_LIST),
@@ -154,6 +152,13 @@ const birdbrain = {
       ipcRenderer.invoke(IPC_CHANNELS.NOTES_SEARCH, caseId, query)
   },
 
+  extension: {
+    getPath: (): Promise<string> =>
+      unwrapIpc<string>(ipcRenderer.invoke(IPC_CHANNELS.EXTENSION_PATH)),
+    openFolder: (): Promise<void> =>
+      unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.EXTENSION_OPEN_FOLDER))
+  },
+
   search: (query: string): Promise<Capture[]> => ipcRenderer.invoke(IPC_CHANNELS.SEARCH, query),
 
   settings: {
@@ -175,8 +180,7 @@ const birdbrain = {
   },
 
   db: {
-    stats: (): Promise<DbStats> =>
-      unwrapIpc<DbStats>(ipcRenderer.invoke(IPC_CHANNELS.DB_STATS)),
+    stats: (): Promise<DbStats> => unwrapIpc<DbStats>(ipcRenderer.invoke(IPC_CHANNELS.DB_STATS)),
     tableRows: (params: DbTableRowsParams): Promise<DbTableRowsResult> =>
       unwrapIpc<DbTableRowsResult>(ipcRenderer.invoke(IPC_CHANNELS.DB_TABLE_ROWS, params)),
     createRow: (params: DbCreateRowParams): Promise<Record<string, unknown>> =>
@@ -206,9 +210,7 @@ const birdbrain = {
     restore: (): Promise<{ restored: boolean }> =>
       unwrapIpc<{ restored: boolean }>(ipcRenderer.invoke(IPC_CHANNELS.DB_RESTORE)),
     exportTable: (params: DbExportTableParams): Promise<{ path: string } | null> =>
-      unwrapIpc<{ path: string } | null>(
-        ipcRenderer.invoke(IPC_CHANNELS.DB_EXPORT_TABLE, params)
-      )
+      unwrapIpc<{ path: string } | null>(ipcRenderer.invoke(IPC_CHANNELS.DB_EXPORT_TABLE, params))
   },
 
   // Event listeners (main -> renderer)

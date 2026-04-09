@@ -72,6 +72,10 @@ export const IPC_CHANNELS = {
   NOTES_COUNT: 'notes:count',
   NOTES_SEARCH: 'notes:search',
 
+  // Extension
+  EXTENSION_PATH: 'extension:path',
+  EXTENSION_OPEN_FOLDER: 'extension:openFolder',
+
   // Events (main -> renderer)
   EXPORT_PROGRESS: 'event:exportProgress',
   NEW_CAPTURE: 'event:newCapture',

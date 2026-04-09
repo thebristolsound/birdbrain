@@ -264,14 +264,18 @@ async function captureFullPage(maxHeight: number): Promise<string> {
     'footer',
     '[role="banner"]',
     '[role="navigation"]',
-    '[class*="sticky"]',
-    '[class*="fixed"]',
+    // Whole-word class matches avoid false positives (e.g. "unsticky", "prefixed")
+    '[class~="sticky"]',
+    '[class~="fixed"]',
+    // Substring matches are fine for these distinctive compound tokens
     '[class*="navbar"]',
-    '[class*="header"]',
     '[class*="topbar"]',
     '[class*="top-bar"]',
-    '[style*="fixed"]',
-    '[style*="sticky"]',
+    // Inline style selectors scoped to position property to avoid unrelated matches
+    '[style*="position:fixed"]',
+    '[style*="position: fixed"]',
+    '[style*="position:sticky"]',
+    '[style*="position: sticky"]',
   ].join(', ')
 
   type StickyEntry = { el: HTMLElement; origValue: string; origPriority: string }

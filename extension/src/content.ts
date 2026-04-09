@@ -284,6 +284,9 @@ function restoreStickyElements(entries: StickyEntry[]): void {
 }
 
 const CAPTURE_MAX_BYTES = 100 * 1024 * 1024 // 100 MB raw bitmap budget
+const SCROLL_TIMEOUT_MS = 120 * 1000 // 120 seconds for scroll phase
+const SCROLL_PAUSE_MS = 500 // pause between scrolls for lazy-load
+const SCROLL_STALL_THRESHOLD = 3 // stop if scrollHeight unchanged this many times
 
 async function captureFullPage(maxBytes: number = CAPTURE_MAX_BYTES): Promise<string> {
   if (captureInProgress) {
@@ -385,12 +388,77 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   })
 }
 
+async function captureFullPageScrolling(
+  maxBytes: number = CAPTURE_MAX_BYTES,
+  scrollTimeoutMs: number = SCROLL_TIMEOUT_MS
+): Promise<string> {
+  if (captureInProgress) {
+    throw new Error('Capture already in progress')
+  }
+
+  captureInProgress = true
+  const savedScrollX = window.scrollX
+  const savedScrollY = window.scrollY
+  const viewportHeight = window.innerHeight
+
+  try {
+    // Phase 1: Scroll to load content
+    const startTime = Date.now()
+    let stalls = 0
+    let lastScrollHeight = document.documentElement.scrollHeight
+
+    while (Date.now() - startTime < scrollTimeoutMs) {
+      window.scrollBy(0, viewportHeight)
+      await new Promise((r) => setTimeout(r, SCROLL_PAUSE_MS))
+
+      const currentScrollHeight = document.documentElement.scrollHeight
+      if (currentScrollHeight === lastScrollHeight) {
+        stalls++
+        if (stalls >= SCROLL_STALL_THRESHOLD) {
+          console.log('[Birdbrain] Scroll stalled after', stalls, 'attempts — page end reached')
+          break
+        }
+      } else {
+        stalls = 0
+        lastScrollHeight = currentScrollHeight
+      }
+    }
+
+    if (Date.now() - startTime >= scrollTimeoutMs) {
+      console.log('[Birdbrain] Scroll phase timed out after', scrollTimeoutMs / 1000, 'seconds')
+    }
+
+    // Phase 2: Scroll back to top and capture with byte budget
+    window.scrollTo(0, 0)
+    await new Promise((r) => setTimeout(r, 150))
+
+    // Release the captureInProgress lock so captureFullPage can acquire it
+    captureInProgress = false
+    return await captureFullPage(maxBytes)
+  } catch (err) {
+    captureInProgress = false
+    // Restore scroll position on error
+    window.scrollTo(savedScrollX, savedScrollY)
+    throw err
+  }
+}
+
 // --- Message handlers ---
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'CAPTURE_FULL_PAGE') {
     const maxBytes: number = message.maxBytes || CAPTURE_MAX_BYTES
     captureFullPage(maxBytes).then(
+      (dataUrl) => sendResponse({ screenshot: dataUrl }),
+      (err) => sendResponse({ error: String(err) })
+    )
+    return true // keep channel open for async response
+  }
+
+  if (message.type === 'CAPTURE_FULL_PAGE_SCROLLING') {
+    const maxBytes: number = message.maxBytes || CAPTURE_MAX_BYTES
+    const scrollTimeoutMs: number = message.scrollTimeoutMs || SCROLL_TIMEOUT_MS
+    captureFullPageScrolling(maxBytes, scrollTimeoutMs).then(
       (dataUrl) => sendResponse({ screenshot: dataUrl }),
       (err) => sendResponse({ error: String(err) })
     )

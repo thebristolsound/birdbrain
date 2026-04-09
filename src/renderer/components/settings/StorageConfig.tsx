@@ -6,11 +6,16 @@ interface StorageConfigProps {
   onUpdate: (partial: Partial<BirdbrainSettings>) => Promise<void>
 }
 
+interface StorageSettingsAPI {
+  chooseStoragePath(): Promise<string | null>
+}
+
 export function StorageConfig({ settings, onUpdate }: StorageConfigProps) {
   const [restartNeeded, setRestartNeeded] = useState(false)
 
   const handleBrowse = async () => {
-    const path = await window.birdbrain.settings.chooseStoragePath()
+    const settingsApi = window.birdbrain.settings as StorageSettingsAPI
+    const path = await settingsApi.chooseStoragePath()
     if (path) {
       await onUpdate({ storagePath: path })
       setRestartNeeded(true)

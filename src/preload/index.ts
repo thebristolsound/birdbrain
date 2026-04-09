@@ -171,7 +171,9 @@ const birdbrain = {
     listModels: (apiKey: string): Promise<OpenRouterModel[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_LIST_MODELS, apiKey),
     getIdentity: (): Promise<{ installationId: string; operatorName: string }> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET_IDENTITY)
+      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET_IDENTITY),
+    chooseStoragePath: (): Promise<string | null> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH)
   },
 
   export: {

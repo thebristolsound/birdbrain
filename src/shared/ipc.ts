@@ -46,6 +46,7 @@ export const IPC_CHANNELS = {
   SETTINGS_TEST_OPENROUTER: 'settings:testOpenRouter',
   SETTINGS_LIST_MODELS: 'settings:listModels',
   SETTINGS_GET_IDENTITY: 'settings:getIdentity',
+  SETTINGS_CHOOSE_STORAGE_PATH: 'settings:chooseStoragePath',
 
   // Export
   EXPORT_GENERATE: 'export:generate',

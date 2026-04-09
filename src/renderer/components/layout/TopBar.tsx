@@ -1,5 +1,5 @@
 import { Radar, Sun, Moon, ChevronsUpDown } from 'lucide-react'
-import { useMatchRoute } from '@tanstack/react-router'
+import { useMatchRoute, useNavigate } from '@tanstack/react-router'
 import { useAppStore } from '@renderer/stores/appStore'
 import { SearchBar } from '@renderer/components/search/SearchBar'
 import { SessionControls } from '@renderer/components/status/SessionControls'
@@ -8,6 +8,7 @@ import { CaptureHealth } from '@renderer/components/status/CaptureHealth'
 import { useTheme } from '@renderer/hooks/useTheme'
 
 export function TopBar() {
+  const navigate = useNavigate()
   const matchRoute = useMatchRoute()
   const sessionActive = useAppStore((s) => s.sessionActive)
   const setCommandPaletteOpen = useAppStore((s) => s.setCommandPaletteOpen)
@@ -18,15 +19,19 @@ export function TopBar() {
 
   return (
     <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border bg-surface px-4">
-      {/* Logo */}
-      <div className="flex items-center gap-2">
+      {/* Logo — click to go home */}
+      <button
+        onClick={() => navigate({ to: '/' })}
+        className="flex items-center gap-2 rounded-md px-1 -ml-1 hover:bg-elevated transition-colors"
+        title="Home"
+      >
         <div className="glow-indigo flex h-6 w-6 items-center justify-center rounded-md bg-accent">
           <Radar className="h-3.5 w-3.5 text-white" />
         </div>
         <span className="font-display text-xs font-extrabold tracking-tight text-text-primary">
           Birdbrain
         </span>
-      </div>
+      </button>
 
       {/* Compact case switcher */}
       {activeCaseId && (

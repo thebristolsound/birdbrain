@@ -3,7 +3,13 @@ import { mkdtempSync, rmSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { writeFileSync } from 'fs'
-import { setSettingsPath, getSettings, updateSettings, resetSettings } from '../../../src/main/services/settings'
+import {
+  setSettingsPath,
+  getSettings,
+  updateSettings,
+  resetSettings,
+  getDefaultSettings
+} from '../../../src/main/services/settings'
 
 describe('settings', () => {
   let tempDir: string
@@ -81,5 +87,18 @@ describe('settings', () => {
   it('persists operatorName updates', () => {
     updateSettings({ operatorName: 'Det. Smith' })
     expect(getSettings().operatorName).toBe('Det. Smith')
+  })
+
+  it('includes lastActiveCaseId and lastActiveSection in defaults', () => {
+    const defaults = getDefaultSettings()
+    expect(defaults.lastActiveCaseId).toBeNull()
+    expect(defaults.lastActiveSection).toBe('captures')
+  })
+
+  it('persists and retrieves session state fields', () => {
+    updateSettings({ lastActiveCaseId: 'case-123', lastActiveSection: 'notes' })
+    const settings = getSettings()
+    expect(settings.lastActiveCaseId).toBe('case-123')
+    expect(settings.lastActiveSection).toBe('notes')
   })
 })

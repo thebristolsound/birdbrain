@@ -22,15 +22,21 @@ export function MhtmlViewer({ captureId }: Props) {
       .catch((e) => setError(String(e)))
   }, [captureId])
 
+  // Defense-in-depth: block navigation + disable link clicks via CSS injection
   useEffect(() => {
     const wv = ref.current as Electron.WebviewTag | null
     if (!wv) return
     const blockNav = (e: Event) => e.preventDefault()
+    const disableLinks = () => {
+      wv.insertCSS('a, area { pointer-events: none !important; cursor: default !important; }')
+    }
     wv.addEventListener('will-navigate', blockNav)
     wv.addEventListener('new-window', blockNav)
+    wv.addEventListener('dom-ready', disableLinks)
     return () => {
       wv.removeEventListener('will-navigate', blockNav)
       wv.removeEventListener('new-window', blockNav)
+      wv.removeEventListener('dom-ready', disableLinks)
     }
   }, [fileUrl])
 
@@ -45,6 +51,7 @@ export function MhtmlViewer({ captureId }: Props) {
     <webview
       ref={ref as unknown as React.RefObject<HTMLElement>}
       src={fileUrl}
+      partition="mhtml-sandbox"
       nodeintegration="false"
       allowpopups="false"
       webpreferences="javascript=no,contextIsolation=yes,sandbox=yes"

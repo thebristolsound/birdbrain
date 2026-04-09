@@ -16,9 +16,11 @@ interface AppState {
     skipCount: number
     lastError?: { message: string; timestamp: string }
   }
+  commandPaletteOpen: boolean
 
   setSessionActive: (active: boolean) => void
   setConnectedToExtension: (connected: boolean) => void
+  setCommandPaletteOpen: (open: boolean) => void
   setSelectedCaptureId: (id: string | null) => void
   setSearchQuery: (query: string) => void
   selectCapture: (id: string) => void
@@ -43,9 +45,11 @@ export const useAppStore = create<AppState>((set) => ({
   filteredCaptureIds: null,
   captureEvents: [],
   captureStats: { successCount: 0, failCount: 0, skipCount: 0 },
+  commandPaletteOpen: false,
 
   setSessionActive: (active) => set({ sessionActive: active }),
   setConnectedToExtension: (connected) => set({ connectedToExtension: connected }),
+  setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
   setSelectedCaptureId: (id) => set({ selectedCaptureId: id }),
   setSearchQuery: (query) => set({ searchQuery: query }),
 

@@ -1,9 +1,22 @@
 import { test, expect } from './fixtures/electronApp'
 
+// Helper: navigate to /cases/new via the hash router and wait for the form
+async function goToNewCase(page: import('@playwright/test').Page) {
+  await page.evaluate(() => {
+    window.location.hash = '/cases/new'
+  })
+  await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
+}
+
+// Helper: wait for a case workspace to load after creation and return the case header name button
+async function waitForCaseHeader(page: import('@playwright/test').Page, name: string) {
+  await page.waitForSelector('[data-testid="case-header-name-btn"]', { timeout: 10000 })
+  await expect(page.locator('[data-testid="case-header-name-btn"]')).toContainText(name)
+}
+
 test.describe('Cases CRUD', () => {
   test('can create a new case', async ({ page }) => {
-    // Click new case on dashboard hero
-    await page.click('[data-testid="new-case-btn"]')
+    await goToNewCase(page)
 
     // Fill in case details on the wizard page
     await page.fill('[data-testid="case-name-input"]', 'Test Investigation')
@@ -12,81 +25,65 @@ test.describe('Cases CRUD', () => {
     // Submit
     await page.click('[data-testid="case-create-btn"]')
 
-    // Verify case workspace loads with case name in heading
-    await expect(page.getByRole('heading', { name: 'Test Investigation' })).toBeVisible()
+    // Verify case workspace loads with case name in header
+    await waitForCaseHeader(page, 'Test Investigation')
   })
 
-  test('case appears on dashboard after creation', async ({ page }) => {
-    // Create a case via the wizard
-    await page.click('[data-testid="new-case-btn"]')
+  test('case workspace loads after creation', async ({ page }) => {
+    await goToNewCase(page)
     await page.fill('[data-testid="case-name-input"]', 'Listed Case')
     await page.click('[data-testid="case-create-btn"]')
 
-    // Wait for navigation to case workspace
-    await expect(page.getByRole('heading', { name: 'Listed Case' })).toBeVisible()
-
-    // Navigate home via breadcrumb
-    await page.click('text=Investigations')
-    await page.waitForLoadState('domcontentloaded')
-
-    // Verify case card appears on dashboard
-    await expect(page.locator('[data-testid="case-card"]:has-text("Listed Case")')).toBeVisible()
+    // Verify we landed in the case workspace (captures route)
+    await waitForCaseHeader(page, 'Listed Case')
+    await expect(page).toHaveURL(/#\/cases\/.+\/captures/)
   })
 
-  test('can rename a case', async ({ page }) => {
-    // Create a case
-    await page.click('[data-testid="new-case-btn"]')
+  test('can rename a case via the case header', async ({ page }) => {
+    await goToNewCase(page)
     await page.fill('[data-testid="case-name-input"]', 'Original Name')
     await page.click('[data-testid="case-create-btn"]')
-    await expect(page.getByRole('heading', { name: 'Original Name' })).toBeVisible()
+    await waitForCaseHeader(page, 'Original Name')
 
-    // Go back to dashboard via breadcrumb
-    await page.click('text=Investigations')
-    await page.waitForLoadState('domcontentloaded')
+    // Click the case name button in the CaseHeader to enter edit mode
+    await page.click('[data-testid="case-header-name-btn"]')
 
-    // Hover over the case card to reveal the kebab menu
-    const card = page.locator('[data-testid="case-card"]:has-text("Original Name")')
-    await card.hover()
+    // Type the new name and confirm with Enter
+    await page.waitForSelector('[data-testid="case-header-name-input"]')
+    await page.fill('[data-testid="case-header-name-input"]', 'Renamed Case')
+    await page.press('[data-testid="case-header-name-input"]', 'Enter')
 
-    // Open the kebab menu and click rename
-    await card.locator('[data-testid="case-card-menu-btn"]').click()
-    await page.click('[data-testid="case-card-rename-btn"]')
-
-    // Wait for the inline rename input to appear
-    await expect(page.locator('[data-testid="case-rename-input"]')).toBeVisible()
-
-    // Clear and type the new name, then confirm with Enter
-    await page.locator('[data-testid="case-rename-input"]').fill('Renamed Case')
-    await page.locator('[data-testid="case-rename-input"]').press('Enter')
-
-    // Verify the renamed case is visible on the dashboard
-    await expect(page.locator('[data-testid="case-card"]:has-text("Renamed Case")')).toBeVisible()
-    await expect(page.locator('[data-testid="case-card"]:has-text("Original Name")')).not.toBeVisible()
+    // Verify the renamed case is visible in the header
+    await expect(page.locator('[data-testid="case-header-name-btn"]')).toContainText('Renamed Case')
+    await expect(page.locator('[data-testid="case-header-name-btn"]')).not.toContainText(
+      'Original Name'
+    )
   })
 
-  test('can delete a case', async ({ page }) => {
-    // Create a case
-    await page.click('[data-testid="new-case-btn"]')
+  test('can delete a case via IPC', async ({ page }) => {
+    await goToNewCase(page)
     await page.fill('[data-testid="case-name-input"]', 'To Be Deleted')
     await page.click('[data-testid="case-create-btn"]')
-    await expect(page.getByRole('heading', { name: 'To Be Deleted' })).toBeVisible()
+    await waitForCaseHeader(page, 'To Be Deleted')
 
-    // Go back to dashboard via breadcrumb
-    await page.click('text=Investigations')
-    await page.waitForLoadState('domcontentloaded')
+    // Get the case ID from the URL
+    const url = page.url()
+    const caseIdMatch = url.match(/cases\/([^/]+)/)
+    expect(caseIdMatch).toBeTruthy()
+    const caseId = caseIdMatch![1]
 
-    // Hover over the case card to reveal the kebab menu
-    const card = page.locator('[data-testid="case-card"]:has-text("To Be Deleted")')
-    await card.hover()
+    // Delete via IPC
+    await page.evaluate((id: string) => {
+      const w = window as unknown as {
+        birdbrain: { cases: { remove: (id: string) => Promise<void> } }
+      }
+      return w.birdbrain.cases.remove(id)
+    }, caseId)
 
-    // Open the kebab menu and click delete
-    await card.locator('[data-testid="case-card-menu-btn"]').click()
-    await page.click('[data-testid="case-card-delete-btn"]')
-
-    // Confirm deletion
-    await card.locator('[data-testid="case-card-delete-confirm-btn"]').click()
-
-    // Verify the case is no longer visible on the dashboard
-    await expect(page.locator('[data-testid="case-card"]:has-text("To Be Deleted")')).not.toBeVisible()
+    // Navigate back to root — should show onboarding (no cases left)
+    await page.evaluate(() => {
+      window.location.hash = '/'
+    })
+    await expect(page.locator('[data-testid="onboarding-wizard"]')).toBeVisible()
   })
 })

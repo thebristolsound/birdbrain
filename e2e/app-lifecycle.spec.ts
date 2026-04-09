@@ -9,18 +9,17 @@ test.describe('App Lifecycle', () => {
     expect(title).toBe('Birdbrain')
   })
 
-  test('dashboard renders with hero', async ({ page }) => {
-    await expect(page.locator('[data-testid="dashboard"]')).toBeVisible()
-    await expect(page.getByText('Welcome to')).toBeVisible()
+  test('onboarding wizard renders on first launch', async ({ page }) => {
+    // With no cases, the app shows the OnboardingWizard
+    await expect(page.locator('[data-testid="onboarding-wizard"]')).toBeVisible()
+    await expect(page.getByText('Connect Extension')).toBeVisible()
   })
 
-  test('new case button is visible', async ({ page }) => {
-    await expect(page.locator('[data-testid="new-case-btn"]')).toBeVisible()
-  })
-
-  test('extension banner shows install button when not connected', async ({ page }) => {
-    await expect(page.getByText('Install the Browser Extension')).toBeVisible()
-    await expect(page.getByText('Install Extension')).toBeVisible()
+  test('onboarding wizard skip button navigates to step 2', async ({ page }) => {
+    await expect(page.locator('[data-testid="onboarding-skip-btn"]')).toBeVisible()
+    await page.click('[data-testid="onboarding-skip-btn"]')
+    await expect(page.getByText('Create Investigation')).toBeVisible()
+    await expect(page.locator('[data-testid="onboarding-name-input"]')).toBeVisible()
   })
 
   test('theme toggle persists between reloads', async ({ page }) => {

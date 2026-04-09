@@ -2,14 +2,21 @@ import { test, expect } from './fixtures/electronApp'
 
 test.describe('Bulk Add Selectors', () => {
   test('open modal, paste 3 patterns, verify 3 new selectors created', async ({ page }) => {
-    // Create a case.
-    await page.click('[data-testid="new-case-btn"]')
+    // Create a case via the hash router.
+    await page.evaluate(() => {
+      window.location.hash = '/cases/new'
+    })
+    await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
     await page.fill('[data-testid="case-name-input"]', 'Bulk Selectors E2E')
     await page.click('[data-testid="case-create-btn"]')
-    await expect(page.getByRole('heading', { name: 'Bulk Selectors E2E' })).toBeVisible()
+    await page.waitForSelector('[data-testid="case-header-name-btn"]', { timeout: 10000 })
+    await expect(page.locator('[data-testid="case-header-name-btn"]')).toContainText(
+      'Bulk Selectors E2E'
+    )
 
-    // Navigate to the Selectors tab.
-    await page.getByRole('link', { name: 'Selectors' }).click()
+    // Navigate to the Selectors section via the sidebar icon button.
+    await page.click('button[aria-label="Selectors"]')
+    await page.waitForURL(/#\/cases\/.+\/selectors/)
 
     // Open Bulk Add modal.
     await page.getByTestId('bulk-add-btn').click()

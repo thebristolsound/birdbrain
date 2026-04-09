@@ -1,16 +1,21 @@
-import { createRootRoute, createRoute, Outlet } from '@tanstack/react-router'
+import { createRootRoute, createRoute, Outlet, redirect } from '@tanstack/react-router'
 import { lazy, Suspense } from 'react'
 import { TopBar } from '@renderer/components/layout/TopBar'
+import { Sidebar } from '@renderer/components/layout/Sidebar'
 import { MotionProvider } from '@renderer/lib/motion'
-import { Dashboard } from '@renderer/components/dashboard/Dashboard'
+import { OnboardingWizard } from '@renderer/components/layout/OnboardingWizard'
+import { useQuery } from '@tanstack/react-query'
+import { casesQueryOptions } from '@renderer/lib/queries'
 import { NewCaseWizard } from '@renderer/components/cases/NewCaseWizard'
 import { CaseWorkspace } from '@renderer/components/cases/CaseWorkspace'
-import { CaseOverview } from '@renderer/components/cases/CaseOverview'
 import { CapturesRoute } from '@renderer/routes/cases/$caseId/captures'
 import { SelectorsOverview } from '@renderer/components/selectors/SelectorsOverview'
 import { NotesOverview } from '@renderer/components/notes/NotesOverview'
 import { TagsOverview } from '@renderer/components/tags/TagsOverview'
 import { SettingsView } from '@renderer/components/settings/SettingsView'
+import { useSessionRestore } from '@renderer/hooks/useSessionRestore'
+import { useCommandPalette } from '@renderer/hooks/useCommandPalette'
+import { CommandPalette } from '@renderer/components/layout/CommandPalette'
 
 const TanStackRouterDevtools = import.meta.env.DEV
   ? lazy(() =>
@@ -31,16 +36,29 @@ const ReactQueryDevtools = import.meta.env.DEV
 // Root layout
 const rootRoute = createRootRoute({
   component: function RootLayout() {
+    const { restoring } = useSessionRestore()
+    useCommandPalette()
+
+    if (restoring) {
+      return (
+        <div className="flex h-screen items-center justify-center bg-canvas">
+          <div className="text-text-muted text-sm">Loading workspace...</div>
+        </div>
+      )
+    }
+
     return (
       <MotionProvider>
         <div className="flex h-screen flex-col bg-canvas text-text-secondary">
           <TopBar />
           <div className="flex flex-1 overflow-hidden">
-            <main className="flex-1 overflow-auto bg-canvas">
+            <Sidebar />
+            <main className="flex-1 overflow-hidden bg-canvas">
               <Outlet />
             </main>
           </div>
         </div>
+        <CommandPalette />
         <Suspense>
           <ReactQueryDevtools buttonPosition="bottom-left" />
           <TanStackRouterDevtools position="bottom-right" />
@@ -50,11 +68,23 @@ const rootRoute = createRootRoute({
   }
 })
 
-// Dashboard (index)
+// Onboarding / index
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
-  component: Dashboard
+  component: function IndexPage() {
+    const { isLoading } = useQuery(casesQueryOptions)
+
+    if (isLoading) {
+      return (
+        <div className="flex h-full items-center justify-center">
+          <span className="text-sm text-text-muted">Loading...</span>
+        </div>
+      )
+    }
+
+    return <OnboardingWizard />
+  }
 })
 
 // Settings
@@ -84,11 +114,16 @@ const caseRoute = createRoute({
   component: CaseWorkspace
 })
 
-// Case overview (index of case workspace)
+// Redirect case index to captures
 const caseIndexRoute = createRoute({
   getParentRoute: () => caseRoute,
   path: '/',
-  component: CaseOverview
+  beforeLoad: ({ params }) => {
+    throw redirect({
+      to: '/cases/$caseId/captures',
+      params: { caseId: params.caseId }
+    })
+  }
 })
 
 // Captures tab

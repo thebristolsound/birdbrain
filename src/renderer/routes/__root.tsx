@@ -49,7 +49,10 @@ const rootRoute = createRootRoute({
 
     return (
       <MotionProvider>
-        <div className="flex h-screen flex-col bg-canvas text-text-secondary">
+        <div
+          data-testid="app-ready"
+          className="flex h-screen flex-col bg-canvas text-text-secondary"
+        >
           <TopBar />
           <div className="flex flex-1 overflow-hidden">
             <Sidebar />

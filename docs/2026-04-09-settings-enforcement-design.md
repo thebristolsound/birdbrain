@@ -56,7 +56,7 @@ Settings UI → settings.json → capture server /api/status → extension polls
 
 **`extension/src/background.ts`:**
 - Change `const DEDUPE_WINDOW_MS = 60_000` to `let dedupeWindowMs = 60_000`
-- In `checkStatus()`, read the setting: `dedupeWindowMs = (status.dedupeWindowSeconds || 60) * 1000`
+- In `checkStatus()`, read the setting: `dedupeWindowMs = (status.dedupeWindowSeconds ?? 60) * 1000`
 - In `shouldCapture()`, use `dedupeWindowMs` instead of `DEDUPE_WINDOW_MS`
 - In `shouldSelectorCapture()`, use `dedupeWindowMs` instead of `DEDUPE_WINDOW_MS`
 
@@ -84,6 +84,7 @@ The `storagePath` setting must be read at app startup and used as the storage ro
 
 **`src/main/ipcHandlers.ts`:**
 - Register the new `settings:chooseStoragePath` handler using Electron's `dialog.showOpenDialog({ properties: ['openDirectory'] })`
+
 
 **`src/preload/index.ts`:**
 - Expose the new channel via `window.birdbrain`

@@ -301,7 +301,12 @@ function createApp(): Hono {
       const MAX_SCREENSHOT_SIZE = 100 * 1024 * 1024 // 100 MB
       const screenshotField = body['screenshot']
       let screenshotBuffer: Buffer | undefined
-      if (screenshotField instanceof File || screenshotField instanceof Blob) {
+      if (
+        typeof screenshotField === 'object' &&
+        screenshotField &&
+        'arrayBuffer' in screenshotField &&
+        'size' in screenshotField
+      ) {
         if (screenshotField.size <= MAX_SCREENSHOT_SIZE) {
           screenshotBuffer = Buffer.from(await screenshotField.arrayBuffer())
         }

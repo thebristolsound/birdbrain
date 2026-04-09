@@ -23,7 +23,6 @@ import {
   FileText,
   Info,
   Tag as TagIcon,
-  Plus,
   StickyNote,
   MoreHorizontal
 } from 'lucide-react'

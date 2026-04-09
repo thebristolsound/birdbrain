@@ -19,7 +19,7 @@ export const test = base.extend<ElectronFixtures>({
     } catch {
       throw new Error(
         `Electron main entrypoint not found at "${mainPath}". ` +
-        'Make sure the application is built (e.g. run your build script) before running E2E tests.'
+          'Make sure the application is built (e.g. run your build script) before running E2E tests.'
       )
     }
 
@@ -40,6 +40,7 @@ export const test = base.extend<ElectronFixtures>({
   page: async ({ electronApp }, use) => {
     const page = await electronApp.firstWindow()
     await page.waitForLoadState('domcontentloaded')
+    await page.waitForSelector('[data-testid="app-ready"]', { timeout: 15000 })
     await use(page)
   }
 })

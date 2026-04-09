@@ -80,10 +80,10 @@ The `storagePath` setting must be read at app startup and used as the storage ro
 - Wrap `initStorage` in try/catch: if the configured path is unwritable, fall back to default and log a warning
 
 **`src/shared/ipc.ts`:**
-- Add new channel: `settings:choose-storage-path` — invokes `dialog.showOpenDialog` and returns the selected directory path
+- Add new channel: `settings:chooseStoragePath` — invokes `dialog.showOpenDialog` and returns the selected directory path
 
 **`src/main/ipcHandlers.ts`:**
-- Register the new `settings:choose-storage-path` handler using Electron's `dialog.showOpenDialog({ properties: ['openDirectory'] })`
+- Register the new `settings:chooseStoragePath` handler using Electron's `dialog.showOpenDialog({ properties: ['openDirectory'] })`
 
 **`src/preload/index.ts`:**
 - Expose the new channel via `window.birdbrain`

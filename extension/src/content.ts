@@ -236,11 +236,17 @@ function removeHighlights(): void {
   removeHighlightStyles()
 }
 
+let captureInProgress = false
+
 async function captureFullPage(maxHeight: number): Promise<string> {
+  if (captureInProgress) {
+    throw new Error('Capture already in progress')
+  }
   if (typeof OffscreenCanvas === 'undefined') {
     throw new Error('OffscreenCanvas is not available in this context')
   }
 
+  captureInProgress = true
   const savedScrollX = window.scrollX
   const savedScrollY = window.scrollY
 
@@ -311,6 +317,7 @@ async function captureFullPage(maxHeight: number): Promise<string> {
     const blob = await canvas.convertToBlob({ type: 'image/png' })
     return await blobToDataUrl(blob)
   } finally {
+    captureInProgress = false
     // Restore sticky elements
     for (const el of stickyElements) {
       el.style.removeProperty('position')

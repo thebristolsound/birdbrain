@@ -580,11 +580,15 @@ function updateIcon(state: IconState): void {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'REQUEST_VIEWPORT_CAPTURE') {
-    if (!sender.tab?.id || !sender.tab?.windowId) {
+    const tab = sender.tab
+    if (
+      tab?.id == null ||
+      tab?.windowId == null ||
+      tab.windowId === chrome.windows.WINDOW_ID_NONE
+    ) {
       sendResponse({ error: 'No tab ID or window ID' })
       return true
     }
-    const tab = sender.tab
     chrome.tabs
       .captureVisibleTab(tab.windowId, { format: 'png' })
       .then((dataUrl) => sendResponse({ dataUrl }))

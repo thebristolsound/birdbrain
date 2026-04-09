@@ -342,6 +342,7 @@ describe('captureServer', () => {
     expect(data.cases[0]).toHaveProperty('name')
     expect(data.ignoredUrlPatterns).toEqual([])
     expect(data.captureScreenshots).toBe(true)
+    expect(data.dedupeWindowSeconds).toBe(60)
   })
 
   // --- Blacklist tests ---

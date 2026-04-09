@@ -163,7 +163,8 @@ function createApp(): Hono {
       autoCaptureMode: settings.autoCaptureMode,
       cases: includeCases && allCases ? allCases.map((cs) => ({ id: cs.id, name: cs.name })) : [],
       ignoredUrlPatterns: settings.ignoredUrlPatterns,
-      captureScreenshots: settings.captureScreenshots
+      captureScreenshots: settings.captureScreenshots,
+      dedupeWindowSeconds: settings.dedupeWindowSeconds
     })
   })
 

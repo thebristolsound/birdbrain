@@ -118,7 +118,7 @@ const DEFAULT_IGNORE = [
 
 // Deduplication: url -> timestamp of last capture
 const dedupeMap = new Map<string, number>()
-const DEDUPE_WINDOW_MS = 60_000
+let dedupeWindowMs = 60_000
 const CONTEXT_MENU_PARENT_ID = 'birdbrain-parent'
 const CONTEXT_MENU_FULL_PAGE_ID = 'birdbrain-capture-full-page'
 const CONTEXT_MENU_SCROLLING_ID = 'birdbrain-capture-scrolling'
@@ -166,6 +166,7 @@ async function checkStatus(): Promise<void> {
     activeCaseId = status.activeCase?.id || null
     userIgnoredPatterns = status.ignoredUrlPatterns || []
     captureScreenshotsEnabled = status.captureScreenshots !== false
+    dedupeWindowMs = (status.dedupeWindowSeconds || 60) * 1000
 
     if (connected && !wasConnected) {
       updateIcon('connected')
@@ -399,7 +400,7 @@ function shouldCapture(url: string): boolean {
 
   // Dedupe check
   const lastCapture = dedupeMap.get(url)
-  if (lastCapture && Date.now() - lastCapture < DEDUPE_WINDOW_MS) return false
+  if (lastCapture && Date.now() - lastCapture < dedupeWindowMs) return false
 
   return true
 }
@@ -407,7 +408,7 @@ function shouldCapture(url: string): boolean {
 function shouldSelectorCapture(caseId: string, url: string): boolean {
   const key = `${caseId}:${url}`
   const last = selectorDedupeMap.get(key)
-  if (last && Date.now() - last < DEDUPE_WINDOW_MS) return false
+  if (last && Date.now() - last < dedupeWindowMs) return false
   return true
 }
 

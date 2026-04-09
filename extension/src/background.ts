@@ -166,7 +166,7 @@ async function checkStatus(): Promise<void> {
     activeCaseId = status.activeCase?.id || null
     userIgnoredPatterns = status.ignoredUrlPatterns || []
     captureScreenshotsEnabled = status.captureScreenshots !== false
-    dedupeWindowMs = (status.dedupeWindowSeconds || 60) * 1000
+    dedupeWindowMs = (status.dedupeWindowSeconds ?? 60) * 1000
 
     if (connected && !wasConnected) {
       updateIcon('connected')

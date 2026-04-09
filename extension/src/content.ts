@@ -255,12 +255,36 @@ async function captureFullPage(maxHeight: number): Promise<string> {
   const totalHeight = Math.min(document.documentElement.scrollHeight, maxHeight)
   const sliceCount = Math.ceil(totalHeight / viewportHeight)
 
-  // Collect sticky/fixed elements to hide during capture (prevents repetition across slices)
-  const stickyElements: HTMLElement[] = []
-  document.querySelectorAll('*').forEach((el) => {
+  // Collect sticky/fixed elements to hide during capture (prevents repetition across slices).
+  // Use targeted CSS selectors instead of querySelectorAll('*') to avoid calling getComputedStyle
+  // on every element in the DOM, which is prohibitively expensive on large pages.
+  const STICKY_FIXED_SELECTORS = [
+    'header',
+    'nav',
+    'footer',
+    '[role="banner"]',
+    '[role="navigation"]',
+    '[class*="sticky"]',
+    '[class*="fixed"]',
+    '[class*="navbar"]',
+    '[class*="header"]',
+    '[class*="topbar"]',
+    '[class*="top-bar"]',
+    '[style*="fixed"]',
+    '[style*="sticky"]',
+  ].join(', ')
+
+  type StickyEntry = { el: HTMLElement; origValue: string; origPriority: string }
+  const stickyElements: StickyEntry[] = []
+  document.querySelectorAll(STICKY_FIXED_SELECTORS).forEach((node) => {
+    const el = node as HTMLElement
     const style = getComputedStyle(el)
     if (style.position === 'fixed' || style.position === 'sticky') {
-      stickyElements.push(el as HTMLElement)
+      stickyElements.push({
+        el,
+        origValue: el.style.getPropertyValue('position'),
+        origPriority: el.style.getPropertyPriority('position'),
+      })
     }
   })
 
@@ -272,8 +296,8 @@ async function captureFullPage(maxHeight: number): Promise<string> {
 
       // Hide sticky elements after first slice (so headers appear at top)
       if (i === 1) {
-        for (const el of stickyElements) {
-          el.style.setProperty('position', 'relative', 'important')
+        for (const entry of stickyElements) {
+          entry.el.style.setProperty('position', 'relative', 'important')
         }
       }
 
@@ -318,9 +342,13 @@ async function captureFullPage(maxHeight: number): Promise<string> {
     return await blobToDataUrl(blob)
   } finally {
     captureInProgress = false
-    // Restore sticky elements
-    for (const el of stickyElements) {
-      el.style.removeProperty('position')
+    // Restore sticky elements to their original inline position value
+    for (const entry of stickyElements) {
+      if (entry.origValue) {
+        entry.el.style.setProperty('position', entry.origValue, entry.origPriority)
+      } else {
+        entry.el.style.removeProperty('position')
+      }
     }
     // Restore scroll position
     window.scrollTo(savedScrollX, savedScrollY)

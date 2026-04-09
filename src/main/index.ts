@@ -58,13 +58,12 @@ app.whenReady().then(async () => {
   // Use storagePath from settings, fall back to default if empty or unwritable
   const settings = getSettings()
   const defaultCapturesDir = join(userDataPath, 'captures')
-  let capturesDir = settings.storagePath || defaultCapturesDir
+  const capturesDir = settings.storagePath || defaultCapturesDir
   try {
     initStorage(capturesDir)
   } catch (err) {
     console.warn(`Failed to initialize storage at "${capturesDir}", falling back to default:`, err)
-    capturesDir = defaultCapturesDir
-    initStorage(capturesDir)
+    initStorage(defaultCapturesDir)
   }
 
   // Register IPC handlers

@@ -339,7 +339,7 @@ export function CaptureViewer() {
                         }
                       }}
                       placeholder="New tag..."
-                      className="flex-1 bg-transparent text-xs text-text-primary placeholder-text-faint focus:outline-none"
+                      className="flex-1 bg-transparent text-xs text-text-primary placeholder:text-text-faint focus:outline-none"
                     />
                   </div>
                 </div>

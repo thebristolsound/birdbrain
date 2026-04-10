@@ -85,7 +85,7 @@ export function SelectorTable({ selectors, matchCounts, onRefresh, caseId }: Sel
               value={searchFilter}
               onChange={(e) => setSearchFilter(e.target.value)}
               placeholder="Filter selectors..."
-              className="rounded-lg border border-border bg-canvas py-1 pl-7 pr-3 text-xs text-text-secondary placeholder-text-faint focus:border-accent/40 focus:outline-none"
+              className="rounded-lg border border-border bg-canvas py-1 pl-7 pr-3 text-xs text-text-secondary placeholder:text-text-faint focus:border-accent/40 focus:outline-none"
             />
           </div>
           <button

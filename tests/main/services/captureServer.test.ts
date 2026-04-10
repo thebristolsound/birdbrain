@@ -309,6 +309,20 @@ describe('captureServer', () => {
     expect(res.status).toBe(400)
   })
 
+  it('returns 400 with structured error when url is missing', async () => {
+    const testCase = createCase({ name: 'Missing URL' })
+    await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
+    await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
+
+    const form = new FormData()
+    form.append('source', 'auto')
+    form.append('mhtml', new Blob(['<html>test</html>'], { type: 'multipart/related' }), 'capture.mhtml')
+    const res = await fetch(`${baseUrl}/api/captures`, { method: 'POST', body: form })
+    expect(res.status).toBe(400)
+    const data = await res.json()
+    expect(data.error).toContain('url')
+  })
+
   it('returns 400 for unknown source value', async () => {
     const testCase = createCase({ name: 'Unknown Source Test' })
     await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })

@@ -1,19 +1,9 @@
 import { getSettings } from '@main/services/settings'
+import { OpenRouterResponseSchema } from '@shared/schemas'
 
 interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
   content: string
-}
-
-interface OpenRouterResponse {
-  choices: Array<{
-    message: { content: string }
-  }>
-  usage?: {
-    prompt_tokens: number
-    completion_tokens: number
-    total_tokens: number
-  }
 }
 
 export interface PromptResult {
@@ -73,18 +63,26 @@ export async function sendPrompt(
         throw new Error(`OpenRouter API error: ${res.status} ${res.statusText}`)
       }
 
-      const data = (await res.json()) as OpenRouterResponse
-      const content = data.choices?.[0]?.message?.content || ''
+      const raw: unknown = await res.json()
+      const parsed = OpenRouterResponseSchema.safeParse(raw)
+      if (!parsed.success) {
+        const issues = parsed.error.issues
+          .map((i) => `${i.path.join('.')}: ${i.message}`)
+          .join('; ')
+        throw new Error(`OpenRouter response failed schema validation: ${issues}`)
+      }
+      const data = parsed.data
+      const content = data.choices[0]?.message?.content ?? ''
       console.log(
-        `[OpenRouter] Response received (${content.length} chars, ${data.usage?.total_tokens || '?'} tokens)`
+        `[OpenRouter] Response received (${content.length} chars, ${data.usage?.total_tokens ?? '?'} tokens)`
       )
 
       return {
         content,
         usage: {
-          promptTokens: data.usage?.prompt_tokens || 0,
-          completionTokens: data.usage?.completion_tokens || 0,
-          totalTokens: data.usage?.total_tokens || 0
+          promptTokens: data.usage?.prompt_tokens ?? 0,
+          completionTokens: data.usage?.completion_tokens ?? 0,
+          totalTokens: data.usage?.total_tokens ?? 0
         }
       }
     } catch (err) {

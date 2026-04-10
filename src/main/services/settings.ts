@@ -15,7 +15,8 @@ const DEFAULT_SETTINGS: BirdbrainSettings = {
   operatorName: '',
   autoCaptureMode: 'notify',
   lastActiveCaseId: null,
-  lastActiveSection: 'captures'
+  lastActiveSection: 'captures',
+  hasCompletedOnboarding: false
 }
 
 export function initSettings(userDataPath: string): void {

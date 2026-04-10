@@ -72,6 +72,8 @@ export function NewCaseWizard() {
         type: caseType
       })
 
+      await window.birdbrain.settings.update({ hasCompletedOnboarding: true })
+
       for (const presetId of selectedSelectors) {
         const preset = SELECTOR_PRESETS.find((p) => p.id === presetId)
         if (preset) {
@@ -129,7 +131,9 @@ export function NewCaseWizard() {
 
         {/* Description */}
         <div className="mb-6">
-          <label className="mb-1.5 block text-sm font-medium text-text-secondary">Description</label>
+          <label className="mb-1.5 block text-sm font-medium text-text-secondary">
+            Description
+          </label>
           <textarea
             data-testid="case-description-input"
             value={description}
@@ -175,7 +179,9 @@ export function NewCaseWizard() {
 
         {/* Initial Selectors */}
         <div className="mb-8">
-          <label className="mb-3 block text-sm font-medium text-text-secondary">Initial Selectors</label>
+          <label className="mb-3 block text-sm font-medium text-text-secondary">
+            Initial Selectors
+          </label>
           <div className="flex flex-wrap gap-2">
             {SELECTOR_PRESETS.map((preset) => {
               const selected = selectedSelectors.includes(preset.id)

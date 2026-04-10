@@ -62,6 +62,7 @@ export interface BirdbrainSettings {
   autoCaptureMode: AutoCaptureMode
   lastActiveCaseId: string | null
   lastActiveSection: 'captures' | 'selectors' | 'notes' | 'tags' | 'settings'
+  hasCompletedOnboarding: boolean
 }
 
 export interface OpenRouterModel {

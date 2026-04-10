@@ -23,6 +23,9 @@ function createWindow(): BrowserWindow {
     show: false,
     title: 'Birdbrain',
     backgroundColor: '#000000',
+    ...(process.platform === 'linux' || process.platform === 'win32'
+      ? { icon: join(__dirname, '../../resources/icon.png') }
+      : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,

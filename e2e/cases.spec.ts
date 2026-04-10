@@ -75,15 +75,15 @@ test.describe('Cases CRUD', () => {
     // Delete via IPC
     await page.evaluate((id: string) => {
       const w = window as unknown as {
-        birdbrain: { cases: { remove: (id: string) => Promise<void> } }
+        birdbrain: { cases: { delete: (id: string) => Promise<void> } }
       }
-      return w.birdbrain.cases.remove(id)
+      return w.birdbrain.cases.delete(id)
     }, caseId)
 
-    // Navigate back to root — should show onboarding (no cases left)
+    // Navigate back to root — should show dashboard (onboarding only on first launch)
     await page.evaluate(() => {
       window.location.hash = '/'
     })
-    await expect(page.locator('[data-testid="onboarding-wizard"]')).toBeVisible()
+    await expect(page.locator('[data-testid="dashboard"]')).toBeVisible()
   })
 })

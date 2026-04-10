@@ -29,6 +29,7 @@
   "build": {
     "appId": "com.birdbrain.app",
     "productName": "Birdbrain",
+    "icon": "resources/icon.png",
     "directories": {
       "output": "dist"
     },

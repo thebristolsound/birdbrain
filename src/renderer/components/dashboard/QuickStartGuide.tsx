@@ -53,7 +53,7 @@ export function QuickStartGuide() {
           <div className="flex-1 h-px bg-border-strong ml-2" />
         </div>
 
-        <div className="grid grid-cols-4 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           {steps.map((step) => (
             <div key={step.number} className="group">
               <div className="neu-card rounded-2xl p-5 h-full">

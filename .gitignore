@@ -50,6 +50,7 @@ playwright-report/
 .claude
 .cursor
 .zed
+.kilo
 #docs/superpowers
 
 .superdesign

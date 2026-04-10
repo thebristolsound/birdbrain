@@ -6,8 +6,7 @@ import { StorageConfig } from './StorageConfig'
 import { AppearanceConfig } from './AppearanceConfig'
 import { OperatorConfig } from './OperatorConfig'
 import { About } from './About'
-import { Key, Camera, HardDrive, Palette, Info, UserCircle, Database, X } from 'lucide-react'
-import { useRouter } from '@tanstack/react-router'
+import { Key, Camera, HardDrive, Palette, Info, UserCircle, Database } from 'lucide-react'
 import { DatabaseAdmin } from './DatabaseAdmin'
 
 type SettingsTab = 'ai' | 'capture' | 'storage' | 'appearance' | 'operator' | 'database' | 'about'
@@ -23,7 +22,6 @@ const settingsTabs: { id: SettingsTab; label: string; icon: typeof Key }[] = [
 ]
 
 export function SettingsView() {
-  const router = useRouter()
   const [settings, setSettings] = useState<BirdbrainSettings | null>(null)
   const [activeTab, setActiveTab] = useState<SettingsTab>('ai')
 
@@ -63,16 +61,7 @@ export function SettingsView() {
   }
 
   return (
-    <div className="relative flex h-full">
-      {/* Dismiss button */}
-      <button
-        onClick={() => router.history.back()}
-        className="absolute right-4 top-4 z-10 flex h-7 w-7 items-center justify-center rounded-lg text-text-muted hover:bg-elevated hover:text-text-primary transition-colors"
-        title="Close settings"
-      >
-        <X className="h-4 w-4" />
-      </button>
-
+    <div className="flex h-full">
       <nav className="w-48 shrink-0 border-r border-border p-3">
         <div className="space-y-1">
           {settingsTabs.map(({ id, label, icon: Icon }) => (

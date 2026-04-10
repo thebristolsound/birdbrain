@@ -60,9 +60,6 @@ export function ExtensionBanner({ connected }: ExtensionBannerProps) {
               <FolderOpen className="h-3.5 w-3.5" />
               Install Extension
             </button>
-            <button className="text-[11px] font-bold text-accent hover:text-accent transition-colors">
-              Learn More →
-            </button>
           </div>
         </>
       )}

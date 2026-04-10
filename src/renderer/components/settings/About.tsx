@@ -8,8 +8,15 @@ export function About() {
         </p>
         <p>Open source web investigation & capture tool</p>
         <p>
-          <a className="text-accent hover:text-accent">GitHub</a> &middot;{' '}
-          <span className="text-text-muted">MIT License</span>
+          <a
+            href="https://github.com/thebristolsound/birdbrain"
+            target="_blank"
+            rel="noreferrer"
+            className="text-accent hover:text-accent-hover"
+          >
+            GitHub
+          </a>{' '}
+          &middot; <span className="text-text-muted">MIT License</span>
         </p>
       </div>
     </section>

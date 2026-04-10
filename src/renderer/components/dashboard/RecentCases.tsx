@@ -1,4 +1,4 @@
-import { Plus, ArrowRight } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import type { Case } from '@shared/types'
 import { CaseCard } from './CaseCard'
 
@@ -22,19 +22,13 @@ export function RecentCases({
   return (
     <section className="px-8 pb-12">
       <div className="max-w-5xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <h2 className="font-display font-bold text-lg tracking-tight text-text-primary">
-              Recent Cases
-            </h2>
-            <span className="rounded-full border border-border-strong bg-surface px-2 py-0.5 font-mono text-[10px] font-medium text-text-muted">
-              {cases.length} {cases.length === 1 ? 'case' : 'cases'}
-            </span>
-          </div>
-          <button className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-accent hover:text-accent transition-colors">
-            <span>View All</span>
-            <ArrowRight className="h-3.5 w-3.5" />
-          </button>
+        <div className="flex items-center gap-3 mb-6">
+          <h2 className="font-display font-bold text-lg tracking-tight text-text-primary">
+            Recent Cases
+          </h2>
+          <span className="rounded-full border border-border-strong bg-surface px-2 py-0.5 font-mono text-[10px] font-medium text-text-muted">
+            {cases.length} {cases.length === 1 ? 'case' : 'cases'}
+          </span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
@@ -59,9 +53,7 @@ export function RecentCases({
             <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-accent/20 bg-accent-subtle transition-colors group-hover:bg-accent-subtle">
               <Plus className="h-6 w-6 text-accent transition-transform duration-300 group-hover:rotate-90" />
             </div>
-            <h3 className="font-display font-bold text-sm text-accent mb-1">
-              New Investigation
-            </h3>
+            <h3 className="font-display font-bold text-sm text-accent mb-1">New Investigation</h3>
             <p className="text-[11px] text-accent leading-relaxed">
               Start a fresh case with
               <br />

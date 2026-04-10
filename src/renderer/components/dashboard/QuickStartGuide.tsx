@@ -4,8 +4,8 @@ const steps = [
   {
     number: 1,
     icon: Crosshair,
-    bg: 'bg-emerald-950/50 border border-emerald-800/30',
-    iconColor: 'text-emerald-400',
+    bg: 'bg-emerald-500/10 border border-emerald-500/20',
+    iconColor: 'text-emerald-500',
     title: 'Add Selectors',
     description:
       'Define regex patterns or entity types to automatically extract from captured pages.'
@@ -13,8 +13,8 @@ const steps = [
   {
     number: 2,
     icon: Camera,
-    bg: 'bg-amber-950/50 border border-amber-800/30',
-    iconColor: 'text-amber-400',
+    bg: 'bg-amber-500/10 border border-amber-500/20',
+    iconColor: 'text-amber-500',
     title: 'Capture Pages',
     description:
       'Browse the web with our extension. Screenshots, source code, and metadata are saved automatically.'
@@ -22,8 +22,8 @@ const steps = [
   {
     number: 3,
     icon: Tags,
-    bg: 'bg-sky-950/50 border border-sky-800/30',
-    iconColor: 'text-sky-400',
+    bg: 'bg-sky-500/10 border border-sky-500/20',
+    iconColor: 'text-sky-500',
     title: 'Review & Tag',
     description:
       'Organize captures with tags. Selectors automatically match patterns across your evidence.'

@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import type { BirdbrainSettings } from '@shared/types'
+import { PartialBirdbrainSettingsSchema } from '@shared/schemas'
 
 let settingsPath: string
 
@@ -33,8 +34,16 @@ export function getSettings(): BirdbrainSettings {
   }
   try {
     const raw = readFileSync(settingsPath, 'utf-8')
-    const saved = JSON.parse(raw)
-    return { ...DEFAULT_SETTINGS, ...saved }
+    const saved: unknown = JSON.parse(raw)
+    const parsed = PartialBirdbrainSettingsSchema.safeParse(saved)
+    if (!parsed.success) {
+      console.warn(
+        '[settings] stored file failed schema validation, falling back to defaults:',
+        parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')
+      )
+      return { ...DEFAULT_SETTINGS }
+    }
+    return { ...DEFAULT_SETTINGS, ...parsed.data }
   } catch {
     return { ...DEFAULT_SETTINGS }
   }

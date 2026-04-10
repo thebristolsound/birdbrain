@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { serve } from '@hono/node-server'
 import { cors } from 'hono/cors'
+import { zValidator } from '@hono/zod-validator'
 import type { Server } from 'http'
 import { app } from 'electron'
 import type { BrowserWindow } from 'electron'
@@ -11,6 +12,12 @@ import { getSettings } from '@main/services/settings'
 import { ingestMhtmlCapture } from '@main/services/mhtmlIngest'
 import { getInstallationId } from '@main/services/installationId'
 import type { CaptureEvent, CaptureSource } from '@shared/types'
+import {
+  CaptureUploadSchema,
+  SelectorCreateSchema,
+  formatCaptureUploadError,
+  formatSelectorCreateError
+} from '@shared/schemas'
 
 import { CAPTURE_SERVER_PORT } from '@shared/constants'
 import { safeRegexTest } from '@main/services/safeRegex'
@@ -20,8 +27,6 @@ function getToolVersion(): string {
   if (typeof app?.getVersion === 'function') return app.getVersion()
   return process.env.npm_package_version ?? '0.0.0'
 }
-
-const VALID_CAPTURE_SOURCES: CaptureSource[] = ['auto', 'manual', 'selector']
 
 // Manual capture dedup: "caseId:url" -> timestamp of last accepted capture
 const manualDedup = new Map<string, number>()
@@ -209,160 +214,142 @@ function createApp(): Hono {
   })
 
   // Unified capture endpoint (multipart/form-data with MHTML file)
-  app.post('/api/captures', async (c) => {
-    const startTime = Date.now()
-    let source: CaptureSource = 'auto'
-    let capturedUrl = ''
-    try {
-      const body = await c.req.parseBody()
-      const rawSource = body['source']
-      if (
-        typeof rawSource !== 'string' ||
-        !VALID_CAPTURE_SOURCES.includes(rawSource as CaptureSource)
-      ) {
-        return c.json({ error: 'Invalid source' }, 400)
+  app.post(
+    '/api/captures',
+    zValidator('form', CaptureUploadSchema, (result, c) => {
+      if (!result.success) {
+        return c.json({ error: formatCaptureUploadError(result.error) }, 400)
       }
-      source = rawSource as CaptureSource
-      const url = typeof body['url'] === 'string' ? body['url'] : ''
-      const title = typeof body['title'] === 'string' ? body['title'] : url
-      const timestamp =
-        typeof body['timestamp'] === 'string' ? body['timestamp'] : new Date().toISOString()
-      const textContent = typeof body['textContent'] === 'string' ? body['textContent'] : ''
-      const extensionVersion =
-        typeof body['extensionVersion'] === 'string' ? body['extensionVersion'] : ''
-      const browserVersion =
-        typeof body['browserVersion'] === 'string' ? body['browserVersion'] : ''
-      const userAgent = typeof body['userAgent'] === 'string' ? body['userAgent'] : ''
-      const httpStatusRaw = body['httpStatus']
-      const httpStatus = typeof httpStatusRaw === 'string' ? parseInt(httpStatusRaw, 10) || 0 : 0
-      const caseIdField = typeof body['caseId'] === 'string' ? body['caseId'] : ''
-      capturedUrl = url
-
-      const mhtmlField = body['mhtml']
-      // In Node.js, Hono's parseBody returns file-like objects with specific properties
-      // Check for presence of expected file properties instead of instanceof
-      if (
-        !mhtmlField ||
-        typeof mhtmlField !== 'object' ||
-        !('arrayBuffer' in mhtmlField || 'text' in mhtmlField)
-      ) {
-        return c.json({ error: 'Missing required field: mhtml (file)' }, 400)
-      }
-      if (!url) {
-        return c.json({ error: 'Missing required field: url' }, 400)
-      }
-
-      const captureSettings = getSettings()
-      const blocked = isUrlBlacklisted(url, captureSettings.ignoredUrlPatterns)
-      if (blocked) {
-        emitCaptureEvent({
-          type: 'skipped',
-          source,
-          url,
-          timestamp: new Date().toISOString(),
-          skipReason: 'Blacklisted: ' + blocked
-        })
-        return c.json({ error: 'URL blocked by ignored pattern', pattern: blocked }, 403)
-      }
-
-      let caseId = ''
-      if (source === 'auto') {
-        if (!state.sessionActive) return c.json({ error: 'No active session' }, 400)
-        if (!state.activeCaseId) return c.json({ error: 'No active case' }, 400)
-        caseId = state.activeCaseId
-      } else {
-        if (!caseIdField) return c.json({ error: 'Missing required field: caseId' }, 400)
-        const caseData = db.getCase(caseIdField)
-        if (!caseData) return c.json({ error: 'Case not found' }, 404)
-        if (caseData.archived) return c.json({ error: 'Case is archived' }, 400)
-        caseId = caseIdField
-      }
-
-      if (source === 'manual') {
-        const dedupeKey = caseId + ':' + url
-        const lastSeen = manualDedup.get(dedupeKey)
-        if (lastSeen && Date.now() - lastSeen < MANUAL_DEDUPE_WINDOW_MS) {
+      return undefined
+    }),
+    async (c) => {
+      const startTime = Date.now()
+      const input = c.req.valid('form')
+      const source: CaptureSource = input.source
+      const url = input.url
+      const title = input.title || url
+      const timestamp = input.timestamp || new Date().toISOString()
+      const textContent = input.textContent
+      const extensionVersion = input.extensionVersion
+      const browserVersion = input.browserVersion
+      const userAgent = input.userAgent
+      const httpStatus = input.httpStatus
+      const caseIdField = input.caseId
+      const mhtmlField = input.mhtml
+      const capturedUrl = url
+      try {
+        const captureSettings = getSettings()
+        const blocked = isUrlBlacklisted(url, captureSettings.ignoredUrlPatterns)
+        if (blocked) {
           emitCaptureEvent({
             type: 'skipped',
             source,
             url,
             timestamp: new Date().toISOString(),
-            skipReason: 'Duplicate manual capture'
+            skipReason: 'Blacklisted: ' + blocked
           })
-          return c.json({ error: 'Duplicate capture', status: 'skipped' }, 409)
+          return c.json({ error: 'URL blocked by ignored pattern', pattern: blocked }, 403)
         }
-        manualDedup.set(dedupeKey, Date.now())
-      }
 
-      emitCaptureEvent({ type: 'received', source, url, timestamp: new Date().toISOString() })
-
-      const MAX_SCREENSHOT_SIZE = 10 * 1024 * 1024 // 10 MB
-      const screenshotField = body['screenshot']
-      let screenshotBuffer: Buffer | undefined
-      if (screenshotField instanceof File || screenshotField instanceof Blob) {
-        if (screenshotField.size <= MAX_SCREENSHOT_SIZE) {
-          screenshotBuffer = Buffer.from(await screenshotField.arrayBuffer())
+        let caseId = ''
+        if (source === 'auto') {
+          if (!state.sessionActive) return c.json({ error: 'No active session' }, 400)
+          if (!state.activeCaseId) return c.json({ error: 'No active case' }, 400)
+          caseId = state.activeCaseId
+        } else {
+          if (!caseIdField) return c.json({ error: 'Missing required field: caseId' }, 400)
+          const caseData = db.getCase(caseIdField)
+          if (!caseData) return c.json({ error: 'Case not found' }, 404)
+          if (caseData.archived) return c.json({ error: 'Case is archived' }, 400)
+          caseId = caseIdField
         }
+
+        if (source === 'manual') {
+          const dedupeKey = caseId + ':' + url
+          const lastSeen = manualDedup.get(dedupeKey)
+          if (lastSeen && Date.now() - lastSeen < MANUAL_DEDUPE_WINDOW_MS) {
+            emitCaptureEvent({
+              type: 'skipped',
+              source,
+              url,
+              timestamp: new Date().toISOString(),
+              skipReason: 'Duplicate manual capture'
+            })
+            return c.json({ error: 'Duplicate capture', status: 'skipped' }, 409)
+          }
+          manualDedup.set(dedupeKey, Date.now())
+        }
+
+        emitCaptureEvent({ type: 'received', source, url, timestamp: new Date().toISOString() })
+
+        const MAX_SCREENSHOT_SIZE = 10 * 1024 * 1024 // 10 MB
+        const screenshotField = input.screenshot
+        let screenshotBuffer: Buffer | undefined
+        if (screenshotField instanceof File || screenshotField instanceof Blob) {
+          if (screenshotField.size <= MAX_SCREENSHOT_SIZE) {
+            screenshotBuffer = Buffer.from(await screenshotField.arrayBuffer())
+          }
+        }
+
+        const operatorId = getInstallationId()
+        const operatorName = captureSettings.operatorName ?? ''
+        const toolVersion = getToolVersion()
+
+        const { capture, contentHash } = await ingestMhtmlCapture({
+          caseId,
+          url,
+          title,
+          timestamp,
+          stream: mhtmlField.stream(),
+          textContent,
+          headers: {},
+          browserVersion,
+          userAgent,
+          httpStatus,
+          extensionVersion,
+          operatorId,
+          operatorName,
+          toolVersion,
+          screenshot: screenshotBuffer
+        })
+
+        if (source === 'auto') state.captureCount++
+        schedulePostCaptureWork(capture.id, caseId, source, url, textContent)
+
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(IPC_CHANNELS.NEW_CAPTURE, capture)
+        }
+
+        const durationMs = Date.now() - startTime
+        emitCaptureEvent({
+          type: 'stored',
+          captureId: capture.id,
+          source,
+          url,
+          timestamp: new Date().toISOString(),
+          durationMs
+        })
+
+        return c.json({
+          captureId: capture.id,
+          hash: contentHash,
+          manifestIndex: capture.manifestIndex,
+          status: 'ok',
+          source
+        })
+      } catch (err) {
+        console.error('Capture error:', err)
+        emitCaptureEvent({
+          type: 'failed',
+          source,
+          url: capturedUrl,
+          timestamp: new Date().toISOString(),
+          error: String(err)
+        })
+        return c.json({ error: 'Failed to process capture' }, 500)
       }
-
-      const operatorId = getInstallationId()
-      const operatorName = captureSettings.operatorName ?? ''
-      const toolVersion = getToolVersion()
-
-      const { capture, contentHash } = await ingestMhtmlCapture({
-        caseId,
-        url,
-        title,
-        timestamp,
-        stream: mhtmlField.stream(),
-        textContent,
-        headers: {},
-        browserVersion,
-        userAgent,
-        httpStatus,
-        extensionVersion,
-        operatorId,
-        operatorName,
-        toolVersion,
-        screenshot: screenshotBuffer
-      })
-
-      if (source === 'auto') state.captureCount++
-      schedulePostCaptureWork(capture.id, caseId, source, url, textContent)
-
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(IPC_CHANNELS.NEW_CAPTURE, capture)
-      }
-
-      const durationMs = Date.now() - startTime
-      emitCaptureEvent({
-        type: 'stored',
-        captureId: capture.id,
-        source,
-        url,
-        timestamp: new Date().toISOString(),
-        durationMs
-      })
-
-      return c.json({
-        captureId: capture.id,
-        hash: contentHash,
-        manifestIndex: capture.manifestIndex,
-        status: 'ok',
-        source
-      })
-    } catch (err) {
-      console.error('Capture error:', err)
-      emitCaptureEvent({
-        type: 'failed',
-        source,
-        url: capturedUrl,
-        timestamp: new Date().toISOString(),
-        error: String(err)
-      })
-      return c.json({ error: 'Failed to process capture' }, 500)
     }
-  })
+  )
 
   // List active selectors for the active case only
   app.get('/api/selectors/active', (c) => {
@@ -374,102 +361,90 @@ function createApp(): Hono {
   })
 
   // Create a selector from the extension (highlighted text)
-  app.post('/api/selectors', async (c) => {
-    try {
-      let body: unknown
+  app.post(
+    '/api/selectors',
+    zValidator('json', SelectorCreateSchema, (result, c) => {
+      if (!result.success) {
+        return c.json({ error: formatSelectorCreateError(result.error) }, 400)
+      }
+      return undefined
+    }),
+    async (c) => {
       try {
-        body = await c.req.json()
-      } catch (err) {
-        console.warn('Create selector invalid JSON:', err)
-        return c.json({ error: 'Invalid JSON' }, 400)
-      }
-      if (body === null || typeof body !== 'object' || Array.isArray(body)) {
-        return c.json({ error: 'Invalid request body: expected JSON object' }, 400)
-      }
+        const { caseId, pattern, label } = c.req.valid('json')
 
-      const { caseId, pattern, label } = body as {
-        caseId?: string
-        pattern?: string
-        label?: string
-      }
+        if (!state.activeCaseId) {
+          return c.json({ error: 'No active case selected' }, 400)
+        }
+        if (caseId !== state.activeCaseId) {
+          return c.json({ error: 'caseId does not match active case' }, 400)
+        }
 
-      if (!caseId) {
-        return c.json({ error: 'Missing required field: caseId' }, 400)
-      }
-      if (!state.activeCaseId) {
-        return c.json({ error: 'No active case selected' }, 400)
-      }
-      if (caseId !== state.activeCaseId) {
-        return c.json({ error: 'caseId does not match active case' }, 400)
-      }
-      if (!pattern || typeof pattern !== 'string' || pattern.trim() === '') {
-        return c.json({ error: 'Missing or empty required field: pattern' }, 400)
-      }
+        const caseData = db.getCase(caseId)
+        if (!caseData) {
+          return c.json({ error: 'Case not found' }, 404)
+        }
+        if (caseData.archived) {
+          return c.json({ error: 'Case is archived' }, 400)
+        }
 
-      const caseData = db.getCase(caseId)
-      if (!caseData) {
-        return c.json({ error: 'Case not found' }, 404)
-      }
-      if (caseData.archived) {
-        return c.json({ error: 'Case is archived' }, 400)
-      }
+        const selector = db.createSelector({
+          caseId,
+          pattern,
+          isRegex: false,
+          label
+        })
 
-      const selector = db.createSelector({
-        caseId,
-        pattern: pattern.trim(),
-        isRegex: false,
-        label: typeof label === 'string' && label.trim() !== '' ? label.trim() : undefined
-      })
+        // Schedule retroactive matching in chunks to avoid blocking the main thread
+        setImmediate(() => {
+          try {
+            const MAX_RETRO_CAPTURES = 500
+            const CHUNK_SIZE = 50
+            const allCaptures = db.listCaptures(caseId)
+            const captures = allCaptures.slice(0, MAX_RETRO_CAPTURES)
 
-      // Schedule retroactive matching in chunks to avoid blocking the main thread
-      setImmediate(() => {
-        try {
-          const MAX_RETRO_CAPTURES = 500
-          const CHUNK_SIZE = 50
-          const allCaptures = db.listCaptures(caseId)
-          const captures = allCaptures.slice(0, MAX_RETRO_CAPTURES)
+            const processChunk = (index: number) => {
+              const end = Math.min(index + CHUNK_SIZE, captures.length)
+              const captureTexts: Array<{ captureId: string; text: string }> = []
 
-          const processChunk = (index: number) => {
-            const end = Math.min(index + CHUNK_SIZE, captures.length)
-            const captureTexts: Array<{ captureId: string; text: string }> = []
-
-            for (let i = index; i < end; i++) {
-              const cap = captures[i]
-              const buffer = readCaptureFile(caseId, cap.id, 'txt')
-              if (buffer) {
-                captureTexts.push({ captureId: cap.id, text: buffer.toString('utf-8') })
-              } else {
-                // MHTML captures store text only in FTS; fall back to FTS content
-                const ftsText = db.getCaptureTextContent(cap.id)
-                if (ftsText) {
-                  captureTexts.push({ captureId: cap.id, text: ftsText })
+              for (let i = index; i < end; i++) {
+                const cap = captures[i]
+                const buffer = readCaptureFile(caseId, cap.id, 'txt')
+                if (buffer) {
+                  captureTexts.push({ captureId: cap.id, text: buffer.toString('utf-8') })
+                } else {
+                  // MHTML captures store text only in FTS; fall back to FTS content
+                  const ftsText = db.getCaptureTextContent(cap.id)
+                  if (ftsText) {
+                    captureTexts.push({ captureId: cap.id, text: ftsText })
+                  }
                 }
+              }
+
+              if (captureTexts.length > 0) {
+                db.matchSelectorAgainstCaptures(selector.id, captureTexts)
+              }
+
+              if (end < captures.length) {
+                setImmediate(() => processChunk(end))
               }
             }
 
-            if (captureTexts.length > 0) {
-              db.matchSelectorAgainstCaptures(selector.id, captureTexts)
+            if (captures.length > 0) {
+              processChunk(0)
             }
-
-            if (end < captures.length) {
-              setImmediate(() => processChunk(end))
-            }
+          } catch (err) {
+            console.error('Retroactive selector matching error:', err)
           }
+        })
 
-          if (captures.length > 0) {
-            processChunk(0)
-          }
-        } catch (err) {
-          console.error('Retroactive selector matching error:', err)
-        }
-      })
-
-      return c.json({ selector, status: 'ok' })
-    } catch (err) {
-      console.error('Create selector error:', err)
-      return c.json({ error: 'Failed to create selector' }, 500)
+        return c.json({ selector, status: 'ok' })
+      } catch (err) {
+        console.error('Create selector error:', err)
+        return c.json({ error: 'Failed to create selector' }, 500)
+      }
     }
-  })
+  )
 
   // Test pipeline endpoint
   app.get('/api/captures/test', async (c) => {

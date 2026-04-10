@@ -67,6 +67,18 @@ describe('settings', () => {
     expect(settings.theme).toBe('light')
   })
 
+  it('falls back to defaults when stored settings have wrong-typed fields', () => {
+    writeFileSync(
+      settingsFile,
+      JSON.stringify({ dedupeWindowSeconds: 'not-a-number', theme: 'dark' }),
+      'utf-8'
+    )
+    const settings = getSettings()
+    // Entire saved object rejected by schema → defaults returned
+    expect(settings.dedupeWindowSeconds).toBe(60)
+    expect(settings.theme).toBe('light')
+  })
+
   it('preserves ignored URL patterns', () => {
     updateSettings({ ignoredUrlPatterns: ['*.google.com', '*.bing.com'] })
     const settings = getSettings()

@@ -11,7 +11,7 @@ import {
   stopExtensionConnectionCheck
 } from '@main/services/captureServer'
 import { registerIpcHandlers } from '@main/ipcHandlers'
-import { initSettings } from '@main/services/settings'
+import { initSettings, getSettings } from '@main/services/settings'
 import { initInstallationId } from '@main/services/installationId'
 
 function createWindow(): BrowserWindow {
@@ -23,6 +23,9 @@ function createWindow(): BrowserWindow {
     show: false,
     title: 'Birdbrain',
     backgroundColor: '#000000',
+    ...(process.platform === 'linux' || process.platform === 'win32'
+      ? { icon: join(__dirname, '../../resources/icon.png') }
+      : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -52,9 +55,19 @@ app.whenReady().then(async () => {
   // Initialize database
   const userDataPath = process.env.BIRDBRAIN_USER_DATA || app.getPath('userData')
   initDatabase(join(userDataPath, 'birdbrain.db'))
-  initStorage(join(userDataPath, 'captures'))
   initSettings(userDataPath)
   initInstallationId(userDataPath)
+
+  // Use storagePath from settings, fall back to default if empty or unwritable
+  const settings = getSettings()
+  const defaultCapturesDir = join(userDataPath, 'captures')
+  const capturesDir = settings.storagePath || defaultCapturesDir
+  try {
+    initStorage(capturesDir)
+  } catch (err) {
+    console.warn(`Failed to initialize storage at "${capturesDir}", falling back to default:`, err)
+    initStorage(defaultCapturesDir)
+  }
 
   // Register IPC handlers
   registerIpcHandlers()

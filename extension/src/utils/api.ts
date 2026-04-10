@@ -19,6 +19,7 @@ interface StatusResponse {
   cases?: Array<{ id: string; name: string }>
   ignoredUrlPatterns?: string[]
   captureScreenshots?: boolean
+  dedupeWindowSeconds?: number
 }
 
 interface CaseInfo {

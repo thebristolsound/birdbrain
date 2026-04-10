@@ -101,6 +101,7 @@ interface BirdbrainAPI {
     testOpenRouter(apiKey: string): Promise<boolean>
     listModels(apiKey: string): Promise<OpenRouterModel[]>
     getIdentity(): Promise<{ installationId: string; operatorName: string }>
+    chooseStoragePath(): Promise<string | null>
   }
   export: {
     generateReport(caseId: string, options: ExportOptions): Promise<void>

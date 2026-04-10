@@ -23,6 +23,7 @@ export function OnboardingWizard() {
     setSubmitting(true)
     try {
       const newCase = await create.mutateAsync({ name: name.trim() })
+      await window.birdbrain.settings.update({ hasCompletedOnboarding: true })
       navigate({ to: '/cases/$caseId/captures', params: { caseId: newCase.id } })
     } catch {
       setSubmitting(false)

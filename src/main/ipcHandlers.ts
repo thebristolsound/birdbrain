@@ -554,6 +554,14 @@ export function registerIpcHandlers(): void {
       operatorName: settings.getSettings().operatorName ?? ''
     }
   })
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH, async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openDirectory'],
+      title: 'Choose Storage Location'
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return result.filePaths[0]
+  })
 
   // Export
   ipcMain.handle(

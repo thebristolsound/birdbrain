@@ -30,7 +30,6 @@ describe('settings', () => {
     expect(settings.openRouterApiKey).toBeNull()
     expect(settings.defaultModel).toBe('anthropic/claude-sonnet-4')
     expect(settings.captureScreenshots).toBe(true)
-    expect(settings.captureHtml).toBe(true)
     expect(settings.dedupeWindowSeconds).toBe(60)
     expect(settings.theme).toBe('light')
   })

@@ -38,16 +38,6 @@ export function CapturePreferences({ settings, onUpdate }: CapturePreferencesPro
           <span className="text-sm text-text-secondary">Capture screenshots</span>
         </label>
 
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={settings.captureHtml}
-            onChange={(e) => onUpdate({ captureHtml: e.target.checked })}
-            className="rounded"
-          />
-          <span className="text-sm text-text-secondary">Capture HTML</span>
-        </label>
-
         <div>
           <label className="mb-1 block text-sm text-text-muted">
             Dedupe window: {settings.dedupeWindowSeconds}s

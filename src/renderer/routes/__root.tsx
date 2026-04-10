@@ -1,9 +1,16 @@
-import { createRootRoute, createRoute, Outlet, redirect } from '@tanstack/react-router'
-import { lazy, Suspense } from 'react'
+import {
+  createRootRoute,
+  createRoute,
+  Outlet,
+  redirect,
+  useMatchRoute
+} from '@tanstack/react-router'
+import { lazy, Suspense, useState, useEffect } from 'react'
 import { TopBar } from '@renderer/components/layout/TopBar'
 import { Sidebar } from '@renderer/components/layout/Sidebar'
 import { MotionProvider } from '@renderer/lib/motion'
 import { OnboardingWizard } from '@renderer/components/layout/OnboardingWizard'
+import { Dashboard } from '@renderer/components/dashboard/Dashboard'
 import { useQuery } from '@tanstack/react-query'
 import { casesQueryOptions } from '@renderer/lib/queries'
 import { NewCaseWizard } from '@renderer/components/cases/NewCaseWizard'
@@ -38,6 +45,9 @@ const rootRoute = createRootRoute({
   component: function RootLayout() {
     const { restoring } = useSessionRestore()
     useCommandPalette()
+    const matchRoute = useMatchRoute()
+
+    const showSidebar = Boolean(matchRoute({ to: '/cases/$caseId', fuzzy: true }))
 
     if (restoring) {
       return (
@@ -49,10 +59,13 @@ const rootRoute = createRootRoute({
 
     return (
       <MotionProvider>
-        <div className="flex h-screen flex-col bg-canvas text-text-secondary">
+        <div
+          data-testid="app-ready"
+          className="flex h-screen flex-col bg-canvas text-text-secondary"
+        >
           <TopBar />
           <div className="flex flex-1 overflow-hidden">
-            <Sidebar />
+            {showSidebar && <Sidebar />}
             <main className="flex-1 overflow-hidden bg-canvas">
               <Outlet />
             </main>
@@ -68,14 +81,21 @@ const rootRoute = createRootRoute({
   }
 })
 
-// Onboarding / index
+// Home / index — shows Dashboard, or OnboardingWizard on very first launch
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
   component: function IndexPage() {
     const { isLoading } = useQuery(casesQueryOptions)
+    const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null)
 
-    if (isLoading) {
+    useEffect(() => {
+      window.birdbrain.settings.get().then((s) => {
+        setShowOnboarding(!s.hasCompletedOnboarding)
+      })
+    }, [])
+
+    if (isLoading || showOnboarding === null) {
       return (
         <div className="flex h-full items-center justify-center">
           <span className="text-sm text-text-muted">Loading...</span>
@@ -83,7 +103,15 @@ const indexRoute = createRoute({
       )
     }
 
-    return <OnboardingWizard />
+    if (showOnboarding) {
+      return <OnboardingWizard />
+    }
+
+    return (
+      <div className="h-full overflow-y-auto">
+        <Dashboard />
+      </div>
+    )
   }
 })
 

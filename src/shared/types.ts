@@ -54,16 +54,15 @@ export interface BirdbrainSettings {
   openRouterApiKey: string | null
   defaultModel: string
   captureScreenshots: boolean
-  captureHtml: boolean
   dedupeWindowSeconds: number
   ignoredUrlPatterns: string[]
   storagePath: string
-  maxStorageMb: number | null
   theme: 'dark' | 'light'
   operatorName: string
   autoCaptureMode: AutoCaptureMode
   lastActiveCaseId: string | null
   lastActiveSection: 'captures' | 'selectors' | 'notes' | 'tags' | 'settings'
+  hasCompletedOnboarding: boolean
 }
 
 export interface OpenRouterModel {

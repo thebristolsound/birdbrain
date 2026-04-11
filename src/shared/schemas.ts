@@ -159,13 +159,15 @@ export const PartialBirdbrainSettingsSchema = BirdbrainSettingsSchema.partial()
 // --- OpenRouter API response ----------------------------------------------
 
 export const OpenRouterResponseSchema = z.object({
-  choices: z.array(
-    z.object({
-      message: z.object({
-        content: z.string()
+  choices: z
+    .array(
+      z.object({
+        message: z.object({
+          content: z.string()
+        })
       })
-    })
-  ),
+    )
+    .min(1),
   usage: z
     .object({
       prompt_tokens: z.number(),

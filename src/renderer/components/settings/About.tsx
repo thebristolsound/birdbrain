@@ -11,7 +11,7 @@ export function About() {
           <a
             href="https://github.com/thebristolsound/birdbrain"
             target="_blank"
-            rel="noreferrer"
+            rel="noopener noreferrer"
             className="text-accent hover:text-accent-hover"
           >
             GitHub

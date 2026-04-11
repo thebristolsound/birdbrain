@@ -17,18 +17,18 @@ const CASE_ICONS: Record<string, { icon: typeof FolderOpen; bgClass: string; ico
   {
     crypto: {
       icon: FolderOpen,
-      bgClass: 'bg-amber-950/50 border border-amber-800/30',
-      iconClass: 'text-amber-400'
+      bgClass: 'bg-amber-500/10 border border-amber-500/20',
+      iconClass: 'text-amber-500'
     },
     malware: {
       icon: ShieldAlert,
-      bgClass: 'bg-sky-950/50 border border-sky-800/30',
-      iconClass: 'text-sky-400'
+      bgClass: 'bg-sky-500/10 border border-sky-500/20',
+      iconClass: 'text-sky-500'
     },
     fraud: {
       icon: Users,
-      bgClass: 'bg-pink-950/50 border border-pink-800/30',
-      iconClass: 'text-pink-400'
+      bgClass: 'bg-pink-500/10 border border-pink-500/20',
+      iconClass: 'text-pink-500'
     }
   }
 const DEFAULT_ICON = {
@@ -110,14 +110,14 @@ export const CaseCard = memo(function CaseCard({
 
         {/* Status badge */}
         {isRecording ? (
-          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-950/60 border border-red-800/40">
+          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-500/10 border border-red-500/20">
             <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-            <span className="text-[9px] font-bold text-red-400">Recording</span>
+            <span className="text-[9px] font-bold text-red-500">Recording</span>
           </div>
         ) : isActive ? (
-          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-950/60 border border-emerald-800/40">
+          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            <span className="text-[9px] font-bold text-emerald-400">Active</span>
+            <span className="text-[9px] font-bold text-emerald-500">Active</span>
           </div>
         ) : null}
       </div>

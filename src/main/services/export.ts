@@ -1,7 +1,7 @@
 import { writeFileSync } from 'fs'
 import * as db from '@main/services/database'
 import { readCaptureFile } from '@main/services/storage'
-import { hashContent } from '@main/services/hash'
+import { verifyCapture } from '@main/services/mhtmlIngest'
 import type { ExportOptions, HashVerification, Capture } from '@shared/types'
 
 interface ExportData {
@@ -15,36 +15,15 @@ interface ExportData {
   screenshots: Map<string, string> // captureId -> base64
 }
 
-export function verifyCaptures(caseId: string): HashVerification[] {
+export async function verifyCaptures(caseId: string): Promise<HashVerification[]> {
   const captures = db.listCaptures(caseId)
   const results: HashVerification[] = []
-
   for (const capture of captures) {
-    const htmlBuffer = readCaptureFile(capture.caseId, capture.id, 'html')
-
-    if (!htmlBuffer) {
-      results.push({
-        captureId: capture.id,
-        url: capture.url,
-        title: capture.title,
-        storedHash: capture.hash,
-        computedHash: '',
-        status: 'missing'
-      })
-      continue
-    }
-
-    const computedHash = hashContent(htmlBuffer.toString('utf-8'))
-    results.push({
-      captureId: capture.id,
-      url: capture.url,
-      title: capture.title,
-      storedHash: capture.hash,
-      computedHash,
-      status: computedHash === capture.hash ? 'verified' : 'tampered'
-    })
+    // Delegate to the MHTML-aware pipeline so export-time verification matches the
+    // badge's manual flow: streams bytes, checks the manifest chain, and persists
+    // the outcome back onto the capture row.
+    results.push(await verifyCapture(capture.id))
   }
-
   return results
 }
 
@@ -76,7 +55,7 @@ export async function generateReport(
 
   if (options.include.auditTrail) {
     onProgress?.('Verifying capture integrity...', 50)
-    data.verifications = verifyCaptures(caseId)
+    data.verifications = await verifyCaptures(caseId)
   }
 
   if (options.include.screenshots) {
@@ -186,16 +165,17 @@ function buildHtmlReport(data: ExportData, options: ExportOptions): string {
       <div class="section">
         <h2>Audit Trail — Hash Verification</h2>
         <table class="full-width">
-          <thead><tr><th>Status</th><th>Title</th><th>URL</th><th>Stored Hash</th><th>Computed Hash</th></tr></thead>
+          <thead><tr><th>Status</th><th>Title</th><th>URL</th><th>Manifest #</th><th>Stored Hash</th><th>Computed Hash</th></tr></thead>
           <tbody>
             ${data.verifications
               .map(
                 (v) => `
               <tr class="verify-${v.status}">
-                <td>${v.status === 'verified' ? '✓' : v.status === 'tampered' ? '⚠' : '✗'} ${v.status}</td>
+                <td>${statusGlyph(v.status)} ${v.status}</td>
                 <td>${esc(v.title)}</td>
                 <td class="mono url">${esc(v.url)}</td>
-                <td class="mono hash">${v.storedHash.slice(0, 16)}...</td>
+                <td class="mono">${v.manifestIndex !== undefined ? '#' + v.manifestIndex : '-'}</td>
+                <td class="mono hash">${v.storedHash ? v.storedHash.slice(0, 16) + '...' : '-'}</td>
                 <td class="mono hash">${v.computedHash ? v.computedHash.slice(0, 16) + '...' : '-'}</td>
               </tr>
             `
@@ -238,6 +218,8 @@ function buildHtmlReport(data: ExportData, options: ExportOptions): string {
   .screenshot { max-width: 100%; max-height: 400px; margin: 0.5rem 0; border: 1px solid #262626; }
   .verify-verified td:first-child { color: #22c55e; }
   .verify-tampered td:first-child { color: #f59e0b; }
+  .verify-chain-broken td:first-child { color: #f59e0b; }
+  .verify-legacy td:first-child { color: #a3a3a3; }
   .verify-missing td:first-child { color: #ef4444; }
   @media print { body { background: white; color: black; } .cover h1, .section h2 { color: #d97706; } }
 </style>
@@ -249,6 +231,20 @@ ${sections.join('\n')}
 </footer>
 </body>
 </html>`
+}
+
+function statusGlyph(status: HashVerification['status']): string {
+  switch (status) {
+    case 'verified':
+      return '✓'
+    case 'tampered':
+    case 'chain-broken':
+      return '⚠'
+    case 'legacy':
+      return '○'
+    case 'missing':
+      return '✗'
+  }
 }
 
 function esc(str: string): string {

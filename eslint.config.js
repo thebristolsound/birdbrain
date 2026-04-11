@@ -7,7 +7,25 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   prettierConfig,
   {
-    ignores: ['out/', 'dist/', 'extension/dist/', 'node_modules/', '.worktrees/', '.claude/', 'Python/']
+    ignores: [
+      'out/',
+      'dist/',
+      'extension/dist/',
+      'node_modules/',
+      '.worktrees/',
+      '.claude/',
+      'Python/',
+      'tests/**/*.js',
+      'tests/**/*.d.ts',
+      'extension/src/**/*.js',
+      'extension/src/**/*.d.ts',
+      'extension/vite.config.js',
+      'extension/vite.config.d.ts',
+      'vitest.config.js',
+      'vitest.config.d.ts',
+      'electron.vite.config.js',
+      'electron.vite.config.d.ts'
+    ]
   },
   {
     files: ['scripts/**/*.mjs'],

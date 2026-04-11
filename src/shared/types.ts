@@ -37,6 +37,10 @@ export interface Capture {
   httpStatus?: number
   operatorId?: string
   operatorName?: string
+  // Persisted verification state — populated after a manual or export-time verify runs
+  lastVerifiedAt?: string
+  lastVerifiedHash?: string
+  lastVerifiedStatus?: HashVerification['status']
 }
 
 export interface Tag {

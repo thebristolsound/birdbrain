@@ -4,6 +4,7 @@ import type {
   Case,
   Capture,
   CaptureFormat,
+  HashVerification,
   Tag,
   Selector,
   ActiveCaseSelectors,
@@ -295,6 +296,17 @@ function migrate(db: Database.Database): void {
       db.pragma('user_version = 12')
     })()
   }
+
+  if (version < 13) {
+    db.transaction(() => {
+      db.exec(`
+        ALTER TABLE captures ADD COLUMN last_verified_at TEXT;
+        ALTER TABLE captures ADD COLUMN last_verified_hash TEXT;
+        ALTER TABLE captures ADD COLUMN last_verified_status TEXT;
+      `)
+      db.pragma('user_version = 13')
+    })()
+  }
 }
 
 // --- Cases ---
@@ -483,6 +495,17 @@ export function deleteCapture(id: string): boolean {
 
 export function updateCaptureHash(captureId: string, hash: string): void {
   getDb().prepare('UPDATE captures SET hash = ? WHERE id = ?').run(hash, captureId)
+}
+
+export function setCaptureVerification(
+  captureId: string,
+  result: { status: HashVerification['status']; computedHash: string; verifiedAt: string }
+): void {
+  getDb()
+    .prepare(
+      'UPDATE captures SET last_verified_at = ?, last_verified_hash = ?, last_verified_status = ? WHERE id = ?'
+    )
+    .run(result.verifiedAt, result.computedHash || null, result.status, captureId)
 }
 
 export function getCaptureCount(caseId: string): number {
@@ -954,7 +977,10 @@ function rowToCapture(row: Record<string, unknown>): Capture {
     userAgent: (row.user_agent as string) || undefined,
     httpStatus: (row.http_status as number) ?? undefined,
     operatorId: (row.operator_id as string) || undefined,
-    operatorName: (row.operator_name as string) || undefined
+    operatorName: (row.operator_name as string) || undefined,
+    lastVerifiedAt: (row.last_verified_at as string) || undefined,
+    lastVerifiedHash: (row.last_verified_hash as string) || undefined,
+    lastVerifiedStatus: (row.last_verified_status as HashVerification['status']) || undefined
   }
 }
 

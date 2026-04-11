@@ -165,6 +165,17 @@ describe('manifest verifyManifestChain', () => {
     expect(result.brokenAt).toBe(0)
   })
 
+  it('rejects entries with invalid shape', () => {
+    appendManifestEntry(tempDir, { ...base, captureId: 'c1', url: 'https://a' })
+    // Append a line that parses as JSON but is missing required fields
+    const badLine = JSON.stringify({ type: 'capture', foo: 'bar' }) + '\n'
+    appendFileSync(join(tempDir, 'manifest.jsonl'), badLine)
+    const result = verifyManifestChain(tempDir)
+    expect(result.valid).toBe(false)
+    expect(result.brokenAt).toBe(1)
+    expect(result.reason).toBe('Invalid entry shape')
+  })
+
   it('detects broken link between entries', () => {
     appendManifestEntry(tempDir, { ...base, captureId: 'c1', url: 'https://a' })
     const badLine = JSON.stringify({

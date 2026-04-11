@@ -12,6 +12,7 @@ import { join } from 'path'
 import { createHash } from 'crypto'
 import { MANIFEST_FILENAME, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import { canonicalStringify } from '@main/services/canonicalJson'
+import { ManifestEntrySchema } from '@shared/schemas'
 
 export interface ManifestHead {
   prevHash: string
@@ -78,10 +79,7 @@ export interface AppendResult {
 
 // Write-ahead append: compute hash, append JSONL line, fsync.
 // Caller must call rollbackManifestEntry(anchorBytes) if a later step fails.
-export function appendManifestEntry(
-  caseDir: string,
-  entry: ManifestEntryInput
-): AppendResult {
+export function appendManifestEntry(caseDir: string, entry: ManifestEntryInput): AppendResult {
   const path = join(caseDir, MANIFEST_FILENAME)
   const anchorBytes = existsSync(path) ? statSync(path).size : 0
   const { prevHash, nextIndex } = getManifestHead(caseDir)
@@ -134,13 +132,17 @@ export function verifyManifestChain(caseDir: string): ChainVerifyResult {
   let expectedIndex = 0
 
   for (let i = 0; i < lines.length; i++) {
-    let entry: Record<string, unknown>
+    let parsed: unknown
     try {
-      entry = JSON.parse(lines[i])
+      parsed = JSON.parse(lines[i])
     } catch {
       return { valid: false, brokenAt: i, reason: 'Invalid JSON' }
     }
-    const { entryHash, ...body } = entry
+    const schemaResult = ManifestEntrySchema.safeParse(parsed)
+    if (!schemaResult.success) {
+      return { valid: false, brokenAt: i, reason: 'Invalid entry shape' }
+    }
+    const { entryHash, ...body } = schemaResult.data
     if (body.index !== expectedIndex) {
       return { valid: false, brokenAt: i, reason: 'Index mismatch' }
     }
@@ -151,7 +153,7 @@ export function verifyManifestChain(caseDir: string): ChainVerifyResult {
     if (recomputed !== entryHash) {
       return { valid: false, brokenAt: i, reason: 'Entry hash mismatch' }
     }
-    expectedPrev = entryHash as string
+    expectedPrev = entryHash
     expectedIndex++
   }
   return { valid: true }

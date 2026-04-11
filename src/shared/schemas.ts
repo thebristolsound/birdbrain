@@ -92,38 +92,42 @@ export function formatSelectorCreateError(err: z.ZodError): string {
 // malformed before attempting hash recomputation, so forged but
 // schema-invalid lines don't propagate as undefined fields downstream.
 
-const ManifestCaptureEntrySchema = z.object({
-  type: z.literal('capture'),
-  captureId: z.string(),
-  caseId: z.string(),
-  url: z.string(),
-  timestamp: z.string(),
-  contentHash: z.string(),
-  sizeBytes: z.number(),
-  operatorId: z.string(),
-  operatorName: z.string(),
-  toolVersion: z.string(),
-  index: z.number().int().nonnegative(),
-  prevHash: z.string(),
-  schemaVersion: z.number(),
-  entryHash: z.string()
-})
+const ManifestCaptureEntrySchema = z
+  .object({
+    type: z.literal('capture'),
+    captureId: z.string(),
+    caseId: z.string(),
+    url: z.string(),
+    timestamp: z.string(),
+    contentHash: z.string(),
+    sizeBytes: z.number(),
+    operatorId: z.string(),
+    operatorName: z.string(),
+    toolVersion: z.string(),
+    index: z.number().int().nonnegative(),
+    prevHash: z.string(),
+    schemaVersion: z.number(),
+    entryHash: z.string()
+  })
+  .strict()
 
-const ManifestDeletionEntrySchema = z.object({
-  type: z.literal('deletion'),
-  captureId: z.string(),
-  caseId: z.string(),
-  timestamp: z.string(),
-  contentHash: z.string(),
-  operatorId: z.string(),
-  operatorName: z.string(),
-  toolVersion: z.string(),
-  reason: z.string().optional(),
-  index: z.number().int().nonnegative(),
-  prevHash: z.string(),
-  schemaVersion: z.number(),
-  entryHash: z.string()
-})
+const ManifestDeletionEntrySchema = z
+  .object({
+    type: z.literal('deletion'),
+    captureId: z.string(),
+    caseId: z.string(),
+    timestamp: z.string(),
+    contentHash: z.string(),
+    operatorId: z.string(),
+    operatorName: z.string(),
+    toolVersion: z.string(),
+    reason: z.string().optional(),
+    index: z.number().int().nonnegative(),
+    prevHash: z.string(),
+    schemaVersion: z.number(),
+    entryHash: z.string()
+  })
+  .strict()
 
 export const ManifestEntrySchema = z.discriminatedUnion('type', [
   ManifestCaptureEntrySchema,

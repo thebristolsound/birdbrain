@@ -149,8 +149,11 @@ export const BirdbrainSettingsSchema = z.object({
   operatorName: z.string(),
   autoCaptureMode: z.enum(['auto', 'notify', 'per-case']),
   lastActiveCaseId: z.string().nullable(),
-  lastActiveSection: z.enum(['captures', 'selectors', 'notes', 'tags', 'settings']),
-  hasCompletedOnboarding: z.boolean()
+  lastActiveSection: z
+    .enum(['captures', 'selectors', 'notes', 'tags', 'settings'])
+    .optional()
+    .default('captures'),
+  hasCompletedOnboarding: z.boolean().optional().default(false)
 })
 
 // Used on load: user may have an older settings file missing newer keys, so

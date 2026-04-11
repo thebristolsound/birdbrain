@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { casesQueryOptions } from '@renderer/lib/queries'
@@ -50,24 +50,30 @@ export function useSessionRestore() {
   const [restoring, setRestoring] = useState(true)
   const navigate = useNavigate()
   const { data: cases, isLoading } = useQuery(casesQueryOptions)
+  const hasRestoredRef = useRef(false)
 
   useEffect(() => {
+    if (hasRestoredRef.current) return
     if (isLoading || cases === undefined) return
 
+    hasRestoredRef.current = true
     let cancelled = false
 
     async function restore() {
-      const settings = await window.birdbrain.settings.get()
-      if (cancelled) return
+      try {
+        const settings = await window.birdbrain.settings.get()
+        if (cancelled) return
 
-      const route = resolveStartRoute({
-        lastActiveCaseId: settings.lastActiveCaseId,
-        lastActiveSection: settings.lastActiveSection,
-        cases: cases ?? []
-      })
+        const route = resolveStartRoute({
+          lastActiveCaseId: settings.lastActiveCaseId,
+          lastActiveSection: settings.lastActiveSection,
+          cases: cases ?? []
+        })
 
-      await navigate(route as Parameters<typeof navigate>[0])
-      if (!cancelled) setRestoring(false)
+        await navigate(route as Parameters<typeof navigate>[0])
+      } finally {
+        if (!cancelled) setRestoring(false)
+      }
     }
 
     restore()

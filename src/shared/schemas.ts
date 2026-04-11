@@ -142,14 +142,15 @@ export const BirdbrainSettingsSchema = z.object({
   openRouterApiKey: z.string().nullable(),
   defaultModel: z.string(),
   captureScreenshots: z.boolean(),
-  captureHtml: z.boolean(),
   dedupeWindowSeconds: z.number(),
   ignoredUrlPatterns: z.array(z.string()),
   storagePath: z.string(),
-  maxStorageMb: z.number().nullable(),
   theme: z.enum(['dark', 'light']),
   operatorName: z.string(),
-  autoCaptureMode: z.enum(['auto', 'notify', 'per-case'])
+  autoCaptureMode: z.enum(['auto', 'notify', 'per-case']),
+  lastActiveCaseId: z.string().nullable(),
+  lastActiveSection: z.enum(['captures', 'selectors', 'notes', 'tags', 'settings']),
+  hasCompletedOnboarding: z.boolean()
 })
 
 // Used on load: user may have an older settings file missing newer keys, so

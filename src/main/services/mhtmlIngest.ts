@@ -219,9 +219,26 @@ export async function verifyCapture(captureId: string): Promise<HashVerification
       reason: 'Capture not found'
     }
   }
+
+  const result = await computeVerification(capture)
+
+  // Persist so the UI can rehydrate across remounts/sessions and export can read
+  // a stable snapshot without re-hashing when nothing has changed on disk.
+  db.setCaptureVerification(captureId, {
+    status: result.status,
+    computedHash: result.computedHash,
+    verifiedAt: new Date().toISOString()
+  })
+
+  return result
+}
+
+async function computeVerification(
+  capture: NonNullable<ReturnType<typeof db.getCapture>>
+): Promise<HashVerification> {
   if (capture.format !== 'mhtml' || !capture.mhtmlPath) {
     return {
-      captureId,
+      captureId: capture.id,
       url: capture.url,
       title: capture.title,
       storedHash: capture.hash,
@@ -242,7 +259,7 @@ export async function verifyCapture(captureId: string): Promise<HashVerification
     })
   } catch (err) {
     return {
-      captureId,
+      captureId: capture.id,
       url: capture.url,
       title: capture.title,
       storedHash: capture.hash,
@@ -256,7 +273,7 @@ export async function verifyCapture(captureId: string): Promise<HashVerification
   const chain = verifyManifestChain(join(getStorageRoot(), capture.caseId))
   if (!chain.valid) {
     return {
-      captureId,
+      captureId: capture.id,
       url: capture.url,
       title: capture.title,
       storedHash: capture.hash,
@@ -269,7 +286,7 @@ export async function verifyCapture(captureId: string): Promise<HashVerification
   }
   if (computed !== capture.hash) {
     return {
-      captureId,
+      captureId: capture.id,
       url: capture.url,
       title: capture.title,
       storedHash: capture.hash,
@@ -280,7 +297,7 @@ export async function verifyCapture(captureId: string): Promise<HashVerification
     }
   }
   return {
-    captureId,
+    captureId: capture.id,
     url: capture.url,
     title: capture.title,
     storedHash: capture.hash,

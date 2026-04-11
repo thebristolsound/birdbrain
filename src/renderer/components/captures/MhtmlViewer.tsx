@@ -48,12 +48,13 @@ export function MhtmlViewer({ captureId }: Props) {
   }
 
   return (
+    // Intentionally omit `nodeintegration` and `allowpopups` — both default to
+    // disabled in Electron, and passing them as string "false" historically
+    // *enabled* the features because HTML attribute presence = true.
     <webview
       ref={ref as unknown as React.RefObject<HTMLElement>}
       src={fileUrl}
       partition="mhtml-sandbox"
-      nodeintegration="false"
-      allowpopups="false"
       webpreferences="javascript=no,contextIsolation=yes,sandbox=yes"
       style={{ width: '100%', height: '100%', background: 'white' }}
     />

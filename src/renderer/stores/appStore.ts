@@ -21,6 +21,7 @@ interface AppState {
   setSessionActive: (active: boolean) => void
   setConnectedToExtension: (connected: boolean) => void
   setCommandPaletteOpen: (open: boolean) => void
+  toggleCommandPalette: () => void
   setSelectedCaptureId: (id: string | null) => void
   setSearchQuery: (query: string) => void
   selectCapture: (id: string) => void
@@ -50,6 +51,7 @@ export const useAppStore = create<AppState>((set) => ({
   setSessionActive: (active) => set({ sessionActive: active }),
   setConnectedToExtension: (connected) => set({ connectedToExtension: connected }),
   setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
+  toggleCommandPalette: () => set((s) => ({ commandPaletteOpen: !s.commandPaletteOpen })),
   setSelectedCaptureId: (id) => set({ selectedCaptureId: id }),
   setSearchQuery: (query) => set({ searchQuery: query }),
 

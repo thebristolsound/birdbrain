@@ -18,8 +18,8 @@ export function ExtensionBanner({ connected }: ExtensionBannerProps) {
       {connected ? (
         <>
           <div className="flex items-center gap-5">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-950 border border-emerald-700/40 flex items-center justify-center flex-shrink-0 shadow-lg shadow-emerald-500/10">
-              <CheckCircle className="h-6 w-6 text-emerald-300" />
+            <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center flex-shrink-0 shadow-lg shadow-emerald-500/10">
+              <CheckCircle className="h-6 w-6 text-emerald-500" />
             </div>
             <div>
               <h4 className="font-display font-bold text-sm text-text-primary mb-0.5">
@@ -31,7 +31,7 @@ export function ExtensionBanner({ connected }: ExtensionBannerProps) {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <span className="flex items-center gap-2 px-4 py-2 bg-emerald-950 border border-emerald-700/40 text-emerald-300 font-display font-bold text-xs rounded-xl">
+            <span className="flex items-center gap-2 px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 font-display font-bold text-xs rounded-xl">
               <CheckCircle className="h-3.5 w-3.5" />
               Connected
             </span>
@@ -59,9 +59,6 @@ export function ExtensionBanner({ connected }: ExtensionBannerProps) {
             >
               <FolderOpen className="h-3.5 w-3.5" />
               Install Extension
-            </button>
-            <button className="text-[11px] font-bold text-accent hover:text-accent transition-colors">
-              Learn More →
             </button>
           </div>
         </>

@@ -15,13 +15,18 @@ export default tseslint.config(
       '.worktrees/',
       '.claude/',
       'Python/',
-      // tsc composite-build artifacts emitted alongside config sources
+      'tests/**/*.js',
+      'tests/**/*.d.ts',
+      'extension/src/**/*.js',
+      'extension/src/**/*.d.ts',
       '*.config.js',
       '*.config.d.ts',
       'vitest.config.js',
       'vitest.config.d.ts',
       'extension/vite.config.js',
-      'extension/vite.config.d.ts'
+      'extension/vite.config.d.ts',
+      'electron.vite.config.js',
+      'electron.vite.config.d.ts'
     ]
   },
   {

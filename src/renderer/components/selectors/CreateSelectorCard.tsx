@@ -110,7 +110,9 @@ export function CreateSelectorCard({
           <Crosshair className="h-4 w-4 text-accent" />
         </div>
         <div className="flex-1">
-          <h3 className="font-display text-sm font-semibold text-text-primary">Create New Selector</h3>
+          <h3 className="font-display text-sm font-semibold text-text-primary">
+            Create New Selector
+          </h3>
           <p className="text-xs text-text-muted">Define patterns to match across captures</p>
         </div>
         {isOpen ? (
@@ -137,7 +139,7 @@ export function CreateSelectorCard({
                       if (isRegex) validateRegex(e.target.value)
                     }}
                     placeholder={isRegex ? 'e.g. \\b\\d{3}-\\d{3}-\\d{4}\\b' : 'e.g. John Doe'}
-                    className="w-full rounded-xl border border-border-strong bg-canvas py-1.5 pl-8 pr-3 font-mono text-sm text-text-primary placeholder-text-faint focus:border-accent/40 focus:outline-none focus:ring-2 focus:ring-accent/25"
+                    className="w-full rounded-xl border border-border-strong bg-canvas py-1.5 pl-8 pr-3 font-mono text-sm text-text-primary placeholder:text-text-faint focus:border-accent/40 focus:outline-none focus:ring-2 focus:ring-accent/25"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') handleCreate()
                     }}
@@ -170,7 +172,7 @@ export function CreateSelectorCard({
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
                 placeholder="e.g. Phone numbers"
-                className="w-full rounded-xl border border-border-strong bg-canvas px-3 py-1.5 text-sm text-text-primary placeholder-text-faint focus:border-accent/40 focus:outline-none focus:ring-2 focus:ring-accent/25"
+                className="w-full rounded-xl border border-border-strong bg-canvas px-3 py-1.5 text-sm text-text-primary placeholder:text-text-faint focus:border-accent/40 focus:outline-none focus:ring-2 focus:ring-accent/25"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleCreate()
                 }}
@@ -210,14 +212,13 @@ export function CreateSelectorCard({
               </div>
 
               {testResults.length === 0 ? (
-                <p className="text-xs text-text-muted">No matches found in the first 10 captures.</p>
+                <p className="text-xs text-text-muted">
+                  No matches found in the first 10 captures.
+                </p>
               ) : (
                 <div className="space-y-2">
                   {testResults.slice(0, 5).map((result, idx) => (
-                    <div
-                      key={idx}
-                      className="rounded-lg border border-border bg-elevated p-3"
-                    >
+                    <div key={idx} className="rounded-lg border border-border bg-elevated p-3">
                       <p className="mb-1 truncate text-xs text-text-muted">{result.captureTitle}</p>
                       {result.matches.slice(0, 3).map((m, mi) => (
                         <p key={mi} className="font-mono text-xs text-text-secondary">

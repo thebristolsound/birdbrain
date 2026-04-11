@@ -148,7 +148,7 @@ export function BulkAddSelectorsModal({
           onChange={(e) => setText(e.target.value)}
           rows={10}
           placeholder={'alice@example.com\nbob@example.com\n555-867-5309'}
-          className="mb-3 w-full rounded-lg border border-border-strong bg-canvas px-3 py-2 font-mono text-xs text-text-primary placeholder-text-faint focus:border-accent/40 focus:outline-none focus:ring-2 focus:ring-accent/25"
+          className="mb-3 w-full rounded-lg border border-border-strong bg-canvas px-3 py-2 font-mono text-xs text-text-primary placeholder:text-text-faint focus:border-accent/40 focus:outline-none focus:ring-2 focus:ring-accent/25"
         />
 
         <div className="mb-3 flex flex-wrap items-center gap-3">
@@ -181,7 +181,7 @@ export function BulkAddSelectorsModal({
             value={labelPrefix}
             onChange={(e) => setLabelPrefix(e.target.value)}
             placeholder="Label prefix (optional)"
-            className="flex-1 min-w-[8rem] rounded-lg border border-border-strong bg-canvas px-3 py-1.5 text-xs text-text-primary placeholder-text-faint focus:border-accent/40 focus:outline-none"
+            className="flex-1 min-w-[8rem] rounded-lg border border-border-strong bg-canvas px-3 py-1.5 text-xs text-text-primary placeholder:text-text-faint focus:border-accent/40 focus:outline-none"
           />
         </div>
 

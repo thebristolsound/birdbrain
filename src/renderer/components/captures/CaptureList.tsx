@@ -40,7 +40,7 @@ export function CaptureList({ caseId }: CaptureListProps) {
             placeholder="Search captures..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full rounded-lg border border-border bg-card py-1.5 pl-7 pr-2 text-xs text-text-secondary placeholder-text-faint outline-none focus:border-accent/30"
+            className="w-full rounded-lg border border-border bg-card py-1.5 pl-7 pr-2 text-xs text-text-secondary placeholder:text-text-faint outline-none focus:border-accent/30"
           />
         </div>
         {/* Sort + Filter buttons */}

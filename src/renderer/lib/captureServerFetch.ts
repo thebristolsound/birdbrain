@@ -36,11 +36,9 @@ async function getToken(): Promise<string | null> {
  */
 export async function captureServerFetch(path: string, init?: RequestInit): Promise<Response> {
   const token = await getToken()
-  const headers: Record<string, string> = {
-    ...(init?.headers as Record<string, string>)
-  }
+  const headers = new Headers(init?.headers)
   if (token) {
-    headers['X-Birdbrain-Token'] = token
+    headers.set('X-Birdbrain-Token', token)
   }
   return fetch(`${CAPTURE_SERVER_BASE_URL}${path}`, { ...init, headers })
 }

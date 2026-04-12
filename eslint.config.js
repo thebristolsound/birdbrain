@@ -19,10 +19,12 @@ export default tseslint.config(
       'tests/**/*.d.ts',
       'extension/src/**/*.js',
       'extension/src/**/*.d.ts',
-      'extension/vite.config.js',
-      'extension/vite.config.d.ts',
+      '*.config.js',
+      '*.config.d.ts',
       'vitest.config.js',
       'vitest.config.d.ts',
+      'extension/vite.config.js',
+      'extension/vite.config.d.ts',
       'electron.vite.config.js',
       'electron.vite.config.d.ts'
     ]

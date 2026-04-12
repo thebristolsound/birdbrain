@@ -71,7 +71,6 @@ describe('export', () => {
 
   it('verifyCaptures marks tampered when file bytes change after ingest', async () => {
     const { capture } = await ingest(caseId, '<html><body>Original</body></html>')
-    // Mutate the on-disk MHTML to simulate tampering
     writeFileSync(join(tempDir, 'captures', capture.mhtmlPath!), 'mutated bytes')
 
     const results = await verifyCaptures(caseId)
@@ -128,7 +127,6 @@ describe('export', () => {
     expect(content).toContain('example.com')
     expect(content).toContain('Birdbrain')
     expect(content).toContain('Audit Trail')
-    // Report should reflect the verified status from the MHTML pipeline
     expect(content).toContain('verify-verified')
   })
 

@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, type HTMLAttributes, type ReactNode } from 'react'
+import { forwardRef, useEffect, type ComponentPropsWithoutRef, type ReactNode } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { presets } from '@renderer/lib/motion/presets'
 import { cn } from '@renderer/lib/utils'
@@ -28,7 +28,7 @@ function DialogOverlay({ onClose }: { onClose: () => void }) {
   )
 }
 
-interface DialogContentProps extends HTMLAttributes<HTMLDivElement> {
+interface DialogContentProps extends ComponentPropsWithoutRef<'div'> {
   onClose: () => void
 }
 
@@ -54,28 +54,28 @@ const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
 )
 DialogContent.displayName = 'DialogContent'
 
-const DialogHeader = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
+const DialogHeader = forwardRef<HTMLDivElement, ComponentPropsWithoutRef<'div'>>(
   ({ className, ...props }, ref) => (
     <div className={cn('mb-4 space-y-1.5', className)} ref={ref} {...props} />
   )
 )
 DialogHeader.displayName = 'DialogHeader'
 
-const DialogTitle = forwardRef<HTMLHeadingElement, HTMLAttributes<HTMLHeadingElement>>(
+const DialogTitle = forwardRef<HTMLHeadingElement, ComponentPropsWithoutRef<'h3'>>(
   ({ className, ...props }, ref) => (
     <h3 className={cn('text-lg font-semibold text-text-primary', className)} ref={ref} {...props} />
   )
 )
 DialogTitle.displayName = 'DialogTitle'
 
-const DialogDescription = forwardRef<HTMLParagraphElement, HTMLAttributes<HTMLParagraphElement>>(
+const DialogDescription = forwardRef<HTMLParagraphElement, ComponentPropsWithoutRef<'p'>>(
   ({ className, ...props }, ref) => (
     <p className={cn('text-sm text-text-muted', className)} ref={ref} {...props} />
   )
 )
 DialogDescription.displayName = 'DialogDescription'
 
-const DialogFooter = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
+const DialogFooter = forwardRef<HTMLDivElement, ComponentPropsWithoutRef<'div'>>(
   ({ className, ...props }, ref) => (
     <div className={cn('flex justify-end gap-3 mt-6', className)} ref={ref} {...props} />
   )

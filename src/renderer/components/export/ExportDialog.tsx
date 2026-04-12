@@ -4,6 +4,7 @@ import type { ExportOptions } from '@shared/types'
 import { presets } from '@renderer/lib/motion'
 import { useTheater } from '@renderer/hooks/useTheater'
 import { useCompletionCelebration } from '@renderer/hooks/useCompletionCelebration'
+import { Button, Input, Label } from '@renderer/components/ui'
 
 interface ExportDialogProps {
   caseId: string
@@ -77,7 +78,7 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
 
         {/* Include checkboxes */}
         <div className="mb-4">
-          <label className="mb-2 block text-sm text-text-muted">Include</label>
+          <Label className="mb-2">Include</Label>
           <div className="space-y-2">
             {(
               [
@@ -101,12 +102,11 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
 
         {/* Investigator */}
         <div className="mb-4">
-          <label className="mb-1 block text-sm text-text-muted">Investigator Name</label>
-          <input
+          <Label>Investigator Name</Label>
+          <Input
             type="text"
             value={investigatorName}
             onChange={(e) => setInvestigatorName(e.target.value)}
-            className="w-full rounded border border-border-strong bg-elevated px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
             placeholder="Your name..."
           />
         </div>
@@ -138,19 +138,12 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
 
         {/* Actions */}
         <div className="flex justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="rounded px-3 py-1.5 text-sm text-text-muted hover:text-text-primary"
-          >
+          <Button variant="ghost" size="sm" onClick={onClose}>
             {exporting ? 'Close' : 'Cancel'}
-          </button>
-          <button
-            onClick={handleExport}
-            disabled={exporting}
-            className="rounded bg-accent px-4 py-1.5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-          >
+          </Button>
+          <Button size="sm" onClick={handleExport} disabled={exporting}>
             {exporting ? 'Exporting...' : 'Export'}
-          </button>
+          </Button>
         </div>
       </motion.div>
     </motion.div>

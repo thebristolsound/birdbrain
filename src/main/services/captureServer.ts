@@ -19,7 +19,7 @@ import {
   formatSelectorCreateError
 } from '@shared/schemas'
 
-import { CAPTURE_SERVER_PORT } from '@shared/constants'
+import { CAPTURE_SERVER_PORT, MAX_SCREENSHOT_SIZE } from '@shared/constants'
 import { safeRegexTest } from '@main/services/safeRegex'
 export { CAPTURE_SERVER_PORT }
 
@@ -284,12 +284,15 @@ function createApp(): Hono {
 
         emitCaptureEvent({ type: 'received', source, url, timestamp: new Date().toISOString() })
 
-        const MAX_SCREENSHOT_SIZE = 10 * 1024 * 1024 // 10 MB
         const screenshotField = input.screenshot
         let screenshotBuffer: Buffer | undefined
+        let screenshotDropReason: string | undefined
         if (screenshotField instanceof File || screenshotField instanceof Blob) {
           if (screenshotField.size <= MAX_SCREENSHOT_SIZE) {
             screenshotBuffer = Buffer.from(await screenshotField.arrayBuffer())
+          } else {
+            screenshotDropReason = `Screenshot too large: ${(screenshotField.size / (1024 * 1024)).toFixed(1)}MB exceeds ${MAX_SCREENSHOT_SIZE / (1024 * 1024)}MB limit`
+            console.warn(`[Birdbrain] ${screenshotDropReason} for ${url}`)
           }
         }
 
@@ -329,15 +332,23 @@ function createApp(): Hono {
           source,
           url,
           timestamp: new Date().toISOString(),
-          durationMs
+          durationMs,
+          screenshotWarning: screenshotDropReason
         })
 
+        const screenshotStatus = screenshotDropReason
+          ? 'dropped'
+          : screenshotBuffer
+            ? 'saved'
+            : 'none'
         return c.json({
           captureId: capture.id,
           hash: contentHash,
           manifestIndex: capture.manifestIndex,
           status: 'ok',
-          source
+          source,
+          screenshotStatus,
+          screenshotWarning: screenshotDropReason
         })
       } catch (err) {
         console.error('Capture error:', err)

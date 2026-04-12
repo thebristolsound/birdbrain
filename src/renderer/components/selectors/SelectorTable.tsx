@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { Search, ArrowUpDown } from 'lucide-react'
 import type { Selector } from '@shared/types'
 import { SelectorTableRow } from './SelectorTableRow'
+import { Card, Button } from '@renderer/components/ui'
 
 interface SelectorTableProps {
   selectors: Selector[]
@@ -68,7 +69,7 @@ export function SelectorTable({ selectors, matchCounts, onRefresh, caseId }: Sel
   }
 
   return (
-    <div className="neu-card rounded-2xl overflow-hidden">
+    <Card className="overflow-hidden">
       {/* Header bar */}
       <div className="flex items-center justify-between border-b border-border px-5 py-3">
         <div className="flex items-center gap-2">
@@ -88,13 +89,14 @@ export function SelectorTable({ selectors, matchCounts, onRefresh, caseId }: Sel
               className="rounded-lg border border-border bg-canvas py-1 pl-7 pr-3 text-xs text-text-secondary placeholder:text-text-faint focus:border-accent/40 focus:outline-none"
             />
           </div>
-          <button
+          <Button
+            variant="outline"
+            size="icon-sm"
             onClick={() => handleSort(sortBy)}
-            className="rounded-lg border border-border p-1.5 text-text-muted hover:bg-elevated hover:text-text-secondary"
             title="Toggle sort direction"
           >
             <ArrowUpDown className="h-3.5 w-3.5" />
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -131,6 +133,6 @@ export function SelectorTable({ selectors, matchCounts, onRefresh, caseId }: Sel
           ))}
         </tbody>
       </table>
-    </div>
+    </Card>
   )
 }

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { tagsQueryOptions, useTagsMutations } from '@renderer/lib/queries'
+import { Dialog, DialogContent, Button, Input } from '@renderer/components/ui'
 
 const TAG_COLORS = [
   '#f59e0b',
@@ -35,13 +36,13 @@ export function TagManager({ onClose }: TagManagerProps) {
 
       {/* Create new tag */}
       <div className="mb-4 flex items-center gap-2">
-        <input
+        <Input
           data-testid="tag-name-input"
           type="text"
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-          className="flex-1 rounded border border-border-strong bg-elevated px-2 py-1.5 text-sm text-text-primary outline-none focus:border-accent"
+          className="flex-1 py-1.5"
           placeholder="New tag name..."
         />
         <div className="flex gap-1">
@@ -55,14 +56,14 @@ export function TagManager({ onClose }: TagManagerProps) {
             />
           ))}
         </div>
-        <button
+        <Button
           data-testid="tag-add-btn"
+          size="sm"
           onClick={handleCreate}
           disabled={!newName.trim()}
-          className="rounded bg-accent px-2 py-1.5 text-sm text-white hover:bg-accent-hover disabled:opacity-50"
         >
           Add
-        </button>
+        </Button>
       </div>
 
       {/* Existing tags */}
@@ -90,13 +91,9 @@ export function TagManager({ onClose }: TagManagerProps) {
 
       {onClose && (
         <div className="mt-4 flex justify-end">
-          <button
-            data-testid="tag-done-btn"
-            onClick={onClose}
-            className="rounded px-3 py-1.5 text-sm text-text-muted hover:text-text-primary"
-          >
+          <Button data-testid="tag-done-btn" variant="ghost" size="sm" onClick={onClose}>
             Done
-          </button>
+          </Button>
         </div>
       )}
     </>
@@ -105,14 +102,11 @@ export function TagManager({ onClose }: TagManagerProps) {
   // Modal mode — overlay with click-to-close backdrop.
   if (onClose) {
     return (
-      <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-        onClick={onClose}
-      >
-        <div className="neu-card w-96 rounded-2xl p-6" onClick={(e) => e.stopPropagation()}>
+      <Dialog open={true} onOpenChange={(v) => !v && onClose()}>
+        <DialogContent onClose={onClose} className="w-96">
           {body}
-        </div>
-      </div>
+        </DialogContent>
+      </Dialog>
     )
   }
 

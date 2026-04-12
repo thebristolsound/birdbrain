@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react'
 import { useAppStore } from '@renderer/stores/appStore'
 import { presets } from '@renderer/lib/motion'
 import type { CaptureEvent } from '@shared/types'
+import { Button } from '@renderer/components/ui'
 
 function EventIcon({ type }: { type: CaptureEvent['type'] }) {
   switch (type) {
@@ -33,6 +34,9 @@ function EventRow({ event }: { event: CaptureEvent }) {
           {event.durationMs !== undefined && <span>{event.durationMs}ms</span>}
           {event.error && <span className="text-red-400">{event.error}</span>}
           {event.skipReason && <span className="text-amber-400">{event.skipReason}</span>}
+          {event.screenshotWarning && (
+            <span className="text-amber-400">{event.screenshotWarning}</span>
+          )}
         </div>
       </div>
     </div>
@@ -119,12 +123,9 @@ export function CaptureHealth() {
           >
             <div className="flex items-center justify-between border-b border-border px-3 py-2">
               <span className="text-xs font-medium text-text-secondary">Capture Pipeline</span>
-              <button
-                onClick={clearCaptureEvents}
-                className="text-[10px] text-text-muted hover:text-text-secondary"
-              >
+              <Button variant="ghost" size="xs" onClick={clearCaptureEvents}>
                 Clear
-              </button>
+              </Button>
             </div>
 
             <div className="flex gap-4 border-b border-border px-3 py-2 text-[11px]">
@@ -166,10 +167,7 @@ export function CaptureHealth() {
               ) : (
                 <AnimatePresence>
                   {captureEvents.map((event, i) => (
-                    <motion.div
-                      key={`${event.timestamp}-${event.type}-${i}`}
-                      {...presets.listItem}
-                    >
+                    <motion.div key={`${event.timestamp}-${event.type}-${i}`} {...presets.listItem}>
                       <EventRow event={event} />
                     </motion.div>
                   ))}
@@ -178,20 +176,24 @@ export function CaptureHealth() {
             </div>
 
             <div className="flex gap-2 border-t border-border px-3 py-2">
-              <button
+              <Button
+                variant="outline"
+                size="xs"
+                className="flex-1"
                 onClick={runPipelineTest}
                 disabled={testing}
-                className="flex-1 rounded bg-elevated px-2 py-1.5 text-[11px] text-text-secondary hover:bg-elevated disabled:opacity-50"
               >
                 {testing ? 'Testing...' : 'Test Pipeline'}
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="outline"
+                size="xs"
+                className="flex-1"
                 onClick={runHttpTest}
                 disabled={testing}
-                className="flex-1 rounded bg-elevated px-2 py-1.5 text-[11px] text-text-secondary hover:bg-elevated disabled:opacity-50"
               >
                 {testing ? 'Testing...' : 'Test HTTP'}
-              </button>
+              </Button>
             </div>
 
             {testResult && (

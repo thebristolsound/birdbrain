@@ -34,6 +34,8 @@ interface CaptureResult {
   status: string
   source: string
   manifestIndex?: number
+  screenshotStatus?: 'saved' | 'dropped' | 'none'
+  screenshotWarning?: string
 }
 
 interface SelectorInfo {

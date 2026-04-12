@@ -2,6 +2,7 @@ import { Filter, X, XCircle } from 'lucide-react'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import type { Selector } from '@shared/types'
 import { useAppStore } from '@renderer/stores/appStore'
+import { Button } from '@renderer/components/ui'
 
 interface SelectorFilterFooterProps {
   selectors: Selector[]
@@ -54,23 +55,20 @@ export function SelectorFilterFooter({
       </span>
 
       <div className="flex items-center gap-2">
-        <button
+        <Button
+          size="sm"
           onClick={() => {
             if (caseId) {
               navigate({ to: '/cases/$caseId/captures', params: { caseId } })
             }
           }}
-          className="rounded-lg bg-accent px-3 py-1 text-xs font-medium text-white hover:bg-accent-hover"
         >
           View in Captures
-        </button>
-        <button
-          onClick={clearSelectorFilters}
-          className="flex items-center gap-1 rounded-lg border border-border-strong px-2.5 py-1 text-xs text-text-muted hover:bg-elevated hover:text-text-primary"
-        >
+        </Button>
+        <Button variant="outline" size="sm" onClick={clearSelectorFilters} className="gap-1">
           <XCircle className="h-3 w-3" />
           Clear All
-        </button>
+        </Button>
       </div>
     </div>
   )

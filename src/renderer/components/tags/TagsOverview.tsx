@@ -2,6 +2,7 @@ import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { tagsQueryOptions, tagUsageCountsForCaseQueryOptions } from '@renderer/lib/queries'
 import { TagManager } from './TagManager'
+import { Card } from '@renderer/components/ui'
 
 export function TagsOverview() {
   const { caseId } = useParams({ from: '/cases/$caseId/tags' })
@@ -23,7 +24,7 @@ export function TagsOverview() {
     <div className="mx-auto max-w-5xl space-y-5 px-8 py-6 pb-16">
       <TagManager />
 
-      <div data-testid="tags-usage-table" className="neu-card rounded-2xl overflow-hidden">
+      <Card data-testid="tags-usage-table" className="overflow-hidden">
         <div className="flex items-center justify-between border-b border-border px-5 py-3">
           <h3 className="font-display text-sm font-semibold text-text-primary">
             Tag Usage in This Case
@@ -70,7 +71,7 @@ export function TagsOverview() {
             </tbody>
           </table>
         )}
-      </div>
+      </Card>
     </div>
   )
 }

@@ -3,6 +3,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { motion } from 'motion/react'
 import { useCasesMutations } from '@renderer/lib/queries'
 import { FolderPlus, Bitcoin, Bug, ShieldAlert, Settings2, ArrowLeft } from 'lucide-react'
+import { Card, Button, Input, Textarea, Label } from '@renderer/components/ui'
 
 const SELECTOR_PRESETS = [
   {
@@ -102,7 +103,7 @@ export function NewCaseWizard() {
       </div>
 
       {/* Card */}
-      <div className="neu-card rounded-2xl p-8">
+      <Card className="p-8">
         <div className="mb-6 flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-subtle">
             <FolderPlus className="h-5 w-5 text-accent" />
@@ -115,32 +116,30 @@ export function NewCaseWizard() {
 
         {/* Investigation Name */}
         <div className="mb-4">
-          <label className="mb-1.5 block text-sm font-medium text-text-secondary">
+          <Label className="mb-1.5 text-sm font-medium text-text-secondary">
             Investigation Name
-          </label>
-          <input
+          </Label>
+          <Input
             data-testid="case-name-input"
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Phishing Campaign Analysis"
-            className="w-full rounded-xl border border-border-strong bg-elevated px-4 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
+            className="rounded-xl px-4 py-2.5 placeholder:text-text-muted"
             autoFocus
           />
         </div>
 
         {/* Description */}
         <div className="mb-6">
-          <label className="mb-1.5 block text-sm font-medium text-text-secondary">
-            Description
-          </label>
-          <textarea
+          <Label className="mb-1.5 text-sm font-medium text-text-secondary">Description</Label>
+          <Textarea
             data-testid="case-description-input"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Brief description of this investigation..."
             rows={3}
-            className="w-full resize-none rounded-xl border border-border-strong bg-elevated px-4 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
+            className="resize-none rounded-xl px-4 py-2.5 placeholder:text-text-muted"
           />
         </div>
 
@@ -204,23 +203,24 @@ export function NewCaseWizard() {
 
         {/* Footer */}
         <div className="flex items-center justify-between border-t border-border pt-6">
-          <button
+          <Button
+            variant="ghost"
             onClick={() => navigate({ to: '/' })}
-            className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm text-text-muted transition hover:bg-elevated hover:text-text-primary"
+            className="gap-2 rounded-xl"
           >
             <ArrowLeft className="h-4 w-4" />
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             data-testid="case-create-btn"
             onClick={handleSubmit}
             disabled={!name.trim() || submitting}
-            className="rounded-xl bg-accent px-6 py-2 text-sm font-medium text-white shadow-lg shadow-accent/20 transition hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed"
+            className="rounded-xl px-6 shadow-lg shadow-accent/20"
           >
             {submitting ? 'Creating...' : 'Create Case'}
-          </button>
+          </Button>
         </div>
-      </div>
+      </Card>
     </div>
   )
 }

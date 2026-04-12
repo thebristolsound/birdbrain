@@ -1,0 +1,85 @@
+import { forwardRef, useEffect, type HTMLAttributes, type ReactNode } from 'react'
+import { motion, AnimatePresence } from 'motion/react'
+import { presets } from '@renderer/lib/motion/presets'
+import { cn } from '@renderer/lib/utils'
+
+interface DialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  children: ReactNode
+}
+
+function Dialog({ open, onOpenChange, children }: DialogProps) {
+  useEffect(() => {
+    if (!open) return
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onOpenChange(false)
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [open, onOpenChange])
+
+  return <AnimatePresence>{open && children}</AnimatePresence>
+}
+
+function DialogOverlay({ onClose }: { onClose: () => void }) {
+  return (
+    <motion.div className="fixed inset-0 z-50 bg-black/50" onClick={onClose} {...presets.overlay} />
+  )
+}
+
+interface DialogContentProps extends HTMLAttributes<HTMLDivElement> {
+  onClose: () => void
+}
+
+const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
+  ({ className, onClose, children, ...props }, ref) => (
+    <>
+      <DialogOverlay onClose={onClose} />
+      <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <motion.div
+          role="dialog"
+          aria-modal="true"
+          className={cn('neu-card rounded-2xl p-6 w-full max-w-md', className)}
+          onClick={(e) => e.stopPropagation()}
+          ref={ref}
+          {...presets.modal}
+          {...props}
+        >
+          {children}
+        </motion.div>
+      </div>
+    </>
+  )
+)
+DialogContent.displayName = 'DialogContent'
+
+const DialogHeader = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
+  ({ className, ...props }, ref) => (
+    <div className={cn('mb-4 space-y-1.5', className)} ref={ref} {...props} />
+  )
+)
+DialogHeader.displayName = 'DialogHeader'
+
+const DialogTitle = forwardRef<HTMLHeadingElement, HTMLAttributes<HTMLHeadingElement>>(
+  ({ className, ...props }, ref) => (
+    <h3 className={cn('text-lg font-semibold text-text-primary', className)} ref={ref} {...props} />
+  )
+)
+DialogTitle.displayName = 'DialogTitle'
+
+const DialogDescription = forwardRef<HTMLParagraphElement, HTMLAttributes<HTMLParagraphElement>>(
+  ({ className, ...props }, ref) => (
+    <p className={cn('text-sm text-text-muted', className)} ref={ref} {...props} />
+  )
+)
+DialogDescription.displayName = 'DialogDescription'
+
+const DialogFooter = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
+  ({ className, ...props }, ref) => (
+    <div className={cn('flex justify-end gap-3 mt-6', className)} ref={ref} {...props} />
+  )
+)
+DialogFooter.displayName = 'DialogFooter'
+
+export { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter }

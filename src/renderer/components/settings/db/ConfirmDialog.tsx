@@ -1,4 +1,12 @@
 import { useEffect, useRef } from 'react'
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  Button
+} from '@renderer/components/ui'
 
 interface ConfirmDialogProps {
   open: boolean
@@ -18,52 +26,25 @@ export function ConfirmDialog({
   onCancel
 }: ConfirmDialogProps) {
   const cancelRef = useRef<HTMLButtonElement>(null)
-  const titleId = 'confirm-dialog-title'
 
   useEffect(() => {
     if (open) cancelRef.current?.focus()
   }, [open])
 
-  useEffect(() => {
-    if (!open) return
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onCancel()
-    }
-    window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
-  }, [open, onCancel])
-
-  if (!open) return null
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onCancel}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        className="w-full max-w-md rounded-2xl border border-border bg-canvas p-6 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 id={titleId} className="mb-2 text-lg font-semibold text-text-primary">
-          {title}
-        </h3>
-        <p className="mb-6 text-sm text-text-muted whitespace-pre-line">{message}</p>
-        <div className="flex justify-end gap-3">
-          <button
-            ref={cancelRef}
-            onClick={onCancel}
-            className="rounded-lg border border-border px-4 py-2 text-sm text-text-muted hover:bg-elevated"
-          >
+    <Dialog open={open} onOpenChange={(v) => !v && onCancel()}>
+      <DialogContent onClose={onCancel} aria-labelledby="confirm-dialog-title">
+        <DialogTitle id="confirm-dialog-title">{title}</DialogTitle>
+        <DialogDescription className="whitespace-pre-line">{message}</DialogDescription>
+        <DialogFooter>
+          <Button ref={cancelRef} variant="outline" onClick={onCancel}>
             Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
-          >
+          </Button>
+          <Button variant="destructive" onClick={onConfirm}>
             {confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

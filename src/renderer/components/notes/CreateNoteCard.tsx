@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Plus, X } from 'lucide-react'
 import { useNotesMutations } from '@renderer/lib/queries'
+import { Button, Input, Textarea } from '@renderer/components/ui'
 
 interface CreateNoteCardProps {
   caseId: string
@@ -43,43 +44,37 @@ export function CreateNoteCard({ caseId, isOpen, onToggle, onCreated }: CreateNo
     <div className="rounded-2xl border border-border bg-surface p-4">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="font-display text-sm font-semibold text-text-primary">New note</h3>
-        <button
-          onClick={onToggle}
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted hover:bg-elevated hover:text-text-primary"
-        >
+        <Button variant="ghost" size="icon-sm" onClick={onToggle}>
           <X className="h-3.5 w-3.5" />
-        </button>
+        </Button>
       </div>
-      <input
+      <Input
         data-testid="create-note-title"
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         placeholder="Title (optional)"
-        className="mb-2 w-full rounded-lg border border-border bg-canvas px-3 py-1.5 text-sm font-semibold text-text-primary"
+        className="mb-2 border-border bg-canvas font-semibold"
       />
-      <textarea
+      <Textarea
         data-testid="create-note-body"
         value={body}
         onChange={(e) => setBody(e.target.value)}
         placeholder="Note body"
         rows={4}
-        className="mb-3 w-full rounded-lg border border-border bg-canvas px-3 py-2 text-sm text-text-secondary"
+        className="mb-3 border-border bg-canvas text-text-secondary"
       />
       <div className="flex items-center justify-end gap-2">
-        <button
-          onClick={onToggle}
-          className="rounded-lg px-3 py-1.5 text-xs text-text-muted hover:bg-elevated"
-        >
+        <Button variant="ghost" size="sm" onClick={onToggle}>
           Cancel
-        </button>
-        <button
+        </Button>
+        <Button
           data-testid="create-note-submit"
+          size="sm"
           onClick={handleSubmit}
           disabled={(!title.trim() && !body.trim()) || create.isPending}
-          className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-canvas hover:opacity-90 disabled:opacity-50"
         >
           {create.isPending ? 'Saving...' : 'Save note'}
-        </button>
+        </Button>
       </div>
     </div>
   )

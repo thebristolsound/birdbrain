@@ -1,6 +1,16 @@
 import { useState, useEffect, useRef } from 'react'
 import { v4 as uuid } from 'uuid'
 import { X } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  Button,
+  Input,
+  Label
+} from '@renderer/components/ui'
 
 interface ColumnInfo {
   name: string
@@ -29,7 +39,6 @@ export function RowEditModal({
 }: RowEditModalProps) {
   const [formData, setFormData] = useState<Record<string, string>>({})
   const closeBtnRef = useRef<HTMLButtonElement>(null)
-  const titleId = 'row-edit-modal-title'
 
   useEffect(() => {
     if (!open) return
@@ -47,16 +56,8 @@ export function RowEditModal({
   }, [open, mode, columns, initialData])
 
   useEffect(() => {
-    if (!open) return
-    closeBtnRef.current?.focus()
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
-  }, [open, onClose])
-
-  if (!open) return null
+    if (open) closeBtnRef.current?.focus()
+  }, [open])
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -80,70 +81,56 @@ export function RowEditModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        className="w-full max-w-lg max-h-[80vh] overflow-y-auto rounded-2xl border border-border bg-canvas p-6 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent
+        onClose={onClose}
+        className="max-h-[80vh] max-w-lg overflow-y-auto"
+        aria-labelledby="row-edit-modal-title"
       >
-        <div className="mb-4 flex items-center justify-between">
-          <h3 id={titleId} className="text-lg font-semibold text-text-primary">
-            {mode === 'create' ? 'Create Row' : 'Edit Row'} &mdash; {table}
-          </h3>
-          <button
-            ref={closeBtnRef}
-            onClick={onClose}
-            aria-label="Close row editor"
-            className="text-text-muted hover:text-text-primary"
-          >
-            <X size={18} />
-          </button>
-        </div>
+        <DialogHeader>
+          <div className="flex items-center justify-between">
+            <DialogTitle id="row-edit-modal-title">
+              {mode === 'create' ? 'Create Row' : 'Edit Row'} &mdash; {table}
+            </DialogTitle>
+            <Button
+              ref={closeBtnRef}
+              variant="ghost"
+              size="icon-sm"
+              onClick={onClose}
+              aria-label="Close row editor"
+            >
+              <X size={18} />
+            </Button>
+          </div>
+        </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3">
           {columns.map((col) => (
             <div key={col.name}>
-              <label className="mb-1 block text-xs font-medium text-text-secondary">
+              <Label className="text-xs font-medium text-text-secondary">
                 {col.name}
-                {col.pk && (
-                  <span className="ml-1 text-[10px] text-accent font-bold">PK</span>
-                )}
+                {col.pk && <span className="ml-1 text-[10px] text-accent font-bold">PK</span>}
                 <span className="ml-1 text-[10px] text-text-faint">{col.type}</span>
-              </label>
-              <input
+              </Label>
+              <Input
                 type={inputType(col)}
                 value={formData[col.name] ?? ''}
-                onChange={(e) =>
-                  setFormData((prev) => ({ ...prev, [col.name]: e.target.value }))
-                }
+                onChange={(e) => setFormData((prev) => ({ ...prev, [col.name]: e.target.value }))}
                 readOnly={mode === 'edit' && col.pk}
                 step={col.type === 'REAL' ? 'any' : undefined}
-                className={`w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary outline-none focus:border-accent ${
-                  mode === 'edit' && col.pk
-                    ? 'bg-elevated text-text-muted cursor-not-allowed'
-                    : ''
-                }`}
+                className={
+                  mode === 'edit' && col.pk ? 'bg-elevated text-text-muted cursor-not-allowed' : ''
+                }
               />
             </div>
           ))}
-          <div className="flex justify-end gap-3 pt-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg border border-border px-4 py-2 text-sm text-text-muted hover:bg-elevated"
-            >
+          <DialogFooter className="pt-3">
+            <Button type="button" variant="outline" onClick={onClose}>
               Cancel
-            </button>
-            <button
-              type="submit"
-              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent/90"
-            >
-              {mode === 'create' ? 'Create' : 'Save'}
-            </button>
-          </div>
+            </Button>
+            <Button type="submit">{mode === 'create' ? 'Create' : 'Save'}</Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

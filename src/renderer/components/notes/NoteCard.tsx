@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { StickyNote, Pencil, Trash2, ExternalLink, X, Check } from 'lucide-react'
 import type { Note } from '@shared/types'
 import { useNotesMutations } from '@renderer/lib/queries'
+import { Button, Input, Textarea } from '@renderer/components/ui'
 
 function formatRelative(ts: string): string {
   const diff = Date.now() - new Date(ts).getTime()
@@ -100,38 +101,36 @@ export function NoteCard({ note, caseId }: NoteCardProps) {
       <div className="min-w-0 flex-1">
         {isEditing ? (
           <div className="space-y-2">
-            <input
+            <Input
               data-testid="note-title-input"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Title"
-              className="w-full rounded-lg border border-border bg-canvas px-3 py-1.5 text-sm font-semibold text-text-primary"
+              className="border-border bg-canvas font-semibold"
             />
-            <textarea
+            <Textarea
               data-testid="note-body-input"
               value={body}
               onChange={(e) => setBody(e.target.value)}
               placeholder="Note body"
               rows={4}
-              className="w-full rounded-lg border border-border bg-canvas px-3 py-2 text-sm text-text-secondary"
+              className="border-border bg-canvas text-text-secondary"
             />
             <div className="flex items-center justify-end gap-2">
-              <button
-                onClick={handleCancel}
-                className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-text-muted hover:bg-elevated"
-              >
+              <Button variant="ghost" size="xs" onClick={handleCancel} className="gap-1">
                 <X className="h-3.5 w-3.5" />
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 data-testid="note-save"
+                size="xs"
                 onClick={handleSave}
                 disabled={update.isPending}
-                className="flex items-center gap-1 rounded-lg bg-accent px-2 py-1 text-xs font-medium text-canvas hover:opacity-90 disabled:opacity-50"
+                className="gap-1"
               >
                 <Check className="h-3.5 w-3.5" />
                 Save
-              </button>
+              </Button>
             </div>
           </div>
         ) : (
@@ -141,39 +140,39 @@ export function NoteCard({ note, caseId }: NoteCardProps) {
                 {displayTitle}
               </h3>
               <div className="flex shrink-0 items-center gap-1">
-                <button
+                <Button
                   data-testid="note-edit"
+                  variant="ghost"
+                  size="icon-sm"
                   onClick={() => setIsEditing(true)}
                   title="Edit note"
-                  className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted hover:bg-elevated hover:text-text-primary"
                 >
                   <Pencil className="h-3.5 w-3.5" />
-                </button>
+                </Button>
                 {confirmDelete ? (
                   <>
-                    <button
+                    <Button
                       data-testid="note-confirm-delete"
+                      variant="destructive"
+                      size="xs"
                       onClick={handleDelete}
-                      className="rounded-lg bg-red-500/10 px-2 py-1 text-[11px] text-red-400 hover:bg-red-500/20"
                     >
                       Confirm
-                    </button>
-                    <button
-                      onClick={() => setConfirmDelete(false)}
-                      className="rounded-lg px-2 py-1 text-[11px] text-text-muted hover:bg-elevated"
-                    >
+                    </Button>
+                    <Button variant="ghost" size="xs" onClick={() => setConfirmDelete(false)}>
                       Cancel
-                    </button>
+                    </Button>
                   </>
                 ) : (
-                  <button
+                  <Button
                     data-testid="note-delete"
+                    variant="ghost"
+                    size="icon-sm"
                     onClick={() => setConfirmDelete(true)}
                     title="Delete note"
-                    className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted hover:bg-elevated hover:text-red-400"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  </Button>
                 )}
               </div>
             </div>

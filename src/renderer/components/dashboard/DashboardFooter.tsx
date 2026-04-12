@@ -1,4 +1,5 @@
 import { Radar, Github } from 'lucide-react'
+import { Button } from '@renderer/components/ui'
 
 export function DashboardFooter() {
   return (
@@ -16,16 +17,28 @@ export function DashboardFooter() {
 
         {/* Right: links */}
         <div className="flex items-center gap-6">
-          <button className="text-[11px] font-medium text-text-faint hover:text-accent transition-colors">
+          <Button
+            variant="link"
+            size="xs"
+            className="text-[11px] text-text-faint hover:text-accent no-underline"
+          >
             Documentation
-          </button>
-          <button className="text-[11px] font-medium text-text-faint hover:text-accent transition-colors">
+          </Button>
+          <Button
+            variant="link"
+            size="xs"
+            className="text-[11px] text-text-faint hover:text-accent no-underline"
+          >
             Changelog
-          </button>
-          <button className="flex items-center gap-1 text-[11px] font-medium text-text-faint hover:text-accent transition-colors">
+          </Button>
+          <Button
+            variant="link"
+            size="xs"
+            className="gap-1 text-[11px] text-text-faint hover:text-accent no-underline"
+          >
             <Github className="h-3.5 w-3.5" />
             GitHub
-          </button>
+          </Button>
         </div>
       </div>
     </footer>

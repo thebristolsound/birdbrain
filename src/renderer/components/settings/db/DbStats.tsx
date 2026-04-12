@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { RefreshCw } from 'lucide-react'
 import type { DbStats as DbStatsType } from '@shared/ipc'
+import { Button } from '@renderer/components/ui'
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B'
@@ -43,14 +44,16 @@ export function DbStats() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-text-primary">Database Statistics</h3>
-        <button
+        <Button
+          variant="outline"
+          size="sm"
           onClick={fetchStats}
           disabled={loading}
-          className="flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:bg-elevated disabled:opacity-50"
+          className="gap-1"
         >
           <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
           Refresh
-        </button>
+        </Button>
       </div>
 
       <div className="grid grid-cols-3 gap-3">

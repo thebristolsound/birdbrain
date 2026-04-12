@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Button } from '@renderer/components/ui'
 import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'motion/react'
@@ -194,13 +195,10 @@ export function CaseHeader() {
         </div>
 
         {/* Export button */}
-        <button
-          onClick={() => setShowExport(true)}
-          className="flex items-center gap-1.5 rounded-lg border border-border-strong px-2.5 py-1 text-xs font-medium text-text-muted hover:bg-elevated"
-        >
+        <Button variant="outline" size="sm" onClick={() => setShowExport(true)} className="gap-1.5">
           <FileOutput size={12} strokeWidth={1.8} />
           Export
-        </button>
+        </Button>
       </div>
 
       {/* Expanded section */}

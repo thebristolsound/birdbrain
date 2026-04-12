@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { BirdbrainSettings, AutoCaptureMode } from '@shared/types'
+import { Card, CardContent, Input, Button, Label } from '@renderer/components/ui'
 
 interface CapturePreferencesProps {
   settings: BirdbrainSettings
@@ -24,110 +25,107 @@ export function CapturePreferences({ settings, onUpdate }: CapturePreferencesPro
   }
 
   return (
-    <section className="neu-card rounded-2xl p-5">
-      <h2 className="mb-4 text-lg font-semibold text-text-primary">Capture Preferences</h2>
+    <Card>
+      <CardContent>
+        <h2 className="mb-4 text-lg font-semibold text-text-primary">Capture Preferences</h2>
 
-      <div className="space-y-4">
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={settings.captureScreenshots}
-            onChange={(e) => onUpdate({ captureScreenshots: e.target.checked })}
-            className="rounded"
-          />
-          <span className="text-sm text-text-secondary">Capture screenshots</span>
-        </label>
-
-        <div>
-          <label className="mb-1 block text-sm text-text-muted">
-            Dedupe window: {settings.dedupeWindowSeconds}s
-          </label>
-          <input
-            type="range"
-            min={0}
-            max={300}
-            value={settings.dedupeWindowSeconds}
-            onChange={(e) => onUpdate({ dedupeWindowSeconds: parseInt(e.target.value) })}
-            className="w-full"
-          />
-          <div className="flex justify-between text-xs text-text-muted">
-            <span>0s (off)</span>
-            <span>300s</span>
-          </div>
-        </div>
-
-        <div>
-          <label className="mb-1 block text-sm text-text-muted">Ignored URL patterns</label>
-          <div className="mb-2 flex gap-2">
+        <div className="space-y-4">
+          <label className="flex items-center gap-2 cursor-pointer">
             <input
-              type="text"
-              value={newPattern}
-              onChange={(e) => setNewPattern(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && addPattern()}
-              className="flex-1 rounded border border-border-strong bg-elevated px-3 py-1.5 font-mono text-sm text-text-primary outline-none focus:border-accent"
-              placeholder="e.g. *.google.com or facebook.com"
+              type="checkbox"
+              checked={settings.captureScreenshots}
+              onChange={(e) => onUpdate({ captureScreenshots: e.target.checked })}
+              className="rounded"
             />
-            <button
-              onClick={addPattern}
-              className="rounded bg-elevated px-3 py-1.5 text-sm text-text-secondary hover:bg-elevated"
-            >
-              Add
-            </button>
-          </div>
-          <p className="mb-2 text-xs text-text-muted">
-            Substring (<code className="text-text-muted">google.com</code>), wildcards (
-            <code className="text-text-muted">*.facebook.com*</code>), or regex (
-            <code className="text-text-muted">/pattern/i</code>)
-          </p>
-          <div className="space-y-1">
-            {settings.ignoredUrlPatterns.map((pattern, i) => (
-              <div
-                key={i}
-                className="flex items-center justify-between rounded bg-elevated px-2 py-1"
-              >
-                <span className="font-mono text-xs text-text-muted">{pattern}</span>
-                <button
-                  onClick={() => removePattern(i)}
-                  className="text-xs text-text-muted hover:text-red-400"
-                >
-                  &times;
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
+            <span className="text-sm text-text-secondary">Capture screenshots</span>
+          </label>
 
-        <div>
-          <label className="mb-1 block text-sm text-text-muted">Selector auto-capture mode</label>
-          <div className="space-y-1">
-            {(
-              [
-                ['auto', 'Auto-capture', 'Automatically capture pages with selector matches'],
-                ['notify', 'Notify only', 'Show a notification when matches are found'],
-                ['per-case', 'Per-case', 'Configure capture behavior per case']
-              ] as [AutoCaptureMode, string, string][]
-            ).map(([value, label, desc]) => (
-              <label
-                key={value}
-                className="flex items-start gap-2 cursor-pointer rounded p-1.5 hover:bg-elevated"
-              >
-                <input
-                  type="radio"
-                  name="autoCaptureMode"
-                  value={value}
-                  checked={settings.autoCaptureMode === value}
-                  onChange={() => onUpdate({ autoCaptureMode: value })}
-                  className="mt-0.5"
-                />
-                <div>
-                  <div className="text-sm text-text-secondary">{label}</div>
-                  <div className="text-xs text-text-muted">{desc}</div>
+          <div>
+            <Label>Dedupe window: {settings.dedupeWindowSeconds}s</Label>
+            <input
+              type="range"
+              min={0}
+              max={300}
+              value={settings.dedupeWindowSeconds}
+              onChange={(e) => onUpdate({ dedupeWindowSeconds: parseInt(e.target.value) })}
+              className="w-full"
+            />
+            <div className="flex justify-between text-xs text-text-muted">
+              <span>0s (off)</span>
+              <span>300s</span>
+            </div>
+          </div>
+
+          <div>
+            <Label>Ignored URL patterns</Label>
+            <div className="mb-2 flex gap-2">
+              <Input
+                type="text"
+                value={newPattern}
+                onChange={(e) => setNewPattern(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && addPattern()}
+                className="flex-1 py-1.5 font-mono"
+                placeholder="e.g. *.google.com or facebook.com"
+              />
+              <Button variant="ghost" size="sm" onClick={addPattern}>
+                Add
+              </Button>
+            </div>
+            <p className="mb-2 text-xs text-text-muted">
+              Substring (<code className="text-text-muted">google.com</code>), wildcards (
+              <code className="text-text-muted">*.facebook.com*</code>), or regex (
+              <code className="text-text-muted">/pattern/i</code>)
+            </p>
+            <div className="space-y-1">
+              {settings.ignoredUrlPatterns.map((pattern, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between rounded bg-elevated px-2 py-1"
+                >
+                  <span className="font-mono text-xs text-text-muted">{pattern}</span>
+                  <button
+                    onClick={() => removePattern(i)}
+                    className="text-xs text-text-muted hover:text-red-400"
+                  >
+                    &times;
+                  </button>
                 </div>
-              </label>
-            ))}
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <Label>Selector auto-capture mode</Label>
+            <div className="space-y-1">
+              {(
+                [
+                  ['auto', 'Auto-capture', 'Automatically capture pages with selector matches'],
+                  ['notify', 'Notify only', 'Show a notification when matches are found'],
+                  ['per-case', 'Per-case', 'Configure capture behavior per case']
+                ] as [AutoCaptureMode, string, string][]
+              ).map(([value, label, desc]) => (
+                <label
+                  key={value}
+                  className="flex items-start gap-2 cursor-pointer rounded p-1.5 hover:bg-elevated"
+                >
+                  <input
+                    type="radio"
+                    name="autoCaptureMode"
+                    value={value}
+                    checked={settings.autoCaptureMode === value}
+                    onChange={() => onUpdate({ autoCaptureMode: value })}
+                    className="mt-0.5"
+                  />
+                  <div>
+                    <div className="text-sm text-text-secondary">{label}</div>
+                    <div className="text-xs text-text-muted">{desc}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
-    </section>
+      </CardContent>
+    </Card>
   )
 }

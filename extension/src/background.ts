@@ -75,7 +75,8 @@ async function captureFullPageScreenshot(tabId: number): Promise<Blob | undefine
       )
     }
     return captureScreenshot(tabId)
-  } catch {
+  } catch (err) {
+    console.warn('[Birdbrain] Full-page capture threw, falling back to viewport:', String(err))
     return captureScreenshot(tabId)
   }
 }
@@ -99,8 +100,8 @@ async function captureScrollingPageScreenshot(tabId: number): Promise<Blob | und
     }
     // Fallback to non-scrolling full-page capture
     return captureFullPageScreenshot(tabId)
-  } catch {
-    // Content script unreachable — fallback
+  } catch (err) {
+    console.warn('[Birdbrain] Scrolling capture threw, falling back to full-page:', String(err))
     return captureFullPageScreenshot(tabId)
   }
 }
@@ -466,7 +467,7 @@ async function manualCaptureTab(
         : Promise.resolve(undefined)
     ])
 
-    await sendMhtmlCapture({
+    const result = await sendMhtmlCapture({
       source: 'manual',
       caseId,
       url,
@@ -481,8 +482,15 @@ async function manualCaptureTab(
       httpStatus: 200
     })
 
+    const toastStatus = result.screenshotStatus === 'dropped' ? 'degraded' : 'success'
+    const toastMessage =
+      result.screenshotStatus === 'dropped' ? 'Captured (screenshot too large)' : undefined
     chrome.tabs
-      .sendMessage(tabId, { type: 'UPDATE_CAPTURE_TOAST', status: 'success' })
+      .sendMessage(tabId, {
+        type: 'UPDATE_CAPTURE_TOAST',
+        status: toastStatus,
+        message: toastMessage
+      })
       .catch(() => {})
 
     // Re-evaluate selector highlights after capture

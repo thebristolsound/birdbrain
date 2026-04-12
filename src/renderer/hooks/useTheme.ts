@@ -26,15 +26,17 @@ export function useTheme() {
   const toggleTheme = useCallback(() => {
     const next: Theme = theme === 'dark' ? 'light' : 'dark'
 
-    document.documentElement.classList.add('transitioning')
+    document.documentElement.classList.add('no-transitions')
     applyTheme(next)
     setTheme(next)
     localStorage.setItem('theme', next)
     window.birdbrain.settings.update({ theme: next })
 
-    setTimeout(() => {
-      document.documentElement.classList.remove('transitioning')
-    }, 400)
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        document.documentElement.classList.remove('no-transitions')
+      })
+    })
   }, [theme])
 
   return { theme, toggleTheme } as const

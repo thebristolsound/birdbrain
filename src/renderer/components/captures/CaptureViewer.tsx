@@ -29,6 +29,16 @@ import {
 import { AddNoteModal } from '@renderer/components/notes/AddNoteModal'
 import { MhtmlViewer } from '@renderer/components/captures/MhtmlViewer'
 import { ProvenanceBadge } from '@renderer/components/captures/ProvenanceBadge'
+import {
+  Button,
+  Card,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter
+} from '@renderer/components/ui'
 
 type ViewTab = 'screenshot' | 'page' | 'source' | 'text' | 'metadata'
 
@@ -184,20 +194,17 @@ export function CaptureViewer() {
       {/* A) Viewer header */}
       <div className="flex items-center gap-3 border-b border-border px-4 py-3">
         {/* Prev/Next nav */}
-        <button
-          onClick={goPrev}
-          disabled={currentIndex <= 0}
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted hover:bg-elevated hover:text-text-primary disabled:opacity-30"
-        >
+        <Button variant="ghost" size="icon-sm" onClick={goPrev} disabled={currentIndex <= 0}>
           <ChevronLeft className="h-4 w-4" />
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
           onClick={goNext}
           disabled={currentIndex >= captures.length - 1}
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted hover:bg-elevated hover:text-text-primary disabled:opacity-30"
         >
           <ChevronRight className="h-4 w-4" />
-        </button>
+        </Button>
 
         {/* Title + URL + position */}
         <div className="min-w-0 flex-1">
@@ -351,30 +358,28 @@ export function CaptureViewer() {
         {/* Right side actions */}
         <div className="flex items-center gap-1">
           <ProvenanceBadge capture={capture} />
-          <button
-            onClick={handleDownload}
-            title="Download capture"
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted hover:bg-elevated hover:text-text-secondary"
-          >
+          <Button variant="ghost" size="icon-sm" onClick={handleDownload} title="Download capture">
             <Download className="h-3.5 w-3.5" />
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
             onClick={handleOpenExternal}
             title="Open URL in browser"
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted hover:bg-elevated hover:text-text-secondary"
           >
             <ExternalLink className="h-3.5 w-3.5" />
-          </button>
+          </Button>
 
           {/* Overflow menu */}
           <div className="relative">
-            <button
+            <Button
+              variant="ghost"
+              size="icon-sm"
               onClick={() => setShowOverflowMenu(!showOverflowMenu)}
               title="More actions"
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted hover:bg-elevated hover:text-text-secondary"
             >
               <MoreHorizontal className="h-3.5 w-3.5" />
-            </button>
+            </Button>
             {showOverflowMenu && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setShowOverflowMenu(false)} />
@@ -435,7 +440,7 @@ export function CaptureViewer() {
         {activeTab === 'screenshot' &&
           (content ? (
             <div className="h-full overflow-y-auto p-4">
-              <div className="neu-card rounded-2xl overflow-hidden">
+              <Card className="overflow-hidden">
                 {/* Fake browser chrome */}
                 <div className="flex items-center gap-2 border-b border-border bg-elevated px-3 py-2">
                   <div className="flex gap-1.5">
@@ -448,10 +453,15 @@ export function CaptureViewer() {
                   </div>
                 </div>
                 <img src={`data:image/png;base64,${content}`} alt="Screenshot" className="w-full" />
-              </div>
+              </Card>
             </div>
           ) : (
-            <div className="p-4 text-text-muted">No screenshot available</div>
+            <div className="flex flex-col items-center justify-center gap-1 p-8 text-center">
+              <p className="text-sm text-text-muted">No screenshot available</p>
+              <p className="text-xs text-text-faint">
+                Screenshot may not have been captured or exceeded the size limit.
+              </p>
+            </div>
           ))}
         {activeTab === 'page' && capture.format === 'mhtml' ? (
           <div className="h-full w-full overflow-hidden">
@@ -507,33 +517,24 @@ export function CaptureViewer() {
         )}
       </div>
 
-      {showDeleteConfirm && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-          onClick={() => setShowDeleteConfirm(false)}
-        >
-          <div className="neu-card w-80 rounded-2xl p-5" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-2 text-sm font-semibold text-text-primary">Delete Capture?</h3>
-            <p className="mb-4 text-xs text-text-muted">
+      <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <DialogContent onClose={() => setShowDeleteConfirm(false)} className="w-80 max-w-80 p-5">
+          <DialogHeader className="mb-2">
+            <DialogTitle className="text-sm">Delete Capture?</DialogTitle>
+            <DialogDescription className="text-xs">
               This will permanently remove the capture and its files. This cannot be undone.
-            </p>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setShowDeleteConfirm(false)}
-                className="rounded px-3 py-1.5 text-sm text-text-muted hover:text-text-primary"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDelete}
-                className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-500"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4">
+            <Button variant="ghost" onClick={() => setShowDeleteConfirm(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDelete}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <AddNoteModal
         open={showAddNote}
         caseId={caseId}

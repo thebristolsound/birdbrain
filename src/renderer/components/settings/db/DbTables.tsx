@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Pencil, Trash2, Plus, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Button } from '@renderer/components/ui'
 import type { DbTableRowsResult } from '@shared/ipc'
 import { RowEditModal } from './RowEditModal'
 import { ConfirmDialog } from './ConfirmDialog'
@@ -141,19 +142,18 @@ export function DbTables() {
           )}
         </div>
         {!isFts && (
-          <button
+          <Button
+            size="sm"
             onClick={() => setEditModal({ open: true, mode: 'create' })}
-            className="flex items-center gap-1 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent/90"
+            className="gap-1"
           >
             <Plus size={12} />
             Create
-          </button>
+          </Button>
         )}
       </div>
 
-      {error && (
-        <div className="rounded-lg bg-red-900/20 p-3 text-sm text-red-400">{error}</div>
-      )}
+      {error && <div className="rounded-lg bg-red-900/20 p-3 text-sm text-red-400">{error}</div>}
 
       {loading && !data && <div className="text-sm text-text-muted">Loading...</div>}
 
@@ -235,20 +235,22 @@ export function DbTables() {
               Page {page + 1} of {totalPages}
             </span>
             <div className="flex gap-1">
-              <button
+              <Button
+                variant="outline"
+                size="icon-sm"
                 onClick={() => setPage((p) => Math.max(0, p - 1))}
                 disabled={page === 0}
-                className="rounded-lg border border-border p-1.5 text-text-muted hover:bg-elevated disabled:opacity-30"
               >
                 <ChevronLeft size={14} />
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="outline"
+                size="icon-sm"
                 onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                 disabled={page >= totalPages - 1}
-                className="rounded-lg border border-border p-1.5 text-text-muted hover:bg-elevated disabled:opacity-30"
               >
                 <ChevronRight size={14} />
-              </button>
+              </Button>
             </div>
           </div>
         </>

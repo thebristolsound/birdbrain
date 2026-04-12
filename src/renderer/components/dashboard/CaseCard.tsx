@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, memo } from 'react'
 import type { Case } from '@shared/types'
 import { Camera, ArrowUpRight, ShieldAlert, Users, FolderOpen, MoreVertical } from 'lucide-react'
+import { Card } from '@renderer/components/ui'
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -96,11 +97,7 @@ export const CaseCard = memo(function CaseCard({
   }
 
   return (
-    <div
-      data-testid="case-card"
-      className="neu-card rounded-2xl p-5 cursor-pointer group relative"
-      onClick={onClick}
-    >
+    <Card data-testid="case-card" className="p-5 cursor-pointer group relative" onClick={onClick}>
       {/* Top row */}
       <div className="flex justify-between mb-4">
         {/* Case icon */}
@@ -232,6 +229,6 @@ export const CaseCard = memo(function CaseCard({
           </div>
         )}
       </div>
-    </div>
+    </Card>
   )
 })

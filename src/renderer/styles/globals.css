@@ -56,6 +56,31 @@
   --color-slate-800: #1e293b;
   --color-slate-900: #0f172a;
 
+  /* shadcn token bridge */
+  --color-background: var(--color-canvas);
+  --color-foreground: var(--color-text-primary);
+  --color-card-foreground: var(--color-text-primary);
+  --color-popover: var(--color-surface);
+  --color-popover-foreground: var(--color-text-primary);
+  --color-primary: var(--color-accent);
+  --color-primary-foreground: #ffffff;
+  --color-secondary: var(--color-elevated);
+  --color-secondary-foreground: var(--color-text-primary);
+  --color-muted: var(--color-surface);
+  --color-muted-foreground: var(--color-text-muted);
+  --color-accent-foreground: #ffffff;
+  --color-destructive: var(--color-red-500);
+  --color-destructive-foreground: #ffffff;
+  --color-input: var(--color-border-strong);
+  --color-ring: var(--color-accent);
+
+  /* Radius system */
+  --radius: 0.75rem;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
   /* Fonts */
   --font-display: "Plus Jakarta Sans Variable", sans-serif;
   --font-body: "DM Sans Variable", sans-serif;
@@ -65,9 +90,9 @@
 /* === Dark mode overrides === */
 html.dark {
   --color-canvas: #000000;
-  --color-surface: #0f172a;
-  --color-card: #1e293b;
-  --color-elevated: #273548;
+  --color-surface: color-mix(in srgb, #0f172a 94%, var(--color-accent));
+  --color-card: color-mix(in srgb, #1e293b 92%, var(--color-accent));
+  --color-elevated: color-mix(in srgb, #273548 92%, var(--color-accent));
   --color-text-primary: #f1f5f9;
   --color-text-secondary: #cbd5e1;
   --color-text-muted: #94a3b8;
@@ -93,11 +118,11 @@ html.dark {
   --shadow-btn: 0 4px 20px rgba(99,102,241,0.4), 0 0 40px rgba(99,102,241,0.12);
 }
 
-/* === Smooth theme transition === */
-html.transitioning,
-html.transitioning * {
-  transition: background-color 0.4s ease, color 0.3s ease,
-              border-color 0.3s ease, box-shadow 0.3s ease !important;
+/* === Suppress transitions during theme swap === */
+html.no-transitions,
+html.no-transitions * {
+  transition: none !important;
+  animation: none !important;
 }
 
 /* === Base styles === */
@@ -105,14 +130,23 @@ body {
   @apply bg-canvas text-text-secondary;
   font-family: var(--font-body);
 }
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  z-index: 9999;
+}
 
 /* === Scrollbar === */
-::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 6px; }
-::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-html.dark ::-webkit-scrollbar-thumb { background: #334155; }
-html.dark ::-webkit-scrollbar-thumb:hover { background: #475569; }
+::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.25); }
+html.dark ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.10); }
+html.dark ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
 
 @keyframes float {
   0%, 100% { transform: translateY(0px); }

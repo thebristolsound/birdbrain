@@ -21,6 +21,7 @@ import {
   getSessionState,
   resetSessionState
 } from '@main/services/captureServer'
+import { MAX_SCREENSHOT_SIZE } from '@shared/constants'
 
 let nextPort = 19846
 
@@ -316,7 +317,11 @@ describe('captureServer', () => {
 
     const form = new FormData()
     form.append('source', 'auto')
-    form.append('mhtml', new Blob(['<html>test</html>'], { type: 'multipart/related' }), 'capture.mhtml')
+    form.append(
+      'mhtml',
+      new Blob(['<html>test</html>'], { type: 'multipart/related' }),
+      'capture.mhtml'
+    )
     const res = await fetch(`${baseUrl}/api/captures`, { method: 'POST', body: form })
     expect(res.status).toBe(400)
     const data = await res.json()
@@ -775,11 +780,58 @@ describe('captureServer', () => {
 
     const res = await fetch(`${baseUrl}/api/captures`, { method: 'POST', body: form })
     expect(res.status).toBe(200)
-    await res.json()
+    const data = await res.json()
+    expect(data.screenshotStatus).toBe('saved')
 
     const captures = listCaptures(c.id)
     expect(captures).toHaveLength(1)
     expect(captures[0].screenshotPath).toContain('.png')
+  })
+
+  it('returns screenshotStatus "dropped" when screenshot exceeds size limit', async () => {
+    const c = createCase({ name: 'Large Screenshot Test' })
+    const oversized = Buffer.alloc(MAX_SCREENSHOT_SIZE + 1, 0x42)
+
+    const form = new FormData()
+    form.append('source', 'manual')
+    form.append('caseId', c.id)
+    form.append('url', 'https://example.com/large-screenshot')
+    form.append('title', 'Large Screenshot Page')
+    form.append('timestamp', new Date().toISOString())
+    form.append('textContent', 'page text')
+    form.append(
+      'mhtml',
+      new Blob(['<html>large</html>'], { type: 'multipart/related' }),
+      'capture.mhtml'
+    )
+    form.append('screenshot', new Blob([oversized], { type: 'image/png' }), 'screenshot.png')
+
+    const res = await fetch(`${baseUrl}/api/captures`, { method: 'POST', body: form })
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(data.screenshotStatus).toBe('dropped')
+    expect(data.screenshotWarning).toContain('too large')
+
+    const captures = listCaptures(c.id)
+    expect(captures).toHaveLength(1)
+    expect(captures[0].screenshotPath).toBeFalsy()
+  })
+
+  it('returns screenshotStatus "none" when no screenshot is sent', async () => {
+    const c = createCase({ name: 'No Screenshot Test' })
+
+    const res = await postCapture({
+      source: 'manual',
+      caseId: c.id,
+      url: 'https://example.com/no-screenshot',
+      title: 'No Screenshot Page',
+      timestamp: new Date().toISOString(),
+      textContent: 'page text'
+    })
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(data.screenshotStatus).toBe('none')
+    expect(data.screenshotWarning).toBeUndefined()
   })
 
   // --- POST /api/selectors (create selector from extension) ---

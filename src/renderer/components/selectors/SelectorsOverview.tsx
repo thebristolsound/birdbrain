@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Download, ListPlus } from 'lucide-react'
+import { Button } from '@renderer/components/ui'
 import { useAppStore } from '@renderer/stores/appStore'
 import {
   selectorsQueryOptions,
@@ -54,24 +55,28 @@ export function SelectorsOverview() {
   return (
     <div className="mx-auto max-w-5xl space-y-5 px-8 py-6 pb-16">
       <div className="flex items-center justify-end gap-2">
-        <button
+        <Button
           data-testid="bulk-add-btn"
+          variant="outline"
+          size="sm"
           onClick={() => setShowBulkAddModal(true)}
-          className="flex items-center gap-1.5 rounded-lg border border-border-strong bg-surface px-3 py-1.5 text-xs font-medium text-text-secondary hover:bg-elevated"
+          className="gap-1.5"
         >
           <ListPlus className="h-3.5 w-3.5" />
           Bulk Add
-        </button>
-        <button
+        </Button>
+        <Button
           data-testid="export-matches-btn"
+          variant="outline"
+          size="sm"
           onClick={handleExportMatches}
           disabled={totalMatches === 0 || exporting}
-          className="flex items-center gap-1.5 rounded-lg border border-border-strong bg-surface px-3 py-1.5 text-xs font-medium text-text-secondary hover:bg-elevated disabled:opacity-40"
           title={totalMatches === 0 ? 'No selector matches to export' : 'Export all matches to CSV'}
+          className="gap-1.5"
         >
           <Download className="h-3.5 w-3.5" />
           {exporting ? 'Exporting...' : 'Export Matches'}
-        </button>
+        </Button>
       </div>
 
       <CreateSelectorCard

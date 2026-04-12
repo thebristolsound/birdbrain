@@ -4,6 +4,7 @@ import { motion } from 'motion/react'
 import type { Selector } from '@shared/types'
 import { useSelectorsMutations } from '@renderer/lib/queries'
 import { presets } from '@renderer/lib/motion'
+import { Button, Input, Textarea } from '@renderer/components/ui'
 
 interface BulkAddSelectorsModalProps {
   caseId: string
@@ -32,7 +33,6 @@ function parseInput(raw: string, existingSelectors: Selector[], isRegex: boolean
       blankCount++
       continue
     }
-    // Regex patterns are case-sensitive; text patterns dedupe case-insensitively.
     const key = isRegex ? trimmed : trimmed.toLowerCase()
     if (seen.has(key)) {
       withinPasteDuplicates++
@@ -42,7 +42,6 @@ function parseInput(raw: string, existingSelectors: Selector[], isRegex: boolean
     unique.push(trimmed)
   }
 
-  // Now check against existing selectors (match on pattern + isRegex).
   const existingKeys = new Set(
     existingSelectors
       .filter((s) => s.isRegex === isRegex)
@@ -60,12 +59,7 @@ function parseInput(raw: string, existingSelectors: Selector[], isRegex: boolean
     }
   }
 
-  return {
-    unique: newPatterns,
-    blankCount,
-    withinPasteDuplicates,
-    existingDuplicates
-  }
+  return { unique: newPatterns, blankCount, withinPasteDuplicates, existingDuplicates }
 }
 
 export function BulkAddSelectorsModal({
@@ -91,7 +85,6 @@ export function BulkAddSelectorsModal({
     if (!file) return
     const contents = await file.text()
     setText((prev) => (prev.trim() ? `${prev}\n${contents}` : contents))
-    // Reset the input so selecting the same file again still fires change.
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -133,22 +126,18 @@ export function BulkAddSelectorsModal({
               One pattern per line. Blank lines are ignored.
             </p>
           </div>
-          <button
-            onClick={onClose}
-            className="rounded p-1 text-text-faint hover:bg-elevated hover:text-text-primary"
-            aria-label="Close"
-          >
+          <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close">
             <X className="h-4 w-4" />
-          </button>
+          </Button>
         </div>
 
-        <textarea
+        <Textarea
           data-testid="bulk-add-textarea"
           value={text}
           onChange={(e) => setText(e.target.value)}
           rows={10}
           placeholder={'alice@example.com\nbob@example.com\n555-867-5309'}
-          className="mb-3 w-full rounded-lg border border-border-strong bg-canvas px-3 py-2 font-mono text-xs text-text-primary placeholder:text-text-faint focus:border-accent/40 focus:outline-none focus:ring-2 focus:ring-accent/25"
+          className="mb-3 border-border-strong bg-canvas font-mono text-xs placeholder:text-text-faint focus:border-accent/40 focus:ring-2 focus:ring-accent/25"
         />
 
         <div className="mb-3 flex flex-wrap items-center gap-3">
@@ -175,13 +164,13 @@ export function BulkAddSelectorsModal({
             Treat all as regex
           </label>
 
-          <input
+          <Input
             data-testid="bulk-add-label-prefix"
             type="text"
             value={labelPrefix}
             onChange={(e) => setLabelPrefix(e.target.value)}
             placeholder="Label prefix (optional)"
-            className="flex-1 min-w-[8rem] rounded-lg border border-border-strong bg-canvas px-3 py-1.5 text-xs text-text-primary placeholder:text-text-faint focus:border-accent/40 focus:outline-none"
+            className="flex-1 min-w-[8rem] bg-canvas py-1.5 text-xs placeholder:text-text-faint focus:border-accent/40"
           />
         </div>
 
@@ -206,20 +195,17 @@ export function BulkAddSelectorsModal({
         </div>
 
         <div className="flex justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="rounded px-3 py-1.5 text-sm text-text-muted hover:text-text-primary"
-          >
+          <Button variant="ghost" size="sm" onClick={onClose}>
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             data-testid="bulk-add-submit"
+            size="sm"
             onClick={handleSubmit}
             disabled={parsed.unique.length === 0 || submitting}
-            className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
           >
             {submitting ? 'Creating...' : `Create All (${parsed.unique.length})`}
-          </button>
+          </Button>
         </div>
       </motion.div>
     </motion.div>

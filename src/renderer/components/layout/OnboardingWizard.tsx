@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { Radar, Puzzle, FolderPlus, ArrowRight, Check } from 'lucide-react'
 import { useAppStore } from '@renderer/stores/appStore'
 import { useCasesMutations } from '@renderer/lib/queries'
+import { Button, Input, Label } from '@renderer/components/ui'
 
 export function OnboardingWizard() {
   const navigate = useNavigate()
@@ -114,14 +115,14 @@ export function OnboardingWizard() {
 
                 {/* Footer */}
                 <div className="flex justify-end">
-                  <button
+                  <Button
                     data-testid="onboarding-skip-btn"
                     onClick={handleContinue}
-                    className="flex items-center gap-2 rounded-xl bg-accent px-6 py-2.5 text-sm font-medium text-white shadow-[var(--shadow-btn)] transition hover:bg-accent-hover"
+                    className="rounded-xl px-6 py-2.5 gap-2 shadow-[var(--shadow-btn)]"
                   >
                     {connectedToExtension ? 'Continue' : 'Skip for now'}
                     <ArrowRight className="h-4 w-4" />
-                  </button>
+                  </Button>
                 </div>
               </motion.div>
             ) : (
@@ -154,37 +155,33 @@ export function OnboardingWizard() {
 
                 {/* Input */}
                 <div className="mb-8">
-                  <label className="mb-1.5 block text-sm font-medium text-text-secondary">
+                  <Label className="mb-1.5 font-medium text-text-secondary">
                     Investigation Name
-                  </label>
-                  <input
+                  </Label>
+                  <Input
                     data-testid="onboarding-name-input"
-                    type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder="e.g. Phishing Campaign Analysis"
-                    className="w-full rounded-xl border border-border-strong bg-elevated px-4 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
+                    className="rounded-xl px-4 py-2.5"
                     autoFocus
                   />
                 </div>
 
                 {/* Footer */}
                 <div className="flex items-center justify-between">
-                  <button
-                    onClick={() => setStep(0)}
-                    className="text-sm text-text-muted transition hover:text-text-primary"
-                  >
+                  <Button variant="ghost" onClick={() => setStep(0)}>
                     Back
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     onClick={handleSubmit}
                     disabled={!name.trim() || submitting}
-                    className="flex items-center gap-2 rounded-xl bg-accent px-6 py-2.5 text-sm font-medium text-white shadow-[var(--shadow-btn)] transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-xl px-6 py-2.5 gap-2 shadow-[var(--shadow-btn)]"
                   >
                     {submitting ? 'Creating...' : 'Create & Start'}
                     {!submitting && <ArrowRight className="h-4 w-4" />}
-                  </button>
+                  </Button>
                 </div>
               </motion.div>
             )}

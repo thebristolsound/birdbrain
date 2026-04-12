@@ -3,6 +3,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { motion } from 'motion/react'
 import { useCasesMutations } from '@renderer/lib/queries'
 import { presets } from '@renderer/lib/motion'
+import { Button, Input, Textarea, Label } from '@renderer/components/ui'
 
 interface CreateCaseDialogProps {
   onClose: () => void
@@ -39,44 +40,33 @@ export function CreateCaseDialog({ onClose }: CreateCaseDialogProps) {
         <h2 className="mb-4 text-lg font-semibold text-text-primary">New Case</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="mb-1 block text-sm text-text-muted">Name</label>
-            <input
+            <Label>Name</Label>
+            <Input
               data-testid="case-name-input"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded border border-border-strong bg-elevated px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
               placeholder="Investigation name..."
               autoFocus
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm text-text-muted">Description (optional)</label>
-            <textarea
+            <Label>Description (optional)</Label>
+            <Textarea
               data-testid="case-description-input"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="w-full rounded border border-border-strong bg-elevated px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
               placeholder="What is this investigation about?"
               rows={3}
             />
           </div>
           <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded px-3 py-1.5 text-sm text-text-muted hover:text-text-primary"
-            >
+            <Button type="button" variant="ghost" size="sm" onClick={onClose}>
               Cancel
-            </button>
-            <button
-              data-testid="case-create-btn"
-              type="submit"
-              disabled={!name.trim()}
-              className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-            >
+            </Button>
+            <Button data-testid="case-create-btn" type="submit" size="sm" disabled={!name.trim()}>
               Create
-            </button>
+            </Button>
           </div>
         </form>
       </motion.div>

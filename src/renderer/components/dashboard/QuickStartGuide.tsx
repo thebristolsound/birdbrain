@@ -1,4 +1,5 @@
 import { Compass, Crosshair, Camera, Tags, FileOutput, Check } from 'lucide-react'
+import { Card, CardContent } from '@renderer/components/ui'
 
 const steps = [
   {
@@ -56,28 +57,30 @@ export function QuickStartGuide() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           {steps.map((step) => (
             <div key={step.number} className="group">
-              <div className="neu-card rounded-2xl p-5 h-full">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-8 h-8 rounded-xl bg-accent flex items-center justify-center text-white font-display font-extrabold text-xs flex-shrink-0 shadow-md shadow-indigo-500/20">
-                    {step.number}
-                  </div>
-                  {step.number < 4 && <div className="flex-1 step-connector" />}
-                  {step.number === 4 && (
-                    <div className="w-3 h-3 rounded-full bg-accent-subtle flex items-center justify-center flex-shrink-0 ml-auto">
-                      <Check className="h-2 w-2 text-accent" />
+              <Card className="h-full">
+                <CardContent>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-8 h-8 rounded-xl bg-accent flex items-center justify-center text-white font-display font-extrabold text-xs flex-shrink-0 shadow-md shadow-indigo-500/20">
+                      {step.number}
                     </div>
-                  )}
-                </div>
-                <div
-                  className={`w-10 h-10 rounded-xl ${step.bg} flex items-center justify-center mb-3`}
-                >
-                  <step.icon className={`h-5 w-5 ${step.iconColor}`} />
-                </div>
-                <h4 className="font-display font-bold text-sm text-text-primary mb-1.5">
-                  {step.title}
-                </h4>
-                <p className="text-[11px] text-text-muted leading-relaxed">{step.description}</p>
-              </div>
+                    {step.number < 4 && <div className="flex-1 step-connector" />}
+                    {step.number === 4 && (
+                      <div className="w-3 h-3 rounded-full bg-accent-subtle flex items-center justify-center flex-shrink-0 ml-auto">
+                        <Check className="h-2 w-2 text-accent" />
+                      </div>
+                    )}
+                  </div>
+                  <div
+                    className={`w-10 h-10 rounded-xl ${step.bg} flex items-center justify-center mb-3`}
+                  >
+                    <step.icon className={`h-5 w-5 ${step.iconColor}`} />
+                  </div>
+                  <h4 className="font-display font-bold text-sm text-text-primary mb-1.5">
+                    {step.title}
+                  </h4>
+                  <p className="text-[11px] text-text-muted leading-relaxed">{step.description}</p>
+                </CardContent>
+              </Card>
             </div>
           ))}
         </div>

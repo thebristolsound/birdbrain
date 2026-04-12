@@ -1,4 +1,5 @@
 import { Radar, Sun, Moon, ChevronsUpDown, Settings, ArrowLeft } from 'lucide-react'
+import { Button } from '@renderer/components/ui'
 import { useMatchRoute, useNavigate, useRouter } from '@tanstack/react-router'
 import { useAppStore } from '@renderer/stores/appStore'
 import { SearchBar } from '@renderer/components/search/SearchBar'
@@ -34,24 +35,22 @@ export function TopBar() {
         </div>
 
         {/* Return button */}
-        <button
-          onClick={() => router.history.back()}
-          className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-text-muted hover:bg-elevated hover:text-text-primary transition-colors"
-        >
+        <Button variant="ghost" size="sm" onClick={() => router.history.back()} className="gap-1.5">
           <ArrowLeft className="h-3.5 w-3.5" />
           <span>Return to Birdbrain</span>
-        </button>
+        </Button>
 
         <div className="flex-1" />
 
         {/* Theme toggle only */}
-        <button
+        <Button
+          variant="ghost"
+          size="icon-sm"
           onClick={toggleTheme}
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted hover:bg-elevated hover:text-accent transition-all duration-300"
           title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
         >
           {theme === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
-        </button>
+        </Button>
       </header>
     )
   }
@@ -74,13 +73,14 @@ export function TopBar() {
 
       {/* Compact case switcher */}
       {activeCaseId && (
-        <button
+        <Button
+          variant="ghost"
+          size="icon-sm"
           onClick={() => setCommandPaletteOpen(true)}
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted hover:bg-elevated hover:text-text-primary transition-colors"
           title="Switch investigation (Ctrl+K)"
         >
           <ChevronsUpDown className="h-3.5 w-3.5" />
-        </button>
+        </Button>
       )}
 
       <div className="flex-1" />
@@ -101,21 +101,23 @@ export function TopBar() {
         <ConnectionStatus />
         <CaptureHealth />
 
-        <button
+        <Button
+          variant="ghost"
+          size="icon-sm"
           onClick={() => navigate({ to: '/settings' })}
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted hover:bg-elevated hover:text-accent transition-all duration-300"
           title="Settings"
         >
           <Settings className="h-3.5 w-3.5" />
-        </button>
+        </Button>
 
-        <button
+        <Button
+          variant="ghost"
+          size="icon-sm"
           onClick={toggleTheme}
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted hover:bg-elevated hover:text-accent transition-all duration-300"
           title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
         >
           {theme === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
-        </button>
+        </Button>
       </div>
     </header>
   )

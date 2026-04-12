@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Plus, ChevronUp, ChevronDown, Search, FlaskConical, Crosshair } from 'lucide-react'
 import { testPatternAgainstText, type MatchResult } from './selectorUtils'
+import { Card, Button, Label } from '@renderer/components/ui'
 
 interface TestResult {
   captureTitle: string
@@ -104,7 +105,7 @@ export function CreateSelectorCard({
   const totalMatches = testResults?.reduce((sum, r) => sum + r.matches.length, 0) ?? 0
 
   return (
-    <div className="neu-card rounded-2xl">
+    <Card>
       <button onClick={onToggle} className="flex w-full items-center gap-3 px-5 py-4 text-left">
         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-subtle">
           <Crosshair className="h-4 w-4 text-accent" />
@@ -127,7 +128,7 @@ export function CreateSelectorCard({
           <div className="grid grid-cols-12 gap-4">
             {/* Pattern input */}
             <div className="col-span-6">
-              <label className="mb-1 block text-xs font-medium text-text-muted">Pattern</label>
+              <Label className="text-xs font-medium">Pattern</Label>
               <div className="flex items-center gap-2">
                 <div className="relative flex-1">
                   <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
@@ -166,7 +167,7 @@ export function CreateSelectorCard({
 
             {/* Label input */}
             <div className="col-span-4">
-              <label className="mb-1 block text-xs font-medium text-text-muted">Label</label>
+              <Label className="text-xs font-medium">Label</Label>
               <input
                 type="text"
                 value={label}
@@ -181,22 +182,25 @@ export function CreateSelectorCard({
 
             {/* Buttons */}
             <div className="col-span-2 flex items-end gap-2">
-              <button
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={handleTest}
                 disabled={!pattern.trim() || !!regexError || testing}
-                className="flex items-center gap-1 rounded-lg border border-border-strong bg-surface px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:bg-elevated disabled:opacity-40"
+                className="gap-1"
               >
                 <FlaskConical className="h-3.5 w-3.5" />
                 {testing ? '...' : 'Test'}
-              </button>
-              <button
+              </Button>
+              <Button
+                size="sm"
                 onClick={handleCreate}
                 disabled={!pattern.trim() || !!regexError || creating}
-                className="flex items-center gap-1 rounded-lg bg-accent px-2.5 py-1.5 text-xs font-medium text-white shadow-lg shadow-indigo-600/20 hover:bg-accent-hover disabled:opacity-50"
+                className="gap-1"
               >
                 <Plus className="h-3.5 w-3.5" />
                 {creating ? '...' : 'Create'}
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -247,6 +251,6 @@ export function CreateSelectorCard({
           )}
         </div>
       )}
-    </div>
+    </Card>
   )
 }

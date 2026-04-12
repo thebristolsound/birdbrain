@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ConfirmDialog } from './ConfirmDialog'
 import type { OrphanReport } from '@shared/ipc'
+import { Button } from '@renderer/components/ui'
 
 const EXPORT_TABLES = [
   'cases',
@@ -252,13 +253,9 @@ export function DbUtilities() {
         title="Vacuum & Optimize"
         description="Reclaim unused space and optimize query performance."
       >
-        <button
-          onClick={handleVacuum}
-          disabled={loading !== null}
-          className="rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:bg-elevated disabled:opacity-50"
-        >
+        <Button variant="outline" size="sm" onClick={handleVacuum} disabled={loading !== null}>
           {loading === 'vacuum' ? 'Running...' : 'Run Vacuum'}
-        </button>
+        </Button>
       </UtilCard>
 
       <UtilCard
@@ -266,13 +263,9 @@ export function DbUtilities() {
         title="Rebuild FTS Indexes"
         description="Drop and rebuild full-text search indexes for captures and notes."
       >
-        <button
-          onClick={handleRebuildFts}
-          disabled={loading !== null}
-          className="rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:bg-elevated disabled:opacity-50"
-        >
+        <Button variant="outline" size="sm" onClick={handleRebuildFts} disabled={loading !== null}>
           {loading === 'fts' ? 'Rebuilding...' : 'Rebuild'}
-        </button>
+        </Button>
       </UtilCard>
 
       <UtilCard
@@ -303,13 +296,9 @@ export function DbUtilities() {
         title="Find & Clean Orphans"
         description="Scan for DB records with missing files and files with no DB record."
       >
-        <button
-          onClick={handleScanOrphans}
-          disabled={loading !== null}
-          className="rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:bg-elevated disabled:opacity-50"
-        >
+        <Button variant="outline" size="sm" onClick={handleScanOrphans} disabled={loading !== null}>
           {loading === 'orphans' ? 'Scanning...' : 'Scan'}
-        </button>
+        </Button>
         {orphanReport &&
           (orphanReport.dbOrphans.length > 0 || orphanReport.fileOrphans.length > 0) && (
             <button
@@ -335,13 +324,9 @@ export function DbUtilities() {
         title="Backup Database"
         description="Copy the database file to a location of your choice."
       >
-        <button
-          onClick={handleBackup}
-          disabled={loading !== null}
-          className="rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:bg-elevated disabled:opacity-50"
-        >
+        <Button variant="outline" size="sm" onClick={handleBackup} disabled={loading !== null}>
           {loading === 'backup' ? 'Saving...' : 'Create Backup'}
-        </button>
+        </Button>
       </UtilCard>
 
       <UtilCard
@@ -391,13 +376,9 @@ export function DbUtilities() {
           <option value="csv">CSV</option>
           <option value="json">JSON</option>
         </select>
-        <button
-          onClick={handleExport}
-          disabled={loading !== null}
-          className="rounded-lg border border-border px-3 py-1.5 text-xs text-text-muted hover:bg-elevated disabled:opacity-50"
-        >
+        <Button variant="outline" size="sm" onClick={handleExport} disabled={loading !== null}>
           {loading === 'export' ? 'Exporting...' : 'Export'}
-        </button>
+        </Button>
       </UtilCard>
 
       <ConfirmDialog

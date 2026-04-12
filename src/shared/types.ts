@@ -159,4 +159,5 @@ export interface CaptureEvent {
   error?: string
   skipReason?: string
   durationMs?: number
+  screenshotWarning?: string
 }

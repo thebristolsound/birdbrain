@@ -1,4 +1,5 @@
-import { Radar, Github } from 'lucide-react'
+import { Github } from 'lucide-react'
+import logoImg from '@renderer/assets/logo.png'
 import { Button } from '@renderer/components/ui'
 
 export function DashboardFooter() {
@@ -7,9 +8,7 @@ export function DashboardFooter() {
       <div className="max-w-5xl mx-auto flex items-center justify-between">
         {/* Left: logo + version text */}
         <div className="flex items-center gap-2">
-          <div className="flex h-5 w-5 items-center justify-center rounded bg-accent shadow-sm shadow-indigo-500/30">
-            <Radar className="h-2.5 w-2.5 text-white" />
-          </div>
+          <img src={logoImg} alt="Birdbrain" className="h-5 w-5" />
           <span className="text-[11px] text-text-faint">
             Birdbrain v2.0.0 — Open-Source Intelligence Platform
           </span>

@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { AnimatePresence, motion } from 'motion/react'
-import { Radar, Puzzle, FolderPlus, ArrowRight, Check } from 'lucide-react'
+import { Puzzle, FolderPlus, ArrowRight, Check } from 'lucide-react'
+import logoImg from '@renderer/assets/logo.png'
 import { useAppStore } from '@renderer/stores/appStore'
 import { useCasesMutations } from '@renderer/lib/queries'
 import { Button, Input, Label } from '@renderer/components/ui'
@@ -44,9 +45,7 @@ export function OnboardingWizard() {
     >
       <div className="flex w-full max-w-md flex-col items-center">
         {/* Logo */}
-        <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-accent shadow-[var(--shadow-btn)]">
-          <Radar className="h-7 w-7 text-white" />
-        </div>
+        <img src={logoImg} alt="Birdbrain" className="mb-6 h-14 w-14 shadow-[var(--shadow-btn)]" />
 
         {/* Progress dots */}
         <div className="mb-8 flex items-center gap-2">

@@ -1,4 +1,5 @@
-import { Radar, PlusCircle, FolderOpen } from 'lucide-react'
+import { PlusCircle, FolderOpen } from 'lucide-react'
+import logoImg from '@renderer/assets/logo.png'
 
 interface HeroSectionProps {
   onNewInvestigation: () => void
@@ -10,9 +11,7 @@ export function HeroSection({ onNewInvestigation, onOpenRecent }: HeroSectionPro
     <section className="relative pt-16 pb-12 px-8">
       <div className="max-w-3xl mx-auto text-center">
         <div className="flex justify-center mb-8">
-          <div className="logo-pulse w-16 h-16 rounded-2xl bg-accent flex items-center justify-center">
-            <Radar className="h-8 w-8 text-white" />
-          </div>
+          <img src={logoImg} alt="Birdbrain" className="logo-pulse w-16 h-16" />
         </div>
 
         <h1 className="font-display font-extrabold text-4xl tracking-tight text-text-primary mb-3">

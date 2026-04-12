@@ -3,6 +3,7 @@ import { useParams, Outlet, useMatchRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { casesQueryOptions } from '@renderer/lib/queries'
 import { useSelectorFilters } from '@renderer/hooks/useSelectorFilters'
+import { useAppStore } from '@renderer/stores/appStore'
 import { CAPTURE_SERVER_BASE_URL } from '@shared/constants'
 import type { BirdbrainSettings } from '@shared/types'
 import { CaseHeader } from '@renderer/components/layout/CaseHeader'
@@ -13,6 +14,14 @@ export function CaseWorkspace() {
   const { data: cases = [], isLoading } = useQuery(casesQueryOptions)
 
   useSelectorFilters(caseId)
+
+  // Clear per-case UI state when switching cases
+  useEffect(() => {
+    const store = useAppStore.getState()
+    store.setSelectedCaptureId(null)
+    store.clearCaptureSelection()
+    store.clearSelectorFilters()
+  }, [caseId])
 
   // Activate case on the capture server + persist session state
   useEffect(() => {

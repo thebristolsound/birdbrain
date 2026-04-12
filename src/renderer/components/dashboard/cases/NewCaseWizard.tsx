@@ -1,8 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { motion } from 'motion/react'
 import { useCasesMutations } from '@renderer/lib/queries'
-import { FolderPlus, Bitcoin, Bug, ShieldAlert, Settings2, ArrowLeft } from 'lucide-react'
+import { FolderPlus, ArrowLeft } from 'lucide-react'
 import { Card, Button, Input, Textarea, Label } from '@renderer/components/ui'
 
 const SELECTOR_PRESETS = [
@@ -39,20 +38,12 @@ const SELECTOR_PRESETS = [
   { id: 'username', label: 'Usernames', pattern: '@[a-zA-Z0-9_]{1,15}', isRegex: true }
 ]
 
-const CASE_TYPES = [
-  { id: 'crypto' as const, label: 'Crypto', icon: Bitcoin },
-  { id: 'malware' as const, label: 'Malware', icon: Bug },
-  { id: 'fraud' as const, label: 'Fraud', icon: ShieldAlert },
-  { id: 'custom' as const, label: 'Custom', icon: Settings2 }
-]
-
 export function NewCaseWizard() {
   const navigate = useNavigate()
   const { create } = useCasesMutations()
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const [caseType, setCaseType] = useState<'crypto' | 'malware' | 'fraud' | 'custom'>('custom')
   const [selectedSelectors, setSelectedSelectors] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
 
@@ -70,7 +61,7 @@ export function NewCaseWizard() {
       const newCase = await create.mutateAsync({
         name: name.trim(),
         description: description.trim() || undefined,
-        type: caseType
+        type: 'custom'
       })
 
       await window.birdbrain.settings.update({ hasCompletedOnboarding: true })
@@ -141,39 +132,6 @@ export function NewCaseWizard() {
             rows={3}
             className="resize-none rounded-xl px-4 py-2.5 placeholder:text-text-muted"
           />
-        </div>
-
-        {/* Investigation Type */}
-        <div className="mb-6">
-          <label className="mb-3 block text-sm font-medium text-text-secondary">
-            Investigation Type
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            {CASE_TYPES.map((t) => {
-              const Icon = t.icon
-              const selected = caseType === t.id
-              return (
-                <motion.button
-                  key={t.id}
-                  onClick={() => setCaseType(t.id)}
-                  whileTap={{ scale: 0.97 }}
-                  whileHover={{ scale: 1.02 }}
-                  className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition ${
-                    selected
-                      ? 'border-accent bg-accent-subtle'
-                      : 'border-border-strong bg-elevated hover:border-accent/30'
-                  }`}
-                >
-                  <Icon className={`h-5 w-5 ${selected ? 'text-accent' : 'text-text-muted'}`} />
-                  <span
-                    className={`text-sm font-medium ${selected ? 'text-text-primary' : 'text-text-secondary'}`}
-                  >
-                    {t.label}
-                  </span>
-                </motion.button>
-              )
-            })}
-          </div>
         </div>
 
         {/* Initial Selectors */}

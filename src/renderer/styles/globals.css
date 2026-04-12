@@ -160,9 +160,9 @@ html.dark ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); 
   0% { transform: scale(1); opacity: 0.4; }
   100% { transform: scale(1.8); opacity: 0; }
 }
-@keyframes glow-pulse {
-  0%, 100% { box-shadow: var(--shadow-glow); }
-  50% { box-shadow: var(--shadow-glow), 0 0 30px rgba(99,102,241,0.15); }
+@keyframes pulse {
+  0%, 100% { filter: drop-shadow(0 0 8px rgba(99,102,241,0.5)); }
+  50% { filter: drop-shadow(0 0 16px rgba(99,102,241,0.75)); }
 }
 
 /* === Neumorphic cards === */
@@ -204,7 +204,7 @@ html.dark .shimmer-text {
 /* === Logo pulse === */
 .logo-pulse {
   position: relative;
-  animation: glow-pulse 3s ease-in-out infinite, float 4s ease-in-out infinite;
+  animation: pulse 3s ease-in-out infinite, float 4s ease-in-out infinite;
 }
 .logo-pulse::after {
   content: '';

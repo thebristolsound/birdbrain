@@ -1,4 +1,5 @@
-import { Radar, Sun, Moon, ChevronsUpDown, Settings, ArrowLeft } from 'lucide-react'
+import { Sun, Moon, ChevronsUpDown, Settings, ArrowLeft } from 'lucide-react'
+import logoImg from '@renderer/assets/logo.png'
 import { Button } from '@renderer/components/ui'
 import { useMatchRoute, useNavigate, useRouter } from '@tanstack/react-router'
 import { useAppStore } from '@renderer/stores/appStore'
@@ -26,9 +27,7 @@ export function TopBar() {
       <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border bg-surface px-4">
         {/* Logo */}
         <div className="flex items-center gap-2 px-1 -ml-1">
-          <div className="glow-indigo flex h-6 w-6 items-center justify-center rounded-md bg-accent">
-            <Radar className="h-3.5 w-3.5 text-white" />
-          </div>
+          <img src={logoImg} alt="Birdbrain" className="h-6 w-6" />
           <span className="font-display text-xs font-extrabold tracking-tight text-text-primary">
             Birdbrain
           </span>
@@ -63,9 +62,7 @@ export function TopBar() {
         className="flex items-center gap-2 rounded-md px-1 -ml-1 hover:bg-elevated transition-colors"
         title="Home"
       >
-        <div className="glow-indigo flex h-6 w-6 items-center justify-center rounded-md bg-accent">
-          <Radar className="h-3.5 w-3.5 text-white" />
-        </div>
+        <img src={logoImg} alt="Birdbrain" className="h-6 w-6" />
         <span className="font-display text-xs font-extrabold tracking-tight text-text-primary">
           Birdbrain
         </span>

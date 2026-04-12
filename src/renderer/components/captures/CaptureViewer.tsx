@@ -357,7 +357,7 @@ export function CaptureViewer() {
 
         {/* Right side actions */}
         <div className="flex items-center gap-1">
-          <ProvenanceBadge capture={capture} />
+          <ProvenanceBadge key={capture.id} capture={capture} />
           <Button variant="ghost" size="icon-sm" onClick={handleDownload} title="Download capture">
             <Download className="h-3.5 w-3.5" />
           </Button>

@@ -284,9 +284,11 @@ function migrate(db: Database.Database): void {
     db.transaction(() => {
       // Rebuild captures_fts to purge stale entries left by CASCADE deletes
       db.exec(`DELETE FROM captures_fts`)
-      const rows = db
-        .prepare('SELECT rowid, title, url FROM captures')
-        .all() as Array<{ rowid: number; title: string; url: string }>
+      const rows = db.prepare('SELECT rowid, title, url FROM captures').all() as Array<{
+        rowid: number
+        title: string
+        url: string
+      }>
       const insert = db.prepare(
         'INSERT INTO captures_fts (rowid, title, url, content) VALUES (?, ?, ?, ?)'
       )
@@ -305,6 +307,18 @@ function migrate(db: Database.Database): void {
         ALTER TABLE captures ADD COLUMN last_verified_status TEXT;
       `)
       db.pragma('user_version = 13')
+    })()
+  }
+
+  if (version < 14) {
+    // Purge orphaned captures_fts entries whose rowids no longer exist in captures.
+    // These orphans caused "constraint failed" on new capture inserts because the FTS
+    // INSERT tried to reuse a rowid that was still present in the standalone FTS table.
+    // Root cause: dbAdmin.deleteRow() and cleanOrphans() deleted capture rows without
+    // cleaning the corresponding FTS entries (now fixed).
+    db.transaction(() => {
+      db.prepare('DELETE FROM captures_fts WHERE rowid NOT IN (SELECT rowid FROM captures)').run()
+      db.pragma('user_version = 14')
     })()
   }
 }

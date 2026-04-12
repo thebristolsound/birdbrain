@@ -534,7 +534,15 @@ export function registerIpcHandlers(): void {
   })
 
   // Search
-  ipcMain.handle(IPC_CHANNELS.SEARCH, (_, query: string) => db.searchCaptures(query))
+  ipcMain.handle(IPC_CHANNELS.SEARCH, (_, query: string) => {
+    try {
+      return db.searchCaptures(query)
+    } catch {
+      // FTS5 can throw on malformed queries (e.g. unmatched quotes, reserved keywords).
+      // Return empty results so the UI gracefully handles bad input.
+      return []
+    }
+  })
 
   // Settings
   ipcMain.handle(IPC_CHANNELS.SETTINGS_GET, () => settings.getSettings())
@@ -568,7 +576,12 @@ export function registerIpcHandlers(): void {
     IPC_CHANNELS.EXPORT_GENERATE,
     async (_, caseId: string, options: ExportOptions) => {
       try {
-        await generateReport(caseId, options)
+        const { canceled, filePath } = await dialog.showSaveDialog({
+          defaultPath: options.outputPath || 'report.html',
+          filters: [{ name: 'HTML', extensions: ['html'] }]
+        })
+        if (canceled || !filePath) return ipcResult(undefined)
+        await generateReport(caseId, { ...options, outputPath: filePath })
         return ipcResult(undefined)
       } catch (err) {
         return ipcError(err)

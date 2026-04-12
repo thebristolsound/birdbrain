@@ -1,7 +1,9 @@
 import { Hono } from 'hono'
 import { serve } from '@hono/node-server'
 import { cors } from 'hono/cors'
+import { bodyLimit } from 'hono/body-limit'
 import { zValidator } from '@hono/zod-validator'
+import { randomBytes } from 'crypto'
 import type { Server } from 'http'
 import { app } from 'electron'
 import type { BrowserWindow } from 'electron'
@@ -26,6 +28,14 @@ export { CAPTURE_SERVER_PORT }
 function getToolVersion(): string {
   if (typeof app?.getVersion === 'function') return app.getVersion()
   return process.env.npm_package_version ?? '0.0.0'
+}
+
+// Auth token: generated at startup, required on mutating endpoints.
+// The extension retrieves it from the /api/status response.
+let serverToken = randomBytes(32).toString('hex')
+
+export function getServerToken(): string {
+  return serverToken
 }
 
 // Manual capture dedup: "caseId:url" -> timestamp of last accepted capture
@@ -115,8 +125,12 @@ function emitCaptureEvent(event: CaptureEvent): void {
   }
 }
 
-function createApp(): Hono {
+function createApp(token?: string): Hono {
   const app = new Hono()
+  const requiredToken = token ?? serverToken
+
+  // Body size limit: 250 MB max to prevent memory exhaustion
+  app.use('*', bodyLimit({ maxSize: 250 * 1024 * 1024 }))
 
   // Allow requests from Chrome extension
   app.use(
@@ -133,9 +147,20 @@ function createApp(): Hono {
         return undefined as unknown as string
       },
       allowMethods: ['GET', 'POST'],
-      allowHeaders: ['Content-Type']
+      allowHeaders: ['Content-Type', 'X-Birdbrain-Token']
     })
   )
+
+  // Require auth token on all POST (mutating) endpoints
+  app.use('*', async (c, next) => {
+    if (c.req.method === 'POST') {
+      const token = c.req.header('X-Birdbrain-Token')
+      if (token !== requiredToken) {
+        return c.json({ error: 'Unauthorized' }, 401)
+      }
+    }
+    await next()
+  })
 
   // Status endpoint — also tracks extension connection
   app.get('/api/status', (c) => {
@@ -162,6 +187,7 @@ function createApp(): Hono {
     const allCases = includeCases ? db.listCases() : null
     return c.json({
       running: true,
+      serverToken: requiredToken,
       activeCase: activeCase ? { id: activeCase.id, name: activeCase.name } : null,
       sessionActive: state.sessionActive,
       captureCount: state.captureCount,
@@ -536,9 +562,13 @@ function createApp(): Hono {
   return app
 }
 
-export function startCaptureServer(port: number = CAPTURE_SERVER_PORT): Promise<void> {
+export function startCaptureServer(
+  port: number = CAPTURE_SERVER_PORT,
+  token?: string
+): Promise<void> {
+  if (token) serverToken = token
   return new Promise((resolve) => {
-    const app = createApp()
+    const app = createApp(token)
     server = serve(
       {
         fetch: app.fetch,

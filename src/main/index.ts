@@ -28,7 +28,7 @@ function createWindow(): BrowserWindow {
       : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
+      sandbox: true,
       webviewTag: true
     }
   })
@@ -38,7 +38,14 @@ function createWindow(): BrowserWindow {
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    try {
+      const parsed = new URL(details.url)
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        shell.openExternal(details.url)
+      }
+    } catch {
+      // ignore invalid URLs
+    }
     return { action: 'deny' }
   })
 
@@ -50,6 +57,16 @@ function createWindow(): BrowserWindow {
 
   return mainWindow
 }
+
+// Enforce security on all web contents (defense-in-depth for webviews)
+app.on('web-contents-created', (_event, contents) => {
+  contents.on('will-navigate', (event) => {
+    // Allow initial navigation in the main window, block all others
+    if (contents.getType() === 'webview') {
+      event.preventDefault()
+    }
+  })
+})
 
 app.whenReady().then(async () => {
   // Initialize database

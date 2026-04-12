@@ -24,6 +24,7 @@ import {
 import { MAX_SCREENSHOT_SIZE } from '@shared/constants'
 
 let nextPort = 19846
+const TEST_TOKEN = 'test-server-token'
 
 describe('captureServer', () => {
   let tempDir: string
@@ -39,7 +40,7 @@ describe('captureServer', () => {
     initInstallationId(tempDir)
     resetSessionState()
     baseUrl = `http://127.0.0.1:${port}`
-    await startCaptureServer(port)
+    await startCaptureServer(port, TEST_TOKEN)
   })
 
   afterEach(async () => {
@@ -48,6 +49,14 @@ describe('captureServer', () => {
     rmSync(tempDir, { recursive: true, force: true })
   })
 
+  function serverPost(path: string, init?: RequestInit): Promise<Response> {
+    return fetch(`${baseUrl}${path}`, {
+      ...init,
+      method: 'POST',
+      headers: { 'X-Birdbrain-Token': TEST_TOKEN, ...(init?.headers as Record<string, string>) }
+    })
+  }
+
   function postCapture(
     fields: Record<string, string>,
     mhtmlContent = '<html>test</html>'
@@ -55,7 +64,11 @@ describe('captureServer', () => {
     const form = new FormData()
     for (const [k, v] of Object.entries(fields)) form.append(k, v)
     form.append('mhtml', new Blob([mhtmlContent], { type: 'multipart/related' }), 'capture.mhtml')
-    return fetch(`${baseUrl}/api/captures`, { method: 'POST', body: form })
+    return fetch(`${baseUrl}/api/captures`, {
+      method: 'POST',
+      body: form,
+      headers: { 'X-Birdbrain-Token': TEST_TOKEN }
+    })
   }
 
   it('GET /api/status returns running state', async () => {
@@ -83,7 +96,7 @@ describe('captureServer', () => {
 
   it('POST /api/cases/:id/activate sets active case', async () => {
     const testCase = createCase({ name: 'Active Case' })
-    const res = await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
+    const res = await serverPost(`/api/cases/${testCase.id}/activate`)
     const data = await res.json()
     expect(data.status).toBe('ok')
     expect(data.case.name).toBe('Active Case')
@@ -93,20 +106,20 @@ describe('captureServer', () => {
   })
 
   it('POST /api/cases/:id/activate returns 404 for unknown case', async () => {
-    const res = await fetch(`${baseUrl}/api/cases/nonexistent/activate`, { method: 'POST' })
+    const res = await serverPost('/api/cases/nonexistent/activate')
     expect(res.status).toBe(404)
   })
 
   it('POST /api/session/start fails without active case', async () => {
-    const res = await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
+    const res = await serverPost('/api/session/start')
     expect(res.status).toBe(400)
   })
 
   it('POST /api/session/start and /stop manage session state', async () => {
     const testCase = createCase({ name: 'Session Test' })
-    await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
+    await serverPost(`/api/cases/${testCase.id}/activate`)
 
-    const startRes = await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
+    const startRes = await serverPost('/api/session/start')
     const startData = await startRes.json()
     expect(startData.sessionActive).toBe(true)
 
@@ -114,7 +127,7 @@ describe('captureServer', () => {
     const statusData = await statusRes.json()
     expect(statusData.sessionActive).toBe(true)
 
-    const stopRes = await fetch(`${baseUrl}/api/session/stop`, { method: 'POST' })
+    const stopRes = await serverPost('/api/session/stop')
     const stopData = await stopRes.json()
     expect(stopData.sessionActive).toBe(false)
   })
@@ -123,8 +136,8 @@ describe('captureServer', () => {
 
   it('source=auto stores capture when session active', async () => {
     const testCase = createCase({ name: 'Capture Test' })
-    await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
-    await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
+    await serverPost(`/api/cases/${testCase.id}/activate`)
+    await serverPost('/api/session/start')
 
     const res = await postCapture(
       {
@@ -150,7 +163,7 @@ describe('captureServer', () => {
 
   it('source=auto rejects without active session', async () => {
     const testCase = createCase({ name: 'No Session' })
-    await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
+    await serverPost(`/api/cases/${testCase.id}/activate`)
 
     const res = await postCapture({
       source: 'auto',
@@ -171,8 +184,8 @@ describe('captureServer', () => {
 
   it('source=auto increments capture count', async () => {
     const testCase = createCase({ name: 'Count Test' })
-    await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
-    await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
+    await serverPost(`/api/cases/${testCase.id}/activate`)
+    await serverPost('/api/session/start')
 
     await postCapture(
       {
@@ -300,20 +313,24 @@ describe('captureServer', () => {
 
   it('rejects when mhtml field is missing', async () => {
     const testCase = createCase({ name: 'Validation Test' })
-    await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
-    await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
+    await serverPost(`/api/cases/${testCase.id}/activate`)
+    await serverPost('/api/session/start')
 
     const form = new FormData()
     form.append('source', 'auto')
     form.append('url', 'https://example.com')
-    const res = await fetch(`${baseUrl}/api/captures`, { method: 'POST', body: form })
+    const res = await fetch(`${baseUrl}/api/captures`, {
+      method: 'POST',
+      body: form,
+      headers: { 'X-Birdbrain-Token': TEST_TOKEN }
+    })
     expect(res.status).toBe(400)
   })
 
   it('returns 400 with structured error when url is missing', async () => {
     const testCase = createCase({ name: 'Missing URL' })
-    await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
-    await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
+    await serverPost(`/api/cases/${testCase.id}/activate`)
+    await serverPost('/api/session/start')
 
     const form = new FormData()
     form.append('source', 'auto')
@@ -322,7 +339,11 @@ describe('captureServer', () => {
       new Blob(['<html>test</html>'], { type: 'multipart/related' }),
       'capture.mhtml'
     )
-    const res = await fetch(`${baseUrl}/api/captures`, { method: 'POST', body: form })
+    const res = await fetch(`${baseUrl}/api/captures`, {
+      method: 'POST',
+      body: form,
+      headers: { 'X-Birdbrain-Token': TEST_TOKEN }
+    })
     expect(res.status).toBe(400)
     const data = await res.json()
     expect(data.error).toContain('url')
@@ -330,8 +351,8 @@ describe('captureServer', () => {
 
   it('returns 400 for unknown source value', async () => {
     const testCase = createCase({ name: 'Unknown Source Test' })
-    await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
-    await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
+    await serverPost(`/api/cases/${testCase.id}/activate`)
+    await serverPost('/api/session/start')
 
     const form = new FormData()
     form.append('source', 'typoed-source')
@@ -341,7 +362,11 @@ describe('captureServer', () => {
       new Blob(['<html>test</html>'], { type: 'multipart/related' }),
       'capture.mhtml'
     )
-    const res = await fetch(`${baseUrl}/api/captures`, { method: 'POST', body: form })
+    const res = await fetch(`${baseUrl}/api/captures`, {
+      method: 'POST',
+      body: form,
+      headers: { 'X-Birdbrain-Token': TEST_TOKEN }
+    })
     expect(res.status).toBe(400)
     const data = await res.json()
     expect(data.error).toContain('Invalid source')
@@ -368,8 +393,8 @@ describe('captureServer', () => {
 
   it('source=auto blocks blacklisted URL with 403', async () => {
     const testCase = createCase({ name: 'Blacklist Test' })
-    await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
-    await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
+    await serverPost(`/api/cases/${testCase.id}/activate`)
+    await serverPost('/api/session/start')
 
     updateSettings({ ignoredUrlPatterns: ['facebook.com'] })
 
@@ -389,8 +414,8 @@ describe('captureServer', () => {
 
   it('source=auto allows non-blacklisted URL', async () => {
     const testCase = createCase({ name: 'Allow Test' })
-    await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
-    await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
+    await serverPost(`/api/cases/${testCase.id}/activate`)
+    await serverPost('/api/session/start')
 
     updateSettings({ ignoredUrlPatterns: ['facebook.com'] })
 
@@ -443,8 +468,8 @@ describe('captureServer', () => {
 
   it('blacklist supports regex patterns', async () => {
     const testCase = createCase({ name: 'Regex Blacklist' })
-    await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
-    await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
+    await serverPost(`/api/cases/${testCase.id}/activate`)
+    await serverPost('/api/session/start')
 
     updateSettings({ ignoredUrlPatterns: ['/.*\\.pdf$/i'] })
 
@@ -471,8 +496,8 @@ describe('captureServer', () => {
 
   it('blacklist supports glob/wildcard patterns', async () => {
     const testCase = createCase({ name: 'Glob Blacklist' })
-    await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
-    await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
+    await serverPost(`/api/cases/${testCase.id}/activate`)
+    await serverPost('/api/session/start')
 
     updateSettings({ ignoredUrlPatterns: ['*.facebook.com*'] })
 
@@ -509,8 +534,8 @@ describe('captureServer', () => {
 
   it('blacklist glob pattern with ? wildcard matches single character', async () => {
     const testCase = createCase({ name: 'Glob Question' })
-    await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
-    await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
+    await serverPost(`/api/cases/${testCase.id}/activate`)
+    await serverPost('/api/session/start')
 
     updateSettings({ ignoredUrlPatterns: ['example.com/user?'] })
 
@@ -648,8 +673,8 @@ describe('captureServer', () => {
 
   it('source=auto is not affected by manual dedup', async () => {
     const testCase = createCase({ name: 'Auto No Dedup' })
-    await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
-    await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
+    await serverPost(`/api/cases/${testCase.id}/activate`)
+    await serverPost('/api/session/start')
 
     const first = await postCapture(
       {
@@ -778,7 +803,11 @@ describe('captureServer', () => {
     )
     form.append('screenshot', new Blob([screenshotData], { type: 'image/png' }), 'screenshot.png')
 
-    const res = await fetch(`${baseUrl}/api/captures`, { method: 'POST', body: form })
+    const res = await fetch(`${baseUrl}/api/captures`, {
+      method: 'POST',
+      body: form,
+      headers: { 'X-Birdbrain-Token': TEST_TOKEN }
+    })
     expect(res.status).toBe(200)
     const data = await res.json()
     expect(data.screenshotStatus).toBe('saved')
@@ -806,7 +835,11 @@ describe('captureServer', () => {
     )
     form.append('screenshot', new Blob([oversized], { type: 'image/png' }), 'screenshot.png')
 
-    const res = await fetch(`${baseUrl}/api/captures`, { method: 'POST', body: form })
+    const res = await fetch(`${baseUrl}/api/captures`, {
+      method: 'POST',
+      body: form,
+      headers: { 'X-Birdbrain-Token': TEST_TOKEN }
+    })
     expect(res.status).toBe(200)
     const data = await res.json()
     expect(data.screenshotStatus).toBe('dropped')
@@ -837,16 +870,15 @@ describe('captureServer', () => {
   // --- POST /api/selectors (create selector from extension) ---
 
   async function activateSessionForCase(caseId: string) {
-    await fetch(`${baseUrl}/api/cases/${caseId}/activate`, { method: 'POST' })
-    await fetch(`${baseUrl}/api/session/start`, { method: 'POST' })
+    await serverPost(`/api/cases/${caseId}/activate`)
+    await serverPost('/api/session/start')
   }
 
   it('POST /api/selectors creates a literal selector', async () => {
     const testCase = createCase({ name: 'Selector Create Test' })
     await activateSessionForCase(testCase.id)
 
-    const res = await fetch(`${baseUrl}/api/selectors`, {
-      method: 'POST',
+    const res = await serverPost('/api/selectors', {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         caseId: testCase.id,
@@ -876,8 +908,7 @@ describe('captureServer', () => {
   it('POST /api/selectors returns 400 without active case', async () => {
     const testCase = createCase({ name: 'No Session Selector' })
 
-    const res = await fetch(`${baseUrl}/api/selectors`, {
-      method: 'POST',
+    const res = await serverPost('/api/selectors', {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         caseId: testCase.id,
@@ -894,8 +925,7 @@ describe('captureServer', () => {
     const testCase = createCase({ name: 'Empty Pattern' })
     await activateSessionForCase(testCase.id)
 
-    const res = await fetch(`${baseUrl}/api/selectors`, {
-      method: 'POST',
+    const res = await serverPost('/api/selectors', {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         caseId: testCase.id,
@@ -912,8 +942,7 @@ describe('captureServer', () => {
     const testCase = createCase({ name: 'Missing Pattern' })
     await activateSessionForCase(testCase.id)
 
-    const res = await fetch(`${baseUrl}/api/selectors`, {
-      method: 'POST',
+    const res = await serverPost('/api/selectors', {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         caseId: testCase.id
@@ -927,8 +956,7 @@ describe('captureServer', () => {
     const testCase = createCase({ name: 'Missing CaseId' })
     await activateSessionForCase(testCase.id)
 
-    const res = await fetch(`${baseUrl}/api/selectors`, {
-      method: 'POST',
+    const res = await serverPost('/api/selectors', {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         pattern: 'test'
@@ -944,8 +972,7 @@ describe('captureServer', () => {
     const testCase = createCase({ name: 'Unknown Case Selector' })
     await activateSessionForCase(testCase.id)
 
-    const res = await fetch(`${baseUrl}/api/selectors`, {
-      method: 'POST',
+    const res = await serverPost('/api/selectors', {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         caseId: 'nonexistent-case-id',
@@ -963,8 +990,7 @@ describe('captureServer', () => {
     updateCase({ id: testCase.id, archived: true })
     await activateSessionForCase(testCase.id)
 
-    const res = await fetch(`${baseUrl}/api/selectors`, {
-      method: 'POST',
+    const res = await serverPost('/api/selectors', {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         caseId: testCase.id,
@@ -982,8 +1008,7 @@ describe('captureServer', () => {
     const otherCase = createCase({ name: 'Other Case' })
     await activateSessionForCase(activeCase.id)
 
-    const res = await fetch(`${baseUrl}/api/selectors`, {
-      method: 'POST',
+    const res = await serverPost('/api/selectors', {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         caseId: otherCase.id,
@@ -1025,8 +1050,7 @@ describe('captureServer', () => {
     )
 
     // Now create a selector that matches the first capture
-    const res = await fetch(`${baseUrl}/api/selectors`, {
-      method: 'POST',
+    const res = await serverPost('/api/selectors', {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         caseId: testCase.id,
@@ -1051,8 +1075,7 @@ describe('captureServer', () => {
     const testCase = createCase({ name: 'Bad Label Type' })
     await activateSessionForCase(testCase.id)
 
-    const res = await fetch(`${baseUrl}/api/selectors`, {
-      method: 'POST',
+    const res = await serverPost('/api/selectors', {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         caseId: testCase.id,
@@ -1070,8 +1093,7 @@ describe('captureServer', () => {
     const testCase = createCase({ name: 'Whitespace Label' })
     await activateSessionForCase(testCase.id)
 
-    const res = await fetch(`${baseUrl}/api/selectors`, {
-      method: 'POST',
+    const res = await serverPost('/api/selectors', {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         caseId: testCase.id,
@@ -1089,8 +1111,7 @@ describe('captureServer', () => {
     const testCase = createCase({ name: 'No Label' })
     await activateSessionForCase(testCase.id)
 
-    const res = await fetch(`${baseUrl}/api/selectors`, {
-      method: 'POST',
+    const res = await serverPost('/api/selectors', {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         caseId: testCase.id,
@@ -1110,7 +1131,7 @@ describe('captureServer', () => {
     createSelector({ caseId: case2.id, pattern: 'other-person' })
 
     // Activate case1
-    await fetch(`${baseUrl}/api/cases/${case1.id}/activate`, { method: 'POST' })
+    await serverPost(`/api/cases/${case1.id}/activate`)
 
     const res = await fetch(`${baseUrl}/api/selectors/active`)
     const data = await res.json()

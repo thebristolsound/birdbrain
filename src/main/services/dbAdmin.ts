@@ -1,6 +1,6 @@
 import { getDb } from '@main/services/database'
 import { statSync, existsSync, readdirSync, unlinkSync, copyFileSync } from 'fs'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import { getStorageRoot } from '@main/services/storage'
 import { buildCsv } from '@main/services/csvEscape'
 import type { DbStats, DbTableRowsParams, DbTableRowsResult, OrphanReport } from '@shared/ipc'
@@ -112,10 +112,7 @@ export function getTableRows(params: DbTableRowsParams): DbTableRowsResult {
   return { rows, total, columns }
 }
 
-export function createRow(
-  table: string,
-  data: Record<string, unknown>
-): Record<string, unknown> {
+export function createRow(table: string, data: Record<string, unknown>): Record<string, unknown> {
   assertAllowedTable(table)
   if (FTS_TABLES.has(table)) throw new Error('Cannot insert into FTS virtual tables directly')
   assertValidColumns(table, data)
@@ -141,14 +138,13 @@ export function updateRow(
 ): boolean {
   assertAllowedTable(table)
   if (FTS_TABLES.has(table)) throw new Error('Cannot update FTS virtual tables directly')
+  assertValidColumns(table, pk)
   assertValidColumns(table, data)
   const dataKeys = Object.keys(data)
   if (dataKeys.length === 0) return false
 
   const db = getDb()
-  const setClauses = dataKeys
-    .map((k) => `"${k}" = ?`)
-    .join(', ')
+  const setClauses = dataKeys.map((k) => `"${k}" = ?`).join(', ')
   const whereClauses = Object.keys(pk)
     .map((k) => `"${k}" = ?`)
     .join(' AND ')
@@ -163,6 +159,7 @@ export function updateRow(
 export function deleteRow(table: string, pk: Record<string, string>): boolean {
   assertAllowedTable(table)
   if (FTS_TABLES.has(table)) throw new Error('Cannot delete from FTS virtual tables directly')
+  assertValidColumns(table, pk)
 
   const db = getDb()
   const whereClauses = Object.keys(pk)
@@ -170,7 +167,28 @@ export function deleteRow(table: string, pk: Record<string, string>): boolean {
     .join(' AND ')
   const values = Object.values(pk)
 
-  const result = db.prepare(`DELETE FROM "${table}" WHERE ${whereClauses}`).run(...values)
+  const run = db.transaction(() => {
+    // Clean up FTS entries before deleting captures or cases (CASCADE)
+    if (table === 'captures') {
+      db.prepare(
+        `DELETE FROM captures_fts WHERE rowid IN (
+          SELECT rowid FROM captures WHERE ${whereClauses}
+        )`
+      ).run(...values)
+    } else if (table === 'cases') {
+      db.prepare(
+        `DELETE FROM captures_fts WHERE rowid IN (
+          SELECT rowid FROM captures WHERE case_id IN (
+            SELECT id FROM cases WHERE ${whereClauses}
+          )
+        )`
+      ).run(...values)
+    }
+
+    return db.prepare(`DELETE FROM "${table}" WHERE ${whereClauses}`).run(...values)
+  })
+
+  const result = run()
   return result.changes > 0
 }
 
@@ -204,7 +222,9 @@ export function rebuildFts(): { rowsIndexed: number } {
   const db = getDb()
   db.exec("INSERT INTO captures_fts(captures_fts) VALUES ('rebuild')")
   db.exec("INSERT INTO notes_fts(notes_fts) VALUES ('rebuild')")
-  const captureCount = db.prepare('SELECT COUNT(*) as count FROM captures').get() as { count: number }
+  const captureCount = db.prepare('SELECT COUNT(*) as count FROM captures').get() as {
+    count: number
+  }
   const noteCount = db.prepare('SELECT COUNT(*) as count FROM notes').get() as { count: number }
   const rowsIndexed = captureCount.count + noteCount.count
 
@@ -315,9 +335,16 @@ export function cleanOrphans(report: OrphanReport): {
     if (!allowedOrphanTables.has(orphan.table)) {
       continue
     }
-    const result = db
-      .prepare(`DELETE FROM "${orphan.table}" WHERE id = ?`)
-      .run(orphan.id)
+    const run = db.transaction(() => {
+      // Clean up FTS entries before deleting the capture row
+      if (orphan.table === 'captures') {
+        db.prepare(
+          'DELETE FROM captures_fts WHERE rowid IN (SELECT rowid FROM captures WHERE id = ?)'
+        ).run(orphan.id)
+      }
+      return db.prepare(`DELETE FROM "${orphan.table}" WHERE id = ?`).run(orphan.id)
+    })
+    const result = run()
     dbRecordsRemoved += result.changes
   }
 
@@ -328,8 +355,10 @@ export function cleanOrphans(report: OrphanReport): {
     return { dbRecordsRemoved, filesRemoved }
   }
 
+  const resolvedRoot = resolve(storageRoot)
   for (const relPath of report.fileOrphans) {
-    const absPath = join(storageRoot, relPath)
+    const absPath = resolve(join(storageRoot, relPath))
+    if (!absPath.startsWith(resolvedRoot)) continue
     if (existsSync(absPath)) {
       unlinkSync(absPath)
       filesRemoved++

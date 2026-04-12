@@ -2,7 +2,8 @@ import {
   getStatus,
   sendMhtmlCapture,
   getActiveSelectors,
-  createSelector
+  createSelector,
+  setServerToken
 } from '@extension/utils/api'
 
 function captureMhtml(tabId: number): Promise<Blob> {
@@ -157,6 +158,9 @@ let captureScreenshotsEnabled = true
 async function checkStatus(): Promise<void> {
   try {
     const status = await getStatus()
+    if (status.serverToken) {
+      setServerToken(status.serverToken)
+    }
     const wasConnected = connected
     const previousCaseId = activeCaseId
     connected = status.running
@@ -227,16 +231,16 @@ async function checkStatus(): Promise<void> {
   }
 }
 
-// Poll for status
-setInterval(
-  () => {
-    checkStatus()
-  },
-  connected ? 30_000 : 5_000
-)
+// Poll for status with adaptive interval
+function scheduleStatusCheck(): void {
+  const delay = connected ? 30_000 : 5_000
+  setTimeout(() => {
+    checkStatus().finally(scheduleStatusCheck)
+  }, delay)
+}
 
-// Initial check
-checkStatus()
+// Initial check, then start adaptive polling
+checkStatus().finally(scheduleStatusCheck)
 
 // --- Context menu for manual capture ---
 

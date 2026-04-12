@@ -1,6 +1,6 @@
 import { getDb } from '@main/services/database'
 import { statSync, existsSync, readdirSync, unlinkSync, copyFileSync } from 'fs'
-import { join, resolve } from 'path'
+import { join, resolve, sep } from 'path'
 import { getStorageRoot } from '@main/services/storage'
 import { buildCsv } from '@main/services/csvEscape'
 import type { DbStats, DbTableRowsParams, DbTableRowsResult, OrphanReport } from '@shared/ipc'
@@ -355,7 +355,7 @@ export function cleanOrphans(report: OrphanReport): {
     return { dbRecordsRemoved, filesRemoved }
   }
 
-  const resolvedRoot = resolve(storageRoot)
+  const resolvedRoot = resolve(storageRoot) + sep
   for (const relPath of report.fileOrphans) {
     const absPath = resolve(join(storageRoot, relPath))
     if (!absPath.startsWith(resolvedRoot)) continue

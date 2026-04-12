@@ -41,7 +41,7 @@ export const CaptureUploadSchema = z.object({
           return false
         }
       },
-      { message: 'URL must be a valid http or https URL' }
+      { message: 'URL must use http, https, or birdbrain protocol' }
     ),
   title: z.string().optional().default(''),
   timestamp: z.string().optional().default(''),

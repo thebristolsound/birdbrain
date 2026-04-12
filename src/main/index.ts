@@ -60,12 +60,17 @@ function createWindow(): BrowserWindow {
 
 // Enforce security on all web contents (defense-in-depth for webviews)
 app.on('web-contents-created', (_event, contents) => {
-  contents.on('will-navigate', (event) => {
-    // Allow initial navigation in the main window, block all others
-    if (contents.getType() === 'webview') {
+  if (contents.getType() === 'webview') {
+    // Allow the initial file:// load, block all subsequent navigations
+    let initialLoadDone = false
+    contents.on('will-navigate', (event, url) => {
+      if (!initialLoadDone && url.startsWith('file://')) {
+        initialLoadDone = true
+        return
+      }
       event.preventDefault()
-    }
-  })
+    })
+  }
 })
 
 app.whenReady().then(async () => {

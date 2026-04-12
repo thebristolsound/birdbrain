@@ -96,8 +96,23 @@ export function updateSettings(partial: Partial<BirdbrainSettings>): BirdbrainSe
   }
   const current = getSettings()
   const updated = { ...current, ...parsed.data }
-  // Encrypt the API key before writing to disk
-  const toWrite = { ...updated, openRouterApiKey: encryptApiKey(updated.openRouterApiKey) }
+  // Only re-encrypt the API key if it was explicitly changed in this update.
+  // Otherwise preserve the raw stored value to avoid data loss when safeStorage
+  // is unavailable (the encrypted blob would be unreadable but should not be erased).
+  const toWrite = { ...updated }
+  if ('openRouterApiKey' in partial) {
+    toWrite.openRouterApiKey = encryptApiKey(updated.openRouterApiKey)
+  } else {
+    // Preserve whatever is on disk (may be encrypted)
+    try {
+      const raw = JSON.parse(readFileSync(settingsPath, 'utf-8'))
+      if (raw.openRouterApiKey !== undefined) {
+        toWrite.openRouterApiKey = raw.openRouterApiKey
+      }
+    } catch {
+      /* file doesn't exist yet, use the merged value */
+    }
+  }
   writeFileSync(settingsPath, JSON.stringify(toWrite, null, 2), 'utf-8')
   return updated
 }

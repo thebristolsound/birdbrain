@@ -185,9 +185,18 @@ function createApp(token?: string): Hono {
     const activeCase = state.activeCaseId ? db.getCase(state.activeCaseId) : null
     const settings = getSettings()
     const allCases = includeCases ? db.listCases() : null
+    // Only expose the auth token to known origins (extension, localhost).
+    // Omit for unknown/external origins so random web pages can't read it.
+    const origin = c.req.header('Origin') ?? ''
+    const includeToken =
+      !origin ||
+      origin.startsWith('chrome-extension://') ||
+      origin.startsWith('http://localhost:') ||
+      origin.startsWith('http://127.0.0.1:') ||
+      origin.startsWith('file://')
     return c.json({
       running: true,
-      serverToken: requiredToken,
+      ...(includeToken ? { serverToken: requiredToken } : {}),
       activeCase: activeCase ? { id: activeCase.id, name: activeCase.name } : null,
       sessionActive: state.sessionActive,
       captureCount: state.captureCount,

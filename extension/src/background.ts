@@ -2,8 +2,7 @@ import {
   getStatus,
   sendMhtmlCapture,
   getActiveSelectors,
-  createSelector,
-  setServerToken
+  createSelector
 } from '@extension/utils/api'
 
 function captureMhtml(tabId: number): Promise<Blob> {
@@ -158,9 +157,6 @@ let captureScreenshotsEnabled = true
 async function checkStatus(): Promise<void> {
   try {
     const status = await getStatus()
-    if (status.serverToken) {
-      setServerToken(status.serverToken)
-    }
     const wasConnected = connected
     const previousCaseId = activeCaseId
     connected = status.running

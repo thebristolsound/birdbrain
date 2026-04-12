@@ -13,6 +13,7 @@ import {
 import { registerIpcHandlers } from '@main/ipcHandlers'
 import { initSettings, getSettings } from '@main/services/settings'
 import { initInstallationId } from '@main/services/installationId'
+import { initServerToken } from '@main/services/serverToken'
 
 function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
@@ -79,6 +80,7 @@ app.whenReady().then(async () => {
   initDatabase(join(userDataPath, 'birdbrain.db'))
   initSettings(userDataPath)
   initInstallationId(userDataPath)
+  initServerToken(userDataPath)
 
   // Use storagePath from settings, fall back to default if empty or unwritable
   const settings = getSettings()

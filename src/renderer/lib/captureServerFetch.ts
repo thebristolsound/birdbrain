@@ -9,7 +9,7 @@ let inflightFetch: Promise<string | null> | null = null
 
 async function fetchServerToken(): Promise<string | null> {
   try {
-    const res = await fetch(`${CAPTURE_SERVER_BASE_URL}/api/status`)
+    const res = await fetch(`${CAPTURE_SERVER_BASE_URL}/api/status?includeCases=0`)
     if (!res.ok) return null
     const data = (await res.json()) as { serverToken?: string }
     return data.serverToken ?? null

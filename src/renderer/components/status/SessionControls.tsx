@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'motion/react'
 import { useAppStore } from '@renderer/stores/appStore'
 import { casesQueryOptions } from '@renderer/lib/queries'
 import { presets } from '@renderer/lib/motion'
-import { CAPTURE_SERVER_BASE_URL } from '@shared/constants'
+import { captureServerFetch } from '@renderer/lib/captureServerFetch'
 
 export function SessionControls() {
   const sessionActive = useAppStore((s) => s.sessionActive)
@@ -26,7 +26,7 @@ export function SessionControls() {
     setToggling(true)
     try {
       if (sessionActive) {
-        const res = await fetch(`${CAPTURE_SERVER_BASE_URL}/api/session/stop`, { method: 'POST' })
+        const res = await captureServerFetch('/api/session/stop', { method: 'POST' })
         if (!res.ok) {
           console.error('Failed to stop session:', res.status)
           return
@@ -34,17 +34,14 @@ export function SessionControls() {
         setSessionActive(false)
       } else {
         if (!activeCaseId) return
-        const activateRes = await fetch(
-          `${CAPTURE_SERVER_BASE_URL}/api/cases/${activeCaseId}/activate`,
-          { method: 'POST' }
-        )
+        const activateRes = await captureServerFetch(`/api/cases/${activeCaseId}/activate`, {
+          method: 'POST'
+        })
         if (!activateRes.ok) {
           console.error('Failed to activate case:', activateRes.status)
           return
         }
-        const startRes = await fetch(`${CAPTURE_SERVER_BASE_URL}/api/session/start`, {
-          method: 'POST'
-        })
+        const startRes = await captureServerFetch('/api/session/start', { method: 'POST' })
         if (!startRes.ok) {
           console.error('Failed to start session:', startRes.status)
           return

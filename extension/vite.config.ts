@@ -44,6 +44,8 @@ const mainConfig = defineConfig({
         copyFileSync(resolve(__dirname, 'manifest.json'), resolve(dist, 'manifest.json'))
         mkdirSync(resolve(dist, 'icons'), { recursive: true })
         cpSync(resolve(__dirname, 'icons'), resolve(dist, 'icons'), { recursive: true })
+        mkdirSync(resolve(dist, 'fonts'), { recursive: true })
+        cpSync(resolve(__dirname, 'src/fonts'), resolve(dist, 'fonts'), { recursive: true })
         // Move popup.html from nested path to dist root, fix relative paths
         const nestedPopup = resolve(dist, 'extension', 'src', 'popup', 'popup.html')
         try {
@@ -52,7 +54,9 @@ const mainConfig = defineConfig({
           html = html.replace(/href="[^"]*chunks\//g, 'href="./chunks/')
           writeFileSync(resolve(dist, 'popup.html'), html)
           rmSync(resolve(dist, 'extension'), { recursive: true, force: true })
-        } catch { /* popup.html may not exist in content-only builds */ }
+        } catch {
+          /* popup.html may not exist in content-only builds */
+        }
       }
     }
   ],

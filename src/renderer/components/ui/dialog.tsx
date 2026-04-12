@@ -28,7 +28,16 @@ function DialogOverlay({ onClose }: { onClose: () => void }) {
   )
 }
 
-interface DialogContentProps extends ComponentPropsWithoutRef<'div'> {
+// Omit React HTML event handlers that conflict with framer-motion's types
+type MotionConflicts =
+  | 'onDrag'
+  | 'onDragStart'
+  | 'onDragEnd'
+  | 'onDragOver'
+  | 'onAnimationStart'
+  | 'onAnimationEnd'
+
+interface DialogContentProps extends Omit<ComponentPropsWithoutRef<'div'>, MotionConflicts> {
   onClose: () => void
 }
 

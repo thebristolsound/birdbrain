@@ -24,10 +24,17 @@ test.describe('MHTML forensic capture', () => {
     expect(caseIdMatch).toBeTruthy()
     const caseId = caseIdMatch![1]
 
+    // Fetch the server auth token (required for POST endpoints)
+    const serverToken = await page.evaluate(async () => {
+      const r = await fetch('http://127.0.0.1:19845/api/status')
+      const data = await r.json()
+      return data.serverToken ?? ''
+    })
+
     // POST an MHTML capture to the Hono server
     const mhtmlContent = '<html><body>E2E MHTML test</body></html>'
     const uploadResult = await page.evaluate(
-      async ({ caseId, content }) => {
+      async ({ caseId, content, token }) => {
         const form = new FormData()
         form.append('source', 'manual')
         form.append('caseId', caseId)
@@ -41,11 +48,12 @@ test.describe('MHTML forensic capture', () => {
         form.append('mhtml', new Blob([content], { type: 'multipart/related' }), 'capture.mhtml')
         const r = await fetch('http://127.0.0.1:19845/api/captures', {
           method: 'POST',
-          body: form
+          body: form,
+          headers: { 'X-Birdbrain-Token': token }
         })
         return r.json()
       },
-      { caseId, content: mhtmlContent }
+      { caseId, content: mhtmlContent, token: serverToken }
     )
 
     expect(uploadResult.status).toBe('ok')

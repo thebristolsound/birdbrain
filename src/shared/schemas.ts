@@ -28,7 +28,21 @@ export const CaptureSourceSchema = z.enum(['auto', 'manual', 'selector'])
 
 export const CaptureUploadSchema = z.object({
   source: CaptureSourceSchema,
-  url: z.string().min(1),
+  url: z
+    .string()
+    .min(1)
+    .max(8192)
+    .refine(
+      (u) => {
+        try {
+          const parsed = new URL(u)
+          return ['http:', 'https:'].includes(parsed.protocol) || u.startsWith('birdbrain://')
+        } catch {
+          return false
+        }
+      },
+      { message: 'URL must use http, https, or birdbrain protocol' }
+    ),
   title: z.string().optional().default(''),
   timestamp: z.string().optional().default(''),
   textContent: z.string().optional().default(''),

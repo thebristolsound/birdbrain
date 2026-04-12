@@ -307,9 +307,9 @@ describe('database', () => {
     })
 
     it('sets user_version to 7 after v7 migration', () => {
-      // v8..v13 migrations run immediately after, so final version is 13
+      // v8..v13 migrations run immediately after, so final version is 14
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(13)
+      expect(version).toBe(14)
     })
   })
 
@@ -333,9 +333,9 @@ describe('database', () => {
     })
 
     it('sets user_version to 8', () => {
-      // v9..v13 migrations run immediately after, so final version is 13
+      // v9..v13 migrations run immediately after, so final version is 14
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(13)
+      expect(version).toBe(14)
     })
   })
 
@@ -357,9 +357,9 @@ describe('database', () => {
     })
 
     it('sets user_version to 9', () => {
-      // v10..v13 migrations run immediately after, so final version is 13
+      // v10..v13 migrations run immediately after, so final version is 14
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(13)
+      expect(version).toBe(14)
     })
   })
 
@@ -841,9 +841,9 @@ describe('database', () => {
         hash: 'deadbeef',
         timestamp: new Date().toISOString()
       })
-      const row = getDb()
-        .prepare('SELECT format FROM captures WHERE case_id = ?')
-        .get(caseId) as { format: string }
+      const row = getDb().prepare('SELECT format FROM captures WHERE case_id = ?').get(caseId) as {
+        format: string
+      }
       expect(row.format).toBe('html')
     })
 
@@ -853,14 +853,22 @@ describe('database', () => {
     })
 
     it('has all MHTML columns', () => {
-      const cols = getDb()
-        .prepare("PRAGMA table_info('captures')")
-        .all() as Array<{ name: string }>
+      const cols = getDb().prepare("PRAGMA table_info('captures')").all() as Array<{ name: string }>
       const names = cols.map((c) => c.name)
       const expected = [
-        'format', 'mhtml_path', 'size_bytes', 'manifest_index',
-        'prev_hash', 'entry_hash', 'tool_version', 'extension_version',
-        'browser_version', 'user_agent', 'http_status', 'operator_id', 'operator_name'
+        'format',
+        'mhtml_path',
+        'size_bytes',
+        'manifest_index',
+        'prev_hash',
+        'entry_hash',
+        'tool_version',
+        'extension_version',
+        'browser_version',
+        'user_agent',
+        'http_status',
+        'operator_id',
+        'operator_name'
       ]
       for (const col of expected) {
         expect(names).toContain(col)

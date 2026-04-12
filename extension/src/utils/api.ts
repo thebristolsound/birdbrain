@@ -1,5 +1,15 @@
 const BASE_URL = 'http://127.0.0.1:19845'
 
+let cachedServerToken: string | null = null
+
+export function setServerToken(token: string): void {
+  cachedServerToken = token
+}
+
+export function getServerToken(): string | null {
+  return cachedServerToken
+}
+
 export class ApiError extends Error {
   status: number
   detail: string
@@ -12,6 +22,7 @@ export class ApiError extends Error {
 
 interface StatusResponse {
   running: boolean
+  serverToken?: string
   activeCase: { id: string; name: string } | null
   sessionActive: boolean
   captureCount: number
@@ -65,12 +76,16 @@ interface SelectorMatchInfo {
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options?.headers as Record<string, string>)
+  }
+  if (cachedServerToken) {
+    headers['X-Birdbrain-Token'] = cachedServerToken
+  }
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers
-    }
+    headers
   })
   if (!res.ok) {
     let detail = res.statusText
@@ -141,7 +156,15 @@ export async function sendMhtmlCapture(params: {
   }
   form.append('mhtml', params.mhtml, 'capture.mhtml')
 
-  const res = await fetch(BASE_URL + '/api/captures', { method: 'POST', body: form })
+  const captureHeaders: Record<string, string> = {}
+  if (cachedServerToken) {
+    captureHeaders['X-Birdbrain-Token'] = cachedServerToken
+  }
+  const res = await fetch(BASE_URL + '/api/captures', {
+    method: 'POST',
+    body: form,
+    headers: captureHeaders
+  })
   if (!res.ok) {
     let detail = res.statusText
     try {

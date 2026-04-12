@@ -470,7 +470,7 @@ export function CaptureViewer() {
         ) : activeTab === 'page' ? (
           content ? (
             <iframe
-              sandbox="allow-same-origin"
+              sandbox=""
               srcDoc={content}
               className="h-full w-full border-0 bg-white"
               title="Archived page"

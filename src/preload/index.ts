@@ -1,5 +1,4 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { electronAPI } from '@electron-toolkit/preload'
 import { IPC_CHANNELS } from '@shared/ipc'
 import type {
   CreateCaseParams,
@@ -256,5 +255,4 @@ const birdbrain = {
     ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_TEST_HTTP)
 }
 
-contextBridge.exposeInMainWorld('electron', electronAPI)
 contextBridge.exposeInMainWorld('birdbrain', birdbrain)

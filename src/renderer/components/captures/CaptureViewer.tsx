@@ -82,14 +82,20 @@ export function CaptureViewer() {
   const [showColorPicker, setShowColorPicker] = useState(false)
 
   useEffect(() => {
-    if (selectedCaptureId) {
-      window.birdbrain.captures
-        .get(selectedCaptureId)
-        .then((c) => setCapture(c ?? null))
-        .catch((err) => console.error('Failed to load capture:', err))
-    } else {
+    if (!selectedCaptureId) {
       setCapture(null)
       setContent(null)
+      return
+    }
+    let cancelled = false
+    window.birdbrain.captures
+      .get(selectedCaptureId)
+      .then((c) => {
+        if (!cancelled) setCapture(c ?? null)
+      })
+      .catch((err) => console.error('Failed to load capture:', err))
+    return () => {
+      cancelled = true
     }
   }, [selectedCaptureId])
 
@@ -108,11 +114,16 @@ export function CaptureViewer() {
           : activeTab === 'text'
             ? 'txt'
             : null
-    if (type) {
-      window.birdbrain.captures
-        .getContent(selectedCaptureId, type)
-        .then(setContent)
-        .catch((err) => console.error('Failed to load capture content:', err))
+    if (!type) return
+    let cancelled = false
+    window.birdbrain.captures
+      .getContent(selectedCaptureId, type)
+      .then((c) => {
+        if (!cancelled) setContent(c)
+      })
+      .catch((err) => console.error('Failed to load capture content:', err))
+    return () => {
+      cancelled = true
     }
   }, [selectedCaptureId, activeTab, capture?.format])
 
@@ -174,7 +185,7 @@ export function CaptureViewer() {
     return () => window.removeEventListener('keydown', handler)
   }, [goPrev, goNext])
 
-  if (!capture) {
+  if (!selectedCaptureId || !capture || capture.caseId !== caseId) {
     return (
       <main className="flex flex-1 items-center justify-center bg-canvas text-text-muted">
         Select a capture to view

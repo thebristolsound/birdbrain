@@ -79,6 +79,34 @@ describe('captureServer', () => {
     expect(data.sessionActive).toBe(false)
   })
 
+  it('GET /api/status exposes serverToken to extension and localhost origins', async () => {
+    const res = await fetch(`${baseUrl}/api/status`, {
+      headers: { Origin: 'chrome-extension://abcdef1234567890' }
+    })
+    const data = await res.json()
+    expect(data.serverToken).toBe(TEST_TOKEN)
+  })
+
+  it('GET /api/status omits serverToken for unknown origins', async () => {
+    const res = await fetch(`${baseUrl}/api/status`, {
+      headers: { Origin: 'https://evil.example.com' }
+    })
+    const data = await res.json()
+    expect(data.serverToken).toBeUndefined()
+  })
+
+  it('POST endpoints reject requests without a valid token', async () => {
+    const testCase = createCase({ name: 'Auth Test' })
+    const missing = await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })
+    expect(missing.status).toBe(401)
+
+    const wrong = await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, {
+      method: 'POST',
+      headers: { 'X-Birdbrain-Token': 'not-the-right-token' }
+    })
+    expect(wrong.status).toBe(401)
+  })
+
   it('GET /api/cases returns empty list initially', async () => {
     const res = await fetch(`${baseUrl}/api/cases`)
     const data = await res.json()

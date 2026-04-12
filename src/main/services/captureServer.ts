@@ -3,7 +3,6 @@ import { serve } from '@hono/node-server'
 import { cors } from 'hono/cors'
 import { bodyLimit } from 'hono/body-limit'
 import { zValidator } from '@hono/zod-validator'
-import { randomBytes } from 'crypto'
 import type { Server } from 'http'
 import { app } from 'electron'
 import type { BrowserWindow } from 'electron'
@@ -13,6 +12,7 @@ import { deleteCaptureFiles, readCaptureFile } from '@main/services/storage'
 import { getSettings } from '@main/services/settings'
 import { ingestMhtmlCapture } from '@main/services/mhtmlIngest'
 import { getInstallationId } from '@main/services/installationId'
+import { getServerToken } from '@main/services/serverToken'
 import type { CaptureEvent, CaptureSource } from '@shared/types'
 import {
   CaptureUploadSchema,
@@ -28,14 +28,6 @@ export { CAPTURE_SERVER_PORT }
 function getToolVersion(): string {
   if (typeof app?.getVersion === 'function') return app.getVersion()
   return process.env.npm_package_version ?? '0.0.0'
-}
-
-// Auth token: generated at startup, required on mutating endpoints.
-// The extension retrieves it from the /api/status response.
-let serverToken = randomBytes(32).toString('hex')
-
-export function getServerToken(): string {
-  return serverToken
 }
 
 // Manual capture dedup: "caseId:url" -> timestamp of last accepted capture
@@ -127,7 +119,7 @@ function emitCaptureEvent(event: CaptureEvent): void {
 
 function createApp(token?: string): Hono {
   const app = new Hono()
-  const requiredToken = token ?? serverToken
+  const requiredToken = token ?? getServerToken()
 
   // Body size limit: 250 MB max to prevent memory exhaustion
   app.use('*', bodyLimit({ maxSize: 250 * 1024 * 1024 }))
@@ -575,7 +567,6 @@ export function startCaptureServer(
   port: number = CAPTURE_SERVER_PORT,
   token?: string
 ): Promise<void> {
-  if (token) serverToken = token
   return new Promise((resolve) => {
     const app = createApp(token)
     server = serve(

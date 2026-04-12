@@ -1,14 +1,9 @@
 const BASE_URL = 'http://127.0.0.1:19845'
+const STORAGE_KEY = 'birdbrainServerToken'
 
 let cachedServerToken: string | null = null
-
-export function setServerToken(token: string): void {
-  cachedServerToken = token
-}
-
-export function getServerToken(): string | null {
-  return cachedServerToken
-}
+let hydrationPromise: Promise<void> | null = null
+let refreshPromise: Promise<string | null> | null = null
 
 export class ApiError extends Error {
   status: number
@@ -75,33 +70,126 @@ interface SelectorMatchInfo {
   index: number
 }
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
+function hasChromeStorage(): boolean {
+  return typeof chrome !== 'undefined' && !!chrome.storage?.local
+}
+
+async function hydrateFromStorage(): Promise<void> {
+  if (cachedServerToken) return
+  if (!hydrationPromise) {
+    hydrationPromise = (async () => {
+      try {
+        if (hasChromeStorage()) {
+          const result = await chrome.storage.local.get(STORAGE_KEY)
+          const stored = result[STORAGE_KEY]
+          if (typeof stored === 'string' && stored) {
+            cachedServerToken = stored
+          }
+        }
+      } catch {
+        //
+      }
+    })()
+  }
+  await hydrationPromise
+}
+
+export async function setServerToken(token: string): Promise<void> {
+  cachedServerToken = token
+  try {
+    if (hasChromeStorage()) {
+      await chrome.storage.local.set({ [STORAGE_KEY]: token })
+    }
+  } catch {
+    //
+  }
+}
+
+export function getServerToken(): string | null {
+  return cachedServerToken
+}
+
+async function throwIfNotOk(res: Response): Promise<void> {
+  if (res.ok) return
+  let detail = res.statusText
+  try {
+    detail = ((await res.json()) as { error?: string }).error || detail
+  } catch {
+    //
+  }
+  throw new ApiError(res.status, res.statusText, detail)
+}
+
+async function fetchStatus(): Promise<StatusResponse> {
+  const res = await fetch(`${BASE_URL}/api/status`)
+  await throwIfNotOk(res)
+  const data = (await res.json()) as StatusResponse
+  if (data.serverToken) {
+    await setServerToken(data.serverToken)
+  }
+  return data
+}
+
+async function refreshServerToken(): Promise<string | null> {
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      try {
+        const status = await fetchStatus()
+        return status.serverToken ?? cachedServerToken
+      } catch {
+        return null
+      } finally {
+        refreshPromise = null
+      }
+    })()
+  }
+  return refreshPromise
+}
+
+async function ensureTokenForMutation(): Promise<void> {
+  if (cachedServerToken) return
+  await hydrateFromStorage()
+  if (!cachedServerToken) {
+    await refreshServerToken()
+  }
+}
+
+async function doFetch(path: string, options?: RequestInit): Promise<Response> {
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
     ...(options?.headers as Record<string, string>)
+  }
+  if (typeof options?.body === 'string' && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json'
   }
   if (cachedServerToken) {
     headers['X-Birdbrain-Token'] = cachedServerToken
   }
-  const res = await fetch(`${BASE_URL}${path}`, {
+  return fetch(`${BASE_URL}${path}`, {
     ...options,
     headers
   })
-  if (!res.ok) {
-    let detail = res.statusText
-    try {
-      const body = await res.json()
-      detail = body.error || detail
-    } catch {
-      /* no JSON body */
+}
+
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const method = (options?.method ?? 'GET').toUpperCase()
+  const isMutating = method !== 'GET' && method !== 'HEAD'
+
+  if (isMutating) await ensureTokenForMutation()
+
+  let res = await doFetch(path, options)
+  if (res.status === 401 && isMutating) {
+    const refreshed = await refreshServerToken()
+    if (refreshed) {
+      res = await doFetch(path, options)
     }
-    throw new ApiError(res.status, res.statusText, detail)
   }
+
+  await throwIfNotOk(res)
   return res.json() as Promise<T>
 }
 
 export async function getStatus(): Promise<StatusResponse> {
-  return request('/api/status')
+  return fetchStatus()
 }
 
 export async function getCases(): Promise<CaseInfo[]> {
@@ -156,26 +244,10 @@ export async function sendMhtmlCapture(params: {
   }
   form.append('mhtml', params.mhtml, 'capture.mhtml')
 
-  const captureHeaders: Record<string, string> = {}
-  if (cachedServerToken) {
-    captureHeaders['X-Birdbrain-Token'] = cachedServerToken
-  }
-  const res = await fetch(BASE_URL + '/api/captures', {
+  return request<CaptureResult>('/api/captures', {
     method: 'POST',
-    body: form,
-    headers: captureHeaders
+    body: form
   })
-  if (!res.ok) {
-    let detail = res.statusText
-    try {
-      const body = await res.json()
-      detail = body.error || detail
-    } catch {
-      /* no JSON body */
-    }
-    throw new ApiError(res.status, res.statusText, detail)
-  }
-  return res.json() as Promise<CaptureResult>
 }
 
 export async function testCapturePipeline(): Promise<{

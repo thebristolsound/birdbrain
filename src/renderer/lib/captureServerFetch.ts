@@ -1,7 +1,3 @@
-// Helper for making authenticated requests to the local capture server.
-// The capture server requires an X-Birdbrain-Token header on POST endpoints.
-// The token is generated at startup and exposed via /api/status.
-
 import { CAPTURE_SERVER_BASE_URL } from '@shared/constants'
 
 let cachedToken: string | null = null
@@ -18,27 +14,48 @@ async function fetchServerToken(): Promise<string | null> {
   }
 }
 
-async function getToken(): Promise<string | null> {
-  if (cachedToken) return cachedToken
+async function refreshToken(): Promise<string | null> {
   if (!inflightFetch) {
-    inflightFetch = fetchServerToken().then((token) => {
-      cachedToken = token
-      inflightFetch = null
-      return token
-    })
+    inflightFetch = fetchServerToken()
+      .then((token) => {
+        if (token) cachedToken = token
+        return token
+      })
+      .catch(() => null)
+      .finally(() => {
+        inflightFetch = null
+      })
   }
   return inflightFetch
 }
 
-/**
- * fetch() wrapper that automatically attaches the server auth token.
- * Use for all calls to the local capture server from the renderer.
- */
-export async function captureServerFetch(path: string, init?: RequestInit): Promise<Response> {
-  const token = await getToken()
+async function getToken(): Promise<string | null> {
+  if (cachedToken) return cachedToken
+  return refreshToken()
+}
+
+function buildRequest(path: string, init: RequestInit | undefined): Promise<Response> {
   const headers = new Headers(init?.headers)
-  if (token) {
-    headers.set('X-Birdbrain-Token', token)
+  if (cachedToken) {
+    headers.set('X-Birdbrain-Token', cachedToken)
   }
   return fetch(`${CAPTURE_SERVER_BASE_URL}${path}`, { ...init, headers })
+}
+
+/**
+ * fetch() wrapper that attaches the server auth token. On 401, refreshes the
+ * token from /api/status and retries once — covers the window where the
+ * Birdbrain app restarted and regenerated its token after the renderer cached
+ * the previous one.
+ */
+export async function captureServerFetch(path: string, init?: RequestInit): Promise<Response> {
+  const usedToken = await getToken()
+  let res = await buildRequest(path, init)
+  if (res.status === 401) {
+    const refreshed = await refreshToken()
+    if (refreshed && refreshed !== usedToken) {
+      res = await buildRequest(path, init)
+    }
+  }
+  return res
 }

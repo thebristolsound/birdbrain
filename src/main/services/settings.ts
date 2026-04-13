@@ -52,7 +52,9 @@ const DEFAULT_SETTINGS: BirdbrainSettings = {
   autoCaptureMode: 'notify',
   lastActiveCaseId: null,
   lastActiveSection: 'captures',
-  hasCompletedOnboarding: false
+  hasCompletedOnboarding: false,
+  analysisSystemPrompt:
+    'You are an expert investigative analyst reviewing web captures collected as part of a digital investigation. Analyze the provided capture in the context of the case description and metadata. Provide a clear, structured assessment covering key findings, notable entities, potential risks, and recommended next steps. Be concise but thorough.'
 }
 
 export function initSettings(userDataPath: string): void {

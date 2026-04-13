@@ -12,7 +12,7 @@ import { DatabaseAdmin } from './DatabaseAdmin'
 type SettingsTab = 'ai' | 'capture' | 'storage' | 'appearance' | 'operator' | 'database' | 'about'
 
 const settingsTabs: { id: SettingsTab; label: string; icon: typeof Key }[] = [
-  { id: 'ai', label: 'API Keys', icon: Key },
+  { id: 'ai', label: 'AI', icon: Key },
   { id: 'capture', label: 'Capture', icon: Camera },
   { id: 'storage', label: 'Storage', icon: HardDrive },
   { id: 'appearance', label: 'Appearance', icon: Palette },
@@ -44,7 +44,7 @@ export function SettingsView() {
   const renderContent = () => {
     switch (activeTab) {
       case 'ai':
-        return <AIConfig />
+        return <AIConfig settings={settings} onUpdate={handleUpdate} />
       case 'capture':
         return <CapturePreferences settings={settings} onUpdate={handleUpdate} />
       case 'storage':

@@ -321,6 +321,25 @@ function migrate(db: Database.Database): void {
       db.pragma('user_version = 14')
     })()
   }
+
+  if (version < 15) {
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS capture_analyses (
+          id TEXT PRIMARY KEY,
+          capture_id TEXT NOT NULL REFERENCES captures(id) ON DELETE CASCADE,
+          case_id TEXT NOT NULL,
+          content TEXT NOT NULL,
+          model TEXT NOT NULL,
+          token_usage TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_capture_analyses_capture ON capture_analyses(capture_id);
+      `)
+      db.pragma('user_version = 15')
+    })()
+  }
 }
 
 // --- Cases ---

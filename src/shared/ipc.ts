@@ -88,6 +88,13 @@ export const IPC_CHANNELS = {
   CAPTURES_TEST_PIPELINE: 'captures:testPipeline',
   CAPTURES_TEST_HTTP: 'captures:testHttp',
 
+  // AI Analysis
+  AI_ANALYZE: 'ai:analyze',
+  AI_SAVE_ANALYSIS: 'ai:saveAnalysis',
+  AI_UPDATE_ANALYSIS: 'ai:updateAnalysis',
+  AI_GET_ANALYSIS: 'ai:getAnalysis',
+  AI_DELETE_ANALYSIS: 'ai:deleteAnalysis',
+
   // Database Admin
   DB_STATS: 'db:stats',
   DB_TABLE_ROWS: 'db:tableRows',
@@ -221,6 +228,19 @@ export interface OrphanReport {
     missingPaths: string[]
   }>
   fileOrphans: string[]
+}
+
+export interface AnalyzeCaptureParams {
+  captureId: string
+  caseId: string
+  model: string
+}
+
+export interface UpdateAnalysisParams {
+  id: string
+  content: string
+  model: string
+  tokenUsage: { prompt: number; completion: number; total: number }
 }
 
 export interface SaveCaptureParams {

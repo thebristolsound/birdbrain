@@ -61,7 +61,7 @@ const TAB_LABELS: Record<ViewTab, string> = {
   source: 'Source',
   text: 'Text',
   metadata: 'Metadata',
-  analysis: '✦ Analysis'
+  analysis: 'Analysis'
 }
 
 export function CaptureViewer() {
@@ -84,8 +84,7 @@ export function CaptureViewer() {
   const [newTagName, setNewTagName] = useState('')
   const [newTagColor, setNewTagColor] = useState('#f59e0b')
   const [showColorPicker, setShowColorPicker] = useState(false)
-  const [notePrefillTitle, setNotePrefillTitle] = useState('')
-  const [notePrefillBody, setNotePrefillBody] = useState('')
+  const [notePrefill, setNotePrefill] = useState<{ title: string; body: string } | null>(null)
 
   useEffect(() => {
     if (!selectedCaptureId) {
@@ -534,12 +533,12 @@ export function CaptureViewer() {
         )}
         {activeTab === 'analysis' && (
           <AnalysisTab
+            key={capture.id}
             captureId={capture.id}
             caseId={caseId}
             captureTitle={capture.title || ''}
-            onOpenNote={(prefillTitle, prefillBody) => {
-              setNotePrefillTitle(prefillTitle)
-              setNotePrefillBody(prefillBody)
+            onOpenNote={(title, body) => {
+              setNotePrefill({ title, body })
               setShowAddNote(true)
             }}
           />
@@ -570,12 +569,10 @@ export function CaptureViewer() {
         captureId={capture.id}
         captureTitle={capture.title || ''}
         captureUrl={capture.url}
-        prefillTitle={notePrefillTitle || undefined}
-        prefillBody={notePrefillBody || undefined}
+        initialValues={notePrefill ?? undefined}
         onClose={() => {
           setShowAddNote(false)
-          setNotePrefillTitle('')
-          setNotePrefillBody('')
+          setNotePrefill(null)
         }}
       />
     </main>

@@ -8,7 +8,8 @@ import type {
   UpdateSelectorParams,
   CreateNoteParams,
   UpdateNoteParams,
-  BulkCreateSelectorsParams
+  BulkCreateSelectorsParams,
+  UpsertAnalysisParams
 } from '@shared/ipc'
 
 export const queryKeys = {
@@ -28,7 +29,10 @@ export const queryKeys = {
   search: (query: string) => ['search', query] as const,
   notes: (caseId: string) => ['notes', caseId] as const,
   noteCount: (caseId: string) => ['notes', 'count', caseId] as const,
-  notesSearch: (caseId: string, query: string) => ['notes', 'search', caseId, query] as const
+  notesSearch: (caseId: string, query: string) => ['notes', 'search', caseId, query] as const,
+  settings: ['settings'] as const,
+  openRouterModels: (apiKey: string | null) => ['openRouterModels', apiKey] as const,
+  captureAnalysis: (captureId: string) => ['captureAnalysis', captureId] as const
 }
 
 // --- Cases ---
@@ -275,4 +279,48 @@ export function useNotesMutations(caseId: string) {
   })
 
   return { create, update, remove }
+}
+
+// --- Settings + OpenRouter ---
+
+export const settingsQueryOptions = queryOptions({
+  queryKey: queryKeys.settings,
+  queryFn: () => window.birdbrain.settings.get()
+})
+
+export const openRouterModelsQueryOptions = (apiKey: string | null) =>
+  queryOptions({
+    queryKey: queryKeys.openRouterModels(apiKey),
+    queryFn: () => (apiKey ? window.birdbrain.settings.listModels(apiKey) : Promise.resolve([])),
+    enabled: !!apiKey,
+    staleTime: 5 * 60 * 1000
+  })
+
+// --- Capture analysis ---
+
+export const captureAnalysisQueryOptions = (captureId: string) =>
+  queryOptions({
+    queryKey: queryKeys.captureAnalysis(captureId),
+    queryFn: () => window.birdbrain.ai.getAnalysis(captureId),
+    enabled: !!captureId,
+    staleTime: Infinity
+  })
+
+export function useCaptureAnalysisMutations(captureId: string) {
+  const queryClient = useQueryClient()
+
+  const invalidate = () =>
+    queryClient.invalidateQueries({ queryKey: queryKeys.captureAnalysis(captureId) })
+
+  const upsert = useMutation({
+    mutationFn: (params: UpsertAnalysisParams) => window.birdbrain.ai.upsertAnalysis(params),
+    onSuccess: invalidate
+  })
+
+  const remove = useMutation({
+    mutationFn: () => window.birdbrain.ai.deleteAnalysis(captureId),
+    onSuccess: invalidate
+  })
+
+  return { upsert, remove }
 }

@@ -4,6 +4,7 @@ import type {
   Case,
   Capture,
   CaptureFormat,
+  CaptureAnalysis,
   HashVerification,
   Tag,
   Selector,
@@ -324,19 +325,18 @@ function migrate(db: Database.Database): void {
 
   if (version < 15) {
     db.transaction(() => {
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS capture_analyses (
+      db.prepare(
+        `CREATE TABLE IF NOT EXISTS capture_analyses (
           id TEXT PRIMARY KEY,
-          capture_id TEXT NOT NULL REFERENCES captures(id) ON DELETE CASCADE,
+          capture_id TEXT NOT NULL UNIQUE REFERENCES captures(id) ON DELETE CASCADE,
           case_id TEXT NOT NULL,
           content TEXT NOT NULL,
           model TEXT NOT NULL,
           token_usage TEXT,
           created_at TEXT NOT NULL DEFAULT (datetime('now')),
           updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-        );
-        CREATE INDEX IF NOT EXISTS idx_capture_analyses_capture ON capture_analyses(capture_id);
-      `)
+        )`
+      ).run()
       db.pragma('user_version = 15')
     })()
   }
@@ -1116,6 +1116,75 @@ function rowToNote(row: Record<string, unknown>): Note {
     body: row.body as string,
     sourceUrl: (row.source_url as string) || undefined,
     screenshotPath: (row.screenshot_path as string) || undefined,
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string
+  }
+}
+
+// --- Capture analyses ---
+
+export interface UpsertCaptureAnalysisParams {
+  captureId: string
+  caseId: string
+  content: string
+  model: string
+  tokenUsage: { prompt: number; completion: number; total: number }
+}
+
+export function upsertCaptureAnalysis(params: UpsertCaptureAnalysisParams): CaptureAnalysis {
+  const now = new Date().toISOString()
+  const id = uuid()
+  getDb()
+    .prepare(
+      `INSERT INTO capture_analyses (id, capture_id, case_id, content, model, token_usage, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(capture_id) DO UPDATE SET
+         content = excluded.content,
+         model = excluded.model,
+         token_usage = excluded.token_usage,
+         updated_at = excluded.updated_at`
+    )
+    .run(
+      id,
+      params.captureId,
+      params.caseId,
+      params.content,
+      params.model,
+      JSON.stringify(params.tokenUsage),
+      now,
+      now
+    )
+  return getCaptureAnalysis(params.captureId)!
+}
+
+export function getCaptureAnalysis(captureId: string): CaptureAnalysis | null {
+  const row = getDb()
+    .prepare('SELECT * FROM capture_analyses WHERE capture_id = ?')
+    .get(captureId) as Record<string, unknown> | undefined
+  return row ? rowToCaptureAnalysis(row) : null
+}
+
+export function deleteCaptureAnalysis(captureId: string): boolean {
+  const result = getDb().prepare('DELETE FROM capture_analyses WHERE capture_id = ?').run(captureId)
+  return result.changes > 0
+}
+
+function rowToCaptureAnalysis(row: Record<string, unknown>): CaptureAnalysis {
+  let tokenUsage = { prompt: 0, completion: 0, total: 0 }
+  if (typeof row.token_usage === 'string') {
+    try {
+      tokenUsage = JSON.parse(row.token_usage)
+    } catch {
+      console.warn(`[db] malformed token_usage on capture_analysis ${row.id as string}`)
+    }
+  }
+  return {
+    id: row.id as string,
+    captureId: row.capture_id as string,
+    caseId: row.case_id as string,
+    content: row.content as string,
+    model: row.model as string,
+    tokenUsage,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string
   }

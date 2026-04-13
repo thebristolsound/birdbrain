@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
-import type { BirdbrainSettings, OpenRouterModel } from '@shared/types'
+import { useQuery } from '@tanstack/react-query'
+import type { BirdbrainSettings } from '@shared/types'
 import { Button, Card, CardContent, Input, Label, Textarea } from '@renderer/components/ui'
 import { Check, Eye, EyeOff, Loader2, X } from 'lucide-react'
+import { openRouterModelsQueryOptions } from '@renderer/lib/queries'
 
 export interface AIConfigProps {
   settings: BirdbrainSettings
@@ -12,22 +14,18 @@ export function AIConfig({ settings, onUpdate }: AIConfigProps) {
   const [apiKey, setApiKey] = useState(settings.openRouterApiKey ?? '')
   const [showKey, setShowKey] = useState(false)
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle')
-  const [models, setModels] = useState<OpenRouterModel[]>([])
-  const [loadingModels, setLoadingModels] = useState(false)
   const [selectedModel, setSelectedModel] = useState(settings.defaultModel)
   const [systemPrompt, setSystemPrompt] = useState(settings.analysisSystemPrompt ?? '')
 
-  // Load models when API key is present
+  const { data: models = [], isLoading: loadingModels } = useQuery(
+    openRouterModelsQueryOptions(settings.openRouterApiKey)
+  )
+
   useEffect(() => {
-    const key = settings.openRouterApiKey
-    if (!key) return
-    setLoadingModels(true)
-    window.birdbrain.settings
-      .listModels(key)
-      .then((m) => setModels(m))
-      .catch(() => setModels([]))
-      .finally(() => setLoadingModels(false))
-  }, [settings.openRouterApiKey])
+    if (testStatus !== 'success' && testStatus !== 'error') return
+    const id = setTimeout(() => setTestStatus('idle'), 3000)
+    return () => clearTimeout(id)
+  }, [testStatus])
 
   async function handleTestKey() {
     if (!apiKey.trim()) return
@@ -37,20 +35,12 @@ export function AIConfig({ settings, onUpdate }: AIConfigProps) {
       if (ok) {
         setTestStatus('success')
         await onUpdate({ openRouterApiKey: apiKey.trim() })
-        // Reload models with the new key
-        setLoadingModels(true)
-        window.birdbrain.settings
-          .listModels(apiKey.trim())
-          .then((m) => setModels(m))
-          .catch(() => setModels([]))
-          .finally(() => setLoadingModels(false))
       } else {
         setTestStatus('error')
       }
     } catch {
       setTestStatus('error')
     }
-    setTimeout(() => setTestStatus('idle'), 3000)
   }
 
   async function handleSaveKey() {

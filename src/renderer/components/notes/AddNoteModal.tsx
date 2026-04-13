@@ -19,8 +19,7 @@ interface AddNoteModalProps {
   captureTitle: string
   captureUrl: string
   onClose: () => void
-  prefillTitle?: string
-  prefillBody?: string
+  initialValues?: { title?: string; body?: string }
 }
 
 export function AddNoteModal({
@@ -30,8 +29,7 @@ export function AddNoteModal({
   captureTitle,
   captureUrl,
   onClose,
-  prefillTitle,
-  prefillBody
+  initialValues
 }: AddNoteModalProps) {
   const { create } = useNotesMutations(caseId)
   const [title, setTitle] = useState('')
@@ -39,10 +37,10 @@ export function AddNoteModal({
 
   useEffect(() => {
     if (open) {
-      setTitle(prefillTitle ?? captureTitle)
-      setBody(prefillBody ?? '')
+      setTitle(initialValues?.title ?? captureTitle)
+      setBody(initialValues?.body ?? '')
     }
-  }, [open, captureTitle, prefillTitle, prefillBody])
+  }, [open, captureTitle, initialValues])
 
   async function handleSave() {
     if (!title.trim() && !body.trim()) return

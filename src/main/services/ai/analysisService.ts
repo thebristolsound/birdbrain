@@ -30,13 +30,21 @@ export async function analyzeCapture(
     | undefined
   if (!capture) throw new Error(`Capture not found: ${captureId}`)
 
+  const captureCaseId = capture.case_id
+  if (typeof captureCaseId !== 'string' || captureCaseId.length === 0) {
+    throw new Error(`Capture has invalid case association: ${captureId}`)
+  }
+  if (captureCaseId !== caseId) {
+    throw new Error(`Capture ${captureId} does not belong to case ${caseId}`)
+  }
+
   // Load case context
-  const caseRow = db.prepare('SELECT * FROM cases WHERE id = ?').get(caseId) as
+  const caseRow = db.prepare('SELECT * FROM cases WHERE id = ?').get(captureCaseId) as
     | Record<string, unknown>
     | undefined
 
   // Load text content
-  const textBuffer = storage.readCaptureFile(caseId, captureId, 'txt')
+  const textBuffer = storage.readCaptureFile(captureCaseId, captureId, 'txt')
   const textContent = textBuffer ? textBuffer.toString('utf-8') : ''
 
   // Build user message

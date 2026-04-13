@@ -53,12 +53,28 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
     enabled: !!captureId
   })
 
-  // When saved analysis loads, populate the live state
+  // Reset local analysis state when switching captures to avoid showing stale data
+  useEffect(() => {
+    setLiveContent(null)
+    setLiveTokenUsage(null)
+    setAnalysisTimestamp(null)
+    setAnalyzeError(null)
+    setHasUnsavedChanges(false)
+  }, [captureId])
+
+  // When saved analysis loads, populate the live state or clear it if none exists
   useEffect(() => {
     if (savedAnalysis) {
       setLiveContent(savedAnalysis.content)
       setLiveTokenUsage(savedAnalysis.tokenUsage)
       setAnalysisTimestamp(savedAnalysis.updatedAt || savedAnalysis.createdAt)
+      setHasUnsavedChanges(false)
+      setAnalyzeError(null)
+    } else {
+      setLiveContent(null)
+      setLiveTokenUsage(null)
+      setAnalysisTimestamp(null)
+      setAnalyzeError(null)
       setHasUnsavedChanges(false)
     }
   }, [savedAnalysis])

@@ -16,7 +16,9 @@ import type {
   DbUpdateRowParams,
   DbRowIdentifier,
   DbExportTableParams,
-  OrphanReport
+  OrphanReport,
+  AnalyzeCaptureParams,
+  UpdateAnalysisParams
 } from '@shared/ipc'
 import * as dbAdmin from '@main/services/dbAdmin'
 import { existsSync } from 'fs'
@@ -26,13 +28,14 @@ import * as db from '@main/services/database'
 import * as storage from '@main/services/storage'
 import * as settings from '@main/services/settings'
 import * as openrouter from '@main/services/openrouter'
+import * as analysisService from '@main/services/ai/analysisService'
 import { generateReport } from '@main/services/export'
 import { getExtensionPath, extensionPathExists } from '@main/services/extensionPath'
 import { buildCsv } from '@main/services/csvEscape'
 import { initManifest, appendManifestEntry, rollbackManifestEntry } from '@main/services/manifest'
 import { getInstallationId } from '@main/services/installationId'
 import { CAPTURE_SERVER_PORT, getSessionState } from '@main/services/captureServer'
-import type { BirdbrainSettings, ExportOptions } from '@shared/types'
+import type { BirdbrainSettings, ExportOptions, CaptureAnalysis } from '@shared/types'
 
 type IpcResult<T = unknown> =
   | {
@@ -588,6 +591,65 @@ export function registerIpcHandlers(): void {
       }
     }
   )
+
+  // AI Analysis
+  ipcMain.handle(IPC_CHANNELS.AI_ANALYZE, async (_, params: AnalyzeCaptureParams) => {
+    try {
+      const currentSettings = settings.getSettings()
+      const apiKey = currentSettings.openRouterApiKey
+      if (!apiKey) throw new Error('No OpenRouter API key configured')
+      const systemPrompt =
+        currentSettings.analysisSystemPrompt ||
+        'You are an expert investigative analyst reviewing web captures.'
+      return ipcResult(
+        await analysisService.analyzeCapture(
+          params.captureId,
+          params.caseId,
+          params.model,
+          apiKey,
+          systemPrompt
+        )
+      )
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      return { ok: false, error: message } as IpcResult<never>
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.AI_SAVE_ANALYSIS, (_, analysis: CaptureAnalysis) => {
+    try {
+      analysisService.saveAnalysis(analysis)
+      return ipcResult(undefined)
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.AI_UPDATE_ANALYSIS, (_, params: UpdateAnalysisParams) => {
+    try {
+      analysisService.updateAnalysis(params.id, params.content, params.model, params.tokenUsage)
+      return ipcResult(undefined)
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.AI_GET_ANALYSIS, (_, params: { captureId: string }) => {
+    try {
+      return ipcResult(analysisService.getAnalysis(params.captureId))
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.AI_DELETE_ANALYSIS, (_, params: { id: string }) => {
+    try {
+      analysisService.deleteAnalysis(params.id)
+      return ipcResult(undefined)
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
 
   // Database Admin
   ipcMain.handle(IPC_CHANNELS.DB_STATS, () => {

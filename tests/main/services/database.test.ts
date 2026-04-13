@@ -307,9 +307,9 @@ describe('database', () => {
     })
 
     it('sets user_version to 7 after v7 migration', () => {
-      // v8..v13 migrations run immediately after, so final version is 14
+      // v8..v15 migrations run immediately after, so final version is 15
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(14)
+      expect(version).toBe(15)
     })
   })
 
@@ -333,9 +333,9 @@ describe('database', () => {
     })
 
     it('sets user_version to 8', () => {
-      // v9..v13 migrations run immediately after, so final version is 14
+      // v9..v15 migrations run immediately after, so final version is 15
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(14)
+      expect(version).toBe(15)
     })
   })
 
@@ -357,9 +357,62 @@ describe('database', () => {
     })
 
     it('sets user_version to 9', () => {
-      // v10..v13 migrations run immediately after, so final version is 14
+      // v10..v15 migrations run immediately after, so final version is 15
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(14)
+      expect(version).toBe(15)
+    })
+  })
+
+  describe('migration v15 - capture analyses', () => {
+    it('creates capture_analyses table', () => {
+      const table = getDb()
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='capture_analyses'")
+        .get()
+      expect(table).toBeDefined()
+    })
+
+    it('enforces UNIQUE(capture_id) on capture_analyses', () => {
+      const db = getDb()
+      const columns = db
+        .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='capture_analyses'")
+        .get() as { sql: string } | undefined
+      expect(columns?.sql).toBeDefined()
+      expect(columns!.sql).toMatch(/capture_id\s+TEXT\s+NOT\s+NULL\s+UNIQUE/i)
+    })
+
+    it('creates idx_capture_analyses_capture index', () => {
+      const idx = getDb()
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_capture_analyses_capture'"
+        )
+        .get()
+      expect(idx).toBeDefined()
+    })
+
+    it('rejects duplicate analyses for the same capture', () => {
+      const db = getDb()
+      const c = createCase({ name: 'Analyses Unique Test' })
+      const cap = insertCapture({
+        caseId: c.id,
+        url: 'https://example.com',
+        title: 'Analyses Capture',
+        hash: 'analyses-h1',
+        timestamp: new Date().toISOString()
+      })
+      const now = new Date().toISOString()
+      const insert = db.prepare(
+        `INSERT INTO capture_analyses (id, capture_id, case_id, content, model, token_usage, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      insert.run('analysis-1', cap.id, c.id, 'first', 'test/model', '{}', now, now)
+      expect(() =>
+        insert.run('analysis-2', cap.id, c.id, 'second', 'test/model', '{}', now, now)
+      ).toThrow(/UNIQUE/i)
+    })
+
+    it('sets user_version to 15', () => {
+      const version = getDb().pragma('user_version', { simple: true })
+      expect(version).toBe(15)
     })
   })
 
@@ -873,6 +926,76 @@ describe('database', () => {
       for (const col of expected) {
         expect(names).toContain(col)
       }
+    })
+  })
+
+  describe('migration v15 - capture analyses', () => {
+    it('creates capture_analyses table', () => {
+      const table = getDb()
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='capture_analyses'"
+        )
+        .get()
+      expect(table).toBeDefined()
+    })
+
+    it('creates idx_capture_analyses_capture index', () => {
+      const idx = getDb()
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_capture_analyses_capture'"
+        )
+        .get()
+      expect(idx).toBeDefined()
+    })
+
+    it('enforces UNIQUE constraint on capture_id', () => {
+      const c = createCase({ name: 'Analysis Unique Test' })
+      const cap = insertCapture({
+        caseId: c.id,
+        url: 'https://example.com',
+        title: 'Example',
+        hash: 'deadbeef01',
+        timestamp: new Date().toISOString()
+      })
+      const now = new Date().toISOString()
+      const db = getDb()
+      db.prepare(
+        `INSERT INTO capture_analyses (id, capture_id, case_id, content, model, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      ).run('id-1', cap.id, c.id, 'first', 'model-a', now, now)
+      expect(() =>
+        db.prepare(
+          `INSERT INTO capture_analyses (id, capture_id, case_id, content, model, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`
+        ).run('id-2', cap.id, c.id, 'second', 'model-b', now, now)
+      ).toThrow()
+    })
+
+    it('cascades delete when capture is deleted', () => {
+      const c = createCase({ name: 'Analysis Cascade Test' })
+      const cap = insertCapture({
+        caseId: c.id,
+        url: 'https://example.com',
+        title: 'Example',
+        hash: 'deadbeef02',
+        timestamp: new Date().toISOString()
+      })
+      const now = new Date().toISOString()
+      const db = getDb()
+      db.prepare(
+        `INSERT INTO capture_analyses (id, capture_id, case_id, content, model, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      ).run('id-3', cap.id, c.id, 'content', 'model-a', now, now)
+      deleteCapture(cap.id)
+      const row = db
+        .prepare('SELECT * FROM capture_analyses WHERE capture_id = ?')
+        .get(cap.id)
+      expect(row).toBeUndefined()
+    })
+
+    it('sets user_version to 15', () => {
+      const version = getDb().pragma('user_version', { simple: true })
+      expect(version).toBe(15)
     })
   })
 

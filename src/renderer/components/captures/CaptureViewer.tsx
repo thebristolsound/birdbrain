@@ -24,11 +24,13 @@ import {
   Info,
   Tag as TagIcon,
   StickyNote,
-  MoreHorizontal
+  MoreHorizontal,
+  Sparkles
 } from 'lucide-react'
 import { AddNoteModal } from '@renderer/components/notes/AddNoteModal'
 import { MhtmlViewer } from '@renderer/components/captures/MhtmlViewer'
 import { ProvenanceBadge } from '@renderer/components/captures/ProvenanceBadge'
+import { AnalysisTab } from '@renderer/components/captures/AnalysisTab'
 import {
   Button,
   Card,
@@ -40,16 +42,17 @@ import {
   DialogFooter
 } from '@renderer/components/ui'
 
-type ViewTab = 'screenshot' | 'page' | 'source' | 'text' | 'metadata'
+type ViewTab = 'screenshot' | 'page' | 'source' | 'text' | 'metadata' | 'analysis'
 
-const TABS: ViewTab[] = ['screenshot', 'page', 'source', 'text', 'metadata']
+const TABS: ViewTab[] = ['screenshot', 'page', 'source', 'text', 'metadata', 'analysis']
 
 const TAB_ICONS: Record<ViewTab, typeof Image> = {
   screenshot: Image,
   page: Globe,
   source: Code,
   text: FileText,
-  metadata: Info
+  metadata: Info,
+  analysis: Sparkles
 }
 
 const TAB_LABELS: Record<ViewTab, string> = {
@@ -57,7 +60,8 @@ const TAB_LABELS: Record<ViewTab, string> = {
   page: 'Page',
   source: 'Source',
   text: 'Text',
-  metadata: 'Metadata'
+  metadata: 'Metadata',
+  analysis: '✦ Analysis'
 }
 
 export function CaptureViewer() {
@@ -80,6 +84,8 @@ export function CaptureViewer() {
   const [newTagName, setNewTagName] = useState('')
   const [newTagColor, setNewTagColor] = useState('#f59e0b')
   const [showColorPicker, setShowColorPicker] = useState(false)
+  const [notePrefillTitle, setNotePrefillTitle] = useState('')
+  const [notePrefillBody, setNotePrefillBody] = useState('')
 
   useEffect(() => {
     if (!selectedCaptureId) {
@@ -526,6 +532,18 @@ export function CaptureViewer() {
             </div>
           </div>
         )}
+        {activeTab === 'analysis' && (
+          <AnalysisTab
+            captureId={capture.id}
+            caseId={caseId}
+            captureTitle={capture.title || ''}
+            onOpenNote={(prefillTitle, prefillBody) => {
+              setNotePrefillTitle(prefillTitle)
+              setNotePrefillBody(prefillBody)
+              setShowAddNote(true)
+            }}
+          />
+        )}
       </div>
 
       <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
@@ -552,7 +570,13 @@ export function CaptureViewer() {
         captureId={capture.id}
         captureTitle={capture.title || ''}
         captureUrl={capture.url}
-        onClose={() => setShowAddNote(false)}
+        prefillTitle={notePrefillTitle || undefined}
+        prefillBody={notePrefillBody || undefined}
+        onClose={() => {
+          setShowAddNote(false)
+          setNotePrefillTitle('')
+          setNotePrefillBody('')
+        }}
       />
     </main>
   )

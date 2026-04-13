@@ -67,6 +67,7 @@ export interface BirdbrainSettings {
   lastActiveCaseId: string | null
   lastActiveSection: 'captures' | 'selectors' | 'notes' | 'tags' | 'settings'
   hasCompletedOnboarding: boolean
+  analysisSystemPrompt: string
 }
 
 export interface OpenRouterModel {
@@ -147,6 +148,21 @@ export interface Note {
 }
 
 export type AutoCaptureMode = 'auto' | 'notify' | 'per-case'
+
+export interface CaptureAnalysis {
+  id: string
+  captureId: string
+  caseId: string
+  content: string
+  model: string
+  tokenUsage: {
+    prompt: number
+    completion: number
+    total: number
+  }
+  createdAt: string
+  updatedAt: string
+}
 
 export type CaptureSource = 'auto' | 'manual' | 'selector'
 

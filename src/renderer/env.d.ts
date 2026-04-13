@@ -12,7 +12,8 @@ import type {
   ActiveCaseSelectors,
   CaptureEvent,
   Note,
-  HashVerification
+  HashVerification,
+  CaptureAnalysis
 } from '@shared/types'
 import type {
   CreateCaseParams,
@@ -32,7 +33,9 @@ import type {
   DbUpdateRowParams,
   DbRowIdentifier,
   DbExportTableParams,
-  OrphanReport
+  OrphanReport,
+  AnalyzeCaptureParams,
+  UpdateAnalysisParams
 } from '@shared/ipc'
 
 interface BirdbrainAPI {
@@ -108,6 +111,16 @@ interface BirdbrainAPI {
   }
   export: {
     generateReport(caseId: string, options: ExportOptions): Promise<void>
+  }
+  ai: {
+    analyze(params: AnalyzeCaptureParams): Promise<{
+      content: string
+      tokenUsage: { prompt: number; completion: number; total: number }
+    }>
+    saveAnalysis(analysis: CaptureAnalysis): Promise<void>
+    updateAnalysis(params: UpdateAnalysisParams): Promise<void>
+    getAnalysis(captureId: string): Promise<CaptureAnalysis | null>
+    deleteAnalysis(id: string): Promise<void>
   }
   db: {
     stats(): Promise<DbStats>

@@ -100,7 +100,12 @@ export function saveAnalysis(analysis: CaptureAnalysis): void {
   const db = getDb()
   db.prepare(
     `INSERT INTO capture_analyses (id, capture_id, case_id, content, model, token_usage, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(capture_id) DO UPDATE SET
+       content = excluded.content,
+       model = excluded.model,
+       token_usage = excluded.token_usage,
+       updated_at = excluded.updated_at`
   ).run(
     analysis.id || uuid(),
     analysis.captureId,

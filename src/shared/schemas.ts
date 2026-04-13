@@ -168,7 +168,7 @@ export const BirdbrainSettingsSchema = z.object({
     .optional()
     .default('captures'),
   hasCompletedOnboarding: z.boolean().optional().default(false),
-  analysisSystemPrompt: z.string().optional().default('')
+  analysisSystemPrompt: z.string().optional()
 })
 
 // Used on load: user may have an older settings file missing newer keys, so

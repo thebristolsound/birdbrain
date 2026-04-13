@@ -300,7 +300,27 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
       {/* Markdown content */}
       <div className="flex-1 overflow-y-auto p-4">
         <div className="prose prose-sm prose-invert max-w-none text-text-secondary [&_h1]:text-text-primary [&_h2]:text-text-primary [&_h3]:text-text-primary [&_strong]:text-text-primary [&_a]:text-accent [&_code]:rounded [&_code]:bg-elevated [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs [&_pre]:bg-elevated [&_pre]:p-3 [&_li]:text-text-secondary [&_ul]:text-text-secondary [&_ol]:text-text-secondary">
-          <Markdown>{liveContent ?? ''}</Markdown>
+          <Markdown
+            components={{
+              // Disallow images to prevent external network requests from AI output
+              img: () => null,
+              // Open links externally via shell rather than in-app navigation
+              a: ({ href, children }) => (
+                <a
+                  href={href}
+                  rel="noreferrer noopener"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    if (href) window.birdbrain.captures.openExternal(href)
+                  }}
+                >
+                  {children}
+                </a>
+              )
+            }}
+          >
+            {liveContent ?? ''}
+          </Markdown>
         </div>
       </div>
 

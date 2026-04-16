@@ -164,7 +164,7 @@ export const BirdbrainSettingsSchema = z.object({
   autoCaptureMode: z.enum(['auto', 'notify', 'per-case']),
   lastActiveCaseId: z.string().nullable(),
   lastActiveSection: z
-    .enum(['captures', 'selectors', 'notes', 'tags', 'settings'])
+    .enum(['captures', 'selectors', 'notes', 'tags', 'settings', 'data'])
     .optional()
     .default('captures'),
   hasCompletedOnboarding: z.boolean().optional().default(false),

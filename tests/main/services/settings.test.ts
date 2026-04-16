@@ -112,4 +112,9 @@ describe('settings', () => {
     expect(settings.lastActiveCaseId).toBe('case-123')
     expect(settings.lastActiveSection).toBe('notes')
   })
+
+  it('persists data as lastActiveSection', () => {
+    updateSettings({ lastActiveSection: 'data' })
+    expect(getSettings().lastActiveSection).toBe('data')
+  })
 })

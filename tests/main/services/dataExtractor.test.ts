@@ -21,7 +21,7 @@ describe('dataExtractor', () => {
 
   it('should extract email addresses', () => {
     const html = `
-      <a href="mailto:contact@example.com">Email us</a>
+      <a href="mailto:info@realcompany.com">Email us</a>
       <p>Support: support@company.org</p>
     `
     const results = extractData(html)
@@ -30,7 +30,7 @@ describe('dataExtractor', () => {
       (r) => r.category === 'Infrastructure' && r.subcategory === 'Email Address'
     )
     expect(emails.length).toBeGreaterThan(0)
-    expect(emails.map((e) => e.value)).toContain('contact@example.com')
+    expect(emails.map((e) => e.value)).toContain('info@realcompany.com')
     expect(emails.map((e) => e.value)).toContain('support@company.org')
   })
 

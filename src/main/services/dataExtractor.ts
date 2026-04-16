@@ -222,8 +222,9 @@ export const EXTRACTION_RULES: ExtractionRule[] = [
   }
 ]
 
-// Limit extraction to the first 5 MB of HTML to handle very large pages
-const MAX_HTML_BYTES = 5 * 1024 * 1024
+// Limit extraction to the first 5 MB of HTML to handle very large pages.
+// Exported so callers can slice their Buffer before decoding, avoiding a full decode+allocation.
+export const MAX_HTML_BYTES = 5 * 1024 * 1024
 
 export function extractData(html: string): ExtractedDatum[] {
   const input = html.length > MAX_HTML_BYTES ? html.slice(0, MAX_HTML_BYTES) : html

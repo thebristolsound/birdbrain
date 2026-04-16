@@ -35,7 +35,7 @@ import { buildCsv } from '@main/services/csvEscape'
 import { initManifest, appendManifestEntry, rollbackManifestEntry } from '@main/services/manifest'
 import { getInstallationId } from '@main/services/installationId'
 import { CAPTURE_SERVER_PORT, getSessionState } from '@main/services/captureServer'
-import { extractData } from '@main/services/dataExtractor'
+import { extractData, MAX_HTML_BYTES } from '@main/services/dataExtractor'
 import type { BirdbrainSettings, ExportOptions, CaptureAnalysis } from '@shared/types'
 
 type IpcResult<T = unknown> =
@@ -821,8 +821,9 @@ export function registerIpcHandlers(): void {
         try {
           const htmlBuffer = storage.readCaptureFile(caseId, cap.id, 'html')
           if (htmlBuffer) {
-            const html = htmlBuffer.toString('utf-8')
+            const html = htmlBuffer.slice(0, MAX_HTML_BYTES).toString('utf-8')
             const extracted = extractData(html)
+            db.deleteExtractedDataForCapture(cap.id)
             db.insertExtractedData(cap.id, caseId, cap.url, extracted)
           }
         } catch (err) {

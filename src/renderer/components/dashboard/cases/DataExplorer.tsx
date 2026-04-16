@@ -63,7 +63,7 @@ export function DataExplorer() {
 
   async function handleSourceUrlClick(url: string) {
     try {
-      // Try to find the capture for this URL and navigate to it
+      // Open the source URL in the system's default browser
       await window.birdbrain.captures.openExternal(url).catch(() => {
         // If openExternal fails (e.g. non-http URL), just ignore
       })

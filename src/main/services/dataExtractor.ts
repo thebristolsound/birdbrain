@@ -15,7 +15,22 @@ export interface ExtractedDatum {
   value: string
 }
 
-// Validate IPv4: all octets must be 0-255
+// Validate IPv6: count colons and hexadecimal groups
+function isValidIpv6(ip: string): boolean {
+  // Strip IPv6 zone ID if present
+  const addr = ip.split('%')[0]
+  // Must contain at least one colon
+  if (!addr.includes(':')) return false
+  // Cannot have more than one '::'
+  const doubleColonCount = (addr.match(/::/g) || []).length
+  if (doubleColonCount > 1) return false
+  // Validate each group is 1-4 hex digits (splitting around '::')
+  const parts = addr.split('::')
+  if (parts.length > 2) return false
+  const groups = parts.flatMap((p) => (p ? p.split(':') : []))
+  if (groups.some((g) => !/^[0-9a-fA-F]{1,4}$/.test(g))) return false
+  return true
+}
 function isValidIpv4(ip: string): boolean {
   const parts = ip.split('.')
   if (parts.length !== 4) return false
@@ -96,7 +111,8 @@ export const EXTRACTION_RULES: ExtractionRule[] = [
       /(?:[0-9a-fA-F]{1,4}:){1,7}:/g,
       /:(?::[0-9a-fA-F]{1,4}){1,7}/g,
       /(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}/g
-    ]
+    ],
+    normalize: (match: string) => (isValidIpv6(match) ? match : null)
   },
   {
     category: 'Infrastructure',

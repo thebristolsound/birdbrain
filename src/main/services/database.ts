@@ -1238,19 +1238,3 @@ export function getExtractedDataCountForCase(caseId: string): number {
 export function deleteExtractedDataForCapture(captureId: string): void {
   getDb().prepare('DELETE FROM extracted_data WHERE capture_id = ?').run(captureId)
 }
-
-export function reprocessExtractedDataForCase(
-  caseId: string,
-  processor: (captureId: string, caseId: string, url: string, html: string) => void
-): void {
-  const captures = listCaptures(caseId)
-  // Process in chunks using setImmediate to avoid blocking
-  let i = 0
-  function processNext(): void {
-    if (i >= captures.length) return
-    const cap = captures[i++]
-    processor(cap.id, caseId, cap.url, '')
-    setImmediate(processNext)
-  }
-  setImmediate(processNext)
-}

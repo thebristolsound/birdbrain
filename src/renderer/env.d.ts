@@ -35,7 +35,7 @@ import type {
   DbExportTableParams,
   OrphanReport,
   AnalyzeCaptureParams,
-  UpdateAnalysisParams
+  UpsertAnalysisParams
 } from '@shared/ipc'
 
 interface BirdbrainAPI {
@@ -117,10 +117,9 @@ interface BirdbrainAPI {
       content: string
       tokenUsage: { prompt: number; completion: number; total: number }
     }>
-    saveAnalysis(analysis: CaptureAnalysis): Promise<void>
-    updateAnalysis(params: UpdateAnalysisParams): Promise<void>
+    upsertAnalysis(params: UpsertAnalysisParams): Promise<CaptureAnalysis>
     getAnalysis(captureId: string): Promise<CaptureAnalysis | null>
-    deleteAnalysis(id: string): Promise<void>
+    deleteAnalysis(captureId: string): Promise<boolean>
   }
   db: {
     stats(): Promise<DbStats>

@@ -9,7 +9,8 @@ import type {
   Selector,
   ActiveCaseSelectors,
   Note,
-  SelectorMatchExportRow
+  SelectorMatchExportRow,
+  CaptureAnalysis
 } from '@shared/types'
 import type {
   CreateCaseParams,
@@ -1116,6 +1117,64 @@ function rowToNote(row: Record<string, unknown>): Note {
     body: row.body as string,
     sourceUrl: (row.source_url as string) || undefined,
     screenshotPath: (row.screenshot_path as string) || undefined,
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string
+  }
+}
+
+// --- Capture Analyses ---
+
+export function upsertCaptureAnalysis(params: {
+  captureId: string
+  caseId: string
+  content: string
+  model: string
+  tokenUsage: { prompt: number; completion: number; total: number }
+}): CaptureAnalysis {
+  const now = new Date().toISOString()
+  getDb()
+    .prepare(
+      `INSERT INTO capture_analyses (id, capture_id, case_id, content, model, token_usage, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(capture_id) DO UPDATE SET
+         content = excluded.content,
+         model = excluded.model,
+         token_usage = excluded.token_usage,
+         updated_at = excluded.updated_at`
+    )
+    .run(
+      uuid(),
+      params.captureId,
+      params.caseId,
+      params.content,
+      params.model,
+      JSON.stringify(params.tokenUsage),
+      now,
+      now
+    )
+  return getCaptureAnalysis(params.captureId)!
+}
+
+export function getCaptureAnalysis(captureId: string): CaptureAnalysis | null {
+  const row = getDb()
+    .prepare('SELECT * FROM capture_analyses WHERE capture_id = ?')
+    .get(captureId) as Record<string, unknown> | undefined
+  return row ? rowToCaptureAnalysis(row) : null
+}
+
+export function deleteCaptureAnalysis(captureId: string): boolean {
+  const result = getDb().prepare('DELETE FROM capture_analyses WHERE capture_id = ?').run(captureId)
+  return result.changes > 0
+}
+
+function rowToCaptureAnalysis(row: Record<string, unknown>): CaptureAnalysis {
+  return {
+    id: row.id as string,
+    captureId: row.capture_id as string,
+    caseId: row.case_id as string,
+    content: row.content as string,
+    model: row.model as string,
+    tokenUsage: JSON.parse(row.token_usage as string) as CaptureAnalysis['tokenUsage'],
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string
   }

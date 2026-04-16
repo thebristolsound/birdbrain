@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import type { BirdbrainSettings } from '@shared/types'
+import { queryKeys } from '@renderer/lib/queries'
 import { AIConfig } from './AIConfig'
 import { CapturePreferences } from './CapturePreferences'
 import { StorageConfig } from './StorageConfig'
@@ -22,6 +24,7 @@ const settingsTabs: { id: SettingsTab; label: string; icon: typeof Key }[] = [
 ]
 
 export function SettingsView() {
+  const queryClient = useQueryClient()
   const [settings, setSettings] = useState<BirdbrainSettings | null>(null)
   const [activeTab, setActiveTab] = useState<SettingsTab>('ai')
 
@@ -37,6 +40,7 @@ export function SettingsView() {
   const handleUpdate = async (partial: Partial<BirdbrainSettings>) => {
     const updated = await window.birdbrain.settings.update(partial)
     setSettings(updated)
+    queryClient.setQueryData(queryKeys.settings, updated)
   }
 
   if (!settings) return <div className="text-text-muted">Loading settings...</div>

@@ -8,7 +8,8 @@ import type {
   UpdateSelectorParams,
   CreateNoteParams,
   UpdateNoteParams,
-  BulkCreateSelectorsParams
+  BulkCreateSelectorsParams,
+  UpsertAnalysisParams
 } from '@shared/ipc'
 
 export const queryKeys = {
@@ -28,7 +29,10 @@ export const queryKeys = {
   search: (query: string) => ['search', query] as const,
   notes: (caseId: string) => ['notes', caseId] as const,
   noteCount: (caseId: string) => ['notes', 'count', caseId] as const,
-  notesSearch: (caseId: string, query: string) => ['notes', 'search', caseId, query] as const
+  notesSearch: (caseId: string, query: string) => ['notes', 'search', caseId, query] as const,
+  settings: ['settings'] as const,
+  openRouterModels: (apiKey: string | null) => ['openRouterModels', apiKey] as const,
+  captureAnalysis: (captureId: string) => ['captureAnalysis', captureId] as const
 }
 
 // --- Cases ---
@@ -275,4 +279,49 @@ export function useNotesMutations(caseId: string) {
   })
 
   return { create, update, remove }
+}
+
+// --- Settings / OpenRouter ---
+
+export const settingsQueryOptions = queryOptions({
+  queryKey: queryKeys.settings,
+  queryFn: () => window.birdbrain.settings.get(),
+  staleTime: Infinity
+})
+
+export const openRouterModelsQueryOptions = (apiKey: string | null) =>
+  queryOptions({
+    queryKey: queryKeys.openRouterModels(apiKey),
+    queryFn: () => (apiKey ? window.birdbrain.settings.listModels(apiKey) : Promise.resolve([])),
+    enabled: !!apiKey,
+    staleTime: 10 * 60 * 1000
+  })
+
+// --- Capture Analysis ---
+
+export const captureAnalysisQueryOptions = (captureId: string) =>
+  queryOptions({
+    queryKey: queryKeys.captureAnalysis(captureId),
+    queryFn: () => window.birdbrain.ai.getAnalysis(captureId),
+    enabled: !!captureId
+  })
+
+export function useCaptureAnalysisMutations(captureId: string) {
+  const queryClient = useQueryClient()
+
+  const upsert = useMutation({
+    mutationFn: (params: UpsertAnalysisParams) => window.birdbrain.ai.upsertAnalysis(params),
+    onSuccess: (saved) => {
+      queryClient.setQueryData(queryKeys.captureAnalysis(captureId), saved)
+    }
+  })
+
+  const remove = useMutation({
+    mutationFn: () => window.birdbrain.ai.deleteAnalysis(captureId),
+    onSuccess: () => {
+      queryClient.setQueryData(queryKeys.captureAnalysis(captureId), null)
+    }
+  })
+
+  return { upsert, remove }
 }

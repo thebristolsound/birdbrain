@@ -1,6 +1,10 @@
 import type { OpenRouterModel } from '@shared/types'
+import { getSettings } from '@main/services/settings'
+import { OpenRouterResponseSchema } from '@shared/schemas'
 
 const OPENROUTER_BASE = 'https://openrouter.ai/api/v1'
+const MAX_RETRIES = 3
+const INITIAL_BACKOFF_MS = 1000
 
 export async function testApiKey(apiKey: string): Promise<boolean> {
   try {
@@ -29,4 +33,97 @@ export async function listModels(apiKey: string): Promise<OpenRouterModel[]> {
       completion: String((m.pricing as Record<string, unknown>)?.completion || '0')
     }
   }))
+}
+
+interface ChatMessage {
+  role: 'system' | 'user' | 'assistant'
+  content: string
+}
+
+export interface PromptResult {
+  content: string
+  usage: { prompt: number; completion: number; total: number }
+}
+
+export async function sendPrompt(
+  messages: ChatMessage[],
+  model?: string,
+  apiKey?: string
+): Promise<PromptResult> {
+  const settings = getSettings()
+  const key = apiKey || settings.openRouterApiKey
+  const modelId = model || settings.defaultModel
+
+  if (!key) throw new Error('No OpenRouter API key configured')
+
+  let lastError: Error | null = null
+
+  console.log(`[OpenRouter] Sending request to model ${modelId} (${messages.length} messages)`)
+
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch(`${OPENROUTER_BASE}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${key}`,
+          'HTTP-Referer': 'https://github.com/birdbrain',
+          'X-Title': 'Birdbrain'
+        },
+        body: JSON.stringify({ model: modelId, messages })
+      })
+
+      if (res.status === 429) {
+        const backoff = INITIAL_BACKOFF_MS * Math.pow(2, attempt)
+        console.warn(
+          `[OpenRouter] Rate limited (429), retrying in ${backoff}ms (attempt ${attempt + 1}/${MAX_RETRIES})`
+        )
+        await new Promise((resolve) => setTimeout(resolve, backoff))
+        continue
+      }
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '')
+        console.error(
+          `[OpenRouter] API error: ${res.status} ${res.statusText} — ${body.slice(0, 300)}`
+        )
+        throw new Error(`OpenRouter API error: ${res.status} ${res.statusText}`)
+      }
+
+      const raw: unknown = await res.json()
+      const parsed = OpenRouterResponseSchema.safeParse(raw)
+      if (!parsed.success) {
+        const issues = parsed.error.issues
+          .map((i) => `${i.path.join('.')}: ${i.message}`)
+          .join('; ')
+        throw new Error(`OpenRouter response failed schema validation: ${issues}`)
+      }
+      const data = parsed.data
+      const content = data.choices[0]?.message?.content ?? ''
+      console.log(
+        `[OpenRouter] Response received (${content.length} chars, ${data.usage?.total_tokens ?? '?'} tokens)`
+      )
+
+      return {
+        content,
+        usage: {
+          prompt: data.usage?.prompt_tokens ?? 0,
+          completion: data.usage?.completion_tokens ?? 0,
+          total: data.usage?.total_tokens ?? 0
+        }
+      }
+    } catch (err) {
+      lastError = err as Error
+      if (attempt < MAX_RETRIES - 1) {
+        const backoff = INITIAL_BACKOFF_MS * Math.pow(2, attempt)
+        console.warn(
+          `[OpenRouter] Error: ${lastError.message}, retrying in ${backoff}ms (attempt ${attempt + 1}/${MAX_RETRIES})`
+        )
+        await new Promise((resolve) => setTimeout(resolve, backoff))
+      }
+    }
+  }
+
+  console.error(`[OpenRouter] Failed after ${MAX_RETRIES} retries: ${lastError?.message}`)
+  throw lastError || new Error('Failed after retries')
 }

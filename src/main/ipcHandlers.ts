@@ -18,7 +18,7 @@ import type {
   DbExportTableParams,
   OrphanReport,
   AnalyzeCaptureParams,
-  UpdateAnalysisParams
+  UpsertAnalysisParams
 } from '@shared/ipc'
 import * as dbAdmin from '@main/services/dbAdmin'
 import { existsSync } from 'fs'
@@ -35,7 +35,8 @@ import { buildCsv } from '@main/services/csvEscape'
 import { initManifest, appendManifestEntry, rollbackManifestEntry } from '@main/services/manifest'
 import { getInstallationId } from '@main/services/installationId'
 import { CAPTURE_SERVER_PORT, getSessionState } from '@main/services/captureServer'
-import type { BirdbrainSettings, ExportOptions, CaptureAnalysis } from '@shared/types'
+import type { BirdbrainSettings, ExportOptions } from '@shared/types'
+import { DEFAULT_ANALYSIS_SYSTEM_PROMPT } from '@shared/constants'
 
 type IpcResult<T = unknown> =
   | {
@@ -598,37 +599,23 @@ export function registerIpcHandlers(): void {
       const currentSettings = settings.getSettings()
       const apiKey = currentSettings.openRouterApiKey
       if (!apiKey) throw new Error('No OpenRouter API key configured')
-      const systemPrompt =
-        currentSettings.analysisSystemPrompt ||
-        'You are an expert investigative analyst reviewing web captures.'
       return ipcResult(
-        await analysisService.analyzeCapture(
-          params.captureId,
-          params.caseId,
-          params.model,
+        await analysisService.analyzeCapture({
+          captureId: params.captureId,
+          caseId: params.caseId,
+          model: params.model,
           apiKey,
-          systemPrompt
-        )
+          systemPrompt: currentSettings.analysisSystemPrompt || DEFAULT_ANALYSIS_SYSTEM_PROMPT
+        })
       )
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      return { ok: false, error: message } as IpcResult<never>
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.AI_SAVE_ANALYSIS, (_, analysis: CaptureAnalysis) => {
-    try {
-      analysisService.saveAnalysis(analysis)
-      return ipcResult(undefined)
     } catch (err) {
       return ipcError(err)
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.AI_UPDATE_ANALYSIS, (_, params: UpdateAnalysisParams) => {
+  ipcMain.handle(IPC_CHANNELS.AI_UPSERT_ANALYSIS, (_, params: UpsertAnalysisParams) => {
     try {
-      analysisService.updateAnalysis(params.id, params.content, params.model, params.tokenUsage)
-      return ipcResult(undefined)
+      return ipcResult(db.upsertCaptureAnalysis(params))
     } catch (err) {
       return ipcError(err)
     }
@@ -636,16 +623,15 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.AI_GET_ANALYSIS, (_, params: { captureId: string }) => {
     try {
-      return ipcResult(analysisService.getAnalysis(params.captureId))
+      return ipcResult(db.getCaptureAnalysis(params.captureId))
     } catch (err) {
       return ipcError(err)
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.AI_DELETE_ANALYSIS, (_, params: { id: string }) => {
+  ipcMain.handle(IPC_CHANNELS.AI_DELETE_ANALYSIS, (_, params: { captureId: string }) => {
     try {
-      analysisService.deleteAnalysis(params.id)
-      return ipcResult(undefined)
+      return ipcResult(db.deleteCaptureAnalysis(params.captureId))
     } catch (err) {
       return ipcError(err)
     }

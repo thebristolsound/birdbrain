@@ -340,6 +340,30 @@ function migrate(db: Database.Database): void {
       db.pragma('user_version = 15')
     })()
   }
+
+  if (version < 16) {
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS extracted_data (
+          id TEXT PRIMARY KEY,
+          capture_id TEXT NOT NULL,
+          case_id TEXT NOT NULL,
+          category TEXT NOT NULL,
+          subcategory TEXT NOT NULL,
+          value TEXT NOT NULL,
+          source_url TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (capture_id) REFERENCES captures(id) ON DELETE CASCADE,
+          FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_extracted_data_case_id ON extracted_data(case_id);
+        CREATE INDEX IF NOT EXISTS idx_extracted_data_case_category ON extracted_data(case_id, category);
+        CREATE INDEX IF NOT EXISTS idx_extracted_data_capture_id ON extracted_data(capture_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_extracted_data_unique ON extracted_data(capture_id, category, subcategory, value);
+      `)
+      db.pragma('user_version = 16')
+    })()
+  }
 }
 
 // --- Cases ---
@@ -1119,4 +1143,101 @@ function rowToNote(row: Record<string, unknown>): Note {
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string
   }
+}
+
+// --- Extracted Data ---
+
+export interface ExtractedDatum {
+  category: string
+  subcategory: string
+  value: string
+}
+
+export function insertExtractedData(
+  captureId: string,
+  caseId: string,
+  sourceUrl: string,
+  data: ExtractedDatum[]
+): void {
+  if (data.length === 0) return
+
+  const stmt = getDb().prepare(
+    'INSERT OR IGNORE INTO extracted_data (id, capture_id, case_id, category, subcategory, value, source_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  )
+
+  getDb().transaction(() => {
+    const now = new Date().toISOString()
+    for (const datum of data) {
+      const id = uuid()
+      stmt.run(
+        id,
+        captureId,
+        caseId,
+        datum.category,
+        datum.subcategory,
+        datum.value,
+        sourceUrl,
+        now
+      )
+    }
+  })()
+}
+
+export function getExtractedCategories(caseId: string): Array<{ category: string; count: number }> {
+  const rows = getDb()
+    .prepare(
+      'SELECT category, COUNT(*) as count FROM extracted_data WHERE case_id = ? GROUP BY category ORDER BY category'
+    )
+    .all(caseId) as Array<{ category: string; count: number }>
+  return rows
+}
+
+export function getExtractedSubcategories(
+  caseId: string,
+  category: string
+): Array<{ subcategory: string; count: number }> {
+  const rows = getDb()
+    .prepare(
+      'SELECT subcategory, COUNT(*) as count FROM extracted_data WHERE case_id = ? AND category = ? GROUP BY subcategory ORDER BY subcategory'
+    )
+    .all(caseId, category) as Array<{ subcategory: string; count: number }>
+  return rows
+}
+
+export function getExtractedItems(
+  caseId: string,
+  category: string,
+  subcategory: string
+): Array<{ value: string; pageCount: number; sourceUrls: string[] }> {
+  const rows = getDb()
+    .prepare(
+      `SELECT value, COUNT(DISTINCT capture_id) as pageCount, GROUP_CONCAT(DISTINCT source_url, '|||') as sourceUrls
+       FROM extracted_data
+       WHERE case_id = ? AND category = ? AND subcategory = ?
+       GROUP BY value
+       ORDER BY pageCount DESC, value`
+    )
+    .all(caseId, category, subcategory) as Array<{
+    value: string
+    pageCount: number
+    sourceUrls: string
+  }>
+
+  return rows.map((row) => ({
+    value: row.value,
+    pageCount: row.pageCount,
+    sourceUrls: row.sourceUrls.split('|||')
+  }))
+}
+
+export function getExtractedDataCountForCase(caseId: string): number {
+  const row = getDb()
+    .prepare('SELECT COUNT(*) as count FROM extracted_data WHERE case_id = ?')
+    .get(caseId) as { count: number }
+  return row.count
+}
+
+export function deleteExtractedDataForCapture(captureId: string): boolean {
+  const result = getDb().prepare('DELETE FROM extracted_data WHERE capture_id = ?').run(captureId)
+  return result.changes > 0
 }

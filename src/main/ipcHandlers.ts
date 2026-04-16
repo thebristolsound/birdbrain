@@ -651,6 +651,75 @@ export function registerIpcHandlers(): void {
     }
   })
 
+  // Extracted Data
+  ipcMain.handle(IPC_CHANNELS.EXTRACTED_DATA_CATEGORIES, (_, caseId: string) => {
+    try {
+      return ipcResult(db.getExtractedCategories(caseId))
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+
+  ipcMain.handle(
+    IPC_CHANNELS.EXTRACTED_DATA_SUBCATEGORIES,
+    (_, params: { caseId: string; category: string }) => {
+      try {
+        return ipcResult(db.getExtractedSubcategories(params.caseId, params.category))
+      } catch (err) {
+        return ipcError(err)
+      }
+    }
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.EXTRACTED_DATA_ITEMS,
+    (_, params: { caseId: string; category: string; subcategory: string }) => {
+      try {
+        return ipcResult(
+          db.getExtractedItems(params.caseId, params.category, params.subcategory)
+        )
+      } catch (err) {
+        return ipcError(err)
+      }
+    }
+  )
+
+  ipcMain.handle(IPC_CHANNELS.EXTRACTED_DATA_COUNT, (_, caseId: string) => {
+    try {
+      return ipcResult(db.getExtractedDataCountForCase(caseId))
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.EXTRACTED_DATA_REPROCESS, (_, caseId: string) => {
+    try {
+      const { extractData } = require('@main/services/dataExtractor')
+      const captures = db.listCaptures(caseId)
+
+      setImmediate(() => {
+        for (const capture of captures) {
+          try {
+            const htmlBuffer = storage.readCaptureFile(caseId, capture.id, 'html')
+            if (htmlBuffer) {
+              const html = htmlBuffer.toString('utf-8')
+              const extracted = extractData(html)
+              if (extracted.length > 0) {
+                db.insertExtractedData(capture.id, caseId, capture.url, extracted)
+              }
+            }
+          } catch (err) {
+            console.error('Reprocessing error for capture', capture.id, err)
+          }
+        }
+      })
+
+      return ipcResult({ started: true })
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+
   // Database Admin
   ipcMain.handle(IPC_CHANNELS.DB_STATS, () => {
     try {

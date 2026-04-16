@@ -108,7 +108,14 @@ export const IPC_CHANNELS = {
   DB_CLEAN_ORPHANS: 'db:cleanOrphans',
   DB_BACKUP: 'db:backup',
   DB_RESTORE: 'db:restore',
-  DB_EXPORT_TABLE: 'db:exportTable'
+  DB_EXPORT_TABLE: 'db:exportTable',
+
+  // Extracted Data
+  EXTRACTED_DATA_CATEGORIES: 'extractedData:categories',
+  EXTRACTED_DATA_SUBCATEGORIES: 'extractedData:subcategories',
+  EXTRACTED_DATA_ITEMS: 'extractedData:items',
+  EXTRACTED_DATA_COUNT: 'extractedData:count',
+  EXTRACTED_DATA_REPROCESS: 'extractedData:reprocess'
 } as const
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS]

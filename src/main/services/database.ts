@@ -1209,22 +1209,26 @@ export function getExtractedItems(
 ): ExtractedDataItem[] {
   const rows = getDb()
     .prepare(
-      `SELECT value, COUNT(DISTINCT capture_id) as page_count,
-              GROUP_CONCAT(DISTINCT source_url) as source_urls
-       FROM extracted_data
-       WHERE case_id = ? AND category = ? AND subcategory = ?
+      `SELECT value,
+              COUNT(DISTINCT capture_id) as page_count,
+              GROUP_CONCAT(source_url, '\n') as source_urls
+       FROM (
+         SELECT DISTINCT value, capture_id, source_url
+         FROM extracted_data
+         WHERE case_id = ? AND category = ? AND subcategory = ?
+       )
        GROUP BY value
        ORDER BY page_count DESC, value`
     )
     .all(caseId, category, subcategory) as Array<{
     value: string
     page_count: number
-    source_urls: string
+    source_urls: string | null
   }>
   return rows.map((r) => ({
     value: r.value,
     pageCount: r.page_count,
-    sourceUrls: r.source_urls ? r.source_urls.split(',').sort() : []
+    sourceUrls: r.source_urls ? r.source_urls.split('\n').sort() : []
   }))
 }
 

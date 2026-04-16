@@ -19,6 +19,7 @@ import { CapturesRoute } from '@renderer/routes/cases/$caseId/captures'
 import { SelectorsOverview } from '@renderer/components/selectors/SelectorsOverview'
 import { NotesOverview } from '@renderer/components/notes/NotesOverview'
 import { TagsOverview } from '@renderer/components/tags/TagsOverview'
+import { DataExplorer } from '@renderer/components/data/DataExplorer'
 import { SettingsView } from '@renderer/components/settings/SettingsView'
 import { useSessionRestore } from '@renderer/hooks/useSessionRestore'
 import { useCommandPalette } from '@renderer/hooks/useCommandPalette'
@@ -182,10 +183,17 @@ const tagsRoute = createRoute({
   component: TagsOverview
 })
 
+// Data tab
+const dataRoute = createRoute({
+  getParentRoute: () => caseRoute,
+  path: '/data',
+  component: DataExplorer
+})
+
 // Build the tree
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   settingsRoute,
   newCaseRoute,
-  caseRoute.addChildren([caseIndexRoute, capturesRoute, selectorsRoute, notesRoute, tagsRoute])
+  caseRoute.addChildren([caseIndexRoute, capturesRoute, selectorsRoute, notesRoute, tagsRoute, dataRoute])
 ])

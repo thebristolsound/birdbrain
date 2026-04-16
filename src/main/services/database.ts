@@ -1224,7 +1224,7 @@ export function getExtractedItems(
   return rows.map((r) => ({
     value: r.value,
     pageCount: r.page_count,
-    sourceUrls: r.source_urls ? r.source_urls.split(',') : []
+    sourceUrls: r.source_urls ? r.source_urls.split(',').sort() : []
   }))
 }
 

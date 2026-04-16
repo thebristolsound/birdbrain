@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams } from '@tanstack/react-router'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { Database, ChevronRight, RefreshCw, ExternalLink } from 'lucide-react'
 import { Button } from '@renderer/components/ui'
 import {
@@ -13,7 +13,6 @@ import {
 
 export function DataExplorer() {
   const { caseId } = useParams({ from: '/cases/$caseId/data' })
-  const queryClient = useQueryClient()
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null)
   const [reprocessing, setReprocessing] = useState(false)
@@ -52,8 +51,6 @@ export function DataExplorer() {
     setReprocessing(true)
     try {
       await reprocess.mutateAsync()
-      // Invalidate all extracted data queries for this case to refresh counts/items
-      queryClient.invalidateQueries({ queryKey: ['extractedData'] })
     } catch (err) {
       console.error('Reprocess failed:', err)
     } finally {
@@ -62,14 +59,10 @@ export function DataExplorer() {
   }
 
   async function handleSourceUrlClick(url: string) {
-    try {
-      // Open the source URL in the system's default browser
-      await window.birdbrain.captures.openExternal(url).catch(() => {
-        // If openExternal fails (e.g. non-http URL), just ignore
-      })
-    } catch {
-      // ignore
-    }
+    // Open the source URL in the system's default browser
+    window.birdbrain.captures.openExternal(url).catch(() => {
+      // Ignore if openExternal fails (e.g. non-http URL)
+    })
   }
 
   if (loadingCategories) {

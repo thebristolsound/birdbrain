@@ -323,6 +323,8 @@ export function useExtractedDataMutations(caseId: string) {
   const invalidateExtractedData = () => {
     queryClient.invalidateQueries({ queryKey: ['extractedData', 'categories', caseId] })
     queryClient.invalidateQueries({ queryKey: ['extractedData', 'count', caseId] })
+    queryClient.invalidateQueries({ queryKey: ['extractedData', 'subcategories', caseId] })
+    queryClient.invalidateQueries({ queryKey: ['extractedData', 'items', caseId] })
   }
 
   const reprocess = useMutation({

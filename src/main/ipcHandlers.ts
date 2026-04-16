@@ -35,6 +35,7 @@ import { buildCsv } from '@main/services/csvEscape'
 import { initManifest, appendManifestEntry, rollbackManifestEntry } from '@main/services/manifest'
 import { getInstallationId } from '@main/services/installationId'
 import { CAPTURE_SERVER_PORT, getSessionState } from '@main/services/captureServer'
+import { extractData } from '@main/services/dataExtractor'
 import type { BirdbrainSettings, ExportOptions, CaptureAnalysis } from '@shared/types'
 
 type IpcResult<T = unknown> =
@@ -812,7 +813,6 @@ export function registerIpcHandlers(): void {
   )
   ipcMain.handle(IPC_CHANNELS.EXTRACTED_DATA_REPROCESS, async (_, caseId: string) => {
     try {
-      const { extractData } = await import('@main/services/dataExtractor')
       const captures = db.listCaptures(caseId)
       let i = 0
       const processNext = (): void => {

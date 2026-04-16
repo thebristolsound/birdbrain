@@ -33,9 +33,9 @@ describe('dataExtractor', () => {
     })
 
     it('extracts GA4 G- code', () => {
-      const html = '<script>gtag("config", "G-ABCDEFGHIJK");</script>'
+      const html = '<script>gtag("config", "G-ABCDEFGHIJ");</script>'
       const results = extractData(html)
-      expect(results.some((r) => r.subcategory === 'Google Analytics' && r.value === 'G-ABCDEFGHIJK')).toBe(true)
+      expect(results.some((r) => r.subcategory === 'Google Analytics' && r.value === 'G-ABCDEFGHIJ')).toBe(true)
     })
 
     it('extracts Google Tag Manager ID', () => {

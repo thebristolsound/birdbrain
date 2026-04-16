@@ -68,4 +68,16 @@ describe('resolveStartRoute', () => {
     })
     expect(result).toEqual({ to: '/settings' })
   })
+
+  it('handles data section by routing to /cases/$caseId/data', () => {
+    const result = resolveStartRoute({
+      lastActiveCaseId: 'case-1',
+      lastActiveSection: 'data',
+      cases: [{ id: 'case-1' }]
+    })
+    expect(result).toEqual({
+      to: '/cases/$caseId/data',
+      params: { caseId: 'case-1' }
+    })
+  })
 })

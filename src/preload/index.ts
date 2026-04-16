@@ -33,7 +33,10 @@ import type {
   ActiveCaseSelectors,
   CaptureEvent,
   Note,
-  CaptureAnalysis
+  CaptureAnalysis,
+  ExtractedDataCategory,
+  ExtractedDataSubcategory,
+  ExtractedDataItem
 } from '@shared/types'
 
 // Unwrap IpcResult from handlers that return structured results
@@ -278,7 +281,26 @@ const birdbrain = {
     ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_TEST_PIPELINE),
 
   testHttp: (): Promise<{ success: boolean; durationMs: number; error?: string }> =>
-    ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_TEST_HTTP)
+    ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_TEST_HTTP),
+
+  extractedData: {
+    categories: (caseId: string): Promise<ExtractedDataCategory[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.EXTRACTED_DATA_CATEGORIES, caseId),
+    subcategories: (caseId: string, category: string): Promise<ExtractedDataSubcategory[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.EXTRACTED_DATA_SUBCATEGORIES, caseId, category),
+    items: (
+      caseId: string,
+      category: string,
+      subcategory: string
+    ): Promise<ExtractedDataItem[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.EXTRACTED_DATA_ITEMS, caseId, category, subcategory),
+    count: (caseId: string): Promise<number> =>
+      ipcRenderer.invoke(IPC_CHANNELS.EXTRACTED_DATA_COUNT, caseId),
+    reprocess: (caseId: string): Promise<{ queued: number }> =>
+      unwrapIpc<{ queued: number }>(
+        ipcRenderer.invoke(IPC_CHANNELS.EXTRACTED_DATA_REPROCESS, caseId)
+      )
+  }
 }
 
 contextBridge.exposeInMainWorld('birdbrain', birdbrain)

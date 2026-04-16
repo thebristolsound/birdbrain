@@ -65,7 +65,7 @@ export interface BirdbrainSettings {
   operatorName: string
   autoCaptureMode: AutoCaptureMode
   lastActiveCaseId: string | null
-  lastActiveSection: 'captures' | 'selectors' | 'notes' | 'tags' | 'settings'
+  lastActiveSection: 'captures' | 'selectors' | 'notes' | 'tags' | 'settings' | 'data'
   hasCompletedOnboarding: boolean
   analysisSystemPrompt: string
 }
@@ -176,4 +176,20 @@ export interface CaptureEvent {
   skipReason?: string
   durationMs?: number
   screenshotWarning?: string
+}
+
+export interface ExtractedDataCategory {
+  category: string
+  count: number
+}
+
+export interface ExtractedDataSubcategory {
+  subcategory: string
+  count: number
+}
+
+export interface ExtractedDataItem {
+  value: string
+  pageCount: number
+  sourceUrls: string[]
 }

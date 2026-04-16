@@ -64,6 +64,13 @@ export const IPC_CHANNELS = {
   SELECTORS_BULK_CREATE: 'selectors:bulkCreate',
   SELECTORS_EXPORT_MATCHES: 'selectors:exportMatches',
 
+  // Extracted Data
+  EXTRACTED_DATA_CATEGORIES: 'extractedData:categories',
+  EXTRACTED_DATA_SUBCATEGORIES: 'extractedData:subcategories',
+  EXTRACTED_DATA_ITEMS: 'extractedData:items',
+  EXTRACTED_DATA_COUNT: 'extractedData:count',
+  EXTRACTED_DATA_REPROCESS: 'extractedData:reprocess',
+
   // Notes
   NOTES_LIST: 'notes:list',
   NOTES_GET: 'notes:get',

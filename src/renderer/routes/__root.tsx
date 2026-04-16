@@ -16,6 +16,7 @@ import { casesQueryOptions } from '@renderer/lib/queries'
 import { NewCaseWizard } from '@renderer/components/dashboard/cases/NewCaseWizard'
 import { CaseWorkspace } from '@renderer/components/dashboard/cases/CaseWorkspace'
 import { CapturesRoute } from '@renderer/routes/cases/$caseId/captures'
+import { DataExplorer } from '@renderer/components/dashboard/cases/DataExplorer'
 import { SelectorsOverview } from '@renderer/components/selectors/SelectorsOverview'
 import { NotesOverview } from '@renderer/components/notes/NotesOverview'
 import { TagsOverview } from '@renderer/components/tags/TagsOverview'
@@ -168,6 +169,13 @@ const selectorsRoute = createRoute({
   component: SelectorsOverview
 })
 
+// Data tab
+const dataRoute = createRoute({
+  getParentRoute: () => caseRoute,
+  path: '/data',
+  component: DataExplorer
+})
+
 // Notes tab
 const notesRoute = createRoute({
   getParentRoute: () => caseRoute,
@@ -187,5 +195,12 @@ export const routeTree = rootRoute.addChildren([
   indexRoute,
   settingsRoute,
   newCaseRoute,
-  caseRoute.addChildren([caseIndexRoute, capturesRoute, selectorsRoute, notesRoute, tagsRoute])
+  caseRoute.addChildren([
+    caseIndexRoute,
+    capturesRoute,
+    selectorsRoute,
+    dataRoute,
+    notesRoute,
+    tagsRoute
+  ])
 ])

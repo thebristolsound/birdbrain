@@ -13,6 +13,7 @@ import { getSettings } from '@main/services/settings'
 import { ingestMhtmlCapture } from '@main/services/mhtmlIngest'
 import { getInstallationId } from '@main/services/installationId'
 import { getServerToken } from '@main/services/serverToken'
+import { extractAndStoreForCapture } from '@main/services/extractedData'
 import type { CaptureEvent, CaptureSource } from '@shared/types'
 import {
   CaptureUploadSchema,
@@ -107,6 +108,17 @@ function schedulePostCaptureWork(
       }
     } catch (err) {
       console.error('Selector matching error for capture', captureId, err)
+    }
+
+    try {
+      extractAndStoreForCapture({
+        captureId,
+        caseId,
+        sourceUrl: _url,
+        fallbackText: textContent
+      })
+    } catch (err) {
+      console.error('Data extraction error for capture', captureId, err)
     }
   })
 }

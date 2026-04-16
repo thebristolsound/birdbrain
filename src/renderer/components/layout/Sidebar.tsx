@@ -1,11 +1,14 @@
 import { useNavigate, useMatchRoute, useParams } from '@tanstack/react-router'
-import { Home, Layers, Crosshair, StickyNote, Tag } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { Home, Layers, Crosshair, StickyNote, Tag, Database } from 'lucide-react'
+import { extractedDataCountQueryOptions } from '@renderer/lib/queries'
 
-type SidebarSection = 'captures' | 'selectors' | 'notes' | 'tags'
+type SidebarSection = 'captures' | 'selectors' | 'data' | 'notes' | 'tags'
 
 const NAV_ITEMS: { id: SidebarSection; icon: typeof Layers; label: string }[] = [
   { id: 'captures', icon: Layers, label: 'Captures' },
   { id: 'selectors', icon: Crosshair, label: 'Selectors' },
+  { id: 'data', icon: Database, label: 'Data' },
   { id: 'notes', icon: StickyNote, label: 'Notes' },
   { id: 'tags', icon: Tag, label: 'Tags' }
 ]
@@ -19,6 +22,10 @@ export function Sidebar() {
   const caseId = params.caseId
 
   const isOnHome = Boolean(matchRoute({ to: '/' }))
+  const { data: extractedDataCount = 0 } = useQuery({
+    ...extractedDataCountQueryOptions(caseId ?? ''),
+    enabled: Boolean(caseId)
+  })
 
   function isActive(section: SidebarSection): boolean {
     if (!caseId) return false
@@ -84,6 +91,11 @@ export function Sidebar() {
                   <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r bg-accent" />
                 )}
                 <Icon size={18} strokeWidth={1.8} />
+                {id === 'data' && extractedDataCount > 0 && (
+                  <span className="absolute right-1 top-1/2 -translate-y-1/2 rounded-full bg-accent px-1.5 text-[10px] font-medium text-white">
+                    {extractedDataCount}
+                  </span>
+                )}
               </button>
 
               {/* Tooltip */}

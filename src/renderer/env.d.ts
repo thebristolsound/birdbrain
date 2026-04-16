@@ -13,7 +13,10 @@ import type {
   CaptureEvent,
   Note,
   HashVerification,
-  CaptureAnalysis
+  CaptureAnalysis,
+  ExtractedDataCategory,
+  ExtractedDataSubcategory,
+  ExtractedDataItem
 } from '@shared/types'
 import type {
   CreateCaseParams,
@@ -85,6 +88,17 @@ interface BirdbrainAPI {
     coverage(caseId: string): Promise<{ matched: number; total: number }>
     bulkCreate(params: BulkCreateSelectorsParams): Promise<Selector[]>
     exportMatches(caseId: string): Promise<{ exported: boolean; path?: string }>
+  }
+  extractedData: {
+    categories(caseId: string): Promise<ExtractedDataCategory[]>
+    subcategories(caseId: string, category: string): Promise<ExtractedDataSubcategory[]>
+    items(
+      caseId: string,
+      category: string,
+      subcategory: string
+    ): Promise<ExtractedDataItem[]>
+    count(caseId: string): Promise<number>
+    reprocess(caseId: string): Promise<{ processed: number }>
   }
   notes: {
     list(caseId: string): Promise<Note[]>

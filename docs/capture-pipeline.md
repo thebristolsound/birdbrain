@@ -425,28 +425,14 @@ function schedulePostCaptureWork(
 }
 ```
 
-### Rule-Based Entity Extraction
+### Rule-Based Data Extraction + Selector Matching
 
-`runRuleBasedExtraction()` (line 75):
+Post-capture work runs asynchronously inside `schedulePostCaptureWork()`:
 
-1. Skips if `textContent` is empty/whitespace
-2. Loads enabled entity types from settings (cached after first load in `cachedEnabledEntityTypes`)
-3. Calls `extractEntitiesRuleBased(textContent, enabledTypes)` -- regex + NLP extraction
-4. Batch-inserts discovered entities into the `entities` table via `db.insertEntitiesBatch()`
-5. Sends an `EXTRACTION_COMPLETE` IPC event to the renderer with the entity count
-6. Errors are caught and logged, never propagated -- extraction failure does not fail the capture
+1. **Data extraction** — `extractAndStoreForCapture()` loads the stored HTML (or plain-text fallback), runs the regex rule registry in `dataExtractor.ts`, and inserts results into the `extracted_data` table (deduped per capture).
+2. **Selector matching** — `db.matchSelectorsForCapture(captureId, caseId, textContent)` compares the capture text against enabled selectors for the case and records matches.
 
-### Selector Matching
-
-After entity extraction, the server runs `db.matchSelectorsForCapture(captureId, caseId, textContent)` (line 124). This checks the capture's text content against all active selectors for the case and records matches in the database.
-
-### Scheduling via `setImmediate`
-
-Post-capture work uses `setImmediate()` rather than `await` for two reasons:
-1. The HTTP response returns immediately after storage -- the client does not wait for extraction
-2. Extraction errors cannot cause the capture to appear failed
-
-Each task (extraction, selector matching) is wrapped in its own try/catch so that a failure in one does not prevent the other from running. After both complete, an `extraction_done` event is emitted.
+Tasks run inside `setImmediate()` so the HTTP response is not blocked and failures in one step do not fail the capture. Each task is wrapped in its own try/catch so that an error in extraction does not prevent selector matching (and vice versa).
 
 ## 9. Connection Management
 

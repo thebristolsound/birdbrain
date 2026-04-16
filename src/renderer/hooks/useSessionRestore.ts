@@ -9,6 +9,7 @@ type Section = BirdbrainSettings['lastActiveSection']
 const SECTION_PATHS: Record<Exclude<Section, 'settings'>, string> = {
   captures: '/cases/$caseId/captures',
   selectors: '/cases/$caseId/selectors',
+  data: '/cases/$caseId/data',
   notes: '/cases/$caseId/notes',
   tags: '/cases/$caseId/tags'
 }

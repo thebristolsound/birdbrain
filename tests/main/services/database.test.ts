@@ -36,7 +36,14 @@ import {
   deleteNote,
   getNoteCount,
   updateNote,
-  searchNotes
+  searchNotes,
+  insertExtractedData,
+  getExtractedCategories,
+  getExtractedSubcategories,
+  getExtractedItems,
+  getExtractedDataCountForCase,
+  deleteExtractedDataForCapture,
+  deleteExtractedDataForCase
 } from '@main/services/database'
 
 describe('database', () => {
@@ -307,9 +314,9 @@ describe('database', () => {
     })
 
     it('sets user_version to 7 after v7 migration', () => {
-      // v8..v15 migrations run immediately after, so final version is 15
+      // v8..v16 migrations run immediately after, so final version is latest
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(15)
+      expect(version).toBe(16)
     })
   })
 
@@ -333,9 +340,9 @@ describe('database', () => {
     })
 
     it('sets user_version to 8', () => {
-      // v9..v15 migrations run immediately after, so final version is 15
+      // v9..v16 migrations run immediately after, so final version is latest
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(15)
+      expect(version).toBe(16)
     })
   })
 
@@ -357,9 +364,9 @@ describe('database', () => {
     })
 
     it('sets user_version to 9', () => {
-      // v10..v15 migrations run immediately after, so final version is 15
+      // v10..v16 migrations run immediately after, so final version is latest
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(15)
+      expect(version).toBe(16)
     })
   })
 
@@ -410,9 +417,9 @@ describe('database', () => {
       ).toThrow(/UNIQUE/i)
     })
 
-    it('sets user_version to 15', () => {
+    it('sets user_version to 16', () => {
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(15)
+      expect(version).toBe(16)
     })
   })
 
@@ -993,9 +1000,79 @@ describe('database', () => {
       expect(row).toBeUndefined()
     })
 
-    it('sets user_version to 15', () => {
+    it('sets user_version to 16', () => {
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(15)
+      expect(version).toBe(16)
+    })
+  })
+
+  describe('extracted data', () => {
+    let caseId: string
+    let captureA: string
+    let captureB: string
+
+    beforeEach(() => {
+      const c = createCase({ name: 'Extracted' })
+      caseId = c.id
+      captureA = insertCapture({
+        caseId,
+        url: 'https://one.test',
+        title: 'One',
+        hash: 'hash1',
+        timestamp: new Date().toISOString()
+      }).id
+      captureB = insertCapture({
+        caseId,
+        url: 'https://two.test',
+        title: 'Two',
+        hash: 'hash2',
+        timestamp: new Date().toISOString()
+      }).id
+    })
+
+    it('aggregates categories, subcategories, and items', () => {
+      insertExtractedData(captureA, caseId, 'https://one.test', [
+        { category: 'Tracking Code', subcategory: 'Google Analytics', value: 'UA-123' },
+        { category: 'Infrastructure', subcategory: 'Email Address', value: 'test@example.com' }
+      ])
+      insertExtractedData(captureB, caseId, 'https://two.test', [
+        { category: 'Tracking Code', subcategory: 'Google Analytics', value: 'UA-123' }
+      ])
+
+      const categories = getExtractedCategories(caseId)
+      expect(categories[0]).toEqual({ category: 'Tracking Code', count: 2 })
+      expect(categories[1]).toEqual({ category: 'Infrastructure', count: 1 })
+
+      const subcategories = getExtractedSubcategories(caseId, 'Tracking Code')
+      expect(subcategories).toEqual([{ subcategory: 'Google Analytics', count: 2 }])
+
+      const items = getExtractedItems(caseId, 'Tracking Code', 'Google Analytics')
+      expect(items).toHaveLength(1)
+      expect(items[0].value).toBe('UA-123')
+      expect(items[0].pageCount).toBe(2)
+      expect(items[0].sourceUrls.sort()).toEqual(['https://one.test', 'https://two.test'])
+    })
+
+    it('deduplicates per capture and supports deletion helpers', () => {
+      const data = [
+        { category: 'Tracking Code', subcategory: 'Google Analytics', value: 'UA-123' },
+        { category: 'Tracking Code', subcategory: 'Google Analytics', value: 'UA-123' },
+        { category: 'Infrastructure', subcategory: 'Email Address', value: 'a@example.com' }
+      ]
+      insertExtractedData(captureA, caseId, 'https://one.test', data)
+      expect(getExtractedDataCountForCase(caseId)).toBe(2)
+
+      deleteExtractedDataForCapture(captureA)
+      expect(getExtractedDataCountForCase(caseId)).toBe(0)
+
+      insertExtractedData(captureA, caseId, 'https://one.test', data)
+      insertExtractedData(captureB, caseId, 'https://two.test', [
+        { category: 'Darkweb', subcategory: 'Onion URL', value: 'example.onion' }
+      ])
+      expect(getExtractedDataCountForCase(caseId)).toBe(3)
+
+      deleteExtractedDataForCase(caseId)
+      expect(getExtractedDataCountForCase(caseId)).toBe(0)
     })
   })
 

@@ -30,6 +30,7 @@ import * as settings from '@main/services/settings'
 import * as openrouter from '@main/services/openrouter'
 import * as analysisService from '@main/services/ai/analysisService'
 import { generateReport } from '@main/services/export'
+import { reprocessExtractedDataForCase } from '@main/services/extractedData'
 import { getExtensionPath, extensionPathExists } from '@main/services/extensionPath'
 import { buildCsv } from '@main/services/csvEscape'
 import { initManifest, appendManifestEntry, rollbackManifestEntry } from '@main/services/manifest'
@@ -390,6 +391,31 @@ export function registerIpcHandlers(): void {
       const { writeFileSync } = await import('fs')
       writeFileSync(filePath, csv, 'utf-8')
       return ipcResult({ exported: true, path: filePath })
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+
+  // Extracted data
+  ipcMain.handle(IPC_CHANNELS.EXTRACTED_DATA_CATEGORIES, (_, caseId: string) =>
+    db.getExtractedCategories(caseId)
+  )
+  ipcMain.handle(
+    IPC_CHANNELS.EXTRACTED_DATA_SUBCATEGORIES,
+    (_, caseId: string, category: string) => db.getExtractedSubcategories(caseId, category)
+  )
+  ipcMain.handle(
+    IPC_CHANNELS.EXTRACTED_DATA_ITEMS,
+    (_, caseId: string, category: string, subcategory: string) =>
+      db.getExtractedItems(caseId, category, subcategory)
+  )
+  ipcMain.handle(IPC_CHANNELS.EXTRACTED_DATA_COUNT, (_, caseId: string) =>
+    db.getExtractedDataCountForCase(caseId)
+  )
+  ipcMain.handle(IPC_CHANNELS.EXTRACTED_DATA_REPROCESS, async (_, caseId: string) => {
+    try {
+      const result = await reprocessExtractedDataForCase(caseId)
+      return ipcResult(result)
     } catch (err) {
       return ipcError(err)
     }

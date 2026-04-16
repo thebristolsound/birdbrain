@@ -38,6 +38,7 @@ export function CaseWorkspace() {
 
   const isCaptures = matchRoute({ to: '/cases/$caseId/captures', fuzzy: true }) !== false
   const isSelectors = matchRoute({ to: '/cases/$caseId/selectors', fuzzy: true }) !== false
+  const isData = matchRoute({ to: '/cases/$caseId/data', fuzzy: true }) !== false
   const isNotes = matchRoute({ to: '/cases/$caseId/notes', fuzzy: true }) !== false
   const isTags = matchRoute({ to: '/cases/$caseId/tags', fuzzy: true }) !== false
 
@@ -47,13 +48,15 @@ export function CaseWorkspace() {
       ? 'captures'
       : isSelectors
         ? 'selectors'
-        : isNotes
-          ? 'notes'
-          : isTags
-            ? 'tags'
-            : 'captures'
+        : isData
+          ? 'data'
+          : isNotes
+            ? 'notes'
+            : isTags
+              ? 'tags'
+              : 'captures'
     window.birdbrain.settings.update({ lastActiveSection: section })
-  }, [isCaptures, isSelectors, isNotes, isTags])
+  }, [isCaptures, isSelectors, isData, isNotes, isTags])
 
   if (isLoading) {
     return (

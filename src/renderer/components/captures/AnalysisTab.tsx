@@ -99,32 +99,22 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
     }
   })
 
-  // Save mutation
+  // Save mutation — saveAnalysis is upsert-by-captureId in the main process
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!liveContent || !liveTokenUsage) return
-      if (savedAnalysis) {
-        // Update existing
-        await window.birdbrain.ai.updateAnalysis({
-          id: savedAnalysis.id,
-          content: liveContent,
-          model: selectedModel,
-          tokenUsage: liveTokenUsage
-        })
-      } else {
-        // Create new
-        const analysis: CaptureAnalysis = {
-          id: uuid(),
-          captureId,
-          caseId,
-          content: liveContent,
-          model: selectedModel,
-          tokenUsage: liveTokenUsage,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        }
-        await window.birdbrain.ai.saveAnalysis(analysis)
+      const now = new Date().toISOString()
+      const analysis: CaptureAnalysis = {
+        id: savedAnalysis?.id ?? uuid(),
+        captureId,
+        caseId,
+        content: liveContent,
+        model: selectedModel,
+        tokenUsage: liveTokenUsage,
+        createdAt: savedAnalysis?.createdAt ?? now,
+        updatedAt: now
       }
+      await window.birdbrain.ai.saveAnalysis(analysis)
     },
     onSuccess: () => {
       setHasUnsavedChanges(false)

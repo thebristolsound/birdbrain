@@ -91,7 +91,6 @@ export const IPC_CHANNELS = {
   // AI Analysis
   AI_ANALYZE: 'ai:analyze',
   AI_SAVE_ANALYSIS: 'ai:saveAnalysis',
-  AI_UPDATE_ANALYSIS: 'ai:updateAnalysis',
   AI_GET_ANALYSIS: 'ai:getAnalysis',
 
   // Database Admin
@@ -233,13 +232,6 @@ export interface AnalyzeCaptureParams {
   captureId: string
   caseId: string
   model: string
-}
-
-export interface UpdateAnalysisParams {
-  id: string
-  content: string
-  model: string
-  tokenUsage: { prompt: number; completion: number; total: number }
 }
 
 export interface SaveCaptureParams {

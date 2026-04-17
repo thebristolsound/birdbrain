@@ -118,18 +118,6 @@ export function saveAnalysis(analysis: CaptureAnalysis): void {
   )
 }
 
-export function updateAnalysis(
-  id: string,
-  content: string,
-  model: string,
-  tokenUsage: TokenUsage
-): void {
-  const db = getDb()
-  db.prepare(
-    `UPDATE capture_analyses SET content = ?, model = ?, token_usage = ?, updated_at = ? WHERE id = ?`
-  ).run(content, model, JSON.stringify(tokenUsage), new Date().toISOString(), id)
-}
-
 export function getAnalysis(captureId: string): CaptureAnalysis | null {
   const db = getDb()
   const row = db.prepare('SELECT * FROM capture_analyses WHERE capture_id = ?').get(captureId) as

@@ -17,8 +17,7 @@ import type {
   DbRowIdentifier,
   DbExportTableParams,
   OrphanReport,
-  AnalyzeCaptureParams,
-  UpdateAnalysisParams
+  AnalyzeCaptureParams
 } from '@shared/ipc'
 import * as dbAdmin from '@main/services/dbAdmin'
 import { existsSync } from 'fs'
@@ -619,15 +618,6 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.AI_SAVE_ANALYSIS, (_, analysis: CaptureAnalysis) => {
     try {
       analysisService.saveAnalysis(analysis)
-      return ipcResult(undefined)
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.AI_UPDATE_ANALYSIS, (_, params: UpdateAnalysisParams) => {
-    try {
-      analysisService.updateAnalysis(params.id, params.content, params.model, params.tokenUsage)
       return ipcResult(undefined)
     } catch (err) {
       return ipcError(err)

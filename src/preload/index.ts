@@ -19,8 +19,7 @@ import type {
   DbStats,
   DbTableRowsResult,
   OrphanReport,
-  AnalyzeCaptureParams,
-  UpdateAnalysisParams
+  AnalyzeCaptureParams
 } from '@shared/ipc'
 import type {
   Case,
@@ -230,8 +229,6 @@ const birdbrain = {
       }>(ipcRenderer.invoke(IPC_CHANNELS.AI_ANALYZE, params)),
     saveAnalysis: (analysis: CaptureAnalysis): Promise<void> =>
       unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.AI_SAVE_ANALYSIS, analysis)),
-    updateAnalysis: (params: UpdateAnalysisParams): Promise<void> =>
-      unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.AI_UPDATE_ANALYSIS, params)),
     getAnalysis: (captureId: string): Promise<CaptureAnalysis | null> =>
       unwrapIpc<CaptureAnalysis | null>(
         ipcRenderer.invoke(IPC_CHANNELS.AI_GET_ANALYSIS, { captureId })

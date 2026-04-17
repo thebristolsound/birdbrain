@@ -642,15 +642,6 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.AI_DELETE_ANALYSIS, (_, params: { id: string }) => {
-    try {
-      analysisService.deleteAnalysis(params.id)
-      return ipcResult(undefined)
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
-
   // Database Admin
   ipcMain.handle(IPC_CHANNELS.DB_STATS, () => {
     try {

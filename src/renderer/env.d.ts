@@ -120,7 +120,6 @@ interface BirdbrainAPI {
     saveAnalysis(analysis: CaptureAnalysis): Promise<void>
     updateAnalysis(params: UpdateAnalysisParams): Promise<void>
     getAnalysis(captureId: string): Promise<CaptureAnalysis | null>
-    deleteAnalysis(id: string): Promise<void>
   }
   db: {
     stats(): Promise<DbStats>

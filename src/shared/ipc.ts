@@ -93,7 +93,6 @@ export const IPC_CHANNELS = {
   AI_SAVE_ANALYSIS: 'ai:saveAnalysis',
   AI_UPDATE_ANALYSIS: 'ai:updateAnalysis',
   AI_GET_ANALYSIS: 'ai:getAnalysis',
-  AI_DELETE_ANALYSIS: 'ai:deleteAnalysis',
 
   // Database Admin
   DB_STATS: 'db:stats',

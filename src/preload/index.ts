@@ -235,9 +235,7 @@ const birdbrain = {
     getAnalysis: (captureId: string): Promise<CaptureAnalysis | null> =>
       unwrapIpc<CaptureAnalysis | null>(
         ipcRenderer.invoke(IPC_CHANNELS.AI_GET_ANALYSIS, { captureId })
-      ),
-    deleteAnalysis: (id: string): Promise<void> =>
-      unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.AI_DELETE_ANALYSIS, { id }))
+      )
   },
 
   // Event listeners (main -> renderer)

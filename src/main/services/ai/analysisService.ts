@@ -157,8 +157,3 @@ export function getAnalysis(captureId: string): CaptureAnalysis | null {
     updatedAt: row.updated_at as string
   }
 }
-
-export function deleteAnalysis(id: string): void {
-  const db = getDb()
-  db.prepare('DELETE FROM capture_analyses WHERE id = ?').run(id)
-}

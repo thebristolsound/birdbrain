@@ -2,13 +2,7 @@ import { v4 as uuid } from 'uuid'
 import { getDb } from '@main/services/database'
 import { sendPrompt, truncateForContext } from '@main/services/ai/openrouter'
 import * as storage from '@main/services/storage'
-import type { CaptureAnalysis } from '@shared/types'
-
-interface TokenUsage {
-  prompt: number
-  completion: number
-  total: number
-}
+import type { CaptureAnalysis, TokenUsage } from '@shared/types'
 
 interface AnalyzeResult {
   content: string

@@ -13,7 +13,8 @@ import type {
   CaptureEvent,
   Note,
   HashVerification,
-  CaptureAnalysis
+  CaptureAnalysis,
+  TokenUsage
 } from '@shared/types'
 import type {
   CreateCaseParams,
@@ -112,10 +113,7 @@ interface BirdbrainAPI {
     generateReport(caseId: string, options: ExportOptions): Promise<void>
   }
   ai: {
-    analyze(params: AnalyzeCaptureParams): Promise<{
-      content: string
-      tokenUsage: { prompt: number; completion: number; total: number }
-    }>
+    analyze(params: AnalyzeCaptureParams): Promise<{ content: string; tokenUsage: TokenUsage }>
     saveAnalysis(analysis: CaptureAnalysis): Promise<void>
     getAnalysis(captureId: string): Promise<CaptureAnalysis | null>
   }

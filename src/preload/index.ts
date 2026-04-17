@@ -32,7 +32,8 @@ import type {
   ActiveCaseSelectors,
   CaptureEvent,
   Note,
-  CaptureAnalysis
+  CaptureAnalysis,
+  TokenUsage
 } from '@shared/types'
 
 // Unwrap IpcResult from handlers that return structured results
@@ -217,16 +218,10 @@ const birdbrain = {
   },
 
   ai: {
-    analyze: (
-      params: AnalyzeCaptureParams
-    ): Promise<{
-      content: string
-      tokenUsage: { prompt: number; completion: number; total: number }
-    }> =>
-      unwrapIpc<{
-        content: string
-        tokenUsage: { prompt: number; completion: number; total: number }
-      }>(ipcRenderer.invoke(IPC_CHANNELS.AI_ANALYZE, params)),
+    analyze: (params: AnalyzeCaptureParams): Promise<{ content: string; tokenUsage: TokenUsage }> =>
+      unwrapIpc<{ content: string; tokenUsage: TokenUsage }>(
+        ipcRenderer.invoke(IPC_CHANNELS.AI_ANALYZE, params)
+      ),
     saveAnalysis: (analysis: CaptureAnalysis): Promise<void> =>
       unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.AI_SAVE_ANALYSIS, analysis)),
     getAnalysis: (captureId: string): Promise<CaptureAnalysis | null> =>

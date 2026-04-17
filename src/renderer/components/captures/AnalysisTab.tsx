@@ -5,7 +5,7 @@ import Markdown from 'react-markdown'
 import { Button } from '@renderer/components/ui'
 import { Loader2, Save, RefreshCw, StickyNote, Settings, Sparkles, Copy } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
-import type { CaptureAnalysis, OpenRouterModel, BirdbrainSettings } from '@shared/types'
+import type { CaptureAnalysis, OpenRouterModel, BirdbrainSettings, TokenUsage } from '@shared/types'
 
 interface AnalysisTabProps {
   captureId: string
@@ -22,11 +22,7 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
   const [models, setModels] = useState<OpenRouterModel[]>([])
   const [selectedModel, setSelectedModel] = useState('')
   const [liveContent, setLiveContent] = useState<string | null>(null)
-  const [liveTokenUsage, setLiveTokenUsage] = useState<{
-    prompt: number
-    completion: number
-    total: number
-  } | null>(null)
+  const [liveTokenUsage, setLiveTokenUsage] = useState<TokenUsage | null>(null)
   const [analysisTimestamp, setAnalysisTimestamp] = useState<string | null>(null)
   const [analyzeError, setAnalyzeError] = useState<string | null>(null)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)

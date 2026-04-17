@@ -1,5 +1,6 @@
 import { app, ipcMain, dialog, shell } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
+import { DEFAULT_ANALYSIS_SYSTEM_PROMPT } from '@shared/constants'
 import type {
   CreateCaseParams,
   UpdateCaseParams,
@@ -597,9 +598,7 @@ export function registerIpcHandlers(): void {
       const currentSettings = settings.getSettings()
       const apiKey = currentSettings.openRouterApiKey
       if (!apiKey) throw new Error('No OpenRouter API key configured')
-      const systemPrompt =
-        currentSettings.analysisSystemPrompt ||
-        'You are an expert investigative analyst reviewing web captures.'
+      const systemPrompt = currentSettings.analysisSystemPrompt || DEFAULT_ANALYSIS_SYSTEM_PROMPT
       return ipcResult(
         await analysisService.analyzeCapture(
           params.captureId,

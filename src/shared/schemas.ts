@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { DEFAULT_ANALYSIS_SYSTEM_PROMPT } from '@shared/constants'
 
 // Shared Zod schemas for Birdbrain's trust boundaries.
 //
@@ -168,7 +169,7 @@ export const BirdbrainSettingsSchema = z.object({
     .optional()
     .default('captures'),
   hasCompletedOnboarding: z.boolean().optional().default(false),
-  analysisSystemPrompt: z.string().optional()
+  analysisSystemPrompt: z.string().optional().default(DEFAULT_ANALYSIS_SYSTEM_PROMPT)
 })
 
 // Used on load: user may have an older settings file missing newer keys, so

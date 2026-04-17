@@ -16,6 +16,7 @@ export function useOpenRouterModels(apiKey: string | null | undefined): {
     }
 
     let cancelled = false
+    setModels([])
     setLoading(true)
     window.birdbrain.settings
       .listModels(apiKey)

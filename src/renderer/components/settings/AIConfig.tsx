@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
-import type { BirdbrainSettings, OpenRouterModel } from '@shared/types'
+import { useState } from 'react'
+import type { BirdbrainSettings } from '@shared/types'
 import { Button, Card, CardContent, Input, Label, Textarea } from '@renderer/components/ui'
 import { Check, Eye, EyeOff, Loader2, X } from 'lucide-react'
+import { useOpenRouterModels } from '@renderer/hooks/useOpenRouterModels'
 
 export interface AIConfigProps {
   settings: BirdbrainSettings
@@ -12,22 +13,11 @@ export function AIConfig({ settings, onUpdate }: AIConfigProps) {
   const [apiKey, setApiKey] = useState(settings.openRouterApiKey ?? '')
   const [showKey, setShowKey] = useState(false)
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle')
-  const [models, setModels] = useState<OpenRouterModel[]>([])
-  const [loadingModels, setLoadingModels] = useState(false)
   const [selectedModel, setSelectedModel] = useState(settings.defaultModel)
   const [systemPrompt, setSystemPrompt] = useState(settings.analysisSystemPrompt ?? '')
 
-  // Load models when API key is present
-  useEffect(() => {
-    const key = settings.openRouterApiKey
-    if (!key) return
-    setLoadingModels(true)
-    window.birdbrain.settings
-      .listModels(key)
-      .then((m) => setModels(m))
-      .catch(() => setModels([]))
-      .finally(() => setLoadingModels(false))
-  }, [settings.openRouterApiKey])
+  // Models refresh automatically whenever settings.openRouterApiKey changes.
+  const { models, loading: loadingModels } = useOpenRouterModels(settings.openRouterApiKey)
 
   async function handleTestKey() {
     if (!apiKey.trim()) return
@@ -37,13 +27,6 @@ export function AIConfig({ settings, onUpdate }: AIConfigProps) {
       if (ok) {
         setTestStatus('success')
         await onUpdate({ openRouterApiKey: apiKey.trim() })
-        // Reload models with the new key
-        setLoadingModels(true)
-        window.birdbrain.settings
-          .listModels(apiKey.trim())
-          .then((m) => setModels(m))
-          .catch(() => setModels([]))
-          .finally(() => setLoadingModels(false))
       } else {
         setTestStatus('error')
       }

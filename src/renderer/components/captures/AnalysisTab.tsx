@@ -5,7 +5,8 @@ import Markdown from 'react-markdown'
 import { Button } from '@renderer/components/ui'
 import { Loader2, Save, RefreshCw, StickyNote, Settings, Sparkles, Copy } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
-import type { CaptureAnalysis, OpenRouterModel, BirdbrainSettings, TokenUsage } from '@shared/types'
+import type { CaptureAnalysis, BirdbrainSettings, TokenUsage } from '@shared/types'
+import { useOpenRouterModels } from '@renderer/hooks/useOpenRouterModels'
 
 interface AnalysisTabProps {
   captureId: string
@@ -19,7 +20,6 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
   const navigate = useNavigate()
 
   const [settings, setSettings] = useState<BirdbrainSettings | null>(null)
-  const [models, setModels] = useState<OpenRouterModel[]>([])
   const [selectedModel, setSelectedModel] = useState('')
   const [liveContent, setLiveContent] = useState<string | null>(null)
   const [liveTokenUsage, setLiveTokenUsage] = useState<TokenUsage | null>(null)
@@ -28,19 +28,15 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [copied, setCopied] = useState(false)
 
-  // Load settings
+  // Load settings once; selectedModel seeds from the stored default.
   useEffect(() => {
     window.birdbrain.settings.get().then((s) => {
       setSettings(s)
       setSelectedModel(s.defaultModel)
-      if (s.openRouterApiKey) {
-        window.birdbrain.settings
-          .listModels(s.openRouterApiKey)
-          .then(setModels)
-          .catch(() => setModels([]))
-      }
     })
   }, [])
+
+  const { models } = useOpenRouterModels(settings?.openRouterApiKey)
 
   // Load saved analysis
   const { data: savedAnalysis, isLoading: isLoadingSaved } = useQuery({

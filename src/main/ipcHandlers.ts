@@ -824,6 +824,7 @@ export function registerIpcHandlers(): void {
             const html = htmlBuffer.slice(0, MAX_HTML_BYTES).toString('utf-8')
             const extracted = extractData(html)
             db.deleteExtractedDataForCapture(cap.id)
+            db.deleteExtractedDataForCapture(cap.id)
             db.insertExtractedData(cap.id, caseId, cap.url, extracted)
           }
         } catch (err) {

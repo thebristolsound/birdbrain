@@ -24,12 +24,20 @@ function isValidIpv6(ip: string): boolean {
   // Cannot have more than one '::'
   const doubleColonCount = (addr.match(/::/g) || []).length
   if (doubleColonCount > 1) return false
-  // Validate each group is 1-4 hex digits (splitting around '::')
+
+  const hasDoubleColon = addr.includes('::')
   const parts = addr.split('::')
   if (parts.length > 2) return false
+
   const groups = parts.flatMap((p) => (p ? p.split(':') : []))
   if (groups.some((g) => !/^[0-9a-fA-F]{1,4}$/.test(g))) return false
-  return true
+
+  if (hasDoubleColon) {
+    // '::' compresses one or more 16-bit groups, so there must be fewer than 8 explicit groups.
+    return groups.length >= 1 && groups.length < 8
+  }
+
+  return groups.length === 8
 }
 function isValidIpv4(ip: string): boolean {
   const parts = ip.split('.')

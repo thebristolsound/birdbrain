@@ -1,5 +1,6 @@
 import { app, ipcMain, dialog, shell } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
+import { DEFAULT_ANALYSIS_SYSTEM_PROMPT } from '@shared/constants'
 import type {
   CreateCaseParams,
   UpdateCaseParams,
@@ -17,8 +18,7 @@ import type {
   DbRowIdentifier,
   DbExportTableParams,
   OrphanReport,
-  AnalyzeCaptureParams,
-  UpdateAnalysisParams
+  AnalyzeCaptureParams
 } from '@shared/ipc'
 import * as dbAdmin from '@main/services/dbAdmin'
 import { existsSync } from 'fs'
@@ -598,9 +598,9 @@ export function registerIpcHandlers(): void {
       const currentSettings = settings.getSettings()
       const apiKey = currentSettings.openRouterApiKey
       if (!apiKey) throw new Error('No OpenRouter API key configured')
-      const systemPrompt =
-        currentSettings.analysisSystemPrompt ||
-        'You are an expert investigative analyst reviewing web captures.'
+      const systemPrompt = currentSettings.analysisSystemPrompt?.trim()
+        ? currentSettings.analysisSystemPrompt
+        : DEFAULT_ANALYSIS_SYSTEM_PROMPT
       return ipcResult(
         await analysisService.analyzeCapture(
           params.captureId,
@@ -625,27 +625,9 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.AI_UPDATE_ANALYSIS, (_, params: UpdateAnalysisParams) => {
-    try {
-      analysisService.updateAnalysis(params.id, params.content, params.model, params.tokenUsage)
-      return ipcResult(undefined)
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
-
   ipcMain.handle(IPC_CHANNELS.AI_GET_ANALYSIS, (_, params: { captureId: string }) => {
     try {
       return ipcResult(analysisService.getAnalysis(params.captureId))
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.AI_DELETE_ANALYSIS, (_, params: { id: string }) => {
-    try {
-      analysisService.deleteAnalysis(params.id)
-      return ipcResult(undefined)
     } catch (err) {
       return ipcError(err)
     }

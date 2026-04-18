@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import type { BirdbrainSettings } from '@shared/types'
 import { PartialBirdbrainSettingsSchema } from '@shared/schemas'
+import { DEFAULT_ANALYSIS_SYSTEM_PROMPT } from '@shared/constants'
 
 // Encrypt/decrypt API keys at rest using Electron's OS credential store.
 // Falls back to plaintext when safeStorage is unavailable (e.g. tests, headless Linux).
@@ -53,8 +54,7 @@ const DEFAULT_SETTINGS: BirdbrainSettings = {
   lastActiveCaseId: null,
   lastActiveSection: 'captures',
   hasCompletedOnboarding: false,
-  analysisSystemPrompt:
-    'You are an expert investigative analyst reviewing web captures collected as part of a digital investigation. Analyze the provided capture in the context of the case description and metadata. Provide a clear, structured assessment covering key findings, notable entities, potential risks, and recommended next steps. Be concise but thorough.'
+  analysisSystemPrompt: DEFAULT_ANALYSIS_SYSTEM_PROMPT
 }
 
 export function initSettings(userDataPath: string): void {

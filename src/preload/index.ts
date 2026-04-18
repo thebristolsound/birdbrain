@@ -19,8 +19,7 @@ import type {
   DbStats,
   DbTableRowsResult,
   OrphanReport,
-  AnalyzeCaptureParams,
-  UpdateAnalysisParams
+  AnalyzeCaptureParams
 } from '@shared/ipc'
 import type {
   Case,
@@ -33,7 +32,8 @@ import type {
   ActiveCaseSelectors,
   CaptureEvent,
   Note,
-  CaptureAnalysis
+  CaptureAnalysis,
+  TokenUsage
 } from '@shared/types'
 
 // Unwrap IpcResult from handlers that return structured results
@@ -218,26 +218,16 @@ const birdbrain = {
   },
 
   ai: {
-    analyze: (
-      params: AnalyzeCaptureParams
-    ): Promise<{
-      content: string
-      tokenUsage: { prompt: number; completion: number; total: number }
-    }> =>
-      unwrapIpc<{
-        content: string
-        tokenUsage: { prompt: number; completion: number; total: number }
-      }>(ipcRenderer.invoke(IPC_CHANNELS.AI_ANALYZE, params)),
+    analyze: (params: AnalyzeCaptureParams): Promise<{ content: string; tokenUsage: TokenUsage }> =>
+      unwrapIpc<{ content: string; tokenUsage: TokenUsage }>(
+        ipcRenderer.invoke(IPC_CHANNELS.AI_ANALYZE, params)
+      ),
     saveAnalysis: (analysis: CaptureAnalysis): Promise<void> =>
       unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.AI_SAVE_ANALYSIS, analysis)),
-    updateAnalysis: (params: UpdateAnalysisParams): Promise<void> =>
-      unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.AI_UPDATE_ANALYSIS, params)),
     getAnalysis: (captureId: string): Promise<CaptureAnalysis | null> =>
       unwrapIpc<CaptureAnalysis | null>(
         ipcRenderer.invoke(IPC_CHANNELS.AI_GET_ANALYSIS, { captureId })
-      ),
-    deleteAnalysis: (id: string): Promise<void> =>
-      unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.AI_DELETE_ANALYSIS, { id }))
+      )
   },
 
   // Event listeners (main -> renderer)

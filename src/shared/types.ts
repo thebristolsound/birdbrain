@@ -165,17 +165,19 @@ export interface ExtractedDataItem {
   sourceUrls: string[]
 }
 
+export interface TokenUsage {
+  prompt: number
+  completion: number
+  total: number
+}
+
 export interface CaptureAnalysis {
   id: string
   captureId: string
   caseId: string
   content: string
   model: string
-  tokenUsage: {
-    prompt: number
-    completion: number
-    total: number
-  }
+  tokenUsage: TokenUsage
   createdAt: string
   updatedAt: string
 }

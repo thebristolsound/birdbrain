@@ -14,6 +14,7 @@ import type {
   Note,
   HashVerification,
   CaptureAnalysis,
+  TokenUsage,
   ExtractedDataCategory,
   ExtractedDataSubcategory,
   ExtractedDataItem
@@ -37,8 +38,7 @@ import type {
   DbRowIdentifier,
   DbExportTableParams,
   OrphanReport,
-  AnalyzeCaptureParams,
-  UpdateAnalysisParams
+  AnalyzeCaptureParams
 } from '@shared/ipc'
 
 interface BirdbrainAPI {
@@ -116,14 +116,9 @@ interface BirdbrainAPI {
     generateReport(caseId: string, options: ExportOptions): Promise<void>
   }
   ai: {
-    analyze(params: AnalyzeCaptureParams): Promise<{
-      content: string
-      tokenUsage: { prompt: number; completion: number; total: number }
-    }>
+    analyze(params: AnalyzeCaptureParams): Promise<{ content: string; tokenUsage: TokenUsage }>
     saveAnalysis(analysis: CaptureAnalysis): Promise<void>
-    updateAnalysis(params: UpdateAnalysisParams): Promise<void>
     getAnalysis(captureId: string): Promise<CaptureAnalysis | null>
-    deleteAnalysis(id: string): Promise<void>
   }
   db: {
     stats(): Promise<DbStats>

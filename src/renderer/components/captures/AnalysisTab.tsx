@@ -5,7 +5,8 @@ import Markdown from 'react-markdown'
 import { Button } from '@renderer/components/ui'
 import { Loader2, Save, RefreshCw, StickyNote, Settings, Sparkles, Copy } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
-import type { CaptureAnalysis, OpenRouterModel, BirdbrainSettings } from '@shared/types'
+import type { CaptureAnalysis, BirdbrainSettings, TokenUsage } from '@shared/types'
+import { useOpenRouterModels } from '@renderer/hooks/useOpenRouterModels'
 
 interface AnalysisTabProps {
   captureId: string
@@ -19,32 +20,23 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
   const navigate = useNavigate()
 
   const [settings, setSettings] = useState<BirdbrainSettings | null>(null)
-  const [models, setModels] = useState<OpenRouterModel[]>([])
   const [selectedModel, setSelectedModel] = useState('')
   const [liveContent, setLiveContent] = useState<string | null>(null)
-  const [liveTokenUsage, setLiveTokenUsage] = useState<{
-    prompt: number
-    completion: number
-    total: number
-  } | null>(null)
+  const [liveTokenUsage, setLiveTokenUsage] = useState<TokenUsage | null>(null)
   const [analysisTimestamp, setAnalysisTimestamp] = useState<string | null>(null)
   const [analyzeError, setAnalyzeError] = useState<string | null>(null)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [copied, setCopied] = useState(false)
 
-  // Load settings
+  // Load settings once; selectedModel seeds from the stored default.
   useEffect(() => {
     window.birdbrain.settings.get().then((s) => {
       setSettings(s)
       setSelectedModel(s.defaultModel)
-      if (s.openRouterApiKey) {
-        window.birdbrain.settings
-          .listModels(s.openRouterApiKey)
-          .then(setModels)
-          .catch(() => setModels([]))
-      }
     })
   }, [])
+
+  const { models } = useOpenRouterModels(settings?.openRouterApiKey)
 
   // Load saved analysis
   const { data: savedAnalysis, isLoading: isLoadingSaved } = useQuery({
@@ -99,32 +91,22 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
     }
   })
 
-  // Save mutation
+  // Save mutation — saveAnalysis is upsert-by-captureId in the main process
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!liveContent || !liveTokenUsage) return
-      if (savedAnalysis) {
-        // Update existing
-        await window.birdbrain.ai.updateAnalysis({
-          id: savedAnalysis.id,
-          content: liveContent,
-          model: selectedModel,
-          tokenUsage: liveTokenUsage
-        })
-      } else {
-        // Create new
-        const analysis: CaptureAnalysis = {
-          id: uuid(),
-          captureId,
-          caseId,
-          content: liveContent,
-          model: selectedModel,
-          tokenUsage: liveTokenUsage,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        }
-        await window.birdbrain.ai.saveAnalysis(analysis)
+      const now = new Date().toISOString()
+      const analysis: CaptureAnalysis = {
+        id: savedAnalysis?.id ?? uuid(),
+        captureId,
+        caseId,
+        content: liveContent,
+        model: selectedModel,
+        tokenUsage: liveTokenUsage,
+        createdAt: savedAnalysis?.createdAt ?? now,
+        updatedAt: now
       }
+      await window.birdbrain.ai.saveAnalysis(analysis)
     },
     onSuccess: () => {
       setHasUnsavedChanges(false)

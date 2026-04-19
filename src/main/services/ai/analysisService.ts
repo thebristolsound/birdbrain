@@ -2,13 +2,7 @@ import { v4 as uuid } from 'uuid'
 import { getDb } from '@main/services/database'
 import { sendPrompt, truncateForContext } from '@main/services/ai/openrouter'
 import * as storage from '@main/services/storage'
-import type { CaptureAnalysis } from '@shared/types'
-
-interface TokenUsage {
-  prompt: number
-  completion: number
-  total: number
-}
+import type { CaptureAnalysis, TokenUsage } from '@shared/types'
 
 interface AnalyzeResult {
   content: string
@@ -118,18 +112,6 @@ export function saveAnalysis(analysis: CaptureAnalysis): void {
   )
 }
 
-export function updateAnalysis(
-  id: string,
-  content: string,
-  model: string,
-  tokenUsage: TokenUsage
-): void {
-  const db = getDb()
-  db.prepare(
-    `UPDATE capture_analyses SET content = ?, model = ?, token_usage = ?, updated_at = ? WHERE id = ?`
-  ).run(content, model, JSON.stringify(tokenUsage), new Date().toISOString(), id)
-}
-
 export function getAnalysis(captureId: string): CaptureAnalysis | null {
   const db = getDb()
   const row = db.prepare('SELECT * FROM capture_analyses WHERE capture_id = ?').get(captureId) as
@@ -156,9 +138,4 @@ export function getAnalysis(captureId: string): CaptureAnalysis | null {
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string
   }
-}
-
-export function deleteAnalysis(id: string): void {
-  const db = getDb()
-  db.prepare('DELETE FROM capture_analyses WHERE id = ?').run(id)
 }

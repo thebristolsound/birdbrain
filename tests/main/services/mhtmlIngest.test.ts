@@ -46,11 +46,16 @@ describe('streamWriteAndHash', () => {
   it('aborts and deletes partial file when size cap exceeded', async () => {
     const oneMb = Buffer.alloc(1024 * 1024, 0x41)
     async function* gen() {
-      for (let i = 0; i < 210; i++) yield oneMb
+      for (let i = 0; i < 3; i++) yield oneMb
     }
     const stream = Readable.from(gen())
     await expect(
-      streamWriteAndHash('case-x', 'cap-big', stream as unknown as ReadableStream<Uint8Array>)
+      streamWriteAndHash(
+        'case-x',
+        'cap-big',
+        stream as unknown as ReadableStream<Uint8Array>,
+        2 * 1024 * 1024
+      )
     ).rejects.toThrow(/size.*exceed/i)
     expect(existsSync(join(tempDir, 'case-x', 'cap-big.mhtml'))).toBe(false)
   })

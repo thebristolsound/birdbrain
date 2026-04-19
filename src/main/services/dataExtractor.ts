@@ -102,7 +102,8 @@ export const EXTRACTION_RULES: ExtractionRule[] = [
   {
     category: 'Infrastructure',
     subcategory: 'Email Address',
-    patterns: [/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g]
+    // Bound quantifiers to prevent catastrophic backtracking on long inputs with no '@'.
+    patterns: [/[a-zA-Z0-9._%+-]{1,64}@[a-zA-Z0-9.-]{1,253}\.[a-zA-Z]{2,24}/g]
   },
   {
     category: 'Infrastructure',
@@ -138,7 +139,7 @@ export const EXTRACTION_RULES: ExtractionRule[] = [
   {
     category: 'Accounts',
     subcategory: 'Twitter/X',
-    patterns: [/(?:twitter\.com|x\.com)\/([a-zA-Z0-9_]{1,15})(?:[/?#]|$)/gi],
+    patterns: [/(?:twitter\.com|x\.com)\/([a-zA-Z0-9_]{1,15})(?:[/?#"'\s>]|$)/gi],
     normalize: (match: string) => {
       const m = match.match(/(?:twitter\.com|x\.com)\/([a-zA-Z0-9_]{1,15})/i)
       return m ? m[1] : null
@@ -147,32 +148,40 @@ export const EXTRACTION_RULES: ExtractionRule[] = [
   {
     category: 'Accounts',
     subcategory: 'Facebook',
-    patterns: [/facebook\.com\/([a-zA-Z0-9.]{1,50})(?:[/?#]|$)/gi],
+    patterns: [/facebook\.com\/([a-zA-Z0-9.]{1,50})(?:[/?#"'\s>]|$)/gi],
     normalize: (match: string) => {
       const m = match.match(/facebook\.com\/([a-zA-Z0-9.]+)/i)
       if (!m) return null
       // Filter out generic Facebook paths
       const slug = m[1]
-      if (['sharer', 'share', 'plugins', 'tr', 'dialog', 'login', 'home', 'pages'].includes(slug.toLowerCase())) return null
+      if (
+        ['sharer', 'share', 'plugins', 'tr', 'dialog', 'login', 'home', 'pages'].includes(
+          slug.toLowerCase()
+        )
+      )
+        return null
       return slug
     }
   },
   {
     category: 'Accounts',
     subcategory: 'Instagram',
-    patterns: [/instagram\.com\/([a-zA-Z0-9_.]{1,30})(?:[/?#]|$)/gi],
+    patterns: [/instagram\.com\/([a-zA-Z0-9_.]{1,30})(?:[/?#"'\s>]|$)/gi],
     normalize: (match: string) => {
       const m = match.match(/instagram\.com\/([a-zA-Z0-9_.]+)/i)
       if (!m) return null
       const slug = m[1]
-      if (['p', 'explore', 'stories', 'reel', 'reels', 'tv', 'accounts'].includes(slug.toLowerCase())) return null
+      if (
+        ['p', 'explore', 'stories', 'reel', 'reels', 'tv', 'accounts'].includes(slug.toLowerCase())
+      )
+        return null
       return slug
     }
   },
   {
     category: 'Accounts',
     subcategory: 'LinkedIn',
-    patterns: [/linkedin\.com\/in\/([a-zA-Z0-9-]{1,100})(?:[/?#]|$)/gi],
+    patterns: [/linkedin\.com\/in\/([a-zA-Z0-9-]{1,100})(?:[/?#"'\s>]|$)/gi],
     normalize: (match: string) => {
       const m = match.match(/linkedin\.com\/in\/([a-zA-Z0-9-]+)/i)
       return m ? m[1] : null
@@ -181,7 +190,7 @@ export const EXTRACTION_RULES: ExtractionRule[] = [
   {
     category: 'Accounts',
     subcategory: 'YouTube',
-    patterns: [/youtube\.com\/(?:@|channel\/|user\/)([a-zA-Z0-9_-]{1,100})(?:[/?#]|$)/gi],
+    patterns: [/youtube\.com\/(?:@|channel\/|user\/)([a-zA-Z0-9_-]{1,100})(?:[/?#"'\s>]|$)/gi],
     normalize: (match: string) => {
       const m = match.match(/youtube\.com\/(?:@|channel\/|user\/)([a-zA-Z0-9_-]+)/i)
       return m ? m[1] : null
@@ -190,19 +199,44 @@ export const EXTRACTION_RULES: ExtractionRule[] = [
   {
     category: 'Accounts',
     subcategory: 'GitHub',
-    patterns: [/github\.com\/([a-zA-Z0-9-]{1,39})(?:[/?#]|$)/gi],
+    patterns: [/github\.com\/([a-zA-Z0-9-]{1,39})(?:[/?#"'\s>]|$)/gi],
     normalize: (match: string) => {
       const m = match.match(/github\.com\/([a-zA-Z0-9-]+)/i)
       if (!m) return null
       const slug = m[1]
-      if (['login', 'logout', 'settings', 'orgs', 'issues', 'pulls', 'marketplace', 'explore', 'topics', 'trending', 'stars', 'join', 'new', 'notifications', 'features', 'about', 'pricing', 'contact', 'sponsors', 'apps', 'search'].includes(slug.toLowerCase())) return null
+      if (
+        [
+          'login',
+          'logout',
+          'settings',
+          'orgs',
+          'issues',
+          'pulls',
+          'marketplace',
+          'explore',
+          'topics',
+          'trending',
+          'stars',
+          'join',
+          'new',
+          'notifications',
+          'features',
+          'about',
+          'pricing',
+          'contact',
+          'sponsors',
+          'apps',
+          'search'
+        ].includes(slug.toLowerCase())
+      )
+        return null
       return slug
     }
   },
   {
     category: 'Accounts',
     subcategory: 'Telegram',
-    patterns: [/t\.me\/([a-zA-Z0-9_]{5,32})(?:[/?#]|$)/gi],
+    patterns: [/t\.me\/([a-zA-Z0-9_]{5,32})(?:[/?#"'\s>]|$)/gi],
     normalize: (match: string) => {
       const m = match.match(/t\.me\/([a-zA-Z0-9_]+)/i)
       return m ? m[1] : null
@@ -213,7 +247,7 @@ export const EXTRACTION_RULES: ExtractionRule[] = [
   {
     category: 'Darkweb',
     subcategory: 'Onion URL',
-    patterns: [/[a-z2-7]{16,56}\.onion(?:[/?#:]|$)/gi],
+    patterns: [/[a-z2-7]{16,56}\.onion(?:[/?#:"'\s>]|$)/gi],
     normalize: (match: string) => {
       const m = match.match(/([a-z2-7]{16,56}\.onion)/i)
       return m ? m[1].toLowerCase() : null
@@ -222,7 +256,7 @@ export const EXTRACTION_RULES: ExtractionRule[] = [
   {
     category: 'Darkweb',
     subcategory: 'I2P URL',
-    patterns: [/[a-zA-Z0-9-]+\.i2p(?:[/?#:]|$)/g],
+    patterns: [/[a-zA-Z0-9-]{1,253}\.i2p(?:[/?#:"'\s]|$)/g],
     normalize: (match: string) => {
       const m = match.match(/([a-zA-Z0-9-]+\.i2p)/i)
       return m ? m[1].toLowerCase() : null

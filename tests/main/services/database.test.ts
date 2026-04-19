@@ -42,7 +42,8 @@ import {
   getExtractedSubcategories,
   getExtractedItems,
   getExtractedDataCountForCase,
-  deleteExtractedDataForCapture
+  deleteExtractedDataForCapture,
+  LATEST_SCHEMA_VERSION
 } from '@main/services/database'
 
 describe('database', () => {
@@ -313,9 +314,9 @@ describe('database', () => {
     })
 
     it('sets user_version to 7 after v7 migration', () => {
-      // v8..v16 migrations run immediately after, so final version is 16
+      // v8..latest migrations run immediately after, so final version matches the schema version
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(16)
+      expect(version).toBe(LATEST_SCHEMA_VERSION)
     })
   })
 
@@ -339,9 +340,9 @@ describe('database', () => {
     })
 
     it('sets user_version to 8', () => {
-      // v9..v16 migrations run immediately after, so final version is 16
+      // v9..latest migrations run immediately after, so final version matches the schema version
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(16)
+      expect(version).toBe(LATEST_SCHEMA_VERSION)
     })
   })
 
@@ -363,9 +364,9 @@ describe('database', () => {
     })
 
     it('sets user_version to 9', () => {
-      // v10..v16 migrations run immediately after, so final version is 16
+      // v10..latest migrations run immediately after, so final version matches the schema version
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(16)
+      expect(version).toBe(LATEST_SCHEMA_VERSION)
     })
   })
 
@@ -437,9 +438,9 @@ describe('database', () => {
     })
 
     it('sets user_version to 15', () => {
-      // v16 migration runs immediately after, so final version is 16
+      
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(16)
+      expect(version).toBe(LATEST_SCHEMA_VERSION)
     })
   })
 
@@ -1036,7 +1037,7 @@ describe('database', () => {
 
     it('sets user_version to 16', () => {
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(16)
+      expect(version).toBe(LATEST_SCHEMA_VERSION)
     })
   })
 

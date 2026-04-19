@@ -30,6 +30,8 @@ import { safeRegexTest } from '@main/services/safeRegex'
 
 let db: Database.Database
 
+export const LATEST_SCHEMA_VERSION = 16
+
 export function initDatabase(dbPath: string): Database.Database {
   db = new Database(dbPath)
   db.pragma('journal_mode = WAL')

@@ -29,8 +29,6 @@ import type { ExtractedDatum } from '@main/services/dataExtractor'
 import { safeRegexTest } from '@main/services/safeRegex'
 
 let db: Database.Database
-export const LATEST_SCHEMA_VERSION = 15
-
 export const LATEST_SCHEMA_VERSION = 16
 
 export function initDatabase(dbPath: string): Database.Database {

@@ -37,6 +37,12 @@ import {
   getNoteCount,
   updateNote,
   searchNotes,
+  insertExtractedData,
+  getExtractedCategories,
+  getExtractedSubcategories,
+  getExtractedItems,
+  getExtractedDataCountForCase,
+  deleteExtractedDataForCapture,
   LATEST_SCHEMA_VERSION
 } from '@main/services/database'
 
@@ -999,6 +1005,158 @@ describe('database', () => {
       expect(searchNotes(c.id, 'temp')).toHaveLength(1)
       deleteNote(n.id)
       expect(searchNotes(c.id, 'temp')).toHaveLength(0)
+    })
+  })
+
+  describe('migration v16 - extracted data', () => {
+    it('creates extracted_data table', () => {
+      const table = getDb()
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='extracted_data'")
+        .get()
+      expect(table).toBeDefined()
+    })
+
+    it('creates idx_extracted_data_case_id index', () => {
+      const idx = getDb()
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_extracted_data_case_id'"
+        )
+        .get()
+      expect(idx).toBeDefined()
+    })
+
+    it('creates idx_extracted_data_unique index', () => {
+      const idx = getDb()
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_extracted_data_unique'"
+        )
+        .get()
+      expect(idx).toBeDefined()
+    })
+
+    it('sets user_version to 16', () => {
+      const version = getDb().pragma('user_version', { simple: true })
+      expect(version).toBe(LATEST_SCHEMA_VERSION)
+    })
+  })
+
+  describe('extracted data', () => {
+    let caseId: string
+    let captureId: string
+
+    beforeEach(() => {
+      const c = createCase({ name: 'Extraction Test' })
+      caseId = c.id
+      const cap = insertCapture({
+        caseId,
+        url: 'https://example.com',
+        title: 'Test Capture',
+        hash: 'hash-extract',
+        timestamp: new Date().toISOString()
+      })
+      captureId = cap.id
+    })
+
+    it('inserts and retrieves extracted categories', () => {
+      insertExtractedData(captureId, caseId, 'https://example.com', [
+        { category: 'Tracking Code', subcategory: 'Google Analytics', value: 'UA-12345-1' },
+        { category: 'Tracking Code', subcategory: 'Google Analytics', value: 'G-ABCDEFGHIJ' },
+        { category: 'Infrastructure', subcategory: 'Email Address', value: 'test@example.com' }
+      ])
+
+      const categories = getExtractedCategories(caseId)
+      expect(categories).toHaveLength(2)
+      const tracking = categories.find((c) => c.category === 'Tracking Code')
+      expect(tracking?.count).toBe(2)
+      const infra = categories.find((c) => c.category === 'Infrastructure')
+      expect(infra?.count).toBe(1)
+    })
+
+    it('retrieves subcategories for a category', () => {
+      insertExtractedData(captureId, caseId, 'https://example.com', [
+        { category: 'Tracking Code', subcategory: 'Google Analytics', value: 'UA-12345-1' },
+        { category: 'Tracking Code', subcategory: 'Google Tag Manager', value: 'GTM-ABCD' }
+      ])
+
+      const subcategories = getExtractedSubcategories(caseId, 'Tracking Code')
+      expect(subcategories).toHaveLength(2)
+      const ga = subcategories.find((s) => s.subcategory === 'Google Analytics')
+      expect(ga?.count).toBe(1)
+    })
+
+    it('retrieves items with page counts and source URLs', () => {
+      const cap2 = insertCapture({
+        caseId,
+        url: 'https://other.com',
+        title: 'Other',
+        hash: 'hash-other',
+        timestamp: new Date().toISOString()
+      })
+
+      insertExtractedData(captureId, caseId, 'https://example.com', [
+        { category: 'Tracking Code', subcategory: 'Google Analytics', value: 'UA-12345-1' }
+      ])
+      insertExtractedData(cap2.id, caseId, 'https://other.com', [
+        { category: 'Tracking Code', subcategory: 'Google Analytics', value: 'UA-12345-1' }
+      ])
+
+      const items = getExtractedItems(caseId, 'Tracking Code', 'Google Analytics')
+      expect(items).toHaveLength(1)
+      expect(items[0].value).toBe('UA-12345-1')
+      expect(items[0].pageCount).toBe(2)
+      expect(items[0].sourceUrls).toContain('https://example.com')
+      expect(items[0].sourceUrls).toContain('https://other.com')
+    })
+
+    it('deduplicates same value in same capture', () => {
+      insertExtractedData(captureId, caseId, 'https://example.com', [
+        { category: 'Tracking Code', subcategory: 'Google Analytics', value: 'UA-12345-1' },
+        { category: 'Tracking Code', subcategory: 'Google Analytics', value: 'UA-12345-1' }
+      ])
+
+      const items = getExtractedItems(caseId, 'Tracking Code', 'Google Analytics')
+      expect(items).toHaveLength(1)
+    })
+
+    it('ignores duplicate inserts (INSERT OR IGNORE)', () => {
+      insertExtractedData(captureId, caseId, 'https://example.com', [
+        { category: 'Tracking Code', subcategory: 'Google Analytics', value: 'UA-12345-1' }
+      ])
+      // Second insert of the same data should not throw or duplicate
+      insertExtractedData(captureId, caseId, 'https://example.com', [
+        { category: 'Tracking Code', subcategory: 'Google Analytics', value: 'UA-12345-1' }
+      ])
+
+      const count = getExtractedDataCountForCase(caseId)
+      expect(count).toBe(1)
+    })
+
+    it('returns total count for case', () => {
+      insertExtractedData(captureId, caseId, 'https://example.com', [
+        { category: 'Tracking Code', subcategory: 'Google Analytics', value: 'UA-12345-1' },
+        { category: 'Infrastructure', subcategory: 'Email Address', value: 'a@b.com' }
+      ])
+      expect(getExtractedDataCountForCase(caseId)).toBe(2)
+    })
+
+    it('returns 0 for case with no extracted data', () => {
+      expect(getExtractedDataCountForCase(caseId)).toBe(0)
+    })
+
+    it('deletes extracted data for a capture', () => {
+      insertExtractedData(captureId, caseId, 'https://example.com', [
+        { category: 'Tracking Code', subcategory: 'Google Analytics', value: 'UA-12345-1' }
+      ])
+      deleteExtractedDataForCapture(captureId)
+      expect(getExtractedDataCountForCase(caseId)).toBe(0)
+    })
+
+    it('cascades deletion when capture is deleted', () => {
+      insertExtractedData(captureId, caseId, 'https://example.com', [
+        { category: 'Tracking Code', subcategory: 'Google Analytics', value: 'UA-12345-1' }
+      ])
+      deleteCapture(captureId)
+      expect(getExtractedDataCountForCase(caseId)).toBe(0)
     })
   })
 })

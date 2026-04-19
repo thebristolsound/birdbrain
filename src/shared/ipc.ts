@@ -73,6 +73,13 @@ export const IPC_CHANNELS = {
   NOTES_COUNT: 'notes:count',
   NOTES_SEARCH: 'notes:search',
 
+  // Extracted Data
+  EXTRACTED_DATA_CATEGORIES: 'extractedData:categories',
+  EXTRACTED_DATA_SUBCATEGORIES: 'extractedData:subcategories',
+  EXTRACTED_DATA_ITEMS: 'extractedData:items',
+  EXTRACTED_DATA_COUNT: 'extractedData:count',
+  EXTRACTED_DATA_REPROCESS: 'extractedData:reprocess',
+
   // Extension
   EXTENSION_PATH: 'extension:path',
   EXTENSION_OPEN_FOLDER: 'extension:openFolder',

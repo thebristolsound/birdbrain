@@ -40,6 +40,7 @@ export function CaseWorkspace() {
   const isSelectors = matchRoute({ to: '/cases/$caseId/selectors', fuzzy: true }) !== false
   const isNotes = matchRoute({ to: '/cases/$caseId/notes', fuzzy: true }) !== false
   const isTags = matchRoute({ to: '/cases/$caseId/tags', fuzzy: true }) !== false
+  const isData = matchRoute({ to: '/cases/$caseId/data', fuzzy: true }) !== false
 
   // Persist active section for session restore
   useEffect(() => {
@@ -51,9 +52,11 @@ export function CaseWorkspace() {
           ? 'notes'
           : isTags
             ? 'tags'
-            : 'captures'
+            : isData
+              ? 'data'
+              : 'captures'
     window.birdbrain.settings.update({ lastActiveSection: section })
-  }, [isCaptures, isSelectors, isNotes, isTags])
+  }, [isCaptures, isSelectors, isNotes, isTags, isData])
 
   if (isLoading) {
     return (

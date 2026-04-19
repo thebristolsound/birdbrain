@@ -28,7 +28,13 @@ export const queryKeys = {
   search: (query: string) => ['search', query] as const,
   notes: (caseId: string) => ['notes', caseId] as const,
   noteCount: (caseId: string) => ['notes', 'count', caseId] as const,
-  notesSearch: (caseId: string, query: string) => ['notes', 'search', caseId, query] as const
+  notesSearch: (caseId: string, query: string) => ['notes', 'search', caseId, query] as const,
+  extractedDataCategories: (caseId: string) => ['extractedData', 'categories', caseId] as const,
+  extractedDataSubcategories: (caseId: string, category: string) =>
+    ['extractedData', 'subcategories', caseId, category] as const,
+  extractedDataItems: (caseId: string, category: string, subcategory: string) =>
+    ['extractedData', 'items', caseId, category, subcategory] as const,
+  extractedDataCount: (caseId: string) => ['extractedData', 'count', caseId] as const
 }
 
 // --- Cases ---
@@ -275,4 +281,56 @@ export function useNotesMutations(caseId: string) {
   })
 
   return { create, update, remove }
+}
+
+// --- Extracted Data ---
+
+export const extractedDataCategoriesQueryOptions = (caseId: string) =>
+  queryOptions({
+    queryKey: queryKeys.extractedDataCategories(caseId),
+    queryFn: () => window.birdbrain.extractedData.categories(caseId),
+    enabled: !!caseId
+  })
+
+export const extractedDataSubcategoriesQueryOptions = (caseId: string, category: string) =>
+  queryOptions({
+    queryKey: queryKeys.extractedDataSubcategories(caseId, category),
+    queryFn: () => window.birdbrain.extractedData.subcategories(caseId, category),
+    enabled: !!caseId && !!category
+  })
+
+export const extractedDataItemsQueryOptions = (
+  caseId: string,
+  category: string,
+  subcategory: string
+) =>
+  queryOptions({
+    queryKey: queryKeys.extractedDataItems(caseId, category, subcategory),
+    queryFn: () => window.birdbrain.extractedData.items(caseId, category, subcategory),
+    enabled: !!caseId && !!category && !!subcategory
+  })
+
+export const extractedDataCountQueryOptions = (caseId: string) =>
+  queryOptions({
+    queryKey: queryKeys.extractedDataCount(caseId),
+    queryFn: () => window.birdbrain.extractedData.count(caseId),
+    enabled: !!caseId
+  })
+
+export function useExtractedDataMutations(caseId: string) {
+  const queryClient = useQueryClient()
+
+  const invalidateExtractedData = () => {
+    queryClient.invalidateQueries({ queryKey: ['extractedData', 'categories', caseId] })
+    queryClient.invalidateQueries({ queryKey: ['extractedData', 'count', caseId] })
+    queryClient.invalidateQueries({ queryKey: ['extractedData', 'subcategories', caseId] })
+    queryClient.invalidateQueries({ queryKey: ['extractedData', 'items', caseId] })
+  }
+
+  const reprocess = useMutation({
+    mutationFn: () => window.birdbrain.extractedData.reprocess(caseId),
+    onSuccess: invalidateExtractedData
+  })
+
+  return { reprocess }
 }

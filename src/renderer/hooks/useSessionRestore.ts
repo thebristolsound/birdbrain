@@ -10,7 +10,8 @@ const SECTION_PATHS: Record<Exclude<Section, 'settings'>, string> = {
   captures: '/cases/$caseId/captures',
   selectors: '/cases/$caseId/selectors',
   notes: '/cases/$caseId/notes',
-  tags: '/cases/$caseId/tags'
+  tags: '/cases/$caseId/tags',
+  data: '/cases/$caseId/data'
 }
 
 interface ResolveInput {

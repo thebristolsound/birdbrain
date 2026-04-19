@@ -20,6 +20,7 @@ import {
   formatCaptureUploadError,
   formatSelectorCreateError
 } from '@shared/schemas'
+import { extractData, MAX_HTML_BYTES } from '@main/services/dataExtractor'
 
 import { CAPTURE_SERVER_PORT, MAX_SCREENSHOT_SIZE } from '@shared/constants'
 import { safeRegexTest } from '@main/services/safeRegex'
@@ -97,7 +98,7 @@ function schedulePostCaptureWork(
   captureId: string,
   caseId: string,
   _source: CaptureSource,
-  _url: string,
+  url: string,
   textContent: string | undefined
 ): void {
   setImmediate(() => {
@@ -107,6 +108,17 @@ function schedulePostCaptureWork(
       }
     } catch (err) {
       console.error('Selector matching error for capture', captureId, err)
+    }
+
+    try {
+      const htmlBuffer = readCaptureFile(caseId, captureId, 'html')
+      if (htmlBuffer) {
+        const html = htmlBuffer.slice(0, MAX_HTML_BYTES).toString('utf-8')
+        const extracted = extractData(html)
+        db.insertExtractedData(captureId, caseId, url, extracted)
+      }
+    } catch (err) {
+      console.error('Data extraction error for capture', captureId, err)
     }
   })
 }

@@ -36,7 +36,8 @@ import {
   deleteNote,
   getNoteCount,
   updateNote,
-  searchNotes
+  searchNotes,
+  LATEST_SCHEMA_VERSION
 } from '@main/services/database'
 
 describe('database', () => {
@@ -307,9 +308,9 @@ describe('database', () => {
     })
 
     it('sets user_version to 7 after v7 migration', () => {
-      // v8..v15 migrations run immediately after, so final version is 15
+      // v8..latest migrations run immediately after, so final version matches the schema version
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(15)
+      expect(version).toBe(LATEST_SCHEMA_VERSION)
     })
   })
 
@@ -333,9 +334,9 @@ describe('database', () => {
     })
 
     it('sets user_version to 8', () => {
-      // v9..v15 migrations run immediately after, so final version is 15
+      // v9..latest migrations run immediately after, so final version matches the schema version
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(15)
+      expect(version).toBe(LATEST_SCHEMA_VERSION)
     })
   })
 
@@ -357,9 +358,9 @@ describe('database', () => {
     })
 
     it('sets user_version to 9', () => {
-      // v10..v15 migrations run immediately after, so final version is 15
+      // v10..latest migrations run immediately after, so final version matches the schema version
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(15)
+      expect(version).toBe(LATEST_SCHEMA_VERSION)
     })
   })
 
@@ -430,9 +431,9 @@ describe('database', () => {
       expect(row).toBeUndefined()
     })
 
-    it('sets user_version to 15', () => {
+    it('sets user_version to the latest schema version', () => {
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(15)
+      expect(version).toBe(LATEST_SCHEMA_VERSION)
     })
   })
 

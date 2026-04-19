@@ -26,7 +26,8 @@ async function closeAndUnlink(ws: WriteStream, path: string): Promise<void> {
 export async function streamWriteAndHash(
   caseId: string,
   captureId: string,
-  body: ReadableStream<Uint8Array>
+  body: ReadableStream<Uint8Array>,
+  maxSizeBytes = MAX_MHTML_SIZE
 ): Promise<StreamWriteResult> {
   const dir = ensureCaseDir(caseId)
   const absPath = join(dir, `${captureId}.mhtml`)
@@ -56,9 +57,9 @@ export async function streamWriteAndHash(
 
     for await (const chunk of iterable) {
       size += chunk.byteLength
-      if (size > MAX_MHTML_SIZE) {
+      if (size > maxSizeBytes) {
         await closeAndUnlink(writeStream, absPath)
-        throw new Error(`MHTML size ${size} exceeds cap of ${MAX_MHTML_SIZE} bytes`)
+        throw new Error(`MHTML size ${size} exceeds cap of ${maxSizeBytes} bytes`)
       }
       hasher.update(chunk)
       if (!writeStream.write(chunk)) {

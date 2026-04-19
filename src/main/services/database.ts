@@ -29,6 +29,7 @@ import type { ExtractedDatum } from '@main/services/dataExtractor'
 import { safeRegexTest } from '@main/services/safeRegex'
 
 let db: Database.Database
+export const LATEST_SCHEMA_VERSION = 15
 
 export const LATEST_SCHEMA_VERSION = 16
 
@@ -337,13 +338,13 @@ function migrate(db: Database.Database): void {
           case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
           content TEXT NOT NULL,
           model TEXT NOT NULL,
-          token_usage TEXT,
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL
-        );
+        token_usage TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
         CREATE INDEX IF NOT EXISTS idx_capture_analyses_capture ON capture_analyses(capture_id);
       `)
-      db.pragma('user_version = 15')
+      db.pragma(`user_version = ${LATEST_SCHEMA_VERSION}`)
     })()
   }
 

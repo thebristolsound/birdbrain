@@ -437,8 +437,7 @@ describe('database', () => {
       expect(row).toBeUndefined()
     })
 
-    it('sets user_version to 15', () => {
-      
+    it('sets user_version to the latest schema version', () => {
       const version = getDb().pragma('user_version', { simple: true })
       expect(version).toBe(LATEST_SCHEMA_VERSION)
     })

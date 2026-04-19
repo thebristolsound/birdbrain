@@ -313,9 +313,9 @@ describe('database', () => {
     })
 
     it('sets user_version to 7 after v7 migration', () => {
-      // v8..v15 migrations run immediately after, so final version is 15
+      // v8..v16 migrations run immediately after, so final version is 16
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(15)
+      expect(version).toBe(16)
     })
   })
 
@@ -339,9 +339,9 @@ describe('database', () => {
     })
 
     it('sets user_version to 8', () => {
-      // v9..v15 migrations run immediately after, so final version is 15
+      // v9..v16 migrations run immediately after, so final version is 16
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(15)
+      expect(version).toBe(16)
     })
   })
 
@@ -363,9 +363,9 @@ describe('database', () => {
     })
 
     it('sets user_version to 9', () => {
-      // v10..v15 migrations run immediately after, so final version is 15
+      // v10..v16 migrations run immediately after, so final version is 16
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(15)
+      expect(version).toBe(16)
     })
   })
 
@@ -437,8 +437,9 @@ describe('database', () => {
     })
 
     it('sets user_version to 15', () => {
+      // v16 migration runs immediately after, so final version is 16
       const version = getDb().pragma('user_version', { simple: true })
-      expect(version).toBe(15)
+      expect(version).toBe(16)
     })
   })
 

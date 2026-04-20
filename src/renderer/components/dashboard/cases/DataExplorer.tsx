@@ -42,6 +42,7 @@ export function DataExplorer() {
   }
 
   function handleSourceUrlClick(url: string) {
+    // Swallow: openExternal rejects on non-http schemes and user-cancelled dialogs; neither is actionable here.
     window.birdbrain.captures.openExternal(url).catch(() => {})
   }
 

@@ -21,7 +21,7 @@ import {
   formatSelectorCreateError
 } from '@shared/schemas'
 import { extractData } from '@main/services/dataExtractor'
-import { extractHtmlFromMhtml } from '@main/services/mhtmlDecoder'
+import { readExtractionHtml } from '@main/services/extraction/extractionSource'
 
 import { CAPTURE_SERVER_PORT, MAX_SCREENSHOT_SIZE } from '@shared/constants'
 import { safeRegexTest } from '@main/services/safeRegex'
@@ -112,16 +112,7 @@ function schedulePostCaptureWork(
     }
 
     try {
-      // Prefer MHTML (current format); fall back to .html for legacy captures
-      // saved before migration v11, which had format='html' and no mhtml file.
-      const mhtmlBuffer = readCaptureFile(caseId, captureId, 'mhtml')
-      let html: string | null = null
-      if (mhtmlBuffer) {
-        html = extractHtmlFromMhtml(mhtmlBuffer)
-      } else {
-        const htmlBuffer = readCaptureFile(caseId, captureId, 'html')
-        if (htmlBuffer) html = htmlBuffer.toString('utf8')
-      }
+      const html = readExtractionHtml(caseId, captureId)
       if (html) {
         const extracted = extractData(html)
         db.insertExtractedData(captureId, caseId, url, extracted)

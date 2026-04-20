@@ -1,8 +1,6 @@
 import { parse } from 'tldts'
 
-// ---------------------------------------------------------------------------
-// IPv4 validator
-// ---------------------------------------------------------------------------
+type ParsedTld = ReturnType<typeof parse>
 
 function parseOctets(ip: string): [number, number, number, number] | null {
   const parts = ip.split('.')
@@ -66,10 +64,6 @@ export function isPublicIpv4(ip: string): boolean {
   return true
 }
 
-// ---------------------------------------------------------------------------
-// Domain validator
-// ---------------------------------------------------------------------------
-
 const DOMAIN_BLOCKLIST_EXACT = new Set([
   'localhost',
   'local',
@@ -94,32 +88,29 @@ const DOMAIN_BLOCKLIST_SUFFIX = [
   '.arpa'
 ]
 
-export function isValidDomain(host: string): boolean {
+export function isValidDomainParsed(host: string, parsed: ParsedTld): boolean {
   if (typeof host !== 'string') return false
   if (host.length > 253) return false
   if (!host.includes('.')) return false
 
   const lower = host.toLowerCase()
 
-  // Exact blocklist
   if (DOMAIN_BLOCKLIST_EXACT.has(lower)) return false
-
-  // Suffix blocklist
   for (const suffix of DOMAIN_BLOCKLIST_SUFFIX) {
     if (lower === suffix.slice(1) || lower.endsWith(suffix)) return false
   }
 
-  const result = parse(lower, { validHosts: [] })
-  if (result.isIp) return false
-  if (!result.publicSuffix || !result.domain) return false
-  if (!result.isIcann) return false
+  if (parsed.isIp) return false
+  if (!parsed.publicSuffix || !parsed.domain) return false
+  if (!parsed.isIcann) return false
 
   return true
 }
 
-// ---------------------------------------------------------------------------
-// Email domain / email validators
-// ---------------------------------------------------------------------------
+export function isValidDomain(host: string): boolean {
+  if (typeof host !== 'string') return false
+  return isValidDomainParsed(host, parse(host.toLowerCase(), { validHosts: [] }))
+}
 
 const EMAIL_DOMAIN_DENYLIST = new Set([
   'mhtml.blink',

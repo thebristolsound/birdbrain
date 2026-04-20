@@ -21,7 +21,7 @@ export function extractHtmlFromMhtml(buffer: Buffer): string {
   const delimiter = Buffer.from('--' + boundary, 'latin1')
   const chunks: string[] = []
 
-  let at = indexOfBuf(buffer, delimiter, topHeaderEnd)
+  let at = buffer.indexOf(delimiter, topHeaderEnd)
   while (at !== -1) {
     const after = at + delimiter.length
     // Closing boundary marker: `--boundary--`
@@ -32,7 +32,7 @@ export function extractHtmlFromMhtml(buffer: Buffer): string {
     if (buffer[partStart] === 0x0d && buffer[partStart + 1] === 0x0a) partStart += 2
     else if (buffer[partStart] === 0x0a) partStart += 1
 
-    const nextAt = indexOfBuf(buffer, delimiter, partStart)
+    const nextAt = buffer.indexOf(delimiter, partStart)
     const partEnd = nextAt === -1 ? buffer.length : nextAt
 
     const partHeaderEnd = findHeaderEndBuf(buffer, partStart)
@@ -52,12 +52,6 @@ export function extractHtmlFromMhtml(buffer: Buffer): string {
   }
 
   return chunks.join('\n')
-}
-
-// --- helpers ---
-
-function indexOfBuf(buf: Buffer, needle: Buffer, from: number): number {
-  return buf.indexOf(needle, from)
 }
 
 function findHeaderEndBuf(buf: Buffer, from: number): number {

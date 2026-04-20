@@ -36,7 +36,7 @@ import { initManifest, appendManifestEntry, rollbackManifestEntry } from '@main/
 import { getInstallationId } from '@main/services/installationId'
 import { CAPTURE_SERVER_PORT, getSessionState } from '@main/services/captureServer'
 import { extractData } from '@main/services/dataExtractor'
-import { extractHtmlFromMhtml } from '@main/services/mhtmlDecoder'
+import { readExtractionHtml } from '@main/services/extraction/extractionSource'
 import type { BirdbrainSettings, ExportOptions, CaptureAnalysis } from '@shared/types'
 
 type IpcResult<T = unknown> =
@@ -800,16 +800,7 @@ export function registerIpcHandlers(): void {
           // Always clear first so legacy rows don't linger when a capture has
           // no readable source file anymore.
           db.deleteExtractedDataForCapture(cap.id)
-          // Prefer MHTML (current format); fall back to .html for legacy
-          // captures saved before migration v11.
-          const mhtmlBuffer = storage.readCaptureFile(caseId, cap.id, 'mhtml')
-          let html: string | null = null
-          if (mhtmlBuffer) {
-            html = extractHtmlFromMhtml(mhtmlBuffer)
-          } else {
-            const htmlBuffer = storage.readCaptureFile(caseId, cap.id, 'html')
-            if (htmlBuffer) html = htmlBuffer.toString('utf8')
-          }
+          const html = readExtractionHtml(caseId, cap.id)
           if (html) {
             const extracted = extractData(html)
             db.insertExtractedData(cap.id, caseId, cap.url, extracted)

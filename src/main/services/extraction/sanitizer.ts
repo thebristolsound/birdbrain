@@ -23,7 +23,12 @@ export function sanitizeHtml(html: string): SanitizedHtml {
   const empty: SanitizedHtml = { text: '', attrs: { href: [], src: [], action: [], mailto: [] } }
 
   try {
-    const input = html.length > MAX_HTML_BYTES ? html.slice(0, MAX_HTML_BYTES) : html
+    // Enforce a true byte cap (not UTF-16 code units): multi-byte characters
+    // would otherwise let the input exceed MAX_HTML_BYTES.
+    const input =
+      Buffer.byteLength(html, 'utf8') > MAX_HTML_BYTES
+        ? Buffer.from(html, 'utf8').slice(0, MAX_HTML_BYTES).toString('utf8')
+        : html
     const $ = cheerio.load(input, { xmlMode: false })
 
     // Remove noise subtrees

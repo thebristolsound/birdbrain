@@ -76,4 +76,13 @@ describe('sanitizeHtml', () => {
     expect(result.text).toBe('hi')
     expect(result.text).not.toContain('leak@bad.com')
   })
+
+  // (k) byte-true truncation for multi-byte input
+  it('enforces MAX_HTML_BYTES as a byte cap for multi-byte input', () => {
+    // '☃' is 3 bytes in UTF-8 but 1 UTF-16 code unit. Enough snowmen to exceed
+    // the byte cap while the .length (code units) stays under it.
+    const snowmen = '☃'.repeat(MAX_HTML_BYTES) + '<p>SENTINEL_PAST_CAP</p>'
+    const result = sanitizeHtml(snowmen)
+    expect(result.text).not.toContain('SENTINEL_PAST_CAP')
+  })
 })

@@ -27,9 +27,9 @@ export function CapturesRoute() {
         </div>
       }
     >
-      {() => (
+      {(captures) => (
         <div className="flex h-full flex-1 overflow-hidden">
-          <CaptureList caseId={caseId} />
+          <CaptureList caseId={caseId} captures={captures} />
           <div className="flex flex-1 overflow-hidden">
             <CaptureViewer />
           </div>

@@ -69,7 +69,7 @@ export function CaseWorkspace() {
   return (
     <div className="flex h-full flex-col">
       <CaseHeader />
-      {isCaptures ? (
+      {isCaptures || isData ? (
         <div className="flex-1 overflow-hidden">
           <Outlet />
         </div>

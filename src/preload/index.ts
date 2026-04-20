@@ -282,8 +282,8 @@ const birdbrain = {
       ipcRenderer.invoke(IPC_CHANNELS.EXTRACTED_DATA_ITEMS, caseId, category, subcategory),
     count: (caseId: string): Promise<number> =>
       ipcRenderer.invoke(IPC_CHANNELS.EXTRACTED_DATA_COUNT, caseId),
-    reprocess: (caseId: string): Promise<{ queued: number }> =>
-      unwrapIpc<{ queued: number }>(
+    reprocess: (caseId: string): Promise<{ processed: number }> =>
+      unwrapIpc<{ processed: number }>(
         ipcRenderer.invoke(IPC_CHANNELS.EXTRACTED_DATA_REPROCESS, caseId)
       )
   }

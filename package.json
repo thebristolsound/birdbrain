@@ -6,6 +6,9 @@
   "packageManager": "pnpm@10.28.2",
   "author": "Matt Donovan",
   "license": "MIT",
+  "engines": {
+    "node": ">=20.18.1"
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
@@ -74,15 +77,18 @@
     "@tanstack/react-query": "^5.96.2",
     "@tanstack/react-router": "^1.168.10",
     "better-sqlite3": "^12.8.0",
+    "cheerio": "^1.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "compromise": "^14.15.0",
     "d3-force": "^3.0.0",
     "hono": "^4.12.10",
+    "ioc-extractor": "^8.1.7",
     "lucide-react": "^0.577.0",
     "motion": "^12.38.0",
     "react-markdown": "^10.1.0",
     "tailwind-merge": "^3.5.0",
+    "tldts": "^7.0.28",
     "uuid": "^11.1.0",
     "zod": "^3.24.1",
     "zustand": "^5.0.12"

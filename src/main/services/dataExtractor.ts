@@ -1,6 +1,58 @@
-// Rule-based data extraction engine
-// Each rule contains category, subcategory, patterns, and optional normalize function.
-// To add a new rule, simply append an entry to the EXTRACTION_RULES array.
+import { parse as parseTld } from 'tldts'
+import { sanitizeHtml, MAX_HTML_BYTES } from './extraction/sanitizer'
+import { extractIocs } from './extraction/iocAdapter'
+import {
+  isPublicIpv4,
+  isValidDomain,
+  isValidDomainParsed,
+  isValidEmail
+} from './extraction/validators'
+
+const FB_PIXEL_ID = /["'](\d{15,16})["']/
+const TWITTER_X_HANDLE = /(?:twitter\.com|x\.com)\/([a-zA-Z0-9_]{1,15})/i
+const FACEBOOK_SLUG = /facebook\.com\/([a-zA-Z0-9.]+)/i
+const INSTAGRAM_SLUG = /instagram\.com\/([a-zA-Z0-9_.]+)/i
+const LINKEDIN_SLUG = /linkedin\.com\/in\/([a-zA-Z0-9-]+)/i
+const YOUTUBE_HANDLE = /youtube\.com\/(?:@|channel\/|user\/)([a-zA-Z0-9_-]+)/i
+const GITHUB_SLUG = /github\.com\/([a-zA-Z0-9-]+)/i
+const TELEGRAM_HANDLE = /t\.me\/([a-zA-Z0-9_]+)/i
+const ONION_HOST = /([a-z2-7]{16,56}\.onion)/i
+const I2P_HOST = /([a-zA-Z0-9-]+\.i2p)/i
+
+const FACEBOOK_RESERVED = new Set([
+  'sharer',
+  'share',
+  'plugins',
+  'tr',
+  'dialog',
+  'login',
+  'home',
+  'pages'
+])
+const INSTAGRAM_RESERVED = new Set(['p', 'explore', 'stories', 'reel', 'reels', 'tv', 'accounts'])
+const GITHUB_RESERVED = new Set([
+  'login',
+  'logout',
+  'settings',
+  'orgs',
+  'issues',
+  'pulls',
+  'marketplace',
+  'explore',
+  'topics',
+  'trending',
+  'stars',
+  'join',
+  'new',
+  'notifications',
+  'features',
+  'about',
+  'pricing',
+  'contact',
+  'sponsors',
+  'apps',
+  'search'
+])
 
 export interface ExtractionRule {
   category: string
@@ -15,64 +67,9 @@ export interface ExtractedDatum {
   value: string
 }
 
-// Validate IPv6: count colons and hexadecimal groups
-function isValidIpv6(ip: string): boolean {
-  // Strip IPv6 zone ID if present
-  const addr = ip.split('%')[0]
-  // Must contain at least one colon
-  if (!addr.includes(':')) return false
-  // Cannot have more than one '::'
-  const doubleColonCount = (addr.match(/::/g) || []).length
-  if (doubleColonCount > 1) return false
-
-  const hasDoubleColon = addr.includes('::')
-  const parts = addr.split('::')
-  if (parts.length > 2) return false
-
-  const groups = parts.flatMap((p) => (p ? p.split(':') : []))
-  if (groups.some((g) => !/^[0-9a-fA-F]{1,4}$/.test(g))) return false
-
-  if (hasDoubleColon) {
-    // '::' compresses one or more 16-bit groups, so there must be fewer than 8 explicit groups.
-    return groups.length >= 1 && groups.length < 8
-  }
-
-  return groups.length === 8
-}
-function isValidIpv4(ip: string): boolean {
-  const parts = ip.split('.')
-  if (parts.length !== 4) return false
-  return parts.every((p) => {
-    const n = parseInt(p, 10)
-    return !isNaN(n) && n >= 0 && n <= 255 && p === String(n)
-  })
-}
-
-// Extract domain from attribute value (href, src, action)
-// Returns the hostname, filtering out javascript:, data:, mailto:, etc.
-function extractDomainFromAttr(value: string): string | null {
-  try {
-    // If it's a full URL, parse it
-    if (/^https?:\/\//i.test(value)) {
-      const hostname = new URL(value).hostname
-      // Filter out IP addresses (handled by IPv4/IPv6 rules) and localhost
-      if (hostname && !/^\d+\.\d+\.\d+\.\d+$/.test(hostname) && hostname !== 'localhost') {
-        return hostname
-      }
-    }
-  } catch {
-    // ignore parse errors
-  }
-  return null
-}
+export { MAX_HTML_BYTES }
 
 export const EXTRACTION_RULES: ExtractionRule[] = [
-  // --- Tracking Code ---
-  {
-    category: 'Tracking Code',
-    subcategory: 'Google Analytics',
-    patterns: [/UA-\d{4,10}-\d{1,4}/g, /G-[A-Z0-9]{10,12}/g]
-  },
   {
     category: 'Tracking Code',
     subcategory: 'Google Tag Manager',
@@ -80,68 +77,29 @@ export const EXTRACTION_RULES: ExtractionRule[] = [
   },
   {
     category: 'Tracking Code',
-    subcategory: 'Facebook Pixel',
-    patterns: [/fbq\s*\([^)]*?["'](\d{15,16})["']/g],
-    normalize: (match: string) => {
-      const m = match.match(/["'](\d{15,16})["']/)
-      return m ? m[1] : null
-    }
+    subcategory: 'Google Analytics',
+    patterns: [/G-[A-Z0-9]{10}/g]
   },
   {
     category: 'Tracking Code',
-    subcategory: 'Google AdSense',
-    patterns: [/ca-pub-\d{10,16}/g]
+    subcategory: 'Facebook Pixel',
+    patterns: [/fbq\s*\([^)]*?["'](\d{15,16})["']/g],
+    normalize: (match: string) => {
+      const m = match.match(FB_PIXEL_ID)
+      return m ? m[1] : null
+    }
   },
   {
     category: 'Tracking Code',
     subcategory: 'Google Ads',
     patterns: [/AW-\d{9,11}/g]
   },
-
-  // --- Infrastructure ---
-  {
-    category: 'Infrastructure',
-    subcategory: 'Email Address',
-    // Bound quantifiers to prevent catastrophic backtracking on long inputs with no '@'.
-    patterns: [/[a-zA-Z0-9._%+-]{1,64}@[a-zA-Z0-9.-]{1,253}\.[a-zA-Z]{2,24}/g]
-  },
-  {
-    category: 'Infrastructure',
-    subcategory: 'IPv4 Address',
-    patterns: [/\b(?:\d{1,3}\.){3}\d{1,3}\b/g],
-    normalize: (match: string) => (isValidIpv4(match) ? match : null)
-  },
-  {
-    category: 'Infrastructure',
-    subcategory: 'IPv6 Address',
-    // Simplified pattern covering full and compressed IPv6 formats
-    patterns: [
-      /(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}/g,
-      /(?:[0-9a-fA-F]{1,4}:){1,7}:/g,
-      /:(?::[0-9a-fA-F]{1,4}){1,7}/g,
-      /(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}/g
-    ],
-    normalize: (match: string) => (isValidIpv6(match) ? match : null)
-  },
-  {
-    category: 'Infrastructure',
-    subcategory: 'Domain Reference',
-    // Matches href/src/action attribute values
-    patterns: [/(?:href|src|action)\s*=\s*["']([^"']+)["']/gi],
-    normalize: (match: string) => {
-      const m = match.match(/["']([^"']+)["']/)
-      if (!m) return null
-      return extractDomainFromAttr(m[1])
-    }
-  },
-
-  // --- Accounts ---
   {
     category: 'Accounts',
     subcategory: 'Twitter/X',
     patterns: [/(?:twitter\.com|x\.com)\/([a-zA-Z0-9_]{1,15})(?:[/?#"'\s>]|$)/gi],
     normalize: (match: string) => {
-      const m = match.match(/(?:twitter\.com|x\.com)\/([a-zA-Z0-9_]{1,15})/i)
+      const m = match.match(TWITTER_X_HANDLE)
       return m ? m[1] : null
     }
   },
@@ -150,17 +108,10 @@ export const EXTRACTION_RULES: ExtractionRule[] = [
     subcategory: 'Facebook',
     patterns: [/facebook\.com\/([a-zA-Z0-9.]{1,50})(?:[/?#"'\s>]|$)/gi],
     normalize: (match: string) => {
-      const m = match.match(/facebook\.com\/([a-zA-Z0-9.]+)/i)
+      const m = match.match(FACEBOOK_SLUG)
       if (!m) return null
-      // Filter out generic Facebook paths
       const slug = m[1]
-      if (
-        ['sharer', 'share', 'plugins', 'tr', 'dialog', 'login', 'home', 'pages'].includes(
-          slug.toLowerCase()
-        )
-      )
-        return null
-      return slug
+      return FACEBOOK_RESERVED.has(slug.toLowerCase()) ? null : slug
     }
   },
   {
@@ -168,14 +119,10 @@ export const EXTRACTION_RULES: ExtractionRule[] = [
     subcategory: 'Instagram',
     patterns: [/instagram\.com\/([a-zA-Z0-9_.]{1,30})(?:[/?#"'\s>]|$)/gi],
     normalize: (match: string) => {
-      const m = match.match(/instagram\.com\/([a-zA-Z0-9_.]+)/i)
+      const m = match.match(INSTAGRAM_SLUG)
       if (!m) return null
       const slug = m[1]
-      if (
-        ['p', 'explore', 'stories', 'reel', 'reels', 'tv', 'accounts'].includes(slug.toLowerCase())
-      )
-        return null
-      return slug
+      return INSTAGRAM_RESERVED.has(slug.toLowerCase()) ? null : slug
     }
   },
   {
@@ -183,7 +130,7 @@ export const EXTRACTION_RULES: ExtractionRule[] = [
     subcategory: 'LinkedIn',
     patterns: [/linkedin\.com\/in\/([a-zA-Z0-9-]{1,100})(?:[/?#"'\s>]|$)/gi],
     normalize: (match: string) => {
-      const m = match.match(/linkedin\.com\/in\/([a-zA-Z0-9-]+)/i)
+      const m = match.match(LINKEDIN_SLUG)
       return m ? m[1] : null
     }
   },
@@ -192,7 +139,7 @@ export const EXTRACTION_RULES: ExtractionRule[] = [
     subcategory: 'YouTube',
     patterns: [/youtube\.com\/(?:@|channel\/|user\/)([a-zA-Z0-9_-]{1,100})(?:[/?#"'\s>]|$)/gi],
     normalize: (match: string) => {
-      const m = match.match(/youtube\.com\/(?:@|channel\/|user\/)([a-zA-Z0-9_-]+)/i)
+      const m = match.match(YOUTUBE_HANDLE)
       return m ? m[1] : null
     }
   },
@@ -201,36 +148,10 @@ export const EXTRACTION_RULES: ExtractionRule[] = [
     subcategory: 'GitHub',
     patterns: [/github\.com\/([a-zA-Z0-9-]{1,39})(?:[/?#"'\s>]|$)/gi],
     normalize: (match: string) => {
-      const m = match.match(/github\.com\/([a-zA-Z0-9-]+)/i)
+      const m = match.match(GITHUB_SLUG)
       if (!m) return null
       const slug = m[1]
-      if (
-        [
-          'login',
-          'logout',
-          'settings',
-          'orgs',
-          'issues',
-          'pulls',
-          'marketplace',
-          'explore',
-          'topics',
-          'trending',
-          'stars',
-          'join',
-          'new',
-          'notifications',
-          'features',
-          'about',
-          'pricing',
-          'contact',
-          'sponsors',
-          'apps',
-          'search'
-        ].includes(slug.toLowerCase())
-      )
-        return null
-      return slug
+      return GITHUB_RESERVED.has(slug.toLowerCase()) ? null : slug
     }
   },
   {
@@ -238,18 +159,16 @@ export const EXTRACTION_RULES: ExtractionRule[] = [
     subcategory: 'Telegram',
     patterns: [/t\.me\/([a-zA-Z0-9_]{5,32})(?:[/?#"'\s>]|$)/gi],
     normalize: (match: string) => {
-      const m = match.match(/t\.me\/([a-zA-Z0-9_]+)/i)
+      const m = match.match(TELEGRAM_HANDLE)
       return m ? m[1] : null
     }
   },
-
-  // --- Darkweb ---
   {
     category: 'Darkweb',
     subcategory: 'Onion URL',
     patterns: [/[a-z2-7]{16,56}\.onion(?:[/?#:"'\s>]|$)/gi],
     normalize: (match: string) => {
-      const m = match.match(/([a-z2-7]{16,56}\.onion)/i)
+      const m = match.match(ONION_HOST)
       return m ? m[1].toLowerCase() : null
     }
   },
@@ -258,28 +177,37 @@ export const EXTRACTION_RULES: ExtractionRule[] = [
     subcategory: 'I2P URL',
     patterns: [/[a-zA-Z0-9-]{1,253}\.i2p(?:[/?#:"'\s]|$)/g],
     normalize: (match: string) => {
-      const m = match.match(/([a-zA-Z0-9-]+\.i2p)/i)
+      const m = match.match(I2P_HOST)
       return m ? m[1].toLowerCase() : null
     }
   }
 ]
 
-// Limit extraction to the first 5 MB of HTML to handle very large pages.
-// Exported so callers can slice their Buffer before decoding, avoiding a full decode+allocation.
-export const MAX_HTML_BYTES = 5 * 1024 * 1024
+// Only accept absolute http(s) URLs or protocol-relative `//host/...` forms.
+// Relative paths (`/assets/app.js`, `script.js`) and other schemes (`ftp:`,
+// `tel:`) produce noisy "Domain Reference" entries when fed through tldts.
+const ABSOLUTE_URL = /^https?:\/\//i
 
-export function extractData(html: string): ExtractedDatum[] {
-  const input = html.length > MAX_HTML_BYTES ? html.slice(0, MAX_HTML_BYTES) : html
-  const seen = new Set<string>()
-  const results: ExtractedDatum[] = []
+function harvestDomain(url: string): string | null {
+  if (!url) return null
+  const trimmed = url.trim()
+  if (!trimmed) return null
+  const isProtocolRelative = trimmed.startsWith('//')
+  if (!isProtocolRelative && !ABSOLUTE_URL.test(trimmed)) return null
+  const candidate = isProtocolRelative ? `http:${trimmed}` : trimmed
+  const result = parseTld(candidate, { validHosts: [] })
+  if (!result || !result.hostname) return null
+  return isValidDomainParsed(result.hostname, result) ? result.hostname : null
+}
 
+function runRules(text: string): ExtractedDatum[] {
+  const out: ExtractedDatum[] = []
   for (const rule of EXTRACTION_RULES) {
     for (const pattern of rule.patterns) {
-      // Reset lastIndex for global regexes
       pattern.lastIndex = 0
 
       let match: RegExpExecArray | null
-      while ((match = pattern.exec(input)) !== null) {
+      while ((match = pattern.exec(text)) !== null) {
         const raw = match[0]
         let value: string | null = raw
 
@@ -291,17 +219,81 @@ export function extractData(html: string): ExtractedDatum[] {
         value = value.trim()
         if (!value) continue
 
-        const key = `${rule.category}|${rule.subcategory}|${value}`
-        if (seen.has(key)) continue
-        seen.add(key)
+        out.push({ category: rule.category, subcategory: rule.subcategory, value })
+      }
+    }
+  }
+  return out
+}
 
-        results.push({
-          category: rule.category,
-          subcategory: rule.subcategory,
-          value
+const CASE_INSENSITIVE_SUBCATEGORIES = new Set<string>([
+  'Email Address',
+  'Domain Reference',
+  'MD5 Hash',
+  'SHA1 Hash',
+  'SHA256 Hash',
+  'SHA512 Hash'
+])
+
+export function extractData(html: string): ExtractedDatum[] {
+  if (!html) return []
+
+  const { text, attrs } = sanitizeHtml(html)
+
+  // Scannable blob: visible text + attr URLs. Social-account and darkweb rules
+  // rely on URL patterns from href/src/action that aren't in sanitized visible text.
+  const scanText = [text, ...attrs.href, ...attrs.src, ...attrs.action, ...attrs.mailto].join('\n')
+
+  const iocs = extractIocs(scanText)
+  const ruleMatches = runRules(scanText)
+
+  // attr-sourced domains are pre-validated by harvestDomain's tldts pass, so
+  // they skip the redundant isValidDomain re-parse in the filter below.
+  const attrDomains: ExtractedDatum[] = []
+  for (const list of [attrs.href, attrs.src, attrs.action]) {
+    for (const url of list) {
+      const host = harvestDomain(url)
+      if (host) {
+        attrDomains.push({
+          category: 'Infrastructure',
+          subcategory: 'Domain Reference',
+          value: host
         })
       }
     }
+  }
+
+  const mailtoEmails: ExtractedDatum[] = attrs.mailto.map((value) => ({
+    category: 'Infrastructure',
+    subcategory: 'Email Address',
+    value
+  }))
+
+  const filtered: ExtractedDatum[] = [...attrDomains]
+  for (const datum of [...iocs, ...ruleMatches, ...mailtoEmails]) {
+    if (datum.subcategory === 'IPv4 Address') {
+      if (!isPublicIpv4(datum.value)) continue
+    } else if (datum.subcategory === 'Domain Reference') {
+      if (!isValidDomain(datum.value)) continue
+    } else if (datum.subcategory === 'Email Address') {
+      if (!isValidEmail(datum.value)) continue
+    }
+    filtered.push(datum)
+  }
+
+  // For case-insensitive subcategories (emails, domains, hashes), lowercase the
+  // value before building the dedupe key AND store the normalized value so
+  // downstream consumers see consistent casing.
+  const seen = new Set<string>()
+  const results: ExtractedDatum[] = []
+  for (const datum of filtered) {
+    const normalized = CASE_INSENSITIVE_SUBCATEGORIES.has(datum.subcategory)
+      ? { ...datum, value: datum.value.toLowerCase() }
+      : datum
+    const key = `${normalized.category}|${normalized.subcategory}|${normalized.value}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    results.push(normalized)
   }
 
   return results

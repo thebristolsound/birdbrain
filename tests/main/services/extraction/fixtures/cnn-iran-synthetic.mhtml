@@ -1,0 +1,69 @@
+From: <Saved by Blink>
+Snapshot-Content-Location: https://www.cnn.com/2024/04/19/world/iran-nuclear-cyber
+Subject: Iran-Linked Threat Actor Targets Nuclear Negotiators
+Date: Fri, 19 Apr 2024 11:30:00 -0000
+MIME-Version: 1.0
+Content-Type: multipart/related;
+	type="text/html";
+	boundary="----=_NextPart_000_0002"
+
+
+------=_NextPart_000_0002
+Content-Type: text/html; charset="UTF-8"
+Content-Transfer-Encoding: quoted-printable
+Content-Location: https://www.cnn.com/2024/04/19/world/iran-nuclear-cyber
+
+<!DOCTYPE html>
+<html lang=3D"en">
+<head>
+<meta charset=3D"UTF-8">
+<title>Iran Nuclear Talks and Network Intrusions - Synthetic News</title>
+<link rel=3D"stylesheet" href=3D"cid:css-fa3b2c91-1234-4abc-def0-112233445566@mhtml.blink">
+<link rel=3D"stylesheet" href=3D"cid:css-bb9e7d43-5678-4fed-cba9-aabbccddeeff@mhtml.blink">
+</head>
+<body>
+<header>
+<a href=3D"https://www.cnn.com/">CNN</a>
+</header>
+<article>
+<h1>Iran-Linked Threat Actor Targets Nuclear Negotiators</h1>
+<p class=3D"byline">By Cyber Correspondent &lt;cyberdesk@cnn.com&gt; | Updated April 19, 2024</p>
+<p>A threat group attributed to Iran has been observed conducting targeted
+phishing campaigns against diplomatic personnel involved in nuclear negotiations.
+The campaign was first identified when traffic to 1.1.1.1 appeared in telemetry
+shared with <a href=3D"https://www.cnn.com/world/middleeast">CNN World</a>.</p>
+<p>Internal network scans at the affected organisation revealed a compromised
+workstation at 192.168.1.100 (a private address not to be confused with
+external infrastructure). The actors pivoted from that endpoint to external
+command-and-control servers hosted outside the protected network.</p>
+<p>Researchers at <a href=3D"https://www.cnn.com/">CNN</a> noted that the domain
+<strong>www.cnn.com</strong> was used as a decoy in spear-phishing lures.
+The full report is available at
+<a href=3D"https://www.cnn.com/world/iran-nuclear-cyber">CNN World Iran Coverage</a>.
+</p>
+<figure>
+<svg viewBox=3D"0 0 200 200" xmlns=3D"http://www.w3.org/2000/svg">
+<path d=3D"M2.94,75.75 L10.94,33.7 C1.12,44.8 5.5,22.0 9.3,64.8"/>
+<circle cx=3D"100" cy=3D"100" r=3D"50"/>
+</svg>
+<figcaption>Figure 1: Network topology</figcaption>
+</figure>
+<p>The actors used credential-harvesting infrastructure and communicated over
+encrypted channels. No attribution to any specific APT group has been made
+at this time.</p>
+</article>
+</body>
+</html>
+------=_NextPart_000_0002
+Content-Type: text/css
+Content-Transfer-Encoding: quoted-printable
+Content-Location: cid:css-fa3b2c91-1234-4abc-def0-112233445566@mhtml.blink
+
+body { margin: 0; padding: 0; color: #333; }
+------=_NextPart_000_0002
+Content-Type: text/css
+Content-Transfer-Encoding: quoted-printable
+Content-Location: cid:css-bb9e7d43-5678-4fed-cba9-aabbccddeeff@mhtml.blink
+
+.article { line-height: 1.6; }
+------=_NextPart_000_0002--

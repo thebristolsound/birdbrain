@@ -152,7 +152,7 @@ interface BirdbrainAPI {
     subcategories(caseId: string, category: string): Promise<ExtractedDataSubcategory[]>
     items(caseId: string, category: string, subcategory: string): Promise<ExtractedDataItem[]>
     count(caseId: string): Promise<number>
-    reprocess(caseId: string): Promise<{ queued: number }>
+    reprocess(caseId: string): Promise<{ processed: number }>
   }
 }
 

@@ -133,6 +133,28 @@ describe('dataExtractor', () => {
       ).toBe(true)
     })
 
+    it('does not extract domains from relative asset paths', () => {
+      const html = [
+        '<script src="script.js"></script>',
+        '<link href="/assets/app.css" rel="stylesheet">',
+        '<img src="../images/logo.png">',
+        '<form action="/submit"></form>'
+      ].join('')
+      const results = extractData(html)
+      const domains = results
+        .filter((r) => r.subcategory === 'Domain Reference')
+        .map((r) => r.value)
+      expect(domains).toEqual([])
+    })
+
+    it('extracts domains from protocol-relative URLs', () => {
+      const html = '<img src="//cdn.example.com/logo.png">'
+      const results = extractData(html)
+      expect(
+        results.some((r) => r.subcategory === 'Domain Reference' && r.value === 'cdn.example.com')
+      ).toBe(true)
+    })
+
     it('extracts Twitter/X handles', () => {
       const html = '<a href="https://twitter.com/johndoe">Follow</a>'
       const results = extractData(html)

@@ -168,9 +168,18 @@ export const EXTRACTION_RULES: ExtractionRule[] = [
   }
 ]
 
+// Only accept absolute http(s) URLs or protocol-relative `//host/...` forms.
+// Relative paths (`/assets/app.js`, `script.js`) and other schemes (`ftp:`,
+// `tel:`) produce noisy "Domain Reference" entries when fed through tldts.
+const ABSOLUTE_URL = /^https?:\/\//i
+
 function harvestDomain(url: string): string | null {
   if (!url) return null
-  const candidate = url.startsWith('//') ? `http:${url}` : url
+  const trimmed = url.trim()
+  if (!trimmed) return null
+  const isProtocolRelative = trimmed.startsWith('//')
+  if (!isProtocolRelative && !ABSOLUTE_URL.test(trimmed)) return null
+  const candidate = isProtocolRelative ? `http:${trimmed}` : trimmed
   const result = parseTld(candidate, { validHosts: [] })
   if (!result || result.isIp) return null
   if (!result.hostname || !result.domain) return null

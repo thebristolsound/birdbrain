@@ -169,6 +169,7 @@ export function DataExplorer() {
                       {sourceUrls.map((url) => (
                         <button
                           key={url}
+                          type="button"
                           onClick={() => handleSourceUrlClick(url)}
                           className="flex items-center gap-1 truncate text-left text-xs text-accent hover:underline"
                           title={url}
@@ -228,6 +229,7 @@ function DirRow({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       className={cn(
         'flex w-full items-center gap-2 border-b border-border px-4 py-2.5 text-left transition-colors last:border-b-0',

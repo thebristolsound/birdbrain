@@ -224,8 +224,16 @@ const CASE_INSENSITIVE_SUBCATEGORIES = new Set<string>([
 export function extractData(html: string): ExtractedDatum[] {
   if (!html) return []
 
+  // Truncate to MAX_HTML_BYTES *before* parsing to avoid blocking on huge inputs.
+  // Use Buffer-based slicing so the cap is enforced in real bytes regardless of
+  // multi-byte characters (consistent with sanitizeHtml's internal truncation).
+  const cappedHtml =
+    Buffer.byteLength(html, 'utf8') > MAX_HTML_BYTES
+      ? Buffer.from(html, 'utf8').slice(0, MAX_HTML_BYTES).toString('utf8')
+      : html
+
   // (a) Sanitize HTML — strips script/style/comments, harvests attrs, returns visible text
-  const { text, attrs } = sanitizeHtml(html)
+  const { text, attrs } = sanitizeHtml(cappedHtml)
 
   // Build a scannable text blob: visible text + harvested attr values (URLs).
   // Social-account/darkweb rules rely on URL patterns from href/src/action that

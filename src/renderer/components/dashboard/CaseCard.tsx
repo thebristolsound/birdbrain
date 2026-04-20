@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, memo } from 'react'
 import type { Case } from '@shared/types'
 import { Camera, ArrowUpRight, ShieldAlert, Users, FolderOpen, MoreVertical } from 'lucide-react'
-import { Card } from '@renderer/components/ui'
+import { Button, Card } from '@renderer/components/ui'
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -176,11 +176,13 @@ export const CaseCard = memo(function CaseCard({
           <div className="absolute right-0 top-8 z-50 w-32 rounded-lg bg-surface border border-border-strong shadow-xl py-1">
             {deletingId === caseData.id ? (
               <div className="px-2 py-1.5">
-                <p className="text-[11px] text-red-400 font-bold mb-2">Delete?</p>
+                <p className="mb-2 text-[11px] font-bold text-red-500">Delete?</p>
                 <div className="flex gap-1.5">
-                  <button
+                  <Button
                     data-testid="case-card-delete-confirm-btn"
-                    className="flex-1 text-[10px] font-bold px-2 py-1 rounded bg-red-950/60 text-red-400 border border-red-800/40 hover:bg-red-900/60"
+                    variant="destructive"
+                    size="xs"
+                    className="flex-1 text-[10px] font-bold"
                     onClick={(e) => {
                       e.stopPropagation()
                       onDelete(caseData.id)
@@ -189,16 +191,18 @@ export const CaseCard = memo(function CaseCard({
                     }}
                   >
                     Confirm
-                  </button>
-                  <button
-                    className="flex-1 text-[10px] font-bold px-2 py-1 rounded bg-elevated text-text-muted hover:bg-elevated"
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    className="flex-1 text-[10px] font-bold"
                     onClick={(e) => {
                       e.stopPropagation()
                       setDeletingId(null)
                     }}
                   >
                     Cancel
-                  </button>
+                  </Button>
                 </div>
               </div>
             ) : (

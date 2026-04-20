@@ -7,8 +7,7 @@ import {
   setSettingsPath,
   getSettings,
   updateSettings,
-  resetSettings,
-  getDefaultSettings
+  resetSettings
 } from '../../../src/main/services/settings'
 
 describe('settings', () => {
@@ -100,21 +99,24 @@ describe('settings', () => {
     expect(getSettings().operatorName).toBe('Det. Smith')
   })
 
-  it('includes lastActiveCaseId and lastActiveSection in defaults', () => {
-    const defaults = getDefaultSettings()
-    expect(defaults.lastActiveCaseId).toBeNull()
-    expect(defaults.lastActiveSection).toBe('captures')
-  })
-
-  it('persists and retrieves session state fields', () => {
-    updateSettings({ lastActiveCaseId: 'case-123', lastActiveSection: 'notes' })
+  it('ignores legacy session-state fields in on-disk JSON without throwing', () => {
+    // Previous versions persisted these two fields; after removing the
+    // resume-last-location feature, they are unknown to the schema. Zod should
+    // strip them silently rather than fail validation.
+    writeFileSync(
+      settingsFile,
+      JSON.stringify({
+        theme: 'dark',
+        operatorName: 'Det. Smith',
+        lastActiveCaseId: 'legacy-case',
+        lastActiveSection: 'notes'
+      }),
+      'utf-8'
+    )
     const settings = getSettings()
-    expect(settings.lastActiveCaseId).toBe('case-123')
-    expect(settings.lastActiveSection).toBe('notes')
-  })
-
-  it('persists data as lastActiveSection', () => {
-    updateSettings({ lastActiveSection: 'data' })
-    expect(getSettings().lastActiveSection).toBe('data')
+    expect(settings.theme).toBe('dark')
+    expect(settings.operatorName).toBe('Det. Smith')
+    expect('lastActiveCaseId' in settings).toBe(false)
+    expect('lastActiveSection' in settings).toBe(false)
   })
 })

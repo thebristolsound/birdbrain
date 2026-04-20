@@ -296,9 +296,7 @@ export function CaptureList({ caseId }: CaptureListProps) {
         ))}
         {displayedCaptures.length === 0 && (
           <div className="px-3 py-4 text-center text-xs text-text-faint">
-            {filteredCaptureIds || activeFilterCount > 0
-              ? 'No captures match the active filters'
-              : 'No captures yet'}
+            No captures match the active filters
           </div>
         )}
       </div>

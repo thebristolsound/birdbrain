@@ -112,9 +112,17 @@ function schedulePostCaptureWork(
     }
 
     try {
+      // Prefer MHTML (current format); fall back to .html for legacy captures
+      // saved before migration v11, which had format='html' and no mhtml file.
       const mhtmlBuffer = readCaptureFile(caseId, captureId, 'mhtml')
+      let html: string | null = null
       if (mhtmlBuffer) {
-        const html = extractHtmlFromMhtml(mhtmlBuffer)
+        html = extractHtmlFromMhtml(mhtmlBuffer)
+      } else {
+        const htmlBuffer = readCaptureFile(caseId, captureId, 'html')
+        if (htmlBuffer) html = htmlBuffer.toString('utf8')
+      }
+      if (html) {
         const extracted = extractData(html)
         db.insertExtractedData(captureId, caseId, url, extracted)
       }

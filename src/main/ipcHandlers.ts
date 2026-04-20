@@ -797,11 +797,21 @@ export function registerIpcHandlers(): void {
       for (const cap of captures) {
         await new Promise<void>((resolve) => setImmediate(resolve))
         try {
+          // Always clear first so legacy rows don't linger when a capture has
+          // no readable source file anymore.
+          db.deleteExtractedDataForCapture(cap.id)
+          // Prefer MHTML (current format); fall back to .html for legacy
+          // captures saved before migration v11.
           const mhtmlBuffer = storage.readCaptureFile(caseId, cap.id, 'mhtml')
+          let html: string | null = null
           if (mhtmlBuffer) {
-            const html = extractHtmlFromMhtml(mhtmlBuffer)
+            html = extractHtmlFromMhtml(mhtmlBuffer)
+          } else {
+            const htmlBuffer = storage.readCaptureFile(caseId, cap.id, 'html')
+            if (htmlBuffer) html = htmlBuffer.toString('utf8')
+          }
+          if (html) {
             const extracted = extractData(html)
-            db.deleteExtractedDataForCapture(cap.id)
             db.insertExtractedData(cap.id, caseId, cap.url, extracted)
           }
         } catch (err) {

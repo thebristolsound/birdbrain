@@ -20,7 +20,8 @@ import {
   formatCaptureUploadError,
   formatSelectorCreateError
 } from '@shared/schemas'
-import { extractData, MAX_HTML_BYTES } from '@main/services/dataExtractor'
+import { extractData } from '@main/services/dataExtractor'
+import { extractHtmlFromMhtml } from '@main/services/mhtmlDecoder'
 
 import { CAPTURE_SERVER_PORT, MAX_SCREENSHOT_SIZE } from '@shared/constants'
 import { safeRegexTest } from '@main/services/safeRegex'
@@ -111,9 +112,9 @@ function schedulePostCaptureWork(
     }
 
     try {
-      const htmlBuffer = readCaptureFile(caseId, captureId, 'html')
-      if (htmlBuffer) {
-        const html = htmlBuffer.slice(0, MAX_HTML_BYTES).toString('utf-8')
+      const mhtmlBuffer = readCaptureFile(caseId, captureId, 'mhtml')
+      if (mhtmlBuffer) {
+        const html = extractHtmlFromMhtml(mhtmlBuffer)
         const extracted = extractData(html)
         db.insertExtractedData(captureId, caseId, url, extracted)
       }

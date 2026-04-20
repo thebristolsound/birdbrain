@@ -35,7 +35,8 @@ import { buildCsv } from '@main/services/csvEscape'
 import { initManifest, appendManifestEntry, rollbackManifestEntry } from '@main/services/manifest'
 import { getInstallationId } from '@main/services/installationId'
 import { CAPTURE_SERVER_PORT, getSessionState } from '@main/services/captureServer'
-import { extractData, MAX_HTML_BYTES } from '@main/services/dataExtractor'
+import { extractData } from '@main/services/dataExtractor'
+import { extractHtmlFromMhtml } from '@main/services/mhtmlDecoder'
 import type { BirdbrainSettings, ExportOptions, CaptureAnalysis } from '@shared/types'
 
 type IpcResult<T = unknown> =
@@ -104,8 +105,6 @@ export function registerIpcHandlers(): void {
       const capture = db.getCapture(id)
       if (!capture) return ipcResult(false)
 
-      // For MHTML captures, append a deletion entry to the manifest BEFORE the
-      // DB delete. On DB failure, roll back the manifest entry.
       if (capture.format === 'mhtml') {
         const caseDir = join(storage.getStorageRoot(), capture.caseId)
         initManifest(caseDir)
@@ -137,7 +136,6 @@ export function registerIpcHandlers(): void {
         }
       }
 
-      // Legacy HTML capture - no manifest entry
       const deleted = db.deleteCapture(id)
       if (deleted) storage.deleteCaptureFiles(capture.caseId, id)
       return ipcResult(deleted)
@@ -776,46 +774,41 @@ export function registerIpcHandlers(): void {
   })
 
   // Extracted Data
-  ipcMain.handle(
-    IPC_CHANNELS.EXTRACTED_DATA_CATEGORIES,
-    (_, caseId: string) => db.getExtractedCategories(caseId)
+  ipcMain.handle(IPC_CHANNELS.EXTRACTED_DATA_CATEGORIES, (_, caseId: string) =>
+    db.getExtractedCategories(caseId)
   )
-  ipcMain.handle(
-    IPC_CHANNELS.EXTRACTED_DATA_SUBCATEGORIES,
-    (_, caseId: string, category: string) => db.getExtractedSubcategories(caseId, category)
+  ipcMain.handle(IPC_CHANNELS.EXTRACTED_DATA_SUBCATEGORIES, (_, caseId: string, category: string) =>
+    db.getExtractedSubcategories(caseId, category)
   )
   ipcMain.handle(
     IPC_CHANNELS.EXTRACTED_DATA_ITEMS,
     (_, caseId: string, category: string, subcategory: string) =>
       db.getExtractedItems(caseId, category, subcategory)
   )
-  ipcMain.handle(
-    IPC_CHANNELS.EXTRACTED_DATA_COUNT,
-    (_, caseId: string) => db.getExtractedDataCountForCase(caseId)
+  ipcMain.handle(IPC_CHANNELS.EXTRACTED_DATA_COUNT, (_, caseId: string) =>
+    db.getExtractedDataCountForCase(caseId)
   )
   ipcMain.handle(IPC_CHANNELS.EXTRACTED_DATA_REPROCESS, async (_, caseId: string) => {
     try {
       const captures = db.listCaptures(caseId)
-      let i = 0
-      const processNext = (): void => {
-        if (i >= captures.length) return
-        const cap = captures[i++]
+      // Yield to the event loop between captures so the main process stays
+      // responsive. Await completion before returning, otherwise the renderer's
+      // onSuccess invalidation races the inserts and caches an empty result.
+      for (const cap of captures) {
+        await new Promise<void>((resolve) => setImmediate(resolve))
         try {
-          const htmlBuffer = storage.readCaptureFile(caseId, cap.id, 'html')
-          if (htmlBuffer) {
-            const html = htmlBuffer.slice(0, MAX_HTML_BYTES).toString('utf-8')
+          const mhtmlBuffer = storage.readCaptureFile(caseId, cap.id, 'mhtml')
+          if (mhtmlBuffer) {
+            const html = extractHtmlFromMhtml(mhtmlBuffer)
             const extracted = extractData(html)
-            db.deleteExtractedDataForCapture(cap.id)
             db.deleteExtractedDataForCapture(cap.id)
             db.insertExtractedData(cap.id, caseId, cap.url, extracted)
           }
         } catch (err) {
           console.error('Reprocess extraction error for capture', cap.id, err)
         }
-        setImmediate(processNext)
       }
-      setImmediate(processNext)
-      return ipcResult({ queued: captures.length })
+      return ipcResult({ processed: captures.length })
     } catch (err) {
       return ipcError(err)
     }

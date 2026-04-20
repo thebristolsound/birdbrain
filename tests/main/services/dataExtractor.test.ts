@@ -6,7 +6,6 @@ describe('dataExtractor', () => {
     it('has at least one rule per major category', () => {
       const categories = new Set(EXTRACTION_RULES.map((r) => r.category))
       expect(categories).toContain('Tracking Code')
-      expect(categories).toContain('Infrastructure')
       expect(categories).toContain('Accounts')
       expect(categories).toContain('Darkweb')
     })
@@ -26,58 +25,112 @@ describe('dataExtractor', () => {
       expect(extractData('')).toEqual([])
     })
 
-    it('extracts Google Analytics UA code', () => {
-      const html = '<script>gtag("config", "UA-12345-1");</script>'
+    it('extracts Google Analytics UA code from visible text', () => {
+      const html = '<p>Tracking: UA-12345-1</p>'
       const results = extractData(html)
-      expect(results.some((r) => r.category === 'Tracking Code' && r.subcategory === 'Google Analytics' && r.value === 'UA-12345-1')).toBe(true)
+      expect(
+        results.some(
+          (r) =>
+            r.category === 'Tracking Code' &&
+            r.subcategory === 'Google Analytics' &&
+            r.value === 'UA-12345-1'
+        )
+      ).toBe(true)
     })
 
-    it('extracts GA4 G- code', () => {
-      const html = '<script>gtag("config", "G-ABCDEFGHIJ");</script>'
+    it('extracts GA4 G- measurement IDs from visible text', () => {
+      const html = '<p>GA4: G-ABCDEFGHIJ</p>'
       const results = extractData(html)
-      expect(results.some((r) => r.subcategory === 'Google Analytics' && r.value === 'G-ABCDEFGHIJ')).toBe(true)
+      expect(
+        results.some(
+          (r) =>
+            r.category === 'Tracking Code' &&
+            r.subcategory === 'Google Analytics' &&
+            r.value === 'G-ABCDEFGHIJ'
+        )
+      ).toBe(true)
     })
 
-    it('extracts Google Tag Manager ID', () => {
-      const html = '<script>(function(w,d,s,l,i){...})(window,document,"script","dataLayer","GTM-ABCD1234");</script>'
+    it('extracts Google Tag Manager ID from visible text', () => {
+      const html = '<p>Container: GTM-ABCD1234</p>'
       const results = extractData(html)
-      expect(results.some((r) => r.subcategory === 'Google Tag Manager' && r.value === 'GTM-ABCD1234')).toBe(true)
+      expect(
+        results.some((r) => r.subcategory === 'Google Tag Manager' && r.value === 'GTM-ABCD1234')
+      ).toBe(true)
     })
 
-    it('extracts Facebook Pixel ID', () => {
-      const html = `<script>fbq('init', '1234567890123456');</script>`
+    it('extracts Facebook Pixel ID when present in visible text', () => {
+      const html = `<p>fbq('init', '1234567890123456');</p>`
       const results = extractData(html)
-      expect(results.some((r) => r.subcategory === 'Facebook Pixel' && r.value === '1234567890123456')).toBe(true)
+      expect(
+        results.some((r) => r.subcategory === 'Facebook Pixel' && r.value === '1234567890123456')
+      ).toBe(true)
     })
 
-    it('extracts Google AdSense publisher ID', () => {
-      const html = '<script async src="//pagead2.googlesyndication.com/pagead/js/adsbygoogle.js" data-ad-client="ca-pub-1234567890"></script>'
+    it('extracts Google AdSense pub- publisher ID (16 digits, ioc-extractor format)', () => {
+      const html = '<p>Publisher: pub-1234567890123456</p>'
       const results = extractData(html)
-      expect(results.some((r) => r.subcategory === 'Google AdSense' && r.value === 'ca-pub-1234567890')).toBe(true)
+      expect(
+        results.some(
+          (r) => r.subcategory === 'Google AdSense' && r.value === 'pub-1234567890123456'
+        )
+      ).toBe(true)
     })
 
-    it('extracts email addresses', () => {
-      const html = '<a href="mailto:contact@example.com">Contact us</a>'
+    it('extracts email addresses from mailto: links', () => {
+      const html = '<a href="mailto:contact@birdbrain.io">Contact us</a>'
       const results = extractData(html)
-      expect(results.some((r) => r.subcategory === 'Email Address' && r.value === 'contact@example.com')).toBe(true)
+      expect(
+        results.some((r) => r.subcategory === 'Email Address' && r.value === 'contact@birdbrain.io')
+      ).toBe(true)
     })
 
-    it('extracts valid IPv4 addresses', () => {
-      const html = '<p>Server IP: 192.168.1.1</p>'
+    it('rejects @example.com addresses as placeholders', () => {
+      const html = '<a href="mailto:contact@example.com">Contact</a>'
       const results = extractData(html)
-      expect(results.some((r) => r.subcategory === 'IPv4 Address' && r.value === '192.168.1.1')).toBe(true)
+      expect(
+        results.some((r) => r.subcategory === 'Email Address' && r.value === 'contact@example.com')
+      ).toBe(false)
+    })
+
+    it('rejects css-*@mhtml.blink placeholder emails from src attrs', () => {
+      const html = '<img src="cid:css-abc123@mhtml.blink" alt="x">'
+      const results = extractData(html)
+      expect(
+        results.some(
+          (r) => r.subcategory === 'Email Address' && r.value === 'css-abc123@mhtml.blink'
+        )
+      ).toBe(false)
+    })
+
+    it('extracts public IPv4 addresses but rejects RFC1918 private ranges', () => {
+      const htmlPublic = '<p>Server IP: 8.8.8.8</p>'
+      const publicResults = extractData(htmlPublic)
+      expect(
+        publicResults.some((r) => r.subcategory === 'IPv4 Address' && r.value === '8.8.8.8')
+      ).toBe(true)
+
+      const htmlPrivate = '<p>Local IP: 192.168.1.1</p>'
+      const privateResults = extractData(htmlPrivate)
+      expect(
+        privateResults.some((r) => r.subcategory === 'IPv4 Address' && r.value === '192.168.1.1')
+      ).toBe(false)
     })
 
     it('does not extract invalid IPv4 addresses', () => {
       const html = '<p>Not an IP: 999.999.999.999</p>'
       const results = extractData(html)
-      expect(results.some((r) => r.subcategory === 'IPv4 Address' && r.value === '999.999.999.999')).toBe(false)
+      expect(
+        results.some((r) => r.subcategory === 'IPv4 Address' && r.value === '999.999.999.999')
+      ).toBe(false)
     })
 
     it('extracts domain references from href attributes', () => {
-      const html = '<a href="https://example.com/page">Link</a>'
+      const html = '<a href="https://birdbrain.io/page">Link</a>'
       const results = extractData(html)
-      expect(results.some((r) => r.subcategory === 'Domain Reference' && r.value === 'example.com')).toBe(true)
+      expect(
+        results.some((r) => r.subcategory === 'Domain Reference' && r.value === 'birdbrain.io')
+      ).toBe(true)
     })
 
     it('extracts Twitter/X handles', () => {
@@ -118,8 +171,8 @@ describe('dataExtractor', () => {
 
     it('deduplicates values within the same extraction', () => {
       const html = `
-        <script>gtag("config", "UA-12345-1");</script>
-        <script>gtag("config", "UA-12345-1");</script>
+        <p>Tracking: UA-12345-1</p>
+        <p>Tracking: UA-12345-1</p>
       `
       const results = extractData(html)
       const gaMatches = results.filter(
@@ -130,20 +183,20 @@ describe('dataExtractor', () => {
 
     it('extracts multiple categories from the same HTML', () => {
       const html = `
-        <script>gtag('config', 'UA-12345-1');</script>
-        <a href="mailto:info@example.com">Email</a>
+        <p>Tracking: UA-12345-1</p>
+        <a href="mailto:info@birdbrain.io">Email</a>
         <a href="https://twitter.com/myaccount">Twitter</a>
       `
       const results = extractData(html)
       const categories = new Set(results.map((r) => r.category))
-      expect(categories.size).toBeGreaterThanOrEqual(3)
+      expect(categories).toContain('Tracking Code')
+      expect(categories).toContain('Infrastructure')
+      expect(categories).toContain('Accounts')
     })
 
     it('handles very large HTML by truncating at 5MB', () => {
-      // Pad with 6MB of content but embed a tracker
       const padding = 'a'.repeat(6 * 1024 * 1024)
-      const html = 'UA-99999-1' + padding
-      // Should still find the tracker at the start
+      const html = '<p>UA-99999-1 </p><p>' + padding + '</p>'
       const results = extractData(html)
       expect(results.some((r) => r.value === 'UA-99999-1')).toBe(true)
     })
@@ -157,19 +210,25 @@ describe('dataExtractor', () => {
     it('extracts LinkedIn profiles', () => {
       const html = '<a href="https://linkedin.com/in/john-smith">LinkedIn</a>'
       const results = extractData(html)
-      expect(results.some((r) => r.subcategory === 'LinkedIn' && r.value === 'john-smith')).toBe(true)
+      expect(results.some((r) => r.subcategory === 'LinkedIn' && r.value === 'john-smith')).toBe(
+        true
+      )
     })
 
     it('extracts YouTube channel handles', () => {
       const html = '<a href="https://youtube.com/@mychannelhandle">YouTube</a>'
       const results = extractData(html)
-      expect(results.some((r) => r.subcategory === 'YouTube' && r.value === 'mychannelhandle')).toBe(true)
+      expect(
+        results.some((r) => r.subcategory === 'YouTube' && r.value === 'mychannelhandle')
+      ).toBe(true)
     })
 
     it('extracts Instagram accounts', () => {
       const html = '<a href="https://instagram.com/myaccount">Instagram</a>'
       const results = extractData(html)
-      expect(results.some((r) => r.subcategory === 'Instagram' && r.value === 'myaccount')).toBe(true)
+      expect(results.some((r) => r.subcategory === 'Instagram' && r.value === 'myaccount')).toBe(
+        true
+      )
     })
 
     it('filters out generic Instagram paths', () => {
@@ -178,10 +237,26 @@ describe('dataExtractor', () => {
       expect(results.some((r) => r.subcategory === 'Instagram' && r.value === 'p')).toBe(false)
     })
 
-    it('extracts Google Ads conversion ID', () => {
-      const html = '<script>gtag("config", "AW-123456789");</script>'
+    it('extracts Google Ads conversion ID from visible text', () => {
+      const html = '<p>Conversion: AW-123456789</p>'
       const results = extractData(html)
-      expect(results.some((r) => r.subcategory === 'Google Ads' && r.value === 'AW-123456789')).toBe(true)
+      expect(
+        results.some((r) => r.subcategory === 'Google Ads' && r.value === 'AW-123456789')
+      ).toBe(true)
+    })
+
+    it('does NOT extract tracking IDs hidden inside <script> tags', () => {
+      const html = '<script>gtag("config", "UA-99999-9");</script>'
+      const results = extractData(html)
+      expect(results.some((r) => r.value === 'UA-99999-9')).toBe(false)
+    })
+
+    it('dedupes emails that differ only in letter case', () => {
+      const html = '<p>Contact User@Birdbrain.IO or user@birdbrain.io for details.</p>'
+      const results = extractData(html)
+      const emails = results.filter((r) => r.subcategory === 'Email Address')
+      expect(emails).toHaveLength(1)
+      expect(emails[0].value).toBe('user@birdbrain.io')
     })
   })
 })

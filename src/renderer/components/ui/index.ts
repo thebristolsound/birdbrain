@@ -11,3 +11,5 @@ export {
 } from './dialog'
 export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from './card'
 export { Label } from './label'
+export { Badge, badgeVariants } from './badge'
+export { ScrollArea } from './scroll-area'

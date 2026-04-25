@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Pencil, Eye } from 'lucide-react'
-import type { AnnotationPin, AnnotationShape } from '@shared/types'
+import type { AnnotationShape } from '@shared/types'
 import { annotationsQueryOptions, useAnnotationsMutations } from '@renderer/lib/queries'
 import { AnnotationCanvas } from './AnnotationCanvas'
 import { AnnotationToolbar } from './AnnotationToolbar'
@@ -55,7 +55,7 @@ export function AnnotationEditor(props: Props) {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-  }, [editor.dirty, editor.shapes, captureId, imageWidth, imageHeight, mutations.save, editor])
+  }, [editor.dirty, editor.shapes, captureId, imageWidth, imageHeight, mutations.save])
 
   // Flush on unmount if dirty. Use a ref so the cleanup reads the latest state,
   // not state captured at mount time.
@@ -72,28 +72,20 @@ export function AnnotationEditor(props: Props) {
     }
   }, [])
 
-  const onPinDrop = (x: number, y: number) => {
-    const tempShapeId = crypto.randomUUID()
+  const onPinDrop = async (x: number, y: number) => {
     const tempPinId = crypto.randomUUID()
+    const pin = await mutations.upsertPin.mutateAsync({ captureId, id: tempPinId, body: '' })
     const draft: AnnotationShape = {
       kind: 'pin',
-      id: tempShapeId,
-      pinId: tempPinId,
+      id: crypto.randomUUID(),
+      pinId: pin.id,
       x,
       y,
-      number: 0
+      number: pin.number
     }
     editor.beginDraft(draft)
     editor.commitDraft()
-    setPopoverPinShapeId(tempShapeId)
-    mutations.upsertPin.mutate(
-      { captureId, id: tempPinId, body: '' },
-      {
-        onSuccess: (pin: AnnotationPin) => {
-          editor.updateShape({ ...draft, number: pin.number })
-        }
-      }
-    )
+    setPopoverPinShapeId(draft.id)
   }
 
   const popoverShape = editor.shapes.find((s) => s.id === popoverPinShapeId && s.kind === 'pin') as

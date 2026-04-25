@@ -20,8 +20,10 @@ export function PinCommentPopover({
   const [body, setBody] = useState(initialBody)
 
   useEffect(() => {
+    // Only reset on open transition; intentionally omit initialBody from deps
+    // to avoid clobbering user input when bundle refetches after a save
     if (open) setBody(initialBody)
-  }, [open, initialBody])
+  }, [open])
 
   if (!open) return null
 

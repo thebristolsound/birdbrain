@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import type { AnnotationTool } from './useAnnotationEditor'
 
 interface Bindings {
@@ -20,6 +20,9 @@ const TOOL_KEYS: Record<string, AnnotationTool> = {
 }
 
 export function useAnnotationKeyboardShortcuts(b: Bindings): void {
+  const ref = useRef(b)
+  ref.current = b
+
   useEffect(() => {
     if (!b.enabled) return
 
@@ -30,29 +33,30 @@ export function useAnnotationKeyboardShortcuts(b: Bindings): void {
         if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) return
       }
 
+      const c = ref.current
       if (e.key === 'Escape') {
-        b.deselect()
+        c.deselect()
         return
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        b.removeSelected()
+        c.removeSelected()
         e.preventDefault()
         return
       }
       if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
-        if (e.shiftKey) b.redo()
-        else b.undo()
+        if (e.shiftKey) c.redo()
+        else c.undo()
         e.preventDefault()
         return
       }
       const lower = e.key.toLowerCase()
       const tool = TOOL_KEYS[lower]
       if (tool && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        b.setTool(tool)
+        c.setTool(tool)
       }
     }
 
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [b])
+  }, [b.enabled])
 }

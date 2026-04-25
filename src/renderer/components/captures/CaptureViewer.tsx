@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '@renderer/stores/appStore'
@@ -31,9 +31,9 @@ import { AddNoteModal } from '@renderer/components/notes/AddNoteModal'
 import { MhtmlViewer } from '@renderer/components/captures/MhtmlViewer'
 import { ProvenanceBadge } from '@renderer/components/captures/ProvenanceBadge'
 import { AnalysisTab } from '@renderer/components/captures/AnalysisTab'
+import { AnnotationEditor } from './annotation/AnnotationEditor'
 import {
   Button,
-  Card,
   Dialog,
   DialogContent,
   DialogHeader,
@@ -456,22 +456,10 @@ export function CaptureViewer() {
       <div className="flex-1 overflow-hidden min-h-0">
         {activeTab === 'screenshot' &&
           (content ? (
-            <div className="h-full overflow-y-auto p-4">
-              <Card className="overflow-hidden">
-                {/* Fake browser chrome */}
-                <div className="flex items-center gap-2 border-b border-border bg-elevated px-3 py-2">
-                  <div className="flex gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full bg-red-500/60" />
-                    <span className="h-2.5 w-2.5 rounded-full bg-yellow-500/60" />
-                    <span className="h-2.5 w-2.5 rounded-full bg-green-500/60" />
-                  </div>
-                  <div className="flex-1 rounded-md bg-surface px-3 py-0.5 text-[11px] font-mono text-text-muted truncate">
-                    {capture.url}
-                  </div>
-                </div>
-                <img src={`data:image/png;base64,${content}`} alt="Screenshot" className="w-full" />
-              </Card>
-            </div>
+            <ScreenshotTabPanel
+              captureId={capture.id}
+              imageUrl={`data:image/png;base64,${content}`}
+            />
           ) : (
             <div className="flex flex-col items-center justify-center gap-1 p-8 text-center">
               <p className="text-sm text-text-muted">No screenshot available</p>
@@ -587,6 +575,45 @@ function MetadataRow({ label, value }: { label: string; value: string }) {
     <div>
       <div className="text-text-muted">{label}</div>
       <div className="break-all text-text-secondary">{value}</div>
+    </div>
+  )
+}
+
+function ScreenshotTabPanel({ captureId, imageUrl }: { captureId: string; imageUrl: string }) {
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const [dims, setDims] = useState<{ w: number; h: number } | null>(null)
+  const [container, setContainer] = useState<{ w: number; h: number }>({ w: 0, h: 0 })
+
+  useEffect(() => {
+    const img = new window.Image()
+    img.onload = () => setDims({ w: img.naturalWidth, h: img.naturalHeight })
+    img.src = imageUrl
+  }, [imageUrl])
+
+  useEffect(() => {
+    if (!containerRef.current) return
+    const el = containerRef.current
+    const ro = new ResizeObserver(() => {
+      setContainer({ w: el.clientWidth, h: el.clientHeight })
+    })
+    ro.observe(el)
+    setContainer({ w: el.clientWidth, h: el.clientHeight })
+    return () => ro.disconnect()
+  }, [])
+
+  return (
+    <div ref={containerRef} className="flex h-full w-full">
+      {dims && container.w > 0 && (
+        <AnnotationEditor
+          key={captureId}
+          captureId={captureId}
+          imageUrl={imageUrl}
+          imageWidth={dims.w}
+          imageHeight={dims.h}
+          containerWidth={container.w}
+          containerHeight={container.h}
+        />
+      )}
     </div>
   )
 }

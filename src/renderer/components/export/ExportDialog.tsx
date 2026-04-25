@@ -19,7 +19,7 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
     captures: true,
     screenshots: true,
     auditTrail: true,
-    annotations: 'none'
+    annotations: 'burned'
   })
   const [exporting, setExporting] = useState(false)
   const [exportComplete, setExportComplete] = useState(false)
@@ -98,6 +98,20 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
                 <span className="text-sm text-text-secondary">{label}</span>
               </label>
             ))}
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={include.annotations === 'burned'}
+                onChange={(e) =>
+                  setInclude((prev) => ({
+                    ...prev,
+                    annotations: e.target.checked ? 'burned' : 'none'
+                  }))
+                }
+                className="rounded"
+              />
+              <span className="text-sm text-text-secondary">Burn annotations into screenshots</span>
+            </label>
           </div>
         </div>
 

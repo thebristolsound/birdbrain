@@ -65,7 +65,7 @@ Invariants:
 
 - One annotation set per capture (1:1). No versioning in v1; latest state wins.
 - Original `screenshotPath` and the capture's `entryHash` are immutable.
-- Annotations are ignored by hash verification — they live in their own tables and are listed in a *separate* `annotations-manifest.json` at the export bundle root, hashed independently.
+- Annotations are ignored by hash verification — they live in their own tables and never participate in the capture hash chain. Burned annotated PNGs included in an export are hashed independently inside the existing audit trail section of the export report.
 - Pinned comments are first-class shapes: number + position live in the shapes array; body lives normalized in `annotation_pins`.
 
 ### Data model
@@ -271,6 +271,8 @@ interface EditorState {
 
 ### Export integration — main-process burn
 
+The existing export pipeline writes a **single self-contained HTML file** with base64-embedded screenshots (`src/main/services/export.ts`). There is no multi-file bundle. v1 plugs into this model directly: when annotations are burned, the embedded base64 PNG for that capture is replaced by the burned version, and pin bodies are rendered as a numbered legend below the screenshot in the report.
+
 `ExportOptions.include` gains one new field:
 
 ```ts
@@ -280,32 +282,32 @@ export interface ExportOptions {
     captures: boolean
     screenshots: boolean
     auditTrail: boolean
-    annotations: 'none' | 'sidecar' | 'burned' | 'both'   // NEW; default 'sidecar'
+    annotations: 'none' | 'burned'   // NEW; default 'burned'
   }
   investigatorName: string
   outputPath: string
 }
 ```
 
-| Mode      | Export bundle contents                                                               |
-|-----------|--------------------------------------------------------------------------------------|
-| `none`    | Original screenshot + capture manifest only.                                         |
-| `sidecar` | Original screenshot + `annotations.json` (typed shape array + pin records).          |
-| `burned`  | Original screenshot + `screenshot.annotated.png` (flat PNG with shapes baked in).    |
-| `both`    | Both `annotations.json` and `screenshot.annotated.png`.                              |
+| Mode      | Effect                                                                                                                                          |
+|-----------|-------------------------------------------------------------------------------------------------------------------------------------------------|
+| `none`    | Embedded screenshot is the original. No pin legend.                                                                                             |
+| `burned`  | Embedded screenshot is the burned PNG (shapes baked in). Pin legend rendered as a numbered `<ol>` of bodies in the capture detail block.        |
+
+A future v1.1 may add a `'sidecar'` mode that embeds the typed annotation JSON in the HTML for downstream tooling; cut from v1 because no consumer needs it yet.
 
 **Burn pipeline (main process)**:
 
 1. Read the capture's annotations + pins from SQLite.
-2. Generate an SVG document sized exactly to `imageWidth × imageHeight` containing: `<rect>` for rects and redacts, `<line>` (with marker-end) for arrows, `<rect fill-opacity="0.4">` for highlights, `<circle>` + `<text>` for pins. The SVG generator is a small pure function (`renderAnnotationsSvg(annotations: CaptureAnnotations): string`) and is the same code path that produces the legend block in the export report.
-3. Use `sharp` to composite the SVG over the original screenshot:
+2. Generate an SVG document sized exactly to `imageWidth × imageHeight` containing: `<rect>` for rects and redacts, `<line>` with `marker-end` for arrows, `<rect fill-opacity="0.4">` for highlights, `<circle>` + `<text>` for pins. The SVG generator is a small pure function (`renderAnnotationsSvg(annotations, imageWidth, imageHeight): string`).
+3. Use `sharp` to composite the SVG over the original screenshot buffer and produce a PNG buffer:
    ```ts
-   await sharp(screenshotPath)
+   const burned = await sharp(originalPng)
      .composite([{ input: Buffer.from(svg), top: 0, left: 0 }])
      .png()
-     .toFile(annotatedPath)
+     .toBuffer()
    ```
-4. Write a sibling `pins.json` (pin number → body) only in `burned`-only mode; in `sidecar` and `both` modes the bodies already live inside `annotations.json`.
+4. Substitute `data.screenshots.set(captureId, burned.toString('base64'))` instead of the original. Pin bodies are passed alongside via a new `data.pins: Map<captureId, AnnotationPin[]>`, rendered into the existing `capture-detail` block.
 
 `sharp` is added as a new main-process dependency. It is widely used in Electron apps and ships prebuilt binaries for win32 / darwin / linux. If install reliability ever becomes a problem on a specific platform, `pureimage` is a pure-JS fallback that supports the small drawing API we use.
 
@@ -313,9 +315,9 @@ The renderer is **not involved** in burn-in. This means export works headless (e
 
 **Forensic integrity**:
 
-- The hash-chained capture manifest is computed over the *original* screenshot only; this design adds no new code path that touches it.
-- Burned and sidecar files are listed in a separate `annotations-manifest.json` placed at the export bundle root, alongside the main capture manifest, and hashed independently using the same canonical-JSON + SHA-256 pattern.
-- `readCaptureFile` is exact-match by enum (`'html' | 'png' | 'txt' | 'mhtml'`) so the new `screenshot.annotated.png` filename cannot be accidentally read in place of the original.
+- The hash-chained capture manifest is computed over the *original* screenshot only; this design adds no new code path that touches it. Annotations live in their own tables and have their own `updated_at` timestamp.
+- Burned PNGs exist only as in-memory buffers during export and embedded base64 inside the report HTML. They are never written to the case directory and never participate in `verifyManifestChain`.
+- `readCaptureFile` is exact-match by enum (`'html' | 'png' | 'txt' | 'mhtml'`); the burn pipeline reads the PNG via that same path, applies the SVG composite in memory, and substitutes the result into `data.screenshots`. No new files appear next to the originals.
 
 ### Testing
 
@@ -336,7 +338,7 @@ The renderer is **not involved** in burn-in. This means export works headless (e
 **E2E** (`e2e/`):
 
 - Open a capture, draw rect + arrow + pin, type pin body, reload, see the same shapes and body.
-- Add a redact, export with `burned` mode, verify exported PNG has black pixels inside the redact rect.
+- Add a redact, export with `include.annotations: 'burned'`, parse the resulting HTML, decode the base64 screenshot, verify pixels inside the redact rect are black.
 - Verify capture hash chain still validates after annotations are added and saved.
 - Pin-number stability: add three pins, delete pin 2, add another pin, confirm new pin is numbered 4.
 

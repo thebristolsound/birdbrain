@@ -17,7 +17,10 @@ import type {
   TokenUsage,
   ExtractedDataCategory,
   ExtractedDataSubcategory,
-  ExtractedDataItem
+  ExtractedDataItem,
+  AnnotationsBundle,
+  CaptureAnnotations,
+  AnnotationPin
 } from '@shared/types'
 import type {
   CreateCaseParams,
@@ -38,7 +41,9 @@ import type {
   DbRowIdentifier,
   DbExportTableParams,
   OrphanReport,
-  AnalyzeCaptureParams
+  AnalyzeCaptureParams,
+  SaveAnnotationsParams,
+  UpsertAnnotationPinParams
 } from '@shared/ipc'
 
 interface BirdbrainAPI {
@@ -97,6 +102,13 @@ interface BirdbrainAPI {
     delete(id: string): Promise<boolean>
     count(caseId: string): Promise<number>
     search(caseId: string, query: string): Promise<Note[]>
+  }
+  annotations: {
+    get(captureId: string): Promise<AnnotationsBundle>
+    save(params: SaveAnnotationsParams): Promise<CaptureAnnotations>
+    delete(captureId: string): Promise<void>
+    upsertPin(params: UpsertAnnotationPinParams): Promise<AnnotationPin>
+    deletePin(pinId: string): Promise<void>
   }
   extension: {
     getPath(): Promise<string>

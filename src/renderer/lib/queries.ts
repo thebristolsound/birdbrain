@@ -8,7 +8,9 @@ import type {
   UpdateSelectorParams,
   CreateNoteParams,
   UpdateNoteParams,
-  BulkCreateSelectorsParams
+  BulkCreateSelectorsParams,
+  SaveAnnotationsParams,
+  UpsertAnnotationPinParams
 } from '@shared/ipc'
 
 export const queryKeys = {
@@ -34,7 +36,8 @@ export const queryKeys = {
     ['extractedData', 'subcategories', caseId, category] as const,
   extractedDataItems: (caseId: string, category: string, subcategory: string) =>
     ['extractedData', 'items', caseId, category, subcategory] as const,
-  extractedDataCount: (caseId: string) => ['extractedData', 'count', caseId] as const
+  extractedDataCount: (caseId: string) => ['extractedData', 'count', caseId] as const,
+  annotations: (captureId: string) => ['annotations', captureId] as const
 }
 
 // --- Cases ---
@@ -333,4 +336,39 @@ export function useExtractedDataMutations(caseId: string) {
   })
 
   return { reprocess }
+}
+
+// --- Annotations ---
+
+export const annotationsQueryOptions = (captureId: string) =>
+  queryOptions({
+    queryKey: queryKeys.annotations(captureId),
+    queryFn: () => window.birdbrain.annotations.get(captureId)
+  })
+
+export function useAnnotationsMutations(captureId: string) {
+  const queryClient = useQueryClient()
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.annotations(captureId) })
+  }
+
+  const save = useMutation({
+    mutationFn: (params: SaveAnnotationsParams) => window.birdbrain.annotations.save(params),
+    onSuccess: invalidate
+  })
+  const upsertPin = useMutation({
+    mutationFn: (params: UpsertAnnotationPinParams) =>
+      window.birdbrain.annotations.upsertPin(params),
+    onSuccess: invalidate
+  })
+  const deletePin = useMutation({
+    mutationFn: (pinId: string) => window.birdbrain.annotations.deletePin(pinId),
+    onSuccess: invalidate
+  })
+  const deleteAll = useMutation({
+    mutationFn: (id: string) => window.birdbrain.annotations.delete(id),
+    onSuccess: invalidate
+  })
+
+  return { save, upsertPin, deletePin, deleteAll }
 }

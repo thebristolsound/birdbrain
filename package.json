@@ -89,6 +89,7 @@
     "motion": "^12.38.0",
     "react-konva": "^19.2.3",
     "react-markdown": "^10.1.0",
+    "sharp": "^0.34.5",
     "tailwind-merge": "^3.5.0",
     "tldts": "^7.0.28",
     "use-image": "^1.1.4",

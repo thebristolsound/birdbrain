@@ -2,7 +2,9 @@ import { writeFileSync } from 'fs'
 import * as db from '@main/services/database'
 import { readCaptureFile } from '@main/services/storage'
 import { verifyCapture } from '@main/services/mhtmlIngest'
-import type { ExportOptions, HashVerification, Capture } from '@shared/types'
+import { getAnnotations } from '@main/services/annotations'
+import { burnAnnotations } from '@main/services/burnAnnotations'
+import type { ExportOptions, HashVerification, Capture, AnnotationPin } from '@shared/types'
 
 interface ExportData {
   caseName: string
@@ -13,6 +15,7 @@ interface ExportData {
   captures: Capture[]
   verifications: HashVerification[]
   screenshots: Map<string, string> // captureId -> base64
+  pins: Map<string, AnnotationPin[]>
 }
 
 export async function verifyCaptures(caseId: string): Promise<HashVerification[]> {
@@ -50,7 +53,8 @@ export async function generateReport(
     exportTimestamp: new Date().toISOString(),
     captures,
     verifications: [],
-    screenshots: new Map()
+    screenshots: new Map(),
+    pins: new Map()
   }
 
   if (options.include.auditTrail) {
@@ -62,9 +66,17 @@ export async function generateReport(
     onProgress?.('Loading screenshots...', 60)
     for (const cap of captures) {
       const screenshotBuffer = readCaptureFile(cap.caseId, cap.id, 'png')
-      if (screenshotBuffer) {
-        data.screenshots.set(cap.id, screenshotBuffer.toString('base64'))
+      if (!screenshotBuffer) continue
+
+      let finalBuffer: Buffer = screenshotBuffer
+      if (options.include.annotations === 'burned') {
+        const bundle = getAnnotations(cap.id)
+        if (bundle.annotations) {
+          finalBuffer = await burnAnnotations(screenshotBuffer, bundle.annotations)
+        }
+        data.pins.set(cap.id, bundle.pins)
       }
+      data.screenshots.set(cap.id, finalBuffer.toString('base64'))
     }
   }
 
@@ -145,12 +157,22 @@ function buildHtmlReport(data: ExportData, options: ExportOptions): string {
         ${data.captures
           .map((c) => {
             const screenshot = data.screenshots.get(c.id)
+            const pins = data.pins.get(c.id) ?? []
+            const legend =
+              pins.length > 0
+                ? `<ol class="pin-legend">${pins
+                    .slice()
+                    .sort((a, b) => a.number - b.number)
+                    .map((p) => `<li><strong>${p.number}.</strong> ${esc(p.body)}</li>`)
+                    .join('')}</ol>`
+                : ''
             return `
             <div class="capture-detail">
               <h3>${esc(c.title)}</h3>
               <p class="mono url">${esc(c.url)}</p>
               <p class="mono">${new Date(c.timestamp).toLocaleString()}</p>
               ${screenshot ? `<img src="data:image/png;base64,${screenshot}" alt="Screenshot" class="screenshot" />` : ''}
+              ${legend}
             </div>
           `
           })
@@ -216,6 +238,8 @@ function buildHtmlReport(data: ExportData, options: ExportOptions): string {
   .card { padding: 1rem; margin-bottom: 0.5rem; background: #171717; border: 1px solid #262626; border-radius: 0.5rem; }
   .capture-detail { padding: 1rem 0; border-bottom: 1px solid #262626; page-break-inside: avoid; }
   .screenshot { max-width: 100%; max-height: 400px; margin: 0.5rem 0; border: 1px solid #262626; }
+  .pin-legend { font-size: 0.875rem; line-height: 1.4; padding-left: 1.5rem; }
+  .pin-legend li { margin: 0.25rem 0; }
   .verify-verified td:first-child { color: #22c55e; }
   .verify-tampered td:first-child { color: #f59e0b; }
   .verify-chain-broken td:first-child { color: #f59e0b; }

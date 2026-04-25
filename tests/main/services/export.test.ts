@@ -3,16 +3,18 @@ import { mkdtempSync, rmSync, readFileSync, existsSync, writeFileSync } from 'fs
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
+import sharp from 'sharp'
 import {
   initDatabase,
   closeDatabase,
   createCase,
   insertCapture
 } from '../../../src/main/services/database'
-import { initStorage, ensureCaseDir } from '../../../src/main/services/storage'
+import { initStorage, ensureCaseDir, getCapturePath } from '../../../src/main/services/storage'
 import { initManifest } from '../../../src/main/services/manifest'
 import { ingestMhtmlCapture } from '../../../src/main/services/mhtmlIngest'
 import { verifyCaptures, generateReport } from '../../../src/main/services/export'
+import { saveAnnotations } from '../../../src/main/services/annotations'
 import type { ExportOptions } from '../../../src/shared/types'
 
 async function ingest(
@@ -167,5 +169,62 @@ describe('export', () => {
     const content = readFileSync(outputPath, 'utf-8')
     expect(content).not.toContain('<script>alert')
     expect(content).toContain('&lt;script&gt;')
+  })
+
+  it('burns annotations into the embedded screenshot when include.annotations is burned', async () => {
+    const c = createCase({ name: 'Burn' })
+    const cap = insertCapture({
+      caseId: c.id,
+      url: 'https://example.com',
+      title: 'X',
+      hash: 'h',
+      timestamp: new Date().toISOString()
+    })
+    ensureCaseDir(c.id)
+    const pngPath = getCapturePath(c.id, cap.id, 'png')
+    const white = await sharp({
+      create: {
+        width: 100,
+        height: 100,
+        channels: 4,
+        background: { r: 255, g: 255, b: 255, alpha: 1 }
+      }
+    })
+      .png()
+      .toBuffer()
+    writeFileSync(pngPath, white)
+
+    saveAnnotations({
+      captureId: cap.id,
+      shapes: [{ kind: 'redact', id: 'r', x: 20, y: 20, w: 40, h: 40, mode: 'solid' }],
+      imageWidth: 100,
+      imageHeight: 100
+    })
+
+    const outPath = join(tempDir, 'report.html')
+    const options: ExportOptions = {
+      format: 'html',
+      include: {
+        captures: true,
+        screenshots: true,
+        auditTrail: false,
+        annotations: 'burned'
+      },
+      investigatorName: 'Tester',
+      outputPath: outPath
+    }
+    await generateReport(c.id, options)
+
+    const html = readFileSync(outPath, 'utf-8')
+    const match = html.match(/data:image\/png;base64,([A-Za-z0-9+/=]+)/)
+    if (!match) throw new Error('No base64 image found in exported HTML')
+    const buf = Buffer.from(match[1], 'base64')
+    const { data, info } = await sharp(buf).raw().toBuffer({ resolveWithObject: true })
+    const pixelAt = (x: number, y: number): [number, number, number] => {
+      const idx = (y * info.width + x) * info.channels
+      return [data[idx], data[idx + 1], data[idx + 2]]
+    }
+    expect(pixelAt(40, 40)).toEqual([0, 0, 0])
+    expect(pixelAt(80, 80)).toEqual([255, 255, 255])
   })
 })

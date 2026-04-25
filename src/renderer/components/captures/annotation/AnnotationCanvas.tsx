@@ -1,6 +1,6 @@
 import { Stage, Layer, Image as KonvaImage, Text } from 'react-konva'
 import useImage from 'use-image'
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import type Konva from 'konva'
 import type { AnnotationShape } from '@shared/types'
 import type { AnnotationTool } from './useAnnotationEditor'
@@ -23,7 +23,7 @@ interface Props {
   color?: string
   strokeWidth?: number
   onDraftBegin?: (shape: AnnotationShape) => void
-  onDraftExtend?: (patch: Partial<AnnotationShape>) => void
+  onDraftExtend?: (patch: Partial<Omit<AnnotationShape, 'kind' | 'id'>>) => void
   onDraftCommit?: () => void
   onPinDrop?: (x: number, y: number) => void
   onPinClick?: (pinId: string) => void
@@ -64,68 +64,74 @@ export function AnnotationCanvas(props: Props) {
     return Math.min(containerWidth / imageWidth, containerHeight / imageHeight)
   }, [containerWidth, containerHeight, imageWidth, imageHeight])
 
-  const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
-    const stage = e.target.getStage()
-    if (!stage) return
-    if (e.target !== stage) return
-    onSelect?.(null)
-    if (!editable) return
-    const pos = stage.getPointerPosition()
-    if (!pos) return
-    const x = pos.x / scale
-    const y = pos.y / scale
-    if (tool === 'pin') {
-      onPinDrop?.(x, y)
-      return
-    }
-    if (tool === 'rect') {
-      onDraftBegin?.({
-        kind: 'rect',
-        id: uid(),
-        x,
-        y,
-        w: 0,
-        h: 0,
-        stroke: color,
-        strokeWidth
-      })
-    } else if (tool === 'highlight') {
-      onDraftBegin?.({ kind: 'highlight', id: uid(), x, y, w: 0, h: 0, color })
-    } else if (tool === 'redact') {
-      onDraftBegin?.({ kind: 'redact', id: uid(), x, y, w: 0, h: 0, mode: 'solid' })
-    } else if (tool === 'arrow') {
-      onDraftBegin?.({
-        kind: 'arrow',
-        id: uid(),
-        x1: x,
-        y1: y,
-        x2: x,
-        y2: y,
-        stroke: color,
-        strokeWidth
-      })
-    }
-  }
+  const handleMouseDown = useCallback(
+    (e: Konva.KonvaEventObject<MouseEvent>) => {
+      const stage = e.target.getStage()
+      if (!stage) return
+      if (e.target !== stage) return
+      onSelect?.(null)
+      if (!editable) return
+      const pos = stage.getPointerPosition()
+      if (!pos) return
+      const x = pos.x / scale
+      const y = pos.y / scale
+      if (tool === 'pin') {
+        onPinDrop?.(x, y)
+        return
+      }
+      if (tool === 'rect') {
+        onDraftBegin?.({
+          kind: 'rect',
+          id: uid(),
+          x,
+          y,
+          w: 0,
+          h: 0,
+          stroke: color,
+          strokeWidth
+        })
+      } else if (tool === 'highlight') {
+        onDraftBegin?.({ kind: 'highlight', id: uid(), x, y, w: 0, h: 0, color })
+      } else if (tool === 'redact') {
+        onDraftBegin?.({ kind: 'redact', id: uid(), x, y, w: 0, h: 0, mode: 'solid' })
+      } else if (tool === 'arrow') {
+        onDraftBegin?.({
+          kind: 'arrow',
+          id: uid(),
+          x1: x,
+          y1: y,
+          x2: x,
+          y2: y,
+          stroke: color,
+          strokeWidth
+        })
+      }
+    },
+    [scale, editable, tool, color, strokeWidth, onSelect, onDraftBegin, onPinDrop]
+  )
 
-  const handleMouseMove = (e: Konva.KonvaEventObject<MouseEvent>) => {
-    if (!editable || !draft) return
-    const stage = e.target.getStage()
-    if (!stage) return
-    const pos = stage.getPointerPosition()
-    if (!pos) return
-    const x = pos.x / scale
-    const y = pos.y / scale
-    if (draft.kind === 'arrow') {
-      onDraftExtend?.({ x2: x, y2: y })
-    } else if (draft.kind === 'rect' || draft.kind === 'highlight' || draft.kind === 'redact') {
-      onDraftExtend?.({ w: x - draft.x, h: y - draft.y })
-    }
-  }
+  const handleMouseMove = useCallback(
+    (e: Konva.KonvaEventObject<MouseEvent>) => {
+      if (!editable || !draft) return
+      const stage = e.target.getStage()
+      if (!stage) return
+      const pos = stage.getPointerPosition()
+      if (!pos) return
+      const x = pos.x / scale
+      const y = pos.y / scale
+      if (draft.kind === 'arrow') {
+        onDraftExtend?.({ x2: x, y2: y })
+      } else if (draft.kind === 'rect' || draft.kind === 'highlight' || draft.kind === 'redact') {
+        onDraftExtend?.({ w: x - draft.x, h: y - draft.y })
+      }
+    },
+    [scale, editable, draft, onDraftExtend]
+  )
 
-  const handleMouseUp = () => {
+  const handleMouseUp = useCallback(() => {
     if (!editable || !draft) return
     onDraftCommit?.()
-  }
+  }, [editable, draft, onDraftCommit])
 
   const allShapes = draft ? [...shapes, draft] : shapes
   const redacts = allShapes.filter((s) => s.kind === 'redact')

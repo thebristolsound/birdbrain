@@ -54,7 +54,10 @@ export function AnnotationToolbar({
           type="button"
           aria-label={label}
           onClick={() => setTool(key)}
-          className={`rounded px-2 py-1 hover:bg-canvas ${tool === key ? 'bg-canvas text-accent' : 'text-text-primary'}`}
+          className={[
+            'rounded px-2 py-1 hover:bg-canvas',
+            tool === key ? 'bg-canvas text-accent' : 'text-text-primary'
+          ].join(' ')}
         >
           <Icon size={16} />
         </button>
@@ -66,7 +69,10 @@ export function AnnotationToolbar({
             type="button"
             aria-label={`Color ${c}`}
             onClick={() => setColor(c)}
-            className={`h-5 w-5 rounded border ${c === color ? 'border-accent ring-2 ring-accent' : 'border-border'}`}
+            className={[
+              'h-5 w-5 rounded border',
+              c === color ? 'border-accent ring-2 ring-accent' : 'border-border'
+            ].join(' ')}
             style={{ backgroundColor: c }}
           />
         ))}

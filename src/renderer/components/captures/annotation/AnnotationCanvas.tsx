@@ -1,4 +1,4 @@
-import { Stage, Layer, Image as KonvaImage } from 'react-konva'
+import { Stage, Layer, Image as KonvaImage, Text } from 'react-konva'
 import useImage from 'use-image'
 import { useMemo } from 'react'
 import type { AnnotationShape } from '@shared/types'
@@ -26,10 +26,10 @@ export function AnnotationCanvas({
   containerHeight,
   onPinClick
 }: Props) {
-  const [image] = useImage(imageUrl)
+  const [image, imageStatus] = useImage(imageUrl)
 
   const scale = useMemo(() => {
-    if (!imageWidth || !imageHeight) return 1
+    if (!imageWidth || !imageHeight || !containerWidth || !containerHeight) return 1
     return Math.min(containerWidth / imageWidth, containerHeight / imageHeight)
   }, [containerWidth, containerHeight, imageWidth, imageHeight])
 
@@ -43,6 +43,17 @@ export function AnnotationCanvas({
     <Stage width={imageWidth * scale} height={imageHeight * scale} scaleX={scale} scaleY={scale}>
       <Layer listening={false}>
         {image && <KonvaImage image={image} x={0} y={0} width={imageWidth} height={imageHeight} />}
+        {imageStatus === 'failed' && (
+          <Text
+            text="Failed to load image"
+            x={0}
+            y={imageHeight / 2 - 10}
+            width={imageWidth}
+            align="center"
+            fontSize={20}
+            fill="#ef4444"
+          />
+        )}
       </Layer>
       <Layer>
         {redacts.map((s) => (

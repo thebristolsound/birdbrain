@@ -112,7 +112,8 @@ describe('export', () => {
       include: {
         captures: true,
         screenshots: false,
-        auditTrail: true
+        auditTrail: true,
+        annotations: 'none'
       },
       investigatorName: 'Test User',
       outputPath
@@ -139,7 +140,8 @@ describe('export', () => {
       include: {
         captures: true,
         screenshots: false,
-        auditTrail: false
+        auditTrail: false,
+        annotations: 'none'
       },
       investigatorName: 'Test',
       outputPath
@@ -157,7 +159,7 @@ describe('export', () => {
     const outputPath = join(tempDir, 'escaped.html')
     await generateReport(caseId, {
       format: 'html',
-      include: { captures: true, screenshots: false, auditTrail: false },
+      include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
       investigatorName: 'Test',
       outputPath
     })

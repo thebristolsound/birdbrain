@@ -1,6 +1,8 @@
 // Typed IPC channel definitions
 // Every IPC call between renderer and main process goes through these channels
 
+import type { AnnotationShape } from './types'
+
 export const IPC_CHANNELS = {
   // Cases
   CASES_LIST: 'cases:list',
@@ -79,6 +81,13 @@ export const IPC_CHANNELS = {
   EXTRACTED_DATA_ITEMS: 'extractedData:items',
   EXTRACTED_DATA_COUNT: 'extractedData:count',
   EXTRACTED_DATA_REPROCESS: 'extractedData:reprocess',
+
+  // Annotations
+  ANNOTATIONS_GET: 'annotations:get',
+  ANNOTATIONS_SAVE: 'annotations:save',
+  ANNOTATIONS_DELETE: 'annotations:delete',
+  ANNOTATIONS_UPSERT_PIN: 'annotations:upsertPin',
+  ANNOTATIONS_DELETE_PIN: 'annotations:deletePin',
 
   // Extension
   EXTENSION_PATH: 'extension:path',
@@ -176,6 +185,19 @@ export interface UpdateNoteParams {
   id: string
   title?: string
   body?: string
+}
+
+export interface SaveAnnotationsParams {
+  captureId: string
+  shapes: AnnotationShape[]
+  imageWidth: number
+  imageHeight: number
+}
+
+export interface UpsertAnnotationPinParams {
+  captureId: string
+  id?: string
+  body: string
 }
 
 export interface BulkCreateSelectorsParams {

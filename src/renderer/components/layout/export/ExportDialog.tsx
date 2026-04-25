@@ -15,10 +15,11 @@ interface ExportDialogProps {
 export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
   const format = 'html' as const
   const [investigatorName, setInvestigatorName] = useState('')
-  const [include, setInclude] = useState({
+  const [include, setInclude] = useState<ExportOptions['include']>({
     captures: true,
     screenshots: true,
-    auditTrail: true
+    auditTrail: true,
+    annotations: 'none'
   })
   const [exporting, setExporting] = useState(false)
   const [exportComplete, setExportComplete] = useState(false)

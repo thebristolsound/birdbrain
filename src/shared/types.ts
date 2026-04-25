@@ -81,6 +81,7 @@ export interface ExportOptions {
     captures: boolean
     screenshots: boolean
     auditTrail: boolean
+    annotations: 'none' | 'burned'
   }
   investigatorName: string
   outputPath: string
@@ -143,6 +144,56 @@ export interface Note {
   screenshotPath?: string
   createdAt: string
   updatedAt: string
+}
+
+export type AnnotationShape =
+  | {
+      kind: 'rect'
+      id: string
+      x: number
+      y: number
+      w: number
+      h: number
+      stroke: string
+      strokeWidth: number
+      fill?: string
+    }
+  | {
+      kind: 'arrow'
+      id: string
+      x1: number
+      y1: number
+      x2: number
+      y2: number
+      stroke: string
+      strokeWidth: number
+    }
+  | { kind: 'highlight'; id: string; x: number; y: number; w: number; h: number; color: string }
+  | { kind: 'redact'; id: string; x: number; y: number; w: number; h: number; mode: 'solid' }
+  | { kind: 'pin'; id: string; x: number; y: number; number: number; pinId: string }
+
+export interface CaptureAnnotations {
+  captureId: string
+  schemaVersion: number
+  shapes: AnnotationShape[]
+  imageWidth: number
+  imageHeight: number
+  updatedAt: string
+  updatedBy: string | null
+}
+
+export interface AnnotationPin {
+  id: string
+  captureId: string
+  number: number
+  body: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AnnotationsBundle {
+  annotations: CaptureAnnotations | null
+  pins: AnnotationPin[]
 }
 
 export type AutoCaptureMode = 'auto' | 'notify' | 'per-case'

@@ -106,6 +106,14 @@ describe('annotations service', () => {
     expect(updated.body).toBe('updated')
   })
 
+  it('inserts a new pin when id is provided but does not exist', () => {
+    const cap = makeCapture()
+    const created = upsertPin({ captureId: cap.id, id: 'caller-supplied-id', body: 'fresh' })
+    expect(created.id).toBe('caller-supplied-id')
+    expect(created.number).toBe(1)
+    expect(created.body).toBe('fresh')
+  })
+
   it('scopes pin numbering per capture', () => {
     const cap1 = makeCapture()
     const cap2 = makeCapture()

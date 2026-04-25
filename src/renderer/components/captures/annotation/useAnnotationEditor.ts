@@ -43,7 +43,7 @@ export function useAnnotationEditor({ initialShapes }: Options) {
   }, [])
 
   const beginDraft = useCallback((shape: AnnotationShape) => setDraft(shape), [])
-  const extendDraft = useCallback((patch: Partial<AnnotationShape>) => {
+  const extendDraft = useCallback((patch: Partial<Omit<AnnotationShape, 'kind' | 'id'>>) => {
     setDraft((d) => (d ? ({ ...d, ...patch } as AnnotationShape) : d))
   }, [])
   const cancelDraft = useCallback(() => setDraft(null), [])

@@ -90,4 +90,75 @@ describe('useAnnotationEditor', () => {
     act(() => result.current.undo())
     expect(result.current.shapes).toHaveLength(1)
   })
+
+  it('cancelDraft clears the draft without committing', () => {
+    const { result } = renderHook(() => useAnnotationEditor({ initialShapes: [] }))
+    act(() =>
+      result.current.beginDraft({
+        kind: 'rect',
+        id: 's1',
+        x: 0,
+        y: 0,
+        w: 5,
+        h: 5,
+        stroke: '#000',
+        strokeWidth: 1
+      })
+    )
+    expect(result.current.draft).not.toBeNull()
+    act(() => result.current.cancelDraft())
+    expect(result.current.draft).toBeNull()
+    expect(result.current.shapes).toHaveLength(0)
+    expect(result.current.dirty).toBe(false)
+  })
+
+  it('updateShape replaces a shape by id and pushes to undo', () => {
+    const { result } = renderHook(() =>
+      useAnnotationEditor({
+        initialShapes: [
+          { kind: 'rect', id: 's1', x: 0, y: 0, w: 10, h: 10, stroke: '#000', strokeWidth: 1 }
+        ]
+      })
+    )
+    act(() =>
+      result.current.updateShape({
+        kind: 'rect',
+        id: 's1',
+        x: 50,
+        y: 60,
+        w: 10,
+        h: 10,
+        stroke: '#000',
+        strokeWidth: 1
+      })
+    )
+    expect(result.current.shapes[0]).toMatchObject({ x: 50, y: 60 })
+    expect(result.current.dirty).toBe(true)
+    act(() => result.current.undo())
+    expect(result.current.shapes[0]).toMatchObject({ x: 0, y: 0 })
+  })
+
+  it('canUndo and canRedo reflect stack state', () => {
+    const { result } = renderHook(() => useAnnotationEditor({ initialShapes: [] }))
+    expect(result.current.canUndo).toBe(false)
+    expect(result.current.canRedo).toBe(false)
+    act(() =>
+      result.current.beginDraft({
+        kind: 'rect',
+        id: 's1',
+        x: 0,
+        y: 0,
+        w: 1,
+        h: 1,
+        stroke: '#000',
+        strokeWidth: 1
+      })
+    )
+    act(() => result.current.commitDraft())
+    expect(result.current.canUndo).toBe(true)
+    expect(result.current.canRedo).toBe(false)
+    act(() => result.current.undo())
+    expect(result.current.canUndo).toBe(false)
+    expect(result.current.canRedo).toBe(true)
+  })
 })

@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { Search, StickyNote } from 'lucide-react'
+import { Search } from 'lucide-react'
 import { notesQueryOptions, notesSearchQueryOptions } from '@renderer/lib/queries'
-import { EmptyState, QueryState } from '@renderer/components/ui'
 import { NoteCard } from './NoteCard'
 import { CreateNoteCard } from './CreateNoteCard'
 
@@ -18,7 +17,7 @@ export function NotesOverview() {
     return () => clearTimeout(t)
   }, [searchInput])
 
-  const notesQuery = useQuery(notesQueryOptions(caseId))
+  const { data: allNotes = [], isLoading } = useQuery(notesQueryOptions(caseId))
   const {
     data: searchResults = [],
     isLoading: isSearchLoading,
@@ -26,6 +25,11 @@ export function NotesOverview() {
   } = useQuery(notesSearchQueryOptions(caseId, debouncedQuery))
 
   const isSearching = debouncedQuery.length > 0 && (isSearchLoading || isSearchFetching)
+  const notes = debouncedQuery.length > 0 ? searchResults : allNotes
+
+  if (isLoading) {
+    return <div className="text-text-muted">Loading notes...</div>
+  }
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 px-8 py-6 pb-16">
@@ -48,40 +52,21 @@ export function NotesOverview() {
         onCreated={() => setShowCreateForm(false)}
       />
 
-      <QueryState
-        query={notesQuery}
-        isEmpty={(allNotes) => allNotes.length === 0 && debouncedQuery.length === 0}
-        empty={
-          <EmptyState
-            icon={<StickyNote width={22} height={22} />}
-            title="No notes yet"
-            description="Create one to record observations."
-          />
-        }
-      >
-        {(allNotes) => {
-          const notes = debouncedQuery.length > 0 ? searchResults : allNotes
-          if (isSearching) {
-            return <p className="py-8 text-center text-sm text-text-muted">Searching notes...</p>
-          }
-          if (notes.length === 0) {
-            return (
-              <p className="py-8 text-center text-sm text-text-muted">
-                {debouncedQuery.length > 0
-                  ? `No notes match "${debouncedQuery}"`
-                  : 'No notes yet. Create one to record observations.'}
-              </p>
-            )
-          }
-          return (
-            <div data-testid="notes-list" className="space-y-3">
-              {notes.map((note) => (
-                <NoteCard key={note.id} note={note} caseId={caseId} />
-              ))}
-            </div>
-          )
-        }}
-      </QueryState>
+      {isSearching ? (
+        <p className="py-8 text-center text-sm text-text-muted">Searching notes...</p>
+      ) : notes.length === 0 ? (
+        <p className="py-8 text-center text-sm text-text-muted">
+          {debouncedQuery.length > 0
+            ? `No notes match "${debouncedQuery}"`
+            : 'No notes yet. Create one to record observations.'}
+        </p>
+      ) : (
+        <div data-testid="notes-list" className="space-y-3">
+          {notes.map((note) => (
+            <NoteCard key={note.id} note={note} caseId={caseId} />
+          ))}
+        </div>
+      )}
     </div>
   )
 }

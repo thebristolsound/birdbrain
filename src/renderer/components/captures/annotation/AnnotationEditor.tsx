@@ -8,6 +8,7 @@ import { AnnotationToolbar } from './AnnotationToolbar'
 import { PinCommentPopover } from './PinCommentPopover'
 import { useAnnotationEditor } from './useAnnotationEditor'
 import { useAnnotationKeyboardShortcuts } from './keyboardShortcuts'
+import { useZoomPan } from './useZoomPan'
 
 interface Props {
   captureId: string
@@ -24,6 +25,7 @@ export function AnnotationEditor(props: Props) {
   const { data: bundle } = useQuery(annotationsQueryOptions(captureId))
   const mutations = useAnnotationsMutations(captureId)
   const editor = useAnnotationEditor({ initialShapes: bundle?.annotations?.shapes ?? [] })
+  const zoomPan = useZoomPan({ imageWidth, imageHeight, containerWidth, containerHeight })
   const [popoverPinShapeId, setPopoverPinShapeId] = useState<string | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -131,7 +133,7 @@ export function AnnotationEditor(props: Props) {
           onRedo={editor.redo}
         />
       )}
-      <div className="relative flex-1 overflow-auto bg-canvas">
+      <div className="relative flex-1 overflow-hidden bg-canvas">
         <AnnotationCanvas
           imageUrl={imageUrl}
           imageWidth={imageWidth}
@@ -155,6 +157,9 @@ export function AnnotationEditor(props: Props) {
           }}
           containerWidth={containerWidth}
           containerHeight={containerHeight}
+          scale={zoomPan.scale}
+          panX={zoomPan.panX}
+          panY={zoomPan.panY}
         />
         <PinCommentPopover
           open={popoverPinShapeId != null}

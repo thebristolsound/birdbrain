@@ -1,6 +1,6 @@
 import { Stage, Layer, Image as KonvaImage, Text } from 'react-konva'
 import useImage from 'use-image'
-import { useCallback, useMemo } from 'react'
+import { useCallback } from 'react'
 import type Konva from 'konva'
 import type { AnnotationShape } from '@shared/types'
 import type { AnnotationTool } from './useAnnotationEditor'
@@ -29,6 +29,9 @@ interface Props {
   onPinClick?: (pinId: string) => void
   containerWidth: number
   containerHeight: number
+  scale: number
+  panX: number
+  panY: number
 }
 
 function uid(): string {
@@ -55,14 +58,12 @@ export function AnnotationCanvas(props: Props) {
     onPinDrop,
     onPinClick,
     containerWidth,
-    containerHeight
+    containerHeight,
+    scale,
+    panX,
+    panY
   } = props
   const [image, imageStatus] = useImage(imageUrl)
-
-  const scale = useMemo(() => {
-    if (!imageWidth || !imageHeight || !containerWidth || !containerHeight) return 1
-    return Math.min(containerWidth / imageWidth, containerHeight / imageHeight)
-  }, [containerWidth, containerHeight, imageWidth, imageHeight])
 
   const handleMouseDown = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
@@ -71,10 +72,10 @@ export function AnnotationCanvas(props: Props) {
       if (e.target !== stage) return
       onSelect?.(null)
       if (!editable) return
-      const pos = stage.getPointerPosition()
+      const pos = stage.getRelativePointerPosition()
       if (!pos) return
-      const x = pos.x / scale
-      const y = pos.y / scale
+      const x = pos.x
+      const y = pos.y
       if (tool === 'pin') {
         onPinDrop?.(x, y)
         return
@@ -107,7 +108,7 @@ export function AnnotationCanvas(props: Props) {
         })
       }
     },
-    [scale, editable, tool, color, strokeWidth, onSelect, onDraftBegin, onPinDrop]
+    [editable, tool, color, strokeWidth, onSelect, onDraftBegin, onPinDrop]
   )
 
   const handleMouseMove = useCallback(
@@ -115,17 +116,17 @@ export function AnnotationCanvas(props: Props) {
       if (!editable || !draft) return
       const stage = e.target.getStage()
       if (!stage) return
-      const pos = stage.getPointerPosition()
+      const pos = stage.getRelativePointerPosition()
       if (!pos) return
-      const x = pos.x / scale
-      const y = pos.y / scale
+      const x = pos.x
+      const y = pos.y
       if (draft.kind === 'arrow') {
         onDraftExtend?.({ x2: x, y2: y })
       } else if (draft.kind === 'rect' || draft.kind === 'highlight' || draft.kind === 'redact') {
         onDraftExtend?.({ w: x - draft.x, h: y - draft.y })
       }
     },
-    [scale, editable, draft, onDraftExtend]
+    [editable, draft, onDraftExtend]
   )
 
   const handleMouseUp = useCallback(() => {
@@ -142,10 +143,12 @@ export function AnnotationCanvas(props: Props) {
 
   return (
     <Stage
-      width={imageWidth * scale}
-      height={imageHeight * scale}
+      width={containerWidth}
+      height={containerHeight}
       scaleX={scale}
       scaleY={scale}
+      x={panX}
+      y={panY}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}

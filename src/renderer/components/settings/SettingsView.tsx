@@ -8,6 +8,7 @@ import { OperatorConfig } from './OperatorConfig'
 import { About } from './About'
 import { Key, Camera, HardDrive, Palette, Info, UserCircle, Database } from 'lucide-react'
 import { DatabaseAdmin } from './DatabaseAdmin'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@renderer/components/ui'
 
 type SettingsTab = 'ai' | 'capture' | 'storage' | 'appearance' | 'operator' | 'database' | 'about'
 
@@ -29,7 +30,6 @@ export function SettingsView() {
     window.birdbrain.settings.get().then(setSettings)
   }, [])
 
-  // Persist settings as active section for session restore
   useEffect(() => {
     window.birdbrain.settings.update({ lastActiveSection: 'settings' })
   }, [])
@@ -41,46 +41,51 @@ export function SettingsView() {
 
   if (!settings) return <div className="text-text-muted">Loading settings...</div>
 
-  const renderContent = () => {
-    switch (activeTab) {
-      case 'ai':
-        return <AIConfig settings={settings} onUpdate={handleUpdate} />
-      case 'capture':
-        return <CapturePreferences settings={settings} onUpdate={handleUpdate} />
-      case 'storage':
-        return <StorageConfig settings={settings} onUpdate={handleUpdate} />
-      case 'appearance':
-        return <AppearanceConfig />
-      case 'operator':
-        return <OperatorConfig />
-      case 'database':
-        return <DatabaseAdmin />
-      case 'about':
-        return <About />
-    }
-  }
-
   return (
-    <div className="flex h-full">
+    <Tabs
+      value={activeTab}
+      onValueChange={(v) => setActiveTab(v as SettingsTab)}
+      orientation="vertical"
+      className="flex h-full"
+    >
       <nav className="w-48 shrink-0 border-r border-border p-3">
-        <div className="space-y-1">
+        <TabsList className="flex h-auto w-full flex-col gap-1 bg-transparent p-0">
           {settingsTabs.map(({ id, label, icon: Icon }) => (
-            <button
+            <TabsTrigger
               key={id}
-              onClick={() => setActiveTab(id)}
-              className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm rounded-lg ${
-                activeTab === id
-                  ? 'bg-accent-subtle text-accent font-semibold'
-                  : 'text-text-muted hover:text-text-primary hover:bg-elevated'
-              }`}
+              value={id}
+              className="w-full justify-start gap-2 px-3 py-2 data-[state=active]:bg-accent-subtle data-[state=active]:text-accent data-[state=active]:font-semibold"
             >
               <Icon size={16} />
               {label}
-            </button>
+            </TabsTrigger>
           ))}
-        </div>
+        </TabsList>
       </nav>
-      <div className="flex-1 p-6 overflow-y-auto">{renderContent()}</div>
-    </div>
+
+      <div className="flex-1 overflow-auto p-6">
+        <TabsContent value="ai" className="mt-0">
+          <AIConfig settings={settings} onUpdate={handleUpdate} />
+        </TabsContent>
+        <TabsContent value="capture" className="mt-0">
+          <CapturePreferences settings={settings} onUpdate={handleUpdate} />
+        </TabsContent>
+        <TabsContent value="storage" className="mt-0">
+          <StorageConfig settings={settings} onUpdate={handleUpdate} />
+        </TabsContent>
+        <TabsContent value="appearance" className="mt-0">
+          <AppearanceConfig />
+        </TabsContent>
+        <TabsContent value="operator" className="mt-0">
+          <OperatorConfig />
+        </TabsContent>
+        <TabsContent value="database" className="mt-0">
+          <DatabaseAdmin />
+        </TabsContent>
+        <TabsContent value="about" className="mt-0">
+          <About />
+        </TabsContent>
+      </div>
+    </Tabs>
   )
 }

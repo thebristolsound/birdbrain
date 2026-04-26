@@ -13,3 +13,5 @@ export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 export { Label } from './label'
 export { Badge, badgeVariants } from './badge'
 export { ScrollArea } from './scroll-area'
+export { Tabs, TabsList, TabsTrigger, TabsContent } from './tabs'
+export { Skeleton } from './skeleton'

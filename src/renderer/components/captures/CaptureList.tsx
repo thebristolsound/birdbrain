@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Search, ArrowUpDown, Filter, Crosshair, X, Check } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { capturesQueryOptions } from '@renderer/lib/queries'
-import { Button } from '@renderer/components/ui'
+import { Button, Skeleton } from '@renderer/components/ui'
 import { useAppStore } from '@renderer/stores/appStore'
 import { useFavorites } from '@renderer/hooks/useFavorites'
 import { CaptureItem } from './CaptureItem'
@@ -130,8 +130,12 @@ export function CaptureList({ caseId }: CaptureListProps) {
 
   if (isLoading) {
     return (
-      <aside className="flex w-[300px] shrink-0 items-center justify-center border-r border-border bg-surface p-4">
-        <div className="text-xs text-text-muted">Loading captures...</div>
+      <aside className="flex w-[300px] shrink-0 flex-col border-r border-border bg-surface">
+        <div className="space-y-2 p-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-16 w-full rounded-lg" />
+          ))}
+        </div>
       </aside>
     )
   }

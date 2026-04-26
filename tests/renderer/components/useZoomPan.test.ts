@@ -61,3 +61,24 @@ describe('useZoomPan — zoomAt', () => {
     expect(result.current.userScale).toBe(0.5)
   })
 })
+
+describe('useZoomPan — setPan', () => {
+  it('clamps so at least MIN_VISIBLE_PX of the image stays in view', () => {
+    const { result } = renderHook(() =>
+      useZoomPan({ imageWidth: 1000, imageHeight: 8000, containerWidth: 500, containerHeight: 800 })
+    )
+    // fitScale = 0.5; scale = 0.5; image rendered: 500 x 4000
+    // Pan dragging far up (negative dy) should leave at least 64px visible at top.
+    act(() => result.current.setPan(0, -100000))
+    // Image bottom edge at panY + imageHeight*scale must be >= 64
+    const renderedHeight = 8000 * result.current.scale
+    expect(result.current.panY + renderedHeight).toBeGreaterThanOrEqual(64)
+
+    act(() => result.current.setPan(100000, 0))
+    const renderedWidth = 1000 * result.current.scale
+    // panX must be at most containerWidth - 64 = 436
+    expect(result.current.panX).toBeLessThanOrEqual(500 - 64)
+    // and panX + renderedWidth must be >= 64
+    expect(result.current.panX + renderedWidth).toBeGreaterThanOrEqual(64)
+  })
+})

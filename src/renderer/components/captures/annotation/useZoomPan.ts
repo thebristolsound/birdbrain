@@ -53,6 +53,26 @@ export function useZoomPan(opts: Options) {
     [fitScale, userScale, panX, panY, scale]
   )
 
+  const setPan = useCallback(
+    (dx: number, dy: number) => {
+      const renderedW = imageWidth * scale
+      const renderedH = imageHeight * scale
+      setPanX((prev) => {
+        const next = prev + dx
+        const minPanX = MIN_VISIBLE_PX - renderedW
+        const maxPanX = containerWidth - MIN_VISIBLE_PX
+        return Math.max(minPanX, Math.min(maxPanX, next))
+      })
+      setPanY((prev) => {
+        const next = prev + dy
+        const minPanY = MIN_VISIBLE_PX - renderedH
+        const maxPanY = containerHeight - MIN_VISIBLE_PX
+        return Math.max(minPanY, Math.min(maxPanY, next))
+      })
+    },
+    [imageWidth, imageHeight, containerWidth, containerHeight, scale]
+  )
+
   return {
     fitScale,
     userScale,
@@ -62,6 +82,7 @@ export function useZoomPan(opts: Options) {
     setUserScale,
     setPanX,
     setPanY,
+    setPan,
     zoomAt
   }
 }

@@ -29,7 +29,7 @@ import type { ExtractedDatum } from '@main/services/dataExtractor'
 import { safeRegexTest } from '@main/services/safeRegex'
 
 let db: Database.Database
-export const LATEST_SCHEMA_VERSION = 16
+export const LATEST_SCHEMA_VERSION = 17
 
 export function initDatabase(dbPath: string): Database.Database {
   db = new Database(dbPath)
@@ -367,6 +367,37 @@ function migrate(db: Database.Database): void {
         CREATE UNIQUE INDEX IF NOT EXISTS idx_extracted_data_unique ON extracted_data(capture_id, category, subcategory, value);
       `)
       db.pragma('user_version = 16')
+    })()
+  }
+
+  if (version < 17) {
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS annotations (
+          capture_id TEXT PRIMARY KEY,
+          schema_version INTEGER NOT NULL,
+          shapes_json TEXT NOT NULL,
+          image_width INTEGER NOT NULL,
+          image_height INTEGER NOT NULL,
+          updated_at TEXT NOT NULL,
+          updated_by TEXT,
+          FOREIGN KEY (capture_id) REFERENCES captures(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS annotation_pins (
+          id TEXT PRIMARY KEY,
+          capture_id TEXT NOT NULL,
+          number INTEGER NOT NULL,
+          body TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (capture_id) REFERENCES captures(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_annotation_pins_capture ON annotation_pins(capture_id);
+        CREATE INDEX IF NOT EXISTS idx_annotation_pins_capture_number ON annotation_pins(capture_id, number);
+      `)
+      db.pragma('user_version = 17')
     })()
   }
 }
@@ -1168,7 +1199,16 @@ export function insertExtractedData(
   )
   const run = d.transaction(() => {
     for (const item of data) {
-      insert.run(uuid(), captureId, caseId, item.category, item.subcategory, item.value, sourceUrl, now)
+      insert.run(
+        uuid(),
+        captureId,
+        caseId,
+        item.category,
+        item.subcategory,
+        item.value,
+        sourceUrl,
+        now
+      )
     }
   })
   run()

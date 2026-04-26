@@ -65,7 +65,8 @@
     "onlyBuiltDependencies": [
       "better-sqlite3",
       "electron",
-      "esbuild"
+      "esbuild",
+      "sharp"
     ]
   },
   "dependencies": {
@@ -84,12 +85,16 @@
     "d3-force": "^3.0.0",
     "hono": "^4.12.14",
     "ioc-extractor": "^8.1.7",
+    "konva": "^10.2.5",
     "lucide-react": "^0.577.0",
     "motion": "^12.38.0",
+    "react-konva": "^19.2.3",
     "react-markdown": "^10.1.0",
+    "sharp": "^0.34.5",
     "tailwind-merge": "^3.5.0",
     "tldts": "^7.0.28",
-    "uuid": "^14.0.0",
+    "use-image": "^1.1.4",
+    "uuid": "^11.1.0",
     "zod": "^3.24.1",
     "zustand": "^5.0.12"
   },
@@ -101,6 +106,7 @@
     "@tailwindcss/vite": "^4.2.2",
     "@tanstack/react-query-devtools": "^5.96.2",
     "@tanstack/router-devtools": "^1.166.11",
+    "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
     "@types/better-sqlite3": "^7.6.13",
     "@types/chrome": "^0.1.39",

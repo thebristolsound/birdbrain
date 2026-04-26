@@ -1,5 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { Search, ArrowUpDown, Filter, Crosshair, X, Check } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { capturesQueryOptions } from '@renderer/lib/queries'
+import { Button } from '@renderer/components/ui'
 import { useAppStore } from '@renderer/stores/appStore'
 import { useFavorites } from '@renderer/hooks/useFavorites'
 import { CaptureItem } from './CaptureItem'
@@ -7,7 +10,6 @@ import type { Capture } from '@shared/types'
 
 interface CaptureListProps {
   caseId: string
-  captures: Capture[]
 }
 
 type SortOption = 'newest' | 'oldest' | 'title-az' | 'url-az'
@@ -64,7 +66,14 @@ function sortCaptures(captures: Capture[], sort: SortOption): Capture[] {
   }
 }
 
-export function CaptureList({ caseId, captures }: CaptureListProps) {
+export function CaptureList({ caseId }: CaptureListProps) {
+  const {
+    data: captures = [],
+    isLoading,
+    isError,
+    error,
+    refetch
+  } = useQuery(capturesQueryOptions(caseId))
   const selectedCaptureId = useAppStore((s) => s.selectedCaptureId)
   const selectCapture = useAppStore((s) => s.selectCapture)
   const filteredCaptureIds = useAppStore((s) => s.filteredCaptureIds)
@@ -117,6 +126,27 @@ export function CaptureList({ caseId, captures }: CaptureListProps) {
     setFormatFilter('all')
     setDateFilter('all')
     setFavoritesOnly(false)
+  }
+
+  if (isLoading) {
+    return (
+      <aside className="flex w-[300px] shrink-0 items-center justify-center border-r border-border bg-surface p-4">
+        <div className="text-xs text-text-muted">Loading captures...</div>
+      </aside>
+    )
+  }
+
+  if (isError) {
+    return (
+      <aside className="flex w-[300px] shrink-0 flex-col items-center justify-center gap-2 border-r border-border bg-surface p-4 text-center">
+        <div className="text-xs text-red-400">
+          Failed to load captures: {error instanceof Error ? error.message : 'Unknown error'}
+        </div>
+        <Button variant="outline" size="sm" onClick={() => refetch()}>
+          Retry
+        </Button>
+      </aside>
+    )
   }
 
   return (
@@ -294,7 +324,9 @@ export function CaptureList({ caseId, captures }: CaptureListProps) {
         ))}
         {displayedCaptures.length === 0 && (
           <div className="px-3 py-4 text-center text-xs text-text-faint">
-            No captures match the active filters
+            {filteredCaptureIds || activeFilterCount > 0
+              ? 'No captures match the active filters'
+              : 'No captures yet'}
           </div>
         )}
       </div>

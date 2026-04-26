@@ -21,6 +21,7 @@ import { NotesOverview } from '@renderer/components/notes/NotesOverview'
 import { TagsOverview } from '@renderer/components/tags/TagsOverview'
 import { DataExplorer } from '@renderer/components/dashboard/cases/DataExplorer'
 import { SettingsView } from '@renderer/components/settings/SettingsView'
+import { useSessionRestore } from '@renderer/hooks/useSessionRestore'
 import { useCommandPalette } from '@renderer/hooks/useCommandPalette'
 import { CommandPalette } from '@renderer/components/layout/CommandPalette'
 
@@ -43,10 +44,19 @@ const ReactQueryDevtools = import.meta.env.DEV
 // Root layout
 const rootRoute = createRootRoute({
   component: function RootLayout() {
+    const { restoring } = useSessionRestore()
     useCommandPalette()
     const matchRoute = useMatchRoute()
 
     const showSidebar = Boolean(matchRoute({ to: '/cases/$caseId', fuzzy: true }))
+
+    if (restoring) {
+      return (
+        <div className="flex h-screen items-center justify-center bg-canvas">
+          <div className="text-text-muted text-sm">Loading workspace...</div>
+        </div>
+      )
+    }
 
     return (
       <MotionProvider>

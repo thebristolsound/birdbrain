@@ -9,6 +9,8 @@ import { createHash } from 'crypto'
 import { canonicalStringify } from '@main/services/canonicalJson'
 import { statSync } from 'fs'
 import { appendFileSync } from 'fs'
+import { initDatabase, closeDatabase, createCase, insertCapture } from '@main/services/database'
+import { saveAnnotations } from '@main/services/annotations'
 
 describe('manifest init/getHead', () => {
   let tempDir: string
@@ -178,25 +180,78 @@ describe('manifest verifyManifestChain', () => {
 
   it('detects broken link between entries', () => {
     appendManifestEntry(tempDir, { ...base, captureId: 'c1', url: 'https://a' })
-    const badLine = JSON.stringify({
-      type: 'capture',
-      captureId: 'c2',
-      caseId: 'case-1',
-      url: 'https://b',
-      timestamp: '2026-04-05T12:01:00.000Z',
-      contentHash: 'b'.repeat(64),
-      sizeBytes: 2,
-      operatorId: 'op',
-      operatorName: '',
-      toolVersion: '0.1.0',
-      index: 1,
-      prevHash: 'wrong-hash',
-      schemaVersion: 1,
-      entryHash: 'anything'
-    }) + '\n'
+    const badLine =
+      JSON.stringify({
+        type: 'capture',
+        captureId: 'c2',
+        caseId: 'case-1',
+        url: 'https://b',
+        timestamp: '2026-04-05T12:01:00.000Z',
+        contentHash: 'b'.repeat(64),
+        sizeBytes: 2,
+        operatorId: 'op',
+        operatorName: '',
+        toolVersion: '0.1.0',
+        index: 1,
+        prevHash: 'wrong-hash',
+        schemaVersion: 1,
+        entryHash: 'anything'
+      }) + '\n'
     appendFileSync(join(tempDir, 'manifest.jsonl'), badLine)
     const result = verifyManifestChain(tempDir)
     expect(result.valid).toBe(false)
     expect(result.brokenAt).toBe(1)
+  })
+})
+
+describe('manifest x annotations forensic invariants', () => {
+  let tempDir: string
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-forensic-'))
+    initManifest(tempDir)
+    initDatabase(':memory:')
+  })
+
+  afterEach(() => {
+    closeDatabase()
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  it('saving annotations does not modify the manifest file or break the chain', () => {
+    const c = createCase({ name: 'Forensic' })
+    const cap = insertCapture({
+      caseId: c.id,
+      url: 'https://example.com',
+      title: 'X',
+      hash: 'h',
+      timestamp: '2026-04-25T12:00:00.000Z'
+    })
+    appendManifestEntry(tempDir, {
+      type: 'capture',
+      caseId: c.id,
+      captureId: cap.id,
+      url: 'https://example.com',
+      timestamp: '2026-04-25T12:00:00.000Z',
+      contentHash: 'a'.repeat(64),
+      sizeBytes: 1,
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0'
+    })
+
+    const manifestPath = join(tempDir, 'manifest.jsonl')
+    const before = readFileSync(manifestPath, 'utf-8')
+
+    saveAnnotations({
+      captureId: cap.id,
+      shapes: [{ kind: 'rect', id: 'r', x: 0, y: 0, w: 1, h: 1, stroke: '#000', strokeWidth: 1 }],
+      imageWidth: 100,
+      imageHeight: 100
+    })
+
+    const after = readFileSync(manifestPath, 'utf-8')
+    expect(after).toBe(before)
+    expect(verifyManifestChain(tempDir)).toEqual({ valid: true })
   })
 })

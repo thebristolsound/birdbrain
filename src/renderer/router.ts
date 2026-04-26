@@ -1,8 +1,5 @@
 import { createRouter, createHashHistory } from '@tanstack/react-router'
 import { routeTree } from './routes/__root'
-import { resetHashOnColdLaunch } from './lib/coldLaunchHash'
-
-resetHashOnColdLaunch()
 
 const hashHistory = createHashHistory()
 

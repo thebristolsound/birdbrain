@@ -18,13 +18,16 @@ import type {
   DbRowIdentifier,
   DbExportTableParams,
   OrphanReport,
-  AnalyzeCaptureParams
+  AnalyzeCaptureParams,
+  SaveAnnotationsParams,
+  UpsertAnnotationPinParams
 } from '@shared/ipc'
 import * as dbAdmin from '@main/services/dbAdmin'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
 import * as db from '@main/services/database'
+import * as annotations from '@main/services/annotations'
 import * as storage from '@main/services/storage'
 import * as settings from '@main/services/settings'
 import * as openrouter from '@main/services/openrouter'
@@ -426,6 +429,41 @@ export function registerIpcHandlers(): void {
       // FTS5 can throw on malformed queries (e.g. unmatched quotes, reserved keywords).
       // Return empty results so the UI gracefully handles bad input.
       return []
+    }
+  })
+
+  // Annotations
+  ipcMain.handle(IPC_CHANNELS.ANNOTATIONS_GET, (_, captureId: string) =>
+    annotations.getAnnotations(captureId)
+  )
+  ipcMain.handle(IPC_CHANNELS.ANNOTATIONS_SAVE, (_, params: SaveAnnotationsParams) => {
+    try {
+      return ipcResult(annotations.saveAnnotations(params))
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+  ipcMain.handle(IPC_CHANNELS.ANNOTATIONS_DELETE, (_, captureId: string) => {
+    try {
+      annotations.deleteAnnotations(captureId)
+      return ipcResult(undefined)
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+  ipcMain.handle(IPC_CHANNELS.ANNOTATIONS_UPSERT_PIN, (_, params: UpsertAnnotationPinParams) => {
+    try {
+      return ipcResult(annotations.upsertPin(params))
+    } catch (err) {
+      return ipcError(err)
+    }
+  })
+  ipcMain.handle(IPC_CHANNELS.ANNOTATIONS_DELETE_PIN, (_, pinId: string) => {
+    try {
+      annotations.deletePin(pinId)
+      return ipcResult(undefined)
+    } catch (err) {
+      return ipcError(err)
     }
   })
 

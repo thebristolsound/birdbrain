@@ -19,7 +19,9 @@ import type {
   DbStats,
   DbTableRowsResult,
   OrphanReport,
-  AnalyzeCaptureParams
+  AnalyzeCaptureParams,
+  SaveAnnotationsParams,
+  UpsertAnnotationPinParams
 } from '@shared/ipc'
 import type {
   Case,
@@ -36,7 +38,10 @@ import type {
   TokenUsage,
   ExtractedDataCategory,
   ExtractedDataSubcategory,
-  ExtractedDataItem
+  ExtractedDataItem,
+  AnnotationsBundle,
+  CaptureAnnotations,
+  AnnotationPin
 } from '@shared/types'
 
 // Unwrap IpcResult from handlers that return structured results
@@ -155,6 +160,18 @@ const birdbrain = {
       ipcRenderer.invoke(IPC_CHANNELS.NOTES_COUNT, caseId),
     search: (caseId: string, query: string): Promise<Note[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.NOTES_SEARCH, caseId, query)
+  },
+  annotations: {
+    get: (captureId: string): Promise<AnnotationsBundle> =>
+      ipcRenderer.invoke(IPC_CHANNELS.ANNOTATIONS_GET, captureId),
+    save: (params: SaveAnnotationsParams): Promise<CaptureAnnotations> =>
+      unwrapIpc<CaptureAnnotations>(ipcRenderer.invoke(IPC_CHANNELS.ANNOTATIONS_SAVE, params)),
+    delete: (captureId: string): Promise<void> =>
+      unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.ANNOTATIONS_DELETE, captureId)),
+    upsertPin: (params: UpsertAnnotationPinParams): Promise<AnnotationPin> =>
+      unwrapIpc<AnnotationPin>(ipcRenderer.invoke(IPC_CHANNELS.ANNOTATIONS_UPSERT_PIN, params)),
+    deletePin: (pinId: string): Promise<void> =>
+      unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.ANNOTATIONS_DELETE_PIN, pinId))
   },
 
   extension: {

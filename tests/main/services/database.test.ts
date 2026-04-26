@@ -798,6 +798,85 @@ describe('database', () => {
     })
   })
 
+  describe('annotations schema (migration 17)', () => {
+    it('LATEST_SCHEMA_VERSION is 17', () => {
+      expect(LATEST_SCHEMA_VERSION).toBe(17)
+    })
+
+    it('creates annotations table with expected columns', () => {
+      const cols = getDb().prepare("PRAGMA table_info('annotations')").all() as Array<{
+        name: string
+      }>
+      const names = cols.map((c) => c.name)
+      expect(names).toEqual(
+        expect.arrayContaining([
+          'capture_id',
+          'schema_version',
+          'shapes_json',
+          'image_width',
+          'image_height',
+          'updated_at',
+          'updated_by'
+        ])
+      )
+    })
+
+    it('creates annotation_pins table with expected columns', () => {
+      const cols = getDb().prepare("PRAGMA table_info('annotation_pins')").all() as Array<{
+        name: string
+      }>
+      const names = cols.map((c) => c.name)
+      expect(names).toEqual(
+        expect.arrayContaining(['id', 'capture_id', 'number', 'body', 'created_at', 'updated_at'])
+      )
+    })
+
+    it('creates expected indexes on annotation_pins', () => {
+      const idx = getDb()
+        .prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='annotation_pins'")
+        .all() as Array<{ name: string }>
+      const names = idx.map((i) => i.name)
+      expect(names).toEqual(
+        expect.arrayContaining([
+          'idx_annotation_pins_capture',
+          'idx_annotation_pins_capture_number'
+        ])
+      )
+    })
+
+    it('cascades delete from captures to annotations and pins', () => {
+      const c = createCase({ name: 'C' })
+      const cap = insertCapture({
+        caseId: c.id,
+        url: 'https://example.com',
+        title: 'Example',
+        hash: 'abc',
+        timestamp: new Date().toISOString()
+      })
+      getDb()
+        .prepare(
+          "INSERT INTO annotations (capture_id, schema_version, shapes_json, image_width, image_height, updated_at) VALUES (?, 1, '[]', 100, 100, ?)"
+        )
+        .run(cap.id, new Date().toISOString())
+      getDb()
+        .prepare(
+          'INSERT INTO annotation_pins (id, capture_id, number, body, created_at, updated_at) VALUES (?, ?, 1, ?, ?, ?)'
+        )
+        .run('pin-1', cap.id, 'pin body', new Date().toISOString(), new Date().toISOString())
+
+      deleteCapture(cap.id)
+
+      const ann = getDb()
+        .prepare('SELECT COUNT(*) as n FROM annotations WHERE capture_id = ?')
+        .get(cap.id) as { n: number }
+      const pins = getDb()
+        .prepare('SELECT COUNT(*) as n FROM annotation_pins WHERE capture_id = ?')
+        .get(cap.id) as { n: number }
+      expect(ann.n).toBe(0)
+      expect(pins.n).toBe(0)
+    })
+  })
+
   describe('notes CRUD', () => {
     it('creates a note with minimal params', () => {
       const c = createCase({ name: 'C' })

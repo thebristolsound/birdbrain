@@ -73,6 +73,12 @@ export function useZoomPan(opts: Options) {
     [imageWidth, imageHeight, containerWidth, containerHeight, scale]
   )
 
+  const reset = useCallback(() => {
+    setUserScale(1)
+    setPanX(initialPan.x)
+    setPanY(initialPan.y)
+  }, [initialPan.x, initialPan.y])
+
   return {
     fitScale,
     userScale,
@@ -83,6 +89,7 @@ export function useZoomPan(opts: Options) {
     setPanX,
     setPanY,
     setPan,
-    zoomAt
+    zoomAt,
+    reset
   }
 }

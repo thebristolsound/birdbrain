@@ -82,3 +82,45 @@ describe('useZoomPan — setPan', () => {
     expect(result.current.panX + renderedWidth).toBeGreaterThanOrEqual(64)
   })
 })
+
+describe('useZoomPan — reset and resize', () => {
+  it('reset returns to userScale 1 and centers pan', () => {
+    const { result } = renderHook(() =>
+      useZoomPan({ imageWidth: 1000, imageHeight: 8000, containerWidth: 500, containerHeight: 800 })
+    )
+    act(() => result.current.zoomAt(3, 250, 400))
+    act(() => result.current.setPan(50, -200))
+    act(() => result.current.reset())
+    expect(result.current.userScale).toBe(1)
+    expect(result.current.panX).toBe(0)
+    expect(result.current.panY).toBe(0)
+  })
+
+  it('preserves userScale when container width changes', () => {
+    const { result, rerender } = renderHook(
+      (props: {
+        imageWidth: number
+        imageHeight: number
+        containerWidth: number
+        containerHeight: number
+      }) => useZoomPan(props),
+      {
+        initialProps: {
+          imageWidth: 1000,
+          imageHeight: 8000,
+          containerWidth: 500,
+          containerHeight: 800
+        }
+      }
+    )
+    act(() => result.current.zoomAt(2, 250, 400))
+    expect(result.current.userScale).toBe(2)
+    expect(result.current.scale).toBeCloseTo(1, 5) // 2 * 0.5
+
+    rerender({ imageWidth: 1000, imageHeight: 8000, containerWidth: 1000, containerHeight: 800 })
+    // fitScale becomes 1; userScale is preserved at 2; absolute scale becomes 2.
+    expect(result.current.fitScale).toBe(1)
+    expect(result.current.userScale).toBe(2)
+    expect(result.current.scale).toBe(2)
+  })
+})

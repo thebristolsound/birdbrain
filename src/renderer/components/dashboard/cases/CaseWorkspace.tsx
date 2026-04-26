@@ -7,6 +7,7 @@ import { useAppStore } from '@renderer/stores/appStore'
 import { captureServerFetch } from '@renderer/lib/captureServerFetch'
 import type { BirdbrainSettings } from '@shared/types'
 import { CaseHeader } from '@renderer/components/layout/CaseHeader'
+import { Skeleton } from '@renderer/components/ui'
 
 export function CaseWorkspace() {
   const { caseId } = useParams({ from: '/cases/$caseId' })
@@ -60,7 +61,11 @@ export function CaseWorkspace() {
 
   if (isLoading) {
     return (
-      <div className="flex h-full items-center justify-center text-text-muted">Loading case...</div>
+      <div className="flex h-full flex-col gap-4 p-6">
+        <Skeleton className="h-10 w-64" />
+        <Skeleton className="h-32 w-full rounded-2xl" />
+        <Skeleton className="h-64 w-full rounded-2xl" />
+      </div>
     )
   }
 

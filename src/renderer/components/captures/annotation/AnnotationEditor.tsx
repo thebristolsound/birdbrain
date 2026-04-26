@@ -19,6 +19,8 @@ interface Props {
   containerHeight: number
 }
 
+const EMPTY_ANNOTATIONS_VERSION_MARKER = '__empty__'
+
 export function AnnotationEditor(props: Props) {
   const { captureId, imageUrl, imageWidth, imageHeight, containerWidth, containerHeight } = props
   const [editing, setEditing] = useState(false)
@@ -29,15 +31,15 @@ export function AnnotationEditor(props: Props) {
   const zoomPan = useZoomPan({ imageWidth, imageHeight, containerWidth, containerHeight })
   const [popoverPinShapeId, setPopoverPinShapeId] = useState<string | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const hydratedVersionRef = useRef<string | null>(null)
-  const annotationsVersion = bundle?.annotations?.updatedAt ?? '__empty__'
+  const syncedAnnotationsVersionRef = useRef<string | null>(null)
+  const annotationsVersion = bundle?.annotations?.updatedAt ?? EMPTY_ANNOTATIONS_VERSION_MARKER
 
   useEffect(() => {
     if (!isSuccess || dirty) return
-    if (hydratedVersionRef.current === annotationsVersion) return
+    if (syncedAnnotationsVersionRef.current === annotationsVersion) return
     setShapes(bundle?.annotations?.shapes ?? [])
     select(null)
-    hydratedVersionRef.current = annotationsVersion
+    syncedAnnotationsVersionRef.current = annotationsVersion
   }, [isSuccess, dirty, setShapes, select, bundle?.annotations?.shapes, annotationsVersion])
 
   const closePopover = () => setPopoverPinShapeId(null)

@@ -35,6 +35,7 @@ export function NotesOverview() {
   } = useQuery(notesSearchQueryOptions(caseId, debouncedQuery))
 
   const isSearching = debouncedQuery.length > 0 && (isSearchLoading || isSearchFetching)
+  const showSearchError = debouncedQuery.length > 0 && isSearchError
   const notes = debouncedQuery.length > 0 ? searchResults : allNotes
 
   if (isLoading) {
@@ -75,7 +76,7 @@ export function NotesOverview() {
         onCreated={() => setShowCreateForm(false)}
       />
 
-      {debouncedQuery.length > 0 && isSearchError ? (
+      {showSearchError ? (
         <div className="space-y-2 py-8 text-center">
           <p className="text-sm text-red-400">
             Failed to search notes:{' '}
@@ -87,21 +88,21 @@ export function NotesOverview() {
         </div>
       ) : null}
 
-      {!isSearchError && isSearching ? (
+      {showSearchError ? null : isSearching ? (
         <p className="py-8 text-center text-sm text-text-muted">Searching notes...</p>
-      ) : !isSearchError && notes.length === 0 ? (
+      ) : notes.length === 0 ? (
         <p className="py-8 text-center text-sm text-text-muted">
           {debouncedQuery.length > 0
             ? `No notes match "${debouncedQuery}"`
             : 'No notes yet. Create one to record observations.'}
         </p>
-      ) : !isSearchError ? (
+      ) : (
         <div data-testid="notes-list" className="space-y-3">
           {notes.map((note) => (
             <NoteCard key={note.id} note={note} caseId={caseId} />
           ))}
         </div>
-      ) : null}
+      )}
     </div>
   )
 }

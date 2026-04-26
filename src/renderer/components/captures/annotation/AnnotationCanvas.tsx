@@ -1,6 +1,6 @@
 import { Stage, Layer, Image as KonvaImage, Text } from 'react-konva'
 import useImage from 'use-image'
-import { useCallback } from 'react'
+import { useCallback, useRef } from 'react'
 import type Konva from 'konva'
 import type { AnnotationShape } from '@shared/types'
 import type { AnnotationTool } from './useAnnotationEditor'
@@ -34,6 +34,7 @@ interface Props {
   panY: number
   onZoomAt?: (deltaUserScale: number, cursorX: number, cursorY: number) => void
   onPan?: (dx: number, dy: number) => void
+  onResetView?: () => void
 }
 
 function uid(): string {
@@ -65,7 +66,8 @@ export function AnnotationCanvas(props: Props) {
     panX,
     panY,
     onZoomAt,
-    onPan
+    onPan,
+    onResetView
   } = props
   const [image, imageStatus] = useImage(imageUrl)
 
@@ -88,10 +90,19 @@ export function AnnotationCanvas(props: Props) {
     [onZoomAt, onPan]
   )
 
+  const panStateRef = useRef<{ x: number; y: number } | null>(null)
+
   const handleMouseDown = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
       const stage = e.target.getStage()
       if (!stage) return
+      const isMiddle = e.evt.button === 1
+      const isHand = tool === 'hand'
+      if (isMiddle || (isHand && e.evt.button === 0)) {
+        e.evt.preventDefault()
+        panStateRef.current = { x: e.evt.clientX, y: e.evt.clientY }
+        return
+      }
       if (e.target !== stage) return
       onSelect?.(null)
       if (!editable) return
@@ -136,6 +147,13 @@ export function AnnotationCanvas(props: Props) {
 
   const handleMouseMove = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
+      if (panStateRef.current) {
+        const dx = e.evt.clientX - panStateRef.current.x
+        const dy = e.evt.clientY - panStateRef.current.y
+        panStateRef.current = { x: e.evt.clientX, y: e.evt.clientY }
+        onPan?.(dx, dy)
+        return
+      }
       if (!editable || !draft) return
       const stage = e.target.getStage()
       if (!stage) return
@@ -149,13 +167,27 @@ export function AnnotationCanvas(props: Props) {
         onDraftExtend?.({ w: x - draft.x, h: y - draft.y })
       }
     },
-    [editable, draft, onDraftExtend]
+    [editable, draft, onDraftExtend, onPan]
   )
 
   const handleMouseUp = useCallback(() => {
+    if (panStateRef.current) {
+      panStateRef.current = null
+      return
+    }
     if (!editable || !draft) return
     onDraftCommit?.()
   }, [editable, draft, onDraftCommit])
+
+  const handleDblClick = useCallback(
+    (e: Konva.KonvaEventObject<MouseEvent>) => {
+      const stage = e.target.getStage()
+      if (!stage) return
+      if (e.target !== stage) return
+      onResetView?.()
+    },
+    [onResetView]
+  )
 
   const allShapes = draft ? [...shapes, draft] : shapes
   const redacts = allShapes.filter((s) => s.kind === 'redact')
@@ -176,6 +208,7 @@ export function AnnotationCanvas(props: Props) {
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onWheel={handleWheel}
+      onDblClick={handleDblClick}
     >
       <Layer listening={false}>
         {image && <KonvaImage image={image} x={0} y={0} width={imageWidth} height={imageHeight} />}

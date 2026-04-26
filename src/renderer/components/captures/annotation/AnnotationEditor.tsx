@@ -162,6 +162,7 @@ export function AnnotationEditor(props: Props) {
           panY={zoomPan.panY}
           onZoomAt={zoomPan.zoomAt}
           onPan={zoomPan.setPan}
+          onResetView={zoomPan.reset}
         />
         <PinCommentPopover
           open={popoverPinShapeId != null}

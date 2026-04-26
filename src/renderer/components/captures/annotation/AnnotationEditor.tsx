@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Pencil, Eye } from 'lucide-react'
+import { Pencil, Eye, Hand, Minus, Plus } from 'lucide-react'
 import type { AnnotationShape } from '@shared/types'
 import { annotationsQueryOptions, useAnnotationsMutations } from '@renderer/lib/queries'
 import { AnnotationCanvas } from './AnnotationCanvas'
@@ -99,7 +99,58 @@ export function AnnotationEditor(props: Props) {
 
   return (
     <div className="relative flex h-full flex-col">
-      <div className="flex items-center justify-end border-b border-border bg-surface px-2 py-1">
+      <div className="flex items-center justify-between border-b border-border bg-surface px-2 py-1">
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            aria-label="Hand tool"
+            onClick={() => editor.setTool(editor.tool === 'hand' ? 'select' : 'hand')}
+            className={[
+              'rounded px-2 py-1 hover:bg-canvas',
+              editor.tool === 'hand' ? 'bg-canvas text-accent' : 'text-text-primary'
+            ].join(' ')}
+          >
+            <Hand size={14} />
+          </button>
+          <button
+            type="button"
+            aria-label="Zoom out"
+            onClick={() => zoomPan.zoomAt(0.8, containerWidth / 2, containerHeight / 2)}
+            className="rounded px-2 py-1 text-text-primary hover:bg-canvas"
+          >
+            <Minus size={14} />
+          </button>
+          <span className="min-w-[3.5rem] text-center text-xs text-text-muted tabular-nums">
+            {Math.round(zoomPan.userScale * 100)}%
+          </span>
+          <button
+            type="button"
+            aria-label="Zoom in"
+            onClick={() => zoomPan.zoomAt(1.25, containerWidth / 2, containerHeight / 2)}
+            className="rounded px-2 py-1 text-text-primary hover:bg-canvas"
+          >
+            <Plus size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={() => zoomPan.reset()}
+            className="rounded px-2 py-1 text-xs text-text-primary hover:bg-canvas"
+          >
+            Fit
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              // 1:1 absolute scale: userScale = 1 / fitScale.
+              const target = 1 / zoomPan.fitScale
+              // zoomAt's first arg is a delta multiplier on the current userScale.
+              zoomPan.zoomAt(target / zoomPan.userScale, containerWidth / 2, containerHeight / 2)
+            }}
+            className="rounded px-2 py-1 text-xs text-text-primary hover:bg-canvas"
+          >
+            1:1
+          </button>
+        </div>
         <button
           type="button"
           onClick={() => {

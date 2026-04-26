@@ -51,8 +51,6 @@ const DEFAULT_SETTINGS: BirdbrainSettings = {
   theme: 'light',
   operatorName: '',
   autoCaptureMode: 'notify',
-  lastActiveCaseId: null,
-  lastActiveSection: 'captures',
   hasCompletedOnboarding: false,
   analysisSystemPrompt: DEFAULT_ANALYSIS_SYSTEM_PROMPT
 }

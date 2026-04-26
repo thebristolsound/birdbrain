@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Download, ListPlus } from 'lucide-react'
-import { Button } from '@renderer/components/ui'
+import { Crosshair, Download, ListPlus } from 'lucide-react'
+import { Button, EmptyState, QueryState } from '@renderer/components/ui'
 import { useAppStore } from '@renderer/stores/appStore'
 import {
   selectorsQueryOptions,
@@ -20,7 +20,7 @@ export function SelectorsOverview() {
   const { caseId } = useParams({ from: '/cases/$caseId/selectors' })
   const queryClient = useQueryClient()
   const filteredCaptureIds = useAppStore((s) => s.filteredCaptureIds)
-  const { data: selectors = [], isLoading } = useQuery(selectorsQueryOptions(caseId))
+  const selectorsQuery = useQuery(selectorsQueryOptions(caseId))
   const { data: matchCounts = {} } = useQuery(selectorMatchCountsQueryOptions(caseId))
   const { data: captures = [] } = useQuery(capturesQueryOptions(caseId))
   const [showCreateForm, setShowCreateForm] = useState(false)
@@ -48,9 +48,7 @@ export function SelectorsOverview() {
     }
   }
 
-  if (isLoading) {
-    return <div className="text-text-muted">Loading selectors...</div>
-  }
+  const selectors = selectorsQuery.data ?? []
 
   return (
     <div className="mx-auto max-w-5xl space-y-5 px-8 py-6 pb-16">
@@ -89,18 +87,26 @@ export function SelectorsOverview() {
         caseId={caseId}
       />
 
-      {selectors.length === 0 ? (
-        <p className="text-sm text-text-muted">
-          No selectors found. Create one to start matching captures.
-        </p>
-      ) : (
-        <SelectorTable
-          selectors={selectors}
-          matchCounts={matchCounts}
-          onRefresh={handleRefresh}
-          caseId={caseId}
-        />
-      )}
+      <QueryState
+        query={selectorsQuery}
+        isEmpty={(list) => list.length === 0}
+        empty={
+          <EmptyState
+            icon={<Crosshair width={22} height={22} />}
+            title="No selectors yet"
+            description="Create a selector to start matching captures."
+          />
+        }
+      >
+        {(list) => (
+          <SelectorTable
+            selectors={list}
+            matchCounts={matchCounts}
+            onRefresh={handleRefresh}
+            caseId={caseId}
+          />
+        )}
+      </QueryState>
 
       <SelectorFilterFooter
         selectors={selectors}

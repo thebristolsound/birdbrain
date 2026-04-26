@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 export const MIN_USER_SCALE = 0.5
 export const MAX_ABS_SCALE = 8
@@ -28,11 +28,30 @@ export function useZoomPan(opts: Options) {
     }
   }, [imageWidth, imageHeight, containerWidth, containerHeight, fitScale])
 
-  const [userScale, setUserScaleState] = useState(1)
+  const [userScale, setUserScale] = useState(1)
   const [panX, setPanX] = useState(initialPan.x)
   const [panY, setPanY] = useState(initialPan.y)
 
   const scale = userScale * fitScale
+
+  const zoomAt = useCallback(
+    (deltaUserScale: number, cursorX: number, cursorY: number) => {
+      const maxUserScale = MAX_ABS_SCALE / fitScale
+      const nextUserScale = Math.max(
+        MIN_USER_SCALE,
+        Math.min(maxUserScale, userScale * deltaUserScale)
+      )
+      const nextScale = nextUserScale * fitScale
+      // Solve for pan so the image-space pixel under the cursor is unchanged.
+      // image_x = (cursor_x - panX) / scale must equal (cursor_x - nextPanX) / nextScale
+      const imagePxX = (cursorX - panX) / scale
+      const imagePxY = (cursorY - panY) / scale
+      setUserScale(nextUserScale)
+      setPanX(cursorX - imagePxX * nextScale)
+      setPanY(cursorY - imagePxY * nextScale)
+    },
+    [fitScale, userScale, panX, panY, scale]
+  )
 
   return {
     fitScale,
@@ -40,8 +59,9 @@ export function useZoomPan(opts: Options) {
     scale,
     panX,
     panY,
-    setUserScaleState,
+    setUserScale,
     setPanX,
-    setPanY
+    setPanY,
+    zoomAt
   }
 }

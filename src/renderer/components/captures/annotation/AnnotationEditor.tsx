@@ -30,11 +30,12 @@ export function AnnotationEditor(props: Props) {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useAnnotationKeyboardShortcuts({
-    enabled: editing,
+    enabled: true,
     setTool: editor.setTool,
+    getTool: () => editor.tool,
     deselect: () => editor.select(null),
     removeSelected: () => {
-      if (!editor.selectedId) return
+      if (!editing || !editor.selectedId) return
       const shape = editor.shapes.find((s) => s.id === editor.selectedId)
       editor.removeShape(editor.selectedId)
       if (shape && shape.kind === 'pin') {
@@ -42,7 +43,16 @@ export function AnnotationEditor(props: Props) {
       }
     },
     undo: editor.undo,
-    redo: editor.redo
+    redo: editor.redo,
+    zoomIn: () => zoomPan.zoomAt(1.25, containerWidth / 2, containerHeight / 2),
+    zoomOut: () => zoomPan.zoomAt(0.8, containerWidth / 2, containerHeight / 2),
+    resetView: () => zoomPan.reset(),
+    oneToOne: () =>
+      zoomPan.zoomAt(
+        1 / zoomPan.fitScale / zoomPan.userScale,
+        containerWidth / 2,
+        containerHeight / 2
+      )
   })
 
   useEffect(() => {

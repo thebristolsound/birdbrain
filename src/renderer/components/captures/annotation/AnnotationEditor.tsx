@@ -29,6 +29,20 @@ export function AnnotationEditor(props: Props) {
   const [popoverPinShapeId, setPopoverPinShapeId] = useState<string | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  const closePopover = () => setPopoverPinShapeId(null)
+  const handleZoomAt = (delta: number, cx: number, cy: number) => {
+    closePopover()
+    zoomPan.zoomAt(delta, cx, cy)
+  }
+  const handlePan = (dx: number, dy: number) => {
+    closePopover()
+    zoomPan.setPan(dx, dy)
+  }
+  const handleResetView = () => {
+    closePopover()
+    zoomPan.reset()
+  }
+
   useAnnotationKeyboardShortcuts({
     enabled: true,
     setTool: editor.setTool,
@@ -83,20 +97,6 @@ export function AnnotationEditor(props: Props) {
       }
     }
   }, [])
-
-  const closePopover = () => setPopoverPinShapeId(null)
-  const handleZoomAt = (delta: number, cx: number, cy: number) => {
-    closePopover()
-    zoomPan.zoomAt(delta, cx, cy)
-  }
-  const handlePan = (dx: number, dy: number) => {
-    closePopover()
-    zoomPan.setPan(dx, dy)
-  }
-  const handleResetView = () => {
-    closePopover()
-    zoomPan.reset()
-  }
 
   const onPinDrop = async (x: number, y: number) => {
     const tempPinId = crypto.randomUUID()

@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import type { AnnotationShape } from '@shared/types'
 
-export type AnnotationTool = 'select' | 'rect' | 'arrow' | 'highlight' | 'redact' | 'pin'
+export type AnnotationTool = 'select' | 'rect' | 'arrow' | 'highlight' | 'redact' | 'pin' | 'hand'
 
 const COLOR_KEY = 'birdbrain.annotation.color'
 const STROKE_KEY = 'birdbrain.annotation.strokeWidth'

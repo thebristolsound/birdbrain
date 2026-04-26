@@ -161,4 +161,10 @@ describe('useAnnotationEditor', () => {
     expect(result.current.canUndo).toBe(false)
     expect(result.current.canRedo).toBe(true)
   })
+
+  it('accepts the hand tool', () => {
+    const { result } = renderHook(() => useAnnotationEditor({ initialShapes: [] }))
+    act(() => result.current.setTool('hand'))
+    expect(result.current.tool).toBe('hand')
+  })
 })

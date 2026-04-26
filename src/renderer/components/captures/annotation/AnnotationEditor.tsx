@@ -44,11 +44,11 @@ export function AnnotationEditor(props: Props) {
     },
     undo: editor.undo,
     redo: editor.redo,
-    zoomIn: () => zoomPan.zoomAt(1.25, containerWidth / 2, containerHeight / 2),
-    zoomOut: () => zoomPan.zoomAt(0.8, containerWidth / 2, containerHeight / 2),
-    resetView: () => zoomPan.reset(),
+    zoomIn: () => handleZoomAt(1.25, containerWidth / 2, containerHeight / 2),
+    zoomOut: () => handleZoomAt(0.8, containerWidth / 2, containerHeight / 2),
+    resetView: () => handleResetView(),
     oneToOne: () =>
-      zoomPan.zoomAt(
+      handleZoomAt(
         1 / zoomPan.fitScale / zoomPan.userScale,
         containerWidth / 2,
         containerHeight / 2
@@ -83,6 +83,20 @@ export function AnnotationEditor(props: Props) {
       }
     }
   }, [])
+
+  const closePopover = () => setPopoverPinShapeId(null)
+  const handleZoomAt = (delta: number, cx: number, cy: number) => {
+    closePopover()
+    zoomPan.zoomAt(delta, cx, cy)
+  }
+  const handlePan = (dx: number, dy: number) => {
+    closePopover()
+    zoomPan.setPan(dx, dy)
+  }
+  const handleResetView = () => {
+    closePopover()
+    zoomPan.reset()
+  }
 
   const onPinDrop = async (x: number, y: number) => {
     const tempPinId = crypto.randomUUID()
@@ -125,7 +139,7 @@ export function AnnotationEditor(props: Props) {
           <button
             type="button"
             aria-label="Zoom out"
-            onClick={() => zoomPan.zoomAt(0.8, containerWidth / 2, containerHeight / 2)}
+            onClick={() => handleZoomAt(0.8, containerWidth / 2, containerHeight / 2)}
             className="rounded px-2 py-1 text-text-primary hover:bg-canvas"
           >
             <Minus size={14} />
@@ -136,14 +150,14 @@ export function AnnotationEditor(props: Props) {
           <button
             type="button"
             aria-label="Zoom in"
-            onClick={() => zoomPan.zoomAt(1.25, containerWidth / 2, containerHeight / 2)}
+            onClick={() => handleZoomAt(1.25, containerWidth / 2, containerHeight / 2)}
             className="rounded px-2 py-1 text-text-primary hover:bg-canvas"
           >
             <Plus size={14} />
           </button>
           <button
             type="button"
-            onClick={() => zoomPan.reset()}
+            onClick={() => handleResetView()}
             className="rounded px-2 py-1 text-xs text-text-primary hover:bg-canvas"
           >
             Fit
@@ -154,7 +168,7 @@ export function AnnotationEditor(props: Props) {
               // 1:1 absolute scale: userScale = 1 / fitScale.
               const target = 1 / zoomPan.fitScale
               // zoomAt's first arg is a delta multiplier on the current userScale.
-              zoomPan.zoomAt(target / zoomPan.userScale, containerWidth / 2, containerHeight / 2)
+              handleZoomAt(target / zoomPan.userScale, containerWidth / 2, containerHeight / 2)
             }}
             className="rounded px-2 py-1 text-xs text-text-primary hover:bg-canvas"
           >
@@ -221,9 +235,9 @@ export function AnnotationEditor(props: Props) {
           scale={zoomPan.scale}
           panX={zoomPan.panX}
           panY={zoomPan.panY}
-          onZoomAt={zoomPan.zoomAt}
-          onPan={zoomPan.setPan}
-          onResetView={zoomPan.reset}
+          onZoomAt={handleZoomAt}
+          onPan={handlePan}
+          onResetView={handleResetView}
         />
         <PinCommentPopover
           open={popoverPinShapeId != null}

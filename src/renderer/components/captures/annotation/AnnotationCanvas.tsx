@@ -32,6 +32,8 @@ interface Props {
   scale: number
   panX: number
   panY: number
+  onZoomAt?: (deltaUserScale: number, cursorX: number, cursorY: number) => void
+  onPan?: (dx: number, dy: number) => void
 }
 
 function uid(): string {
@@ -61,9 +63,30 @@ export function AnnotationCanvas(props: Props) {
     containerHeight,
     scale,
     panX,
-    panY
+    panY,
+    onZoomAt,
+    onPan
   } = props
   const [image, imageStatus] = useImage(imageUrl)
+
+  const handleWheel = useCallback(
+    (e: Konva.KonvaEventObject<WheelEvent>) => {
+      e.evt.preventDefault()
+      const stage = e.target.getStage()
+      if (!stage) return
+      const pos = stage.getPointerPosition()
+      if (!pos) return
+      if (e.evt.ctrlKey || e.evt.metaKey) {
+        const delta = Math.pow(1.1, -e.evt.deltaY / 100)
+        onZoomAt?.(delta, pos.x, pos.y)
+      } else if (e.evt.shiftKey) {
+        onPan?.(-e.evt.deltaY, 0)
+      } else {
+        onPan?.(-e.evt.deltaX, -e.evt.deltaY)
+      }
+    },
+    [onZoomAt, onPan]
+  )
 
   const handleMouseDown = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
@@ -152,6 +175,7 @@ export function AnnotationCanvas(props: Props) {
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
+      onWheel={handleWheel}
     >
       <Layer listening={false}>
         {image && <KonvaImage image={image} x={0} y={0} width={imageWidth} height={imageHeight} />}

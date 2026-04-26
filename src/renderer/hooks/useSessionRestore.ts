@@ -50,12 +50,18 @@ export function resolveStartRoute(input: ResolveInput): RouteResult {
 export function useSessionRestore() {
   const [restoring, setRestoring] = useState(true)
   const navigate = useNavigate()
-  const { data: cases, isLoading } = useQuery(casesQueryOptions)
+  const { data: cases, isLoading, isError } = useQuery(casesQueryOptions)
   const hasRestoredRef = useRef(false)
 
   useEffect(() => {
     if (hasRestoredRef.current) return
-    if (isLoading || cases === undefined) return
+    if (isLoading) return
+    if (isError) {
+      hasRestoredRef.current = true
+      setRestoring(false)
+      return
+    }
+    if (cases === undefined) return
 
     hasRestoredRef.current = true
     let cancelled = false
@@ -82,7 +88,7 @@ export function useSessionRestore() {
     return () => {
       cancelled = true
     }
-  }, [isLoading, cases, navigate])
+  }, [isLoading, isError, cases, navigate])
 
   return { restoring }
 }

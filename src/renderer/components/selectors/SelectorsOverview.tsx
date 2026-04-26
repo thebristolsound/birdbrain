@@ -20,7 +20,13 @@ export function SelectorsOverview() {
   const { caseId } = useParams({ from: '/cases/$caseId/selectors' })
   const queryClient = useQueryClient()
   const filteredCaptureIds = useAppStore((s) => s.filteredCaptureIds)
-  const { data: selectors = [], isLoading } = useQuery(selectorsQueryOptions(caseId))
+  const {
+    data: selectors = [],
+    isLoading,
+    isError,
+    error,
+    refetch
+  } = useQuery(selectorsQueryOptions(caseId))
   const { data: matchCounts = {} } = useQuery(selectorMatchCountsQueryOptions(caseId))
   const { data: captures = [] } = useQuery(capturesQueryOptions(caseId))
   const [showCreateForm, setShowCreateForm] = useState(false)
@@ -50,6 +56,19 @@ export function SelectorsOverview() {
 
   if (isLoading) {
     return <div className="text-text-muted">Loading selectors...</div>
+  }
+
+  if (isError) {
+    return (
+      <div className="space-y-2 px-8 py-6">
+        <p className="text-sm text-red-400">
+          Failed to load selectors: {error instanceof Error ? error.message : 'Unknown error'}
+        </p>
+        <Button variant="outline" size="sm" onClick={() => refetch()}>
+          Retry
+        </Button>
+      </div>
+    )
   }
 
   return (

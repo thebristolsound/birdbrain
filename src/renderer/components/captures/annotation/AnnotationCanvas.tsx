@@ -164,7 +164,14 @@ export function AnnotationCanvas(props: Props) {
       if (draft.kind === 'arrow') {
         onDraftExtend?.({ x2: x, y2: y })
       } else if (draft.kind === 'rect' || draft.kind === 'highlight' || draft.kind === 'redact') {
-        onDraftExtend?.({ w: x - draft.x, h: y - draft.y })
+        const nextX = Math.min(draft.x, x)
+        const nextY = Math.min(draft.y, y)
+        onDraftExtend?.({
+          x: nextX,
+          y: nextY,
+          w: Math.abs(x - draft.x),
+          h: Math.abs(y - draft.y)
+        })
       }
     },
     [editable, draft, onDraftExtend, onPan]

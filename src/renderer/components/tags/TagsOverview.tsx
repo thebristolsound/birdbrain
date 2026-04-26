@@ -2,15 +2,34 @@ import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { tagsQueryOptions, tagUsageCountsForCaseQueryOptions } from '@renderer/lib/queries'
 import { TagManager } from './TagManager'
-import { Card } from '@renderer/components/ui'
+import { Button, Card } from '@renderer/components/ui'
 
 export function TagsOverview() {
   const { caseId } = useParams({ from: '/cases/$caseId/tags' })
-  const { data: tags = [], isLoading } = useQuery(tagsQueryOptions)
+  const {
+    data: tags = [],
+    isLoading,
+    isError,
+    error,
+    refetch
+  } = useQuery(tagsQueryOptions)
   const { data: usageCounts = {} } = useQuery(tagUsageCountsForCaseQueryOptions(caseId))
 
   if (isLoading) {
     return <div className="text-text-muted">Loading tags...</div>
+  }
+
+  if (isError) {
+    return (
+      <div className="space-y-2 px-8 py-6">
+        <p className="text-sm text-red-400">
+          Failed to load tags: {error instanceof Error ? error.message : 'Unknown error'}
+        </p>
+        <Button variant="outline" size="sm" onClick={() => refetch()}>
+          Retry
+        </Button>
+      </div>
+    )
   }
 
   // Sort tags by usage in this case (desc), then by name.

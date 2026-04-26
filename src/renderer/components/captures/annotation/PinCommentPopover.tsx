@@ -33,7 +33,12 @@ export function PinCommentPopover({
         <h4 className="text-sm font-semibold text-text-primary">
           Pin {pinNumber == null ? '(saving…)' : pinNumber}
         </h4>
-        <button type="button" onClick={onClose} className="text-text-muted hover:text-text-primary">
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close pin comment"
+          className="text-text-muted hover:text-text-primary"
+        >
           ×
         </button>
       </div>

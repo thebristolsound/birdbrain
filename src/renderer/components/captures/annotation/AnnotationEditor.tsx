@@ -22,12 +22,23 @@ interface Props {
 export function AnnotationEditor(props: Props) {
   const { captureId, imageUrl, imageWidth, imageHeight, containerWidth, containerHeight } = props
   const [editing, setEditing] = useState(false)
-  const { data: bundle } = useQuery(annotationsQueryOptions(captureId))
+  const { data: bundle, isSuccess } = useQuery(annotationsQueryOptions(captureId))
   const mutations = useAnnotationsMutations(captureId)
   const editor = useAnnotationEditor({ initialShapes: bundle?.annotations?.shapes ?? [] })
+  const { setShapes, select, dirty } = editor
   const zoomPan = useZoomPan({ imageWidth, imageHeight, containerWidth, containerHeight })
   const [popoverPinShapeId, setPopoverPinShapeId] = useState<string | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hydratedVersionRef = useRef<string | null>(null)
+  const annotationsVersion = bundle?.annotations?.updatedAt ?? '__empty__'
+
+  useEffect(() => {
+    if (!isSuccess || dirty) return
+    if (hydratedVersionRef.current === annotationsVersion) return
+    setShapes(bundle?.annotations?.shapes ?? [])
+    select(null)
+    hydratedVersionRef.current = annotationsVersion
+  }, [isSuccess, dirty, setShapes, select, bundle?.annotations?.shapes, annotationsVersion])
 
   const closePopover = () => setPopoverPinShapeId(null)
   const handleZoomAt = (delta: number, cx: number, cy: number) => {

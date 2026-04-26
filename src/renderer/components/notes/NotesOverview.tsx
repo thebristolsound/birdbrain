@@ -3,6 +3,7 @@ import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { Search } from 'lucide-react'
 import { notesQueryOptions, notesSearchQueryOptions } from '@renderer/lib/queries'
+import { Button } from '@renderer/components/ui'
 import { NoteCard } from './NoteCard'
 import { CreateNoteCard } from './CreateNoteCard'
 
@@ -17,11 +18,20 @@ export function NotesOverview() {
     return () => clearTimeout(t)
   }, [searchInput])
 
-  const { data: allNotes = [], isLoading } = useQuery(notesQueryOptions(caseId))
+  const {
+    data: allNotes = [],
+    isLoading,
+    isError,
+    error,
+    refetch
+  } = useQuery(notesQueryOptions(caseId))
   const {
     data: searchResults = [],
     isLoading: isSearchLoading,
-    isFetching: isSearchFetching
+    isFetching: isSearchFetching,
+    isError: isSearchError,
+    error: searchError,
+    refetch: refetchSearch
   } = useQuery(notesSearchQueryOptions(caseId, debouncedQuery))
 
   const isSearching = debouncedQuery.length > 0 && (isSearchLoading || isSearchFetching)
@@ -29,6 +39,19 @@ export function NotesOverview() {
 
   if (isLoading) {
     return <div className="text-text-muted">Loading notes...</div>
+  }
+
+  if (isError) {
+    return (
+      <div className="space-y-2 px-8 py-6">
+        <p className="text-sm text-red-400">
+          Failed to load notes: {error instanceof Error ? error.message : 'Unknown error'}
+        </p>
+        <Button variant="outline" size="sm" onClick={() => refetch()}>
+          Retry
+        </Button>
+      </div>
+    )
   }
 
   return (
@@ -52,21 +75,33 @@ export function NotesOverview() {
         onCreated={() => setShowCreateForm(false)}
       />
 
-      {isSearching ? (
+      {debouncedQuery.length > 0 && isSearchError ? (
+        <div className="space-y-2 py-8 text-center">
+          <p className="text-sm text-red-400">
+            Failed to search notes:{' '}
+            {searchError instanceof Error ? searchError.message : 'Unknown error'}
+          </p>
+          <Button variant="outline" size="sm" onClick={() => refetchSearch()}>
+            Retry search
+          </Button>
+        </div>
+      ) : null}
+
+      {!isSearchError && isSearching ? (
         <p className="py-8 text-center text-sm text-text-muted">Searching notes...</p>
-      ) : notes.length === 0 ? (
+      ) : !isSearchError && notes.length === 0 ? (
         <p className="py-8 text-center text-sm text-text-muted">
           {debouncedQuery.length > 0
             ? `No notes match "${debouncedQuery}"`
             : 'No notes yet. Create one to record observations.'}
         </p>
-      ) : (
+      ) : !isSearchError ? (
         <div data-testid="notes-list" className="space-y-3">
           {notes.map((note) => (
             <NoteCard key={note.id} note={note} caseId={caseId} />
           ))}
         </div>
-      )}
+      ) : null}
     </div>
   )
 }

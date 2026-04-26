@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { tagsQueryOptions, useTagsMutations } from '@renderer/lib/queries'
 import { Dialog, DialogContent, Button, Input } from '@renderer/components/ui'
@@ -23,6 +23,19 @@ export function TagManager({ onClose }: TagManagerProps) {
   const { create, remove } = useTagsMutations()
   const [newName, setNewName] = useState('')
   const [newColor, setNewColor] = useState(TAG_COLORS[0])
+  const [showColorPicker, setShowColorPicker] = useState(false)
+  const colorPickerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!showColorPicker) return
+    function handleClickOutside(e: MouseEvent) {
+      if (colorPickerRef.current && !colorPickerRef.current.contains(e.target as Node)) {
+        setShowColorPicker(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showColorPicker])
 
   const handleCreate = async () => {
     if (!newName.trim()) return
@@ -36,6 +49,35 @@ export function TagManager({ onClose }: TagManagerProps) {
 
       {/* Create new tag */}
       <div className="mb-4 flex items-center gap-2">
+        {/* Color swatch — click to expand picker */}
+        <div ref={colorPickerRef} className="relative shrink-0">
+          <button
+            data-testid="tag-color-swatch"
+            type="button"
+            onClick={() => setShowColorPicker((v) => !v)}
+            className="flex h-6 w-6 items-center justify-center rounded-full ring-1 ring-border transition-transform hover:scale-110"
+            style={{ backgroundColor: newColor }}
+            title="Pick color"
+          />
+          {showColorPicker && (
+            <div className="absolute left-0 top-full z-50 mt-1 flex flex-col gap-1 rounded-lg border border-border-strong bg-card p-1.5 shadow-lg">
+              {TAG_COLORS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => {
+                    setNewColor(c)
+                    setShowColorPicker(false)
+                  }}
+                  className={`h-4 w-4 rounded-full transition-transform hover:scale-125 ${
+                    c === newColor ? 'ring-2 ring-accent ring-offset-1' : ''
+                  }`}
+                  style={{ backgroundColor: c }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
         <Input
           data-testid="tag-name-input"
           type="text"
@@ -45,17 +87,6 @@ export function TagManager({ onClose }: TagManagerProps) {
           className="flex-1 py-1.5"
           placeholder="New tag name..."
         />
-        <div className="flex gap-1">
-          {TAG_COLORS.map((c) => (
-            <button
-              data-testid="tag-color-swatch"
-              key={c}
-              onClick={() => setNewColor(c)}
-              className={`h-5 w-5 rounded-full ${newColor === c ? 'ring-2 ring-white ring-offset-1 ring-offset-card' : ''}`}
-              style={{ backgroundColor: c }}
-            />
-          ))}
-        </div>
         <Button
           data-testid="tag-add-btn"
           size="sm"

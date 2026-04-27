@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 
 const MEDIA_QUERY = '(prefers-reduced-motion: reduce)'
-const STORAGE_KEY = 'reduceMotion'
+export const REDUCE_MOTION_STORAGE_KEY = 'reduceMotion'
 
 function readSettingFlag(): boolean {
-  return localStorage.getItem(STORAGE_KEY) === 'true'
+  return localStorage.getItem(REDUCE_MOTION_STORAGE_KEY) === 'true'
 }
 
 function readOsPref(): boolean {
@@ -23,7 +23,7 @@ export function useReduceMotion(): boolean {
     mql.addEventListener('change', recompute)
 
     function onStorage(e: StorageEvent) {
-      if (e.key === STORAGE_KEY) recompute()
+      if (e.key === REDUCE_MOTION_STORAGE_KEY) recompute()
     }
     window.addEventListener('storage', onStorage)
 

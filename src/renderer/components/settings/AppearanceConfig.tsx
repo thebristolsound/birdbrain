@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useTheme } from '@renderer/hooks/useTheme'
+import { REDUCE_MOTION_STORAGE_KEY as STORAGE_KEY } from '@renderer/hooks/useReduceMotion'
 import { Card, CardContent, Label } from '@renderer/components/ui'
 import { cn } from '@renderer/lib/utils'
-
-const STORAGE_KEY = 'reduceMotion'
 
 function readInitial(): boolean {
   return localStorage.getItem(STORAGE_KEY) === 'true'

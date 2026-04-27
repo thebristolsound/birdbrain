@@ -20,5 +20,15 @@ export const springs = {
     type: 'spring' as const,
     stiffness: 120,
     damping: 20
+  },
+  microTap: {
+    type: 'spring' as const,
+    stiffness: 600,
+    damping: 28
+  },
+  hover: {
+    type: 'spring' as const,
+    stiffness: 350,
+    damping: 32
   }
 } satisfies Record<string, Transition>

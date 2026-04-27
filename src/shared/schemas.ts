@@ -161,6 +161,7 @@ export const BirdbrainSettingsSchema = z.object({
   ignoredUrlPatterns: z.array(z.string()),
   storagePath: z.string(),
   theme: z.enum(['dark', 'light']),
+  reduceMotion: z.boolean(),
   operatorName: z.string(),
   autoCaptureMode: z.enum(['auto', 'notify', 'per-case']),
   lastActiveCaseId: z.string().nullable(),

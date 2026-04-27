@@ -50,10 +50,10 @@ export function OnboardingWizard() {
         {/* Progress dots */}
         <div className="mb-8 flex items-center gap-2">
           <div
-            className={`rounded-full transition-all duration-300 ${step === 0 ? 'w-6 bg-accent' : 'w-1.5 bg-elevated'} h-1.5`}
+            className={`rounded-full transition-[width,background-color] duration-300 ${step === 0 ? 'w-6 bg-accent' : 'w-1.5 bg-elevated'} h-1.5`}
           />
           <div
-            className={`rounded-full transition-all duration-300 ${step === 1 ? 'w-6 bg-accent' : 'w-1.5 bg-elevated'} h-1.5`}
+            className={`rounded-full transition-[width,background-color] duration-300 ${step === 1 ? 'w-6 bg-accent' : 'w-1.5 bg-elevated'} h-1.5`}
           />
         </div>
 

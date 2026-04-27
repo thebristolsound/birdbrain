@@ -27,14 +27,14 @@ export function HeroSection({ onNewInvestigation, onOpenRecent }: HeroSectionPro
           <button
             data-testid="new-case-btn"
             onClick={onNewInvestigation}
-            className="group flex items-center gap-3 px-7 py-4 bg-accent hover:bg-accent-hover text-white font-display font-bold text-sm rounded-2xl shadow-lg shadow-indigo-500/40 hover:shadow-xl hover:shadow-indigo-500/50 transition-all active:scale-[0.98]"
+            className="group flex items-center gap-3 px-7 py-4 bg-accent hover:bg-accent-hover text-white font-display font-bold text-sm rounded-2xl shadow-lg shadow-indigo-500/40 hover:shadow-xl hover:shadow-indigo-500/50 transition-[transform,box-shadow,background-color] active:scale-[0.98]"
           >
             <PlusCircle className="h-5 w-5 group-hover:rotate-90 transition-transform duration-300" />
             Start New Investigation
           </button>
           <button
             onClick={onOpenRecent}
-            className="flex items-center gap-3 px-6 py-4 border border-border-strong hover:border-accent hover:bg-accent-subtle text-text-primary font-display font-semibold text-sm rounded-2xl transition-all active:scale-[0.98]"
+            className="flex items-center gap-3 px-6 py-4 border border-border-strong hover:border-accent hover:bg-accent-subtle text-text-primary font-display font-semibold text-sm rounded-2xl transition-[transform,box-shadow,background-color] active:scale-[0.98]"
           >
             <FolderOpen className="h-5 w-5 text-accent" />
             Open Recent Case

@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
+import { motion, AnimatePresence } from 'motion/react'
 import { Search } from 'lucide-react'
 import { notesQueryOptions, notesSearchQueryOptions } from '@renderer/lib/queries'
 import { Button } from '@renderer/components/ui'
+import { presets } from '@renderer/lib/motion'
 import { NoteCard } from './NoteCard'
 import { CreateNoteCard } from './CreateNoteCard'
 
@@ -98,9 +100,20 @@ export function NotesOverview() {
         </p>
       ) : (
         <div data-testid="notes-list" className="space-y-3">
-          {notes.map((note) => (
-            <NoteCard key={note.id} note={note} caseId={caseId} />
-          ))}
+          <AnimatePresence mode="popLayout">
+            {notes.map((note) => (
+              <motion.div
+                key={note.id}
+                layout
+                initial={presets.listItem.initial}
+                animate={presets.listItem.animate}
+                exit={presets.listItem.exit}
+                transition={presets.listItem.transition}
+              >
+                <NoteCard note={note} caseId={caseId} />
+              </motion.div>
+            ))}
+          </AnimatePresence>
         </div>
       )}
     </div>

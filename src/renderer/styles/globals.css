@@ -257,3 +257,12 @@ html.dark .new-case-card:hover {
 }
 
 .case-tag { transition: all 0.15s ease; }
+
+/* === Reduce motion: zero out transitions and animations when toggled === */
+html.reduce-motion *,
+html.reduce-motion *::before,
+html.reduce-motion *::after {
+  transition-duration: 0ms !important;
+  animation-duration: 0ms !important;
+  animation-iteration-count: 1 !important;
+}

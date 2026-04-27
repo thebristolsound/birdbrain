@@ -1,9 +1,33 @@
+import { useEffect, useState } from 'react'
 import { useTheme } from '@renderer/hooks/useTheme'
 import { Card, CardContent, Label } from '@renderer/components/ui'
 import { cn } from '@renderer/lib/utils'
 
+const STORAGE_KEY = 'reduceMotion'
+
+function readInitial(): boolean {
+  return localStorage.getItem(STORAGE_KEY) === 'true'
+}
+
+function applyReduceMotionClass(enabled: boolean): void {
+  document.documentElement.classList.toggle('reduce-motion', enabled)
+}
+
 export function AppearanceConfig() {
   const { theme, toggleTheme } = useTheme()
+  const [reduce, setReduce] = useState<boolean>(readInitial)
+
+  useEffect(() => {
+    applyReduceMotionClass(reduce)
+  }, [reduce])
+
+  function handleToggle() {
+    const next = !reduce
+    setReduce(next)
+    localStorage.setItem(STORAGE_KEY, String(next))
+    window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_KEY, newValue: String(next) }))
+    window.birdbrain.settings.update({ reduceMotion: next })
+  }
 
   return (
     <Card>
@@ -45,11 +69,19 @@ export function AppearanceConfig() {
             <button
               type="button"
               role="switch"
-              aria-checked={false}
-              disabled
-              className="relative inline-flex h-5 w-9 items-center rounded-full bg-text-faint opacity-50"
+              aria-checked={reduce}
+              onClick={handleToggle}
+              className={cn(
+                'relative inline-flex h-5 w-9 items-center rounded-full transition-colors',
+                reduce ? 'bg-accent' : 'bg-text-faint'
+              )}
             >
-              <span className="inline-block h-3.5 w-3.5 translate-x-0.5 rounded-full bg-white" />
+              <span
+                className={cn(
+                  'inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform',
+                  reduce ? 'translate-x-[18px]' : 'translate-x-0.5'
+                )}
+              />
             </button>
           </div>
         </div>

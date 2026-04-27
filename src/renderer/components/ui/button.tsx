@@ -1,6 +1,8 @@
 import { forwardRef, type ButtonHTMLAttributes } from 'react'
 import { cva, type VariantProps } from 'class-variance-authority'
+import { motion, type HTMLMotionProps } from 'motion/react'
 import { cn } from '@renderer/lib/utils'
+import { presets } from '@renderer/lib/motion'
 
 const buttonVariants = cva(
   'inline-flex items-center justify-center rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:pointer-events-none',
@@ -29,11 +31,25 @@ const buttonVariants = cva(
   }
 )
 
-type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & VariantProps<typeof buttonVariants>
+type NativeButtonProps = Omit<
+  ButtonHTMLAttributes<HTMLButtonElement>,
+  keyof HTMLMotionProps<'button'>
+>
+
+type ButtonProps = NativeButtonProps &
+  HTMLMotionProps<'button'> &
+  VariantProps<typeof buttonVariants>
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, ...props }, ref) => (
-    <button className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props} />
+  ({ className, variant, size, disabled, ...props }, ref) => (
+    <motion.button
+      ref={ref}
+      disabled={disabled}
+      whileTap={disabled ? undefined : presets.tap.whileTap}
+      transition={presets.tap.transition}
+      className={cn(buttonVariants({ variant, size, className }))}
+      {...props}
+    />
   )
 )
 Button.displayName = 'Button'

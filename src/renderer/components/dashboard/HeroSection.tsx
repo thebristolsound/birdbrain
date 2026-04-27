@@ -34,7 +34,7 @@ export function HeroSection({ onNewInvestigation, onOpenRecent }: HeroSectionPro
           </button>
           <button
             onClick={onOpenRecent}
-            className="flex items-center gap-3 px-6 py-4 border border-border-strong hover:border-accent hover:bg-accent-subtle text-text-primary font-display font-semibold text-sm rounded-2xl transition-[transform,box-shadow,background-color] active:scale-[0.98]"
+            className="flex items-center gap-3 px-6 py-4 border border-border-strong hover:border-accent hover:bg-accent-subtle text-text-primary font-display font-semibold text-sm rounded-2xl transition-[transform,border-color,background-color] active:scale-[0.98]"
           >
             <FolderOpen className="h-5 w-5 text-accent" />
             Open Recent Case

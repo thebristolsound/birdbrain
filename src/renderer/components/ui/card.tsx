@@ -1,17 +1,27 @@
 import { forwardRef, type HTMLAttributes } from 'react'
+import { motion, type HTMLMotionProps } from 'motion/react'
 import { cn } from '@renderer/lib/utils'
+import { presets } from '@renderer/lib/motion'
 
-type CardProps = HTMLAttributes<HTMLDivElement> & {
-  hover?: boolean
-}
+type NativeDivProps = Omit<HTMLAttributes<HTMLDivElement>, keyof HTMLMotionProps<'div'>>
 
-const Card = forwardRef<HTMLDivElement, CardProps>(({ className, hover, ...props }, ref) => (
-  <div
-    className={cn('neu-card rounded-2xl', hover && 'neu-card-hover', className)}
-    ref={ref}
-    {...props}
-  />
-))
+type CardProps = NativeDivProps &
+  HTMLMotionProps<'div'> & {
+    hover?: boolean
+    interactive?: boolean
+  }
+
+const Card = forwardRef<HTMLDivElement, CardProps>(
+  ({ className, hover, interactive, ...props }, ref) => (
+    <motion.div
+      ref={ref}
+      whileHover={interactive ? presets.cardHover.whileHover : undefined}
+      transition={interactive ? presets.cardHover.transition : undefined}
+      className={cn('neu-card rounded-2xl', hover && 'neu-card-hover', className)}
+      {...props}
+    />
+  )
+)
 Card.displayName = 'Card'
 
 const CardHeader = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(

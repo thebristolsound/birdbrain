@@ -204,144 +204,146 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
 
   // --- Loading vs results: crossfade ---
   return (
-    <AnimatePresence mode="wait">
-      {isAnalyzing ? (
-        <motion.div
-          key="analyzing"
-          className="flex h-full flex-col items-center justify-center gap-3 p-8"
-          initial={presets.fadeIn.initial}
-          animate={presets.fadeIn.animate}
-          exit={presets.fadeIn.exit}
-          transition={presets.fadeIn.transition}
-        >
-          <Loader2 className="h-8 w-8 animate-spin text-accent" />
-          <p className="text-xs text-text-muted">Analyzing capture...</p>
-        </motion.div>
-      ) : (
-        <motion.div
-          key="results"
-          className="flex h-full flex-col"
-          initial={presets.fadeIn.initial}
-          animate={presets.fadeIn.animate}
-          exit={presets.fadeIn.exit}
-          transition={presets.fadeIn.transition}
-        >
-          {/* Toolbar */}
-          <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-            {models.length > 0 ? (
-              <select
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-                className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+    <div className="flex h-full flex-col overflow-hidden">
+      <AnimatePresence mode="wait">
+        {isAnalyzing ? (
+          <motion.div
+            key="analyzing"
+            className="flex h-full flex-col items-center justify-center gap-3 p-8"
+            initial={presets.fadeIn.initial}
+            animate={presets.fadeIn.animate}
+            exit={presets.fadeIn.exit}
+            transition={presets.fadeIn.transition}
+          >
+            <Loader2 className="h-8 w-8 animate-spin text-accent" />
+            <p className="text-xs text-text-muted">Analyzing capture...</p>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="results"
+            className="flex h-full flex-col"
+            initial={presets.fadeIn.initial}
+            animate={presets.fadeIn.animate}
+            exit={presets.fadeIn.exit}
+            transition={presets.fadeIn.transition}
+          >
+            {/* Toolbar */}
+            <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+              {models.length > 0 ? (
+                <select
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+                >
+                  {models.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span className="text-[11px] font-mono text-text-muted">{selectedModel}</span>
+              )}
+
+              <div className="flex-1" />
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => analyzeMutation.mutate()}
+                disabled={isAnalyzing}
+                title="Re-analyze"
               >
-                {models.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <span className="text-[11px] font-mono text-text-muted">{selectedModel}</span>
-            )}
+                <RefreshCw className={`mr-1 h-3 w-3 ${isAnalyzing ? 'animate-spin' : ''}`} />
+                <span className="text-[11px]">Re-analyze</span>
+              </Button>
 
-            <div className="flex-1" />
-
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => analyzeMutation.mutate()}
-              disabled={isAnalyzing}
-              title="Re-analyze"
-            >
-              <RefreshCw className={`mr-1 h-3 w-3 ${isAnalyzing ? 'animate-spin' : ''}`} />
-              <span className="text-[11px]">Re-analyze</span>
-            </Button>
-
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => saveMutation.mutate()}
-              disabled={isSaving || !hasUnsavedChanges}
-              title={savedAnalysis && hasUnsavedChanges ? 'Save changes' : 'Save'}
-            >
-              <Save className="mr-1 h-3 w-3" />
-              <span className="text-[11px]">
-                {isSaving
-                  ? 'Saving...'
-                  : savedAnalysis && hasUnsavedChanges
-                    ? 'Save Changes'
-                    : 'Save'}
-              </span>
-            </Button>
-
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleCopyToClipboard}
-              title="Copy to clipboard"
-            >
-              <Copy className="mr-1 h-3 w-3" />
-              <span className="text-[11px]">{copied ? 'Copied!' : 'Copy'}</span>
-            </Button>
-
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onOpenNote(`AI Analysis — ${captureTitle}`, liveContent ?? '')}
-              title="Copy to note"
-            >
-              <StickyNote className="mr-1 h-3 w-3" />
-              <span className="text-[11px]">Note</span>
-            </Button>
-
-            {liveTokenUsage && (
-              <span className="text-[10px] text-text-faint">
-                {liveTokenUsage.total.toLocaleString()} tokens
-              </span>
-            )}
-          </div>
-
-          {/* Markdown content */}
-          <div className="flex-1 overflow-y-auto p-4">
-            <div className="prose prose-sm prose-invert max-w-none text-text-secondary [&_h1]:text-text-primary [&_h2]:text-text-primary [&_h3]:text-text-primary [&_strong]:text-text-primary [&_a]:text-accent [&_code]:rounded [&_code]:bg-elevated [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs [&_pre]:bg-elevated [&_pre]:p-3 [&_li]:text-text-secondary [&_ul]:text-text-secondary [&_ol]:text-text-secondary">
-              <Markdown
-                components={{
-                  // Disallow images to prevent external network requests from AI output
-                  img: () => null,
-                  // Open links externally via shell rather than in-app navigation
-                  a: ({ href, children }) => (
-                    <a
-                      href={href}
-                      rel="noreferrer noopener"
-                      onClick={(e) => {
-                        e.preventDefault()
-                        if (href) window.birdbrain.captures.openExternal(href)
-                      }}
-                    >
-                      {children}
-                    </a>
-                  )
-                }}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => saveMutation.mutate()}
+                disabled={isSaving || !hasUnsavedChanges}
+                title={savedAnalysis && hasUnsavedChanges ? 'Save changes' : 'Save'}
               >
-                {liveContent ?? ''}
-              </Markdown>
+                <Save className="mr-1 h-3 w-3" />
+                <span className="text-[11px]">
+                  {isSaving
+                    ? 'Saving...'
+                    : savedAnalysis && hasUnsavedChanges
+                      ? 'Save Changes'
+                      : 'Save'}
+                </span>
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleCopyToClipboard}
+                title="Copy to clipboard"
+              >
+                <Copy className="mr-1 h-3 w-3" />
+                <span className="text-[11px]">{copied ? 'Copied!' : 'Copy'}</span>
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onOpenNote(`AI Analysis — ${captureTitle}`, liveContent ?? '')}
+                title="Copy to note"
+              >
+                <StickyNote className="mr-1 h-3 w-3" />
+                <span className="text-[11px]">Note</span>
+              </Button>
+
+              {liveTokenUsage && (
+                <span className="text-[10px] text-text-faint">
+                  {liveTokenUsage.total.toLocaleString()} tokens
+                </span>
+              )}
             </div>
-          </div>
 
-          {/* Footer */}
-          <div className="flex items-center gap-3 border-t border-border px-3 py-1.5">
-            {analysisTimestamp && (
+            {/* Markdown content */}
+            <div className="flex-1 overflow-y-auto p-4">
+              <div className="prose prose-sm prose-invert max-w-none text-text-secondary [&_h1]:text-text-primary [&_h2]:text-text-primary [&_h3]:text-text-primary [&_strong]:text-text-primary [&_a]:text-accent [&_code]:rounded [&_code]:bg-elevated [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs [&_pre]:bg-elevated [&_pre]:p-3 [&_li]:text-text-secondary [&_ul]:text-text-secondary [&_ol]:text-text-secondary">
+                <Markdown
+                  components={{
+                    // Disallow images to prevent external network requests from AI output
+                    img: () => null,
+                    // Open links externally via shell rather than in-app navigation
+                    a: ({ href, children }) => (
+                      <a
+                        href={href}
+                        rel="noreferrer noopener"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          if (href) window.birdbrain.captures.openExternal(href)
+                        }}
+                      >
+                        {children}
+                      </a>
+                    )
+                  }}
+                >
+                  {liveContent ?? ''}
+                </Markdown>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center gap-3 border-t border-border px-3 py-1.5">
+              {analysisTimestamp && (
+                <span className="text-[10px] text-text-faint">
+                  {new Date(analysisTimestamp).toLocaleString()}
+                </span>
+              )}
+              <div className="flex-1" />
               <span className="text-[10px] text-text-faint">
-                {new Date(analysisTimestamp).toLocaleString()}
+                {hasUnsavedChanges ? '⚡ Unsaved' : savedAnalysis ? '✓ Saved' : ''}
               </span>
-            )}
-            <div className="flex-1" />
-            <span className="text-[10px] text-text-faint">
-              {hasUnsavedChanges ? '⚡ Unsaved' : savedAnalysis ? '✓ Saved' : ''}
-            </span>
-          </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   )
 }

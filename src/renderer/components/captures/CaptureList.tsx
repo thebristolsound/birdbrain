@@ -137,11 +137,20 @@ export function CaptureList({ caseId }: CaptureListProps) {
   if (isLoading) {
     return (
       <aside className="flex w-[300px] shrink-0 flex-col border-r border-border bg-surface">
-        <div className="space-y-2 p-4">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-16 w-full rounded-lg" />
-          ))}
-        </div>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key="skeleton"
+            className="space-y-2 p-4"
+            initial={presets.fadeIn.initial}
+            animate={presets.fadeIn.animate}
+            exit={presets.fadeIn.exit}
+            transition={presets.fadeIn.transition}
+          >
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-16 w-full rounded-lg" />
+            ))}
+          </motion.div>
+        </AnimatePresence>
       </aside>
     )
   }
@@ -332,8 +341,7 @@ export function CaptureList({ caseId }: CaptureListProps) {
               exit={presets.listItem.exit}
               transition={{
                 ...presets.listItem.transition,
-                delay:
-                  firstPaintRef.current && i < STAGGER_VISIBLE_CAP ? i * STAGGER_INTERVAL : 0
+                delay: firstPaintRef.current && i < STAGGER_VISIBLE_CAP ? i * STAGGER_INTERVAL : 0
               }}
             >
               <CaptureItem

@@ -1,5 +1,6 @@
 import { MotionConfig } from 'motion/react'
 import { springs } from './springs'
+import { useReduceMotion } from '@renderer/hooks/useReduceMotion'
 import type { ReactNode } from 'react'
 
 interface MotionProviderProps {
@@ -7,11 +8,9 @@ interface MotionProviderProps {
 }
 
 export function MotionProvider({ children }: MotionProviderProps) {
+  const reduce = useReduceMotion()
   return (
-    <MotionConfig
-      transition={springs.snappy}
-      reducedMotion="user"
-    >
+    <MotionConfig transition={springs.snappy} reducedMotion={reduce ? 'always' : 'user'}>
       {children}
     </MotionConfig>
   )

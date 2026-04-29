@@ -55,5 +55,20 @@ export const presets = {
     springs.snappy
   ),
 
-  collapse: makePreset({ opacity: 0, height: 0 }, { opacity: 1, height: 'auto' }, springs.snappy)
+  collapse: makePreset({ opacity: 0, height: 0 }, { opacity: 1, height: 'auto' }, springs.snappy),
+
+  tap: {
+    whileTap: { scale: 0.97 },
+    transition: springs.microTap
+  },
+
+  hoverLift: {
+    whileHover: { y: -1 },
+    transition: springs.hover
+  },
+
+  cardHover: {
+    whileHover: { y: -2 },
+    transition: springs.hover
+  }
 } as const

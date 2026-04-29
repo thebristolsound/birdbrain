@@ -11,7 +11,7 @@ import {
   useCasesMutations
 } from '@renderer/lib/queries'
 import { ExportDialog } from '@renderer/components/export/ExportDialog'
-import { presets } from '@renderer/lib/motion'
+import { presets, springs } from '@renderer/lib/motion'
 
 export function CaseHeader() {
   const { caseId } = useParams({ strict: false }) as { caseId?: string }
@@ -132,14 +132,13 @@ export function CaseHeader() {
           className="h-6 w-6 rounded text-text-muted hover:bg-elevated flex items-center justify-center"
           aria-label={expanded ? 'Collapse case header' : 'Expand case header'}
         >
-          <ChevronDown
-            size={14}
-            strokeWidth={2}
-            style={{
-              transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)',
-              transition: 'transform 200ms ease'
-            }}
-          />
+          <motion.span
+            animate={{ rotate: expanded ? 0 : -90 }}
+            transition={springs.snappy}
+            style={{ display: 'inline-flex' }}
+          >
+            <ChevronDown size={14} strokeWidth={2} />
+          </motion.span>
         </button>
 
         {/* Editable case name */}

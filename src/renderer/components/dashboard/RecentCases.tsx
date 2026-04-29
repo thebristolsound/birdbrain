@@ -1,5 +1,7 @@
 import { Plus } from 'lucide-react'
+import { motion } from 'motion/react'
 import type { Case } from '@shared/types'
+import { presets, STAGGER_INTERVAL, STAGGER_VISIBLE_CAP } from '@renderer/lib/motion'
 import { CaseCard } from './CaseCard'
 
 interface RecentCasesProps {
@@ -32,8 +34,16 @@ export function RecentCases({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-          {cases.slice(0, 3).map((c) => (
-            <div key={c.id}>
+          {cases.slice(0, 3).map((c, i) => (
+            <motion.div
+              key={c.id}
+              initial={presets.fadeUp.initial}
+              animate={presets.fadeUp.animate}
+              transition={{
+                ...presets.fadeUp.transition,
+                delay: i < STAGGER_VISIBLE_CAP ? i * STAGGER_INTERVAL : 0
+              }}
+            >
               <CaseCard
                 caseData={c}
                 isRecording={false}
@@ -43,12 +53,12 @@ export function RecentCases({
                 onRename={onRenameCase}
                 onDelete={onDeleteCase}
               />
-            </div>
+            </motion.div>
           ))}
 
           <div
             onClick={onNewCase}
-            className="new-case-card cursor-pointer rounded-2xl border-2 border-dashed p-5 transition-all flex flex-col items-center justify-center text-center min-h-[260px] group"
+            className="new-case-card cursor-pointer rounded-2xl border-2 border-dashed p-5 transition-colors flex flex-col items-center justify-center text-center min-h-[260px] group"
           >
             <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-accent/20 bg-accent-subtle transition-colors group-hover:bg-accent-subtle">
               <Plus className="h-6 w-6 text-accent transition-transform duration-300 group-hover:rotate-90" />

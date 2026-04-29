@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
 import { Search, ArrowUpDown, Filter, Crosshair, X, Check } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
+import { motion, AnimatePresence } from 'motion/react'
 import { capturesQueryOptions } from '@renderer/lib/queries'
 import { Button, Skeleton } from '@renderer/components/ui'
+import { presets, STAGGER_INTERVAL, STAGGER_VISIBLE_CAP } from '@renderer/lib/motion'
 import { useAppStore } from '@renderer/stores/appStore'
 import { useFavorites } from '@renderer/hooks/useFavorites'
 import { CaptureItem } from './CaptureItem'
@@ -92,6 +94,10 @@ export function CaptureList({ caseId }: CaptureListProps) {
 
   const sortRef = useRef<HTMLDivElement>(null)
   const filterRef = useRef<HTMLDivElement>(null)
+  const firstPaintRef = useRef(true)
+  useEffect(() => {
+    firstPaintRef.current = false
+  }, [])
   useClickOutside(sortRef, () => setShowSortMenu(false))
   useClickOutside(filterRef, () => setShowFilterMenu(false))
 
@@ -131,11 +137,20 @@ export function CaptureList({ caseId }: CaptureListProps) {
   if (isLoading) {
     return (
       <aside className="flex w-[300px] shrink-0 flex-col border-r border-border bg-surface">
-        <div className="space-y-2 p-4">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-16 w-full rounded-lg" />
-          ))}
-        </div>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key="skeleton"
+            className="space-y-2 p-4"
+            initial={presets.fadeIn.initial}
+            animate={presets.fadeIn.animate}
+            exit={presets.fadeIn.exit}
+            transition={presets.fadeIn.transition}
+          >
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-16 w-full rounded-lg" />
+            ))}
+          </motion.div>
+        </AnimatePresence>
       </aside>
     )
   }
@@ -316,16 +331,29 @@ export function CaptureList({ caseId }: CaptureListProps) {
 
       {/* Scrollable capture list */}
       <div className="flex-1 space-y-1 overflow-y-auto p-2">
-        {displayedCaptures.map((cap) => (
-          <CaptureItem
-            key={cap.id}
-            capture={cap}
-            isSelected={cap.id === selectedCaptureId}
-            onClick={() => selectCapture(cap.id)}
-            isFavorite={favorites.has(cap.id)}
-            onToggleFavorite={() => toggleFavorite(cap.id)}
-          />
-        ))}
+        <AnimatePresence mode="popLayout" initial={firstPaintRef.current}>
+          {displayedCaptures.map((cap, i) => (
+            <motion.div
+              key={cap.id}
+              layout
+              initial={presets.listItem.initial}
+              animate={presets.listItem.animate}
+              exit={presets.listItem.exit}
+              transition={{
+                ...presets.listItem.transition,
+                delay: firstPaintRef.current && i < STAGGER_VISIBLE_CAP ? i * STAGGER_INTERVAL : 0
+              }}
+            >
+              <CaptureItem
+                capture={cap}
+                isSelected={cap.id === selectedCaptureId}
+                onClick={() => selectCapture(cap.id)}
+                isFavorite={favorites.has(cap.id)}
+                onToggleFavorite={() => toggleFavorite(cap.id)}
+              />
+            </motion.div>
+          ))}
+        </AnimatePresence>
         {displayedCaptures.length === 0 && (
           <div className="px-3 py-4 text-center text-xs text-text-faint">
             {filteredCaptureIds || activeFilterCount > 0

@@ -162,7 +162,7 @@ export const CaseCard = memo(function CaseCard({
       <div ref={menuRef} className="absolute right-2 top-2">
         <button
           data-testid="case-card-menu-btn"
-          className="opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-elevated transition-all"
+          className="opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-elevated transition-[opacity,background-color]"
           onClick={(e) => {
             e.stopPropagation()
             setMenuOpen(!menuOpen)

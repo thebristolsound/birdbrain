@@ -62,6 +62,7 @@ export interface BirdbrainSettings {
   ignoredUrlPatterns: string[]
   storagePath: string
   theme: 'dark' | 'light'
+  reduceMotion: boolean
   operatorName: string
   autoCaptureMode: AutoCaptureMode
   lastActiveCaseId: string | null

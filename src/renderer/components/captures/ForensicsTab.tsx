@@ -151,14 +151,15 @@ function Row({ label, value }: { label: string; value: string | number | undefin
 }
 
 function hasMeaningfulHeaders(headers: string | null | undefined) {
-  if (!headers?.trim()) return false
+  const trimmed = headers?.trim()
+  if (!trimmed) return false
 
   try {
-    const parsed = JSON.parse(headers)
+    const parsed = JSON.parse(trimmed)
     if (Array.isArray(parsed)) return parsed.length > 0
     if (parsed && typeof parsed === 'object') return Object.keys(parsed).length > 0
   } catch {
-    return true
+    return !trimmed.startsWith('{') && !trimmed.startsWith('[')
   }
 
   return true

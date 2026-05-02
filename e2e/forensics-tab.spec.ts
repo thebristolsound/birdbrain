@@ -24,7 +24,7 @@ test.describe('Forensics tab', () => {
     })
 
     // Seed an MHTML capture with forensic fields.
-    await page.evaluate(
+    const upload = await page.evaluate(
       async ({ caseId, token }) => {
         const form = new FormData()
         form.append('source', 'manual')
@@ -50,6 +50,7 @@ test.describe('Forensics tab', () => {
       },
       { caseId, token: serverToken }
     )
+    expect(upload.status).toBe('ok')
 
     // Seed a legacy HTML capture directly. The Hono server only ingests MHTML,
     // so we insert an `format='html'` row via better-sqlite3 against the same
@@ -89,7 +90,7 @@ test.describe('Forensics tab', () => {
             'Legacy HTML',
             null,
             null,
-            'a'.repeat(64),
+            Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join(''),
             now,
             null,
             now,

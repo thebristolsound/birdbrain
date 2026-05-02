@@ -71,7 +71,7 @@ export function CaptureDetailsPanel({
     captureId: capture.id,
     captureTitle: capture.title || '',
     onCreate: async ({ title, body }) => {
-      await createNote.mutateAsync({
+      return createNote.mutateAsync({
         caseId,
         captureId: capture.id,
         title,
@@ -80,7 +80,7 @@ export function CaptureDetailsPanel({
       })
     },
     onUpdate: async ({ id, body }) => {
-      await updateNote.mutateAsync({ id, body })
+      return updateNote.mutateAsync({ id, body })
     }
   })
 

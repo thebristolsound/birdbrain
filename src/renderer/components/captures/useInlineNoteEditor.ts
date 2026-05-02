@@ -17,8 +17,8 @@ export interface UseInlineNoteEditorArgs {
   notes: Note[]
   captureId: string
   captureTitle: string
-  onCreate: (args: CreateArgs) => Promise<unknown>
-  onUpdate: (args: UpdateArgs) => Promise<unknown>
+  onCreate: (args: CreateArgs) => Promise<Note>
+  onUpdate: (args: UpdateArgs) => Promise<Note | undefined>
 }
 
 function pickLatest(notes: Note[], captureId: string): Note | null {
@@ -35,36 +35,45 @@ export function useInlineNoteEditor({
   onUpdate
 }: UseInlineNoteEditorArgs) {
   const latest = pickLatest(notes, captureId)
-  const boundNoteId = latest?.id ?? null
+  const [localLatest, setLocalLatest] = useState<Note | null>(null)
+  const effectiveLatest = latest ?? localLatest
+  const boundNoteId = effectiveLatest?.id ?? null
 
   // The last server body we observed for the bound note. Used to detect dirty
   // state vs server, and to revert via Esc.
-  const lastServerBodyRef = useRef<string>(latest?.body ?? '')
-  const lastServerUpdatedRef = useRef<string>(latest?.updatedAt ?? '')
+  const lastServerBodyRef = useRef<string>(effectiveLatest?.body ?? '')
+  const lastServerUpdatedRef = useRef<string>(effectiveLatest?.updatedAt ?? '')
   const lastBoundIdRef = useRef<string | null>(boundNoteId)
+  const createInFlightRef = useRef<Promise<Note> | null>(null)
 
-  const [value, setValue] = useState<string>(latest?.body ?? '')
+  const [value, setValue] = useState<string>(effectiveLatest?.body ?? '')
   const debounceRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (latest && localLatest && latest.id === localLatest.id) {
+      setLocalLatest(null)
+    }
+  }, [latest, localLatest])
 
   // Server -> local sync: only when bound note id changes, or when the note's
   // updatedAt advances AND we have no local diff vs the prior server body.
   useEffect(() => {
     if (lastBoundIdRef.current !== boundNoteId) {
       lastBoundIdRef.current = boundNoteId
-      lastServerBodyRef.current = latest?.body ?? ''
-      lastServerUpdatedRef.current = latest?.updatedAt ?? ''
-      setValue(latest?.body ?? '')
+      lastServerBodyRef.current = effectiveLatest?.body ?? ''
+      lastServerUpdatedRef.current = effectiveLatest?.updatedAt ?? ''
+      setValue(effectiveLatest?.body ?? '')
       return
     }
-    if (!latest) return
-    const advanced = latest.updatedAt > lastServerUpdatedRef.current
+    if (!effectiveLatest) return
+    const advanced = effectiveLatest.updatedAt > lastServerUpdatedRef.current
     const localClean = value === lastServerBodyRef.current
     if (advanced && localClean) {
-      lastServerBodyRef.current = latest.body
-      lastServerUpdatedRef.current = latest.updatedAt
-      setValue(latest.body)
+      lastServerBodyRef.current = effectiveLatest.body
+      lastServerUpdatedRef.current = effectiveLatest.updatedAt
+      setValue(effectiveLatest.body)
     }
-  }, [latest, boundNoteId, value])
+  }, [effectiveLatest, boundNoteId, value])
 
   const flush = useCallback(async (): Promise<void> => {
     if (debounceRef.current !== null) {
@@ -75,14 +84,31 @@ export function useInlineNoteEditor({
     // Existing note: persist whatever the user has, even empty (no silent delete).
     if (boundNoteId) {
       if (current === lastServerBodyRef.current) return
-      lastServerBodyRef.current = current
-      await onUpdate({ id: boundNoteId, body: current })
+      const updated = await onUpdate({ id: boundNoteId, body: current })
+      lastServerBodyRef.current = updated?.body ?? current
+      if (updated?.updatedAt) {
+        lastServerUpdatedRef.current = updated.updatedAt
+      }
       return
     }
     // No note: blank blur is a no-op.
     const trimmed = current.trim()
     if (trimmed.length === 0) return
-    await onCreate({ title: captureTitle, body: current })
+    if (createInFlightRef.current) {
+      await createInFlightRef.current
+      return
+    }
+    const createPromise = onCreate({ title: captureTitle, body: current })
+    createInFlightRef.current = createPromise
+    try {
+      const created = await createPromise
+      setLocalLatest(created)
+      lastBoundIdRef.current = created.id
+      lastServerBodyRef.current = created.body
+      lastServerUpdatedRef.current = created.updatedAt
+    } finally {
+      createInFlightRef.current = null
+    }
   }, [boundNoteId, captureTitle, onCreate, onUpdate, value])
 
   // Debounce on every value change.
@@ -94,7 +120,7 @@ export function useInlineNoteEditor({
     if (boundNoteId !== null && value === lastServerBodyRef.current) return
     debounceRef.current = window.setTimeout(() => {
       debounceRef.current = null
-      void flush()
+      void flush().catch(() => {})
     }, DEBOUNCE_MS)
     return () => {
       if (debounceRef.current !== null) {
@@ -118,6 +144,6 @@ export function useInlineNoteEditor({
     revert,
     isDirty,
     boundNoteId,
-    savedAt: latest?.updatedAt ?? null
+    savedAt: effectiveLatest?.updatedAt ?? null
   }
 }

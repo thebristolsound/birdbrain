@@ -53,7 +53,8 @@ describe('useInlineNoteEditor', () => {
   })
 
   it('non-empty save with zero notes creates with auto-title = capture title', async () => {
-    const onCreate = vi.fn()
+    const created = note('new-note', 'hello', '2026-02-02T00:00:00Z')
+    const onCreate = vi.fn().mockResolvedValue(created)
     const onUpdate = vi.fn()
     const { result } = renderHook(() =>
       useInlineNoteEditor({ notes: [], captureId: 'cap-1', captureTitle, onCreate, onUpdate })
@@ -63,6 +64,34 @@ describe('useInlineNoteEditor', () => {
       await result.current.flush()
     })
     expect(onCreate).toHaveBeenCalledWith({ title: captureTitle, body: 'hello' })
+    expect(result.current.boundNoteId).toBe('new-note')
+  })
+
+  it('gates duplicate creates while initial create is in-flight', async () => {
+    const created = note('new-note', 'hello', '2026-02-02T00:00:00Z')
+    let resolveCreate: (n: Note) => void = () => {}
+    const onCreate = vi.fn().mockImplementation(
+      () =>
+        new Promise<Note>((resolve) => {
+          resolveCreate = resolve
+        })
+    )
+    const onUpdate = vi.fn()
+    const { result } = renderHook(() =>
+      useInlineNoteEditor({ notes: [], captureId: 'cap-1', captureTitle, onCreate, onUpdate })
+    )
+
+    act(() => result.current.setValue('hello'))
+
+    const firstFlush = result.current.flush()
+    const secondFlush = result.current.flush()
+    expect(onCreate).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      resolveCreate(created)
+      await Promise.all([firstFlush, secondFlush])
+    })
+    expect(result.current.boundNoteId).toBe('new-note')
   })
 
   it('saving an existing note with cleared body persists empty body', async () => {
@@ -83,6 +112,20 @@ describe('useInlineNoteEditor', () => {
     const notes = [note('a', 'hi', '2026-02-01T00:00:00Z')]
     const onCreate = vi.fn()
     const onUpdate = vi.fn().mockResolvedValue(undefined)
+    const { result } = renderHook(() =>
+      useInlineNoteEditor({ notes, captureId: 'cap-1', captureTitle, onCreate, onUpdate })
+    )
+    act(() => result.current.setValue('typed'))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500)
+    })
+    expect(onUpdate).toHaveBeenCalledWith({ id: 'a', body: 'typed' })
+  })
+
+  it('swallows debounced save rejection to avoid unhandled promise rejection', async () => {
+    const notes = [note('a', 'hi', '2026-02-01T00:00:00Z')]
+    const onCreate = vi.fn()
+    const onUpdate = vi.fn().mockRejectedValue(new Error('save failed'))
     const { result } = renderHook(() =>
       useInlineNoteEditor({ notes, captureId: 'cap-1', captureTitle, onCreate, onUpdate })
     )
@@ -132,5 +175,19 @@ describe('useInlineNoteEditor', () => {
     expect(result.current.value).toBe('server')
     rerender({ notes: [note('a', 'server-updated', '2026-02-01T00:01:00Z')] })
     expect(result.current.value).toBe('server-updated')
+  })
+
+  it('keeps note dirty when update fails', async () => {
+    const notes = [note('a', 'original', '2026-02-01T00:00:00Z')]
+    const onCreate = vi.fn()
+    const onUpdate = vi.fn().mockRejectedValue(new Error('failed'))
+    const { result } = renderHook(() =>
+      useInlineNoteEditor({ notes, captureId: 'cap-1', captureTitle, onCreate, onUpdate })
+    )
+    act(() => result.current.setValue('changed'))
+    await expect(result.current.flush()).rejects.toThrow('failed')
+    expect(result.current.isDirty).toBe(true)
+    act(() => result.current.revert())
+    expect(result.current.value).toBe('original')
   })
 })

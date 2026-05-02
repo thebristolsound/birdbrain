@@ -30,6 +30,12 @@ export function TagEditorPopover({ captureId, open, onClose, anchorRef }: Props)
     return () => document.removeEventListener('mousedown', onDocClick)
   }, [open, onClose, anchorRef])
 
+  useEffect(() => {
+    if (open) return
+    setName('')
+    setShowColors(false)
+  }, [open])
+
   if (!open) return null
 
   const available = allTags.filter((t) => !tags.some((ct) => ct.id === t.id))

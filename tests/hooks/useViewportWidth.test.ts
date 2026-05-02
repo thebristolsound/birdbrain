@@ -5,7 +5,7 @@ import { useViewportWidth } from '@renderer/hooks/useViewportWidth'
 
 describe('useViewportWidth', () => {
   beforeEach(() => {
-    Object.defineProperty(window, 'innerWidth', { writable: true, value: 1280 })
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 1280 })
     vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
       cb(0)
       return 0
@@ -24,7 +24,7 @@ describe('useViewportWidth', () => {
   it('updates when the window emits resize', () => {
     const { result } = renderHook(() => useViewportWidth())
     act(() => {
-      Object.defineProperty(window, 'innerWidth', { writable: true, value: 800 })
+      Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 800 })
       window.dispatchEvent(new Event('resize'))
     })
     expect(result.current).toBe(800)

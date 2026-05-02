@@ -1,9 +1,10 @@
-const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'always' })
+const rtf = new Intl.RelativeTimeFormat('en-US', { numeric: 'always' })
 
-const ABSOLUTE_FMT = new Intl.DateTimeFormat('en', {
+const ABSOLUTE_FMT = new Intl.DateTimeFormat('en-US', {
   month: 'short',
   day: 'numeric',
-  year: 'numeric'
+  year: 'numeric',
+  timeZone: 'UTC'
 })
 
 export function formatRelativeTime(iso: string, nowMs: number = Date.now()): string {

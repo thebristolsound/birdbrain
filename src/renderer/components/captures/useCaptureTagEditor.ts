@@ -5,7 +5,7 @@ import {
   useTagsMutations
 } from '@renderer/lib/queries'
 
-export function useCaptureTagEditor(captureId: string, _caseId: string) {
+export function useCaptureTagEditor(captureId: string) {
   const tagsQuery = useQuery(tagsQueryOptions)
   const captureTagsQuery = useQuery(tagsForCaptureQueryOptions(captureId))
   const { addToCapture, removeFromCapture, create } = useTagsMutations()

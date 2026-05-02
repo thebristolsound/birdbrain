@@ -52,7 +52,7 @@ export function CaptureDetailsPanel({
   const { data: notes = [] } = useQuery(notesQueryOptions(caseId))
   const { create: createNote, update: updateNote } = useNotesMutations(caseId)
   const { favorites, toggleFavorite } = useFavorites(caseId)
-  const { tags } = useCaptureTagEditor(capture.id, caseId)
+  const { tags } = useCaptureTagEditor(capture.id)
   const verify = useVerifyMutation(capture.id, caseId)
 
   const [tagPopoverOpen, setTagPopoverOpen] = useState(false)
@@ -107,7 +107,7 @@ export function CaptureDetailsPanel({
 
   async function handleAddNote() {
     if (inline.isDirty) {
-      await inline.flush('switch')
+      await inline.flush()
     }
     onOpenAddNote()
   }
@@ -241,7 +241,6 @@ export function CaptureDetailsPanel({
             </button>
             <TagEditorPopover
               captureId={capture.id}
-              caseId={caseId}
               open={tagPopoverOpen}
               onClose={() => setTagPopoverOpen(false)}
               anchorRef={tagAnchorRef}
@@ -284,7 +283,7 @@ export function CaptureDetailsPanel({
           data-testid="inline-note-textarea"
           value={inline.value}
           onChange={(e) => inline.setValue(e.target.value)}
-          onBlur={() => void inline.flush('blur')}
+          onBlur={() => void inline.flush()}
           onKeyDown={(e) => {
             if (e.key === 'Escape') {
               e.preventDefault()
@@ -293,7 +292,7 @@ export function CaptureDetailsPanel({
             }
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
               e.preventDefault()
-              void inline.flush('cmd-enter')
+              void inline.flush()
               ;(e.target as HTMLTextAreaElement).blur()
             }
           }}

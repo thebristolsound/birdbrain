@@ -21,8 +21,6 @@ export interface UseInlineNoteEditorArgs {
   onUpdate: (args: UpdateArgs) => Promise<unknown>
 }
 
-export type FlushSource = 'blur' | 'cmd-enter' | 'debounce' | 'switch'
-
 function pickLatest(notes: Note[], captureId: string): Note | null {
   const filtered = notes.filter((n) => n.captureId === captureId)
   if (filtered.length === 0) return null
@@ -68,27 +66,24 @@ export function useInlineNoteEditor({
     }
   }, [latest, boundNoteId, value])
 
-  const flush = useCallback(
-    async (_source: FlushSource): Promise<void> => {
-      if (debounceRef.current !== null) {
-        window.clearTimeout(debounceRef.current)
-        debounceRef.current = null
-      }
-      const current = value
-      // Existing note: persist whatever the user has, even empty (no silent delete).
-      if (boundNoteId) {
-        if (current === lastServerBodyRef.current) return
-        lastServerBodyRef.current = current
-        await onUpdate({ id: boundNoteId, body: current })
-        return
-      }
-      // No note: blank blur is a no-op.
-      const trimmed = current.trim()
-      if (trimmed.length === 0) return
-      await onCreate({ title: captureTitle, body: current })
-    },
-    [boundNoteId, captureTitle, onCreate, onUpdate, value]
-  )
+  const flush = useCallback(async (): Promise<void> => {
+    if (debounceRef.current !== null) {
+      window.clearTimeout(debounceRef.current)
+      debounceRef.current = null
+    }
+    const current = value
+    // Existing note: persist whatever the user has, even empty (no silent delete).
+    if (boundNoteId) {
+      if (current === lastServerBodyRef.current) return
+      lastServerBodyRef.current = current
+      await onUpdate({ id: boundNoteId, body: current })
+      return
+    }
+    // No note: blank blur is a no-op.
+    const trimmed = current.trim()
+    if (trimmed.length === 0) return
+    await onCreate({ title: captureTitle, body: current })
+  }, [boundNoteId, captureTitle, onCreate, onUpdate, value])
 
   // Debounce on every value change.
   useEffect(() => {
@@ -99,7 +94,7 @@ export function useInlineNoteEditor({
     if (boundNoteId !== null && value === lastServerBodyRef.current) return
     debounceRef.current = window.setTimeout(() => {
       debounceRef.current = null
-      void flush('debounce')
+      void flush()
     }, DEBOUNCE_MS)
     return () => {
       if (debounceRef.current !== null) {

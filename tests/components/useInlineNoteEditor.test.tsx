@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { renderHook, act, waitFor } from '@testing-library/react'
+import { renderHook, act } from '@testing-library/react'
 import type { Note } from '@shared/types'
 import { useInlineNoteEditor } from '@renderer/components/captures/useInlineNoteEditor'
 
@@ -47,7 +47,7 @@ describe('useInlineNoteEditor', () => {
       useInlineNoteEditor({ notes: [], captureId: 'cap-1', captureTitle, onCreate, onUpdate })
     )
     await act(async () => {
-      await result.current.flush('blur')
+      await result.current.flush()
     })
     expect(onCreate).not.toHaveBeenCalled()
   })
@@ -60,7 +60,7 @@ describe('useInlineNoteEditor', () => {
     )
     act(() => result.current.setValue('hello'))
     await act(async () => {
-      await result.current.flush('blur')
+      await result.current.flush()
     })
     expect(onCreate).toHaveBeenCalledWith({ title: captureTitle, body: 'hello' })
   })
@@ -74,7 +74,7 @@ describe('useInlineNoteEditor', () => {
     )
     act(() => result.current.setValue(''))
     await act(async () => {
-      await result.current.flush('blur')
+      await result.current.flush()
     })
     expect(onUpdate).toHaveBeenCalledWith({ id: 'a', body: '' })
   })

@@ -4,7 +4,6 @@ import { useCaptureTagEditor } from './useCaptureTagEditor'
 
 interface Props {
   captureId: string
-  caseId: string
   open: boolean
   onClose: () => void
   anchorRef: React.RefObject<HTMLElement | null>
@@ -12,8 +11,8 @@ interface Props {
 
 const COLOR_PRESETS = ['#f59e0b', '#ef4444', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#64748b']
 
-export function TagEditorPopover({ captureId, caseId, open, onClose, anchorRef }: Props) {
-  const { tags, allTags, toggleTag, createTag } = useCaptureTagEditor(captureId, caseId)
+export function TagEditorPopover({ captureId, open, onClose, anchorRef }: Props) {
+  const { tags, allTags, toggleTag, createTag } = useCaptureTagEditor(captureId)
   const [name, setName] = useState('')
   const [color, setColor] = useState(COLOR_PRESETS[0])
   const [showColors, setShowColors] = useState(false)

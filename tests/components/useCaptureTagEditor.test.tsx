@@ -6,7 +6,6 @@ import type { ReactNode } from 'react'
 import { useCaptureTagEditor } from '@renderer/components/captures/useCaptureTagEditor'
 
 const captureId = 'cap-1'
-const caseId = 'case-1'
 
 function withClient(client: QueryClient) {
   return function Wrapper({ children }: { children: ReactNode }) {
@@ -43,7 +42,7 @@ describe('useCaptureTagEditor', () => {
 
   it('loads tags + capture tags', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    const { result } = renderHook(() => useCaptureTagEditor(captureId, caseId), {
+    const { result } = renderHook(() => useCaptureTagEditor(captureId), {
       wrapper: withClient(client)
     })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
@@ -53,7 +52,7 @@ describe('useCaptureTagEditor', () => {
 
   it('toggleTag adds when missing, removes when present', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    const { result } = renderHook(() => useCaptureTagEditor(captureId, caseId), {
+    const { result } = renderHook(() => useCaptureTagEditor(captureId), {
       wrapper: withClient(client)
     })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
@@ -72,7 +71,7 @@ describe('useCaptureTagEditor', () => {
 
   it('createTag invokes tags.create with provided name + color', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    const { result } = renderHook(() => useCaptureTagEditor(captureId, caseId), {
+    const { result } = renderHook(() => useCaptureTagEditor(captureId), {
       wrapper: withClient(client)
     })
     await waitFor(() => expect(result.current.isLoading).toBe(false))

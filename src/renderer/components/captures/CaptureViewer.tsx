@@ -2,57 +2,34 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '@renderer/stores/appStore'
-import {
-  capturesQueryOptions,
-  tagsQueryOptions,
-  tagsForCaptureQueryOptions,
-  useTagsMutations,
-  useCapturesMutations
-} from '@renderer/lib/queries'
-import { TagBadge } from '@renderer/components/tags/TagBadge'
+import { capturesQueryOptions } from '@renderer/lib/queries'
 import type { Capture } from '@shared/types'
 import {
   ChevronLeft,
   ChevronRight,
-  Download,
-  ExternalLink,
-  Trash2,
+  ArrowLeft,
   Image,
   Globe,
   Code,
   FileText,
   Info,
-  Tag as TagIcon,
-  StickyNote,
-  MoreHorizontal,
-  Sparkles
+  Shield
 } from 'lucide-react'
-import { AddNoteModal } from '@renderer/components/notes/AddNoteModal'
 import { MhtmlViewer } from '@renderer/components/captures/MhtmlViewer'
-import { ProvenanceBadge } from '@renderer/components/captures/ProvenanceBadge'
-import { AnalysisTab } from '@renderer/components/captures/AnalysisTab'
 import { AnnotationEditor } from './annotation/AnnotationEditor'
-import {
-  Button,
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter
-} from '@renderer/components/ui'
+import { Button } from '@renderer/components/ui'
+import { getProvenanceColor } from './getProvenanceColor'
 
-type ViewTab = 'screenshot' | 'page' | 'source' | 'text' | 'metadata' | 'analysis'
+type ViewTab = 'screenshot' | 'page' | 'source' | 'text' | 'metadata'
 
-const TABS: ViewTab[] = ['screenshot', 'page', 'source', 'text', 'metadata', 'analysis']
+const TABS: ViewTab[] = ['screenshot', 'page', 'source', 'text', 'metadata']
 
 const TAB_ICONS: Record<ViewTab, typeof Image> = {
   screenshot: Image,
   page: Globe,
   source: Code,
   text: FileText,
-  metadata: Info,
-  analysis: Sparkles
+  metadata: Info
 }
 
 const TAB_LABELS: Record<ViewTab, string> = {
@@ -60,8 +37,7 @@ const TAB_LABELS: Record<ViewTab, string> = {
   page: 'Page',
   source: 'Source',
   text: 'Text',
-  metadata: 'Metadata',
-  analysis: '✦ Analysis'
+  metadata: 'Metadata'
 }
 
 export function CaptureViewer() {
@@ -69,23 +45,10 @@ export function CaptureViewer() {
   const selectedCaptureId = useAppStore((s) => s.selectedCaptureId)
   const selectCapture = useAppStore((s) => s.selectCapture)
   const { data: captures = [] } = useQuery(capturesQueryOptions(caseId))
-  const { data: allTags = [] } = useQuery(tagsQueryOptions)
-  const { data: captureTags = [] } = useQuery(tagsForCaptureQueryOptions(selectedCaptureId ?? ''))
-  const { create: createTag, addToCapture, removeFromCapture } = useTagsMutations()
-  const { remove: deleteCaptureMutation } = useCapturesMutations(caseId)
 
   const [activeTab, setActiveTab] = useState<ViewTab>('screenshot')
   const [capture, setCapture] = useState<Capture | null>(null)
   const [content, setContent] = useState<string | null>(null)
-  const [showTagMenu, setShowTagMenu] = useState(false)
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-  const [showAddNote, setShowAddNote] = useState(false)
-  const [showOverflowMenu, setShowOverflowMenu] = useState(false)
-  const [newTagName, setNewTagName] = useState('')
-  const [newTagColor, setNewTagColor] = useState('#f59e0b')
-  const [showColorPicker, setShowColorPicker] = useState(false)
-  const [notePrefillTitle, setNotePrefillTitle] = useState('')
-  const [notePrefillBody, setNotePrefillBody] = useState('')
 
   useEffect(() => {
     if (!selectedCaptureId) {
@@ -133,43 +96,6 @@ export function CaptureViewer() {
     }
   }, [selectedCaptureId, activeTab, capture?.format])
 
-  const handleToggleTag = useCallback(
-    async (tagId: string) => {
-      if (!selectedCaptureId) return
-      const hasTag = captureTags.some((t) => t.id === tagId)
-      if (hasTag) {
-        await removeFromCapture.mutateAsync({ captureId: selectedCaptureId, tagId })
-      } else {
-        await addToCapture.mutateAsync({ captureId: selectedCaptureId, tagId })
-      }
-    },
-    [selectedCaptureId, captureTags, addToCapture, removeFromCapture]
-  )
-
-  const handleDownload = async () => {
-    if (!selectedCaptureId) return
-    await window.birdbrain.captures.download(selectedCaptureId)
-  }
-
-  const handleOpenExternal = async () => {
-    if (!capture) return
-    await window.birdbrain.captures.openExternal(capture.url)
-  }
-
-  const handleDelete = async () => {
-    if (!selectedCaptureId) return
-    const deletedId = selectedCaptureId
-    await deleteCaptureMutation.mutateAsync(deletedId)
-    setShowDeleteConfirm(false)
-    // Navigate away: pick sibling capture or clear selection
-    const remaining = captures.filter((c) => c.id !== deletedId)
-    if (remaining.length > 0) {
-      selectCapture(remaining[0].id)
-    } else {
-      useAppStore.getState().setSelectedCaptureId(null)
-    }
-  }
-
   // Navigation
   const currentIndex = captures.findIndex((c) => c.id === selectedCaptureId)
   const goPrev = useCallback(() => {
@@ -208,225 +134,40 @@ export function CaptureViewer() {
 
   return (
     <main className="flex flex-1 flex-col overflow-hidden bg-canvas">
-      {/* A) Viewer header */}
-      <div className="flex items-center gap-3 border-b border-border px-4 py-3">
-        {/* Prev/Next nav */}
-        <Button variant="ghost" size="icon-sm" onClick={goPrev} disabled={currentIndex <= 0}>
-          <ChevronLeft className="h-4 w-4" />
+      {/* Slim breadcrumb */}
+      <div className="flex h-9 items-center gap-2 border-b border-border px-3">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => useAppStore.getState().setSelectedCaptureId(null)}
+          title="Back"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
         </Button>
+        <div className="min-w-0 flex-1">
+          <span className="truncate text-sm font-medium text-text-primary">
+            {capture.title || hostname}
+          </span>
+        </div>
+        <Shield
+          className={`h-3.5 w-3.5 ${getProvenanceColor(capture.lastVerifiedStatus).text}`}
+          aria-label={getProvenanceColor(capture.lastVerifiedStatus).label}
+        />
+        <Button variant="ghost" size="icon-sm" onClick={goPrev} disabled={currentIndex <= 0}>
+          <ChevronLeft className="h-3.5 w-3.5" />
+        </Button>
+        <span className="shrink-0 text-[11px] text-text-faint">
+          {currentIndex + 1} / {captures.length}
+        </span>
         <Button
           variant="ghost"
           size="icon-sm"
           onClick={goNext}
           disabled={currentIndex >= captures.length - 1}
         >
-          <ChevronRight className="h-4 w-4" />
+          <ChevronRight className="h-3.5 w-3.5" />
         </Button>
-
-        {/* Title + URL + position */}
-        <div className="min-w-0 flex-1">
-          <h2 className="truncate font-display text-sm font-bold text-text-primary">
-            {capture.title || hostname}
-          </h2>
-          <div className="flex items-center gap-2">
-            <span className="truncate font-mono text-[11px] text-text-muted">{capture.url}</span>
-            <span className="shrink-0 text-[11px] text-text-faint">·</span>
-            <span className="shrink-0 text-[11px] text-text-faint">
-              {currentIndex + 1} / {captures.length}
-            </span>
-            <span className="shrink-0 text-[11px] text-text-faint">·</span>
-            <span className="shrink-0 text-[11px] text-text-faint">← →</span>
-          </div>
-        </div>
-
-        {/* Tag popover trigger */}
-        <div className="relative shrink-0">
-          <button
-            onClick={() => {
-              setShowTagMenu(!showTagMenu)
-              setNewTagName('')
-            }}
-            className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] transition-colors ${
-              captureTags.length > 0
-                ? 'text-text-secondary hover:bg-elevated'
-                : 'text-text-muted hover:bg-elevated hover:text-text-secondary'
-            }`}
-            title="Manage tags"
-          >
-            <TagIcon className="h-3.5 w-3.5" />
-            {captureTags.length > 0 && (
-              <span className="rounded-full bg-accent-subtle px-1.5 text-[10px] font-semibold text-accent">
-                {captureTags.length}
-              </span>
-            )}
-          </button>
-
-          {showTagMenu && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setShowTagMenu(false)} />
-              <div className="absolute right-0 top-full z-50 mt-1 w-56 rounded-lg border border-border-strong bg-card py-1 shadow-xl">
-                {/* Applied tags */}
-                {captureTags.length > 0 && (
-                  <div className="border-b border-border px-3 py-2">
-                    <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-text-faint">
-                      Applied
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {captureTags.map((tag) => (
-                        <TagBadge
-                          key={tag.id}
-                          tag={tag}
-                          onClick={() => handleToggleTag(tag.id)}
-                          removable
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Available tags to add */}
-                <div className="max-h-40 overflow-y-auto py-1">
-                  {allTags
-                    .filter((t) => !captureTags.some((ct) => ct.id === t.id))
-                    .map((tag) => (
-                      <button
-                        key={tag.id}
-                        onClick={() => handleToggleTag(tag.id)}
-                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text-secondary hover:bg-elevated"
-                      >
-                        <span
-                          className="h-2 w-2 shrink-0 rounded-full"
-                          style={{ backgroundColor: tag.color || '#f59e0b' }}
-                        />
-                        {tag.name}
-                      </button>
-                    ))}
-                </div>
-
-                {/* Create new tag inline */}
-                <div className="border-t border-border px-3 py-2">
-                  <div className="flex items-center gap-1.5">
-                    {/* Color swatch — click to expand picker */}
-                    <div className="relative shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => setShowColorPicker(!showColorPicker)}
-                        className="flex h-4 w-4 items-center justify-center rounded-full ring-1 ring-border transition-transform hover:scale-110"
-                        style={{ backgroundColor: newTagColor }}
-                        title="Pick color"
-                      />
-                      {showColorPicker && (
-                        <div className="absolute bottom-full left-0 mb-1 flex flex-col gap-1 rounded-lg border border-border-strong bg-card p-1.5 shadow-lg">
-                          {[
-                            '#f59e0b',
-                            '#ef4444',
-                            '#22c55e',
-                            '#3b82f6',
-                            '#a855f7',
-                            '#ec4899',
-                            '#14b8a6',
-                            '#f97316'
-                          ].map((c) => (
-                            <button
-                              key={c}
-                              type="button"
-                              onClick={() => {
-                                setNewTagColor(c)
-                                setShowColorPicker(false)
-                              }}
-                              className={`h-4 w-4 rounded-full transition-transform hover:scale-125 ${
-                                c === newTagColor ? 'ring-2 ring-accent ring-offset-1' : ''
-                              }`}
-                              style={{ backgroundColor: c }}
-                            />
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <input
-                      type="text"
-                      value={newTagName}
-                      onChange={(e) => setNewTagName(e.target.value)}
-                      onKeyDown={async (e) => {
-                        if (e.key === 'Enter' && newTagName.trim()) {
-                          const tag = await createTag.mutateAsync({
-                            name: newTagName.trim(),
-                            color: newTagColor
-                          })
-                          if (selectedCaptureId) {
-                            await addToCapture.mutateAsync({
-                              captureId: selectedCaptureId,
-                              tagId: tag.id
-                            })
-                          }
-                          setNewTagName('')
-                        }
-                      }}
-                      placeholder="New tag..."
-                      className="flex-1 bg-transparent text-xs text-text-primary placeholder:text-text-faint focus:outline-none"
-                    />
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Right side actions */}
-        <div className="flex items-center gap-1">
-          <ProvenanceBadge key={capture.id} capture={capture} />
-          <Button variant="ghost" size="icon-sm" onClick={handleDownload} title="Download capture">
-            <Download className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={handleOpenExternal}
-            title="Open URL in browser"
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-          </Button>
-
-          {/* Overflow menu */}
-          <div className="relative">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={() => setShowOverflowMenu(!showOverflowMenu)}
-              title="More actions"
-            >
-              <MoreHorizontal className="h-3.5 w-3.5" />
-            </Button>
-            {showOverflowMenu && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setShowOverflowMenu(false)} />
-                <div className="absolute right-0 top-full z-50 mt-1 w-44 rounded-lg border border-border-strong bg-elevated py-1 shadow-lg">
-                  <button
-                    data-testid="add-note-button"
-                    onClick={() => {
-                      setShowAddNote(true)
-                      setShowOverflowMenu(false)
-                    }}
-                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text-secondary hover:bg-surface"
-                  >
-                    <StickyNote className="h-3.5 w-3.5" />
-                    Add note
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowDeleteConfirm(true)
-                      setShowOverflowMenu(false)
-                    }}
-                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-red-400 hover:bg-surface"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    Delete capture
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
+        <span className="shrink-0 text-[11px] text-text-faint">← →</span>
       </div>
 
       {/* Sub-tabs row */}
@@ -452,7 +193,7 @@ export function CaptureViewer() {
         })}
       </div>
 
-      {/* B) Content area */}
+      {/* Content area — keep existing content branches except analysis */}
       <div className="flex-1 overflow-hidden min-h-0">
         {activeTab === 'screenshot' &&
           (content ? (
@@ -520,52 +261,7 @@ export function CaptureViewer() {
             </div>
           </div>
         )}
-        {activeTab === 'analysis' && (
-          <AnalysisTab
-            captureId={capture.id}
-            caseId={caseId}
-            captureTitle={capture.title || ''}
-            onOpenNote={(prefillTitle, prefillBody) => {
-              setNotePrefillTitle(prefillTitle)
-              setNotePrefillBody(prefillBody)
-              setShowAddNote(true)
-            }}
-          />
-        )}
       </div>
-
-      <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <DialogContent onClose={() => setShowDeleteConfirm(false)} className="w-80 max-w-80 p-5">
-          <DialogHeader className="mb-2">
-            <DialogTitle className="text-sm">Delete Capture?</DialogTitle>
-            <DialogDescription className="text-xs">
-              This will permanently remove the capture and its files. This cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="mt-4">
-            <Button variant="ghost" onClick={() => setShowDeleteConfirm(false)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDelete}>
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <AddNoteModal
-        open={showAddNote}
-        caseId={caseId}
-        captureId={capture.id}
-        captureTitle={capture.title || ''}
-        captureUrl={capture.url}
-        prefillTitle={notePrefillTitle || undefined}
-        prefillBody={notePrefillBody || undefined}
-        onClose={() => {
-          setShowAddNote(false)
-          setNotePrefillTitle('')
-          setNotePrefillBody('')
-        }}
-      />
     </main>
   )
 }

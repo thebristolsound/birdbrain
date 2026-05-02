@@ -1,4 +1,7 @@
+import { useState } from 'react'
 import type { Capture } from '@shared/types'
+import { useVerifyMutation } from './useVerifyMutation'
+import { getProvenanceColor } from './getProvenanceColor'
 
 interface Props {
   capture: Capture
@@ -6,7 +9,22 @@ interface Props {
 }
 
 export function ForensicsTab({ capture, caseId }: Props) {
-  void caseId
+  const verify = useVerifyMutation(capture.id, caseId)
+  const provenance = getProvenanceColor(capture.lastVerifiedStatus)
+  const [headersOpen, setHeadersOpen] = useState(false)
+  const isMhtml = capture.format === 'mhtml'
+
+  const reverifyButton = (
+    <button
+      onClick={verify.verify}
+      disabled={verify.isPending}
+      className="rounded-md px-2 py-0.5 text-[11px] text-accent hover:bg-accent-subtle disabled:opacity-50"
+      data-testid="forensics-reverify-btn"
+    >
+      {verify.isPending ? 'Verifying…' : 'Re-verify'}
+    </button>
+  )
+
   return (
     <div className="h-full overflow-y-auto">
       {capture.format === 'html' && (
@@ -18,10 +36,72 @@ export function ForensicsTab({ capture, caseId }: Props) {
           unavailable.
         </div>
       )}
-      <Section title="Identity">
+
+      {isMhtml && (
+        <Section title="Hash chain" action={reverifyButton}>
+          <Row label="Hash (SHA-256)" value={capture.hash} />
+          <Row label="Previous hash" value={capture.prevHash} />
+          <Row label="Entry hash" value={capture.entryHash} />
+          <Row label="Manifest index" value={capture.manifestIndex} />
+          <div>
+            <div className="text-text-faint">Chain status</div>
+            <div className={`flex items-center gap-2 ${provenance.text}`}>
+              <span
+                className={`inline-block h-1.5 w-1.5 rounded-full ${provenance.dot} ${
+                  verify.isPending ? 'animate-pulse' : ''
+                }`}
+              />
+              <span>{provenance.label}</span>
+            </div>
+          </div>
+        </Section>
+      )}
+
+      <Section title="Identity" action={!isMhtml ? reverifyButton : undefined}>
         <Row label="URL" value={capture.url} />
         <Row label="Title" value={capture.title} />
+        <Row label="Captured at" value={new Date(capture.timestamp).toLocaleString()} />
+        <Row label="Created at" value={new Date(capture.createdAt).toLocaleString()} />
+        {!isMhtml && <Row label="Hash (SHA-256)" value={capture.hash} />}
       </Section>
+
+      {isMhtml && (
+        <Section title="Capture environment">
+          <Row label="Tool version" value={capture.toolVersion} />
+          <Row label="Extension version" value={capture.extensionVersion} />
+          <Row label="Browser version" value={capture.browserVersion} />
+          <Row label="User agent" value={capture.userAgent} />
+          <Row label="HTTP status" value={capture.httpStatus} />
+        </Section>
+      )}
+
+      {isMhtml && (capture.operatorName || capture.operatorId) && (
+        <Section title="Operator">
+          <Row label="Operator name" value={capture.operatorName} />
+          <Row label="Operator ID" value={capture.operatorId} />
+        </Section>
+      )}
+
+      {capture.headers && (
+        <Section
+          title="Headers"
+          action={
+            <button
+              type="button"
+              onClick={() => setHeadersOpen((v) => !v)}
+              className="rounded-md px-2 py-0.5 text-[11px] text-accent hover:bg-accent-subtle"
+            >
+              {headersOpen ? 'Hide' : 'Show'}
+            </button>
+          }
+        >
+          {headersOpen && (
+            <pre className="whitespace-pre-wrap break-all text-[11px] text-text-muted">
+              {capture.headers}
+            </pre>
+          )}
+        </Section>
+      )}
     </div>
   )
 }

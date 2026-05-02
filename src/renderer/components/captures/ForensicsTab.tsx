@@ -16,6 +16,7 @@ export function ForensicsTab({ capture, caseId }: Props) {
 
   const reverifyButton = (
     <button
+      type="button"
       onClick={verify.verify}
       disabled={verify.isPending}
       className="rounded-md px-2 py-0.5 text-[11px] text-accent hover:bg-accent-subtle disabled:opacity-50"
@@ -71,7 +72,7 @@ export function ForensicsTab({ capture, caseId }: Props) {
           <Row label="Extension version" value={capture.extensionVersion} />
           <Row label="Browser version" value={capture.browserVersion} />
           <Row label="User agent" value={capture.userAgent} />
-          <Row label="HTTP status" value={capture.httpStatus} />
+          <Row label="HTTP status" value={capture.httpStatus || undefined} />
         </Section>
       )}
 

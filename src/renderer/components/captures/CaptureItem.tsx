@@ -76,6 +76,8 @@ export function CaptureItem({
     <div
       role="button"
       tabIndex={0}
+      data-testid="capture-item"
+      data-capture-id={capture.id}
       onClick={onClick}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {

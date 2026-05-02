@@ -55,7 +55,9 @@ const DEFAULT_SETTINGS: BirdbrainSettings = {
   lastActiveCaseId: null,
   lastActiveSection: 'captures',
   hasCompletedOnboarding: false,
-  analysisSystemPrompt: DEFAULT_ANALYSIS_SYSTEM_PROMPT
+  analysisSystemPrompt: DEFAULT_ANALYSIS_SYSTEM_PROMPT,
+  detailsPanelCollapsed: false,
+  tooltipsSeen: {}
 }
 
 export function initSettings(userDataPath: string): void {

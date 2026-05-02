@@ -17,11 +17,13 @@ interface AppState {
     lastError?: { message: string; timestamp: string }
   }
   commandPaletteOpen: boolean
+  panelCollapsedForced: boolean
 
   setSessionActive: (active: boolean) => void
   setConnectedToExtension: (connected: boolean) => void
   setCommandPaletteOpen: (open: boolean) => void
   toggleCommandPalette: () => void
+  setPanelCollapsedForced: (forced: boolean) => void
   setSelectedCaptureId: (id: string | null) => void
   setSearchQuery: (query: string) => void
   selectCapture: (id: string) => void
@@ -47,11 +49,13 @@ export const useAppStore = create<AppState>((set) => ({
   captureEvents: [],
   captureStats: { successCount: 0, failCount: 0, skipCount: 0 },
   commandPaletteOpen: false,
+  panelCollapsedForced: false,
 
   setSessionActive: (active) => set({ sessionActive: active }),
   setConnectedToExtension: (connected) => set({ connectedToExtension: connected }),
   setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
   toggleCommandPalette: () => set((s) => ({ commandPaletteOpen: !s.commandPaletteOpen })),
+  setPanelCollapsedForced: (forced) => set({ panelCollapsedForced: forced }),
   setSelectedCaptureId: (id) => set({ selectedCaptureId: id }),
   setSearchQuery: (query) => set({ searchQuery: query }),
 

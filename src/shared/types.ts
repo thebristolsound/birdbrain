@@ -69,6 +69,8 @@ export interface BirdbrainSettings {
   lastActiveSection: 'captures' | 'selectors' | 'notes' | 'tags' | 'data' | 'settings'
   hasCompletedOnboarding: boolean
   analysisSystemPrompt: string
+  detailsPanelCollapsed: boolean
+  tooltipsSeen: Record<string, boolean>
 }
 
 export interface OpenRouterModel {

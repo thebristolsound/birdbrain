@@ -12,6 +12,7 @@ import type {
   SaveAnnotationsParams,
   UpsertAnnotationPinParams
 } from '@shared/ipc'
+import type { BirdbrainSettings } from '@shared/types'
 
 export const queryKeys = {
   cases: ['cases'] as const,
@@ -37,7 +38,8 @@ export const queryKeys = {
   extractedDataItems: (caseId: string, category: string, subcategory: string) =>
     ['extractedData', 'items', caseId, category, subcategory] as const,
   extractedDataCount: (caseId: string) => ['extractedData', 'count', caseId] as const,
-  annotations: (captureId: string) => ['annotations', captureId] as const
+  annotations: (captureId: string) => ['annotations', captureId] as const,
+  settings: ['settings'] as const
 }
 
 // --- Cases ---
@@ -371,4 +373,24 @@ export function useAnnotationsMutations(captureId: string) {
   })
 
   return { save, upsertPin, deletePin, deleteAll }
+}
+
+// --- Settings ---
+
+export const settingsQueryOptions = queryOptions({
+  queryKey: queryKeys.settings,
+  queryFn: () => window.birdbrain.settings.get()
+})
+
+export function useSettingsMutations() {
+  const queryClient = useQueryClient()
+
+  const update = useMutation({
+    mutationFn: (partial: Partial<BirdbrainSettings>) => window.birdbrain.settings.update(partial),
+    onSuccess: (data) => {
+      queryClient.setQueryData(queryKeys.settings, data)
+    }
+  })
+
+  return { update }
 }

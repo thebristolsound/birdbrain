@@ -51,7 +51,7 @@ playwright-report/
 .cursor
 .zed
 .kilo
-#docs/superpowers
+docs/**
 
 .superdesign
 package-lock.json

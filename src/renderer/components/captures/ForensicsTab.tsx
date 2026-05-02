@@ -97,12 +97,13 @@ export function ForensicsTab({ capture, caseId }: Props) {
             <button
               type="button"
               onClick={() => setHeadersOpen((v) => !v)}
+              aria-label={headersOpen ? 'Hide headers' : 'Show headers'}
               aria-controls={headersRegionId}
               aria-expanded={headersOpen}
               className="rounded-md px-2 py-0.5 text-[11px] text-accent hover:bg-accent-subtle"
               data-testid="forensics-headers-toggle"
             >
-              {headersOpen ? 'Hide headers' : 'Show headers'}
+              {headersOpen ? 'Hide' : 'Show'}
             </button>
           }
         >

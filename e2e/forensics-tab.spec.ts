@@ -53,7 +53,7 @@ test.describe('Forensics tab', () => {
     expect(upload.status).toBe('ok')
 
     // Seed a legacy HTML capture directly. The Hono server only ingests MHTML,
-    // so we insert an `format='html'` row via better-sqlite3 against the same
+    // so we insert a `format='html'` row via better-sqlite3 against the same
     // user-data DB. The renderer's first read of the capture list happens after
     // the navigate below, so React Query sees both rows on its initial fetch.
     await electronApp.evaluate(
@@ -132,11 +132,24 @@ test.describe('Forensics tab', () => {
     await expect(page.getByText(/^Hash chain$/i)).toBeVisible()
     await expect(page.getByText(/^Identity$/i)).toBeVisible()
     await expect(page.getByText(/^Capture environment$/i)).toBeVisible()
+    await expect(page.getByText(/^Headers$/i)).toHaveCount(0)
     await expect(page.getByTestId('forensics-reverify-btn')).toBeVisible()
     await expect(page.getByTestId('forensics-legacy-banner')).toHaveCount(0)
+    await expect(page.getByTestId('forensics-chain-status-label')).toHaveText('Not verified')
+    await expect(page.getByTestId('capture-details-provenance-label')).toHaveText('Not verified')
+    await expect(page.getByTestId('capture-viewer-breadcrumb-provenance')).toHaveAttribute(
+      'aria-label',
+      'Not verified'
+    )
 
     await page.getByTestId('forensics-reverify-btn').click()
     await expect(page.getByTestId('forensics-reverify-btn')).toBeEnabled({ timeout: 5000 })
+    await expect(page.getByTestId('forensics-chain-status-label')).toHaveText('Verified')
+    await expect(page.getByTestId('capture-details-provenance-label')).toHaveText('Verified')
+    await expect(page.getByTestId('capture-viewer-breadcrumb-provenance')).toHaveAttribute(
+      'aria-label',
+      'Verified'
+    )
 
     // Legacy path
     const legacyItem = page.getByTestId('capture-item').filter({ hasText: 'Legacy HTML' })

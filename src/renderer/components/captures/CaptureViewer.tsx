@@ -3,7 +3,6 @@ import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '@renderer/stores/appStore'
 import { capturesQueryOptions } from '@renderer/lib/queries'
-import type { Capture } from '@shared/types'
 import {
   ChevronLeft,
   ChevronRight,
@@ -48,24 +47,12 @@ export function CaptureViewer() {
   const { data: captures = [] } = useQuery(capturesQueryOptions(caseId))
 
   const [activeTab, setActiveTab] = useState<ViewTab>('screenshot')
-  const [capture, setCapture] = useState<Capture | null>(null)
   const [content, setContent] = useState<string | null>(null)
+  const capture = captures.find((item) => item.id === selectedCaptureId) ?? null
 
   useEffect(() => {
     if (!selectedCaptureId) {
-      setCapture(null)
       setContent(null)
-      return
-    }
-    let cancelled = false
-    window.birdbrain.captures
-      .get(selectedCaptureId)
-      .then((c) => {
-        if (!cancelled) setCapture(c ?? null)
-      })
-      .catch((err) => console.error('Failed to load capture:', err))
-    return () => {
-      cancelled = true
     }
   }, [selectedCaptureId])
 
@@ -151,6 +138,7 @@ export function CaptureViewer() {
           </span>
         </div>
         <Shield
+          data-testid="capture-viewer-breadcrumb-provenance"
           className={`h-3.5 w-3.5 ${getProvenanceColor(capture.lastVerifiedStatus).text}`}
           aria-label={getProvenanceColor(capture.lastVerifiedStatus).label}
         />

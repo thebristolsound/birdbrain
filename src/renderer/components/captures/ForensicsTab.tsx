@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import type { Capture } from '@shared/types'
 import { useVerifyMutation } from './useVerifyMutation'
 import { getProvenanceColor } from './getProvenanceColor'
@@ -12,7 +12,13 @@ export function ForensicsTab({ capture, caseId }: Props) {
   const verify = useVerifyMutation(capture.id, caseId)
   const provenance = getProvenanceColor(capture.lastVerifiedStatus)
   const [headersOpen, setHeadersOpen] = useState(false)
+  const headersRegionId = useId()
   const isMhtml = capture.format === 'mhtml'
+  const hasHeaders = hasMeaningfulHeaders(capture.headers)
+
+  useEffect(() => {
+    setHeadersOpen(false)
+  }, [capture.id])
 
   const reverifyButton = (
     <button
@@ -48,11 +54,12 @@ export function ForensicsTab({ capture, caseId }: Props) {
             <div className="text-text-faint">Chain status</div>
             <div className={`flex items-center gap-2 ${provenance.text}`}>
               <span
+                data-testid="forensics-chain-status-dot"
                 className={`inline-block h-1.5 w-1.5 rounded-full ${provenance.dot} ${
                   verify.isPending ? 'animate-pulse' : ''
                 }`}
               />
-              <span>{provenance.label}</span>
+              <span data-testid="forensics-chain-status-label">{provenance.label}</span>
             </div>
           </div>
         </Section>
@@ -83,21 +90,27 @@ export function ForensicsTab({ capture, caseId }: Props) {
         </Section>
       )}
 
-      {capture.headers && (
+      {hasHeaders && (
         <Section
           title="Headers"
           action={
             <button
               type="button"
               onClick={() => setHeadersOpen((v) => !v)}
+              aria-controls={headersRegionId}
+              aria-expanded={headersOpen}
               className="rounded-md px-2 py-0.5 text-[11px] text-accent hover:bg-accent-subtle"
+              data-testid="forensics-headers-toggle"
             >
-              {headersOpen ? 'Hide' : 'Show'}
+              {headersOpen ? 'Hide headers' : 'Show headers'}
             </button>
           }
         >
           {headersOpen && (
-            <pre className="whitespace-pre-wrap break-all text-[11px] text-text-muted">
+            <pre
+              id={headersRegionId}
+              className="whitespace-pre-wrap break-all text-[11px] text-text-muted"
+            >
               {capture.headers}
             </pre>
           )}
@@ -135,4 +148,18 @@ function Row({ label, value }: { label: string; value: string | number | undefin
       <div className="break-all text-text-secondary">{String(value)}</div>
     </div>
   )
+}
+
+function hasMeaningfulHeaders(headers: string | null | undefined) {
+  if (!headers?.trim()) return false
+
+  try {
+    const parsed = JSON.parse(headers)
+    if (Array.isArray(parsed)) return parsed.length > 0
+    if (parsed && typeof parsed === 'object') return Object.keys(parsed).length > 0
+  } catch {
+    return true
+  }
+
+  return true
 }

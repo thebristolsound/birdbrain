@@ -206,16 +206,23 @@ export function CaptureDetailsPanel({
           label="Provenance"
           value={
             <div className="flex items-center gap-2">
-              <span
-                className={`inline-block h-1.5 w-1.5 rounded-full ${provenance.dot} ${
-                  verify.isPending ? 'animate-pulse' : ''
-                }`}
-              />
-              <span className={provenance.text}>{provenance.label}</span>
-              <button
-                onClick={verify.verify}
-                disabled={verify.isPending}
-                className="ml-auto rounded-md px-2 py-0.5 text-[11px] text-accent hover:bg-accent-subtle disabled:opacity-50"
+                <span
+                  data-testid="capture-details-provenance-dot"
+                  className={`inline-block h-1.5 w-1.5 rounded-full ${provenance.dot} ${
+                    verify.isPending ? 'animate-pulse' : ''
+                  }`}
+                />
+                <span
+                  data-testid="capture-details-provenance-label"
+                  className={provenance.text}
+                >
+                  {provenance.label}
+                </span>
+                <button
+                  data-testid="capture-details-reverify-btn"
+                  onClick={verify.verify}
+                  disabled={verify.isPending}
+                  className="ml-auto rounded-md px-2 py-0.5 text-[11px] text-accent hover:bg-accent-subtle disabled:opacity-50"
               >
                 {verify.isPending ? 'Verifying…' : 'Re-verify'}
               </button>

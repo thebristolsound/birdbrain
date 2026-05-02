@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { MhtmlViewer } from '@renderer/components/captures/MhtmlViewer'
 import { AnnotationEditor } from './annotation/AnnotationEditor'
+import { ForensicsTab } from './ForensicsTab'
 import { Button } from '@renderer/components/ui'
 import { getProvenanceColor } from './getProvenanceColor'
 
@@ -243,35 +244,9 @@ export function CaptureViewer() {
           ) : (
             <div className="p-4 text-text-muted">No text content available</div>
           ))}
-        {activeTab === 'forensics' && (
-          <div className="h-full overflow-y-auto p-4">
-            <div className="space-y-3 font-mono text-sm">
-              <MetadataRow label="URL" value={capture.url} />
-              <MetadataRow label="Timestamp" value={new Date(capture.timestamp).toLocaleString()} />
-              <MetadataRow label="Hash (SHA-256)" value={capture.hash} />
-              <MetadataRow label="Created" value={new Date(capture.createdAt).toLocaleString()} />
-              {capture.headers && (
-                <div>
-                  <div className="text-text-muted">Headers</div>
-                  <pre className="mt-1 whitespace-pre-wrap text-xs text-text-muted">
-                    {capture.headers}
-                  </pre>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        {activeTab === 'forensics' && <ForensicsTab capture={capture} caseId={caseId} />}
       </div>
     </main>
-  )
-}
-
-function MetadataRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div className="text-text-muted">{label}</div>
-      <div className="break-all text-text-secondary">{value}</div>
-    </div>
   )
 }
 

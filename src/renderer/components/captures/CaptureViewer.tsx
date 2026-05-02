@@ -3,7 +3,6 @@ import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '@renderer/stores/appStore'
 import { capturesQueryOptions } from '@renderer/lib/queries'
-import type { Capture } from '@shared/types'
 import {
   ChevronLeft,
   ChevronRight,
@@ -12,24 +11,25 @@ import {
   Globe,
   Code,
   FileText,
-  Info,
+  ShieldCheck,
   Shield
 } from 'lucide-react'
 import { MhtmlViewer } from '@renderer/components/captures/MhtmlViewer'
 import { AnnotationEditor } from './annotation/AnnotationEditor'
+import { ForensicsTab } from './ForensicsTab'
 import { Button } from '@renderer/components/ui'
 import { getProvenanceColor } from './getProvenanceColor'
 
-type ViewTab = 'screenshot' | 'page' | 'source' | 'text' | 'metadata'
+type ViewTab = 'screenshot' | 'page' | 'source' | 'text' | 'forensics'
 
-const TABS: ViewTab[] = ['screenshot', 'page', 'source', 'text', 'metadata']
+const TABS: ViewTab[] = ['screenshot', 'page', 'source', 'text', 'forensics']
 
 const TAB_ICONS: Record<ViewTab, typeof Image> = {
   screenshot: Image,
   page: Globe,
   source: Code,
   text: FileText,
-  metadata: Info
+  forensics: ShieldCheck
 }
 
 const TAB_LABELS: Record<ViewTab, string> = {
@@ -37,7 +37,7 @@ const TAB_LABELS: Record<ViewTab, string> = {
   page: 'Page',
   source: 'Source',
   text: 'Text',
-  metadata: 'Metadata'
+  forensics: 'Forensics'
 }
 
 export function CaptureViewer() {
@@ -47,24 +47,12 @@ export function CaptureViewer() {
   const { data: captures = [] } = useQuery(capturesQueryOptions(caseId))
 
   const [activeTab, setActiveTab] = useState<ViewTab>('screenshot')
-  const [capture, setCapture] = useState<Capture | null>(null)
   const [content, setContent] = useState<string | null>(null)
+  const capture = captures.find((item) => item.id === selectedCaptureId) ?? null
 
   useEffect(() => {
     if (!selectedCaptureId) {
-      setCapture(null)
       setContent(null)
-      return
-    }
-    let cancelled = false
-    window.birdbrain.captures
-      .get(selectedCaptureId)
-      .then((c) => {
-        if (!cancelled) setCapture(c ?? null)
-      })
-      .catch((err) => console.error('Failed to load capture:', err))
-    return () => {
-      cancelled = true
     }
   }, [selectedCaptureId])
 
@@ -150,6 +138,7 @@ export function CaptureViewer() {
           </span>
         </div>
         <Shield
+          data-testid="capture-viewer-breadcrumb-provenance"
           className={`h-3.5 w-3.5 ${getProvenanceColor(capture.lastVerifiedStatus).text}`}
           aria-label={getProvenanceColor(capture.lastVerifiedStatus).label}
         />
@@ -243,35 +232,9 @@ export function CaptureViewer() {
           ) : (
             <div className="p-4 text-text-muted">No text content available</div>
           ))}
-        {activeTab === 'metadata' && (
-          <div className="h-full overflow-y-auto p-4">
-            <div className="space-y-3 font-mono text-sm">
-              <MetadataRow label="URL" value={capture.url} />
-              <MetadataRow label="Timestamp" value={new Date(capture.timestamp).toLocaleString()} />
-              <MetadataRow label="Hash (SHA-256)" value={capture.hash} />
-              <MetadataRow label="Created" value={new Date(capture.createdAt).toLocaleString()} />
-              {capture.headers && (
-                <div>
-                  <div className="text-text-muted">Headers</div>
-                  <pre className="mt-1 whitespace-pre-wrap text-xs text-text-muted">
-                    {capture.headers}
-                  </pre>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        {activeTab === 'forensics' && <ForensicsTab capture={capture} caseId={caseId} />}
       </div>
     </main>
-  )
-}
-
-function MetadataRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div className="text-text-muted">{label}</div>
-      <div className="break-all text-text-secondary">{value}</div>
-    </div>
   )
 }
 

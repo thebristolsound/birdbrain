@@ -12,7 +12,7 @@ import {
   Globe,
   Code,
   FileText,
-  Info,
+  ShieldCheck,
   Shield
 } from 'lucide-react'
 import { MhtmlViewer } from '@renderer/components/captures/MhtmlViewer'
@@ -20,16 +20,16 @@ import { AnnotationEditor } from './annotation/AnnotationEditor'
 import { Button } from '@renderer/components/ui'
 import { getProvenanceColor } from './getProvenanceColor'
 
-type ViewTab = 'screenshot' | 'page' | 'source' | 'text' | 'metadata'
+type ViewTab = 'screenshot' | 'page' | 'source' | 'text' | 'forensics'
 
-const TABS: ViewTab[] = ['screenshot', 'page', 'source', 'text', 'metadata']
+const TABS: ViewTab[] = ['screenshot', 'page', 'source', 'text', 'forensics']
 
 const TAB_ICONS: Record<ViewTab, typeof Image> = {
   screenshot: Image,
   page: Globe,
   source: Code,
   text: FileText,
-  metadata: Info
+  forensics: ShieldCheck
 }
 
 const TAB_LABELS: Record<ViewTab, string> = {
@@ -37,7 +37,7 @@ const TAB_LABELS: Record<ViewTab, string> = {
   page: 'Page',
   source: 'Source',
   text: 'Text',
-  metadata: 'Metadata'
+  forensics: 'Forensics'
 }
 
 export function CaptureViewer() {
@@ -243,7 +243,7 @@ export function CaptureViewer() {
           ) : (
             <div className="p-4 text-text-muted">No text content available</div>
           ))}
-        {activeTab === 'metadata' && (
+        {activeTab === 'forensics' && (
           <div className="h-full overflow-y-auto p-4">
             <div className="space-y-3 font-mono text-sm">
               <MetadataRow label="URL" value={capture.url} />

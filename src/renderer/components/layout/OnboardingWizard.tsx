@@ -1,22 +1,32 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { AnimatePresence, motion } from 'motion/react'
-import { Puzzle, FolderPlus, ArrowRight, Check } from 'lucide-react'
+import { Puzzle, FolderPlus, ArrowRight, Check, X } from 'lucide-react'
 import logoImg from '@renderer/assets/logo.png'
 import { useAppStore } from '@renderer/stores/appStore'
 import { useCasesMutations } from '@renderer/lib/queries'
 import { Button, Input, Label } from '@renderer/components/ui'
 
-export function OnboardingWizard() {
+interface OnboardingWizardProps {
+  mode?: 'firstRun' | 'overlay'
+  onClose?: () => void
+}
+
+export function OnboardingWizard({ mode = 'firstRun', onClose }: OnboardingWizardProps = {}) {
   const navigate = useNavigate()
   const connectedToExtension = useAppStore((s) => s.connectedToExtension)
   const { create } = useCasesMutations()
+  const isOverlay = mode === 'overlay'
 
   const [step, setStep] = useState(0)
   const [name, setName] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
   const handleContinue = () => {
+    if (isOverlay) {
+      onClose?.()
+      return
+    }
     setStep(1)
   }
 
@@ -41,9 +51,25 @@ export function OnboardingWizard() {
   return (
     <div
       data-testid="onboarding-wizard"
-      className="flex h-full items-center justify-center bg-canvas"
+      data-mode={mode}
+      className={
+        isOverlay
+          ? 'fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6'
+          : 'flex h-full items-center justify-center bg-canvas'
+      }
+      onClick={isOverlay ? (e) => e.target === e.currentTarget && onClose?.() : undefined}
     >
-      <div className="flex w-full max-w-md flex-col items-center">
+      <div className="relative flex w-full max-w-md flex-col items-center">
+        {isOverlay && (
+          <button
+            data-testid="onboarding-overlay-close"
+            onClick={onClose}
+            aria-label="Close"
+            className="absolute -right-2 -top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-card text-text-muted shadow-card hover:bg-elevated hover:text-text-primary"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
         {/* Logo */}
         <img src={logoImg} alt="Birdbrain" className="mb-6 h-14 w-14 shadow-[var(--shadow-btn)]" />
 

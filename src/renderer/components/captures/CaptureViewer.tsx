@@ -17,6 +17,7 @@ import {
 import { MhtmlViewer } from '@renderer/components/captures/MhtmlViewer'
 import { AnnotationEditor } from './annotation/AnnotationEditor'
 import { ForensicsTab } from './ForensicsTab'
+import { CapturesGettingStarted } from './CapturesGettingStarted'
 import { Button } from '@renderer/components/ui'
 import { getProvenanceColor } from './getProvenanceColor'
 
@@ -44,6 +45,7 @@ export function CaptureViewer() {
   const { caseId } = useParams({ from: '/cases/$caseId/captures' })
   const selectedCaptureId = useAppStore((s) => s.selectedCaptureId)
   const selectCapture = useAppStore((s) => s.selectCapture)
+  const connectedToExtension = useAppStore((s) => s.connectedToExtension)
   const { data: captures = [] } = useQuery(capturesQueryOptions(caseId))
 
   const [activeTab, setActiveTab] = useState<ViewTab>('screenshot')
@@ -106,6 +108,9 @@ export function CaptureViewer() {
   }, [goPrev, goNext])
 
   if (!selectedCaptureId || !capture || capture.caseId !== caseId) {
+    if (captures.length === 0 && !connectedToExtension) {
+      return <CapturesGettingStarted />
+    }
     return (
       <main className="flex flex-1 items-center justify-center bg-canvas text-text-muted">
         Select a capture to view

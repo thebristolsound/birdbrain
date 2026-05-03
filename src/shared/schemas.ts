@@ -5,8 +5,8 @@ import { DEFAULT_ANALYSIS_SYSTEM_PROMPT } from '@shared/constants'
 //
 // These schemas validate data that crosses a trust boundary: the Hono capture
 // server (Chrome extension → main), the on-disk manifest audit log, the
-// settings file, and OpenRouter API responses. See docs/zod-adoption-spike.md
-// for the rationale and scope.
+// settings file, and OpenRouter API responses. See
+// docs/specs/2026-04-20-zod-adoption-spike.md for the rationale and scope.
 
 // --- Capture server: POST /api/captures -----------------------------------
 

@@ -8,6 +8,7 @@ import { presets, STAGGER_INTERVAL, STAGGER_VISIBLE_CAP } from '@renderer/lib/mo
 import { useAppStore } from '@renderer/stores/appStore'
 import { useFavorites } from '@renderer/hooks/useFavorites'
 import { CaptureItem } from './CaptureItem'
+import { CaptureListEmptyState } from './CaptureListEmptyState'
 import type { Capture, Selector } from '@shared/types'
 
 interface CaptureListProps {
@@ -148,7 +149,7 @@ export function CaptureList({ caseId }: CaptureListProps) {
 
   if (isLoading) {
     return (
-      <aside className="flex w-[300px] shrink-0 flex-col border-r border-border bg-surface">
+      <aside className="flex h-full flex-1 flex-col bg-surface">
         <AnimatePresence mode="wait">
           <motion.div
             key="skeleton"
@@ -169,7 +170,7 @@ export function CaptureList({ caseId }: CaptureListProps) {
 
   if (isError) {
     return (
-      <aside className="flex w-[300px] shrink-0 flex-col items-center justify-center gap-2 border-r border-border bg-surface p-4 text-center">
+      <aside className="flex h-full flex-1 flex-col items-center justify-center gap-2 bg-surface p-4 text-center">
         <div className="text-xs text-red-400">
           Failed to load captures: {error instanceof Error ? error.message : 'Unknown error'}
         </div>
@@ -181,7 +182,7 @@ export function CaptureList({ caseId }: CaptureListProps) {
   }
 
   return (
-    <aside className="flex w-[300px] shrink-0 flex-col border-r bg-surface border-border">
+    <aside className="flex h-full flex-1 flex-col bg-surface">
       {/* Header: search + sort/filter + selector indicator */}
       <div className="border-b p-2 border-border">
         {/* Search input */}
@@ -342,7 +343,7 @@ export function CaptureList({ caseId }: CaptureListProps) {
       </div>
 
       {/* Scrollable capture list */}
-      <div className="flex-1 space-y-1 overflow-y-auto p-2">
+      <div className="flex flex-1 flex-col space-y-1 overflow-y-auto p-2">
         <AnimatePresence mode="popLayout" initial={firstPaintRef.current}>
           {displayedCaptures.map((cap, i) => (
             <motion.div
@@ -367,13 +368,16 @@ export function CaptureList({ caseId }: CaptureListProps) {
             </motion.div>
           ))}
         </AnimatePresence>
-        {displayedCaptures.length === 0 && (
-          <div className="px-3 py-4 text-center text-xs text-text-faint">
-            {filteredCaptureIds || activeFilterCount > 0
-              ? 'No captures match the active filters'
-              : 'No captures yet'}
-          </div>
-        )}
+        {displayedCaptures.length === 0 &&
+          (filteredCaptureIds || activeFilterCount > 0 || searchQuery ? (
+            <div className="px-3 py-4 text-center text-xs text-text-faint">
+              {searchQuery && activeFilterCount === 0 && !filteredCaptureIds
+                ? `No captures match "${searchQuery}"`
+                : 'No captures match the active filters'}
+            </div>
+          ) : (
+            <CaptureListEmptyState />
+          ))}
       </div>
 
       {/* Footer */}

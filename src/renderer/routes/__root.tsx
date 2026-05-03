@@ -25,6 +25,7 @@ import { SettingsView } from '@renderer/components/settings/SettingsView'
 import { useSessionRestore } from '@renderer/hooks/useSessionRestore'
 import { useCommandPalette } from '@renderer/hooks/useCommandPalette'
 import { CommandPalette } from '@renderer/components/layout/CommandPalette'
+import { useAppStore } from '@renderer/stores/appStore'
 
 const TanStackRouterDevtools = import.meta.env.DEV
   ? lazy(() =>
@@ -74,6 +75,8 @@ const rootRoute = createRootRoute({
     const { restoring } = useSessionRestore()
     useCommandPalette()
     const matchRoute = useMatchRoute()
+    const onboardingOverlayOpen = useAppStore((s) => s.onboardingOverlayOpen)
+    const setOnboardingOverlayOpen = useAppStore((s) => s.setOnboardingOverlayOpen)
 
     const showSidebar = Boolean(matchRoute({ to: '/cases/$caseId', fuzzy: true }))
 
@@ -100,6 +103,9 @@ const rootRoute = createRootRoute({
           </div>
         </div>
         <CommandPalette />
+        {onboardingOverlayOpen && (
+          <OnboardingWizard mode="overlay" onClose={() => setOnboardingOverlayOpen(false)} />
+        )}
         <Suspense>
           <ReactQueryDevtools buttonPosition="bottom-left" />
           <TanStackRouterDevtools position="bottom-right" />

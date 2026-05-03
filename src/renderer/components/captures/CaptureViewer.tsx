@@ -17,8 +17,15 @@ import {
 import { MhtmlViewer } from '@renderer/components/captures/MhtmlViewer'
 import { AnnotationEditor } from './annotation/AnnotationEditor'
 import { ForensicsTab } from './ForensicsTab'
+import { CapturesGettingStarted } from './CapturesGettingStarted'
 import { Button } from '@renderer/components/ui'
 import { getProvenanceColor } from './getProvenanceColor'
+import { ScreenshotZoomBar } from './ScreenshotZoomBar'
+import { BrowserChromeFrame } from './BrowserChromeFrame'
+import { AnnotationToolsTooltip } from './AnnotationToolsTooltip'
+import { AnnotationToolbar } from './annotation/AnnotationToolbar'
+import { useAnnotationEditor } from './annotation/useAnnotationEditor'
+import { useZoomPan } from './annotation/useZoomPan'
 
 type ViewTab = 'screenshot' | 'page' | 'source' | 'text' | 'forensics'
 
@@ -44,6 +51,7 @@ export function CaptureViewer() {
   const { caseId } = useParams({ from: '/cases/$caseId/captures' })
   const selectedCaptureId = useAppStore((s) => s.selectedCaptureId)
   const selectCapture = useAppStore((s) => s.selectCapture)
+  const sessionActive = useAppStore((s) => s.sessionActive)
   const { data: captures = [] } = useQuery(capturesQueryOptions(caseId))
 
   const [activeTab, setActiveTab] = useState<ViewTab>('screenshot')
@@ -95,6 +103,9 @@ export function CaptureViewer() {
   }, [goPrev, goNext])
 
   if (!selectedCaptureId || !capture || capture.caseId !== caseId) {
+    if (captures.length === 0 && !sessionActive) {
+      return <CapturesGettingStarted />
+    }
     return (
       <main className="flex flex-1 items-center justify-center bg-canvas text-text-muted">
         Select a capture to view
@@ -176,8 +187,10 @@ export function CaptureViewer() {
         {activeTab === 'screenshot' &&
           (content ? (
             <ScreenshotTabPanel
+              key={capture.id}
               captureId={capture.id}
               imageUrl={`data:image/png;base64,${content}`}
+              url={capture.url}
             />
           ) : (
             <div className="flex flex-col items-center justify-center gap-1 p-8 text-center">
@@ -227,10 +240,19 @@ export function CaptureViewer() {
   )
 }
 
-function ScreenshotTabPanel({ captureId, imageUrl }: { captureId: string; imageUrl: string }) {
+function ScreenshotTabPanel({
+  captureId,
+  imageUrl,
+  url
+}: {
+  captureId: string
+  imageUrl: string
+  url: string
+}) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null)
   const [container, setContainer] = useState<{ w: number; h: number }>({ w: 0, h: 0 })
+  const [overlayVisible, setOverlayVisible] = useState(true)
 
   useEffect(() => {
     const img = new window.Image()
@@ -249,19 +271,84 @@ function ScreenshotTabPanel({ captureId, imageUrl }: { captureId: string; imageU
     return () => ro.disconnect()
   }, [])
 
+  const editor = useAnnotationEditor({ initialShapes: [] })
+  const zoomPan = useZoomPan({
+    imageWidth: dims?.w ?? 0,
+    imageHeight: dims?.h ?? 0,
+    containerWidth: container.w,
+    containerHeight: container.h
+  })
+
+  const drawing = editor.tool !== 'select' && editor.tool !== 'hand'
+  const panMode = editor.tool === 'hand'
+
+  const setPanMode = (next: boolean) => {
+    editor.setTool(next ? 'hand' : 'select')
+  }
+  const requestOverlayVisible = (next: boolean) => {
+    if (drawing && !next) return
+    setOverlayVisible(next)
+  }
+
+  useEffect(() => {
+    if (drawing && !overlayVisible) setOverlayVisible(true)
+  }, [drawing, overlayVisible])
+
+  const cw = container.w
+  const ch = container.h
+
+  const zoomIn = () => zoomPan.zoomAt(1.25, cw / 2, ch / 2)
+  const zoomOut = () => zoomPan.zoomAt(0.8, cw / 2, ch / 2)
+  const fit = () => zoomPan.reset()
+  const oneToOne = () => zoomPan.zoomAt(1 / zoomPan.fitScale / zoomPan.userScale, cw / 2, ch / 2)
+
   return (
-    <div ref={containerRef} className="flex h-full w-full">
-      {dims && container.w > 0 && (
-        <AnnotationEditor
-          key={captureId}
-          captureId={captureId}
-          imageUrl={imageUrl}
-          imageWidth={dims.w}
-          imageHeight={dims.h}
-          containerWidth={container.w}
-          containerHeight={container.h}
-        />
-      )}
+    <div className="flex h-full w-full flex-col">
+      <ScreenshotZoomBar
+        scale={zoomPan.userScale}
+        zoomIn={zoomIn}
+        zoomOut={zoomOut}
+        fit={fit}
+        oneToOne={oneToOne}
+        panMode={panMode}
+        setPanMode={setPanMode}
+        overlayVisible={overlayVisible}
+        setOverlayVisible={requestOverlayVisible}
+        drawing={drawing}
+      />
+      <AnnotationToolbar
+        tool={editor.tool}
+        setTool={editor.setTool}
+        color={editor.color}
+        setColor={editor.setColor}
+        strokeWidth={editor.strokeWidth}
+        setStrokeWidth={editor.setStrokeWidth}
+        canUndo={editor.canUndo}
+        canRedo={editor.canRedo}
+        onUndo={editor.undo}
+        onRedo={editor.redo}
+      />
+      <div className="flex-1 min-h-0 p-3">
+        <BrowserChromeFrame url={url}>
+          <div ref={containerRef} className="relative h-full w-full bg-canvas">
+            <AnnotationToolsTooltip />
+            {dims && container.w > 0 && (
+              <AnnotationEditor
+                key={captureId}
+                captureId={captureId}
+                imageUrl={imageUrl}
+                imageWidth={dims.w}
+                imageHeight={dims.h}
+                containerWidth={container.w}
+                containerHeight={container.h}
+                editor={editor}
+                zoomPan={zoomPan}
+                overlayVisible={overlayVisible}
+              />
+            )}
+          </div>
+        </BrowserChromeFrame>
+      </div>
     </div>
   )
 }

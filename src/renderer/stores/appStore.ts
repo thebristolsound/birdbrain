@@ -18,12 +18,14 @@ interface AppState {
   }
   commandPaletteOpen: boolean
   panelCollapsedForced: boolean
+  onboardingOverlayOpen: boolean
 
   setSessionActive: (active: boolean) => void
   setConnectedToExtension: (connected: boolean) => void
   setCommandPaletteOpen: (open: boolean) => void
   toggleCommandPalette: () => void
   setPanelCollapsedForced: (forced: boolean) => void
+  setOnboardingOverlayOpen: (open: boolean) => void
   setSelectedCaptureId: (id: string | null) => void
   setSearchQuery: (query: string) => void
   selectCapture: (id: string) => void
@@ -50,12 +52,14 @@ export const useAppStore = create<AppState>((set) => ({
   captureStats: { successCount: 0, failCount: 0, skipCount: 0 },
   commandPaletteOpen: false,
   panelCollapsedForced: false,
+  onboardingOverlayOpen: false,
 
   setSessionActive: (active) => set({ sessionActive: active }),
   setConnectedToExtension: (connected) => set({ connectedToExtension: connected }),
   setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
   toggleCommandPalette: () => set((s) => ({ commandPaletteOpen: !s.commandPaletteOpen })),
   setPanelCollapsedForced: (forced) => set({ panelCollapsedForced: forced }),
+  setOnboardingOverlayOpen: (open) => set({ onboardingOverlayOpen: open }),
   setSelectedCaptureId: (id) => set({ selectedCaptureId: id }),
   setSearchQuery: (query) => set({ searchQuery: query }),
 

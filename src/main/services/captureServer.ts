@@ -168,10 +168,14 @@ function createApp(token?: string): Hono {
 
   // Status endpoint — also tracks extension connection
   app.get('/api/status', (c) => {
-    const wasConnected = Date.now() - state.extensionLastSeen < 10000
-    state.extensionLastSeen = Date.now()
-    if (!wasConnected) {
-      notifyExtensionConnection(true)
+    const origin = c.req.header('Origin') ?? ''
+    const fromExtension = origin.startsWith('chrome-extension://')
+    if (fromExtension) {
+      const wasConnected = Date.now() - state.extensionLastSeen < 10000
+      state.extensionLastSeen = Date.now()
+      if (!wasConnected) {
+        notifyExtensionConnection(true)
+      }
     }
     const query = c.req.query()
     const includeCasesParam = query.includeCases
@@ -191,7 +195,6 @@ function createApp(token?: string): Hono {
     const allCases = includeCases ? db.listCases() : null
     // Only expose the auth token to known origins (extension, localhost).
     // Omit for unknown/external origins so random web pages can't read it.
-    const origin = c.req.header('Origin') ?? ''
     const includeToken =
       !origin ||
       origin.startsWith('chrome-extension://') ||

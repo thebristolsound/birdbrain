@@ -13,7 +13,8 @@ import {
   FileType,
   Shield,
   Plus,
-  StickyNote
+  StickyNote,
+  ChevronRight
 } from 'lucide-react'
 import type { Capture } from '@shared/types'
 import { caseQueryOptions, notesQueryOptions, useNotesMutations } from '@renderer/lib/queries'
@@ -32,6 +33,7 @@ import { getProvenanceColor } from './getProvenanceColor'
 interface Props {
   capture: Capture
   caseId: string
+  onCollapse: () => void
   onDownload: () => void
   onOpenExternal: () => void
   onDelete: () => void
@@ -41,6 +43,7 @@ interface Props {
 export function CaptureDetailsPanel({
   capture,
   caseId,
+  onCollapse,
   onDownload,
   onOpenExternal,
   onDelete,
@@ -125,6 +128,14 @@ export function CaptureDetailsPanel({
             Capture Details
           </h2>
           <div className="flex items-center gap-0.5">
+            <button
+              onClick={onCollapse}
+              title="Collapse details"
+              aria-label="Collapse details panel"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted hover:bg-elevated hover:text-text-secondary"
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
             <button
               onClick={() => toggleFavorite(capture.id)}
               title={isFavorite ? 'Unfavorite' : 'Favorite'}

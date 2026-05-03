@@ -139,7 +139,10 @@ export function CaptureItem({
         {/* Text */}
         <div className="min-w-0 flex-1">
           <div className="flex items-start gap-1">
-            <div className="min-w-0 flex-1 truncate text-sm font-semibold text-text-primary">
+            <div
+              className="min-w-0 flex-1 truncate text-sm font-semibold text-text-primary"
+              title={capture.title || hostname}
+            >
               {capture.title || hostname}
             </div>
             {/* Favorite star */}

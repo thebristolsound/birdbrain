@@ -137,7 +137,7 @@ export function CaptureList({ caseId }: CaptureListProps) {
 
   if (isLoading) {
     return (
-      <aside className="flex h-full flex-1 flex-col bg-surface">
+      <aside className="flex h-full flex-1 flex-col bg-surface min-w-0">
         <AnimatePresence mode="wait">
           <motion.div
             key="skeleton"
@@ -158,7 +158,7 @@ export function CaptureList({ caseId }: CaptureListProps) {
 
   if (isError) {
     return (
-      <aside className="flex h-full flex-1 flex-col items-center justify-center gap-2 bg-surface p-4 text-center">
+      <aside className="flex h-full flex-1 flex-col items-center justify-center gap-2 bg-surface p-4 text-center min-w-0">
         <div className="text-xs text-red-400">
           Failed to load captures: {error instanceof Error ? error.message : 'Unknown error'}
         </div>
@@ -170,7 +170,7 @@ export function CaptureList({ caseId }: CaptureListProps) {
   }
 
   return (
-    <aside className="flex h-full flex-1 flex-col bg-surface">
+    <aside className="flex h-full flex-1 flex-col bg-surface min-w-0">
       {/* Header: search + sort/filter + selector indicator */}
       <div className="border-b p-2 border-border">
         {/* Search input */}

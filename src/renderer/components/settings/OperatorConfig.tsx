@@ -1,26 +1,23 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { identityQueryOptions, useSettingsMutations } from '@renderer/lib/queries'
 import { Input, Label } from '@renderer/components/ui'
 
 export function OperatorConfig() {
-  const [installationId, setInstallationId] = useState('')
+  const { data: identity } = useQuery(identityQueryOptions)
   const [operatorName, setOperatorName] = useState('')
-  const [saving, setSaving] = useState(false)
+  const { update } = useSettingsMutations()
 
-  useEffect(() => {
-    window.birdbrain.settings.getIdentity().then((id) => {
-      setInstallationId(id.installationId)
-      setOperatorName(id.operatorName)
-    })
-  }, [])
+  // Sync operatorName with identity data when it loads
+  if (identity && operatorName !== identity.operatorName) {
+    setOperatorName(identity.operatorName)
+  }
 
   async function save() {
-    setSaving(true)
-    try {
-      await window.birdbrain.settings.update({ operatorName })
-    } finally {
-      setSaving(false)
-    }
+    await update.mutateAsync({ operatorName })
   }
+
+  if (!identity) return <div className="text-text-muted">Loading...</div>
 
   return (
     <div className="space-y-4">
@@ -37,14 +34,14 @@ export function OperatorConfig() {
         <p className="mt-1 text-[11px] text-text-muted">
           Recorded in every capture's audit manifest. Leave blank for device-only attribution.
         </p>
-        {saving && <p className="text-[11px] text-text-faint">Saving...</p>}
+        {update.isPending && <p className="text-[11px] text-text-faint">Saving...</p>}
       </div>
       <div>
         <Label className="text-xs font-medium text-text-secondary">Installation ID</Label>
         <Input
           type="text"
           readOnly
-          value={installationId}
+          value={identity.installationId}
           className="font-mono text-[11px] text-text-muted"
         />
         <p className="mt-1 text-[11px] text-text-muted">

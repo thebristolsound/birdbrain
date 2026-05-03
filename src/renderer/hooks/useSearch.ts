@@ -1,27 +1,18 @@
 import { useState, useCallback } from 'react'
-import type { Capture } from '@shared/types'
+import { useQuery } from '@tanstack/react-query'
+import { searchQueryOptions } from '@renderer/lib/queries'
 
 export function useSearch() {
-  const [results, setResults] = useState<Capture[]>([])
-  const [searching, setSearching] = useState(false)
+  const [query, setQuery] = useState('')
+  const { data: results = [], isLoading } = useQuery(searchQueryOptions(query))
 
-  const search = useCallback(async (query: string) => {
-    if (!query.trim()) {
-      setResults([])
-      return
-    }
-    setSearching(true)
-    try {
-      const captures = await window.birdbrain.search(query)
-      setResults(captures)
-    } finally {
-      setSearching(false)
-    }
+  const search = useCallback((q: string) => {
+    setQuery(q.trim())
   }, [])
 
   const clear = useCallback(() => {
-    setResults([])
+    setQuery('')
   }, [])
 
-  return { results, searching, search, clear }
+  return { results, searching: isLoading, search, clear }
 }

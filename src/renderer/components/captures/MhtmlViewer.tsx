@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { captureMhtmlUrlQueryOptions } from '@renderer/lib/queries'
 
 interface Props {
   captureId: string
@@ -6,21 +8,8 @@ interface Props {
 
 // Renders MHTML via an Electron <webview> with JavaScript disabled.
 export function MhtmlViewer({ captureId }: Props) {
-  const [fileUrl, setFileUrl] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const { data: fileUrl, error } = useQuery(captureMhtmlUrlQueryOptions(captureId))
   const ref = useRef<HTMLElement | null>(null)
-
-  useEffect(() => {
-    setError(null)
-    setFileUrl(null)
-    window.birdbrain.captures
-      .getMhtmlUrl(captureId)
-      .then((url) => {
-        if (!url) setError('MHTML file not found on disk')
-        else setFileUrl(url)
-      })
-      .catch((e) => setError(String(e)))
-  }, [captureId])
 
   // Defense-in-depth: block navigation + disable link clicks via CSS injection
   useEffect(() => {
@@ -41,7 +30,7 @@ export function MhtmlViewer({ captureId }: Props) {
   }, [fileUrl])
 
   if (error) {
-    return <div className="p-4 text-sm text-red-400">{error}</div>
+    return <div className="p-4 text-sm text-red-400">{String(error)}</div>
   }
   if (!fileUrl) {
     return <div className="p-4 text-text-muted">Loading MHTML...</div>

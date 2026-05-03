@@ -79,7 +79,7 @@ export function CapturePreferences({ settings, onUpdate }: CapturePreferencesPro
             <div className="space-y-1">
               {settings.ignoredUrlPatterns.map((pattern, i) => (
                 <div
-                  key={i}
+                  key={pattern}
                   className="flex items-center justify-between rounded bg-elevated px-2 py-1"
                 >
                   <span className="font-mono text-xs text-text-muted">{pattern}</span>

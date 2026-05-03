@@ -5,14 +5,14 @@ import {
   redirect,
   useMatchRoute
 } from '@tanstack/react-router'
-import { lazy, Suspense, useState, useEffect } from 'react'
+import { lazy, Suspense } from 'react'
 import { TopBar } from '@renderer/components/layout/TopBar'
 import { Sidebar } from '@renderer/components/layout/Sidebar'
 import { MotionProvider } from '@renderer/lib/motion'
 import { OnboardingWizard } from '@renderer/components/layout/OnboardingWizard'
 import { Dashboard } from '@renderer/components/dashboard/Dashboard'
 import { useQuery } from '@tanstack/react-query'
-import { casesQueryOptions } from '@renderer/lib/queries'
+import { casesQueryOptions, settingsQueryOptions } from '@renderer/lib/queries'
 import { NewCaseWizard } from '@renderer/components/dashboard/cases/NewCaseWizard'
 import { CaseWorkspace } from '@renderer/components/dashboard/cases/CaseWorkspace'
 import { CapturesRoute } from '@renderer/routes/cases/$caseId/captures'
@@ -87,16 +87,10 @@ const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
   component: function IndexPage() {
-    const { isLoading } = useQuery(casesQueryOptions)
-    const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null)
+    const { isLoading: casesLoading } = useQuery(casesQueryOptions)
+    const { data: settings, isLoading: settingsLoading } = useQuery(settingsQueryOptions)
 
-    useEffect(() => {
-      window.birdbrain.settings.get().then((s) => {
-        setShowOnboarding(!s.hasCompletedOnboarding)
-      })
-    }, [])
-
-    if (isLoading || showOnboarding === null) {
+    if (casesLoading || settingsLoading) {
       return (
         <div className="flex h-full items-center justify-center">
           <span className="text-sm text-text-muted">Loading...</span>
@@ -104,7 +98,7 @@ const indexRoute = createRoute({
       )
     }
 
-    if (showOnboarding) {
+    if (settings && !settings.hasCompletedOnboarding) {
       return <OnboardingWizard />
     }
 

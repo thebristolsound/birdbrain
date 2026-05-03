@@ -153,7 +153,13 @@ export function CaptureViewer() {
           className={`h-3.5 w-3.5 ${getProvenanceColor(capture.lastVerifiedStatus).text}`}
           aria-label={getProvenanceColor(capture.lastVerifiedStatus).label}
         />
-        <Button variant="ghost" size="icon-sm" onClick={goPrev} disabled={currentIndex <= 0}>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={goPrev}
+          disabled={currentIndex <= 0}
+          title="Previous capture (←)"
+        >
           <ChevronLeft className="h-3.5 w-3.5" />
         </Button>
         <span className="shrink-0 text-[11px] text-text-faint">
@@ -164,10 +170,10 @@ export function CaptureViewer() {
           size="icon-sm"
           onClick={goNext}
           disabled={currentIndex >= captures.length - 1}
+          title="Next capture (→)"
         >
           <ChevronRight className="h-3.5 w-3.5" />
         </Button>
-        <span className="shrink-0 text-[11px] text-text-faint">← →</span>
       </div>
 
       {/* Sub-tabs row */}

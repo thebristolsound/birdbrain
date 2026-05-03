@@ -119,7 +119,7 @@ export function AnnotationToolbar({
         <button
           type="button"
           aria-label="Delete selected shape"
-          title="Delete selected (Del)"
+          title="Delete selected (Del/Backspace)"
           onClick={onDeleteSelected}
           disabled={!selectedId}
           className="h-8 w-8 rounded-lg flex items-center justify-center text-text-muted hover:bg-elevated hover:text-text-primary disabled:opacity-40 disabled:hover:bg-transparent"

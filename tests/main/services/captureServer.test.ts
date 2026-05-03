@@ -421,6 +421,22 @@ describe('captureServer', () => {
 
   // --- Status endpoint ---
 
+  it('GET /api/status without Origin does not update extensionLastSeen', async () => {
+    const before = getSessionState().extensionLastSeen
+    await fetch(`${baseUrl}/api/status`)
+    const after = getSessionState().extensionLastSeen
+    expect(after).toBe(before)
+  })
+
+  it('GET /api/status with chrome-extension Origin updates extensionLastSeen', async () => {
+    const before = Date.now()
+    await fetch(`${baseUrl}/api/status`, {
+      headers: { Origin: 'chrome-extension://abcdefghijklmnop' }
+    })
+    const after = getSessionState().extensionLastSeen
+    expect(after).toBeGreaterThanOrEqual(before)
+  })
+
   it('GET /api/status returns cases and ignoredUrlPatterns', async () => {
     createCase({ name: 'Case A' })
     createCase({ name: 'Case B' })

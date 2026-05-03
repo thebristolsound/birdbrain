@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { StickyNote, Pencil, Trash2, ExternalLink, X, Check } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { captureThumbnailQueryOptions, useNotesMutations } from '@renderer/lib/queries'
 import type { Note } from '@shared/types'
-import { useNotesMutations } from '@renderer/lib/queries'
 import { Button, Input, Textarea } from '@renderer/components/ui'
 
 function formatRelative(ts: string): string {
@@ -22,47 +23,20 @@ interface NoteCardProps {
 export function NoteCard({ note, caseId }: NoteCardProps) {
   const { update, remove } = useNotesMutations(caseId)
   const [isEditing, setIsEditing] = useState(false)
-  const [title, setTitle] = useState(note.title)
-  const [body, setBody] = useState(note.body)
-  const [thumbnail, setThumbnail] = useState<string | null>(null)
+  const { data: thumbnail } = useQuery({
+    ...captureThumbnailQueryOptions(note.captureId || ''),
+    enabled: !!note.captureId
+  })
   const [confirmDelete, setConfirmDelete] = useState(false)
 
-  useEffect(() => {
-    setTitle(note.title)
-    setBody(note.body)
-  }, [note.title, note.body])
-
-  // screenshotPath column exists for Hunchly import compatibility but isn't rendered yet —
-  // always fall back to the linked capture's thumbnail when a captureId is present.
-  useEffect(() => {
-    let isCurrent = true
-    if (!note.captureId) {
-      setThumbnail(null)
-      return () => {
-        isCurrent = false
-      }
-    }
-    window.birdbrain.captures
-      .getThumbnail(note.captureId)
-      .then((next) => {
-        if (isCurrent) setThumbnail(next)
-      })
-      .catch(() => {
-        if (isCurrent) setThumbnail(null)
-      })
-    return () => {
-      isCurrent = false
-    }
-  }, [note.captureId])
-
-  async function handleSave() {
+  async function handleSave(formData: FormData) {
+    const title = formData.get('title') as string
+    const body = formData.get('body') as string
     await update.mutateAsync({ id: note.id, title, body })
     setIsEditing(false)
   }
 
   function handleCancel() {
-    setTitle(note.title)
-    setBody(note.body)
     setIsEditing(false)
   }
 
@@ -81,6 +55,7 @@ export function NoteCard({ note, caseId }: NoteCardProps) {
 
   return (
     <div
+      key={note.id}
       data-testid={`note-card-${note.id}`}
       className="flex gap-3 rounded-2xl border border-border bg-surface p-4"
     >
@@ -100,31 +75,39 @@ export function NoteCard({ note, caseId }: NoteCardProps) {
 
       <div className="min-w-0 flex-1">
         {isEditing ? (
-          <div className="space-y-2">
+          <form
+            key={`edit-${note.id}`}
+            onSubmit={(e) => {
+              e.preventDefault()
+              const formData = new FormData(e.currentTarget)
+              handleSave(formData)
+            }}
+            className="space-y-2"
+          >
             <Input
               data-testid="note-title-input"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              name="title"
+              defaultValue={note.title}
               placeholder="Title"
               className="border-border bg-canvas font-semibold"
             />
             <Textarea
               data-testid="note-body-input"
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
+              name="body"
+              defaultValue={note.body}
               placeholder="Note body"
               rows={4}
               className="border-border bg-canvas text-text-secondary"
             />
             <div className="flex items-center justify-end gap-2">
-              <Button variant="ghost" size="xs" onClick={handleCancel} className="gap-1">
+              <Button variant="ghost" size="xs" onClick={handleCancel} className="gap-1" type="button">
                 <X className="h-3.5 w-3.5" />
                 Cancel
               </Button>
               <Button
                 data-testid="note-save"
                 size="xs"
-                onClick={handleSave}
+                type="submit"
                 disabled={update.isPending}
                 className="gap-1"
               >
@@ -132,7 +115,7 @@ export function NoteCard({ note, caseId }: NoteCardProps) {
                 Save
               </Button>
             </div>
-          </div>
+          </form>
         ) : (
           <>
             <div className="flex items-start gap-2">

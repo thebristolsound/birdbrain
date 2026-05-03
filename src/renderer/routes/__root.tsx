@@ -41,6 +41,30 @@ const ReactQueryDevtools = import.meta.env.DEV
     )
   : () => null
 
+// Generic error component for routes
+function RouteErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-4 p-8">
+      <h1 className="text-2xl font-semibold text-text-primary">Something went wrong</h1>
+      <p className="text-center text-text-muted">{error.message}</p>
+      <div className="flex gap-2">
+        <button
+          onClick={reset}
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent/90"
+        >
+          Try Again
+        </button>
+        <button
+          onClick={() => (window.location.href = '/')}
+          className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-text-primary hover:bg-elevated"
+        >
+          Go to Dashboard
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // Root layout
 const rootRoute = createRootRoute({
   component: function RootLayout() {
@@ -79,7 +103,19 @@ const rootRoute = createRootRoute({
         </Suspense>
       </MotionProvider>
     )
-  }
+  },
+  notFoundComponent: () => (
+    <div className="flex h-full flex-col items-center justify-center gap-4">
+      <h1 className="text-2xl font-semibold text-text-primary">Page Not Found</h1>
+      <p className="text-text-muted">The page you're looking for doesn't exist.</p>
+      <button
+        onClick={() => (window.location.href = '/')}
+        className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent/90"
+      >
+        Go to Dashboard
+      </button>
+    </div>
+  )
 })
 
 // Home / index — shows Dashboard, or OnboardingWizard on very first launch
@@ -107,7 +143,8 @@ const indexRoute = createRoute({
         <Dashboard />
       </div>
     )
-  }
+  },
+  errorComponent: RouteErrorComponent
 })
 
 // Settings
@@ -120,21 +157,24 @@ const settingsRoute = createRoute({
         <SettingsView />
       </div>
     )
-  }
+  },
+  errorComponent: RouteErrorComponent
 })
 
 // New case wizard
 const newCaseRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/cases/new',
-  component: NewCaseWizard
+  component: NewCaseWizard,
+  errorComponent: RouteErrorComponent
 })
 
 // Case workspace layout (with tabs)
 const caseRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/cases/$caseId',
-  component: CaseWorkspace
+  component: CaseWorkspace,
+  errorComponent: RouteErrorComponent
 })
 
 // Redirect case index to captures
@@ -153,35 +193,40 @@ const caseIndexRoute = createRoute({
 const capturesRoute = createRoute({
   getParentRoute: () => caseRoute,
   path: '/captures',
-  component: CapturesRoute
+  component: CapturesRoute,
+  errorComponent: RouteErrorComponent
 })
 
 // Selectors tab
 const selectorsRoute = createRoute({
   getParentRoute: () => caseRoute,
   path: '/selectors',
-  component: SelectorsOverview
+  component: SelectorsOverview,
+  errorComponent: RouteErrorComponent
 })
 
 // Notes tab
 const notesRoute = createRoute({
   getParentRoute: () => caseRoute,
   path: '/notes',
-  component: NotesOverview
+  component: NotesOverview,
+  errorComponent: RouteErrorComponent
 })
 
 // Tags tab
 const tagsRoute = createRoute({
   getParentRoute: () => caseRoute,
   path: '/tags',
-  component: TagsOverview
+  component: TagsOverview,
+  errorComponent: RouteErrorComponent
 })
 
 // Data tab
 const dataRoute = createRoute({
   getParentRoute: () => caseRoute,
   path: '/data',
-  component: DataExplorer
+  component: DataExplorer,
+  errorComponent: RouteErrorComponent
 })
 
 // Build the tree

@@ -11,6 +11,14 @@ const NAV_ITEMS: { id: SidebarSection; icon: typeof Layers; label: string }[] = 
   { id: 'data', icon: Database, label: 'Data' }
 ]
 
+const SECTION_PATHS: Record<SidebarSection, string> = {
+  captures: '/cases/$caseId/captures',
+  selectors: '/cases/$caseId/selectors',
+  notes: '/cases/$caseId/notes',
+  tags: '/cases/$caseId/tags',
+  data: '/cases/$caseId/data'
+}
+
 export function Sidebar() {
   const navigate = useNavigate()
   const matchRoute = useMatchRoute()
@@ -23,12 +31,12 @@ export function Sidebar() {
 
   function isActive(section: SidebarSection): boolean {
     if (!caseId) return false
-    return Boolean(matchRoute({ to: '/cases/$caseId/' + section, params: { caseId } }))
+    return Boolean(matchRoute({ to: SECTION_PATHS[section], params: { caseId } }))
   }
 
   function handleNavClick(section: SidebarSection) {
     if (!caseId) return
-    navigate({ to: '/cases/$caseId/' + section, params: { caseId } })
+    navigate({ to: SECTION_PATHS[section], params: { caseId } })
   }
 
   return (

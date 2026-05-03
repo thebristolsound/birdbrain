@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
 import { Star, Check } from 'lucide-react'
-import type { Capture, Selector } from '@shared/types'
+import { useQuery } from '@tanstack/react-query'
+import { captureMatchingSelectorsQueryOptions } from '@renderer/lib/queries'
+import type { Capture } from '@shared/types'
 import { useCaptureThumbnail } from '@renderer/hooks/useCaptureThumbnail'
 
 const THUMB_COLORS = [
@@ -53,15 +54,10 @@ export function CaptureItem({
   onToggleMultiSelect,
   showCheckbox = false
 }: CaptureItemProps) {
-  const [matchingSelectors, setMatchingSelectors] = useState<Selector[]>([])
+  const { data: matchingSelectors = [] } = useQuery(
+    captureMatchingSelectorsQueryOptions(capture.id)
+  )
   const { thumbnail } = useCaptureThumbnail(capture.id)
-
-  useEffect(() => {
-    window.birdbrain.captures
-      .getMatchingSelectors(capture.id)
-      .then(setMatchingSelectors)
-      .catch((err) => console.error('Failed to load selectors:', err))
-  }, [capture.id])
 
   let hostname = ''
   try {

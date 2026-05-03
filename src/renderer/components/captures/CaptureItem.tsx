@@ -1,7 +1,5 @@
 import { Star, Check } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
-import { captureMatchingSelectorsQueryOptions } from '@renderer/lib/queries'
-import type { Capture } from '@shared/types'
+import type { Capture, Selector } from '@shared/types'
 import { useCaptureThumbnail } from '@renderer/hooks/useCaptureThumbnail'
 
 const THUMB_COLORS = [
@@ -42,6 +40,7 @@ interface CaptureItemProps {
   isMultiSelected?: boolean
   onToggleMultiSelect?: (e: React.MouseEvent) => void
   showCheckbox?: boolean
+  matchingSelectors?: Selector[]
 }
 
 export function CaptureItem({
@@ -52,11 +51,9 @@ export function CaptureItem({
   onToggleFavorite,
   isMultiSelected = false,
   onToggleMultiSelect,
-  showCheckbox = false
+  showCheckbox = false,
+  matchingSelectors = []
 }: CaptureItemProps) {
-  const { data: matchingSelectors = [] } = useQuery(
-    captureMatchingSelectorsQueryOptions(capture.id)
-  )
   const { thumbnail } = useCaptureThumbnail(capture.id)
 
   let hostname = ''

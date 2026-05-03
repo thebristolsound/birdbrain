@@ -11,13 +11,13 @@ const NAV_ITEMS: { id: SidebarSection; icon: typeof Layers; label: string }[] = 
   { id: 'data', icon: Database, label: 'Data' }
 ]
 
-const SECTION_PATHS: Record<SidebarSection, string> = {
+const SECTION_PATHS = {
   captures: '/cases/$caseId/captures',
   selectors: '/cases/$caseId/selectors',
   notes: '/cases/$caseId/notes',
   tags: '/cases/$caseId/tags',
   data: '/cases/$caseId/data'
-}
+} as const satisfies Record<SidebarSection, string>
 
 export function Sidebar() {
   const navigate = useNavigate()

@@ -48,7 +48,7 @@ export const queryKeys = {
   annotations: (captureId: string) => ['annotations', captureId] as const,
   settings: ['settings'] as const,
   identity: ['identity'] as const,
-  openRouterModels: (apiKey: string) => ['openRouterModels', apiKey] as const
+  openRouterModels: ['openRouterModels'] as const
 }
 
 // --- Cases ---
@@ -446,8 +446,11 @@ export function useSettingsMutations() {
 
   const update = useMutation({
     mutationFn: (partial: Partial<BirdbrainSettings>) => window.birdbrain.settings.update(partial),
-    onSuccess: (data) => {
+    onSuccess: (data, partial) => {
       queryClient.setQueryData(queryKeys.settings, data)
+      if ('openRouterApiKey' in partial) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.openRouterModels })
+      }
     }
   })
 
@@ -465,7 +468,7 @@ export const identityQueryOptions = queryOptions({
 
 export const openRouterModelsQueryOptions = (apiKey: string) =>
   queryOptions({
-    queryKey: queryKeys.openRouterModels(apiKey),
+    queryKey: queryKeys.openRouterModels,
     queryFn: () => window.birdbrain.settings.listModels(apiKey),
     enabled: !!apiKey
   })

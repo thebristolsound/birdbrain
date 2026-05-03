@@ -30,7 +30,8 @@ export function SettingsView() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('ai')
 
   useEffect(() => {
-    window.birdbrain.settings.update({ lastActiveSection: 'settings' })
+    update.mutate({ lastActiveSection: 'settings' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleUpdate = async (partial: Partial<BirdbrainSettings>) => {

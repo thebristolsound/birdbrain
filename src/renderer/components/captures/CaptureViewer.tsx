@@ -68,9 +68,9 @@ export function CaptureViewer() {
   const { data: content } = useQuery({
     ...captureContentQueryOptions(
       selectedCaptureId || '',
-      contentType as 'html' | 'png' | 'txt'
+      contentType || 'html'
     ),
-    enabled: shouldFetchContent
+    enabled: !!shouldFetchContent
   })
 
   // Navigation

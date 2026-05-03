@@ -1,14 +1,14 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { Search, ArrowUpDown, Filter, Crosshair, X, Check } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueries } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'motion/react'
-import { capturesQueryOptions } from '@renderer/lib/queries'
+import { capturesQueryOptions, captureMatchingSelectorsQueryOptions } from '@renderer/lib/queries'
 import { Button, Skeleton } from '@renderer/components/ui'
 import { presets, STAGGER_INTERVAL, STAGGER_VISIBLE_CAP } from '@renderer/lib/motion'
 import { useAppStore } from '@renderer/stores/appStore'
 import { useFavorites } from '@renderer/hooks/useFavorites'
 import { CaptureItem } from './CaptureItem'
-import type { Capture } from '@shared/types'
+import type { Capture, Selector } from '@shared/types'
 
 interface CaptureListProps {
   caseId: string
@@ -83,6 +83,18 @@ export function CaptureList({ caseId }: CaptureListProps) {
   const clearSelectorFilters = useAppStore((s) => s.clearSelectorFilters)
   const { favorites, toggleFavorite } = useFavorites(caseId)
   const [searchQuery, setSearchQuery] = useState('')
+
+  // Batch-fetch matching selectors for all captures (avoids N+1 per CaptureItem)
+  const matchingSelectorsResults = useQueries({
+    queries: captures.map((cap) => captureMatchingSelectorsQueryOptions(cap.id))
+  })
+  const matchingSelectorsMap = useMemo(() => {
+    const map = new Map<string, Selector[]>()
+    captures.forEach((cap, i) => {
+      map.set(cap.id, matchingSelectorsResults[i]?.data ?? [])
+    })
+    return map
+  }, [captures, matchingSelectorsResults])
 
   // Sort & filter state
   const [sortBy, setSortBy] = useState<SortOption>('newest')
@@ -350,6 +362,7 @@ export function CaptureList({ caseId }: CaptureListProps) {
                 onClick={() => selectCapture(cap.id)}
                 isFavorite={favorites.has(cap.id)}
                 onToggleFavorite={() => toggleFavorite(cap.id)}
+                matchingSelectors={matchingSelectorsMap.get(cap.id)}
               />
             </motion.div>
           ))}

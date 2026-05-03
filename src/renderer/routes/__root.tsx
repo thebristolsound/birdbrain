@@ -3,7 +3,8 @@ import {
   createRoute,
   Outlet,
   redirect,
-  useMatchRoute
+  useMatchRoute,
+  useNavigate
 } from '@tanstack/react-router'
 import { lazy, Suspense } from 'react'
 import { TopBar } from '@renderer/components/layout/TopBar'
@@ -42,11 +43,13 @@ const ReactQueryDevtools = import.meta.env.DEV
   : () => null
 
 // Generic error component for routes
-function RouteErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+function RouteErrorComponent({ error, reset }: { error: unknown; reset: () => void }) {
+  const navigate = useNavigate()
+  const message = error instanceof Error ? error.message : String(error)
   return (
     <div className="flex h-full flex-col items-center justify-center gap-4 p-8">
       <h1 className="text-2xl font-semibold text-text-primary">Something went wrong</h1>
-      <p className="text-center text-text-muted">{error.message}</p>
+      <p className="text-center text-text-muted">{message}</p>
       <div className="flex gap-2">
         <button
           onClick={reset}
@@ -55,7 +58,7 @@ function RouteErrorComponent({ error, reset }: { error: Error; reset: () => void
           Try Again
         </button>
         <button
-          onClick={() => (window.location.href = '/')}
+          onClick={() => navigate({ to: '/' })}
           className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-text-primary hover:bg-elevated"
         >
           Go to Dashboard
@@ -104,18 +107,21 @@ const rootRoute = createRootRoute({
       </MotionProvider>
     )
   },
-  notFoundComponent: () => (
-    <div className="flex h-full flex-col items-center justify-center gap-4">
-      <h1 className="text-2xl font-semibold text-text-primary">Page Not Found</h1>
-      <p className="text-text-muted">The page you're looking for doesn't exist.</p>
-      <button
-        onClick={() => (window.location.href = '/')}
-        className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent/90"
-      >
-        Go to Dashboard
-      </button>
-    </div>
-  )
+  notFoundComponent: function NotFoundPage() {
+    const navigate = useNavigate()
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-4">
+        <h1 className="text-2xl font-semibold text-text-primary">Page Not Found</h1>
+        <p className="text-text-muted">The page you're looking for doesn't exist.</p>
+        <button
+          onClick={() => navigate({ to: '/' })}
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent/90"
+        >
+          Go to Dashboard
+        </button>
+      </div>
+    )
+  }
 })
 
 // Home / index — shows Dashboard, or OnboardingWizard on very first launch

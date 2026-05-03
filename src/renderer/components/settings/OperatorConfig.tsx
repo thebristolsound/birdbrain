@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { identityQueryOptions, useSettingsMutations } from '@renderer/lib/queries'
 import { Input, Label } from '@renderer/components/ui'
@@ -6,12 +6,16 @@ import { Input, Label } from '@renderer/components/ui'
 export function OperatorConfig() {
   const { data: identity } = useQuery(identityQueryOptions)
   const [operatorName, setOperatorName] = useState('')
+  const initialized = useRef(false)
   const { update } = useSettingsMutations()
 
-  // Sync operatorName with identity data when it loads
-  if (identity && operatorName !== identity.operatorName) {
-    setOperatorName(identity.operatorName)
-  }
+  // Initialize state from identity once when it first loads
+  useEffect(() => {
+    if (identity && !initialized.current) {
+      setOperatorName(identity.operatorName)
+      initialized.current = true
+    }
+  }, [identity])
 
   async function save() {
     await update.mutateAsync({ operatorName })

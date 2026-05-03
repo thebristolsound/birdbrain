@@ -51,7 +51,7 @@ export function NoteCard({ note, caseId }: NoteCardProps) {
   }
 
   const displayTitle = note.title || '(Untitled note)'
-  const thumbSrc = thumbnail ? `data:image/png;base64,${thumbnail}` : null
+  const thumbSrc = thumbnail ? `data:image/jpeg;base64,${thumbnail}` : null
 
   return (
     <div

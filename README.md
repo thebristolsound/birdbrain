@@ -184,7 +184,7 @@ sequenceDiagram
 
 Click the extension icon to manually capture the current page, or set up **Selectors** in a case to auto-capture any page whose URL or content matches your patterns. Every capture lands in the desktop app, hashed and stored, ready to add to a case, tag, and annotate.
 
-For a technical deep-dive into the capture pipeline, error handling, selector matching, and hash verification, see [docs/capture-pipeline.md](docs/capture-pipeline.md).
+For a technical deep-dive into the capture pipeline, error handling, selector matching, and hash verification, see [docs/reference/capture-pipeline.md](docs/reference/capture-pipeline.md).
 
 ### Project structure
 

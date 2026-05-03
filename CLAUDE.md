@@ -45,7 +45,7 @@ src/renderer/components/    # UI organized by feature (11 directories, ~43 compo
 extension/src/              # Chrome extension source (background, content, popup, utils/api, toast)
 tests/                      # Vitest unit tests
 e2e/                        # Playwright E2E tests
-docs/                       # Design docs and specs
+docs/                       # Local working notes — see docs/README.md for layout (reference/, specs/, plans/, archive/, superpowers/)
 ```
 
 ### Path aliases

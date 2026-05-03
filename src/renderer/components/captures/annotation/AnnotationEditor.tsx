@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Pencil, Eye, Hand, Minus, Plus } from 'lucide-react'
+import { Hand, Minus, Plus } from 'lucide-react'
 import type { AnnotationShape } from '@shared/types'
 import { annotationsQueryOptions, useAnnotationsMutations } from '@renderer/lib/queries'
 import { AnnotationCanvas } from './AnnotationCanvas'
@@ -23,7 +23,6 @@ const EMPTY_ANNOTATIONS_VERSION_MARKER = '__empty__'
 
 export function AnnotationEditor(props: Props) {
   const { captureId, imageUrl, imageWidth, imageHeight, containerWidth, containerHeight } = props
-  const [editing, setEditing] = useState(false)
   const { data: bundle, isSuccess } = useQuery(annotationsQueryOptions(captureId))
   const mutations = useAnnotationsMutations(captureId)
   const editor = useAnnotationEditor({ initialShapes: bundle?.annotations?.shapes ?? [] })
@@ -62,7 +61,7 @@ export function AnnotationEditor(props: Props) {
     getTool: () => editor.tool,
     deselect: () => editor.select(null),
     removeSelected: () => {
-      if (!editing || !editor.selectedId) return
+      if (!editor.selectedId) return
       const shape = editor.shapes.find((s) => s.id === editor.selectedId)
       editor.removeShape(editor.selectedId)
       if (shape && shape.kind === 'pin') {
@@ -188,39 +187,19 @@ export function AnnotationEditor(props: Props) {
             1:1
           </button>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            setEditing((v) => !v)
-            editor.select(null)
-          }}
-          className="flex items-center gap-1 rounded px-2 py-1 text-sm text-text-primary hover:bg-canvas"
-        >
-          {editing ? (
-            <>
-              <Eye size={14} /> View mode
-            </>
-          ) : (
-            <>
-              <Pencil size={14} /> Edit annotations
-            </>
-          )}
-        </button>
       </div>
-      {editing && (
-        <AnnotationToolbar
-          tool={editor.tool}
-          setTool={editor.setTool}
-          color={editor.color}
-          setColor={editor.setColor}
-          strokeWidth={editor.strokeWidth}
-          setStrokeWidth={editor.setStrokeWidth}
-          canUndo={editor.canUndo}
-          canRedo={editor.canRedo}
-          onUndo={editor.undo}
-          onRedo={editor.redo}
-        />
-      )}
+      <AnnotationToolbar
+        tool={editor.tool}
+        setTool={editor.setTool}
+        color={editor.color}
+        setColor={editor.setColor}
+        strokeWidth={editor.strokeWidth}
+        setStrokeWidth={editor.setStrokeWidth}
+        canUndo={editor.canUndo}
+        canRedo={editor.canRedo}
+        onUndo={editor.undo}
+        onRedo={editor.redo}
+      />
       <div className="relative flex-1 overflow-hidden bg-canvas">
         <AnnotationCanvas
           imageUrl={imageUrl}
@@ -231,7 +210,7 @@ export function AnnotationEditor(props: Props) {
           selectedId={editor.selectedId}
           onSelect={editor.select}
           onShapeChange={editor.updateShape}
-          editable={editing}
+          editable={true}
           tool={editor.tool}
           color={editor.color}
           strokeWidth={editor.strokeWidth}

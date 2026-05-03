@@ -75,13 +75,11 @@ test.describe('Annotations', () => {
     // Wait for capture row to render then click it to set selectedCaptureId in the store.
     await page.locator('[role="button"]', { hasText: 'Annotations E2E Page' }).first().click()
 
-    // Screenshot tab is active by default. Wait for the AnnotationEditor toggle to appear.
-    const editToggle = page.getByRole('button', { name: 'Edit annotations' })
-    await expect(editToggle).toBeVisible({ timeout: 10000 })
-
-    // Enter edit mode and select the Rectangle tool.
-    await editToggle.click()
-    await page.getByRole('button', { name: 'Rectangle' }).click()
+    // Screenshot tab is active by default. Wait for the AnnotationToolbar to appear,
+    // then pick the Rectangle tool — there is no longer an explicit edit toggle.
+    const rectangleTool = page.getByRole('button', { name: 'Rectangle' })
+    await expect(rectangleTool).toBeVisible({ timeout: 10000 })
+    await rectangleTool.click()
 
     // Drag on the Konva stage to draw a rectangle.
     const stageContainer = page.locator('.konvajs-content').first()
@@ -208,8 +206,8 @@ test.describe('Annotations', () => {
     )
 
     await page.locator('[role="button"]', { hasText: 'Zoom Pan E2E Page' }).first().click()
-    const editToggle = page.getByRole('button', { name: 'Edit annotations' })
-    await expect(editToggle).toBeVisible({ timeout: 10000 })
+    const rectangleTool = page.getByRole('button', { name: 'Rectangle' })
+    await expect(rectangleTool).toBeVisible({ timeout: 10000 })
     // --- /Setup ---
 
     // The Konva stage container should be present.
@@ -224,16 +222,15 @@ test.describe('Annotations', () => {
     await page.mouse.wheel(0, -300)
     await page.keyboard.up('Control')
 
-    // Verify that the canvas remains interactive after zooming: enter edit mode,
-    // draw a rectangle, and confirm it persists. This proves the coordinate
-    // transform still works under the new transform pipeline.
-    await editToggle.click()
-    await page.getByRole('button', { name: 'Rectangle' }).click()
+    // Verify that the canvas remains interactive after zooming: pick the
+    // Rectangle tool, draw a rectangle, and confirm it persists. This proves
+    // the coordinate transform still works under the new transform pipeline.
+    await rectangleTool.click()
 
-    // Re-read box in case layout shifted from entering edit mode.
+    // Re-read box in case layout shifted after picking the Rectangle tool.
     const stageContainerEdit = page.locator('.konvajs-content').first()
     const box2 = await stageContainerEdit.boundingBox()
-    if (!box2) throw new Error('Konva stage has no bounding box after edit-mode toggle')
+    if (!box2) throw new Error('Konva stage has no bounding box after selecting Rectangle tool')
     await page.mouse.move(box2.x + 20, box2.y + 20)
     await page.mouse.down()
     await page.mouse.move(box2.x + 60, box2.y + 50, { steps: 10 })

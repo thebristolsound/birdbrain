@@ -7,7 +7,8 @@ import {
   MapPin,
   MousePointer2,
   Undo2,
-  Redo2
+  Redo2,
+  Trash2
 } from 'lucide-react'
 
 interface Props {
@@ -21,6 +22,8 @@ interface Props {
   canRedo: boolean
   onUndo: () => void
   onRedo: () => void
+  selectedId: string | null
+  onDeleteSelected: () => void
 }
 
 const TOOLS: Array<{ key: AnnotationTool; label: string; Icon: typeof Square }> = [
@@ -48,7 +51,9 @@ export function AnnotationToolbar({
   canUndo,
   canRedo,
   onUndo,
-  onRedo
+  onRedo,
+  selectedId,
+  onDeleteSelected
 }: Props) {
   return (
     <div className="flex items-center gap-2 border-b border-border bg-surface px-3 py-1.5">
@@ -111,6 +116,17 @@ export function AnnotationToolbar({
       </label>
 
       <div className="ml-auto flex items-center gap-1">
+        <button
+          type="button"
+          aria-label="Delete selected shape"
+          title="Delete selected (Del)"
+          onClick={onDeleteSelected}
+          disabled={!selectedId}
+          className="h-8 w-8 rounded-lg flex items-center justify-center text-text-muted hover:bg-elevated hover:text-text-primary disabled:opacity-40 disabled:hover:bg-transparent"
+        >
+          <Trash2 size={16} />
+        </button>
+        <Separator />
         <button
           type="button"
           aria-label="Undo"

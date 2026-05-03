@@ -344,6 +344,11 @@ function ScreenshotTabPanel({
         canRedo={editor.canRedo}
         onUndo={editor.undo}
         onRedo={editor.redo}
+        selectedId={editor.selectedId}
+        onDeleteSelected={() => {
+          if (!editor.selectedId) return
+          editor.removeShape(editor.selectedId)
+        }}
       />
       <div className="flex-1 min-h-0 p-3">
         <BrowserChromeFrame url={url}>

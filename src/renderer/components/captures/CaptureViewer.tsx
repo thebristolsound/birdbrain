@@ -45,7 +45,7 @@ export function CaptureViewer() {
   const { caseId } = useParams({ from: '/cases/$caseId/captures' })
   const selectedCaptureId = useAppStore((s) => s.selectedCaptureId)
   const selectCapture = useAppStore((s) => s.selectCapture)
-  const connectedToExtension = useAppStore((s) => s.connectedToExtension)
+  const sessionActive = useAppStore((s) => s.sessionActive)
   const { data: captures = [] } = useQuery(capturesQueryOptions(caseId))
 
   const [activeTab, setActiveTab] = useState<ViewTab>('screenshot')
@@ -108,7 +108,7 @@ export function CaptureViewer() {
   }, [goPrev, goNext])
 
   if (!selectedCaptureId || !capture || capture.caseId !== caseId) {
-    if (captures.length === 0 && !connectedToExtension) {
+    if (captures.length === 0 && !sessionActive) {
       return <CapturesGettingStarted />
     }
     return (

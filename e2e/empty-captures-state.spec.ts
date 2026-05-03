@@ -17,38 +17,44 @@ async function dismissOnboardingAndCreateCase(page: import('@playwright/test').P
   }
   await page.waitForURL(/#\/cases\/.+\/captures/, { timeout: 10000 })
   await page.waitForSelector('[data-testid="case-header-name-btn"]', { timeout: 10000 })
-  // The renderer's own /api/status ping flips connectedToExtension=true, which
-  // would hide the getting-started panel. Force it back to false for the test.
-  await page.evaluate(() => {
-    type StoreState = { setConnectedToExtension: (v: boolean) => void }
-    type StoreApi = { getState: () => StoreState }
-    const store = (window as unknown as { __BB_APP_STORE__?: StoreApi }).__BB_APP_STORE__
-    store?.getState().setConnectedToExtension(false)
-  })
 }
 
 test.describe('Empty Captures State', () => {
-  test('shows illustrated empty list for a fresh case', async ({ page }) => {
+  test('shows illustrated empty list and getting-started panel for a fresh case', async ({
+    page
+  }) => {
     await dismissOnboardingAndCreateCase(page, 'Empty State Case')
 
     await expect(page.locator('[data-testid="capture-list-empty-state"]')).toBeVisible()
     await expect(page.getByRole('heading', { name: 'No captures yet' })).toBeVisible()
+
+    await expect(page.locator('[data-testid="captures-getting-started"]')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Start capturing the web' })).toBeVisible()
+    await expect(page.getByText('Install the browser extension')).toBeVisible()
+    await expect(page.getByText('Enable Auto-Capture')).toBeVisible()
+    await expect(page.getByText('Browse and investigate')).toBeVisible()
   })
 
   test('Learn more opens an in-app onboarding overlay that can be dismissed', async ({ page }) => {
     await dismissOnboardingAndCreateCase(page, 'Overlay Case')
 
-    // The right-pane getting-started panel is hidden when connectedToExtension
-    // becomes true. The renderer's own /api/status ping flips that flag,
-    // racing the panel render. Click() retries up to 30s so it resolves the
-    // moment the panel is mounted (before the IPC connection event lands).
     await page.click('[data-testid="captures-getting-started-learn-more-btn"]')
 
     const overlay = page.locator('[data-testid="onboarding-wizard"][data-mode="overlay"]')
     await expect(overlay).toBeVisible()
+    await expect(overlay).toHaveAttribute('role', 'dialog')
+    await expect(overlay).toHaveAttribute('aria-modal', 'true')
     await expect(overlay.getByText('Connect Extension')).toBeVisible()
 
+    // Escape key dismisses the overlay
+    await page.keyboard.press('Escape')
+    await expect(overlay).toBeHidden()
+
+    // Reopen and dismiss via the close button
+    await page.click('[data-testid="captures-getting-started-learn-more-btn"]')
+    await expect(overlay).toBeVisible()
     await page.click('[data-testid="onboarding-overlay-close"]')
     await expect(overlay).toBeHidden()
+    await expect(page.locator('[data-testid="captures-getting-started"]')).toBeVisible()
   })
 })

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { AnimatePresence, motion } from 'motion/react'
 import { Puzzle, FolderPlus, ArrowRight, Check, X } from 'lucide-react'
@@ -48,10 +48,22 @@ export function OnboardingWizard({ mode = 'firstRun', onClose }: OnboardingWizar
     }
   }
 
+  useEffect(() => {
+    if (!isOverlay) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose?.()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [isOverlay, onClose])
+
   return (
     <div
       data-testid="onboarding-wizard"
       data-mode={mode}
+      role={isOverlay ? 'dialog' : undefined}
+      aria-modal={isOverlay ? true : undefined}
+      aria-labelledby={isOverlay ? 'onboarding-overlay-title' : undefined}
       className={
         isOverlay
           ? 'fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6'
@@ -101,10 +113,15 @@ export function OnboardingWizard({ mode = 'firstRun', onClose }: OnboardingWizar
                     <Puzzle className="h-5 w-5 text-accent" />
                   </div>
                   <div>
-                    <h2 className="font-display text-lg font-bold text-text-primary">
+                    <h2
+                      id={isOverlay ? 'onboarding-overlay-title' : undefined}
+                      className="font-display text-lg font-bold text-text-primary"
+                    >
                       Connect Extension
                     </h2>
-                    <p className="text-sm text-text-muted">Step 1 of 2</p>
+                    <p className="text-sm text-text-muted">
+                      {isOverlay ? 'Onboarding' : 'Step 1 of 2'}
+                    </p>
                   </div>
                 </div>
 

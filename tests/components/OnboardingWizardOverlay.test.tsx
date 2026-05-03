@@ -77,4 +77,26 @@ describe('OnboardingWizard overlay mode', () => {
     expect(createMutateSpy).not.toHaveBeenCalled()
     expect(settingsUpdateSpy).not.toHaveBeenCalled()
   })
+
+  it('exposes dialog semantics for assistive tech', () => {
+    renderOverlay()
+    const root = screen.getByTestId('onboarding-wizard')
+    expect(root.getAttribute('role')).toBe('dialog')
+    expect(root.getAttribute('aria-modal')).toBe('true')
+    const labelledBy = root.getAttribute('aria-labelledby')
+    expect(labelledBy).toBe('onboarding-overlay-title')
+    expect(document.getElementById(labelledBy!)).not.toBeNull()
+  })
+
+  it('calls onClose when Escape is pressed', () => {
+    renderOverlay()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('calls onClose when backdrop is clicked', () => {
+    renderOverlay()
+    fireEvent.click(screen.getByTestId('onboarding-wizard'))
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
 })

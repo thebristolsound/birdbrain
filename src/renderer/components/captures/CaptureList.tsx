@@ -331,7 +331,7 @@ export function CaptureList({ caseId }: CaptureListProps) {
       </div>
 
       {/* Scrollable capture list */}
-      <div className="flex-1 space-y-1 overflow-y-auto p-2">
+      <div className="flex flex-1 flex-col space-y-1 overflow-y-auto p-2">
         <AnimatePresence mode="popLayout" initial={firstPaintRef.current}>
           {displayedCaptures.map((cap, i) => (
             <motion.div
@@ -358,7 +358,9 @@ export function CaptureList({ caseId }: CaptureListProps) {
         {displayedCaptures.length === 0 &&
           (filteredCaptureIds || activeFilterCount > 0 || searchQuery ? (
             <div className="px-3 py-4 text-center text-xs text-text-faint">
-              No captures match the active filters
+              {searchQuery && activeFilterCount === 0 && !filteredCaptureIds
+                ? `No captures match "${searchQuery}"`
+                : 'No captures match the active filters'}
             </div>
           ) : (
             <CaptureListEmptyState />

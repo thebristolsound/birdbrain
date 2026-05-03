@@ -18,7 +18,7 @@ const STEPS = [
     n: 1,
     icon: Download,
     title: 'Install the browser extension',
-    body: 'Add the Birdbrain extension to Chrome or Firefox to enable automatic web page capturing.'
+    body: 'Add the Birdbrain extension to Chrome (or another Chromium-based browser) to enable automatic web page capturing.'
   },
   {
     n: 2,
@@ -89,8 +89,8 @@ export function CapturesGettingStarted() {
           </div>
           <h2 className="mb-2 text-xl font-semibold text-text-primary">Start capturing the web</h2>
           <p className="mx-auto max-w-sm text-sm leading-relaxed text-text-muted">
-            Birdbrain automatically saves and analyzes web pages as you browse. Get started in
-            three simple steps.
+            Birdbrain automatically saves and analyzes web pages as you browse. Get started in three
+            simple steps.
           </p>
         </div>
 

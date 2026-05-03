@@ -112,6 +112,7 @@ export function CapturesRoute() {
             <CaptureDetailsPanel
               capture={selectedCapture}
               caseId={caseId}
+              onCollapse={toggleUserPref}
               onDownload={handleDownload}
               onOpenExternal={handleOpenExternal}
               onDelete={() => setShowDeleteConfirm(true)}

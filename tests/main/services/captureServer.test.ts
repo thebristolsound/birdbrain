@@ -95,6 +95,25 @@ describe('captureServer', () => {
     expect(data.serverToken).toBeUndefined()
   })
 
+  it('GET /api/status does not update extensionLastSeen when Origin is not chrome-extension://', async () => {
+    await fetch(`${baseUrl}/api/status`)
+    expect(getSessionState().extensionLastSeen).toBe(0)
+
+    await fetch(`${baseUrl}/api/status`, { headers: { Origin: 'https://evil.example.com' } })
+    expect(getSessionState().extensionLastSeen).toBe(0)
+
+    await fetch(`${baseUrl}/api/status`, { headers: { Origin: 'file:///index.html' } })
+    expect(getSessionState().extensionLastSeen).toBe(0)
+  })
+
+  it('GET /api/status updates extensionLastSeen when Origin is chrome-extension://', async () => {
+    expect(getSessionState().extensionLastSeen).toBe(0)
+    await fetch(`${baseUrl}/api/status`, {
+      headers: { Origin: 'chrome-extension://abcdef1234567890' }
+    })
+    expect(getSessionState().extensionLastSeen).toBeGreaterThan(0)
+  })
+
   it('POST endpoints reject requests without a valid token', async () => {
     const testCase = createCase({ name: 'Auth Test' })
     const missing = await fetch(`${baseUrl}/api/cases/${testCase.id}/activate`, { method: 'POST' })

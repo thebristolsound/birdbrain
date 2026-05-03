@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Pencil, Eye, Hand, Minus, Plus } from 'lucide-react'
 import type { AnnotationShape } from '@shared/types'
 import { annotationsQueryOptions, useAnnotationsMutations } from '@renderer/lib/queries'
 import { AnnotationCanvas } from './AnnotationCanvas'
-import { AnnotationToolbar } from './AnnotationToolbar'
 import { PinCommentPopover } from './PinCommentPopover'
-import { useAnnotationEditor } from './useAnnotationEditor'
 import { useAnnotationKeyboardShortcuts } from './keyboardShortcuts'
-import { useZoomPan } from './useZoomPan'
+import type { useAnnotationEditor } from './useAnnotationEditor'
+import type { useZoomPan } from './useZoomPan'
+
+type EditorApi = ReturnType<typeof useAnnotationEditor>
+type ZoomPanApi = ReturnType<typeof useZoomPan>
 
 interface Props {
   captureId: string
@@ -17,18 +18,30 @@ interface Props {
   imageHeight: number
   containerWidth: number
   containerHeight: number
+  editor: EditorApi
+  zoomPan: ZoomPanApi
+  overlayVisible: boolean
 }
 
 const EMPTY_ANNOTATIONS_VERSION_MARKER = '__empty__'
 
 export function AnnotationEditor(props: Props) {
-  const { captureId, imageUrl, imageWidth, imageHeight, containerWidth, containerHeight } = props
-  const [editing, setEditing] = useState(false)
+  const {
+    captureId,
+    imageUrl,
+    imageWidth,
+    imageHeight,
+    containerWidth,
+    containerHeight,
+    editor,
+    zoomPan,
+    overlayVisible
+  } = props
+
   const { data: bundle, isSuccess } = useQuery(annotationsQueryOptions(captureId))
   const mutations = useAnnotationsMutations(captureId)
-  const editor = useAnnotationEditor({ initialShapes: bundle?.annotations?.shapes ?? [] })
   const { setShapes, select, dirty } = editor
-  const zoomPan = useZoomPan({ imageWidth, imageHeight, containerWidth, containerHeight })
+
   const [popoverPinShapeId, setPopoverPinShapeId] = useState<string | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const syncedAnnotationsVersionRef = useRef<string | null>(null)
@@ -62,7 +75,7 @@ export function AnnotationEditor(props: Props) {
     getTool: () => editor.tool,
     deselect: () => editor.select(null),
     removeSelected: () => {
-      if (!editing || !editor.selectedId) return
+      if (!editor.selectedId) return
       const shape = editor.shapes.find((s) => s.id === editor.selectedId)
       editor.removeShape(editor.selectedId)
       if (shape && shape.kind === 'pin') {
@@ -73,7 +86,7 @@ export function AnnotationEditor(props: Props) {
     redo: editor.redo,
     zoomIn: () => handleZoomAt(1.25, containerWidth / 2, containerHeight / 2),
     zoomOut: () => handleZoomAt(0.8, containerWidth / 2, containerHeight / 2),
-    resetView: () => handleResetView(),
+    resetView: handleResetView,
     oneToOne: () =>
       handleZoomAt(
         1 / zoomPan.fitScale / zoomPan.userScale,
@@ -135,136 +148,49 @@ export function AnnotationEditor(props: Props) {
     : undefined
 
   return (
-    <div className="relative flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-border bg-surface px-2 py-1">
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            aria-label="Hand tool"
-            onClick={() => editor.setTool(editor.tool === 'hand' ? 'select' : 'hand')}
-            className={[
-              'rounded px-2 py-1 hover:bg-canvas',
-              editor.tool === 'hand' ? 'bg-canvas text-accent' : 'text-text-primary'
-            ].join(' ')}
-          >
-            <Hand size={14} />
-          </button>
-          <button
-            type="button"
-            aria-label="Zoom out"
-            onClick={() => handleZoomAt(0.8, containerWidth / 2, containerHeight / 2)}
-            className="rounded px-2 py-1 text-text-primary hover:bg-canvas"
-          >
-            <Minus size={14} />
-          </button>
-          <span className="min-w-[3.5rem] text-center text-xs text-text-muted tabular-nums">
-            {Math.round(zoomPan.userScale * 100)}%
-          </span>
-          <button
-            type="button"
-            aria-label="Zoom in"
-            onClick={() => handleZoomAt(1.25, containerWidth / 2, containerHeight / 2)}
-            className="rounded px-2 py-1 text-text-primary hover:bg-canvas"
-          >
-            <Plus size={14} />
-          </button>
-          <button
-            type="button"
-            onClick={() => handleResetView()}
-            className="rounded px-2 py-1 text-xs text-text-primary hover:bg-canvas"
-          >
-            Fit
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              // 1:1 absolute scale: userScale = 1 / fitScale.
-              const target = 1 / zoomPan.fitScale
-              // zoomAt's first arg is a delta multiplier on the current userScale.
-              handleZoomAt(target / zoomPan.userScale, containerWidth / 2, containerHeight / 2)
-            }}
-            className="rounded px-2 py-1 text-xs text-text-primary hover:bg-canvas"
-          >
-            1:1
-          </button>
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            setEditing((v) => !v)
-            editor.select(null)
-          }}
-          className="flex items-center gap-1 rounded px-2 py-1 text-sm text-text-primary hover:bg-canvas"
-        >
-          {editing ? (
-            <>
-              <Eye size={14} /> View mode
-            </>
-          ) : (
-            <>
-              <Pencil size={14} /> Edit annotations
-            </>
-          )}
-        </button>
-      </div>
-      {editing && (
-        <AnnotationToolbar
-          tool={editor.tool}
-          setTool={editor.setTool}
-          color={editor.color}
-          setColor={editor.setColor}
-          strokeWidth={editor.strokeWidth}
-          setStrokeWidth={editor.setStrokeWidth}
-          canUndo={editor.canUndo}
-          canRedo={editor.canRedo}
-          onUndo={editor.undo}
-          onRedo={editor.redo}
-        />
-      )}
-      <div className="relative flex-1 overflow-hidden bg-canvas">
-        <AnnotationCanvas
-          imageUrl={imageUrl}
-          imageWidth={imageWidth}
-          imageHeight={imageHeight}
-          shapes={editor.shapes}
-          draft={editor.draft}
-          selectedId={editor.selectedId}
-          onSelect={editor.select}
-          onShapeChange={editor.updateShape}
-          editable={editing}
-          tool={editor.tool}
-          color={editor.color}
-          strokeWidth={editor.strokeWidth}
-          onDraftBegin={editor.beginDraft}
-          onDraftExtend={editor.extendDraft}
-          onDraftCommit={editor.commitDraft}
-          onPinDrop={onPinDrop}
-          onPinClick={(pinId) => {
-            const shape = editor.shapes.find((s) => s.kind === 'pin' && s.pinId === pinId)
-            if (shape) setPopoverPinShapeId(shape.id)
-          }}
-          containerWidth={containerWidth}
-          containerHeight={containerHeight}
-          scale={zoomPan.scale}
-          panX={zoomPan.panX}
-          panY={zoomPan.panY}
-          onZoomAt={handleZoomAt}
-          onPan={handlePan}
-          onResetView={handleResetView}
-        />
-        <PinCommentPopover
-          open={popoverPinShapeId != null}
-          pinNumber={popoverShape?.number || null}
-          initialBody={popoverPin?.body ?? ''}
-          saving={mutations.upsertPin.isPending}
-          onSave={(body) => {
-            if (!popoverShape) return
-            mutations.upsertPin.mutate({ captureId, id: popoverShape.pinId, body })
-            setPopoverPinShapeId(null)
-          }}
-          onClose={() => setPopoverPinShapeId(null)}
-        />
-      </div>
+    <div className="relative h-full w-full">
+      <AnnotationCanvas
+        imageUrl={imageUrl}
+        imageWidth={imageWidth}
+        imageHeight={imageHeight}
+        shapes={overlayVisible ? editor.shapes : []}
+        draft={overlayVisible ? editor.draft : null}
+        selectedId={editor.selectedId}
+        onSelect={editor.select}
+        onShapeChange={editor.updateShape}
+        editable={overlayVisible}
+        tool={editor.tool}
+        color={editor.color}
+        strokeWidth={editor.strokeWidth}
+        onDraftBegin={editor.beginDraft}
+        onDraftExtend={editor.extendDraft}
+        onDraftCommit={editor.commitDraft}
+        onPinDrop={onPinDrop}
+        onPinClick={(pinId) => {
+          const shape = editor.shapes.find((s) => s.kind === 'pin' && s.pinId === pinId)
+          if (shape) setPopoverPinShapeId(shape.id)
+        }}
+        containerWidth={containerWidth}
+        containerHeight={containerHeight}
+        scale={zoomPan.scale}
+        panX={zoomPan.panX}
+        panY={zoomPan.panY}
+        onZoomAt={handleZoomAt}
+        onPan={handlePan}
+        onResetView={handleResetView}
+      />
+      <PinCommentPopover
+        open={popoverPinShapeId != null}
+        pinNumber={popoverShape?.number || null}
+        initialBody={popoverPin?.body ?? ''}
+        saving={mutations.upsertPin.isPending}
+        onSave={(body) => {
+          if (!popoverShape) return
+          mutations.upsertPin.mutate({ captureId, id: popoverShape.pinId, body })
+          setPopoverPinShapeId(null)
+        }}
+        onClose={() => setPopoverPinShapeId(null)}
+      />
     </div>
   )
 }

@@ -30,6 +30,8 @@ interface SelectorMatchResult {
 }
 
 const HIGHLIGHT_CLASS = 'birdbrain-selector-highlight'
+// Randomize style container ID to prevent fingerprinting
+const STYLE_CONTAINER_ID = `birdbrain-styles-${Math.random().toString(36).slice(2, 11)}`
 
 const HIGHLIGHT_STYLES = `
   .${HIGHLIGHT_CLASS} {
@@ -40,20 +42,53 @@ const HIGHLIGHT_STYLES = `
   }
 `
 
+let shadowRoot: ShadowRoot | null = null
 let stylesInjected = false
 
 function injectHighlightStyles(): void {
   if (stylesInjected) return
-  const style = document.createElement('style')
-  style.textContent = HIGHLIGHT_STYLES
-  style.id = 'birdbrain-highlight-styles'
-  document.head.appendChild(style)
+
+  // Create shadow host if not exists
+  let host = document.getElementById(STYLE_CONTAINER_ID) as HTMLElement | null
+  if (!host) {
+    host = document.createElement('div')
+    host.id = STYLE_CONTAINER_ID
+    host.style.display = 'none'
+    shadowRoot = host.attachShadow({ mode: 'closed' })
+    document.body.appendChild(host)
+  }
+
+  if (!shadowRoot) {
+    shadowRoot = host.shadowRoot
+  }
+
+  // Inject styles into shadow DOM
+  if (shadowRoot) {
+    const style = document.createElement('style')
+    style.textContent = HIGHLIGHT_STYLES
+    shadowRoot.appendChild(style)
+  }
+
+  // Also inject into main document for highlighting (mark elements)
+  // but without the fingerprintable ID
+  const mainStyle = document.createElement('style')
+  mainStyle.textContent = HIGHLIGHT_STYLES
+  mainStyle.dataset.birdbrainHighlight = 'true'
+  document.head.appendChild(mainStyle)
+
   stylesInjected = true
 }
 
 function removeHighlightStyles(): void {
-  const style = document.getElementById('birdbrain-highlight-styles')
-  if (style) style.remove()
+  // Remove shadow host
+  const host = document.getElementById(STYLE_CONTAINER_ID)
+  if (host) host.remove()
+  shadowRoot = null
+
+  // Remove main document styles
+  const styles = document.querySelectorAll('style[data-birdbrain-highlight="true"]')
+  styles.forEach((s) => s.remove())
+
   stylesInjected = false
 }
 

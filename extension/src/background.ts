@@ -227,16 +227,26 @@ async function checkStatus(): Promise<void> {
   }
 }
 
-// Poll for status with adaptive interval
-function scheduleStatusCheck(): void {
-  const delay = connected ? 30_000 : 5_000
-  setTimeout(() => {
-    checkStatus().finally(scheduleStatusCheck)
-  }, delay)
-}
+// Poll for status using chrome.alarms for MV3 service worker persistence
+const ALARM_STATUS_CHECK = 'birdbrain-status-check'
 
-// Initial check, then start adaptive polling
-checkStatus().finally(scheduleStatusCheck)
+// Initial check on startup
+checkStatus()
+
+// Set up alarm for periodic status checks
+chrome.alarms.get(ALARM_STATUS_CHECK, (existing) => {
+  if (!existing) {
+    // Poll every 30 seconds when connected, 5 seconds when disconnected (handled dynamically)
+    chrome.alarms.create(ALARM_STATUS_CHECK, { periodInMinutes: 5 / 60 })
+  }
+})
+
+// Handle alarm to check status
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === ALARM_STATUS_CHECK) {
+    checkStatus()
+  }
+})
 
 // --- Context menu for manual capture ---
 
@@ -634,6 +644,9 @@ function updateIcon(state: IconState): void {
 // --- Message handling from popup and content script ---
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Reject messages from other extensions
+  if (sender.id !== chrome.runtime.id) return false
+
   if (message.type === 'REQUEST_VIEWPORT_CAPTURE') {
     const tab = sender.tab
     if (
@@ -679,7 +692,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 })
 
 // Clear state when session stops
-chrome.runtime.onMessage.addListener((message) => {
+chrome.runtime.onMessage.addListener((message, sender) => {
+  // Reject messages from other extensions
+  if (sender.id !== chrome.runtime.id) return false
+
   if (message.type === 'SESSION_STOPPED') {
     dedupeMap.clear()
     selectorDedupeMap.clear()

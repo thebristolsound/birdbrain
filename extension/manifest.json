@@ -13,6 +13,8 @@
     "alarms"
   ],
   "host_permissions": [
+    "http://*/*",
+    "https://*/*",
     "http://localhost:19845/*"
   ],
   "action": {

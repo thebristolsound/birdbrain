@@ -227,17 +227,18 @@ async function checkStatus(): Promise<void> {
   }
 }
 
-// Poll for status using chrome.alarms for MV3 service worker persistence
+// Poll for status using chrome.alarms for MV3 service worker persistence.
+// MV3 enforces a minimum repeating alarm period of 0.5 minutes (30 s);
+// values below that are silently clamped by Chrome.
 const ALARM_STATUS_CHECK = 'birdbrain-status-check'
 
 // Initial check on startup
 checkStatus()
 
-// Set up alarm for periodic status checks
+// Set up alarm for periodic status checks (30 s — the MV3 minimum)
 chrome.alarms.get(ALARM_STATUS_CHECK, (existing) => {
   if (!existing) {
-    // Poll every 30 seconds when connected, 5 seconds when disconnected (handled dynamically)
-    chrome.alarms.create(ALARM_STATUS_CHECK, { periodInMinutes: 5 / 60 })
+    chrome.alarms.create(ALARM_STATUS_CHECK, { periodInMinutes: 0.5 })
   }
 })
 

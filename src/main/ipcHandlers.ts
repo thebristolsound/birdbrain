@@ -298,7 +298,7 @@ export function registerIpcHandlers(deps: { selectorLifecycle: SelectorLifecycle
   })
   ipcMain.handle(IPC_CHANNELS.SELECTORS_UPDATE, (_, params: UpdateSelectorParams) => {
     try {
-      return ipcResult(db.updateSelector(params))
+      return ipcResult(selectorLifecycle.updateSelector(params))
     } catch (err) {
       return ipcError(err)
     }

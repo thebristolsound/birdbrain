@@ -4,6 +4,7 @@ import type { Selector } from '@shared/types'
 import type {
   CreateSelectorParams,
   BulkCreateSelectorsParams,
+  UpdateSelectorParams,
   SelectorRematchedEvent,
   SelectorRematchedStatus
 } from '@shared/ipc'
@@ -18,6 +19,7 @@ export interface SelectorLifecycleDeps {
 export interface SelectorLifecycle {
   createSelector: (params: CreateSelectorParams) => Selector
   bulkCreateSelectors: (params: BulkCreateSelectorsParams) => Selector[]
+  updateSelector: (params: UpdateSelectorParams) => Selector | undefined
 }
 
 export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLifecycle {
@@ -90,6 +92,24 @@ export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLi
       )
       scheduleRetroactiveMatch(created, params.caseId)
       return created
+    },
+    updateSelector(params) {
+      const existing = db.getSelector(params.id)
+      if (!existing) return undefined
+
+      const patternChanged = params.pattern !== undefined && params.pattern !== existing.pattern
+      const isRegexChanged = params.isRegex !== undefined && params.isRegex !== existing.isRegex
+      const matchSemanticsChanged = patternChanged || isRegexChanged
+
+      const updated = db.updateSelector(params)
+      if (!updated) return undefined
+
+      if (matchSemanticsChanged) {
+        db.clearSelectorMatches(updated.id)
+        scheduleRetroactiveMatch([updated], updated.caseId)
+      }
+
+      return updated
     }
   }
 }

@@ -242,6 +242,118 @@ describe('selectorLifecycle', () => {
     })
   })
 
+  describe('updateSelector', () => {
+    it('returns undefined for an unknown selector id', () => {
+      expect(lifecycle.updateSelector({ id: 'does-not-exist', pattern: 'x' })).toBeUndefined()
+    })
+
+    it('clears stale matches and re-runs matching when pattern changes', async () => {
+      const c = createCase({ name: 'C' })
+      const cap1 = insertCapture({
+        caseId: c.id,
+        url: 'https://a',
+        title: 'A',
+        hash: 'h1',
+        timestamp: new Date().toISOString()
+      })
+      const cap2 = insertCapture({
+        caseId: c.id,
+        url: 'https://b',
+        title: 'B',
+        hash: 'h2',
+        timestamp: new Date().toISOString()
+      })
+      writeTxt(tempDir, c.id, cap1.id, 'alpha here')
+      writeTxt(tempDir, c.id, cap2.id, 'beta here')
+
+      const sel = lifecycle.createSelector({ caseId: c.id, pattern: 'alpha' })
+      await waitFor(events, 1)
+      expect(getCapturesMatchingSelectors(c.id, [sel.id])).toEqual([cap1.id])
+
+      const updated = lifecycle.updateSelector({ id: sel.id, pattern: 'beta' })
+      expect(updated?.pattern).toBe('beta')
+      await waitFor(events, 2)
+
+      expect(events[1]).toEqual({ selectorId: sel.id, caseId: c.id, status: 'done' })
+      expect(getCapturesMatchingSelectors(c.id, [sel.id])).toEqual([cap2.id])
+    })
+
+    it('clears stale matches and re-runs matching when isRegex changes', async () => {
+      const c = createCase({ name: 'C' })
+      const cap = insertCapture({
+        caseId: c.id,
+        url: 'https://a',
+        title: 'A',
+        hash: 'h1',
+        timestamp: new Date().toISOString()
+      })
+      writeTxt(tempDir, c.id, cap.id, 'order #12345 confirmed')
+
+      // Literal "#\d{5}" never matches as a substring
+      const sel = lifecycle.createSelector({
+        caseId: c.id,
+        pattern: '#\\d{5}',
+        isRegex: false
+      })
+      await waitFor(events, 1)
+      expect(getCapturesMatchingSelectors(c.id, [sel.id])).toEqual([])
+
+      lifecycle.updateSelector({ id: sel.id, isRegex: true })
+      await waitFor(events, 2)
+
+      expect(getCapturesMatchingSelectors(c.id, [sel.id])).toEqual([cap.id])
+    })
+
+    it('does not clear matches or emit when only label changes', async () => {
+      const c = createCase({ name: 'C' })
+      const cap = insertCapture({
+        caseId: c.id,
+        url: 'https://a',
+        title: 'A',
+        hash: 'h1',
+        timestamp: new Date().toISOString()
+      })
+      writeTxt(tempDir, c.id, cap.id, 'alpha here')
+
+      const sel = lifecycle.createSelector({ caseId: c.id, pattern: 'alpha' })
+      await waitFor(events, 1)
+      expect(getCapturesMatchingSelectors(c.id, [sel.id])).toEqual([cap.id])
+
+      const updated = lifecycle.updateSelector({ id: sel.id, label: 'renamed' })
+      expect(updated?.label).toBe('renamed')
+
+      // Drain a couple of ticks; no rematch should fire
+      await new Promise<void>((r) => setImmediate(r))
+      await new Promise<void>((r) => setImmediate(r))
+      expect(events).toHaveLength(1)
+
+      // Existing matches are still there
+      expect(getCapturesMatchingSelectors(c.id, [sel.id])).toEqual([cap.id])
+    })
+
+    it('does not clear matches or emit when only enabled changes', async () => {
+      const c = createCase({ name: 'C' })
+      const cap = insertCapture({
+        caseId: c.id,
+        url: 'https://a',
+        title: 'A',
+        hash: 'h1',
+        timestamp: new Date().toISOString()
+      })
+      writeTxt(tempDir, c.id, cap.id, 'alpha here')
+
+      const sel = lifecycle.createSelector({ caseId: c.id, pattern: 'alpha' })
+      await waitFor(events, 1)
+
+      lifecycle.updateSelector({ id: sel.id, enabled: false })
+
+      await new Promise<void>((r) => setImmediate(r))
+      await new Promise<void>((r) => setImmediate(r))
+      expect(events).toHaveLength(1)
+      expect(getCapturesMatchingSelectors(c.id, [sel.id])).toEqual([cap.id])
+    })
+  })
+
   describe('chunked retroactive matching', () => {
     it('processes more than one chunk worth of captures', async () => {
       const c = createCase({ name: 'C' })

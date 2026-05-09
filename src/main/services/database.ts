@@ -793,6 +793,10 @@ export function deleteSelector(id: string): boolean {
   return result.changes > 0
 }
 
+export function clearSelectorMatches(selectorId: string): void {
+  getDb().prepare('DELETE FROM selector_matches WHERE selector_id = ?').run(selectorId)
+}
+
 export function listActiveSelectors(caseId?: string): ActiveCaseSelectors[] {
   let rows: Array<Record<string, unknown>>
   if (caseId) {

@@ -113,6 +113,53 @@ export function rollbackManifestEntry(caseDir: string, anchorBytes: number): voi
   truncateSync(path, anchorBytes)
 }
 
+// Thrown by the callback passed to `withDeletionEntry` to signal "the side
+// effect didn't happen, please roll the manifest back without surfacing an
+// error to the caller". The wrapper catches it, rolls back, and rethrows;
+// the call site checks `err instanceof ManifestRollback` to translate to
+// a clean failure result.
+export class ManifestRollback extends Error {
+  constructor(message = 'manifest rollback requested') {
+    super(message)
+    this.name = 'ManifestRollback'
+  }
+}
+
+export interface DeletionEntryContext {
+  captureId: string
+  caseId: string
+  contentHash: string
+  operatorId: string
+  operatorName: string
+  toolVersion: string
+  reason?: string
+}
+
+// Wraps a deletion side-effect in the manifest's write-ahead/rollback invariant.
+// Appends a deletion entry, runs `fn`, and either commits (fn succeeded) or
+// rolls the manifest back to its prior anchor (fn threw). Ensures the manifest
+// never records a deletion that didn't actually happen.
+export function withDeletionEntry<T>(caseDir: string, ctx: DeletionEntryContext, fn: () => T): T {
+  initManifest(caseDir)
+  const result = appendManifestEntry(caseDir, {
+    type: 'deletion',
+    captureId: ctx.captureId,
+    caseId: ctx.caseId,
+    timestamp: new Date().toISOString(),
+    contentHash: ctx.contentHash,
+    operatorId: ctx.operatorId,
+    operatorName: ctx.operatorName,
+    toolVersion: ctx.toolVersion,
+    ...(ctx.reason !== undefined ? { reason: ctx.reason } : {})
+  })
+  try {
+    return fn()
+  } catch (err) {
+    rollbackManifestEntry(caseDir, result.anchorBytes)
+    throw err
+  }
+}
+
 export interface ChainVerifyResult {
   valid: boolean
   brokenAt?: number

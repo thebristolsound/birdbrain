@@ -35,7 +35,7 @@ import * as analysisService from '@main/services/ai/analysisService'
 import { generateReport } from '@main/services/export'
 import { getExtensionPath, extensionPathExists } from '@main/services/extensionPath'
 import { buildCsv } from '@main/services/csvEscape'
-import { initManifest, appendManifestEntry, rollbackManifestEntry } from '@main/services/manifest'
+import { withDeletionEntry, ManifestRollback } from '@main/services/manifest'
 import { getInstallationId } from '@main/services/installationId'
 import { CAPTURE_SERVER_PORT, getSessionState } from '@main/services/captureServer'
 import { extractData } from '@main/services/dataExtractor'
@@ -112,31 +112,29 @@ export function registerIpcHandlers(deps: { selectorLifecycle: SelectorLifecycle
 
       if (capture.format === 'mhtml') {
         const caseDir = join(storage.getStorageRoot(), capture.caseId)
-        initManifest(caseDir)
-        const result = appendManifestEntry(caseDir, {
-          type: 'deletion',
-          captureId: id,
-          caseId: capture.caseId,
-          timestamp: new Date().toISOString(),
-          contentHash: capture.hash,
-          operatorId: getInstallationId(),
-          operatorName: settings.getSettings().operatorName ?? '',
-          toolVersion:
-            typeof app?.getVersion === 'function'
-              ? app.getVersion()
-              : (process.env.npm_package_version ?? '0.0.0')
-        })
-
         try {
-          const deleted = db.deleteCapture(id)
-          if (!deleted) {
-            rollbackManifestEntry(caseDir, result.anchorBytes)
-            return ipcResult(false)
-          }
-          storage.deleteCaptureFiles(capture.caseId, id)
+          withDeletionEntry(
+            caseDir,
+            {
+              captureId: id,
+              caseId: capture.caseId,
+              contentHash: capture.hash,
+              operatorId: getInstallationId(),
+              operatorName: settings.getSettings().operatorName ?? '',
+              toolVersion:
+                typeof app?.getVersion === 'function'
+                  ? app.getVersion()
+                  : (process.env.npm_package_version ?? '0.0.0')
+            },
+            () => {
+              const deleted = db.deleteCapture(id)
+              if (!deleted) throw new ManifestRollback()
+              storage.deleteCaptureFiles(capture.caseId, id)
+            }
+          )
           return ipcResult(true)
         } catch (err) {
-          rollbackManifestEntry(caseDir, result.anchorBytes)
+          if (err instanceof ManifestRollback) return ipcResult(false)
           throw err
         }
       }

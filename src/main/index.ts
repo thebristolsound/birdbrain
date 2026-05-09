@@ -110,7 +110,7 @@ app.whenReady().then(async () => {
   registerIpcHandlers({ selectorLifecycle })
 
   // Start capture server and extension connection monitor
-  await startCaptureServer()
+  await startCaptureServer({ selectorLifecycle })
   startExtensionConnectionCheck()
 
   // Create window and connect to capture server

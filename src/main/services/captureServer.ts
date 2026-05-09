@@ -22,10 +22,16 @@ import {
 } from '@shared/schemas'
 import { extractData } from '@main/services/dataExtractor'
 import { readExtractionHtml } from '@main/services/extraction/extractionSource'
+import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 
 import { CAPTURE_SERVER_PORT, MAX_SCREENSHOT_SIZE } from '@shared/constants'
 import { safeRegexTest } from '@main/services/safeRegex'
 export { CAPTURE_SERVER_PORT }
+
+export interface CaptureServerDeps {
+  selectorLifecycle: SelectorLifecycle
+  token?: string
+}
 
 function getToolVersion(): string {
   if (typeof app?.getVersion === 'function') return app.getVersion()
@@ -129,7 +135,8 @@ function emitCaptureEvent(event: CaptureEvent): void {
   }
 }
 
-function createApp(token?: string): Hono {
+function createApp(deps: CaptureServerDeps): Hono {
+  const { selectorLifecycle, token } = deps
   const app = new Hono()
   const requiredToken = token ?? getServerToken()
 
@@ -443,54 +450,11 @@ function createApp(token?: string): Hono {
           return c.json({ error: 'Case is archived' }, 400)
         }
 
-        const selector = db.createSelector({
+        const selector = selectorLifecycle.createSelector({
           caseId,
           pattern,
           isRegex: false,
           label
-        })
-
-        // Schedule retroactive matching in chunks to avoid blocking the main thread
-        setImmediate(() => {
-          try {
-            const MAX_RETRO_CAPTURES = 500
-            const CHUNK_SIZE = 50
-            const allCaptures = db.listCaptures(caseId)
-            const captures = allCaptures.slice(0, MAX_RETRO_CAPTURES)
-
-            const processChunk = (index: number) => {
-              const end = Math.min(index + CHUNK_SIZE, captures.length)
-              const captureTexts: Array<{ captureId: string; text: string }> = []
-
-              for (let i = index; i < end; i++) {
-                const cap = captures[i]
-                const buffer = readCaptureFile(caseId, cap.id, 'txt')
-                if (buffer) {
-                  captureTexts.push({ captureId: cap.id, text: buffer.toString('utf-8') })
-                } else {
-                  // MHTML captures store text only in FTS; fall back to FTS content
-                  const ftsText = db.getCaptureTextContent(cap.id)
-                  if (ftsText) {
-                    captureTexts.push({ captureId: cap.id, text: ftsText })
-                  }
-                }
-              }
-
-              if (captureTexts.length > 0) {
-                db.matchSelectorAgainstCaptures(selector.id, captureTexts)
-              }
-
-              if (end < captures.length) {
-                setImmediate(() => processChunk(end))
-              }
-            }
-
-            if (captures.length > 0) {
-              processChunk(0)
-            }
-          } catch (err) {
-            console.error('Retroactive selector matching error:', err)
-          }
         })
 
         return c.json({ selector, status: 'ok' })
@@ -579,11 +543,11 @@ function createApp(token?: string): Hono {
 }
 
 export function startCaptureServer(
-  port: number = CAPTURE_SERVER_PORT,
-  token?: string
+  deps: CaptureServerDeps,
+  port: number = CAPTURE_SERVER_PORT
 ): Promise<void> {
   return new Promise((resolve) => {
-    const app = createApp(token)
+    const app = createApp(deps)
     server = serve(
       {
         fetch: app.fetch,

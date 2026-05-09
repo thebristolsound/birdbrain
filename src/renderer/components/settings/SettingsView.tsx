@@ -31,7 +31,6 @@ export function SettingsView() {
 
   useEffect(() => {
     update.mutate({ lastActiveSection: 'settings' })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleUpdate = async (partial: Partial<BirdbrainSettings>) => {

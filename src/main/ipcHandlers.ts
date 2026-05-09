@@ -42,6 +42,7 @@ import { extractData } from '@main/services/dataExtractor'
 import { readExtractionHtml } from '@main/services/extraction/extractionSource'
 import { reprocessCase } from '@main/services/extraction/reprocess'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
+import { handle } from '@main/ipcWrap'
 import type { BirdbrainSettings, ExportOptions, CaptureAnalysis } from '@shared/types'
 
 type IpcResult<T = unknown> =
@@ -81,27 +82,9 @@ export function registerIpcHandlers(deps: { selectorLifecycle: SelectorLifecycle
   // Cases
   ipcMain.handle(IPC_CHANNELS.CASES_LIST, () => db.listCases())
   ipcMain.handle(IPC_CHANNELS.CASES_GET, (_, id: string) => db.getCase(id))
-  ipcMain.handle(IPC_CHANNELS.CASES_CREATE, (_, params: CreateCaseParams) => {
-    try {
-      return ipcResult(db.createCase(params))
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
-  ipcMain.handle(IPC_CHANNELS.CASES_UPDATE, (_, params: UpdateCaseParams) => {
-    try {
-      return ipcResult(db.updateCase(params))
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
-  ipcMain.handle(IPC_CHANNELS.CASES_DELETE, (_, id: string) => {
-    try {
-      return ipcResult(db.deleteCase(id))
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
+  handle(IPC_CHANNELS.CASES_CREATE, (_, params: CreateCaseParams) => db.createCase(params))
+  handle(IPC_CHANNELS.CASES_UPDATE, (_, params: UpdateCaseParams) => db.updateCase(params))
+  handle(IPC_CHANNELS.CASES_DELETE, (_, id: string) => db.deleteCase(id))
 
   // Captures
   ipcMain.handle(IPC_CHANNELS.CAPTURES_LIST, (_, caseId: string) => db.listCaptures(caseId))
@@ -231,42 +214,14 @@ export function registerIpcHandlers(deps: { selectorLifecycle: SelectorLifecycle
 
   // Tags
   ipcMain.handle(IPC_CHANNELS.TAGS_LIST, () => db.listTags())
-  ipcMain.handle(IPC_CHANNELS.TAGS_CREATE, (_, params: CreateTagParams) => {
-    try {
-      return ipcResult(db.createTag(params))
-    } catch (err) {
-      return ipcError(err)
-    }
+  handle(IPC_CHANNELS.TAGS_CREATE, (_, params: CreateTagParams) => db.createTag(params))
+  handle(IPC_CHANNELS.TAGS_UPDATE, (_, params: UpdateTagParams) => db.updateTag(params))
+  handle(IPC_CHANNELS.TAGS_DELETE, (_, id: string) => db.deleteTag(id))
+  handle(IPC_CHANNELS.TAGS_ADD_TO_CAPTURE, (_, params: CaptureTagParams) => {
+    db.addTagToCapture(params)
   })
-  ipcMain.handle(IPC_CHANNELS.TAGS_UPDATE, (_, params: UpdateTagParams) => {
-    try {
-      return ipcResult(db.updateTag(params))
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
-  ipcMain.handle(IPC_CHANNELS.TAGS_DELETE, (_, id: string) => {
-    try {
-      return ipcResult(db.deleteTag(id))
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
-  ipcMain.handle(IPC_CHANNELS.TAGS_ADD_TO_CAPTURE, (_, params: CaptureTagParams) => {
-    try {
-      db.addTagToCapture(params)
-      return ipcResult(undefined)
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
-  ipcMain.handle(IPC_CHANNELS.TAGS_REMOVE_FROM_CAPTURE, (_, params: CaptureTagParams) => {
-    try {
-      db.removeTagFromCapture(params)
-      return ipcResult(undefined)
-    } catch (err) {
-      return ipcError(err)
-    }
+  handle(IPC_CHANNELS.TAGS_REMOVE_FROM_CAPTURE, (_, params: CaptureTagParams) => {
+    db.removeTagFromCapture(params)
   })
   ipcMain.handle(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, (_, captureId: string) =>
     db.getTagsForCapture(captureId)
@@ -281,34 +236,16 @@ export function registerIpcHandlers(deps: { selectorLifecycle: SelectorLifecycle
   // Selectors
   ipcMain.handle(IPC_CHANNELS.SELECTORS_LIST, (_, caseId: string) => db.listSelectors(caseId))
   ipcMain.handle(IPC_CHANNELS.SELECTORS_GET, (_, id: string) => db.getSelector(id))
-  ipcMain.handle(IPC_CHANNELS.SELECTORS_CREATE, (_, params: CreateSelectorParams) => {
-    try {
-      return ipcResult(selectorLifecycle.createSelector(params))
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
-  ipcMain.handle(IPC_CHANNELS.SELECTORS_BULK_CREATE, (_, params: BulkCreateSelectorsParams) => {
-    try {
-      return ipcResult(selectorLifecycle.bulkCreateSelectors(params))
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
-  ipcMain.handle(IPC_CHANNELS.SELECTORS_UPDATE, (_, params: UpdateSelectorParams) => {
-    try {
-      return ipcResult(selectorLifecycle.updateSelector(params))
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
-  ipcMain.handle(IPC_CHANNELS.SELECTORS_DELETE, (_, id: string) => {
-    try {
-      return ipcResult(db.deleteSelector(id))
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
+  handle(IPC_CHANNELS.SELECTORS_CREATE, (_, params: CreateSelectorParams) =>
+    selectorLifecycle.createSelector(params)
+  )
+  handle(IPC_CHANNELS.SELECTORS_BULK_CREATE, (_, params: BulkCreateSelectorsParams) =>
+    selectorLifecycle.bulkCreateSelectors(params)
+  )
+  handle(IPC_CHANNELS.SELECTORS_UPDATE, (_, params: UpdateSelectorParams) =>
+    selectorLifecycle.updateSelector(params)
+  )
+  handle(IPC_CHANNELS.SELECTORS_DELETE, (_, id: string) => db.deleteSelector(id))
   ipcMain.handle(IPC_CHANNELS.SELECTORS_LIST_ACTIVE, () => {
     const { activeCaseId } = getSessionState()
     return db.listActiveSelectors(activeCaseId ?? undefined)
@@ -324,67 +261,45 @@ export function registerIpcHandlers(deps: { selectorLifecycle: SelectorLifecycle
   ipcMain.handle(IPC_CHANNELS.SELECTORS_COVERAGE, (_, caseId: string) =>
     db.getSelectorCoverage(caseId)
   )
-  ipcMain.handle(IPC_CHANNELS.SELECTORS_EXPORT_MATCHES, async (_, caseId: string) => {
-    try {
-      const caseRow = db.getCase(caseId)
-      if (!caseRow) return ipcResult({ exported: false })
-      const rows = db.getSelectorMatchesForExport(caseId)
-      const csv = buildCsv(
-        [
-          'Selector Pattern',
-          'Selector Label',
-          'Type',
-          'Capture URL',
-          'Capture Title',
-          'Capture Timestamp'
-        ],
-        rows.map((r) => [
-          r.selectorPattern,
-          r.selectorLabel ?? '',
-          r.isRegex ? 'regex' : 'text',
-          r.captureUrl,
-          r.captureTitle ?? '',
-          r.captureTimestamp
-        ])
-      )
-      const safeName = caseRow.name.replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 80) || 'case'
-      const { canceled, filePath } = await dialog.showSaveDialog({
-        defaultPath: `${safeName}_selector_matches.csv`,
-        filters: [{ name: 'CSV', extensions: ['csv'] }]
-      })
-      if (canceled || !filePath) return ipcResult({ exported: false })
-      const { writeFileSync } = await import('fs')
-      writeFileSync(filePath, csv, 'utf-8')
-      return ipcResult({ exported: true, path: filePath })
-    } catch (err) {
-      return ipcError(err)
-    }
+  handle(IPC_CHANNELS.SELECTORS_EXPORT_MATCHES, async (_, caseId: string) => {
+    const caseRow = db.getCase(caseId)
+    if (!caseRow) return { exported: false }
+    const rows = db.getSelectorMatchesForExport(caseId)
+    const csv = buildCsv(
+      [
+        'Selector Pattern',
+        'Selector Label',
+        'Type',
+        'Capture URL',
+        'Capture Title',
+        'Capture Timestamp'
+      ],
+      rows.map((r) => [
+        r.selectorPattern,
+        r.selectorLabel ?? '',
+        r.isRegex ? 'regex' : 'text',
+        r.captureUrl,
+        r.captureTitle ?? '',
+        r.captureTimestamp
+      ])
+    )
+    const safeName = caseRow.name.replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 80) || 'case'
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      defaultPath: `${safeName}_selector_matches.csv`,
+      filters: [{ name: 'CSV', extensions: ['csv'] }]
+    })
+    if (canceled || !filePath) return { exported: false }
+    const { writeFileSync } = await import('fs')
+    writeFileSync(filePath, csv, 'utf-8')
+    return { exported: true, path: filePath }
   })
 
   // Notes
   ipcMain.handle(IPC_CHANNELS.NOTES_LIST, (_, caseId: string) => db.listNotes(caseId))
   ipcMain.handle(IPC_CHANNELS.NOTES_GET, (_, id: string) => db.getNote(id))
-  ipcMain.handle(IPC_CHANNELS.NOTES_CREATE, (_, params: CreateNoteParams) => {
-    try {
-      return ipcResult(db.createNote(params))
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
-  ipcMain.handle(IPC_CHANNELS.NOTES_UPDATE, (_, params: UpdateNoteParams) => {
-    try {
-      return ipcResult(db.updateNote(params))
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
-  ipcMain.handle(IPC_CHANNELS.NOTES_DELETE, (_, id: string) => {
-    try {
-      return ipcResult(db.deleteNote(id))
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
+  handle(IPC_CHANNELS.NOTES_CREATE, (_, params: CreateNoteParams) => db.createNote(params))
+  handle(IPC_CHANNELS.NOTES_UPDATE, (_, params: UpdateNoteParams) => db.updateNote(params))
+  handle(IPC_CHANNELS.NOTES_DELETE, (_, id: string) => db.deleteNote(id))
   ipcMain.handle(IPC_CHANNELS.NOTES_COUNT, (_, caseId: string) => db.getNoteCount(caseId))
   ipcMain.handle(IPC_CHANNELS.NOTES_SEARCH, (_, caseId: string, query: string) => {
     try {
@@ -400,35 +315,17 @@ export function registerIpcHandlers(deps: { selectorLifecycle: SelectorLifecycle
   ipcMain.handle(IPC_CHANNELS.ANNOTATIONS_GET, (_, captureId: string) =>
     annotations.getAnnotations(captureId)
   )
-  ipcMain.handle(IPC_CHANNELS.ANNOTATIONS_SAVE, (_, params: SaveAnnotationsParams) => {
-    try {
-      return ipcResult(annotations.saveAnnotations(params))
-    } catch (err) {
-      return ipcError(err)
-    }
+  handle(IPC_CHANNELS.ANNOTATIONS_SAVE, (_, params: SaveAnnotationsParams) =>
+    annotations.saveAnnotations(params)
+  )
+  handle(IPC_CHANNELS.ANNOTATIONS_DELETE, (_, captureId: string) => {
+    annotations.deleteAnnotations(captureId)
   })
-  ipcMain.handle(IPC_CHANNELS.ANNOTATIONS_DELETE, (_, captureId: string) => {
-    try {
-      annotations.deleteAnnotations(captureId)
-      return ipcResult(undefined)
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
-  ipcMain.handle(IPC_CHANNELS.ANNOTATIONS_UPSERT_PIN, (_, params: UpsertAnnotationPinParams) => {
-    try {
-      return ipcResult(annotations.upsertPin(params))
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
-  ipcMain.handle(IPC_CHANNELS.ANNOTATIONS_DELETE_PIN, (_, pinId: string) => {
-    try {
-      annotations.deletePin(pinId)
-      return ipcResult(undefined)
-    } catch (err) {
-      return ipcError(err)
-    }
+  handle(IPC_CHANNELS.ANNOTATIONS_UPSERT_PIN, (_, params: UpsertAnnotationPinParams) =>
+    annotations.upsertPin(params)
+  )
+  handle(IPC_CHANNELS.ANNOTATIONS_DELETE_PIN, (_, pinId: string) => {
+    annotations.deletePin(pinId)
   })
 
   // Extension

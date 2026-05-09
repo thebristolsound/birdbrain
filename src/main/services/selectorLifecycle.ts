@@ -1,21 +1,18 @@
 import * as db from '@main/services/database'
 import { readCaptureFile } from '@main/services/storage'
 import type { Selector } from '@shared/types'
-import type { CreateSelectorParams, BulkCreateSelectorsParams } from '@shared/ipc'
+import type {
+  CreateSelectorParams,
+  BulkCreateSelectorsParams,
+  SelectorRematchedEvent,
+  SelectorRematchedStatus
+} from '@shared/ipc'
 
 const RETRO_MAX_CAPTURES = 500
 const RETRO_CHUNK_SIZE = 50
 
-export type RematchedStatus = 'done' | 'error'
-
-export interface RematchedEvent {
-  selectorId: string
-  caseId: string
-  status: RematchedStatus
-}
-
 export interface SelectorLifecycleDeps {
-  emitRematched: (event: RematchedEvent) => void
+  emitRematched: (event: SelectorRematchedEvent) => void
 }
 
 export interface SelectorLifecycle {
@@ -35,7 +32,7 @@ export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLi
     const allCaptures = db.listCaptures(caseId)
     const captures = allCaptures.slice(0, RETRO_MAX_CAPTURES)
 
-    const emit = (status: RematchedStatus): void => {
+    const emit = (status: SelectorRematchedStatus): void => {
       for (const sel of selectors) {
         deps.emitRematched({ selectorId: sel.id, caseId, status })
       }

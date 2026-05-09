@@ -12,7 +12,8 @@ import {
   listSelectors
 } from '@main/services/database'
 import { initStorage } from '@main/services/storage'
-import { createSelectorLifecycle, type RematchedEvent } from '@main/services/selectorLifecycle'
+import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
+import type { SelectorRematchedEvent } from '@shared/ipc'
 
 function writeTxt(root: string, caseId: string, captureId: string, text: string): void {
   const dir = join(root, caseId)
@@ -21,7 +22,7 @@ function writeTxt(root: string, caseId: string, captureId: string, text: string)
 }
 
 async function waitFor(
-  events: RematchedEvent[],
+  events: SelectorRematchedEvent[],
   expected: number,
   timeoutMs = 2000
 ): Promise<void> {
@@ -36,7 +37,7 @@ async function waitFor(
 
 describe('selectorLifecycle', () => {
   let tempDir: string
-  let events: RematchedEvent[]
+  let events: SelectorRematchedEvent[]
   let lifecycle: ReturnType<typeof createSelectorLifecycle>
 
   beforeEach(() => {

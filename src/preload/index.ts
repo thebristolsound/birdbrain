@@ -21,7 +21,8 @@ import type {
   OrphanReport,
   AnalyzeCaptureParams,
   SaveAnnotationsParams,
-  UpsertAnnotationPinParams
+  UpsertAnnotationPinParams,
+  SelectorRematchedEvent
 } from '@shared/ipc'
 import type {
   Case,
@@ -282,6 +283,12 @@ const birdbrain = {
     const handler = (_: unknown, event: CaptureEvent) => callback(event)
     ipcRenderer.on(IPC_CHANNELS.CAPTURE_ACTIVITY, handler)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.CAPTURE_ACTIVITY, handler)
+  },
+
+  onSelectorRematched: (callback: (event: SelectorRematchedEvent) => void) => {
+    const handler = (_: unknown, event: SelectorRematchedEvent) => callback(event)
+    ipcRenderer.on(IPC_CHANNELS.SELECTOR_REMATCHED, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.SELECTOR_REMATCHED, handler)
   },
 
   testPipeline: (): Promise<{ success: boolean; durationMs: number; error?: string }> =>

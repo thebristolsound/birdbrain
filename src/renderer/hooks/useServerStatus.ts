@@ -38,11 +38,19 @@ export function useServerStatus() {
       queryClient.invalidateQueries({ queryKey: queryKeys.captureCounts })
     })
 
+    const unsubSelectorRematched = window.birdbrain.onSelectorRematched(({ caseId, status }) => {
+      if (status !== 'done') return
+      queryClient.invalidateQueries({ queryKey: queryKeys.selectorMatchCounts(caseId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.selectorCoverage(caseId) })
+      queryClient.invalidateQueries({ queryKey: ['selectors', 'matchingCaptures', caseId] })
+    })
+
     return () => {
       unsubExtension()
       unsubSession()
       unsubCapture()
       unsubNewCapture()
+      unsubSelectorRematched()
     }
   }, [])
 }

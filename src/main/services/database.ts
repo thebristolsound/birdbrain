@@ -836,6 +836,19 @@ export function listActiveSelectors(caseId?: string): ActiveCaseSelectors[] {
 
 // --- Selector Matches ---
 
+// Single source of truth for "does this selector hit this text". Wrap in
+// try/catch at call sites because invalid regex patterns throw here.
+function selectorMatchesText(selector: Selector, text: string): boolean {
+  if (selector.isRegex) {
+    return safeRegexTest(selector.pattern, 'gi', text)
+  }
+  return text.toLowerCase().includes(selector.pattern.toLowerCase())
+}
+
+/**
+ * @internal - Used only by selectorLifecycle.runActiveSelectorsForCapture.
+ * Renderer code must go through the lifecycle, not this function.
+ */
 export function matchSelectorsForCapture(
   captureId: string,
   caseId: string,
@@ -851,13 +864,7 @@ export function matchSelectorsForCapture(
     for (const sel of selectors) {
       if (!sel.enabled) continue
       try {
-        let matched = false
-        if (sel.isRegex) {
-          matched = safeRegexTest(sel.pattern, 'gi', textContent)
-        } else {
-          matched = textContent.toLowerCase().includes(sel.pattern.toLowerCase())
-        }
-        if (matched) {
+        if (selectorMatchesText(sel, textContent)) {
           insertStmt.run(sel.id, captureId)
         }
       } catch {
@@ -869,6 +876,11 @@ export function matchSelectorsForCapture(
   run()
 }
 
+/**
+ * @internal - Used by selectorLifecycle.scheduleRetroactiveMatch and by
+ * database tests that need to seed selector_matches rows. Renderer code
+ * must go through the lifecycle, not this function.
+ */
 export function matchSelectorAgainstCaptures(
   selectorId: string,
   captureTexts: Array<{ captureId: string; text: string }>
@@ -884,13 +896,7 @@ export function matchSelectorAgainstCaptures(
   const run = d.transaction(() => {
     for (const { captureId, text } of captureTexts) {
       try {
-        let matched = false
-        if (sel.isRegex) {
-          matched = safeRegexTest(sel.pattern, 'gi', text)
-        } else {
-          matched = text.toLowerCase().includes(sel.pattern.toLowerCase())
-        }
-        if (matched) {
+        if (selectorMatchesText(sel, text)) {
           insertStmt.run(selectorId, captureId)
         }
       } catch {

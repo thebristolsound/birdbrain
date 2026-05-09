@@ -20,6 +20,7 @@ export interface SelectorLifecycle {
   createSelector: (params: CreateSelectorParams) => Selector
   bulkCreateSelectors: (params: BulkCreateSelectorsParams) => Selector[]
   updateSelector: (params: UpdateSelectorParams) => Selector | undefined
+  runActiveSelectorsForCapture: (captureId: string, caseId: string, textContent: string) => void
 }
 
 export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLifecycle {
@@ -110,6 +111,9 @@ export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLi
       }
 
       return updated
+    },
+    runActiveSelectorsForCapture(captureId, caseId, textContent) {
+      db.matchSelectorsForCapture(captureId, caseId, textContent)
     }
   }
 }

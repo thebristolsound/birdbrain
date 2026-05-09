@@ -102,6 +102,7 @@ function isUrlBlacklisted(url: string, patterns: string[]): string | null {
 }
 
 function schedulePostCaptureWork(
+  selectorLifecycle: SelectorLifecycle,
   captureId: string,
   caseId: string,
   _source: CaptureSource,
@@ -111,7 +112,7 @@ function schedulePostCaptureWork(
   setImmediate(() => {
     try {
       if (textContent) {
-        db.matchSelectorsForCapture(captureId, caseId, textContent)
+        selectorLifecycle.runActiveSelectorsForCapture(captureId, caseId, textContent)
       }
     } catch (err) {
       console.error('Selector matching error for capture', captureId, err)
@@ -368,7 +369,7 @@ function createApp(deps: CaptureServerDeps): Hono {
         })
 
         if (source === 'auto') state.captureCount++
-        schedulePostCaptureWork(capture.id, caseId, source, url, textContent)
+        schedulePostCaptureWork(selectorLifecycle, capture.id, caseId, source, url, textContent)
 
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send(IPC_CHANNELS.NEW_CAPTURE, capture)

@@ -40,6 +40,7 @@ import { getInstallationId } from '@main/services/installationId'
 import { CAPTURE_SERVER_PORT, getSessionState } from '@main/services/captureServer'
 import { extractData } from '@main/services/dataExtractor'
 import { readExtractionHtml } from '@main/services/extraction/extractionSource'
+import { reprocessCase } from '@main/services/extraction/reprocess'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import type { BirdbrainSettings, ExportOptions, CaptureAnalysis } from '@shared/types'
 
@@ -791,26 +792,7 @@ export function registerIpcHandlers(deps: { selectorLifecycle: SelectorLifecycle
   )
   ipcMain.handle(IPC_CHANNELS.EXTRACTED_DATA_REPROCESS, async (_, caseId: string) => {
     try {
-      const captures = db.listCaptures(caseId)
-      // Yield to the event loop between captures so the main process stays
-      // responsive. Await completion before returning, otherwise the renderer's
-      // onSuccess invalidation races the inserts and caches an empty result.
-      for (const cap of captures) {
-        await new Promise<void>((resolve) => setImmediate(resolve))
-        try {
-          // Always clear first so legacy rows don't linger when a capture has
-          // no readable source file anymore.
-          db.deleteExtractedDataForCapture(cap.id)
-          const html = readExtractionHtml(caseId, cap.id)
-          if (html) {
-            const extracted = extractData(html)
-            db.insertExtractedData(cap.id, caseId, cap.url, extracted)
-          }
-        } catch (err) {
-          console.error('Reprocess extraction error for capture', cap.id, err)
-        }
-      }
-      return ipcResult({ processed: captures.length })
+      return ipcResult(await reprocessCase(caseId))
     } catch (err) {
       return ipcError(err)
     }

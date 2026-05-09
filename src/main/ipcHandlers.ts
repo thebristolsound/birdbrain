@@ -40,6 +40,7 @@ import { getInstallationId } from '@main/services/installationId'
 import { CAPTURE_SERVER_PORT, getSessionState } from '@main/services/captureServer'
 import { extractData } from '@main/services/dataExtractor'
 import { readExtractionHtml } from '@main/services/extraction/extractionSource'
+import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import type { BirdbrainSettings, ExportOptions, CaptureAnalysis } from '@shared/types'
 
 type IpcResult<T = unknown> =
@@ -74,7 +75,8 @@ function ipcError(err: unknown): IpcResult<never> {
   throw err
 }
 
-export function registerIpcHandlers(): void {
+export function registerIpcHandlers(deps: { selectorLifecycle: SelectorLifecycle }): void {
+  const { selectorLifecycle } = deps
   // Cases
   ipcMain.handle(IPC_CHANNELS.CASES_LIST, () => db.listCases())
   ipcMain.handle(IPC_CHANNELS.CASES_GET, (_, id: string) => db.getCase(id))
@@ -282,51 +284,14 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.SELECTORS_GET, (_, id: string) => db.getSelector(id))
   ipcMain.handle(IPC_CHANNELS.SELECTORS_CREATE, (_, params: CreateSelectorParams) => {
     try {
-      const selector = db.createSelector(params)
-      // Retroactively match against existing captures
-      const captures = db.listCaptures(params.caseId)
-      const captureTexts: Array<{ captureId: string; text: string }> = []
-      for (const cap of captures) {
-        const buffer = storage.readCaptureFile(params.caseId, cap.id, 'txt')
-        if (buffer) {
-          captureTexts.push({ captureId: cap.id, text: buffer.toString('utf-8') })
-        }
-      }
-      if (captureTexts.length > 0) {
-        db.matchSelectorAgainstCaptures(selector.id, captureTexts)
-      }
-      return ipcResult(selector)
+      return ipcResult(selectorLifecycle.createSelector(params))
     } catch (err) {
       return ipcError(err)
     }
   })
   ipcMain.handle(IPC_CHANNELS.SELECTORS_BULK_CREATE, (_, params: BulkCreateSelectorsParams) => {
     try {
-      const created = db.bulkCreateSelectors(
-        params.selectors.map((s) => ({
-          caseId: params.caseId,
-          pattern: s.pattern,
-          isRegex: s.isRegex,
-          label: s.label
-        }))
-      )
-      // Load capture texts once and reuse across all new selectors (O(N+M) not O(N*M)).
-      if (created.length > 0) {
-        const captures = db.listCaptures(params.caseId)
-        const captureTexts: Array<{ captureId: string; text: string }> = []
-        for (const cap of captures) {
-          const buffer = storage.readCaptureFile(params.caseId, cap.id, 'txt')
-          if (buffer) {
-            captureTexts.push({ captureId: cap.id, text: buffer.toString('utf-8') })
-          }
-        }
-        if (captureTexts.length > 0) {
-          for (const sel of created) {
-            db.matchSelectorAgainstCaptures(sel.id, captureTexts)
-          }
-        }
-      }
-      return ipcResult(created)
+      return ipcResult(selectorLifecycle.bulkCreateSelectors(params))
     } catch (err) {
       return ipcError(err)
     }

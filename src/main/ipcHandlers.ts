@@ -89,55 +89,45 @@ export function registerIpcHandlers(deps: { selectorLifecycle: SelectorLifecycle
   // Captures
   ipcMain.handle(IPC_CHANNELS.CAPTURES_LIST, (_, caseId: string) => db.listCaptures(caseId))
   ipcMain.handle(IPC_CHANNELS.CAPTURES_GET, (_, id: string) => db.getCapture(id))
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_DELETE, (_, id: string) => {
-    try {
-      const capture = db.getCapture(id)
-      if (!capture) return ipcResult(false)
+  handle(IPC_CHANNELS.CAPTURES_DELETE, (_, id: string) => {
+    const capture = db.getCapture(id)
+    if (!capture) return false
 
-      if (capture.format === 'mhtml') {
-        const caseDir = join(storage.getStorageRoot(), capture.caseId)
-        try {
-          withDeletionEntry(
-            caseDir,
-            {
-              captureId: id,
-              caseId: capture.caseId,
-              contentHash: capture.hash,
-              operatorId: getInstallationId(),
-              operatorName: settings.getSettings().operatorName ?? '',
-              toolVersion:
-                typeof app?.getVersion === 'function'
-                  ? app.getVersion()
-                  : (process.env.npm_package_version ?? '0.0.0')
-            },
-            () => {
-              const deleted = db.deleteCapture(id)
-              if (!deleted) throw new ManifestRollback()
-              storage.deleteCaptureFiles(capture.caseId, id)
-            }
-          )
-          return ipcResult(true)
-        } catch (err) {
-          if (err instanceof ManifestRollback) return ipcResult(false)
-          throw err
-        }
+    if (capture.format === 'mhtml') {
+      const caseDir = join(storage.getStorageRoot(), capture.caseId)
+      try {
+        withDeletionEntry(
+          caseDir,
+          {
+            captureId: id,
+            caseId: capture.caseId,
+            contentHash: capture.hash,
+            operatorId: getInstallationId(),
+            operatorName: settings.getSettings().operatorName ?? '',
+            toolVersion:
+              typeof app?.getVersion === 'function'
+                ? app.getVersion()
+                : (process.env.npm_package_version ?? '0.0.0')
+          },
+          () => {
+            const deleted = db.deleteCapture(id)
+            if (!deleted) throw new ManifestRollback()
+            storage.deleteCaptureFiles(capture.caseId, id)
+          }
+        )
+        return true
+      } catch (err) {
+        if (err instanceof ManifestRollback) return false
+        throw err
       }
-
-      const deleted = db.deleteCapture(id)
-      if (deleted) storage.deleteCaptureFiles(capture.caseId, id)
-      return ipcResult(deleted)
-    } catch (err) {
-      return ipcError(err)
     }
+
+    const deleted = db.deleteCapture(id)
+    if (deleted) storage.deleteCaptureFiles(capture.caseId, id)
+    return deleted
   })
 
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_COUNTS_BY_CASE, () => {
-    try {
-      return ipcResult(db.getCaptureCountsByCase())
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
+  handle(IPC_CHANNELS.CAPTURES_COUNTS_BY_CASE, () => db.getCaptureCountsByCase())
 
   ipcMain.handle(IPC_CHANNELS.CAPTURES_DOWNLOAD, async (_, captureId: string) => {
     try {
@@ -389,49 +379,25 @@ export function registerIpcHandlers(deps: { selectorLifecycle: SelectorLifecycle
   })
 
   // Captures - favorites
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_TOGGLE_FAVORITE, (_, captureId: string) => {
-    try {
-      return ipcResult(db.toggleFavorite(captureId))
-    } catch (err) {
-      return ipcError(err)
-    }
+  handle(IPC_CHANNELS.CAPTURES_TOGGLE_FAVORITE, (_, captureId: string) =>
+    db.toggleFavorite(captureId)
+  )
+
+  handle(IPC_CHANNELS.CAPTURES_IS_FAVORITE, (_, captureId: string) => db.isFavorite(captureId))
+
+  handle(IPC_CHANNELS.CAPTURES_LIST_FAVORITES, (_, caseId: string) => db.listFavorites(caseId))
+
+  handle(IPC_CHANNELS.CAPTURES_GET_MHTML_URL, (_, captureId: string): string | null => {
+    const capture = db.getCapture(captureId)
+    if (!capture || !capture.mhtmlPath) return null
+    const abs = join(storage.getStorageRoot(), capture.mhtmlPath)
+    if (!existsSync(abs)) return null
+    return pathToFileURL(abs).toString()
   })
 
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_IS_FAVORITE, (_, captureId: string) => {
-    try {
-      return ipcResult(db.isFavorite(captureId))
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_LIST_FAVORITES, (_, caseId: string) => {
-    try {
-      return ipcResult(db.listFavorites(caseId))
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_GET_MHTML_URL, (_, captureId: string) => {
-    try {
-      const capture = db.getCapture(captureId)
-      if (!capture || !capture.mhtmlPath) return ipcResult<string | null>(null)
-      const abs = join(storage.getStorageRoot(), capture.mhtmlPath)
-      if (!existsSync(abs)) return ipcResult<string | null>(null)
-      return ipcResult<string | null>(pathToFileURL(abs).toString())
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_VERIFY, async (_, captureId: string) => {
-    try {
-      const mod = await import('@main/services/mhtmlIngest')
-      return ipcResult(await mod.verifyCapture(captureId))
-    } catch (err) {
-      return ipcError(err)
-    }
+  handle(IPC_CHANNELS.CAPTURES_VERIFY, async (_, captureId: string) => {
+    const mod = await import('@main/services/mhtmlIngest')
+    return mod.verifyCapture(captureId)
   })
 
   // Search
@@ -473,22 +439,14 @@ export function registerIpcHandlers(deps: { selectorLifecycle: SelectorLifecycle
   })
 
   // Export
-  ipcMain.handle(
-    IPC_CHANNELS.EXPORT_GENERATE,
-    async (_, caseId: string, options: ExportOptions) => {
-      try {
-        const { canceled, filePath } = await dialog.showSaveDialog({
-          defaultPath: options.outputPath || 'report.html',
-          filters: [{ name: 'HTML', extensions: ['html'] }]
-        })
-        if (canceled || !filePath) return ipcResult(undefined)
-        await generateReport(caseId, { ...options, outputPath: filePath })
-        return ipcResult(undefined)
-      } catch (err) {
-        return ipcError(err)
-      }
-    }
-  )
+  handle(IPC_CHANNELS.EXPORT_GENERATE, async (_, caseId: string, options: ExportOptions) => {
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      defaultPath: options.outputPath || 'report.html',
+      filters: [{ name: 'HTML', extensions: ['html'] }]
+    })
+    if (canceled || !filePath) return
+    await generateReport(caseId, { ...options, outputPath: filePath })
+  })
 
   // AI Analysis
   ipcMain.handle(IPC_CHANNELS.AI_ANALYZE, async (_, params: AnalyzeCaptureParams) => {
@@ -514,162 +472,91 @@ export function registerIpcHandlers(deps: { selectorLifecycle: SelectorLifecycle
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.AI_SAVE_ANALYSIS, (_, analysis: CaptureAnalysis) => {
-    try {
-      analysisService.saveAnalysis(analysis)
-      return ipcResult(undefined)
-    } catch (err) {
-      return ipcError(err)
-    }
+  handle(IPC_CHANNELS.AI_SAVE_ANALYSIS, (_, analysis: CaptureAnalysis) => {
+    analysisService.saveAnalysis(analysis)
   })
 
-  ipcMain.handle(IPC_CHANNELS.AI_GET_ANALYSIS, (_, params: { captureId: string }) => {
-    try {
-      return ipcResult(analysisService.getAnalysis(params.captureId))
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
+  handle(IPC_CHANNELS.AI_GET_ANALYSIS, (_, params: { captureId: string }) =>
+    analysisService.getAnalysis(params.captureId)
+  )
 
   // Database Admin
-  ipcMain.handle(IPC_CHANNELS.DB_STATS, () => {
-    try {
-      const userDataPath = process.env.BIRDBRAIN_USER_DATA || app.getPath('userData')
-      const dbPath = join(userDataPath, 'birdbrain.db')
-      return ipcResult(dbAdmin.getDbStats(dbPath))
-    } catch (err) {
-      return ipcError(err)
-    }
+  handle(IPC_CHANNELS.DB_STATS, () => {
+    const userDataPath = process.env.BIRDBRAIN_USER_DATA || app.getPath('userData')
+    const dbPath = join(userDataPath, 'birdbrain.db')
+    return dbAdmin.getDbStats(dbPath)
   })
 
-  ipcMain.handle(IPC_CHANNELS.DB_TABLE_ROWS, (_, params: DbTableRowsParams) => {
-    try {
-      return ipcResult(dbAdmin.getTableRows(params))
-    } catch (err) {
-      return ipcError(err)
-    }
+  handle(IPC_CHANNELS.DB_TABLE_ROWS, (_, params: DbTableRowsParams) => dbAdmin.getTableRows(params))
+
+  handle(IPC_CHANNELS.DB_CREATE_ROW, (_, params: DbCreateRowParams) =>
+    dbAdmin.createRow(params.table, params.data)
+  )
+
+  handle(IPC_CHANNELS.DB_UPDATE_ROW, (_, params: DbUpdateRowParams) =>
+    dbAdmin.updateRow(params.table, params.pk, params.data)
+  )
+
+  handle(IPC_CHANNELS.DB_DELETE_ROW, (_, params: DbRowIdentifier) =>
+    dbAdmin.deleteRow(params.table, params.pk)
+  )
+
+  handle(IPC_CHANNELS.DB_VACUUM, () => {
+    const userDataPath = process.env.BIRDBRAIN_USER_DATA || app.getPath('userData')
+    const dbPath = join(userDataPath, 'birdbrain.db')
+    return dbAdmin.vacuumDb(dbPath)
   })
 
-  ipcMain.handle(IPC_CHANNELS.DB_CREATE_ROW, (_, params: DbCreateRowParams) => {
-    try {
-      return ipcResult(dbAdmin.createRow(params.table, params.data))
-    } catch (err) {
-      return ipcError(err)
-    }
+  handle(IPC_CHANNELS.DB_REBUILD_FTS, () => dbAdmin.rebuildFts())
+
+  handle(IPC_CHANNELS.DB_PURGE_ARCHIVED, () => dbAdmin.purgeArchived())
+
+  handle(IPC_CHANNELS.DB_FIND_ORPHANS, () => dbAdmin.findOrphans())
+
+  handle(IPC_CHANNELS.DB_CLEAN_ORPHANS, (_, report: OrphanReport) => dbAdmin.cleanOrphans(report))
+
+  handle(IPC_CHANNELS.DB_BACKUP, async () => {
+    const userDataPath = process.env.BIRDBRAIN_USER_DATA || app.getPath('userData')
+    const dbPath = join(userDataPath, 'birdbrain.db')
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      defaultPath: 'birdbrain-backup.db',
+      filters: [{ name: 'SQLite Database', extensions: ['db'] }]
+    })
+    if (canceled || !filePath) return null
+    dbAdmin.backupDatabase(dbPath, filePath)
+    return { path: filePath }
   })
 
-  ipcMain.handle(IPC_CHANNELS.DB_UPDATE_ROW, (_, params: DbUpdateRowParams) => {
-    try {
-      return ipcResult(dbAdmin.updateRow(params.table, params.pk, params.data))
-    } catch (err) {
-      return ipcError(err)
-    }
+  handle(IPC_CHANNELS.DB_RESTORE, async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      filters: [{ name: 'SQLite Database', extensions: ['db'] }],
+      properties: ['openFile']
+    })
+    if (canceled || filePaths.length === 0) return { restored: false }
+
+    const userDataPath = process.env.BIRDBRAIN_USER_DATA || app.getPath('userData')
+    const dbPath = join(userDataPath, 'birdbrain.db')
+    const { closeDatabase, initDatabase } = await import('@main/services/database')
+    const { copyFileSync } = await import('fs')
+
+    closeDatabase()
+    copyFileSync(filePaths[0], dbPath)
+    initDatabase(dbPath)
+
+    return { restored: true }
   })
 
-  ipcMain.handle(IPC_CHANNELS.DB_DELETE_ROW, (_, params: DbRowIdentifier) => {
-    try {
-      return ipcResult(dbAdmin.deleteRow(params.table, params.pk))
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.DB_VACUUM, () => {
-    try {
-      const userDataPath = process.env.BIRDBRAIN_USER_DATA || app.getPath('userData')
-      const dbPath = join(userDataPath, 'birdbrain.db')
-      return ipcResult(dbAdmin.vacuumDb(dbPath))
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.DB_REBUILD_FTS, () => {
-    try {
-      return ipcResult(dbAdmin.rebuildFts())
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.DB_PURGE_ARCHIVED, () => {
-    try {
-      return ipcResult(dbAdmin.purgeArchived())
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.DB_FIND_ORPHANS, () => {
-    try {
-      return ipcResult(dbAdmin.findOrphans())
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.DB_CLEAN_ORPHANS, (_, report: OrphanReport) => {
-    try {
-      return ipcResult(dbAdmin.cleanOrphans(report))
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.DB_BACKUP, async () => {
-    try {
-      const userDataPath = process.env.BIRDBRAIN_USER_DATA || app.getPath('userData')
-      const dbPath = join(userDataPath, 'birdbrain.db')
-      const { canceled, filePath } = await dialog.showSaveDialog({
-        defaultPath: 'birdbrain-backup.db',
-        filters: [{ name: 'SQLite Database', extensions: ['db'] }]
-      })
-      if (canceled || !filePath) return ipcResult(null)
-      dbAdmin.backupDatabase(dbPath, filePath)
-      return ipcResult({ path: filePath })
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.DB_RESTORE, async () => {
-    try {
-      const { canceled, filePaths } = await dialog.showOpenDialog({
-        filters: [{ name: 'SQLite Database', extensions: ['db'] }],
-        properties: ['openFile']
-      })
-      if (canceled || filePaths.length === 0) return ipcResult({ restored: false })
-
-      const userDataPath = process.env.BIRDBRAIN_USER_DATA || app.getPath('userData')
-      const dbPath = join(userDataPath, 'birdbrain.db')
-      const { closeDatabase, initDatabase } = await import('@main/services/database')
-      const { copyFileSync } = await import('fs')
-
-      closeDatabase()
-      copyFileSync(filePaths[0], dbPath)
-      initDatabase(dbPath)
-
-      return ipcResult({ restored: true })
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.DB_EXPORT_TABLE, async (_, params: DbExportTableParams) => {
-    try {
-      const content = dbAdmin.exportTableData(params.table, params.format)
-      const ext = params.format === 'csv' ? 'csv' : 'json'
-      const { canceled, filePath } = await dialog.showSaveDialog({
-        defaultPath: `${params.table}.${ext}`,
-        filters: [{ name: ext.toUpperCase(), extensions: [ext] }]
-      })
-      if (canceled || !filePath) return ipcResult(null)
-      const { writeFileSync } = await import('fs')
-      writeFileSync(filePath, content, 'utf-8')
-      return ipcResult({ path: filePath })
-    } catch (err) {
-      return ipcError(err)
-    }
+  handle(IPC_CHANNELS.DB_EXPORT_TABLE, async (_, params: DbExportTableParams) => {
+    const content = dbAdmin.exportTableData(params.table, params.format)
+    const ext = params.format === 'csv' ? 'csv' : 'json'
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      defaultPath: `${params.table}.${ext}`,
+      filters: [{ name: ext.toUpperCase(), extensions: [ext] }]
+    })
+    if (canceled || !filePath) return null
+    const { writeFileSync } = await import('fs')
+    writeFileSync(filePath, content, 'utf-8')
+    return { path: filePath }
   })
 
   // Extracted Data
@@ -687,11 +574,5 @@ export function registerIpcHandlers(deps: { selectorLifecycle: SelectorLifecycle
   ipcMain.handle(IPC_CHANNELS.EXTRACTED_DATA_COUNT, (_, caseId: string) =>
     db.getExtractedDataCountForCase(caseId)
   )
-  ipcMain.handle(IPC_CHANNELS.EXTRACTED_DATA_REPROCESS, async (_, caseId: string) => {
-    try {
-      return ipcResult(await reprocessCase(caseId))
-    } catch (err) {
-      return ipcError(err)
-    }
-  })
+  handle(IPC_CHANNELS.EXTRACTED_DATA_REPROCESS, (_, caseId: string) => reprocessCase(caseId))
 }

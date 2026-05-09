@@ -132,7 +132,7 @@ export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS]
 export type SelectorRematchedStatus = 'done' | 'error'
 
 export interface SelectorRematchedEvent {
-  selectorId: string
+  selectorIds: string[]
   caseId: string
   status: SelectorRematchedStatus
 }

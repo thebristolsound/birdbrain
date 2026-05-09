@@ -34,11 +34,10 @@ export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLi
     if (selectors.length === 0) return
     const allCaptures = db.listCaptures(caseId)
     const captures = allCaptures.slice(0, RETRO_MAX_CAPTURES)
+    const selectorIds = selectors.map((s) => s.id)
 
     const emit = (status: SelectorRematchedStatus): void => {
-      for (const sel of selectors) {
-        deps.emitRematched({ selectorId: sel.id, caseId, status })
-      }
+      deps.emitRematched({ selectorIds, caseId, status })
     }
 
     if (captures.length === 0) {

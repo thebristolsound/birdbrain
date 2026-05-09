@@ -42,7 +42,7 @@ export function useServerStatus() {
       if (status !== 'done') return
       queryClient.invalidateQueries({ queryKey: queryKeys.selectorMatchCounts(caseId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.selectorCoverage(caseId) })
-      queryClient.invalidateQueries({ queryKey: ['selectors', 'matchingCaptures', caseId] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.selectorMatchingCapturesAll(caseId) })
     })
 
     return () => {

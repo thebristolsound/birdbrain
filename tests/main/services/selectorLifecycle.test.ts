@@ -109,7 +109,7 @@ describe('selectorLifecycle', () => {
       const sel = lifecycle.createSelector({ caseId: c.id, pattern: 'alpha' })
       await waitFor(events, 1)
 
-      expect(events).toEqual([{ selectorId: sel.id, caseId: c.id, status: 'done' }])
+      expect(events).toEqual([{ selectorIds: [sel.id], caseId: c.id, status: 'done' }])
       const matched = getCapturesMatchingSelectors(c.id, [sel.id])
       expect(matched).toEqual([cap1.id])
     })
@@ -175,7 +175,7 @@ describe('selectorLifecycle', () => {
       const sel = lifecycle.createSelector({ caseId: c.id, pattern: 'alpha' })
       await waitFor(events, 1)
 
-      expect(events).toEqual([{ selectorId: sel.id, caseId: c.id, status: 'done' }])
+      expect(events).toEqual([{ selectorIds: [sel.id], caseId: c.id, status: 'done' }])
     })
   })
 
@@ -209,17 +209,17 @@ describe('selectorLifecycle', () => {
       })
 
       expect(created).toHaveLength(3)
-      await waitFor(events, 3)
+      await waitFor(events, 1)
 
       const counts = getSelectorMatchCounts(c.id)
       expect(counts[created[0].id]).toBe(1)
       expect(counts[created[1].id]).toBe(1)
       expect(counts[created[2].id] ?? 0).toBe(0)
 
-      // Done event for each selector
-      const ids = events.map((e) => e.selectorId).sort()
-      expect(ids).toEqual(created.map((s) => s.id).sort())
-      expect(events.every((e) => e.status === 'done')).toBe(true)
+      // One coalesced done event covering all three selectors
+      expect(events).toHaveLength(1)
+      expect([...events[0].selectorIds].sort()).toEqual(created.map((s) => s.id).sort())
+      expect(events[0].status).toBe('done')
     })
 
     it('returns an empty array and emits no events when given no selectors', async () => {
@@ -274,7 +274,7 @@ describe('selectorLifecycle', () => {
       expect(updated?.pattern).toBe('beta')
       await waitFor(events, 2)
 
-      expect(events[1]).toEqual({ selectorId: sel.id, caseId: c.id, status: 'done' })
+      expect(events[1]).toEqual({ selectorIds: [sel.id], caseId: c.id, status: 'done' })
       expect(getCapturesMatchingSelectors(c.id, [sel.id])).toEqual([cap2.id])
     })
 

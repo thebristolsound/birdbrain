@@ -132,7 +132,10 @@ export function CaptureItem({
         {/* Text */}
         <div className="min-w-0 flex-1">
           <div className="flex items-start gap-1">
-            <div className="min-w-0 flex-1 truncate text-sm font-medium text-text-secondary">
+            <div
+              className="min-w-0 flex-1 truncate text-sm font-semibold text-text-primary"
+              title={capture.title || hostname}
+            >
               {capture.title || hostname}
             </div>
             {/* Favorite star */}
@@ -163,7 +166,7 @@ export function CaptureItem({
                 {matchingSelectors.slice(0, 3).map((selector) => (
                   <div
                     key={selector.id}
-                    className="rounded-full bg-accent/20 px-1.5 py-0.5 text-[9px] font-medium text-accent"
+                    className="rounded-full bg-accent/20 px-1.5 py-0.5 text-[10px] font-medium text-accent"
                     title={selector.label || selector.pattern}
                   >
                     {selector.label || selector.pattern.substring(0, 8)}
@@ -171,7 +174,7 @@ export function CaptureItem({
                 ))}
                 {matchingSelectors.length > 3 && (
                   <div
-                    className="rounded-full bg-accent/10 px-1.5 py-0.5 text-[9px] font-medium text-text-faint"
+                    className="rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-text-faint"
                     title={`${matchingSelectors.length - 3} more`}
                   >
                     +{matchingSelectors.length - 3}

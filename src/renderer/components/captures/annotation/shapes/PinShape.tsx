@@ -7,6 +7,7 @@ interface Props {
   onSelect?: () => void
   draggable?: boolean
   onChange?: (next: AnnotationShape) => void
+  selected?: boolean
 }
 
 const RADIUS = 14
@@ -16,7 +17,8 @@ export function PinShape({
   listening = true,
   onSelect,
   draggable = false,
-  onChange
+  onChange,
+  selected = false
 }: Props) {
   const label = shape.number > 0 ? String(shape.number) : '…'
   return (
@@ -32,6 +34,15 @@ export function PinShape({
         onChange({ ...shape, x: e.target.x(), y: e.target.y() })
       }}
     >
+      {selected && (
+        <Circle
+          radius={RADIUS + 4}
+          stroke="#3b82f6"
+          strokeWidth={1.5}
+          dash={[4, 4]}
+          listening={false}
+        />
+      )}
       <Circle radius={RADIUS} fill="#ef4444" stroke="#fff" strokeWidth={2} />
       <Text
         text={label}

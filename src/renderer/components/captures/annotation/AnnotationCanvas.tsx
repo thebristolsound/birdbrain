@@ -236,6 +236,7 @@ export function AnnotationCanvas(props: Props) {
           <RedactShape
             key={s.id}
             shape={s as Extract<AnnotationShape, { kind: 'redact' }>}
+            selected={selectedId === s.id}
             listening={editable}
             draggable={editable && selectedId === s.id}
             onSelect={() => onSelect?.(s.id)}
@@ -248,6 +249,7 @@ export function AnnotationCanvas(props: Props) {
               <ArrowShape
                 key={s.id}
                 shape={s}
+                selected={selectedId === s.id}
                 listening={editable}
                 draggable={editable && selectedId === s.id}
                 onSelect={() => onSelect?.(s.id)}
@@ -259,6 +261,7 @@ export function AnnotationCanvas(props: Props) {
             <RectShape
               key={s.id}
               shape={s}
+              selected={selectedId === s.id}
               listening={editable}
               draggable={editable && selectedId === s.id}
               onSelect={() => onSelect?.(s.id)}
@@ -270,6 +273,7 @@ export function AnnotationCanvas(props: Props) {
           <PinShape
             key={s.id}
             shape={s as Extract<AnnotationShape, { kind: 'pin' }>}
+            selected={selectedId === s.id}
             listening={true}
             draggable={editable && selectedId === s.id}
             onSelect={() => {

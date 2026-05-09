@@ -9,11 +9,13 @@
     "scripting",
     "storage",
     "contextMenus",
-    "pageCapture"
+    "pageCapture",
+    "alarms"
   ],
   "host_permissions": [
-    "http://localhost:19845/*",
-    "<all_urls>"
+    "http://*/*",
+    "https://*/*",
+    "http://localhost:19845/*"
   ],
   "action": {
     "default_popup": "popup.html",
@@ -29,7 +31,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": ["http://*/*", "https://*/*"],
       "js": ["content.js"],
       "run_at": "document_idle"
     }

@@ -1,4 +1,5 @@
 import { ipcMain, type IpcMainInvokeEvent } from 'electron'
+import type { IpcChannel } from '@shared/ipc'
 
 export type IpcResult<T = unknown> =
   | { ok: true; data: T }
@@ -13,10 +14,10 @@ export function ipcResult<T>(data: T): IpcResult<T> {
 // (validation, missing resource) where the renderer should branch on `ok`.
 export class IpcFailure extends Error {
   constructor(
-    public readonly failureMessage: string,
-    public readonly failureCode?: string
+    message: string,
+    public readonly code?: string
   ) {
-    super(failureMessage)
+    super(message)
     this.name = 'IpcFailure'
   }
 }
@@ -43,7 +44,7 @@ export function ipcError(err: unknown): IpcResult<never> {
 // `{ ok: false }` responses; other errors are rethrown so Electron surfaces
 // them as rejected promises in the renderer.
 export function handle<T, A extends unknown[]>(
-  channel: string,
+  channel: IpcChannel,
   fn: (event: IpcMainInvokeEvent, ...args: A) => T | Promise<T>
 ): void {
   ipcMain.handle(channel, async (event, ...args) => {
@@ -52,9 +53,7 @@ export function handle<T, A extends unknown[]>(
       return ipcResult(data)
     } catch (err) {
       if (err instanceof IpcFailure) {
-        return err.failureCode !== undefined
-          ? { ok: false, error: err.failureMessage, code: err.failureCode }
-          : { ok: false, error: err.failureMessage }
+        return { ok: false, error: err.message, code: err.code }
       }
       return ipcError(err)
     }

@@ -405,9 +405,6 @@ export function registerIpcHandlers(deps: { selectorLifecycle: SelectorLifecycle
         systemPrompt
       )
     } catch (err) {
-      // Preserve the prior contract: any analysis failure (network, API,
-      // model error) surfaces as a structured `{ ok: false }` result the
-      // renderer can branch on, not a rejected promise.
       throw new IpcFailure(err instanceof Error ? err.message : String(err))
     }
   })

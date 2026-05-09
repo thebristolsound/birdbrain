@@ -4,11 +4,24 @@ export type IpcResult<T = unknown> =
   | { ok: true; data: T }
   | { ok: false; error: string; code?: string }
 
-function ipcResult<T>(data: T): IpcResult<T> {
+export function ipcResult<T>(data: T): IpcResult<T> {
   return { ok: true, data }
 }
 
-function ipcError(err: unknown): IpcResult<never> {
+// Throw inside a `handle()` callback to produce a structured `{ ok: false }`
+// response without surfacing as a rejected promise. Use for expected failures
+// (validation, missing resource) where the renderer should branch on `ok`.
+export class IpcFailure extends Error {
+  constructor(
+    public readonly failureMessage: string,
+    public readonly failureCode?: string
+  ) {
+    super(failureMessage)
+    this.name = 'IpcFailure'
+  }
+}
+
+export function ipcError(err: unknown): IpcResult<never> {
   const sqliteErr = err as { code?: string; message?: string }
   if (sqliteErr.code === 'SQLITE_CONSTRAINT_UNIQUE') {
     return { ok: false, error: 'A record with that value already exists', code: sqliteErr.code }
@@ -26,9 +39,9 @@ function ipcError(err: unknown): IpcResult<never> {
 }
 
 // Registers an ipcMain.handle that wraps the handler's return value in an
-// IpcResult and translates known SQLite errors into structured `{ ok: false }`
-// responses. Non-SQLite errors are rethrown so Electron surfaces them as
-// rejected promises in the renderer (preserving existing behaviour).
+// IpcResult. Translates `IpcFailure` and known SQLite errors into structured
+// `{ ok: false }` responses; other errors are rethrown so Electron surfaces
+// them as rejected promises in the renderer.
 export function handle<T, A extends unknown[]>(
   channel: string,
   fn: (event: IpcMainInvokeEvent, ...args: A) => T | Promise<T>
@@ -38,6 +51,11 @@ export function handle<T, A extends unknown[]>(
       const data = await fn(event, ...(args as A))
       return ipcResult(data)
     } catch (err) {
+      if (err instanceof IpcFailure) {
+        return err.failureCode !== undefined
+          ? { ok: false, error: err.failureMessage, code: err.failureCode }
+          : { ok: false, error: err.failureMessage }
+      }
       return ipcError(err)
     }
   })

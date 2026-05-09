@@ -38,44 +38,10 @@ import { buildCsv } from '@main/services/csvEscape'
 import { withDeletionEntry, ManifestRollback } from '@main/services/manifest'
 import { getInstallationId } from '@main/services/installationId'
 import { CAPTURE_SERVER_PORT, getSessionState } from '@main/services/captureServer'
-import { extractData } from '@main/services/dataExtractor'
-import { readExtractionHtml } from '@main/services/extraction/extractionSource'
 import { reprocessCase } from '@main/services/extraction/reprocess'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
-import { handle } from '@main/ipcWrap'
+import { handle, IpcFailure } from '@main/ipcWrap'
 import type { BirdbrainSettings, ExportOptions, CaptureAnalysis } from '@shared/types'
-
-type IpcResult<T = unknown> =
-  | {
-      ok: true
-      data: T
-    }
-  | {
-      ok: false
-      error: string
-      code?: string
-    }
-
-function ipcResult<T>(data: T): IpcResult<T> {
-  return { ok: true, data }
-}
-
-function ipcError(err: unknown): IpcResult<never> {
-  const sqliteErr = err as { code?: string; message?: string }
-  if (sqliteErr.code === 'SQLITE_CONSTRAINT_UNIQUE') {
-    return { ok: false, error: 'A record with that value already exists', code: sqliteErr.code }
-  }
-  if (sqliteErr.code === 'SQLITE_CONSTRAINT_FOREIGNKEY') {
-    return { ok: false, error: 'Referenced record does not exist', code: sqliteErr.code }
-  }
-  if (sqliteErr.code === 'SQLITE_BUSY') {
-    return { ok: false, error: 'Database is busy, please try again', code: sqliteErr.code }
-  }
-  if (typeof sqliteErr.code === 'string' && sqliteErr.code.startsWith('SQLITE_')) {
-    return { ok: false, error: sqliteErr.message ?? 'Database error', code: sqliteErr.code }
-  }
-  throw err
-}
 
 export function registerIpcHandlers(deps: { selectorLifecycle: SelectorLifecycle }): void {
   const { selectorLifecycle } = deps
@@ -129,51 +95,34 @@ export function registerIpcHandlers(deps: { selectorLifecycle: SelectorLifecycle
 
   handle(IPC_CHANNELS.CAPTURES_COUNTS_BY_CASE, () => db.getCaptureCountsByCase())
 
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_DOWNLOAD, async (_, captureId: string) => {
-    try {
-      const capture = db.getCapture(captureId)
-      if (!capture) return ipcResult(null)
-      const { canceled, filePath } = await dialog.showSaveDialog({
-        defaultPath: `${capture.title || 'capture'}.html`,
-        filters: [{ name: 'HTML', extensions: ['html'] }]
-      })
-      if (canceled || !filePath) return ipcResult(null)
-      const buffer = storage.readCaptureFile(capture.caseId, captureId, 'html')
-      if (!buffer) return { ok: false, error: 'HTML file not found' }
-      const { writeFileSync } = await import('fs')
-      writeFileSync(filePath, buffer)
-      return ipcResult(filePath)
-    } catch (err) {
-      return ipcError(err)
-    }
+  handle(IPC_CHANNELS.CAPTURES_DOWNLOAD, async (_, captureId: string): Promise<string | null> => {
+    const capture = db.getCapture(captureId)
+    if (!capture) return null
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      defaultPath: `${capture.title || 'capture'}.html`,
+      filters: [{ name: 'HTML', extensions: ['html'] }]
+    })
+    if (canceled || !filePath) return null
+    const buffer = storage.readCaptureFile(capture.caseId, captureId, 'html')
+    if (!buffer) throw new IpcFailure('HTML file not found')
+    const { writeFileSync } = await import('fs')
+    writeFileSync(filePath, buffer)
+    return filePath
   })
 
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_OPEN_EXTERNAL, async (_, url: string) => {
+  handle(IPC_CHANNELS.CAPTURES_OPEN_EXTERNAL, async (_, url: string) => {
+    let parsed: URL
     try {
-      let parsed: URL
-      try {
-        parsed = new URL(url)
-      } catch {
-        return {
-          ok: false,
-          error: 'Invalid URL',
-          code: 'INVALID_URL'
-        } as IpcResult
-      }
-
-      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-        return {
-          ok: false,
-          error: 'URL protocol not allowed',
-          code: 'INVALID_URL_PROTOCOL'
-        } as IpcResult
-      }
-
-      await shell.openExternal(url)
-      return ipcResult(undefined)
-    } catch (err) {
-      return ipcError(err)
+      parsed = new URL(url)
+    } catch {
+      throw new IpcFailure('Invalid URL', 'INVALID_URL')
     }
+
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw new IpcFailure('URL protocol not allowed', 'INVALID_URL_PROTOCOL')
+    }
+
+    await shell.openExternal(url)
   })
 
   // Capture pipeline test
@@ -319,30 +268,21 @@ export function registerIpcHandlers(deps: { selectorLifecycle: SelectorLifecycle
   })
 
   // Extension
-  ipcMain.handle(IPC_CHANNELS.EXTENSION_PATH, () => {
-    try {
-      if (!extensionPathExists()) {
-        return { ok: false, error: 'Extension directory not found', code: 'EXT_NOT_FOUND' }
-      }
-      return ipcResult(getExtensionPath())
-    } catch (err) {
-      return ipcError(err)
+  handle(IPC_CHANNELS.EXTENSION_PATH, () => {
+    if (!extensionPathExists()) {
+      throw new IpcFailure('Extension directory not found', 'EXT_NOT_FOUND')
     }
+    return getExtensionPath()
   })
 
-  ipcMain.handle(IPC_CHANNELS.EXTENSION_OPEN_FOLDER, async () => {
-    try {
-      const extPath = getExtensionPath()
-      if (!extensionPathExists()) {
-        return { ok: false, error: 'Extension directory not found', code: 'EXT_NOT_FOUND' }
-      }
-      const openError = await shell.openPath(extPath)
-      if (openError) {
-        return { ok: false, error: openError, code: 'OPEN_PATH_FAILED' }
-      }
-      return ipcResult(undefined)
-    } catch (err) {
-      return ipcError(err)
+  handle(IPC_CHANNELS.EXTENSION_OPEN_FOLDER, async () => {
+    const extPath = getExtensionPath()
+    if (!extensionPathExists()) {
+      throw new IpcFailure('Extension directory not found', 'EXT_NOT_FOUND')
+    }
+    const openError = await shell.openPath(extPath)
+    if (openError) {
+      throw new IpcFailure(openError, 'OPEN_PATH_FAILED')
     }
   })
 
@@ -449,26 +389,26 @@ export function registerIpcHandlers(deps: { selectorLifecycle: SelectorLifecycle
   })
 
   // AI Analysis
-  ipcMain.handle(IPC_CHANNELS.AI_ANALYZE, async (_, params: AnalyzeCaptureParams) => {
+  handle(IPC_CHANNELS.AI_ANALYZE, async (_, params: AnalyzeCaptureParams) => {
+    const currentSettings = settings.getSettings()
+    const apiKey = currentSettings.openRouterApiKey
+    if (!apiKey) throw new IpcFailure('No OpenRouter API key configured')
+    const systemPrompt = currentSettings.analysisSystemPrompt?.trim()
+      ? currentSettings.analysisSystemPrompt
+      : DEFAULT_ANALYSIS_SYSTEM_PROMPT
     try {
-      const currentSettings = settings.getSettings()
-      const apiKey = currentSettings.openRouterApiKey
-      if (!apiKey) throw new Error('No OpenRouter API key configured')
-      const systemPrompt = currentSettings.analysisSystemPrompt?.trim()
-        ? currentSettings.analysisSystemPrompt
-        : DEFAULT_ANALYSIS_SYSTEM_PROMPT
-      return ipcResult(
-        await analysisService.analyzeCapture(
-          params.captureId,
-          params.caseId,
-          params.model,
-          apiKey,
-          systemPrompt
-        )
+      return await analysisService.analyzeCapture(
+        params.captureId,
+        params.caseId,
+        params.model,
+        apiKey,
+        systemPrompt
       )
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      return { ok: false, error: message } as IpcResult<never>
+      // Preserve the prior contract: any analysis failure (network, API,
+      // model error) surfaces as a structured `{ ok: false }` result the
+      // renderer can branch on, not a rejected promise.
+      throw new IpcFailure(err instanceof Error ? err.message : String(err))
     }
   })
 

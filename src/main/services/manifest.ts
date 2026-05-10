@@ -114,10 +114,10 @@ export function rollbackManifestEntry(caseDir: string, anchorBytes: number): voi
 }
 
 // Thrown by the callback passed to `withDeletionEntry` to signal "the side
-// effect didn't happen, please roll the manifest back without surfacing an
-// error to the caller". The wrapper catches it, rolls back, and rethrows;
-// the call site checks `err instanceof ManifestRollback` to translate to
-// a clean failure result.
+// effect didn't happen, please roll the manifest back". The wrapper catches
+// it, rolls back, and rethrows it as a control-flow signal; the outer call
+// site checks `err instanceof ManifestRollback` to translate that into
+// a clean failure result instead of treating it as an unexpected error.
 export class ManifestRollback extends Error {
   constructor(message = 'manifest rollback requested') {
     super(message)

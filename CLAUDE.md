@@ -45,7 +45,7 @@ src/renderer/components/    # UI organized by feature (11 directories, ~43 compo
 extension/src/              # Chrome extension source (background, content, popup, utils/api, toast)
 tests/                      # Vitest unit tests
 e2e/                        # Playwright E2E tests
-docs/                       # Local working notes — see docs/README.md for layout (reference/, specs/, plans/, archive/, superpowers/)
+docs/                       # Local working notes — see docs/README.md for layout (reference/, specs/, plans/, archive/)
 ```
 
 ### Path aliases
@@ -83,12 +83,14 @@ Root layout in `__root.tsx` renders TopBar + main content area.
 ### Data fetching
 
 React Query (`@tanstack/react-query`) manages all server state. Configuration in `src/renderer/lib/`:
+
 - `queryClient.ts` - retry=false, staleTime=30s, refetchOnWindowFocus=false
 - `queries.ts` - Query key factory, typed query options, and domain-specific mutation hooks (useCasesMutations, useCapturesMutations, etc.) with automatic cache invalidation
 
 ### State management
 
 Zustand store (`src/renderer/stores/appStore.ts`) for UI-only state:
+
 - Session state (sessionActive, connectedToExtension)
 - Selection state (selectedCaptureId, selectedCaptureIds)
 - Search and filter state (searchQuery, activeSelectorFilters, filteredCaptureIds)
@@ -118,6 +120,7 @@ Hono HTTP server (`src/main/services/captureServer.ts`) on port 19845 receives c
 ### Chrome extension
 
 Located in `extension/src/`:
+
 - **background.ts** - Service worker managing extension state and tab capture events
 - **content.ts** - Injected into pages for HTML/screenshot capture and selector detection
 - **popup/** - React-based popup UI with case selector and capture controls
@@ -145,6 +148,17 @@ Organized into 11 feature directories under `src/renderer/components/`:
 - **status/** - CaptureHealth, ConnectionStatus, SessionControls
 - **tags/** - TagBadge, TagManager, TagsOverview
 
+## Documentation conventions
+
+All design docs, specs, and implementation plans live under `docs/` per the layout in `docs/README.md`. Canonical paths:
+
+- **Specs / design briefs / spikes** → `docs/specs/YYYY-MM-DD-<slug>-design.md` (or `-spike.md`, `-brief.md`, `-assessment.md`)
+- **Implementation plans / checklists** → `docs/plans/YYYY-MM-DD-<slug>.md`
+- **Long-lived reference** → `docs/reference/<topic>.md` (no date prefix)
+- **Superseded** → `docs/archive/` (preserve original filename)
+
+**Override for agentic tooling:** When a skill or agent specifies a different default path (e.g. Superpowers' `docs/superpowers/specs/` and `docs/superpowers/plans/`), treat the canonical paths above as the user-preference override. Write specs to `docs/specs/` and plans to `docs/plans/`. The legacy `docs/superpowers/` tree is frozen — do not add new files there.
+
 ## Testing
 
 - **Unit tests** (`tests/`) - Vitest running via Electron runtime (`ELECTRON_RUN_AS_NODE=1`). Config in `vitest.config.ts` (node environment, globals enabled). Covers database, services, store, types.
@@ -161,3 +175,17 @@ Organized into 11 feature directories under `src/renderer/components/`:
 - React JSX transform (no React import needed)
 - ESLint 9 flat config with TypeScript ESLint + Prettier
 - Prefer semantic theme tokens over raw color values in components (exceptions: overlays, status/severity colors)
+
+## Agent skills
+
+### Issue tracker
+
+Issues live as GitHub Issues in `thebristolsound/birdbrain`, accessed via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Five canonical triage roles using their default label strings (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.

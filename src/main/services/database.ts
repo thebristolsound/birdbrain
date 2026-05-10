@@ -836,8 +836,9 @@ export function listActiveSelectors(caseId?: string): ActiveCaseSelectors[] {
 
 // --- Selector Matches ---
 
-// Single source of truth for "does this selector hit this text". Wrap in
-// try/catch at call sites because invalid regex patterns throw here.
+// Single source of truth for "does this selector hit this text". Never throws:
+// the regex path delegates to safeRegexTest (which catches invalid patterns and
+// timeouts and returns false); the substring path is plain JS.
 function selectorMatchesText(selector: Selector, text: string): boolean {
   if (selector.isRegex) {
     return safeRegexTest(selector.pattern, 'gi', text)
@@ -863,12 +864,8 @@ export function matchSelectorsForCapture(
   const run = d.transaction(() => {
     for (const sel of selectors) {
       if (!sel.enabled) continue
-      try {
-        if (selectorMatchesText(sel, textContent)) {
-          insertStmt.run(sel.id, captureId)
-        }
-      } catch {
-        // Invalid regex — skip
+      if (selectorMatchesText(sel, textContent)) {
+        insertStmt.run(sel.id, captureId)
       }
     }
   })
@@ -895,12 +892,8 @@ export function matchSelectorAgainstCaptures(
 
   const run = d.transaction(() => {
     for (const { captureId, text } of captureTexts) {
-      try {
-        if (selectorMatchesText(sel, text)) {
-          insertStmt.run(selectorId, captureId)
-        }
-      } catch {
-        // Invalid regex — skip
+      if (selectorMatchesText(sel, text)) {
+        insertStmt.run(selectorId, captureId)
       }
     }
   })

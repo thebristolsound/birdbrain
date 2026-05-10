@@ -76,9 +76,15 @@ export function registerIpcHandlers(deps: { selectorLifecycle: SelectorLifecycle
                 : (process.env.npm_package_version ?? '0.0.0')
           },
           () => {
+            // Files first, DB row second. If the filesystem unlink throws,
+            // the manifest rolls back with both DB and files intact (full retry).
+            // If the DB delete fails after files are gone, the manifest still
+            // rolls back and the user sees a broken capture row they can retry —
+            // strictly better than the inverse, where a filesystem failure
+            // after the DB delete would leave permanently orphaned files.
+            storage.deleteCaptureFiles(capture.caseId, id)
             const deleted = db.deleteCapture(id)
             if (!deleted) throw new ManifestRollback()
-            storage.deleteCaptureFiles(capture.caseId, id)
           }
         )
         return true

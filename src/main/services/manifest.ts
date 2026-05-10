@@ -137,9 +137,14 @@ export interface DeletionEntryContext {
 
 // Wraps a deletion side-effect in the manifest's write-ahead/rollback invariant.
 // Appends a deletion entry, runs `fn`, and either commits (fn succeeded) or
-// rolls the manifest back to its prior anchor (fn threw). Ensures the manifest
-// never records a deletion that didn't actually happen.
-export function withDeletionEntry<T>(caseDir: string, ctx: DeletionEntryContext, fn: () => T): T {
+// rolls the manifest back to its prior anchor (fn threw or its returned Promise
+// rejected). Ensures the manifest never records a deletion that didn't actually
+// happen. Async because `fn` may return a Promise — sync callbacks still work.
+export async function withDeletionEntry<T>(
+  caseDir: string,
+  ctx: DeletionEntryContext,
+  fn: () => T | Promise<T>
+): Promise<T> {
   initManifest(caseDir)
   const result = appendManifestEntry(caseDir, {
     type: 'deletion',
@@ -153,7 +158,7 @@ export function withDeletionEntry<T>(caseDir: string, ctx: DeletionEntryContext,
     ...(ctx.reason !== undefined ? { reason: ctx.reason } : {})
   })
   try {
-    return fn()
+    return await fn()
   } catch (err) {
     rollbackManifestEntry(caseDir, result.anchorBytes)
     throw err

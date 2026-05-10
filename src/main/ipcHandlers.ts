@@ -55,14 +55,14 @@ export function registerIpcHandlers(deps: { selectorLifecycle: SelectorLifecycle
   // Captures
   ipcMain.handle(IPC_CHANNELS.CAPTURES_LIST, (_, caseId: string) => db.listCaptures(caseId))
   ipcMain.handle(IPC_CHANNELS.CAPTURES_GET, (_, id: string) => db.getCapture(id))
-  handle(IPC_CHANNELS.CAPTURES_DELETE, (_, id: string) => {
+  handle(IPC_CHANNELS.CAPTURES_DELETE, async (_, id: string) => {
     const capture = db.getCapture(id)
     if (!capture) return false
 
     if (capture.format === 'mhtml') {
       const caseDir = join(storage.getStorageRoot(), capture.caseId)
       try {
-        withDeletionEntry(
+        await withDeletionEntry(
           caseDir,
           {
             captureId: id,

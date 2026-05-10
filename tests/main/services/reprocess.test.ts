@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -148,16 +148,12 @@ describe('extraction/reprocess', () => {
       })
     }
 
-    let interleaved = 0
-    const ticker = setInterval(() => {
-      interleaved++
-    }, 0)
+    const spy = vi.spyOn(global, 'setImmediate')
 
     await reprocessCase(c.id)
-    clearInterval(ticker)
 
-    // setImmediate yields between each of the 5 captures; the timer should have
-    // fired at least once interleaved with the loop.
-    expect(interleaved).toBeGreaterThan(0)
+    // reprocessCase awaits setImmediate once per capture — 5 captures → 5 calls.
+    expect(spy).toHaveBeenCalledTimes(5)
+    spy.mockRestore()
   })
 })

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { v4 as uuid } from 'uuid'
 import Markdown from 'react-markdown'
+import type { ExtraProps } from 'react-markdown'
 import { Button } from '@renderer/components/ui'
 import { Loader2, Save, RefreshCw, StickyNote, Settings, Sparkles, Copy } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
@@ -310,7 +311,10 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
                     // Disallow images to prevent external network requests from AI output
                     img: () => null,
                     // Open links externally via shell rather than in-app navigation
-                    a: ({ href, children }) => (
+                    a: ({
+                      href,
+                      children
+                    }: React.AnchorHTMLAttributes<HTMLAnchorElement> & ExtraProps) => (
                       <a
                         href={href}
                         rel="noreferrer noopener"

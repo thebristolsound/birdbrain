@@ -12,7 +12,7 @@ import {
   listSelectors
 } from '@main/services/database'
 import { initStorage } from '@main/services/storage'
-import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
+import { createSelectorLifecycle, RETRO_MAX_CAPTURES } from '@main/services/selectorLifecycle'
 import type { SelectorRematchedEvent } from '@shared/ipc'
 
 function writeTxt(root: string, caseId: string, captureId: string, text: string): void {
@@ -329,6 +329,51 @@ describe('selectorLifecycle', () => {
 
       // Existing matches are still there
       expect(getCapturesMatchingSelectors(c.id, [sel.id])).toEqual([cap.id])
+    })
+
+    it('re-matches all captures (not just the recent cap) when semantics change', async () => {
+      const c = createCase({ name: 'C' })
+      const total = RETRO_MAX_CAPTURES + 10
+      const alphaInCap: string[] = []
+      const betaBeyondCap: string[] = []
+
+      // listCaptures is most-recent-first. Inserting in order with monotonically
+      // increasing timestamps puts i=0..9 at the tail (beyond RETRO_MAX_CAPTURES).
+      for (let i = 0; i < total; i++) {
+        const cap = insertCapture({
+          caseId: c.id,
+          url: `https://a${i}`,
+          title: `A${i}`,
+          hash: `h${i}`,
+          timestamp: new Date(2026, 0, 1, 0, 0, i).toISOString()
+        })
+        let text: string
+        if (i < 5) {
+          // Beyond the cap: contains only the new pattern — won't be matched
+          // in the capped first pass; must be matched after unbounded re-scan.
+          text = 'has beta here'
+          betaBeyondCap.push(cap.id)
+        } else if (i >= 10 && i < 15) {
+          // Inside the cap: contains only the old pattern — will be matched
+          // initially; must be cleared after update.
+          text = 'has alpha here'
+          alphaInCap.push(cap.id)
+        } else {
+          text = 'nothing'
+        }
+        writeTxt(tempDir, c.id, cap.id, text)
+      }
+
+      const sel = lifecycle.createSelector({ caseId: c.id, pattern: 'alpha' })
+      await waitFor(events, 1)
+      expect(getCapturesMatchingSelectors(c.id, [sel.id]).sort()).toEqual(alphaInCap.sort())
+
+      lifecycle.updateSelector({ id: sel.id, pattern: 'beta' })
+      await waitFor(events, 2)
+
+      // After unbounded re-scan: stale alpha matches are gone, beta captures
+      // beyond the cap are now matched.
+      expect(getCapturesMatchingSelectors(c.id, [sel.id]).sort()).toEqual(betaBeyondCap.sort())
     })
 
     it('does not clear matches or emit when only enabled changes', async () => {

@@ -9,7 +9,9 @@ import type {
   SelectorRematchedStatus
 } from '@shared/ipc'
 
-const RETRO_MAX_CAPTURES = 500
+// Exported so tests can drive the boundary case (>RETRO_MAX_CAPTURES) without
+// hardcoding the number.
+export const RETRO_MAX_CAPTURES = 500
 const RETRO_CHUNK_SIZE = 50
 
 export interface SelectorLifecycleDeps {
@@ -30,10 +32,18 @@ export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLi
     return db.getCaptureTextContent(captureId)
   }
 
-  function scheduleRetroactiveMatch(selectors: Selector[], caseId: string): void {
+  function scheduleRetroactiveMatch(
+    selectors: Selector[],
+    caseId: string,
+    options?: { unbounded?: boolean }
+  ): void {
     if (selectors.length === 0) return
     const allCaptures = db.listCaptures(caseId)
-    const captures = allCaptures.slice(0, RETRO_MAX_CAPTURES)
+    // create / bulk-create cap recent captures to keep the first pass snappy on
+    // high-volume cases. updateSelector with changed semantics passes
+    // unbounded:true because leaving stale matches under the old pattern would
+    // be silently wrong for older captures.
+    const captures = options?.unbounded ? allCaptures : allCaptures.slice(0, RETRO_MAX_CAPTURES)
     const selectorIds = selectors.map((s) => s.id)
 
     const emit = (status: SelectorRematchedStatus): void => {
@@ -106,7 +116,7 @@ export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLi
 
       if (matchSemanticsChanged) {
         db.clearSelectorMatches(updated.id)
-        scheduleRetroactiveMatch([updated], updated.caseId)
+        scheduleRetroactiveMatch([updated], updated.caseId, { unbounded: true })
       }
 
       return updated

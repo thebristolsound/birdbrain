@@ -60,3 +60,8 @@ playwright-report/
 .superdesign
 .superpowers
 .kilocode
+
+# Local-only working notes. Implementation plans / checklists are author-time
+# artifacts and don't belong in version control. Specs, ADRs, agent
+# conventions, and reference docs under docs/ remain tracked.
+docs/plans/

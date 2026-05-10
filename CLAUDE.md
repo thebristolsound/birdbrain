@@ -145,6 +145,20 @@ Organized into 11 feature directories under `src/renderer/components/`:
 - **status/** - CaptureHealth, ConnectionStatus, SessionControls
 - **tags/** - TagBadge, TagManager, TagsOverview
 
+## Documentation conventions
+
+All design docs, specs, and implementation plans live under `docs/` per the layout in `docs/README.md`. Canonical paths:
+
+- **Specs / design briefs / spikes** → `docs/specs/YYYY-MM-DD-<slug>-design.md` (or `-spike.md`, `-brief.md`, `-assessment.md`) — **tracked**
+- **Implementation plans / checklists** → `docs/plans/YYYY-MM-DD-<slug>.md` — **local-only (gitignored)**
+- **Long-lived reference** → `docs/reference/<topic>.md` (no date prefix) — **tracked**
+- **Architecture decisions** → `docs/adr/NNNN-<slug>.md` — **tracked**
+- **Superseded** → `docs/archive/` (preserve original filename) — **tracked**
+
+**`docs/plans/` is gitignored.** Plans are author-time working notes that get checked off and rot; they are not version-controlled and do not belong in PRs. Write them, refer to them locally, and let them go stale on disk. Do not `git add docs/plans/...`. Tracked durable docs (specs, ADRs, reference) **must be committed in their own PR** — never bundled with a `src/**` feature change.
+
+**Override for agentic tooling:** When a skill or agent specifies a different default path (e.g. Superpowers' `docs/superpowers/specs/` and `docs/superpowers/plans/`), treat the canonical paths above as the user-preference override. Write specs to `docs/specs/` and plans to `docs/plans/`. The legacy `docs/superpowers/` tree is frozen — do not add new files there.
+
 ## Testing
 
 - **Unit tests** (`tests/`) - Vitest running via Electron runtime (`ELECTRON_RUN_AS_NODE=1`). Config in `vitest.config.ts` (node environment, globals enabled). Covers database, services, store, types.

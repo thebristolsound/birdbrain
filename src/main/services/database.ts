@@ -793,6 +793,10 @@ export function deleteSelector(id: string): boolean {
   return result.changes > 0
 }
 
+export function clearSelectorMatches(selectorId: string): void {
+  getDb().prepare('DELETE FROM selector_matches WHERE selector_id = ?').run(selectorId)
+}
+
 export function listActiveSelectors(caseId?: string): ActiveCaseSelectors[] {
   let rows: Array<Record<string, unknown>>
   if (caseId) {
@@ -832,6 +836,20 @@ export function listActiveSelectors(caseId?: string): ActiveCaseSelectors[] {
 
 // --- Selector Matches ---
 
+// Single source of truth for "does this selector hit this text". Never throws:
+// the regex path delegates to safeRegexTest (which catches invalid patterns and
+// timeouts and returns false); the substring path is plain JS.
+function selectorMatchesText(selector: Selector, text: string): boolean {
+  if (selector.isRegex) {
+    return safeRegexTest(selector.pattern, 'gi', text)
+  }
+  return text.toLowerCase().includes(selector.pattern.toLowerCase())
+}
+
+/**
+ * @internal - Used only by selectorLifecycle.runActiveSelectorsForCapture.
+ * Renderer code must go through the lifecycle, not this function.
+ */
 export function matchSelectorsForCapture(
   captureId: string,
   caseId: string,
@@ -846,18 +864,8 @@ export function matchSelectorsForCapture(
   const run = d.transaction(() => {
     for (const sel of selectors) {
       if (!sel.enabled) continue
-      try {
-        let matched = false
-        if (sel.isRegex) {
-          matched = safeRegexTest(sel.pattern, 'gi', textContent)
-        } else {
-          matched = textContent.toLowerCase().includes(sel.pattern.toLowerCase())
-        }
-        if (matched) {
-          insertStmt.run(sel.id, captureId)
-        }
-      } catch {
-        // Invalid regex — skip
+      if (selectorMatchesText(sel, textContent)) {
+        insertStmt.run(sel.id, captureId)
       }
     }
   })
@@ -865,6 +873,11 @@ export function matchSelectorsForCapture(
   run()
 }
 
+/**
+ * @internal - Used by selectorLifecycle.scheduleRetroactiveMatch and by
+ * database tests that need to seed selector_matches rows. Renderer code
+ * must go through the lifecycle, not this function.
+ */
 export function matchSelectorAgainstCaptures(
   selectorId: string,
   captureTexts: Array<{ captureId: string; text: string }>
@@ -879,18 +892,8 @@ export function matchSelectorAgainstCaptures(
 
   const run = d.transaction(() => {
     for (const { captureId, text } of captureTexts) {
-      try {
-        let matched = false
-        if (sel.isRegex) {
-          matched = safeRegexTest(sel.pattern, 'gi', text)
-        } else {
-          matched = text.toLowerCase().includes(sel.pattern.toLowerCase())
-        }
-        if (matched) {
-          insertStmt.run(selectorId, captureId)
-        }
-      } catch {
-        // Invalid regex — skip
+      if (selectorMatchesText(sel, text)) {
+        insertStmt.run(selectorId, captureId)
       }
     }
   })

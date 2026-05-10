@@ -21,6 +21,7 @@ import {
   getSessionState,
   resetSessionState
 } from '@main/services/captureServer'
+import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { MAX_SCREENSHOT_SIZE } from '@shared/constants'
 
 let nextPort = 19846
@@ -40,7 +41,8 @@ describe('captureServer', () => {
     initInstallationId(tempDir)
     resetSessionState()
     baseUrl = `http://127.0.0.1:${port}`
-    await startCaptureServer(port, TEST_TOKEN)
+    const selectorLifecycle = createSelectorLifecycle({ emitRematched: () => {} })
+    await startCaptureServer({ selectorLifecycle, token: TEST_TOKEN }, port)
   })
 
   afterEach(async () => {

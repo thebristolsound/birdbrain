@@ -38,11 +38,20 @@ export function useServerStatus() {
       queryClient.invalidateQueries({ queryKey: queryKeys.captureCounts })
     })
 
+    const unsubSelectorRematched = window.birdbrain.onSelectorRematched(({ caseId }) => {
+      // Invalidate on both 'done' and 'error': retroactive matching can insert
+      // partial results before failing, so caches are stale either way.
+      queryClient.invalidateQueries({ queryKey: queryKeys.selectorMatchCounts(caseId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.selectorCoverage(caseId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.selectorMatchingCapturesAll(caseId) })
+    })
+
     return () => {
       unsubExtension()
       unsubSession()
       unsubCapture()
       unsubNewCapture()
+      unsubSelectorRematched()
     }
   }, [])
 }

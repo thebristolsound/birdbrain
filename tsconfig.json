@@ -9,12 +9,11 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "declaration": true,
-    "composite": true,
     "paths": {
       "@renderer/*": ["./src/renderer/*"],
       "@shared/*": ["./src/shared/*"]
     }
   },
+  "files": [],
   "references": [{ "path": "./tsconfig.node.json" }, { "path": "./tsconfig.web.json" }]
 }

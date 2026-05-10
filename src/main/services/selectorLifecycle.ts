@@ -1,26 +1,28 @@
 import * as db from '@main/services/database'
 import { readCaptureFile } from '@main/services/storage'
 import type { Selector } from '@shared/types'
-import type { CreateSelectorParams, BulkCreateSelectorsParams } from '@shared/ipc'
+import type {
+  CreateSelectorParams,
+  BulkCreateSelectorsParams,
+  UpdateSelectorParams,
+  SelectorRematchedEvent,
+  SelectorRematchedStatus
+} from '@shared/ipc'
 
-const RETRO_MAX_CAPTURES = 500
+// Exported so tests can drive the boundary case (>RETRO_MAX_CAPTURES) without
+// hardcoding the number.
+export const RETRO_MAX_CAPTURES = 500
 const RETRO_CHUNK_SIZE = 50
 
-export type RematchedStatus = 'done' | 'error'
-
-export interface RematchedEvent {
-  selectorId: string
-  caseId: string
-  status: RematchedStatus
-}
-
 export interface SelectorLifecycleDeps {
-  emitRematched: (event: RematchedEvent) => void
+  emitRematched: (event: SelectorRematchedEvent) => void
 }
 
 export interface SelectorLifecycle {
   createSelector: (params: CreateSelectorParams) => Selector
   bulkCreateSelectors: (params: BulkCreateSelectorsParams) => Selector[]
+  updateSelector: (params: UpdateSelectorParams) => Selector | undefined
+  runActiveSelectorsForCapture: (captureId: string, caseId: string, textContent: string) => void
 }
 
 export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLifecycle {
@@ -30,15 +32,22 @@ export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLi
     return db.getCaptureTextContent(captureId)
   }
 
-  function scheduleRetroactiveMatch(selectors: Selector[], caseId: string): void {
+  function scheduleRetroactiveMatch(
+    selectors: Selector[],
+    caseId: string,
+    options?: { unbounded?: boolean }
+  ): void {
     if (selectors.length === 0) return
     const allCaptures = db.listCaptures(caseId)
-    const captures = allCaptures.slice(0, RETRO_MAX_CAPTURES)
+    // create / bulk-create cap recent captures to keep the first pass snappy on
+    // high-volume cases. updateSelector with changed semantics passes
+    // unbounded:true because leaving stale matches under the old pattern would
+    // be silently wrong for older captures.
+    const captures = options?.unbounded ? allCaptures : allCaptures.slice(0, RETRO_MAX_CAPTURES)
+    const selectorIds = selectors.map((s) => s.id)
 
-    const emit = (status: RematchedStatus): void => {
-      for (const sel of selectors) {
-        deps.emitRematched({ selectorId: sel.id, caseId, status })
-      }
+    const emit = (status: SelectorRematchedStatus): void => {
+      deps.emitRematched({ selectorIds, caseId, status })
     }
 
     if (captures.length === 0) {
@@ -93,6 +102,27 @@ export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLi
       )
       scheduleRetroactiveMatch(created, params.caseId)
       return created
+    },
+    updateSelector(params) {
+      const existing = db.getSelector(params.id)
+      if (!existing) return undefined
+
+      const patternChanged = params.pattern !== undefined && params.pattern !== existing.pattern
+      const isRegexChanged = params.isRegex !== undefined && params.isRegex !== existing.isRegex
+      const matchSemanticsChanged = patternChanged || isRegexChanged
+
+      const updated = db.updateSelector(params)
+      if (!updated) return undefined
+
+      if (matchSemanticsChanged) {
+        db.clearSelectorMatches(updated.id)
+        scheduleRetroactiveMatch([updated], updated.caseId, { unbounded: true })
+      }
+
+      return updated
+    },
+    runActiveSelectorsForCapture(captureId, caseId, textContent) {
+      db.matchSelectorsForCapture(captureId, caseId, textContent)
     }
   }
 }

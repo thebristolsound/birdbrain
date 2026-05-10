@@ -5,6 +5,7 @@ import { tmpdir } from 'os'
 import { initManifest, getManifestHead } from '@main/services/manifest'
 import { appendManifestEntry, rollbackManifestEntry } from '@main/services/manifest'
 import { verifyManifestChain } from '@main/services/manifest'
+import { withDeletionEntry, ManifestRollback } from '@main/services/manifest'
 import { createHash } from 'crypto'
 import { canonicalStringify } from '@main/services/canonicalJson'
 import { statSync } from 'fs'
@@ -253,5 +254,143 @@ describe('manifest x annotations forensic invariants', () => {
     const after = readFileSync(manifestPath, 'utf-8')
     expect(after).toBe(before)
     expect(verifyManifestChain(tempDir)).toEqual({ valid: true })
+  })
+})
+
+describe('withDeletionEntry', () => {
+  let tempDir: string
+
+  const baseCtx = {
+    captureId: 'cap-1',
+    caseId: 'case-1',
+    contentHash: 'a'.repeat(64),
+    operatorId: 'op-1',
+    operatorName: '',
+    toolVersion: '0.1.0'
+  }
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-deletion-entry-'))
+  })
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  it('commits the deletion entry when fn returns', async () => {
+    const result = await withDeletionEntry(tempDir, baseCtx, () => 'ok' as const)
+    expect(result).toBe('ok')
+
+    const raw = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
+    const lines = raw.trim().split('\n')
+    expect(lines).toHaveLength(1)
+    const entry = JSON.parse(lines[0])
+    expect(entry.type).toBe('deletion')
+    expect(entry.captureId).toBe('cap-1')
+    expect(verifyManifestChain(tempDir)).toEqual({ valid: true })
+  })
+
+  it('rolls the manifest back when fn throws ManifestRollback', async () => {
+    const before = existsSync(join(tempDir, 'manifest.jsonl'))
+      ? statSync(join(tempDir, 'manifest.jsonl')).size
+      : 0
+
+    await expect(
+      withDeletionEntry(tempDir, baseCtx, () => {
+        throw new ManifestRollback()
+      })
+    ).rejects.toThrow(ManifestRollback)
+
+    const after = statSync(join(tempDir, 'manifest.jsonl')).size
+    expect(after).toBe(before)
+    expect(verifyManifestChain(tempDir)).toEqual({ valid: true })
+  })
+
+  it('rolls the manifest back when fn throws an arbitrary error and rethrows', async () => {
+    await expect(
+      withDeletionEntry(tempDir, baseCtx, () => {
+        throw new Error('storage delete failed')
+      })
+    ).rejects.toThrow('storage delete failed')
+
+    const raw = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
+    expect(raw).toBe('')
+    expect(verifyManifestChain(tempDir)).toEqual({ valid: true })
+  })
+
+  it('rolls the manifest back when an async fn rejects', async () => {
+    await expect(
+      withDeletionEntry(tempDir, baseCtx, async () => {
+        await new Promise((r) => setImmediate(r))
+        throw new Error('async storage delete failed')
+      })
+    ).rejects.toThrow('async storage delete failed')
+
+    const raw = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
+    expect(raw).toBe('')
+    expect(verifyManifestChain(tempDir)).toEqual({ valid: true })
+  })
+
+  it('commits the deletion entry when an async fn resolves', async () => {
+    const result = await withDeletionEntry(tempDir, baseCtx, async () => {
+      await new Promise((r) => setImmediate(r))
+      return 'async-ok' as const
+    })
+    expect(result).toBe('async-ok')
+
+    const raw = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
+    const lines = raw.trim().split('\n')
+    expect(lines).toHaveLength(1)
+    expect(JSON.parse(lines[0]).captureId).toBe('cap-1')
+    expect(verifyManifestChain(tempDir)).toEqual({ valid: true })
+  })
+
+  it('rollback preserves a prior committed entry untouched', async () => {
+    // Commit one entry first
+    await withDeletionEntry(tempDir, { ...baseCtx, captureId: 'cap-keep' }, () => undefined)
+    const before = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
+
+    // Attempt a second deletion that fails
+    await expect(
+      withDeletionEntry(tempDir, { ...baseCtx, captureId: 'cap-fail' }, () => {
+        throw new ManifestRollback()
+      })
+    ).rejects.toThrow(ManifestRollback)
+
+    const after = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
+    expect(after).toBe(before)
+    const lines = after.trim().split('\n')
+    expect(lines).toHaveLength(1)
+    expect(JSON.parse(lines[0]).captureId).toBe('cap-keep')
+    expect(verifyManifestChain(tempDir)).toEqual({ valid: true })
+  })
+
+  it('next append after rollback links to the prior committed entry, not the rolled-back one', async () => {
+    const first = await withDeletionEntry(
+      tempDir,
+      { ...baseCtx, captureId: 'cap-keep' },
+      () => 'ok' as const
+    )
+    expect(first).toBe('ok')
+    const headBefore = getManifestHead(tempDir)
+
+    await expect(
+      withDeletionEntry(tempDir, { ...baseCtx, captureId: 'cap-fail' }, () => {
+        throw new ManifestRollback()
+      })
+    ).rejects.toThrow(ManifestRollback)
+
+    // After rollback, head should be unchanged
+    const headAfter = getManifestHead(tempDir)
+    expect(headAfter).toEqual(headBefore)
+
+    // A subsequent successful append should chain from the kept entry
+    await withDeletionEntry(tempDir, { ...baseCtx, captureId: 'cap-next' }, () => undefined)
+    expect(verifyManifestChain(tempDir)).toEqual({ valid: true })
+
+    const lines = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim().split('\n')
+    expect(lines).toHaveLength(2)
+    expect(JSON.parse(lines[0]).captureId).toBe('cap-keep')
+    expect(JSON.parse(lines[1]).captureId).toBe('cap-next')
   })
 })

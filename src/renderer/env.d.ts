@@ -43,7 +43,8 @@ import type {
   OrphanReport,
   AnalyzeCaptureParams,
   SaveAnnotationsParams,
-  UpsertAnnotationPinParams
+  UpsertAnnotationPinParams,
+  SelectorRematchedEvent
 } from '@shared/ipc'
 
 interface BirdbrainAPI {
@@ -157,6 +158,7 @@ interface BirdbrainAPI {
   ): () => void
   onExtensionConnection(callback: (data: { connected: boolean }) => void): () => void
   onCaptureActivity(callback: (event: CaptureEvent) => void): () => void
+  onSelectorRematched(callback: (event: SelectorRematchedEvent) => void): () => void
   testPipeline(): Promise<{ success: boolean; durationMs: number; error?: string }>
   testHttp(): Promise<{ success: boolean; durationMs: number; error?: string }>
   extractedData: {

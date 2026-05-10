@@ -347,7 +347,7 @@ function ScreenshotTabPanel({
         selectedId={editor.selectedId}
         onDeleteSelected={() => {
           if (!editor.selectedId) return
-          editor.removeSelected()
+          editor.removeShape(editor.selectedId)
         }}
       />
       <div className="flex-1 min-h-0 p-3">

@@ -28,6 +28,10 @@ extension/vite.config.js
 extension/vite.config.d.ts
 tests/**/*.js
 tests/**/*.d.ts
+e2e/**/*.js
+e2e/**/*.d.ts
+playwright.config.js
+playwright.config.d.ts
 
 # Python cache
 Python/

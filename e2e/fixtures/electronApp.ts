@@ -35,10 +35,12 @@ export const test = base.extend<ElectronFixtures>({
       }
     })
 
-    await use(app)
-
-    await app.close()
-    await rm(tempDir, { recursive: true, force: true })
+    try {
+      await use(app)
+    } finally {
+      await app.close().catch(() => {})
+      await rm(tempDir, { recursive: true, force: true }).catch(() => {})
+    }
   },
 
   page: async ({ electronApp }, use) => {

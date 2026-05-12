@@ -14,6 +14,7 @@ import { registerIpcHandlers } from '@main/ipcHandlers'
 import { initSettings, getSettings } from '@main/services/settings'
 import { initInstallationId } from '@main/services/installationId'
 import { initServerToken } from '@main/services/serverToken'
+import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { IPC_CHANNELS, type SelectorRematchedEvent } from '@shared/ipc'
 
@@ -106,11 +107,13 @@ app.whenReady().then(async () => {
     }
   })
 
+  const captureLifecycle = createCaptureLifecycle({ selectorLifecycle })
+
   // Register IPC handlers
   registerIpcHandlers({ selectorLifecycle })
 
   // Start capture server and extension connection monitor
-  await startCaptureServer({ selectorLifecycle })
+  await startCaptureServer({ selectorLifecycle, captureLifecycle })
   startExtensionConnectionCheck()
 
   // Create window and connect to capture server

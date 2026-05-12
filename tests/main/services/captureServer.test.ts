@@ -21,6 +21,7 @@ import {
   getSessionState,
   resetSessionState
 } from '@main/services/captureServer'
+import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { MAX_SCREENSHOT_SIZE } from '@shared/constants'
 
@@ -42,7 +43,8 @@ describe('captureServer', () => {
     resetSessionState()
     baseUrl = `http://127.0.0.1:${port}`
     const selectorLifecycle = createSelectorLifecycle({ emitRematched: () => {} })
-    await startCaptureServer({ selectorLifecycle, token: TEST_TOKEN }, port)
+    const captureLifecycle = createCaptureLifecycle({ selectorLifecycle })
+    await startCaptureServer({ selectorLifecycle, captureLifecycle, token: TEST_TOKEN }, port)
   })
 
   afterEach(async () => {

@@ -5,7 +5,11 @@ import { tmpdir } from 'os'
 import { createHash } from 'crypto'
 import { Readable } from 'stream'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
-import { streamWriteAndHash, ingestMhtmlCapture, verifyCapture } from '@main/services/mhtmlIngest'
+import {
+  streamWriteAndHash,
+  ingestMhtmlCapture,
+  verifyCapture
+} from '@main/services/captureLifecycle'
 import {
   initDatabase,
   closeDatabase,

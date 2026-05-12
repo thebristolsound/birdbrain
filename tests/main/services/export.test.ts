@@ -12,7 +12,7 @@ import {
 } from '../../../src/main/services/database'
 import { initStorage, ensureCaseDir, getCapturePath } from '../../../src/main/services/storage'
 import { initManifest } from '../../../src/main/services/manifest'
-import { ingestMhtmlCapture } from '../../../src/main/services/mhtmlIngest'
+import { ingestMhtmlCapture } from '../../../src/main/services/captureLifecycle'
 import {
   createCaptureLifecycle,
   type CaptureLifecycle

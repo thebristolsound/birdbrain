@@ -92,24 +92,26 @@ test.describe('Annotations', () => {
     await page.mouse.move(box.x + 60, box.y + 50, { steps: 10 })
     await page.mouse.up()
 
-    // Wait past the 800ms debounce so the save flushes.
-    await page.waitForTimeout(1200)
-
-    // Verify via IPC that a shape was persisted.
-    const persistedAfterDraw = await page.evaluate(async (id: string) => {
-      const w = window as unknown as {
-        birdbrain: {
-          annotations: {
-            get: (
-              captureId: string
-            ) => Promise<{ annotations: { shapes: Array<{ kind: string }> } | null }>
-          }
-        }
-      }
-      const bundle = await w.birdbrain.annotations.get(id)
-      return bundle.annotations?.shapes.length ?? 0
-    }, captureId)
-    expect(persistedAfterDraw).toBeGreaterThan(0)
+    // Poll the persisted state past the 800ms save debounce until a shape lands.
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(async (id: string) => {
+            const w = window as unknown as {
+              birdbrain: {
+                annotations: {
+                  get: (
+                    captureId: string
+                  ) => Promise<{ annotations: { shapes: Array<{ kind: string }> } | null }>
+                }
+              }
+            }
+            const bundle = await w.birdbrain.annotations.get(id)
+            return bundle.annotations?.shapes.length ?? 0
+          }, captureId),
+        { timeout: 5000 }
+      )
+      .toBeGreaterThan(0)
 
     // Switch to forensics tab and back to screenshot to force a remount of the editor.
     await page.getByRole('button', { name: /Forensics/ }).click()
@@ -236,21 +238,25 @@ test.describe('Annotations', () => {
     await page.mouse.move(box2.x + 60, box2.y + 50, { steps: 10 })
     await page.mouse.up()
 
-    await page.waitForTimeout(1200) // past 800ms debounce
-
-    const persisted = await page.evaluate(async (id: string) => {
-      const w = window as unknown as {
-        birdbrain: {
-          annotations: {
-            get: (
-              captureId: string
-            ) => Promise<{ annotations: { shapes: Array<{ kind: string }> } | null }>
-          }
-        }
-      }
-      const bundle = await w.birdbrain.annotations.get(id)
-      return bundle.annotations?.shapes.length ?? 0
-    }, captureId)
-    expect(persisted).toBeGreaterThanOrEqual(1)
+    // Poll past the 800ms save debounce until the shape is persisted.
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(async (id: string) => {
+            const w = window as unknown as {
+              birdbrain: {
+                annotations: {
+                  get: (
+                    captureId: string
+                  ) => Promise<{ annotations: { shapes: Array<{ kind: string }> } | null }>
+                }
+              }
+            }
+            const bundle = await w.birdbrain.annotations.get(id)
+            return bundle.annotations?.shapes.length ?? 0
+          }, captureId),
+        { timeout: 5000 }
+      )
+      .toBeGreaterThanOrEqual(1)
   })
 })

@@ -23,18 +23,24 @@ export const test = base.extend<ElectronFixtures>({
       )
     }
 
+    // Launch via package.json `main` resolution (args: ['.']) so the test exercises the
+    // same code path electron-builder uses in production (asar / asarUnpack / preload).
+    // --user-data-dir gives each test a fresh Chromium profile (localStorage, IndexedDB).
     const app = await _electron.launch({
-      args: [mainPath],
+      args: ['.', `--user-data-dir=${tempDir}`],
+      cwd: join(__dirname, '../..'),
       env: {
         ...process.env,
         BIRDBRAIN_USER_DATA: tempDir
       }
     })
 
-    await use(app)
-
-    await app.close()
-    await rm(tempDir, { recursive: true, force: true })
+    try {
+      await use(app)
+    } finally {
+      await app.close().catch(() => {})
+      await rm(tempDir, { recursive: true, force: true }).catch(() => {})
+    }
   },
 
   page: async ({ electronApp }, use) => {

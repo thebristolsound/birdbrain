@@ -302,10 +302,7 @@ export function registerIpcHandlers(deps: {
     return pathToFileURL(abs).toString()
   })
 
-  handle(IPC_CHANNELS.CAPTURES_VERIFY, async (_, captureId: string) => {
-    const mod = await import('@main/services/mhtmlIngest')
-    return mod.verifyCapture(captureId)
-  })
+  handle(IPC_CHANNELS.CAPTURES_VERIFY, (_, captureId: string) => captureLifecycle.verify(captureId))
 
   // Search
   ipcMain.handle(IPC_CHANNELS.SEARCH, (_, query: string) => {
@@ -352,7 +349,7 @@ export function registerIpcHandlers(deps: {
       filters: [{ name: 'HTML', extensions: ['html'] }]
     })
     if (canceled || !filePath) return
-    await generateReport(caseId, { ...options, outputPath: filePath })
+    await generateReport(caseId, { ...options, outputPath: filePath }, captureLifecycle)
   })
 
   // AI Analysis

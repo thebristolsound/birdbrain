@@ -7,12 +7,14 @@ import { getInstallationId } from '@main/services/installationId'
 import { withDeletionEntry, ManifestRollback } from '@main/services/manifest'
 import {
   ingestMhtmlCapture,
+  verifyCapture,
   type IngestParams,
   type IngestResult
 } from '@main/services/mhtmlIngest'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { getSettings } from '@main/services/settings'
 import { deleteCaptureFiles, getStorageRoot } from '@main/services/storage'
+import type { HashVerification } from '@shared/types'
 
 export interface CaptureLifecycleDeps {
   selectorLifecycle: SelectorLifecycle
@@ -21,6 +23,7 @@ export interface CaptureLifecycleDeps {
 export interface CaptureLifecycle {
   ingest: (params: IngestParams) => Promise<IngestResult>
   delete: (captureId: string) => Promise<boolean>
+  verify: (captureId: string) => Promise<HashVerification>
 }
 
 function getToolVersion(): string {
@@ -102,6 +105,10 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
       const deleted = db.deleteCapture(captureId)
       if (deleted) deleteCaptureFiles(capture.caseId, captureId)
       return deleted
+    },
+
+    verify(captureId) {
+      return verifyCapture(captureId)
     }
   }
 }

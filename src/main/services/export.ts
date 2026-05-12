@@ -1,7 +1,7 @@
 import { writeFileSync } from 'fs'
 import * as db from '@main/services/database'
 import { readCaptureFile } from '@main/services/storage'
-import { verifyCapture } from '@main/services/mhtmlIngest'
+import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import { getAnnotations } from '@main/services/annotations'
 import { burnAnnotations } from '@main/services/burnAnnotations'
 import type { ExportOptions, HashVerification, Capture, AnnotationPin } from '@shared/types'
@@ -18,14 +18,17 @@ interface ExportData {
   pins: Map<string, AnnotationPin[]>
 }
 
-export async function verifyCaptures(caseId: string): Promise<HashVerification[]> {
+export async function verifyCaptures(
+  caseId: string,
+  captureLifecycle: CaptureLifecycle
+): Promise<HashVerification[]> {
   const captures = db.listCaptures(caseId)
   const results: HashVerification[] = []
   for (const capture of captures) {
     // Delegate to the MHTML-aware pipeline so export-time verification matches the
     // badge's manual flow: streams bytes, checks the manifest chain, and persists
     // the outcome back onto the capture row.
-    results.push(await verifyCapture(capture.id))
+    results.push(await captureLifecycle.verify(capture.id))
   }
   return results
 }
@@ -33,6 +36,7 @@ export async function verifyCaptures(caseId: string): Promise<HashVerification[]
 export async function generateReport(
   caseId: string,
   options: ExportOptions,
+  captureLifecycle: CaptureLifecycle,
   onProgress?: (step: string, percent: number) => void
 ): Promise<void> {
   const caseData = db.getCase(caseId)
@@ -59,7 +63,7 @@ export async function generateReport(
 
   if (options.include.auditTrail) {
     onProgress?.('Verifying capture integrity...', 50)
-    data.verifications = await verifyCaptures(caseId)
+    data.verifications = await verifyCaptures(caseId, captureLifecycle)
   }
 
   if (options.include.screenshots) {

@@ -13,6 +13,11 @@ import {
 import { initStorage, ensureCaseDir, getCapturePath } from '../../../src/main/services/storage'
 import { initManifest } from '../../../src/main/services/manifest'
 import { ingestMhtmlCapture } from '../../../src/main/services/mhtmlIngest'
+import {
+  createCaptureLifecycle,
+  type CaptureLifecycle
+} from '../../../src/main/services/captureLifecycle'
+import { createSelectorLifecycle } from '../../../src/main/services/selectorLifecycle'
 import { verifyCaptures, generateReport } from '../../../src/main/services/export'
 import { saveAnnotations } from '../../../src/main/services/annotations'
 import type { ExportOptions } from '../../../src/shared/types'
@@ -45,6 +50,7 @@ async function ingest(
 describe('export', () => {
   let tempDir: string
   let caseId: string
+  let captureLifecycle: CaptureLifecycle
 
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), 'bb-export-'))
@@ -55,6 +61,8 @@ describe('export', () => {
     caseId = c.id
     ensureCaseDir(caseId)
     initManifest(join(tempDir, 'captures', caseId))
+    const selectorLifecycle = createSelectorLifecycle({ emitRematched: () => {} })
+    captureLifecycle = createCaptureLifecycle({ selectorLifecycle })
   })
 
   afterEach(() => {
@@ -65,7 +73,7 @@ describe('export', () => {
   it('verifyCaptures marks verified when hash matches', async () => {
     await ingest(caseId, '<html><body>Test content</body></html>')
 
-    const results = await verifyCaptures(caseId)
+    const results = await verifyCaptures(caseId, captureLifecycle)
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('verified')
     expect(results[0].storedHash).toBe(results[0].computedHash)
@@ -75,7 +83,7 @@ describe('export', () => {
     const { capture } = await ingest(caseId, '<html><body>Original</body></html>')
     writeFileSync(join(tempDir, 'captures', capture.mhtmlPath!), 'mutated bytes')
 
-    const results = await verifyCaptures(caseId)
+    const results = await verifyCaptures(caseId, captureLifecycle)
     expect(results[0].status).toBe('tampered')
   })
 
@@ -83,7 +91,7 @@ describe('export', () => {
     const { capture } = await ingest(caseId, '<html><body>Vanishing</body></html>')
     rmSync(join(tempDir, 'captures', capture.mhtmlPath!))
 
-    const results = await verifyCaptures(caseId)
+    const results = await verifyCaptures(caseId, captureLifecycle)
     expect(results[0].status).toBe('missing')
   })
 
@@ -96,7 +104,7 @@ describe('export', () => {
       timestamp: '2024-01-01T00:00:00Z'
     })
 
-    const results = await verifyCaptures(caseId)
+    const results = await verifyCaptures(caseId, captureLifecycle)
     expect(results[0].status).toBe('legacy')
   })
 
@@ -121,7 +129,7 @@ describe('export', () => {
       outputPath
     }
 
-    await generateReport(caseId, options)
+    await generateReport(caseId, options, captureLifecycle)
     expect(existsSync(outputPath)).toBe(true)
 
     const content = readFileSync(outputPath, 'utf-8')
@@ -149,7 +157,7 @@ describe('export', () => {
       outputPath
     }
 
-    await generateReport(caseId, options)
+    await generateReport(caseId, options, captureLifecycle)
     const content = readFileSync(outputPath, 'utf-8')
     expect(content).toContain('Export Test Case')
     expect(content).not.toContain('Audit Trail')
@@ -159,12 +167,16 @@ describe('export', () => {
     await ingest(caseId, 'payload', 'https://example.com', '<script>alert("xss")</script>')
 
     const outputPath = join(tempDir, 'escaped.html')
-    await generateReport(caseId, {
-      format: 'html',
-      include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
-      investigatorName: 'Test',
-      outputPath
-    })
+    await generateReport(
+      caseId,
+      {
+        format: 'html',
+        include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
 
     const content = readFileSync(outputPath, 'utf-8')
     expect(content).not.toContain('<script>alert')
@@ -213,7 +225,7 @@ describe('export', () => {
       investigatorName: 'Tester',
       outputPath: outPath
     }
-    await generateReport(c.id, options)
+    await generateReport(c.id, options, captureLifecycle)
 
     const html = readFileSync(outPath, 'utf-8')
     const match = html.match(/data:image\/png;base64,([A-Za-z0-9+/=]+)/)

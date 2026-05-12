@@ -37,7 +37,6 @@ import { getExtensionPath, extensionPathExists } from '@main/services/extensionP
 import { buildCsv } from '@main/services/csvEscape'
 import { getInstallationId } from '@main/services/installationId'
 import { CAPTURE_SERVER_PORT, getSessionState } from '@main/services/captureServer'
-import { reprocessCase } from '@main/services/extraction/reprocess'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { handle, IpcFailure } from '@main/ipcWrap'
@@ -475,5 +474,7 @@ export function registerIpcHandlers(deps: {
   ipcMain.handle(IPC_CHANNELS.EXTRACTED_DATA_COUNT, (_, caseId: string) =>
     db.getExtractedDataCountForCase(caseId)
   )
-  handle(IPC_CHANNELS.EXTRACTED_DATA_REPROCESS, (_, caseId: string) => reprocessCase(caseId))
+  handle(IPC_CHANNELS.EXTRACTED_DATA_REPROCESS, (_, caseId: string) =>
+    captureLifecycle.reprocessCase(caseId)
+  )
 }

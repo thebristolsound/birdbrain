@@ -24,6 +24,7 @@ export interface CaptureLifecycle {
   ingest: (params: IngestParams) => Promise<IngestResult>
   delete: (captureId: string) => Promise<boolean>
   verify: (captureId: string) => Promise<HashVerification>
+  reprocessCase: (caseId: string) => Promise<{ processed: number }>
 }
 
 function getToolVersion(): string {
@@ -32,6 +33,18 @@ function getToolVersion(): string {
 }
 
 export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifecycle {
+  function runDataExtraction(captureId: string, caseId: string, url: string): void {
+    try {
+      const html = readExtractionHtml(caseId, captureId)
+      if (html) {
+        const extracted = extractData(html)
+        db.insertExtractedData(captureId, caseId, url, extracted)
+      }
+    } catch (err) {
+      console.error('captureLifecycle: data extraction failed for capture', captureId, err)
+    }
+  }
+
   function runPostCaptureWork(
     captureId: string,
     caseId: string,
@@ -47,15 +60,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
         console.error('captureLifecycle: selector matching failed for capture', captureId, err)
       }
 
-      try {
-        const html = readExtractionHtml(caseId, captureId)
-        if (html) {
-          const extracted = extractData(html)
-          db.insertExtractedData(captureId, caseId, url, extracted)
-        }
-      } catch (err) {
-        console.error('captureLifecycle: data extraction failed for capture', captureId, err)
-      }
+      runDataExtraction(captureId, caseId, url)
     })
   }
 
@@ -109,6 +114,18 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
 
     verify(captureId) {
       return verifyCapture(captureId)
+    },
+
+    async reprocessCase(caseId) {
+      const captures = db.listCaptures(caseId)
+      for (const cap of captures) {
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        // Always clear first so legacy rows don't linger when a capture has no
+        // readable source file anymore.
+        db.deleteExtractedDataForCapture(cap.id)
+        runDataExtraction(cap.id, caseId, cap.url)
+      }
+      return { processed: captures.length }
     }
   }
 }

@@ -11,7 +11,8 @@ import {
   insertExtractedData
 } from '@main/services/database'
 import { initStorage } from '@main/services/storage'
-import { reprocessCase } from '@main/services/extraction/reprocess'
+import { createCaptureLifecycle, type CaptureLifecycle } from '@main/services/captureLifecycle'
+import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 
 function writeHtml(root: string, caseId: string, captureId: string, html: string): void {
   const dir = join(root, caseId)
@@ -19,13 +20,16 @@ function writeHtml(root: string, caseId: string, captureId: string, html: string
   writeFileSync(join(dir, `${captureId}.html`), html, 'utf-8')
 }
 
-describe('extraction/reprocess', () => {
+describe('captureLifecycle.reprocessCase', () => {
   let tempDir: string
+  let captureLifecycle: CaptureLifecycle
 
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-reprocess-'))
     initStorage(tempDir)
     initDatabase(':memory:')
+    const selectorLifecycle = createSelectorLifecycle({ emitRematched: () => {} })
+    captureLifecycle = createCaptureLifecycle({ selectorLifecycle })
   })
 
   afterEach(() => {
@@ -50,13 +54,13 @@ describe('extraction/reprocess', () => {
       timestamp: new Date().toISOString()
     })
     // No source files written — both should be counted but extract nothing
-    const result = await reprocessCase(c.id)
+    const result = await captureLifecycle.reprocessCase(c.id)
     expect(result).toEqual({ processed: 2 })
   })
 
   it('returns processed: 0 when the case has no captures', async () => {
     const c = createCase({ name: 'Empty' })
-    const result = await reprocessCase(c.id)
+    const result = await captureLifecycle.reprocessCase(c.id)
     expect(result).toEqual({ processed: 0 })
   })
 
@@ -76,7 +80,7 @@ describe('extraction/reprocess', () => {
     ])
     expect(getExtractedDataCountForCase(c.id)).toBeGreaterThan(0)
 
-    await reprocessCase(c.id)
+    await captureLifecycle.reprocessCase(c.id)
 
     // No source file → re-extraction inserts nothing → the count is now 0
     expect(getExtractedDataCountForCase(c.id)).toBe(0)
@@ -98,7 +102,7 @@ describe('extraction/reprocess', () => {
       '<html><body>contact: foo@example.com and visit https://target.example</body></html>'
     )
 
-    await reprocessCase(c.id)
+    await captureLifecycle.reprocessCase(c.id)
 
     expect(getExtractedDataCountForCase(c.id)).toBeGreaterThan(0)
   })
@@ -130,7 +134,7 @@ describe('extraction/reprocess', () => {
     // cap2: a normal HTML source
     writeHtml(tempDir, c.id, cap2.id, '<html><body>email me at b@example.com</body></html>')
 
-    const result = await reprocessCase(c.id)
+    const result = await captureLifecycle.reprocessCase(c.id)
     expect(result).toEqual({ processed: 2 })
     // cap2 should still have produced extracted rows
     expect(getExtractedDataCountForCase(c.id)).toBeGreaterThan(0)
@@ -150,7 +154,7 @@ describe('extraction/reprocess', () => {
 
     const spy = vi.spyOn(global, 'setImmediate')
 
-    await reprocessCase(c.id)
+    await captureLifecycle.reprocessCase(c.id)
 
     // reprocessCase awaits setImmediate once per capture — 5 captures → 5 calls.
     expect(spy).toHaveBeenCalledTimes(5)

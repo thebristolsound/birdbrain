@@ -35,16 +35,19 @@ import * as analysisService from '@main/services/ai/analysisService'
 import { generateReport } from '@main/services/export'
 import { getExtensionPath, extensionPathExists } from '@main/services/extensionPath'
 import { buildCsv } from '@main/services/csvEscape'
-import { withDeletionEntry, ManifestRollback } from '@main/services/manifest'
 import { getInstallationId } from '@main/services/installationId'
 import { CAPTURE_SERVER_PORT, getSessionState } from '@main/services/captureServer'
 import { reprocessCase } from '@main/services/extraction/reprocess'
+import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { handle, IpcFailure } from '@main/ipcWrap'
 import type { BirdbrainSettings, ExportOptions, CaptureAnalysis } from '@shared/types'
 
-export function registerIpcHandlers(deps: { selectorLifecycle: SelectorLifecycle }): void {
-  const { selectorLifecycle } = deps
+export function registerIpcHandlers(deps: {
+  selectorLifecycle: SelectorLifecycle
+  captureLifecycle: CaptureLifecycle
+}): void {
+  const { selectorLifecycle, captureLifecycle } = deps
   // Cases
   ipcMain.handle(IPC_CHANNELS.CASES_LIST, () => db.listCases())
   ipcMain.handle(IPC_CHANNELS.CASES_GET, (_, id: string) => db.getCase(id))
@@ -55,49 +58,7 @@ export function registerIpcHandlers(deps: { selectorLifecycle: SelectorLifecycle
   // Captures
   ipcMain.handle(IPC_CHANNELS.CAPTURES_LIST, (_, caseId: string) => db.listCaptures(caseId))
   ipcMain.handle(IPC_CHANNELS.CAPTURES_GET, (_, id: string) => db.getCapture(id))
-  handle(IPC_CHANNELS.CAPTURES_DELETE, async (_, id: string) => {
-    const capture = db.getCapture(id)
-    if (!capture) return false
-
-    if (capture.format === 'mhtml') {
-      const caseDir = join(storage.getStorageRoot(), capture.caseId)
-      try {
-        await withDeletionEntry(
-          caseDir,
-          {
-            captureId: id,
-            caseId: capture.caseId,
-            contentHash: capture.hash,
-            operatorId: getInstallationId(),
-            operatorName: settings.getSettings().operatorName ?? '',
-            toolVersion:
-              typeof app?.getVersion === 'function'
-                ? app.getVersion()
-                : (process.env.npm_package_version ?? '0.0.0')
-          },
-          () => {
-            // Files first, DB row second. If the filesystem unlink throws,
-            // the manifest rolls back with both DB and files intact (full retry).
-            // If the DB delete fails after files are gone, the manifest still
-            // rolls back and the user sees a broken capture row they can retry —
-            // strictly better than the inverse, where a filesystem failure
-            // after the DB delete would leave permanently orphaned files.
-            storage.deleteCaptureFiles(capture.caseId, id)
-            const deleted = db.deleteCapture(id)
-            if (!deleted) throw new ManifestRollback()
-          }
-        )
-        return true
-      } catch (err) {
-        if (err instanceof ManifestRollback) return false
-        throw err
-      }
-    }
-
-    const deleted = db.deleteCapture(id)
-    if (deleted) storage.deleteCaptureFiles(capture.caseId, id)
-    return deleted
-  })
+  handle(IPC_CHANNELS.CAPTURES_DELETE, (_, id: string) => captureLifecycle.delete(id))
 
   handle(IPC_CHANNELS.CAPTURES_COUNTS_BY_CASE, () => db.getCaptureCountsByCase())
 

@@ -110,7 +110,7 @@ app.whenReady().then(async () => {
   const captureLifecycle = createCaptureLifecycle({ selectorLifecycle })
 
   // Register IPC handlers
-  registerIpcHandlers({ selectorLifecycle })
+  registerIpcHandlers({ selectorLifecycle, captureLifecycle })
 
   // Start capture server and extension connection monitor
   await startCaptureServer({ selectorLifecycle, captureLifecycle })

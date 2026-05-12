@@ -412,10 +412,15 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
       const captures = db.listCaptures(caseId)
       for (const cap of captures) {
         await new Promise<void>((resolve) => setImmediate(resolve))
-        // Always clear first so legacy rows don't linger when a capture has no
-        // readable source file anymore.
-        db.deleteExtractedDataForCapture(cap.id)
-        runDataExtraction(cap.id, caseId, cap.url)
+        // Swallow per-capture errors so one bad capture doesn't poison the batch.
+        try {
+          // Always clear first so legacy rows don't linger when a capture has no
+          // readable source file anymore.
+          db.deleteExtractedDataForCapture(cap.id)
+          runDataExtraction(cap.id, caseId, cap.url)
+        } catch (err) {
+          console.error('captureLifecycle: reprocess failed for capture', cap.id, err)
+        }
       }
       return { processed: captures.length }
     }

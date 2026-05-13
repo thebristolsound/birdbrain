@@ -1,15 +1,70 @@
-import { createWriteStream, createReadStream, writeFileSync, type WriteStream } from 'fs'
+import { app } from 'electron'
+import { createReadStream, createWriteStream, writeFileSync, type WriteStream } from 'fs'
 import { unlink } from 'fs/promises'
 import { join } from 'path'
 import { createHash, randomUUID } from 'crypto'
 import { finished } from 'stream/promises'
-import { ensureCaseDir, getStorageRoot } from '@main/services/storage'
+import * as db from '@main/services/database'
+import { extractData } from '@main/services/dataExtractor'
+import { readExtractionHtml } from '@main/services/extraction/extractionSource'
+import { getInstallationId } from '@main/services/installationId'
+import {
+  appendManifestEntry,
+  initManifest,
+  rollbackManifestEntry,
+  verifyManifestChain,
+  withDeletionEntry,
+  ManifestRollback
+} from '@main/services/manifest'
+import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
+import { getSettings } from '@main/services/settings'
+import { deleteCaptureFiles, ensureCaseDir, getStorageRoot } from '@main/services/storage'
 import { MAX_MHTML_SIZE } from '@shared/constants'
+import type { Capture, HashVerification } from '@shared/types'
 
 export interface StreamWriteResult {
   mhtmlPath: string // relative path (caseId/captureId.mhtml)
   hash: string
   sizeBytes: number
+}
+
+export interface IngestParams {
+  caseId: string
+  url: string
+  title: string
+  timestamp: string
+  stream: ReadableStream<Uint8Array>
+  textContent: string
+  headers: Record<string, string>
+  browserVersion: string
+  userAgent: string
+  httpStatus: number
+  extensionVersion: string
+  operatorId: string
+  operatorName: string
+  toolVersion: string
+  screenshot?: Buffer
+}
+
+export interface IngestResult {
+  capture: Capture
+  contentHash: string
+}
+
+export interface CaptureLifecycleDeps {
+  selectorLifecycle: SelectorLifecycle
+}
+
+export interface CaptureLifecycle {
+  ingest: (params: IngestParams) => Promise<IngestResult>
+  delete: (captureId: string) => Promise<boolean>
+  verify: (captureId: string) => Promise<HashVerification>
+  reprocessCase: (caseId: string) => Promise<{ processed: number }>
+}
+
+function getToolVersion(): string {
+  if (typeof app?.getVersion === 'function') return app.getVersion()
+  return process.env.npm_package_version ?? '0.0.0'
 }
 
 async function closeAndUnlink(ws: WriteStream, path: string): Promise<void> {
@@ -74,42 +129,6 @@ export async function streamWriteAndHash(
   }
 
   return { mhtmlPath: relPath, hash: hasher.digest('hex'), sizeBytes: size }
-}
-
-// ---------------------------------------------------------------------------
-// Full ingest pipeline
-// ---------------------------------------------------------------------------
-
-import * as db from '@main/services/database'
-import {
-  initManifest,
-  appendManifestEntry,
-  rollbackManifestEntry,
-  verifyManifestChain
-} from '@main/services/manifest'
-import type { Capture, HashVerification } from '@shared/types'
-
-export interface IngestParams {
-  caseId: string
-  url: string
-  title: string
-  timestamp: string
-  stream: ReadableStream<Uint8Array>
-  textContent: string
-  headers: Record<string, string>
-  browserVersion: string
-  userAgent: string
-  httpStatus: number
-  extensionVersion: string
-  operatorId: string
-  operatorName: string
-  toolVersion: string
-  screenshot?: Buffer
-}
-
-export interface IngestResult {
-  capture: Capture
-  contentHash: string
 }
 
 // End-to-end MHTML ingest:
@@ -202,38 +221,6 @@ export async function ingestMhtmlCapture(params: IngestParams): Promise<IngestRe
   }
 }
 
-// ---------------------------------------------------------------------------
-// Verify capture integrity
-// ---------------------------------------------------------------------------
-
-// Streams the MHTML file from disk, recomputes SHA-256, and checks the manifest chain.
-export async function verifyCapture(captureId: string): Promise<HashVerification> {
-  const capture = db.getCapture(captureId)
-  if (!capture) {
-    return {
-      captureId,
-      url: '',
-      title: '',
-      storedHash: '',
-      computedHash: '',
-      status: 'missing',
-      reason: 'Capture not found'
-    }
-  }
-
-  const result = await computeVerification(capture)
-
-  // Persist so the UI can rehydrate across remounts/sessions and export can read
-  // a stable snapshot without re-hashing when nothing has changed on disk.
-  db.setCaptureVerification(captureId, {
-    status: result.status,
-    computedHash: result.computedHash,
-    verifiedAt: new Date().toISOString()
-  })
-
-  return result
-}
-
 async function computeVerification(
   capture: NonNullable<ReturnType<typeof db.getCapture>>
 ): Promise<HashVerification> {
@@ -306,5 +293,136 @@ async function computeVerification(
     status: 'verified',
     manifestIndex: capture.manifestIndex,
     chainValid: true
+  }
+}
+
+// Streams the MHTML file from disk, recomputes SHA-256, and checks the manifest chain.
+export async function verifyCapture(captureId: string): Promise<HashVerification> {
+  const capture = db.getCapture(captureId)
+  if (!capture) {
+    return {
+      captureId,
+      url: '',
+      title: '',
+      storedHash: '',
+      computedHash: '',
+      status: 'missing',
+      reason: 'Capture not found'
+    }
+  }
+
+  const result = await computeVerification(capture)
+
+  // Persist so the UI can rehydrate across remounts/sessions and export can read
+  // a stable snapshot without re-hashing when nothing has changed on disk.
+  db.setCaptureVerification(captureId, {
+    status: result.status,
+    computedHash: result.computedHash,
+    verifiedAt: new Date().toISOString()
+  })
+
+  return result
+}
+
+export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifecycle {
+  function runDataExtraction(captureId: string, caseId: string, url: string): void {
+    try {
+      const html = readExtractionHtml(caseId, captureId)
+      if (html) {
+        const extracted = extractData(html)
+        db.insertExtractedData(captureId, caseId, url, extracted)
+      }
+    } catch (err) {
+      console.error('captureLifecycle: data extraction failed for capture', captureId, err)
+    }
+  }
+
+  function runPostCaptureWork(
+    captureId: string,
+    caseId: string,
+    url: string,
+    textContent: string | undefined
+  ): void {
+    setImmediate(() => {
+      try {
+        if (textContent) {
+          deps.selectorLifecycle.runActiveSelectorsForCapture(captureId, caseId, textContent)
+        }
+      } catch (err) {
+        console.error('captureLifecycle: selector matching failed for capture', captureId, err)
+      }
+
+      runDataExtraction(captureId, caseId, url)
+    })
+  }
+
+  return {
+    async ingest(params) {
+      const result = await ingestMhtmlCapture(params)
+      runPostCaptureWork(result.capture.id, params.caseId, params.url, params.textContent)
+      return result
+    },
+
+    async delete(captureId) {
+      const capture = db.getCapture(captureId)
+      if (!capture) return false
+
+      if (capture.format === 'mhtml') {
+        const caseDir = join(getStorageRoot(), capture.caseId)
+        try {
+          await withDeletionEntry(
+            caseDir,
+            {
+              captureId,
+              caseId: capture.caseId,
+              contentHash: capture.hash,
+              operatorId: getInstallationId(),
+              operatorName: getSettings().operatorName ?? '',
+              toolVersion: getToolVersion()
+            },
+            () => {
+              // Files first, DB row second. If the filesystem unlink throws,
+              // the manifest rolls back with both DB and files intact (full retry).
+              // If the DB delete fails after files are gone, the manifest still
+              // rolls back and the user sees a broken capture row they can retry —
+              // strictly better than the inverse, where a filesystem failure
+              // after the DB delete would leave permanently orphaned files.
+              deleteCaptureFiles(capture.caseId, captureId)
+              const deleted = db.deleteCapture(captureId)
+              if (!deleted) throw new ManifestRollback()
+            }
+          )
+          return true
+        } catch (err) {
+          if (err instanceof ManifestRollback) return false
+          throw err
+        }
+      }
+
+      const deleted = db.deleteCapture(captureId)
+      if (deleted) deleteCaptureFiles(capture.caseId, captureId)
+      return deleted
+    },
+
+    verify(captureId) {
+      return verifyCapture(captureId)
+    },
+
+    async reprocessCase(caseId) {
+      const captures = db.listCaptures(caseId)
+      for (const cap of captures) {
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        // Swallow per-capture errors so one bad capture doesn't poison the batch.
+        try {
+          // Always clear first so legacy rows don't linger when a capture has no
+          // readable source file anymore.
+          db.deleteExtractedDataForCapture(cap.id)
+          runDataExtraction(cap.id, caseId, cap.url)
+        } catch (err) {
+          console.error('captureLifecycle: reprocess failed for capture', cap.id, err)
+        }
+      }
+      return { processed: captures.length }
+    }
   }
 }

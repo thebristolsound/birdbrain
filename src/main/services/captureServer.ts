@@ -10,7 +10,7 @@ import { IPC_CHANNELS } from '@shared/ipc'
 import * as db from '@main/services/database'
 import { deleteCaptureFiles } from '@main/services/storage'
 import { getSettings } from '@main/services/settings'
-import { ingestMhtmlCapture } from '@main/services/mhtmlIngest'
+import { ingestMhtmlCapture } from '@main/services/captureLifecycle'
 import { getInstallationId } from '@main/services/installationId'
 import { getServerToken } from '@main/services/serverToken'
 import type { CaptureEvent, CaptureSource } from '@shared/types'
@@ -20,8 +20,7 @@ import {
   formatCaptureUploadError,
   formatSelectorCreateError
 } from '@shared/schemas'
-import { extractData } from '@main/services/dataExtractor'
-import { readExtractionHtml } from '@main/services/extraction/extractionSource'
+import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 
 import { CAPTURE_SERVER_PORT, MAX_SCREENSHOT_SIZE } from '@shared/constants'
@@ -30,6 +29,7 @@ export { CAPTURE_SERVER_PORT }
 
 export interface CaptureServerDeps {
   selectorLifecycle: SelectorLifecycle
+  captureLifecycle: CaptureLifecycle
   token?: string
 }
 
@@ -101,35 +101,6 @@ function isUrlBlacklisted(url: string, patterns: string[]): string | null {
   return null
 }
 
-function schedulePostCaptureWork(
-  selectorLifecycle: SelectorLifecycle,
-  captureId: string,
-  caseId: string,
-  _source: CaptureSource,
-  url: string,
-  textContent: string | undefined
-): void {
-  setImmediate(() => {
-    try {
-      if (textContent) {
-        selectorLifecycle.runActiveSelectorsForCapture(captureId, caseId, textContent)
-      }
-    } catch (err) {
-      console.error('Selector matching error for capture', captureId, err)
-    }
-
-    try {
-      const html = readExtractionHtml(caseId, captureId)
-      if (html) {
-        const extracted = extractData(html)
-        db.insertExtractedData(captureId, caseId, url, extracted)
-      }
-    } catch (err) {
-      console.error('Data extraction error for capture', captureId, err)
-    }
-  })
-}
-
 function emitCaptureEvent(event: CaptureEvent): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(IPC_CHANNELS.CAPTURE_ACTIVITY, event)
@@ -137,7 +108,7 @@ function emitCaptureEvent(event: CaptureEvent): void {
 }
 
 function createApp(deps: CaptureServerDeps): Hono {
-  const { selectorLifecycle, token } = deps
+  const { selectorLifecycle, captureLifecycle, token } = deps
   const app = new Hono()
   const requiredToken = token ?? getServerToken()
 
@@ -350,7 +321,7 @@ function createApp(deps: CaptureServerDeps): Hono {
         const operatorName = captureSettings.operatorName ?? ''
         const toolVersion = getToolVersion()
 
-        const { capture, contentHash } = await ingestMhtmlCapture({
+        const { capture, contentHash } = await captureLifecycle.ingest({
           caseId,
           url,
           title,
@@ -369,7 +340,6 @@ function createApp(deps: CaptureServerDeps): Hono {
         })
 
         if (source === 'auto') state.captureCount++
-        schedulePostCaptureWork(selectorLifecycle, capture.id, caseId, source, url, textContent)
 
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send(IPC_CHANNELS.NEW_CAPTURE, capture)

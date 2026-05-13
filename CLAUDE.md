@@ -31,7 +31,7 @@ Electron + React 19 + TanStack Router + React Query + Chrome Extension + SQLite 
 ### Key directories
 
 ```
-src/main/services/           # Core services: database, captureServer, storage, export, settings, hash, safeRegex, openrouter, canonicalJson, csvEscape, installationId, manifest, mhtmlIngest
+src/main/services/           # Core services: database, captureServer, storage, export, settings, hash, safeRegex, openrouter, canonicalJson, csvEscape, installationId, manifest, captureLifecycle
 src/main/services/ai/       # AI services (OpenRouter client)
 src/main/ipcHandlers.ts     # All IPC handler registrations
 src/shared/types.ts         # Shared TypeScript types (Case, Capture, Tag, Selector, Note, Settings, etc.)

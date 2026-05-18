@@ -20,8 +20,8 @@ import {
 import { createSelectorLifecycle } from '../../../src/main/services/selectorLifecycle'
 import { verifyCaptures, generateReport } from '../../../src/main/services/export'
 import { saveAnnotations } from '../../../src/main/services/annotations'
-import { initSettings, updateSettings } from '../../../src/main/services/settings'
-import { initInstallationId, resetInstallationId } from '../../../src/main/services/installationId'
+import { initSettings, updateSettings } from '@main/services/settings'
+import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import type { ExportOptions } from '../../../src/shared/types'
 
 async function ingest(

@@ -451,7 +451,19 @@ async function captureTab(tabId: number, url: string): Promise<void> {
     captureCount++
     chrome.action.setBadgeText({ text: String(captureCount) })
   } catch (err) {
-    console.error('Capture failed:', err)
+    console.error('[Birdbrain] Auto-capture failed:', err)
+    let message = 'Capture failed'
+    if (err && typeof err === 'object' && 'status' in err) {
+      const apiErr = err as { status: number; detail: string }
+      if (apiErr.status === 400) message = 'Capture rejected: ' + apiErr.detail
+      else if (apiErr.status === 403) message = 'URL is blacklisted'
+      else if (apiErr.status === 500) message = 'Server error - check Birdbrain app'
+    } else if (err instanceof TypeError) {
+      message = "Can't reach Birdbrain - is it running?"
+    }
+    chrome.tabs
+      .sendMessage(tabId, { type: 'UPDATE_CAPTURE_TOAST', status: 'error', message })
+      .catch(() => {})
   }
 }
 

@@ -42,7 +42,8 @@ import type {
   ExtractedDataItem,
   AnnotationsBundle,
   CaptureAnnotations,
-  AnnotationPin
+  AnnotationPin,
+  OperatorIdentity
 } from '@shared/types'
 
 // Unwrap IpcResult from handlers that return structured results
@@ -193,12 +194,7 @@ const birdbrain = {
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_TEST_OPENROUTER, apiKey),
     listModels: (apiKey: string): Promise<OpenRouterModel[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_LIST_MODELS, apiKey),
-    getIdentity: (): Promise<{
-      installationId: string
-      operatorName: string
-      operatorRole: string
-      operatorOrganization: string
-    }> => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET_IDENTITY),
+    getIdentity: (): Promise<OperatorIdentity> => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET_IDENTITY),
     chooseStoragePath: (): Promise<string | null> =>
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH)
   },

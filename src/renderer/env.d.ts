@@ -20,7 +20,8 @@ import type {
   ExtractedDataItem,
   AnnotationsBundle,
   CaptureAnnotations,
-  AnnotationPin
+  AnnotationPin,
+  OperatorIdentity
 } from '@shared/types'
 import type {
   CreateCaseParams,
@@ -122,7 +123,7 @@ interface BirdbrainAPI {
     reset(): Promise<BirdbrainSettings>
     testOpenRouter(apiKey: string): Promise<boolean>
     listModels(apiKey: string): Promise<OpenRouterModel[]>
-    getIdentity(): Promise<{ installationId: string; operatorName: string; operatorRole: string; operatorOrganization: string }>
+    getIdentity(): Promise<OperatorIdentity>
     chooseStoragePath(): Promise<string | null>
   }
   export: {

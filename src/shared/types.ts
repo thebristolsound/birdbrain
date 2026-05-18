@@ -251,3 +251,10 @@ export interface CaptureEvent {
   durationMs?: number
   screenshotWarning?: string
 }
+
+export interface OperatorIdentity {
+  installationId: string
+  operatorName: string
+  operatorRole: string
+  operatorOrganization: string
+}

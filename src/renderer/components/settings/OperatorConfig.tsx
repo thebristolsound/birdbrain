@@ -10,12 +10,18 @@ export function OperatorConfig() {
   const [nameError, setNameError] = useState('')
 
   useEffect(() => {
-    window.birdbrain.settings.getIdentity().then((id) => {
-      setInstallationId(id.installationId)
-      setOperatorName(id.operatorName)
-      setOperatorRole(id.operatorRole)
-      setOperatorOrganization(id.operatorOrganization)
-    })
+    async function loadIdentity() {
+      try {
+        const id = await window.birdbrain.settings.getIdentity()
+        setInstallationId(id.installationId)
+        setOperatorName(id.operatorName)
+        setOperatorRole(id.operatorRole)
+        setOperatorOrganization(id.operatorOrganization)
+      } catch (err) {
+        console.error('Failed to load operator identity:', err)
+      }
+    }
+    loadIdentity()
   }, [])
 
   async function save() {

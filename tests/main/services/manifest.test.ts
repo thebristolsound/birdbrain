@@ -588,4 +588,27 @@ describe('manifest schema v2 + grandfathering', () => {
     expect(readFileSync(path, 'utf-8')).toBe(before)
     expect(statSync(path).size).toBe(sizeBefore)
   })
+
+  it('rejects out-of-range schemaVersion values (0, 99, 1.5)', () => {
+    // schemaVersionField is bounded: int, min 1, max MANIFEST_SCHEMA_VERSION.
+    // Negatives, floats, NaN, and unknown-future versions must fail-closed.
+    const base = {
+      type: 'capture' as const,
+      captureId: 'cap',
+      caseId: 'case-1',
+      url: 'https://a',
+      timestamp: '2026-01-01T00:00:00.000Z',
+      contentHash: 'a'.repeat(64),
+      sizeBytes: 1,
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0',
+      index: 0,
+      prevHash: '',
+      entryHash: 'e'.repeat(64)
+    }
+    expect(ManifestEntrySchema.safeParse({ ...base, schemaVersion: 0 }).success).toBe(false)
+    expect(ManifestEntrySchema.safeParse({ ...base, schemaVersion: 99 }).success).toBe(false)
+    expect(ManifestEntrySchema.safeParse({ ...base, schemaVersion: 1.5 }).success).toBe(false)
+  })
 })

@@ -208,6 +208,14 @@ export function verifyManifestChain(caseDir: string): ChainVerifyResult {
     // never carry a signature, so their canonical body is unchanged and their
     // legacy hashes still recompute correctly (canonicalStringify drops
     // undefined keys). Cryptographic signature checking is #117.
+    //
+    // LOAD-BEARING: grandfathering v1 entries depends on canonicalStringify
+    // silently dropping keys whose value is `undefined`. A v1 entry has no
+    // `signature` field, so after destructuring, `body` contains no signature
+    // key at all and canonicalStringify produces the same bytes as the original
+    // writer — the entryHash recomputes identically. If canonicalStringify were
+    // ever changed to emit `null` or `""` for undefined values instead of
+    // omitting them, every legacy v1 chain would fail hash verification.
     const { entryHash, signature: _signature, ...body } = schemaResult.data
     void _signature
     if (body.index !== expectedIndex) {

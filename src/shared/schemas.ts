@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { DEFAULT_ANALYSIS_SYSTEM_PROMPT } from '@shared/constants'
+import { DEFAULT_ANALYSIS_SYSTEM_PROMPT, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 
 // Shared Zod schemas for Birdbrain's trust boundaries.
 //
@@ -118,6 +118,10 @@ export function formatSelectorCreateError(err: z.ZodError): string {
 // (see #118). Mixed-version chains are normal — never retro-sign legacy
 // entries.
 
+// Bounded integer: rejects negatives, floats, NaN, and unknown-future versions
+// (e.g. a v3 entry parsed by a v2 verifier). Auto-tightens on every version bump.
+const schemaVersionField = z.number().int().min(1).max(MANIFEST_SCHEMA_VERSION)
+
 const ManifestCaptureEntrySchema = z
   .object({
     type: z.literal('capture'),
@@ -134,7 +138,7 @@ const ManifestCaptureEntrySchema = z
     toolVersion: z.string(),
     index: z.number().int().nonnegative(),
     prevHash: z.string(),
-    schemaVersion: z.number(),
+    schemaVersion: schemaVersionField,
     signature: z.string().optional(),
     entryHash: z.string()
   })
@@ -153,7 +157,7 @@ const ManifestDeletionEntrySchema = z
     reason: z.string().optional(),
     index: z.number().int().nonnegative(),
     prevHash: z.string(),
-    schemaVersion: z.number(),
+    schemaVersion: schemaVersionField,
     signature: z.string().optional(),
     entryHash: z.string()
   })
@@ -174,7 +178,7 @@ const ManifestTimestampEntrySchema = z
     toolVersion: z.string(),
     index: z.number().int().nonnegative(),
     prevHash: z.string(),
-    schemaVersion: z.number(),
+    schemaVersion: schemaVersionField,
     signature: z.string().optional(),
     entryHash: z.string()
   })

@@ -163,8 +163,8 @@ export const BirdbrainSettingsSchema = z.object({
   theme: z.enum(['dark', 'light']),
   reduceMotion: z.boolean(),
   operatorName: z.string(),
-  operatorRole: z.string().optional().default(''),
-  operatorOrganization: z.string().optional().default(''),
+  operatorRole: z.string().default(''),
+  operatorOrganization: z.string().default(''),
   autoCaptureMode: z.enum(['auto', 'notify', 'per-case']),
   lastActiveCaseId: z.string().nullable(),
   lastActiveSection: z

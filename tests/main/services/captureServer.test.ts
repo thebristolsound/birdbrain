@@ -1285,4 +1285,13 @@ describe('captureServer', () => {
     const data = await res.json()
     expect(data.error).toMatch(/operator name/i)
   })
+
+  it('GET /api/captures/test returns 400 when operator name is blank', async () => {
+    updateSettings({ operatorName: '' })
+    createCase({ name: 'Pipeline Test Case' })
+    const res = await fetch(`${baseUrl}/api/captures/test`)
+    expect(res.status).toBe(400)
+    const data = await res.json()
+    expect(data.error).toMatch(/operator name/i)
+  })
 })

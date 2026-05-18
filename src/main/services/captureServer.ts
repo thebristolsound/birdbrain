@@ -42,6 +42,9 @@ function getToolVersion(): string {
 const manualDedup = new Map<string, number>()
 const MANUAL_DEDUPE_WINDOW_MS = 5_000
 
+const OPERATOR_NAME_REQUIRED_MSG =
+  'Operator name required. Configure your name in Birdbrain settings before capturing.'
+
 interface SessionState {
   activeCaseId: string | null
   sessionActive: boolean
@@ -272,13 +275,7 @@ function createApp(deps: CaptureServerDeps): Hono {
             timestamp: new Date().toISOString(),
             error: 'Operator name required'
           })
-          return c.json(
-            {
-              error:
-                'Operator name required. Configure your name in Birdbrain settings before capturing.'
-            },
-            400
-          )
+          return c.json({ error: OPERATOR_NAME_REQUIRED_MSG }, 400)
         }
 
         const blocked = isUrlBlacklisted(url, captureSettings.ignoredUrlPatterns)
@@ -461,6 +458,16 @@ function createApp(deps: CaptureServerDeps): Hono {
     let testCaptureId: string | null = null
     let testCaseId: string | null = null
     try {
+      if (!getSettings().operatorName?.trim()) {
+        emitCaptureEvent({
+          type: 'failed',
+          source: 'manual',
+          url: 'birdbrain://pipeline-test',
+          timestamp: new Date().toISOString(),
+          error: 'Operator name required'
+        })
+        return c.json({ error: OPERATOR_NAME_REQUIRED_MSG }, 400)
+      }
       const cases = db.listCases()
       if (cases.length === 0) {
         return c.json({

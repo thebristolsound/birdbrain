@@ -122,7 +122,7 @@ interface BirdbrainAPI {
     reset(): Promise<BirdbrainSettings>
     testOpenRouter(apiKey: string): Promise<boolean>
     listModels(apiKey: string): Promise<OpenRouterModel[]>
-    getIdentity(): Promise<{ installationId: string; operatorName: string }>
+    getIdentity(): Promise<{ installationId: string; operatorName: string; operatorRole: string; operatorOrganization: string }>
     chooseStoragePath(): Promise<string | null>
   }
   export: {

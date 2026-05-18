@@ -265,9 +265,10 @@ function createApp(deps: CaptureServerDeps): Hono {
       const capturedUrl = url
       try {
         const captureSettings = getSettings()
+        const operatorName = captureSettings.operatorName?.trim() ?? ''
 
         // Gate: operator name must be set before any capture is stored
-        if (!captureSettings.operatorName?.trim()) {
+        if (!operatorName) {
           emitCaptureEvent({
             type: 'failed',
             source,
@@ -334,7 +335,6 @@ function createApp(deps: CaptureServerDeps): Hono {
         }
 
         const operatorId = getInstallationId()
-        const operatorName = captureSettings.operatorName ?? ''
         const toolVersion = getToolVersion()
 
         const { capture, contentHash } = await captureLifecycle.ingest({
@@ -458,7 +458,8 @@ function createApp(deps: CaptureServerDeps): Hono {
     let testCaptureId: string | null = null
     let testCaseId: string | null = null
     try {
-      if (!getSettings().operatorName?.trim()) {
+      const operatorName = getSettings().operatorName?.trim() ?? ''
+      if (!operatorName) {
         emitCaptureEvent({
           type: 'failed',
           source: 'manual',
@@ -501,7 +502,7 @@ function createApp(deps: CaptureServerDeps): Hono {
         httpStatus: 200,
         extensionVersion: '',
         operatorId: getInstallationId(),
-        operatorName: getSettings().operatorName ?? '',
+        operatorName,
         toolVersion: getToolVersion()
       })
       testCaptureId = capture.id

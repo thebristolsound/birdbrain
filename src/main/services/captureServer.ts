@@ -262,6 +262,25 @@ function createApp(deps: CaptureServerDeps): Hono {
       const capturedUrl = url
       try {
         const captureSettings = getSettings()
+
+        // Gate: operator name must be set before any capture is stored
+        if (!captureSettings.operatorName?.trim()) {
+          emitCaptureEvent({
+            type: 'failed',
+            source,
+            url,
+            timestamp: new Date().toISOString(),
+            error: 'Operator name required'
+          })
+          return c.json(
+            {
+              error:
+                'Operator name required. Configure your name in Birdbrain settings before capturing.'
+            },
+            400
+          )
+        }
+
         const blocked = isUrlBlacklisted(url, captureSettings.ignoredUrlPatterns)
         if (blocked) {
           emitCaptureEvent({

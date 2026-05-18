@@ -64,6 +64,8 @@ export interface BirdbrainSettings {
   theme: 'dark' | 'light'
   reduceMotion: boolean
   operatorName: string
+  operatorRole: string
+  operatorOrganization: string
   autoCaptureMode: AutoCaptureMode
   lastActiveCaseId: string | null
   lastActiveSection: 'captures' | 'selectors' | 'notes' | 'tags' | 'data' | 'settings'

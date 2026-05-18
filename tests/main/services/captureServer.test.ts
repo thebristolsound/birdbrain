@@ -38,6 +38,8 @@ describe('captureServer', () => {
     initDatabase(':memory:')
     initStorage(join(tempDir, 'captures'))
     initSettings(tempDir)
+    // Default operator name set so existing tests pass; operator-gating tests override as needed
+    updateSettings({ operatorName: 'Test Operator' })
     resetInstallationId()
     initInstallationId(tempDir)
     resetSessionState()
@@ -1216,5 +1218,71 @@ describe('captureServer', () => {
     const res = await fetch(`${baseUrl}/api/selectors/active`)
     const data = await res.json()
     expect(data).toEqual([])
+  })
+
+  // --- Operator identity gating ---
+
+  it('POST /api/captures returns 400 with clear message when operator name is blank', async () => {
+    updateSettings({ operatorName: '' })
+    const testCase = createCase({ name: 'Blank Operator' })
+    const res = await postCapture({
+      source: 'manual',
+      caseId: testCase.id,
+      url: 'https://example.com',
+      title: 'Test'
+    })
+    expect(res.status).toBe(400)
+    const data = await res.json()
+    expect(data.error).toMatch(/operator name/i)
+  })
+
+  it('POST /api/captures returns 400 when operator name is whitespace-only', async () => {
+    updateSettings({ operatorName: '   ' })
+    const testCase = createCase({ name: 'Whitespace Operator' })
+    const res = await postCapture({
+      source: 'manual',
+      caseId: testCase.id,
+      url: 'https://example.com',
+      title: 'Test'
+    })
+    expect(res.status).toBe(400)
+    const data = await res.json()
+    expect(data.error).toMatch(/operator name/i)
+  })
+
+  it('POST /api/captures succeeds when operator name is set', async () => {
+    updateSettings({ operatorName: 'Det. Smith' })
+    const testCase = createCase({ name: 'Named Operator' })
+    const res = await postCapture(
+      {
+        source: 'manual',
+        caseId: testCase.id,
+        url: 'https://example.com',
+        title: 'Test'
+      },
+      '<html>ok</html>'
+    )
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(data.status).toBe('ok')
+  })
+
+  it('POST /api/captures auto source returns 400 when operator name is blank', async () => {
+    updateSettings({ operatorName: '' })
+    const testCase = createCase({ name: 'Auto Blank Operator' })
+    await serverPost(`/api/cases/${testCase.id}/activate`)
+    await serverPost('/api/session/start')
+
+    const res = await postCapture(
+      {
+        source: 'auto',
+        url: 'https://example.com',
+        title: 'Test'
+      },
+      '<html>auto</html>'
+    )
+    expect(res.status).toBe(400)
+    const data = await res.json()
+    expect(data.error).toMatch(/operator name/i)
   })
 })

@@ -589,14 +589,32 @@ describe('captureServer', () => {
     expect(allowedRes.status).toBe(200)
   })
 
-  it('GET /api/captures/test returns pipeline health', async () => {
+  it('GET /api/captures/test returns pipeline health when authenticated', async () => {
     createCase({ name: 'Pipeline Test Case' })
 
-    const res = await fetch(`${baseUrl}/api/captures/test`)
+    const res = await fetch(`${baseUrl}/api/captures/test`, {
+      headers: { 'X-Birdbrain-Token': TEST_TOKEN }
+    })
     const data = await res.json()
     expect(data.success).toBe(true)
     expect(data.durationMs).toBeGreaterThanOrEqual(0)
     expect(data.error).toBeUndefined()
+  })
+
+  it('GET /api/captures/test rejects unauthenticated requests and writes nothing', async () => {
+    const testCase = createCase({ name: 'Auth Test Case' })
+    const beforeCount = listCaptures(testCase.id).length
+
+    const missing = await fetch(`${baseUrl}/api/captures/test`)
+    expect(missing.status).toBe(401)
+
+    const wrong = await fetch(`${baseUrl}/api/captures/test`, {
+      headers: { 'X-Birdbrain-Token': 'not-the-right-token' }
+    })
+    expect(wrong.status).toBe(401)
+
+    // No persistent side effects — the manifest append + DB insert must not run
+    expect(listCaptures(testCase.id).length).toBe(beforeCount)
   })
 
   it('blacklist glob pattern with ? wildcard matches single character', async () => {

@@ -134,9 +134,12 @@ function createApp(deps: CaptureServerDeps): Hono {
     })
   )
 
-  // Require auth token on all POST (mutating) endpoints
+  // Require auth token on all state-changing endpoints.
+  // All POSTs mutate; `GET /api/captures/test` also performs a DB insert + manifest append
+  // via ingestMhtmlCapture, so it must be gated even though it's a GET (issue #129).
   app.use('*', async (c, next) => {
-    if (c.req.method === 'POST') {
+    const isStateChangingGet = c.req.method === 'GET' && c.req.path === '/api/captures/test'
+    if (c.req.method === 'POST' || isStateChangingGet) {
       const token = c.req.header('X-Birdbrain-Token')
       if (token !== requiredToken) {
         return c.json({ error: 'Unauthorized' }, 401)

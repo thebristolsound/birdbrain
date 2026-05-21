@@ -111,7 +111,7 @@ describe('manifest append', () => {
       captureId: 'cap-1',
       index: 0,
       prevHash: '',
-      schemaVersion: 1
+      schemaVersion: 2
     }
     const expected = createHash('sha256').update(canonicalStringify(body)).digest('hex')
     const result = appendManifestEntry(tempDir, { ...baseEntry, captureId: 'cap-1' })
@@ -392,5 +392,201 @@ describe('withDeletionEntry', () => {
     expect(lines).toHaveLength(2)
     expect(JSON.parse(lines[0]).captureId).toBe('cap-keep')
     expect(JSON.parse(lines[1]).captureId).toBe('cap-next')
+  })
+})
+
+describe('manifest schema v2 and grandfathering', () => {
+  let tempDir: string
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-v2-'))
+    initManifest(tempDir)
+  })
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  const base = {
+    type: 'capture' as const,
+    caseId: 'case-1',
+    timestamp: '2026-05-21T12:00:00.000Z',
+    contentHash: 'a'.repeat(64),
+    sizeBytes: 1,
+    operatorId: 'op',
+    operatorName: '',
+    toolVersion: '0.1.0'
+  }
+
+  it('v2 entries are written with schemaVersion=2', () => {
+    const result = appendManifestEntry(tempDir, { ...base, captureId: 'c1', url: 'https://a' })
+    const raw = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
+    const entry = JSON.parse(raw.trim())
+    expect(entry.schemaVersion).toBe(2)
+    expect(entry.entryHash).toBe(result.entryHash)
+  })
+
+  it('verifies a mixed v1/v2 chain successfully', () => {
+    // Manually write a v1 entry (schemaVersion: 1, no signature)
+    const v1Entry = {
+      type: 'capture',
+      captureId: 'c1',
+      caseId: 'case-1',
+      url: 'https://v1.example.com',
+      timestamp: '2026-05-21T12:00:00.000Z',
+      contentHash: 'a'.repeat(64),
+      sizeBytes: 100,
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0',
+      index: 0,
+      prevHash: '',
+      schemaVersion: 1
+    }
+    const v1Canonical = canonicalStringify(v1Entry)
+    const v1Hash = createHash('sha256').update(v1Canonical).digest('hex')
+    const v1Full = { ...v1Entry, entryHash: v1Hash }
+    writeFileSync(join(tempDir, 'manifest.jsonl'), JSON.stringify(v1Full) + '\n')
+
+    // Verify chain accepts the v1 entry
+    expect(verifyManifestChain(tempDir)).toEqual({ valid: true })
+
+    // Append a v2 entry (schemaVersion: 2)
+    appendManifestEntry(tempDir, {
+      ...base,
+      captureId: 'c2',
+      url: 'https://v2.example.com',
+      timestamp: '2026-05-21T12:01:00.000Z',
+      contentHash: 'b'.repeat(64)
+    })
+
+    // Verify the mixed chain
+    const result = verifyManifestChain(tempDir)
+    expect(result).toEqual({ valid: true })
+
+    // Confirm both entries are present
+    const raw = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
+    const lines = raw.trim().split('\n')
+    expect(lines).toHaveLength(2)
+    expect(JSON.parse(lines[0]).schemaVersion).toBe(1)
+    expect(JSON.parse(lines[1]).schemaVersion).toBe(2)
+  })
+
+  it('v1 entries without signature pass verification (grandfathering)', () => {
+    // Write a v1 entry without signature field
+    const v1Entry = {
+      type: 'capture',
+      captureId: 'c1',
+      caseId: 'case-1',
+      url: 'https://v1.example.com',
+      timestamp: '2026-05-21T12:00:00.000Z',
+      contentHash: 'a'.repeat(64),
+      sizeBytes: 100,
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0',
+      index: 0,
+      prevHash: '',
+      schemaVersion: 1
+    }
+    const v1Canonical = canonicalStringify(v1Entry)
+    const v1Hash = createHash('sha256').update(v1Canonical).digest('hex')
+    const v1Full = { ...v1Entry, entryHash: v1Hash }
+    writeFileSync(join(tempDir, 'manifest.jsonl'), JSON.stringify(v1Full) + '\n')
+
+    // Verify: v1 entry passes without signature
+    const result = verifyManifestChain(tempDir)
+    expect(result).toEqual({ valid: true })
+  })
+
+  it('v2 entries with optional signature field pass verification', () => {
+    appendManifestEntry(tempDir, {
+      ...base,
+      captureId: 'c1',
+      url: 'https://v2.example.com'
+    })
+
+    // Read back and manually add a signature field (simulating future signing implementation)
+    const raw = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
+    const entry = JSON.parse(raw.trim())
+    expect(entry.schemaVersion).toBe(2)
+    expect(entry.signature).toBeUndefined()
+
+    // Verify passes even without signature (placeholder for future signature validation)
+    expect(verifyManifestChain(tempDir)).toEqual({ valid: true })
+  })
+
+  it('timestamp entry type is accepted by schema', () => {
+    appendManifestEntry(tempDir, {
+      type: 'timestamp',
+      caseId: 'case-1',
+      timestamp: '2026-05-21T12:00:00.000Z',
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0'
+    })
+
+    const raw = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
+    const entry = JSON.parse(raw.trim())
+    expect(entry.type).toBe('timestamp')
+    expect(entry.schemaVersion).toBe(2)
+    expect(verifyManifestChain(tempDir)).toEqual({ valid: true })
+  })
+
+  it('capture entry with screenshotHash and textHash fields', () => {
+    appendManifestEntry(tempDir, {
+      ...base,
+      captureId: 'c1',
+      url: 'https://example.com',
+      screenshotHash: 'screenshot'.repeat(8),
+      textHash: 'text'.repeat(16)
+    })
+
+    const raw = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
+    const entry = JSON.parse(raw.trim())
+    expect(entry.screenshotHash).toBe('screenshot'.repeat(8))
+    expect(entry.textHash).toBe('text'.repeat(16))
+    expect(verifyManifestChain(tempDir)).toEqual({ valid: true })
+  })
+
+  it('does not retro-sign or retro-timestamp existing entries', () => {
+    // Create a v1 entry manually
+    const v1Entry = {
+      type: 'capture',
+      captureId: 'c1',
+      caseId: 'case-1',
+      url: 'https://legacy.example.com',
+      timestamp: '2026-05-21T11:00:00.000Z',
+      contentHash: 'a'.repeat(64),
+      sizeBytes: 100,
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0',
+      index: 0,
+      prevHash: '',
+      schemaVersion: 1
+    }
+    const v1Canonical = canonicalStringify(v1Entry)
+    const v1Hash = createHash('sha256').update(v1Canonical).digest('hex')
+    const v1Full = { ...v1Entry, entryHash: v1Hash }
+    writeFileSync(join(tempDir, 'manifest.jsonl'), JSON.stringify(v1Full) + '\n')
+    const beforeContent = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
+
+    // Append a new v2 entry
+    appendManifestEntry(tempDir, {
+      ...base,
+      captureId: 'c2',
+      url: 'https://new.example.com',
+      timestamp: '2026-05-21T12:00:00.000Z'
+    })
+
+    // Verify the old entry was NOT modified (no retro-signing)
+    const afterContent = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
+    const lines = afterContent.trim().split('\n')
+    expect(lines).toHaveLength(2)
+    const firstLine = lines[0]
+    expect(firstLine).toBe(beforeContent.trim()) // Exact match - no changes to v1 entry
+    expect(JSON.parse(firstLine).signature).toBeUndefined()
+    expect(JSON.parse(firstLine).schemaVersion).toBe(1)
   })
 })

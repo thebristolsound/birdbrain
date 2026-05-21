@@ -11,7 +11,9 @@ export const MAX_SCREENSHOT_SIZE = 100 * 1024 * 1024
 export const MANIFEST_FILENAME = 'manifest.jsonl'
 
 // Bump whenever the manifest entry schema changes (e.g. new required fields).
-export const MANIFEST_SCHEMA_VERSION = 1
+// v1: Initial schema (capture, deletion entries with chain linkage)
+// v2: Added signature, timestamp entry type, screenshotHash, textHash fields
+export const MANIFEST_SCHEMA_VERSION = 2
 
 // Default system prompt sent with every capture analysis request. Users can
 // override this from Settings → AI; this constant is the fallback on first run

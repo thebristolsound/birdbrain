@@ -122,7 +122,11 @@ const ManifestCaptureEntrySchema = z
     index: z.number().int().nonnegative(),
     prevHash: z.string(),
     schemaVersion: z.number(),
-    entryHash: z.string()
+    entryHash: z.string(),
+    // v2 fields (optional for backward compatibility with v1 entries)
+    signature: z.string().optional(),
+    screenshotHash: z.string().optional(),
+    textHash: z.string().optional()
   })
   .strict()
 
@@ -140,13 +144,32 @@ const ManifestDeletionEntrySchema = z
     index: z.number().int().nonnegative(),
     prevHash: z.string(),
     schemaVersion: z.number(),
-    entryHash: z.string()
+    entryHash: z.string(),
+    // v2 fields (optional for backward compatibility with v1 entries)
+    signature: z.string().optional()
+  })
+  .strict()
+
+const ManifestTimestampEntrySchema = z
+  .object({
+    type: z.literal('timestamp'),
+    caseId: z.string(),
+    timestamp: z.string(),
+    operatorId: z.string(),
+    operatorName: z.string(),
+    toolVersion: z.string(),
+    index: z.number().int().nonnegative(),
+    prevHash: z.string(),
+    schemaVersion: z.number(),
+    entryHash: z.string(),
+    signature: z.string().optional()
   })
   .strict()
 
 export const ManifestEntrySchema = z.discriminatedUnion('type', [
   ManifestCaptureEntrySchema,
-  ManifestDeletionEntrySchema
+  ManifestDeletionEntrySchema,
+  ManifestTimestampEntrySchema
 ])
 
 export type ManifestEntry = z.infer<typeof ManifestEntrySchema>

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { DEFAULT_ANALYSIS_SYSTEM_PROMPT } from '@shared/constants'
+import { DEFAULT_ANALYSIS_SYSTEM_PROMPT, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 
 // Shared Zod schemas for Birdbrain's trust boundaries.
 //
@@ -101,11 +101,26 @@ export function formatSelectorCreateError(err: z.ZodError): string {
 
 // --- Manifest entries -----------------------------------------------------
 
-// Written as JSONL to each case directory. Every entry is either a capture
-// write-ahead record or a deletion record. The chain is hash-linked;
-// verifyManifestChain uses this schema to reject entries whose *shape* is
-// malformed before attempting hash recomputation, so forged but
+// Written as JSONL to each case directory. Every entry is a capture
+// write-ahead record, a deletion record, or a timestamp anchor. The chain is
+// hash-linked; verifyManifestChain uses this schema to reject entries whose
+// *shape* is malformed before attempting hash recomputation, so forged but
 // schema-invalid lines don't propagate as undefined fields downstream.
+//
+// Schema versioning (per-entry `schemaVersion`): v1 entries carry only the
+// chain fields + entryHash. v2 introduces an optional per-entry `signature`
+// (computed over entryHash, EXCLUDED from the canonical body — same
+// immutability rule as entryHash), optional `screenshotHash`/`textHash`, and
+// the `timestamp` entry type. The schema accepts `signature` on every entry
+// type so legacy v1 chains round-trip unchanged; signature *creation* and
+// *cryptographic verification* are out of scope here (see #117), as is
+// timestamp *creation* / RFC 3161 (see #120) and screenshot/text hashing
+// (see #118). Mixed-version chains are normal — never retro-sign legacy
+// entries.
+
+// Bounded integer: rejects negatives, floats, NaN, and unknown-future versions
+// (e.g. a v3 entry parsed by a v2 verifier). Auto-tightens on every version bump.
+const schemaVersionField = z.number().int().min(1).max(MANIFEST_SCHEMA_VERSION)
 
 const ManifestCaptureEntrySchema = z
   .object({
@@ -115,13 +130,16 @@ const ManifestCaptureEntrySchema = z
     url: z.string(),
     timestamp: z.string(),
     contentHash: z.string(),
+    screenshotHash: z.string().optional(),
+    textHash: z.string().optional(),
     sizeBytes: z.number(),
     operatorId: z.string(),
     operatorName: z.string(),
     toolVersion: z.string(),
     index: z.number().int().nonnegative(),
     prevHash: z.string(),
-    schemaVersion: z.number(),
+    schemaVersion: schemaVersionField,
+    signature: z.string().optional(),
     entryHash: z.string()
   })
   .strict()
@@ -139,14 +157,37 @@ const ManifestDeletionEntrySchema = z
     reason: z.string().optional(),
     index: z.number().int().nonnegative(),
     prevHash: z.string(),
-    schemaVersion: z.number(),
+    schemaVersion: schemaVersionField,
+    signature: z.string().optional(),
+    entryHash: z.string()
+  })
+  .strict()
+
+// Append-only timestamp anchor introduced in schema v2. References a capture
+// entry's contentHash; the trusted-time token (RFC 3161) is attached later by
+// #120 — this schema only lets the entry round-trip and keep the chain valid.
+const ManifestTimestampEntrySchema = z
+  .object({
+    type: z.literal('timestamp'),
+    caseId: z.string(),
+    captureContentHash: z.string(),
+    timestamp: z.string(),
+    tsaToken: z.string().optional(),
+    operatorId: z.string(),
+    operatorName: z.string(),
+    toolVersion: z.string(),
+    index: z.number().int().nonnegative(),
+    prevHash: z.string(),
+    schemaVersion: z.number().int().min(2).max(MANIFEST_SCHEMA_VERSION),
+    signature: z.string().optional(),
     entryHash: z.string()
   })
   .strict()
 
 export const ManifestEntrySchema = z.discriminatedUnion('type', [
   ManifestCaptureEntrySchema,
-  ManifestDeletionEntrySchema
+  ManifestDeletionEntrySchema,
+  ManifestTimestampEntrySchema
 ])
 
 export type ManifestEntry = z.infer<typeof ManifestEntrySchema>

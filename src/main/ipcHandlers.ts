@@ -327,9 +327,12 @@ export function registerIpcHandlers(deps: {
     openrouter.listModels(apiKey)
   )
   ipcMain.handle(IPC_CHANNELS.SETTINGS_GET_IDENTITY, () => {
+    const s = settings.getSettings()
     return {
       installationId: getInstallationId(),
-      operatorName: settings.getSettings().operatorName ?? ''
+      operatorName: s.operatorName ?? '',
+      operatorRole: s.operatorRole ?? '',
+      operatorOrganization: s.operatorOrganization ?? ''
     }
   })
   ipcMain.handle(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH, async () => {

@@ -42,6 +42,9 @@ function getToolVersion(): string {
 const manualDedup = new Map<string, number>()
 const MANUAL_DEDUPE_WINDOW_MS = 5_000
 
+const OPERATOR_NAME_REQUIRED_MSG =
+  'Operator name required. Configure your name in Birdbrain settings before capturing.'
+
 interface SessionState {
   activeCaseId: string | null
   sessionActive: boolean
@@ -262,6 +265,20 @@ function createApp(deps: CaptureServerDeps): Hono {
       const capturedUrl = url
       try {
         const captureSettings = getSettings()
+        const operatorName = captureSettings.operatorName?.trim() ?? ''
+
+        // Gate: operator name must be set before any capture is stored
+        if (!operatorName) {
+          emitCaptureEvent({
+            type: 'failed',
+            source,
+            url,
+            timestamp: new Date().toISOString(),
+            error: 'Operator name required'
+          })
+          return c.json({ error: OPERATOR_NAME_REQUIRED_MSG }, 400)
+        }
+
         const blocked = isUrlBlacklisted(url, captureSettings.ignoredUrlPatterns)
         if (blocked) {
           emitCaptureEvent({
@@ -318,7 +335,6 @@ function createApp(deps: CaptureServerDeps): Hono {
         }
 
         const operatorId = getInstallationId()
-        const operatorName = captureSettings.operatorName ?? ''
         const toolVersion = getToolVersion()
 
         const { capture, contentHash } = await captureLifecycle.ingest({
@@ -442,6 +458,17 @@ function createApp(deps: CaptureServerDeps): Hono {
     let testCaptureId: string | null = null
     let testCaseId: string | null = null
     try {
+      const operatorName = getSettings().operatorName?.trim() ?? ''
+      if (!operatorName) {
+        emitCaptureEvent({
+          type: 'failed',
+          source: 'manual',
+          url: 'birdbrain://pipeline-test',
+          timestamp: new Date().toISOString(),
+          error: 'Operator name required'
+        })
+        return c.json({ error: OPERATOR_NAME_REQUIRED_MSG }, 400)
+      }
       const cases = db.listCases()
       if (cases.length === 0) {
         return c.json({
@@ -475,7 +502,7 @@ function createApp(deps: CaptureServerDeps): Hono {
         httpStatus: 200,
         extensionVersion: '',
         operatorId: getInstallationId(),
-        operatorName: getSettings().operatorName ?? '',
+        operatorName,
         toolVersion: getToolVersion()
       })
       testCaptureId = capture.id

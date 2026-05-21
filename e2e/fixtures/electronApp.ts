@@ -1,5 +1,5 @@
 import { test as base, _electron, type ElectronApplication, type Page } from '@playwright/test'
-import { mkdtemp, rm, access } from 'fs/promises'
+import { mkdtemp, rm, access, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -11,6 +11,12 @@ type ElectronFixtures = {
 export const test = base.extend<ElectronFixtures>({
   electronApp: async ({}, use) => {
     const tempDir = await mkdtemp(join(tmpdir(), 'birdbrain-test-'))
+
+    // Seed operator name so the #116 capture gate does not reject test captures.
+    await writeFile(
+      join(tempDir, 'settings.json'),
+      JSON.stringify({ operatorName: 'E2E Test Operator' })
+    )
 
     const mainPath = join(__dirname, '../../out/main/index.js')
 

@@ -178,7 +178,7 @@ const ManifestTimestampEntrySchema = z
     toolVersion: z.string(),
     index: z.number().int().nonnegative(),
     prevHash: z.string(),
-    schemaVersion: schemaVersionField,
+    schemaVersion: z.number().int().min(2).max(MANIFEST_SCHEMA_VERSION),
     signature: z.string().optional(),
     entryHash: z.string()
   })

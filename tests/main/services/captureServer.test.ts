@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync } from 'fs'
+import { existsSync, mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import {
@@ -23,6 +23,7 @@ import {
 } from '@main/services/captureServer'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
+import { getManifestHead } from '@main/services/manifest'
 import { MAX_SCREENSHOT_SIZE } from '@shared/constants'
 
 let nextPort = 19846
@@ -591,14 +592,39 @@ describe('captureServer', () => {
     expect(allowedRes.status).toBe(200)
   })
 
-  it('GET /api/captures/test returns pipeline health', async () => {
+  it('GET /api/captures/test returns pipeline health when authenticated', async () => {
     createCase({ name: 'Pipeline Test Case' })
 
-    const res = await fetch(`${baseUrl}/api/captures/test`)
+    const res = await fetch(`${baseUrl}/api/captures/test`, {
+      headers: { 'X-Birdbrain-Token': TEST_TOKEN }
+    })
     const data = await res.json()
     expect(data.success).toBe(true)
     expect(data.durationMs).toBeGreaterThanOrEqual(0)
     expect(data.error).toBeUndefined()
+  })
+
+  it('GET /api/captures/test rejects unauthenticated requests and writes nothing', async () => {
+    const testCase = createCase({ name: 'Auth Test Case' })
+    const caseDir = join(tempDir, 'captures', testCase.id)
+    // Sanity: the case dir is created lazily by ingestMhtmlCapture, so it
+    // must not exist before any request to /api/captures/test.
+    expect(existsSync(caseDir)).toBe(false)
+
+    const missing = await fetch(`${baseUrl}/api/captures/test`)
+    expect(missing.status).toBe(401)
+
+    const wrong = await fetch(`${baseUrl}/api/captures/test`, {
+      headers: { 'X-Birdbrain-Token': 'not-the-right-token' }
+    })
+    expect(wrong.status).toBe(401)
+
+    // The handler's `finally` deletes the DB row but does NOT roll back the
+    // manifest append or remove the case dir, so listCaptures().length is
+    // unchanged even if the ingest ran. Assert truly persistent signals:
+    // the case dir was never created and no manifest entry was appended.
+    expect(existsSync(caseDir)).toBe(false)
+    expect(getManifestHead(caseDir).nextIndex).toBe(0)
   })
 
   it('blacklist glob pattern with ? wildcard matches single character', async () => {
@@ -1289,7 +1315,11 @@ describe('captureServer', () => {
   it('GET /api/captures/test returns 400 when operator name is blank', async () => {
     updateSettings({ operatorName: '' })
     createCase({ name: 'Pipeline Test Case' })
-    const res = await fetch(`${baseUrl}/api/captures/test`)
+    // Send the token so the request reaches the operator-name precondition;
+    // since #129 the route requires auth before any handler logic runs.
+    const res = await fetch(`${baseUrl}/api/captures/test`, {
+      headers: { 'X-Birdbrain-Token': TEST_TOKEN }
+    })
     expect(res.status).toBe(400)
     const data = await res.json()
     expect(data.error).toMatch(/operator name/i)

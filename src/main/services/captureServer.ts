@@ -110,6 +110,12 @@ function emitCaptureEvent(event: CaptureEvent): void {
   }
 }
 
+// The single source of truth for the pipeline self-test route. Used by both
+// the auth middleware (to gate it like a POST) and the route registration
+// below; keeping them in lockstep prevents a rename from silently re-opening
+// the auth bypass closed by #129.
+const CAPTURE_TEST_ROUTE = '/api/captures/test'
+
 function createApp(deps: CaptureServerDeps): Hono {
   const { selectorLifecycle, captureLifecycle, token } = deps
   const app = new Hono()
@@ -137,9 +143,13 @@ function createApp(deps: CaptureServerDeps): Hono {
     })
   )
 
-  // Require auth token on all POST (mutating) endpoints
+  // Require auth token on all state-changing endpoints.
+  // All POSTs mutate; the pipeline self-test GET also performs a DB insert +
+  // manifest append via ingestMhtmlCapture, so it must be gated even though
+  // it's a GET (issue #129).
   app.use('*', async (c, next) => {
-    if (c.req.method === 'POST') {
+    const isStateChangingGet = c.req.method === 'GET' && c.req.path === CAPTURE_TEST_ROUTE
+    if (c.req.method === 'POST' || isStateChangingGet) {
       const token = c.req.header('X-Birdbrain-Token')
       if (token !== requiredToken) {
         return c.json({ error: 'Unauthorized' }, 401)
@@ -453,7 +463,7 @@ function createApp(deps: CaptureServerDeps): Hono {
   )
 
   // Test pipeline endpoint
-  app.get('/api/captures/test', async (c) => {
+  app.get(CAPTURE_TEST_ROUTE, async (c) => {
     const startTime = Date.now()
     let testCaptureId: string | null = null
     let testCaseId: string | null = null

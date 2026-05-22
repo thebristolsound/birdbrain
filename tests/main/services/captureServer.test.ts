@@ -1315,7 +1315,11 @@ describe('captureServer', () => {
   it('GET /api/captures/test returns 400 when operator name is blank', async () => {
     updateSettings({ operatorName: '' })
     createCase({ name: 'Pipeline Test Case' })
-    const res = await fetch(`${baseUrl}/api/captures/test`)
+    // Send the token so the request reaches the operator-name precondition;
+    // since #129 the route requires auth before any handler logic runs.
+    const res = await fetch(`${baseUrl}/api/captures/test`, {
+      headers: { 'X-Birdbrain-Token': TEST_TOKEN }
+    })
     expect(res.status).toBe(400)
     const data = await res.json()
     expect(data.error).toMatch(/operator name/i)

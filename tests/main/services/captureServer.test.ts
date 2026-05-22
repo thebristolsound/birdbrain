@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync } from 'fs'
+import { existsSync, mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import {
@@ -23,6 +23,7 @@ import {
 } from '@main/services/captureServer'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
+import { getManifestHead } from '@main/services/manifest'
 import { MAX_SCREENSHOT_SIZE } from '@shared/constants'
 
 let nextPort = 19846
@@ -603,7 +604,10 @@ describe('captureServer', () => {
 
   it('GET /api/captures/test rejects unauthenticated requests and writes nothing', async () => {
     const testCase = createCase({ name: 'Auth Test Case' })
-    const beforeCount = listCaptures(testCase.id).length
+    const caseDir = join(tempDir, 'captures', testCase.id)
+    // Sanity: the case dir is created lazily by ingestMhtmlCapture, so it
+    // must not exist before any request to /api/captures/test.
+    expect(existsSync(caseDir)).toBe(false)
 
     const missing = await fetch(`${baseUrl}/api/captures/test`)
     expect(missing.status).toBe(401)
@@ -613,8 +617,12 @@ describe('captureServer', () => {
     })
     expect(wrong.status).toBe(401)
 
-    // No persistent side effects — the manifest append + DB insert must not run
-    expect(listCaptures(testCase.id).length).toBe(beforeCount)
+    // The handler's `finally` deletes the DB row but does NOT roll back the
+    // manifest append or remove the case dir, so listCaptures().length is
+    // unchanged even if the ingest ran. Assert truly persistent signals:
+    // the case dir was never created and no manifest entry was appended.
+    expect(existsSync(caseDir)).toBe(false)
+    expect(getManifestHead(caseDir).nextIndex).toBe(0)
   })
 
   it('blacklist glob pattern with ? wildcard matches single character', async () => {

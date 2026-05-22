@@ -37,6 +37,7 @@ import { getExtensionPath, extensionPathExists } from '@main/services/extensionP
 import { buildCsv } from '@main/services/csvEscape'
 import { getInstallationId } from '@main/services/installationId'
 import { CAPTURE_SERVER_PORT, getSessionState } from '@main/services/captureServer'
+import { getServerToken } from '@main/services/serverToken'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { handle, IpcFailure } from '@main/ipcWrap'
@@ -94,7 +95,10 @@ export function registerIpcHandlers(deps: {
   // Capture pipeline test
   ipcMain.handle(IPC_CHANNELS.CAPTURES_TEST_PIPELINE, async () => {
     try {
-      const res = await fetch(`http://127.0.0.1:${CAPTURE_SERVER_PORT}/api/captures/test`)
+      const res = await fetch(`http://127.0.0.1:${CAPTURE_SERVER_PORT}/api/captures/test`, {
+        method: 'POST',
+        headers: { 'X-Birdbrain-Token': getServerToken() }
+      })
       return res.json()
     } catch (err) {
       return { success: false, durationMs: 0, error: String(err) }

@@ -437,7 +437,7 @@ function createApp(deps: CaptureServerDeps): Hono {
   )
 
   // Test pipeline endpoint
-  app.get('/api/captures/test', async (c) => {
+  app.post('/api/captures/test', async (c) => {
     const startTime = Date.now()
     let testCaptureId: string | null = null
     let testCaseId: string | null = null

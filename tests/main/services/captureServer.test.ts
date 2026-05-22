@@ -589,14 +589,21 @@ describe('captureServer', () => {
     expect(allowedRes.status).toBe(200)
   })
 
-  it('GET /api/captures/test returns pipeline health', async () => {
+  it('POST /api/captures/test returns pipeline health', async () => {
     createCase({ name: 'Pipeline Test Case' })
 
-    const res = await fetch(`${baseUrl}/api/captures/test`)
+    const res = await serverPost('/api/captures/test')
     const data = await res.json()
     expect(data.success).toBe(true)
     expect(data.durationMs).toBeGreaterThanOrEqual(0)
     expect(data.error).toBeUndefined()
+  })
+
+  it('POST /api/captures/test without token returns 401', async () => {
+    createCase({ name: 'Pipeline Test Case' })
+
+    const res = await fetch(`${baseUrl}/api/captures/test`, { method: 'POST' })
+    expect(res.status).toBe(401)
   })
 
   it('blacklist glob pattern with ? wildcard matches single character', async () => {

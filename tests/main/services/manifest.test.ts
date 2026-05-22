@@ -8,6 +8,8 @@ import { verifyManifestChain } from '@main/services/manifest'
 import { withDeletionEntry, ManifestRollback } from '@main/services/manifest'
 import { createHash } from 'crypto'
 import { canonicalStringify } from '@main/services/canonicalJson'
+import { MANIFEST_SCHEMA_VERSION } from '@shared/constants'
+import { ManifestEntrySchema } from '@shared/schemas'
 import { statSync } from 'fs'
 import { appendFileSync } from 'fs'
 import { initDatabase, closeDatabase, createCase, insertCapture } from '@main/services/database'
@@ -111,7 +113,7 @@ describe('manifest append', () => {
       captureId: 'cap-1',
       index: 0,
       prevHash: '',
-      schemaVersion: 2
+      schemaVersion: MANIFEST_SCHEMA_VERSION
     }
     const expected = createHash('sha256').update(canonicalStringify(body)).digest('hex')
     const result = appendManifestEntry(tempDir, { ...baseEntry, captureId: 'cap-1' })
@@ -155,7 +157,7 @@ describe('manifest verifyManifestChain', () => {
       timestamp: '2026-04-05T12:01:00.000Z',
       contentHash: 'b'.repeat(64)
     })
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true })
+    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
   })
 
   it('detects tampering by mutating an entry', () => {
@@ -253,7 +255,7 @@ describe('manifest x annotations forensic invariants', () => {
 
     const after = readFileSync(manifestPath, 'utf-8')
     expect(after).toBe(before)
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true })
+    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
   })
 })
 
@@ -287,7 +289,7 @@ describe('withDeletionEntry', () => {
     const entry = JSON.parse(lines[0])
     expect(entry.type).toBe('deletion')
     expect(entry.captureId).toBe('cap-1')
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true })
+    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
   })
 
   it('rolls the manifest back when fn throws ManifestRollback', async () => {
@@ -303,7 +305,7 @@ describe('withDeletionEntry', () => {
 
     const after = statSync(join(tempDir, 'manifest.jsonl')).size
     expect(after).toBe(before)
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true })
+    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
   })
 
   it('rolls the manifest back when fn throws an arbitrary error and rethrows', async () => {
@@ -315,7 +317,7 @@ describe('withDeletionEntry', () => {
 
     const raw = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
     expect(raw).toBe('')
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true })
+    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
   })
 
   it('rolls the manifest back when an async fn rejects', async () => {
@@ -328,7 +330,7 @@ describe('withDeletionEntry', () => {
 
     const raw = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
     expect(raw).toBe('')
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true })
+    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
   })
 
   it('commits the deletion entry when an async fn resolves', async () => {
@@ -342,7 +344,7 @@ describe('withDeletionEntry', () => {
     const lines = raw.trim().split('\n')
     expect(lines).toHaveLength(1)
     expect(JSON.parse(lines[0]).captureId).toBe('cap-1')
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true })
+    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
   })
 
   it('rollback preserves a prior committed entry untouched', async () => {
@@ -362,7 +364,7 @@ describe('withDeletionEntry', () => {
     const lines = after.trim().split('\n')
     expect(lines).toHaveLength(1)
     expect(JSON.parse(lines[0]).captureId).toBe('cap-keep')
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true })
+    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
   })
 
   it('next append after rollback links to the prior committed entry, not the rolled-back one', async () => {
@@ -386,7 +388,7 @@ describe('withDeletionEntry', () => {
 
     // A subsequent successful append should chain from the kept entry
     await withDeletionEntry(tempDir, { ...baseCtx, captureId: 'cap-next' }, () => undefined)
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true })
+    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
 
     const lines = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim().split('\n')
     expect(lines).toHaveLength(2)
@@ -395,11 +397,11 @@ describe('withDeletionEntry', () => {
   })
 })
 
-describe('manifest schema v2 and grandfathering', () => {
+describe('manifest schema v2 + grandfathering', () => {
   let tempDir: string
 
   beforeEach(() => {
-    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-v2-'))
+    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-schema-v2-'))
     initManifest(tempDir)
   })
 
@@ -407,186 +409,206 @@ describe('manifest schema v2 and grandfathering', () => {
     rmSync(tempDir, { recursive: true, force: true })
   })
 
-  const base = {
-    type: 'capture' as const,
-    caseId: 'case-1',
-    timestamp: '2026-05-21T12:00:00.000Z',
-    contentHash: 'a'.repeat(64),
-    sizeBytes: 1,
-    operatorId: 'op',
-    operatorName: '',
-    toolVersion: '0.1.0'
+  // Hand-builds a chain-linked entry at the current head, computing entryHash
+  // over the canonical body exactly the way appendManifestEntry would, and
+  // appends it. Mirrors a manifest produced by an older app version.
+  function appendRawEntry(extra: Record<string, unknown>): string {
+    const { prevHash, nextIndex } = getManifestHead(tempDir)
+    const body = { ...extra, index: nextIndex, prevHash }
+    const entryHash = createHash('sha256').update(canonicalStringify(body)).digest('hex')
+    appendFileSync(join(tempDir, 'manifest.jsonl'), JSON.stringify({ ...body, entryHash }) + '\n')
+    return entryHash
   }
 
-  it('v2 entries are written with schemaVersion=2', () => {
-    const result = appendManifestEntry(tempDir, { ...base, captureId: 'c1', url: 'https://a' })
-    const raw = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
-    const entry = JSON.parse(raw.trim())
-    expect(entry.schemaVersion).toBe(2)
-    expect(entry.entryHash).toBe(result.entryHash)
+  it('bumps MANIFEST_SCHEMA_VERSION to 2', () => {
+    expect(MANIFEST_SCHEMA_VERSION).toBe(2)
   })
 
-  it('verifies a mixed v1/v2 chain successfully', () => {
-    // Manually write a v1 entry (schemaVersion: 1, no signature)
-    const v1Entry = {
+  it('verifies a legacy v1 entry on chain + entryHash only (no signature)', () => {
+    appendRawEntry({
       type: 'capture',
-      captureId: 'c1',
+      captureId: 'v1-cap',
       caseId: 'case-1',
-      url: 'https://v1.example.com',
-      timestamp: '2026-05-21T12:00:00.000Z',
+      url: 'https://legacy',
+      timestamp: '2026-01-01T00:00:00.000Z',
       contentHash: 'a'.repeat(64),
-      sizeBytes: 100,
+      sizeBytes: 10,
       operatorId: 'op',
       operatorName: '',
-      toolVersion: '0.1.0',
-      index: 0,
-      prevHash: '',
+      toolVersion: '0.0.9',
       schemaVersion: 1
-    }
-    const v1Canonical = canonicalStringify(v1Entry)
-    const v1Hash = createHash('sha256').update(v1Canonical).digest('hex')
-    const v1Full = { ...v1Entry, entryHash: v1Hash }
-    writeFileSync(join(tempDir, 'manifest.jsonl'), JSON.stringify(v1Full) + '\n')
-
-    // Verify chain accepts the v1 entry
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true })
-
-    // Append a v2 entry (schemaVersion: 2)
-    appendManifestEntry(tempDir, {
-      ...base,
-      captureId: 'c2',
-      url: 'https://v2.example.com',
-      timestamp: '2026-05-21T12:01:00.000Z',
-      contentHash: 'b'.repeat(64)
     })
-
-    // Verify the mixed chain
     const result = verifyManifestChain(tempDir)
-    expect(result).toEqual({ valid: true })
-
-    // Confirm both entries are present
-    const raw = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
-    const lines = raw.trim().split('\n')
-    expect(lines).toHaveLength(2)
-    expect(JSON.parse(lines[0]).schemaVersion).toBe(1)
-    expect(JSON.parse(lines[1]).schemaVersion).toBe(2)
+    expect(result.valid).toBe(true)
+    expect(result.trustedTime).toBe('none')
   })
 
-  it('v1 entries without signature pass verification (grandfathering)', () => {
-    // Write a v1 entry without signature field
-    const v1Entry = {
+  it('ChainVerifyResult defaults trustedTime to none', () => {
+    expect(verifyManifestChain(tempDir).trustedTime).toBe('none')
+  })
+
+  it('passes a mixed v1/v2 chain through verifyManifestChain', () => {
+    // Legacy v1 entry written by an older app (no signature)
+    appendRawEntry({
       type: 'capture',
-      captureId: 'c1',
+      captureId: 'v1-cap',
       caseId: 'case-1',
-      url: 'https://v1.example.com',
-      timestamp: '2026-05-21T12:00:00.000Z',
+      url: 'https://legacy',
+      timestamp: '2026-01-01T00:00:00.000Z',
       contentHash: 'a'.repeat(64),
-      sizeBytes: 100,
+      sizeBytes: 10,
       operatorId: 'op',
       operatorName: '',
-      toolVersion: '0.1.0',
-      index: 0,
-      prevHash: '',
+      toolVersion: '0.0.9',
       schemaVersion: 1
-    }
-    const v1Canonical = canonicalStringify(v1Entry)
-    const v1Hash = createHash('sha256').update(v1Canonical).digest('hex')
-    const v1Full = { ...v1Entry, entryHash: v1Hash }
-    writeFileSync(join(tempDir, 'manifest.jsonl'), JSON.stringify(v1Full) + '\n')
-
-    // Verify: v1 entry passes without signature
-    const result = verifyManifestChain(tempDir)
-    expect(result).toEqual({ valid: true })
-  })
-
-  it('v2 entries with optional signature field pass verification', () => {
-    appendManifestEntry(tempDir, {
-      ...base,
-      captureId: 'c1',
-      url: 'https://v2.example.com'
     })
-
-    // Read back and manually add a signature field (simulating future signing implementation)
-    const raw = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
-    const entry = JSON.parse(raw.trim())
-    expect(entry.schemaVersion).toBe(2)
-    expect(entry.signature).toBeUndefined()
-
-    // Verify passes even without signature (placeholder for future signature validation)
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true })
-  })
-
-  it('timestamp entry type is accepted by schema', () => {
+    // Current app appends a v2 entry on top
     appendManifestEntry(tempDir, {
-      type: 'timestamp',
+      type: 'capture',
+      captureId: 'v2-cap',
       caseId: 'case-1',
-      timestamp: '2026-05-21T12:00:00.000Z',
+      url: 'https://current',
+      timestamp: '2026-05-01T00:00:00.000Z',
+      contentHash: 'b'.repeat(64),
+      sizeBytes: 20,
       operatorId: 'op',
       operatorName: '',
       toolVersion: '0.1.0'
     })
-
-    const raw = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
-    const entry = JSON.parse(raw.trim())
-    expect(entry.type).toBe('timestamp')
-    expect(entry.schemaVersion).toBe(2)
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true })
+    const lines = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim().split('\n')
+    expect(JSON.parse(lines[0]).schemaVersion).toBe(1)
+    expect(JSON.parse(lines[1]).schemaVersion).toBe(2)
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
   })
 
-  it('capture entry with screenshotHash and textHash fields', () => {
+  it('writes per-entry schemaVersion equal to MANIFEST_SCHEMA_VERSION on append', () => {
     appendManifestEntry(tempDir, {
-      ...base,
-      captureId: 'c1',
-      url: 'https://example.com',
-      screenshotHash: 'screenshot'.repeat(8),
-      textHash: 'text'.repeat(16)
+      type: 'capture',
+      captureId: 'cap-1',
+      caseId: 'case-1',
+      url: 'https://a',
+      timestamp: '2026-05-01T00:00:00.000Z',
+      contentHash: 'a'.repeat(64),
+      sizeBytes: 1,
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0'
     })
-
-    const raw = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
-    const entry = JSON.parse(raw.trim())
-    expect(entry.screenshotHash).toBe('screenshot'.repeat(8))
-    expect(entry.textHash).toBe('text'.repeat(16))
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true })
+    const entry = JSON.parse(readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim())
+    expect(entry.schemaVersion).toBe(MANIFEST_SCHEMA_VERSION)
   })
 
-  it('does not retro-sign or retro-timestamp existing entries', () => {
-    // Create a v1 entry manually
-    const v1Entry = {
+  it('excludes signature from entryHash so a v2 entry verifies with a signature present', () => {
+    // Append a normal v2 entry, then inject a signature field into the line.
+    // The signature must NOT participate in entryHash (same rule as entryHash
+    // itself), so the chain must still verify after injection.
+    appendManifestEntry(tempDir, {
       type: 'capture',
-      captureId: 'c1',
+      captureId: 'cap-sig',
       caseId: 'case-1',
-      url: 'https://legacy.example.com',
-      timestamp: '2026-05-21T11:00:00.000Z',
-      contentHash: 'a'.repeat(64),
-      sizeBytes: 100,
+      url: 'https://signed',
+      timestamp: '2026-05-01T00:00:00.000Z',
+      contentHash: 'c'.repeat(64),
+      sizeBytes: 5,
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0'
+    })
+    const path = join(tempDir, 'manifest.jsonl')
+    const entry = JSON.parse(readFileSync(path, 'utf-8').trim())
+    entry.signature = 'ed25519:deadbeef'
+    writeFileSync(path, JSON.stringify(entry) + '\n')
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
+  })
+
+  it('accepts and round-trips a timestamp entry through the schema', () => {
+    const tsEntry = {
+      type: 'timestamp',
+      caseId: 'case-1',
+      captureContentHash: 'a'.repeat(64),
+      timestamp: '2026-05-01T00:00:00.000Z',
       operatorId: 'op',
       operatorName: '',
       toolVersion: '0.1.0',
       index: 0,
       prevHash: '',
-      schemaVersion: 1
+      schemaVersion: 2,
+      entryHash: 'f'.repeat(64)
     }
-    const v1Canonical = canonicalStringify(v1Entry)
-    const v1Hash = createHash('sha256').update(v1Canonical).digest('hex')
-    const v1Full = { ...v1Entry, entryHash: v1Hash }
-    writeFileSync(join(tempDir, 'manifest.jsonl'), JSON.stringify(v1Full) + '\n')
-    const beforeContent = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
+    const parsed = ManifestEntrySchema.safeParse(tsEntry)
+    expect(parsed.success).toBe(true)
+  })
 
-    // Append a new v2 entry
+  it('passes a chain that includes an appended timestamp entry', () => {
+    const captureHash = createHash('sha256').update('content').digest('hex')
     appendManifestEntry(tempDir, {
-      ...base,
-      captureId: 'c2',
-      url: 'https://new.example.com',
-      timestamp: '2026-05-21T12:00:00.000Z'
+      type: 'capture',
+      captureId: 'cap-1',
+      caseId: 'case-1',
+      url: 'https://a',
+      timestamp: '2026-05-01T00:00:00.000Z',
+      contentHash: captureHash,
+      sizeBytes: 1,
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0'
     })
+    appendRawEntry({
+      type: 'timestamp',
+      caseId: 'case-1',
+      captureContentHash: captureHash,
+      timestamp: '2026-05-01T00:01:00.000Z',
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0',
+      schemaVersion: 2
+    })
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
+  })
 
-    // Verify the old entry was NOT modified (no retro-signing)
-    const afterContent = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
-    const lines = afterContent.trim().split('\n')
-    expect(lines).toHaveLength(2)
-    const firstLine = lines[0]
-    expect(firstLine).toBe(beforeContent.trim()) // Exact match - no changes to v1 entry
-    expect(JSON.parse(firstLine).signature).toBeUndefined()
-    expect(JSON.parse(firstLine).schemaVersion).toBe(1)
+  it('does not retro-modify existing v1 entries when verifying', () => {
+    appendRawEntry({
+      type: 'capture',
+      captureId: 'v1-cap',
+      caseId: 'case-1',
+      url: 'https://legacy',
+      timestamp: '2026-01-01T00:00:00.000Z',
+      contentHash: 'a'.repeat(64),
+      sizeBytes: 10,
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.0.9',
+      schemaVersion: 1
+    })
+    const path = join(tempDir, 'manifest.jsonl')
+    const before = readFileSync(path, 'utf-8')
+    const sizeBefore = statSync(path).size
+    verifyManifestChain(tempDir)
+    verifyManifestChain(tempDir)
+    expect(readFileSync(path, 'utf-8')).toBe(before)
+    expect(statSync(path).size).toBe(sizeBefore)
+  })
+
+  it('rejects out-of-range schemaVersion values (0, 99, 1.5)', () => {
+    // schemaVersionField is bounded: int, min 1, max MANIFEST_SCHEMA_VERSION.
+    // Negatives, floats, NaN, and unknown-future versions must fail-closed.
+    const base = {
+      type: 'capture' as const,
+      captureId: 'cap',
+      caseId: 'case-1',
+      url: 'https://a',
+      timestamp: '2026-01-01T00:00:00.000Z',
+      contentHash: 'a'.repeat(64),
+      sizeBytes: 1,
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0',
+      index: 0,
+      prevHash: '',
+      entryHash: 'e'.repeat(64)
+    }
+    expect(ManifestEntrySchema.safeParse({ ...base, schemaVersion: 0 }).success).toBe(false)
+    expect(ManifestEntrySchema.safeParse({ ...base, schemaVersion: 99 }).success).toBe(false)
+    expect(ManifestEntrySchema.safeParse({ ...base, schemaVersion: 1.5 }).success).toBe(false)
   })
 })

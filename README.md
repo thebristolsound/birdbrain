@@ -6,7 +6,7 @@
 
 **Save the web. Prove you saved it.**
 
-An open-source desktop tool for OSINT investigators. Every capture is signed, timestamped, and linked to the one before it — so months later, you (or anyone you hand the case to) can prove nothing was quietly edited.
+An open-source desktop tool for OSINT investigators. Every capture is fingerprinted, timestamped, and linked to the one before it — so months later, you (or anyone you hand the case to) can prove nothing was quietly edited.
 
 <p align="center">
   <a href="https://github.com/thebristolsound/birdbrain/releases/latest"><img src="https://img.shields.io/github/v/release/thebristolsound/birdbrain?style=for-the-badge" alt="Latest release" /></a>
@@ -50,7 +50,7 @@ Every capture is auto-mined for indicators: IoCs (IPs, domains, hashes, CVEs), t
 
 ### Prove + Export
 
-Every Capture is signed (SHA-256), timestamped, and chained to the one before it in a per-Case manifest. Verify the chain in-app. Export the Case as a self-contained HTML report with the manifest included — readable in any browser, verifiable without Birdbrain installed.
+Every Capture is fingerprinted (SHA-256), timestamped, and chained to the one before it in a per-Case manifest. Verify the chain in-app. Export the Case as a self-contained HTML report with the manifest included — readable in any browser, verifiable without Birdbrain installed.
 
 ---
 
@@ -65,7 +65,7 @@ Every Capture is signed (SHA-256), timestamped, and chained to the one before it
    </p>
 
 4. **Pin the Birdbrain extension** to your toolbar so it's one click away.
-5. **Open Birdbrain.** The dashboard will walk you through creating your first Case and capturing your first page.
+5. **Return to Birdbrain.** The dashboard will walk you through creating your first Case and capturing your first page.
 
 Works with Chrome, Edge, and Brave. Full step-by-step (including Edge and Brave quirks) lives in [docs/install-extension.md](docs/install-extension.md).
 

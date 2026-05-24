@@ -20,6 +20,8 @@ import {
 import { createSelectorLifecycle } from '../../../src/main/services/selectorLifecycle'
 import { verifyCaptures, generateReport } from '../../../src/main/services/export'
 import { saveAnnotations } from '../../../src/main/services/annotations'
+import { initSettings, updateSettings } from '@main/services/settings'
+import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import type { ExportOptions } from '../../../src/shared/types'
 
 async function ingest(
@@ -56,6 +58,11 @@ describe('export', () => {
     tempDir = mkdtempSync(join(tmpdir(), 'bb-export-'))
     initStorage(join(tempDir, 'captures'))
     initDatabase(':memory:')
+    resetInstallationId()
+    initInstallationId(tempDir)
+    initSettings(tempDir)
+    // Default: operator name set so existing tests pass
+    updateSettings({ operatorName: 'Test Operator', operatorRole: '', operatorOrganization: '' })
 
     const c = createCase({ name: 'Export Test Case', description: 'Test case for export' })
     caseId = c.id
@@ -238,5 +245,70 @@ describe('export', () => {
     }
     expect(pixelAt(40, 40)).toEqual([0, 0, 0])
     expect(pixelAt(80, 80)).toEqual([255, 255, 255])
+  })
+
+  // --- Operator identity gating and report rendering ---
+
+  it('generateReport throws when operator name is blank', async () => {
+    updateSettings({ operatorName: '' })
+    await ingest(caseId, '<html>test</html>')
+    const outputPath = join(tempDir, 'blocked.html')
+    await expect(
+      generateReport(
+        caseId,
+        {
+          format: 'html',
+          include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
+          investigatorName: 'Det. Smith',
+          outputPath
+        },
+        captureLifecycle
+      )
+    ).rejects.toThrow(/operator name/i)
+  })
+
+  it('generateReport throws when operator name is whitespace-only', async () => {
+    updateSettings({ operatorName: '   ' })
+    await ingest(caseId, '<html>test</html>')
+    const outputPath = join(tempDir, 'blocked-ws.html')
+    await expect(
+      generateReport(
+        caseId,
+        {
+          format: 'html',
+          include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
+          investigatorName: 'Det. Smith',
+          outputPath
+        },
+        captureLifecycle
+      )
+    ).rejects.toThrow(/operator name/i)
+  })
+
+  it('generated report includes installationId and operator identity', async () => {
+    updateSettings({
+      operatorName: 'Det. Smith',
+      operatorRole: 'Detective',
+      operatorOrganization: 'Metro PD'
+    })
+    await ingest(caseId, '<html>test</html>')
+    const outputPath = join(tempDir, 'identity.html')
+    await generateReport(
+      caseId,
+      {
+        format: 'html',
+        include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
+        investigatorName: 'Det. Smith',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const content = readFileSync(outputPath, 'utf-8')
+    expect(content).toContain('Det. Smith')
+    expect(content).toContain('Detective')
+    expect(content).toContain('Metro PD')
+    // installationId is a UUID — verify its label is present
+    expect(content).toContain('Installation ID')
   })
 })

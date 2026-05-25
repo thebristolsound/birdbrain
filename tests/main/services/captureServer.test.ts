@@ -1324,4 +1324,49 @@ describe('captureServer', () => {
     const data = await res.json()
     expect(data.error).toMatch(/operator name/i)
   })
+
+  // Regression locks for the /api/status token-exposure check (captureServer.ts
+  // ~line 190). The check uses prefix matching like `origin.startsWith('http://localhost:')`
+  // — that's safe today because a literal `:` follows the host, but the check
+  // would be trivially broken if anyone dropped the colon or widened the prefix.
+  // These tests pin the contract: only the explicit allowed shapes (with port)
+  // get the token; close-but-spoofed origins do not.
+  describe('/api/status token exposure — spoofed and edge-case origins', () => {
+    const spoofs = [
+      'http://localhost.attacker.com',
+      'http://127.0.0.1.attacker.com',
+      'http://localhost', // no port
+      'http://127.0.0.1', // no port
+      'https://localhost:19845', // wrong scheme
+      'https://127.0.0.1:19845',
+      'null',
+      'data:text/html,evil',
+      'chrome-extension:', // missing slashes
+      'CHROME-EXTENSION://abcdef1234567890' // case mismatch (startsWith is case-sensitive)
+    ]
+
+    for (const spoof of spoofs) {
+      it(`does not expose serverToken to Origin: ${spoof}`, async () => {
+        const res = await fetch(`${baseUrl}/api/status`, {
+          headers: { Origin: spoof }
+        })
+        const data = await res.json()
+        expect(data.serverToken).toBeUndefined()
+      })
+    }
+
+    it('exposes serverToken when no Origin header is present (same-origin / curl)', async () => {
+      const res = await fetch(`${baseUrl}/api/status`)
+      const data = await res.json()
+      expect(data.serverToken).toBe(TEST_TOKEN)
+    })
+
+    it('exposes serverToken to file:// origins', async () => {
+      const res = await fetch(`${baseUrl}/api/status`, {
+        headers: { Origin: 'file:///Users/foo/page.html' }
+      })
+      const data = await res.json()
+      expect(data.serverToken).toBe(TEST_TOKEN)
+    })
+  })
 })

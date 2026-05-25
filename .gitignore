@@ -46,6 +46,9 @@ build/config.gypi
 test-results/
 playwright-report/
 
+# Coverage
+coverage/
+
 # Worktrees
 *.worktree*
 

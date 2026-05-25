@@ -113,10 +113,69 @@ export function rollbackManifestEntry(caseDir: string, anchorBytes: number): voi
   truncateSync(path, anchorBytes)
 }
 
+// Thrown by the callback passed to `withDeletionEntry` to signal "the side
+// effect didn't happen, please roll the manifest back". The wrapper catches
+// it, rolls back, and rethrows it as a control-flow signal; the outer call
+// site checks `err instanceof ManifestRollback` to translate that into
+// a clean failure result instead of treating it as an unexpected error.
+export class ManifestRollback extends Error {
+  constructor(message = 'manifest rollback requested') {
+    super(message)
+    this.name = 'ManifestRollback'
+  }
+}
+
+export interface DeletionEntryContext {
+  captureId: string
+  caseId: string
+  contentHash: string
+  operatorId: string
+  operatorName: string
+  toolVersion: string
+  reason?: string
+}
+
+// Wraps a deletion side-effect in the manifest's write-ahead/rollback invariant.
+// Appends a deletion entry, runs `fn`, and either commits (fn succeeded) or
+// rolls the manifest back to its prior anchor (fn threw or its returned Promise
+// rejected). Ensures the manifest never records a deletion that didn't actually
+// happen. Async because `fn` may return a Promise — sync callbacks still work.
+export async function withDeletionEntry<T>(
+  caseDir: string,
+  ctx: DeletionEntryContext,
+  fn: () => T | Promise<T>
+): Promise<T> {
+  initManifest(caseDir)
+  const result = appendManifestEntry(caseDir, {
+    type: 'deletion',
+    captureId: ctx.captureId,
+    caseId: ctx.caseId,
+    timestamp: new Date().toISOString(),
+    contentHash: ctx.contentHash,
+    operatorId: ctx.operatorId,
+    operatorName: ctx.operatorName,
+    toolVersion: ctx.toolVersion,
+    ...(ctx.reason !== undefined ? { reason: ctx.reason } : {})
+  })
+  try {
+    return await fn()
+  } catch (err) {
+    rollbackManifestEntry(caseDir, result.anchorBytes)
+    throw err
+  }
+}
+
+// Orthogonal trusted-time axis. Independent of `valid` (which is pure chain +
+// entryHash integrity). v1 / unsigned-untimestamped entries are integrity-
+// verified but carry no trusted time, so the chain presents as 'none' — that
+// is NOT a verification failure. 'rfc3161'/'pending' resolution is #120.
+export type TrustedTime = 'rfc3161' | 'pending' | 'none'
+
 export interface ChainVerifyResult {
   valid: boolean
   brokenAt?: number
   reason?: string
+  trustedTime: TrustedTime
 }
 
 // Re-reads the manifest, recomputes each entryHash, and checks linkage.
@@ -124,7 +183,7 @@ export interface ChainVerifyResult {
 export function verifyManifestChain(caseDir: string): ChainVerifyResult {
   const path = join(caseDir, MANIFEST_FILENAME)
   if (!existsSync(path) || statSync(path).size === 0) {
-    return { valid: true }
+    return { valid: true, trustedTime: 'none' }
   }
   const raw = readFileSync(path, 'utf-8')
   const lines = raw.split('\n').filter((l) => l.trim().length > 0)
@@ -136,25 +195,39 @@ export function verifyManifestChain(caseDir: string): ChainVerifyResult {
     try {
       parsed = JSON.parse(lines[i])
     } catch {
-      return { valid: false, brokenAt: i, reason: 'Invalid JSON' }
+      return { valid: false, brokenAt: i, reason: 'Invalid JSON', trustedTime: 'none' }
     }
     const schemaResult = ManifestEntrySchema.safeParse(parsed)
     if (!schemaResult.success) {
-      return { valid: false, brokenAt: i, reason: 'Invalid entry shape' }
+      return { valid: false, brokenAt: i, reason: 'Invalid entry shape', trustedTime: 'none' }
     }
-    const { entryHash, ...body } = schemaResult.data
+    // `signature` (v2+) is computed over `entryHash` and, like `entryHash`
+    // itself, is EXCLUDED from the canonical body. Destructure both out before
+    // recomputing so a present-or-absent signature never affects the hash —
+    // this is the immutability rule, not signature verification. v1 entries
+    // have no signature, so excluding `signature` preserves their original
+    // canonical body as well. Cryptographic signature checking is #117.
+    //
+    // LOAD-BEARING: hash recomputation must continue to exclude both
+    // `entryHash` and `signature`. That exclusion is what keeps legacy v1
+    // hashes stable and ensures adding a v2 signature does not change the
+    // canonical bytes being hashed.
+    const { entryHash, signature: _signature, ...body } = schemaResult.data
+    void _signature
     if (body.index !== expectedIndex) {
-      return { valid: false, brokenAt: i, reason: 'Index mismatch' }
+      return { valid: false, brokenAt: i, reason: 'Index mismatch', trustedTime: 'none' }
     }
     if (body.prevHash !== expectedPrev) {
-      return { valid: false, brokenAt: i, reason: 'Chain link broken' }
+      return { valid: false, brokenAt: i, reason: 'Chain link broken', trustedTime: 'none' }
     }
     const recomputed = createHash('sha256').update(canonicalStringify(body)).digest('hex')
     if (recomputed !== entryHash) {
-      return { valid: false, brokenAt: i, reason: 'Entry hash mismatch' }
+      return { valid: false, brokenAt: i, reason: 'Entry hash mismatch', trustedTime: 'none' }
     }
     expectedPrev = entryHash
     expectedIndex++
   }
-  return { valid: true }
+  // Integrity-verified. Trusted-time resolution (rfc3161/pending) is #120; all
+  // entries in this slice are grandfathered as 'none' — not a failure.
+  return { valid: true, trustedTime: 'none' }
 }

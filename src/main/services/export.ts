@@ -1,9 +1,11 @@
 import { writeFileSync } from 'fs'
 import * as db from '@main/services/database'
 import { readCaptureFile } from '@main/services/storage'
-import { verifyCapture } from '@main/services/mhtmlIngest'
+import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import { getAnnotations } from '@main/services/annotations'
 import { burnAnnotations } from '@main/services/burnAnnotations'
+import { getSettings } from '@main/services/settings'
+import { getInstallationId } from '@main/services/installationId'
 import type { ExportOptions, HashVerification, Capture, AnnotationPin } from '@shared/types'
 
 interface ExportData {
@@ -16,16 +18,23 @@ interface ExportData {
   verifications: HashVerification[]
   screenshots: Map<string, string> // captureId -> base64
   pins: Map<string, AnnotationPin[]>
+  installationId: string
+  operatorName: string
+  operatorRole: string
+  operatorOrganization: string
 }
 
-export async function verifyCaptures(caseId: string): Promise<HashVerification[]> {
+export async function verifyCaptures(
+  caseId: string,
+  captureLifecycle: CaptureLifecycle
+): Promise<HashVerification[]> {
   const captures = db.listCaptures(caseId)
   const results: HashVerification[] = []
   for (const capture of captures) {
     // Delegate to the MHTML-aware pipeline so export-time verification matches the
     // badge's manual flow: streams bytes, checks the manifest chain, and persists
     // the outcome back onto the capture row.
-    results.push(await verifyCapture(capture.id))
+    results.push(await captureLifecycle.verify(capture.id))
   }
   return results
 }
@@ -33,8 +42,16 @@ export async function verifyCaptures(caseId: string): Promise<HashVerification[]
 export async function generateReport(
   caseId: string,
   options: ExportOptions,
+  captureLifecycle: CaptureLifecycle,
   onProgress?: (step: string, percent: number) => void
 ): Promise<void> {
+  const settings = getSettings()
+  if (!settings.operatorName?.trim()) {
+    throw new Error(
+      'Operator name required. Configure your name in Birdbrain settings before exporting.'
+    )
+  }
+
   const caseData = db.getCase(caseId)
   if (!caseData) throw new Error(`Case not found: ${caseId}`)
 
@@ -54,12 +71,16 @@ export async function generateReport(
     captures,
     verifications: [],
     screenshots: new Map(),
-    pins: new Map()
+    pins: new Map(),
+    installationId: getInstallationId(),
+    operatorName: settings.operatorName,
+    operatorRole: settings.operatorRole ?? '',
+    operatorOrganization: settings.operatorOrganization ?? ''
   }
 
   if (options.include.auditTrail) {
     onProgress?.('Verifying capture integrity...', 50)
-    data.verifications = await verifyCaptures(caseId)
+    data.verifications = await verifyCaptures(caseId, captureLifecycle)
   }
 
   if (options.include.screenshots) {
@@ -97,6 +118,8 @@ function buildHtmlReport(data: ExportData, options: ExportOptions): string {
       ${data.caseDescription ? `<p class="desc">${esc(data.caseDescription)}</p>` : ''}
       ${data.dateRange ? `<p class="date-range">${new Date(data.dateRange.first).toLocaleDateString()} — ${new Date(data.dateRange.last).toLocaleDateString()}</p>` : ''}
       <p class="meta">Investigator: ${esc(data.investigatorName)}</p>
+      <p class="meta">Operator: ${esc(data.operatorName)}${data.operatorRole ? ` — ${esc(data.operatorRole)}` : ''}${data.operatorOrganization ? `, ${esc(data.operatorOrganization)}` : ''}</p>
+      <p class="meta">Installation ID: <span class="mono">${esc(data.installationId)}</span></p>
       <p class="meta">Exported: ${new Date(data.exportTimestamp).toLocaleString()}</p>
       <p class="meta">Captures: ${data.captures.length}</p>
     </div>

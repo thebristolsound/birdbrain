@@ -1,5 +1,5 @@
 import { test as base, _electron, type ElectronApplication, type Page } from '@playwright/test'
-import { mkdtemp, rm, access } from 'fs/promises'
+import { mkdtemp, rm, access, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -12,6 +12,12 @@ export const test = base.extend<ElectronFixtures>({
   electronApp: async ({}, use) => {
     const tempDir = await mkdtemp(join(tmpdir(), 'birdbrain-test-'))
 
+    // Seed operator name so the #116 capture gate does not reject test captures.
+    await writeFile(
+      join(tempDir, 'settings.json'),
+      JSON.stringify({ operatorName: 'E2E Test Operator' })
+    )
+
     const mainPath = join(__dirname, '../../out/main/index.js')
 
     try {
@@ -23,18 +29,24 @@ export const test = base.extend<ElectronFixtures>({
       )
     }
 
+    // Launch via package.json `main` resolution (args: ['.']) so the test exercises the
+    // same code path electron-builder uses in production (asar / asarUnpack / preload).
+    // --user-data-dir gives each test a fresh Chromium profile (localStorage, IndexedDB).
     const app = await _electron.launch({
-      args: [mainPath],
+      args: ['.', `--user-data-dir=${tempDir}`],
+      cwd: join(__dirname, '../..'),
       env: {
         ...process.env,
         BIRDBRAIN_USER_DATA: tempDir
       }
     })
 
-    await use(app)
-
-    await app.close()
-    await rm(tempDir, { recursive: true, force: true })
+    try {
+      await use(app)
+    } finally {
+      await app.close().catch(() => {})
+      await rm(tempDir, { recursive: true, force: true }).catch(() => {})
+    }
   },
 
   page: async ({ electronApp }, use) => {

@@ -28,6 +28,10 @@ extension/vite.config.js
 extension/vite.config.d.ts
 tests/**/*.js
 tests/**/*.d.ts
+e2e/**/*.js
+e2e/**/*.d.ts
+playwright.config.js
+playwright.config.d.ts
 
 # Python cache
 Python/
@@ -55,3 +59,9 @@ playwright-report/
 
 .superdesign
 .superpowers
+.kilocode
+
+# Local-only working notes. Implementation plans / checklists are author-time
+# artifacts and don't belong in version control. Specs, ADRs, agent
+# conventions, and reference docs under docs/ remain tracked.
+docs/plans/

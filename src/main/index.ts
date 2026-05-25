@@ -14,6 +14,9 @@ import { registerIpcHandlers } from '@main/ipcHandlers'
 import { initSettings, getSettings } from '@main/services/settings'
 import { initInstallationId } from '@main/services/installationId'
 import { initServerToken } from '@main/services/serverToken'
+import { createCaptureLifecycle } from '@main/services/captureLifecycle'
+import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
+import { IPC_CHANNELS, type SelectorRematchedEvent } from '@shared/ipc'
 
 function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
@@ -93,11 +96,24 @@ app.whenReady().then(async () => {
     initStorage(defaultCapturesDir)
   }
 
+  // Build the Selector Lifecycle. Its emitter broadcasts rematched events
+  // to every renderer; injecting via factory keeps Electron out of the
+  // lifecycle module and lets tests pass a recording fake.
+  const selectorLifecycle = createSelectorLifecycle({
+    emitRematched: (event: SelectorRematchedEvent) => {
+      for (const win of BrowserWindow.getAllWindows()) {
+        win.webContents.send(IPC_CHANNELS.SELECTOR_REMATCHED, event)
+      }
+    }
+  })
+
+  const captureLifecycle = createCaptureLifecycle({ selectorLifecycle })
+
   // Register IPC handlers
-  registerIpcHandlers()
+  registerIpcHandlers({ selectorLifecycle, captureLifecycle })
 
   // Start capture server and extension connection monitor
-  await startCaptureServer()
+  await startCaptureServer({ selectorLifecycle, captureLifecycle })
   startExtensionConnectionCheck()
 
   // Create window and connect to capture server

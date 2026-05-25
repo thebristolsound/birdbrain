@@ -21,7 +21,8 @@ import type {
   OrphanReport,
   AnalyzeCaptureParams,
   SaveAnnotationsParams,
-  UpsertAnnotationPinParams
+  UpsertAnnotationPinParams,
+  SelectorRematchedEvent
 } from '@shared/ipc'
 import type {
   Case,
@@ -41,7 +42,8 @@ import type {
   ExtractedDataItem,
   AnnotationsBundle,
   CaptureAnnotations,
-  AnnotationPin
+  AnnotationPin,
+  OperatorIdentity
 } from '@shared/types'
 
 // Unwrap IpcResult from handlers that return structured results
@@ -192,8 +194,7 @@ const birdbrain = {
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_TEST_OPENROUTER, apiKey),
     listModels: (apiKey: string): Promise<OpenRouterModel[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_LIST_MODELS, apiKey),
-    getIdentity: (): Promise<{ installationId: string; operatorName: string }> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET_IDENTITY),
+    getIdentity: (): Promise<OperatorIdentity> => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET_IDENTITY),
     chooseStoragePath: (): Promise<string | null> =>
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH)
   },
@@ -282,6 +283,12 @@ const birdbrain = {
     const handler = (_: unknown, event: CaptureEvent) => callback(event)
     ipcRenderer.on(IPC_CHANNELS.CAPTURE_ACTIVITY, handler)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.CAPTURE_ACTIVITY, handler)
+  },
+
+  onSelectorRematched: (callback: (event: SelectorRematchedEvent) => void) => {
+    const handler = (_: unknown, event: SelectorRematchedEvent) => callback(event)
+    ipcRenderer.on(IPC_CHANNELS.SELECTOR_REMATCHED, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.SELECTOR_REMATCHED, handler)
   },
 
   testPipeline: (): Promise<{ success: boolean; durationMs: number; error?: string }> =>

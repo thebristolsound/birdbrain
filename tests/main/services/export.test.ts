@@ -12,9 +12,16 @@ import {
 } from '../../../src/main/services/database'
 import { initStorage, ensureCaseDir, getCapturePath } from '../../../src/main/services/storage'
 import { initManifest } from '../../../src/main/services/manifest'
-import { ingestMhtmlCapture } from '../../../src/main/services/mhtmlIngest'
+import { ingestMhtmlCapture } from '../../../src/main/services/captureLifecycle'
+import {
+  createCaptureLifecycle,
+  type CaptureLifecycle
+} from '../../../src/main/services/captureLifecycle'
+import { createSelectorLifecycle } from '../../../src/main/services/selectorLifecycle'
 import { verifyCaptures, generateReport } from '../../../src/main/services/export'
 import { saveAnnotations } from '../../../src/main/services/annotations'
+import { initSettings, updateSettings } from '@main/services/settings'
+import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import type { ExportOptions } from '../../../src/shared/types'
 
 async function ingest(
@@ -45,16 +52,24 @@ async function ingest(
 describe('export', () => {
   let tempDir: string
   let caseId: string
+  let captureLifecycle: CaptureLifecycle
 
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), 'bb-export-'))
     initStorage(join(tempDir, 'captures'))
     initDatabase(':memory:')
+    resetInstallationId()
+    initInstallationId(tempDir)
+    initSettings(tempDir)
+    // Default: operator name set so existing tests pass
+    updateSettings({ operatorName: 'Test Operator', operatorRole: '', operatorOrganization: '' })
 
     const c = createCase({ name: 'Export Test Case', description: 'Test case for export' })
     caseId = c.id
     ensureCaseDir(caseId)
     initManifest(join(tempDir, 'captures', caseId))
+    const selectorLifecycle = createSelectorLifecycle({ emitRematched: () => {} })
+    captureLifecycle = createCaptureLifecycle({ selectorLifecycle })
   })
 
   afterEach(() => {
@@ -65,7 +80,7 @@ describe('export', () => {
   it('verifyCaptures marks verified when hash matches', async () => {
     await ingest(caseId, '<html><body>Test content</body></html>')
 
-    const results = await verifyCaptures(caseId)
+    const results = await verifyCaptures(caseId, captureLifecycle)
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('verified')
     expect(results[0].storedHash).toBe(results[0].computedHash)
@@ -75,7 +90,7 @@ describe('export', () => {
     const { capture } = await ingest(caseId, '<html><body>Original</body></html>')
     writeFileSync(join(tempDir, 'captures', capture.mhtmlPath!), 'mutated bytes')
 
-    const results = await verifyCaptures(caseId)
+    const results = await verifyCaptures(caseId, captureLifecycle)
     expect(results[0].status).toBe('tampered')
   })
 
@@ -83,7 +98,7 @@ describe('export', () => {
     const { capture } = await ingest(caseId, '<html><body>Vanishing</body></html>')
     rmSync(join(tempDir, 'captures', capture.mhtmlPath!))
 
-    const results = await verifyCaptures(caseId)
+    const results = await verifyCaptures(caseId, captureLifecycle)
     expect(results[0].status).toBe('missing')
   })
 
@@ -96,7 +111,7 @@ describe('export', () => {
       timestamp: '2024-01-01T00:00:00Z'
     })
 
-    const results = await verifyCaptures(caseId)
+    const results = await verifyCaptures(caseId, captureLifecycle)
     expect(results[0].status).toBe('legacy')
   })
 
@@ -121,7 +136,7 @@ describe('export', () => {
       outputPath
     }
 
-    await generateReport(caseId, options)
+    await generateReport(caseId, options, captureLifecycle)
     expect(existsSync(outputPath)).toBe(true)
 
     const content = readFileSync(outputPath, 'utf-8')
@@ -149,7 +164,7 @@ describe('export', () => {
       outputPath
     }
 
-    await generateReport(caseId, options)
+    await generateReport(caseId, options, captureLifecycle)
     const content = readFileSync(outputPath, 'utf-8')
     expect(content).toContain('Export Test Case')
     expect(content).not.toContain('Audit Trail')
@@ -159,12 +174,16 @@ describe('export', () => {
     await ingest(caseId, 'payload', 'https://example.com', '<script>alert("xss")</script>')
 
     const outputPath = join(tempDir, 'escaped.html')
-    await generateReport(caseId, {
-      format: 'html',
-      include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
-      investigatorName: 'Test',
-      outputPath
-    })
+    await generateReport(
+      caseId,
+      {
+        format: 'html',
+        include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
 
     const content = readFileSync(outputPath, 'utf-8')
     expect(content).not.toContain('<script>alert')
@@ -213,7 +232,7 @@ describe('export', () => {
       investigatorName: 'Tester',
       outputPath: outPath
     }
-    await generateReport(c.id, options)
+    await generateReport(c.id, options, captureLifecycle)
 
     const html = readFileSync(outPath, 'utf-8')
     const match = html.match(/data:image\/png;base64,([A-Za-z0-9+/=]+)/)
@@ -226,5 +245,70 @@ describe('export', () => {
     }
     expect(pixelAt(40, 40)).toEqual([0, 0, 0])
     expect(pixelAt(80, 80)).toEqual([255, 255, 255])
+  })
+
+  // --- Operator identity gating and report rendering ---
+
+  it('generateReport throws when operator name is blank', async () => {
+    updateSettings({ operatorName: '' })
+    await ingest(caseId, '<html>test</html>')
+    const outputPath = join(tempDir, 'blocked.html')
+    await expect(
+      generateReport(
+        caseId,
+        {
+          format: 'html',
+          include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
+          investigatorName: 'Det. Smith',
+          outputPath
+        },
+        captureLifecycle
+      )
+    ).rejects.toThrow(/operator name/i)
+  })
+
+  it('generateReport throws when operator name is whitespace-only', async () => {
+    updateSettings({ operatorName: '   ' })
+    await ingest(caseId, '<html>test</html>')
+    const outputPath = join(tempDir, 'blocked-ws.html')
+    await expect(
+      generateReport(
+        caseId,
+        {
+          format: 'html',
+          include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
+          investigatorName: 'Det. Smith',
+          outputPath
+        },
+        captureLifecycle
+      )
+    ).rejects.toThrow(/operator name/i)
+  })
+
+  it('generated report includes installationId and operator identity', async () => {
+    updateSettings({
+      operatorName: 'Det. Smith',
+      operatorRole: 'Detective',
+      operatorOrganization: 'Metro PD'
+    })
+    await ingest(caseId, '<html>test</html>')
+    const outputPath = join(tempDir, 'identity.html')
+    await generateReport(
+      caseId,
+      {
+        format: 'html',
+        include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
+        investigatorName: 'Det. Smith',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const content = readFileSync(outputPath, 'utf-8')
+    expect(content).toContain('Det. Smith')
+    expect(content).toContain('Detective')
+    expect(content).toContain('Metro PD')
+    // installationId is a UUID — verify its label is present
+    expect(content).toContain('Installation ID')
   })
 })

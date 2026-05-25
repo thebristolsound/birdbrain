@@ -13,7 +13,7 @@ A snapshot of a single web page (HTML or MHTML, optionally with screenshot and e
 _Avoid_: page, snapshot, record.
 
 **Capture Lifecycle**:
-Operations that mutate a Capture beyond its database row — ingestion (parse, hash, store, schedule selector matching), deletion (manifest entry + DB row + on-disk files), verification.
+Operations that mutate an MHTML Capture beyond its database row — ingestion (parse, hash, store, schedule selector matching), deletion (manifest entry + DB row + on-disk files), verification, and case-wide re-extraction. The forensic-bearing path. Legacy HTML Captures (pre-migration v11) appear in deletion and verification but have no manifest entry and no ingest path; new Captures are MHTML-only.
 _Avoid_: capture service, capture manager.
 
 **Selector**:

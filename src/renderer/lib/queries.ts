@@ -34,6 +34,8 @@ export const queryKeys = {
   selectors: (caseId: string) => ['selectors', caseId] as const,
   selectorMatchCounts: (caseId: string) => ['selectors', 'matchCounts', caseId] as const,
   selectorCoverage: (caseId: string) => ['selectors', 'coverage', caseId] as const,
+  selectorMatchingCapturesAll: (caseId: string) =>
+    ['selectors', 'matchingCaptures', caseId] as const,
   selectorMatchingCaptures: (caseId: string, selectorIds: string[]) =>
     ['selectors', 'matchingCaptures', caseId, ...selectorIds] as const,
   notes: (caseId: string) => ['notes', caseId] as const,

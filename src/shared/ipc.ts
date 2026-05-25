@@ -98,6 +98,7 @@ export const IPC_CHANNELS = {
   NEW_CAPTURE: 'event:newCapture',
   SESSION_STATE_CHANGED: 'event:sessionStateChanged',
   EXTENSION_CONNECTION: 'event:extensionConnection',
+  SELECTOR_REMATCHED: 'event:selector:rematched',
 
   // Capture pipeline observability
   CAPTURE_ACTIVITY: 'event:captureActivity',
@@ -126,6 +127,15 @@ export const IPC_CHANNELS = {
 } as const
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS]
+
+// Event payload types (main -> renderer)
+export type SelectorRematchedStatus = 'done' | 'error'
+
+export interface SelectorRematchedEvent {
+  selectorIds: string[]
+  caseId: string
+  status: SelectorRematchedStatus
+}
 
 // Payload types for IPC calls
 export interface CreateCaseParams {

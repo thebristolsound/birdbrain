@@ -8,9 +8,9 @@ import { app } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
 import * as db from '@main/services/database'
-import { deleteCaptureFiles, readCaptureFile } from '@main/services/storage'
+import { deleteCaptureFiles } from '@main/services/storage'
 import { getSettings } from '@main/services/settings'
-import { ingestMhtmlCapture } from '@main/services/mhtmlIngest'
+import { ingestMhtmlCapture } from '@main/services/captureLifecycle'
 import { getInstallationId } from '@main/services/installationId'
 import { getServerToken } from '@main/services/serverToken'
 import type { CaptureEvent, CaptureSource } from '@shared/types'
@@ -20,12 +20,18 @@ import {
   formatCaptureUploadError,
   formatSelectorCreateError
 } from '@shared/schemas'
-import { extractData } from '@main/services/dataExtractor'
-import { readExtractionHtml } from '@main/services/extraction/extractionSource'
+import type { CaptureLifecycle } from '@main/services/captureLifecycle'
+import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 
 import { CAPTURE_SERVER_PORT, MAX_SCREENSHOT_SIZE } from '@shared/constants'
 import { safeRegexTest } from '@main/services/safeRegex'
 export { CAPTURE_SERVER_PORT }
+
+export interface CaptureServerDeps {
+  selectorLifecycle: SelectorLifecycle
+  captureLifecycle: CaptureLifecycle
+  token?: string
+}
 
 function getToolVersion(): string {
   if (typeof app?.getVersion === 'function') return app.getVersion()
@@ -35,6 +41,9 @@ function getToolVersion(): string {
 // Manual capture dedup: "caseId:url" -> timestamp of last accepted capture
 const manualDedup = new Map<string, number>()
 const MANUAL_DEDUPE_WINDOW_MS = 5_000
+
+const OPERATOR_NAME_REQUIRED_MSG =
+  'Operator name required. Configure your name in Birdbrain settings before capturing.'
 
 interface SessionState {
   activeCaseId: string | null
@@ -95,41 +104,17 @@ function isUrlBlacklisted(url: string, patterns: string[]): string | null {
   return null
 }
 
-function schedulePostCaptureWork(
-  captureId: string,
-  caseId: string,
-  _source: CaptureSource,
-  url: string,
-  textContent: string | undefined
-): void {
-  setImmediate(() => {
-    try {
-      if (textContent) {
-        db.matchSelectorsForCapture(captureId, caseId, textContent)
-      }
-    } catch (err) {
-      console.error('Selector matching error for capture', captureId, err)
-    }
-
-    try {
-      const html = readExtractionHtml(caseId, captureId)
-      if (html) {
-        const extracted = extractData(html)
-        db.insertExtractedData(captureId, caseId, url, extracted)
-      }
-    } catch (err) {
-      console.error('Data extraction error for capture', captureId, err)
-    }
-  })
-}
-
 function emitCaptureEvent(event: CaptureEvent): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(IPC_CHANNELS.CAPTURE_ACTIVITY, event)
   }
 }
 
-function createApp(token?: string): Hono {
+// The single source of truth for the pipeline self-test route.
+const CAPTURE_TEST_ROUTE = '/api/captures/test'
+
+function createApp(deps: CaptureServerDeps): Hono {
+  const { selectorLifecycle, captureLifecycle, token } = deps
   const app = new Hono()
   const requiredToken = token ?? getServerToken()
 
@@ -155,7 +140,7 @@ function createApp(token?: string): Hono {
     })
   )
 
-  // Require auth token on all POST (mutating) endpoints
+  // Require auth token on all state-changing endpoints.
   app.use('*', async (c, next) => {
     if (c.req.method === 'POST') {
       const token = c.req.header('X-Birdbrain-Token')
@@ -283,6 +268,20 @@ function createApp(token?: string): Hono {
       const capturedUrl = url
       try {
         const captureSettings = getSettings()
+        const operatorName = captureSettings.operatorName?.trim() ?? ''
+
+        // Gate: operator name must be set before any capture is stored
+        if (!operatorName) {
+          emitCaptureEvent({
+            type: 'failed',
+            source,
+            url,
+            timestamp: new Date().toISOString(),
+            error: 'Operator name required'
+          })
+          return c.json({ error: OPERATOR_NAME_REQUIRED_MSG }, 400)
+        }
+
         const blocked = isUrlBlacklisted(url, captureSettings.ignoredUrlPatterns)
         if (blocked) {
           emitCaptureEvent({
@@ -339,10 +338,9 @@ function createApp(token?: string): Hono {
         }
 
         const operatorId = getInstallationId()
-        const operatorName = captureSettings.operatorName ?? ''
         const toolVersion = getToolVersion()
 
-        const { capture, contentHash } = await ingestMhtmlCapture({
+        const { capture, contentHash } = await captureLifecycle.ingest({
           caseId,
           url,
           title,
@@ -361,7 +359,6 @@ function createApp(token?: string): Hono {
         })
 
         if (source === 'auto') state.captureCount++
-        schedulePostCaptureWork(capture.id, caseId, source, url, textContent)
 
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send(IPC_CHANNELS.NEW_CAPTURE, capture)
@@ -443,54 +440,11 @@ function createApp(token?: string): Hono {
           return c.json({ error: 'Case is archived' }, 400)
         }
 
-        const selector = db.createSelector({
+        const selector = selectorLifecycle.createSelector({
           caseId,
           pattern,
           isRegex: false,
           label
-        })
-
-        // Schedule retroactive matching in chunks to avoid blocking the main thread
-        setImmediate(() => {
-          try {
-            const MAX_RETRO_CAPTURES = 500
-            const CHUNK_SIZE = 50
-            const allCaptures = db.listCaptures(caseId)
-            const captures = allCaptures.slice(0, MAX_RETRO_CAPTURES)
-
-            const processChunk = (index: number) => {
-              const end = Math.min(index + CHUNK_SIZE, captures.length)
-              const captureTexts: Array<{ captureId: string; text: string }> = []
-
-              for (let i = index; i < end; i++) {
-                const cap = captures[i]
-                const buffer = readCaptureFile(caseId, cap.id, 'txt')
-                if (buffer) {
-                  captureTexts.push({ captureId: cap.id, text: buffer.toString('utf-8') })
-                } else {
-                  // MHTML captures store text only in FTS; fall back to FTS content
-                  const ftsText = db.getCaptureTextContent(cap.id)
-                  if (ftsText) {
-                    captureTexts.push({ captureId: cap.id, text: ftsText })
-                  }
-                }
-              }
-
-              if (captureTexts.length > 0) {
-                db.matchSelectorAgainstCaptures(selector.id, captureTexts)
-              }
-
-              if (end < captures.length) {
-                setImmediate(() => processChunk(end))
-              }
-            }
-
-            if (captures.length > 0) {
-              processChunk(0)
-            }
-          } catch (err) {
-            console.error('Retroactive selector matching error:', err)
-          }
         })
 
         return c.json({ selector, status: 'ok' })
@@ -502,11 +456,22 @@ function createApp(token?: string): Hono {
   )
 
   // Test pipeline endpoint
-  app.get('/api/captures/test', async (c) => {
+  app.post(CAPTURE_TEST_ROUTE, async (c) => {
     const startTime = Date.now()
     let testCaptureId: string | null = null
     let testCaseId: string | null = null
     try {
+      const operatorName = getSettings().operatorName?.trim() ?? ''
+      if (!operatorName) {
+        emitCaptureEvent({
+          type: 'failed',
+          source: 'manual',
+          url: 'birdbrain://pipeline-test',
+          timestamp: new Date().toISOString(),
+          error: 'Operator name required'
+        })
+        return c.json({ error: OPERATOR_NAME_REQUIRED_MSG }, 400)
+      }
       const cases = db.listCases()
       if (cases.length === 0) {
         return c.json({
@@ -540,7 +505,7 @@ function createApp(token?: string): Hono {
         httpStatus: 200,
         extensionVersion: '',
         operatorId: getInstallationId(),
-        operatorName: getSettings().operatorName ?? '',
+        operatorName,
         toolVersion: getToolVersion()
       })
       testCaptureId = capture.id
@@ -579,11 +544,11 @@ function createApp(token?: string): Hono {
 }
 
 export function startCaptureServer(
-  port: number = CAPTURE_SERVER_PORT,
-  token?: string
+  deps: CaptureServerDeps,
+  port: number = CAPTURE_SERVER_PORT
 ): Promise<void> {
   return new Promise((resolve) => {
-    const app = createApp(token)
+    const app = createApp(deps)
     server = serve(
       {
         fetch: app.fetch,

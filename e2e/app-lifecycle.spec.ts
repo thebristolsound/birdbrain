@@ -23,13 +23,7 @@ test.describe('App Lifecycle', () => {
   })
 
   test('theme toggle persists between reloads', async ({ page }) => {
-    // Clear stale localStorage from prior runs (Chromium profile persists
-    // across test runs even though BIRDBRAIN_USER_DATA is a fresh temp dir).
-    await page.evaluate(() => localStorage.removeItem('theme'))
-    await page.reload()
-    await page.waitForLoadState('domcontentloaded')
-
-    // Should start in light mode
+    // Should start in light mode (Chromium profile is fresh per test via --user-data-dir).
     await page.waitForFunction(() => !document.documentElement.classList.contains('dark'))
 
     // Click the theme toggle and wait for the dark class to appear

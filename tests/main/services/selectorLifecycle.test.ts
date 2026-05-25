@@ -12,7 +12,8 @@ import {
   listSelectors
 } from '@main/services/database'
 import { initStorage } from '@main/services/storage'
-import { createSelectorLifecycle, type RematchedEvent } from '@main/services/selectorLifecycle'
+import { createSelectorLifecycle, RETRO_MAX_CAPTURES } from '@main/services/selectorLifecycle'
+import type { SelectorRematchedEvent } from '@shared/ipc'
 
 function writeTxt(root: string, caseId: string, captureId: string, text: string): void {
   const dir = join(root, caseId)
@@ -21,7 +22,7 @@ function writeTxt(root: string, caseId: string, captureId: string, text: string)
 }
 
 async function waitFor(
-  events: RematchedEvent[],
+  events: SelectorRematchedEvent[],
   expected: number,
   timeoutMs = 2000
 ): Promise<void> {
@@ -36,7 +37,7 @@ async function waitFor(
 
 describe('selectorLifecycle', () => {
   let tempDir: string
-  let events: RematchedEvent[]
+  let events: SelectorRematchedEvent[]
   let lifecycle: ReturnType<typeof createSelectorLifecycle>
 
   beforeEach(() => {
@@ -108,7 +109,7 @@ describe('selectorLifecycle', () => {
       const sel = lifecycle.createSelector({ caseId: c.id, pattern: 'alpha' })
       await waitFor(events, 1)
 
-      expect(events).toEqual([{ selectorId: sel.id, caseId: c.id, status: 'done' }])
+      expect(events).toEqual([{ selectorIds: [sel.id], caseId: c.id, status: 'done' }])
       const matched = getCapturesMatchingSelectors(c.id, [sel.id])
       expect(matched).toEqual([cap1.id])
     })
@@ -174,7 +175,7 @@ describe('selectorLifecycle', () => {
       const sel = lifecycle.createSelector({ caseId: c.id, pattern: 'alpha' })
       await waitFor(events, 1)
 
-      expect(events).toEqual([{ selectorId: sel.id, caseId: c.id, status: 'done' }])
+      expect(events).toEqual([{ selectorIds: [sel.id], caseId: c.id, status: 'done' }])
     })
   })
 
@@ -208,17 +209,17 @@ describe('selectorLifecycle', () => {
       })
 
       expect(created).toHaveLength(3)
-      await waitFor(events, 3)
+      await waitFor(events, 1)
 
       const counts = getSelectorMatchCounts(c.id)
       expect(counts[created[0].id]).toBe(1)
       expect(counts[created[1].id]).toBe(1)
       expect(counts[created[2].id] ?? 0).toBe(0)
 
-      // Done event for each selector
-      const ids = events.map((e) => e.selectorId).sort()
-      expect(ids).toEqual(created.map((s) => s.id).sort())
-      expect(events.every((e) => e.status === 'done')).toBe(true)
+      // One coalesced done event covering all three selectors
+      expect(events).toHaveLength(1)
+      expect([...events[0].selectorIds].sort()).toEqual(created.map((s) => s.id).sort())
+      expect(events[0].status).toBe('done')
     })
 
     it('returns an empty array and emits no events when given no selectors', async () => {
@@ -238,6 +239,163 @@ describe('selectorLifecycle', () => {
       await new Promise<void>((r) => setImmediate(r))
       await new Promise<void>((r) => setImmediate(r))
       expect(events).toEqual([])
+    })
+  })
+
+  describe('updateSelector', () => {
+    it('returns undefined for an unknown selector id', () => {
+      expect(lifecycle.updateSelector({ id: 'does-not-exist', pattern: 'x' })).toBeUndefined()
+    })
+
+    it('clears stale matches and re-runs matching when pattern changes', async () => {
+      const c = createCase({ name: 'C' })
+      const cap1 = insertCapture({
+        caseId: c.id,
+        url: 'https://a',
+        title: 'A',
+        hash: 'h1',
+        timestamp: new Date().toISOString()
+      })
+      const cap2 = insertCapture({
+        caseId: c.id,
+        url: 'https://b',
+        title: 'B',
+        hash: 'h2',
+        timestamp: new Date().toISOString()
+      })
+      writeTxt(tempDir, c.id, cap1.id, 'alpha here')
+      writeTxt(tempDir, c.id, cap2.id, 'beta here')
+
+      const sel = lifecycle.createSelector({ caseId: c.id, pattern: 'alpha' })
+      await waitFor(events, 1)
+      expect(getCapturesMatchingSelectors(c.id, [sel.id])).toEqual([cap1.id])
+
+      const updated = lifecycle.updateSelector({ id: sel.id, pattern: 'beta' })
+      expect(updated?.pattern).toBe('beta')
+      await waitFor(events, 2)
+
+      expect(events[1]).toEqual({ selectorIds: [sel.id], caseId: c.id, status: 'done' })
+      expect(getCapturesMatchingSelectors(c.id, [sel.id])).toEqual([cap2.id])
+    })
+
+    it('clears stale matches and re-runs matching when isRegex changes', async () => {
+      const c = createCase({ name: 'C' })
+      const cap = insertCapture({
+        caseId: c.id,
+        url: 'https://a',
+        title: 'A',
+        hash: 'h1',
+        timestamp: new Date().toISOString()
+      })
+      writeTxt(tempDir, c.id, cap.id, 'order #12345 confirmed')
+
+      // Literal "#\d{5}" never matches as a substring
+      const sel = lifecycle.createSelector({
+        caseId: c.id,
+        pattern: '#\\d{5}',
+        isRegex: false
+      })
+      await waitFor(events, 1)
+      expect(getCapturesMatchingSelectors(c.id, [sel.id])).toEqual([])
+
+      lifecycle.updateSelector({ id: sel.id, isRegex: true })
+      await waitFor(events, 2)
+
+      expect(getCapturesMatchingSelectors(c.id, [sel.id])).toEqual([cap.id])
+    })
+
+    it('does not clear matches or emit when only label changes', async () => {
+      const c = createCase({ name: 'C' })
+      const cap = insertCapture({
+        caseId: c.id,
+        url: 'https://a',
+        title: 'A',
+        hash: 'h1',
+        timestamp: new Date().toISOString()
+      })
+      writeTxt(tempDir, c.id, cap.id, 'alpha here')
+
+      const sel = lifecycle.createSelector({ caseId: c.id, pattern: 'alpha' })
+      await waitFor(events, 1)
+      expect(getCapturesMatchingSelectors(c.id, [sel.id])).toEqual([cap.id])
+
+      const updated = lifecycle.updateSelector({ id: sel.id, label: 'renamed' })
+      expect(updated?.label).toBe('renamed')
+
+      // Drain a couple of ticks; no rematch should fire
+      await new Promise<void>((r) => setImmediate(r))
+      await new Promise<void>((r) => setImmediate(r))
+      expect(events).toHaveLength(1)
+
+      // Existing matches are still there
+      expect(getCapturesMatchingSelectors(c.id, [sel.id])).toEqual([cap.id])
+    })
+
+    it('re-matches all captures (not just the recent cap) when semantics change', async () => {
+      const c = createCase({ name: 'C' })
+      const total = RETRO_MAX_CAPTURES + 10
+      const alphaInCap: string[] = []
+      const betaBeyondCap: string[] = []
+
+      // listCaptures is most-recent-first. Inserting in order with monotonically
+      // increasing timestamps puts i=0..9 at the tail (beyond RETRO_MAX_CAPTURES).
+      for (let i = 0; i < total; i++) {
+        const cap = insertCapture({
+          caseId: c.id,
+          url: `https://a${i}`,
+          title: `A${i}`,
+          hash: `h${i}`,
+          timestamp: new Date(2026, 0, 1, 0, 0, i).toISOString()
+        })
+        let text: string
+        if (i < 5) {
+          // Beyond the cap: contains only the new pattern — won't be matched
+          // in the capped first pass; must be matched after unbounded re-scan.
+          text = 'has beta here'
+          betaBeyondCap.push(cap.id)
+        } else if (i >= 10 && i < 15) {
+          // Inside the cap: contains only the old pattern — will be matched
+          // initially; must be cleared after update.
+          text = 'has alpha here'
+          alphaInCap.push(cap.id)
+        } else {
+          text = 'nothing'
+        }
+        writeTxt(tempDir, c.id, cap.id, text)
+      }
+
+      const sel = lifecycle.createSelector({ caseId: c.id, pattern: 'alpha' })
+      await waitFor(events, 1)
+      expect(getCapturesMatchingSelectors(c.id, [sel.id]).sort()).toEqual(alphaInCap.sort())
+
+      lifecycle.updateSelector({ id: sel.id, pattern: 'beta' })
+      await waitFor(events, 2)
+
+      // After unbounded re-scan: stale alpha matches are gone, beta captures
+      // beyond the cap are now matched.
+      expect(getCapturesMatchingSelectors(c.id, [sel.id]).sort()).toEqual(betaBeyondCap.sort())
+    })
+
+    it('does not clear matches or emit when only enabled changes', async () => {
+      const c = createCase({ name: 'C' })
+      const cap = insertCapture({
+        caseId: c.id,
+        url: 'https://a',
+        title: 'A',
+        hash: 'h1',
+        timestamp: new Date().toISOString()
+      })
+      writeTxt(tempDir, c.id, cap.id, 'alpha here')
+
+      const sel = lifecycle.createSelector({ caseId: c.id, pattern: 'alpha' })
+      await waitFor(events, 1)
+
+      lifecycle.updateSelector({ id: sel.id, enabled: false })
+
+      await new Promise<void>((r) => setImmediate(r))
+      await new Promise<void>((r) => setImmediate(r))
+      expect(events).toHaveLength(1)
+      expect(getCapturesMatchingSelectors(c.id, [sel.id])).toEqual([cap.id])
     })
   })
 

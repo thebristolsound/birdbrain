@@ -592,29 +592,28 @@ describe('captureServer', () => {
     expect(allowedRes.status).toBe(200)
   })
 
-  it('GET /api/captures/test returns pipeline health when authenticated', async () => {
+  it('POST /api/captures/test returns pipeline health', async () => {
     createCase({ name: 'Pipeline Test Case' })
 
-    const res = await fetch(`${baseUrl}/api/captures/test`, {
-      headers: { 'X-Birdbrain-Token': TEST_TOKEN }
-    })
+    const res = await serverPost('/api/captures/test')
     const data = await res.json()
     expect(data.success).toBe(true)
     expect(data.durationMs).toBeGreaterThanOrEqual(0)
     expect(data.error).toBeUndefined()
   })
 
-  it('GET /api/captures/test rejects unauthenticated requests and writes nothing', async () => {
+  it('POST /api/captures/test rejects unauthenticated requests and writes nothing', async () => {
     const testCase = createCase({ name: 'Auth Test Case' })
     const caseDir = join(tempDir, 'captures', testCase.id)
     // Sanity: the case dir is created lazily by ingestMhtmlCapture, so it
     // must not exist before any request to /api/captures/test.
     expect(existsSync(caseDir)).toBe(false)
 
-    const missing = await fetch(`${baseUrl}/api/captures/test`)
+    const missing = await fetch(`${baseUrl}/api/captures/test`, { method: 'POST' })
     expect(missing.status).toBe(401)
 
     const wrong = await fetch(`${baseUrl}/api/captures/test`, {
+      method: 'POST',
       headers: { 'X-Birdbrain-Token': 'not-the-right-token' }
     })
     expect(wrong.status).toBe(401)
@@ -1312,12 +1311,12 @@ describe('captureServer', () => {
     expect(data.error).toMatch(/operator name/i)
   })
 
-  it('GET /api/captures/test returns 400 when operator name is blank', async () => {
+  it('POST /api/captures/test returns 400 when operator name is blank', async () => {
     updateSettings({ operatorName: '' })
     createCase({ name: 'Pipeline Test Case' })
-    // Send the token so the request reaches the operator-name precondition;
-    // since #129 the route requires auth before any handler logic runs.
+    // Send the token so the request reaches the operator-name precondition.
     const res = await fetch(`${baseUrl}/api/captures/test`, {
+      method: 'POST',
       headers: { 'X-Birdbrain-Token': TEST_TOKEN }
     })
     expect(res.status).toBe(400)

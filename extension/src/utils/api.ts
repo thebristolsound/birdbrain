@@ -255,7 +255,7 @@ export async function testCapturePipeline(): Promise<{
   durationMs: number
   error?: string
 }> {
-  return request('/api/captures/test')
+  return request('/api/captures/test', { method: 'POST' })
 }
 
 export async function getActiveSelectors(): Promise<ActiveCaseSelectors[]> {

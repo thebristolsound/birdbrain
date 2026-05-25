@@ -96,6 +96,7 @@ export function registerIpcHandlers(deps: {
   ipcMain.handle(IPC_CHANNELS.CAPTURES_TEST_PIPELINE, async () => {
     try {
       const res = await fetch(`http://127.0.0.1:${CAPTURE_SERVER_PORT}/api/captures/test`, {
+        method: 'POST',
         headers: { 'X-Birdbrain-Token': getServerToken() }
       })
       return res.json()

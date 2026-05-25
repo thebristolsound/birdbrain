@@ -591,7 +591,7 @@ via shouldCapture() / isIgnoredByUser()    → 403 with pattern name
 
 ### Test Pipeline Endpoint
 
-`GET /api/captures/test` (`src/main/services/captureServer.ts`, line 369)
+`POST /api/captures/test` (`src/main/services/captureServer.ts`, line 369)
 
 This endpoint exercises the full capture pipeline without requiring the Chrome extension:
 
@@ -615,7 +615,7 @@ The HTTP test (`captures:testHttp` IPC channel, `src/main/ipcHandlers.ts`, line 
 
 Both tests are accessible from the `CaptureHealth` popover:
 
-- **"Test Pipeline"**: Invokes `window.birdbrain.testPipeline()` -> IPC `captures:testPipeline` -> `GET /api/captures/test` on the local server
+- **"Test Pipeline"**: Invokes `window.birdbrain.testPipeline()` -> IPC `captures:testPipeline` -> `POST /api/captures/test` on the local server
 - **"Test HTTP"**: Invokes `window.birdbrain.testHttp()` -> IPC `captures:testHttp` -> `GET /api/status` on the local server
 
 Results are displayed inline: "Pipeline OK -- verified in {N}ms" (green) or "Pipeline FAILED: {error}" (red).

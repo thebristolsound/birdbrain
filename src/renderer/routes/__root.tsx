@@ -3,16 +3,17 @@ import {
   createRoute,
   Outlet,
   redirect,
-  useMatchRoute
+  useMatchRoute,
+  useNavigate
 } from '@tanstack/react-router'
-import { lazy, Suspense, useState, useEffect } from 'react'
+import { lazy, Suspense } from 'react'
 import { TopBar } from '@renderer/components/layout/TopBar'
 import { Sidebar } from '@renderer/components/layout/Sidebar'
 import { MotionProvider } from '@renderer/lib/motion'
 import { OnboardingWizard } from '@renderer/components/layout/OnboardingWizard'
 import { Dashboard } from '@renderer/components/dashboard/Dashboard'
 import { useQuery } from '@tanstack/react-query'
-import { casesQueryOptions } from '@renderer/lib/queries'
+import { casesQueryOptions, settingsQueryOptions } from '@renderer/lib/queries'
 import { NewCaseWizard } from '@renderer/components/dashboard/cases/NewCaseWizard'
 import { CaseWorkspace } from '@renderer/components/dashboard/cases/CaseWorkspace'
 import { CapturesRoute } from '@renderer/routes/cases/$caseId/captures'
@@ -41,6 +42,32 @@ const ReactQueryDevtools = import.meta.env.DEV
       }))
     )
   : () => null
+
+// Generic error component for routes
+function RouteErrorComponent({ error, reset }: { error: unknown; reset: () => void }) {
+  const navigate = useNavigate()
+  const message = error instanceof Error ? error.message : String(error)
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-4 p-8">
+      <h1 className="text-2xl font-semibold text-text-primary">Something went wrong</h1>
+      <p className="text-center text-text-muted">{message}</p>
+      <div className="flex gap-2">
+        <button
+          onClick={reset}
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent/90"
+        >
+          Try Again
+        </button>
+        <button
+          onClick={() => navigate({ to: '/' })}
+          className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-text-primary hover:bg-elevated"
+        >
+          Go to Dashboard
+        </button>
+      </div>
+    </div>
+  )
+}
 
 // Root layout
 const rootRoute = createRootRoute({
@@ -85,6 +112,21 @@ const rootRoute = createRootRoute({
         </Suspense>
       </MotionProvider>
     )
+  },
+  notFoundComponent: function NotFoundPage() {
+    const navigate = useNavigate()
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-4">
+        <h1 className="text-2xl font-semibold text-text-primary">Page Not Found</h1>
+        <p className="text-text-muted">The page you're looking for doesn't exist.</p>
+        <button
+          onClick={() => navigate({ to: '/' })}
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent/90"
+        >
+          Go to Dashboard
+        </button>
+      </div>
+    )
   }
 })
 
@@ -93,16 +135,10 @@ const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
   component: function IndexPage() {
-    const { isLoading } = useQuery(casesQueryOptions)
-    const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null)
+    const { isLoading: casesLoading } = useQuery(casesQueryOptions)
+    const { data: settings, isLoading: settingsLoading } = useQuery(settingsQueryOptions)
 
-    useEffect(() => {
-      window.birdbrain.settings.get().then((s) => {
-        setShowOnboarding(!s.hasCompletedOnboarding)
-      })
-    }, [])
-
-    if (isLoading || showOnboarding === null) {
+    if (casesLoading || settingsLoading) {
       return (
         <div className="flex h-full items-center justify-center">
           <span className="text-sm text-text-muted">Loading...</span>
@@ -110,7 +146,7 @@ const indexRoute = createRoute({
       )
     }
 
-    if (showOnboarding) {
+    if (settings && !settings.hasCompletedOnboarding) {
       return <OnboardingWizard />
     }
 
@@ -119,7 +155,8 @@ const indexRoute = createRoute({
         <Dashboard />
       </div>
     )
-  }
+  },
+  errorComponent: RouteErrorComponent
 })
 
 // Settings
@@ -132,21 +169,24 @@ const settingsRoute = createRoute({
         <SettingsView />
       </div>
     )
-  }
+  },
+  errorComponent: RouteErrorComponent
 })
 
 // New case wizard
 const newCaseRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/cases/new',
-  component: NewCaseWizard
+  component: NewCaseWizard,
+  errorComponent: RouteErrorComponent
 })
 
 // Case workspace layout (with tabs)
 const caseRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/cases/$caseId',
-  component: CaseWorkspace
+  component: CaseWorkspace,
+  errorComponent: RouteErrorComponent
 })
 
 // Redirect case index to captures
@@ -165,35 +205,40 @@ const caseIndexRoute = createRoute({
 const capturesRoute = createRoute({
   getParentRoute: () => caseRoute,
   path: '/captures',
-  component: CapturesRoute
+  component: CapturesRoute,
+  errorComponent: RouteErrorComponent
 })
 
 // Selectors tab
 const selectorsRoute = createRoute({
   getParentRoute: () => caseRoute,
   path: '/selectors',
-  component: SelectorsOverview
+  component: SelectorsOverview,
+  errorComponent: RouteErrorComponent
 })
 
 // Notes tab
 const notesRoute = createRoute({
   getParentRoute: () => caseRoute,
   path: '/notes',
-  component: NotesOverview
+  component: NotesOverview,
+  errorComponent: RouteErrorComponent
 })
 
 // Tags tab
 const tagsRoute = createRoute({
   getParentRoute: () => caseRoute,
   path: '/tags',
-  component: TagsOverview
+  component: TagsOverview,
+  errorComponent: RouteErrorComponent
 })
 
 // Data tab
 const dataRoute = createRoute({
   getParentRoute: () => caseRoute,
   path: '/data',
-  component: DataExplorer
+  component: DataExplorer,
+  errorComponent: RouteErrorComponent
 })
 
 // Build the tree

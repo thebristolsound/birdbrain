@@ -1,28 +1,26 @@
-import { useEffect, useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { identityQueryOptions, useSettingsMutations } from '@renderer/lib/queries'
 import { Input, Label } from '@renderer/components/ui'
 
 export function OperatorConfig() {
-  const [installationId, setInstallationId] = useState('')
+  const { data: identity } = useQuery(identityQueryOptions)
   const [operatorName, setOperatorName] = useState('')
   const [operatorRole, setOperatorRole] = useState('')
   const [operatorOrganization, setOperatorOrganization] = useState('')
-  const [saving, setSaving] = useState(false)
   const [nameError, setNameError] = useState('')
+  const initialized = useRef(false)
+  const { update } = useSettingsMutations()
 
+  // Initialize state from identity once when it first loads
   useEffect(() => {
-    async function loadIdentity() {
-      try {
-        const id = await window.birdbrain.settings.getIdentity()
-        setInstallationId(id.installationId)
-        setOperatorName(id.operatorName)
-        setOperatorRole(id.operatorRole)
-        setOperatorOrganization(id.operatorOrganization)
-      } catch (err) {
-        console.error('Failed to load operator identity:', err)
-      }
+    if (identity && !initialized.current) {
+      setOperatorName(identity.operatorName)
+      setOperatorRole(identity.operatorRole)
+      setOperatorOrganization(identity.operatorOrganization)
+      initialized.current = true
     }
-    loadIdentity()
-  }, [])
+  }, [identity])
 
   async function save() {
     if (!operatorName.trim()) {
@@ -30,13 +28,10 @@ export function OperatorConfig() {
       return
     }
     setNameError('')
-    setSaving(true)
-    try {
-      await window.birdbrain.settings.update({ operatorName, operatorRole, operatorOrganization })
-    } finally {
-      setSaving(false)
-    }
+    await update.mutateAsync({ operatorName, operatorRole, operatorOrganization })
   }
+
+  if (!identity) return <div className="text-text-muted">Loading...</div>
 
   return (
     <div className="space-y-4">
@@ -59,10 +54,10 @@ export function OperatorConfig() {
           <p className="mt-1 text-[11px] text-red-500">{nameError}</p>
         ) : (
           <p className="mt-1 text-[11px] text-text-muted">
-            Required. Recorded in every capture and export report.
+            Required. Recorded in every capture's audit manifest and export report.
           </p>
         )}
-        {saving && <p className="text-[11px] text-text-faint">Saving...</p>}
+        {update.isPending && <p className="text-[11px] text-text-faint">Saving...</p>}
       </div>
       <div>
         <Label className="text-xs font-medium text-text-secondary">Role</Label>
@@ -93,7 +88,7 @@ export function OperatorConfig() {
         <Input
           type="text"
           readOnly
-          value={installationId}
+          value={identity.installationId}
           className="font-mono text-[11px] text-text-muted"
         />
         <p className="mt-1 text-[11px] text-text-muted">

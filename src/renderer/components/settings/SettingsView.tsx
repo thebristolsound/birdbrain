@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { settingsQueryOptions, useSettingsMutations } from '@renderer/lib/queries'
 import type { BirdbrainSettings } from '@shared/types'
 import { AIConfig } from './AIConfig'
 import { CapturePreferences } from './CapturePreferences'
@@ -23,20 +25,16 @@ const settingsTabs: { id: SettingsTab; label: string; icon: typeof Key }[] = [
 ]
 
 export function SettingsView() {
-  const [settings, setSettings] = useState<BirdbrainSettings | null>(null)
+  const { data: settings } = useQuery(settingsQueryOptions)
+  const { update } = useSettingsMutations()
   const [activeTab, setActiveTab] = useState<SettingsTab>('ai')
 
   useEffect(() => {
-    window.birdbrain.settings.get().then(setSettings)
-  }, [])
-
-  useEffect(() => {
-    window.birdbrain.settings.update({ lastActiveSection: 'settings' })
+    update.mutate({ lastActiveSection: 'settings' })
   }, [])
 
   const handleUpdate = async (partial: Partial<BirdbrainSettings>) => {
-    const updated = await window.birdbrain.settings.update(partial)
-    setSettings(updated)
+    await update.mutateAsync(partial)
   }
 
   if (!settings) return <div className="text-text-muted">Loading settings...</div>

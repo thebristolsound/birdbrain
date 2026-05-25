@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { useCasesMutations } from '@renderer/lib/queries'
+import { useCasesMutations, useSettingsMutations } from '@renderer/lib/queries'
 import { FolderPlus, ArrowLeft } from 'lucide-react'
 import { Card, Button, Input, Textarea, Label } from '@renderer/components/ui'
 
@@ -41,6 +41,7 @@ const SELECTOR_PRESETS = [
 export function NewCaseWizard() {
   const navigate = useNavigate()
   const { create } = useCasesMutations()
+  const { update: updateSettings } = useSettingsMutations()
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -64,7 +65,7 @@ export function NewCaseWizard() {
         type: 'custom'
       })
 
-      await window.birdbrain.settings.update({ hasCompletedOnboarding: true })
+      await updateSettings.mutateAsync({ hasCompletedOnboarding: true })
 
       for (const presetId of selectedSelectors) {
         const preset = SELECTOR_PRESETS.find((p) => p.id === presetId)

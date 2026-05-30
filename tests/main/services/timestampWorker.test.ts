@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, rmSync } from 'fs'
+import { mkdtempSync, rmSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { createHash } from 'crypto'
@@ -143,6 +143,23 @@ describe('timestampWorker', () => {
     await flushImmediate()
 
     expect(resolveTrustedTime(caseDir, hash).trustedTime).toBe('rfc3161')
+  })
+
+  it('does not double-stamp a capture under concurrent attempts', async () => {
+    const { id, hash } = seedCapture('concurrent-bytes')
+    const worker = createTimestampWorker({ requestToken: grantingRequester() })
+
+    // Two attempts race (e.g. capture-path enqueue + the retry loop).
+    await Promise.all([worker.stampCapture(id), worker.stampCapture(id)])
+
+    expect(resolveTrustedTime(caseDir, hash).trustedTime).toBe('rfc3161')
+    // Exactly one timestamp entry should land in the manifest, not two.
+    const timestampEntries = readFileSync(join(caseDir, 'manifest.jsonl'), 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim())
+      .map((l) => JSON.parse(l))
+      .filter((e) => e.type === 'timestamp' && e.captureContentHash === hash)
+    expect(timestampEntries).toHaveLength(1)
   })
 
   it('rebuilds the mirror column from the manifest alone', async () => {

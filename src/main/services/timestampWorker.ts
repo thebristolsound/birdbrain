@@ -1,7 +1,12 @@
 import { join } from 'path'
 import { app } from 'electron'
 import * as db from '@main/services/database'
-import { appendManifestEntry, initManifest, resolveTrustedTime } from '@main/services/manifest'
+import {
+  appendManifestEntry,
+  initManifest,
+  resolveTrustedTime,
+  buildTrustedTimeIndex
+} from '@main/services/manifest'
 import { parseTimestampToken, requestTimestamp } from '@main/services/timestamp'
 import { getSettings } from '@main/services/settings'
 import { getStorageRoot } from '@main/services/storage'
@@ -58,6 +63,13 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
       if (parsed.messageImprintHex !== capture.hash) {
         throw new Error('TSA token imprint does not match capture content hash')
       }
+      // Guard against a concurrent enqueue + processPending both stamping the
+      // same capture: if it was anchored while our request was in flight, don't
+      // append a duplicate timestamp entry (or burn a second TSA hit).
+      if (resolveTrustedTime(caseDir, capture.hash).trustedTime === 'rfc3161') {
+        db.setCaptureTrustedTime(captureId, 'rfc3161')
+        return true
+      }
       initManifest(caseDir)
       appendManifestEntry(caseDir, {
         type: 'timestamp',
@@ -97,13 +109,14 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
   }
 
   // Reconstructs the mirror column for every MHTML capture purely from the
-  // manifest, so the queue survives a lost/corrupt column (#120 AC).
+  // manifest, so the queue survives a lost/corrupt column (#120 AC). Builds a
+  // one-pass index per case (O(captures), not O(captures²)) before writing.
   function rebuildMirror(): void {
     for (const c of db.listCases()) {
-      const caseDir = join(getStorageRoot(), c.id)
+      const index = buildTrustedTimeIndex(join(getStorageRoot(), c.id))
       for (const cap of db.listCaptures(c.id)) {
         if (cap.format !== 'mhtml') continue
-        db.setCaptureTrustedTime(cap.id, resolveTrustedTime(caseDir, cap.hash).trustedTime)
+        db.setCaptureTrustedTime(cap.id, index.get(cap.hash)?.trustedTime ?? 'none')
       }
     }
   }

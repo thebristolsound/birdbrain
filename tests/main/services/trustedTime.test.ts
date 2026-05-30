@@ -7,6 +7,7 @@ import {
   initManifest,
   appendManifestEntry,
   resolveTrustedTime,
+  buildTrustedTimeIndex,
   verifyManifestChain
 } from '@main/services/manifest'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
@@ -136,5 +137,31 @@ describe('resolveTrustedTime', () => {
 
     // A mismatched token is not proof of time for THIS capture → still pending.
     expect(resolveTrustedTime(caseDir, contentHash).trustedTime).toBe('pending')
+  })
+
+  it('buildTrustedTimeIndex resolves every capture in one pass', () => {
+    const stampedHash = hashOf('idx-stamped')
+    const pendingHash = hashOf('idx-pending')
+    appendCapture(caseDir, stampedHash)
+    appendCapture(caseDir, pendingHash)
+    const token = buildSyntheticToken({
+      contentHash: stampedHash,
+      genTime: new Date('2026-05-30T09:05:00.000Z'),
+      tsaDnsName: 'tsa.example.com'
+    })
+    appendTimestamp(caseDir, stampedHash, token.toString('base64'))
+
+    const index = buildTrustedTimeIndex(caseDir)
+
+    expect(index.get(stampedHash)).toMatchObject({
+      trustedTime: 'rfc3161',
+      tsaName: 'tsa.example.com'
+    })
+    expect(index.get(pendingHash)?.trustedTime).toBe('pending')
+    expect(index.get(hashOf('absent'))).toBeUndefined()
+    // The index must agree with the per-capture resolver it replaces in bulk.
+    expect(index.get(stampedHash)?.trustedTime).toBe(
+      resolveTrustedTime(caseDir, stampedHash).trustedTime
+    )
   })
 })

@@ -119,6 +119,8 @@ describe('requestTimestamp', () => {
     expect(url).toBe('http://tsa.example.com')
     expect(init?.method).toBe('POST')
     expect(init?.headers).toMatchObject({ 'Content-Type': 'application/timestamp-query' })
+    // A timeout signal bounds a stalled TSA so the retry worker can't hang.
+    expect(init?.signal).toBeInstanceOf(AbortSignal)
     // The returned token round-trips through the parser to the right imprint.
     expect(parseTimestampToken(result).messageImprintHex).toBe(contentHash)
   })

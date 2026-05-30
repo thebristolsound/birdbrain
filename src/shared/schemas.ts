@@ -198,6 +198,23 @@ export type ManifestEntry = z.infer<typeof ManifestEntrySchema>
 
 // --- Settings file --------------------------------------------------------
 
+// `tsaUrl` is a trust-boundary value handed straight to fetch(). Normalize it on
+// load so a hand-edited or legacy settings file can't push a whitespace or
+// non-http(s) endpoint into the timestamp worker. Crucially this NEVER throws —
+// invalid input is coerced to the DigiCert default — so an only-tsaUrl-invalid
+// file doesn't fail safeParse and reset every other setting to defaults.
+function normalizeTsaUrl(value: unknown): string {
+  if (typeof value !== 'string') return DEFAULT_TSA_URL
+  const trimmed = value.trim()
+  if (!trimmed) return DEFAULT_TSA_URL
+  try {
+    const { protocol } = new URL(trimmed)
+    return protocol === 'http:' || protocol === 'https:' ? trimmed : DEFAULT_TSA_URL
+  } catch {
+    return DEFAULT_TSA_URL
+  }
+}
+
 export const BirdbrainSettingsSchema = z.object({
   openRouterApiKey: z.string().nullable(),
   defaultModel: z.string(),
@@ -210,7 +227,7 @@ export const BirdbrainSettingsSchema = z.object({
   operatorName: z.string(),
   operatorRole: z.string().default(''),
   operatorOrganization: z.string().default(''),
-  tsaUrl: z.string().optional().default(DEFAULT_TSA_URL),
+  tsaUrl: z.preprocess(normalizeTsaUrl, z.string()).optional().default(DEFAULT_TSA_URL),
   autoCaptureMode: z.enum(['auto', 'notify', 'per-case']),
   lastActiveCaseId: z.string().nullable(),
   lastActiveSection: z

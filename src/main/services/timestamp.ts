@@ -25,6 +25,10 @@ import { ContentInfo, SignedData, id_signedData } from '@peculiar/asn1-cms'
 // parameters are absent (not NULL) for SHA-2.
 const SHA256_OID = '2.16.840.1.101.3.4.2.1'
 
+// Upper bound on a single TSA round-trip. Off the capture's critical path, but
+// a stalled connection must not pin the retry worker.
+const TSA_REQUEST_TIMEOUT_MS = 30000
+
 // Builds a DER-encoded RFC 3161 TimeStampReq whose message imprint is the
 // capture's contentHash (already a SHA-256 hex digest). certReq=true asks the
 // TSA to embed its signing certificate so the token is self-contained and
@@ -53,7 +57,11 @@ export async function requestTimestamp(contentHash: string, tsaUrl: string): Pro
   const res = await fetch(tsaUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/timestamp-query' },
-    body: reqBody
+    body: reqBody,
+    // Bound the wait: undici's default header timeout is multi-minute, which
+    // would pin the retry worker on a stalled TSA. On abort the capture simply
+    // stays pending for the next retry.
+    signal: AbortSignal.timeout(TSA_REQUEST_TIMEOUT_MS)
   })
   if (!res.ok) {
     throw new Error(`TSA responded ${res.status} ${res.statusText}`)

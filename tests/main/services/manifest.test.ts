@@ -14,6 +14,7 @@ import { statSync } from 'fs'
 import { appendFileSync } from 'fs'
 import { initDatabase, closeDatabase, createCase, insertCapture } from '@main/services/database'
 import { saveAnnotations } from '@main/services/annotations'
+import { signEntryHash, verifyEntrySignature } from '@main/services/signingKey'
 
 describe('manifest init/getHead', () => {
   let tempDir: string
@@ -416,7 +417,13 @@ describe('manifest schema v2 + grandfathering', () => {
     const { prevHash, nextIndex } = getManifestHead(tempDir)
     const body = { ...extra, index: nextIndex, prevHash }
     const entryHash = createHash('sha256').update(canonicalStringify(body)).digest('hex')
-    appendFileSync(join(tempDir, 'manifest.jsonl'), JSON.stringify({ ...body, entryHash }) + '\n')
+    // v2+ entries must carry a valid signature; legacy v1 entries stay unsigned.
+    const version = typeof extra.schemaVersion === 'number' ? extra.schemaVersion : 1
+    const line =
+      version >= 2
+        ? { ...body, entryHash, signature: signEntryHash(entryHash) }
+        : { ...body, entryHash }
+    appendFileSync(join(tempDir, 'manifest.jsonl'), JSON.stringify(line) + '\n')
     return entryHash
   }
 
@@ -498,10 +505,12 @@ describe('manifest schema v2 + grandfathering', () => {
     expect(entry.schemaVersion).toBe(MANIFEST_SCHEMA_VERSION)
   })
 
-  it('excludes signature from entryHash so a v2 entry verifies with a signature present', () => {
-    // Append a normal v2 entry, then inject a signature field into the line.
-    // The signature must NOT participate in entryHash (same rule as entryHash
-    // itself), so the chain must still verify after injection.
+  it('excludes signature from entryHash so re-signing a v2 entry still verifies', () => {
+    // Append a normal v2 entry, then re-sign its entryHash and re-inject the
+    // signature. The signature must NOT participate in entryHash (same rule as
+    // entryHash itself), so swapping it for an equally-valid signature leaves
+    // the chain verifying. (Under G2, the injected signature is now actually
+    // checked, so it must be a real signature over this entry's entryHash.)
     appendManifestEntry(tempDir, {
       type: 'capture',
       captureId: 'cap-sig',
@@ -516,7 +525,7 @@ describe('manifest schema v2 + grandfathering', () => {
     })
     const path = join(tempDir, 'manifest.jsonl')
     const entry = JSON.parse(readFileSync(path, 'utf-8').trim())
-    entry.signature = 'ed25519:deadbeef'
+    entry.signature = signEntryHash(entry.entryHash)
     writeFileSync(path, JSON.stringify(entry) + '\n')
     expect(verifyManifestChain(tempDir).valid).toBe(true)
   })
@@ -610,5 +619,78 @@ describe('manifest schema v2 + grandfathering', () => {
     expect(ManifestEntrySchema.safeParse({ ...base, schemaVersion: 0 }).success).toBe(false)
     expect(ManifestEntrySchema.safeParse({ ...base, schemaVersion: 99 }).success).toBe(false)
     expect(ManifestEntrySchema.safeParse({ ...base, schemaVersion: 1.5 }).success).toBe(false)
+  })
+})
+
+describe('manifest signing enforcement (G2)', () => {
+  let tempDir: string
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-sign-enforce-'))
+    initManifest(tempDir)
+  })
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  const base = {
+    type: 'capture' as const,
+    caseId: 'case-1',
+    timestamp: '2026-05-01T00:00:00.000Z',
+    contentHash: 'a'.repeat(64),
+    sizeBytes: 1,
+    operatorId: 'op',
+    operatorName: '',
+    toolVersion: '0.1.0'
+  }
+
+  const readEntry = (lineIdx = 0): Record<string, unknown> => {
+    const lines = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim())
+    return JSON.parse(lines[lineIdx])
+  }
+
+  const overwrite = (entry: Record<string, unknown>): void => {
+    writeFileSync(join(tempDir, 'manifest.jsonl'), JSON.stringify(entry) + '\n')
+  }
+
+  it('signs every appended entry with a signature verifiable over its entryHash', () => {
+    appendManifestEntry(tempDir, { ...base, captureId: 'c1', url: 'https://a' })
+    const entry = readEntry()
+    expect(typeof entry.signature).toBe('string')
+    expect(verifyEntrySignature(entry.entryHash as string, entry.signature as string)).toBe(true)
+  })
+
+  it('rejects a v2 entry that was re-hashed after tampering but not re-signed', () => {
+    appendManifestEntry(tempDir, { ...base, captureId: 'c1', url: 'https://a' })
+    const entry = readEntry()
+    // Forge: tamper a field, honestly recompute entryHash, keep the stale
+    // signature (the attacker can't produce a new one without the private key).
+    entry.url = 'https://evil'
+    const { entryHash: _e, signature, ...body } = entry
+    void _e
+    const rehashed = createHash('sha256').update(canonicalStringify(body)).digest('hex')
+    overwrite({ ...body, entryHash: rehashed, signature })
+    const result = verifyManifestChain(tempDir)
+    expect(result.valid).toBe(false)
+    expect(result.brokenAt).toBe(0)
+  })
+
+  it('rejects a v2 entry that has no signature', () => {
+    appendManifestEntry(tempDir, { ...base, captureId: 'c1', url: 'https://a' })
+    const { signature: _s, ...unsigned } = readEntry()
+    void _s
+    overwrite(unsigned)
+    expect(verifyManifestChain(tempDir).valid).toBe(false)
+  })
+
+  it('rejects a v2 entry whose signature is well-formed base64 but invalid', () => {
+    appendManifestEntry(tempDir, { ...base, captureId: 'c1', url: 'https://a' })
+    const entry = readEntry()
+    entry.signature = Buffer.from('not a real signature').toString('base64')
+    overwrite(entry)
+    expect(verifyManifestChain(tempDir).valid).toBe(false)
   })
 })

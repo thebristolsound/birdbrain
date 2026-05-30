@@ -27,7 +27,8 @@ export default defineConfig({
         test: {
           name: 'node',
           environment: 'node',
-          include: ['tests/**/*.test.ts']
+          include: ['tests/**/*.test.ts'],
+          setupFiles: ['./tests/setup/signing-key.ts']
         }
       },
       {

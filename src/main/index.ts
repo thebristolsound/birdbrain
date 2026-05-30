@@ -13,6 +13,7 @@ import {
 import { registerIpcHandlers } from '@main/ipcHandlers'
 import { initSettings, getSettings } from '@main/services/settings'
 import { initInstallationId } from '@main/services/installationId'
+import { initSigningKey } from '@main/services/signingKey'
 import { initServerToken } from '@main/services/serverToken'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
@@ -83,6 +84,7 @@ app.whenReady().then(async () => {
   initDatabase(join(userDataPath, 'birdbrain.db'))
   initSettings(userDataPath)
   initInstallationId(userDataPath)
+  initSigningKey(userDataPath)
   initServerToken(userDataPath)
 
   // Use storagePath from settings, fall back to default if empty or unwritable

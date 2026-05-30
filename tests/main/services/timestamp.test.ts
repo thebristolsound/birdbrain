@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { createHash } from 'crypto'
+import { readFileSync } from 'fs'
+import { join } from 'path'
 import { AsnConvert } from '@peculiar/asn1-schema'
 import { TimeStampReq, MessageImprint, PKIStatus } from '@peculiar/asn1-tsp'
 import {
@@ -8,6 +10,8 @@ import {
   requestTimestamp
 } from '@main/services/timestamp'
 import { buildSyntheticToken, buildTimestampResponse } from '../../helpers/timestampFixtures'
+
+const FIXTURES = join(__dirname, '../../fixtures/timestamp')
 
 const SHA256_OID = '2.16.840.1.101.3.4.2.1'
 
@@ -69,6 +73,21 @@ describe('parseTimestampToken', () => {
 
   it('throws on a token that is not a CMS signed-data structure', () => {
     expect(() => parseTimestampToken(Buffer.from('not a token'))).toThrow()
+  })
+
+  // Validates the parser against a REAL DigiCert token (committed fixture).
+  // The same token verifies under `openssl ts -verify` — see the fixture README
+  // (acceptance criterion 7). DigiCert leaves TSTInfo.tsa unspecified, so the TSA
+  // identity must come from the embedded responder certificate's subject CN.
+  it('parses a real DigiCert token (imprint, time, responder identity)', () => {
+    const token = readFileSync(join(FIXTURES, 'digicert-token.der'))
+    const expectedHash = readFileSync(join(FIXTURES, 'content-hash.txt'), 'utf-8').trim()
+
+    const parsed = parseTimestampToken(token)
+
+    expect(parsed.messageImprintHex).toBe(expectedHash)
+    expect(parsed.stampedAt.toISOString()).toBe('2026-05-30T19:31:07.000Z')
+    expect(parsed.tsaName).toBe('DigiCert SHA256 RSA4096 Timestamp Responder 2025 1')
   })
 })
 

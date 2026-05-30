@@ -1,0 +1,4 @@
+# Binary RFC 3161 fixtures — never apply text/EOL normalization or they corrupt.
+*.tsr binary
+*.tsq binary
+*.der binary

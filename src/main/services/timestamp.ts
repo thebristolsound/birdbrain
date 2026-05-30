@@ -108,6 +108,27 @@ function commonNameOf(dirName: Name): string | undefined {
   return undefined
 }
 
+function bufToHex(buf: ArrayBuffer): string {
+  return Buffer.from(buf).toString('hex')
+}
+
+// Falls back to the signing certificate's subject CN for the TSA identity. Many
+// commercial TSAs (DigiCert included) leave TSTInfo's optional `tsa` field
+// unspecified and instead identify themselves through the embedded responder
+// certificate, located here via the SignerInfo's issuer+serial.
+function signerCommonName(signedData: SignedData): string | undefined {
+  const sid = signedData.signerInfos[0]?.sid?.issuerAndSerialNumber
+  if (!sid || !signedData.certificates) return undefined
+  const targetSerial = bufToHex(sid.serialNumber)
+  for (const choice of signedData.certificates) {
+    const cert = choice.certificate
+    if (cert && bufToHex(cert.tbsCertificate.serialNumber) === targetSerial) {
+      return commonNameOf(cert.tbsCertificate.subject)
+    }
+  }
+  return undefined
+}
+
 // Parses an RFC 3161 timestamp token (a CMS SignedData over a TSTInfo) and
 // returns its structural fields. Does NOT verify the TSA signature — that is the
 // canonical `openssl ts -verify` path (D5). Throws if the bytes are not a CMS
@@ -127,7 +148,8 @@ export function parseTimestampToken(tokenDer: Buffer): ParsedTimestampToken {
 
   const tstInfo = AsnConvert.parse(inner, TSTInfo)
   const messageImprintHex = Buffer.from(tstInfo.messageImprint.hashedMessage.buffer).toString('hex')
-  const tsaName = tstInfo.tsa ? generalNameToString(tstInfo.tsa) : undefined
+  const tsaName =
+    (tstInfo.tsa ? generalNameToString(tstInfo.tsa) : undefined) ?? signerCommonName(signedData)
 
   return { messageImprintHex, stampedAt: tstInfo.genTime, tsaName }
 }

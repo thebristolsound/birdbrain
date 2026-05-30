@@ -1,80 +1,18 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { createHash } from 'crypto'
-import { AsnConvert, OctetString } from '@peculiar/asn1-schema'
-import { AlgorithmIdentifier, GeneralName } from '@peculiar/asn1-x509'
-import {
-  TimeStampReq,
-  MessageImprint,
-  TSTInfo,
-  TSTInfoVersion,
-  id_ct_tstInfo
-} from '@peculiar/asn1-tsp'
-import {
-  ContentInfo,
-  SignedData,
-  EncapsulatedContentInfo,
-  EncapsulatedContent,
-  DigestAlgorithmIdentifiers,
-  SignerInfos,
-  id_signedData
-} from '@peculiar/asn1-cms'
-import { TimeStampResp, TimeStampToken, PKIStatusInfo, PKIStatus } from '@peculiar/asn1-tsp'
+import { AsnConvert } from '@peculiar/asn1-schema'
+import { TimeStampReq, MessageImprint, PKIStatus } from '@peculiar/asn1-tsp'
 import {
   buildTimestampRequest,
   parseTimestampToken,
   requestTimestamp
 } from '@main/services/timestamp'
+import { buildSyntheticToken, buildTimestampResponse } from '../../helpers/timestampFixtures'
 
 const SHA256_OID = '2.16.840.1.101.3.4.2.1'
 
 function contentHashHex(input: string): string {
   return createHash('sha256').update(input).digest('hex')
-}
-
-// Builds a structurally-valid (unsigned) RFC 3161 token: a CMS ContentInfo
-// wrapping SignedData whose eContent is a DER TSTInfo. This exercises the parse
-// path hermetically; real TSA signature verification is the openssl path and is
-// covered by the DigiCert fixture test, not here.
-function buildSyntheticToken(opts: {
-  contentHash: string
-  genTime: Date
-  tsaDnsName?: string
-}): Buffer {
-  const digest = Buffer.from(opts.contentHash, 'hex')
-  const tst = new TSTInfo({
-    version: TSTInfoVersion.v1,
-    policy: '1.2.3.4.5',
-    messageImprint: new MessageImprint({
-      hashAlgorithm: new AlgorithmIdentifier({ algorithm: SHA256_OID }),
-      hashedMessage: new OctetString(digest)
-    }),
-    serialNumber: new Uint8Array([0x2a]).buffer,
-    genTime: opts.genTime,
-    ...(opts.tsaDnsName ? { tsa: new GeneralName({ dNSName: opts.tsaDnsName }) } : {})
-  })
-  const sd = new SignedData({
-    version: 3,
-    digestAlgorithms: new DigestAlgorithmIdentifiers([]),
-    encapContentInfo: new EncapsulatedContentInfo({
-      eContentType: id_ct_tstInfo,
-      eContent: new EncapsulatedContent({ single: new OctetString(AsnConvert.serialize(tst)) })
-    }),
-    signerInfos: new SignerInfos([])
-  })
-  const ci = new ContentInfo({ contentType: id_signedData, content: AsnConvert.serialize(sd) })
-  return Buffer.from(AsnConvert.serialize(ci))
-}
-
-// Wraps a synthetic token in a granted TimeStampResp, the DER body a TSA
-// returns on the wire (Content-Type: application/timestamp-reply).
-function buildTimestampResponse(tokenDer: Buffer, status = PKIStatus.granted): Buffer {
-  const resp = new TimeStampResp({
-    status: new PKIStatusInfo({ status }),
-    ...(status === PKIStatus.granted || status === PKIStatus.grantedWithMods
-      ? { timeStampToken: AsnConvert.parse(tokenDer, TimeStampToken) }
-      : {})
-  })
-  return Buffer.from(AsnConvert.serialize(resp))
 }
 
 describe('buildTimestampRequest', () => {
@@ -88,8 +26,7 @@ describe('buildTimestampRequest', () => {
 
     const imprint = Buffer.from(AsnConvert.serialize(req.messageImprint.hashedMessage))
     // hashedMessage is the raw 32-byte digest; compare its hex to contentHash.
-    const octet = req.messageImprint.hashedMessage as OctetString
-    expect(Buffer.from(octet.buffer).toString('hex')).toBe(contentHash)
+    expect(Buffer.from(req.messageImprint.hashedMessage.buffer).toString('hex')).toBe(contentHash)
     expect(imprint.length).toBeGreaterThan(32)
   })
 

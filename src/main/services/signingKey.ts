@@ -51,11 +51,21 @@ export function initSigningKey(userDataPath: string): void {
 
   if (existsSync(privPath) && existsSync(pubPath)) {
     const unwrapped = unwrapPrivateKey(readFileSync(privPath, 'utf-8'))
-    if (unwrapped) {
-      privateKeyPem = unwrapped
-      publicKeyPem = readFileSync(pubPath, 'utf-8')
-      return
+    if (!unwrapped) {
+      // Fail closed: the keypair exists but the private key could not be
+      // unwrapped (OS credential store unavailable). Regenerating here would
+      // silently rotate the installation key and invalidate every previously
+      // signed manifest entry — refuse instead.
+      throw new Error(
+        `Failed to unwrap installation signing key at ${privPath} ` +
+          `(public key: ${pubPath}). The OS credential store may be ` +
+          `unavailable; refusing to generate a new keypair to avoid silently ` +
+          `rotating the installation signing key.`
+      )
     }
+    privateKeyPem = unwrapped
+    publicKeyPem = readFileSync(pubPath, 'utf-8')
+    return
   }
 
   const { privateKey, publicKey } = generateKeyPairSync('rsa', {

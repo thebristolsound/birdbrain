@@ -15,6 +15,9 @@ import { canonicalStringify } from '@main/services/canonicalJson'
 import { ManifestEntrySchema } from '@shared/schemas'
 import { signEntryHash, verifyEntrySignature } from '@main/services/signingKey'
 import { parseTimestampToken } from '@main/services/timestamp'
+import type { TrustedTime } from '@shared/types'
+
+export type { TrustedTime }
 
 export interface ManifestHead {
   prevHash: string
@@ -183,12 +186,6 @@ export async function withDeletionEntry<T>(
     throw err
   }
 }
-
-// Orthogonal trusted-time axis. Independent of `valid` (which is pure chain +
-// entryHash integrity). v1 / unsigned-untimestamped entries are integrity-
-// verified but carry no trusted time, so the chain presents as 'none' — that
-// is NOT a verification failure. 'rfc3161'/'pending' resolution is #120.
-export type TrustedTime = 'rfc3161' | 'pending' | 'none'
 
 export interface TrustedTimeResult {
   trustedTime: TrustedTime

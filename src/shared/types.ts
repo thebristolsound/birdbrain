@@ -12,6 +12,12 @@ export interface Case {
 
 export type CaptureFormat = 'html' | 'mhtml'
 
+// Orthogonal trusted-time axis (#120), independent of integrity status. A
+// capture is 'rfc3161' once an RFC 3161 token anchors its content hash,
+// 'pending' while an eligible (v2) capture awaits stamping, and 'none' for
+// grandfathered legacy captures that were never timestamped.
+export type TrustedTime = 'rfc3161' | 'pending' | 'none'
+
 export interface Capture {
   id: string
   caseId: string
@@ -41,6 +47,9 @@ export interface Capture {
   lastVerifiedAt?: string
   lastVerifiedHash?: string
   lastVerifiedStatus?: HashVerification['status']
+  // Mirror of the manifest-authoritative trusted-time axis; rebuildable from the
+  // manifest and used as the retry-worker queue (#120).
+  trustedTimeStatus?: TrustedTime
 }
 
 export interface Tag {

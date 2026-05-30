@@ -12,7 +12,8 @@ import type {
   SelectorMatchExportRow,
   ExtractedDataCategory,
   ExtractedDataSubcategory,
-  ExtractedDataItem
+  ExtractedDataItem,
+  TrustedTime
 } from '@shared/types'
 import type {
   CreateCaseParams,
@@ -29,7 +30,7 @@ import type { ExtractedDatum } from '@main/services/dataExtractor'
 import { safeRegexTest } from '@main/services/safeRegex'
 
 let db: Database.Database
-export const LATEST_SCHEMA_VERSION = 17
+export const LATEST_SCHEMA_VERSION = 18
 
 export function initDatabase(dbPath: string): Database.Database {
   db = new Database(dbPath)
@@ -400,6 +401,19 @@ function migrate(db: Database.Database): void {
       db.pragma('user_version = 17')
     })()
   }
+
+  if (version < 18) {
+    db.transaction(() => {
+      // Mirror of the manifest-authoritative trusted-time axis (#120). NULL for
+      // existing rows; a startup rebuild (rebuildable from the manifest alone)
+      // populates eligible v2 captures to 'pending' and legacy to 'none'.
+      db.exec(`
+        ALTER TABLE captures ADD COLUMN trusted_time_status TEXT;
+        CREATE INDEX IF NOT EXISTS idx_captures_trusted_time ON captures(trusted_time_status);
+      `)
+      db.pragma('user_version = 18')
+    })()
+  }
 }
 
 // --- Cases ---
@@ -599,6 +613,27 @@ export function setCaptureVerification(
       'UPDATE captures SET last_verified_at = ?, last_verified_hash = ?, last_verified_status = ? WHERE id = ?'
     )
     .run(result.verifiedAt, result.computedHash || null, result.status, captureId)
+}
+
+// Updates the trusted-time mirror column for a capture (#120). The manifest is
+// authoritative; this column is a rebuildable cache that drives the retry queue.
+export function setCaptureTrustedTime(captureId: string, status: TrustedTime): void {
+  getDb().prepare('UPDATE captures SET trusted_time_status = ? WHERE id = ?').run(status, captureId)
+}
+
+// The retry-worker queue: captures still awaiting a trusted timestamp. Returns
+// the minimum the worker needs to re-stamp (capture id, case, content hash).
+export function listPendingTimestampCaptures(): Array<{
+  id: string
+  caseId: string
+  hash: string
+}> {
+  const rows = getDb()
+    .prepare(
+      "SELECT id, case_id, hash FROM captures WHERE trusted_time_status = 'pending' ORDER BY created_at ASC"
+    )
+    .all() as Array<{ id: string; case_id: string; hash: string }>
+  return rows.map((r) => ({ id: r.id, caseId: r.case_id, hash: r.hash }))
 }
 
 export function getCaptureCount(caseId: string): number {
@@ -1076,7 +1111,8 @@ function rowToCapture(row: Record<string, unknown>): Capture {
     operatorName: (row.operator_name as string) || undefined,
     lastVerifiedAt: (row.last_verified_at as string) || undefined,
     lastVerifiedHash: (row.last_verified_hash as string) || undefined,
-    lastVerifiedStatus: (row.last_verified_status as HashVerification['status']) || undefined
+    lastVerifiedStatus: (row.last_verified_status as HashVerification['status']) || undefined,
+    trustedTimeStatus: (row.trusted_time_status as TrustedTime) || undefined
   }
 }
 

@@ -12,6 +12,12 @@ export interface Case {
 
 export type CaptureFormat = 'html' | 'mhtml'
 
+// Orthogonal trusted-time axis (#120), independent of integrity status. A
+// capture is 'rfc3161' once an RFC 3161 token anchors its content hash,
+// 'pending' while an eligible (v2) capture awaits stamping, and 'none' for
+// grandfathered legacy captures that were never timestamped.
+export type TrustedTime = 'rfc3161' | 'pending' | 'none'
+
 export interface Capture {
   id: string
   caseId: string
@@ -41,6 +47,9 @@ export interface Capture {
   lastVerifiedAt?: string
   lastVerifiedHash?: string
   lastVerifiedStatus?: HashVerification['status']
+  // Mirror of the manifest-authoritative trusted-time axis; rebuildable from the
+  // manifest and used as the retry-worker queue (#120).
+  trustedTimeStatus?: TrustedTime
 }
 
 export interface Tag {
@@ -66,6 +75,8 @@ export interface BirdbrainSettings {
   operatorName: string
   operatorRole: string
   operatorOrganization: string
+  // RFC 3161 trusted-timestamp authority endpoint (#120). Defaults to DigiCert.
+  tsaUrl: string
   autoCaptureMode: AutoCaptureMode
   lastActiveCaseId: string | null
   lastActiveSection: 'captures' | 'selectors' | 'notes' | 'tags' | 'data' | 'settings'
@@ -100,10 +111,17 @@ export interface HashVerification {
   title: string
   storedHash: string
   computedHash: string
+  // Integrity axis: did the bytes + chain survive intact?
   status: 'verified' | 'tampered' | 'missing' | 'chain-broken' | 'legacy'
   manifestIndex?: number
   chainValid?: boolean
   reason?: string
+  // Trusted-time axis (#120), ORTHOGONAL to status: a byte-perfect capture is
+  // integrity-verified regardless of whether it carries a trusted timestamp.
+  trustedTime: TrustedTime
+  // TSA identity and asserted time; present only when trustedTime is 'rfc3161'.
+  tsaName?: string
+  stampedAt?: string
 }
 
 export interface Selector {

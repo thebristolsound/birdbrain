@@ -1,13 +1,20 @@
 import { useState, useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { identityQueryOptions, useSettingsMutations } from '@renderer/lib/queries'
+import {
+  identityQueryOptions,
+  settingsQueryOptions,
+  useSettingsMutations
+} from '@renderer/lib/queries'
 import { Input, Label } from '@renderer/components/ui'
+import { DEFAULT_TSA_URL } from '@shared/constants'
 
 export function OperatorConfig() {
   const { data: identity } = useQuery(identityQueryOptions)
+  const { data: settings } = useQuery(settingsQueryOptions)
   const [operatorName, setOperatorName] = useState('')
   const [operatorRole, setOperatorRole] = useState('')
   const [operatorOrganization, setOperatorOrganization] = useState('')
+  const [tsaUrl, setTsaUrl] = useState('')
   const [nameError, setNameError] = useState('')
   const initialized = useRef(false)
   const { update } = useSettingsMutations()
@@ -22,6 +29,15 @@ export function OperatorConfig() {
     }
   }, [identity])
 
+  // tsaUrl lives in full settings (not identity); seed it once settings load.
+  const tsaInitialized = useRef(false)
+  useEffect(() => {
+    if (settings && !tsaInitialized.current) {
+      setTsaUrl(settings.tsaUrl)
+      tsaInitialized.current = true
+    }
+  }, [settings])
+
   async function save() {
     if (!operatorName.trim()) {
       setNameError('Operator name is required for capture and export.')
@@ -29,6 +45,11 @@ export function OperatorConfig() {
     }
     setNameError('')
     await update.mutateAsync({ operatorName, operatorRole, operatorOrganization })
+  }
+
+  async function saveTsaUrl() {
+    // Fall back to the DigiCert default if the field is cleared.
+    await update.mutateAsync({ tsaUrl: tsaUrl.trim() || DEFAULT_TSA_URL })
   }
 
   if (!identity) return <div className="text-text-muted">Loading...</div>
@@ -82,6 +103,23 @@ export function OperatorConfig() {
           className="border-border bg-surface"
         />
         <p className="mt-1 text-[11px] text-text-muted">Optional. Included in the export report.</p>
+      </div>
+      <div>
+        <Label className="text-xs font-medium text-text-secondary">
+          Trusted Timestamp Authority
+        </Label>
+        <Input
+          type="text"
+          value={tsaUrl}
+          onChange={(e) => setTsaUrl(e.target.value)}
+          onBlur={saveTsaUrl}
+          placeholder={DEFAULT_TSA_URL}
+          className="border-border bg-surface font-mono text-[11px]"
+        />
+        <p className="mt-1 text-[11px] text-text-muted">
+          RFC 3161 endpoint used to trusted-timestamp captures. Defaults to DigiCert. Captures never
+          block on it; un-stamped captures are timestamped when the TSA is reachable.
+        </p>
       </div>
       <div>
         <Label className="text-xs font-medium text-text-secondary">Installation ID</Label>

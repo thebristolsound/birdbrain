@@ -16,6 +16,7 @@ import { initInstallationId } from '@main/services/installationId'
 import { initSigningKey } from '@main/services/signingKey'
 import { initServerToken } from '@main/services/serverToken'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
+import { createTimestampWorker } from '@main/services/timestampWorker'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { IPC_CHANNELS, type SelectorRematchedEvent } from '@shared/ipc'
 
@@ -109,7 +110,15 @@ app.whenReady().then(async () => {
     }
   })
 
-  const captureLifecycle = createCaptureLifecycle({ selectorLifecycle })
+  // Trusted-timestamp worker (#120). Stamps captures out-of-band so the capture
+  // path never blocks on the TSA; rebuilds the mirror + retries pending on start.
+  const timestampWorker = createTimestampWorker()
+  timestampWorker.start()
+
+  const captureLifecycle = createCaptureLifecycle({
+    selectorLifecycle,
+    enqueueTimestamp: (captureId) => timestampWorker.enqueue(captureId)
+  })
 
   // Register IPC handlers
   registerIpcHandlers({ selectorLifecycle, captureLifecycle })

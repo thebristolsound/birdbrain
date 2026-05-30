@@ -14,6 +14,10 @@ import { MANIFEST_FILENAME, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import { canonicalStringify } from '@main/services/canonicalJson'
 import { ManifestEntrySchema } from '@shared/schemas'
 import { signEntryHash, verifyEntrySignature } from '@main/services/signingKey'
+import { parseTimestampToken } from '@main/services/timestamp'
+import type { TrustedTime } from '@shared/types'
+
+export type { TrustedTime }
 
 export interface ManifestHead {
   prevHash: string
@@ -69,6 +73,19 @@ export type ManifestEntryInput =
       operatorName: string
       toolVersion: string
       reason?: string
+    }
+  | {
+      // Append-only trusted-time anchor (#120). References a capture entry's
+      // contentHash and carries the RFC 3161 token (base64). The capture path
+      // never blocks on the TSA — this entry is appended later, by the worker.
+      type: 'timestamp'
+      caseId: string
+      captureContentHash: string
+      timestamp: string
+      tsaToken?: string
+      operatorId: string
+      operatorName: string
+      toolVersion: string
     }
 
 export interface AppendResult {
@@ -170,11 +187,129 @@ export async function withDeletionEntry<T>(
   }
 }
 
-// Orthogonal trusted-time axis. Independent of `valid` (which is pure chain +
-// entryHash integrity). v1 / unsigned-untimestamped entries are integrity-
-// verified but carry no trusted time, so the chain presents as 'none' — that
-// is NOT a verification failure. 'rfc3161'/'pending' resolution is #120.
-export type TrustedTime = 'rfc3161' | 'pending' | 'none'
+export interface TrustedTimeResult {
+  trustedTime: TrustedTime
+  // Present only when trustedTime is 'rfc3161'.
+  tsaName?: string
+  // ISO 8601 of the TSA's asserted time; present only when 'rfc3161'.
+  stampedAt?: string
+}
+
+// Resolves the per-capture trusted-time axis from the manifest alone (so the DB
+// mirror is rebuildable — #120 AC). A capture is identified by its contentHash:
+//   - a 'timestamp' entry referencing it, carrying a token whose imprint matches
+//     → 'rfc3161' (+ TSA identity and stamped-at from the token)
+//   - else a v2+ capture entry with no such timestamp yet → 'pending'
+//   - else (v1/grandfathered, or no capture entry) → 'none'
+// Pending vs none is the eligibility distinction: v2 captures are expected to be
+// stamped (so 'pending' until they are); legacy v1 captures never were.
+export function resolveTrustedTime(caseDir: string, contentHash: string): TrustedTimeResult {
+  const path = join(caseDir, MANIFEST_FILENAME)
+  if (!existsSync(path) || statSync(path).size === 0) return { trustedTime: 'none' }
+
+  const lines = readFileSync(path, 'utf-8')
+    .split('\n')
+    .filter((l) => l.trim().length > 0)
+
+  let eligible = false
+  for (const line of lines) {
+    let entry: Record<string, unknown>
+    try {
+      entry = JSON.parse(line) as Record<string, unknown>
+    } catch {
+      continue
+    }
+
+    if (
+      entry.type === 'timestamp' &&
+      entry.captureContentHash === contentHash &&
+      typeof entry.tsaToken === 'string'
+    ) {
+      try {
+        const parsed = parseTimestampToken(Buffer.from(entry.tsaToken, 'base64'))
+        // The token must actually attest THIS capture's bytes; a mismatched
+        // imprint is not proof of time and is ignored (capture stays pending).
+        if (parsed.messageImprintHex === contentHash) {
+          return {
+            trustedTime: 'rfc3161',
+            tsaName: parsed.tsaName,
+            stampedAt: parsed.stampedAt.toISOString()
+          }
+        }
+      } catch {
+        // Malformed token — ignore; the worker will re-stamp.
+      }
+    } else if (
+      entry.type === 'capture' &&
+      entry.contentHash === contentHash &&
+      typeof entry.schemaVersion === 'number' &&
+      entry.schemaVersion >= 2
+    ) {
+      eligible = true
+    }
+  }
+
+  return { trustedTime: eligible ? 'pending' : 'none' }
+}
+
+// Resolves the trusted-time axis for EVERY capture in a case in a single manifest
+// pass, keyed by contentHash. Use this to rebuild the DB mirror for a whole case
+// — calling resolveTrustedTime() per capture would re-read and re-parse the
+// manifest O(captures) times (quadratic on a large case). Captures whose hash is
+// absent from the returned map are 'none' (legacy/grandfathered).
+export function buildTrustedTimeIndex(caseDir: string): Map<string, TrustedTimeResult> {
+  const index = new Map<string, TrustedTimeResult>()
+  const path = join(caseDir, MANIFEST_FILENAME)
+  if (!existsSync(path) || statSync(path).size === 0) return index
+
+  const lines = readFileSync(path, 'utf-8')
+    .split('\n')
+    .filter((l) => l.trim().length > 0)
+
+  const eligible = new Set<string>()
+  for (const line of lines) {
+    let entry: Record<string, unknown>
+    try {
+      entry = JSON.parse(line) as Record<string, unknown>
+    } catch {
+      continue
+    }
+
+    if (
+      entry.type === 'timestamp' &&
+      typeof entry.captureContentHash === 'string' &&
+      typeof entry.tsaToken === 'string'
+    ) {
+      const contentHash = entry.captureContentHash
+      if (index.get(contentHash)?.trustedTime === 'rfc3161') continue
+      try {
+        const parsed = parseTimestampToken(Buffer.from(entry.tsaToken, 'base64'))
+        if (parsed.messageImprintHex === contentHash) {
+          index.set(contentHash, {
+            trustedTime: 'rfc3161',
+            tsaName: parsed.tsaName,
+            stampedAt: parsed.stampedAt.toISOString()
+          })
+        }
+      } catch {
+        // Malformed token — ignore; the capture stays pending.
+      }
+    } else if (
+      entry.type === 'capture' &&
+      typeof entry.contentHash === 'string' &&
+      typeof entry.schemaVersion === 'number' &&
+      entry.schemaVersion >= 2
+    ) {
+      eligible.add(entry.contentHash)
+    }
+  }
+
+  // Eligible v2 captures with no valid timestamp are pending.
+  for (const hash of eligible) {
+    if (!index.has(hash)) index.set(hash, { trustedTime: 'pending' })
+  }
+  return index
+}
 
 export interface ChainVerifyResult {
   valid: boolean

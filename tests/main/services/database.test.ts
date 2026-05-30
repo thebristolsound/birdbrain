@@ -43,6 +43,8 @@ import {
   getExtractedItems,
   getExtractedDataCountForCase,
   deleteExtractedDataForCapture,
+  setCaptureTrustedTime,
+  listPendingTimestampCaptures,
   LATEST_SCHEMA_VERSION
 } from '@main/services/database'
 
@@ -799,8 +801,9 @@ describe('database', () => {
   })
 
   describe('annotations schema (migration 17)', () => {
-    it('LATEST_SCHEMA_VERSION is 17', () => {
-      expect(LATEST_SCHEMA_VERSION).toBe(17)
+    it('LATEST_SCHEMA_VERSION is 18', () => {
+      // Bumped to 18 in #120 (trusted_time_status mirror column).
+      expect(LATEST_SCHEMA_VERSION).toBe(18)
     })
 
     it('creates annotations table with expected columns', () => {
@@ -1236,6 +1239,58 @@ describe('database', () => {
       ])
       deleteCapture(captureId)
       expect(getExtractedDataCountForCase(caseId)).toBe(0)
+    })
+  })
+
+  describe('trusted-time mirror column', () => {
+    let caseId: string
+
+    beforeEach(() => {
+      caseId = createCase({ name: 'Timestamp Case' }).id
+    })
+
+    it('migration 18 adds the trusted_time_status column and its index', () => {
+      const cols = (
+        getDb().prepare("PRAGMA table_info('captures')").all() as Array<{ name: string }>
+      ).map((c) => c.name)
+      expect(cols).toContain('trusted_time_status')
+      const idx = (
+        getDb()
+          .prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='captures'")
+          .all() as Array<{ name: string }>
+      ).map((i) => i.name)
+      expect(idx).toContain('idx_captures_trusted_time')
+    })
+
+    function insertCap(hash: string): string {
+      return insertCapture({
+        caseId,
+        url: 'https://example.com/' + hash,
+        title: hash,
+        hash,
+        timestamp: new Date().toISOString(),
+        format: 'mhtml'
+      }).id
+    }
+
+    it('persists and reads back the trusted-time status', () => {
+      const id = insertCap('h-rfc')
+      setCaptureTrustedTime(id, 'rfc3161')
+      expect(getCapture(id)?.trustedTimeStatus).toBe('rfc3161')
+    })
+
+    it('lists only captures still pending a timestamp', () => {
+      const pendingId = insertCap('h-pending')
+      const stampedId = insertCap('h-stamped')
+      setCaptureTrustedTime(pendingId, 'pending')
+      setCaptureTrustedTime(stampedId, 'rfc3161')
+
+      const pending = listPendingTimestampCaptures()
+      expect(pending.map((c) => c.id)).toContain(pendingId)
+      expect(pending.map((c) => c.id)).not.toContain(stampedId)
+      // The queue carries what the worker needs to re-stamp.
+      const entry = pending.find((c) => c.id === pendingId)
+      expect(entry).toMatchObject({ caseId, hash: 'h-pending' })
     })
   })
 })

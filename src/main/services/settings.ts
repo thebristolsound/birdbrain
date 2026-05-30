@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import type { BirdbrainSettings } from '@shared/types'
 import { PartialBirdbrainSettingsSchema } from '@shared/schemas'
-import { DEFAULT_ANALYSIS_SYSTEM_PROMPT } from '@shared/constants'
+import { DEFAULT_ANALYSIS_SYSTEM_PROMPT, DEFAULT_TSA_URL } from '@shared/constants'
 
 // Encrypt/decrypt API keys at rest using Electron's OS credential store.
 // Falls back to plaintext when safeStorage is unavailable (e.g. tests, headless Linux).
@@ -53,6 +53,7 @@ const DEFAULT_SETTINGS: BirdbrainSettings = {
   operatorName: '',
   operatorRole: '',
   operatorOrganization: '',
+  tsaUrl: DEFAULT_TSA_URL,
   autoCaptureMode: 'notify',
   lastActiveCaseId: null,
   lastActiveSection: 'captures',

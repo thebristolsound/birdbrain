@@ -13,6 +13,12 @@ export const MANIFEST_FILENAME = 'manifest.jsonl'
 // Bump whenever the manifest entry schema changes (e.g. new required fields).
 export const MANIFEST_SCHEMA_VERSION = 2
 
+// Default RFC 3161 trusted-timestamp authority (#120, decision D6/#112).
+// DigiCert's unauthenticated endpoint: no account/API key, and its root is
+// ubiquitous in OS and court trust stores. Configurable in Settings; free TSAs
+// (e.g. freetsa.org) are a documented dev/test fallback only.
+export const DEFAULT_TSA_URL = 'http://timestamp.digicert.com'
+
 // Default system prompt sent with every capture analysis request. Users can
 // override this from Settings → AI; this constant is the fallback on first run
 // and when the stored value is blank.

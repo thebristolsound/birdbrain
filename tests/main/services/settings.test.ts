@@ -10,6 +10,7 @@ import {
   resetSettings,
   getDefaultSettings
 } from '../../../src/main/services/settings'
+import { DEFAULT_TSA_URL } from '../../../src/shared/constants'
 
 describe('settings', () => {
   let tempDir: string
@@ -82,6 +83,34 @@ describe('settings', () => {
     // Entire saved object rejected by schema → defaults returned
     expect(settings.dedupeWindowSeconds).toBe(60)
     expect(settings.theme).toBe('light')
+  })
+
+  it('defaults the TSA endpoint to DigiCert', () => {
+    expect(getSettings().tsaUrl).toBe(DEFAULT_TSA_URL)
+  })
+
+  it('persists a valid custom TSA endpoint', () => {
+    updateSettings({ tsaUrl: 'https://freetsa.org/tsr' })
+    expect(getSettings().tsaUrl).toBe('https://freetsa.org/tsr')
+  })
+
+  it('normalizes a non-http(s) TSA endpoint to the default', () => {
+    updateSettings({ tsaUrl: 'ftp://evil.example/tsa' })
+    expect(getSettings().tsaUrl).toBe(DEFAULT_TSA_URL)
+  })
+
+  it('coerces an invalid stored tsaUrl without resetting other settings', () => {
+    // A hand-edited file with a bad tsaUrl but otherwise-valid fields must NOT
+    // trigger the whole-file reset that a genuinely wrong-typed field does.
+    writeFileSync(
+      settingsFile,
+      JSON.stringify({ tsaUrl: 'not a url', theme: 'dark', operatorName: 'Keep Me' }),
+      'utf-8'
+    )
+    const settings = getSettings()
+    expect(settings.tsaUrl).toBe(DEFAULT_TSA_URL)
+    expect(settings.theme).toBe('dark')
+    expect(settings.operatorName).toBe('Keep Me')
   })
 
   it('preserves ignored URL patterns', () => {

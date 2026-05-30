@@ -13,6 +13,7 @@ import {
   initManifest,
   rollbackManifestEntry,
   verifyManifestChain,
+  resolveTrustedTime,
   withDeletionEntry,
   ManifestRollback
 } from '@main/services/manifest'
@@ -227,12 +228,23 @@ export async function ingestMhtmlCapture(params: IngestParams): Promise<IngestRe
 async function computeVerification(
   capture: NonNullable<ReturnType<typeof db.getCapture>>
 ): Promise<HashVerification> {
+  // Trusted time is ORTHOGONAL to integrity, so resolve it once up front and
+  // attach it to every result regardless of the integrity outcome. Derived from
+  // the manifest alone; a legacy/un-stamped capture simply reports none/pending.
+  const tt = resolveTrustedTime(join(getStorageRoot(), capture.caseId), capture.hash)
+  const trusted = { trustedTime: tt.trustedTime, tsaName: tt.tsaName, stampedAt: tt.stampedAt }
+
+  const base = {
+    captureId: capture.id,
+    url: capture.url,
+    title: capture.title,
+    storedHash: capture.hash,
+    ...trusted
+  }
+
   if (capture.format !== 'mhtml' || !capture.mhtmlPath) {
     return {
-      captureId: capture.id,
-      url: capture.url,
-      title: capture.title,
-      storedHash: capture.hash,
+      ...base,
       computedHash: '',
       status: 'legacy',
       reason: 'Legacy HTML capture (pre-MHTML era)'
@@ -250,10 +262,7 @@ async function computeVerification(
     })
   } catch (err) {
     return {
-      captureId: capture.id,
-      url: capture.url,
-      title: capture.title,
-      storedHash: capture.hash,
+      ...base,
       computedHash: '',
       status: 'missing',
       reason: 'MHTML file unreadable: ' + String(err)
@@ -264,10 +273,7 @@ async function computeVerification(
   const chain = verifyManifestChain(join(getStorageRoot(), capture.caseId))
   if (!chain.valid) {
     return {
-      captureId: capture.id,
-      url: capture.url,
-      title: capture.title,
-      storedHash: capture.hash,
+      ...base,
       computedHash: computed,
       status: 'chain-broken',
       manifestIndex: capture.manifestIndex,
@@ -277,10 +283,7 @@ async function computeVerification(
   }
   if (computed !== capture.hash) {
     return {
-      captureId: capture.id,
-      url: capture.url,
-      title: capture.title,
-      storedHash: capture.hash,
+      ...base,
       computedHash: computed,
       status: 'tampered',
       manifestIndex: capture.manifestIndex,
@@ -288,10 +291,7 @@ async function computeVerification(
     }
   }
   return {
-    captureId: capture.id,
-    url: capture.url,
-    title: capture.title,
-    storedHash: capture.hash,
+    ...base,
     computedHash: computed,
     status: 'verified',
     manifestIndex: capture.manifestIndex,
@@ -310,19 +310,23 @@ export async function verifyCapture(captureId: string): Promise<HashVerification
       storedHash: '',
       computedHash: '',
       status: 'missing',
-      reason: 'Capture not found'
+      reason: 'Capture not found',
+      trustedTime: 'none'
     }
   }
 
   const result = await computeVerification(capture)
 
   // Persist so the UI can rehydrate across remounts/sessions and export can read
-  // a stable snapshot without re-hashing when nothing has changed on disk.
+  // a stable snapshot without re-hashing when nothing has changed on disk. The
+  // trusted-time mirror is refreshed here too, self-healing if the worker is
+  // behind (e.g. a stamp landed in the manifest but the mirror still says pending).
   db.setCaptureVerification(captureId, {
     status: result.status,
     computedHash: result.computedHash,
     verifiedAt: new Date().toISOString()
   })
+  db.setCaptureTrustedTime(captureId, result.trustedTime)
 
   return result
 }

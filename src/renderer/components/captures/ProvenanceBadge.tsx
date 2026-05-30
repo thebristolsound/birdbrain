@@ -19,7 +19,8 @@ function hydrateFromCapture(capture: Capture): HashVerification | null {
     storedHash: capture.hash,
     computedHash: capture.lastVerifiedHash ?? '',
     status: capture.lastVerifiedStatus,
-    manifestIndex: capture.manifestIndex
+    manifestIndex: capture.manifestIndex,
+    trustedTime: capture.trustedTimeStatus ?? 'none'
   }
 }
 

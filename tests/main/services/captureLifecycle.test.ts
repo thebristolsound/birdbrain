@@ -12,7 +12,8 @@ import {
   insertCapture,
   listCaptures
 } from '@main/services/database'
-import { initManifest, verifyManifestChain } from '@main/services/manifest'
+import { initManifest, verifyManifestChain, appendManifestEntry } from '@main/services/manifest'
+import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
@@ -262,5 +263,48 @@ describe('createCaptureLifecycle.verify', () => {
 
     expect(result.status).toBe('verified')
     expect(result.storedHash).toBe(result.computedHash)
+  })
+
+  it('reports the trusted-time axis orthogonally to integrity (pending before stamping)', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('not-stamped'))
+    )
+
+    const result = await lifecycle.verify(capture.id)
+
+    // Integrity is verified even though no trusted timestamp exists yet — the
+    // axes are independent; lacking a timestamp is NOT "not verified".
+    expect(result.status).toBe('verified')
+    expect(result.trustedTime).toBe('pending')
+  })
+
+  it('reports rfc3161 with TSA identity once a timestamp entry anchors the capture', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture } = await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('stamp-me')))
+
+    const caseDir = join(tempDir, 'captures', caseId)
+    const token = buildSyntheticToken({
+      contentHash: capture.hash,
+      genTime: new Date('2026-05-30T09:05:00.000Z'),
+      tsaDnsName: 'tsa.example.com'
+    })
+    appendManifestEntry(caseDir, {
+      type: 'timestamp',
+      caseId,
+      captureContentHash: capture.hash,
+      timestamp: '2026-05-30T09:05:00.000Z',
+      tsaToken: token.toString('base64'),
+      operatorId: 'op-1',
+      operatorName: 'Op',
+      toolVersion: '0.1.0'
+    })
+
+    const result = await lifecycle.verify(capture.id)
+
+    expect(result.status).toBe('verified')
+    expect(result.trustedTime).toBe('rfc3161')
+    expect(result.tsaName).toBe('tsa.example.com')
+    expect(result.stampedAt).toBe('2026-05-30T09:05:00.000Z')
   })
 })

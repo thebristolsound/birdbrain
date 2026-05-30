@@ -111,10 +111,17 @@ export interface HashVerification {
   title: string
   storedHash: string
   computedHash: string
+  // Integrity axis: did the bytes + chain survive intact?
   status: 'verified' | 'tampered' | 'missing' | 'chain-broken' | 'legacy'
   manifestIndex?: number
   chainValid?: boolean
   reason?: string
+  // Trusted-time axis (#120), ORTHOGONAL to status: a byte-perfect capture is
+  // integrity-verified regardless of whether it carries a trusted timestamp.
+  trustedTime: TrustedTime
+  // TSA identity and asserted time; present only when trustedTime is 'rfc3161'.
+  tsaName?: string
+  stampedAt?: string
 }
 
 export interface Selector {

@@ -208,15 +208,16 @@ function buildHtmlReport(data: ExportData, options: ExportOptions): string {
   if (options.include.auditTrail && data.verifications.length > 0) {
     sections.push(`
       <div class="section">
-        <h2>Audit Trail — Hash Verification</h2>
+        <h2>Audit Trail — Integrity &amp; Trusted Time</h2>
         <table class="full-width">
-          <thead><tr><th>Status</th><th>Title</th><th>URL</th><th>Manifest #</th><th>Stored Hash</th><th>Computed Hash</th></tr></thead>
+          <thead><tr><th>Integrity</th><th>Trusted Time</th><th>Title</th><th>URL</th><th>Manifest #</th><th>Stored Hash</th><th>Computed Hash</th></tr></thead>
           <tbody>
             ${data.verifications
               .map(
                 (v) => `
               <tr class="verify-${v.status}">
                 <td>${statusGlyph(v.status)} ${v.status}</td>
+                <td class="tt-${v.trustedTime}">${trustedTimeCell(v)}</td>
                 <td>${esc(v.title)}</td>
                 <td class="mono url">${esc(v.url)}</td>
                 <td class="mono">${v.manifestIndex !== undefined ? '#' + v.manifestIndex : '-'}</td>
@@ -268,6 +269,10 @@ function buildHtmlReport(data: ExportData, options: ExportOptions): string {
   .verify-chain-broken td:first-child { color: #f59e0b; }
   .verify-legacy td:first-child { color: #a3a3a3; }
   .verify-missing td:first-child { color: #ef4444; }
+  .tt-rfc3161 { color: #22c55e; }
+  .tt-pending { color: #f59e0b; }
+  .tt-none { color: #a3a3a3; }
+  .tt-detail { color: #737373; font-size: 0.7rem; }
   @media print { body { background: white; color: black; } .cover h1, .section h2 { color: #d97706; } }
 </style>
 </head>
@@ -291,6 +296,22 @@ function statusGlyph(status: HashVerification['status']): string {
       return '○'
     case 'missing':
       return '✗'
+  }
+}
+
+// Renders the orthogonal trusted-time axis for the audit trail. 'rfc3161'
+// includes the TSA identity and asserted time so the cell is self-describing.
+function trustedTimeCell(v: HashVerification): string {
+  switch (v.trustedTime) {
+    case 'rfc3161': {
+      const when = v.stampedAt ? new Date(v.stampedAt).toLocaleString() : ''
+      const who = v.tsaName ? esc(v.tsaName) : 'RFC 3161 TSA'
+      return `✓ RFC 3161<br><span class="tt-detail">${who}${when ? ' — ' + esc(when) : ''}</span>`
+    }
+    case 'pending':
+      return '⧗ Pending'
+    case 'none':
+      return '— None'
   }
 }
 

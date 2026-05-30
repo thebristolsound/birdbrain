@@ -148,6 +148,27 @@ describe('export', () => {
     expect(content).toContain('verify-verified')
   })
 
+  it('renders Trusted Time as a column orthogonal to integrity status', async () => {
+    await ingest(caseId, '<html><body>Two axes</body></html>', 'https://example.com', 'Axes')
+
+    const outputPath = join(tempDir, 'axes.html')
+    const options: ExportOptions = {
+      format: 'html',
+      include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+      investigatorName: 'Test User',
+      outputPath
+    }
+
+    await generateReport(caseId, options, captureLifecycle)
+    const content = readFileSync(outputPath, 'utf-8')
+
+    // The audit trail has a dedicated Trusted Time column; a freshly-captured
+    // (un-stamped) capture is integrity-verified AND trusted-time Pending.
+    expect(content).toContain('Trusted Time')
+    expect(content).toContain('verify-verified')
+    expect(content).toContain('Pending')
+  })
+
   it('generates report without optional sections', async () => {
     await ingest(caseId, 'payload', 'https://example.com', 'Minimal')
 

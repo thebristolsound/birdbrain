@@ -1,10 +1,42 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ShieldCheck, ShieldAlert, ShieldOff, Shield } from 'lucide-react'
+import { ShieldCheck, ShieldAlert, ShieldOff, Shield, Clock, Stamp } from 'lucide-react'
 import type { Capture, HashVerification } from '@shared/types'
 import { queryKeys } from '@renderer/lib/queries'
 
 interface Props {
   capture: Capture
+}
+
+// The trusted-time axis (#120), rendered as a separate chip beside the integrity
+// badge so the two axes read independently. 'none' renders nothing — a capture
+// that was never eligible for timestamping shouldn't show a noisy placeholder.
+function TrustedTimeChip({ result }: { result: HashVerification }) {
+  if (result.trustedTime === 'rfc3161') {
+    const detail = [result.tsaName, result.stampedAt && new Date(result.stampedAt).toLocaleString()]
+      .filter(Boolean)
+      .join(' — ')
+    return (
+      <span
+        title={detail || 'RFC 3161 trusted timestamp'}
+        className="flex items-center gap-1 rounded-lg bg-emerald-500/10 px-2 py-1 text-[11px] text-emerald-400"
+      >
+        <Stamp className="h-3 w-3" />
+        Timestamped
+      </span>
+    )
+  }
+  if (result.trustedTime === 'pending') {
+    return (
+      <span
+        title="Awaiting a trusted timestamp from the TSA"
+        className="flex items-center gap-1 rounded-lg bg-amber-500/10 px-2 py-1 text-[11px] text-amber-400"
+      >
+        <Clock className="h-3 w-3" />
+        Timestamp pending
+      </span>
+    )
+  }
+  return null
 }
 
 // Hydrates a HashVerification shape from the persisted last_verified_* columns
@@ -54,8 +86,11 @@ export function ProvenanceBadge({ capture }: Props) {
     )
   }
 
+  // Integrity axis (left chip). The trusted-time axis is rendered as a sibling
+  // chip so the two read as independent columns.
+  let integrity
   if (result.status === 'verified') {
-    return (
+    integrity = (
       <button
         onClick={() => verifyMutation.mutate()}
         disabled={loading}
@@ -68,9 +103,8 @@ export function ProvenanceBadge({ capture }: Props) {
           : 'Verified' + (result.manifestIndex !== undefined ? ' #' + result.manifestIndex : '')}
       </button>
     )
-  }
-  if (result.status === 'legacy') {
-    return (
+  } else if (result.status === 'legacy') {
+    integrity = (
       <button
         onClick={() => verifyMutation.mutate()}
         disabled={loading}
@@ -80,9 +114,8 @@ export function ProvenanceBadge({ capture }: Props) {
         Legacy HTML
       </button>
     )
-  }
-  if (result.status === 'tampered' || result.status === 'chain-broken') {
-    return (
+  } else if (result.status === 'tampered' || result.status === 'chain-broken') {
+    integrity = (
       <button
         onClick={() => verifyMutation.mutate()}
         disabled={loading}
@@ -93,15 +126,23 @@ export function ProvenanceBadge({ capture }: Props) {
         {result.status === 'tampered' ? 'Tampered' : 'Chain broken'}
       </button>
     )
+  } else {
+    integrity = (
+      <button
+        onClick={() => verifyMutation.mutate()}
+        disabled={loading}
+        className="flex items-center gap-1 rounded-lg bg-gray-500/10 px-2 py-1 text-[11px] text-gray-400 hover:bg-gray-500/20 disabled:opacity-50"
+      >
+        <ShieldOff className="h-3 w-3" />
+        {result.status}
+      </button>
+    )
   }
+
   return (
-    <button
-      onClick={() => verifyMutation.mutate()}
-      disabled={loading}
-      className="flex items-center gap-1 rounded-lg bg-gray-500/10 px-2 py-1 text-[11px] text-gray-400 hover:bg-gray-500/20 disabled:opacity-50"
-    >
-      <ShieldOff className="h-3 w-3" />
-      {result.status}
-    </button>
+    <div className="flex items-center gap-1.5">
+      {integrity}
+      <TrustedTimeChip result={result} />
+    </div>
   )
 }

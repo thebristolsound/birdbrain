@@ -1,0 +1,82 @@
+# Threat model — capture integrity & trusted time
+
+This document states plainly what Birdbrain's chain-of-custody controls defend
+against, what they deliberately do **not**, and why the default trusted-timestamp
+authority is DigiCert. It is the reference a brief or an expert declaration can
+cite. Scope: the on-disk audit manifest (hash chain + signatures, #115/#117) and
+RFC 3161 trusted timestamping (#120).
+
+## The two independent axes
+
+Birdbrain reports integrity and trusted time as **separate, orthogonal axes**.
+Conflating them is the usual way a custody argument gets muddied; keeping them
+apart is deliberate.
+
+| Axis | Question it answers | Mechanism |
+| --- | --- | --- |
+| **Integrity** | Have the captured bytes and the manifest chain survived intact? | SHA-256 content hash + hash-linked, per-entry-signed manifest (#115/#117) |
+| **Trusted time** | Did this content provably exist no later than time *T*, per a third party? | RFC 3161 token from an external TSA, anchored in the manifest (#120) |
+
+A byte-perfect capture is **integrity-verified** whether or not it carries a
+trusted timestamp. Lacking a timestamp is *not* an integrity failure — it is
+simply an empty (or pending) trusted-time axis. The trusted-time axis has three
+states: `rfc3161` (a TSA token attests the content hash), `pending` (an eligible
+capture awaiting its token), and `none` (a grandfathered legacy capture that
+predates timestamping).
+
+## What the manifest signature defends against — and what it does not
+
+The per-entry signature over each manifest `entryHash` (#117) raises the bar
+against **casual tampering**: copying the case directory elsewhere and editing a
+capture, a hash, or a chain link with ordinary tools will fail verification,
+because the forged entry no longer carries a signature that validates against the
+installation's public key, and re-hashing one entry breaks every downstream link.
+
+It does **not** defend against a determined operator running Birdbrain's own code
+as themselves. The signing key is wrapped at rest with the OS credential store
+(DPAPI / Keychain via Electron `safeStorage`), but an operator who controls the
+running process controls the key and can, in principle, mint a fresh internally
+consistent chain. This is an inherent limit of any locally-held signing key and
+is stated here so no one over-claims it in a brief.
+
+**The RFC 3161 token is the independent anchor that closes this gap.** Because the
+timestamp is issued by an external TSA over the content hash, it establishes that
+the captured bytes existed no later than the stamped time — a fact the operator
+cannot back-date or forge, regardless of their control over the local machine.
+Integrity proves the bytes are unchanged; trusted time proves *when* they existed;
+together they are far harder to dispute than either alone.
+
+## Why DigiCert is the default TSA (decision D6 / #112)
+
+The default RFC 3161 endpoint is DigiCert's unauthenticated service
+`http://timestamp.digicert.com`. The legal-defense rationale:
+
+- **Ubiquitous trust anchor.** The DigiCert Trusted Root G4 (and the Assured ID
+  root that cross-signs it) is present out of the box in essentially every OS,
+  browser, and document-verification trust store an opposing expert or a court is
+  likely to use. Verification with stock `openssl ts -verify` succeeds offline
+  against a root the verifier already trusts — no special configuration, no
+  "trust us" step. (Confirmed: see `tests/fixtures/timestamp/README.md`, where a
+  real DigiCert token returns `Verification: OK` against only the bundled root.)
+- **No account, no key, works out of the box.** The endpoint is unauthenticated,
+  so timestamping functions on first run with nothing to provision and no
+  credential that could be argued to compromise independence.
+- **De-facto forensic / Authenticode default.** DigiCert is the timestamp
+  authority behind a large share of Authenticode-signed software and is a routine
+  choice in forensic tooling. "We used the same trusted-timestamp authority that
+  underpins code-signing across the industry" is the strongest *defensible in a
+  brief* story available without a paid relationship.
+
+The endpoint is configurable in Settings for jurisdictions or engagements that
+require a specific TSA. Free/hobbyist authorities (e.g. `freetsa.org`) are a
+documented **development/test fallback only** — their roots are not in common
+trust stores and should not anchor evidence.
+
+## Canonical verification path
+
+In-app trusted-time display performs **structural** parsing only — it confirms the
+token's message imprint matches the capture's content hash and surfaces the TSA
+identity and stamped time. The **canonical**, court-facing verification is stock
+`openssl ts -verify` against the TSA chain (decision D5 / #113); Birdbrain never
+hand-rolls CMS signature cryptography. This keeps the authoritative check in a
+ubiquitous, independently-audited tool rather than in Birdbrain's own code.

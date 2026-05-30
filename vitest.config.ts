@@ -51,7 +51,8 @@ export default defineConfig({
           name: 'node',
           environment: 'node',
           include: ['tests/**/*.test.ts'],
-          exclude: ['tests/renderer/**', 'tests/hooks/**']
+          exclude: ['tests/renderer/**', 'tests/hooks/**'],
+          setupFiles: ['./tests/setup/signing-key.ts']
         }
       },
       {

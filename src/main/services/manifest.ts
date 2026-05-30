@@ -13,6 +13,7 @@ import { createHash } from 'crypto'
 import { MANIFEST_FILENAME, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import { canonicalStringify } from '@main/services/canonicalJson'
 import { ManifestEntrySchema } from '@shared/schemas'
+import { signEntryHash, verifyEntrySignature } from '@main/services/signingKey'
 
 export interface ManifestHead {
   prevHash: string
@@ -92,7 +93,11 @@ export function appendManifestEntry(caseDir: string, entry: ManifestEntryInput):
   }
   const canonical = canonicalStringify(body)
   const entryHash = createHash('sha256').update(canonical).digest('hex')
-  const fullEntry = { ...body, entryHash }
+  // Sign the entryHash (G2). The signature is excluded from the canonical body
+  // — it covers entryHash, it does not participate in it — so verification can
+  // strip it back out and recompute the same hash.
+  const signature = signEntryHash(entryHash)
+  const fullEntry = { ...body, entryHash, signature }
   const line = JSON.stringify(fullEntry) + '\n'
 
   const fd = openSync(path, 'a')
@@ -203,17 +208,13 @@ export function verifyManifestChain(caseDir: string): ChainVerifyResult {
     }
     // `signature` (v2+) is computed over `entryHash` and, like `entryHash`
     // itself, is EXCLUDED from the canonical body. Destructure both out before
-    // recomputing so a present-or-absent signature never affects the hash —
-    // this is the immutability rule, not signature verification. v1 entries
-    // have no signature, so excluding `signature` preserves their original
-    // canonical body as well. Cryptographic signature checking is #117.
+    // recomputing so a present-or-absent signature never affects the hash.
     //
     // LOAD-BEARING: hash recomputation must continue to exclude both
     // `entryHash` and `signature`. That exclusion is what keeps legacy v1
-    // hashes stable and ensures adding a v2 signature does not change the
-    // canonical bytes being hashed.
-    const { entryHash, signature: _signature, ...body } = schemaResult.data
-    void _signature
+    // hashes stable and ensures the v2 signature does not change the canonical
+    // bytes being hashed.
+    const { entryHash, signature, ...body } = schemaResult.data
     if (body.index !== expectedIndex) {
       return { valid: false, brokenAt: i, reason: 'Index mismatch', trustedTime: 'none' }
     }
@@ -223,6 +224,12 @@ export function verifyManifestChain(caseDir: string): ChainVerifyResult {
     const recomputed = createHash('sha256').update(canonicalStringify(body)).digest('hex')
     if (recomputed !== entryHash) {
       return { valid: false, brokenAt: i, reason: 'Entry hash mismatch', trustedTime: 'none' }
+    }
+    // Signature enforcement (G2): v2+ entries must carry a cryptographically
+    // valid signature over their entryHash. Legacy v1 entries are grandfathered
+    // — they predate signing and present as integrity-verified without one.
+    if (body.schemaVersion >= 2 && !(signature && verifyEntrySignature(entryHash, signature))) {
+      return { valid: false, brokenAt: i, reason: 'Invalid signature', trustedTime: 'none' }
     }
     expectedPrev = entryHash
     expectedIndex++

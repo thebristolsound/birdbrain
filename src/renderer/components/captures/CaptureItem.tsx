@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react'
 import { Star, Check } from 'lucide-react'
 import type { Capture, Selector } from '@shared/types'
 import { useCaptureThumbnail } from '@renderer/hooks/useCaptureThumbnail'
@@ -41,6 +40,7 @@ interface CaptureItemProps {
   isMultiSelected?: boolean
   onToggleMultiSelect?: (e: React.MouseEvent) => void
   showCheckbox?: boolean
+  matchingSelectors?: Selector[]
 }
 
 export function CaptureItem({
@@ -51,17 +51,10 @@ export function CaptureItem({
   onToggleFavorite,
   isMultiSelected = false,
   onToggleMultiSelect,
-  showCheckbox = false
+  showCheckbox = false,
+  matchingSelectors = []
 }: CaptureItemProps) {
-  const [matchingSelectors, setMatchingSelectors] = useState<Selector[]>([])
   const { thumbnail } = useCaptureThumbnail(capture.id)
-
-  useEffect(() => {
-    window.birdbrain.captures
-      .getMatchingSelectors(capture.id)
-      .then(setMatchingSelectors)
-      .catch((err) => console.error('Failed to load selectors:', err))
-  }, [capture.id])
 
   let hostname = ''
   try {

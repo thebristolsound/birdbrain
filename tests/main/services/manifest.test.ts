@@ -622,6 +622,92 @@ describe('manifest schema v2 + grandfathering', () => {
   })
 })
 
+// Existing tests exercise rollback only through the `withDeletionEntry`
+// wrapper, which handles the anchor capture and rollback automatically.
+// The bare `rollbackManifestEntry(caseDir, anchorBytes)` API is the seam
+// that ingest paths (e.g. captureLifecycle.ingestMhtmlCapture) use directly
+// after a DB insert or sidecar write fails, so it gets its own coverage here.
+describe('rollbackManifestEntry (direct API)', () => {
+  let tempDir: string
+  const capEntry = (i: number) => ({
+    type: 'capture' as const,
+    captureId: `cap-${i}`,
+    caseId: 'case-rb',
+    url: `https://example.com/${i}`,
+    timestamp: `2026-01-0${i + 1}T00:00:00.000Z`,
+    contentHash: 'a'.repeat(64),
+    sizeBytes: 100 + i,
+    operatorId: 'op',
+    operatorName: 'Op',
+    toolVersion: '0.1.0'
+  })
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-rollback-'))
+    initManifest(tempDir)
+  })
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  it('truncates manifest back to anchorBytes after a single append', () => {
+    const path = join(tempDir, 'manifest.jsonl')
+    const result = appendManifestEntry(tempDir, capEntry(0))
+    expect(statSync(path).size).toBeGreaterThan(result.anchorBytes)
+
+    rollbackManifestEntry(tempDir, result.anchorBytes)
+    expect(statSync(path).size).toBe(result.anchorBytes)
+    expect(getManifestHead(tempDir)).toEqual({ prevHash: '', nextIndex: 0 })
+  })
+
+  it('rollback then re-append produces a valid single-entry chain', () => {
+    const first = appendManifestEntry(tempDir, capEntry(0))
+    rollbackManifestEntry(tempDir, first.anchorBytes)
+
+    const reAppended = appendManifestEntry(tempDir, capEntry(0))
+    expect(reAppended.index).toBe(0)
+    expect(reAppended.prevHash).toBe('')
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
+  })
+
+  it('rolling back entry B leaves entry A intact and chain still verifies', () => {
+    const a = appendManifestEntry(tempDir, capEntry(0))
+    const b = appendManifestEntry(tempDir, capEntry(1))
+    expect(b.index).toBe(1)
+
+    rollbackManifestEntry(tempDir, b.anchorBytes)
+
+    const head = getManifestHead(tempDir)
+    expect(head.nextIndex).toBe(1)
+    expect(head.prevHash).toBe(a.entryHash)
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
+  })
+
+  it('rollback with anchorBytes=0 empties the manifest', () => {
+    const path = join(tempDir, 'manifest.jsonl')
+    appendManifestEntry(tempDir, capEntry(0))
+    appendManifestEntry(tempDir, capEntry(1))
+    expect(statSync(path).size).toBeGreaterThan(0)
+
+    rollbackManifestEntry(tempDir, 0)
+    expect(statSync(path).size).toBe(0)
+    expect(getManifestHead(tempDir)).toEqual({ prevHash: '', nextIndex: 0 })
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
+  })
+
+  it('successive rollbacks unwind the chain to an empty manifest', () => {
+    const a = appendManifestEntry(tempDir, capEntry(0))
+    const b = appendManifestEntry(tempDir, capEntry(1))
+
+    rollbackManifestEntry(tempDir, b.anchorBytes)
+    rollbackManifestEntry(tempDir, a.anchorBytes)
+
+    expect(statSync(join(tempDir, 'manifest.jsonl')).size).toBe(0)
+    expect(getManifestHead(tempDir)).toEqual({ prevHash: '', nextIndex: 0 })
+  })
+})
+
 describe('manifest signing enforcement (G2)', () => {
   let tempDir: string
 
@@ -666,8 +752,6 @@ describe('manifest signing enforcement (G2)', () => {
   it('rejects a v2 entry that was re-hashed after tampering but not re-signed', () => {
     appendManifestEntry(tempDir, { ...base, captureId: 'c1', url: 'https://a' })
     const entry = readEntry()
-    // Forge: tamper a field, honestly recompute entryHash, keep the stale
-    // signature (the attacker can't produce a new one without the private key).
     entry.url = 'https://evil'
     const { entryHash: _e, signature, ...body } = entry
     void _e

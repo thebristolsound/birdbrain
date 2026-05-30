@@ -15,6 +15,29 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['tests/**/*.test.{ts,tsx}'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'html'],
+      reportsDirectory: 'coverage',
+      include: [
+        'src/main/**/*.ts',
+        'src/shared/**/*.ts',
+        'src/renderer/**/*.{ts,tsx}'
+      ],
+      exclude: [
+        '**/*.d.ts',
+        '**/types.ts',
+        'src/main/index.ts',
+        'src/preload/**',
+        'src/renderer/main.tsx',
+        'src/renderer/routeTree.gen.ts',
+        'tests/**',
+        'e2e/**',
+        'extension/**',
+        'out/**',
+        'dist/**'
+      ]
+    },
     projects: [
       {
         resolve: {
@@ -28,6 +51,7 @@ export default defineConfig({
           name: 'node',
           environment: 'node',
           include: ['tests/**/*.test.ts'],
+          exclude: ['tests/renderer/**', 'tests/hooks/**'],
           setupFiles: ['./tests/setup/signing-key.ts']
         }
       },
@@ -43,7 +67,11 @@ export default defineConfig({
         test: {
           name: 'jsdom',
           environment: 'jsdom',
-          include: ['tests/components/**/*.test.tsx']
+          include: [
+            'tests/components/**/*.test.tsx',
+            'tests/renderer/**/*.test.ts',
+            'tests/hooks/**/*.test.ts'
+          ]
         }
       }
     ]

@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '@renderer/stores/appStore'
-import { capturesQueryOptions } from '@renderer/lib/queries'
+import { capturesQueryOptions, captureContentQueryOptions } from '@renderer/lib/queries'
 import {
   ChevronLeft,
   ChevronRight,
@@ -55,42 +55,31 @@ export function CaptureViewer() {
   const { data: captures = [] } = useQuery(capturesQueryOptions(caseId))
 
   const [activeTab, setActiveTab] = useState<ViewTab>('screenshot')
-  const [content, setContent] = useState<string | null>(null)
   const capture = captures.find((item) => item.id === selectedCaptureId) ?? null
 
-  useEffect(() => {
-    if (!selectedCaptureId) {
-      setContent(null)
-    }
-  }, [selectedCaptureId])
+  // Determine content type based on active tab and capture format
+  const contentType =
+    activeTab === 'screenshot'
+      ? 'png'
+      : activeTab === 'page' || activeTab === 'source'
+        ? 'html'
+        : activeTab === 'text'
+          ? 'txt'
+          : null
 
-  // Load content when tab changes
-  useEffect(() => {
-    if (!selectedCaptureId) return
-    setContent(null)
-    // For MHTML captures, the 'page' tab uses MhtmlViewer (file URL); only
-    // source/text/screenshot tabs need raw content fetching.
-    if (capture?.format === 'mhtml' && activeTab === 'page') return
-    const type =
-      activeTab === 'screenshot'
-        ? 'png'
-        : activeTab === 'page' || activeTab === 'source'
-          ? 'html'
-          : activeTab === 'text'
-            ? 'txt'
-            : null
-    if (!type) return
-    let cancelled = false
-    window.birdbrain.captures
-      .getContent(selectedCaptureId, type)
-      .then((c) => {
-        if (!cancelled) setContent(c)
-      })
-      .catch((err) => console.error('Failed to load capture content:', err))
-    return () => {
-      cancelled = true
-    }
-  }, [selectedCaptureId, activeTab, capture?.format])
+  // Only fetch content if we have a capture, content type, and it's not MHTML page view
+  const shouldFetchContent =
+    selectedCaptureId &&
+    contentType &&
+    !(capture?.format === 'mhtml' && activeTab === 'page')
+
+  const { data: content } = useQuery({
+    ...captureContentQueryOptions(
+      selectedCaptureId || '',
+      contentType || 'html'
+    ),
+    enabled: !!shouldFetchContent
+  })
 
   // Navigation
   const currentIndex = captures.findIndex((c) => c.id === selectedCaptureId)

@@ -18,7 +18,15 @@ export const queryKeys = {
   cases: ['cases'] as const,
   case: (id: string) => ['cases', id] as const,
   captures: (caseId: string) => ['captures', caseId] as const,
+  captureContent: (captureId: string, type: 'html' | 'png' | 'txt') =>
+    ['captures', 'content', captureId, type] as const,
+  captureThumbnail: (captureId: string) => ['captures', 'thumbnail', captureId] as const,
+  captureMhtmlUrl: (captureId: string) => ['captures', 'mhtmlUrl', captureId] as const,
+  captureMatchingSelectors: (captureId: string) =>
+    ['captures', 'matchingSelectors', captureId] as const,
   captureCounts: ['captureCounts'] as const,
+  captureFavorites: (caseId: string) => ['captures', 'favorites', caseId] as const,
+  search: (query: string) => ['search', query] as const,
   tags: ['tags'] as const,
   tagsForCapture: (captureId: string) => ['tags', 'capture', captureId] as const,
   tagCountForCase: (caseId: string) => ['tags', 'caseCount', caseId] as const,
@@ -30,7 +38,6 @@ export const queryKeys = {
     ['selectors', 'matchingCaptures', caseId] as const,
   selectorMatchingCaptures: (caseId: string, selectorIds: string[]) =>
     ['selectors', 'matchingCaptures', caseId, ...selectorIds] as const,
-  search: (query: string) => ['search', query] as const,
   notes: (caseId: string) => ['notes', caseId] as const,
   noteCount: (caseId: string) => ['notes', 'count', caseId] as const,
   notesSearch: (caseId: string, query: string) => ['notes', 'search', caseId, query] as const,
@@ -41,7 +48,9 @@ export const queryKeys = {
     ['extractedData', 'items', caseId, category, subcategory] as const,
   extractedDataCount: (caseId: string) => ['extractedData', 'count', caseId] as const,
   annotations: (captureId: string) => ['annotations', captureId] as const,
-  settings: ['settings'] as const
+  settings: ['settings'] as const,
+  identity: ['identity'] as const,
+  openRouterModels: ['openRouterModels'] as const
 }
 
 // --- Cases ---
@@ -95,6 +104,48 @@ export const captureCountsQueryOptions = queryOptions({
   queryFn: () => window.birdbrain.captures.countsByCase()
 })
 
+export const captureContentQueryOptions = (captureId: string, type: 'html' | 'png' | 'txt') =>
+  queryOptions({
+    queryKey: queryKeys.captureContent(captureId, type),
+    queryFn: () => window.birdbrain.captures.getContent(captureId, type),
+    enabled: !!captureId
+  })
+
+export const captureThumbnailQueryOptions = (captureId: string) =>
+  queryOptions({
+    queryKey: queryKeys.captureThumbnail(captureId),
+    queryFn: () => window.birdbrain.captures.getThumbnail(captureId),
+    enabled: !!captureId
+  })
+
+export const captureMhtmlUrlQueryOptions = (captureId: string) =>
+  queryOptions({
+    queryKey: queryKeys.captureMhtmlUrl(captureId),
+    queryFn: () => window.birdbrain.captures.getMhtmlUrl(captureId),
+    enabled: !!captureId
+  })
+
+export const captureMatchingSelectorsQueryOptions = (captureId: string) =>
+  queryOptions({
+    queryKey: queryKeys.captureMatchingSelectors(captureId),
+    queryFn: () => window.birdbrain.captures.getMatchingSelectors(captureId),
+    enabled: !!captureId
+  })
+
+export const captureFavoritesQueryOptions = (caseId: string) =>
+  queryOptions({
+    queryKey: queryKeys.captureFavorites(caseId),
+    queryFn: () => window.birdbrain.captures.listFavorites(caseId),
+    enabled: !!caseId
+  })
+
+export const searchQueryOptions = (query: string) =>
+  queryOptions({
+    queryKey: queryKeys.search(query),
+    queryFn: () => window.birdbrain.search(query),
+    enabled: query.trim().length > 0
+  })
+
 export function useCapturesMutations(caseId: string) {
   const queryClient = useQueryClient()
 
@@ -106,7 +157,15 @@ export function useCapturesMutations(caseId: string) {
     }
   })
 
-  return { remove }
+  const toggleFavorite = useMutation({
+    mutationFn: (captureId: string) => window.birdbrain.captures.toggleFavorite(captureId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.captureFavorites(caseId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.captures(caseId) })
+    }
+  })
+
+  return { remove, toggleFavorite }
 }
 
 // --- Tags ---
@@ -389,10 +448,29 @@ export function useSettingsMutations() {
 
   const update = useMutation({
     mutationFn: (partial: Partial<BirdbrainSettings>) => window.birdbrain.settings.update(partial),
-    onSuccess: (data) => {
+    onSuccess: (data, partial) => {
       queryClient.setQueryData(queryKeys.settings, data)
+      if ('openRouterApiKey' in partial) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.openRouterModels })
+      }
     }
   })
 
   return { update }
 }
+
+// --- Identity ---
+
+export const identityQueryOptions = queryOptions({
+  queryKey: queryKeys.identity,
+  queryFn: () => window.birdbrain.settings.getIdentity()
+})
+
+// --- OpenRouter Models ---
+
+export const openRouterModelsQueryOptions = (apiKey: string) =>
+  queryOptions({
+    queryKey: queryKeys.openRouterModels,
+    queryFn: () => window.birdbrain.settings.listModels(apiKey),
+    enabled: !!apiKey
+  })

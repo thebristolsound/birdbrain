@@ -53,6 +53,9 @@ export interface IngestResult {
 
 export interface CaptureLifecycleDeps {
   selectorLifecycle: SelectorLifecycle
+  // Non-blocking hand-off to the trusted-timestamp worker (#120). Optional so
+  // tests and code paths that don't care about timestamping can omit it.
+  enqueueTimestamp?: (captureId: string) => void
 }
 
 export interface CaptureLifecycle {
@@ -359,6 +362,8 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
   return {
     async ingest(params) {
       const result = await ingestMhtmlCapture(params)
+      // Hand off to the trusted-timestamp worker without blocking the capture.
+      deps.enqueueTimestamp?.(result.capture.id)
       runPostCaptureWork(result.capture.id, params.caseId, params.url, params.textContent)
       return result
     },

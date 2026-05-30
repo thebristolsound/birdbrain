@@ -24,7 +24,11 @@ function flushImmediate(): Promise<void> {
   return new Promise<void>((resolve) => setImmediate(resolve))
 }
 
-function buildIngestParams(caseId: string, body: Buffer | Readable, overrides: Record<string, unknown> = {}) {
+function buildIngestParams(
+  caseId: string,
+  body: Buffer | Readable,
+  overrides: Record<string, unknown> = {}
+) {
   const stream = Buffer.isBuffer(body) ? Readable.from([body]) : body
   return {
     caseId,
@@ -81,6 +85,15 @@ describe('createCaptureLifecycle.ingest', () => {
     expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
   })
 
+  it('enqueues the ingested capture for trusted timestamping', async () => {
+    const enqueueTimestamp = vi.fn()
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub, enqueueTimestamp })
+    const body = Buffer.from('mhtml-body')
+    const { capture } = await lifecycle.ingest(buildIngestParams(caseId, body))
+
+    expect(enqueueTimestamp).toHaveBeenCalledWith(capture.id)
+  })
+
   it('invokes selectorLifecycle.runActiveSelectorsForCapture on the next tick when textContent is provided', async () => {
     const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
     const body = Buffer.from('mhtml-body')
@@ -118,9 +131,9 @@ describe('createCaptureLifecycle.ingest', () => {
     expect(result.capture.id).toBeTruthy()
     expect(getCapture(result.capture.id)?.id).toBe(result.capture.id)
     expect(errSpy).toHaveBeenCalled()
-    expect(
-      errSpy.mock.calls.some((c) => String(c[0]).includes('selector matching failed'))
-    ).toBe(true)
+    expect(errSpy.mock.calls.some((c) => String(c[0]).includes('selector matching failed'))).toBe(
+      true
+    )
   })
 
   it('rejects and leaves no DB row, manifest entry, or file on disk when the upload stream errors mid-read', async () => {
@@ -132,9 +145,9 @@ describe('createCaptureLifecycle.ingest', () => {
     }
     const stream = Readable.from(erroringStream())
 
-    await expect(
-      lifecycle.ingest(buildIngestParams(caseId, stream))
-    ).rejects.toThrow(/simulated network drop/)
+    await expect(lifecycle.ingest(buildIngestParams(caseId, stream))).rejects.toThrow(
+      /simulated network drop/
+    )
 
     expect(listCaptures(caseId)).toHaveLength(0)
     expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
@@ -202,9 +215,7 @@ describe('createCaptureLifecycle.delete', () => {
 
   it('deletes an MHTML capture end-to-end, removing files and appending a deletion manifest entry', async () => {
     const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
-    const { capture } = await lifecycle.ingest(
-      buildIngestParams(caseId, Buffer.from('mhtml-body'))
-    )
+    const { capture } = await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('mhtml-body')))
     expect(existsSync(join(getStorageRoot(), capture.mhtmlPath!))).toBe(true)
 
     const result = await lifecycle.delete(capture.id)
@@ -245,9 +256,7 @@ describe('createCaptureLifecycle.verify', () => {
 
   it('returns verified for an intact freshly-ingested capture', async () => {
     const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
-    const { capture } = await lifecycle.ingest(
-      buildIngestParams(caseId, Buffer.from('verify-me'))
-    )
+    const { capture } = await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('verify-me')))
 
     const result = await lifecycle.verify(capture.id)
 

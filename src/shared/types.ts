@@ -75,6 +75,8 @@ export interface BirdbrainSettings {
   operatorName: string
   operatorRole: string
   operatorOrganization: string
+  // RFC 3161 trusted-timestamp authority endpoint (#120). Defaults to DigiCert.
+  tsaUrl: string
   autoCaptureMode: AutoCaptureMode
   lastActiveCaseId: string | null
   lastActiveSection: 'captures' | 'selectors' | 'notes' | 'tags' | 'data' | 'settings'

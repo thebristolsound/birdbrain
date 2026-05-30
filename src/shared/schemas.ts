@@ -1,5 +1,9 @@
 import { z } from 'zod'
-import { DEFAULT_ANALYSIS_SYSTEM_PROMPT, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
+import {
+  DEFAULT_ANALYSIS_SYSTEM_PROMPT,
+  DEFAULT_TSA_URL,
+  MANIFEST_SCHEMA_VERSION
+} from '@shared/constants'
 
 // Shared Zod schemas for Birdbrain's trust boundaries.
 //
@@ -206,6 +210,7 @@ export const BirdbrainSettingsSchema = z.object({
   operatorName: z.string(),
   operatorRole: z.string().default(''),
   operatorOrganization: z.string().default(''),
+  tsaUrl: z.string().optional().default(DEFAULT_TSA_URL),
   autoCaptureMode: z.enum(['auto', 'notify', 'per-case']),
   lastActiveCaseId: z.string().nullable(),
   lastActiveSection: z

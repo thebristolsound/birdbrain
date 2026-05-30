@@ -760,6 +760,7 @@ describe('manifest signing enforcement (G2)', () => {
     const result = verifyManifestChain(tempDir)
     expect(result.valid).toBe(false)
     expect(result.brokenAt).toBe(0)
+    expect(result.reason).toBe('Invalid signature')
   })
 
   it('rejects a v2 entry that has no signature', () => {
@@ -767,7 +768,10 @@ describe('manifest signing enforcement (G2)', () => {
     const { signature: _s, ...unsigned } = readEntry()
     void _s
     overwrite(unsigned)
-    expect(verifyManifestChain(tempDir).valid).toBe(false)
+    const result = verifyManifestChain(tempDir)
+    expect(result.valid).toBe(false)
+    expect(result.brokenAt).toBe(0)
+    expect(result.reason).toBe('Invalid signature')
   })
 
   it('rejects a v2 entry whose signature is well-formed base64 but invalid', () => {
@@ -775,6 +779,9 @@ describe('manifest signing enforcement (G2)', () => {
     const entry = readEntry()
     entry.signature = Buffer.from('not a real signature').toString('base64')
     overwrite(entry)
-    expect(verifyManifestChain(tempDir).valid).toBe(false)
+    const result = verifyManifestChain(tempDir)
+    expect(result.valid).toBe(false)
+    expect(result.brokenAt).toBe(0)
+    expect(result.reason).toBe('Invalid signature')
   })
 })

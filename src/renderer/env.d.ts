@@ -8,6 +8,7 @@ import type {
   BirdbrainSettings,
   OpenRouterModel,
   ExportOptions,
+  ExportPreflight,
   Selector,
   ActiveCaseSelectors,
   CaptureEvent,
@@ -127,6 +128,7 @@ interface BirdbrainAPI {
     chooseStoragePath(): Promise<string | null>
   }
   export: {
+    preflight(caseId: string): Promise<ExportPreflight>
     generateReport(caseId: string, options: ExportOptions): Promise<void>
   }
   ai: {

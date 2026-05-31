@@ -32,7 +32,7 @@ import * as storage from '@main/services/storage'
 import * as settings from '@main/services/settings'
 import * as openrouter from '@main/services/openrouter'
 import * as analysisService from '@main/services/ai/analysisService'
-import { generateReport } from '@main/services/export'
+import { generateReport, getExportPreflight } from '@main/services/export'
 import { getExtensionPath, extensionPathExists } from '@main/services/extensionPath'
 import { buildCsv } from '@main/services/csvEscape'
 import { getInstallationId } from '@main/services/installationId'
@@ -349,10 +349,15 @@ export function registerIpcHandlers(deps: {
   })
 
   // Export
+  handle(IPC_CHANNELS.EXPORT_PREFLIGHT, (_, caseId: string) => getExportPreflight(caseId))
+
   handle(IPC_CHANNELS.EXPORT_GENERATE, async (_, caseId: string, options: ExportOptions) => {
+    const isZip = options.format === 'zip'
     const { canceled, filePath } = await dialog.showSaveDialog({
-      defaultPath: options.outputPath || 'report.html',
-      filters: [{ name: 'HTML', extensions: ['html'] }]
+      defaultPath: options.outputPath || (isZip ? 'evidence.zip' : 'report.html'),
+      filters: isZip
+        ? [{ name: 'Evidence Package', extensions: ['zip'] }]
+        : [{ name: 'HTML', extensions: ['html'] }]
     })
     if (canceled || !filePath) return
     await generateReport(caseId, { ...options, outputPath: filePath }, captureLifecycle)

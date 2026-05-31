@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, readFileSync, existsSync, writeFileSync } from 'fs
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
+import { createHash } from 'crypto'
 import sharp from 'sharp'
 import {
   initDatabase,
@@ -11,18 +12,45 @@ import {
   insertCapture
 } from '../../../src/main/services/database'
 import { initStorage, ensureCaseDir, getCapturePath } from '../../../src/main/services/storage'
-import { initManifest } from '../../../src/main/services/manifest'
+import { appendManifestEntry, initManifest } from '../../../src/main/services/manifest'
 import { ingestMhtmlCapture } from '../../../src/main/services/captureLifecycle'
 import {
   createCaptureLifecycle,
   type CaptureLifecycle
 } from '../../../src/main/services/captureLifecycle'
 import { createSelectorLifecycle } from '../../../src/main/services/selectorLifecycle'
-import { verifyCaptures, generateReport } from '../../../src/main/services/export'
+import {
+  verifyCaptures,
+  generateReport,
+  getExportPreflight
+} from '../../../src/main/services/export'
 import { saveAnnotations } from '../../../src/main/services/annotations'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import type { ExportOptions } from '../../../src/shared/types'
+
+function readStoredZipEntries(path: string): Map<string, Buffer> {
+  const zip = readFileSync(path)
+  const entries = new Map<string, Buffer>()
+  let offset = 0
+
+  while (offset < zip.length && zip.readUInt32LE(offset) === 0x04034b50) {
+    const method = zip.readUInt16LE(offset + 8)
+    const compressedSize = zip.readUInt32LE(offset + 18)
+    const nameLength = zip.readUInt16LE(offset + 26)
+    const extraLength = zip.readUInt16LE(offset + 28)
+    const nameStart = offset + 30
+    const dataStart = nameStart + nameLength + extraLength
+    const name = zip.subarray(nameStart, nameStart + nameLength).toString('utf-8')
+
+    if (method !== 0) throw new Error(`Unexpected compressed ZIP entry in test: ${name}`)
+
+    entries.set(name, zip.subarray(dataStart, dataStart + compressedSize))
+    offset = dataStart + compressedSize
+  }
+
+  return entries
+}
 
 async function ingest(
   caseId: string,
@@ -148,6 +176,80 @@ describe('export', () => {
     expect(content).toContain('verify-verified')
   })
 
+  it('generates a self-contained evidence ZIP with manifest, report, keys, and captures', async () => {
+    const { capture } = await ingest(
+      caseId,
+      '<html><body>Packaged evidence</body></html>',
+      'https://example.com/evidence',
+      'Evidence Page'
+    )
+    const token = readFileSync(join(process.cwd(), 'tests/fixtures/timestamp/digicert-token.der'))
+    appendManifestEntry(join(tempDir, 'captures', caseId), {
+      type: 'timestamp',
+      caseId,
+      captureContentHash: capture.hash,
+      timestamp: '2026-04-05T12:01:00.000Z',
+      tsaToken: token.toString('base64'),
+      operatorId: 'op',
+      operatorName: 'Test Operator',
+      toolVersion: '0.1.0'
+    })
+
+    const outputPath = join(tempDir, 'evidence.zip')
+    const options: ExportOptions = {
+      format: 'zip',
+      include: {
+        captures: true,
+        screenshots: false,
+        auditTrail: true,
+        annotations: 'none'
+      },
+      investigatorName: 'Test User',
+      outputPath
+    }
+
+    await generateReport(caseId, options, captureLifecycle)
+    const entries = readStoredZipEntries(outputPath)
+
+    expect(entries.has('evidence.json')).toBe(true)
+    expect(entries.has('manifest.jsonl')).toBe(true)
+    expect(entries.has('report.html')).toBe(true)
+    expect(entries.has('signing-public-key.pem')).toBe(true)
+    expect(entries.has('tsa-ca-chain.pem')).toBe(true)
+    expect(entries.has(`pages/${capture.id}.mhtml`)).toBe(true)
+    expect(entries.get(`timestamps/${capture.id}.tsr`)).toEqual(token)
+    expect(entries.get('tsa-ca-chain.pem')!.toString('utf-8').match(/BEGIN CERTIFICATE/g)?.length)
+      .toBeGreaterThan(1)
+
+    const manifest = entries.get('manifest.jsonl')!.toString('utf-8')
+    expect(manifest).toContain('"type":"capture"')
+    expect(manifest).toContain('"signature"')
+
+    const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+      captures: Array<{
+        id: string
+        mhtmlPath: string
+        mhtmlSha256: string
+        trustedTime: string
+        timestampTokenPaths: string[]
+      }>
+      verificationMaterials: { manifestPath: string; signingPublicKeyPath: string }
+      warnings: { unstampedCaptureCount: number }
+    }
+
+    const mhtml = entries.get(`pages/${capture.id}.mhtml`)!
+    expect(evidence.verificationMaterials.manifestPath).toBe('manifest.jsonl')
+    expect(evidence.verificationMaterials.signingPublicKeyPath).toBe('signing-public-key.pem')
+    expect(evidence.warnings.unstampedCaptureCount).toBe(1)
+    expect(evidence.captures[0]).toMatchObject({
+      id: capture.id,
+      mhtmlPath: `pages/${capture.id}.mhtml`,
+      mhtmlSha256: createHash('sha256').update(mhtml).digest('hex'),
+      trustedTime: 'pending',
+      timestampTokenPaths: [`timestamps/${capture.id}.tsr`]
+    })
+  })
+
   it('renders Trusted Time as a column orthogonal to integrity status', async () => {
     await ingest(caseId, '<html><body>Two axes</body></html>', 'https://example.com', 'Axes')
 
@@ -167,6 +269,35 @@ describe('export', () => {
     expect(content).toContain('Trusted Time')
     expect(content).toContain('verify-verified')
     expect(content).toContain('Pending')
+  })
+
+  it('reports un-stamped captures in preflight and the HTML summary without blocking export', async () => {
+    await ingest(caseId, '<html><body>Needs trusted time</body></html>', 'https://example.com', 'T')
+
+    const preflight = getExportPreflight(caseId)
+    expect(preflight).toMatchObject({
+      captureCount: 1,
+      stampedCaptureCount: 0,
+      unstampedCaptureCount: 1,
+      pendingCaptureCount: 1,
+      noneCaptureCount: 0
+    })
+
+    const outputPath = join(tempDir, 'warning.html')
+    await generateReport(
+      caseId,
+      {
+        format: 'html',
+        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const content = readFileSync(outputPath, 'utf-8')
+    expect(content).toContain('Trusted time warning')
+    expect(content).toContain('Export was not blocked')
   })
 
   it('generates report without optional sections', async () => {

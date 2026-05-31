@@ -94,7 +94,7 @@ export interface OpenRouterModel {
 }
 
 export interface ExportOptions {
-  format: 'html' | 'pdf'
+  format: 'html' | 'pdf' | 'zip'
   include: {
     captures: boolean
     screenshots: boolean
@@ -103,6 +103,14 @@ export interface ExportOptions {
   }
   investigatorName: string
   outputPath: string
+}
+
+export interface ExportPreflight {
+  captureCount: number
+  stampedCaptureCount: number
+  unstampedCaptureCount: number
+  pendingCaptureCount: number
+  noneCaptureCount: number
 }
 
 export interface HashVerification {

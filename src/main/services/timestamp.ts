@@ -93,6 +93,11 @@ export interface ParsedTimestampToken {
   tsaName?: string
 }
 
+function derToPem(label: string, der: Buffer): string {
+  const body = der.toString('base64').match(/.{1,64}/g)?.join('\n') ?? ''
+  return `-----BEGIN ${label}-----\n${body}\n-----END ${label}-----\n`
+}
+
 const COMMON_NAME_OID = '2.5.4.3'
 
 // Best-effort human-readable name for a TSTInfo `tsa` GeneralName. Prefers the
@@ -160,4 +165,19 @@ export function parseTimestampToken(tokenDer: Buffer): ParsedTimestampToken {
     (tstInfo.tsa ? generalNameToString(tstInfo.tsa) : undefined) ?? signerCommonName(signedData)
 
   return { messageImprintHex, stampedAt: tstInfo.genTime, tsaName }
+}
+
+export function extractTimestampTokenCertificatesPem(tokenDer: Buffer): string {
+  const contentInfo = AsnConvert.parse(tokenDer, ContentInfo)
+  if (contentInfo.contentType !== id_signedData) {
+    throw new Error(`Unexpected token contentType: ${contentInfo.contentType}`)
+  }
+  const signedData = AsnConvert.parse(contentInfo.content, SignedData)
+  if (!signedData.certificates) return ''
+
+  return signedData.certificates
+    .map((choice) => choice.certificate)
+    .filter((cert) => cert !== undefined)
+    .map((cert) => derToPem('CERTIFICATE', Buffer.from(AsnConvert.serialize(cert))))
+    .join('\n')
 }

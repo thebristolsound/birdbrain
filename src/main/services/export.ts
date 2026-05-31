@@ -169,10 +169,12 @@ export async function generateReport(
 function buildEvidenceZip(caseId: string, data: ExportData, reportHtml: string): Buffer {
   const entries: Array<{ name: string; data: Buffer | string }> = []
   const artifacts: EvidenceArtifact[] = []
-  const add = (name: string, value: Buffer | string) => {
+  const add = (name: string, value: Buffer | string): string => {
     const buf = Buffer.isBuffer(value) ? value : Buffer.from(value, 'utf-8')
+    const digest = sha256(buf)
     entries.push({ name, data: buf })
-    artifacts.push({ path: name, sha256: sha256(buf), sizeBytes: buf.length })
+    artifacts.push({ path: name, sha256: digest, sizeBytes: buf.length })
+    return digest
   }
 
   const manifestPath = join(getStorageRoot(), caseId, MANIFEST_FILENAME)
@@ -198,7 +200,7 @@ function buildEvidenceZip(caseId: string, data: ExportData, reportHtml: string):
     const captures = data.captures.filter((capture) => capture.hash === entry.captureContentHash)
     for (const capture of captures) {
       if (timestampPathsByHash.get(capture.hash)?.length) continue
-      const path = `timestamps/${capture.id}.tsr`
+      const path = `timestamps/${capture.id}.tst`
       add(path, token)
       timestampPathsByHash.set(capture.hash, [path])
     }
@@ -211,10 +213,12 @@ function buildEvidenceZip(caseId: string, data: ExportData, reportHtml: string):
   const tsaTrust = getTsaTrustBundle(data.tsaUrl)
   add('tsa-ca-chain.pem', [...timestampTokenChainPems, tsaTrust.pem].join('\n'))
 
+  const capturesMissingContent: string[] = []
   const captureEvidence = data.captures.map((capture) => {
     const mhtml = readCaptureFile(capture.caseId, capture.id, 'mhtml')
     const mhtmlPath = `pages/${capture.id}.mhtml`
-    if (mhtml) add(mhtmlPath, mhtml)
+    const mhtmlSha256 = mhtml ? add(mhtmlPath, mhtml) : null
+    if (!mhtml) capturesMissingContent.push(capture.id)
     const verification = data.verifications.find((v) => v.captureId === capture.id)
     const trustedTime = verification?.trustedTime ?? capture.trustedTimeStatus ?? 'none'
 
@@ -231,7 +235,7 @@ function buildEvidenceZip(caseId: string, data: ExportData, reportHtml: string):
       tsaName: verification?.tsaName,
       stampedAt: verification?.stampedAt,
       mhtmlPath: mhtml ? mhtmlPath : null,
-      mhtmlSha256: mhtml ? sha256(mhtml) : null,
+      mhtmlSha256,
       timestampTokenPaths: timestampPathsByHash.get(capture.hash) ?? []
     }
   })
@@ -257,6 +261,7 @@ function buildEvidenceZip(caseId: string, data: ExportData, reportHtml: string):
       unstampedCaptureCount: data.preflight.unstampedCaptureCount,
       pendingCaptureCount: data.preflight.pendingCaptureCount,
       noneCaptureCount: data.preflight.noneCaptureCount,
+      missingContentCaptureCount: capturesMissingContent.length,
       tsaTrustAnchorNote: tsaTrust.note ?? null
     },
     verificationMaterials: {

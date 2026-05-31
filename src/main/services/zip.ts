@@ -35,9 +35,13 @@ function dosDateTime(date: Date): { time: number; date: number } {
   }
 }
 
-function localHeader(entry: WrittenEntry, data: Buffer): Buffer {
+function localHeader(
+  entry: WrittenEntry,
+  data: Buffer,
+  dt: { time: number; date: number }
+): Buffer {
   const name = Buffer.from(entry.name, 'utf-8')
-  const { time, date } = dosDateTime(new Date())
+  const { time, date } = dt
   const header = Buffer.alloc(30)
   header.writeUInt32LE(0x04034b50, 0)
   header.writeUInt16LE(20, 4)
@@ -53,9 +57,9 @@ function localHeader(entry: WrittenEntry, data: Buffer): Buffer {
   return Buffer.concat([header, name])
 }
 
-function centralHeader(entry: WrittenEntry): Buffer {
+function centralHeader(entry: WrittenEntry, dt: { time: number; date: number }): Buffer {
   const name = Buffer.from(entry.name, 'utf-8')
-  const { time, date } = dosDateTime(new Date())
+  const { time, date } = dt
   const header = Buffer.alloc(46)
   header.writeUInt32LE(0x02014b50, 0)
   header.writeUInt16LE(20, 4)
@@ -77,7 +81,11 @@ function centralHeader(entry: WrittenEntry): Buffer {
   return Buffer.concat([header, name])
 }
 
-function endOfCentralDirectory(entryCount: number, centralSize: number, centralOffset: number): Buffer {
+function endOfCentralDirectory(
+  entryCount: number,
+  centralSize: number,
+  centralOffset: number
+): Buffer {
   const eocd = Buffer.alloc(22)
   eocd.writeUInt32LE(0x06054b50, 0)
   eocd.writeUInt16LE(0, 4)
@@ -95,6 +103,10 @@ export function createStoredZip(entries: ZipEntryInput[]): Buffer {
   const written: WrittenEntry[] = []
   let offset = 0
 
+  // One timestamp for the whole archive: keeps each entry's local and central
+  // headers internally consistent rather than capturing two separate clock reads.
+  const dt = dosDateTime(new Date())
+
   for (const input of entries) {
     const data = Buffer.isBuffer(input.data) ? input.data : Buffer.from(input.data, 'utf-8')
     const entry: WrittenEntry = {
@@ -103,14 +115,14 @@ export function createStoredZip(entries: ZipEntryInput[]): Buffer {
       size: data.length,
       offset
     }
-    const header = localHeader(entry, data)
+    const header = localHeader(entry, data, dt)
     localParts.push(header, data)
     written.push(entry)
     offset += header.length + data.length
   }
 
   const centralOffset = offset
-  const centralParts = written.map(centralHeader)
+  const centralParts = written.map((entry) => centralHeader(entry, dt))
   const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0)
 
   return Buffer.concat([

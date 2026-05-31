@@ -217,9 +217,13 @@ describe('export', () => {
     expect(entries.has('signing-public-key.pem')).toBe(true)
     expect(entries.has('tsa-ca-chain.pem')).toBe(true)
     expect(entries.has(`pages/${capture.id}.mhtml`)).toBe(true)
-    expect(entries.get(`timestamps/${capture.id}.tsr`)).toEqual(token)
-    expect(entries.get('tsa-ca-chain.pem')!.toString('utf-8').match(/BEGIN CERTIFICATE/g)?.length)
-      .toBeGreaterThan(1)
+    expect(entries.get(`timestamps/${capture.id}.tst`)).toEqual(token)
+    expect(
+      entries
+        .get('tsa-ca-chain.pem')!
+        .toString('utf-8')
+        .match(/BEGIN CERTIFICATE/g)?.length
+    ).toBeGreaterThan(1)
 
     const manifest = entries.get('manifest.jsonl')!.toString('utf-8')
     expect(manifest).toContain('"type":"capture"')
@@ -246,7 +250,7 @@ describe('export', () => {
       mhtmlPath: `pages/${capture.id}.mhtml`,
       mhtmlSha256: createHash('sha256').update(mhtml).digest('hex'),
       trustedTime: 'pending',
-      timestampTokenPaths: [`timestamps/${capture.id}.tsr`]
+      timestampTokenPaths: [`timestamps/${capture.id}.tst`]
     })
   })
 

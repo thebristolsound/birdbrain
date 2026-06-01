@@ -51,6 +51,7 @@ export const IPC_CHANNELS = {
   SETTINGS_CHOOSE_STORAGE_PATH: 'settings:chooseStoragePath',
 
   // Export
+  EXPORT_PREFLIGHT: 'export:preflight',
   EXPORT_GENERATE: 'export:generate',
 
   // Selectors

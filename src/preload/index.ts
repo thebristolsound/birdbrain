@@ -31,6 +31,7 @@ import type {
   BirdbrainSettings,
   OpenRouterModel,
   ExportOptions,
+  ExportPreflight,
   Selector,
   ActiveCaseSelectors,
   CaptureEvent,
@@ -200,6 +201,8 @@ const birdbrain = {
   },
 
   export: {
+    preflight: (caseId: string): Promise<ExportPreflight> =>
+      unwrapIpc<ExportPreflight>(ipcRenderer.invoke(IPC_CHANNELS.EXPORT_PREFLIGHT, caseId)),
     generateReport: (caseId: string, options: ExportOptions): Promise<void> =>
       unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, options))
   },

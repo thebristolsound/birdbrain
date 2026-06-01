@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import type { ExportOptions } from '@shared/types'
+import type { ExportOptions, ExportPreflight } from '@shared/types'
 import { presets } from '@renderer/lib/motion'
 import { useTheater } from '@renderer/hooks/useTheater'
 import { useCompletionCelebration } from '@renderer/hooks/useCompletionCelebration'
@@ -13,7 +13,7 @@ interface ExportDialogProps {
 }
 
 export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
-  const format = 'html' as const
+  const format = 'zip' as const
   const [investigatorName, setInvestigatorName] = useState('')
   const [include, setInclude] = useState<ExportOptions['include']>({
     captures: true,
@@ -24,6 +24,7 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
   const [exporting, setExporting] = useState(false)
   const [exportComplete, setExportComplete] = useState(false)
   const [exportError, setExportError] = useState('')
+  const [preflight, setPreflight] = useState<ExportPreflight | null>(null)
 
   const theater = useTheater({
     stages: ['Preparing report...', 'Packaging captures...', 'Writing file...'],
@@ -33,10 +34,25 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
 
   const { celebrate, celebrationProps } = useCompletionCelebration({ style: 'ripple' })
 
+  useEffect(() => {
+    let alive = true
+    window.birdbrain.export
+      .preflight(caseId)
+      .then((summary) => {
+        if (alive) setPreflight(summary)
+      })
+      .catch(() => {
+        if (alive) setPreflight(null)
+      })
+    return () => {
+      alive = false
+    }
+  }, [caseId])
+
   const handleExport = async () => {
-    const ext = 'html'
+    const ext = 'zip'
     const safeName = caseName.replace(/[^a-zA-Z0-9-_]/g, '_')
-    const outputPath = `${safeName}_report.${ext}`
+    const outputPath = `${safeName}_evidence.${ext}`
 
     const options: ExportOptions = {
       format,
@@ -125,6 +141,15 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
             placeholder="Your name..."
           />
         </div>
+
+        {preflight && preflight.unstampedCaptureCount > 0 && (
+          <div className="mb-4 rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+            {preflight.unstampedCaptureCount} capture
+            {preflight.unstampedCaptureCount === 1 ? '' : 's'} will export without RFC 3161
+            trusted time ({preflight.pendingCaptureCount} pending, {preflight.noneCaptureCount}{' '}
+            none). Export will continue.
+          </div>
+        )}
 
         {/* Progress / Status */}
         {(exporting || exportComplete) && (

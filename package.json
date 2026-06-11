@@ -28,7 +28,8 @@
     "pretest:e2e:debug": "pnpm build",
     "package": "pnpm build:extension && electron-vite build && electron-builder --publish never",
     "package:win": "pnpm build:extension && electron-vite build && electron-builder --win --publish never",
-    "package:mac": "pnpm build:extension && electron-vite build && electron-builder --mac --publish never"
+    "package:mac": "pnpm build:extension && electron-vite build && electron-builder --mac --publish never",
+    "package:linux": "pnpm build:extension && electron-vite build && electron-builder --linux --publish never"
   },
   "build": {
     "appId": "com.birdbrain.app",

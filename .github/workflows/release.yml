@@ -32,6 +32,9 @@ jobs:
           - os: macos-latest
             script: package:mac
             glob: dist/*.dmg
+          - os: ubuntu-latest
+            script: package:linux
+            glob: dist/*.AppImage
 
     runs-on: ${{ matrix.os }}
 

@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import { generateKeyPairSync, createSign, createVerify } from 'crypto'
+import { generateKeyPairSync, createSign } from 'crypto'
+import { verifyEntrySignature as verifyEntrySignatureCore } from '@shared/verify'
 
 const PRIVATE_KEY_FILENAME = 'signing-key.pem'
 const PUBLIC_KEY_FILENAME = 'signing-public-key.pem'
@@ -86,6 +87,9 @@ export function signEntryHash(entryHashHex: string): string {
   return createSign('sha256').update(entryHashHex).sign(privateKeyPem, 'base64')
 }
 
+// Resolves the PEM (override or this installation's key) and delegates the
+// actual check to the shared verify-core, which is fail-closed on crypto
+// errors. Key management stays here; verification logic lives in one place.
 export function verifyEntrySignature(
   entryHashHex: string,
   signatureB64: string,
@@ -93,11 +97,7 @@ export function verifyEntrySignature(
 ): boolean {
   const pem = publicKeyOverridePem ?? publicKeyPem
   if (!pem) throw new Error('Signing key not initialized')
-  try {
-    return createVerify('sha256').update(entryHashHex).verify(pem, signatureB64, 'base64')
-  } catch {
-    return false
-  }
+  return verifyEntrySignatureCore(entryHashHex, signatureB64, pem)
 }
 
 export function getPublicKeyPem(): string {

@@ -12,7 +12,7 @@ import { getPublicKeyPem } from '@main/services/signingKey'
 import { buildTrustedTimeIndex } from '@main/services/manifest'
 import { createStoredZip } from '@main/services/zip'
 import { getTsaTrustBundle } from '@main/services/tsaTrust'
-import { extractTimestampTokenCertificatesPem } from '@main/services/timestamp'
+import { extractTimestampTokenCertificatesPem } from '@shared/verify'
 import { MANIFEST_FILENAME } from '@shared/constants'
 import type {
   ExportOptions,

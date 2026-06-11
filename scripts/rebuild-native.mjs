@@ -17,8 +17,13 @@ const electronVersion = require('electron/package.json').version
 
 console.log(`Rebuilding better-sqlite3 for Electron ${electronVersion} at ${sqlite3Dir}`)
 
+// Resolve node-gyp explicitly: npx walks up from the module dir and can pick
+// up an old transitive copy from pnpm's hidden hoist (node-gyp <12 cannot
+// detect Visual Studio 2026 on current windows-latest runners).
+const nodeGypBin = require.resolve('node-gyp/bin/node-gyp.js')
+
 const args = [
-  'node-gyp', 'rebuild',
+  nodeGypBin, 'rebuild',
   `--runtime=electron`,
   `--target=${electronVersion}`,
   '--dist-url=https://electronjs.org/headers'
@@ -30,4 +35,4 @@ if (pythonPath) {
   args.push(`--python=${pythonPath}`)
 }
 
-execFileSync('npx', args, { cwd: sqlite3Dir, stdio: 'inherit', shell: true })
+execFileSync(process.execPath, args, { cwd: sqlite3Dir, stdio: 'inherit' })

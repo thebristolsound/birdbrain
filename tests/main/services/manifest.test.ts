@@ -7,7 +7,7 @@ import { appendManifestEntry, rollbackManifestEntry } from '@main/services/manif
 import { verifyManifestChain } from '@main/services/manifest'
 import { withDeletionEntry, ManifestRollback } from '@main/services/manifest'
 import { createHash } from 'crypto'
-import { canonicalStringify } from '@main/services/canonicalJson'
+import { canonicalStringify } from '@shared/verify'
 import { MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import { ManifestEntrySchema } from '@shared/schemas'
 import { statSync } from 'fs'

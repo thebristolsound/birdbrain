@@ -11,10 +11,9 @@ import {
 import { join } from 'path'
 import { createHash } from 'crypto'
 import { MANIFEST_FILENAME, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
-import { canonicalStringify } from '@main/services/canonicalJson'
-import { ManifestEntrySchema } from '@shared/schemas'
-import { signEntryHash, verifyEntrySignature } from '@main/services/signingKey'
-import { parseTimestampToken } from '@main/services/timestamp'
+import { canonicalStringify, parseTimestampToken, verifyManifestChainText } from '@shared/verify'
+import type { ChainVerifyResult } from '@shared/verify'
+import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
 import type { TrustedTime } from '@shared/types'
 
 export type { TrustedTime }
@@ -311,65 +310,17 @@ export function buildTrustedTimeIndex(caseDir: string): Map<string, TrustedTimeR
   return index
 }
 
-export interface ChainVerifyResult {
-  valid: boolean
-  brokenAt?: number
-  reason?: string
-  trustedTime: TrustedTime
-}
+export type { ChainVerifyResult }
 
-// Re-reads the manifest, recomputes each entryHash, and checks linkage.
-// Returns the zero-based index of the first broken entry if any.
+// Re-reads the manifest and verifies the hash chain — recomputed entryHashes,
+// linkage, v2+ signatures — against this installation's public key. Thin fs
+// wrapper; the chain algorithm lives in the shared verify-core (#122) so the
+// app and the standalone verifier can never drift.
 export function verifyManifestChain(caseDir: string): ChainVerifyResult {
   const path = join(caseDir, MANIFEST_FILENAME)
   if (!existsSync(path) || statSync(path).size === 0) {
     return { valid: true, trustedTime: 'none' }
   }
   const raw = readFileSync(path, 'utf-8')
-  const lines = raw.split('\n').filter((l) => l.trim().length > 0)
-  let expectedPrev = ''
-  let expectedIndex = 0
-
-  for (let i = 0; i < lines.length; i++) {
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(lines[i])
-    } catch {
-      return { valid: false, brokenAt: i, reason: 'Invalid JSON', trustedTime: 'none' }
-    }
-    const schemaResult = ManifestEntrySchema.safeParse(parsed)
-    if (!schemaResult.success) {
-      return { valid: false, brokenAt: i, reason: 'Invalid entry shape', trustedTime: 'none' }
-    }
-    // `signature` (v2+) is computed over `entryHash` and, like `entryHash`
-    // itself, is EXCLUDED from the canonical body. Destructure both out before
-    // recomputing so a present-or-absent signature never affects the hash.
-    //
-    // LOAD-BEARING: hash recomputation must continue to exclude both
-    // `entryHash` and `signature`. That exclusion is what keeps legacy v1
-    // hashes stable and ensures the v2 signature does not change the canonical
-    // bytes being hashed.
-    const { entryHash, signature, ...body } = schemaResult.data
-    if (body.index !== expectedIndex) {
-      return { valid: false, brokenAt: i, reason: 'Index mismatch', trustedTime: 'none' }
-    }
-    if (body.prevHash !== expectedPrev) {
-      return { valid: false, brokenAt: i, reason: 'Chain link broken', trustedTime: 'none' }
-    }
-    const recomputed = createHash('sha256').update(canonicalStringify(body)).digest('hex')
-    if (recomputed !== entryHash) {
-      return { valid: false, brokenAt: i, reason: 'Entry hash mismatch', trustedTime: 'none' }
-    }
-    // Signature enforcement (G2): v2+ entries must carry a cryptographically
-    // valid signature over their entryHash. Legacy v1 entries are grandfathered
-    // — they predate signing and present as integrity-verified without one.
-    if (body.schemaVersion >= 2 && !(signature && verifyEntrySignature(entryHash, signature))) {
-      return { valid: false, brokenAt: i, reason: 'Invalid signature', trustedTime: 'none' }
-    }
-    expectedPrev = entryHash
-    expectedIndex++
-  }
-  // Integrity-verified. Trusted-time resolution (rfc3161/pending) is #120; all
-  // entries in this slice are grandfathered as 'none' — not a failure.
-  return { valid: true, trustedTime: 'none' }
+  return verifyManifestChainText(raw, { publicKeyPem: getPublicKeyPem() })
 }

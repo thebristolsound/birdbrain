@@ -4,11 +4,8 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import { AsnConvert } from '@peculiar/asn1-schema'
 import { TimeStampReq, MessageImprint, PKIStatus } from '@peculiar/asn1-tsp'
-import {
-  buildTimestampRequest,
-  parseTimestampToken,
-  requestTimestamp
-} from '@main/services/timestamp'
+import { buildTimestampRequest, requestTimestamp } from '@main/services/timestamp'
+import { parseTimestampToken } from '@shared/verify'
 import { buildSyntheticToken, buildTimestampResponse } from '../../helpers/timestampFixtures'
 
 const FIXTURES = join(__dirname, '../../fixtures/timestamp')

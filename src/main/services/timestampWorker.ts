@@ -7,7 +7,8 @@ import {
   resolveTrustedTime,
   buildTrustedTimeIndex
 } from '@main/services/manifest'
-import { parseTimestampToken, requestTimestamp } from '@main/services/timestamp'
+import { requestTimestamp } from '@main/services/timestamp'
+import { parseTimestampToken } from '@shared/verify'
 import { getSettings } from '@main/services/settings'
 import { getStorageRoot } from '@main/services/storage'
 import { getInstallationId } from '@main/services/installationId'

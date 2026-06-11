@@ -14,6 +14,8 @@ export default tseslint.config(
       'node_modules/',
       '.worktrees/',
       '.claude/',
+      '.agents/',
+      '.codex/',
       'Python/',
       'tests/**/*.js',
       'tests/**/*.d.ts',

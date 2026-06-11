@@ -37,6 +37,10 @@
     "directories": {
       "output": "dist"
     },
+    "asarUnpack": [
+      "**/node_modules/sharp/**",
+      "**/node_modules/@img/**"
+    ],
     "extraResources": [
       {
         "from": "extension/dist",

@@ -67,6 +67,7 @@
         "AppImage",
         "deb"
       ],
+      "icon": "resources/icons",
       "category": "Utility",
       "maintainer": "Matt Donovan <thebristolsound@users.noreply.github.com>"
     }

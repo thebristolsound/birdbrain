@@ -15,7 +15,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@renderer/components/u
 type SettingsTab = 'ai' | 'capture' | 'storage' | 'appearance' | 'operator' | 'database' | 'about'
 
 const settingsTabs: { id: SettingsTab; label: string; icon: typeof Key }[] = [
-  { id: 'ai', label: 'AI', icon: Key },
+  // { id: 'ai', label: 'AI', icon: Key }, // temporarily hidden until AI features are ready
   { id: 'capture', label: 'Capture', icon: Camera },
   { id: 'storage', label: 'Storage', icon: HardDrive },
   { id: 'appearance', label: 'Appearance', icon: Palette },
@@ -27,7 +27,7 @@ const settingsTabs: { id: SettingsTab; label: string; icon: typeof Key }[] = [
 export function SettingsView() {
   const { data: settings } = useQuery(settingsQueryOptions)
   const { update } = useSettingsMutations()
-  const [activeTab, setActiveTab] = useState<SettingsTab>('ai')
+  const [activeTab, setActiveTab] = useState<SettingsTab>('capture')
 
   useEffect(() => {
     update.mutate({ lastActiveSection: 'settings' })

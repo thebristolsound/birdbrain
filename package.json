@@ -6,6 +6,7 @@
   "packageManager": "pnpm@10.28.2",
   "author": "Matt Donovan",
   "license": "MIT",
+  "homepage": "https://github.com/thebristolsound/birdbrain",
   "engines": {
     "node": ">=20.19.0"
   },
@@ -63,8 +64,11 @@
     },
     "linux": {
       "target": [
-        "AppImage"
-      ]
+        "AppImage",
+        "deb"
+      ],
+      "category": "Utility",
+      "maintainer": "Matt Donovan <thebristolsound@users.noreply.github.com>"
     }
   },
   "pnpm": {
@@ -127,7 +131,7 @@
     "@vitest/coverage-v8": "^3.2.4",
     "cross-env": "^10.1.0",
     "electron": "^39.8.5",
-    "electron-builder": "^25.1.8",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^3.1.0",
     "eslint": "^9.39.4",
     "eslint-config-prettier": "^10.1.8",

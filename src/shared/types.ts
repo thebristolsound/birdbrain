@@ -79,7 +79,7 @@ export interface BirdbrainSettings {
   tsaUrl: string
   autoCaptureMode: AutoCaptureMode
   lastActiveCaseId: string | null
-  lastActiveSection: 'captures' | 'selectors' | 'notes' | 'tags' | 'data' | 'settings'
+  lastActiveSection: 'overview' | 'captures' | 'selectors' | 'notes' | 'tags' | 'data' | 'settings'
   hasCompletedOnboarding: boolean
   analysisSystemPrompt: string
   detailsPanelCollapsed: boolean

@@ -1,9 +1,10 @@
 import { useNavigate, useMatchRoute, useParams } from '@tanstack/react-router'
-import { Home, Layers, Crosshair, StickyNote, Tag, Database } from 'lucide-react'
+import { Home, LayoutDashboard, Layers, Crosshair, StickyNote, Tag, Database } from 'lucide-react'
 
-type SidebarSection = 'captures' | 'selectors' | 'notes' | 'tags' | 'data'
+type SidebarSection = 'overview' | 'captures' | 'selectors' | 'notes' | 'tags' | 'data'
 
 const NAV_ITEMS: { id: SidebarSection; icon: typeof Layers; label: string }[] = [
+  { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
   { id: 'captures', icon: Layers, label: 'Captures' },
   { id: 'selectors', icon: Crosshair, label: 'Selectors' },
   { id: 'notes', icon: StickyNote, label: 'Notes' },
@@ -12,6 +13,7 @@ const NAV_ITEMS: { id: SidebarSection; icon: typeof Layers; label: string }[] = 
 ]
 
 const SECTION_PATHS = {
+  overview: '/cases/$caseId/overview',
   captures: '/cases/$caseId/captures',
   selectors: '/cases/$caseId/selectors',
   notes: '/cases/$caseId/notes',

@@ -34,7 +34,7 @@ jobs:
             glob: dist/*.dmg
           - os: ubuntu-latest
             script: package:linux
-            glob: dist/*.AppImage
+            glob: dist/*.{AppImage,deb}
 
     runs-on: ${{ matrix.os }}
 

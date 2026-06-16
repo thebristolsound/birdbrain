@@ -3,7 +3,6 @@ import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { Activity, Camera, ChevronRight, Globe, ShieldCheck, Target } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import type { Capture, Note, Selector } from '@shared/types'
 import {
   caseQueryOptions,
   capturesQueryOptions,
@@ -15,6 +14,7 @@ import {
 import { useLastVisit } from '@renderer/hooks/useLastVisit'
 import { useAppStore } from '@renderer/stores/appStore'
 import { Skeleton } from '@renderer/components/ui'
+import { ACTIVITY_DAYS, computeOverview } from './overviewModel'
 import { CaseSubhead } from './CaseSubhead'
 import { SinceLastVisitBanner } from './SinceLastVisitBanner'
 import { MetricRow } from './MetricRow'
@@ -23,130 +23,6 @@ import { SourcesBlock } from './SourcesBlock'
 import { SelectorCoverageBlock } from './SelectorCoverageBlock'
 import { VerifyBar } from './VerifyBar'
 import { RecentCapturesStrip } from './RecentCapturesStrip'
-
-const ACTIVITY_DAYS = 14
-const DAY_MS = 86_400_000
-// Deterministic tone palette, applied by sorted source rank.
-const SOURCE_TONES = [
-  '#38bdf8',
-  '#f472b6',
-  '#a78bfa',
-  '#fbbf24',
-  '#34d399',
-  '#fb923c',
-  '#60a5fa',
-  '#f87171',
-  '#2dd4bf',
-  '#c084fc'
-]
-
-function hostOf(url: string): string {
-  try {
-    return new URL(url).hostname
-  } catch {
-    return ''
-  }
-}
-
-function dayStartMs(ms: number): number {
-  const d = new Date(ms)
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
-}
-
-interface ComputeInput {
-  captures: Capture[]
-  selectors: Selector[]
-  matchCounts: Record<string, number>
-  notes: Note[]
-  lastVisitAt: string | null
-}
-
-function computeOverview({ captures, selectors, matchCounts, notes, lastVisitAt }: ComputeInput) {
-  const hostCounts = new Map<string, number>()
-  const hostFirstSeen = new Map<string, string>()
-  for (const cap of captures) {
-    const host = hostOf(cap.url)
-    if (!host) continue
-    hostCounts.set(host, (hostCounts.get(host) ?? 0) + 1)
-    const seen = hostFirstSeen.get(host)
-    if (!seen || cap.createdAt < seen) hostFirstSeen.set(host, cap.createdAt)
-  }
-
-  const sources = [...hostCounts.entries()]
-    .map(([host, count]) => ({ host, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 6)
-    .map((s, i) => ({ ...s, tone: SOURCE_TONES[i % SOURCE_TONES.length] }))
-
-  let verified = 0
-  let tampered = 0
-  for (const cap of captures) {
-    const st = cap.lastVerifiedStatus
-    if (st === 'verified') verified++
-    else if (st === 'tampered' || st === 'chain-broken' || st === 'missing') tampered++
-  }
-  const unverified = captures.length - verified - tampered
-
-  const coverageRows = selectors
-    .map((s) => ({
-      id: s.id,
-      label: s.label,
-      pattern: s.pattern,
-      isRegex: s.isRegex,
-      matchCount: matchCounts[s.id] ?? 0
-    }))
-    .sort((a, b) => b.matchCount - a.matchCount)
-    .slice(0, 6)
-
-  const startOfToday = dayStartMs(Date.now())
-  const cutoffMs = lastVisitAt ? new Date(lastVisitAt).getTime() : null
-  const counts = new Array(ACTIVITY_DAYS).fill(0)
-  for (const cap of captures) {
-    const t = new Date(cap.createdAt).getTime()
-    if (Number.isNaN(t)) continue
-    const fromToday = Math.floor((startOfToday - dayStartMs(t)) / DAY_MS)
-    if (fromToday < 0 || fromToday >= ACTIVITY_DAYS) continue
-    counts[ACTIVITY_DAYS - 1 - fromToday]++
-  }
-  const dayBuckets = counts.map((count, i) => {
-    const dayStart = startOfToday - (ACTIVITY_DAYS - 1 - i) * DAY_MS
-    return { count, fresh: cutoffMs != null && dayStart + DAY_MS > cutoffMs }
-  })
-
-  const recent = [...captures]
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .slice(0, 6)
-
-  const cutoff = lastVisitAt
-  const newCaptures = cutoff ? captures.filter((c) => c.createdAt > cutoff).length : 0
-  const newSelectors = cutoff ? selectors.filter((s) => s.createdAt > cutoff).length : 0
-  const newNotes = cutoff ? notes.filter((n) => n.createdAt > cutoff).length : 0
-  let newSources = 0
-  if (cutoff) {
-    for (const firstSeen of hostFirstSeen.values()) {
-      if (firstSeen > cutoff) newSources++
-    }
-  }
-  const deltas = {
-    captures: newCaptures,
-    sources: newSources,
-    selectors: newSelectors,
-    notes: newNotes
-  }
-
-  return {
-    sourceCount: hostCounts.size,
-    sources,
-    verified,
-    unverified,
-    tampered,
-    coverageRows,
-    dayBuckets,
-    recent,
-    deltas,
-    newCount: newCaptures + newSelectors + newNotes + newSources
-  }
-}
 
 interface SectionCardProps {
   icon: LucideIcon
@@ -233,7 +109,7 @@ export function CaseOverview() {
   const showBanner = lastVisitAt != null && derived.newCount > 0
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4" data-testid="case-overview">
       <CaseSubhead caseData={caseData} glow />
 
       {showBanner ? (

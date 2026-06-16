@@ -37,7 +37,11 @@ function RecentCaptureCard({
   const shieldColor = verified ? 'text-emerald-400' : tampered ? 'text-red-400' : 'text-amber-400'
 
   return (
-    <button onClick={() => onOpen(capture.id)} className="w-[172px] shrink-0 text-left">
+    <button
+      onClick={() => onOpen(capture.id)}
+      data-testid="overview-recent-item"
+      className="w-[172px] shrink-0 text-left"
+    >
       <div className="relative aspect-[172/107] w-full overflow-hidden rounded-xl border border-border-strong bg-elevated">
         {thumbnail ? (
           <img src={thumbnail} alt="" className="h-full w-full object-cover object-top" />
@@ -73,7 +77,7 @@ export function RecentCapturesStrip({ captures, lastVisitAt, onOpen }: RecentCap
     return <p className="font-body text-xs text-text-faint">No captures yet.</p>
   }
   return (
-    <div className="flex gap-4 overflow-x-auto pb-1">
+    <div className="flex gap-4 overflow-x-auto pb-1" data-testid="overview-recent-captures">
       {captures.map((cap) => (
         <RecentCaptureCard
           key={cap.id}

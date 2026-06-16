@@ -35,7 +35,10 @@ export function MetricRow({ captures, sources, selectors, tags, notes, deltas = 
               </span>
             </div>
             <div className="flex items-baseline gap-2">
-              <span className="font-display text-3xl font-extrabold leading-none tracking-tight text-text-primary">
+              <span
+                data-testid={`overview-metric-${key}`}
+                className="font-display text-3xl font-extrabold leading-none tracking-tight text-text-primary"
+              >
                 {values[key]}
               </span>
               {delta ? <span className="font-mono text-[11px] text-emerald-400">+{delta}</span> : null}

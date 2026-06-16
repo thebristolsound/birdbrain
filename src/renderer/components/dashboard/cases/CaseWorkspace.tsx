@@ -37,6 +37,7 @@ export function CaseWorkspace() {
 
   const activeCase = cases.find((c) => c.id === caseId)
 
+  const isOverview = matchRoute({ to: '/cases/$caseId/overview', fuzzy: true }) !== false
   const isCaptures = matchRoute({ to: '/cases/$caseId/captures', fuzzy: true }) !== false
   const isSelectors = matchRoute({ to: '/cases/$caseId/selectors', fuzzy: true }) !== false
   const isNotes = matchRoute({ to: '/cases/$caseId/notes', fuzzy: true }) !== false
@@ -45,19 +46,21 @@ export function CaseWorkspace() {
 
   // Persist active section for session restore
   useEffect(() => {
-    const section: BirdbrainSettings['lastActiveSection'] = isCaptures
-      ? 'captures'
-      : isSelectors
-        ? 'selectors'
-        : isNotes
-          ? 'notes'
-          : isTags
-            ? 'tags'
-            : isData
-              ? 'data'
-              : 'captures'
+    const section: BirdbrainSettings['lastActiveSection'] = isOverview
+      ? 'overview'
+      : isCaptures
+        ? 'captures'
+        : isSelectors
+          ? 'selectors'
+          : isNotes
+            ? 'notes'
+            : isTags
+              ? 'tags'
+              : isData
+                ? 'data'
+                : 'overview'
     window.birdbrain.settings.update({ lastActiveSection: section })
-  }, [isCaptures, isSelectors, isNotes, isTags, isData])
+  }, [isOverview, isCaptures, isSelectors, isNotes, isTags, isData])
 
   if (isLoading) {
     return (
@@ -73,7 +76,7 @@ export function CaseWorkspace() {
 
   return (
     <div className="flex h-full flex-col">
-      {!isCaptures && <CaseHeader />}
+      {!isCaptures && !isOverview && <CaseHeader />}
       {isCaptures || isData ? (
         <div className="flex-1 overflow-hidden">
           <Outlet />

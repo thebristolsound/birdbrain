@@ -16,6 +16,7 @@ import { useQuery } from '@tanstack/react-query'
 import { casesQueryOptions, settingsQueryOptions } from '@renderer/lib/queries'
 import { NewCaseWizard } from '@renderer/components/dashboard/cases/NewCaseWizard'
 import { CaseWorkspace } from '@renderer/components/dashboard/cases/CaseWorkspace'
+import { CaseOverview } from '@renderer/components/overview/CaseOverview'
 import { CapturesRoute } from '@renderer/routes/cases/$caseId/captures'
 import { SelectorsOverview } from '@renderer/components/selectors/SelectorsOverview'
 import { NotesOverview } from '@renderer/components/notes/NotesOverview'
@@ -189,16 +190,24 @@ const caseRoute = createRoute({
   errorComponent: RouteErrorComponent
 })
 
-// Redirect case index to captures
+// Redirect case index to the overview landing page
 const caseIndexRoute = createRoute({
   getParentRoute: () => caseRoute,
   path: '/',
   beforeLoad: ({ params }) => {
     throw redirect({
-      to: '/cases/$caseId/captures',
+      to: '/cases/$caseId/overview',
       params: { caseId: params.caseId }
     })
   }
+})
+
+// Overview tab (case landing page)
+const overviewRoute = createRoute({
+  getParentRoute: () => caseRoute,
+  path: '/overview',
+  component: CaseOverview,
+  errorComponent: RouteErrorComponent
 })
 
 // Captures tab
@@ -248,6 +257,7 @@ export const routeTree = rootRoute.addChildren([
   newCaseRoute,
   caseRoute.addChildren([
     caseIndexRoute,
+    overviewRoute,
     capturesRoute,
     selectorsRoute,
     notesRoute,

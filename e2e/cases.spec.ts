@@ -8,8 +8,15 @@ async function goToNewCase(page: import('@playwright/test').Page) {
   await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
 }
 
-// Helper: wait for a case workspace to load after creation and return the case header name button
+// Helper: a freshly created case now lands on its Overview page, which has no
+// CaseHeader. The header (and the tests that use it) live on the captures route,
+// so hop there first before asserting on the header.
 async function waitForCaseHeader(page: import('@playwright/test').Page, name: string) {
+  await page.waitForURL(/#\/cases\/.+\/(overview|captures)/, { timeout: 10000 })
+  await page.evaluate(() => {
+    const m = window.location.hash.match(/#\/cases\/([^/]+)/)
+    if (m) window.location.hash = `/cases/${m[1]}/captures`
+  })
   await page.waitForSelector('[data-testid="case-header-name-btn"]', { timeout: 10000 })
   await expect(page.locator('[data-testid="case-header-name-btn"]')).toContainText(name)
 }
@@ -29,14 +36,14 @@ test.describe('Cases CRUD', () => {
     await waitForCaseHeader(page, 'Test Investigation')
   })
 
-  test('case workspace loads after creation', async ({ page }) => {
+  test('case lands on the overview page after creation', async ({ page }) => {
     await goToNewCase(page)
     await page.fill('[data-testid="case-name-input"]', 'Listed Case')
     await page.click('[data-testid="case-create-btn"]')
 
-    // Verify we landed in the case workspace (captures route)
-    await waitForCaseHeader(page, 'Listed Case')
-    await expect(page).toHaveURL(/#\/cases\/.+\/captures/)
+    // A freshly created case opens on its Overview landing page.
+    await expect(page).toHaveURL(/#\/cases\/.+\/overview/)
+    await expect(page.getByRole('heading', { name: 'Listed Case' })).toBeVisible()
   })
 
   test('can rename a case via the case header', async ({ page }) => {

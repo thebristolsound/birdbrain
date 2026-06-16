@@ -9,10 +9,9 @@ test.describe('Tags tab', () => {
     await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
     await page.fill('[data-testid="case-name-input"]', 'Tags E2E Case')
     await page.click('[data-testid="case-create-btn"]')
-    await page.waitForSelector('[data-testid="case-header-name-btn"]', { timeout: 10000 })
-    await expect(page.locator('[data-testid="case-header-name-btn"]')).toContainText(
-      'Tags E2E Case'
-    )
+    // Case creation lands on the Overview page.
+    await page.waitForURL(/#\/cases\/.+\/overview/, { timeout: 10000 })
+    await expect(page.getByRole('heading', { name: 'Tags E2E Case' })).toBeVisible()
 
     // Navigate to Tags via the sidebar icon button.
     await page.click('button[aria-label="Tags"]')

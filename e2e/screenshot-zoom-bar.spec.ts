@@ -14,7 +14,8 @@ async function seedCaseAndCapture(page: import('@playwright/test').Page, caseNam
   await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
   await page.fill('[data-testid="case-name-input"]', caseName)
   await page.click('[data-testid="case-create-btn"]')
-  await page.waitForSelector('[data-testid="case-header-name-btn"]', { timeout: 10000 })
+  // Case creation lands on the Overview page, whose URL still carries the case id.
+  await page.waitForURL(/#\/cases\/.+\/overview/, { timeout: 10000 })
 
   const caseIdMatch = page.url().match(/cases\/([^/]+)/)
   if (!caseIdMatch) throw new Error('case id not in url')

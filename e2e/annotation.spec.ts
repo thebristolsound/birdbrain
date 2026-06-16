@@ -18,7 +18,8 @@ test.describe('Annotations', () => {
     await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
     await page.fill('[data-testid="case-name-input"]', 'Annotations E2E')
     await page.click('[data-testid="case-create-btn"]')
-    await page.waitForSelector('[data-testid="case-header-name-btn"]', { timeout: 10000 })
+    // Case creation lands on the Overview page, whose URL still carries the case id.
+    await page.waitForURL(/#\/cases\/.+\/overview/, { timeout: 10000 })
 
     const url = page.url()
     const caseIdMatch = url.match(/cases\/([^/]+)/)
@@ -158,7 +159,8 @@ test.describe('Annotations', () => {
     await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
     await page.fill('[data-testid="case-name-input"]', 'Zoom-Pan E2E')
     await page.click('[data-testid="case-create-btn"]')
-    await page.waitForSelector('[data-testid="case-header-name-btn"]', { timeout: 10000 })
+    // Case creation lands on the Overview page, whose URL still carries the case id.
+    await page.waitForURL(/#\/cases\/.+\/overview/, { timeout: 10000 })
 
     const url = page.url()
     const caseIdMatch = url.match(/cases\/([^/]+)/)

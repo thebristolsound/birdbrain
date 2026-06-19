@@ -1,0 +1,27 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{const j=JSON.parse(d);const f=j.tool_response?.filePath||j.tool_input?.file_path;if(f&&/\\.(ts|tsx)$/.test(f)){process.stdout.write(f)}else{process.exit(0)}})\" | { read -r f; if [ -n \"$f\" ]; then npx prettier --write \"$f\"; fi; } 2>/dev/null || true",
+            "statusMessage": "Formatting..."
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"systemMessage\": \"Tool routing: Use Serena (find_symbol, get_symbols_overview, replace_symbol_body) for code navigation, symbol lookup, and refactoring. Use Context7 (resolve-library-id, query-docs) for library/framework documentation. Use chrome browser tools for UI testing and visual verification.\"}'",
+            "statusMessage": "Loading tool routing..."
+          }
+        ]
+      }
+    ]
+  }
+}

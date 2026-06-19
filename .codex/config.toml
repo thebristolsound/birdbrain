@@ -1,0 +1,10 @@
+[shell_environment_policy]
+inherit = "core"
+
+[shell_environment_policy.set]
+ANTHROPIC_DEFAULT_HAIKU_MODEL = ""
+ANTHROPIC_DEFAULT_OPUS_MODEL = ""
+ANTHROPIC_DEFAULT_SONNET_MODEL = ""
+AWS_PROFILE = ""
+AWS_REGION = ""
+CLAUDE_CODE_USE_BEDROCK = ""

@@ -9,10 +9,11 @@ import { burnAnnotations } from '@main/services/burnAnnotations'
 import { getSettings } from '@main/services/settings'
 import { getInstallationId } from '@main/services/installationId'
 import { getPublicKeyPem } from '@main/services/signingKey'
-import { buildTrustedTimeIndex } from '@main/services/manifest'
+import { appendManifestEntry, buildTrustedTimeIndex, initManifest } from '@main/services/manifest'
+import type { ExportVerificationResult } from '@main/services/manifest'
 import { createStoredZip } from '@main/services/zip'
 import { getTsaTrustBundle } from '@main/services/tsaTrust'
-import { extractTimestampTokenCertificatesPem } from '@shared/verify'
+import { canonicalStringify, extractTimestampTokenCertificatesPem } from '@shared/verify'
 import { buildCertification, resolveToolVersion } from '@main/services/certification'
 import { MANIFEST_FILENAME } from '@shared/constants'
 import type {
@@ -160,14 +161,44 @@ export async function generateReport(
 
   if (options.format === 'zip') {
     onProgress?.('Packaging evidence...', 90)
-    writeFileSync(options.outputPath, buildEvidenceZip(caseId, data, html))
+    const { zip, packageHash, verificationResult } = buildEvidenceZip(caseId, data, html)
+    writeFileSync(options.outputPath, zip)
+
+    // Record the export as a signed, hash-chained audit entry (#124). Ordering
+    // is deliberate: the evidence (and thus packageHash) is built from the
+    // manifest tail BEFORE this append, so packageHash does not — and must not —
+    // cover this entry. The bundled manifest.jsonl copy therefore lags the live
+    // case manifest by exactly this one entry; that is acceptable because
+    // packageHash commits to artifact content, not to the manifest.
+    //
+    // Limitation: this append happens after the .zip is written, so a crash
+    // between the two leaves a package on disk without its audit entry. We keep
+    // the ordering simple rather than wrapping it in a rollback (out of scope).
+    const caseDir = join(getStorageRoot(), caseId)
+    initManifest(caseDir)
+    appendManifestEntry(caseDir, {
+      type: 'export',
+      caseId,
+      timestamp: data.exportTimestamp,
+      operatorId: data.installationId,
+      operatorName: data.operatorName,
+      toolVersion: resolveToolVersion(),
+      packageHash,
+      verificationResult
+    })
   } else {
     writeFileSync(options.outputPath, html, 'utf-8')
   }
   onProgress?.('Complete', 100)
 }
 
-function buildEvidenceZip(caseId: string, data: ExportData, reportHtml: string): Buffer {
+interface EvidenceZipResult {
+  zip: Buffer
+  packageHash: string
+  verificationResult: ExportVerificationResult
+}
+
+function buildEvidenceZip(caseId: string, data: ExportData, reportHtml: string): EvidenceZipResult {
   const entries: Array<{ name: string; data: Buffer | string }> = []
   const artifacts: EvidenceArtifact[] = []
   const add = (name: string, value: Buffer | string): string => {
@@ -319,7 +350,26 @@ function buildEvidenceZip(caseId: string, data: ExportData, reportHtml: string):
     data: JSON.stringify(evidence, null, 2)
   })
 
-  return createStoredZip(entries)
+  // packageHash commits to every packaged file's content via the artifact list,
+  // sorted by path for determinism. It deliberately does NOT hash the final
+  // .zip: this hash feeds the export manifest entry, which is bundled inside
+  // that very zip, so hashing the zip would be circular. evidence.json itself
+  // is excluded from `artifacts` (it is unshifted above, not run through `add`),
+  // which is what keeps packageHash independent of the entry it informs.
+  const sortedArtifacts = [...artifacts].sort((a, b) =>
+    a.path < b.path ? -1 : a.path > b.path ? 1 : 0
+  )
+  const packageHash = sha256(Buffer.from(canonicalStringify(sortedArtifacts), 'utf-8'))
+
+  const verificationResult: ExportVerificationResult = {
+    overallValid: data.verifications.every((v) => v.status === 'verified'),
+    captureCount: data.captures.length,
+    verifiedCount: data.verifications.filter((v) => v.status === 'verified').length,
+    tamperedCount: data.verifications.filter((v) => v.status === 'tampered').length,
+    missingCount: data.verifications.filter((v) => v.status === 'missing').length
+  }
+
+  return { zip: createStoredZip(entries), packageHash, verificationResult }
 }
 
 function readManifestEntries(manifestJsonl: string): Record<string, unknown>[] {

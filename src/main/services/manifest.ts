@@ -96,6 +96,29 @@ export type ManifestEntryInput =
       operatorName: string
       toolVersion: string
     }
+  | {
+      // Signed audit record of an evidence-package export (#124). `packageHash`
+      // is sha256(canonicalStringify(sortedArtifacts)) from evidence.json — it
+      // commits to every packaged file's content WITHOUT covering the final
+      // .zip (which would be circular, since this entry lives in the bundled
+      // manifest). `appendManifestEntry` adds index/prevHash/entryHash/signature.
+      type: 'export'
+      caseId: string
+      timestamp: string
+      operatorId: string
+      operatorName: string
+      toolVersion: string
+      packageHash: string
+      verificationResult: ExportVerificationResult
+    }
+
+export interface ExportVerificationResult {
+  overallValid: boolean
+  captureCount: number
+  verifiedCount: number
+  tamperedCount: number
+  missingCount: number
+}
 
 export interface AppendResult {
   index: number

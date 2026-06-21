@@ -12,7 +12,13 @@ import {
   insertCapture
 } from '../../../src/main/services/database'
 import { initStorage, ensureCaseDir, getCapturePath } from '../../../src/main/services/storage'
-import { appendManifestEntry, initManifest } from '../../../src/main/services/manifest'
+import {
+  appendManifestEntry,
+  getManifestHead,
+  initManifest,
+  verifyManifestChain
+} from '../../../src/main/services/manifest'
+import { canonicalStringify } from '@shared/verify'
 import { ingestMhtmlCapture } from '../../../src/main/services/captureLifecycle'
 import {
   createCaptureLifecycle,
@@ -26,7 +32,11 @@ import {
 } from '../../../src/main/services/export'
 import { saveAnnotations } from '../../../src/main/services/annotations'
 import { initSettings, updateSettings } from '@main/services/settings'
-import { initInstallationId, resetInstallationId } from '@main/services/installationId'
+import {
+  getInstallationId,
+  initInstallationId,
+  resetInstallationId
+} from '@main/services/installationId'
 import type { ExportOptions } from '../../../src/shared/types'
 
 function readStoredZipEntries(path: string): Map<string, Buffer> {
@@ -252,6 +262,68 @@ describe('export', () => {
       trustedTime: 'pending',
       timestampTokenPaths: [`timestamps/${capture.id}.tst`]
     })
+  })
+
+  it('records a signed, hash-chained export entry on the case manifest (#124)', async () => {
+    await ingest(caseId, '<html><body>Audited export</body></html>', 'https://example.com', 'A')
+
+    const caseDir = join(tempDir, 'captures', caseId)
+    const headBefore = getManifestHead(caseDir)
+
+    const outputPath = join(tempDir, 'audited-evidence.zip')
+    const options: ExportOptions = {
+      format: 'zip',
+      include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+      investigatorName: 'Test User',
+      outputPath
+    }
+    await generateReport(caseId, options, captureLifecycle)
+
+    const manifest = readFileSync(join(caseDir, 'manifest.jsonl'), 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+      .map((l) => JSON.parse(l) as Record<string, unknown>)
+
+    const exportEntries = manifest.filter((e) => e.type === 'export')
+    expect(exportEntries).toHaveLength(1)
+    const entry = exportEntries[0]
+
+    expect(entry.caseId).toBe(caseId)
+    expect(entry.operatorId).toBe(getInstallationId())
+    expect(entry.operatorName).toBe('Test Operator')
+    expect(typeof entry.packageHash).toBe('string')
+    expect((entry.packageHash as string).length).toBe(64)
+    expect(typeof entry.timestamp).toBe('string')
+    expect(entry.verificationResult).toMatchObject({
+      overallValid: true,
+      captureCount: 1,
+      verifiedCount: 1,
+      tamperedCount: 0,
+      missingCount: 0
+    })
+
+    // Signed + chained to the prior head.
+    expect(typeof entry.signature).toBe('string')
+    expect((entry.signature as string).length).toBeGreaterThan(0)
+    expect(entry.index).toBe(headBefore.nextIndex)
+    expect(entry.prevHash).toBe(headBefore.prevHash)
+
+    // The whole chain (capture + export) still verifies.
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+
+    // The export entry's packageHash matches sha256(canonicalStringify(sortedArtifacts))
+    // recomputed from the bundled evidence.json artifact list.
+    const entries = readStoredZipEntries(outputPath)
+    const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+      artifacts: Array<{ path: string; sha256: string; sizeBytes: number }>
+    }
+    const sorted = [...evidence.artifacts].sort((a, b) =>
+      a.path < b.path ? -1 : a.path > b.path ? 1 : 0
+    )
+    const expectedHash = createHash('sha256')
+      .update(canonicalStringify(sorted), 'utf-8')
+      .digest('hex')
+    expect(entry.packageHash).toBe(expectedHash)
   })
 
   it('content-addresses screenshots into screenshots/<sha256>.png and records them in artifacts[] (#118)', async () => {

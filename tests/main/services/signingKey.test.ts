@@ -3,16 +3,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { execFileSync } from 'child_process'
-
-function opensslAvailable(): boolean {
-  try {
-    execFileSync('openssl', ['version'], { stdio: 'ignore' })
-    return true
-  } catch {
-    return false
-  }
-}
-const HAS_OPENSSL = opensslAvailable()
+import { HAS_OPENSSL } from '../../helpers/openssl'
 import {
   initSigningKey,
   signEntryHash,

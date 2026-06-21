@@ -1,12 +1,15 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { createHash } from 'crypto'
-import { readFileSync } from 'fs'
+import { execFileSync } from 'child_process'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
 import { join } from 'path'
 import { AsnConvert } from '@peculiar/asn1-schema'
 import { TimeStampReq, MessageImprint, PKIStatus } from '@peculiar/asn1-tsp'
 import { buildTimestampRequest, requestTimestamp } from '@main/services/timestamp'
 import { parseTimestampToken } from '@shared/verify'
 import { buildSyntheticToken, buildTimestampResponse } from '../../helpers/timestampFixtures'
+import { HAS_OPENSSL } from '../../helpers/openssl'
 
 const FIXTURES = join(__dirname, '../../fixtures/timestamp')
 
@@ -136,5 +139,66 @@ describe('requestTimestamp', () => {
   it('rejects on a non-2xx HTTP response', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('busy', { status: 503 }))
     await expect(requestTimestamp(contentHashHex('y'), 'http://tsa.example.com')).rejects.toThrow()
+  })
+})
+
+// G2 (epic #146): the canonical court-verification proof. The app derives
+// `trustedTime: rfc3161` from a STRUCTURALLY-parsed token; this exercises the
+// cryptographic ground truth `openssl ts -verify` over the committed DigiCert
+// fixtures. Hermetic and offline — only the self-signed Trusted Root G4 anchor
+// is supplied, so no network or system trust store is touched.
+describe('openssl ts -verify over committed DigiCert fixtures', () => {
+  const tokenDer = join(FIXTURES, 'digicert-token.der')
+  const responseTsr = join(FIXTURES, 'digicert-response.tsr')
+  const queryfile = join(FIXTURES, 'request.tsq')
+  const caFile = join(FIXTURES, 'digicert-trusted-root-g4.pem')
+
+  function verify(args: string[]): string {
+    // stderr carries openssl's "Using configuration from ..." banner and any
+    // verify diagnostics; merge it so assertions can inspect the full output.
+    return execFileSync('openssl', ['ts', '-verify', ...args], {
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+  }
+
+  it.skipIf(!HAS_OPENSSL)('verifies the standalone TimeStampToken (-token_in)', () => {
+    const out = verify(['-token_in', '-in', tokenDer, '-queryfile', queryfile, '-CAfile', caFile])
+    expect(out).toContain('Verification: OK')
+  })
+
+  it.skipIf(!HAS_OPENSSL)('verifies the full TimeStampResp (.tsr) form', () => {
+    const out = verify(['-in', responseTsr, '-queryfile', queryfile, '-CAfile', caFile])
+    expect(out).toContain('Verification: OK')
+  })
+
+  it.skipIf(!HAS_OPENSSL)('FAILS when a token byte is mutated (test discriminates)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bb-tsverify-'))
+    try {
+      const tampered = readFileSync(tokenDer)
+      // Flip a byte deep in the CMS SignedData so the signature no longer covers it.
+      tampered[2000] ^= 0xff
+      const tamperedPath = join(dir, 'tampered.der')
+      writeFileSync(tamperedPath, tampered)
+
+      let combined = ''
+      let exitCode = 0
+      try {
+        combined = execFileSync(
+          'openssl',
+          ['ts', '-verify', '-token_in', '-in', tamperedPath, '-queryfile', queryfile, '-CAfile', caFile],
+          { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] }
+        )
+      } catch (err) {
+        const e = err as { status?: number; stdout?: string; stderr?: string }
+        exitCode = e.status ?? 1
+        combined = `${e.stdout ?? ''}${e.stderr ?? ''}`
+      }
+      expect(combined).not.toContain('Verification: OK')
+      expect(exitCode === 0 ? combined : 'nonzero').not.toBe('')
+      expect(combined.includes('Verification: FAILED') || exitCode !== 0).toBe(true)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

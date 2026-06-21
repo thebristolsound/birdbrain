@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, readFileSync, existsSync, readdirSync } from 'fs'
+import { mkdtempSync, rmSync, readFileSync, existsSync, readdirSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { createHash } from 'crypto'
@@ -280,6 +280,44 @@ describe('ingestMhtmlCapture', () => {
     // All sidecar files removed (.mhtml / .txt / .png).
     const leftover = readdirSync(bogusDir).filter((f) => f !== 'manifest.jsonl')
     expect(leftover).toEqual([])
+  })
+
+  it('removes the .mhtml when the manifest append fails before the seam body runs', async () => {
+    // Replace manifest.jsonl with a directory so appendManifestEntry throws (EISDIR)
+    // inside withCaptureEntry BEFORE the callback runs — the pre-callback failure path
+    // where the already-written .mhtml would otherwise be orphaned.
+    const caseDirAbs = join(tempDir, 'captures', caseId)
+    const manifestPath = join(caseDirAbs, 'manifest.jsonl')
+    rmSync(manifestPath, { force: true })
+    mkdirSync(manifestPath)
+    const before = readdirSync(caseDirAbs).sort()
+
+    const stream = Readable.from([Buffer.from('orphan-bytes')])
+    await expect(
+      ingestMhtmlCapture({
+        caseId,
+        url: 'https://example.com',
+        title: 'x',
+        timestamp: '2026-04-05T12:00:00.000Z',
+        stream: stream as unknown as ReadableStream<Uint8Array>,
+        textContent: 'orphan text',
+        headers: {},
+        browserVersion: '',
+        userAgent: '',
+        httpStatus: 200,
+        extensionVersion: '',
+        operatorId: '',
+        operatorName: '',
+        toolVersion: '',
+        screenshot: Buffer.from('fake-png')
+      })
+    ).rejects.toThrow()
+
+    // The .mhtml written before the seam must not be orphaned, and nothing else leaked.
+    const after = readdirSync(caseDirAbs).sort()
+    expect(after.filter((f) => f.endsWith('.mhtml'))).toEqual([])
+    expect(after).toEqual(before)
+    expect(listCaptures(caseId)).toHaveLength(0)
   })
 })
 

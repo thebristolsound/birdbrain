@@ -261,6 +261,49 @@ export const ManifestEntrySchema = z.discriminatedUnion('type', [
 
 export type ManifestEntry = z.infer<typeof ManifestEntrySchema>
 
+// --- Evidence package index (evidence.json) -------------------------------
+
+// `evidence.json` is the UNSIGNED convenience index emitted by buildEvidenceZip.
+// Only `manifest.jsonl` is signed, so the standalone verifier (#122) treats this
+// index as untrusted: it parses it for structure, then reconciles every field
+// against the verified chain (§7.4/§7.5 of the verifier design). This schema is
+// deliberately permissive about fields the verifier does not consume (it does
+// not `.strict()`) so adding informational keys to the export never breaks
+// verification; it pins only what §7 reads — the manifest head, the per-capture
+// ids/paths/hashes, and the artifact digests.
+const EvidenceArtifactSchema = z.object({
+  path: z.string(),
+  sha256: z.string(),
+  sizeBytes: z.number().int().nonnegative()
+})
+
+const EvidenceCaptureSchema = z.object({
+  id: z.string(),
+  mhtmlPath: z.string().nullable().optional(),
+  mhtmlSha256: z.string().nullable().optional(),
+  screenshotPath: z.string().nullable().optional(),
+  screenshotSha256: z.string().nullable().optional(),
+  textSha256: z.string().nullable().optional(),
+  timestampTokenPaths: z.array(z.string())
+})
+
+export const EvidencePackageSchema = z.object({
+  schemaVersion: z.number().int().positive(),
+  verificationMaterials: z.object({
+    manifestPath: z.string(),
+    // Head index/hash are null for an empty manifest; the verifier cross-checks
+    // them against the verified chain's last entry (§7.4).
+    manifestHeadIndex: z.number().int().nonnegative().nullable(),
+    manifestHeadHash: z.string().nullable(),
+    signingPublicKeyPath: z.string(),
+    tsaCaChainPath: z.string()
+  }),
+  captures: z.array(EvidenceCaptureSchema),
+  artifacts: z.array(EvidenceArtifactSchema)
+})
+
+export type EvidencePackage = z.infer<typeof EvidencePackageSchema>
+
 // --- Settings file --------------------------------------------------------
 
 // `tsaUrl` is a trust-boundary value handed straight to fetch(). Normalize it on

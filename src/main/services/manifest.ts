@@ -63,6 +63,10 @@ export type ManifestEntryInput =
       // hashes — are unchanged.
       screenshotHash?: string
       textHash?: string
+      // Captured HTTP response headers (#119), normalized to lowercase keys with
+      // multi-value joins. OMITTED (never {} / null) when absent so legacy and
+      // headerless entries' canonical bodies — and chain hashes — are unchanged.
+      headers?: Record<string, string>
       sizeBytes: number
       operatorId: string
       operatorName: string
@@ -215,6 +219,9 @@ export interface CaptureEntryContext {
   // when undefined to preserve legacy canonical bodies.
   screenshotHash?: string
   textHash?: string
+  // Captured HTTP response headers (#119); omitted from the manifest body when
+  // absent to preserve legacy canonical bodies.
+  headers?: Record<string, string>
   sizeBytes: number
   operatorId: string
   operatorName: string
@@ -241,6 +248,7 @@ export async function withCaptureEntry<T>(
       contentHash: ctx.contentHash,
       ...(ctx.screenshotHash !== undefined ? { screenshotHash: ctx.screenshotHash } : {}),
       ...(ctx.textHash !== undefined ? { textHash: ctx.textHash } : {}),
+      ...(ctx.headers !== undefined ? { headers: ctx.headers } : {}),
       sizeBytes: ctx.sizeBytes,
       operatorId: ctx.operatorId,
       operatorName: ctx.operatorName,

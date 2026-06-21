@@ -169,6 +169,12 @@ export async function ingestMhtmlCapture(params: IngestParams): Promise<IngestRe
     ? createHash('sha256').update(Buffer.from(params.textContent, 'utf-8')).digest('hex')
     : undefined
 
+  // Anchor the captured response headers into the signed manifest body (#119),
+  // but only when present. Omitted (not {}) so headerless/legacy entries keep
+  // their original canonical body and chain hash.
+  const anchoredHeaders =
+    params.headers && Object.keys(params.headers).length > 0 ? params.headers : undefined
+
   // The write-ahead manifest entry + rollback-on-throw is owned by withCaptureEntry.
   // The .mhtml is written before the seam, so its cleanup wraps the whole call: a
   // manifest init/append failure throws before the callback runs and would otherwise
@@ -185,6 +191,7 @@ export async function ingestMhtmlCapture(params: IngestParams): Promise<IngestRe
         contentHash: hash,
         screenshotHash,
         textHash,
+        headers: anchoredHeaders,
         sizeBytes,
         operatorId: params.operatorId,
         operatorName: params.operatorName,

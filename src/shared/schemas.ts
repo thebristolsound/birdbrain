@@ -31,6 +31,31 @@ const FormFileSchema = z.custom<FormFileLike>(
 
 export const CaptureSourceSchema = z.enum(['auto', 'manual', 'selector'])
 
+// Response headers arrive as a JSON string in a multipart form field. They are
+// an untrusted, extension-supplied value that ends up in the signed manifest, so
+// the parse is defensive: malformed JSON, non-object shapes, or non-string
+// values coerce to undefined (treated as "no headers") rather than failing the
+// whole capture. The serialized size is bounded so a hostile/huge header set
+// can't bloat the signed manifest body.
+const MAX_HEADERS_JSON_BYTES = 64 * 1024
+
+const HeadersFieldSchema = z.preprocess((raw) => {
+  if (typeof raw !== 'string' || raw.trim() === '') return undefined
+  if (Buffer.byteLength(raw, 'utf-8') > MAX_HEADERS_JSON_BYTES) return undefined
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return undefined
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+    if (typeof v === 'string') out[k] = v
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}, z.record(z.string(), z.string()).optional())
+
 export const CaptureUploadSchema = z.object({
   source: CaptureSourceSchema,
   url: z
@@ -56,6 +81,7 @@ export const CaptureUploadSchema = z.object({
   userAgent: z.string().optional().default(''),
   caseId: z.string().optional().default(''),
   httpStatus: z.coerce.number().catch(0),
+  headers: HeadersFieldSchema,
   mhtml: FormFileSchema,
   screenshot: z.unknown().optional()
 })
@@ -136,6 +162,7 @@ const ManifestCaptureEntrySchema = z
     contentHash: z.string(),
     screenshotHash: z.string().optional(),
     textHash: z.string().optional(),
+    headers: z.record(z.string(), z.string()).optional(),
     sizeBytes: z.number(),
     operatorId: z.string(),
     operatorName: z.string(),

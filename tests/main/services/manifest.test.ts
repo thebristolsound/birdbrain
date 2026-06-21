@@ -790,6 +790,34 @@ describe('manifest schema v2 + grandfathering', () => {
     expect(ManifestEntrySchema.safeParse({ ...base, schemaVersion: 99 }).success).toBe(false)
     expect(ManifestEntrySchema.safeParse({ ...base, schemaVersion: 1.5 }).success).toBe(false)
   })
+
+  it('accepts a capture entry with headers under the strict schema (#119)', () => {
+    const base = {
+      type: 'capture' as const,
+      captureId: 'cap',
+      caseId: 'case-1',
+      url: 'https://a',
+      timestamp: '2026-01-01T00:00:00.000Z',
+      contentHash: 'a'.repeat(64),
+      sizeBytes: 1,
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0',
+      index: 0,
+      prevHash: '',
+      schemaVersion: 2,
+      entryHash: 'e'.repeat(64)
+    }
+    const withHeaders = { ...base, headers: { server: 'nginx', 'content-type': 'text/html' } }
+    expect(ManifestEntrySchema.safeParse(withHeaders).success).toBe(true)
+
+    // Non-string header values are rejected by the strict record schema.
+    const badHeaders = { ...base, headers: { server: 123 } }
+    expect(ManifestEntrySchema.safeParse(badHeaders).success).toBe(false)
+
+    // Omitting headers still parses (legacy/headerless entries).
+    expect(ManifestEntrySchema.safeParse(base).success).toBe(true)
+  })
 })
 
 // Existing tests exercise rollback only through the `withDeletionEntry`

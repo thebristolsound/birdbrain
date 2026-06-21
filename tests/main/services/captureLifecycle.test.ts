@@ -137,6 +137,51 @@ describe('createCaptureLifecycle.ingest', () => {
     expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
   })
 
+  it('persists headers to the DB and anchors them in the manifest body, chain still verifies (#119)', async () => {
+    const { readFileSync } = await import('fs')
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const headers = { server: 'nginx', date: 'Wed, 21 Jun 2026 12:00:00 GMT' }
+    const { capture } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('mhtml-body'), { headers })
+    )
+
+    // (a) DB mirror
+    expect(JSON.parse(getCapture(capture.id)!.headers!)).toEqual(headers)
+
+    // (b) Manifest body carries the headers
+    const manifestPath = join(tempDir, 'captures', caseId, 'manifest.jsonl')
+    const lines = readFileSync(manifestPath, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+    const captureEntry = JSON.parse(lines[lines.length - 1])
+    expect(captureEntry.headers).toEqual(headers)
+    // (d) specific keys survive server→lifecycle→manifest
+    expect(captureEntry.headers.server).toBe('nginx')
+    expect(captureEntry.headers.date).toBe('Wed, 21 Jun 2026 12:00:00 GMT')
+
+    // (c) chain re-verifies (recomputed entryHash + signature cover the headers)
+    expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+  })
+
+  it('OMITS headers from the manifest body when empty, keeping v1-equivalent entries (#119)', async () => {
+    const { readFileSync } = await import('fs')
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('mhtml-body'), { headers: {} })
+    )
+
+    const manifestPath = join(tempDir, 'captures', caseId, 'manifest.jsonl')
+    const lines = readFileSync(manifestPath, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+    const captureEntry = JSON.parse(lines[lines.length - 1])
+    // OMITTED from the signed body, not {} / null — so headerless canonical
+    // bodies (and their chain hashes) are unchanged from v1.
+    expect('headers' in captureEntry).toBe(false)
+    expect(capture.id).toBeTruthy()
+    expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+  })
+
   it('enqueues the ingested capture for trusted timestamping', async () => {
     const enqueueTimestamp = vi.fn()
     const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub, enqueueTimestamp })

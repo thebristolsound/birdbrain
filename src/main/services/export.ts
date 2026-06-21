@@ -241,6 +241,21 @@ function buildEvidenceZip(caseId: string, data: ExportData, reportHtml: string):
     const verification = data.verifications.find((v) => v.captureId === capture.id)
     const trustedTime = verification?.trustedTime ?? capture.trustedTimeStatus ?? 'none'
 
+    // Content-address the screenshot into the package (#118): the file name IS
+    // its sha256, and add() records it into artifacts[] so the package is
+    // self-describing. Scoped to the export package only — live on-disk storage
+    // is untouched. The .txt sidecar's integrity is bound by textSha256 in the
+    // per-capture record + the signed manifest entry; it is not re-bundled here
+    // (its content already surfaces in report.html / the MHTML page).
+    const screenshot = readCaptureFile(capture.caseId, capture.id, 'png')
+    let screenshotPath: string | null = null
+    let screenshotSha256: string | null = null
+    if (screenshot) {
+      screenshotSha256 = sha256(screenshot)
+      screenshotPath = `screenshots/${screenshotSha256}.png`
+      add(screenshotPath, screenshot)
+    }
+
     return {
       id: capture.id,
       title: capture.title,
@@ -255,6 +270,9 @@ function buildEvidenceZip(caseId: string, data: ExportData, reportHtml: string):
       stampedAt: verification?.stampedAt,
       mhtmlPath: mhtml ? mhtmlPath : null,
       mhtmlSha256,
+      screenshotPath,
+      screenshotSha256,
+      textSha256: capture.textHash ?? null,
       timestampTokenPaths: timestampPathsByHash.get(capture.hash) ?? []
     }
   })

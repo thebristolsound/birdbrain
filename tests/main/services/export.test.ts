@@ -254,6 +254,68 @@ describe('export', () => {
     })
   })
 
+  it('content-addresses screenshots into screenshots/<sha256>.png and records them in artifacts[] (#118)', async () => {
+    const screenshot = Buffer.from('screenshot-png-bytes-for-export')
+    const { capture } = await ingestMhtmlCapture({
+      caseId,
+      url: 'https://example.com/shot',
+      title: 'Shot',
+      timestamp: '2026-04-05T12:00:00.000Z',
+      stream: Readable.from([Buffer.from('mhtml')]) as unknown as ReadableStream<Uint8Array>,
+      textContent: 'extracted text for export',
+      headers: {},
+      browserVersion: '',
+      userAgent: '',
+      httpStatus: 200,
+      extensionVersion: '',
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0',
+      screenshot
+    })
+
+    const outputPath = join(tempDir, 'shot-evidence.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: { captures: true, screenshots: true, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test User',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const entries = readStoredZipEntries(outputPath)
+    const expectedDigest = createHash('sha256').update(screenshot).digest('hex')
+    const expectedPath = `screenshots/${expectedDigest}.png`
+
+    // Content-addressed: the file exists, its name equals its digest, bytes match.
+    expect(entries.has(expectedPath)).toBe(true)
+    expect(entries.get(expectedPath)).toEqual(screenshot)
+
+    const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+      captures: Array<{
+        id: string
+        screenshotPath: string | null
+        screenshotSha256: string | null
+        textSha256: string | null
+      }>
+      artifacts: Array<{ path: string; sha256: string; sizeBytes: number }>
+    }
+
+    // Per-capture record is self-describing.
+    const rec = evidence.captures.find((c) => c.id === capture.id)!
+    expect(rec.screenshotPath).toBe(expectedPath)
+    expect(rec.screenshotSha256).toBe(expectedDigest)
+    expect(rec.textSha256).toBe(capture.textHash)
+
+    // The artifact is registered with a matching sha256.
+    const artifact = evidence.artifacts.find((a) => a.path === expectedPath)!
+    expect(artifact.sha256).toBe(expectedDigest)
+    expect(artifact.sizeBytes).toBe(screenshot.length)
+  })
+
   it('renders Trusted Time as a column orthogonal to integrity status', async () => {
     await ingest(caseId, '<html><body>Two axes</body></html>', 'https://example.com', 'Axes')
 

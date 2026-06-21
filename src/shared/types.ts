@@ -32,6 +32,11 @@ export interface Capture {
   // Forensic MHTML fields (populated for format='mhtml', undefined for legacy 'html')
   format: CaptureFormat
   mhtmlPath?: string
+  // Content-addressed integrity of the screenshot / extracted-text sidecars (#118).
+  // Mirrors the hash recorded in the v2+ manifest capture entry; undefined for
+  // legacy/no-artifact captures (not sidecar-checked at verify time).
+  screenshotHash?: string
+  textHash?: string
   sizeBytes?: number
   manifestIndex?: number
   prevHash?: string

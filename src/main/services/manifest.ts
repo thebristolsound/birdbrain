@@ -15,6 +15,7 @@ import { canonicalStringify, parseTimestampToken, verifyManifestChainText } from
 import type { ChainVerifyResult } from '@shared/verify'
 import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
 import type { TrustedTime } from '@shared/types'
+import type { TlsCertChainResult } from '@main/services/tlsCertChain'
 
 export type { TrustedTime }
 
@@ -67,6 +68,10 @@ export type ManifestEntryInput =
       // multi-value joins. OMITTED (never {} / null) when absent so legacy and
       // headerless entries' canonical bodies — and chain hashes — are unchanged.
       headers?: Record<string, string>
+      // Corroboration-only TLS cert chain re-fetched after storage (#123). NOT
+      // bound to the captured transaction. OMITTED when not re-fetched so legacy /
+      // cert-less entries' canonical bodies — and chain hashes — are unchanged.
+      tls?: TlsCertChainResult
       sizeBytes: number
       operatorId: string
       operatorName: string
@@ -245,6 +250,9 @@ export interface CaptureEntryContext {
   // Captured HTTP response headers (#119); omitted from the manifest body when
   // absent to preserve legacy canonical bodies.
   headers?: Record<string, string>
+  // Corroboration-only TLS cert chain (#123); omitted from the manifest body
+  // when absent to preserve legacy canonical bodies.
+  tls?: TlsCertChainResult
   sizeBytes: number
   operatorId: string
   operatorName: string
@@ -272,6 +280,7 @@ export async function withCaptureEntry<T>(
       ...(ctx.screenshotHash !== undefined ? { screenshotHash: ctx.screenshotHash } : {}),
       ...(ctx.textHash !== undefined ? { textHash: ctx.textHash } : {}),
       ...(ctx.headers !== undefined ? { headers: ctx.headers } : {}),
+      ...(ctx.tls !== undefined ? { tls: ctx.tls } : {}),
       sizeBytes: ctx.sizeBytes,
       operatorId: ctx.operatorId,
       operatorName: ctx.operatorName,

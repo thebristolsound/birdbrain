@@ -149,6 +149,58 @@ describe('manifest append', () => {
     expect('screenshotHash' in parsed).toBe(false)
     expect('textHash' in parsed).toBe(false)
   })
+
+  it('anchors the corroboration-only TLS cert chain, schema-validates, and the body reconstructs to entryHash (#123)', () => {
+    const tls = {
+      url: 'https://example.com',
+      refetchedAt: '2026-04-05T12:00:05.000Z',
+      chain: [
+        {
+          subject: 'CN=example.com',
+          issuer: 'CN=Example CA',
+          validFrom: 'Jan  1 00:00:00 2026 GMT',
+          validTo: 'Jan  1 00:00:00 2027 GMT',
+          fingerprint256: 'AA:BB:CC',
+          serialNumber: '01',
+          subjectAltNames: ['DNS:example.com', 'DNS:www.example.com']
+        }
+      ]
+    }
+    appendManifestEntry(tempDir, { ...baseEntry, captureId: 'cap-1', tls })
+
+    const line = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim()
+    const parsed = JSON.parse(line)
+    expect(parsed.tls).toEqual(tls)
+    // Body (sans signature + entryHash) reconstructs to entryHash including tls —
+    // the same reconstruction the verifier performs.
+    const body = { ...parsed }
+    const { entryHash } = parsed
+    delete body.signature
+    delete body.entryHash
+    expect(createHash('sha256').update(canonicalStringify(body)).digest('hex')).toBe(entryHash)
+    // Shape parses under the strict ManifestCaptureEntrySchema.
+    expect(ManifestEntrySchema.safeParse(parsed).success).toBe(true)
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
+  })
+
+  it('anchors a fail-soft TLS error marker and still verifies (#123)', () => {
+    const tls = {
+      url: 'https://example.com',
+      refetchedAt: '2026-04-05T12:00:05.000Z',
+      error: 'connect ECONNREFUSED'
+    }
+    appendManifestEntry(tempDir, { ...baseEntry, captureId: 'cap-1', tls })
+    const parsed = JSON.parse(readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim())
+    expect(parsed.tls).toEqual(tls)
+    expect(ManifestEntrySchema.safeParse(parsed).success).toBe(true)
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
+  })
+
+  it('OMITS the tls field when absent, leaving the legacy canonical body unchanged (#123)', () => {
+    appendManifestEntry(tempDir, { ...baseEntry, captureId: 'cap-1' })
+    const parsed = JSON.parse(readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim())
+    expect('tls' in parsed).toBe(false)
+  })
 })
 
 describe('manifest verifyManifestChain', () => {

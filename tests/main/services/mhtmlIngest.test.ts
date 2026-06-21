@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, rmSync, readFileSync, existsSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -19,6 +19,14 @@ import {
   listCaptures
 } from '@main/services/database'
 import { initManifest, appendManifestEntry, verifyManifestChain } from '@main/services/manifest'
+
+// Keep ingest hermetic: the corroboration-only TLS re-fetch (#123) would
+// otherwise open a real socket to https://example.com on every ingest. Default
+// it to "nothing to corroborate" (null).
+vi.mock('@main/services/tlsCertChain', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@main/services/tlsCertChain')>()
+  return { ...actual, fetchCertChain: vi.fn(async () => null) }
+})
 
 describe('streamWriteAndHash', () => {
   let tempDir: string

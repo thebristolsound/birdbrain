@@ -152,6 +152,44 @@ export function formatSelectorCreateError(err: z.ZodError): string {
 // (e.g. a v3 entry parsed by a v2 verifier). Auto-tightens on every version bump.
 const schemaVersionField = z.number().int().min(1).max(MANIFEST_SCHEMA_VERSION)
 
+// Corroboration-only TLS cert chain re-fetched from the origin AFTER the capture
+// is stored (#123, ADR-0002). NOT bound to the captured transaction — it records
+// whatever cert the origin served at `refetchedAt`, which differs from the
+// capture timestamp. Anchored into the signed manifest body so chain integrity
+// covers it for free. Either a chain (leaf→root, SANs pre-sorted by the producer)
+// or a fail-soft error marker; OMITTED entirely when the re-fetch was not run, so
+// legacy / cert-less entries keep identical entryHashes. `.strict()` so a forged
+// extra field is rejected before hashing.
+export const TlsCertSummarySchema = z
+  .object({
+    subject: z.string(),
+    issuer: z.string(),
+    validFrom: z.string(),
+    validTo: z.string(),
+    fingerprint256: z.string(),
+    serialNumber: z.string(),
+    subjectAltNames: z.array(z.string())
+  })
+  .strict()
+
+export const TlsCertChainSchema = z
+  .object({
+    url: z.string(),
+    refetchedAt: z.string(),
+    chain: z.array(TlsCertSummarySchema)
+  })
+  .strict()
+
+export const TlsCertChainErrorSchema = z
+  .object({
+    url: z.string(),
+    refetchedAt: z.string(),
+    error: z.string()
+  })
+  .strict()
+
+export const TlsCertChainResultSchema = z.union([TlsCertChainSchema, TlsCertChainErrorSchema])
+
 const ManifestCaptureEntrySchema = z
   .object({
     type: z.literal('capture'),
@@ -163,6 +201,7 @@ const ManifestCaptureEntrySchema = z
     screenshotHash: z.string().optional(),
     textHash: z.string().optional(),
     headers: z.record(z.string(), z.string()).optional(),
+    tls: TlsCertChainResultSchema.optional(),
     sizeBytes: z.number(),
     operatorId: z.string(),
     operatorName: z.string(),

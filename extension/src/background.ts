@@ -4,6 +4,7 @@ import {
   getActiveSelectors,
   createSelector
 } from '@extension/utils/api'
+import { normalizeResponseHeaders } from '@extension/utils/headers'
 
 function captureMhtml(tabId: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
@@ -130,6 +131,49 @@ const selectorDedupeMap = new Map<string, number>()
 
 // Manual capture in-flight guard: tabId:caseId -> true while capture is in progress
 const pendingManualCaptures = new Set<string>()
+
+// --- Response header capture (#119) ---
+// Cache the latest main_frame response headers per tab so the capture paths can
+// attach them. Keyed by tabId; we store the URL alongside the headers and only
+// hand them to a capture when the URL still matches, guarding against a tab that
+// navigated away between onHeadersReceived and the capture call.
+const responseHeadersByTab = new Map<number, { url: string; headers: Record<string, string> }>()
+
+chrome.webRequest.onHeadersReceived.addListener(
+  (details) => {
+    if (details.tabId < 0) return undefined
+    responseHeadersByTab.set(details.tabId, {
+      url: details.url,
+      headers: normalizeResponseHeaders(details.responseHeaders)
+    })
+    return undefined
+  },
+  { urls: ['http://*/*', 'https://*/*'], types: ['main_frame'] },
+  ['responseHeaders']
+)
+
+// Clear a tab's cached headers on navigation start so we never attach stale
+// headers from a previous page to a capture of the new one.
+chrome.webRequest.onBeforeRequest.addListener(
+  (details) => {
+    if (details.tabId < 0) return undefined
+    responseHeadersByTab.delete(details.tabId)
+    return undefined
+  },
+  { urls: ['http://*/*', 'https://*/*'], types: ['main_frame'] }
+)
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  responseHeadersByTab.delete(tabId)
+})
+
+// Returns the cached headers for a tab only when they belong to the URL being
+// captured; otherwise undefined (no headers anchored rather than wrong ones).
+function getHeadersForCapture(tabId: number, url: string): Record<string, string> | undefined {
+  const cached = responseHeadersByTab.get(tabId)
+  if (!cached || cached.url !== url) return undefined
+  return Object.keys(cached.headers).length > 0 ? cached.headers : undefined
+}
 
 let connected = false
 let sessionActive = false
@@ -444,7 +488,8 @@ async function captureTab(tabId: number, url: string): Promise<void> {
       browserVersion: getBrowserVersion(),
       userAgent: getUserAgentString(),
       extensionVersion: getExtensionVersion(),
-      httpStatus: 200
+      httpStatus: 200,
+      headers: getHeadersForCapture(tabId, url)
     })
 
     dedupeMap.set(url, Date.now())
@@ -502,7 +547,8 @@ async function manualCaptureTab(
       browserVersion: getBrowserVersion(),
       userAgent: getUserAgentString(),
       extensionVersion: getExtensionVersion(),
-      httpStatus: 200
+      httpStatus: 200,
+      headers: getHeadersForCapture(tabId, url)
     })
 
     const toastStatus = result.screenshotStatus === 'dropped' ? 'degraded' : 'success'
@@ -562,6 +608,7 @@ async function handleSelectorCapture(tabId: number, url: string, caseId: string)
       userAgent: getUserAgentString(),
       extensionVersion: getExtensionVersion(),
       httpStatus: 200,
+      headers: getHeadersForCapture(tabId, url),
       matchedSelectors: []
     })
     selectorDedupeMap.set(caseId + ':' + url, Date.now())

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, readFileSync, existsSync } from 'fs'
+import { mkdtempSync, rmSync, readFileSync, existsSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { createHash } from 'crypto'
@@ -15,7 +15,8 @@ import {
   closeDatabase,
   createCase,
   getCapture,
-  insertCapture
+  insertCapture,
+  listCaptures
 } from '@main/services/database'
 import { initManifest, appendManifestEntry, verifyManifestChain } from '@main/services/manifest'
 
@@ -238,16 +239,24 @@ describe('ingestMhtmlCapture', () => {
     expect(reloaded?.screenshotPath).toBeUndefined()
   })
 
-  it('rolls back manifest when DB insert fails', async () => {
+  it('rolls back manifest and removes all artifacts when DB insert fails', async () => {
+    // The capture (caseId) FK won't resolve for an unknown case, so db.insertCapture
+    // throws inside the seam body — after the sidecars and manifest entry are written.
+    const bogusCaseId = 'does-not-exist'
+    const bogusDir = join(tempDir, 'captures', bogusCaseId)
+    ensureCaseDir(bogusCaseId)
+    initManifest(bogusDir)
+    const captureCountBefore = listCaptures(caseId).length
+
     const stream = Readable.from([Buffer.from('x')])
     await expect(
       ingestMhtmlCapture({
-        caseId: 'does-not-exist',
+        caseId: bogusCaseId,
         url: 'https://example.com',
         title: 'x',
         timestamp: '2026-04-05T12:00:00.000Z',
         stream: stream as unknown as ReadableStream<Uint8Array>,
-        textContent: 'x',
+        textContent: 'orphan text',
         headers: {},
         browserVersion: '',
         userAgent: '',
@@ -255,14 +264,22 @@ describe('ingestMhtmlCapture', () => {
         extensionVersion: '',
         operatorId: '',
         operatorName: '',
-        toolVersion: ''
+        toolVersion: '',
+        screenshot: Buffer.from('fake-png')
       })
     ).rejects.toThrow()
 
-    const bogusManifest = join(tempDir, 'captures', 'does-not-exist', 'manifest.jsonl')
-    if (existsSync(bogusManifest)) {
-      expect(readFileSync(bogusManifest, 'utf-8')).toBe('')
-    }
+    // Manifest rolled back to empty (no recorded capture that didn't land).
+    const manifest = join(bogusDir, 'manifest.jsonl')
+    expect(readFileSync(manifest, 'utf-8')).toBe('')
+
+    // No orphaned DB row anywhere.
+    expect(listCaptures(bogusCaseId)).toHaveLength(0)
+    expect(listCaptures(caseId)).toHaveLength(captureCountBefore)
+
+    // All sidecar files removed (.mhtml / .txt / .png).
+    const leftover = readdirSync(bogusDir).filter((f) => f !== 'manifest.jsonl')
+    expect(leftover).toEqual([])
   })
 })
 

@@ -316,6 +316,52 @@ describe('export', () => {
     expect(artifact.sizeBytes).toBe(screenshot.length)
   })
 
+  it('omits screenshots from the package when include.screenshots is false (#152)', async () => {
+    const screenshot = Buffer.from('screenshot-bytes-should-not-leak')
+    const { capture } = await ingestMhtmlCapture({
+      caseId,
+      url: 'https://example.com/shot',
+      title: 'Shot',
+      timestamp: '2026-04-05T12:00:00.000Z',
+      stream: Readable.from([Buffer.from('mhtml')]) as unknown as ReadableStream<Uint8Array>,
+      textContent: 'extracted text for export',
+      headers: {},
+      browserVersion: '',
+      userAgent: '',
+      httpStatus: 200,
+      extensionVersion: '',
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0',
+      screenshot
+    })
+
+    const outputPath = join(tempDir, 'shot-no-screenshots.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test User',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const entries = readStoredZipEntries(outputPath)
+    // No content-addressed screenshot file is bundled.
+    expect([...entries.keys()].some((k) => k.startsWith('screenshots/'))).toBe(false)
+
+    const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+      captures: Array<{ id: string; screenshotPath: string | null; screenshotSha256: string | null }>
+      artifacts: Array<{ path: string }>
+    }
+    const rec = evidence.captures.find((c) => c.id === capture.id)!
+    expect(rec.screenshotPath).toBeNull()
+    expect(rec.screenshotSha256).toBeNull()
+    expect(evidence.artifacts.some((a) => a.path.startsWith('screenshots/'))).toBe(false)
+  })
+
   it('renders Trusted Time as a column orthogonal to integrity status', async () => {
     await ingest(caseId, '<html><body>Two axes</body></html>', 'https://example.com', 'Axes')
 

@@ -247,7 +247,14 @@ function buildEvidenceZip(caseId: string, data: ExportData, reportHtml: string):
     // is untouched. The .txt sidecar's integrity is bound by textSha256 in the
     // per-capture record + the signed manifest entry; it is not re-bundled here
     // (its content already surfaces in report.html / the MHTML page).
-    const screenshot = readCaptureFile(capture.caseId, capture.id, 'png')
+    // Gated on data.screenshots, which loadExportData only populates when
+    // include.screenshots is set — so an export that omits screenshots does not
+    // ship them via the content-addressed sidecar. The raw on-disk bytes are
+    // used (not the possibly-annotated report copy) so the digest matches the
+    // screenshotHash anchored at ingest.
+    const screenshot = data.screenshots.has(capture.id)
+      ? readCaptureFile(capture.caseId, capture.id, 'png')
+      : null
     let screenshotPath: string | null = null
     let screenshotSha256: string | null = null
     if (screenshot) {

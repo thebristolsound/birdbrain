@@ -23,8 +23,14 @@ import {
   getStorageRoot,
   readCaptureFile
 } from '@main/services/storage'
+import { fetchCertChain as defaultFetchCertChain } from '@main/services/tlsCertChain'
+import type { TlsCertChainResult } from '@main/services/tlsCertChain'
 import { MAX_MHTML_SIZE } from '@shared/constants'
 import type { Capture, HashVerification } from '@shared/types'
+
+// Injectable corroboration-only TLS cert-chain re-fetcher (#123). Defaults to the
+// real Node tls.connect implementation; tests inject a stub to stay hermetic.
+export type FetchCertChain = (url: string) => Promise<TlsCertChainResult | null>
 
 export interface StreamWriteResult {
   mhtmlPath: string // relative path (caseId/captureId.mhtml)
@@ -60,6 +66,9 @@ export interface CaptureLifecycleDeps {
   // Non-blocking hand-off to the trusted-timestamp worker (#120). Optional so
   // tests and code paths that don't care about timestamping can omit it.
   enqueueTimestamp?: (captureId: string) => void
+  // Injectable corroboration-only TLS cert-chain re-fetcher (#123). Optional;
+  // defaults to the real Node tls.connect implementation. Tests inject a stub.
+  fetchTlsCertChain?: FetchCertChain
 }
 
 export interface CaptureLifecycle {
@@ -143,7 +152,10 @@ export async function streamWriteAndHash(
 // 2. Inside withCaptureEntry's write-ahead seam: write sidecar files (.txt, .png) and insert the
 //    DB row. Any failure unlinks the written artifacts and re-throws, so the seam rolls the
 //    manifest back to its anchor — the manifest never records a capture that didn't land.
-export async function ingestMhtmlCapture(params: IngestParams): Promise<IngestResult> {
+export async function ingestMhtmlCapture(
+  params: IngestParams,
+  fetchTlsCertChain: FetchCertChain = defaultFetchCertChain
+): Promise<IngestResult> {
   const captureId = randomUUID()
   const { mhtmlPath, hash, sizeBytes } = await streamWriteAndHash(
     params.caseId,
@@ -175,6 +187,20 @@ export async function ingestMhtmlCapture(params: IngestParams): Promise<IngestRe
   const anchoredHeaders =
     params.headers && Object.keys(params.headers).length > 0 ? params.headers : undefined
 
+  // Corroboration-only TLS cert re-fetch (#123, ADR-0002). Runs AFTER the capture
+  // content is stored, from the main process — it records whatever cert the origin
+  // serves now, NOT the cert bound to the captured transaction. Fail-soft by
+  // contract (fetchCertChain never throws); we still guard defensively so a re-
+  // fetch problem can NEVER fail the capture. Omitted (undefined) for non-https
+  // URLs so those entries keep their original canonical body and chain hash.
+  let tls: TlsCertChainResult | undefined
+  try {
+    tls = (await fetchTlsCertChain(params.url)) ?? undefined
+  } catch (err) {
+    console.error('captureLifecycle: TLS cert re-fetch failed for capture', captureId, err)
+    tls = undefined
+  }
+
   // The write-ahead manifest entry + rollback-on-throw is owned by withCaptureEntry.
   // The .mhtml is written before the seam, so its cleanup wraps the whole call: a
   // manifest init/append failure throws before the callback runs and would otherwise
@@ -192,6 +218,7 @@ export async function ingestMhtmlCapture(params: IngestParams): Promise<IngestRe
         screenshotHash,
         textHash,
         headers: anchoredHeaders,
+        tls,
         sizeBytes,
         operatorId: params.operatorId,
         operatorName: params.operatorName,
@@ -229,6 +256,7 @@ export async function ingestMhtmlCapture(params: IngestParams): Promise<IngestRe
             screenshotPath,
             screenshotHash,
             textHash,
+            tlsCertChain: tls !== undefined ? JSON.stringify(tls) : undefined,
             sizeBytes,
             manifestIndex: manifestResult.index,
             prevHash: manifestResult.prevHash,
@@ -450,7 +478,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
 
   return {
     async ingest(params) {
-      const result = await ingestMhtmlCapture(params)
+      const result = await ingestMhtmlCapture(params, deps.fetchTlsCertChain ?? defaultFetchCertChain)
       // Hand off to the trusted-timestamp worker without blocking the capture.
       deps.enqueueTimestamp?.(result.capture.id)
       runPostCaptureWork(result.capture.id, params.caseId, params.url, params.textContent)

@@ -19,6 +19,15 @@ import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { initSettings, updateSettings } from '@main/services/settings'
 
+// Keep ingest tests hermetic: the corroboration-only TLS re-fetch (#123) would
+// otherwise open a real socket to https://example.com on every ingest. Default
+// it to "nothing to corroborate" (null); the dedicated #123 tests below inject
+// their own stub via createCaptureLifecycle({ fetchTlsCertChain }).
+vi.mock('@main/services/tlsCertChain', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@main/services/tlsCertChain')>()
+  return { ...actual, fetchCertChain: vi.fn(async () => null) }
+})
+
 // Flushes the setImmediate queue so post-capture work scheduled by
 // runPostCaptureWork has time to run before we assert.
 function flushImmediate(): Promise<void> {
@@ -179,6 +188,87 @@ describe('createCaptureLifecycle.ingest', () => {
     // bodies (and their chain hashes) are unchanged from v1.
     expect('headers' in captureEntry).toBe(false)
     expect(capture.id).toBeTruthy()
+    expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+  })
+
+  it('persists the TLS cert chain on the DB row, anchors it in the manifest body, and the chain still verifies (#123)', async () => {
+    const { readFileSync } = await import('fs')
+    const tls = {
+      url: 'https://example.com',
+      refetchedAt: '2026-04-05T12:00:05.000Z',
+      chain: [
+        {
+          subject: 'CN=example.com',
+          issuer: 'CN=Example CA',
+          validFrom: 'Jan  1 00:00:00 2026 GMT',
+          validTo: 'Jan  1 00:00:00 2027 GMT',
+          fingerprint256: 'AA:BB:CC',
+          serialNumber: '01',
+          subjectAltNames: ['DNS:example.com', 'DNS:www.example.com']
+        }
+      ]
+    }
+    const fetchTlsCertChain = vi.fn(async () => tls)
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub, fetchTlsCertChain })
+    const { capture } = await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('mhtml-body')))
+
+    // (a) re-fetcher was invoked with the captured URL
+    expect(fetchTlsCertChain).toHaveBeenCalledWith('https://example.com')
+
+    // (b) DB mirror carries the parsed chain
+    expect(getCapture(capture.id)?.tlsCertChain).toEqual(tls)
+
+    // (c) manifest body anchors the chain and the signed chain still verifies
+    const manifestPath = join(tempDir, 'captures', caseId, 'manifest.jsonl')
+    const lines = readFileSync(manifestPath, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+    const captureEntry = JSON.parse(lines[lines.length - 1])
+    expect(captureEntry.tls).toEqual(tls)
+    expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+  })
+
+  it('records a fail-soft TLS error marker without failing the capture (#123)', async () => {
+    const tls = {
+      url: 'https://example.com',
+      refetchedAt: '2026-04-05T12:00:05.000Z',
+      error: 'connect ECONNREFUSED'
+    }
+    const fetchTlsCertChain = vi.fn(async () => tls)
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub, fetchTlsCertChain })
+    const { capture } = await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('mhtml-body')))
+
+    expect(getCapture(capture.id)?.tlsCertChain).toEqual(tls)
+    expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+  })
+
+  it('never fails the capture when the TLS re-fetcher itself throws (#123 fail-soft)', async () => {
+    const fetchTlsCertChain = vi.fn(async () => {
+      throw new Error('boom')
+    })
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub, fetchTlsCertChain })
+    const { capture } = await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('mhtml-body')))
+
+    expect(capture.id).toBeTruthy()
+    expect(getCapture(capture.id)?.tlsCertChain).toBeUndefined()
+    expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+  })
+
+  it('OMITS the tls field from the manifest body when no cert chain is recorded (#123 backward-compat)', async () => {
+    const { readFileSync } = await import('fs')
+    // Default mocked fetcher returns null → nothing to corroborate.
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture } = await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('mhtml-body')))
+
+    const manifestPath = join(tempDir, 'captures', caseId, 'manifest.jsonl')
+    const lines = readFileSync(manifestPath, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+    const captureEntry = JSON.parse(lines[lines.length - 1])
+    // OMITTED, not null — so cert-less canonical bodies (and chain hashes) are
+    // identical to pre-#123 entries.
+    expect('tls' in captureEntry).toBe(false)
+    expect(getCapture(capture.id)?.tlsCertChain).toBeUndefined()
     expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
   })
 

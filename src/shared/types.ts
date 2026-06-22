@@ -18,6 +18,34 @@ export type CaptureFormat = 'html' | 'mhtml'
 // grandfathered legacy captures that were never timestamped.
 export type TrustedTime = 'rfc3161' | 'pending' | 'none'
 
+// Corroboration-only TLS cert chain re-fetched from the origin AFTER a capture
+// is stored (#123, ADR-0002). NOT bound to the captured transaction — it records
+// whatever cert the origin was serving at `refetchedAt` (distinct from the
+// capture timestamp). Surfaced as corroboration only.
+export interface TlsCertSummary {
+  subject: string
+  issuer: string
+  validFrom: string
+  validTo: string
+  fingerprint256: string
+  serialNumber: string
+  subjectAltNames: string[]
+}
+
+export interface TlsCertChain {
+  url: string
+  refetchedAt: string
+  chain: TlsCertSummary[]
+}
+
+export interface TlsCertChainError {
+  url: string
+  refetchedAt: string
+  error: string
+}
+
+export type TlsCertChainResult = TlsCertChain | TlsCertChainError
+
 export interface Capture {
   id: string
   caseId: string
@@ -37,6 +65,9 @@ export interface Capture {
   // legacy/no-artifact captures (not sidecar-checked at verify time).
   screenshotHash?: string
   textHash?: string
+  // Mirror of the corroboration-only TLS cert chain anchored in the v2+ manifest
+  // capture entry (#123). undefined for legacy / cert-less captures.
+  tlsCertChain?: TlsCertChainResult
   sizeBytes?: number
   manifestIndex?: number
   prevHash?: string

@@ -26,6 +26,13 @@ import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { getManifestHead } from '@main/services/manifest'
 import { MAX_SCREENSHOT_SIZE } from '@shared/constants'
 
+// Keep ingest hermetic: the corroboration-only TLS re-fetch (#123) would
+// otherwise open a real socket to https://example.com on every captured upload.
+vi.mock('@main/services/tlsCertChain', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@main/services/tlsCertChain')>()
+  return { ...actual, fetchCertChain: vi.fn(async () => null) }
+})
+
 let nextPort = 19846
 const TEST_TOKEN = 'test-server-token'
 

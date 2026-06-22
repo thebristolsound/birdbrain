@@ -326,6 +326,12 @@ function buildEvidenceZip(caseId: string, data: ExportData, reportHtml: string):
       screenshotPath,
       screenshotSha256,
       textSha256: capture.textHash ?? null,
+      // Corroboration-only TLS cert chain (#123, ADR-0002). NOT bound to the
+      // captured transaction — the origin was re-contacted from the main process
+      // AFTER storage, so this records the cert served at `refetchedAt`, which
+      // differs from `capturedAt`. Surfaced labelled as corroboration; both
+      // timestamps are present so a reviewer understands the interval.
+      tlsCorroboration: capture.tlsCertChain ?? null,
       timestampTokenPaths: timestampPathsByHash.get(capture.hash) ?? []
     }
   })

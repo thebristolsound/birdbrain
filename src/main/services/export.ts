@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { unlink } from 'fs/promises'
 import { createHash } from 'crypto'
 import { join } from 'path'
 import * as db from '@main/services/database'
@@ -171,21 +172,26 @@ export async function generateReport(
     // case manifest by exactly this one entry; that is acceptable because
     // packageHash commits to artifact content, not to the manifest.
     //
-    // Limitation: this append happens after the .zip is written, so a crash
-    // between the two leaves a package on disk without its audit entry. We keep
-    // the ordering simple rather than wrapping it in a rollback (out of scope).
+    // The append happens after the .zip is written. If it throws (signing key
+    // failure, disk error), best-effort delete the orphaned package so we never
+    // leave a zip on disk without its corresponding audit entry, then re-throw.
     const caseDir = join(getStorageRoot(), caseId)
     initManifest(caseDir)
-    appendManifestEntry(caseDir, {
-      type: 'export',
-      caseId,
-      timestamp: data.exportTimestamp,
-      operatorId: data.installationId,
-      operatorName: data.operatorName,
-      toolVersion: resolveToolVersion(),
-      packageHash,
-      verificationResult
-    })
+    try {
+      appendManifestEntry(caseDir, {
+        type: 'export',
+        caseId,
+        timestamp: data.exportTimestamp,
+        operatorId: data.installationId,
+        operatorName: data.operatorName,
+        toolVersion: resolveToolVersion(),
+        packageHash,
+        verificationResult
+      })
+    } catch (err) {
+      await unlink(options.outputPath).catch(() => {})
+      throw err
+    }
   } else {
     writeFileSync(options.outputPath, html, 'utf-8')
   }
@@ -361,10 +367,16 @@ function buildEvidenceZip(caseId: string, data: ExportData, reportHtml: string):
   )
   const packageHash = sha256(Buffer.from(canonicalStringify(sortedArtifacts), 'utf-8'))
 
+  const captureCount = data.captures.length
+  const verifiedCount = data.verifications.filter((v) => v.status === 'verified').length
+
+  // overallValid means every capture has a passing verification. An empty
+  // verification set (e.g. auditTrail-excluded exports) must NOT report true:
+  // [].every(...) is true, but no verification ran, so the package is unverified.
   const verificationResult: ExportVerificationResult = {
-    overallValid: data.verifications.every((v) => v.status === 'verified'),
-    captureCount: data.captures.length,
-    verifiedCount: data.verifications.filter((v) => v.status === 'verified').length,
+    overallValid: captureCount > 0 && verifiedCount === captureCount,
+    captureCount,
+    verifiedCount,
     tamperedCount: data.verifications.filter((v) => v.status === 'tampered').length,
     missingCount: data.verifications.filter((v) => v.status === 'missing').length
   }

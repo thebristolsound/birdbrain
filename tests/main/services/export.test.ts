@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, rmSync, readFileSync, existsSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -12,6 +12,7 @@ import {
   insertCapture
 } from '../../../src/main/services/database'
 import { initStorage, ensureCaseDir, getCapturePath } from '../../../src/main/services/storage'
+import * as manifest from '../../../src/main/services/manifest'
 import {
   appendManifestEntry,
   getManifestHead,
@@ -436,6 +437,61 @@ describe('export', () => {
     const content = readFileSync(outputPath, 'utf-8')
     expect(content).toContain('Trusted time warning')
     expect(content).toContain('Export was not blocked')
+  })
+
+  it('does not record overallValid:true when auditTrail is excluded (no verifications)', async () => {
+    await ingest(caseId, '<html><body>Unverified export</body></html>', 'https://example.com', 'U')
+
+    const caseDir = join(tempDir, 'captures', caseId)
+    const outputPath = join(tempDir, 'unverified-evidence.zip')
+    const options: ExportOptions = {
+      format: 'zip',
+      include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
+      investigatorName: 'Test User',
+      outputPath
+    }
+    await generateReport(caseId, options, captureLifecycle)
+
+    const manifest = readFileSync(join(caseDir, 'manifest.jsonl'), 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+      .map((l) => JSON.parse(l) as Record<string, unknown>)
+
+    const exportEntry = manifest.find((e) => e.type === 'export')!
+    expect(exportEntry.verificationResult).toMatchObject({
+      overallValid: false,
+      captureCount: 1,
+      verifiedCount: 0,
+      tamperedCount: 0,
+      missingCount: 0
+    })
+  })
+
+  it('deletes the written zip when the export audit append throws', async () => {
+    await ingest(caseId, '<html><body>Orphan check</body></html>', 'https://example.com', 'O')
+
+    const spy = vi
+      .spyOn(manifest, 'appendManifestEntry')
+      .mockImplementation(() => {
+        throw new Error('signing key failure')
+      })
+
+    const outputPath = join(tempDir, 'orphan-evidence.zip')
+    const options: ExportOptions = {
+      format: 'zip',
+      include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+      investigatorName: 'Test User',
+      outputPath
+    }
+
+    try {
+      await expect(generateReport(caseId, options, captureLifecycle)).rejects.toThrow(
+        /signing key failure/
+      )
+      expect(existsSync(outputPath)).toBe(false)
+    } finally {
+      spy.mockRestore()
+    }
   })
 
   it('generates report without optional sections', async () => {

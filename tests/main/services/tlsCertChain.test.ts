@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { createServer, type Server } from 'node:tls'
-import type { AddressInfo } from 'node:net'
+import { createServer as createTcpServer, type Server as TcpServer, type AddressInfo } from 'node:net'
 import { fetchCertChain, isTlsCertChainError } from '@main/services/tlsCertChain'
 import { LOCALHOST_KEY_PEM, LOCALHOST_CERT_PEM } from '../../helpers/tlsFixtures'
 
@@ -76,13 +76,26 @@ describe('fetchCertChain', () => {
   })
 
   it('fail-soft: a connection timeout returns an error marker', async () => {
-    // 10.255.255.1 is non-routable in most environments; a short timeout fires.
-    const result = await fetchCertChain('https://10.255.255.1/', {
-      host: '10.255.255.1',
-      port: 443,
-      timeoutMs: 300
-    })
-    expect(isTlsCertChainError(result)).toBe(true)
+    // Create a TCP server that accepts connections but never completes a TLS handshake.
+    let hangingServer: TcpServer | null = null
+    try {
+      hangingServer = createTcpServer(() => {
+        // Accept connection but never send data, causing TLS handshake to hang.
+      })
+      await new Promise<void>((resolve) => hangingServer!.listen(0, '127.0.0.1', resolve))
+      const hangingPort = (hangingServer.address() as AddressInfo).port
+
+      const result = await fetchCertChain(`https://localhost:${hangingPort}/`, {
+        host: '127.0.0.1',
+        port: hangingPort,
+        timeoutMs: 300
+      })
+      expect(isTlsCertChainError(result)).toBe(true)
+    } finally {
+      if (hangingServer) {
+        await new Promise<void>((resolve) => hangingServer!.close(() => resolve()))
+      }
+    }
   })
 
   it('fail-soft: an invalid URL returns an error marker, not a throw', async () => {

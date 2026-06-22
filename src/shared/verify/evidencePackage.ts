@@ -66,6 +66,16 @@ function parseManifestEntries(jsonl: string): ManifestEntry[] {
   return out
 }
 
+/**
+ * Verifies the structural integrity of an evidence package.
+ *
+ * Validates the manifest chain as the cryptographic root of trust, binds capture
+ * content and timestamps to the verified manifest, and reconciles the evidence.json
+ * index against verified entries. All checks are performed regardless of failures.
+ *
+ * @param dir - Path to the evidence package directory
+ * @returns A `PackageVerifyResult` with an overall pass status and individual check results
+ */
 export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   const checks: PackageCheck[] = []
   const add = (name: string, status: CheckStatus, reason?: string): void => {

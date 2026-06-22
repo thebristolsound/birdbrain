@@ -295,7 +295,14 @@ export type { ChainVerifyResult }
 // Re-reads the manifest and verifies the hash chain — recomputed entryHashes,
 // linkage, v2+ signatures — against this installation's public key. Thin fs
 // wrapper; the chain algorithm lives in the shared verify-core (#122) so the
-// app and the standalone verifier can never drift.
+/**
+ * Verifies the integrity and authenticity of the manifest hash chain.
+ *
+ * An empty or missing manifest is considered valid.
+ *
+ * @param caseDir - The case directory containing the manifest file
+ * @returns A result indicating whether the manifest chain is valid and the verified trusted times
+ */
 export function verifyManifestChain(caseDir: string): ChainVerifyResult {
   const path = join(caseDir, MANIFEST_FILENAME)
   if (!existsSync(path) || statSync(path).size === 0) {

@@ -13,7 +13,12 @@ export type { TrustedTimeResult }
 
 // Reads and leniently parses a case manifest into entry records. The
 // resolution rule itself lives in verify-core (`@shared/verify/trustedTime`);
-// this module owns only the fs read and the DB-mirror writes below.
+/**
+ * Parses manifest entries from the case's manifest file.
+ *
+ * @param caseDir - The case directory containing the manifest file
+ * @returns An array of parsed manifest entries. Unparseable lines are silently skipped. Returns an empty array if the manifest file does not exist or is empty.
+ */
 function readManifestEntries(caseDir: string): Record<string, unknown>[] {
   const path = join(caseDir, MANIFEST_FILENAME)
   if (!existsSync(path) || statSync(path).size === 0) return []
@@ -30,7 +35,13 @@ function readManifestEntries(caseDir: string): Record<string, unknown>[] {
 }
 
 // Resolves the per-capture trusted-time axis from the manifest alone (so the DB
-// mirror is rebuildable — #120 AC). Thin fs wrapper over the verify-core rule.
+/**
+ * Resolves the trusted timestamp status for a content hash within a case.
+ *
+ * @param caseDir - The directory containing the case manifest
+ * @param contentHash - The content hash to resolve trusted time for
+ * @returns The trusted time result indicating the timestamp status
+ */
 export function resolveTrustedTime(caseDir: string, contentHash: string): TrustedTimeResult {
   return resolveTrustedTimeFromEntries(readManifestEntries(caseDir), contentHash)
 }
@@ -39,7 +50,12 @@ export function resolveTrustedTime(caseDir: string, contentHash: string): Truste
 // pass, keyed by contentHash. Use this to rebuild the DB mirror for a whole case
 // — calling resolveTrustedTime() per capture would re-read and re-parse the
 // manifest O(captures) times (quadratic on a large case). Captures whose hash is
-// absent from the returned map are 'none' (legacy/grandfathered).
+/**
+ * Builds a trusted-time lookup index for a case.
+ *
+ * @param caseDir - The case storage directory
+ * @returns A `Map` keyed by content hash, with `TrustedTimeResult` values. Content hashes absent from the map are implicitly `'none'`.
+ */
 export function buildTrustedTimeIndex(caseDir: string): Map<string, TrustedTimeResult> {
   return buildTrustedTimeIndexFromEntries(readManifestEntries(caseDir))
 }

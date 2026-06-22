@@ -30,7 +30,13 @@ export interface TrustedTimeResult {
 type EntryRecord = Record<string, unknown>
 
 // True iff the entry is an rfc3161 timestamp whose token attests `contentHash`.
-// A mismatched or malformed imprint is not proof of time and is ignored.
+/**
+ * Validates a timestamp entry and extracts RFC3161 details if it contains a valid token for the given content hash.
+ *
+ * @param entry - The manifest entry to validate.
+ * @param contentHash - The content hash the timestamp should cover.
+ * @returns An RFC3161 result if the entry is valid and the token matches the hash, `undefined` otherwise.
+ */
 function stampFor(entry: EntryRecord, contentHash: string): TrustedTimeResult | undefined {
   if (
     entry.type !== 'timestamp' ||
@@ -54,6 +60,11 @@ function stampFor(entry: EntryRecord, contentHash: string): TrustedTimeResult | 
   return undefined
 }
 
+/**
+ * Determines whether an entry is a v2+ capture eligible to be considered for pending trusted-time status.
+ *
+ * @returns `true` if the entry is a capture with schema version 2 or higher and a matching content hash, `false` otherwise
+ */
 function isEligibleCapture(entry: EntryRecord, contentHash: string): boolean {
   return (
     entry.type === 'capture' &&
@@ -63,7 +74,17 @@ function isEligibleCapture(entry: EntryRecord, contentHash: string): boolean {
   )
 }
 
-// Resolves the trusted-time axis for a single capture from the parsed entries.
+/**
+ * Determines the trusted-time status for a capture by its content hash.
+ *
+ * Searches entries for a valid RFC3161 timestamp matching the hash. If found, the capture
+ * has trusted time. If no valid timestamp is found but an eligible v2+ capture exists,
+ * the status is pending. Otherwise, there is no trusted time.
+ *
+ * @param entries - Manifest entries to scan
+ * @param contentHash - The content hash identifying the capture
+ * @returns The trusted-time status for the capture
+ */
 export function resolveTrustedTimeFromEntries(
   entries: ReadonlyArray<EntryRecord>,
   contentHash: string
@@ -79,7 +100,11 @@ export function resolveTrustedTimeFromEntries(
 
 // Resolves the trusted-time axis for EVERY capture in one pass, keyed by
 // contentHash. Captures absent from the returned map are 'none'
-// (legacy/grandfathered, or no capture entry).
+/**
+ * Builds an index of trusted-time results for captures in the manifest entries.
+ *
+ * @returns A map from content hash to trusted-time status. Results include RFC3161-stamped captures and v2+ captures marked as pending verification.
+ */
 export function buildTrustedTimeIndexFromEntries(
   entries: ReadonlyArray<EntryRecord>
 ): Map<string, TrustedTimeResult> {

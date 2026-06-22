@@ -21,7 +21,16 @@ export interface ChainVerifyResult {
 // public key. Pure verify-core — the caller reads the file (the app's
 // `verifyManifestChain(caseDir)` wrapper, or the standalone package verifier)
 // and supplies the PEM; no module-global key, no fs. Returns the zero-based
-// index of the first broken entry if any.
+/**
+ * Verifies a manifest hash chain from JSONL text.
+ *
+ * Validates each entry's JSON structure, recomputes its hash for integrity, checks index continuity and chain linkage,
+ * and enforces cryptographic signatures for v2+ entries.
+ *
+ * @param opts - Configuration with `publicKeyPem`, the PEM public key for verifying v2+ entry signatures
+ * @returns An object with `valid` indicating overall chain validity. If invalid, includes `brokenAt` (0-based index of
+ * the first failing entry) and `reason`. `trustedTimes` contains per-capture trusted-time data when valid, empty when invalid.
+ */
 export function verifyManifestChainText(
   jsonl: string,
   opts: { publicKeyPem: string }

@@ -134,16 +134,23 @@ export function fetchCertChain(
     // Raw tls.connect opens a fresh socket with no session cache, so the full
     // handshake always runs and the peer certificate is always present (the
     // session-resumption gap that affects the pooled https Agent — Node #7672 —
-    // does not apply here).
-    const socket = tls.connect({
-      host,
-      port,
-      // servername drives SNI; required for virtual-hosted origins.
-      servername: parsed.hostname,
-      rejectUnauthorized: options.rejectUnauthorized ?? true,
-      ...(options.ca !== undefined ? { ca: options.ca } : {}),
-      timeout: timeoutMs
-    })
+    // does not apply here). tls.connect can throw synchronously on bad
+    // params/port; catch it to keep the fail-soft contract.
+    let socket: tls.TLSSocket
+    try {
+      socket = tls.connect({
+        host,
+        port,
+        // servername drives SNI; required for virtual-hosted origins.
+        servername: parsed.hostname,
+        rejectUnauthorized: options.rejectUnauthorized ?? true,
+        ...(options.ca !== undefined ? { ca: options.ca } : {}),
+        timeout: timeoutMs
+      })
+    } catch (err) {
+      resolve({ url, refetchedAt, error: String(err) })
+      return
+    }
 
     socket.once('secureConnect', () => {
       try {

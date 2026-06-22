@@ -5,7 +5,8 @@ import { tmpdir } from 'os'
 import { initManifest, getManifestHead } from '@main/services/manifest'
 import { appendManifestEntry, rollbackManifestEntry } from '@main/services/manifest'
 import { verifyManifestChain } from '@main/services/manifest'
-import { withDeletionEntry, ManifestRollback } from '@main/services/manifest'
+import { withDeletionEntry, withCaptureEntry, ManifestRollback } from '@main/services/manifest'
+import type { AppendResult } from '@main/services/manifest'
 import { createHash } from 'crypto'
 import { canonicalStringify } from '@shared/verify'
 import { MANIFEST_SCHEMA_VERSION } from '@shared/constants'
@@ -395,6 +396,147 @@ describe('withDeletionEntry', () => {
     expect(lines).toHaveLength(2)
     expect(JSON.parse(lines[0]).captureId).toBe('cap-keep')
     expect(JSON.parse(lines[1]).captureId).toBe('cap-next')
+  })
+})
+
+describe('withCaptureEntry', () => {
+  let tempDir: string
+
+  const baseCtx = {
+    captureId: 'cap-1',
+    caseId: 'case-1',
+    url: 'https://example.com',
+    timestamp: '2026-04-05T12:00:00.000Z',
+    contentHash: 'a'.repeat(64),
+    sizeBytes: 1234,
+    operatorId: 'op-1',
+    operatorName: '',
+    toolVersion: '0.1.0'
+  }
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-capture-entry-'))
+  })
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  it('commits the capture entry and passes the AppendResult to fn', async () => {
+    let seen: AppendResult | undefined
+    const result = await withCaptureEntry(tempDir, baseCtx, (r) => {
+      seen = r
+      return 'ok' as const
+    })
+    expect(result).toBe('ok')
+    expect(seen?.index).toBe(0)
+    expect(seen?.prevHash).toBe('')
+    expect(seen?.entryHash).toMatch(/^[0-9a-f]{64}$/)
+
+    const lines = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim().split('\n')
+    expect(lines).toHaveLength(1)
+    const entry = JSON.parse(lines[0])
+    expect(entry.type).toBe('capture')
+    expect(entry.captureId).toBe('cap-1')
+    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
+  })
+
+  it('rolls the manifest back to its anchor when fn throws', async () => {
+    await expect(
+      withCaptureEntry(tempDir, baseCtx, () => {
+        throw new Error('db insert failed')
+      })
+    ).rejects.toThrow('db insert failed')
+
+    const raw = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
+    expect(raw).toBe('')
+    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
+  })
+
+  it('rolls the manifest back when an async fn rejects', async () => {
+    await expect(
+      withCaptureEntry(tempDir, baseCtx, async () => {
+        await new Promise((r) => setImmediate(r))
+        throw new Error('async db insert failed')
+      })
+    ).rejects.toThrow('async db insert failed')
+
+    const raw = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
+    expect(raw).toBe('')
+    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
+  })
+
+  it('rollback preserves a prior committed entry untouched (anchorBytes != 0)', async () => {
+    await withCaptureEntry(tempDir, { ...baseCtx, captureId: 'cap-keep' }, () => undefined)
+    const before = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
+
+    await expect(
+      withCaptureEntry(tempDir, { ...baseCtx, captureId: 'cap-fail' }, () => {
+        throw new Error('boom')
+      })
+    ).rejects.toThrow('boom')
+
+    const after = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
+    expect(after).toBe(before)
+    const lines = after.trim().split('\n')
+    expect(lines).toHaveLength(1)
+    expect(JSON.parse(lines[0]).captureId).toBe('cap-keep')
+    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
+  })
+
+  it('next append after rollback links to the prior committed entry', async () => {
+    await withCaptureEntry(tempDir, { ...baseCtx, captureId: 'cap-keep' }, () => undefined)
+    const headBefore = getManifestHead(tempDir)
+
+    await expect(
+      withCaptureEntry(tempDir, { ...baseCtx, captureId: 'cap-fail' }, () => {
+        throw new Error('boom')
+      })
+    ).rejects.toThrow('boom')
+
+    expect(getManifestHead(tempDir)).toEqual(headBefore)
+
+    await withCaptureEntry(tempDir, { ...baseCtx, captureId: 'cap-next' }, () => undefined)
+    const lines = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim().split('\n')
+    expect(lines).toHaveLength(2)
+    expect(JSON.parse(lines[0]).captureId).toBe('cap-keep')
+    expect(JSON.parse(lines[1]).captureId).toBe('cap-next')
+    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
+  })
+
+  it('rollback with anchorBytes=0 empties the manifest', async () => {
+    await expect(
+      withCaptureEntry(tempDir, baseCtx, () => {
+        throw new Error('boom')
+      })
+    ).rejects.toThrow('boom')
+    expect(statSync(join(tempDir, 'manifest.jsonl')).size).toBe(0)
+    expect(getManifestHead(tempDir)).toEqual({ prevHash: '', nextIndex: 0 })
+  })
+
+  it('produces a byte-identical entry to the equivalent appendManifestEntry call', async () => {
+    // AC#5: the canonical body / entryHash format must not change. Compare the
+    // entry the seam writes against a direct appendManifestEntry call.
+    const direct = mkdtempSync(join(tmpdir(), 'birdbrain-capture-entry-direct-'))
+    try {
+      initManifest(direct)
+      const expected = appendManifestEntry(direct, { type: 'capture', ...baseCtx })
+
+      const viaSeam = await withCaptureEntry(tempDir, baseCtx, (r) => r)
+      expect(viaSeam.entryHash).toBe(expected.entryHash)
+
+      const seamLine = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim()
+      const directLine = readFileSync(join(direct, 'manifest.jsonl'), 'utf-8').trim()
+      // Signatures are non-deterministic; compare everything except the signature.
+      const strip = (l: string) => {
+        const { signature: _s, ...rest } = JSON.parse(l)
+        void _s
+        return rest
+      }
+      expect(strip(seamLine)).toEqual(strip(directLine))
+    } finally {
+      rmSync(direct, { recursive: true, force: true })
+    }
   })
 })
 

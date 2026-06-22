@@ -146,6 +146,26 @@ export class ManifestRollback extends Error {
   }
 }
 
+// Core write-ahead/rollback seam. Appends `entry`, runs `fn` with the resulting
+// AppendResult, and either commits (fn succeeded) or rolls the manifest back to
+// its prior anchor (fn threw or its returned Promise rejected). Ensures the
+// manifest never records a side effect that didn't actually happen. Async
+// because `fn` may return a Promise — sync callbacks still work.
+async function withManifestEntry<T>(
+  caseDir: string,
+  entry: ManifestEntryInput,
+  fn: (result: AppendResult) => T | Promise<T>
+): Promise<T> {
+  initManifest(caseDir)
+  const result = appendManifestEntry(caseDir, entry)
+  try {
+    return await fn(result)
+  } catch (err) {
+    rollbackManifestEntry(caseDir, result.anchorBytes)
+    throw err
+  }
+}
+
 export interface DeletionEntryContext {
   captureId: string
   caseId: string
@@ -157,33 +177,65 @@ export interface DeletionEntryContext {
 }
 
 // Wraps a deletion side-effect in the manifest's write-ahead/rollback invariant.
-// Appends a deletion entry, runs `fn`, and either commits (fn succeeded) or
-// rolls the manifest back to its prior anchor (fn threw or its returned Promise
-// rejected). Ensures the manifest never records a deletion that didn't actually
-// happen. Async because `fn` may return a Promise — sync callbacks still work.
 export async function withDeletionEntry<T>(
   caseDir: string,
   ctx: DeletionEntryContext,
   fn: () => T | Promise<T>
 ): Promise<T> {
-  initManifest(caseDir)
-  const result = appendManifestEntry(caseDir, {
-    type: 'deletion',
-    captureId: ctx.captureId,
-    caseId: ctx.caseId,
-    timestamp: new Date().toISOString(),
-    contentHash: ctx.contentHash,
-    operatorId: ctx.operatorId,
-    operatorName: ctx.operatorName,
-    toolVersion: ctx.toolVersion,
-    ...(ctx.reason !== undefined ? { reason: ctx.reason } : {})
-  })
-  try {
-    return await fn()
-  } catch (err) {
-    rollbackManifestEntry(caseDir, result.anchorBytes)
-    throw err
-  }
+  return withManifestEntry(
+    caseDir,
+    {
+      type: 'deletion',
+      captureId: ctx.captureId,
+      caseId: ctx.caseId,
+      timestamp: new Date().toISOString(),
+      contentHash: ctx.contentHash,
+      operatorId: ctx.operatorId,
+      operatorName: ctx.operatorName,
+      toolVersion: ctx.toolVersion,
+      ...(ctx.reason !== undefined ? { reason: ctx.reason } : {})
+    },
+    fn
+  )
+}
+
+export interface CaptureEntryContext {
+  captureId: string
+  caseId: string
+  url: string
+  timestamp: string
+  contentHash: string
+  sizeBytes: number
+  operatorId: string
+  operatorName: string
+  toolVersion: string
+}
+
+// Wraps an ingest side-effect (sidecar writes + DB insert) in the manifest's
+// write-ahead/rollback invariant. `fn` receives the AppendResult so the caller
+// can persist index/prevHash/entryHash on the DB row. Ensures the manifest never
+// records a capture that didn't actually land.
+export async function withCaptureEntry<T>(
+  caseDir: string,
+  ctx: CaptureEntryContext,
+  fn: (result: AppendResult) => T | Promise<T>
+): Promise<T> {
+  return withManifestEntry(
+    caseDir,
+    {
+      type: 'capture',
+      captureId: ctx.captureId,
+      caseId: ctx.caseId,
+      url: ctx.url,
+      timestamp: ctx.timestamp,
+      contentHash: ctx.contentHash,
+      sizeBytes: ctx.sizeBytes,
+      operatorId: ctx.operatorId,
+      operatorName: ctx.operatorName,
+      toolVersion: ctx.toolVersion
+    },
+    fn
+  )
 }
 
 export interface TrustedTimeResult {

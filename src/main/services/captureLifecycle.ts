@@ -9,11 +9,9 @@ import { extractData } from '@main/services/dataExtractor'
 import { readExtractionHtml } from '@main/services/extraction/extractionSource'
 import { getInstallationId } from '@main/services/installationId'
 import {
-  appendManifestEntry,
-  initManifest,
-  rollbackManifestEntry,
   verifyManifestChain,
   resolveTrustedTime,
+  withCaptureEntry,
   withDeletionEntry,
   ManifestRollback
 } from '@main/services/manifest'
@@ -137,8 +135,9 @@ export async function streamWriteAndHash(
 
 // End-to-end MHTML ingest:
 // 1. Stream-write + hash to disk
-// 2. Write sidecar files (.txt, .png), append manifest entry, and insert DB row — all in a single
-//    error-handling block so any failure rolls back the manifest and deletes all written files
+// 2. Inside withCaptureEntry's write-ahead seam: write sidecar files (.txt, .png) and insert the
+//    DB row. Any failure unlinks the written artifacts and re-throws, so the seam rolls the
+//    manifest back to its anchor — the manifest never records a capture that didn't land.
 export async function ingestMhtmlCapture(params: IngestParams): Promise<IngestResult> {
   const captureId = randomUUID()
   const { mhtmlPath, hash, sizeBytes } = await streamWriteAndHash(
@@ -152,75 +151,81 @@ export async function ingestMhtmlCapture(params: IngestParams): Promise<IngestRe
   const pngRelPath = join(params.caseId, `${captureId}.png`)
   const pngAbsPath = join(getStorageRoot(), pngRelPath)
 
-  let txtWritten = false
-  let pngWritten = false
-  let manifestResult: ReturnType<typeof appendManifestEntry> | undefined
-
+  // The write-ahead manifest entry + rollback-on-throw is owned by withCaptureEntry.
+  // The .mhtml is written before the seam, so its cleanup wraps the whole call: a
+  // manifest init/append failure throws before the callback runs and would otherwise
+  // orphan it. The sidecars are written inside the callback, so they are cleaned there.
+  // Every path re-throws so the seam rolls the manifest back to its anchor.
   try {
-    // Write plain text content to disk for the viewer's Text tab
-    if (params.textContent) {
-      writeFileSync(txtAbsPath, params.textContent, 'utf-8')
-      txtWritten = true
-    }
+    return await withCaptureEntry(
+      caseDir,
+      {
+        captureId,
+        caseId: params.caseId,
+        url: params.url,
+        timestamp: params.timestamp,
+        contentHash: hash,
+        sizeBytes,
+        operatorId: params.operatorId,
+        operatorName: params.operatorName,
+        toolVersion: params.toolVersion
+      },
+      async (manifestResult) => {
+        let txtWritten = false
+        let pngWritten = false
+        try {
+          // Write plain text content to disk for the viewer's Text tab
+          if (params.textContent) {
+            writeFileSync(txtAbsPath, params.textContent, 'utf-8')
+            txtWritten = true
+          }
 
-    // Write screenshot to disk
-    let screenshotPath: string | undefined
-    if (params.screenshot) {
-      writeFileSync(pngAbsPath, params.screenshot)
-      pngWritten = true
-      screenshotPath = pngRelPath
-    }
+          // Write screenshot to disk
+          let screenshotPath: string | undefined
+          if (params.screenshot) {
+            writeFileSync(pngAbsPath, params.screenshot)
+            pngWritten = true
+            screenshotPath = pngRelPath
+          }
 
-    initManifest(caseDir)
-    manifestResult = appendManifestEntry(caseDir, {
-      type: 'capture',
-      captureId,
-      caseId: params.caseId,
-      url: params.url,
-      timestamp: params.timestamp,
-      contentHash: hash,
-      sizeBytes,
-      operatorId: params.operatorId,
-      operatorName: params.operatorName,
-      toolVersion: params.toolVersion
-    })
-
-    const capture = db.insertCapture({
-      id: captureId,
-      caseId: params.caseId,
-      url: params.url,
-      title: params.title,
-      hash,
-      timestamp: params.timestamp,
-      headers: JSON.stringify(params.headers),
-      textContent: params.textContent,
-      format: 'mhtml',
-      mhtmlPath,
-      screenshotPath,
-      sizeBytes,
-      manifestIndex: manifestResult.index,
-      prevHash: manifestResult.prevHash,
-      entryHash: manifestResult.entryHash,
-      toolVersion: params.toolVersion,
-      extensionVersion: params.extensionVersion,
-      browserVersion: params.browserVersion,
-      userAgent: params.userAgent,
-      httpStatus: params.httpStatus,
-      operatorId: params.operatorId,
-      operatorName: params.operatorName
-    })
-    return { capture, contentHash: hash }
+          const capture = db.insertCapture({
+            id: captureId,
+            caseId: params.caseId,
+            url: params.url,
+            title: params.title,
+            hash,
+            timestamp: params.timestamp,
+            headers: JSON.stringify(params.headers),
+            textContent: params.textContent,
+            format: 'mhtml',
+            mhtmlPath,
+            screenshotPath,
+            sizeBytes,
+            manifestIndex: manifestResult.index,
+            prevHash: manifestResult.prevHash,
+            entryHash: manifestResult.entryHash,
+            toolVersion: params.toolVersion,
+            extensionVersion: params.extensionVersion,
+            browserVersion: params.browserVersion,
+            userAgent: params.userAgent,
+            httpStatus: params.httpStatus,
+            operatorId: params.operatorId,
+            operatorName: params.operatorName
+          })
+          return { capture, contentHash: hash }
+        } catch (err) {
+          if (txtWritten) {
+            await unlink(txtAbsPath).catch(() => {})
+          }
+          if (pngWritten) {
+            await unlink(pngAbsPath).catch(() => {})
+          }
+          throw err
+        }
+      }
+    )
   } catch (err) {
-    if (manifestResult) {
-      rollbackManifestEntry(caseDir, manifestResult.anchorBytes)
-    }
     await unlink(join(getStorageRoot(), mhtmlPath)).catch(() => {})
-    if (txtWritten) {
-      await unlink(txtAbsPath).catch(() => {})
-    }
-    if (pngWritten) {
-      await unlink(pngAbsPath).catch(() => {})
-    }
     throw err
   }
 }

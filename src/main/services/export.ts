@@ -16,6 +16,7 @@ import { createStoredZip } from '@main/services/zip'
 import { getTsaTrustBundle } from '@main/services/tsaTrust'
 import { canonicalStringify, extractTimestampTokenCertificatesPem } from '@shared/verify'
 import { buildCertification, resolveToolVersion } from '@main/services/certification'
+import { VERIFY_RUNBOOK } from '@main/services/verifyRunbook'
 import { MANIFEST_FILENAME } from '@shared/constants'
 import type {
   ExportOptions,
@@ -265,6 +266,7 @@ function buildEvidenceZip(caseId: string, data: ExportData, reportHtml: string):
     )
   )
   add('signing-public-key.pem', getPublicKeyPem())
+  add('VERIFY.md', VERIFY_RUNBOOK)
 
   const tsaTrust = getTsaTrustBundle(data.tsaUrl)
   add('tsa-ca-chain.pem', [...timestampTokenChainPems, tsaTrust.pem].join('\n'))

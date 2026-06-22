@@ -1,0 +1,134 @@
+// The by-hand verification runbook (#122 §10), shipped INSIDE every evidence
+// package via buildEvidenceZip. It reproduces the full integrity claim using
+// only stock tools (sha256sum, openssl, jq) plus a documented canonicalization
+// recipe — zero Birdbrain code.
+//
+// CANONICAL TSA CHECK LIVES HERE: the programmatic verifier (and the standalone
+// binary) does timestamp IMPRINT + BYTE-BINDING only. The `openssl ts -verify`
+// step below is what proves TSA authenticity, so a binary PASS is NOT a
+// timestamp-authenticity claim (binary-PASS != runbook-PASS).
+
+export const VERIFY_RUNBOOK = `# Verifying this evidence package by hand
+
+This package can be re-verified by a third party **without running Birdbrain**,
+using only stock tools: \`sha256sum\`, \`openssl\`, and \`jq\`.
+
+## Trust model (read first)
+
+The signed \`manifest.jsonl\` is the **root of trust**. Each entry carries an
+\`entryHash\` and an RSA \`signature\` over that hash; entries are hash-linked
+(\`prevHash\` == the prior entry's \`entryHash\`) and \`index\`-ordered.
+
+\`evidence.json\` is an **unsigned convenience index**. Do not trust it on its
+own — its own integrity is established by re-deriving everything from the chain.
+The signing key (\`signing-public-key.pem\`) is installation-local and is **not**
+an independent trust anchor; it defeats casual tampering. The independent anchor
+for *timestamped* captures is the RFC 3161 timestamp, verified in step 6.
+
+**What the programmatic/binary verifier does vs. this runbook:** the binary
+checks timestamp tokens **structurally only** (the token's message imprint binds
+the capture's content hash, and the \`.tst\` bytes match the signed manifest
+token). It does **not** verify the TSA's CMS signature. That canonical check is
+step 6's \`openssl ts -verify\`. A binary PASS therefore means *integrity +
+internal consistency*, **not** timestamp authenticity — this runbook's
+\`openssl ts -verify\` is what proves the TSA actually signed the imprint.
+
+## Package contents
+
+| File | Role |
+|---|---|
+| \`manifest.jsonl\` | Signed, hash-linked audit chain (root of trust) |
+| \`signing-public-key.pem\` | RSA public key for the per-entry signatures |
+| \`tsa-ca-chain.pem\` | TSA CA + per-token cert chains |
+| \`pages/{captureId}.mhtml\` | Captured content (hashed as \`contentHash\`) |
+| \`screenshots/{sha256}.png\` | Captured screenshot (hashed as \`screenshotHash\`) |
+| \`timestamps/*.tst\` | RFC 3161 tokens (DER), when present |
+| \`evidence.json\` | Unsigned index (reconcile, do not trust) |
+
+## Step 1 — File integrity (index self-consistency)
+
+\`sha256sum\` each artifact and compare to \`evidence.json\`. This only proves the
+files match the **untrusted** index — the authoritative content bind is step 5.
+
+\`\`\`sh
+jq -r '.artifacts[] | "\\(.sha256)  \\(.path)"' evidence.json | sha256sum -c -
+\`\`\`
+
+## Step 2 — Entry signature
+
+For a manifest entry, verify its RSA signature. The signature is over the **bare
+\`entryHash\` hex string** with **no trailing newline** — a stray newline makes
+verification fail spuriously.
+
+\`\`\`sh
+# Pick an entry (e.g. the first line):
+line=$(sed -n '1p' manifest.jsonl)
+printf %s "$(echo "$line" | jq -r '.entryHash')" > entryhash.txt   # NO newline
+echo "$line" | jq -r '.signature' | base64 -d > sig.bin
+openssl dgst -sha256 -verify signing-public-key.pem -signature sig.bin entryhash.txt
+# => "Verified OK"
+\`\`\`
+
+## Step 3 — Recompute \`entryHash\` (canonicalization recipe)
+
+\`sha256sum\` + \`openssl\` alone cannot detect a body-field edit that left
+\`entryHash\`/\`signature\` intact. Recompute \`entryHash\` from the entry body:
+strip \`entryHash\` and \`signature\`, canonicalize, and hash.
+
+\`\`\`sh
+echo "$line" | jq -cS 'del(.entryHash, .signature)' | tr -d '\\n' | sha256sum
+# compare the hex to: echo "$line" | jq -r '.entryHash'
+\`\`\`
+
+**Caveats** — these, not key ordering, are the real edges. Manifest keys are
+fixed ASCII, so \`jq\`'s codepoint key sort matches Birdbrain's. What *can*
+differ: (a) string **escaping** of non-ASCII / control characters in values
+like \`url\` / \`operatorName\` / \`title\`, and (b) **number formatting** of
+\`index\` / \`sizeBytes\`. Both \`jq -c\` and Birdbrain emit minimal integer forms
+and UTF-8 literals, so they agree in practice; if a hand recompute ever
+disagrees, look here first.
+
+## Step 4 — Chain linkage
+
+Confirm each entry's \`prevHash\` equals the prior entry's \`entryHash\`, and
+\`index\` increments from 0.
+
+\`\`\`sh
+jq -r '"\\(.index) \\(.prevHash) \\(.entryHash)"' manifest.jsonl
+\`\`\`
+
+## Step 5 — Content bind (load-bearing for the evidence itself)
+
+For each \`type: "capture"\` entry, confirm the actual captured bytes match the
+hash **inside that signed entry** (NOT the value in \`evidence.json\`). Without
+this you could verify a pristine signed chain yet never confirm the MHTML/PNG
+bytes are the ones it attests.
+
+\`\`\`sh
+# Content:
+id=$(echo "$line" | jq -r '.captureId')
+want=$(echo "$line" | jq -r '.contentHash')
+got=$(sha256sum "pages/$id.mhtml" | cut -d' ' -f1)
+[ "$want" = "$got" ] && echo "content OK" || echo "CONTENT MISMATCH"
+
+# Screenshot (if the entry has screenshotHash; the file is named by that hash):
+shot=$(echo "$line" | jq -r '.screenshotHash // empty')
+[ -n "$shot" ] && sha256sum "screenshots/$shot.png"   # must equal $shot
+\`\`\`
+
+## Step 6 — Timestamp (canonical TSA verification)
+
+**This is the authenticity step the binary does NOT perform.** Verify each RFC
+3161 token's CMS signature against the bundled TSA chain.
+
+\`\`\`sh
+openssl ts -verify -digest <contentHash> -in timestamps/<token>.tst \\
+  -CAfile tsa-ca-chain.pem
+# => "Verification: OK"
+\`\`\`
+
+A token whose imprint matches the content hash but whose TSA signature is invalid
+(a forged token) PASSES the binary's structural check and is caught **only**
+here. That is why this runbook's \`openssl ts -verify\` — not the binary — is the
+canonical proof of trusted time.
+`

@@ -3,13 +3,22 @@ import { mkdtempSync, rmSync, appendFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { createHash } from 'crypto'
+import { initManifest, appendManifestEntry, verifyManifestChain } from '@main/services/manifest'
 import {
-  initManifest,
-  appendManifestEntry,
   resolveTrustedTime,
   buildTrustedTimeIndex,
-  verifyManifestChain
-} from '@main/services/manifest'
+  reconcileCaptureTrustedTime,
+  reconcileAllMirrors
+} from '@main/services/trustedTime'
+import {
+  initDatabase,
+  closeDatabase,
+  createCase,
+  insertCapture,
+  getCapture,
+  setCaptureTrustedTime
+} from '@main/services/database'
+import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 
 function hashOf(input: string): string {
@@ -163,5 +172,115 @@ describe('resolveTrustedTime', () => {
     expect(index.get(stampedHash)?.trustedTime).toBe(
       resolveTrustedTime(caseDir, stampedHash).trustedTime
     )
+  })
+})
+
+describe('reconcileCaptureTrustedTime / reconcileAllMirrors (DB mirror reconciliation)', () => {
+  let tempDir: string
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-tt-reconcile-'))
+    initStorage(join(tempDir, 'captures'))
+    initDatabase(':memory:')
+  })
+
+  afterEach(() => {
+    closeDatabase()
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  function seedMhtmlCapture(caseId: string, content: string): { id: string; hash: string } {
+    const hash = hashOf(content)
+    const cap = insertCapture({
+      caseId,
+      url: 'https://example.com/' + hash.slice(0, 8),
+      title: content,
+      hash,
+      timestamp: '2026-05-30T09:00:00.000Z',
+      format: 'mhtml'
+    })
+    return { id: cap.id, hash }
+  }
+
+  function caseWithManifest(name: string): { caseId: string; caseDir: string } {
+    const caseId = createCase({ name }).id
+    const caseDir = join(getStorageRoot(), caseId)
+    ensureCaseDir(caseId)
+    initManifest(caseDir)
+    return { caseId, caseDir }
+  }
+
+  it('self-heals a stale pending mirror to rfc3161 once a stamp lands, returning the result', () => {
+    const { caseId, caseDir } = caseWithManifest('Case A')
+    const { id, hash } = seedMhtmlCapture(caseId, 'reconcile-stamped')
+    appendCapture(caseDir, hash)
+    setCaptureTrustedTime(id, 'pending') // mirror behind reality
+
+    const token = buildSyntheticToken({
+      contentHash: hash,
+      genTime: new Date('2026-05-30T09:05:00.000Z'),
+      tsaDnsName: 'tsa.example.com'
+    })
+    appendTimestamp(caseDir, hash, token.toString('base64'))
+
+    const result = reconcileCaptureTrustedTime({ id, caseId, hash })
+
+    expect(result).toMatchObject({ trustedTime: 'rfc3161', tsaName: 'tsa.example.com' })
+    expect(getCapture(id)?.trustedTimeStatus).toBe('rfc3161')
+  })
+
+  it('writes pending to the mirror for an eligible capture with no timestamp yet', () => {
+    const { caseId, caseDir } = caseWithManifest('Case B')
+    const { id, hash } = seedMhtmlCapture(caseId, 'reconcile-pending')
+    appendCapture(caseDir, hash)
+    setCaptureTrustedTime(id, 'none') // wrong/stale
+
+    const result = reconcileCaptureTrustedTime({ id, caseId, hash })
+
+    expect(result.trustedTime).toBe('pending')
+    expect(getCapture(id)?.trustedTimeStatus).toBe('pending')
+  })
+
+  it('reconcileAllMirrors repaints every mhtml capture across cases from the manifest', () => {
+    const a = caseWithManifest('A')
+    const b = caseWithManifest('B')
+
+    const stamped = seedMhtmlCapture(a.caseId, 'all-stamped')
+    const pending = seedMhtmlCapture(a.caseId, 'all-pending')
+    const orphan = seedMhtmlCapture(b.caseId, 'all-orphan') // no manifest entry → none
+    appendCapture(a.caseDir, stamped.hash)
+    appendCapture(a.caseDir, pending.hash)
+    const token = buildSyntheticToken({
+      contentHash: stamped.hash,
+      genTime: new Date('2026-05-30T09:05:00.000Z'),
+      tsaDnsName: 'tsa.example.com'
+    })
+    appendTimestamp(a.caseDir, stamped.hash, token.toString('base64'))
+
+    // Corrupt every mirror so the rebuild has to repaint from the manifest.
+    for (const id of [stamped.id, pending.id, orphan.id]) setCaptureTrustedTime(id, 'rfc3161')
+
+    reconcileAllMirrors()
+
+    expect(getCapture(stamped.id)?.trustedTimeStatus).toBe('rfc3161')
+    expect(getCapture(pending.id)?.trustedTimeStatus).toBe('pending')
+    expect(getCapture(orphan.id)?.trustedTimeStatus).toBe('none')
+  })
+
+  it('reconcileAllMirrors leaves non-mhtml captures untouched', () => {
+    const { caseId } = caseWithManifest('C')
+    const cap = insertCapture({
+      caseId,
+      url: 'https://example.com/html',
+      title: 'html cap',
+      hash: hashOf('html-bytes'),
+      timestamp: '2026-05-30T09:00:00.000Z',
+      format: 'html'
+    })
+    setCaptureTrustedTime(cap.id, 'pending')
+
+    reconcileAllMirrors()
+
+    expect(getCapture(cap.id)?.trustedTimeStatus).toBe('pending')
   })
 })

@@ -254,6 +254,182 @@ describe('export', () => {
     })
   })
 
+  it('content-addresses screenshots into screenshots/<sha256>.png and records them in artifacts[] (#118)', async () => {
+    const screenshot = Buffer.from('screenshot-png-bytes-for-export')
+    const { capture } = await ingestMhtmlCapture({
+      caseId,
+      url: 'https://example.com/shot',
+      title: 'Shot',
+      timestamp: '2026-04-05T12:00:00.000Z',
+      stream: Readable.from([Buffer.from('mhtml')]) as unknown as ReadableStream<Uint8Array>,
+      textContent: 'extracted text for export',
+      headers: {},
+      browserVersion: '',
+      userAgent: '',
+      httpStatus: 200,
+      extensionVersion: '',
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0',
+      screenshot
+    })
+
+    const outputPath = join(tempDir, 'shot-evidence.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: { captures: true, screenshots: true, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test User',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const entries = readStoredZipEntries(outputPath)
+    const expectedDigest = createHash('sha256').update(screenshot).digest('hex')
+    const expectedPath = `screenshots/${expectedDigest}.png`
+
+    // Content-addressed: the file exists, its name equals its digest, bytes match.
+    expect(entries.has(expectedPath)).toBe(true)
+    expect(entries.get(expectedPath)).toEqual(screenshot)
+
+    const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+      captures: Array<{
+        id: string
+        screenshotPath: string | null
+        screenshotSha256: string | null
+        textSha256: string | null
+      }>
+      artifacts: Array<{ path: string; sha256: string; sizeBytes: number }>
+    }
+
+    // Per-capture record is self-describing.
+    const rec = evidence.captures.find((c) => c.id === capture.id)!
+    expect(rec.screenshotPath).toBe(expectedPath)
+    expect(rec.screenshotSha256).toBe(expectedDigest)
+    expect(rec.textSha256).toBe(capture.textHash)
+
+    // The artifact is registered with a matching sha256.
+    const artifact = evidence.artifacts.find((a) => a.path === expectedPath)!
+    expect(artifact.sha256).toBe(expectedDigest)
+    expect(artifact.sizeBytes).toBe(screenshot.length)
+  })
+
+  it('emits one content-addressed screenshot entry when two captures share bytes (#152)', async () => {
+    const screenshot = Buffer.from('identical-screenshot-bytes-across-captures')
+    const base = {
+      caseId,
+      timestamp: '2026-04-05T12:00:00.000Z',
+      stream: Readable.from([Buffer.from('mhtml')]) as unknown as ReadableStream<Uint8Array>,
+      textContent: 'extracted text for export',
+      headers: {},
+      browserVersion: '',
+      userAgent: '',
+      httpStatus: 200,
+      extensionVersion: '',
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0',
+      screenshot
+    }
+    const { capture: captureA } = await ingestMhtmlCapture({
+      ...base,
+      url: 'https://example.com/a',
+      title: 'A',
+      stream: Readable.from([Buffer.from('mhtml')]) as unknown as ReadableStream<Uint8Array>
+    })
+    const { capture: captureB } = await ingestMhtmlCapture({
+      ...base,
+      url: 'https://example.com/b',
+      title: 'B',
+      stream: Readable.from([Buffer.from('mhtml')]) as unknown as ReadableStream<Uint8Array>
+    })
+
+    const outputPath = join(tempDir, 'shot-dedupe.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: { captures: true, screenshots: true, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test User',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const entries = readStoredZipEntries(outputPath)
+    const expectedDigest = createHash('sha256').update(screenshot).digest('hex')
+    const expectedPath = `screenshots/${expectedDigest}.png`
+
+    // Exactly one content-addressed screenshot entry, no duplicate.
+    const screenshotKeys = [...entries.keys()].filter((k) => k.startsWith('screenshots/'))
+    expect(screenshotKeys).toEqual([expectedPath])
+    expect(entries.get(expectedPath)).toEqual(screenshot)
+
+    const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+      captures: Array<{ id: string; screenshotPath: string | null; screenshotSha256: string | null }>
+      artifacts: Array<{ path: string }>
+    }
+
+    // Both capture records reference the shared content-addressed path.
+    const recA = evidence.captures.find((c) => c.id === captureA.id)!
+    const recB = evidence.captures.find((c) => c.id === captureB.id)!
+    expect(recA.screenshotPath).toBe(expectedPath)
+    expect(recA.screenshotSha256).toBe(expectedDigest)
+    expect(recB.screenshotPath).toBe(expectedPath)
+    expect(recB.screenshotSha256).toBe(expectedDigest)
+
+    // The artifact is registered exactly once.
+    expect(evidence.artifacts.filter((a) => a.path === expectedPath)).toHaveLength(1)
+  })
+
+  it('omits screenshots from the package when include.screenshots is false (#152)', async () => {
+    const screenshot = Buffer.from('screenshot-bytes-should-not-leak')
+    const { capture } = await ingestMhtmlCapture({
+      caseId,
+      url: 'https://example.com/shot',
+      title: 'Shot',
+      timestamp: '2026-04-05T12:00:00.000Z',
+      stream: Readable.from([Buffer.from('mhtml')]) as unknown as ReadableStream<Uint8Array>,
+      textContent: 'extracted text for export',
+      headers: {},
+      browserVersion: '',
+      userAgent: '',
+      httpStatus: 200,
+      extensionVersion: '',
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0',
+      screenshot
+    })
+
+    const outputPath = join(tempDir, 'shot-no-screenshots.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test User',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const entries = readStoredZipEntries(outputPath)
+    // No content-addressed screenshot file is bundled.
+    expect([...entries.keys()].some((k) => k.startsWith('screenshots/'))).toBe(false)
+
+    const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+      captures: Array<{ id: string; screenshotPath: string | null; screenshotSha256: string | null }>
+      artifacts: Array<{ path: string }>
+    }
+    const rec = evidence.captures.find((c) => c.id === capture.id)!
+    expect(rec.screenshotPath).toBeNull()
+    expect(rec.screenshotSha256).toBeNull()
+    expect(evidence.artifacts.some((a) => a.path.startsWith('screenshots/'))).toBe(false)
+  })
+
   it('renders Trusted Time as a column orthogonal to integrity status', async () => {
     await ingest(caseId, '<html><body>Two axes</body></html>', 'https://example.com', 'Axes')
 

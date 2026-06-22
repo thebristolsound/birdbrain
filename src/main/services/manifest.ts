@@ -57,6 +57,12 @@ export type ManifestEntryInput =
       url: string
       timestamp: string
       contentHash: string
+      // Optional content-addressed integrity for the screenshot and extracted
+      // text sidecars (#118). OMITTED (never '' / null) when absent so legacy and
+      // no-screenshot entries' canonical bodies — and therefore their chain
+      // hashes — are unchanged.
+      screenshotHash?: string
+      textHash?: string
       sizeBytes: number
       operatorId: string
       operatorName: string
@@ -205,6 +211,10 @@ export interface CaptureEntryContext {
   url: string
   timestamp: string
   contentHash: string
+  // Optional sidecar integrity hashes (#118); omitted from the manifest body
+  // when undefined to preserve legacy canonical bodies.
+  screenshotHash?: string
+  textHash?: string
   sizeBytes: number
   operatorId: string
   operatorName: string
@@ -229,6 +239,8 @@ export async function withCaptureEntry<T>(
       url: ctx.url,
       timestamp: ctx.timestamp,
       contentHash: ctx.contentHash,
+      ...(ctx.screenshotHash !== undefined ? { screenshotHash: ctx.screenshotHash } : {}),
+      ...(ctx.textHash !== undefined ? { textHash: ctx.textHash } : {}),
       sizeBytes: ctx.sizeBytes,
       operatorId: ctx.operatorId,
       operatorName: ctx.operatorName,

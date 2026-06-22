@@ -233,6 +233,7 @@ function buildEvidenceZip(caseId: string, data: ExportData, reportHtml: string):
   add('tsa-ca-chain.pem', [...timestampTokenChainPems, tsaTrust.pem].join('\n'))
 
   const capturesMissingContent: string[] = []
+  const emittedScreenshotPaths = new Set<string>()
   const captureEvidence = data.captures.map((capture) => {
     const mhtml = readCaptureFile(capture.caseId, capture.id, 'mhtml')
     const mhtmlPath = `pages/${capture.id}.mhtml`
@@ -240,6 +241,34 @@ function buildEvidenceZip(caseId: string, data: ExportData, reportHtml: string):
     if (!mhtml) capturesMissingContent.push(capture.id)
     const verification = data.verifications.find((v) => v.captureId === capture.id)
     const trustedTime = verification?.trustedTime ?? capture.trustedTimeStatus ?? 'none'
+
+    // Content-address the screenshot into the package (#118): the file name IS
+    // its sha256, and add() records it into artifacts[] so the package is
+    // self-describing. Scoped to the export package only — live on-disk storage
+    // is untouched. The .txt sidecar's integrity is bound by textSha256 in the
+    // per-capture record + the signed manifest entry; it is not re-bundled here
+    // (its content already surfaces in report.html / the MHTML page).
+    // Gated on data.screenshots, which loadExportData only populates when
+    // include.screenshots is set — so an export that omits screenshots does not
+    // ship them via the content-addressed sidecar. The raw on-disk bytes are
+    // used (not the possibly-annotated report copy) so the digest matches the
+    // screenshotHash anchored at ingest.
+    const screenshot = data.screenshots.has(capture.id)
+      ? readCaptureFile(capture.caseId, capture.id, 'png')
+      : null
+    let screenshotPath: string | null = null
+    let screenshotSha256: string | null = null
+    if (screenshot) {
+      screenshotSha256 = sha256(screenshot)
+      screenshotPath = `screenshots/${screenshotSha256}.png`
+      // Content-addressed: identical screenshot bytes across captures resolve to
+      // the same path. Emit the zip entry once; multiple capture records may
+      // still reference it. createStoredZip does not dedupe entry names.
+      if (!emittedScreenshotPaths.has(screenshotPath)) {
+        add(screenshotPath, screenshot)
+        emittedScreenshotPaths.add(screenshotPath)
+      }
+    }
 
     return {
       id: capture.id,
@@ -255,6 +284,9 @@ function buildEvidenceZip(caseId: string, data: ExportData, reportHtml: string):
       stampedAt: verification?.stampedAt,
       mhtmlPath: mhtml ? mhtmlPath : null,
       mhtmlSha256,
+      screenshotPath,
+      screenshotSha256,
+      textSha256: capture.textHash ?? null,
       timestampTokenPaths: timestampPathsByHash.get(capture.hash) ?? []
     }
   })

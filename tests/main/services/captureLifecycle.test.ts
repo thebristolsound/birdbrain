@@ -86,6 +86,57 @@ describe('createCaptureLifecycle.ingest', () => {
     expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
   })
 
+  it('records screenshotHash + textHash in the manifest body and DB, and the chain still verifies (#118)', async () => {
+    const { createHash } = await import('crypto')
+    const { readFileSync } = await import('fs')
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const screenshot = Buffer.from('PNG-screenshot-bytes')
+    const textContent = 'hello extracted text'
+    const { capture } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('mhtml-body'), { screenshot, textContent })
+    )
+
+    const expectedScreenshotHash = createHash('sha256').update(screenshot).digest('hex')
+    const expectedTextHash = createHash('sha256')
+      .update(Buffer.from(textContent, 'utf-8'))
+      .digest('hex')
+
+    // DB mirror
+    expect(getCapture(capture.id)?.screenshotHash).toBe(expectedScreenshotHash)
+    expect(getCapture(capture.id)?.textHash).toBe(expectedTextHash)
+
+    // Manifest body carries the same hashes and the chain verifies (entryHash +
+    // signature cover the v2 body including the new fields).
+    const manifestPath = join(tempDir, 'captures', caseId, 'manifest.jsonl')
+    const lines = readFileSync(manifestPath, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+    const captureEntry = JSON.parse(lines[lines.length - 1])
+    expect(captureEntry.screenshotHash).toBe(expectedScreenshotHash)
+    expect(captureEntry.textHash).toBe(expectedTextHash)
+    expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+  })
+
+  it('OMITS screenshotHash/textHash from the manifest body when absent (#118 backward-compat)', async () => {
+    const { readFileSync } = await import('fs')
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('mhtml-body'), { textContent: '' })
+    )
+
+    const manifestPath = join(tempDir, 'captures', caseId, 'manifest.jsonl')
+    const lines = readFileSync(manifestPath, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+    const captureEntry = JSON.parse(lines[lines.length - 1])
+    // OMITTED, not '' / null — so legacy/no-artifact canonical bodies are unchanged.
+    expect('screenshotHash' in captureEntry).toBe(false)
+    expect('textHash' in captureEntry).toBe(false)
+    expect(getCapture(capture.id)?.screenshotHash).toBeUndefined()
+    expect(getCapture(capture.id)?.textHash).toBeUndefined()
+    expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+  })
+
   it('enqueues the ingested capture for trusted timestamping', async () => {
     const enqueueTimestamp = vi.fn()
     const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub, enqueueTimestamp })
@@ -306,5 +357,55 @@ describe('createCaptureLifecycle.verify', () => {
     expect(result.trustedTime).toBe('rfc3161')
     expect(result.tsaName).toBe('tsa.example.com')
     expect(result.stampedAt).toBe('2026-05-30T09:05:00.000Z')
+  })
+
+  it('FAILS verify with a screenshot-specific reason when the on-disk .png is overwritten (#118 AC#5)', async () => {
+    const { writeFileSync } = await import('fs')
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('mhtml-body'), {
+        screenshot: Buffer.from('original-screenshot')
+      })
+    )
+
+    // Unchanged screenshot verifies.
+    expect((await lifecycle.verify(capture.id)).status).toBe('verified')
+
+    // Tamper the screenshot bytes on disk; MHTML is untouched.
+    writeFileSync(join(getStorageRoot(), capture.screenshotPath!), Buffer.from('tampered-bytes'))
+
+    const result = await lifecycle.verify(capture.id)
+    expect(result.status).toBe('tampered')
+    expect(result.reason).toMatch(/screenshot/i)
+  })
+
+  it('FAILS verify with a text-specific reason when the on-disk .txt is overwritten (#118 AC#5 mirror)', async () => {
+    const { writeFileSync } = await import('fs')
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('mhtml-body'), { textContent: 'original text' })
+    )
+
+    expect((await lifecycle.verify(capture.id)).status).toBe('verified')
+
+    const txtPath = join(getStorageRoot(), caseId, `${capture.id}.txt`)
+    writeFileSync(txtPath, 'tampered text', 'utf-8')
+
+    const result = await lifecycle.verify(capture.id)
+    expect(result.status).toBe('tampered')
+    expect(result.reason).toMatch(/text/i)
+  })
+
+  it('verifies a legacy capture with no recorded sidecar hashes (#118 grandfathering)', async () => {
+    // No screenshot, empty textContent → no recorded hashes → not sidecar-checked.
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('mhtml-body'), { textContent: '' })
+    )
+
+    const stored = getCapture(capture.id)
+    expect(stored?.screenshotHash).toBeUndefined()
+    expect(stored?.textHash).toBeUndefined()
+    expect((await lifecycle.verify(capture.id)).status).toBe('verified')
   })
 })

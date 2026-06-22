@@ -30,7 +30,7 @@ import type { ExtractedDatum } from '@main/services/dataExtractor'
 import { safeRegexTest } from '@main/services/safeRegex'
 
 let db: Database.Database
-export const LATEST_SCHEMA_VERSION = 18
+export const LATEST_SCHEMA_VERSION = 19
 
 export function initDatabase(dbPath: string): Database.Database {
   db = new Database(dbPath)
@@ -414,6 +414,21 @@ function migrate(db: Database.Database): void {
       db.pragma('user_version = 18')
     })()
   }
+
+  if (version < 19) {
+    db.transaction(() => {
+      // Content-addressed integrity for the screenshot and extracted-text
+      // sidecars (#118). NULL for existing rows; the manifest remains the
+      // authority — these mirror the hashes recorded in the v2+ capture entry so
+      // verify can re-bind sidecars without re-reading the manifest. Old rows
+      // read back as undefined and are simply not sidecar-checked.
+      db.exec(`
+        ALTER TABLE captures ADD COLUMN screenshot_hash TEXT;
+        ALTER TABLE captures ADD COLUMN text_hash TEXT;
+      `)
+      db.pragma('user_version = 19')
+    })()
+  }
 }
 
 // --- Cases ---
@@ -505,6 +520,8 @@ export interface InsertCaptureParams {
   textContent?: string
   format?: 'html' | 'mhtml'
   mhtmlPath?: string
+  screenshotHash?: string
+  textHash?: string
   sizeBytes?: number
   manifestIndex?: number
   prevHash?: string
@@ -527,10 +544,10 @@ export const insertCapture = function (params: InsertCaptureParams & { id?: stri
     d.prepare(
       `INSERT INTO captures (
          id, case_id, url, title, html_path, screenshot_path, hash, timestamp, headers, created_at,
-         format, mhtml_path, size_bytes, manifest_index, prev_hash, entry_hash,
+         format, mhtml_path, screenshot_hash, text_hash, size_bytes, manifest_index, prev_hash, entry_hash,
          tool_version, extension_version, browser_version, user_agent, http_status,
          operator_id, operator_name
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       params.caseId,
@@ -544,6 +561,8 @@ export const insertCapture = function (params: InsertCaptureParams & { id?: stri
       now,
       params.format ?? 'html',
       params.mhtmlPath ?? null,
+      params.screenshotHash ?? null,
+      params.textHash ?? null,
       params.sizeBytes ?? null,
       params.manifestIndex ?? null,
       params.prevHash ?? null,
@@ -1098,6 +1117,8 @@ function rowToCapture(row: Record<string, unknown>): Capture {
     createdAt: row.created_at as string,
     format: ((row.format as string) || 'html') as CaptureFormat,
     mhtmlPath: (row.mhtml_path as string) || undefined,
+    screenshotHash: (row.screenshot_hash as string) || undefined,
+    textHash: (row.text_hash as string) || undefined,
     sizeBytes: (row.size_bytes as number) ?? undefined,
     manifestIndex: (row.manifest_index as number) ?? undefined,
     prevHash: (row.prev_hash as string) || undefined,

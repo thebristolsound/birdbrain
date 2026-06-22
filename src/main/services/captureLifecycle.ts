@@ -17,7 +17,12 @@ import {
 } from '@main/services/manifest'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { getSettings } from '@main/services/settings'
-import { deleteCaptureFiles, ensureCaseDir, getStorageRoot } from '@main/services/storage'
+import {
+  deleteCaptureFiles,
+  ensureCaseDir,
+  getStorageRoot,
+  readCaptureFile
+} from '@main/services/storage'
 import { MAX_MHTML_SIZE } from '@shared/constants'
 import type { Capture, HashVerification } from '@shared/types'
 
@@ -151,6 +156,19 @@ export async function ingestMhtmlCapture(params: IngestParams): Promise<IngestRe
   const pngRelPath = join(params.caseId, `${captureId}.png`)
   const pngAbsPath = join(getStorageRoot(), pngRelPath)
 
+  // Content-address the screenshot and extracted text (#118). Compute the
+  // digests BEFORE the manifest entry is appended so the same hex binds the
+  // signed manifest body AND the DB mirror. Hash the EXACT bytes written to
+  // disk: the raw screenshot buffer and the UTF-8 encoding of textContent.
+  // Omitted (left undefined) when the artifact is absent so legacy/no-screenshot
+  // entries keep their original canonical body and chain hash.
+  const screenshotHash = params.screenshot
+    ? createHash('sha256').update(params.screenshot).digest('hex')
+    : undefined
+  const textHash = params.textContent
+    ? createHash('sha256').update(Buffer.from(params.textContent, 'utf-8')).digest('hex')
+    : undefined
+
   // The write-ahead manifest entry + rollback-on-throw is owned by withCaptureEntry.
   // The .mhtml is written before the seam, so its cleanup wraps the whole call: a
   // manifest init/append failure throws before the callback runs and would otherwise
@@ -165,6 +183,8 @@ export async function ingestMhtmlCapture(params: IngestParams): Promise<IngestRe
         url: params.url,
         timestamp: params.timestamp,
         contentHash: hash,
+        screenshotHash,
+        textHash,
         sizeBytes,
         operatorId: params.operatorId,
         operatorName: params.operatorName,
@@ -200,6 +220,8 @@ export async function ingestMhtmlCapture(params: IngestParams): Promise<IngestRe
             format: 'mhtml',
             mhtmlPath,
             screenshotPath,
+            screenshotHash,
+            textHash,
             sizeBytes,
             manifestIndex: manifestResult.index,
             prevHash: manifestResult.prevHash,
@@ -295,6 +317,25 @@ async function computeVerification(
       chainValid: true
     }
   }
+
+  // The MHTML bytes + chain are intact. Now bind the sidecar artifacts (#118):
+  // when a screenshot/text hash was recorded at ingest, re-read the on-disk
+  // sidecar and recompute. A mismatch is tampering of an evidence artifact even
+  // though the primary MHTML survived, so it FAILS with an artifact-specific
+  // reason. Absent recorded hashes (legacy/no-screenshot) are simply skipped —
+  // grandfathering is preserved.
+  const sidecarFailure = await verifySidecars(capture)
+  if (sidecarFailure) {
+    return {
+      ...base,
+      computedHash: computed,
+      status: 'tampered',
+      manifestIndex: capture.manifestIndex,
+      chainValid: true,
+      reason: sidecarFailure
+    }
+  }
+
   return {
     ...base,
     computedHash: computed,
@@ -302,6 +343,38 @@ async function computeVerification(
     manifestIndex: capture.manifestIndex,
     chainValid: true
   }
+}
+
+// Recomputes the screenshot/text sidecar digests against the hashes recorded at
+// ingest. Returns a human-readable reason on the first mismatch (or unreadable
+// sidecar whose hash was recorded), or undefined when everything binds. Captures
+// with no recorded hash for an artifact are not checked.
+async function verifySidecars(
+  capture: NonNullable<ReturnType<typeof db.getCapture>>
+): Promise<string | undefined> {
+  if (capture.screenshotHash) {
+    const buf = readCaptureFile(capture.caseId, capture.id, 'png')
+    if (!buf) {
+      return 'Screenshot missing: expected ' + capture.screenshotHash.slice(0, 12) + '...'
+    }
+    const computed = createHash('sha256').update(buf).digest('hex')
+    if (computed !== capture.screenshotHash) {
+      return 'Screenshot hash mismatch: expected ' + capture.screenshotHash + ', got ' + computed
+    }
+  }
+
+  if (capture.textHash) {
+    const buf = readCaptureFile(capture.caseId, capture.id, 'txt')
+    if (!buf) {
+      return 'Extracted text missing: expected ' + capture.textHash.slice(0, 12) + '...'
+    }
+    const computed = createHash('sha256').update(buf).digest('hex')
+    if (computed !== capture.textHash) {
+      return 'Extracted text hash mismatch: expected ' + capture.textHash + ', got ' + computed
+    }
+  }
+
+  return undefined
 }
 
 // Streams the MHTML file from disk, recomputes SHA-256, and checks the manifest chain.

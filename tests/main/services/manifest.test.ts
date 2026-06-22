@@ -121,6 +121,34 @@ describe('manifest append', () => {
     const result = appendManifestEntry(tempDir, { ...baseEntry, captureId: 'cap-1' })
     expect(result.entryHash).toBe(expected)
   })
+
+  it('hashes screenshotHash/textHash into the body, schema-validates, and chain verifies (#118)', () => {
+    const screenshotHash = 'c'.repeat(64)
+    const textHash = 'd'.repeat(64)
+    appendManifestEntry(tempDir, { ...baseEntry, captureId: 'cap-1', screenshotHash, textHash })
+
+    const line = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim()
+    const parsed = JSON.parse(line)
+    expect(parsed.screenshotHash).toBe(screenshotHash)
+    expect(parsed.textHash).toBe(textHash)
+    // The body (sans signature + entryHash) hashes to entryHash including the new fields.
+    const body = { ...parsed }
+    const { entryHash } = parsed
+    delete body.signature
+    delete body.entryHash
+    expect(createHash('sha256').update(canonicalStringify(body)).digest('hex')).toBe(entryHash)
+    // Shape is accepted by the manifest schema.
+    expect(ManifestEntrySchema.safeParse(parsed).success).toBe(true)
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
+  })
+
+  it('OMITS the sidecar hashes when absent, leaving the legacy canonical body unchanged (#118)', () => {
+    appendManifestEntry(tempDir, { ...baseEntry, captureId: 'cap-1' })
+    const line = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim()
+    const parsed = JSON.parse(line)
+    expect('screenshotHash' in parsed).toBe(false)
+    expect('textHash' in parsed).toBe(false)
+  })
 })
 
 describe('manifest verifyManifestChain', () => {

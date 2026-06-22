@@ -299,7 +299,7 @@ export type { ChainVerifyResult }
 export function verifyManifestChain(caseDir: string): ChainVerifyResult {
   const path = join(caseDir, MANIFEST_FILENAME)
   if (!existsSync(path) || statSync(path).size === 0) {
-    return { valid: true, trustedTime: 'none' }
+    return { valid: true, trustedTimes: new Map() }
   }
   const raw = readFileSync(path, 'utf-8')
   return verifyManifestChainText(raw, { publicKeyPem: getPublicKeyPem() })

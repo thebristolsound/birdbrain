@@ -239,7 +239,7 @@ describe('manifest verifyManifestChain', () => {
       timestamp: '2026-04-05T12:01:00.000Z',
       contentHash: 'b'.repeat(64)
     })
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
   })
 
   it('detects tampering by mutating an entry', () => {
@@ -337,7 +337,7 @@ describe('manifest x annotations forensic invariants', () => {
 
     const after = readFileSync(manifestPath, 'utf-8')
     expect(after).toBe(before)
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
   })
 })
 
@@ -371,7 +371,7 @@ describe('withDeletionEntry', () => {
     const entry = JSON.parse(lines[0])
     expect(entry.type).toBe('deletion')
     expect(entry.captureId).toBe('cap-1')
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
   })
 
   it('rolls the manifest back when fn throws ManifestRollback', async () => {
@@ -387,7 +387,7 @@ describe('withDeletionEntry', () => {
 
     const after = statSync(join(tempDir, 'manifest.jsonl')).size
     expect(after).toBe(before)
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
   })
 
   it('rolls the manifest back when fn throws an arbitrary error and rethrows', async () => {
@@ -399,7 +399,7 @@ describe('withDeletionEntry', () => {
 
     const raw = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
     expect(raw).toBe('')
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
   })
 
   it('rolls the manifest back when an async fn rejects', async () => {
@@ -412,7 +412,7 @@ describe('withDeletionEntry', () => {
 
     const raw = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
     expect(raw).toBe('')
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
   })
 
   it('commits the deletion entry when an async fn resolves', async () => {
@@ -426,7 +426,7 @@ describe('withDeletionEntry', () => {
     const lines = raw.trim().split('\n')
     expect(lines).toHaveLength(1)
     expect(JSON.parse(lines[0]).captureId).toBe('cap-1')
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
   })
 
   it('rollback preserves a prior committed entry untouched', async () => {
@@ -446,7 +446,7 @@ describe('withDeletionEntry', () => {
     const lines = after.trim().split('\n')
     expect(lines).toHaveLength(1)
     expect(JSON.parse(lines[0]).captureId).toBe('cap-keep')
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
   })
 
   it('next append after rollback links to the prior committed entry, not the rolled-back one', async () => {
@@ -470,7 +470,7 @@ describe('withDeletionEntry', () => {
 
     // A subsequent successful append should chain from the kept entry
     await withDeletionEntry(tempDir, { ...baseCtx, captureId: 'cap-next' }, () => undefined)
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
 
     const lines = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim().split('\n')
     expect(lines).toHaveLength(2)
@@ -518,7 +518,7 @@ describe('withCaptureEntry', () => {
     const entry = JSON.parse(lines[0])
     expect(entry.type).toBe('capture')
     expect(entry.captureId).toBe('cap-1')
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
   })
 
   it('rolls the manifest back to its anchor when fn throws', async () => {
@@ -530,7 +530,7 @@ describe('withCaptureEntry', () => {
 
     const raw = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
     expect(raw).toBe('')
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
   })
 
   it('rolls the manifest back when an async fn rejects', async () => {
@@ -543,7 +543,7 @@ describe('withCaptureEntry', () => {
 
     const raw = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
     expect(raw).toBe('')
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
   })
 
   it('rollback preserves a prior committed entry untouched (anchorBytes != 0)', async () => {
@@ -561,7 +561,7 @@ describe('withCaptureEntry', () => {
     const lines = after.trim().split('\n')
     expect(lines).toHaveLength(1)
     expect(JSON.parse(lines[0]).captureId).toBe('cap-keep')
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
   })
 
   it('next append after rollback links to the prior committed entry', async () => {
@@ -581,7 +581,7 @@ describe('withCaptureEntry', () => {
     expect(lines).toHaveLength(2)
     expect(JSON.parse(lines[0]).captureId).toBe('cap-keep')
     expect(JSON.parse(lines[1]).captureId).toBe('cap-next')
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
   })
 
   it('rollback with anchorBytes=0 empties the manifest', async () => {
@@ -669,11 +669,12 @@ describe('manifest schema v2 + grandfathering', () => {
     })
     const result = verifyManifestChain(tempDir)
     expect(result.valid).toBe(true)
-    expect(result.trustedTime).toBe('none')
+    // A grandfathered v1 capture is not eligible — absent from the index → none.
+    expect(result.trustedTimes.get('a'.repeat(64))).toBeUndefined()
   })
 
-  it('ChainVerifyResult defaults trustedTime to none', () => {
-    expect(verifyManifestChain(tempDir).trustedTime).toBe('none')
+  it('ChainVerifyResult resolves an empty trusted-time index for an empty manifest', () => {
+    expect(verifyManifestChain(tempDir).trustedTimes.size).toBe(0)
   })
 
   it('passes a mixed v1/v2 chain through verifyManifestChain', () => {

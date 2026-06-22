@@ -16,4 +16,9 @@ export {
 export type { ParsedTimestampToken } from './timestampToken'
 export { verifyManifestChainText } from './manifestChain'
 export type { ChainVerifyResult } from './manifestChain'
+export {
+  resolveTrustedTimeFromEntries,
+  buildTrustedTimeIndexFromEntries
+} from './trustedTime'
+export type { TrustedTimeResult } from './trustedTime'
 export { ManifestEntrySchema } from '@shared/schemas'

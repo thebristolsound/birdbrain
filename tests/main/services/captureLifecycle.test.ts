@@ -338,7 +338,7 @@ describe('createCaptureLifecycle.ingest', () => {
 
     expect(listCaptures(caseId)).toHaveLength(0)
     expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
-    expect(verifyManifestChain(join(tempDir, 'captures', caseId)).trustedTime).toBe('none')
+    expect(verifyManifestChain(join(tempDir, 'captures', caseId)).trustedTimes.size).toBe(0)
 
     // No mhtml file should exist for any capture id in the case dir.
     const caseDir = join(getStorageRoot(), caseId)

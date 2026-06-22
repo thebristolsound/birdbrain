@@ -227,6 +227,24 @@ describe('verifyEvidencePackage', () => {
     expect(hasReason(result, 'head does not match the verified manifest')).toBe(true)
   })
 
+  it('FAILs with "path escapes package" when an artifact path traverses outside the package', () => {
+    // Plant a secret file outside the package dir and point an artifact at it via
+    // a traversal path. The sweep must reject it rather than read/verify it.
+    const outsidePath = join(tempDir, 'escape.txt')
+    const secret = Buffer.from('outside-the-package-secret')
+    writeFileSync(outsidePath, secret)
+    const evidence = JSON.parse(readFileSync(join(pkgDir, 'evidence.json'), 'utf-8'))
+    evidence.artifacts.push({
+      path: '../../escape.txt',
+      sha256: createHash('sha256').update(secret).digest('hex'),
+      sizeBytes: secret.length
+    })
+    writeFileSync(join(pkgDir, 'evidence.json'), JSON.stringify(evidence, null, 2))
+    const result = verifyEvidencePackage(pkgDir)
+    expect(result.pass).toBe(false)
+    expect(hasReason(result, 'path escapes package')).toBe(true)
+  })
+
   it('PASSes a package whose capture was deleted (artifacts absent)', () => {
     // Append a deletion entry for the active capture, drop its artifacts and its
     // evidence.json record + artifacts so the package reflects a hard-delete.

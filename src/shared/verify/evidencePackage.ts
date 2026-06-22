@@ -1,6 +1,6 @@
 import { createHash } from 'crypto'
-import { existsSync, readFileSync, readdirSync } from 'fs'
-import { join } from 'path'
+import { existsSync, readFileSync, readdirSync, realpathSync } from 'fs'
+import { join, resolve, sep } from 'path'
 import { EvidencePackageSchema, ManifestEntrySchema } from '@shared/schemas'
 import type { ManifestEntry } from '@shared/schemas'
 import { parseTimestampToken } from './timestampToken'
@@ -37,6 +37,16 @@ export interface PackageVerifyResult {
 
 function sha256File(path: string): string {
   return createHash('sha256').update(readFileSync(path)).digest('hex')
+}
+
+// Joins package-relative segments (which originate from the UNTRUSTED
+// evidence.json) under `base`, returning undefined if the result escapes the
+// package directory. `path.join` normalizes but does not prevent `..` escape.
+function safeJoin(base: string, ...segments: string[]): string | undefined {
+  const resolved = join(base, ...segments)
+  const realBase = realpathSync.native(base)
+  const normalized = resolve(resolved)
+  return normalized.startsWith(realBase + sep) || normalized === realBase ? resolved : undefined
 }
 
 function parseManifestEntries(jsonl: string): ManifestEntry[] {
@@ -247,8 +257,15 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
 
     let sweepOk = true
     for (const artifact of evidence.artifacts) {
-      const filePath = join(dir, artifact.path)
-      if (!existsSync(filePath)) {
+      const filePath = safeJoin(dir, artifact.path)
+      if (!filePath) {
+        sweepOk = false
+        add(
+          'evidence.json artifact sweep',
+          'fail',
+          `artifact ${artifact.path}: path escapes package`
+        )
+      } else if (!existsSync(filePath)) {
         sweepOk = false
         add('evidence.json artifact sweep', 'fail', `artifact ${artifact.path}: file missing`)
       } else if (sha256File(filePath) !== artifact.sha256) {
@@ -286,8 +303,8 @@ function locateTimestampFile(
 
   const indexed = evidence?.captures.find((c) => c.id === captureId)?.timestampTokenPaths ?? []
   for (const rel of indexed) {
-    const p = join(dir, rel)
-    if (existsSync(p)) return p
+    const p = safeJoin(dir, rel)
+    if (p && existsSync(p)) return p
   }
 
   const tsDir = join(dir, 'timestamps')

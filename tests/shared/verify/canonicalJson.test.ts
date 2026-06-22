@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { canonicalStringify } from '@shared/verify'
+import { ManifestEntrySchema } from '@shared/schemas'
 
 describe('canonicalStringify', () => {
   it('sorts object keys alphabetically', () => {
@@ -33,43 +34,54 @@ describe('canonicalStringify', () => {
   })
 })
 
-// RFC 8785 / JCS conformance (G1): canonical output must order keys by Unicode
-// code point (not UTF-16 code unit) and normalize all strings to NFC, so the
-// same semantic content always produces identical bytes across tools/platforms.
-describe('canonicalStringify RFC 8785/JCS conformance', () => {
-  it('orders keys by Unicode code point, not UTF-16 code unit', () => {
-    // U+1F600 (astral, surrogate pair 0xD83D 0xDE00) vs U+FF00 (BMP). By code
-    // point 0xFF00 < 0x1F600, so "＀" sorts before the emoji. JS default
-    // .sort() compares UTF-16 units and would place the high surrogate 0xD83D
-    // before 0xFF00, giving the wrong order.
-    const obj: Record<string, number> = { '\u{1F600}': 1, '＀': 2 }
-    expect(canonicalStringify(obj)).toBe('{"＀":2,"\u{1F600}":1}')
-  })
-
-  it('normalizes string values to NFC (NFD input equals NFC input)', () => {
-    const nfd = 'José' // J o s e + combining acute
-    const nfc = 'José' // J o s é (precomposed)
-    expect(nfd.normalize('NFC')).toBe(nfc) // sanity: they are the same under NFC
-    expect(canonicalStringify({ operatorName: nfd })).toBe(
+// Preserve Unicode "as-is" - no normalization. Forensically the hash must
+// reflect exactly the captured bytes, not a transformed version, and RFC 8785
+// section 3.1 likewise forbids altering string data. So canonicalStringify does
+// NOT Unicode-normalize: visually identical strings in different normalization
+// forms intentionally produce different bytes. (These tests guard against a
+// well-meaning re-introduction of NFC normalization.)
+//
+// Forms are written with explicit escapes so the NFD and NFC byte sequences are
+// provably distinct in source: U+0301 is the combining acute accent; U+00E9 is
+// precomposed "e-acute".
+describe('canonicalStringify preserves Unicode as-is (no normalization)', () => {
+  it('does not normalize string values', () => {
+    const nfd = 'Jose\u0301' // "Jose" + combining acute U+0301 (NFD)
+    const nfc = 'Jos\u00e9' // precomposed e-acute U+00E9 (NFC)
+    expect(nfd).not.toBe(nfc)
+    expect(canonicalStringify({ operatorName: nfd })).not.toBe(
       canonicalStringify({ operatorName: nfc })
     )
-    expect(canonicalStringify({ operatorName: nfd })).toBe(`{"operatorName":${JSON.stringify(nfc)}}`)
   })
 
-  it('normalizes object keys to NFC', () => {
-    const nfdKey = 'café' // café decomposed
-    const nfcKey = 'café'
-    expect(canonicalStringify({ [nfdKey]: 1 })).toBe(canonicalStringify({ [nfcKey]: 1 }))
-    expect(canonicalStringify({ [nfdKey]: 1 })).toBe(`{${JSON.stringify(nfcKey)}:1}`)
+  it('does not normalize object keys', () => {
+    const nfd = 'cafe\u0301' // "cafe" + combining acute U+0301 (NFD)
+    const nfc = 'caf\u00e9' // precomposed e-acute U+00E9 (NFC)
+    expect(nfd).not.toBe(nfc)
+    expect(canonicalStringify({ [nfd]: 1 })).not.toBe(canonicalStringify({ [nfc]: 1 }))
   })
+})
 
-  it('NFC-normalizes keys before ordering them', () => {
-    // Decomposed "é" (e + U+0301) must sort by its NFC form U+00E9, not by the
-    // base ASCII 'e' of the decomposed sequence. "z" (U+007A) vs "é" (U+00E9):
-    // after NFC, é (0xE9) sorts after z (0x7A).
-    const out = canonicalStringify({ z: 1, ['é']: 2 })
-    expect(out).toBe('{"z":1,"é":2}')
-  })
+// ASCII-key invariant (load-bearing for the canonicalization contract).
+//
+// canonicalStringify is byte-identical across the app, the standalone verifier,
+// and the by-hand `jq -cS` runbook ONLY because every manifest entry key is a
+// fixed ASCII schema name: for ASCII keys, JS code-unit sort, Unicode
+// code-point sort, and jq's codepoint key sort all agree, and no Unicode
+// normalization can change the bytes. A non-ASCII key would silently break that
+// equivalence (and the runbook). This guard fails the moment any manifest entry
+// schema introduces one, forcing a deliberate revisit of canonicalJson + the
+// runbook recipe.
+describe('manifest entry keys stay ASCII (canonicalization invariant)', () => {
+  const isAscii = (s: string): boolean => [...s].every((c) => c.charCodeAt(0) <= 0x7f)
+  for (const variant of ManifestEntrySchema.options) {
+    const typeName = variant.shape.type.value
+    it(`'${typeName}' entry uses only ASCII property names`, () => {
+      for (const key of Object.keys(variant.shape)) {
+        expect(isAscii(key), `non-ASCII manifest key: ${key}`).toBe(true)
+      }
+    })
+  }
 })
 
 // Golden vector (#122 PR1 guard): the exact canonical bytes for a

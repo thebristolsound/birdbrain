@@ -233,6 +233,7 @@ function buildEvidenceZip(caseId: string, data: ExportData, reportHtml: string):
   add('tsa-ca-chain.pem', [...timestampTokenChainPems, tsaTrust.pem].join('\n'))
 
   const capturesMissingContent: string[] = []
+  const emittedScreenshotPaths = new Set<string>()
   const captureEvidence = data.captures.map((capture) => {
     const mhtml = readCaptureFile(capture.caseId, capture.id, 'mhtml')
     const mhtmlPath = `pages/${capture.id}.mhtml`
@@ -260,7 +261,13 @@ function buildEvidenceZip(caseId: string, data: ExportData, reportHtml: string):
     if (screenshot) {
       screenshotSha256 = sha256(screenshot)
       screenshotPath = `screenshots/${screenshotSha256}.png`
-      add(screenshotPath, screenshot)
+      // Content-addressed: identical screenshot bytes across captures resolve to
+      // the same path. Emit the zip entry once; multiple capture records may
+      // still reference it. createStoredZip does not dedupe entry names.
+      if (!emittedScreenshotPaths.has(screenshotPath)) {
+        add(screenshotPath, screenshot)
+        emittedScreenshotPaths.add(screenshotPath)
+      }
     }
 
     return {

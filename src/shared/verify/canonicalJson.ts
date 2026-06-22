@@ -1,30 +1,23 @@
-// Deterministic JSON stringification following RFC 8785 (JCS): keys ordered by
-// Unicode code point, all strings normalized to NFC, no whitespace. Produces
-// stable bytes for hashing manifest entries across tools and platforms.
+// Deterministic JSON stringification for hashing manifest entries: object keys
+// sorted (JS default, i.e. UTF-16 code-unit order), undefined properties
+// dropped, no whitespace, primitives via JSON.stringify.
 //
-// Number serialization is intentionally left to JSON.stringify: the manifest
-// body is integer-only by contract, so the ECMAScript Number formatting JCS
-// mandates for non-integers does not apply. Adding any float/large-int field
-// would require revisiting this.
-
-// Compares two strings by Unicode code point rather than UTF-16 code unit, as
-// JCS requires. Array.from iterates code points, so surrogate pairs (astral
-// characters) compare by their true scalar value.
-function compareByCodePoint(a: string, b: string): number {
-  const ca = Array.from(a)
-  const cb = Array.from(b)
-  const len = Math.min(ca.length, cb.length)
-  for (let i = 0; i < len; i += 1) {
-    const da = ca[i].codePointAt(0) as number
-    const db = cb[i].codePointAt(0) as number
-    if (da !== db) return da - db
-  }
-  return ca.length - cb.length
-}
-
+// This is JCS-shaped (RFC 8785) but intentionally NOT a conformant JCS
+// implementation. It deliberately does not Unicode-normalize strings — RFC 8785
+// §3.1 also forbids altering string data, and forensically we must hash exactly
+// what was captured — and it does not implement JCS number serialization.
+// Determinism instead rests on two manifest invariants (guarded by tests):
+//   - entry keys are fixed ASCII schema names, so JS code-unit sort, Unicode
+//     code-point sort, and the runbook's `jq -cS` codepoint key sort are all
+//     byte-identical, and
+//   - entry values are integers, so JSON.stringify and `jq -c` emit the same
+//     minimal form.
+// The canonical, court-facing verification is the runbook recipe (`jq -cS` +
+// sha256 + `openssl ts -verify`), not an off-the-shelf JCS library. Introducing
+// a non-ASCII key or a non-integer field to a manifest body would break these
+// invariants and must revisit this function and the runbook together.
 export function canonicalStringify(value: unknown): string {
   if (value === undefined) return 'null'
-  if (typeof value === 'string') return JSON.stringify(value.normalize('NFC'))
   if (value === null || typeof value !== 'object') {
     return JSON.stringify(value)
   }
@@ -36,10 +29,9 @@ export function canonicalStringify(value: unknown): string {
     return '[' + parts.join(',') + ']'
   }
   const obj = value as Record<string, unknown>
-  const entries = Object.keys(obj)
+  const keys = Object.keys(obj)
     .filter((k) => obj[k] !== undefined)
-    .map((k) => ({ key: k.normalize('NFC'), value: obj[k] }))
-    .sort((a, b) => compareByCodePoint(a.key, b.key))
-  const parts = entries.map((e) => JSON.stringify(e.key) + ':' + canonicalStringify(e.value))
+    .sort()
+  const parts = keys.map((k) => JSON.stringify(k) + ':' + canonicalStringify(obj[k]))
   return '{' + parts.join(',') + '}'
 }

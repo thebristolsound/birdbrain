@@ -10,11 +10,11 @@ import { readExtractionHtml } from '@main/services/extraction/extractionSource'
 import { getInstallationId } from '@main/services/installationId'
 import {
   verifyManifestChain,
-  resolveTrustedTime,
   withCaptureEntry,
   withDeletionEntry,
   ManifestRollback
 } from '@main/services/manifest'
+import { reconcileCaptureTrustedTime } from '@main/services/trustedTime'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { getSettings } from '@main/services/settings'
 import {
@@ -293,7 +293,9 @@ async function computeVerification(
   // Trusted time is ORTHOGONAL to integrity, so resolve it once up front and
   // attach it to every result regardless of the integrity outcome. Derived from
   // the manifest alone; a legacy/un-stamped capture simply reports none/pending.
-  const tt = resolveTrustedTime(join(getStorageRoot(), capture.caseId), capture.hash)
+  // Reconcile here so the DB mirror self-heals on read, e.g. a stamp landed in
+  // the manifest but the worker hasn't refreshed the column yet.
+  const tt = reconcileCaptureTrustedTime(capture)
   const trusted = { trustedTime: tt.trustedTime, tsaName: tt.tsaName, stampedAt: tt.stampedAt }
 
   const base = {
@@ -432,14 +434,12 @@ export async function verifyCapture(captureId: string): Promise<HashVerification
 
   // Persist so the UI can rehydrate across remounts/sessions and export can read
   // a stable snapshot without re-hashing when nothing has changed on disk. The
-  // trusted-time mirror is refreshed here too, self-healing if the worker is
-  // behind (e.g. a stamp landed in the manifest but the mirror still says pending).
+  // trusted-time mirror was already reconciled inside computeVerification.
   db.setCaptureVerification(captureId, {
     status: result.status,
     computedHash: result.computedHash,
     verifiedAt: new Date().toISOString()
   })
-  db.setCaptureTrustedTime(captureId, result.trustedTime)
 
   return result
 }

@@ -13,7 +13,8 @@ import {
   getDb,
   setCaptureTrustedTime
 } from '@main/services/database'
-import { initManifest, appendManifestEntry, resolveTrustedTime } from '@main/services/manifest'
+import { initManifest, appendManifestEntry } from '@main/services/manifest'
+import { resolveTrustedTime } from '@main/services/trustedTime'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { createTimestampWorker } from '@main/services/timestampWorker'

@@ -4,20 +4,20 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
 import { createHash } from 'crypto'
-import { initDatabase, closeDatabase, createCase } from '../../../src/main/services/database'
-import { initStorage, ensureCaseDir } from '../../../src/main/services/storage'
-import { appendManifestEntry, initManifest } from '../../../src/main/services/manifest'
+import { initDatabase, closeDatabase, createCase } from '@main/services/database'
+import { initStorage, ensureCaseDir } from '@main/services/storage'
+import { appendManifestEntry, initManifest } from '@main/services/manifest'
 import {
   ingestMhtmlCapture,
   createCaptureLifecycle,
   type CaptureLifecycle
-} from '../../../src/main/services/captureLifecycle'
-import { createSelectorLifecycle } from '../../../src/main/services/selectorLifecycle'
-import { generateReport } from '../../../src/main/services/export'
+} from '@main/services/captureLifecycle'
+import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
+import { generateReport } from '@main/services/export'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
-import type { ExportOptions } from '../../../src/shared/types'
+import type { ExportOptions } from '@shared/types'
 
 function readStoredZipEntries(path: string): Map<string, Buffer> {
   const zip = readFileSync(path)

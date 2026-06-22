@@ -63,8 +63,10 @@ export function buildCertificationFields(
   data: CertificationInput,
   toolVersion: string
 ): CertificationFields {
+  const verificationsByCaptureId = new Map(data.verifications.map((v) => [v.captureId, v]))
+
   const captures: CertificationCaptureRow[] = data.captures.map((capture) => {
-    const verification = data.verifications.find((v) => v.captureId === capture.id)
+    const verification = verificationsByCaptureId.get(capture.id)
     const trustedTime = verification?.trustedTime ?? capture.trustedTimeStatus ?? 'none'
     return {
       id: capture.id,
@@ -123,12 +125,17 @@ function renderCertificationHtml(fields: CertificationFields): string {
   const trustedTimeSection = trustedTime.allStamped
     ? `<p>All ${stamped.length} capture${stamped.length === 1 ? '' : 's'} in this export carry an
         RFC 3161 trusted timestamp asserting the time at which the capture content hash existed.</p>`
-    : `<p>RFC 3161 trusted time is asserted <strong>only</strong> for the
+    : stamped.length > 0
+      ? `<p>RFC 3161 trusted time is asserted <strong>only</strong> for the
         ${stamped.length} capture${stamped.length === 1 ? '' : 's'} listed as timestamped below.
         For the ${unstamped.length} remaining capture${unstamped.length === 1 ? '' : 's'}
         (${trustedTime.pendingCount} pending, ${trustedTime.noneCount} none),
         <strong>no trusted timestamp is asserted</strong>; the recorded capture time is the
         operator's local system clock only.</p>`
+      : `<p><strong>No trusted timestamps are asserted</strong> for any of the
+        ${unstamped.length} capture${unstamped.length === 1 ? '' : 's'} in this export
+        (${trustedTime.pendingCount} pending, ${trustedTime.noneCount} none). The recorded
+        capture time is the operator's local system clock only.</p>`
 
   const stampedRows = stamped
     .map((c) => {

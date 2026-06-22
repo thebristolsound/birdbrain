@@ -215,10 +215,48 @@ const ManifestTimestampEntrySchema = z
   })
   .strict()
 
+// Signed audit record of an evidence-package export (#124). schemaVersion is
+// pinned >=2 so the entry MUST carry a signature, matching the timestamp entry.
+// `packageHash` commits to the export's content WITHOUT covering the final .zip
+// — that would be circular, since manifest.jsonl (which holds this entry) is
+// bundled inside the zip. It is sha256(canonicalStringify(sortedArtifacts)),
+// where sortedArtifacts is evidence.json's artifact list ordered by path; that
+// hashes every packaged file's content without depending on this entry.
+// `verificationResult` is a fixed integer+boolean shape so it serializes
+// canonically and stays stable under hashing+signing.
+const ManifestExportVerificationResultSchema = z
+  .object({
+    overallValid: z.boolean(),
+    captureCount: z.number().int().nonnegative(),
+    verifiedCount: z.number().int().nonnegative(),
+    tamperedCount: z.number().int().nonnegative(),
+    missingCount: z.number().int().nonnegative()
+  })
+  .strict()
+
+const ManifestExportEntrySchema = z
+  .object({
+    type: z.literal('export'),
+    caseId: z.string(),
+    timestamp: z.string(),
+    operatorId: z.string(),
+    operatorName: z.string(),
+    toolVersion: z.string(),
+    packageHash: z.string(),
+    verificationResult: ManifestExportVerificationResultSchema,
+    index: z.number().int().nonnegative(),
+    prevHash: z.string(),
+    schemaVersion: z.number().int().min(2).max(MANIFEST_SCHEMA_VERSION),
+    signature: z.string().optional(),
+    entryHash: z.string()
+  })
+  .strict()
+
 export const ManifestEntrySchema = z.discriminatedUnion('type', [
   ManifestCaptureEntrySchema,
   ManifestDeletionEntrySchema,
-  ManifestTimestampEntrySchema
+  ManifestTimestampEntrySchema,
+  ManifestExportEntrySchema
 ])
 
 export type ManifestEntry = z.infer<typeof ManifestEntrySchema>

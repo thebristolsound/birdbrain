@@ -983,3 +983,115 @@ describe('manifest signing enforcement (G2)', () => {
     expect(result.reason).toBe('Invalid signature')
   })
 })
+
+describe('manifest export audit entry (#124)', () => {
+  let tempDir: string
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-export-entry-'))
+    initManifest(tempDir)
+  })
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  const exportEntry = {
+    type: 'export' as const,
+    caseId: 'case-1',
+    timestamp: '2026-06-01T12:00:00.000Z',
+    operatorId: 'install-123',
+    operatorName: 'Casey Operator',
+    toolVersion: '0.4.0',
+    packageHash: 'd'.repeat(64),
+    verificationResult: {
+      overallValid: true,
+      captureCount: 2,
+      verifiedCount: 2,
+      tamperedCount: 0,
+      missingCount: 0
+    }
+  }
+
+  const readEntry = (lineIdx: number): Record<string, unknown> => {
+    const lines = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim())
+    return JSON.parse(lines[lineIdx])
+  }
+
+  it('round-trips an export variant and links to the prior head', () => {
+    appendManifestEntry(tempDir, {
+      type: 'capture',
+      captureId: 'cap-0',
+      caseId: 'case-1',
+      url: 'https://example.com/0',
+      timestamp: '2026-06-01T11:00:00.000Z',
+      contentHash: 'a'.repeat(64),
+      sizeBytes: 100,
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.4.0'
+    })
+    const head = getManifestHead(tempDir)
+    const result = appendManifestEntry(tempDir, exportEntry)
+
+    const entry = readEntry(1)
+    expect(entry.type).toBe('export')
+    expect(entry.index).toBe(head.nextIndex)
+    expect(entry.prevHash).toBe(head.prevHash)
+    expect(entry.packageHash).toBe(exportEntry.packageHash)
+    expect(entry.verificationResult).toEqual(exportEntry.verificationResult)
+    expect(entry.schemaVersion).toBe(MANIFEST_SCHEMA_VERSION)
+    expect(typeof entry.signature).toBe('string')
+    expect(verifyEntrySignature(result.entryHash, entry.signature as string)).toBe(true)
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
+  })
+
+  it('verifies a chain ending in an export entry', () => {
+    appendManifestEntry(tempDir, exportEntry)
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
+  })
+
+  it('fails verification when the export packageHash is tampered (Entry hash mismatch)', () => {
+    appendManifestEntry(tempDir, exportEntry)
+    const entry = readEntry(0)
+    entry.packageHash = 'e'.repeat(64)
+    writeFileSync(join(tempDir, 'manifest.jsonl'), JSON.stringify(entry) + '\n')
+    const result = verifyManifestChain(tempDir)
+    expect(result.valid).toBe(false)
+    expect(result.brokenAt).toBe(0)
+    expect(result.reason).toBe('Entry hash mismatch')
+  })
+
+  it('fails verification when the export signature is tampered (Invalid signature)', () => {
+    appendManifestEntry(tempDir, exportEntry)
+    const entry = readEntry(0)
+    entry.signature = Buffer.from('not a real signature').toString('base64')
+    writeFileSync(join(tempDir, 'manifest.jsonl'), JSON.stringify(entry) + '\n')
+    const result = verifyManifestChain(tempDir)
+    expect(result.valid).toBe(false)
+    expect(result.brokenAt).toBe(0)
+    expect(result.reason).toBe('Invalid signature')
+  })
+
+  it('schema accepts a well-formed export entry', () => {
+    appendManifestEntry(tempDir, exportEntry)
+    const entry = readEntry(0)
+    expect(ManifestEntrySchema.safeParse(entry).success).toBe(true)
+  })
+
+  it('schema rejects an export entry missing packageHash', () => {
+    appendManifestEntry(tempDir, exportEntry)
+    const entry = readEntry(0)
+    delete entry.packageHash
+    expect(ManifestEntrySchema.safeParse(entry).success).toBe(false)
+  })
+
+  it('schema rejects an export entry with an unknown extra key (.strict)', () => {
+    appendManifestEntry(tempDir, exportEntry)
+    const entry = readEntry(0)
+    entry.surprise = 'nope'
+    expect(ManifestEntrySchema.safeParse(entry).success).toBe(false)
+  })
+})

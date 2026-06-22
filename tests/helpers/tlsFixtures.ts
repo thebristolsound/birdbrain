@@ -1,8 +1,49 @@
-// Self-signed cert + key for 127.0.0.1 / localhost, generated for hermetic TLS
-// tests (#123). Long-lived (expires 2126) so the suite does not rot. SANs:
-// DNS:localhost, DNS:birdbrain.test, IP:127.0.0.1. Test-only material — never
-// used by production code.
+import { execFileSync } from 'node:child_process'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
-export const LOCALHOST_KEY_PEM = "-----BEGIN PRIVATE KEY-----\nMIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQDGx3XbyR1DRv2C\nlHXXlWFFjlCCIrg/Ne7ZDvgtdVuED04H5e27sfIIEPakScWvYyvPH8UrEsfsZmwc\nX7hiab3PGSXJQxkPpuuq0YmwyBMGKWnY5HdFRc8gC6/WtMtTObwYkWs10RiLKK0A\nJdyJZw9z31NiWFSDbHWbBy1KxQmiJNWsnxHhGY2SMW0GDlZWem6tImTN3fi4m4S7\ngJafxAGZoz15YfMCFps278RyoXob7UgyLVKURMCDM/mW3FBampydUa9lZIFZWmUV\nNIocNtY5utpdDu+RixpjLEFh2VQ2EBzxswrxBLn74yhVxjpZDAGYKWWSN4LGmNP0\nZEVNwK+TAgMBAAECggEAMBswej7bTp9dFd+A/2n+7vron/3wEhgm1DALvtCik7yy\neTXbiWugs/QLBKp35aC+BvPc3zY93QfSjTFbKbIGhhrDashKxd9zNFVemcJp3Dlk\njOGJveGNpWc+qFr7xAn6bAWxaQZQBsmSyLDhBP3EnxnCj8/psB6s/ZZIj0pNMQiE\nkoym2XGV5BxEIOfDqdxGB3S6Y+ZNTzNAOWaFjISZy+ripK6vf8AUbfkrid7lWH7z\nNltQsdY1KKfMfNo1VwQiu2s9wwcvP51avY2rb1Dgi6BEAGVPAQ1Qz5bJQ1wfd/1y\nJ4iHrlhMf6TJzx5ez5Ghbfvl/cIDM59pgFop3kZIQQKBgQDy+vsdfmT8e4zYImo1\nqZSIg07DRS6ENqjdbbtNWls0mTHC06kuqNEqvnMTfzIGEXbIKoxbhX+kSVmNSS5S\noFs3t0jK730GJ5Hp/MeEB86LWggYa0HSHKBFPXf16T8TJJk/OHBbljbQhfiOzdm0\n52etBDi2CJmYqgdPqvn61uKkQQKBgQDRbikX0iybpj6RfzUJuKQ1RgEV9HZD4CTo\nreq/6bQTeMsuIZKCsoUm5n4adEFsrKPgXFvsGo/1e317gWx06DNflE59AqLWnFex\nGH/9QlCNPIKwPl4qUrfQYRWeIiu5qW4+n/cJuokKwHUtPHqwnxAYDm9XphbLBbo6\nz1cYkwfO0wKBgQCORsZZ+9PYP+Q1/tjgOT8/PFwXXWAijPsORZ3CaqEzSGzp3xSW\nvMVV2RT7GqTJBtrd1IRBZwdZxJWKdIqKWVlwY4NdSSSVQQBg2eJd/lBEKuDIo610\nAc0bHiYrOXv0kp6ldT/dcTUBnyDvRbwwALwlhG5MsPZ3fUAwtzYPWlp1wQKBgQCh\nFYI1+EqnTa9Caf15hLOI5ldfc7CjdHvvHBY7lp4TfA2LZfcy3+zaht7nqhPIauGB\naIiriaLAxkM2A85P/WnGUmQscyKcv5QTeyy2t5MNj0VWGiKDmywW8xWVk+Ld4xwQ\nvylcKkXOJ0n5iVM1FqNiXXf2iqFtdvJO2bu8Axs2UQKBgQDb1hxYNicK05bk6lKl\nJWcR5O8gNXX1YFAuuC4CQNIpcXPYjdcyueGVP5pQdUV21zPuAwRY5AQphPxt4HSa\nF+kqLT5dWb4KRMGqjX0WpfoI1h6R++NaEPwUlusWuLyKlC8WjmNjfqR7I8xsWaZD\nyHEZY//W5SDpXZdS0zmnsVKyGA==\n-----END PRIVATE KEY-----\n"
+// Generates a fresh self-signed cert + key for 127.0.0.1 / localhost at test
+// time, so no private key material is committed to the repository (#157). SANs:
+// DNS:localhost, DNS:birdbrain.test, IP:127.0.0.1. Long-lived (100y) so a single
+// run never hits expiry. Test-only material — never used by production code.
+//
+// Requires the `openssl` CLI; callers must gate on HAS_OPENSSL (tests/helpers
+// /openssl.ts) so this skips gracefully where openssl is absent.
 
-export const LOCALHOST_CERT_PEM = "-----BEGIN CERTIFICATE-----\nMIIDaTCCAlGgAwIBAgIUN5LME3MqTvZgs3UDYKz7I/jOGJEwDQYJKoZIhvcNAQEL\nBQAwLTESMBAGA1UEAwwJbG9jYWxob3N0MRcwFQYDVQQKDA5CaXJkYnJhaW4gVGVz\ndDAgFw0yNjA2MjEyMTM0MzlaGA8yMTI2MDUyODIxMzQzOVowLTESMBAGA1UEAwwJ\nbG9jYWxob3N0MRcwFQYDVQQKDA5CaXJkYnJhaW4gVGVzdDCCASIwDQYJKoZIhvcN\nAQEBBQADggEPADCCAQoCggEBAMbHddvJHUNG/YKUddeVYUWOUIIiuD817tkO+C11\nW4QPTgfl7bux8ggQ9qRJxa9jK88fxSsSx+xmbBxfuGJpvc8ZJclDGQ+m66rRibDI\nEwYpadjkd0VFzyALr9a0y1M5vBiRazXRGIsorQAl3IlnD3PfU2JYVINsdZsHLUrF\nCaIk1ayfEeEZjZIxbQYOVlZ6bq0iZM3d+LibhLuAlp/EAZmjPXlh8wIWmzbvxHKh\nehvtSDItUpREwIMz+ZbcUFqanJ1Rr2VkgVlaZRU0ihw21jm62l0O75GLGmMsQWHZ\nVDYQHPGzCvEEufvjKFXGOlkMAZgpZZI3gsaY0/RkRU3Ar5MCAwEAAaN/MH0wHQYD\nVR0OBBYEFJfz0oXlhwsKp3fDjo9bPR4shTfWMB8GA1UdIwQYMBaAFJfz0oXlhwsK\np3fDjo9bPR4shTfWMA8GA1UdEwEB/wQFMAMBAf8wKgYDVR0RBCMwIYIJbG9jYWxo\nb3N0gg5iaXJkYnJhaW4udGVzdIcEfwAAATANBgkqhkiG9w0BAQsFAAOCAQEAkjyo\nOR4gyQcuPebfN5bE+lmePoyiDlYGEL7f8GpPPQPTr6RXMHRhBEmJxYdKe4FHUVNo\nI7cZWOkkCKazVkxk7KWzaIRKparb4tEtjg5vyY0U6FbgyEW64zTuNiS2iBG36iCq\n/ImqhnPTYQ/l5XGVJTM43qrrzVsG+lDBFhY7cVWNPNmiRxR8MDOK8zcCIyCM8t2E\noDd107zgSf0mB4+x6dOgxI+BHmLcfDXS86NeJFcKsjUfbDhz9dscFxbynr4TUoj+\nSNXcGpdx1jSyP0SS/MxQzYSrhlRv836KAHEZRqnkmlKKfl/l9y/0kjuArbV08pmh\nQ0gpkQpkVZaz6FPDOA==\n-----END CERTIFICATE-----\n"
+export interface LocalhostCert {
+  key: string
+  cert: string
+}
+
+export function createLocalhostCert(): LocalhostCert {
+  const dir = mkdtempSync(join(tmpdir(), 'birdbrain-tls-'))
+  try {
+    const keyPath = join(dir, 'key.pem')
+    const certPath = join(dir, 'cert.pem')
+    execFileSync(
+      'openssl',
+      [
+        'req',
+        '-x509',
+        '-newkey',
+        'rsa:2048',
+        '-nodes',
+        '-keyout',
+        keyPath,
+        '-out',
+        certPath,
+        '-days',
+        '36500',
+        '-subj',
+        '/CN=localhost/O=Birdbrain Test',
+        '-addext',
+        'subjectAltName=DNS:localhost,DNS:birdbrain.test,IP:127.0.0.1'
+      ],
+      { stdio: 'pipe' }
+    )
+    return { key: readFileSync(keyPath, 'utf8'), cert: readFileSync(certPath, 'utf8') }
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}

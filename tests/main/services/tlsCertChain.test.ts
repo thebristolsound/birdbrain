@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { createServer as createTlsServer, type Server as TlsServer } from 'node:tls'
 import { createServer as createTcpServer, type Server as TcpServer } from 'node:net'
-import type { AddressInfo } from 'node:net'
+import type { AddressInfo, Socket } from 'node:net'
 import { fetchCertChain, isTlsCertChainError } from '@main/services/tlsCertChain'
 import { LOCALHOST_KEY_PEM, LOCALHOST_CERT_PEM } from '../../helpers/tlsFixtures'
 
@@ -10,6 +10,7 @@ describe('fetchCertChain', () => {
   let port: number
   let hangingServer: TcpServer
   let hangingPort: number
+  const hangingSockets = new Set<Socket>()
 
   beforeAll(async () => {
     server = createTlsServer(
@@ -19,9 +20,14 @@ describe('fetchCertChain', () => {
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
     port = (server.address() as AddressInfo).port
 
-    // Create a TCP server that accepts connections but never completes the TLS handshake
-    hangingServer = createTcpServer((socket) => {
-      // Accept the connection but do nothing (no response, simulating a hung TLS handshake)
+    // A TCP server that accepts connections but never speaks TLS, so the
+    // handshake hangs and a short timeout fires deterministically (no reliance on
+    // an unreachable external IP). Server-side sockets are tracked so teardown
+    // can destroy them — otherwise hangingServer.close() blocks on the open
+    // (hung) connection.
+    hangingServer = createTcpServer((conn) => {
+      hangingSockets.add(conn)
+      conn.once('close', () => hangingSockets.delete(conn))
     })
     await new Promise<void>((resolve) => hangingServer.listen(0, '127.0.0.1', resolve))
     hangingPort = (hangingServer.address() as AddressInfo).port
@@ -29,6 +35,7 @@ describe('fetchCertChain', () => {
 
   afterAll(async () => {
     await new Promise<void>((resolve) => server.close(() => resolve()))
+    for (const conn of hangingSockets) conn.destroy()
     await new Promise<void>((resolve) => hangingServer.close(() => resolve()))
   })
 
@@ -87,7 +94,6 @@ describe('fetchCertChain', () => {
   })
 
   it('fail-soft: a connection timeout returns an error marker', async () => {
-    // Use a local TCP server that accepts connections but never completes the TLS handshake
     const result = await fetchCertChain(`https://127.0.0.1:${hangingPort}/`, {
       host: '127.0.0.1',
       port: hangingPort,

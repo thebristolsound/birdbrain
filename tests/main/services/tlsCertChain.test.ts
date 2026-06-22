@@ -1,24 +1,35 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { createServer, type Server } from 'node:tls'
+import { createServer as createTlsServer, type Server as TlsServer } from 'node:tls'
+import { createServer as createTcpServer, type Server as TcpServer } from 'node:net'
 import type { AddressInfo } from 'node:net'
 import { fetchCertChain, isTlsCertChainError } from '@main/services/tlsCertChain'
 import { LOCALHOST_KEY_PEM, LOCALHOST_CERT_PEM } from '../../helpers/tlsFixtures'
 
 describe('fetchCertChain', () => {
-  let server: Server
+  let server: TlsServer
   let port: number
+  let hangingServer: TcpServer
+  let hangingPort: number
 
   beforeAll(async () => {
-    server = createServer(
+    server = createTlsServer(
       { key: LOCALHOST_KEY_PEM, cert: LOCALHOST_CERT_PEM },
       (socket) => socket.end()
     )
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
     port = (server.address() as AddressInfo).port
+
+    // Create a TCP server that accepts connections but never completes the TLS handshake
+    hangingServer = createTcpServer((socket) => {
+      // Accept the connection but do nothing (no response, simulating a hung TLS handshake)
+    })
+    await new Promise<void>((resolve) => hangingServer.listen(0, '127.0.0.1', resolve))
+    hangingPort = (hangingServer.address() as AddressInfo).port
   })
 
   afterAll(async () => {
     await new Promise<void>((resolve) => server.close(() => resolve()))
+    await new Promise<void>((resolve) => hangingServer.close(() => resolve()))
   })
 
   it('extracts the served cert chain (subject/issuer/fingerprint/validity/SAN)', async () => {
@@ -76,10 +87,10 @@ describe('fetchCertChain', () => {
   })
 
   it('fail-soft: a connection timeout returns an error marker', async () => {
-    // 10.255.255.1 is non-routable in most environments; a short timeout fires.
-    const result = await fetchCertChain('https://10.255.255.1/', {
-      host: '10.255.255.1',
-      port: 443,
+    // Use a local TCP server that accepts connections but never completes the TLS handshake
+    const result = await fetchCertChain(`https://127.0.0.1:${hangingPort}/`, {
+      host: '127.0.0.1',
+      port: hangingPort,
       timeoutMs: 300
     })
     expect(isTlsCertChainError(result)).toBe(true)

@@ -942,7 +942,10 @@ describe('captureServer', () => {
     const captures = listCaptures(c.id)
     expect(captures).toHaveLength(1)
     expect(captures[0].screenshotPath).toBeFalsy()
-  })
+    // Allocating + streaming an oversized buffer through the multipart parser
+    // takes ~5s and intermittently bumps the default 5s timeout under
+    // full-suite CPU contention; give it explicit headroom.
+  }, 15000)
 
   it('returns screenshotStatus "none" when no screenshot is sent', async () => {
     const c = createCase({ name: 'No Screenshot Test' })

@@ -227,7 +227,7 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
             add(
               tsName,
               'pass',
-              `${axis?.trustedTime ?? 'rfc3161'}${who} — structural (imprint + bytes); ` +
+              `${axis?.trustedTime ?? 'none'}${who} — structural (imprint + bytes); ` +
                 'run `openssl ts -verify` for TSA authenticity'
             )
           }

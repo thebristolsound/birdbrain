@@ -34,7 +34,7 @@ function readManifestEntries(caseDir: string): Record<string, unknown>[] {
   return out
 }
 
-// Resolves the per-capture trusted-time axis from the manifest alone (so the DB
+// Resolves the per-capture trusted-time axis from the manifest alone (so the DB mirror remains rebuildable).
 /**
  * Resolves the trusted timestamp status for a content hash within a case.
  *

@@ -11,10 +11,11 @@ import {
 import { join } from 'path'
 import { createHash } from 'crypto'
 import { MANIFEST_FILENAME, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
-import { canonicalStringify, parseTimestampToken, verifyManifestChainText } from '@shared/verify'
+import { canonicalStringify, verifyManifestChainText } from '@shared/verify'
 import type { ChainVerifyResult } from '@shared/verify'
 import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
 import type { TrustedTime } from '@shared/types'
+import type { TlsCertChainResult } from '@main/services/tlsCertChain'
 
 export type { TrustedTime }
 
@@ -57,6 +58,20 @@ export type ManifestEntryInput =
       url: string
       timestamp: string
       contentHash: string
+      // Optional content-addressed integrity for the screenshot and extracted
+      // text sidecars (#118). OMITTED (never '' / null) when absent so legacy and
+      // no-screenshot entries' canonical bodies — and therefore their chain
+      // hashes — are unchanged.
+      screenshotHash?: string
+      textHash?: string
+      // Captured HTTP response headers (#119), normalized to lowercase keys with
+      // multi-value joins. OMITTED (never {} / null) when absent so legacy and
+      // headerless entries' canonical bodies — and chain hashes — are unchanged.
+      headers?: Record<string, string>
+      // Corroboration-only TLS cert chain re-fetched after storage (#123). NOT
+      // bound to the captured transaction. OMITTED when not re-fetched so legacy /
+      // cert-less entries' canonical bodies — and chain hashes — are unchanged.
+      tls?: TlsCertChainResult
       sizeBytes: number
       operatorId: string
       operatorName: string
@@ -86,6 +101,29 @@ export type ManifestEntryInput =
       operatorName: string
       toolVersion: string
     }
+  | {
+      // Signed audit record of an evidence-package export (#124). `packageHash`
+      // is sha256(canonicalStringify(sortedArtifacts)) from evidence.json — it
+      // commits to every packaged file's content WITHOUT covering the final
+      // .zip (which would be circular, since this entry lives in the bundled
+      // manifest). `appendManifestEntry` adds index/prevHash/entryHash/signature.
+      type: 'export'
+      caseId: string
+      timestamp: string
+      operatorId: string
+      operatorName: string
+      toolVersion: string
+      packageHash: string
+      verificationResult: ExportVerificationResult
+    }
+
+export interface ExportVerificationResult {
+  overallValid: boolean
+  captureCount: number
+  verifiedCount: number
+  tamperedCount: number
+  missingCount: number
+}
 
 export interface AppendResult {
   index: number
@@ -146,6 +184,26 @@ export class ManifestRollback extends Error {
   }
 }
 
+// Core write-ahead/rollback seam. Appends `entry`, runs `fn` with the resulting
+// AppendResult, and either commits (fn succeeded) or rolls the manifest back to
+// its prior anchor (fn threw or its returned Promise rejected). Ensures the
+// manifest never records a side effect that didn't actually happen. Async
+// because `fn` may return a Promise — sync callbacks still work.
+async function withManifestEntry<T>(
+  caseDir: string,
+  entry: ManifestEntryInput,
+  fn: (result: AppendResult) => T | Promise<T>
+): Promise<T> {
+  initManifest(caseDir)
+  const result = appendManifestEntry(caseDir, entry)
+  try {
+    return await fn(result)
+  } catch (err) {
+    rollbackManifestEntry(caseDir, result.anchorBytes)
+    throw err
+  }
+}
+
 export interface DeletionEntryContext {
   captureId: string
   caseId: string
@@ -157,157 +215,79 @@ export interface DeletionEntryContext {
 }
 
 // Wraps a deletion side-effect in the manifest's write-ahead/rollback invariant.
-// Appends a deletion entry, runs `fn`, and either commits (fn succeeded) or
-// rolls the manifest back to its prior anchor (fn threw or its returned Promise
-// rejected). Ensures the manifest never records a deletion that didn't actually
-// happen. Async because `fn` may return a Promise — sync callbacks still work.
 export async function withDeletionEntry<T>(
   caseDir: string,
   ctx: DeletionEntryContext,
   fn: () => T | Promise<T>
 ): Promise<T> {
-  initManifest(caseDir)
-  const result = appendManifestEntry(caseDir, {
-    type: 'deletion',
-    captureId: ctx.captureId,
-    caseId: ctx.caseId,
-    timestamp: new Date().toISOString(),
-    contentHash: ctx.contentHash,
-    operatorId: ctx.operatorId,
-    operatorName: ctx.operatorName,
-    toolVersion: ctx.toolVersion,
-    ...(ctx.reason !== undefined ? { reason: ctx.reason } : {})
-  })
-  try {
-    return await fn()
-  } catch (err) {
-    rollbackManifestEntry(caseDir, result.anchorBytes)
-    throw err
-  }
+  return withManifestEntry(
+    caseDir,
+    {
+      type: 'deletion',
+      captureId: ctx.captureId,
+      caseId: ctx.caseId,
+      timestamp: new Date().toISOString(),
+      contentHash: ctx.contentHash,
+      operatorId: ctx.operatorId,
+      operatorName: ctx.operatorName,
+      toolVersion: ctx.toolVersion,
+      ...(ctx.reason !== undefined ? { reason: ctx.reason } : {})
+    },
+    fn
+  )
 }
 
-export interface TrustedTimeResult {
-  trustedTime: TrustedTime
-  // Present only when trustedTime is 'rfc3161'.
-  tsaName?: string
-  // ISO 8601 of the TSA's asserted time; present only when 'rfc3161'.
-  stampedAt?: string
+export interface CaptureEntryContext {
+  captureId: string
+  caseId: string
+  url: string
+  timestamp: string
+  contentHash: string
+  // Optional sidecar integrity hashes (#118); omitted from the manifest body
+  // when undefined to preserve legacy canonical bodies.
+  screenshotHash?: string
+  textHash?: string
+  // Captured HTTP response headers (#119); omitted from the manifest body when
+  // absent to preserve legacy canonical bodies.
+  headers?: Record<string, string>
+  // Corroboration-only TLS cert chain (#123); omitted from the manifest body
+  // when absent to preserve legacy canonical bodies.
+  tls?: TlsCertChainResult
+  sizeBytes: number
+  operatorId: string
+  operatorName: string
+  toolVersion: string
 }
 
-// Resolves the per-capture trusted-time axis from the manifest alone (so the DB
-// mirror is rebuildable — #120 AC). A capture is identified by its contentHash:
-//   - a 'timestamp' entry referencing it, carrying a token whose imprint matches
-//     → 'rfc3161' (+ TSA identity and stamped-at from the token)
-//   - else a v2+ capture entry with no such timestamp yet → 'pending'
-//   - else (v1/grandfathered, or no capture entry) → 'none'
-// Pending vs none is the eligibility distinction: v2 captures are expected to be
-// stamped (so 'pending' until they are); legacy v1 captures never were.
-export function resolveTrustedTime(caseDir: string, contentHash: string): TrustedTimeResult {
-  const path = join(caseDir, MANIFEST_FILENAME)
-  if (!existsSync(path) || statSync(path).size === 0) return { trustedTime: 'none' }
-
-  const lines = readFileSync(path, 'utf-8')
-    .split('\n')
-    .filter((l) => l.trim().length > 0)
-
-  let eligible = false
-  for (const line of lines) {
-    let entry: Record<string, unknown>
-    try {
-      entry = JSON.parse(line) as Record<string, unknown>
-    } catch {
-      continue
-    }
-
-    if (
-      entry.type === 'timestamp' &&
-      entry.captureContentHash === contentHash &&
-      typeof entry.tsaToken === 'string'
-    ) {
-      try {
-        const parsed = parseTimestampToken(Buffer.from(entry.tsaToken, 'base64'))
-        // The token must actually attest THIS capture's bytes; a mismatched
-        // imprint is not proof of time and is ignored (capture stays pending).
-        if (parsed.messageImprintHex === contentHash) {
-          return {
-            trustedTime: 'rfc3161',
-            tsaName: parsed.tsaName,
-            stampedAt: parsed.stampedAt.toISOString()
-          }
-        }
-      } catch {
-        // Malformed token — ignore; the worker will re-stamp.
-      }
-    } else if (
-      entry.type === 'capture' &&
-      entry.contentHash === contentHash &&
-      typeof entry.schemaVersion === 'number' &&
-      entry.schemaVersion >= 2
-    ) {
-      eligible = true
-    }
-  }
-
-  return { trustedTime: eligible ? 'pending' : 'none' }
-}
-
-// Resolves the trusted-time axis for EVERY capture in a case in a single manifest
-// pass, keyed by contentHash. Use this to rebuild the DB mirror for a whole case
-// — calling resolveTrustedTime() per capture would re-read and re-parse the
-// manifest O(captures) times (quadratic on a large case). Captures whose hash is
-// absent from the returned map are 'none' (legacy/grandfathered).
-export function buildTrustedTimeIndex(caseDir: string): Map<string, TrustedTimeResult> {
-  const index = new Map<string, TrustedTimeResult>()
-  const path = join(caseDir, MANIFEST_FILENAME)
-  if (!existsSync(path) || statSync(path).size === 0) return index
-
-  const lines = readFileSync(path, 'utf-8')
-    .split('\n')
-    .filter((l) => l.trim().length > 0)
-
-  const eligible = new Set<string>()
-  for (const line of lines) {
-    let entry: Record<string, unknown>
-    try {
-      entry = JSON.parse(line) as Record<string, unknown>
-    } catch {
-      continue
-    }
-
-    if (
-      entry.type === 'timestamp' &&
-      typeof entry.captureContentHash === 'string' &&
-      typeof entry.tsaToken === 'string'
-    ) {
-      const contentHash = entry.captureContentHash
-      if (index.get(contentHash)?.trustedTime === 'rfc3161') continue
-      try {
-        const parsed = parseTimestampToken(Buffer.from(entry.tsaToken, 'base64'))
-        if (parsed.messageImprintHex === contentHash) {
-          index.set(contentHash, {
-            trustedTime: 'rfc3161',
-            tsaName: parsed.tsaName,
-            stampedAt: parsed.stampedAt.toISOString()
-          })
-        }
-      } catch {
-        // Malformed token — ignore; the capture stays pending.
-      }
-    } else if (
-      entry.type === 'capture' &&
-      typeof entry.contentHash === 'string' &&
-      typeof entry.schemaVersion === 'number' &&
-      entry.schemaVersion >= 2
-    ) {
-      eligible.add(entry.contentHash)
-    }
-  }
-
-  // Eligible v2 captures with no valid timestamp are pending.
-  for (const hash of eligible) {
-    if (!index.has(hash)) index.set(hash, { trustedTime: 'pending' })
-  }
-  return index
+// Wraps an ingest side-effect (sidecar writes + DB insert) in the manifest's
+// write-ahead/rollback invariant. `fn` receives the AppendResult so the caller
+// can persist index/prevHash/entryHash on the DB row. Ensures the manifest never
+// records a capture that didn't actually land.
+export async function withCaptureEntry<T>(
+  caseDir: string,
+  ctx: CaptureEntryContext,
+  fn: (result: AppendResult) => T | Promise<T>
+): Promise<T> {
+  return withManifestEntry(
+    caseDir,
+    {
+      type: 'capture',
+      captureId: ctx.captureId,
+      caseId: ctx.caseId,
+      url: ctx.url,
+      timestamp: ctx.timestamp,
+      contentHash: ctx.contentHash,
+      ...(ctx.screenshotHash !== undefined ? { screenshotHash: ctx.screenshotHash } : {}),
+      ...(ctx.textHash !== undefined ? { textHash: ctx.textHash } : {}),
+      ...(ctx.headers !== undefined ? { headers: ctx.headers } : {}),
+      ...(ctx.tls !== undefined ? { tls: ctx.tls } : {}),
+      sizeBytes: ctx.sizeBytes,
+      operatorId: ctx.operatorId,
+      operatorName: ctx.operatorName,
+      toolVersion: ctx.toolVersion
+    },
+    fn
+  )
 }
 
 export type { ChainVerifyResult }
@@ -315,11 +295,18 @@ export type { ChainVerifyResult }
 // Re-reads the manifest and verifies the hash chain — recomputed entryHashes,
 // linkage, v2+ signatures — against this installation's public key. Thin fs
 // wrapper; the chain algorithm lives in the shared verify-core (#122) so the
-// app and the standalone verifier can never drift.
+/**
+ * Verifies the integrity and authenticity of the manifest hash chain.
+ *
+ * An empty or missing manifest is considered valid.
+ *
+ * @param caseDir - The case directory containing the manifest file
+ * @returns A result indicating whether the manifest chain is valid and the verified trusted times
+ */
 export function verifyManifestChain(caseDir: string): ChainVerifyResult {
   const path = join(caseDir, MANIFEST_FILENAME)
   if (!existsSync(path) || statSync(path).size === 0) {
-    return { valid: true, trustedTime: 'none' }
+    return { valid: true, trustedTimes: new Map() }
   }
   const raw = readFileSync(path, 'utf-8')
   return verifyManifestChainText(raw, { publicKeyPem: getPublicKeyPem() })

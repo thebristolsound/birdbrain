@@ -77,6 +77,18 @@ describe('verifyManifestChain (app) vs verifyManifestChainText (core)', () => {
     expect(core).toEqual(app)
   })
 
+  it('resolves the real trusted-time axis (no hardcoded none)', () => {
+    // The fixture's surviving capture (cap-1) is a v2 capture with a timestamp
+    // entry that carries NO tsaToken → eligible-but-unstamped → pending.
+    const core = coreResult()
+    expect(core.valid).toBe(true)
+    expect(core.trustedTimes.get('a'.repeat(64))?.trustedTime).toBe('pending')
+    // The app wrapper resolves the same axis from the same bytes.
+    expect(verifyManifestChain(caseDir).trustedTimes.get('a'.repeat(64))?.trustedTime).toBe(
+      'pending'
+    )
+  })
+
   it('agree on a tampered entry body (Entry hash mismatch)', () => {
     const lines = readFileSync(manifestPath, 'utf-8').split('\n')
     lines[1] = lines[1].replace('https://example.com/1', 'https://evil.example.com/1')
@@ -88,7 +100,7 @@ describe('verifyManifestChain (app) vs verifyManifestChainText (core)', () => {
       valid: false,
       brokenAt: 1,
       reason: 'Entry hash mismatch',
-      trustedTime: 'none'
+      trustedTimes: new Map()
     })
     expect(core).toEqual(app)
   })
@@ -106,7 +118,7 @@ describe('verifyManifestChain (app) vs verifyManifestChainText (core)', () => {
       valid: false,
       brokenAt: 2,
       reason: 'Invalid signature',
-      trustedTime: 'none'
+      trustedTimes: new Map()
     })
     expect(core).toEqual(app)
   })
@@ -124,17 +136,17 @@ describe('verifyManifestChain (app) vs verifyManifestChainText (core)', () => {
       valid: false,
       brokenAt: 3,
       reason: 'Chain link broken',
-      trustedTime: 'none'
+      trustedTimes: new Map()
     })
     expect(core).toEqual(app)
   })
 
   it('agree on an empty manifest', () => {
     writeFileSync(manifestPath, '', 'utf-8')
-    expect(verifyManifestChain(caseDir)).toEqual({ valid: true, trustedTime: 'none' })
+    expect(verifyManifestChain(caseDir)).toEqual({ valid: true, trustedTimes: new Map() })
     expect(verifyManifestChainText('', { publicKeyPem: getPublicKeyPem() })).toEqual({
       valid: true,
-      trustedTime: 'none'
+      trustedTimes: new Map()
     })
   })
 })

@@ -26,6 +26,13 @@ import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { getManifestHead } from '@main/services/manifest'
 import { MAX_SCREENSHOT_SIZE } from '@shared/constants'
 
+// Keep ingest hermetic: the corroboration-only TLS re-fetch (#123) would
+// otherwise open a real socket to https://example.com on every captured upload.
+vi.mock('@main/services/tlsCertChain', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@main/services/tlsCertChain')>()
+  return { ...actual, fetchCertChain: vi.fn(async () => null) }
+})
+
 let nextPort = 19846
 const TEST_TOKEN = 'test-server-token'
 
@@ -877,6 +884,46 @@ describe('captureServer', () => {
     const rows = listCaptures(c.id)
     expect(rows).toHaveLength(1)
     expect(rows[0].format).toBe('mhtml')
+  })
+
+  it('round-trips a headers form field into the stored capture (#119)', async () => {
+    const c = createCase({ name: 'Headers Test' })
+    const headers = { server: 'nginx', date: 'Wed, 21 Jun 2026 12:00:00 GMT' }
+    const res = await postCapture({
+      source: 'manual',
+      caseId: c.id,
+      url: 'https://example.com/headers',
+      title: 'Headers Page',
+      timestamp: new Date().toISOString(),
+      headers: JSON.stringify(headers)
+    })
+    expect(res.status).toBe(200)
+
+    const rows = listCaptures(c.id)
+    expect(rows).toHaveLength(1)
+    expect(JSON.parse(rows[0].headers!)).toEqual(headers)
+  })
+
+  it('does not 500 when headers is malformed or absent (#119)', async () => {
+    const c = createCase({ name: 'Bad Headers Test' })
+    const malformed = await postCapture({
+      source: 'manual',
+      caseId: c.id,
+      url: 'https://example.com/bad-headers',
+      title: 'Bad Headers',
+      timestamp: new Date().toISOString(),
+      headers: 'not-json{{{'
+    })
+    expect(malformed.status).toBe(200)
+
+    const absent = await postCapture({
+      source: 'manual',
+      caseId: c.id,
+      url: 'https://example.com/no-headers',
+      title: 'No Headers',
+      timestamp: new Date().toISOString()
+    })
+    expect(absent.status).toBe(200)
   })
 
   it('stores screenshot alongside MHTML capture', async () => {

@@ -347,7 +347,7 @@ function createApp(deps: CaptureServerDeps): Hono {
           timestamp,
           stream: mhtmlField.stream(),
           textContent,
-          headers: {},
+          headers: input.headers ?? {},
           browserVersion,
           userAgent,
           httpStatus,

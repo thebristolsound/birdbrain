@@ -31,6 +31,31 @@ const FormFileSchema = z.custom<FormFileLike>(
 
 export const CaptureSourceSchema = z.enum(['auto', 'manual', 'selector'])
 
+// Response headers arrive as a JSON string in a multipart form field. They are
+// an untrusted, extension-supplied value that ends up in the signed manifest, so
+// the parse is defensive: malformed JSON, non-object shapes, or non-string
+// values coerce to undefined (treated as "no headers") rather than failing the
+// whole capture. The serialized size is bounded so a hostile/huge header set
+// can't bloat the signed manifest body.
+const MAX_HEADERS_JSON_BYTES = 64 * 1024
+
+const HeadersFieldSchema = z.preprocess((raw) => {
+  if (typeof raw !== 'string' || raw.trim() === '') return undefined
+  if (Buffer.byteLength(raw, 'utf-8') > MAX_HEADERS_JSON_BYTES) return undefined
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return undefined
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+    if (typeof v === 'string') out[k] = v
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}, z.record(z.string(), z.string()).optional())
+
 export const CaptureUploadSchema = z.object({
   source: CaptureSourceSchema,
   url: z
@@ -56,6 +81,7 @@ export const CaptureUploadSchema = z.object({
   userAgent: z.string().optional().default(''),
   caseId: z.string().optional().default(''),
   httpStatus: z.coerce.number().catch(0),
+  headers: HeadersFieldSchema,
   mhtml: FormFileSchema,
   screenshot: z.unknown().optional()
 })
@@ -126,6 +152,44 @@ export function formatSelectorCreateError(err: z.ZodError): string {
 // (e.g. a v3 entry parsed by a v2 verifier). Auto-tightens on every version bump.
 const schemaVersionField = z.number().int().min(1).max(MANIFEST_SCHEMA_VERSION)
 
+// Corroboration-only TLS cert chain re-fetched from the origin AFTER the capture
+// is stored (#123, ADR-0002). NOT bound to the captured transaction — it records
+// whatever cert the origin served at `refetchedAt`, which differs from the
+// capture timestamp. Anchored into the signed manifest body so chain integrity
+// covers it for free. Either a chain (leaf→root, SANs pre-sorted by the producer)
+// or a fail-soft error marker; OMITTED entirely when the re-fetch was not run, so
+// legacy / cert-less entries keep identical entryHashes. `.strict()` so a forged
+// extra field is rejected before hashing.
+export const TlsCertSummarySchema = z
+  .object({
+    subject: z.string(),
+    issuer: z.string(),
+    validFrom: z.string(),
+    validTo: z.string(),
+    fingerprint256: z.string(),
+    serialNumber: z.string(),
+    subjectAltNames: z.array(z.string())
+  })
+  .strict()
+
+export const TlsCertChainSchema = z
+  .object({
+    url: z.string(),
+    refetchedAt: z.string(),
+    chain: z.array(TlsCertSummarySchema)
+  })
+  .strict()
+
+export const TlsCertChainErrorSchema = z
+  .object({
+    url: z.string(),
+    refetchedAt: z.string(),
+    error: z.string()
+  })
+  .strict()
+
+export const TlsCertChainResultSchema = z.union([TlsCertChainSchema, TlsCertChainErrorSchema])
+
 const ManifestCaptureEntrySchema = z
   .object({
     type: z.literal('capture'),
@@ -136,6 +200,8 @@ const ManifestCaptureEntrySchema = z
     contentHash: z.string(),
     screenshotHash: z.string().optional(),
     textHash: z.string().optional(),
+    headers: z.record(z.string(), z.string()).optional(),
+    tls: TlsCertChainResultSchema.optional(),
     sizeBytes: z.number(),
     operatorId: z.string(),
     operatorName: z.string(),
@@ -188,13 +254,94 @@ const ManifestTimestampEntrySchema = z
   })
   .strict()
 
+// Signed audit record of an evidence-package export (#124). schemaVersion is
+// pinned >=2 so the entry MUST carry a signature, matching the timestamp entry.
+// `packageHash` commits to the export's content WITHOUT covering the final .zip
+// — that would be circular, since manifest.jsonl (which holds this entry) is
+// bundled inside the zip. It is sha256(canonicalStringify(sortedArtifacts)),
+// where sortedArtifacts is evidence.json's artifact list ordered by path; that
+// hashes every packaged file's content without depending on this entry.
+// `verificationResult` is a fixed integer+boolean shape so it serializes
+// canonically and stays stable under hashing+signing.
+const ManifestExportVerificationResultSchema = z
+  .object({
+    overallValid: z.boolean(),
+    captureCount: z.number().int().nonnegative(),
+    verifiedCount: z.number().int().nonnegative(),
+    tamperedCount: z.number().int().nonnegative(),
+    missingCount: z.number().int().nonnegative()
+  })
+  .strict()
+
+const ManifestExportEntrySchema = z
+  .object({
+    type: z.literal('export'),
+    caseId: z.string(),
+    timestamp: z.string(),
+    operatorId: z.string(),
+    operatorName: z.string(),
+    toolVersion: z.string(),
+    packageHash: z.string(),
+    verificationResult: ManifestExportVerificationResultSchema,
+    index: z.number().int().nonnegative(),
+    prevHash: z.string(),
+    schemaVersion: z.number().int().min(2).max(MANIFEST_SCHEMA_VERSION),
+    signature: z.string().optional(),
+    entryHash: z.string()
+  })
+  .strict()
+
 export const ManifestEntrySchema = z.discriminatedUnion('type', [
   ManifestCaptureEntrySchema,
   ManifestDeletionEntrySchema,
-  ManifestTimestampEntrySchema
+  ManifestTimestampEntrySchema,
+  ManifestExportEntrySchema
 ])
 
 export type ManifestEntry = z.infer<typeof ManifestEntrySchema>
+
+// --- Evidence package index (evidence.json) -------------------------------
+
+// `evidence.json` is the UNSIGNED convenience index emitted by buildEvidenceZip.
+// Only `manifest.jsonl` is signed, so the standalone verifier (#122) treats this
+// index as untrusted: it parses it for structure, then reconciles every field
+// against the verified chain (§7.4/§7.5 of the verifier design). This schema is
+// deliberately permissive about fields the verifier does not consume (it does
+// not `.strict()`) so adding informational keys to the export never breaks
+// verification; it pins only what §7 reads — the manifest head, the per-capture
+// ids/paths/hashes, and the artifact digests.
+const EvidenceArtifactSchema = z.object({
+  path: z.string(),
+  sha256: z.string(),
+  sizeBytes: z.number().int().nonnegative()
+})
+
+const EvidenceCaptureSchema = z.object({
+  id: z.string(),
+  mhtmlPath: z.string().nullable().optional(),
+  mhtmlSha256: z.string().nullable().optional(),
+  screenshotPath: z.string().nullable().optional(),
+  screenshotSha256: z.string().nullable().optional(),
+  textSha256: z.string().nullable().optional(),
+  timestampTokenPaths: z.array(z.string())
+})
+
+export const EvidencePackageSchema = z.object({
+  schemaVersion: z.number().int().positive(),
+  verificationMaterials: z.object({
+    manifestPath: z.string(),
+    // Head index/hash are null for an empty manifest; the verifier cross-checks
+    // them against the verified chain's last entry (§7.4).
+    manifestHeadIndex: z.number().int().nonnegative().nullable(),
+    manifestHeadHash: z.string().nullable(),
+    signingPublicKeyPath: z.string(),
+    tsaCaChainPath: z.string()
+  }),
+  captures: z.array(EvidenceCaptureSchema),
+  artifacts: z.array(EvidenceArtifactSchema)
+})
+
+export type EvidencePackage = z.infer<typeof EvidencePackageSchema>
 
 // --- Settings file --------------------------------------------------------
 

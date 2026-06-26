@@ -19,6 +19,15 @@ import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { initSettings, updateSettings } from '@main/services/settings'
 
+// Keep ingest tests hermetic: the corroboration-only TLS re-fetch (#123) would
+// otherwise open a real socket to https://example.com on every ingest. Default
+// it to "nothing to corroborate" (null); the dedicated #123 tests below inject
+// their own stub via createCaptureLifecycle({ fetchTlsCertChain }).
+vi.mock('@main/services/tlsCertChain', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@main/services/tlsCertChain')>()
+  return { ...actual, fetchCertChain: vi.fn(async () => null) }
+})
+
 // Flushes the setImmediate queue so post-capture work scheduled by
 // runPostCaptureWork has time to run before we assert.
 function flushImmediate(): Promise<void> {
@@ -83,6 +92,183 @@ describe('createCaptureLifecycle.ingest', () => {
     expect(result.capture.format).toBe('mhtml')
     expect(result.capture.hash).toBe(result.contentHash)
     expect(getCapture(result.capture.id)?.id).toBe(result.capture.id)
+    expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+  })
+
+  it('records screenshotHash + textHash in the manifest body and DB, and the chain still verifies (#118)', async () => {
+    const { createHash } = await import('crypto')
+    const { readFileSync } = await import('fs')
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const screenshot = Buffer.from('PNG-screenshot-bytes')
+    const textContent = 'hello extracted text'
+    const { capture } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('mhtml-body'), { screenshot, textContent })
+    )
+
+    const expectedScreenshotHash = createHash('sha256').update(screenshot).digest('hex')
+    const expectedTextHash = createHash('sha256')
+      .update(Buffer.from(textContent, 'utf-8'))
+      .digest('hex')
+
+    // DB mirror
+    expect(getCapture(capture.id)?.screenshotHash).toBe(expectedScreenshotHash)
+    expect(getCapture(capture.id)?.textHash).toBe(expectedTextHash)
+
+    // Manifest body carries the same hashes and the chain verifies (entryHash +
+    // signature cover the v2 body including the new fields).
+    const manifestPath = join(tempDir, 'captures', caseId, 'manifest.jsonl')
+    const lines = readFileSync(manifestPath, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+    const captureEntry = JSON.parse(lines[lines.length - 1])
+    expect(captureEntry.screenshotHash).toBe(expectedScreenshotHash)
+    expect(captureEntry.textHash).toBe(expectedTextHash)
+    expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+  })
+
+  it('OMITS screenshotHash/textHash from the manifest body when absent (#118 backward-compat)', async () => {
+    const { readFileSync } = await import('fs')
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('mhtml-body'), { textContent: '' })
+    )
+
+    const manifestPath = join(tempDir, 'captures', caseId, 'manifest.jsonl')
+    const lines = readFileSync(manifestPath, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+    const captureEntry = JSON.parse(lines[lines.length - 1])
+    // OMITTED, not '' / null — so legacy/no-artifact canonical bodies are unchanged.
+    expect('screenshotHash' in captureEntry).toBe(false)
+    expect('textHash' in captureEntry).toBe(false)
+    expect(getCapture(capture.id)?.screenshotHash).toBeUndefined()
+    expect(getCapture(capture.id)?.textHash).toBeUndefined()
+    expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+  })
+
+  it('persists headers to the DB and anchors them in the manifest body, chain still verifies (#119)', async () => {
+    const { readFileSync } = await import('fs')
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const headers = { server: 'nginx', date: 'Wed, 21 Jun 2026 12:00:00 GMT' }
+    const { capture } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('mhtml-body'), { headers })
+    )
+
+    // (a) DB mirror
+    expect(JSON.parse(getCapture(capture.id)!.headers!)).toEqual(headers)
+
+    // (b) Manifest body carries the headers
+    const manifestPath = join(tempDir, 'captures', caseId, 'manifest.jsonl')
+    const lines = readFileSync(manifestPath, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+    const captureEntry = JSON.parse(lines[lines.length - 1])
+    expect(captureEntry.headers).toEqual(headers)
+    // (d) specific keys survive server→lifecycle→manifest
+    expect(captureEntry.headers.server).toBe('nginx')
+    expect(captureEntry.headers.date).toBe('Wed, 21 Jun 2026 12:00:00 GMT')
+
+    // (c) chain re-verifies (recomputed entryHash + signature cover the headers)
+    expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+  })
+
+  it('OMITS headers from the manifest body when empty, keeping v1-equivalent entries (#119)', async () => {
+    const { readFileSync } = await import('fs')
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('mhtml-body'), { headers: {} })
+    )
+
+    const manifestPath = join(tempDir, 'captures', caseId, 'manifest.jsonl')
+    const lines = readFileSync(manifestPath, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+    const captureEntry = JSON.parse(lines[lines.length - 1])
+    // OMITTED from the signed body, not {} / null — so headerless canonical
+    // bodies (and their chain hashes) are unchanged from v1.
+    expect('headers' in captureEntry).toBe(false)
+    expect(capture.id).toBeTruthy()
+    expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+  })
+
+  it('persists the TLS cert chain on the DB row, anchors it in the manifest body, and the chain still verifies (#123)', async () => {
+    const { readFileSync } = await import('fs')
+    const tls = {
+      url: 'https://example.com',
+      refetchedAt: '2026-04-05T12:00:05.000Z',
+      chain: [
+        {
+          subject: 'CN=example.com',
+          issuer: 'CN=Example CA',
+          validFrom: 'Jan  1 00:00:00 2026 GMT',
+          validTo: 'Jan  1 00:00:00 2027 GMT',
+          fingerprint256: 'AA:BB:CC',
+          serialNumber: '01',
+          subjectAltNames: ['DNS:example.com', 'DNS:www.example.com']
+        }
+      ]
+    }
+    const fetchTlsCertChain = vi.fn(async () => tls)
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub, fetchTlsCertChain })
+    const { capture } = await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('mhtml-body')))
+
+    // (a) re-fetcher was invoked with the captured URL
+    expect(fetchTlsCertChain).toHaveBeenCalledWith('https://example.com')
+
+    // (b) DB mirror carries the parsed chain
+    expect(getCapture(capture.id)?.tlsCertChain).toEqual(tls)
+
+    // (c) manifest body anchors the chain and the signed chain still verifies
+    const manifestPath = join(tempDir, 'captures', caseId, 'manifest.jsonl')
+    const lines = readFileSync(manifestPath, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+    const captureEntry = JSON.parse(lines[lines.length - 1])
+    expect(captureEntry.tls).toEqual(tls)
+    expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+  })
+
+  it('records a fail-soft TLS error marker without failing the capture (#123)', async () => {
+    const tls = {
+      url: 'https://example.com',
+      refetchedAt: '2026-04-05T12:00:05.000Z',
+      error: 'connect ECONNREFUSED'
+    }
+    const fetchTlsCertChain = vi.fn(async () => tls)
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub, fetchTlsCertChain })
+    const { capture } = await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('mhtml-body')))
+
+    expect(getCapture(capture.id)?.tlsCertChain).toEqual(tls)
+    expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+  })
+
+  it('never fails the capture when the TLS re-fetcher itself throws (#123 fail-soft)', async () => {
+    const fetchTlsCertChain = vi.fn(async () => {
+      throw new Error('boom')
+    })
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub, fetchTlsCertChain })
+    const { capture } = await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('mhtml-body')))
+
+    expect(capture.id).toBeTruthy()
+    expect(getCapture(capture.id)?.tlsCertChain).toBeUndefined()
+    expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+  })
+
+  it('OMITS the tls field from the manifest body when no cert chain is recorded (#123 backward-compat)', async () => {
+    const { readFileSync } = await import('fs')
+    // Default mocked fetcher returns null → nothing to corroborate.
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture } = await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('mhtml-body')))
+
+    const manifestPath = join(tempDir, 'captures', caseId, 'manifest.jsonl')
+    const lines = readFileSync(manifestPath, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+    const captureEntry = JSON.parse(lines[lines.length - 1])
+    // OMITTED, not null — so cert-less canonical bodies (and chain hashes) are
+    // identical to pre-#123 entries.
+    expect('tls' in captureEntry).toBe(false)
+    expect(getCapture(capture.id)?.tlsCertChain).toBeUndefined()
     expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
   })
 
@@ -152,7 +338,7 @@ describe('createCaptureLifecycle.ingest', () => {
 
     expect(listCaptures(caseId)).toHaveLength(0)
     expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
-    expect(verifyManifestChain(join(tempDir, 'captures', caseId)).trustedTime).toBe('none')
+    expect(verifyManifestChain(join(tempDir, 'captures', caseId)).trustedTimes.size).toBe(0)
 
     // No mhtml file should exist for any capture id in the case dir.
     const caseDir = join(getStorageRoot(), caseId)
@@ -306,5 +492,55 @@ describe('createCaptureLifecycle.verify', () => {
     expect(result.trustedTime).toBe('rfc3161')
     expect(result.tsaName).toBe('tsa.example.com')
     expect(result.stampedAt).toBe('2026-05-30T09:05:00.000Z')
+  })
+
+  it('FAILS verify with a screenshot-specific reason when the on-disk .png is overwritten (#118 AC#5)', async () => {
+    const { writeFileSync } = await import('fs')
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('mhtml-body'), {
+        screenshot: Buffer.from('original-screenshot')
+      })
+    )
+
+    // Unchanged screenshot verifies.
+    expect((await lifecycle.verify(capture.id)).status).toBe('verified')
+
+    // Tamper the screenshot bytes on disk; MHTML is untouched.
+    writeFileSync(join(getStorageRoot(), capture.screenshotPath!), Buffer.from('tampered-bytes'))
+
+    const result = await lifecycle.verify(capture.id)
+    expect(result.status).toBe('tampered')
+    expect(result.reason).toMatch(/screenshot/i)
+  })
+
+  it('FAILS verify with a text-specific reason when the on-disk .txt is overwritten (#118 AC#5 mirror)', async () => {
+    const { writeFileSync } = await import('fs')
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('mhtml-body'), { textContent: 'original text' })
+    )
+
+    expect((await lifecycle.verify(capture.id)).status).toBe('verified')
+
+    const txtPath = join(getStorageRoot(), caseId, `${capture.id}.txt`)
+    writeFileSync(txtPath, 'tampered text', 'utf-8')
+
+    const result = await lifecycle.verify(capture.id)
+    expect(result.status).toBe('tampered')
+    expect(result.reason).toMatch(/text/i)
+  })
+
+  it('verifies a legacy capture with no recorded sidecar hashes (#118 grandfathering)', async () => {
+    // No screenshot, empty textContent → no recorded hashes → not sidecar-checked.
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('mhtml-body'), { textContent: '' })
+    )
+
+    const stored = getCapture(capture.id)
+    expect(stored?.screenshotHash).toBeUndefined()
+    expect(stored?.textHash).toBeUndefined()
+    expect((await lifecycle.verify(capture.id)).status).toBe('verified')
   })
 })

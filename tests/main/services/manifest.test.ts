@@ -5,7 +5,8 @@ import { tmpdir } from 'os'
 import { initManifest, getManifestHead } from '@main/services/manifest'
 import { appendManifestEntry, rollbackManifestEntry } from '@main/services/manifest'
 import { verifyManifestChain } from '@main/services/manifest'
-import { withDeletionEntry, ManifestRollback } from '@main/services/manifest'
+import { withDeletionEntry, withCaptureEntry, ManifestRollback } from '@main/services/manifest'
+import type { AppendResult } from '@main/services/manifest'
 import { createHash } from 'crypto'
 import { canonicalStringify } from '@shared/verify'
 import { MANIFEST_SCHEMA_VERSION } from '@shared/constants'
@@ -120,6 +121,86 @@ describe('manifest append', () => {
     const result = appendManifestEntry(tempDir, { ...baseEntry, captureId: 'cap-1' })
     expect(result.entryHash).toBe(expected)
   })
+
+  it('hashes screenshotHash/textHash into the body, schema-validates, and chain verifies (#118)', () => {
+    const screenshotHash = 'c'.repeat(64)
+    const textHash = 'd'.repeat(64)
+    appendManifestEntry(tempDir, { ...baseEntry, captureId: 'cap-1', screenshotHash, textHash })
+
+    const line = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim()
+    const parsed = JSON.parse(line)
+    expect(parsed.screenshotHash).toBe(screenshotHash)
+    expect(parsed.textHash).toBe(textHash)
+    // The body (sans signature + entryHash) hashes to entryHash including the new fields.
+    const body = { ...parsed }
+    const { entryHash } = parsed
+    delete body.signature
+    delete body.entryHash
+    expect(createHash('sha256').update(canonicalStringify(body)).digest('hex')).toBe(entryHash)
+    // Shape is accepted by the manifest schema.
+    expect(ManifestEntrySchema.safeParse(parsed).success).toBe(true)
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
+  })
+
+  it('OMITS the sidecar hashes when absent, leaving the legacy canonical body unchanged (#118)', () => {
+    appendManifestEntry(tempDir, { ...baseEntry, captureId: 'cap-1' })
+    const line = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim()
+    const parsed = JSON.parse(line)
+    expect('screenshotHash' in parsed).toBe(false)
+    expect('textHash' in parsed).toBe(false)
+  })
+
+  it('anchors the corroboration-only TLS cert chain, schema-validates, and the body reconstructs to entryHash (#123)', () => {
+    const tls = {
+      url: 'https://example.com',
+      refetchedAt: '2026-04-05T12:00:05.000Z',
+      chain: [
+        {
+          subject: 'CN=example.com',
+          issuer: 'CN=Example CA',
+          validFrom: 'Jan  1 00:00:00 2026 GMT',
+          validTo: 'Jan  1 00:00:00 2027 GMT',
+          fingerprint256: 'AA:BB:CC',
+          serialNumber: '01',
+          subjectAltNames: ['DNS:example.com', 'DNS:www.example.com']
+        }
+      ]
+    }
+    appendManifestEntry(tempDir, { ...baseEntry, captureId: 'cap-1', tls })
+
+    const line = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim()
+    const parsed = JSON.parse(line)
+    expect(parsed.tls).toEqual(tls)
+    // Body (sans signature + entryHash) reconstructs to entryHash including tls —
+    // the same reconstruction the verifier performs.
+    const body = { ...parsed }
+    const { entryHash } = parsed
+    delete body.signature
+    delete body.entryHash
+    expect(createHash('sha256').update(canonicalStringify(body)).digest('hex')).toBe(entryHash)
+    // Shape parses under the strict ManifestCaptureEntrySchema.
+    expect(ManifestEntrySchema.safeParse(parsed).success).toBe(true)
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
+  })
+
+  it('anchors a fail-soft TLS error marker and still verifies (#123)', () => {
+    const tls = {
+      url: 'https://example.com',
+      refetchedAt: '2026-04-05T12:00:05.000Z',
+      error: 'connect ECONNREFUSED'
+    }
+    appendManifestEntry(tempDir, { ...baseEntry, captureId: 'cap-1', tls })
+    const parsed = JSON.parse(readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim())
+    expect(parsed.tls).toEqual(tls)
+    expect(ManifestEntrySchema.safeParse(parsed).success).toBe(true)
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
+  })
+
+  it('OMITS the tls field when absent, leaving the legacy canonical body unchanged (#123)', () => {
+    appendManifestEntry(tempDir, { ...baseEntry, captureId: 'cap-1' })
+    const parsed = JSON.parse(readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim())
+    expect('tls' in parsed).toBe(false)
+  })
 })
 
 describe('manifest verifyManifestChain', () => {
@@ -158,7 +239,7 @@ describe('manifest verifyManifestChain', () => {
       timestamp: '2026-04-05T12:01:00.000Z',
       contentHash: 'b'.repeat(64)
     })
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
   })
 
   it('detects tampering by mutating an entry', () => {
@@ -256,7 +337,7 @@ describe('manifest x annotations forensic invariants', () => {
 
     const after = readFileSync(manifestPath, 'utf-8')
     expect(after).toBe(before)
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
   })
 })
 
@@ -290,7 +371,7 @@ describe('withDeletionEntry', () => {
     const entry = JSON.parse(lines[0])
     expect(entry.type).toBe('deletion')
     expect(entry.captureId).toBe('cap-1')
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
   })
 
   it('rolls the manifest back when fn throws ManifestRollback', async () => {
@@ -306,7 +387,7 @@ describe('withDeletionEntry', () => {
 
     const after = statSync(join(tempDir, 'manifest.jsonl')).size
     expect(after).toBe(before)
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
   })
 
   it('rolls the manifest back when fn throws an arbitrary error and rethrows', async () => {
@@ -318,7 +399,7 @@ describe('withDeletionEntry', () => {
 
     const raw = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
     expect(raw).toBe('')
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
   })
 
   it('rolls the manifest back when an async fn rejects', async () => {
@@ -331,7 +412,7 @@ describe('withDeletionEntry', () => {
 
     const raw = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
     expect(raw).toBe('')
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
   })
 
   it('commits the deletion entry when an async fn resolves', async () => {
@@ -345,7 +426,7 @@ describe('withDeletionEntry', () => {
     const lines = raw.trim().split('\n')
     expect(lines).toHaveLength(1)
     expect(JSON.parse(lines[0]).captureId).toBe('cap-1')
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
   })
 
   it('rollback preserves a prior committed entry untouched', async () => {
@@ -365,7 +446,7 @@ describe('withDeletionEntry', () => {
     const lines = after.trim().split('\n')
     expect(lines).toHaveLength(1)
     expect(JSON.parse(lines[0]).captureId).toBe('cap-keep')
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
   })
 
   it('next append after rollback links to the prior committed entry, not the rolled-back one', async () => {
@@ -389,12 +470,153 @@ describe('withDeletionEntry', () => {
 
     // A subsequent successful append should chain from the kept entry
     await withDeletionEntry(tempDir, { ...baseCtx, captureId: 'cap-next' }, () => undefined)
-    expect(verifyManifestChain(tempDir)).toEqual({ valid: true, trustedTime: 'none' })
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
 
     const lines = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim().split('\n')
     expect(lines).toHaveLength(2)
     expect(JSON.parse(lines[0]).captureId).toBe('cap-keep')
     expect(JSON.parse(lines[1]).captureId).toBe('cap-next')
+  })
+})
+
+describe('withCaptureEntry', () => {
+  let tempDir: string
+
+  const baseCtx = {
+    captureId: 'cap-1',
+    caseId: 'case-1',
+    url: 'https://example.com',
+    timestamp: '2026-04-05T12:00:00.000Z',
+    contentHash: 'a'.repeat(64),
+    sizeBytes: 1234,
+    operatorId: 'op-1',
+    operatorName: '',
+    toolVersion: '0.1.0'
+  }
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-capture-entry-'))
+  })
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  it('commits the capture entry and passes the AppendResult to fn', async () => {
+    let seen: AppendResult | undefined
+    const result = await withCaptureEntry(tempDir, baseCtx, (r) => {
+      seen = r
+      return 'ok' as const
+    })
+    expect(result).toBe('ok')
+    expect(seen?.index).toBe(0)
+    expect(seen?.prevHash).toBe('')
+    expect(seen?.entryHash).toMatch(/^[0-9a-f]{64}$/)
+
+    const lines = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim().split('\n')
+    expect(lines).toHaveLength(1)
+    const entry = JSON.parse(lines[0])
+    expect(entry.type).toBe('capture')
+    expect(entry.captureId).toBe('cap-1')
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
+  })
+
+  it('rolls the manifest back to its anchor when fn throws', async () => {
+    await expect(
+      withCaptureEntry(tempDir, baseCtx, () => {
+        throw new Error('db insert failed')
+      })
+    ).rejects.toThrow('db insert failed')
+
+    const raw = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
+    expect(raw).toBe('')
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
+  })
+
+  it('rolls the manifest back when an async fn rejects', async () => {
+    await expect(
+      withCaptureEntry(tempDir, baseCtx, async () => {
+        await new Promise((r) => setImmediate(r))
+        throw new Error('async db insert failed')
+      })
+    ).rejects.toThrow('async db insert failed')
+
+    const raw = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
+    expect(raw).toBe('')
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
+  })
+
+  it('rollback preserves a prior committed entry untouched (anchorBytes != 0)', async () => {
+    await withCaptureEntry(tempDir, { ...baseCtx, captureId: 'cap-keep' }, () => undefined)
+    const before = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
+
+    await expect(
+      withCaptureEntry(tempDir, { ...baseCtx, captureId: 'cap-fail' }, () => {
+        throw new Error('boom')
+      })
+    ).rejects.toThrow('boom')
+
+    const after = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
+    expect(after).toBe(before)
+    const lines = after.trim().split('\n')
+    expect(lines).toHaveLength(1)
+    expect(JSON.parse(lines[0]).captureId).toBe('cap-keep')
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
+  })
+
+  it('next append after rollback links to the prior committed entry', async () => {
+    await withCaptureEntry(tempDir, { ...baseCtx, captureId: 'cap-keep' }, () => undefined)
+    const headBefore = getManifestHead(tempDir)
+
+    await expect(
+      withCaptureEntry(tempDir, { ...baseCtx, captureId: 'cap-fail' }, () => {
+        throw new Error('boom')
+      })
+    ).rejects.toThrow('boom')
+
+    expect(getManifestHead(tempDir)).toEqual(headBefore)
+
+    await withCaptureEntry(tempDir, { ...baseCtx, captureId: 'cap-next' }, () => undefined)
+    const lines = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim().split('\n')
+    expect(lines).toHaveLength(2)
+    expect(JSON.parse(lines[0]).captureId).toBe('cap-keep')
+    expect(JSON.parse(lines[1]).captureId).toBe('cap-next')
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
+  })
+
+  it('rollback with anchorBytes=0 empties the manifest', async () => {
+    await expect(
+      withCaptureEntry(tempDir, baseCtx, () => {
+        throw new Error('boom')
+      })
+    ).rejects.toThrow('boom')
+    expect(statSync(join(tempDir, 'manifest.jsonl')).size).toBe(0)
+    expect(getManifestHead(tempDir)).toEqual({ prevHash: '', nextIndex: 0 })
+  })
+
+  it('produces a byte-identical entry to the equivalent appendManifestEntry call', async () => {
+    // AC#5: the canonical body / entryHash format must not change. Compare the
+    // entry the seam writes against a direct appendManifestEntry call.
+    const direct = mkdtempSync(join(tmpdir(), 'birdbrain-capture-entry-direct-'))
+    try {
+      initManifest(direct)
+      const expected = appendManifestEntry(direct, { type: 'capture', ...baseCtx })
+
+      const viaSeam = await withCaptureEntry(tempDir, baseCtx, (r) => r)
+      expect(viaSeam.entryHash).toBe(expected.entryHash)
+
+      const seamLine = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim()
+      const directLine = readFileSync(join(direct, 'manifest.jsonl'), 'utf-8').trim()
+      // Signatures are non-deterministic; compare everything except the signature.
+      const strip = (l: string) => {
+        const { signature: _s, ...rest } = JSON.parse(l)
+        void _s
+        return rest
+      }
+      expect(strip(seamLine)).toEqual(strip(directLine))
+    } finally {
+      rmSync(direct, { recursive: true, force: true })
+    }
   })
 })
 
@@ -447,11 +669,12 @@ describe('manifest schema v2 + grandfathering', () => {
     })
     const result = verifyManifestChain(tempDir)
     expect(result.valid).toBe(true)
-    expect(result.trustedTime).toBe('none')
+    // A grandfathered v1 capture is not eligible — absent from the index → none.
+    expect(result.trustedTimes.get('a'.repeat(64))).toBeUndefined()
   })
 
-  it('ChainVerifyResult defaults trustedTime to none', () => {
-    expect(verifyManifestChain(tempDir).trustedTime).toBe('none')
+  it('ChainVerifyResult resolves an empty trusted-time index for an empty manifest', () => {
+    expect(verifyManifestChain(tempDir).trustedTimes.size).toBe(0)
   })
 
   it('passes a mixed v1/v2 chain through verifyManifestChain', () => {
@@ -620,6 +843,34 @@ describe('manifest schema v2 + grandfathering', () => {
     expect(ManifestEntrySchema.safeParse({ ...base, schemaVersion: 99 }).success).toBe(false)
     expect(ManifestEntrySchema.safeParse({ ...base, schemaVersion: 1.5 }).success).toBe(false)
   })
+
+  it('accepts a capture entry with headers under the strict schema (#119)', () => {
+    const base = {
+      type: 'capture' as const,
+      captureId: 'cap',
+      caseId: 'case-1',
+      url: 'https://a',
+      timestamp: '2026-01-01T00:00:00.000Z',
+      contentHash: 'a'.repeat(64),
+      sizeBytes: 1,
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0',
+      index: 0,
+      prevHash: '',
+      schemaVersion: 2,
+      entryHash: 'e'.repeat(64)
+    }
+    const withHeaders = { ...base, headers: { server: 'nginx', 'content-type': 'text/html' } }
+    expect(ManifestEntrySchema.safeParse(withHeaders).success).toBe(true)
+
+    // Non-string header values are rejected by the strict record schema.
+    const badHeaders = { ...base, headers: { server: 123 } }
+    expect(ManifestEntrySchema.safeParse(badHeaders).success).toBe(false)
+
+    // Omitting headers still parses (legacy/headerless entries).
+    expect(ManifestEntrySchema.safeParse(base).success).toBe(true)
+  })
 })
 
 // Existing tests exercise rollback only through the `withDeletionEntry`
@@ -783,5 +1034,117 @@ describe('manifest signing enforcement (G2)', () => {
     expect(result.valid).toBe(false)
     expect(result.brokenAt).toBe(0)
     expect(result.reason).toBe('Invalid signature')
+  })
+})
+
+describe('manifest export audit entry (#124)', () => {
+  let tempDir: string
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-export-entry-'))
+    initManifest(tempDir)
+  })
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  const exportEntry = {
+    type: 'export' as const,
+    caseId: 'case-1',
+    timestamp: '2026-06-01T12:00:00.000Z',
+    operatorId: 'install-123',
+    operatorName: 'Casey Operator',
+    toolVersion: '0.4.0',
+    packageHash: 'd'.repeat(64),
+    verificationResult: {
+      overallValid: true,
+      captureCount: 2,
+      verifiedCount: 2,
+      tamperedCount: 0,
+      missingCount: 0
+    }
+  }
+
+  const readEntry = (lineIdx: number): Record<string, unknown> => {
+    const lines = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim())
+    return JSON.parse(lines[lineIdx])
+  }
+
+  it('round-trips an export variant and links to the prior head', () => {
+    appendManifestEntry(tempDir, {
+      type: 'capture',
+      captureId: 'cap-0',
+      caseId: 'case-1',
+      url: 'https://example.com/0',
+      timestamp: '2026-06-01T11:00:00.000Z',
+      contentHash: 'a'.repeat(64),
+      sizeBytes: 100,
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.4.0'
+    })
+    const head = getManifestHead(tempDir)
+    const result = appendManifestEntry(tempDir, exportEntry)
+
+    const entry = readEntry(1)
+    expect(entry.type).toBe('export')
+    expect(entry.index).toBe(head.nextIndex)
+    expect(entry.prevHash).toBe(head.prevHash)
+    expect(entry.packageHash).toBe(exportEntry.packageHash)
+    expect(entry.verificationResult).toEqual(exportEntry.verificationResult)
+    expect(entry.schemaVersion).toBe(MANIFEST_SCHEMA_VERSION)
+    expect(typeof entry.signature).toBe('string')
+    expect(verifyEntrySignature(result.entryHash, entry.signature as string)).toBe(true)
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
+  })
+
+  it('verifies a chain ending in an export entry', () => {
+    appendManifestEntry(tempDir, exportEntry)
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
+  })
+
+  it('fails verification when the export packageHash is tampered (Entry hash mismatch)', () => {
+    appendManifestEntry(tempDir, exportEntry)
+    const entry = readEntry(0)
+    entry.packageHash = 'e'.repeat(64)
+    writeFileSync(join(tempDir, 'manifest.jsonl'), JSON.stringify(entry) + '\n')
+    const result = verifyManifestChain(tempDir)
+    expect(result.valid).toBe(false)
+    expect(result.brokenAt).toBe(0)
+    expect(result.reason).toBe('Entry hash mismatch')
+  })
+
+  it('fails verification when the export signature is tampered (Invalid signature)', () => {
+    appendManifestEntry(tempDir, exportEntry)
+    const entry = readEntry(0)
+    entry.signature = Buffer.from('not a real signature').toString('base64')
+    writeFileSync(join(tempDir, 'manifest.jsonl'), JSON.stringify(entry) + '\n')
+    const result = verifyManifestChain(tempDir)
+    expect(result.valid).toBe(false)
+    expect(result.brokenAt).toBe(0)
+    expect(result.reason).toBe('Invalid signature')
+  })
+
+  it('schema accepts a well-formed export entry', () => {
+    appendManifestEntry(tempDir, exportEntry)
+    const entry = readEntry(0)
+    expect(ManifestEntrySchema.safeParse(entry).success).toBe(true)
+  })
+
+  it('schema rejects an export entry missing packageHash', () => {
+    appendManifestEntry(tempDir, exportEntry)
+    const entry = readEntry(0)
+    delete entry.packageHash
+    expect(ManifestEntrySchema.safeParse(entry).success).toBe(false)
+  })
+
+  it('schema rejects an export entry with an unknown extra key (.strict)', () => {
+    appendManifestEntry(tempDir, exportEntry)
+    const entry = readEntry(0)
+    entry.surprise = 'nope'
+    expect(ManifestEntrySchema.safeParse(entry).success).toBe(false)
   })
 })

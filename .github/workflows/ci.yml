@@ -63,7 +63,15 @@ jobs:
 
       - run: pnpm install
 
+      # The canonical RFC 3161 proof (G2) shells out to `openssl ts -verify`.
+      # Fail loudly here if openssl is missing so the keystone test can never
+      # turn green-but-skipped; BIRDBRAIN_REQUIRE_OPENSSL=1 enforces the same in-test.
+      - name: Verify openssl is available
+        run: openssl version
+
       - run: pnpm test
+        env:
+          BIRDBRAIN_REQUIRE_OPENSSL: '1'
 
   build:
     runs-on: ubuntu-latest

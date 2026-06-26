@@ -18,6 +18,10 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 # Enable pnpm (birdbrain's package manager) via corepack while still root.
 RUN corepack enable
 
+# Don't prompt to download a corepack-managed pnpm at runtime — the sandbox has
+# no TTY, so the prompt would hang/fail the onSandboxReady `pnpm install` hook.
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+
 # Build-args for UID/GID alignment: sandcastle docker build-image
 # defaults these to the host user's UID/GID so image-built files
 # and bind-mounted files share an owner without runtime chown.
@@ -27,6 +31,11 @@ ARG AGENT_GID=1000
 # Rename the base image's "node" user to "agent" and align UID/GID.
 RUN groupmod -o -g $AGENT_GID node && usermod -o -u $AGENT_UID -g $AGENT_GID -d /home/agent -m -l agent node
 USER ${AGENT_UID}:${AGENT_GID}
+
+# Pre-download the pinned pnpm into the agent's corepack cache so the
+# onSandboxReady `pnpm install` hook never downloads at runtime. Keep this
+# version in sync with package.json's "packageManager" field.
+RUN corepack prepare pnpm@10.28.2 --activate
 
 # Install Claude Code CLI
 RUN curl -fsSL https://claude.ai/install.sh | bash

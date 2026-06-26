@@ -150,6 +150,27 @@ describe('verifyEvidencePackage', () => {
     expect(existsSync(join(pkgDir, 'VERIFY.md'))).toBe(true)
   })
 
+  it('reports the resolved trusted-time axis (rfc3161 + TSA identity) in the timestamp check', () => {
+    const result = verifyEvidencePackage(pkgDir)
+    const ts = result.checks.find((c) => c.name === `capture ${captureId} timestamp`)
+    expect(ts?.status).toBe('pass')
+    expect(ts?.reason).toContain('rfc3161')
+    expect(ts?.reason).toContain('tsa.example.com')
+  })
+
+  it('reports a pending axis when an eligible capture has no timestamp token', () => {
+    // Drop the timestamp token from the signed entry: the capture is still a v2
+    // capture (eligible) but now unstamped → pending, reported as a SKIP.
+    const p = join(pkgDir, 'manifest.jsonl')
+    const lines = readFileSync(p, 'utf-8').split('\n').filter((l) => l.trim())
+    const kept = lines.filter((l) => JSON.parse(l).type !== 'timestamp')
+    writeFileSync(p, kept.join('\n') + '\n')
+    const result = verifyEvidencePackage(pkgDir)
+    const ts = result.checks.find((c) => c.name === `capture ${captureId} timestamp`)
+    expect(ts?.status).toBe('skip')
+    expect(ts?.reason).toContain('pending')
+  })
+
   it('FAILs with content-binding reason when an mhtml byte is mutated', () => {
     const p = join(pkgDir, 'pages', `${captureId}.mhtml`)
     const bytes = readFileSync(p)

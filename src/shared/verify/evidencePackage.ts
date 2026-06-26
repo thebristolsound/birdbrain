@@ -66,6 +66,16 @@ function parseManifestEntries(jsonl: string): ManifestEntry[] {
   return out
 }
 
+/**
+ * Verifies the structural integrity of an evidence package.
+ *
+ * Validates the manifest chain as the cryptographic root of trust, binds capture
+ * content and timestamps to the verified manifest, and reconciles the evidence.json
+ * index against verified entries. All checks are performed regardless of failures.
+ *
+ * @param dir - Path to the evidence package directory
+ * @returns A `PackageVerifyResult` with an overall pass status and individual check results
+ */
 export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   const checks: PackageCheck[] = []
   const add = (name: string, status: CheckStatus, reason?: string): void => {
@@ -175,12 +185,17 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
     // Timestamp — STRUCTURAL only: locate the .tst (untrusted name), byte-bind
     // it to the SIGNED `tsaToken`, and check the token's imprint == contentHash.
     // Canonical TSA verification is the runbook's `openssl ts -verify`.
+    // The trusted-time axis (rfc3161/pending/none) is resolved by verify-core
+    // from the same verified entries (#161) and surfaced in the check reason.
     const tsName = `capture ${cap.captureId} timestamp`
+    const axis = chain.trustedTimes.get(cap.contentHash)
     const tsEntry = timestampEntries.find(
       (t) => t.captureContentHash === cap.contentHash && typeof t.tsaToken === 'string'
     )
     if (!tsEntry || typeof tsEntry.tsaToken !== 'string') {
-      add(tsName, 'skip')
+      // No token to byte-bind. Report the axis: an eligible v2 capture is
+      // 'pending'; a legacy/grandfathered one is 'none'. Either way not a FAIL.
+      add(tsName, 'skip', `${axis?.trustedTime ?? 'none'} — no timestamp token in the manifest`)
     } else {
       const signedToken = Buffer.from(tsEntry.tsaToken, 'base64')
       const tstPath = locateTimestampFile(dir, cap.captureId, evidence, signedToken)
@@ -208,7 +223,13 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
               `capture ${cap.captureId}: timestamp imprint does not bind this capture`
             )
           } else {
-            add(tsName, 'pass', 'structural (imprint + bytes) — run `openssl ts -verify` for TSA authenticity')
+            const who = axis?.tsaName ? ` per ${axis.tsaName}` : ''
+            add(
+              tsName,
+              'pass',
+              `${axis?.trustedTime ?? 'none'}${who} — structural (imprint + bytes); ` +
+                'run `openssl ts -verify` for TSA authenticity'
+            )
           }
         }
       }

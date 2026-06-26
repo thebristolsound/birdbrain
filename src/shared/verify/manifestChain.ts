@@ -20,7 +20,7 @@ export interface ChainVerifyResult {
 // entryHash, checks linkage, and enforces v2+ signatures against the supplied
 // public key. Pure verify-core — the caller reads the file (the app's
 // `verifyManifestChain(caseDir)` wrapper, or the standalone package verifier)
-// and supplies the PEM; no module-global key, no fs. Returns the zero-based
+// and supplies the PEM; no module-global key, no fs.
 /**
  * Verifies a manifest hash chain from JSONL text.
  *

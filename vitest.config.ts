@@ -36,9 +36,12 @@ export default defineConfig({
       // Coverage is a barbell: the forensic core is locked high, the
       // contract/data layers are held in their target band, and the global
       // floor only ratchets (most remaining uncovered code is presentational
-      // .tsx exercised by E2E). Per-glob thresholds are aggregate over the
-      // matched files. Numbers sit a few points below the measured values so
-      // the gate catches regressions without breaking on trivial edits.
+      // .tsx exercised by E2E). With perFile unset (the default), each glob
+      // threshold is checked against the AGGREGATE of its matched files, so
+      // single-file globs are used for the contract layer to keep each file
+      // gated on its own merit. Numbers sit a few points below the measured
+      // values so the gate catches regressions without breaking on trivial
+      // edits.
       thresholds: {
         // Global ratchet — prevents backslide, does not chase a single number.
         lines: 38,
@@ -59,12 +62,19 @@ export default defineConfig({
           functions: 90,
           branches: 70
         },
-        // IPC contract layer — target band 70-80%, measured ~90%.
-        'src/main/ipc*.ts': {
-          lines: 82,
-          statements: 82,
+        // IPC contract layer — gated per file (measured: handlers ~92%,
+        // wrap ~78%) so neither can backslide behind the other's coverage.
+        'src/main/ipcHandlers.ts': {
+          lines: 88,
+          statements: 88,
           functions: 90,
           branches: 80
+        },
+        'src/main/ipcWrap.ts': {
+          lines: 75,
+          statements: 75,
+          functions: 90,
+          branches: 78
         },
         // React Query data layer — query keys + invalidation correctness.
         'src/renderer/lib/queries.ts': {

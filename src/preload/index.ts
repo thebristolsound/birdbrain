@@ -22,7 +22,8 @@ import type {
   AnalyzeCaptureParams,
   SaveAnnotationsParams,
   UpsertAnnotationPinParams,
-  SelectorRematchedEvent
+  SelectorRematchedEvent,
+  DeepLinkTarget
 } from '@shared/ipc'
 import type {
   Case,
@@ -292,6 +293,12 @@ const birdbrain = {
     const handler = (_: unknown, event: SelectorRematchedEvent) => callback(event)
     ipcRenderer.on(IPC_CHANNELS.SELECTOR_REMATCHED, handler)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.SELECTOR_REMATCHED, handler)
+  },
+
+  onDeepLinkNavigate: (callback: (target: DeepLinkTarget) => void) => {
+    const handler = (_: unknown, target: DeepLinkTarget) => callback(target)
+    ipcRenderer.on(IPC_CHANNELS.DEEP_LINK_NAVIGATE, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.DEEP_LINK_NAVIGATE, handler)
   },
 
   testPipeline: (): Promise<{ success: boolean; durationMs: number; error?: string }> =>

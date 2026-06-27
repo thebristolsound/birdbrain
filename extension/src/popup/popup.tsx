@@ -9,6 +9,13 @@ interface CaseInfo {
   captureCount: number
 }
 
+// Hand off to the desktop app via its registered birdbrain:// scheme. Opening a
+// tab lets Chrome surface the external-protocol prompt and launch/focus the app;
+// the app routes the renderer based on the host segment (open | settings).
+function openInApp(target: 'open' | 'settings') {
+  chrome.tabs.create({ url: `birdbrain://${target}` })
+}
+
 // ---------- Header ----------
 
 function Header() {
@@ -230,7 +237,7 @@ function Footer({
         )}
 
         <button
-          onClick={() => chrome.tabs.create({ url: 'http://localhost:19845' })}
+          onClick={() => openInApp('settings')}
           className="w-10 h-10 flex items-center justify-center rounded-xl active:scale-[0.98] transition-colors bg-white/[0.04] border border-d-border text-d-text-secondary hover:bg-white/[0.08] hover:text-white"
           title="Settings"
         >
@@ -251,7 +258,7 @@ function Footer({
 
       <div className="mt-3 text-center">
         <button
-          onClick={() => chrome.tabs.create({ url: 'http://localhost:19845' })}
+          onClick={() => openInApp('open')}
           className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 hover:text-indigo-300 transition-colors"
         >
           Open Full Workspace

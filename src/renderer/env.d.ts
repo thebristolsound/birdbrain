@@ -46,7 +46,8 @@ import type {
   AnalyzeCaptureParams,
   SaveAnnotationsParams,
   UpsertAnnotationPinParams,
-  SelectorRematchedEvent
+  SelectorRematchedEvent,
+  DeepLinkTarget
 } from '@shared/ipc'
 
 interface BirdbrainAPI {
@@ -162,6 +163,7 @@ interface BirdbrainAPI {
   onExtensionConnection(callback: (data: { connected: boolean }) => void): () => void
   onCaptureActivity(callback: (event: CaptureEvent) => void): () => void
   onSelectorRematched(callback: (event: SelectorRematchedEvent) => void): () => void
+  onDeepLinkNavigate(callback: (target: DeepLinkTarget) => void): () => void
   testPipeline(): Promise<{ success: boolean; durationMs: number; error?: string }>
   testHttp(): Promise<{ success: boolean; durationMs: number; error?: string }>
   extractedData: {

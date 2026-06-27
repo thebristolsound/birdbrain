@@ -46,12 +46,18 @@ export function useServerStatus() {
       queryClient.invalidateQueries({ queryKey: queryKeys.selectorMatchingCapturesAll(caseId) })
     })
 
+    // Deep links (birdbrain://) from the extension popup route the window here.
+    const unsubDeepLink = window.birdbrain.onDeepLinkNavigate((target) => {
+      router.navigate({ to: target === 'settings' ? '/settings' : '/' })
+    })
+
     return () => {
       unsubExtension()
       unsubSession()
       unsubCapture()
       unsubNewCapture()
       unsubSelectorRematched()
+      unsubDeepLink()
     }
   }, [])
 }

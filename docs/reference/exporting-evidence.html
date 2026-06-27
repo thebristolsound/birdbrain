@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Exporting Evidence — Birdbrain</title>
+<style>
+  :root{
+    --ink:#1a1a1a;--muted:#555;--faint:#777;--rule:#d8d8d8;--rule-soft:#ececec;
+    --accent:#b8860b;--accent-ink:#7a5a08;--bg:#fff;--code-bg:#f6f6f4;
+    --ok:#1a7f37;--warn:#b8860b;--bad:#b00020;--link:#0b5cad;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --serif:Georgia,"Times New Roman",Cambria,serif;
+    --mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{font-family:var(--serif);color:var(--ink);background:var(--bg);line-height:1.62;margin:0}
+  .wrap{max-width:54rem;margin:0 auto;padding:3rem 1.5rem 5rem}
+  header.doc{border-bottom:3px solid var(--accent);padding-bottom:1.25rem;margin-bottom:1.5rem}
+  .eyebrow{font-family:var(--sans);text-transform:uppercase;letter-spacing:.08em;font-size:.72rem;color:var(--accent-ink);font-weight:700;margin:0 0 .4rem}
+  h1{font-family:var(--sans);font-size:2rem;line-height:1.15;margin:.1rem 0 .5rem;font-weight:700;letter-spacing:-.01em}
+  .lede{font-size:1.06rem;color:var(--muted);margin:.25rem 0 0}
+  nav.docnav{font-family:var(--sans);font-size:.82rem;margin:1rem 0 0;display:flex;flex-wrap:wrap;gap:.35rem .9rem}
+  nav.docnav a{color:var(--link);text-decoration:none}
+  h2{font-family:var(--sans);font-size:1.4rem;font-weight:700;margin:2.4rem 0 .6rem;padding-bottom:.3rem;border-bottom:1px solid var(--rule);letter-spacing:-.01em}
+  h3{font-family:var(--sans);font-size:1.08rem;font-weight:700;margin:1.6rem 0 .4rem}
+  h4{font-family:var(--sans);font-size:.95rem;font-weight:700;margin:1.2rem 0 .3rem;color:var(--muted)}
+  p{margin:.6rem 0}
+  a{color:var(--link)}
+  strong{font-weight:700}
+  code{font-family:var(--mono);font-size:.86em;background:var(--code-bg);border:1px solid var(--rule-soft);border-radius:3px;padding:.05em .35em}
+  pre{font-family:var(--mono);font-size:.82rem;line-height:1.5;background:var(--code-bg);border:1px solid var(--rule);border-radius:6px;padding:1rem 1.1rem;overflow-x:auto;margin:1rem 0}
+  pre code{background:none;border:none;padding:0;font-size:inherit}
+  table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.9rem}
+  th,td{text-align:left;vertical-align:top;padding:.5rem .6rem;border-bottom:1px solid var(--rule-soft)}
+  thead th{font-family:var(--sans);font-size:.74rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);border-bottom:2px solid var(--rule)}
+  tbody tr:nth-child(even){background:#fafafa}
+  ul,ol{margin:.6rem 0;padding-left:1.4rem}
+  li{margin:.3rem 0}
+  ol.steps{counter-reset:step;list-style:none;padding-left:0;margin:1.2rem 0}
+  ol.steps>li{position:relative;padding-left:2.6rem;margin:1rem 0}
+  ol.steps>li::before{counter-increment:step;content:counter(step);position:absolute;left:0;top:0;width:1.8rem;height:1.8rem;background:var(--accent);color:#fff;font-family:var(--sans);font-weight:700;font-size:.85rem;border-radius:50%;display:flex;align-items:center;justify-content:center}
+  .callout{margin:1.2rem 0;padding:.85rem 1.1rem;border-left:4px solid var(--accent);background:#fffbef;border-radius:0 6px 6px 0}
+  .callout.note{border-left-color:var(--link);background:#f1f7fd}
+  .callout.danger{border-left-color:var(--bad);background:#fdf3f4}
+  .callout p:first-child{margin-top:0}.callout p:last-child{margin-bottom:0}
+  .callout .tag{font-family:var(--sans);font-weight:700;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:.25rem;color:var(--accent-ink)}
+  .callout.note .tag{color:var(--link)}.callout.danger .tag{color:var(--bad)}
+  footer.doc{margin-top:3rem;padding-top:1.2rem;border-top:1px solid var(--rule);font-family:var(--sans);font-size:.8rem;color:var(--faint)}
+  hr{border:none;border-top:1px solid var(--rule);margin:2.4rem 0}
+  @media print{
+    body{font-size:11pt}.wrap{max-width:none;padding:0}nav.docnav{display:none}
+    h2,h3{break-after:avoid}table,pre,.callout,ol.steps>li{break-inside:avoid}a{color:var(--ink);text-decoration:none}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+  <p class="eyebrow">Birdbrain · Operator How-To</p>
+  <h1>Exporting Evidence</h1>
+  <p class="lede">How to produce a self-contained, independently-verifiable evidence package from a case.</p>
+  <nav class="docnav">
+    <span>In this set:</span>
+    <a href="court-admissibility.html">Overview</a>
+    <a href="exporting-evidence.html"><strong>Exporting evidence</strong></a>
+    <a href="verifying-evidence.html">Verifying evidence</a>
+  </nav>
+</header>
+
+<p>Export packages a case into a single <strong>evidence package</strong> — a self-contained
+ZIP that bundles the captured content, the signed audit manifest, the trusted-timestamp
+tokens, the public verification key, a human-readable report, a certification scaffold, and the
+by-hand verification runbook. The package is the artifact you hand to opposing counsel, a
+court, or an examiner; they can re-verify it with <strong>no Birdbrain installation</strong>.
+For the full picture of what each piece proves, read the
+<a href="court-admissibility.html">Court Admissibility overview</a>.</p>
+
+<h2>1. Before you export</h2>
+
+<h3>1.1 Prerequisites</h3>
+<table>
+  <thead><tr><th>Requirement</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Operator name configured</strong> (Settings → Operator)</td><td><strong>Required.</strong> Export fails without it — the operator identity is recorded in the manifest entries and the certification. Set your real name, and ideally your role and organization.</td></tr>
+    <tr><td><strong>A Time-Stamping Authority configured</strong></td><td>Defaults to DigiCert (<code>http://timestamp.digicert.com</code>). Change it only if your engagement requires a specific TSA.</td></tr>
+    <tr><td><strong>At least one capture in the case</strong></td><td>An export of an empty case produces a package, but with nothing to verify.</td></tr>
+  </tbody>
+</table>
+
+<h3>1.2 Let captures finish timestamping</h3>
+<p>Trusted timestamping is asynchronous and best-effort. A freshly captured page is
+<code>pending</code> until a background worker obtains its RFC 3161 token (on capture, on app
+start, and every 5 minutes). If trusted time matters for your matter, give captures time to
+move from <code>pending</code> to <code>rfc3161</code> — and confirm a network connection to
+the TSA — before exporting.</p>
+<div class="callout note">
+  <span class="tag">The export is never blocked on trusted time</span>
+  <p>The export dialog runs a <strong>preflight</strong> and shows a warning like "<em>N captures
+  will export without RFC 3161 trusted time (X pending, Y none). Export will continue.</em>" The
+  package still builds; unstamped captures are simply recorded as <code>pending</code> or
+  <code>none</code>, and the report and certification say so explicitly. Exporting before
+  stamping completes is a choice, not an error.</p>
+</div>
+
+<h2>2. Producing the package</h2>
+
+<ol class="steps">
+  <li><strong>Open the case</strong> you want to export and choose <strong>Export Case</strong>.</li>
+  <li><strong>Select what to include.</strong> Toggle the content sections (see §2.1) and, if
+  the case has annotations, whether to burn them into the report screenshots.</li>
+  <li><strong>Enter the investigator name.</strong> This labels the report cover (it defaults to
+  "Investigator" if left blank). It is distinct from the operator identity recorded in the
+  manifest.</li>
+  <li><strong>Review the trusted-time warning</strong>, if shown, and decide whether to proceed
+  now or wait for pending captures to stamp.</li>
+  <li><strong>Click Export</strong> and choose a save location. Birdbrain builds the ZIP, then
+  appends a signed <em>export</em> record to the case's live audit manifest.</li>
+</ol>
+
+<h3 id="includes">2.1 What the include options do</h3>
+<table>
+  <thead><tr><th>Option</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Captures</strong></td><td>Adds the capture log table (timestamp, title, URL, hash) to <code>report.html</code>. The captured <code>.mhtml</code> files are bundled regardless.</td></tr>
+    <tr><td><strong>Screenshots</strong></td><td>Embeds screenshots in <code>report.html</code> <em>and</em> ships each raw screenshot as a content-addressed, chain-bound <code>screenshots/{sha256}.png</code> artifact.</td></tr>
+    <tr><td><strong>Audit trail</strong></td><td>Re-verifies every capture's integrity at export time (streams the MHTML, recomputes SHA-256, re-checks the manifest chain and sidecar hashes) and adds the integrity &amp; trusted-time table to the report. The result is also recorded in the signed export entry (see §3.2).</td></tr>
+    <tr><td><strong>Burn annotations</strong></td><td>Renders pin annotations onto the report's screenshots for readability. This affects <code>report.html</code> only — the <strong>raw, chain-bound</strong> screenshot artifact is always the unmodified capture-time bytes.</td></tr>
+  </tbody>
+</table>
+
+<div class="callout">
+  <span class="tag">Best practice</span>
+  <p>For an evidentiary export, enable <strong>Audit trail</strong> so the package carries a
+  fresh, signed integrity verdict for every capture, and enable <strong>Screenshots</strong> so
+  the visual record is both shown and independently hash-bound.</p>
+</div>
+
+<h2>3. What is in the package</h2>
+
+<h3>3.1 Package contents</h3>
+<p>The export is a single <strong>stored (uncompressed) ZIP</strong>:</p>
+<table>
+  <thead><tr><th>File</th><th>Role</th></tr></thead>
+  <tbody>
+    <tr><td><code>manifest.jsonl</code></td><td>The signed, hash-linked audit chain — <strong>the root of trust</strong></td></tr>
+    <tr><td><code>signing-public-key.pem</code></td><td>RSA public key that verifies every entry signature</td></tr>
+    <tr><td><code>tsa-ca-chain.pem</code></td><td>TSA root + each token's embedded certificate chain</td></tr>
+    <tr><td><code>pages/{captureId}.mhtml</code></td><td>Captured content (hashed as <code>contentHash</code>)</td></tr>
+    <tr><td><code>screenshots/{sha256}.png</code></td><td>Raw screenshots, content-addressed (hashed as <code>screenshotHash</code>)</td></tr>
+    <tr><td><code>timestamps/{captureId}.tst</code></td><td>RFC 3161 tokens (DER), for stamped captures</td></tr>
+    <tr><td><code>report.html</code></td><td>Human-readable case report</td></tr>
+    <tr><td><code>certification.html</code></td><td>FRE 902(13)/(14) supporting certification scaffold</td></tr>
+    <tr><td><code>evidence.json</code></td><td><strong>Unsigned</strong> convenience index — reconciled against the chain, not trusted on its own</td></tr>
+    <tr><td><code>VERIFY.md</code></td><td>Step-by-step by-hand verification runbook (stock tools, zero Birdbrain code)</td></tr>
+  </tbody>
+</table>
+
+<h3 id="exportentry">3.2 Exports are themselves part of the audit trail</h3>
+<p>After the ZIP is written, Birdbrain appends a signed <code>type: 'export'</code> entry to the
+<em>live</em> case manifest. It records:</p>
+<ul>
+  <li><strong><code>packageHash</code></strong> — <code>SHA-256(canonicalStringify(sortedArtifacts))</code>,
+  committing to every packaged file's path, SHA-256, and size. It does not hash the final
+  <code>.zip</code> or <code>evidence.json</code> (that would be circular).</li>
+  <li><strong><code>verificationResult</code></strong> — the integrity tally from the audit-trail
+  pass (total, verified, tampered, missing counts, and an <code>overallValid</code> flag that is
+  true only when every capture verified).</li>
+</ul>
+<p>This makes the act of producing evidence packages tamper-evident in the same chain as the
+captures. As a result, the <code>manifest.jsonl</code> <em>inside</em> the package is exactly
+one entry behind the live case manifest — by design, because <code>packageHash</code> is
+computed before its own export entry exists.</p>
+
+<div class="callout note">
+  <span class="tag">Failure handling</span>
+  <p>If the export entry cannot be appended (e.g. the signing key is unavailable), Birdbrain
+  deletes the just-written ZIP rather than leave a package on disk without its corresponding,
+  signed audit record.</p>
+</div>
+
+<h2>4. Operator responsibilities for admissibility</h2>
+<p>The tool produces a verifiable package; a defensible record also depends on the operator:</p>
+<ul>
+  <li><strong>Record a truthful operator identity.</strong> Name, role, and organization are
+  self-asserted and flow into the certification; Birdbrain does not authenticate them.</li>
+  <li><strong>Prefer stamped captures.</strong> Export after captures reach <code>rfc3161</code>
+  where trusted time matters; the preflight tells you how many are <code>pending</code> or
+  <code>none</code>.</li>
+  <li><strong>Preserve the original case.</strong> The export is a derived copy. Keep the working
+  case directory and its live manifest intact.</li>
+  <li><strong>Have counsel complete the certification.</strong> <code>certification.html</code>
+  carries a <code>[LEGAL WORDING TO BE SUPPLIED BY COUNSEL]</code> banner; the operative sworn
+  language for your jurisdiction and rule must be added by an attorney.</li>
+  <li><strong>Deliver the package unmodified.</strong> Hand over the whole <code>.zip</code>. The
+  recipient unzips it and verifies with the bundled <code>VERIFY.md</code> or the standalone
+  binary — see <a href="verifying-evidence.html">Verifying evidence</a>.</li>
+</ul>
+
+<hr>
+
+<p><strong>Next:</strong> <a href="verifying-evidence.html">Verifying evidence</a> — how the
+recipient re-verifies the package, by binary and by hand. ·
+<strong>Background:</strong> <a href="court-admissibility.html">Court Admissibility overview</a>.</p>
+
+<footer class="doc">
+  Birdbrain — open-source web investigation &amp; capture tool. Procedures describe the export
+  pipeline as implemented; see the linked overview for the evidentiary model and its limits.
+</footer>
+
+</div>
+</body>
+</html>

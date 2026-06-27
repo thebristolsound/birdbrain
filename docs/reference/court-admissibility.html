@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Court Admissibility — Birdbrain Chain of Custody, Integrity &amp; Trusted Time</title>
+<style>
+  :root{
+    --ink:#1a1a1a;--muted:#555;--faint:#777;--rule:#d8d8d8;--rule-soft:#ececec;
+    --accent:#b8860b;--accent-ink:#7a5a08;--bg:#fff;--code-bg:#f6f6f4;
+    --ok:#1a7f37;--warn:#b8860b;--bad:#b00020;--link:#0b5cad;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --serif:Georgia,"Times New Roman",Cambria,serif;
+    --mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{font-family:var(--serif);color:var(--ink);background:var(--bg);line-height:1.62;margin:0}
+  .wrap{max-width:54rem;margin:0 auto;padding:3rem 1.5rem 5rem}
+  header.doc{border-bottom:3px solid var(--accent);padding-bottom:1.25rem;margin-bottom:1.5rem}
+  .eyebrow{font-family:var(--sans);text-transform:uppercase;letter-spacing:.08em;font-size:.72rem;color:var(--accent-ink);font-weight:700;margin:0 0 .4rem}
+  h1{font-family:var(--sans);font-size:2rem;line-height:1.15;margin:.1rem 0 .5rem;font-weight:700;letter-spacing:-.01em}
+  .lede{font-size:1.06rem;color:var(--muted);margin:.25rem 0 0}
+  nav.docnav{font-family:var(--sans);font-size:.82rem;margin:1rem 0 0;display:flex;flex-wrap:wrap;gap:.35rem .9rem}
+  nav.docnav a{color:var(--link);text-decoration:none}
+  h2{font-family:var(--sans);font-size:1.4rem;font-weight:700;margin:2.4rem 0 .6rem;padding-bottom:.3rem;border-bottom:1px solid var(--rule);letter-spacing:-.01em}
+  h3{font-family:var(--sans);font-size:1.08rem;font-weight:700;margin:1.6rem 0 .4rem}
+  h4{font-family:var(--sans);font-size:.95rem;font-weight:700;margin:1.2rem 0 .3rem;color:var(--muted)}
+  p{margin:.6rem 0}
+  a{color:var(--link)}
+  strong{font-weight:700}
+  code{font-family:var(--mono);font-size:.86em;background:var(--code-bg);border:1px solid var(--rule-soft);border-radius:3px;padding:.05em .35em}
+  pre{font-family:var(--mono);font-size:.82rem;line-height:1.5;background:var(--code-bg);border:1px solid var(--rule);border-radius:6px;padding:1rem 1.1rem;overflow-x:auto;margin:1rem 0}
+  pre code{background:none;border:none;padding:0;font-size:inherit}
+  table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.9rem}
+  th,td{text-align:left;vertical-align:top;padding:.5rem .6rem;border-bottom:1px solid var(--rule-soft)}
+  thead th{font-family:var(--sans);font-size:.74rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);border-bottom:2px solid var(--rule)}
+  tbody tr:nth-child(even){background:#fafafa}
+  ul,ol{margin:.6rem 0;padding-left:1.4rem}
+  li{margin:.3rem 0}
+  .toc{font-family:var(--sans);font-size:.9rem;background:#fafaf7;border:1px solid var(--rule);border-radius:8px;padding:1rem 1.25rem;margin:1.5rem 0 2rem}
+  .toc p{font-weight:700;margin:0 0 .4rem;text-transform:uppercase;font-size:.72rem;letter-spacing:.06em;color:var(--muted)}
+  .toc ol{margin:0;padding-left:1.2rem}
+  .toc a{color:var(--ink);text-decoration:none}
+  .toc a:hover{color:var(--link)}
+  .callout{margin:1.2rem 0;padding:.85rem 1.1rem;border-left:4px solid var(--accent);background:#fffbef;border-radius:0 6px 6px 0}
+  .callout.note{border-left-color:var(--link);background:#f1f7fd}
+  .callout.danger{border-left-color:var(--bad);background:#fdf3f4}
+  .callout p:first-child{margin-top:0}.callout p:last-child{margin-bottom:0}
+  .callout .tag{font-family:var(--sans);font-weight:700;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:.25rem;color:var(--accent-ink)}
+  .callout.note .tag{color:var(--link)}.callout.danger .tag{color:var(--bad)}
+  .pill{font-family:var(--mono);font-size:.78rem;padding:.05em .45em;border-radius:10px;border:1px solid var(--rule);white-space:nowrap}
+  .pill.ok{color:var(--ok);border-color:#bfe3c6;background:#eef8f0}
+  .pill.warn{color:var(--accent-ink);border-color:#ecd9a6;background:#fbf3df}
+  .pill.bad{color:var(--bad);border-color:#e6bcc4;background:#fbeef0}
+  footer.doc{margin-top:3rem;padding-top:1.2rem;border-top:1px solid var(--rule);font-family:var(--sans);font-size:.8rem;color:var(--faint)}
+  hr{border:none;border-top:1px solid var(--rule);margin:2.4rem 0}
+  @media print{
+    body{font-size:11pt}.wrap{max-width:none;padding:0}nav.docnav{display:none}
+    h2,h3{break-after:avoid}table,pre,.callout{break-inside:avoid}a{color:var(--ink);text-decoration:none}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+  <p class="eyebrow">Birdbrain · Technical &amp; Evidentiary Reference</p>
+  <h1>Court Admissibility</h1>
+  <p class="lede">Chain of custody, integrity, and trusted time — what Birdbrain proves about a web capture, how it proves it, and the limits stated plainly.</p>
+  <nav class="docnav">
+    <span>In this set:</span>
+    <a href="court-admissibility.html"><strong>Overview</strong></a>
+    <a href="exporting-evidence.html">Exporting evidence</a>
+    <a href="verifying-evidence.html">Verifying evidence</a>
+  </nav>
+</header>
+
+<p>This is the reference document for Birdbrain's court-admissibility feature: the set of
+controls that let a web capture be offered as evidence and independently re-verified by a
+third party. It is written to be citable by counsel or an expert declarant, and detailed
+enough for an engineer or opposing technical reviewer to audit the implementation.</p>
+
+<p>It is deliberately honest about what each control <strong>does not</strong> prove.
+Over-claiming is what gets digital evidence excluded; the value of this design is that every
+claim it makes is reproducible with stock tools, and every limit is stated up front.</p>
+
+<div class="toc">
+  <p>Contents</p>
+  <ol>
+    <li><a href="#proves">What Birdbrain proves — and what it does not</a></li>
+    <li><a href="#architecture">The chain-of-custody architecture</a></li>
+    <li><a href="#results">Reading verification results</a></li>
+    <li><a href="#lifecycle">Lifecycle summary</a></li>
+    <li><a href="#limits">Limits and caveats, consolidated</a></li>
+    <li><a href="#related">Related documents</a></li>
+  </ol>
+</div>
+
+<h2 id="proves">1. What Birdbrain proves — and what it does not</h2>
+
+<p>Birdbrain reports two <strong>separate, orthogonal axes</strong>. Conflating them is the
+usual way a chain-of-custody argument gets muddied, so the tool keeps them apart everywhere
+— in the data model, the UI, the export, and the verifier.</p>
+
+<table>
+  <thead><tr><th>Axis</th><th>Question it answers</th><th>Mechanism</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Integrity</strong></td><td>Have the captured bytes and the audit trail survived intact, unaltered since capture?</td><td>SHA-256 content hash + a hash-linked, per-entry RSA-signed manifest</td></tr>
+    <tr><td><strong>Trusted time</strong></td><td>Did this content provably exist no later than time <em>T</em>, attested by an independent third party?</td><td>RFC 3161 timestamp token from an external Time-Stamping Authority (TSA)</td></tr>
+  </tbody>
+</table>
+
+<p>A byte-perfect capture is <strong>integrity-verified</strong> whether or not it carries a
+trusted timestamp. Lacking a timestamp is <em>not</em> an integrity failure — it is simply an
+empty (or pending) trusted-time axis.</p>
+
+<h3>1.1 The integrity claim</h3>
+<p>Every capture's content is hashed with SHA-256 at capture time, and that hash is recorded
+in an append-only, hash-linked, per-entry-signed <strong>manifest</strong>
+(<code>manifest.jsonl</code>). Any later alteration — to a captured file, to a hash, or to a
+chain link — is detectable: the altered entry no longer hashes to its recorded
+<code>entryHash</code>, its signature no longer validates, and re-hashing one entry breaks
+every downstream link.</p>
+
+<h3>1.2 The trusted-time claim</h3>
+<p>Where enabled, a capture's content hash is submitted to an external RFC 3161 TSA, and the
+returned timestamp token is retained inside the signed manifest. Because the token is issued
+and signed by a third party over the content hash, it establishes that the captured bytes
+existed no later than the stamped time — a fact the operator cannot back-date or forge
+regardless of their control over the local machine.</p>
+
+<h3>1.3 The honest limits (read before citing anything)</h3>
+<p>These limits are stated plainly so that no brief, declaration, or marketing claim
+over-states what the tool establishes. The design embraces them rather than papering over
+them.</p>
+<ol>
+  <li><strong>The signing key is installation-local — not an independent trust anchor.</strong>
+  The per-entry signature is made with an RSA-2048 keypair generated on the operator's own
+  machine; the public half ships <em>inside</em> the evidence package. It raises the bar
+  against <strong>casual tampering</strong> (copying a case folder and editing it with
+  ordinary tools fails verification), but it does <strong>not</strong> defend against a
+  determined operator running Birdbrain's own code, who controls the key and could in
+  principle mint a fresh, internally consistent chain. This is an inherent limit of any
+  locally-held key. <strong>The RFC 3161 timestamp is the independent anchor that closes this
+  gap</strong>, for timestamped captures.</li>
+
+  <li><strong>Operator identity is self-asserted.</strong> The certifier name, role, and
+  organization recorded in an export are entered by the operator and are <strong>not</strong>
+  cryptographically authenticated. Birdbrain does not verify the operator's real-world
+  identity.</li>
+
+  <li><strong>The TLS certificate chain is corroboration, not binding.</strong> When recorded,
+  it is re-fetched from the origin <em>after</em> the capture is stored — it corroborates that
+  the origin served a matching certificate around capture time, but does <strong>not</strong>
+  prove it is the exact certificate served on the captured transaction. See
+  <a href="../adr/0002-tls-capture-corroboration-only.md">ADR-0002</a>.</li>
+
+  <li><strong>A programmatic/binary PASS is an integrity result, not a timestamp-authenticity
+  proof.</strong> The standalone verifier checks timestamp tokens <strong>structurally</strong>
+  (the token's message imprint binds the content hash, and the token bytes match the signed
+  manifest). It does <strong>not</strong> verify the TSA's CMS signature. That canonical check
+  is <code>openssl ts -verify</code> in the by-hand runbook. So <strong>binary-PASS &ne;
+  runbook-PASS</strong>: a <em>forged</em> token (correct imprint, invalid TSA signature)
+  passes the binary and is caught only by <code>openssl ts -verify</code>.</li>
+
+  <li><strong>The Certificate of Authenticity is scaffolding for counsel.</strong> Birdbrain
+  generates an FRE 902(13)/(14) <em>supporting</em> certification with the factual fields
+  filled in, but the operative sworn/declaration wording must be supplied by counsel for the
+  relevant jurisdiction and rule. See <a href="#cert">§2.11</a>.</li>
+</ol>
+
+<h2 id="architecture">2. The chain-of-custody architecture</h2>
+
+<p>Each capture flows through a fixed pipeline, and each piece below contributes one
+verifiable fact to the record. The numbering is a reading order, not a runtime order
+(timestamping and TLS corroboration happen out of band, after storage).</p>
+
+<h3 id="hashing">2.1 Capture and content hashing</h3>
+<p>A page is captured by the Chrome extension as a self-contained <strong>MHTML</strong>
+archive (forensic format) and transmitted to a local HTTP server inside the Birdbrain
+desktop app. On receipt the server computes the <strong>SHA-256</strong> digest of the
+captured bytes — this is the capture's <code>contentHash</code>, the anchor every other
+control binds to. The bytes are written to disk and the metadata recorded in SQLite. Full
+pipeline details are in the <a href="./capture-pipeline.md">capture pipeline reference</a>.</p>
+<p>Alongside the MHTML, a viewport <strong>screenshot</strong> (PNG) and the page's
+<strong>extracted text</strong> (<code>.txt</code>) are stored when available. Both are
+independently hashable (see §2.7).</p>
+
+<h3 id="manifest">2.2 The signed, hash-chained manifest</h3>
+<p>Every case directory contains a <code>manifest.jsonl</code> — an
+<strong>append-only</strong> audit log, one JSON object per line, that is the cryptographic
+root of trust for everything in that case. It records four kinds of entry, discriminated by
+<code>type</code>:</p>
+
+<table>
+  <thead><tr><th>Entry <code>type</code></th><th>Records</th><th>Key fields</th></tr></thead>
+  <tbody>
+    <tr><td><code>capture</code></td><td>A page was captured</td><td><code>captureId</code>, <code>url</code>, <code>timestamp</code>, <code>contentHash</code>, optional <code>screenshotHash</code> / <code>textHash</code> / <code>headers</code> / <code>tls</code>, <code>sizeBytes</code>, operator identity</td></tr>
+    <tr><td><code>timestamp</code></td><td>An RFC 3161 token was obtained for a capture</td><td><code>captureContentHash</code>, <code>timestamp</code>, <code>tsaToken</code> (base64 DER)</td></tr>
+    <tr><td><code>deletion</code></td><td>A capture was deleted</td><td><code>captureId</code>, <code>contentHash</code>, optional <code>reason</code></td></tr>
+    <tr><td><code>export</code></td><td>An evidence package was produced</td><td><code>packageHash</code>, <code>verificationResult</code></td></tr>
+  </tbody>
+</table>
+
+<p>Every entry, regardless of type, carries the same chain machinery:</p>
+<ul>
+  <li><strong><code>index</code></strong> — a 0-based sequence number that increments by exactly 1 per entry.</li>
+  <li><strong><code>prevHash</code></strong> — the <code>entryHash</code> of the immediately preceding entry (empty string for the first entry). This is the hash link.</li>
+  <li><strong><code>schemaVersion</code></strong> — currently <code>2</code>. v2+ entries <strong>must</strong> carry a valid signature; legacy v1 entries predate signing and are grandfathered as integrity-only.</li>
+  <li><strong><code>entryHash</code></strong> — <code>SHA-256(canonicalStringify(body))</code>, where <code>body</code> is the entry with <code>entryHash</code> <em>and</em> <code>signature</code> removed (see §2.3).</li>
+  <li><strong><code>signature</code></strong> — an RSA-SHA256 (PKCS#1 v1.5) signature over the <code>entryHash</code> hex string, base64-encoded (see §2.4).</li>
+</ul>
+
+<p>Excluding both <code>entryHash</code> and <code>signature</code> from the hashed body is
+load-bearing: it keeps the hash recomputable by a third party and ensures the signature
+(which covers the hash) never participates in the hash it covers.</p>
+
+<p><strong>Tamper detection follows from three independent properties:</strong></p>
+<ul>
+  <li>Edit a body field &rarr; the recomputed <code>entryHash</code> no longer matches &rarr; fail.</li>
+  <li>Forge or strip a v2 signature &rarr; signature verification fails &rarr; fail.</li>
+  <li>Re-hash one entry to cover an edit &rarr; its <code>entryHash</code> changes &rarr; the next entry's <code>prevHash</code> no longer links &rarr; every downstream entry fails.</li>
+</ul>
+
+<div class="callout note">
+  <span class="tag">Write-ahead durability</span>
+  <p>Appends are transactional: the manifest line is written and <code>fsync</code>'d
+  <em>before</em> the side effect it records (file writes, DB insert), and rolled back
+  (truncated to the prior byte offset) if that side effect fails. The manifest therefore never
+  records a capture, deletion, or export that did not actually happen.</p>
+</div>
+
+<h3 id="canonical">2.3 Canonical serialization</h3>
+<p>To hash an entry, its body must serialize to the same bytes for Birdbrain and for any
+independent verifier. <code>canonicalStringify</code> provides that:</p>
+<ul>
+  <li>Object keys sorted (JavaScript default — UTF-16 code-unit order).</li>
+  <li><code>undefined</code> properties dropped; no insignificant whitespace.</li>
+  <li>Primitives serialized via <code>JSON.stringify</code>.</li>
+</ul>
+<p>This is <strong>JCS-shaped (RFC 8785) but intentionally not a conformant JCS
+implementation.</strong> It deliberately does <strong>not</strong> Unicode-normalize string
+values — RFC 8785 §3.1 also forbids altering string data, and forensically the tool must hash
+<em>exactly</em> what was captured. Cross-tool determinism instead rests on two manifest
+invariants, guarded by tests:</p>
+<ul>
+  <li><strong>Entry keys are fixed ASCII schema names</strong>, so JS code-unit sort, Unicode code-point sort, and the runbook's <code>jq -cS</code> codepoint key sort are all byte-identical.</li>
+  <li><strong>Chained numeric fields are integers</strong>, so <code>JSON.stringify</code> and <code>jq -c</code> emit the same minimal form.</li>
+</ul>
+<p>The single shared implementation is bundled byte-identically into the standalone verifier
+(asserted by the binary's <code>--self-check</code> golden-vector mode), so the app and the
+verifier cannot drift. The canonical, court-facing recompute path is the runbook recipe
+(<code>jq -cS</code> + <code>sha256sum</code>), not an off-the-shelf JCS library.</p>
+
+<h3 id="key">2.4 The installation signing key</h3>
+<p>On first run Birdbrain generates an <strong>RSA-2048</strong> keypair:</p>
+<ul>
+  <li><strong>Private key</strong> — PKCS#8 PEM, wrapped at rest with the OS credential store
+  (DPAPI on Windows, Keychain on macOS) via Electron <code>safeStorage</code>, stored as
+  <code>signing-key.pem</code>. If the OS credential store is unavailable at load time,
+  Birdbrain <strong>fails closed</strong> — it refuses to start signing rather than silently
+  regenerating a key, which would invalidate every previously signed entry.</li>
+  <li><strong>Public key</strong> — SPKI PEM, stored in plaintext as
+  <code>signing-public-key.pem</code> and bundled into every export.</li>
+</ul>
+<p>Signatures are RSA-SHA256 / PKCS#1 v1.5 over the <code>entryHash</code> hex string,
+base64-encoded — the exact claim that stock <code>openssl dgst -sha256 -verify</code> checks.
+Birdbrain never hand-rolls signature verification; the verify-core and <code>openssl</code>
+check the same bytes.</p>
+
+<h3 id="rfc3161">2.5 RFC 3161 trusted timestamping</h3>
+<p>Trusted time is obtained out of band, never on the capture's critical path:</p>
+<ol>
+  <li><strong>Request.</strong> Birdbrain builds a DER-encoded RFC 3161 <code>TimeStampReq</code>
+  whose message imprint is the capture's <code>contentHash</code> (a SHA-256 digest), with a
+  64-bit random nonce for replay protection and <code>certReq=true</code> so the TSA embeds its
+  signing certificate — making the returned token <strong>self-contained and
+  offline-verifiable</strong>.</li>
+  <li><strong>Send.</strong> The request is POSTed to the configured TSA (<code>Content-Type:
+  application/timestamp-query</code>), with a 30-second timeout. The response's
+  <code>PKIStatus</code> must be <code>granted</code>/<code>grantedWithMods</code>.</li>
+  <li><strong>Bind &amp; record.</strong> The returned token is parsed; its message imprint
+  <strong>must</strong> equal the capture's content hash (rejecting a misissued or mismatched
+  token). A <code>type: 'timestamp'</code> manifest entry is appended carrying the base64 DER
+  token — signed and chained like every other entry.</li>
+</ol>
+
+<div class="callout">
+  <span class="tag">Default TSA: DigiCert</span>
+  <p><code>http://timestamp.digicert.com</code>. The rationale (see the
+  <a href="./threat-model.md">threat model</a>): the DigiCert Trusted Root G4 is present in
+  essentially every OS/browser trust store, so <code>openssl ts -verify</code> succeeds offline
+  against a root the verifier already trusts; the endpoint is unauthenticated (no account,
+  works on first run); and it is the de-facto timestamp authority behind much of Authenticode
+  code-signing. The TSA is configurable in Settings for engagements requiring a specific
+  authority. Free/hobbyist TSAs are a documented dev/test fallback only — their roots are not
+  in common trust stores.</p>
+</div>
+
+<p><strong>The asynchronous worker.</strong> Captures are enqueued (trusted-time state
+<code>pending</code>) and stamped by a background worker that runs on capture, on app start,
+and on a 5-minute retry interval. Offline degradation is simply "no timestamp entry yet" — the
+capture still succeeds and stays <code>pending</code> until a later attempt lands. The worker
+guards against double-stamping a capture whose token arrived concurrently.</p>
+
+<p>The <strong>canonical</strong> verification of a token's TSA signature is
+<code>openssl ts -verify</code> against the TSA chain — Birdbrain never hand-rolls CMS/PKCS#7
+crypto. In-app and in the binary, timestamp handling is <strong>structural only</strong>
+(imprint match + byte binding); see §2.12.</p>
+
+<h3 id="axis">2.6 The trusted-time axis</h3>
+<p>Every capture resolves to one of three trusted-time states, <strong>derived from the
+manifest alone</strong> (the SQLite mirror column is a rebuildable cache, reconstructable from
+the manifest at any time):</p>
+
+<table>
+  <thead><tr><th>State</th><th>Meaning</th><th>How it is reached</th></tr></thead>
+  <tbody>
+    <tr><td><span class="pill ok">rfc3161</span></td><td>A TSA token attests this capture's content hash</td><td>A <code>timestamp</code> entry references the <code>contentHash</code> and its token imprint matches</td></tr>
+    <tr><td><span class="pill warn">pending</span></td><td>An eligible capture awaiting its token</td><td>A v2 capture entry with no matching timestamp entry yet</td></tr>
+    <tr><td><span class="pill">none</span></td><td>A grandfathered legacy capture that predates timestamping</td><td>A v1 entry, or no capture entry</td></tr>
+  </tbody>
+</table>
+
+<p>A <em>verified</em> capture is never <code>none</code> (verified &rArr; v2 &rArr;
+<code>pending</code> or <code>rfc3161</code>). <code>pending</code> vs <code>none</code> is the
+<strong>eligibility</strong> distinction: v2 captures are expected to be stamped; legacy v1
+captures never were.</p>
+
+<h3 id="sidecars">2.7 Sidecar integrity — screenshot and extracted text</h3>
+<p>The screenshot (PNG) and extracted text (<code>.txt</code>) are bound to the chain by their
+own SHA-256 hashes, recorded as the optional <code>screenshotHash</code> and
+<code>textHash</code> fields on the capture entry — signed and chained exactly like
+<code>contentHash</code>. These fields are <strong>omitted entirely</strong> (never
+empty-string or null) when absent, so legacy and no-screenshot entries keep their original
+canonical bytes and chain hashes.</p>
+<p>In an evidence package the screenshot is <strong>content-addressed</strong>: its filename
+<em>is</em> its SHA-256 (<code>screenshots/{sha256}.png</code>), so identical screenshot bytes
+across captures resolve to one file, and the file is self-describing. At verification, the
+package PNG is bound to the <strong>chained, signed</strong> <code>screenshotHash</code> — not
+merely to the unsigned index.</p>
+
+<h3 id="headers">2.8 HTTP response headers</h3>
+<p>When the capture carries them, the page's HTTP response headers are anchored into the
+capture entry (<code>headers</code>), normalized to lowercase keys with multi-value joins for
+deterministic serialization. Like the sidecar hashes, the field is omitted when absent so
+legacy/headerless entries' chain hashes are unchanged.</p>
+
+<h3 id="tls">2.9 TLS certificate-chain corroboration</h3>
+<p>When recorded, the serving TLS certificate chain is captured as <strong>origin
+corroboration</strong> (<code>tls</code> on the capture entry): subject, issuer, validity
+window, SHA-256 fingerprint, serial number, and subject alternative names for each cert in the
+chain, plus the re-fetch URL and timestamp.</p>
+<div class="callout">
+  <span class="tag">Corroboration, not binding</span>
+  <p>This is obtained by a <code>tls.connect()</code> re-fetch from the desktop app
+  <strong>after</strong> the capture is stored — it is <strong>not</strong> bound to the
+  specific captured HTTP transaction. It establishes that, seconds to minutes after capture, the
+  origin was reachable and serving a matching, trust-store-valid certificate. It does
+  <strong>not</strong> prove that this is the same certificate served on the captured response
+  (a cert rotation, CDN failover, or redirect in the interval could differ). Both the capture
+  and re-fetch timestamps are recorded so a reviewer can judge the interval. <strong>Present
+  these fields to a court as corroboration, never as binding origin proof.</strong> Rationale
+  and the deferred binding-mode design are in
+  <a href="../adr/0002-tls-capture-corroboration-only.md">ADR-0002</a>.</p>
+</div>
+
+<h3 id="package">2.10 The evidence package (export)</h3>
+<p>Export produces a single self-contained, <strong>stored (uncompressed) ZIP</strong> — the
+artifact handed to opposing counsel or the court. Its layout:</p>
+
+<table>
+  <thead><tr><th>File</th><th>Role</th></tr></thead>
+  <tbody>
+    <tr><td><code>manifest.jsonl</code></td><td>The signed, hash-linked audit chain — <strong>root of trust</strong></td></tr>
+    <tr><td><code>signing-public-key.pem</code></td><td>RSA public key for the per-entry signatures</td></tr>
+    <tr><td><code>tsa-ca-chain.pem</code></td><td>TSA CA root + each token's embedded cert chain</td></tr>
+    <tr><td><code>pages/{captureId}.mhtml</code></td><td>Captured content (hashed as <code>contentHash</code>)</td></tr>
+    <tr><td><code>screenshots/{sha256}.png</code></td><td>Screenshot, content-addressed (hashed as <code>screenshotHash</code>)</td></tr>
+    <tr><td><code>timestamps/{captureId}.tst</code></td><td>RFC 3161 tokens (DER), when present</td></tr>
+    <tr><td><code>report.html</code></td><td>Human-readable case report</td></tr>
+    <tr><td><code>certification.html</code></td><td>FRE 902(13)/(14) supporting certification (see §2.11)</td></tr>
+    <tr><td><code>evidence.json</code></td><td><strong>Unsigned</strong> convenience index — reconcile, do not trust</td></tr>
+    <tr><td><code>VERIFY.md</code></td><td>The by-hand verification runbook (stock tools, zero Birdbrain code)</td></tr>
+  </tbody>
+</table>
+
+<p>Two facts about the package matter for verification:</p>
+<ul>
+  <li><strong><code>evidence.json</code> is not signed.</strong> Only <code>manifest.jsonl</code>
+  is. The verifier therefore treats the verified manifest chain as the sole source of truth and
+  reconciles the index against it — an attacker who edits only the index (drops a capture,
+  rewrites a digest, bumps the head) is caught by re-deriving everything from the chain.</li>
+  <li><strong>The package commits to its own contents via <code>packageHash</code>.</strong>
+  <code>packageHash = SHA-256(canonicalStringify(sortedArtifacts))</code>, where
+  <code>sortedArtifacts</code> is every packaged file's <code>{path, sha256, sizeBytes}</code>
+  ordered by path. It deliberately does <strong>not</strong> hash the final <code>.zip</code> or
+  <code>evidence.json</code> itself — that would be circular, since <code>packageHash</code> is
+  recorded into a signed <code>export</code> entry that is itself bundled in the package.</li>
+</ul>
+
+<p><strong>Exports are themselves chained.</strong> After the ZIP is written, Birdbrain appends
+a signed <code>type: 'export'</code> entry to the <em>live</em> case manifest, recording
+<code>packageHash</code> and the integrity <code>verificationResult</code> (capture / verified /
+tampered / missing counts). This makes the production of evidence packages part of the same
+tamper-evident audit trail. As a consequence the bundled <code>manifest.jsonl</code> lags the
+live manifest by exactly this one entry, by design — <code>packageHash</code> commits to
+artifact content, not to the entry it informs.</p>
+
+<h3 id="cert">2.11 The Certificate of Authenticity (FRE 902(13)/(14))</h3>
+<p><code>certification.html</code> is a <strong>supporting certification scaffold</strong> aimed
+at Federal Rules of Evidence 902(13) (records generated by an electronic process) and 902(14)
+(data copied from an electronic device, verified by hash). Birdbrain fills in the factual
+fields:</p>
+<ul>
+  <li>Capturing tool name and version, and hash algorithm (<strong>SHA-256</strong>).</li>
+  <li>A plain-language description of the capture-and-hash process.</li>
+  <li>The configured RFC 3161 TSA.</li>
+  <li>The certifier (operator name, role, organization, installation ID).</li>
+  <li>A trusted-time summary and per-capture timestamped / non-timestamped tables.</li>
+</ul>
+<div class="callout danger">
+  <span class="tag">Two honesty controls built into the document</span>
+  <p><strong>Identity is self-asserted</strong> — the certifier fields are entered by the
+  operator and are not cryptographically authenticated. And a
+  <strong><code>[LEGAL WORDING TO BE SUPPLIED BY COUNSEL]</code></strong> banner marks that the
+  operative sworn declaration / certification language (e.g. the 28 U.S.C. § 1746 attestation)
+  for the applicable jurisdiction and rule is <strong>not</strong> drafted by the tool. Counsel
+  must supply it. Do not treat the scaffold as finalized legal text.</p>
+</div>
+
+<h3 id="verifycore">2.12 Independent verification</h3>
+<p>Verification logic lives in a <strong>process-agnostic verify-core</strong>
+(<code>src/shared/verify/</code>): pure modules that depend only on Node
+<code>fs</code>/<code>crypto</code>/<code>path</code>, <code>zod</code>, and
+<code>@peculiar/asn1-*</code> — no Electron, database, network, or app code. The desktop app
+imports it directly; the standalone binary bundles the same modules, so
+<strong>app-vs-verifier drift is impossible by construction</strong>.</p>
+<p>Three verification surfaces consume it:</p>
+<ol>
+  <li><strong>In-app verification</strong> — the desktop app re-hashes captures and re-checks
+  the chain on demand (the case's integrity bar). See §3.</li>
+  <li><strong>The standalone binary / CLI</strong> (<code>birdbrain-verify</code>) — a prebuilt,
+  per-OS Node SEA single-executable that runs the full package verifier against an unzipped
+  package and reports PASS/FAIL with a specific reason per check. It is fs+crypto only (the
+  build asserts no Electron/native/network imports leaked in). A binary PASS means
+  <strong>integrity + internal consistency</strong>, not timestamp authenticity (see §1.3,
+  limit 4).</li>
+  <li><strong>The by-hand runbook</strong> (<code>VERIFY.md</code>, shipped in every package) —
+  reproduces the full integrity claim with only <code>sha256sum</code>, <code>openssl</code>,
+  and <code>jq</code>, including recomputing <code>entryHash</code> from the entry body and the
+  canonical <code>openssl ts -verify</code> TSA check.</li>
+</ol>
+<p>The complete procedure for all three is in
+<a href="verifying-evidence.html">Verifying evidence</a>.</p>
+
+<h2 id="results">3. Reading verification results</h2>
+
+<h3>3.1 Integrity status (per capture)</h3>
+<p>The in-app verifier and the audit trail report one integrity status per capture:</p>
+<table>
+  <thead><tr><th>Status</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><span class="pill ok">verified</span></td><td>The MHTML bytes re-hash to the stored <code>contentHash</code>, the manifest chain is valid, and every recorded sidecar hash (screenshot/text) re-binds.</td></tr>
+    <tr><td><span class="pill bad">tampered</span></td><td>The recomputed content hash differs from the signed value, <strong>or</strong> a recorded sidecar hash no longer binds. The primary evidence does not match the chain.</td></tr>
+    <tr><td><span class="pill bad">chain-broken</span></td><td>The manifest hash chain failed to verify (a recompute / linkage / signature break somewhere in the case).</td></tr>
+    <tr><td><span class="pill bad">missing</span></td><td>The capture's MHTML file is unreadable or absent.</td></tr>
+    <tr><td><span class="pill">legacy</span></td><td>A pre-MHTML / non-forensic capture with no chain coverage to verify.</td></tr>
+  </tbody>
+</table>
+
+<h3>3.2 Trusted-time state (per capture)</h3>
+<p>Reported independently of integrity: <code>rfc3161</code>, <code>pending</code>, or
+<code>none</code> (see §2.6). For <code>rfc3161</code>, the TSA identity and the asserted stamp
+time are surfaced alongside.</p>
+<p>The two axes are always shown separately. A <code>verified</code> + <code>pending</code>
+capture is byte-perfect but not yet third-party-timestamped; a <code>verified</code> +
+<code>rfc3161</code> capture is the strongest state — unaltered <em>and</em> anchored in time by
+an external authority.</p>
+
+<h2 id="lifecycle">4. Lifecycle summary</h2>
+<pre><code>CAPTURE        Extension &rarr; local server: MHTML + screenshot + text
+               SHA-256(contentHash) computed; files stored; DB row written
+                  &#9474;
+               WRITE-AHEAD: signed `capture` manifest entry appended (fsync) BEFORE
+               side effects; rolled back if they fail
+                  &#9474;
+TIMESTAMP      Background worker (out of band): TimeStampReq over contentHash &rarr;
+  (async)      TSA &rarr; token; imprint checked; signed `timestamp` entry appended
+               trusted-time: pending &#9472;&#9472;&#9658; rfc3161
+                  &#9474;
+VERIFY         On demand: re-hash MHTML + sidecars, re-verify chain + signatures
+  (in app)        &#9474;
+EXPORT         Evidence ZIP built (manifest, key, tokens, pages, report,
+               certification, VERIFY.md, evidence.json); packageHash computed;
+               signed `export` entry appended to the live manifest
+                  &#9474;
+RE-VERIFY      Third party, no Birdbrain: birdbrain-verify &lt;dir&gt;  (binary)
+  (offline)    and/or sha256sum + openssl + jq  (VERIFY.md, by hand)
+               openssl ts -verify  &#9664; canonical TSA-authenticity check</code></pre>
+
+<h2 id="limits">5. Limits and caveats, consolidated</h2>
+<p>For quick reference when preparing a declaration or responding to a challenge:</p>
+<ul>
+  <li><strong>Local signing key</strong> defeats casual tampering, not a determined operator running the app; the <strong>RFC 3161 timestamp</strong> is the independent anchor for stamped captures (§1.3, §2.4).</li>
+  <li><strong>Operator identity is self-asserted</strong>, not authenticated (§1.3, §2.11).</li>
+  <li><strong>TLS chain is corroboration, not binding</strong> to the captured transaction (§2.9).</li>
+  <li><strong>Binary PASS &ne; runbook PASS:</strong> the binary checks timestamps structurally; the canonical TSA-signature check is the runbook's <code>openssl ts -verify</code> (§1.3, §2.12).</li>
+  <li><strong>The 902(13)/(14) certificate is scaffolding</strong> — counsel supplies the operative legal wording (§2.11).</li>
+  <li><strong>Trusted time is best-effort and asynchronous:</strong> an offline or in-flight capture is <code>pending</code>, not failed; export is never blocked on it (the package warns about unstamped captures instead).</li>
+</ul>
+
+<h2 id="related">6. Related documents</h2>
+<ul>
+  <li><a href="exporting-evidence.html">Exporting evidence</a> — operator how-to.</li>
+  <li><a href="verifying-evidence.html">Verifying evidence</a> — third-party verification, binary and by hand.</li>
+  <li><a href="./threat-model.md">Threat model</a> — the two axes, what the signature defends against, why DigiCert.</li>
+  <li><a href="./capture-pipeline.md">Capture pipeline</a> — capture, storage, and hashing internals.</li>
+  <li><a href="../specs/2026-06-01-standalone-verifier-design.md">Standalone verifier design</a> — verify-core extraction and the package verifier.</li>
+  <li><a href="../adr/0002-tls-capture-corroboration-only.md">ADR-0002</a> — TLS corroboration-only decision.</li>
+  <li><a href="../adr/0001-case-delete-skips-manifest.md">ADR-0001</a> — case-delete vs. manifest behavior.</li>
+</ul>
+
+<footer class="doc">
+  Birdbrain — open-source web investigation &amp; capture tool. This reference describes the
+  court-admissibility controls as implemented; consult the linked source modules for authoritative behavior.
+</footer>
+
+</div>
+</body>
+</html>

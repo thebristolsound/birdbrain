@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verifying Evidence — Birdbrain</title>
+<style>
+  :root{
+    --ink:#1a1a1a;--muted:#555;--faint:#777;--rule:#d8d8d8;--rule-soft:#ececec;
+    --accent:#b8860b;--accent-ink:#7a5a08;--bg:#fff;--code-bg:#f6f6f4;
+    --ok:#1a7f37;--warn:#b8860b;--bad:#b00020;--link:#0b5cad;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --serif:Georgia,"Times New Roman",Cambria,serif;
+    --mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{font-family:var(--serif);color:var(--ink);background:var(--bg);line-height:1.62;margin:0}
+  .wrap{max-width:54rem;margin:0 auto;padding:3rem 1.5rem 5rem}
+  header.doc{border-bottom:3px solid var(--accent);padding-bottom:1.25rem;margin-bottom:1.5rem}
+  .eyebrow{font-family:var(--sans);text-transform:uppercase;letter-spacing:.08em;font-size:.72rem;color:var(--accent-ink);font-weight:700;margin:0 0 .4rem}
+  h1{font-family:var(--sans);font-size:2rem;line-height:1.15;margin:.1rem 0 .5rem;font-weight:700;letter-spacing:-.01em}
+  .lede{font-size:1.06rem;color:var(--muted);margin:.25rem 0 0}
+  nav.docnav{font-family:var(--sans);font-size:.82rem;margin:1rem 0 0;display:flex;flex-wrap:wrap;gap:.35rem .9rem}
+  nav.docnav a{color:var(--link);text-decoration:none}
+  h2{font-family:var(--sans);font-size:1.4rem;font-weight:700;margin:2.4rem 0 .6rem;padding-bottom:.3rem;border-bottom:1px solid var(--rule);letter-spacing:-.01em}
+  h3{font-family:var(--sans);font-size:1.08rem;font-weight:700;margin:1.6rem 0 .4rem}
+  h4{font-family:var(--sans);font-size:.95rem;font-weight:700;margin:1.2rem 0 .3rem;color:var(--muted)}
+  p{margin:.6rem 0}
+  a{color:var(--link)}
+  strong{font-weight:700}
+  code{font-family:var(--mono);font-size:.86em;background:var(--code-bg);border:1px solid var(--rule-soft);border-radius:3px;padding:.05em .35em}
+  pre{font-family:var(--mono);font-size:.82rem;line-height:1.5;background:var(--code-bg);border:1px solid var(--rule);border-radius:6px;padding:1rem 1.1rem;overflow-x:auto;margin:1rem 0}
+  pre code{background:none;border:none;padding:0;font-size:inherit}
+  table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.9rem}
+  th,td{text-align:left;vertical-align:top;padding:.5rem .6rem;border-bottom:1px solid var(--rule-soft)}
+  thead th{font-family:var(--sans);font-size:.74rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);border-bottom:2px solid var(--rule)}
+  tbody tr:nth-child(even){background:#fafafa}
+  ul,ol{margin:.6rem 0;padding-left:1.4rem}
+  li{margin:.3rem 0}
+  .step{border:1px solid var(--rule);border-radius:8px;padding:.4rem 1.1rem 1rem;margin:1.1rem 0;background:#fcfcfb}
+  .step h3{margin-top:.9rem}
+  .callout{margin:1.2rem 0;padding:.85rem 1.1rem;border-left:4px solid var(--accent);background:#fffbef;border-radius:0 6px 6px 0}
+  .callout.note{border-left-color:var(--link);background:#f1f7fd}
+  .callout.danger{border-left-color:var(--bad);background:#fdf3f4}
+  .callout p:first-child{margin-top:0}.callout p:last-child{margin-bottom:0}
+  .callout .tag{font-family:var(--sans);font-weight:700;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:.25rem;color:var(--accent-ink)}
+  .callout.note .tag{color:var(--link)}.callout.danger .tag{color:var(--bad)}
+  .pill{font-family:var(--mono);font-size:.78rem;padding:.05em .45em;border-radius:10px;border:1px solid var(--rule);white-space:nowrap}
+  .pill.ok{color:var(--ok);border-color:#bfe3c6;background:#eef8f0}
+  .pill.warn{color:var(--accent-ink);border-color:#ecd9a6;background:#fbf3df}
+  .pill.bad{color:var(--bad);border-color:#e6bcc4;background:#fbeef0}
+  footer.doc{margin-top:3rem;padding-top:1.2rem;border-top:1px solid var(--rule);font-family:var(--sans);font-size:.8rem;color:var(--faint)}
+  hr{border:none;border-top:1px solid var(--rule);margin:2.4rem 0}
+  @media print{
+    body{font-size:11pt}.wrap{max-width:none;padding:0}nav.docnav{display:none}
+    h2,h3{break-after:avoid}table,pre,.callout,.step{break-inside:avoid}a{color:var(--ink);text-decoration:none}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+  <p class="eyebrow">Birdbrain · Verification How-To</p>
+  <h1>Verifying Evidence</h1>
+  <p class="lede">How a third party re-verifies a Birdbrain evidence package — with the standalone binary, or entirely by hand with stock tools.</p>
+  <nav class="docnav">
+    <span>In this set:</span>
+    <a href="court-admissibility.html">Overview</a>
+    <a href="exporting-evidence.html">Exporting evidence</a>
+    <a href="verifying-evidence.html"><strong>Verifying evidence</strong></a>
+  </nav>
+</header>
+
+<p>An evidence package can be re-verified with <strong>no Birdbrain installation</strong>. There
+are two paths, which corroborate each other:</p>
+<ul>
+  <li><strong>Path A — the standalone verifier binary</strong> (<code>birdbrain-verify</code>): a
+  prebuilt, transparent executable that runs every check and prints a per-check PASS/FAIL report.
+  Fast and non-technical-friendly.</li>
+  <li><strong>Path B — by hand</strong>: the <code>VERIFY.md</code> runbook shipped in the package
+  reproduces the full integrity claim with only <code>sha256sum</code>, <code>openssl</code>, and
+  <code>jq</code>. This is the canonical path, and the only one that proves
+  <strong>timestamp authenticity</strong>.</li>
+</ul>
+
+<h2>1. The trust model (read first)</h2>
+<ul>
+  <li><strong><code>manifest.jsonl</code> is the root of trust.</strong> Each entry carries an
+  <code>entryHash</code> and an RSA <code>signature</code> over that hash; entries are hash-linked
+  (<code>prevHash</code> == the prior entry's <code>entryHash</code>) and <code>index</code>-ordered.</li>
+  <li><strong><code>evidence.json</code> is an unsigned convenience index.</strong> Do not trust it
+  on its own — its integrity is established by re-deriving everything from the chain. Verification
+  reconciles the index against the verified chain; it never lets the index decide what is true.</li>
+  <li><strong>The signing key is installation-local</strong> (<code>signing-public-key.pem</code>
+  ships inside the package). It defeats casual tampering but is not an independent trust anchor.
+  The independent anchor for <em>timestamped</em> captures is the RFC 3161 timestamp, proven in
+  step 6 by <code>openssl ts -verify</code>.</li>
+  <li><strong>Binary-PASS &ne; runbook-PASS.</strong> The binary checks timestamp tokens
+  <strong>structurally</strong> (imprint + byte binding); it does not verify the TSA's CMS
+  signature. A forged token (correct imprint, invalid TSA signature) passes the binary and is
+  caught only by the runbook's <code>openssl ts -verify</code>.</li>
+</ul>
+
+<h2>2. Path A — the standalone verifier binary</h2>
+
+<h3>2.1 Obtain or build the binary</h3>
+<p>Use a prebuilt <code>birdbrain-verify</code> binary for your operating system if one is
+provided with the release. Otherwise build it from the repository (Node SEA produces a binary for
+the OS it runs on — build on the target OS):</p>
+<pre><code>pnpm build:verifier
+# -> dist/verifier/birdbrain-verify        (birdbrain-verify.exe on Windows)</code></pre>
+<p>The binary is <strong>fs + crypto only</strong> — the build asserts that no Electron, database,
+native, or network import leaked into the bundle, so the verification tool carries none of the
+capture app's machinery. Build details are in §4.</p>
+
+<h3>2.2 Run it against an unzipped package</h3>
+<pre><code>unzip evidence-package.zip -d ./pkg
+birdbrain-verify ./pkg</code></pre>
+<p>The exit code is <strong>0 on PASS</strong> and <strong>1 on FAIL</strong>, suitable for
+scripting. Two utility modes:</p>
+<pre><code>birdbrain-verify --self-check   # print the canonical-JSON golden vector and assert the
+                                # bundled core is byte-identical to the in-app core
+birdbrain-verify --help</code></pre>
+
+<h3>2.3 Sample report</h3>
+<pre><code>Birdbrain evidence-package verification
+Package: ./pkg
+
+  [PASS] manifest chain
+  [PASS] evidence.json valid
+  [PASS] capture 0196f7a2-...-0001 content
+  [PASS] capture 0196f7a2-...-0001 screenshot
+  [PASS] capture 0196f7a2-...-0001 timestamp - rfc3161 per DigiCert ... -
+         structural (imprint + bytes); run `openssl ts -verify` for TSA authenticity
+  [PASS] evidence.json head
+  [PASS] evidence.json coverage
+  [PASS] evidence.json artifact sweep
+
+RESULT: PASS - integrity + internal consistency verified.
+
+Note: timestamp checks are STRUCTURAL (imprint / byte-binding) only. A PASS
+is an integrity result, NOT a standalone authenticity claim. For canonical
+TSA authenticity run the documented `openssl ts -verify` from VERIFY.md.</code></pre>
+
+<h3>2.4 What each check proves</h3>
+<p>The verifier runs <strong>every</strong> check and collects <strong>all</strong> failures (it
+never stops at the first). The overall result is PASS if and only if no check is FAIL; a SKIP does
+not fail the package.</p>
+<table>
+  <thead><tr><th>Check</th><th>Passes when</th><th>A FAIL means</th></tr></thead>
+  <tbody>
+    <tr><td><strong>manifest chain</strong></td><td>Every entry recomputes to its <code>entryHash</code>, links via <code>prevHash</code>, and every v2 entry's signature validates against the bundled key.</td><td>A body field was edited, a chain link broken, or a signature stripped/forged (the reason names the failing index).</td></tr>
+    <tr><td><strong>evidence.json valid</strong></td><td>The unsigned index parses and matches its schema.</td><td>The index is missing or malformed (chain checks still run from the manifest).</td></tr>
+    <tr><td><strong>capture … content</strong></td><td><code>pages/{id}.mhtml</code> exists and its SHA-256 equals the <strong>signed</strong> <code>contentHash</code>.</td><td>The captured bytes were altered or are missing. <em>This is the load-bearing bind of the evidence to the chain.</em></td></tr>
+    <tr><td><strong>capture … screenshot</strong></td><td><code>screenshots/{hash}.png</code> matches the signed <code>screenshotHash</code> (SKIP if none recorded).</td><td>The screenshot was swapped or altered.</td></tr>
+    <tr><td><strong>capture … timestamp</strong></td><td>The token file's bytes equal the signed <code>tsaToken</code> and its message imprint equals the <code>contentHash</code> (SKIP if pending/none).</td><td>The token was swapped, or does not bind this capture. <strong>Structural only — not TSA authenticity</strong> (see step 6).</td></tr>
+    <tr><td><strong>evidence.json head</strong></td><td>The index's recorded chain head matches the verified chain's last entry.</td><td>The unsigned index was edited to point at a different head.</td></tr>
+    <tr><td><strong>evidence.json coverage</strong></td><td>The index's capture set equals the active (non-deleted) capture set from the chain.</td><td>The index hides or invents a capture relative to the verified chain.</td></tr>
+    <tr><td><strong>evidence.json artifact sweep</strong></td><td>Every file listed in the index hashes to its recorded digest.</td><td>A packaged file does not match the index (the authoritative bind is the per-capture content check above).</td></tr>
+  </tbody>
+</table>
+
+<div class="callout">
+  <span class="tag">What a binary PASS means</span>
+  <p><strong>Integrity + internal consistency:</strong> the signed chain is valid, every active
+  capture's bytes bind to it, the index reconciles, and every present timestamp token binds its
+  capture structurally. It is <strong>not</strong> a standalone authenticity claim. Proceed to the
+  runbook's <code>openssl ts -verify</code> (step 6) for the canonical trusted-time proof.</p>
+</div>
+
+<h2>3. Path B — by hand (the <code>VERIFY.md</code> runbook)</h2>
+<p>The package ships <code>VERIFY.md</code>, which is the authoritative copy of this procedure.
+All steps use only <code>sha256sum</code>, <code>openssl</code>, and <code>jq</code>. Run them
+from inside the unzipped package directory.</p>
+
+<div class="step">
+<h3>Step 1 — File integrity (index self-consistency)</h3>
+<p>Hash each artifact and compare to the index. This only proves the files match the
+<strong>untrusted</strong> index; the authoritative content bind is step 5.</p>
+<pre><code>jq -r '.artifacts[] | "\(.sha256)  \(.path)"' evidence.json | sha256sum -c -</code></pre>
+</div>
+
+<div class="step">
+<h3>Step 2 — Entry signature</h3>
+<p>Verify an entry's RSA signature. The signature is over the bare <code>entryHash</code> hex
+string with <strong>no trailing newline</strong> — a stray newline makes verification fail
+spuriously.</p>
+<pre><code>line=$(sed -n '1p' manifest.jsonl)                                   # pick an entry
+printf %s "$(echo "$line" | jq -r '.entryHash')" &gt; entryhash.txt    # NO newline
+echo "$line" | jq -r '.signature' | base64 -d &gt; sig.bin
+openssl dgst -sha256 -verify signing-public-key.pem -signature sig.bin entryhash.txt
+# =&gt; "Verified OK"</code></pre>
+</div>
+
+<div class="step">
+<h3>Step 3 — Recompute <code>entryHash</code> (canonicalization recipe)</h3>
+<p>Hashing files alone cannot detect a body-field edit that left <code>entryHash</code> /
+<code>signature</code> intact. Recompute the hash from the entry body: strip
+<code>entryHash</code> and <code>signature</code>, canonicalize, and hash.</p>
+<pre><code>echo "$line" | jq -cS 'del(.entryHash, .signature)' | tr -d '\n' | sha256sum
+# compare the hex to:  echo "$line" | jq -r '.entryHash'</code></pre>
+<p><strong>Caveats</strong> — these, not key ordering, are the real edges. Manifest keys are fixed
+ASCII, so <code>jq</code>'s codepoint key sort matches Birdbrain's. What can differ is (a) string
+escaping of non-ASCII / control characters in values, and (b) number formatting of integers. Both
+<code>jq -c</code> and Birdbrain emit minimal integer forms and UTF-8 literals, so they agree in
+practice; if a hand recompute ever disagrees, look here first.</p>
+</div>
+
+<div class="step">
+<h3>Step 4 — Chain linkage</h3>
+<p>Confirm each entry's <code>prevHash</code> equals the prior entry's <code>entryHash</code>, and
+<code>index</code> increments from 0.</p>
+<pre><code>jq -r '"\(.index) \(.prevHash) \(.entryHash)"' manifest.jsonl</code></pre>
+</div>
+
+<div class="step">
+<h3>Step 5 — Content bind (load-bearing for the evidence itself)</h3>
+<p>For each <code>type: "capture"</code> entry, confirm the captured bytes match the hash
+<strong>inside that signed entry</strong> (not the value in <code>evidence.json</code>). Without
+this you could verify a pristine signed chain yet never confirm the MHTML/PNG bytes are the ones
+it attests.</p>
+<pre><code>id=$(echo "$line" | jq -r '.captureId')
+want=$(echo "$line" | jq -r '.contentHash')
+got=$(sha256sum "pages/$id.mhtml" | cut -d' ' -f1)
+[ "$want" = "$got" ] &amp;&amp; echo "content OK" || echo "CONTENT MISMATCH"
+
+# Screenshot (if the entry has screenshotHash; the file is named by that hash):
+shot=$(echo "$line" | jq -r '.screenshotHash // empty')
+[ -n "$shot" ] &amp;&amp; sha256sum "screenshots/$shot.png"     # must equal $shot</code></pre>
+</div>
+
+<div class="step">
+<h3>Step 6 — Timestamp (canonical TSA verification)</h3>
+<p><strong>This is the authenticity step the binary does not perform.</strong> Verify each RFC
+3161 token's CMS signature against the bundled TSA chain.</p>
+<pre><code>openssl ts -verify -digest &lt;contentHash&gt; -in timestamps/&lt;token&gt;.tst \
+  -CAfile tsa-ca-chain.pem
+# =&gt; "Verification: OK"</code></pre>
+<p>A token whose imprint matches the content hash but whose TSA signature is invalid (a forged
+token) PASSES the binary's structural check and is caught <strong>only</strong> here. That is why
+this <code>openssl ts -verify</code> — not the binary — is the canonical proof of trusted time.</p>
+</div>
+
+<div class="callout note">
+  <span class="tag">Why DigiCert verification works offline</span>
+  <p>The default TSA is DigiCert, whose Trusted Root G4 is present in essentially every OS trust
+  store. <code>openssl ts -verify</code> succeeds against the bundled
+  <code>tsa-ca-chain.pem</code> with no special configuration. If a package uses a different TSA,
+  supply that authority's CA in <code>-CAfile</code>.</p>
+</div>
+
+<h2>4. Building the verifier binary (reference)</h2>
+<p><code>pnpm build:verifier</code> runs <code>scripts/build-verifier.mjs</code>, which:</p>
+<ol>
+  <li><strong>Bundles</strong> <code>src/verifier/cli.ts</code> and its pure dependencies (the
+  shared verify-core, <code>zod</code>, <code>@peculiar/asn1-*</code>) into one CommonJS file with
+  <code>esbuild</code>, then <strong>asserts</strong> the bundle contains no <code>electron</code>,
+  <code>src/main</code>, <code>better-sqlite3</code>, <code>keytar</code>, or <code>hono</code>
+  import — the binary must be fs+crypto only.</li>
+  <li><strong>Generates a SEA blob</strong> (<code>node --experimental-sea-config</code>).</li>
+  <li><strong>Injects</strong> the blob into a copy of the host <code>node</code> executable with
+  <code>postject</code>.</li>
+  <li><strong>Re-signs per OS</strong> — macOS ad-hoc <code>codesign</code> (injection invalidates
+  the host signature, which Gatekeeper would otherwise block); Windows
+  <code>signtool</code> (re-sign before distribution so SmartScreen does not flag it); Linux needs
+  no signing.</li>
+</ol>
+<p>The <code>--self-check</code> mode exists to prove the bundling transform changed nothing: it
+canonicalizes a frozen golden vector and asserts the bundled core's bytes match the in-app core's,
+so the standalone binary and the desktop app verify by the exact same rules.</p>
+<div class="callout">
+  <span class="tag">Cross-build limitation</span>
+  <p>Node SEA emits a binary for the OS it runs on; there is no cross-compilation. Build each OS's
+  binary on that OS. (A CI release matrix that attaches per-OS binaries to releases is a deferred
+  follow-up.)</p>
+</div>
+
+<h2>5. Interpreting the outcome</h2>
+<table>
+  <thead><tr><th>Outcome</th><th>Reading</th></tr></thead>
+  <tbody>
+    <tr><td><span class="pill ok">Binary PASS + <code>openssl ts -verify</code> OK</span></td><td>Strongest result: integrity intact <em>and</em> trusted time anchored by the external TSA. Unaltered, and provably existed by the stamped time.</td></tr>
+    <tr><td><span class="pill warn">Binary PASS, timestamps SKIP/pending</span></td><td>Integrity intact; captures are byte-perfect but not (yet) third-party timestamped. Honest and common — not a failure.</td></tr>
+    <tr><td><span class="pill bad">Binary FAIL on a content/chain check</span></td><td>Integrity is compromised: a captured file, hash, or chain link does not match the signed manifest. Read the named reason and failing index.</td></tr>
+    <tr><td><span class="pill bad">Binary PASS but <code>openssl ts -verify</code> fails</span></td><td>The structural token bind passed but the TSA signature does not validate — a forged or corrupt token. This is exactly the case the runbook catches and the binary cannot.</td></tr>
+  </tbody>
+</table>
+
+<hr>
+
+<p><strong>Background:</strong> <a href="court-admissibility.html">Court Admissibility overview</a>
+— the evidentiary model behind each check. ·
+<strong>Producing a package:</strong> <a href="exporting-evidence.html">Exporting evidence</a>.</p>
+
+<footer class="doc">
+  Birdbrain — open-source web investigation &amp; capture tool. The package's own
+  <code>VERIFY.md</code> is the authoritative by-hand procedure; this page mirrors it and adds the
+  binary path.
+</footer>
+
+</div>
+</body>
+</html>

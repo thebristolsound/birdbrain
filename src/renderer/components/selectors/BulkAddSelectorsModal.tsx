@@ -115,7 +115,7 @@ export function BulkAddSelectorsModal({
     >
       <motion.div
         data-testid="bulk-add-modal"
-        className="neu-card w-[32rem] max-w-[90vw] rounded-2xl p-6"
+        className="neu-overlay w-[32rem] max-w-[90vw] rounded-2xl p-6"
         onClick={(e) => e.stopPropagation()}
         {...presets.modal}
       >

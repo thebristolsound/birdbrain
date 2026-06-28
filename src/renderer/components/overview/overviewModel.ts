@@ -1,20 +1,8 @@
 import type { Capture, Note, Selector } from '@shared/types'
+import { CHART_SERIES } from '@renderer/lib/chartColors'
 
 export const ACTIVITY_DAYS = 14
 export const DAY_MS = 86_400_000
-// Deterministic tone palette, applied by sorted source rank.
-const SOURCE_TONES = [
-  '#38bdf8',
-  '#f472b6',
-  '#a78bfa',
-  '#fbbf24',
-  '#34d399',
-  '#fb923c',
-  '#60a5fa',
-  '#f87171',
-  '#2dd4bf',
-  '#c084fc'
-]
 
 export function hostOf(url: string): string {
   try {
@@ -57,7 +45,7 @@ export function computeOverview(
     .map(([host, count]) => ({ host, count }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 6)
-    .map((s, i) => ({ ...s, tone: SOURCE_TONES[i % SOURCE_TONES.length] }))
+    .map((s, i) => ({ ...s, tone: CHART_SERIES[i % CHART_SERIES.length] }))
 
   let verified = 0
   let tampered = 0

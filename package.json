@@ -91,9 +91,8 @@
     ]
   },
   "dependencies": {
-    "@fontsource-variable/dm-sans": "^5.2.8",
+    "@fontsource-variable/inter": "^5.2.8",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
-    "@fontsource-variable/plus-jakarta-sans": "^5.2.8",
     "@hono/node-server": "^1.19.13",
     "@hono/zod-validator": "^0.4.3",
     "@peculiar/asn1-cms": "^2.7.0",

@@ -105,7 +105,7 @@ export function OnboardingWizard({ mode = 'firstRun', onClose }: OnboardingWizar
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
                 transition={{ duration: 0.2, ease: 'easeInOut' }}
-                className="neu-card rounded-2xl p-8"
+                className="neu-overlay rounded-2xl p-8"
               >
                 {/* Step header */}
                 <div className="mb-6 flex items-center gap-3">
@@ -174,7 +174,7 @@ export function OnboardingWizard({ mode = 'firstRun', onClose }: OnboardingWizar
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
                 transition={{ duration: 0.2, ease: 'easeInOut' }}
-                className="neu-card rounded-2xl p-8"
+                className="neu-overlay rounded-2xl p-8"
               >
                 {/* Step header */}
                 <div className="mb-6 flex items-center gap-3">

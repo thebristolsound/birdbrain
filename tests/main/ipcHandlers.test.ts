@@ -13,6 +13,7 @@ const showSaveDialog = vi.fn()
 const showOpenDialog = vi.fn()
 const openExternal = vi.fn()
 const openPath = vi.fn()
+const showItemInFolder = vi.fn()
 
 let userDataPath = ''
 
@@ -33,7 +34,8 @@ vi.mock('electron', () => ({
   },
   shell: {
     openExternal: (...args: unknown[]) => openExternal(...args),
-    openPath: (...args: unknown[]) => openPath(...args)
+    openPath: (...args: unknown[]) => openPath(...args),
+    showItemInFolder: (...args: unknown[]) => showItemInFolder(...args)
   },
   nativeImage: {
     createFromBuffer: () => ({
@@ -471,15 +473,55 @@ describe('ipcHandlers — export', () => {
     )
     expect(pre.captureCount).toBe(1)
 
-    // Cancelled dialog → no report generated.
-    expectOk(await invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, { format: 'html' }))
+    // Cancelled dialog → no report generated, and the result reports canceled.
+    const canceled = expectOk<{ canceled: boolean; filePath?: string }>(
+      await invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, { format: 'html' })
+    )
+    expect(canceled).toEqual({ canceled: true })
     expect(generateReport).not.toHaveBeenCalled()
 
     const target = join(userDataPath, 'report.html')
     showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: target })
     generateReport.mockResolvedValue(undefined)
-    expectOk(await invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, { format: 'zip' }))
+    const done = expectOk<{ canceled: boolean; filePath?: string }>(
+      await invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, { format: 'zip' })
+    )
     expect(generateReport).toHaveBeenCalledTimes(1)
+    expect(done).toEqual({ canceled: false, filePath: target })
+  })
+
+  it('forwards onProgress to the renderer via event.sender.send', async () => {
+    const target = join(userDataPath, 'evidence.zip')
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: target })
+    generateReport.mockImplementationOnce(
+      async (
+        _caseId,
+        _options,
+        _lifecycle,
+        onProgress: (step: string, percent: number) => void
+      ) => {
+        onProgress('Verifying capture 1 of 2...', 30)
+      }
+    )
+
+    const send = vi.fn()
+    const fn = registered.get(IPC_CHANNELS.EXPORT_GENERATE)!
+    await fn({ sender: { send } } as unknown as IpcMainInvokeEvent, caseId, { format: 'zip' })
+
+    expect(send).toHaveBeenCalledWith(IPC_CHANNELS.EXPORT_PROGRESS, {
+      caseId,
+      step: 'Verifying capture 1 of 2...',
+      percent: 30
+    })
+  })
+
+  it('reveals and opens exported files via the shell', async () => {
+    openPath.mockResolvedValueOnce('')
+    expectOk(await invoke(IPC_CHANNELS.SHELL_SHOW_ITEM_IN_FOLDER, '/path/to/evidence.zip'))
+    expect(showItemInFolder).toHaveBeenCalledWith('/path/to/evidence.zip')
+
+    expectOk(await invoke(IPC_CHANNELS.SHELL_OPEN_PATH, '/path/to/evidence.zip'))
+    expect(openPath).toHaveBeenCalledWith('/path/to/evidence.zip')
   })
 })
 

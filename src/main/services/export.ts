@@ -62,15 +62,17 @@ interface EvidenceArtifact {
 
 export async function verifyCaptures(
   caseId: string,
-  captureLifecycle: CaptureLifecycle
+  captureLifecycle: CaptureLifecycle,
+  onItem?: (done: number, total: number) => void
 ): Promise<HashVerification[]> {
   const captures = db.listCaptures(caseId)
   const results: HashVerification[] = []
-  for (const capture of captures) {
+  for (const [index, capture] of captures.entries()) {
     // Delegate to the MHTML-aware pipeline so export-time verification matches the
     // badge's manual flow: streams bytes, checks the manifest chain, and persists
     // the outcome back onto the capture row.
     results.push(await captureLifecycle.verify(capture.id))
+    onItem?.(index + 1, captures.length)
   }
   return results
 }
@@ -137,13 +139,24 @@ export async function generateReport(
   }
 
   if (options.include.auditTrail) {
-    onProgress?.('Verifying capture integrity...', 50)
-    data.verifications = await verifyCaptures(caseId, captureLifecycle)
+    onProgress?.('Verifying capture integrity...', 10)
+    // Per-item progress across the 10–50% band so a large case advances
+    // continuously instead of parking on a single milestone.
+    data.verifications = await verifyCaptures(caseId, captureLifecycle, (done, total) =>
+      onProgress?.(`Verifying capture ${done} of ${total}...`, 10 + Math.round((done / total) * 40))
+    )
   }
 
   if (options.include.screenshots) {
     onProgress?.('Loading screenshots...', 60)
-    for (const cap of captures) {
+    const total = captures.length
+    for (const [index, cap] of captures.entries()) {
+      // Emit before the early-continue so skipped (screenshot-less) captures
+      // still advance the 60–80% band.
+      onProgress?.(
+        `Loading screenshot ${index + 1} of ${total}...`,
+        60 + Math.round(((index + 1) / total) * 20)
+      )
       const screenshotBuffer = readCaptureFile(cap.caseId, cap.id, 'png')
       if (!screenshotBuffer) continue
 

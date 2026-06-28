@@ -2,15 +2,18 @@ import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import type { ExportOptions, ExportPreflight } from '@shared/types'
 import { presets } from '@renderer/lib/motion'
-import { useTheater } from '@renderer/hooks/useTheater'
 import { useCompletionCelebration } from '@renderer/hooks/useCompletionCelebration'
 import { Button, Input, Label } from '@renderer/components/ui'
+import { ExportProgress } from './ExportProgress'
+import { ExportComplete } from './ExportComplete'
 
 interface ExportDialogProps {
   caseId: string
   caseName: string
   onClose: () => void
 }
+
+type Phase = 'form' | 'exporting' | 'complete'
 
 export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
   const format = 'zip' as const
@@ -21,16 +24,11 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
     auditTrail: true,
     annotations: 'burned'
   })
-  const [exporting, setExporting] = useState(false)
-  const [exportComplete, setExportComplete] = useState(false)
+  const [phase, setPhase] = useState<Phase>('form')
+  const [progress, setProgress] = useState({ step: 'Preparing export…', percent: 0 })
+  const [filePath, setFilePath] = useState('')
   const [exportError, setExportError] = useState('')
   const [preflight, setPreflight] = useState<ExportPreflight | null>(null)
-
-  const theater = useTheater({
-    stages: ['Preparing report...', 'Packaging captures...', 'Writing file...'],
-    minDuration: 800,
-    done: exportComplete
-  })
 
   const { celebrate, celebrationProps } = useCompletionCelebration({ style: 'ripple' })
 
@@ -49,6 +47,13 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
     }
   }, [caseId])
 
+  useEffect(() => {
+    const unsubscribe = window.birdbrain.onExportProgress((event) => {
+      if (event.caseId === caseId) setProgress({ step: event.step, percent: event.percent })
+    })
+    return unsubscribe
+  }, [caseId])
+
   const handleExport = async () => {
     const ext = 'zip'
     const safeName = caseName.replace(/[^a-zA-Z0-9-_]/g, '_')
@@ -61,18 +66,22 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
       outputPath
     }
 
-    setExporting(true)
-    setExportComplete(false)
     setExportError('')
+    setProgress({ step: 'Preparing export…', percent: 0 })
+    setPhase('exporting')
     try {
-      await window.birdbrain.export.generateReport(caseId, options)
-      setExportComplete(true)
+      const result = await window.birdbrain.export.generateReport(caseId, options)
+      if (result.canceled) {
+        setPhase('form')
+        return
+      }
+      setFilePath(result.filePath ?? '')
+      setPhase('complete')
       celebrate()
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       setExportError(`Error: ${message}`)
-    } finally {
-      setExporting(false)
+      setPhase('form')
     }
   }
 
@@ -91,100 +100,107 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
         onClick={(e) => e.stopPropagation()}
         {...presets.modal}
       >
-        <h2 className="mb-4 text-lg font-semibold text-text-primary">Export Case</h2>
-
-        {/* Include checkboxes */}
-        <div className="mb-4">
-          <Label className="mb-2">Include</Label>
-          <div className="space-y-2">
-            {(
-              [
-                ['captures', 'Captures'],
-                ['screenshots', 'Screenshots'],
-                ['auditTrail', 'Audit Trail']
-              ] as const
-            ).map(([key, label]) => (
-              <label key={key} className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={include[key]}
-                  onChange={() => toggleInclude(key)}
-                  className="rounded"
-                />
-                <span className="text-sm text-text-secondary">{label}</span>
-              </label>
-            ))}
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={include.annotations === 'burned'}
-                onChange={(e) =>
-                  setInclude((prev) => ({
-                    ...prev,
-                    annotations: e.target.checked ? 'burned' : 'none'
-                  }))
-                }
-                className="rounded"
+        <AnimatePresence mode="wait">
+          {phase === 'complete' ? (
+            <motion.div key="complete" {...presets.fadeIn}>
+              <ExportComplete
+                filePath={filePath}
+                onClose={onClose}
+                celebrationProps={celebrationProps}
               />
-              <span className="text-sm text-text-secondary">Burn annotations into screenshots</span>
-            </label>
-          </div>
-        </div>
-
-        {/* Investigator */}
-        <div className="mb-4">
-          <Label>Investigator Name</Label>
-          <Input
-            type="text"
-            value={investigatorName}
-            onChange={(e) => setInvestigatorName(e.target.value)}
-            placeholder="Your name..."
-          />
-        </div>
-
-        {preflight && preflight.unstampedCaptureCount > 0 && (
-          <div className="mb-4 rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
-            {preflight.unstampedCaptureCount} capture
-            {preflight.unstampedCaptureCount === 1 ? '' : 's'} will export without RFC 3161
-            trusted time ({preflight.pendingCaptureCount} pending, {preflight.noneCaptureCount}{' '}
-            none). Export will continue.
-          </div>
-        )}
-
-        {/* Progress / Status */}
-        {(exporting || exportComplete) && (
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={theater.stage}
-              {...presets.fadeIn}
-              className="mb-4 rounded bg-elevated px-3 py-2 text-sm text-center"
-            >
-              {theater.isComplete ? (
-                <motion.span {...celebrationProps} className="text-emerald-500 font-medium">
-                  Export complete!
-                </motion.span>
-              ) : (
-                <span className="text-text-muted">{theater.stage}</span>
-              )}
             </motion.div>
-          </AnimatePresence>
-        )}
+          ) : phase === 'exporting' ? (
+            <motion.div key="exporting" {...presets.fadeIn}>
+              <h2 className="mb-4 text-lg font-semibold text-text-primary">Exporting case</h2>
+              <ExportProgress step={progress.step} percent={progress.percent} />
+              <div className="flex justify-end">
+                <Button variant="ghost" size="sm" onClick={onClose}>
+                  Close
+                </Button>
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div key="form" {...presets.fadeIn}>
+              <h2 className="mb-4 text-lg font-semibold text-text-primary">Export Case</h2>
 
-        {exportError && (
-          <div className="mb-4 rounded bg-elevated px-3 py-2 text-sm text-red-400">
-            {exportError}
-          </div>
-        )}
+              {/* Include checkboxes */}
+              <div className="mb-4">
+                <Label className="mb-2">Include</Label>
+                <div className="space-y-2">
+                  {(
+                    [
+                      ['captures', 'Captures'],
+                      ['screenshots', 'Screenshots'],
+                      ['auditTrail', 'Audit Trail']
+                    ] as const
+                  ).map(([key, label]) => (
+                    <label key={key} className="flex cursor-pointer items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={include[key]}
+                        onChange={() => toggleInclude(key)}
+                        className="rounded"
+                      />
+                      <span className="text-sm text-text-secondary">{label}</span>
+                    </label>
+                  ))}
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={include.annotations === 'burned'}
+                      onChange={(e) =>
+                        setInclude((prev) => ({
+                          ...prev,
+                          annotations: e.target.checked ? 'burned' : 'none'
+                        }))
+                      }
+                      className="rounded"
+                    />
+                    <span className="text-sm text-text-secondary">
+                      Burn annotations into screenshots
+                    </span>
+                  </label>
+                </div>
+              </div>
 
-        {/* Actions */}
-        <div className="flex justify-end gap-2">
-          <Button variant="ghost" size="sm" onClick={onClose}>
-            {exporting ? 'Close' : 'Cancel'}
-          </Button>
-          <Button size="sm" onClick={handleExport} disabled={exporting}>
-            {exporting ? 'Exporting...' : 'Export'}
-          </Button>
-        </div>
+              {/* Investigator */}
+              <div className="mb-4">
+                <Label>Investigator Name</Label>
+                <Input
+                  type="text"
+                  value={investigatorName}
+                  onChange={(e) => setInvestigatorName(e.target.value)}
+                  placeholder="Your name..."
+                />
+              </div>
+
+              {preflight && preflight.unstampedCaptureCount > 0 && (
+                <div className="mb-4 rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+                  {preflight.unstampedCaptureCount} capture
+                  {preflight.unstampedCaptureCount === 1 ? '' : 's'} will export without RFC 3161
+                  trusted time ({preflight.pendingCaptureCount} pending,{' '}
+                  {preflight.noneCaptureCount} none). Export will continue.
+                </div>
+              )}
+
+              {exportError && (
+                <div className="mb-4 rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+                  {exportError}
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" size="sm" onClick={onClose}>
+                  Cancel
+                </Button>
+                <Button size="sm" onClick={handleExport}>
+                  {exportError ? 'Try again' : 'Export'}
+                </Button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
     </motion.div>
   )

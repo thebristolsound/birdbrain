@@ -7,6 +7,7 @@ import {
   dayStartMs,
   hostOf
 } from '@renderer/components/overview/overviewModel'
+import { CHART_SERIES } from '@renderer/lib/chartColors'
 
 // Pinned wall-clock: local noon on a fixed June day (no DST transition that
 // month in any zone), so whole-day offsets map to exact bucket indices.
@@ -213,5 +214,21 @@ describe('computeOverview', () => {
     expect(m.recent).toHaveLength(6)
     expect(m.recent[0].id).toBe('c0') // most recent (dayAgo(0))
     expect(m.recent[5].id).toBe('c5')
+  })
+
+  it('assigns source tones from the OpenRouter chart palette by rank', () => {
+    const m = computeOverview(
+      {
+        ...EMPTY,
+        captures: [
+          cap({ id: '1', url: 'https://aaa.com/1' }),
+          cap({ id: '2', url: 'https://aaa.com/2' }),
+          cap({ id: '3', url: 'https://bbb.com/1' })
+        ]
+      },
+      NOW
+    )
+    expect(m.sources[0].tone).toBe(CHART_SERIES[0])
+    expect(m.sources[1].tone).toBe(CHART_SERIES[1])
   })
 })

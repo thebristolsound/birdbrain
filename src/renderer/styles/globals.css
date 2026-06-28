@@ -132,15 +132,6 @@ body {
   @apply bg-canvas text-text-secondary;
   font-family: var(--font-body);
 }
-body::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.035;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
-  z-index: 9999;
-}
 
 /* === Scrollbar === */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -171,91 +162,60 @@ html.dark ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); 
 .neu-card {
   background: var(--color-card);
   border: 1px solid var(--color-border);
-  box-shadow: var(--shadow-card);
+  box-shadow: none;
 }
 .neu-card-hover:hover {
-  box-shadow: var(--shadow-card-hover);
-  transform: translateY(-1px);
+  border-color: var(--color-border-strong);
+}
+.neu-overlay {
+  background: var(--color-elevated);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-overlay);
 }
 
 /* === Glow effects === */
 .glow-indigo {
-  box-shadow: var(--shadow-glow);
+  box-shadow: none;
 }
 .glow-indigo-btn {
-  box-shadow: var(--shadow-btn);
+  box-shadow: none;
 }
 
 /* === Shimmer text — light mode uses darker indigos on light bg === */
 .shimmer-text {
-  background: linear-gradient(90deg, #4f46e5 0%, #6366f1 25%, #4f46e5 50%, #818cf8 75%, #4f46e5 100%);
-  background-size: 200% auto;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  animation: shimmer 4s linear infinite;
+  color: var(--color-accent);
 }
 html.dark .shimmer-text {
-  background: linear-gradient(90deg, #818cf8 0%, #c7d2fe 25%, #818cf8 50%, #a5b4fc 75%, #818cf8 100%);
-  background-size: 200% auto;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--color-accent);
 }
 
 /* === Logo pulse === */
 .logo-pulse {
   position: relative;
-  animation: pulse 3s ease-in-out infinite, float 4s ease-in-out infinite;
-}
-.logo-pulse::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 1rem;
-  background: #6366f1;
-  animation: pulse-ring 2.5s ease-out infinite;
-  z-index: -1;
 }
 
 /* === Grid background — light mode === */
 .grid-bg {
-  background-image:
-    radial-gradient(circle at 50% 0%, rgba(79,70,229,0.06) 0%, transparent 50%),
-    linear-gradient(rgba(0,0,0,0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0,0,0,0.03) 1px, transparent 1px);
-  background-size: 100% 100%, 48px 48px, 48px 48px;
+  background: var(--color-canvas);
 }
 html.dark .grid-bg {
-  background-image:
-    radial-gradient(circle at 50% 0%, rgba(99,102,241,0.12) 0%, transparent 50%),
-    linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
-  background-size: 100% 100%, 48px 48px, 48px 48px;
+  background: var(--color-canvas);
 }
 
 /* === Step connector === */
 .step-connector {
   height: 2px;
-  background: linear-gradient(90deg, rgba(79,70,229,0.3), rgba(79,70,229,0.1));
+  background: var(--color-border);
 }
 
 /* === New case card === */
 .new-case-card {
-  border-color: rgba(79,70,229,0.2);
-  background: rgba(79,70,229,0.04);
+  border-color: var(--color-border);
+  background: transparent;
 }
 .new-case-card:hover {
-  border-color: rgba(79,70,229,0.4);
-  background: rgba(79,70,229,0.08);
-}
-html.dark .new-case-card {
-  border-color: rgba(99,102,241,0.3);
-  background: rgba(99,102,241,0.05);
-}
-html.dark .new-case-card:hover {
-  border-color: rgba(99,102,241,0.5);
-  background: rgba(99,102,241,0.1);
+  border-color: var(--color-accent);
+  background: var(--color-accent-subtle);
 }
 
 .case-tag { transition: all 0.15s ease; }

@@ -16,6 +16,6 @@ describe('chartColors', () => {
 
   it('exposes zinc axis + grid colors', () => {
     expect(CHART_AXIS).toBe('#a1a1aa')
-    expect(CHART_GRID).toMatch(/^#|rgba/)
+    expect(CHART_GRID).toBe('rgba(161,161,170,0.2)')
   })
 })

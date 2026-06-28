@@ -32,7 +32,8 @@ async function createCase(page: Page, name: string): Promise<string> {
 async function seedCapture(page: Page, caseId: string, url: string, title: string): Promise<void> {
   const ok = await page.evaluate(
     async ({ caseId, url, title, png }) => {
-      const status = await fetch('http://127.0.0.1:19845/api/status').then((r) => r.json())
+      const statusResponse = await fetch('http://127.0.0.1:19845/api/status')
+      const status = await statusResponse.json()
       const token: string = status.serverToken ?? ''
       const bytes = Uint8Array.from(atob(png), (c) => c.charCodeAt(0))
       const form = new FormData()

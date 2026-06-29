@@ -43,6 +43,12 @@ import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { handle, IpcFailure } from '@main/ipcWrap'
 import type { BirdbrainSettings, ExportOptions, CaptureAnalysis } from '@shared/types'
 
+// Self-test fetches must fail fast when the capture server is down. Without an
+// explicit timeout they inherit undici's 10s default, which on platforms whose
+// loopback drops (rather than refuses) SYNs to unbound ports — e.g. WSL2 — hangs
+// long enough to blow past test/UI deadlines.
+const SELF_TEST_TIMEOUT_MS = 2000
+
 export function registerIpcHandlers(deps: {
   selectorLifecycle: SelectorLifecycle
   captureLifecycle: CaptureLifecycle
@@ -97,7 +103,8 @@ export function registerIpcHandlers(deps: {
     try {
       const res = await fetch(`http://127.0.0.1:${CAPTURE_SERVER_PORT}/api/captures/test`, {
         method: 'POST',
-        headers: { 'X-Birdbrain-Token': getServerToken() }
+        headers: { 'X-Birdbrain-Token': getServerToken() },
+        signal: AbortSignal.timeout(SELF_TEST_TIMEOUT_MS)
       })
       return res.json()
     } catch (err) {
@@ -109,7 +116,9 @@ export function registerIpcHandlers(deps: {
   ipcMain.handle(IPC_CHANNELS.CAPTURES_TEST_HTTP, async () => {
     const start = Date.now()
     try {
-      const res = await fetch(`http://127.0.0.1:${CAPTURE_SERVER_PORT}/api/status`)
+      const res = await fetch(`http://127.0.0.1:${CAPTURE_SERVER_PORT}/api/status`, {
+        signal: AbortSignal.timeout(SELF_TEST_TIMEOUT_MS)
+      })
       const ok = res.ok
       return {
         success: ok,

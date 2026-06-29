@@ -196,7 +196,8 @@ function createApp(deps: CaptureServerDeps): Hono {
       cases: includeCases && allCases ? allCases.map((cs) => ({ id: cs.id, name: cs.name })) : [],
       ignoredUrlPatterns: settings.ignoredUrlPatterns,
       captureScreenshots: settings.captureScreenshots,
-      dedupeWindowSeconds: settings.dedupeWindowSeconds
+      dedupeWindowSeconds: settings.dedupeWindowSeconds,
+      theme: settings.theme
     })
   })
 

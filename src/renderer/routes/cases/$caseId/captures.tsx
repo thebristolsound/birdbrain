@@ -11,7 +11,6 @@ import { CaptureList } from '@renderer/components/captures/CaptureList'
 import { CaptureViewer } from '@renderer/components/captures/CaptureViewer'
 import { CaptureDetailsPanel } from '@renderer/components/captures/CaptureDetailsPanel'
 import { CaptureDetailsRail } from '@renderer/components/captures/CaptureDetailsRail'
-import { CaseHeader } from '@renderer/components/layout/CaseHeader'
 import { AddNoteModal } from '@renderer/components/notes/AddNoteModal'
 import {
   Button,
@@ -89,7 +88,6 @@ export function CapturesRoute() {
   return (
     <div className="flex h-full flex-1 overflow-hidden">
       <div className="flex w-[380px] shrink-0 flex-col border-r border-border">
-        <CaseHeader />
         <div className="flex flex-1 min-h-0 overflow-hidden">
           <CaptureList caseId={caseId} />
         </div>

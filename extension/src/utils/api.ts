@@ -26,6 +26,7 @@ interface StatusResponse {
   ignoredUrlPatterns?: string[]
   captureScreenshots?: boolean
   dedupeWindowSeconds?: number
+  theme?: 'light' | 'dark'
 }
 
 interface CaseInfo {

@@ -15,8 +15,8 @@
   --color-text-muted: #71717a;
   --color-text-faint: #a1a1aa;
 
-  /* Accent tokens */
-  --color-accent: #6467f2;
+  /* Accent tokens — light darkens the indigo vs dark's #6467f2 for WCAG AA on zinc-50 */
+  --color-accent: #5659f0;
   --color-accent-hover: #4f52e0;
   --color-accent-subtle: rgba(100,103,242,0.10);
 

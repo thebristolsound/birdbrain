@@ -13,6 +13,12 @@
         src: url('./fonts/inter-latin-wght-normal.woff2') format('woff2');
       }
     </style>
+    <script>
+      try {
+        if (localStorage.getItem('bb-theme') !== 'light')
+          document.documentElement.classList.add('dark')
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

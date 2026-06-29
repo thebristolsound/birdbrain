@@ -8,6 +8,7 @@ import type {
   BirdbrainSettings,
   OpenRouterModel,
   ExportOptions,
+  ExportPreflight,
   Selector,
   ActiveCaseSelectors,
   CaptureEvent,
@@ -45,7 +46,8 @@ import type {
   AnalyzeCaptureParams,
   SaveAnnotationsParams,
   UpsertAnnotationPinParams,
-  SelectorRematchedEvent
+  SelectorRematchedEvent,
+  DeepLinkTarget
 } from '@shared/ipc'
 
 interface BirdbrainAPI {
@@ -127,6 +129,7 @@ interface BirdbrainAPI {
     chooseStoragePath(): Promise<string | null>
   }
   export: {
+    preflight(caseId: string): Promise<ExportPreflight>
     generateReport(caseId: string, options: ExportOptions): Promise<void>
   }
   ai: {
@@ -160,6 +163,7 @@ interface BirdbrainAPI {
   onExtensionConnection(callback: (data: { connected: boolean }) => void): () => void
   onCaptureActivity(callback: (event: CaptureEvent) => void): () => void
   onSelectorRematched(callback: (event: SelectorRematchedEvent) => void): () => void
+  onDeepLinkNavigate(callback: (target: DeepLinkTarget) => void): () => void
   testPipeline(): Promise<{ success: boolean; durationMs: number; error?: string }>
   testHttp(): Promise<{ success: boolean; durationMs: number; error?: string }>
   extractedData: {

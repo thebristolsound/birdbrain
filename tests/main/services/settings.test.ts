@@ -146,4 +146,9 @@ describe('settings', () => {
     updateSettings({ lastActiveSection: 'data' })
     expect(getSettings().lastActiveSection).toBe('data')
   })
+
+  it('persists overview as lastActiveSection', () => {
+    updateSettings({ lastActiveSection: 'overview' })
+    expect(getSettings().lastActiveSection).toBe('overview')
+  })
 })

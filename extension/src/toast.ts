@@ -35,10 +35,10 @@ const TOAST_STYLES = `
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: 13px;
     line-height: 1;
-    color: #fff;
-    background: #1a1a2e;
-    border: 1px solid rgba(255,255,255,0.1);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    color: #fafafa;
+    background: #131316;
+    border: 1px solid #27272a;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
     opacity: 0;
     transform: translateY(8px);
     transition: opacity 0.2s, transform 0.2s;
@@ -63,7 +63,7 @@ const TOAST_STYLES = `
     width: 14px;
     height: 14px;
     border: 2px solid rgba(255,255,255,0.2);
-    border-top-color: #fff;
+    border-top-color: #6467f2;
     border-radius: 50%;
     animation: spin 0.6s linear infinite;
   }

@@ -7,6 +7,7 @@ import type { BirdbrainSettings } from '@shared/types'
 type Section = BirdbrainSettings['lastActiveSection']
 
 const SECTION_PATHS: Record<Exclude<Section, 'settings'>, string> = {
+  overview: '/cases/$caseId/overview',
   captures: '/cases/$caseId/captures',
   selectors: '/cases/$caseId/selectors',
   notes: '/cases/$caseId/notes',

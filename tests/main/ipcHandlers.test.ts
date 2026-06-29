@@ -1,0 +1,631 @@
+import { describe, it, expect, beforeEach, afterEach, vi, beforeAll } from 'vitest'
+import { mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { join } from 'path'
+import { tmpdir } from 'os'
+import type { IpcMainInvokeEvent } from 'electron'
+
+// --- Module mocks -----------------------------------------------------------
+// Electron is mocked so registerIpcHandlers can register against a fake
+// ipcMain whose handlers we capture and invoke directly. dialog/shell are
+// configurable per-test stubs.
+const registered = new Map<string, (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown>()
+const showSaveDialog = vi.fn()
+const showOpenDialog = vi.fn()
+const openExternal = vi.fn()
+const openPath = vi.fn()
+
+let userDataPath = ''
+
+vi.mock('electron', () => ({
+  app: {
+    isPackaged: false,
+    getVersion: () => '1.2.3',
+    getPath: () => userDataPath
+  },
+  ipcMain: {
+    handle: (channel: string, fn: (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown) => {
+      registered.set(channel, fn)
+    }
+  },
+  dialog: {
+    showSaveDialog: (...args: unknown[]) => showSaveDialog(...args),
+    showOpenDialog: (...args: unknown[]) => showOpenDialog(...args)
+  },
+  shell: {
+    openExternal: (...args: unknown[]) => openExternal(...args),
+    openPath: (...args: unknown[]) => openPath(...args)
+  },
+  nativeImage: {
+    createFromBuffer: () => ({
+      isEmpty: () => true,
+      resize: () => ({ toJPEG: () => Buffer.from('') })
+    })
+  }
+}))
+
+// Network / heavy-IO leaves are stubbed; the handler wiring is what we test.
+const analyzeCapture = vi.fn()
+const saveAnalysis = vi.fn()
+const getAnalysis = vi.fn()
+vi.mock('@main/services/ai/analysisService', () => ({
+  analyzeCapture: (...a: unknown[]) => analyzeCapture(...a),
+  saveAnalysis: (...a: unknown[]) => saveAnalysis(...a),
+  getAnalysis: (...a: unknown[]) => getAnalysis(...a)
+}))
+
+const testApiKey = vi.fn()
+const listModels = vi.fn()
+vi.mock('@main/services/openrouter', () => ({
+  testApiKey: (...a: unknown[]) => testApiKey(...a),
+  listModels: (...a: unknown[]) => listModels(...a)
+}))
+
+const generateReport = vi.fn()
+const getExportPreflight = vi.fn()
+vi.mock('@main/services/export', () => ({
+  generateReport: (...a: unknown[]) => generateReport(...a),
+  getExportPreflight: (...a: unknown[]) => getExportPreflight(...a)
+}))
+
+// --- Real services ----------------------------------------------------------
+import { IPC_CHANNELS } from '@shared/ipc'
+import { registerIpcHandlers } from '@main/ipcHandlers'
+import * as db from '@main/services/database'
+import * as storage from '@main/services/storage'
+import * as settings from '@main/services/settings'
+import { initInstallationId } from '@main/services/installationId'
+import { initServerToken } from '@main/services/serverToken'
+import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
+import { createCaptureLifecycle } from '@main/services/captureLifecycle'
+import { initManifest } from '@main/services/manifest'
+
+const fakeEvent = {} as IpcMainInvokeEvent
+
+// Invoke a registered handler by channel. Returns the raw handler result;
+// `handle()`-wrapped channels return `{ ok, data }`, raw ones return the value.
+async function invoke<T = unknown>(channel: string, ...args: unknown[]): Promise<T> {
+  const fn = registered.get(channel)
+  if (!fn) throw new Error(`No handler registered for ${channel}`)
+  return (await fn(fakeEvent, ...args)) as T
+}
+
+// Unwrap a `handle()` IpcResult, asserting success.
+function expectOk<T = unknown>(res: { ok: boolean; data?: T; error?: string }): T {
+  expect(res.ok).toBe(true)
+  return res.data as T
+}
+
+let dbPath = ''
+let caseId = ''
+let captureId = ''
+
+function seedCapture(overrides: Partial<db.InsertCaptureParams> = {}): db.Capture {
+  const cap = db.insertCapture({
+    caseId,
+    url: 'https://example.com',
+    title: 'Example',
+    hash: 'seedhash',
+    timestamp: '2026-04-05T12:00:00.000Z',
+    textContent: 'hello world content',
+    ...overrides
+  })
+  storage.saveCapture(
+    caseId,
+    cap.id,
+    '<html>hi</html>',
+    Buffer.from('png-bytes'),
+    'hello world content'
+  )
+  // Pre-write a thumbnail so getThumbnail returns without invoking nativeImage.
+  writeFileSync(join(storage.getStorageRoot(), caseId, `${cap.id}_thumb.jpg`), Buffer.from('jpg'))
+  return cap
+}
+
+beforeAll(() => {
+  // Default dialog behaviour: cancelled.
+  showSaveDialog.mockResolvedValue({ canceled: true, filePath: undefined })
+  showOpenDialog.mockResolvedValue({ canceled: true, filePaths: [] })
+})
+
+beforeEach(() => {
+  registered.clear()
+  vi.clearAllMocks()
+  showSaveDialog.mockResolvedValue({ canceled: true, filePath: undefined })
+  showOpenDialog.mockResolvedValue({ canceled: true, filePaths: [] })
+
+  userDataPath = mkdtempSync(join(tmpdir(), 'birdbrain-ipc-'))
+  process.env.BIRDBRAIN_USER_DATA = userDataPath
+  dbPath = join(userDataPath, 'birdbrain.db')
+
+  storage.initStorage(join(userDataPath, 'captures'))
+  db.initDatabase(dbPath)
+  settings.initSettings(userDataPath)
+  initInstallationId(userDataPath)
+  initServerToken(userDataPath)
+
+  const selectorLifecycle = createSelectorLifecycle({ emitRematched: vi.fn() })
+  const captureLifecycle = createCaptureLifecycle({ selectorLifecycle })
+  registerIpcHandlers({ selectorLifecycle, captureLifecycle })
+
+  const created = db.createCase({ name: 'Test Case' })
+  caseId = created.id
+  storage.ensureCaseDir(caseId)
+  initManifest(join(storage.getStorageRoot(), caseId))
+  captureId = seedCapture().id
+})
+
+afterEach(() => {
+  db.closeDatabase()
+  rmSync(userDataPath, { recursive: true, force: true })
+  delete process.env.BIRDBRAIN_USER_DATA
+})
+
+describe('ipcHandlers — registration', () => {
+  it('registers a handler for every IPC channel referenced by handlers', () => {
+    // Spot-check a representative set across domains.
+    for (const ch of [
+      IPC_CHANNELS.CASES_LIST,
+      IPC_CHANNELS.CAPTURES_LIST,
+      IPC_CHANNELS.TAGS_LIST,
+      IPC_CHANNELS.SELECTORS_LIST,
+      IPC_CHANNELS.NOTES_LIST,
+      IPC_CHANNELS.SETTINGS_GET,
+      IPC_CHANNELS.DB_STATS,
+      IPC_CHANNELS.EXPORT_PREFLIGHT
+    ]) {
+      expect(registered.has(ch)).toBe(true)
+    }
+  })
+})
+
+describe('ipcHandlers — cases', () => {
+  it('lists, gets, creates, updates and deletes cases', async () => {
+    const list = await invoke<db.Case[]>(IPC_CHANNELS.CASES_LIST)
+    expect(list.some((c) => c.id === caseId)).toBe(true)
+
+    const one = await invoke<db.Case>(IPC_CHANNELS.CASES_GET, caseId)
+    expect(one.name).toBe('Test Case')
+
+    const created = expectOk<db.Case>(await invoke(IPC_CHANNELS.CASES_CREATE, { name: 'Another' }))
+    expect(created.name).toBe('Another')
+
+    const updated = expectOk<db.Case>(
+      await invoke(IPC_CHANNELS.CASES_UPDATE, { id: created.id, name: 'Renamed' })
+    )
+    expect(updated.name).toBe('Renamed')
+
+    expectOk(await invoke(IPC_CHANNELS.CASES_DELETE, created.id))
+    const after = await invoke<db.Case[]>(IPC_CHANNELS.CASES_LIST)
+    expect(after.some((c) => c.id === created.id)).toBe(false)
+  })
+
+  it('translates a unique-constraint violation into a structured failure', async () => {
+    // Re-creating a case is fine, but duplicate tag names are constrained.
+    expectOk(await invoke(IPC_CHANNELS.TAGS_CREATE, { name: 'dup', color: '#fff' }))
+    const res = await invoke<{ ok: boolean; code?: string }>(IPC_CHANNELS.TAGS_CREATE, {
+      name: 'dup',
+      color: '#000'
+    })
+    expect(res.ok).toBe(false)
+    expect(res.code).toBe('SQLITE_CONSTRAINT_UNIQUE')
+  })
+})
+
+describe('ipcHandlers — captures', () => {
+  it('lists and gets captures', async () => {
+    const list = await invoke<db.Capture[]>(IPC_CHANNELS.CAPTURES_LIST, caseId)
+    expect(list).toHaveLength(1)
+    const one = await invoke<db.Capture>(IPC_CHANNELS.CAPTURES_GET, captureId)
+    expect(one.id).toBe(captureId)
+  })
+
+  it('returns capture content for html, png and txt', async () => {
+    const html = await invoke<string>(IPC_CHANNELS.CAPTURES_GET_CONTENT, captureId, 'html')
+    expect(html).toContain('<html>')
+    const png = await invoke<string>(IPC_CHANNELS.CAPTURES_GET_CONTENT, captureId, 'png')
+    expect(png).toBe(Buffer.from('png-bytes').toString('base64'))
+    const txt = await invoke<string>(IPC_CHANNELS.CAPTURES_GET_CONTENT, captureId, 'txt')
+    expect(txt).toContain('hello world')
+    const missing = await invoke(IPC_CHANNELS.CAPTURES_GET_CONTENT, 'nope', 'html')
+    expect(missing).toBeNull()
+  })
+
+  it('returns a thumbnail and matching selectors', async () => {
+    const thumb = await invoke<string>(IPC_CHANNELS.CAPTURES_GET_THUMBNAIL, captureId)
+    expect(typeof thumb).toBe('string')
+    expect(await invoke(IPC_CHANNELS.CAPTURES_GET_THUMBNAIL, 'missing')).toBeNull()
+    const sel = await invoke(IPC_CHANNELS.CAPTURES_GET_MATCHING_SELECTORS, captureId)
+    expect(Array.isArray(sel)).toBe(true)
+  })
+
+  it('counts captures by case', async () => {
+    const counts = expectOk<Record<string, number>>(
+      await invoke(IPC_CHANNELS.CAPTURES_COUNTS_BY_CASE)
+    )
+    expect(counts[caseId]).toBe(1)
+  })
+
+  it('toggles, reads and lists favorites', async () => {
+    expectOk(await invoke(IPC_CHANNELS.CAPTURES_TOGGLE_FAVORITE, captureId))
+    expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_IS_FAVORITE, captureId))).toBe(true)
+    const favs = expectOk<db.Capture[]>(await invoke(IPC_CHANNELS.CAPTURES_LIST_FAVORITES, caseId))
+    expect(favs).toHaveLength(1)
+  })
+
+  it('returns null mhtml url when capture has no mhtml path', async () => {
+    expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_MHTML_URL, captureId))).toBeNull()
+  })
+
+  it('opens external http(s) urls and rejects other protocols', async () => {
+    openExternal.mockResolvedValue(undefined)
+    expectOk(await invoke(IPC_CHANNELS.CAPTURES_OPEN_EXTERNAL, 'https://example.com'))
+    expect(openExternal).toHaveBeenCalledWith('https://example.com')
+
+    const bad = await invoke<{ ok: boolean; code?: string }>(
+      IPC_CHANNELS.CAPTURES_OPEN_EXTERNAL,
+      'file:///etc/passwd'
+    )
+    expect(bad.ok).toBe(false)
+    expect(bad.code).toBe('INVALID_URL_PROTOCOL')
+
+    const malformed = await invoke<{ ok: boolean; code?: string }>(
+      IPC_CHANNELS.CAPTURES_OPEN_EXTERNAL,
+      'not a url'
+    )
+    expect(malformed.ok).toBe(false)
+    expect(malformed.code).toBe('INVALID_URL')
+  })
+
+  it('returns null when downloading a missing capture and writes the file otherwise', async () => {
+    expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_DOWNLOAD, 'missing'))).toBeNull()
+
+    const target = join(userDataPath, 'out.html')
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: target })
+    const saved = expectOk<string>(await invoke(IPC_CHANNELS.CAPTURES_DOWNLOAD, captureId))
+    expect(saved).toBe(target)
+  })
+
+  it('verifies a capture and deletes it', async () => {
+    const verification = expectOk<{ status: string }>(
+      await invoke(IPC_CHANNELS.CAPTURES_VERIFY, captureId)
+    )
+    expect(verification.status).toBeDefined()
+
+    expectOk(await invoke(IPC_CHANNELS.CAPTURES_DELETE, captureId))
+    expect(await invoke<db.Capture[]>(IPC_CHANNELS.CAPTURES_LIST, caseId)).toHaveLength(0)
+  })
+
+  it('reports failure for the http/pipeline self-tests when the server is down', async () => {
+    const http = await invoke<{ success: boolean }>(IPC_CHANNELS.CAPTURES_TEST_HTTP)
+    expect(http.success).toBe(false)
+    const pipeline = await invoke<{ success: boolean }>(IPC_CHANNELS.CAPTURES_TEST_PIPELINE)
+    expect(pipeline.success).toBe(false)
+  })
+})
+
+describe('ipcHandlers — tags', () => {
+  it('creates, updates, lists, assigns and removes tags', async () => {
+    const tag = expectOk<{ id: string }>(
+      await invoke(IPC_CHANNELS.TAGS_CREATE, { name: 'urgent', color: '#f00' })
+    )
+    expectOk(await invoke(IPC_CHANNELS.TAGS_UPDATE, { id: tag.id, name: 'urgent2', color: '#0f0' }))
+
+    const list = await invoke<{ id: string }[]>(IPC_CHANNELS.TAGS_LIST)
+    expect(list.some((t) => t.id === tag.id)).toBe(true)
+
+    expectOk(await invoke(IPC_CHANNELS.TAGS_ADD_TO_CAPTURE, { captureId, tagId: tag.id }))
+    const forCapture = await invoke<{ id: string }[]>(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, captureId)
+    expect(forCapture.some((t) => t.id === tag.id)).toBe(true)
+
+    expect(await invoke<number>(IPC_CHANNELS.TAGS_COUNT_FOR_CASE, caseId)).toBeGreaterThan(0)
+    expect(await invoke(IPC_CHANNELS.TAGS_USAGE_COUNTS_FOR_CASE, caseId)).toBeDefined()
+
+    expectOk(await invoke(IPC_CHANNELS.TAGS_REMOVE_FROM_CAPTURE, { captureId, tagId: tag.id }))
+    expectOk(await invoke(IPC_CHANNELS.TAGS_DELETE, tag.id))
+  })
+})
+
+describe('ipcHandlers — selectors', () => {
+  it('creates, bulk-creates, updates, lists and deletes selectors', async () => {
+    const sel = expectOk<{ id: string }>(
+      await invoke(IPC_CHANNELS.SELECTORS_CREATE, {
+        caseId,
+        pattern: 'hello',
+        isRegex: false,
+        label: 'greeting'
+      })
+    )
+    expectOk(
+      await invoke(IPC_CHANNELS.SELECTORS_BULK_CREATE, {
+        caseId,
+        selectors: [{ pattern: 'world', isRegex: false }]
+      })
+    )
+    expectOk(
+      await invoke(IPC_CHANNELS.SELECTORS_UPDATE, { id: sel.id, pattern: 'hello2', isRegex: false })
+    )
+
+    const list = await invoke<{ id: string }[]>(IPC_CHANNELS.SELECTORS_LIST, caseId)
+    expect(list.length).toBeGreaterThanOrEqual(2)
+    expect(await invoke(IPC_CHANNELS.SELECTORS_GET, sel.id)).toBeDefined()
+    expect(await invoke(IPC_CHANNELS.SELECTORS_LIST_ACTIVE)).toBeDefined()
+    expect(await invoke(IPC_CHANNELS.SELECTORS_MATCH_COUNTS, caseId)).toBeDefined()
+    expect(await invoke(IPC_CHANNELS.SELECTORS_COVERAGE, caseId)).toBeDefined()
+    expect(await invoke(IPC_CHANNELS.SELECTORS_MATCHING_CAPTURES, caseId, [sel.id])).toBeDefined()
+
+    expectOk(await invoke(IPC_CHANNELS.SELECTORS_DELETE, sel.id))
+  })
+
+  it('exports selector matches to csv, honouring the save dialog', async () => {
+    const cancelled = expectOk<{ exported: boolean }>(
+      await invoke(IPC_CHANNELS.SELECTORS_EXPORT_MATCHES, caseId)
+    )
+    expect(cancelled.exported).toBe(false)
+
+    const target = join(userDataPath, 'matches.csv')
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: target })
+    const exported = expectOk<{ exported: boolean; path?: string }>(
+      await invoke(IPC_CHANNELS.SELECTORS_EXPORT_MATCHES, caseId)
+    )
+    expect(exported.exported).toBe(true)
+    expect(exported.path).toBe(target)
+
+    const missing = expectOk<{ exported: boolean }>(
+      await invoke(IPC_CHANNELS.SELECTORS_EXPORT_MATCHES, 'no-such-case')
+    )
+    expect(missing.exported).toBe(false)
+  })
+})
+
+describe('ipcHandlers — notes', () => {
+  it('creates, updates, lists, counts, searches and deletes notes', async () => {
+    const note = expectOk<{ id: string }>(
+      await invoke(IPC_CHANNELS.NOTES_CREATE, { caseId, content: 'a finding about foxes' })
+    )
+    expectOk(await invoke(IPC_CHANNELS.NOTES_UPDATE, { id: note.id, content: 'updated finding' }))
+
+    expect(await invoke<{ id: string }[]>(IPC_CHANNELS.NOTES_LIST, caseId)).toHaveLength(1)
+    expect(await invoke(IPC_CHANNELS.NOTES_GET, note.id)).toBeDefined()
+    expect(await invoke<number>(IPC_CHANNELS.NOTES_COUNT, caseId)).toBe(1)
+    expect(await invoke(IPC_CHANNELS.NOTES_SEARCH, caseId, 'finding')).toBeDefined()
+    // Malformed FTS query is swallowed and returns [].
+    expect(await invoke(IPC_CHANNELS.NOTES_SEARCH, caseId, '"unbalanced')).toEqual([])
+
+    expectOk(await invoke(IPC_CHANNELS.NOTES_DELETE, note.id))
+    expect(await invoke<number>(IPC_CHANNELS.NOTES_COUNT, caseId)).toBe(0)
+  })
+})
+
+describe('ipcHandlers — annotations', () => {
+  it('saves, reads, pins and deletes annotations', async () => {
+    expectOk(
+      await invoke(IPC_CHANNELS.ANNOTATIONS_SAVE, {
+        captureId,
+        shapes: [],
+        imageWidth: 100,
+        imageHeight: 100
+      })
+    )
+    const bundle = await invoke<{ annotations: unknown; pins: unknown[] }>(
+      IPC_CHANNELS.ANNOTATIONS_GET,
+      captureId
+    )
+    expect(bundle.annotations).not.toBeNull()
+    expect(Array.isArray(bundle.pins)).toBe(true)
+
+    const pin = expectOk<{ id: string }>(
+      await invoke(IPC_CHANNELS.ANNOTATIONS_UPSERT_PIN, { captureId, body: 'note' })
+    )
+    expect(pin.id).toBeDefined()
+    expectOk(await invoke(IPC_CHANNELS.ANNOTATIONS_DELETE_PIN, pin.id))
+    expectOk(await invoke(IPC_CHANNELS.ANNOTATIONS_DELETE, captureId))
+  })
+})
+
+describe('ipcHandlers — search', () => {
+  it('searches captures and swallows malformed FTS queries', async () => {
+    expect(await invoke(IPC_CHANNELS.SEARCH, 'hello')).toBeDefined()
+    expect(await invoke(IPC_CHANNELS.SEARCH, '"unbalanced')).toEqual([])
+  })
+})
+
+describe('ipcHandlers — settings', () => {
+  it('gets, updates, resets and reports identity', async () => {
+    const s = await invoke<{ operatorName?: string }>(IPC_CHANNELS.SETTINGS_GET)
+    expect(s).toBeDefined()
+
+    const updated = await invoke<{ operatorName?: string }>(IPC_CHANNELS.SETTINGS_UPDATE, {
+      operatorName: 'Agent Smith'
+    })
+    expect(updated.operatorName).toBe('Agent Smith')
+
+    const identity = await invoke<{ installationId: string; operatorName: string }>(
+      IPC_CHANNELS.SETTINGS_GET_IDENTITY
+    )
+    expect(identity.installationId).toBeTruthy()
+    expect(identity.operatorName).toBe('Agent Smith')
+
+    const reset = await invoke<{ operatorName?: string }>(IPC_CHANNELS.SETTINGS_RESET)
+    expect(reset).toBeDefined()
+  })
+
+  it('delegates openrouter key tests and model listing', async () => {
+    testApiKey.mockResolvedValue(true)
+    listModels.mockResolvedValue([{ id: 'gpt' }])
+    expect(await invoke(IPC_CHANNELS.SETTINGS_TEST_OPENROUTER, 'key')).toBe(true)
+    expect(await invoke(IPC_CHANNELS.SETTINGS_LIST_MODELS, 'key')).toEqual([{ id: 'gpt' }])
+  })
+
+  it('returns null when the storage-path picker is cancelled and a path otherwise', async () => {
+    expect(await invoke(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH)).toBeNull()
+    showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: ['/data/x'] })
+    expect(await invoke(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH)).toBe('/data/x')
+  })
+})
+
+describe('ipcHandlers — export', () => {
+  it('returns preflight info and runs report generation through the save dialog', async () => {
+    getExportPreflight.mockReturnValue({ captureCount: 1 })
+    const pre = expectOk<{ captureCount: number }>(
+      await invoke(IPC_CHANNELS.EXPORT_PREFLIGHT, caseId)
+    )
+    expect(pre.captureCount).toBe(1)
+
+    // Cancelled dialog → no report generated.
+    expectOk(await invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, { format: 'html' }))
+    expect(generateReport).not.toHaveBeenCalled()
+
+    const target = join(userDataPath, 'report.html')
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: target })
+    generateReport.mockResolvedValue(undefined)
+    expectOk(await invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, { format: 'zip' }))
+    expect(generateReport).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('ipcHandlers — AI analysis', () => {
+  it('fails when no API key is configured', async () => {
+    const res = await invoke<{ ok: boolean; error?: string }>(IPC_CHANNELS.AI_ANALYZE, {
+      captureId,
+      caseId,
+      model: 'gpt'
+    })
+    expect(res.ok).toBe(false)
+    expect(res.error).toMatch(/API key/i)
+  })
+
+  it('analyzes, saves and reads analysis when a key is present', async () => {
+    settings.updateSettings({ openRouterApiKey: 'sk-test' })
+    analyzeCapture.mockResolvedValue({ summary: 'done' })
+    const out = expectOk<{ summary: string }>(
+      await invoke(IPC_CHANNELS.AI_ANALYZE, { captureId, caseId, model: 'gpt' })
+    )
+    expect(out.summary).toBe('done')
+    expect(analyzeCapture).toHaveBeenCalled()
+
+    expectOk(await invoke(IPC_CHANNELS.AI_SAVE_ANALYSIS, { captureId, summary: 'x' }))
+    expect(saveAnalysis).toHaveBeenCalled()
+
+    getAnalysis.mockReturnValue({ summary: 'stored' })
+    const got = expectOk<{ summary: string }>(
+      await invoke(IPC_CHANNELS.AI_GET_ANALYSIS, { captureId })
+    )
+    expect(got.summary).toBe('stored')
+  })
+
+  it('wraps analysis errors as a structured failure', async () => {
+    settings.updateSettings({ openRouterApiKey: 'sk-test' })
+    analyzeCapture.mockRejectedValue(new Error('upstream 500'))
+    const res = await invoke<{ ok: boolean; error?: string }>(IPC_CHANNELS.AI_ANALYZE, {
+      captureId,
+      caseId,
+      model: 'gpt'
+    })
+    expect(res.ok).toBe(false)
+    expect(res.error).toContain('upstream 500')
+  })
+})
+
+describe('ipcHandlers — extracted data', () => {
+  it('lists categories, subcategories, items and counts, and reprocesses', async () => {
+    db.insertExtractedData(captureId, caseId, 'https://example.com', [
+      { category: 'ioc', subcategory: 'email', value: 'a@b.com' }
+    ])
+    const categories = await invoke<unknown[]>(IPC_CHANNELS.EXTRACTED_DATA_CATEGORIES, caseId)
+    expect(categories.length).toBeGreaterThan(0)
+    expect(await invoke(IPC_CHANNELS.EXTRACTED_DATA_SUBCATEGORIES, caseId, 'ioc')).toBeDefined()
+    expect(await invoke(IPC_CHANNELS.EXTRACTED_DATA_ITEMS, caseId, 'ioc', 'email')).toBeDefined()
+    expect(await invoke<number>(IPC_CHANNELS.EXTRACTED_DATA_COUNT, caseId)).toBeGreaterThan(0)
+
+    const reprocessed = expectOk<{ processed: number }>(
+      await invoke(IPC_CHANNELS.EXTRACTED_DATA_REPROCESS, caseId)
+    )
+    expect(reprocessed.processed).toBeGreaterThanOrEqual(0)
+  })
+})
+
+describe('ipcHandlers — extension', () => {
+  it('reports a structured failure when the extension dir is absent', async () => {
+    const res = await invoke<{ ok: boolean; code?: string }>(IPC_CHANNELS.EXTENSION_PATH)
+    // In CI the built extension dir is usually absent → EXT_NOT_FOUND.
+    if (!res.ok) {
+      expect(res.code).toBe('EXT_NOT_FOUND')
+    } else {
+      expect(typeof res.data).toBe('string')
+    }
+  })
+})
+
+describe('ipcHandlers — database admin', () => {
+  it('reports stats and table rows', async () => {
+    const stats = expectOk<{ schemaVersion: number; tables: unknown[] }>(
+      await invoke(IPC_CHANNELS.DB_STATS)
+    )
+    expect(stats.schemaVersion).toBeGreaterThan(0)
+    expect(Array.isArray(stats.tables)).toBe(true)
+
+    const rows = expectOk<{ rows: unknown[]; total: number }>(
+      await invoke(IPC_CHANNELS.DB_TABLE_ROWS, { table: 'cases', offset: 0, limit: 10 })
+    )
+    expect(rows.total).toBeGreaterThan(0)
+  })
+
+  it('creates, updates and deletes rows through the admin API', async () => {
+    const created = expectOk<Record<string, unknown>>(
+      await invoke(IPC_CHANNELS.DB_CREATE_ROW, {
+        table: 'tags',
+        data: { id: 'tag-x', name: 'admin-tag', color: '#abc' }
+      })
+    )
+    expect(created).toBeDefined()
+
+    expectOk(
+      await invoke(IPC_CHANNELS.DB_UPDATE_ROW, {
+        table: 'tags',
+        pk: { id: 'tag-x' },
+        data: { name: 'admin-tag-2' }
+      })
+    )
+    expect(
+      expectOk<boolean>(
+        await invoke(IPC_CHANNELS.DB_DELETE_ROW, { table: 'tags', pk: { id: 'tag-x' } })
+      )
+    ).toBe(true)
+  })
+
+  it('runs maintenance: vacuum, rebuild-fts, purge, orphans and export', async () => {
+    expectOk(await invoke(IPC_CHANNELS.DB_VACUUM))
+    expectOk(await invoke(IPC_CHANNELS.DB_REBUILD_FTS))
+    expectOk(await invoke(IPC_CHANNELS.DB_PURGE_ARCHIVED))
+
+    const orphans = expectOk<{ dbOrphans: unknown[]; fileOrphans: unknown[] }>(
+      await invoke(IPC_CHANNELS.DB_FIND_ORPHANS)
+    )
+    expect(orphans.dbOrphans).toBeDefined()
+    expectOk(await invoke(IPC_CHANNELS.DB_CLEAN_ORPHANS, orphans))
+
+    // Export cancelled then completed.
+    expect(
+      expectOk(await invoke(IPC_CHANNELS.DB_EXPORT_TABLE, { table: 'cases', format: 'json' }))
+    ).toBeNull()
+    const target = join(userDataPath, 'cases.json')
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: target })
+    const exported = expectOk<{ path: string }>(
+      await invoke(IPC_CHANNELS.DB_EXPORT_TABLE, { table: 'cases', format: 'csv' })
+    )
+    expect(exported.path).toBe(target)
+  })
+
+  it('backs up the database via the save dialog and no-ops when cancelled', async () => {
+    expect(expectOk(await invoke(IPC_CHANNELS.DB_BACKUP))).toBeNull()
+    const target = join(userDataPath, 'backup.db')
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: target })
+    const backup = expectOk<{ path: string }>(await invoke(IPC_CHANNELS.DB_BACKUP))
+    expect(backup.path).toBe(target)
+  })
+
+  it('reports not-restored when the restore dialog is cancelled', async () => {
+    const res = expectOk<{ restored: boolean }>(await invoke(IPC_CHANNELS.DB_RESTORE))
+    expect(res.restored).toBe(false)
+  })
+})

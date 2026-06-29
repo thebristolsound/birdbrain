@@ -15,8 +15,17 @@ async function dismissOnboardingAndCreateCase(page: import('@playwright/test').P
     await page.fill('[data-testid="case-name-input"]', name)
     await page.click('[data-testid="case-create-btn"]')
   }
+  // Case creation now lands on the Overview; hop to the captures route, which is
+  // what these empty-state tests exercise.
+  await page.waitForURL(/#\/cases\/.+\/(overview|captures)/, { timeout: 10000 })
+  await page.evaluate(() => {
+    const m = window.location.hash.match(/#\/cases\/([^/]+)/)
+    if (m) window.location.hash = `/cases/${m[1]}/captures`
+  })
   await page.waitForURL(/#\/cases\/.+\/captures/, { timeout: 10000 })
-  await page.waitForSelector('[data-testid="case-header-name-btn"]', { timeout: 10000 })
+  await expect(page.locator('[data-testid="topbar-case-name"]')).toContainText(name, {
+    timeout: 10000
+  })
 }
 
 test.describe('Empty Captures State', () => {

@@ -10,7 +10,8 @@
     "storage",
     "contextMenus",
     "pageCapture",
-    "alarms"
+    "alarms",
+    "webRequest"
   ],
   "host_permissions": [
     "http://*/*",

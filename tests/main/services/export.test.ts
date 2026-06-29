@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, rmSync, readFileSync, existsSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
+import { createHash } from 'crypto'
 import sharp from 'sharp'
 import {
   initDatabase,
@@ -11,18 +12,56 @@ import {
   insertCapture
 } from '../../../src/main/services/database'
 import { initStorage, ensureCaseDir, getCapturePath } from '../../../src/main/services/storage'
-import { initManifest } from '../../../src/main/services/manifest'
+import * as manifest from '../../../src/main/services/manifest'
+import {
+  appendManifestEntry,
+  getManifestHead,
+  initManifest,
+  verifyManifestChain
+} from '../../../src/main/services/manifest'
+import { canonicalStringify } from '@shared/verify'
 import { ingestMhtmlCapture } from '../../../src/main/services/captureLifecycle'
 import {
   createCaptureLifecycle,
   type CaptureLifecycle
 } from '../../../src/main/services/captureLifecycle'
 import { createSelectorLifecycle } from '../../../src/main/services/selectorLifecycle'
-import { verifyCaptures, generateReport } from '../../../src/main/services/export'
+import {
+  verifyCaptures,
+  generateReport,
+  getExportPreflight
+} from '../../../src/main/services/export'
 import { saveAnnotations } from '../../../src/main/services/annotations'
 import { initSettings, updateSettings } from '@main/services/settings'
-import { initInstallationId, resetInstallationId } from '@main/services/installationId'
+import {
+  getInstallationId,
+  initInstallationId,
+  resetInstallationId
+} from '@main/services/installationId'
 import type { ExportOptions } from '../../../src/shared/types'
+
+function readStoredZipEntries(path: string): Map<string, Buffer> {
+  const zip = readFileSync(path)
+  const entries = new Map<string, Buffer>()
+  let offset = 0
+
+  while (offset < zip.length && zip.readUInt32LE(offset) === 0x04034b50) {
+    const method = zip.readUInt16LE(offset + 8)
+    const compressedSize = zip.readUInt32LE(offset + 18)
+    const nameLength = zip.readUInt16LE(offset + 26)
+    const extraLength = zip.readUInt16LE(offset + 28)
+    const nameStart = offset + 30
+    const dataStart = nameStart + nameLength + extraLength
+    const name = zip.subarray(nameStart, nameStart + nameLength).toString('utf-8')
+
+    if (method !== 0) throw new Error(`Unexpected compressed ZIP entry in test: ${name}`)
+
+    entries.set(name, zip.subarray(dataStart, dataStart + compressedSize))
+    offset = dataStart + compressedSize
+  }
+
+  return entries
+}
 
 async function ingest(
   caseId: string,
@@ -148,6 +187,322 @@ describe('export', () => {
     expect(content).toContain('verify-verified')
   })
 
+  it('generates a self-contained evidence ZIP with manifest, report, keys, and captures', async () => {
+    const { capture } = await ingest(
+      caseId,
+      '<html><body>Packaged evidence</body></html>',
+      'https://example.com/evidence',
+      'Evidence Page'
+    )
+    const token = readFileSync(join(process.cwd(), 'tests/fixtures/timestamp/digicert-token.der'))
+    appendManifestEntry(join(tempDir, 'captures', caseId), {
+      type: 'timestamp',
+      caseId,
+      captureContentHash: capture.hash,
+      timestamp: '2026-04-05T12:01:00.000Z',
+      tsaToken: token.toString('base64'),
+      operatorId: 'op',
+      operatorName: 'Test Operator',
+      toolVersion: '0.1.0'
+    })
+
+    const outputPath = join(tempDir, 'evidence.zip')
+    const options: ExportOptions = {
+      format: 'zip',
+      include: {
+        captures: true,
+        screenshots: false,
+        auditTrail: true,
+        annotations: 'none'
+      },
+      investigatorName: 'Test User',
+      outputPath
+    }
+
+    await generateReport(caseId, options, captureLifecycle)
+    const entries = readStoredZipEntries(outputPath)
+
+    expect(entries.has('evidence.json')).toBe(true)
+    expect(entries.has('manifest.jsonl')).toBe(true)
+    expect(entries.has('report.html')).toBe(true)
+    expect(entries.has('signing-public-key.pem')).toBe(true)
+    expect(entries.has('tsa-ca-chain.pem')).toBe(true)
+    expect(entries.has(`pages/${capture.id}.mhtml`)).toBe(true)
+    expect(entries.get(`timestamps/${capture.id}.tst`)).toEqual(token)
+    expect(
+      entries
+        .get('tsa-ca-chain.pem')!
+        .toString('utf-8')
+        .match(/BEGIN CERTIFICATE/g)?.length
+    ).toBeGreaterThan(1)
+
+    const manifest = entries.get('manifest.jsonl')!.toString('utf-8')
+    expect(manifest).toContain('"type":"capture"')
+    expect(manifest).toContain('"signature"')
+
+    const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+      captures: Array<{
+        id: string
+        mhtmlPath: string
+        mhtmlSha256: string
+        trustedTime: string
+        timestampTokenPaths: string[]
+      }>
+      verificationMaterials: { manifestPath: string; signingPublicKeyPath: string }
+      warnings: { unstampedCaptureCount: number }
+    }
+
+    const mhtml = entries.get(`pages/${capture.id}.mhtml`)!
+    expect(evidence.verificationMaterials.manifestPath).toBe('manifest.jsonl')
+    expect(evidence.verificationMaterials.signingPublicKeyPath).toBe('signing-public-key.pem')
+    expect(evidence.warnings.unstampedCaptureCount).toBe(1)
+    expect(evidence.captures[0]).toMatchObject({
+      id: capture.id,
+      mhtmlPath: `pages/${capture.id}.mhtml`,
+      mhtmlSha256: createHash('sha256').update(mhtml).digest('hex'),
+      trustedTime: 'pending',
+      timestampTokenPaths: [`timestamps/${capture.id}.tst`]
+    })
+  })
+
+  it('records a signed, hash-chained export entry on the case manifest (#124)', async () => {
+    await ingest(caseId, '<html><body>Audited export</body></html>', 'https://example.com', 'A')
+
+    const caseDir = join(tempDir, 'captures', caseId)
+    const headBefore = getManifestHead(caseDir)
+
+    const outputPath = join(tempDir, 'audited-evidence.zip')
+    const options: ExportOptions = {
+      format: 'zip',
+      include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+      investigatorName: 'Test User',
+      outputPath
+    }
+    await generateReport(caseId, options, captureLifecycle)
+
+    const manifest = readFileSync(join(caseDir, 'manifest.jsonl'), 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+      .map((l) => JSON.parse(l) as Record<string, unknown>)
+
+    const exportEntries = manifest.filter((e) => e.type === 'export')
+    expect(exportEntries).toHaveLength(1)
+    const entry = exportEntries[0]
+
+    expect(entry.caseId).toBe(caseId)
+    expect(entry.operatorId).toBe(getInstallationId())
+    expect(entry.operatorName).toBe('Test Operator')
+    expect(typeof entry.packageHash).toBe('string')
+    expect((entry.packageHash as string).length).toBe(64)
+    expect(typeof entry.timestamp).toBe('string')
+    expect(entry.verificationResult).toMatchObject({
+      overallValid: true,
+      captureCount: 1,
+      verifiedCount: 1,
+      tamperedCount: 0,
+      missingCount: 0
+    })
+
+    // Signed + chained to the prior head.
+    expect(typeof entry.signature).toBe('string')
+    expect((entry.signature as string).length).toBeGreaterThan(0)
+    expect(entry.index).toBe(headBefore.nextIndex)
+    expect(entry.prevHash).toBe(headBefore.prevHash)
+
+    // The whole chain (capture + export) still verifies.
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+
+    // The export entry's packageHash matches sha256(canonicalStringify(sortedArtifacts))
+    // recomputed from the bundled evidence.json artifact list.
+    const entries = readStoredZipEntries(outputPath)
+    const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+      artifacts: Array<{ path: string; sha256: string; sizeBytes: number }>
+    }
+    const sorted = [...evidence.artifacts].sort((a, b) =>
+      a.path < b.path ? -1 : a.path > b.path ? 1 : 0
+    )
+    const expectedHash = createHash('sha256')
+      .update(canonicalStringify(sorted), 'utf-8')
+      .digest('hex')
+    expect(entry.packageHash).toBe(expectedHash)
+  })
+
+  it('content-addresses screenshots into screenshots/<sha256>.png and records them in artifacts[] (#118)', async () => {
+    const screenshot = Buffer.from('screenshot-png-bytes-for-export')
+    const { capture } = await ingestMhtmlCapture({
+      caseId,
+      url: 'https://example.com/shot',
+      title: 'Shot',
+      timestamp: '2026-04-05T12:00:00.000Z',
+      stream: Readable.from([Buffer.from('mhtml')]) as unknown as ReadableStream<Uint8Array>,
+      textContent: 'extracted text for export',
+      headers: {},
+      browserVersion: '',
+      userAgent: '',
+      httpStatus: 200,
+      extensionVersion: '',
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0',
+      screenshot
+    })
+
+    const outputPath = join(tempDir, 'shot-evidence.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: { captures: true, screenshots: true, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test User',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const entries = readStoredZipEntries(outputPath)
+    const expectedDigest = createHash('sha256').update(screenshot).digest('hex')
+    const expectedPath = `screenshots/${expectedDigest}.png`
+
+    // Content-addressed: the file exists, its name equals its digest, bytes match.
+    expect(entries.has(expectedPath)).toBe(true)
+    expect(entries.get(expectedPath)).toEqual(screenshot)
+
+    const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+      captures: Array<{
+        id: string
+        screenshotPath: string | null
+        screenshotSha256: string | null
+        textSha256: string | null
+      }>
+      artifacts: Array<{ path: string; sha256: string; sizeBytes: number }>
+    }
+
+    // Per-capture record is self-describing.
+    const rec = evidence.captures.find((c) => c.id === capture.id)!
+    expect(rec.screenshotPath).toBe(expectedPath)
+    expect(rec.screenshotSha256).toBe(expectedDigest)
+    expect(rec.textSha256).toBe(capture.textHash)
+
+    // The artifact is registered with a matching sha256.
+    const artifact = evidence.artifacts.find((a) => a.path === expectedPath)!
+    expect(artifact.sha256).toBe(expectedDigest)
+    expect(artifact.sizeBytes).toBe(screenshot.length)
+  })
+
+  it('emits one content-addressed screenshot entry when two captures share bytes (#152)', async () => {
+    const screenshot = Buffer.from('identical-screenshot-bytes-across-captures')
+    const base = {
+      caseId,
+      timestamp: '2026-04-05T12:00:00.000Z',
+      stream: Readable.from([Buffer.from('mhtml')]) as unknown as ReadableStream<Uint8Array>,
+      textContent: 'extracted text for export',
+      headers: {},
+      browserVersion: '',
+      userAgent: '',
+      httpStatus: 200,
+      extensionVersion: '',
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0',
+      screenshot
+    }
+    const { capture: captureA } = await ingestMhtmlCapture({
+      ...base,
+      url: 'https://example.com/a',
+      title: 'A',
+      stream: Readable.from([Buffer.from('mhtml')]) as unknown as ReadableStream<Uint8Array>
+    })
+    const { capture: captureB } = await ingestMhtmlCapture({
+      ...base,
+      url: 'https://example.com/b',
+      title: 'B',
+      stream: Readable.from([Buffer.from('mhtml')]) as unknown as ReadableStream<Uint8Array>
+    })
+
+    const outputPath = join(tempDir, 'shot-dedupe.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: { captures: true, screenshots: true, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test User',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const entries = readStoredZipEntries(outputPath)
+    const expectedDigest = createHash('sha256').update(screenshot).digest('hex')
+    const expectedPath = `screenshots/${expectedDigest}.png`
+
+    // Exactly one content-addressed screenshot entry, no duplicate.
+    const screenshotKeys = [...entries.keys()].filter((k) => k.startsWith('screenshots/'))
+    expect(screenshotKeys).toEqual([expectedPath])
+    expect(entries.get(expectedPath)).toEqual(screenshot)
+
+    const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+      captures: Array<{ id: string; screenshotPath: string | null; screenshotSha256: string | null }>
+      artifacts: Array<{ path: string }>
+    }
+
+    // Both capture records reference the shared content-addressed path.
+    const recA = evidence.captures.find((c) => c.id === captureA.id)!
+    const recB = evidence.captures.find((c) => c.id === captureB.id)!
+    expect(recA.screenshotPath).toBe(expectedPath)
+    expect(recA.screenshotSha256).toBe(expectedDigest)
+    expect(recB.screenshotPath).toBe(expectedPath)
+    expect(recB.screenshotSha256).toBe(expectedDigest)
+
+    // The artifact is registered exactly once.
+    expect(evidence.artifacts.filter((a) => a.path === expectedPath)).toHaveLength(1)
+  })
+
+  it('omits screenshots from the package when include.screenshots is false (#152)', async () => {
+    const screenshot = Buffer.from('screenshot-bytes-should-not-leak')
+    const { capture } = await ingestMhtmlCapture({
+      caseId,
+      url: 'https://example.com/shot',
+      title: 'Shot',
+      timestamp: '2026-04-05T12:00:00.000Z',
+      stream: Readable.from([Buffer.from('mhtml')]) as unknown as ReadableStream<Uint8Array>,
+      textContent: 'extracted text for export',
+      headers: {},
+      browserVersion: '',
+      userAgent: '',
+      httpStatus: 200,
+      extensionVersion: '',
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0',
+      screenshot
+    })
+
+    const outputPath = join(tempDir, 'shot-no-screenshots.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test User',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const entries = readStoredZipEntries(outputPath)
+    // No content-addressed screenshot file is bundled.
+    expect([...entries.keys()].some((k) => k.startsWith('screenshots/'))).toBe(false)
+
+    const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+      captures: Array<{ id: string; screenshotPath: string | null; screenshotSha256: string | null }>
+      artifacts: Array<{ path: string }>
+    }
+    const rec = evidence.captures.find((c) => c.id === capture.id)!
+    expect(rec.screenshotPath).toBeNull()
+    expect(rec.screenshotSha256).toBeNull()
+    expect(evidence.artifacts.some((a) => a.path.startsWith('screenshots/'))).toBe(false)
+  })
+
   it('renders Trusted Time as a column orthogonal to integrity status', async () => {
     await ingest(caseId, '<html><body>Two axes</body></html>', 'https://example.com', 'Axes')
 
@@ -167,6 +522,90 @@ describe('export', () => {
     expect(content).toContain('Trusted Time')
     expect(content).toContain('verify-verified')
     expect(content).toContain('Pending')
+  })
+
+  it('reports un-stamped captures in preflight and the HTML summary without blocking export', async () => {
+    await ingest(caseId, '<html><body>Needs trusted time</body></html>', 'https://example.com', 'T')
+
+    const preflight = getExportPreflight(caseId)
+    expect(preflight).toMatchObject({
+      captureCount: 1,
+      stampedCaptureCount: 0,
+      unstampedCaptureCount: 1,
+      pendingCaptureCount: 1,
+      noneCaptureCount: 0
+    })
+
+    const outputPath = join(tempDir, 'warning.html')
+    await generateReport(
+      caseId,
+      {
+        format: 'html',
+        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const content = readFileSync(outputPath, 'utf-8')
+    expect(content).toContain('Trusted time warning')
+    expect(content).toContain('Export was not blocked')
+  })
+
+  it('does not record overallValid:true when auditTrail is excluded (no verifications)', async () => {
+    await ingest(caseId, '<html><body>Unverified export</body></html>', 'https://example.com', 'U')
+
+    const caseDir = join(tempDir, 'captures', caseId)
+    const outputPath = join(tempDir, 'unverified-evidence.zip')
+    const options: ExportOptions = {
+      format: 'zip',
+      include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
+      investigatorName: 'Test User',
+      outputPath
+    }
+    await generateReport(caseId, options, captureLifecycle)
+
+    const manifest = readFileSync(join(caseDir, 'manifest.jsonl'), 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+      .map((l) => JSON.parse(l) as Record<string, unknown>)
+
+    const exportEntry = manifest.find((e) => e.type === 'export')!
+    expect(exportEntry.verificationResult).toMatchObject({
+      overallValid: false,
+      captureCount: 1,
+      verifiedCount: 0,
+      tamperedCount: 0,
+      missingCount: 0
+    })
+  })
+
+  it('deletes the written zip when the export audit append throws', async () => {
+    await ingest(caseId, '<html><body>Orphan check</body></html>', 'https://example.com', 'O')
+
+    const spy = vi
+      .spyOn(manifest, 'appendManifestEntry')
+      .mockImplementation(() => {
+        throw new Error('signing key failure')
+      })
+
+    const outputPath = join(tempDir, 'orphan-evidence.zip')
+    const options: ExportOptions = {
+      format: 'zip',
+      include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+      investigatorName: 'Test User',
+      outputPath
+    }
+
+    try {
+      await expect(generateReport(caseId, options, captureLifecycle)).rejects.toThrow(
+        /signing key failure/
+      )
+      expect(existsSync(outputPath)).toBe(false)
+    } finally {
+      spy.mockRestore()
+    }
   })
 
   it('generates report without optional sections', async () => {

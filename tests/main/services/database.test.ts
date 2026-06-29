@@ -801,9 +801,10 @@ describe('database', () => {
   })
 
   describe('annotations schema (migration 17)', () => {
-    it('LATEST_SCHEMA_VERSION is 18', () => {
-      // Bumped to 18 in #120 (trusted_time_status mirror column).
-      expect(LATEST_SCHEMA_VERSION).toBe(18)
+    it('LATEST_SCHEMA_VERSION is 20', () => {
+      // Bumped to 19 in #118 (screenshot_hash / text_hash sidecar columns);
+      // bumped to 20 in #123 (tls_cert_chain corroboration column).
+      expect(LATEST_SCHEMA_VERSION).toBe(20)
     })
 
     it('creates annotations table with expected columns', () => {
@@ -1035,6 +1036,104 @@ describe('database', () => {
       for (const col of expected) {
         expect(names).toContain(col)
       }
+    })
+  })
+
+  describe('migration v19 (sidecar integrity columns, #118)', () => {
+    it('adds nullable screenshot_hash and text_hash columns', () => {
+      const cols = getDb().prepare("PRAGMA table_info('captures')").all() as Array<{
+        name: string
+        notnull: number
+      }>
+      const byName = new Map(cols.map((c) => [c.name, c]))
+      expect(byName.has('screenshot_hash')).toBe(true)
+      expect(byName.has('text_hash')).toBe(true)
+      // Additive/nullable so old rows survive the upgrade.
+      expect(byName.get('screenshot_hash')!.notnull).toBe(0)
+      expect(byName.get('text_hash')!.notnull).toBe(0)
+    })
+
+    it('reads back undefined hashes for rows inserted without them (legacy/grandfathered)', () => {
+      const caseId = createCase({ name: 'Legacy' }).id
+      const cap = insertCapture({
+        caseId,
+        url: 'https://example.com',
+        title: 'Example',
+        hash: 'deadbeef',
+        timestamp: new Date().toISOString()
+      })
+      const stored = getCapture(cap.id)
+      expect(stored?.screenshotHash).toBeUndefined()
+      expect(stored?.textHash).toBeUndefined()
+    })
+
+    it('round-trips screenshot/text hashes when provided', () => {
+      const caseId = createCase({ name: 'Hashed' }).id
+      const cap = insertCapture({
+        caseId,
+        url: 'https://example.com',
+        title: 'Example',
+        hash: 'deadbeef',
+        timestamp: new Date().toISOString(),
+        screenshotHash: 'a'.repeat(64),
+        textHash: 'b'.repeat(64)
+      })
+      const stored = getCapture(cap.id)
+      expect(stored?.screenshotHash).toBe('a'.repeat(64))
+      expect(stored?.textHash).toBe('b'.repeat(64))
+    })
+  })
+
+  describe('migration v20 (TLS cert chain column, #123)', () => {
+    it('adds a nullable tls_cert_chain column', () => {
+      const cols = getDb().prepare("PRAGMA table_info('captures')").all() as Array<{
+        name: string
+        notnull: number
+      }>
+      const byName = new Map(cols.map((c) => [c.name, c]))
+      expect(byName.has('tls_cert_chain')).toBe(true)
+      // Additive/nullable so old rows survive the upgrade.
+      expect(byName.get('tls_cert_chain')!.notnull).toBe(0)
+    })
+
+    it('reads back undefined for rows inserted without a cert chain (legacy)', () => {
+      const caseId = createCase({ name: 'Legacy TLS' }).id
+      const cap = insertCapture({
+        caseId,
+        url: 'https://example.com',
+        title: 'Example',
+        hash: 'deadbeef',
+        timestamp: new Date().toISOString()
+      })
+      expect(getCapture(cap.id)?.tlsCertChain).toBeUndefined()
+    })
+
+    it('round-trips a stored cert chain through JSON', () => {
+      const caseId = createCase({ name: 'TLS' }).id
+      const tls = {
+        url: 'https://example.com',
+        refetchedAt: '2026-04-05T12:00:05.000Z',
+        chain: [
+          {
+            subject: 'CN=example.com',
+            issuer: 'CN=Example CA',
+            validFrom: 'Jan  1 00:00:00 2026 GMT',
+            validTo: 'Jan  1 00:00:00 2027 GMT',
+            fingerprint256: 'AA:BB:CC',
+            serialNumber: '01',
+            subjectAltNames: ['DNS:example.com']
+          }
+        ]
+      }
+      const cap = insertCapture({
+        caseId,
+        url: 'https://example.com',
+        title: 'Example',
+        hash: 'deadbeef',
+        timestamp: new Date().toISOString(),
+        tlsCertChain: JSON.stringify(tls)
+      })
+      expect(getCapture(cap.id)?.tlsCertChain).toEqual(tls)
     })
   })
 

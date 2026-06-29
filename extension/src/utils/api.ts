@@ -26,6 +26,7 @@ interface StatusResponse {
   ignoredUrlPatterns?: string[]
   captureScreenshots?: boolean
   dedupeWindowSeconds?: number
+  theme?: 'light' | 'dark'
 }
 
 interface CaseInfo {
@@ -223,6 +224,7 @@ export async function sendMhtmlCapture(params: {
   userAgent: string
   extensionVersion: string
   httpStatus?: number
+  headers?: Record<string, string>
   matchedSelectors?: SelectorMatchInfo[]
 }): Promise<CaptureResult> {
   const form = new FormData()
@@ -236,6 +238,9 @@ export async function sendMhtmlCapture(params: {
   form.append('userAgent', params.userAgent)
   form.append('extensionVersion', params.extensionVersion)
   if (params.httpStatus !== undefined) form.append('httpStatus', String(params.httpStatus))
+  if (params.headers && Object.keys(params.headers).length > 0) {
+    form.append('headers', JSON.stringify(params.headers))
+  }
   if (params.matchedSelectors) {
     form.append('matchedSelectors', JSON.stringify(params.matchedSelectors))
   }

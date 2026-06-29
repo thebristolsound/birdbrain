@@ -14,7 +14,8 @@ async function seedCaseAndCapture(page: import('@playwright/test').Page, caseNam
   await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
   await page.fill('[data-testid="case-name-input"]', caseName)
   await page.click('[data-testid="case-create-btn"]')
-  await page.waitForSelector('[data-testid="case-header-name-btn"]', { timeout: 10000 })
+  // Case creation lands on the Overview page, whose URL still carries the case id.
+  await page.waitForURL(/#\/cases\/.+\/overview/, { timeout: 10000 })
 
   const caseIdMatch = page.url().match(/cases\/([^/]+)/)
   if (!caseIdMatch) throw new Error('case id not in url')
@@ -135,7 +136,9 @@ test.describe('ScreenshotZoomBar', () => {
     // Reload renderer; tooltip must stay dismissed.
     const win = electronApp.windows()[0]
     await win.reload()
-    await page.waitForSelector('[data-testid="case-header-name-btn"]', { timeout: 10000 })
+    await expect(page.locator('[data-testid="topbar-case-name"]')).toContainText('Tooltip E2E', {
+      timeout: 10000
+    })
     await page.getByTestId('capture-item').filter({ hasText: 'Zoom Bar E2E Page' }).first().click()
     await expect(page.getByText('Drawing tools are now always live', { exact: false })).toHaveCount(
       0

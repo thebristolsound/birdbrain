@@ -51,6 +51,7 @@ export const IPC_CHANNELS = {
   SETTINGS_CHOOSE_STORAGE_PATH: 'settings:chooseStoragePath',
 
   // Export
+  EXPORT_PREFLIGHT: 'export:preflight',
   EXPORT_GENERATE: 'export:generate',
 
   // Selectors
@@ -99,6 +100,7 @@ export const IPC_CHANNELS = {
   SESSION_STATE_CHANGED: 'event:sessionStateChanged',
   EXTENSION_CONNECTION: 'event:extensionConnection',
   SELECTOR_REMATCHED: 'event:selector:rematched',
+  DEEP_LINK_NAVIGATE: 'event:deepLinkNavigate',
 
   // Capture pipeline observability
   CAPTURE_ACTIVITY: 'event:captureActivity',
@@ -136,6 +138,9 @@ export interface SelectorRematchedEvent {
   caseId: string
   status: SelectorRematchedStatus
 }
+
+// Deep-link (birdbrain://) navigation targets pushed from main to the renderer
+export type DeepLinkTarget = 'dashboard' | 'settings'
 
 // Payload types for IPC calls
 export interface CreateCaseParams {

@@ -18,6 +18,34 @@ export type CaptureFormat = 'html' | 'mhtml'
 // grandfathered legacy captures that were never timestamped.
 export type TrustedTime = 'rfc3161' | 'pending' | 'none'
 
+// Corroboration-only TLS cert chain re-fetched from the origin AFTER a capture
+// is stored (#123, ADR-0002). NOT bound to the captured transaction — it records
+// whatever cert the origin was serving at `refetchedAt` (distinct from the
+// capture timestamp). Surfaced as corroboration only.
+export interface TlsCertSummary {
+  subject: string
+  issuer: string
+  validFrom: string
+  validTo: string
+  fingerprint256: string
+  serialNumber: string
+  subjectAltNames: string[]
+}
+
+export interface TlsCertChain {
+  url: string
+  refetchedAt: string
+  chain: TlsCertSummary[]
+}
+
+export interface TlsCertChainError {
+  url: string
+  refetchedAt: string
+  error: string
+}
+
+export type TlsCertChainResult = TlsCertChain | TlsCertChainError
+
 export interface Capture {
   id: string
   caseId: string
@@ -32,6 +60,14 @@ export interface Capture {
   // Forensic MHTML fields (populated for format='mhtml', undefined for legacy 'html')
   format: CaptureFormat
   mhtmlPath?: string
+  // Content-addressed integrity of the screenshot / extracted-text sidecars (#118).
+  // Mirrors the hash recorded in the v2+ manifest capture entry; undefined for
+  // legacy/no-artifact captures (not sidecar-checked at verify time).
+  screenshotHash?: string
+  textHash?: string
+  // Mirror of the corroboration-only TLS cert chain anchored in the v2+ manifest
+  // capture entry (#123). undefined for legacy / cert-less captures.
+  tlsCertChain?: TlsCertChainResult
   sizeBytes?: number
   manifestIndex?: number
   prevHash?: string
@@ -79,7 +115,7 @@ export interface BirdbrainSettings {
   tsaUrl: string
   autoCaptureMode: AutoCaptureMode
   lastActiveCaseId: string | null
-  lastActiveSection: 'captures' | 'selectors' | 'notes' | 'tags' | 'data' | 'settings'
+  lastActiveSection: 'overview' | 'captures' | 'selectors' | 'notes' | 'tags' | 'data' | 'settings'
   hasCompletedOnboarding: boolean
   analysisSystemPrompt: string
   detailsPanelCollapsed: boolean
@@ -94,7 +130,7 @@ export interface OpenRouterModel {
 }
 
 export interface ExportOptions {
-  format: 'html' | 'pdf'
+  format: 'html' | 'pdf' | 'zip'
   include: {
     captures: boolean
     screenshots: boolean
@@ -103,6 +139,14 @@ export interface ExportOptions {
   }
   investigatorName: string
   outputPath: string
+}
+
+export interface ExportPreflight {
+  captureCount: number
+  stampedCaptureCount: number
+  unstampedCaptureCount: number
+  pendingCaptureCount: number
+  noneCaptureCount: number
 }
 
 export interface HashVerification {

@@ -1,12 +1,32 @@
-import { writeFileSync } from 'fs'
+import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { unlink } from 'fs/promises'
+import { createHash } from 'crypto'
+import { join } from 'path'
 import * as db from '@main/services/database'
-import { readCaptureFile } from '@main/services/storage'
+import { getStorageRoot, readCaptureFile } from '@main/services/storage'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import { getAnnotations } from '@main/services/annotations'
 import { burnAnnotations } from '@main/services/burnAnnotations'
 import { getSettings } from '@main/services/settings'
 import { getInstallationId } from '@main/services/installationId'
-import type { ExportOptions, HashVerification, Capture, AnnotationPin } from '@shared/types'
+import { getPublicKeyPem } from '@main/services/signingKey'
+import { appendManifestEntry, initManifest } from '@main/services/manifest'
+import { buildTrustedTimeIndex } from '@main/services/trustedTime'
+import type { ExportVerificationResult } from '@main/services/manifest'
+import { createStoredZip } from '@main/services/zip'
+import { getTsaTrustBundle } from '@main/services/tsaTrust'
+import { canonicalStringify, extractTimestampTokenCertificatesPem } from '@shared/verify'
+import { buildCertification, resolveToolVersion } from '@main/services/certification'
+import { VERIFY_RUNBOOK } from '@main/services/verifyRunbook'
+import { MANIFEST_FILENAME } from '@shared/constants'
+import type {
+  ExportOptions,
+  ExportPreflight,
+  HashVerification,
+  Capture,
+  AnnotationPin,
+  TrustedTime
+} from '@shared/types'
 
 interface ExportData {
   caseName: string
@@ -22,6 +42,22 @@ interface ExportData {
   operatorName: string
   operatorRole: string
   operatorOrganization: string
+  tsaUrl: string
+  preflight: ExportPreflight
+}
+
+interface ManifestTimestampEntry {
+  [key: string]: unknown
+  index: number
+  type: 'timestamp'
+  captureContentHash: string
+  tsaToken?: string
+}
+
+interface EvidenceArtifact {
+  path: string
+  sha256: string
+  sizeBytes: number
 }
 
 export async function verifyCaptures(
@@ -37,6 +73,26 @@ export async function verifyCaptures(
     results.push(await captureLifecycle.verify(capture.id))
   }
   return results
+}
+
+export function getExportPreflight(caseId: string): ExportPreflight {
+  const captures = db.listCaptures(caseId)
+  const trustedTimes = buildTrustedTimeIndex(join(getStorageRoot(), caseId))
+  const counts: Record<TrustedTime, number> = { rfc3161: 0, pending: 0, none: 0 }
+
+  for (const capture of captures) {
+    const trustedTime =
+      trustedTimes.get(capture.hash)?.trustedTime ?? capture.trustedTimeStatus ?? 'none'
+    counts[trustedTime]++
+  }
+
+  return {
+    captureCount: captures.length,
+    stampedCaptureCount: counts.rfc3161,
+    unstampedCaptureCount: counts.pending + counts.none,
+    pendingCaptureCount: counts.pending,
+    noneCaptureCount: counts.none
+  }
 }
 
 export async function generateReport(
@@ -75,7 +131,9 @@ export async function generateReport(
     installationId: getInstallationId(),
     operatorName: settings.operatorName,
     operatorRole: settings.operatorRole ?? '',
-    operatorOrganization: settings.operatorOrganization ?? ''
+    operatorOrganization: settings.operatorOrganization ?? '',
+    tsaUrl: settings.tsaUrl,
+    preflight: getExportPreflight(caseId)
   }
 
   if (options.include.auditTrail) {
@@ -104,8 +162,274 @@ export async function generateReport(
   onProgress?.('Generating report...', 80)
   const html = buildHtmlReport(data, options)
 
-  writeFileSync(options.outputPath, html, 'utf-8')
+  if (options.format === 'zip') {
+    onProgress?.('Packaging evidence...', 90)
+    const { zip, packageHash, verificationResult } = buildEvidenceZip(caseId, data, html)
+    writeFileSync(options.outputPath, zip)
+
+    // Record the export as a signed, hash-chained audit entry (#124). Ordering
+    // is deliberate: the evidence (and thus packageHash) is built from the
+    // manifest tail BEFORE this append, so packageHash does not — and must not —
+    // cover this entry. The bundled manifest.jsonl copy therefore lags the live
+    // case manifest by exactly this one entry; that is acceptable because
+    // packageHash commits to artifact content, not to the manifest.
+    //
+    // The append happens after the .zip is written. If it throws (signing key
+    // failure, disk error), best-effort delete the orphaned package so we never
+    // leave a zip on disk without its corresponding audit entry, then re-throw.
+    const caseDir = join(getStorageRoot(), caseId)
+    initManifest(caseDir)
+    try {
+      appendManifestEntry(caseDir, {
+        type: 'export',
+        caseId,
+        timestamp: data.exportTimestamp,
+        operatorId: data.installationId,
+        operatorName: data.operatorName,
+        toolVersion: resolveToolVersion(),
+        packageHash,
+        verificationResult
+      })
+    } catch (err) {
+      await unlink(options.outputPath).catch(() => {})
+      throw err
+    }
+  } else {
+    writeFileSync(options.outputPath, html, 'utf-8')
+  }
   onProgress?.('Complete', 100)
+}
+
+interface EvidenceZipResult {
+  zip: Buffer
+  packageHash: string
+  verificationResult: ExportVerificationResult
+}
+
+function buildEvidenceZip(caseId: string, data: ExportData, reportHtml: string): EvidenceZipResult {
+  const entries: Array<{ name: string; data: Buffer | string }> = []
+  const artifacts: EvidenceArtifact[] = []
+  const add = (name: string, value: Buffer | string): string => {
+    const buf = Buffer.isBuffer(value) ? value : Buffer.from(value, 'utf-8')
+    const digest = sha256(buf)
+    entries.push({ name, data: buf })
+    artifacts.push({ path: name, sha256: digest, sizeBytes: buf.length })
+    return digest
+  }
+
+  const manifestPath = join(getStorageRoot(), caseId, MANIFEST_FILENAME)
+  const manifestJsonl = existsSync(manifestPath) ? readFileSync(manifestPath) : Buffer.alloc(0)
+  const manifestEntries = readManifestEntries(manifestJsonl.toString('utf-8'))
+  const timestampEntries = manifestEntries.filter(isTimestampEntry)
+  const latestManifestEntry = manifestEntries.at(-1) as
+    | { index?: number; entryHash?: string }
+    | undefined
+
+  const timestampPathsByHash = new Map<string, string[]>()
+  const timestampTokenChainPems: string[] = []
+  for (const entry of timestampEntries) {
+    if (typeof entry.tsaToken !== 'string') continue
+    const token = Buffer.from(entry.tsaToken, 'base64')
+    try {
+      const chainPem = extractTimestampTokenCertificatesPem(token)
+      if (chainPem) timestampTokenChainPems.push(chainPem)
+    } catch {
+      // Malformed tokens still belong in the evidence package; they simply
+      // cannot contribute certificate material to the TSA chain bundle.
+    }
+    const captures = data.captures.filter((capture) => capture.hash === entry.captureContentHash)
+    for (const capture of captures) {
+      if (timestampPathsByHash.get(capture.hash)?.length) continue
+      const path = `timestamps/${capture.id}.tst`
+      add(path, token)
+      timestampPathsByHash.set(capture.hash, [path])
+    }
+  }
+
+  add('manifest.jsonl', manifestJsonl)
+  add('report.html', reportHtml)
+  add(
+    'certification.html',
+    buildCertification(
+      {
+        caseName: data.caseName,
+        exportTimestamp: data.exportTimestamp,
+        installationId: data.installationId,
+        operatorName: data.operatorName,
+        operatorRole: data.operatorRole,
+        operatorOrganization: data.operatorOrganization,
+        tsaUrl: data.tsaUrl,
+        preflight: data.preflight,
+        captures: data.captures,
+        verifications: data.verifications
+      },
+      resolveToolVersion()
+    )
+  )
+  add('signing-public-key.pem', getPublicKeyPem())
+  add('VERIFY.md', VERIFY_RUNBOOK)
+
+  const tsaTrust = getTsaTrustBundle(data.tsaUrl)
+  add('tsa-ca-chain.pem', [...timestampTokenChainPems, tsaTrust.pem].join('\n'))
+
+  const capturesMissingContent: string[] = []
+  const emittedScreenshotPaths = new Set<string>()
+  const captureEvidence = data.captures.map((capture) => {
+    const mhtml = readCaptureFile(capture.caseId, capture.id, 'mhtml')
+    const mhtmlPath = `pages/${capture.id}.mhtml`
+    const mhtmlSha256 = mhtml ? add(mhtmlPath, mhtml) : null
+    if (!mhtml) capturesMissingContent.push(capture.id)
+    const verification = data.verifications.find((v) => v.captureId === capture.id)
+    const trustedTime = verification?.trustedTime ?? capture.trustedTimeStatus ?? 'none'
+
+    // Content-address the screenshot into the package (#118): the file name IS
+    // its sha256, and add() records it into artifacts[] so the package is
+    // self-describing. Scoped to the export package only — live on-disk storage
+    // is untouched. The .txt sidecar's integrity is bound by textSha256 in the
+    // per-capture record + the signed manifest entry; it is not re-bundled here
+    // (its content already surfaces in report.html / the MHTML page).
+    // Gated on data.screenshots, which loadExportData only populates when
+    // include.screenshots is set — so an export that omits screenshots does not
+    // ship them via the content-addressed sidecar. The raw on-disk bytes are
+    // used (not the possibly-annotated report copy) so the digest matches the
+    // screenshotHash anchored at ingest.
+    const screenshot = data.screenshots.has(capture.id)
+      ? readCaptureFile(capture.caseId, capture.id, 'png')
+      : null
+    let screenshotPath: string | null = null
+    let screenshotSha256: string | null = null
+    if (screenshot) {
+      screenshotSha256 = sha256(screenshot)
+      screenshotPath = `screenshots/${screenshotSha256}.png`
+      // Content-addressed: identical screenshot bytes across captures resolve to
+      // the same path. Emit the zip entry once; multiple capture records may
+      // still reference it. createStoredZip does not dedupe entry names.
+      if (!emittedScreenshotPaths.has(screenshotPath)) {
+        add(screenshotPath, screenshot)
+        emittedScreenshotPaths.add(screenshotPath)
+      }
+    }
+
+    return {
+      id: capture.id,
+      title: capture.title,
+      url: capture.url,
+      capturedAt: capture.timestamp,
+      manifestIndex: capture.manifestIndex,
+      entryHash: capture.entryHash,
+      storedHash: capture.hash,
+      integrityStatus: verification?.status,
+      trustedTime,
+      tsaName: verification?.tsaName,
+      stampedAt: verification?.stampedAt,
+      mhtmlPath: mhtml ? mhtmlPath : null,
+      mhtmlSha256,
+      screenshotPath,
+      screenshotSha256,
+      textSha256: capture.textHash ?? null,
+      // Corroboration-only TLS cert chain (#123, ADR-0002). NOT bound to the
+      // captured transaction — the origin was re-contacted from the main process
+      // AFTER storage, so this records the cert served at `refetchedAt`, which
+      // differs from `capturedAt`. Surfaced labelled as corroboration; both
+      // timestamps are present so a reviewer understands the interval.
+      tlsCorroboration: capture.tlsCertChain ?? null,
+      timestampTokenPaths: timestampPathsByHash.get(capture.hash) ?? []
+    }
+  })
+
+  const evidence = {
+    schemaVersion: 1,
+    generatedBy: 'Birdbrain',
+    exportedAt: data.exportTimestamp,
+    case: {
+      id: caseId,
+      name: data.caseName,
+      description: data.caseDescription ?? null,
+      dateRange: data.dateRange
+    },
+    operator: {
+      installationId: data.installationId,
+      name: data.operatorName,
+      role: data.operatorRole,
+      organization: data.operatorOrganization
+    },
+    investigatorName: data.investigatorName,
+    warnings: {
+      unstampedCaptureCount: data.preflight.unstampedCaptureCount,
+      pendingCaptureCount: data.preflight.pendingCaptureCount,
+      noneCaptureCount: data.preflight.noneCaptureCount,
+      missingContentCaptureCount: capturesMissingContent.length,
+      tsaTrustAnchorNote: tsaTrust.note ?? null
+    },
+    verificationMaterials: {
+      manifestPath: 'manifest.jsonl',
+      manifestHeadIndex: latestManifestEntry?.index ?? null,
+      manifestHeadHash: latestManifestEntry?.entryHash ?? null,
+      signingPublicKeyPath: 'signing-public-key.pem',
+      tsaCaChainPath: 'tsa-ca-chain.pem',
+      tsaCaChainBundled: tsaTrust.bundled,
+      reportPath: 'report.html'
+    },
+    captures: captureEvidence,
+    artifacts
+  }
+
+  entries.unshift({
+    name: 'evidence.json',
+    data: JSON.stringify(evidence, null, 2)
+  })
+
+  // packageHash commits to every packaged file's content via the artifact list,
+  // sorted by path for determinism. It deliberately does NOT hash the final
+  // .zip: this hash feeds the export manifest entry, which is bundled inside
+  // that very zip, so hashing the zip would be circular. evidence.json itself
+  // is excluded from `artifacts` (it is unshifted above, not run through `add`),
+  // which is what keeps packageHash independent of the entry it informs.
+  const sortedArtifacts = [...artifacts].sort((a, b) =>
+    a.path < b.path ? -1 : a.path > b.path ? 1 : 0
+  )
+  const packageHash = sha256(Buffer.from(canonicalStringify(sortedArtifacts), 'utf-8'))
+
+  const captureCount = data.captures.length
+  const verifiedCount = data.verifications.filter((v) => v.status === 'verified').length
+
+  // overallValid means every capture has a passing verification. An empty
+  // verification set (e.g. auditTrail-excluded exports) must NOT report true:
+  // [].every(...) is true, but no verification ran, so the package is unverified.
+  const verificationResult: ExportVerificationResult = {
+    overallValid: captureCount > 0 && verifiedCount === captureCount,
+    captureCount,
+    verifiedCount,
+    tamperedCount: data.verifications.filter((v) => v.status === 'tampered').length,
+    missingCount: data.verifications.filter((v) => v.status === 'missing').length
+  }
+
+  return { zip: createStoredZip(entries), packageHash, verificationResult }
+}
+
+function readManifestEntries(manifestJsonl: string): Record<string, unknown>[] {
+  return manifestJsonl
+    .split('\n')
+    .filter((line) => line.trim().length > 0)
+    .map((line) => {
+      try {
+        return JSON.parse(line) as Record<string, unknown>
+      } catch {
+        return {}
+      }
+    })
+}
+
+function isTimestampEntry(entry: Record<string, unknown>): entry is ManifestTimestampEntry {
+  return (
+    entry.type === 'timestamp' &&
+    typeof entry.index === 'number' &&
+    typeof entry.captureContentHash === 'string'
+  )
+}
+
+function sha256(buf: Buffer): string {
+  return createHash('sha256').update(buf).digest('hex')
 }
 
 function buildHtmlReport(data: ExportData, options: ExportOptions): string {
@@ -139,6 +463,11 @@ function buildHtmlReport(data: ExportData, options: ExportOptions): string {
   sections.push(`
     <div class="section">
       <h2>Summary</h2>
+      ${
+        data.preflight.unstampedCaptureCount > 0
+          ? `<div class="warning-banner">Trusted time warning: ${data.preflight.unstampedCaptureCount} capture${data.preflight.unstampedCaptureCount === 1 ? '' : 's'} exported without an RFC 3161 timestamp (${data.preflight.pendingCaptureCount} pending, ${data.preflight.noneCaptureCount} none). Export was not blocked.</div>`
+          : `<div class="success-banner">All captures include RFC 3161 trusted time.</div>`
+      }
       <table>
         <tr><td>Total Captures</td><td>${data.captures.length}</td></tr>
         <tr><td>Unique Domains</td><td>${domainSet.size}</td></tr>
@@ -264,6 +593,8 @@ function buildHtmlReport(data: ExportData, options: ExportOptions): string {
   .screenshot { max-width: 100%; max-height: 400px; margin: 0.5rem 0; border: 1px solid #262626; }
   .pin-legend { font-size: 0.875rem; line-height: 1.4; padding-left: 1.5rem; }
   .pin-legend li { margin: 0.25rem 0; }
+  .warning-banner { margin-bottom: 1rem; padding: 0.75rem; border-left: 3px solid #f59e0b; background: #1a1a0a; color: #fbbf24; }
+  .success-banner { margin-bottom: 1rem; padding: 0.75rem; border-left: 3px solid #22c55e; background: #071a0f; color: #86efac; }
   .verify-verified td:first-child { color: #22c55e; }
   .verify-tampered td:first-child { color: #f59e0b; }
   .verify-chain-broken td:first-child { color: #f59e0b; }
@@ -279,7 +610,7 @@ function buildHtmlReport(data: ExportData, options: ExportOptions): string {
 <body>
 ${sections.join('\n')}
 <footer style="text-align: center; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #262626; font-size: 0.75rem; color: #525252;">
-  Generated by Birdbrain v0.1.0
+  Generated by Birdbrain v${esc(resolveToolVersion())}
 </footer>
 </body>
 </html>`

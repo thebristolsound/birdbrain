@@ -83,7 +83,7 @@ export function CommandPalette() {
           {...presets.overlay}
         >
           <motion.div
-            className="h-fit w-full max-w-lg rounded-xl border border-border-strong bg-card shadow-2xl"
+            className="h-fit w-full max-w-lg rounded-xl neu-overlay"
             onClick={(e) => e.stopPropagation()}
             {...presets.modal}
           >

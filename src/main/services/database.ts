@@ -13,8 +13,10 @@ import type {
   ExtractedDataCategory,
   ExtractedDataSubcategory,
   ExtractedDataItem,
-  TrustedTime
+  TrustedTime,
+  TlsCertChainResult
 } from '@shared/types'
+import { TlsCertChainResultSchema } from '@shared/schemas'
 import type {
   CreateCaseParams,
   UpdateCaseParams,
@@ -30,7 +32,7 @@ import type { ExtractedDatum } from '@main/services/dataExtractor'
 import { safeRegexTest } from '@main/services/safeRegex'
 
 let db: Database.Database
-export const LATEST_SCHEMA_VERSION = 18
+export const LATEST_SCHEMA_VERSION = 20
 
 export function initDatabase(dbPath: string): Database.Database {
   db = new Database(dbPath)
@@ -414,6 +416,34 @@ function migrate(db: Database.Database): void {
       db.pragma('user_version = 18')
     })()
   }
+
+  if (version < 19) {
+    db.transaction(() => {
+      // Content-addressed integrity for the screenshot and extracted-text
+      // sidecars (#118). NULL for existing rows; the manifest remains the
+      // authority — these mirror the hashes recorded in the v2+ capture entry so
+      // verify can re-bind sidecars without re-reading the manifest. Old rows
+      // read back as undefined and are simply not sidecar-checked.
+      db.exec(`
+        ALTER TABLE captures ADD COLUMN screenshot_hash TEXT;
+        ALTER TABLE captures ADD COLUMN text_hash TEXT;
+      `)
+      db.pragma('user_version = 19')
+    })()
+  }
+
+  if (version < 20) {
+    db.transaction(() => {
+      // Corroboration-only TLS cert chain re-fetched after storage (#123). Holds
+      // the JSON-serialized TlsCertChainResult (chain or fail-soft error marker).
+      // NULL for existing rows; the manifest remains the authority — this mirrors
+      // the value anchored in the v2+ capture entry. Old rows read back undefined.
+      db.exec(`
+        ALTER TABLE captures ADD COLUMN tls_cert_chain TEXT;
+      `)
+      db.pragma('user_version = 20')
+    })()
+  }
 }
 
 // --- Cases ---
@@ -505,6 +535,10 @@ export interface InsertCaptureParams {
   textContent?: string
   format?: 'html' | 'mhtml'
   mhtmlPath?: string
+  screenshotHash?: string
+  textHash?: string
+  // JSON-serialized corroboration-only TLS cert chain (#123).
+  tlsCertChain?: string
   sizeBytes?: number
   manifestIndex?: number
   prevHash?: string
@@ -527,10 +561,10 @@ export const insertCapture = function (params: InsertCaptureParams & { id?: stri
     d.prepare(
       `INSERT INTO captures (
          id, case_id, url, title, html_path, screenshot_path, hash, timestamp, headers, created_at,
-         format, mhtml_path, size_bytes, manifest_index, prev_hash, entry_hash,
+         format, mhtml_path, screenshot_hash, text_hash, tls_cert_chain, size_bytes, manifest_index, prev_hash, entry_hash,
          tool_version, extension_version, browser_version, user_agent, http_status,
          operator_id, operator_name
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       params.caseId,
@@ -544,6 +578,9 @@ export const insertCapture = function (params: InsertCaptureParams & { id?: stri
       now,
       params.format ?? 'html',
       params.mhtmlPath ?? null,
+      params.screenshotHash ?? null,
+      params.textHash ?? null,
+      params.tlsCertChain ?? null,
       params.sizeBytes ?? null,
       params.manifestIndex ?? null,
       params.prevHash ?? null,
@@ -1084,6 +1121,21 @@ function rowToCase(row: Record<string, unknown>): Case {
   }
 }
 
+// Safely parses the JSON-serialized corroboration-only TLS cert chain (#123)
+// from its DB column. Returns undefined for NULL/legacy rows or any malformed
+// value so a hand-edited or corrupt cell can never crash row mapping.
+function parseTlsCertChain(value: unknown): TlsCertChainResult | undefined {
+  if (typeof value !== 'string' || value.length === 0) return undefined
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(value)
+  } catch {
+    return undefined
+  }
+  const result = TlsCertChainResultSchema.safeParse(parsed)
+  return result.success ? result.data : undefined
+}
+
 function rowToCapture(row: Record<string, unknown>): Capture {
   return {
     id: row.id as string,
@@ -1098,6 +1150,9 @@ function rowToCapture(row: Record<string, unknown>): Capture {
     createdAt: row.created_at as string,
     format: ((row.format as string) || 'html') as CaptureFormat,
     mhtmlPath: (row.mhtml_path as string) || undefined,
+    screenshotHash: (row.screenshot_hash as string) || undefined,
+    textHash: (row.text_hash as string) || undefined,
+    tlsCertChain: parseTlsCertChain(row.tls_cert_chain),
     sizeBytes: (row.size_bytes as number) ?? undefined,
     manifestIndex: (row.manifest_index as number) ?? undefined,
     prevHash: (row.prev_hash as string) || undefined,

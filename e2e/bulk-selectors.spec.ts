@@ -9,10 +9,9 @@ test.describe('Bulk Add Selectors', () => {
     await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
     await page.fill('[data-testid="case-name-input"]', 'Bulk Selectors E2E')
     await page.click('[data-testid="case-create-btn"]')
-    await page.waitForSelector('[data-testid="case-header-name-btn"]', { timeout: 10000 })
-    await expect(page.locator('[data-testid="case-header-name-btn"]')).toContainText(
-      'Bulk Selectors E2E'
-    )
+    // Case creation lands on the Overview page.
+    await page.waitForURL(/#\/cases\/.+\/overview/, { timeout: 10000 })
+    await expect(page.getByRole('heading', { name: 'Bulk Selectors E2E' })).toBeVisible()
 
     // Navigate to the Selectors section via the sidebar icon button.
     await page.click('button[aria-label="Selectors"]')

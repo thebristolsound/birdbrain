@@ -136,7 +136,7 @@ test.describe('ScreenshotZoomBar', () => {
     // Reload renderer; tooltip must stay dismissed.
     const win = electronApp.windows()[0]
     await win.reload()
-    await page.waitForSelector('[data-testid="case-header-name-btn"]', { timeout: 10000 })
+    await page.waitForSelector('[data-testid="topbar-case-name"]', { timeout: 10000 })
     await page.getByTestId('capture-item').filter({ hasText: 'Zoom Bar E2E Page' }).first().click()
     await expect(page.getByText('Drawing tools are now always live', { exact: false })).toHaveCount(
       0

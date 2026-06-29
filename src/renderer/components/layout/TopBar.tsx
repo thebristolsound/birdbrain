@@ -1,12 +1,25 @@
-import { Sun, Moon, ChevronsUpDown, Settings, ArrowLeft } from 'lucide-react'
+import { useState } from 'react'
+import {
+  Sun,
+  Moon,
+  ChevronsUpDown,
+  ChevronRight,
+  Settings,
+  ArrowLeft,
+  FileOutput
+} from 'lucide-react'
+import { AnimatePresence } from 'motion/react'
 import logoImg from '@renderer/assets/logo.png'
 import { Button } from '@renderer/components/ui'
 import { useMatchRoute, useNavigate, useRouter } from '@tanstack/react-router'
+import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '@renderer/stores/appStore'
+import { caseQueryOptions } from '@renderer/lib/queries'
 import { SearchBar } from '@renderer/components/search/SearchBar'
 import { SessionControls } from '@renderer/components/status/SessionControls'
 import { ConnectionStatus } from '@renderer/components/status/ConnectionStatus'
 import { CaptureHealth } from '@renderer/components/status/CaptureHealth'
+import { ExportDialog } from '@renderer/components/export/ExportDialog'
 import { useTheme } from '@renderer/hooks/useTheme'
 
 export function TopBar() {
@@ -16,10 +29,16 @@ export function TopBar() {
   const sessionActive = useAppStore((s) => s.sessionActive)
   const setCommandPaletteOpen = useAppStore((s) => s.setCommandPaletteOpen)
   const { theme, toggleTheme } = useTheme()
+  const [showExport, setShowExport] = useState(false)
 
   const isOnSettings = Boolean(matchRoute({ to: '/settings' }))
   const caseMatch = matchRoute({ to: '/cases/$caseId', fuzzy: true })
   const activeCaseId = caseMatch ? (caseMatch as { caseId: string }).caseId : null
+
+  const { data: activeCase } = useQuery({
+    ...caseQueryOptions(activeCaseId ?? ''),
+    enabled: !!activeCaseId
+  })
 
   // Simplified settings header
   if (isOnSettings) {
@@ -68,16 +87,22 @@ export function TopBar() {
         </span>
       </button>
 
-      {/* Compact case switcher */}
+      {/* Breadcrumb case switcher — opens the command launcher */}
       {activeCaseId && (
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => setCommandPaletteOpen(true)}
-          title="Switch investigation (Ctrl+K)"
-        >
-          <ChevronsUpDown className="h-3.5 w-3.5" />
-        </Button>
+        <>
+          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-text-faint" />
+          <button
+            data-testid="topbar-case-name"
+            onClick={() => setCommandPaletteOpen(true)}
+            className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 hover:bg-elevated transition-colors"
+            title="Switch investigation (Ctrl+K)"
+          >
+            <span className="max-w-[220px] truncate font-display text-xs font-bold text-text-primary">
+              {activeCase?.name ?? ''}
+            </span>
+            <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+          </button>
+        </>
       )}
 
       <div className="flex-1" />
@@ -98,6 +123,18 @@ export function TopBar() {
         <ConnectionStatus />
         <CaptureHealth />
 
+        {activeCaseId && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowExport(true)}
+            className="gap-1.5"
+          >
+            <FileOutput className="h-3 w-3" strokeWidth={1.8} />
+            Export
+          </Button>
+        )}
+
         <Button
           variant="ghost"
           size="icon-sm"
@@ -116,6 +153,17 @@ export function TopBar() {
           {theme === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
         </Button>
       </div>
+
+      {/* Export dialog */}
+      <AnimatePresence>
+        {showExport && activeCase && (
+          <ExportDialog
+            caseId={activeCase.id}
+            caseName={activeCase.name}
+            onClose={() => setShowExport(false)}
+          />
+        )}
+      </AnimatePresence>
     </header>
   )
 }

@@ -57,8 +57,13 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
       setEditingName(false)
       return
     }
-    await update.mutateAsync({ id: caseData.id, name: trimmed })
-    setEditingName(false)
+    try {
+      await update.mutateAsync({ id: caseData.id, name: trimmed })
+      setEditingName(false)
+    } catch (err) {
+      // Keep the field in edit mode with the user's value so they can retry.
+      console.error('Failed to rename case', err)
+    }
   }
 
   async function saveDesc() {
@@ -67,8 +72,13 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
       setEditingDesc(false)
       return
     }
-    await update.mutateAsync({ id: caseData.id, description: trimmed })
-    setEditingDesc(false)
+    try {
+      await update.mutateAsync({ id: caseData.id, description: trimmed })
+      setEditingDesc(false)
+    } catch (err) {
+      // Keep the field in edit mode with the user's value so they can retry.
+      console.error('Failed to update case description', err)
+    }
   }
 
   const style = (caseData.type && TYPE_STYLES[caseData.type]) || DEFAULT_STYLE
@@ -136,8 +146,9 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
             className="mt-2 w-full max-w-[760px] resize-none rounded border border-accent bg-elevated px-2 py-1 font-body text-[12.5px] leading-relaxed text-text-secondary focus:outline-none"
           />
         ) : (
-          <p
-            className="mt-2 max-w-[760px] cursor-pointer font-body text-[12.5px] leading-relaxed text-text-muted hover:text-text-secondary"
+          <button
+            type="button"
+            className="mt-2 block max-w-[760px] cursor-pointer text-left font-body text-[12.5px] leading-relaxed text-text-muted hover:text-text-secondary"
             onClick={() => setEditingDesc(true)}
             title="Click to edit"
           >
@@ -146,7 +157,7 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
             ) : (
               <span className="italic text-text-faint">Add a description…</span>
             )}
-          </p>
+          </button>
         )}
       </div>
       <div className="flex shrink-0 flex-col items-end gap-2.5">

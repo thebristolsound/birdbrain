@@ -58,6 +58,7 @@ function Header() {
       </div>
       <button
         onClick={handleClose}
+        aria-label="Close popup"
         className="w-7 h-7 flex items-center justify-center rounded-md text-text-muted hover:text-red-400 hover:bg-red-500/10 transition-colors"
       >
         <svg

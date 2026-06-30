@@ -107,6 +107,22 @@ export interface WaybackLookupResult {
   checkedAt: string // ISO 8601 — when the lookup ran
 }
 
+// A WaybackSnapshot the user has pinned to a capture (persisted corroboration
+// reference). Columns reserved for the future download-later phase
+// (contentPath/contentHash/manifestIndex) are intentionally omitted here.
+export interface ArchiveRef {
+  id: string
+  captureId: string
+  snapshotTimestamp: string // ISO 8601
+  snapshotUrl: string
+  originalUrl: string
+  digest?: string
+  statusCode?: number
+  mimeType?: string
+  checkedAt: string // when the lookup that produced this ran
+  pinnedAt: string // when the user pinned it
+}
+
 export interface Tag {
   id: string
   name: string

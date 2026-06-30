@@ -2,44 +2,59 @@
 @source "../../";
 
 @theme {
-  /* OLED Dark surfaces */
-  --color-d-body: #000000;
-  --color-d-header: #0a0e17;
-  --color-d-card: #111827;
-  --color-d-card-alt: #1e293b;
-  --color-d-border: rgba(255,255,255,0.06);
-  --color-d-text: #f1f5f9;
-  --color-d-text-secondary: #94a3b8;
-  --color-d-text-muted: #64748b;
+  /* Flat zinc surfaces — light defaults; html.dark overrides below */
+  --color-canvas: #fafafa;
+  --color-surface: #f4f4f5;
+  --color-card: #ffffff;
+  --color-elevated: #ffffff;
+  --color-text-primary: #09090b;
+  --color-text-secondary: #3f3f46;
+  --color-text-muted: #71717a;
+  --color-text-faint: #a1a1aa;
+  --color-accent: #5659f0;
+  --color-accent-hover: #4f52e0;
+  --color-accent-subtle: rgba(100,103,242,0.10);
+  --color-border: #e4e4e7;
+  --color-border-strong: #d4d4d8;
 
-  /* Accent colors */
-  --color-indigo-400: #818cf8;
-  --color-indigo-500: #6366f1;
-  --color-indigo-600: #4f46e5;
-  --color-indigo-700: #4338ca;
-
+  /* Status palette (allowed raw-colour exception) */
   --color-red-400: #f87171;
   --color-red-500: #ef4444;
   --color-amber-500: #f59e0b;
   --color-emerald-500: #22c55e;
-  --color-sky-400: #38bdf8;
-  --color-yellow-500: #eab308;
 
-  /* Typography */
-  --font-display: 'Plus Jakarta Sans', sans-serif;
-  --font-body: 'DM Sans', sans-serif;
+  --radius: 0.5rem;
+
+  --font-display: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+}
+
+html.dark {
+  --color-canvas: #090a0b;
+  --color-surface: #0e0e11;
+  --color-card: #131316;
+  --color-elevated: #1c1c20;
+  --color-text-primary: #fafafa;
+  --color-text-secondary: #d4d4d8;
+  --color-text-muted: #a1a1aa;
+  --color-text-faint: #71717a;
+  --color-accent: #6467f2;
+  --color-accent-hover: #7a7cf5;
+  --color-accent-subtle: rgba(100,103,242,0.16);
+  --color-border: #27272a;
+  --color-border-strong: #3d3d42;
 }
 
 body {
   width: 320px;
   margin: 0;
   overflow: hidden;
-  background: var(--color-d-body);
-  color: var(--color-d-text);
+  background: var(--color-canvas);
+  color: var(--color-text-primary);
   font-family: var(--font-body);
 }
 
-/* Animations */
+/* Functional motion only — no decorative glow/shimmer/pulse */
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
@@ -48,11 +63,6 @@ body {
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.7; transform: scale(1.15); }
-}
-
-@keyframes btn-glow {
-  0%, 100% { box-shadow: 0 4px 20px rgba(79,70,229,0.5), 0 0 40px rgba(79,70,229,0.15); }
-  50% { box-shadow: 0 4px 24px rgba(79,70,229,0.6), 0 0 50px rgba(79,70,229,0.25); }
 }
 
 .animate-fade-up {
@@ -71,28 +81,4 @@ body {
 
 .status-recording {
   animation: pulse-dot 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-.btn-glow-pulse {
-  animation: btn-glow 3s ease-in-out infinite;
-}
-
-.shadow-dark-btn {
-  box-shadow: 0 4px 20px rgba(79,70,229,0.5), 0 0 40px rgba(79,70,229,0.2);
-}
-
-.recording-ring {
-  box-shadow: 0 0 8px rgba(239,68,68,0.4), 0 0 16px rgba(239,68,68,0.15);
-}
-
-.dark-card-glow {
-  box-shadow: 0 1px 3px rgba(0,0,0,0.4), 0 4px 16px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.03);
-}
-
-.stat-glow {
-  text-shadow: 0 0 20px rgba(129,140,248,0.5);
-}
-
-.entity-dot {
-  box-shadow: 0 0 6px currentColor;
 }

@@ -93,6 +93,16 @@ describe('captureServer', () => {
     expect(data.sessionActive).toBe(false)
   })
 
+  it('GET /api/status exposes the app theme', async () => {
+    updateSettings({ theme: 'light' })
+    const light = await (await fetch(`${baseUrl}/api/status`)).json()
+    expect(light.theme).toBe('light')
+
+    updateSettings({ theme: 'dark' })
+    const dark = await (await fetch(`${baseUrl}/api/status`)).json()
+    expect(dark.theme).toBe('dark')
+  })
+
   it('GET /api/status exposes serverToken to extension and localhost origins', async () => {
     const res = await fetch(`${baseUrl}/api/status`, {
       headers: { Origin: 'chrome-extension://abcdef1234567890' }

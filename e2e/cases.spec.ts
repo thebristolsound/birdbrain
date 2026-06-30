@@ -8,17 +8,12 @@ async function goToNewCase(page: import('@playwright/test').Page) {
   await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
 }
 
-// Helper: a freshly created case now lands on its Overview page, which has no
-// CaseHeader. The header (and the tests that use it) live on the captures route,
-// so hop there first before asserting on the header.
-async function waitForCaseHeader(page: import('@playwright/test').Page, name: string) {
+// Helper: the active case name now lives in the global TopBar breadcrumb, which
+// is present on every in-case route (including the Overview landing page).
+async function waitForCaseLoaded(page: import('@playwright/test').Page, name: string) {
   await page.waitForURL(/#\/cases\/.+\/(overview|captures)/, { timeout: 10000 })
-  await page.evaluate(() => {
-    const m = window.location.hash.match(/#\/cases\/([^/]+)/)
-    if (m) window.location.hash = `/cases/${m[1]}/captures`
-  })
-  await page.waitForSelector('[data-testid="case-header-name-btn"]', { timeout: 10000 })
-  await expect(page.locator('[data-testid="case-header-name-btn"]')).toContainText(name)
+  await page.waitForSelector('[data-testid="topbar-case-name"]', { timeout: 10000 })
+  await expect(page.locator('[data-testid="topbar-case-name"]')).toContainText(name)
 }
 
 test.describe('Cases CRUD', () => {
@@ -33,7 +28,7 @@ test.describe('Cases CRUD', () => {
     await page.click('[data-testid="case-create-btn"]')
 
     // Verify case workspace loads with case name in header
-    await waitForCaseHeader(page, 'Test Investigation')
+    await waitForCaseLoaded(page, 'Test Investigation')
   })
 
   test('case lands on the overview page after creation', async ({ page }) => {
@@ -46,23 +41,24 @@ test.describe('Cases CRUD', () => {
     await expect(page.getByRole('heading', { name: 'Listed Case' })).toBeVisible()
   })
 
-  test('can rename a case via the case header', async ({ page }) => {
+  test('can rename a case via the overview subhead', async ({ page }) => {
     await goToNewCase(page)
     await page.fill('[data-testid="case-name-input"]', 'Original Name')
     await page.click('[data-testid="case-create-btn"]')
-    await waitForCaseHeader(page, 'Original Name')
+    await waitForCaseLoaded(page, 'Original Name')
 
-    // Click the case name button in the CaseHeader to enter edit mode
-    await page.click('[data-testid="case-header-name-btn"]')
+    // Editing now lives on the Overview landing page (CaseSubhead).
+    await page.click('[data-testid="case-subhead-name-btn"]')
 
     // Type the new name and confirm with Enter
-    await page.waitForSelector('[data-testid="case-header-name-input"]')
-    await page.fill('[data-testid="case-header-name-input"]', 'Renamed Case')
-    await page.press('[data-testid="case-header-name-input"]', 'Enter')
+    await page.waitForSelector('[data-testid="case-subhead-name-input"]')
+    await page.fill('[data-testid="case-subhead-name-input"]', 'Renamed Case')
+    await page.press('[data-testid="case-subhead-name-input"]', 'Enter')
 
-    // Verify the renamed case is visible in the header
-    await expect(page.locator('[data-testid="case-header-name-btn"]')).toContainText('Renamed Case')
-    await expect(page.locator('[data-testid="case-header-name-btn"]')).not.toContainText(
+    // Verify the renamed case is visible in both the subhead and the TopBar.
+    await expect(page.locator('[data-testid="case-subhead-name-btn"]')).toContainText('Renamed Case')
+    await expect(page.locator('[data-testid="topbar-case-name"]')).toContainText('Renamed Case')
+    await expect(page.locator('[data-testid="case-subhead-name-btn"]')).not.toContainText(
       'Original Name'
     )
   })
@@ -71,7 +67,7 @@ test.describe('Cases CRUD', () => {
     await goToNewCase(page)
     await page.fill('[data-testid="case-name-input"]', 'To Be Deleted')
     await page.click('[data-testid="case-create-btn"]')
-    await waitForCaseHeader(page, 'To Be Deleted')
+    await waitForCaseLoaded(page, 'To Be Deleted')
 
     // Get the case ID from the URL
     const url = page.url()

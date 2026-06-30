@@ -42,6 +42,7 @@ const mainConfig = defineConfig({
       closeBundle() {
         const dist = resolve(__dirname, 'dist')
         copyFileSync(resolve(__dirname, 'manifest.json'), resolve(dist, 'manifest.json'))
+        copyFileSync(resolve(__dirname, 'theme-preinit.js'), resolve(dist, 'theme-preinit.js'))
         mkdirSync(resolve(dist, 'icons'), { recursive: true })
         cpSync(resolve(__dirname, 'icons'), resolve(dist, 'icons'), { recursive: true })
         mkdirSync(resolve(dist, 'fonts'), { recursive: true })
@@ -52,6 +53,7 @@ const mainConfig = defineConfig({
           let html = readFileSync(nestedPopup, 'utf-8')
           html = html.replace(/src="[^"]*popup\.js"/g, 'src="./popup.js"')
           html = html.replace(/href="[^"]*chunks\//g, 'href="./chunks/')
+          html = html.replace('</head>', '    <script src="./theme-preinit.js"></script>\n  </head>')
           writeFileSync(resolve(dist, 'popup.html'), html)
           rmSync(resolve(dist, 'extension'), { recursive: true, force: true })
         } catch {

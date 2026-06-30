@@ -682,16 +682,24 @@ describe('archive handlers', () => {
       statusCode: 200
     }
     const pin = registered.get('archive:pin')!
-    const pinned = (await pin({} as never, { captureId: cap.id, snapshot })) as {
+    const pinned = (await pin({} as never, {
+      captureId: cap.id,
+      snapshot,
+      checkedAt: '2026-06-30T00:00:00.000Z'
+    })) as {
       ok: boolean
       data: { id: string }
     }
     expect(pinned.ok).toBe(true)
 
     const list = registered.get('archive:list')!
-    const refs = (await list({} as never, cap.id)) as Array<{ snapshotUrl: string }>
+    const refs = (await list({} as never, cap.id)) as Array<{
+      snapshotUrl: string
+      checkedAt: string
+    }>
     expect(refs).toHaveLength(1)
     expect(refs[0].snapshotUrl).toBe(snapshot.snapshotUrl)
+    expect(refs[0].checkedAt).toBe('2026-06-30T00:00:00.000Z')
 
     const unpin = registered.get('archive:unpin')!
     const removed = (await unpin({} as never, pinned.data.id)) as { ok: boolean; data: boolean }

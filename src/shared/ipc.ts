@@ -211,6 +211,7 @@ export interface UpdateNoteParams {
 export interface PinArchiveSnapshotParams {
   captureId: string
   snapshot: WaybackSnapshot
+  checkedAt: string
 }
 
 export interface SaveAnnotationsParams {

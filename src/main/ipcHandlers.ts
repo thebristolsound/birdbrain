@@ -253,7 +253,7 @@ export function registerIpcHandlers(deps: {
     return db.createArchiveRef({
       captureId: params.captureId,
       snapshot: params.snapshot,
-      checkedAt: new Date().toISOString()
+      checkedAt: params.checkedAt
     })
   })
 

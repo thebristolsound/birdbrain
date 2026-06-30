@@ -112,7 +112,9 @@ export function ArchiveTab({ capture }: Props) {
               isClosest={i === result.closestIndex}
               isPinned={pinnedUrls.has(snap.snapshotUrl)}
               onOpen={() => open(snap.snapshotUrl)}
-              onPin={() => pin.mutate({ captureId: capture.id, snapshot: snap })}
+              onPin={() =>
+                pin.mutate({ captureId: capture.id, snapshot: snap, checkedAt: result.checkedAt })
+              }
             />
           ))}
         </ul>

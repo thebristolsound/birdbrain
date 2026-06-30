@@ -12,11 +12,13 @@ import {
   Code,
   FileText,
   ShieldCheck,
-  Shield
+  Shield,
+  Archive
 } from 'lucide-react'
 import { MhtmlViewer } from '@renderer/components/captures/MhtmlViewer'
 import { AnnotationEditor } from './annotation/AnnotationEditor'
 import { ForensicsTab } from './ForensicsTab'
+import { ArchiveTab } from './ArchiveTab'
 import { CapturesGettingStarted } from './CapturesGettingStarted'
 import { Button } from '@renderer/components/ui'
 import { getProvenanceColor } from './getProvenanceColor'
@@ -27,16 +29,17 @@ import { AnnotationToolbar } from './annotation/AnnotationToolbar'
 import { useAnnotationEditor } from './annotation/useAnnotationEditor'
 import { useZoomPan } from './annotation/useZoomPan'
 
-type ViewTab = 'screenshot' | 'page' | 'source' | 'text' | 'forensics'
+type ViewTab = 'screenshot' | 'page' | 'source' | 'text' | 'forensics' | 'archive'
 
-const TABS: ViewTab[] = ['screenshot', 'page', 'source', 'text', 'forensics']
+const TABS: ViewTab[] = ['screenshot', 'page', 'source', 'text', 'forensics', 'archive']
 
 const TAB_ICONS: Record<ViewTab, typeof Image> = {
   screenshot: Image,
   page: Globe,
   source: Code,
   text: FileText,
-  forensics: ShieldCheck
+  forensics: ShieldCheck,
+  archive: Archive
 }
 
 const TAB_LABELS: Record<ViewTab, string> = {
@@ -44,7 +47,8 @@ const TAB_LABELS: Record<ViewTab, string> = {
   page: 'Page',
   source: 'Source',
   text: 'Text',
-  forensics: 'Forensics'
+  forensics: 'Forensics',
+  archive: 'Archive'
 }
 
 export function CaptureViewer() {
@@ -241,6 +245,7 @@ export function CaptureViewer() {
             <div className="p-4 text-text-muted">No text content available</div>
           ))}
         {activeTab === 'forensics' && <ForensicsTab capture={capture} caseId={caseId} />}
+        {activeTab === 'archive' && <ArchiveTab capture={capture} />}
       </div>
     </main>
   )

@@ -11,6 +11,7 @@ import type {
   UpdateSelectorParams,
   CreateNoteParams,
   UpdateNoteParams,
+  PinArchiveSnapshotParams,
   BulkCreateSelectorsParams,
   DbTableRowsParams,
   DbCreateRowParams,
@@ -34,6 +35,7 @@ import * as openrouter from '@main/services/openrouter'
 import * as analysisService from '@main/services/ai/analysisService'
 import { generateReport, getExportPreflight } from '@main/services/export'
 import { getExtensionPath, extensionPathExists } from '@main/services/extensionPath'
+import { lookupSnapshots } from '@main/services/waybackMachine'
 import { buildCsv } from '@main/services/csvEscape'
 import { getInstallationId } from '@main/services/installationId'
 import { CAPTURE_SERVER_PORT, getSessionState } from '@main/services/captureServer'
@@ -228,6 +230,34 @@ export function registerIpcHandlers(deps: {
       return []
     }
   })
+
+  // Archive (Wayback corroboration)
+  handle(IPC_CHANNELS.ARCHIVE_LOOKUP, async (_, captureId: string) => {
+    const capture = db.getCapture(captureId)
+    if (!capture) throw new IpcFailure('Capture not found', 'NOT_FOUND')
+    try {
+      return await lookupSnapshots(capture.url, capture.timestamp)
+    } catch (err) {
+      throw new IpcFailure(
+        err instanceof Error ? err.message : 'Wayback lookup failed',
+        'WAYBACK_LOOKUP_FAILED'
+      )
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.ARCHIVE_LIST, (_, captureId: string) => db.listArchiveRefs(captureId))
+
+  handle(IPC_CHANNELS.ARCHIVE_PIN, async (_, params: PinArchiveSnapshotParams) => {
+    const capture = db.getCapture(params.captureId)
+    if (!capture) throw new IpcFailure('Capture not found', 'NOT_FOUND')
+    return db.createArchiveRef({
+      captureId: params.captureId,
+      snapshot: params.snapshot,
+      checkedAt: new Date().toISOString()
+    })
+  })
+
+  handle(IPC_CHANNELS.ARCHIVE_UNPIN, async (_, refId: string) => db.deleteArchiveRef(refId))
 
   // Annotations
   ipcMain.handle(IPC_CHANNELS.ANNOTATIONS_GET, (_, captureId: string) =>

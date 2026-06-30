@@ -67,10 +67,16 @@ vi.mock('@main/services/export', () => ({
   getExportPreflight: (...a: unknown[]) => getExportPreflight(...a)
 }))
 
+const lookupSnapshots = vi.fn()
+vi.mock('@main/services/waybackMachine', () => ({
+  lookupSnapshots: (...a: unknown[]) => lookupSnapshots(...a)
+}))
+
 // --- Real services ----------------------------------------------------------
 import { IPC_CHANNELS } from '@shared/ipc'
 import { registerIpcHandlers } from '@main/ipcHandlers'
 import * as db from '@main/services/database'
+import { createCase, insertCapture } from '@main/services/database'
 import * as storage from '@main/services/storage'
 import * as settings from '@main/services/settings'
 import { initInstallationId } from '@main/services/installationId'
@@ -627,5 +633,69 @@ describe('ipcHandlers — database admin', () => {
   it('reports not-restored when the restore dialog is cancelled', async () => {
     const res = expectOk<{ restored: boolean }>(await invoke(IPC_CHANNELS.DB_RESTORE))
     expect(res.restored).toBe(false)
+  })
+})
+
+describe('archive handlers', () => {
+  it('archive:lookup reads the capture URL and returns CDX results', async () => {
+    const c = createCase({ name: 'C' })
+    const cap = insertCapture({
+      caseId: c.id,
+      url: 'https://example.com/',
+      title: 'Example',
+      hash: 'h',
+      timestamp: '2020-01-15T12:00:00.000Z',
+      format: 'mhtml'
+    })
+    lookupSnapshots.mockResolvedValueOnce({
+      snapshots: [
+        {
+          timestamp: '2020-01-15T12:00:00.000Z',
+          snapshotUrl: 'https://web.archive.org/web/20200115120000/https://example.com/',
+          originalUrl: 'https://example.com/',
+          statusCode: 200
+        }
+      ],
+      closestIndex: 0,
+      checkedAt: '2026-06-30T00:00:00.000Z'
+    })
+    const handler = registered.get('archive:lookup')!
+    const result = (await handler({} as never, cap.id)) as { ok: boolean; data: unknown }
+    expect(lookupSnapshots).toHaveBeenCalledWith('https://example.com/', '2020-01-15T12:00:00.000Z')
+    expect(result.ok).toBe(true)
+  })
+
+  it('archive:pin then archive:list round-trips a reference', async () => {
+    const c = createCase({ name: 'C' })
+    const cap = insertCapture({
+      caseId: c.id,
+      url: 'https://example.com/',
+      title: 'Example',
+      hash: 'h',
+      timestamp: '2020-01-15T12:00:00.000Z',
+      format: 'mhtml'
+    })
+    const snapshot = {
+      timestamp: '2020-01-15T12:00:00.000Z',
+      snapshotUrl: 'https://web.archive.org/web/20200115120000/https://example.com/',
+      originalUrl: 'https://example.com/',
+      statusCode: 200
+    }
+    const pin = registered.get('archive:pin')!
+    const pinned = (await pin({} as never, { captureId: cap.id, snapshot })) as {
+      ok: boolean
+      data: { id: string }
+    }
+    expect(pinned.ok).toBe(true)
+
+    const list = registered.get('archive:list')!
+    const refs = (await list({} as never, cap.id)) as Array<{ snapshotUrl: string }>
+    expect(refs).toHaveLength(1)
+    expect(refs[0].snapshotUrl).toBe(snapshot.snapshotUrl)
+
+    const unpin = registered.get('archive:unpin')!
+    const removed = (await unpin({} as never, pinned.data.id)) as { ok: boolean; data: boolean }
+    expect(removed.ok).toBe(true)
+    expect((await list({} as never, cap.id)) as unknown[]).toHaveLength(0)
   })
 })

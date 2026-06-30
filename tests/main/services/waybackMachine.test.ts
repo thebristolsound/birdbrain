@@ -77,4 +77,16 @@ describe('lookupSnapshots', () => {
     expect(result.snapshots).toHaveLength(1)
     expect(result.snapshots[0].digest).toBe('B')
   })
+
+  it('returns null closestIndex when the capture timestamp is unparseable', async () => {
+    const body = [
+      CDX_HEADER,
+      ['20200110000000', 'https://example.com/', '200', 'text/html', 'B', '1']
+    ]
+    const result = await lookupSnapshots('https://example.com/', 'not-a-date', {
+      fetchImpl: fakeFetch(body)
+    })
+    expect(result.snapshots).toHaveLength(1)
+    expect(result.closestIndex).toBeNull()
+  })
 })

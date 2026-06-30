@@ -90,4 +90,43 @@ describe('ArchiveTab', () => {
     fireEvent.click(screen.getByTestId('archive-lookup-btn'))
     expect(await screen.findByTestId('archive-empty')).toBeDefined()
   })
+
+  it('shows the error state when the lookup rejects', async () => {
+    ;(window.birdbrain.archive.lookup as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error('boom')
+    )
+    renderTab()
+    fireEvent.click(screen.getByTestId('archive-lookup-btn'))
+    expect(await screen.findByTestId('archive-error')).toBeDefined()
+  })
+
+  it('renders pinned snapshots from the pins list', async () => {
+    ;(window.birdbrain.archive.list as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      {
+        id: 'ref1',
+        captureId: 'cap1',
+        snapshotTimestamp: '2020-01-14T00:00:00.000Z',
+        snapshotUrl: 'https://web.archive.org/web/20200114000000/https://example.com/',
+        originalUrl: 'https://example.com/',
+        checkedAt: '2026-06-30T00:00:00.000Z',
+        pinnedAt: '2026-06-30T00:01:00.000Z',
+        statusCode: 200
+      }
+    ])
+    renderTab()
+    expect(await screen.findByText('Pinned')).toBeDefined()
+  })
+
+  it('shows the loading indicator while a lookup is in flight', async () => {
+    let resolveLookup: (value: unknown) => void = () => {}
+    const pending = new Promise((resolve) => {
+      resolveLookup = resolve
+    })
+    ;(window.birdbrain.archive.lookup as ReturnType<typeof vi.fn>).mockReturnValueOnce(pending)
+    renderTab()
+    fireEvent.click(screen.getByTestId('archive-lookup-btn'))
+    expect(await screen.findByTestId('archive-loading')).toBeDefined()
+    resolveLookup({ snapshots: [], closestIndex: null, checkedAt: '2026-06-30T00:00:00.000Z' })
+    await waitFor(() => expect(screen.queryByTestId('archive-loading')).toBeNull())
+  })
 })

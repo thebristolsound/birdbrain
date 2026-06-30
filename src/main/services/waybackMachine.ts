@@ -88,7 +88,7 @@ export async function lookupSnapshots(
 function closestIndexTo(snapshots: WaybackSnapshot[], captureTimestamp: string): number | null {
   if (snapshots.length === 0) return null
   const target = Date.parse(captureTimestamp)
-  if (Number.isNaN(target)) return 0
+  if (Number.isNaN(target)) return null
   let best = 0
   let bestDelta = Infinity
   snapshots.forEach((snap, i) => {

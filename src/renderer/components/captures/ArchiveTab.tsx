@@ -93,7 +93,8 @@ export function ArchiveTab({ capture }: Props) {
 
       {lookup.isError && !lookup.isFetching && (
         <div data-testid="archive-error" className="text-red-500">
-          Lookup failed: {(lookup.error as Error).message}
+          Lookup failed:{' '}
+          {lookup.error instanceof Error ? lookup.error.message : String(lookup.error)}
         </div>
       )}
 

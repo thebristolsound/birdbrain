@@ -347,7 +347,7 @@ function migrate(db: Database.Database): void {
       );
         CREATE INDEX IF NOT EXISTS idx_capture_analyses_capture ON capture_analyses(capture_id);
       `)
-      db.pragma(`user_version = ${LATEST_SCHEMA_VERSION}`)
+      db.pragma('user_version = 15')
     })()
   }
 

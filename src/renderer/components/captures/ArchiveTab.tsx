@@ -104,7 +104,7 @@ export function ArchiveTab({ capture }: Props) {
         </div>
       )}
 
-      {result && result.snapshots.length > 0 && (
+      {result && !lookup.isFetching && result.snapshots.length > 0 && (
         <ul className="space-y-1">
           {result.snapshots.map((snap, i) => (
             <SnapshotRow

@@ -27,7 +27,15 @@ function cdxTimestampToEpoch(ts: string): number {
   return Date.UTC(year, month - 1, day, hour, minute, second)
 }
 
-function buildCdxUrl(url: string, limit: number): string {
+// Converts an ISO 8601 timestamp to the CDX 14-digit YYYYMMDDHHMMSS (UTC) form.
+// Returns null when the input is not a parseable date.
+function isoToCdxTimestamp(iso: string): string | null {
+  const ms = Date.parse(iso)
+  if (Number.isNaN(ms)) return null
+  return new Date(ms).toISOString().replace(/[-:T]/g, '').slice(0, 14)
+}
+
+function buildCdxUrl(url: string, limit: number, captureTimestamp: string): string {
   const params = new URLSearchParams({
     url,
     output: 'json',
@@ -36,6 +44,15 @@ function buildCdxUrl(url: string, limit: number): string {
     collapse: 'digest',
     limit: String(limit)
   })
+  // Ask the server to rank captures by proximity to the capture time so the
+  // truly-closest snapshot is never truncated out of the first `limit` rows.
+  // sort=closest requires matchType=exact and a `closest` target timestamp.
+  const closest = isoToCdxTimestamp(captureTimestamp)
+  if (closest) {
+    params.set('matchType', 'exact')
+    params.set('sort', 'closest')
+    params.set('closest', closest)
+  }
   return `${CDX_BASE}?${params.toString()}`
 }
 
@@ -49,7 +66,7 @@ export async function lookupSnapshots(
   const limit = options.limit ?? DEFAULT_LIMIT
   const checkedAt = new Date().toISOString()
 
-  const res = await fetchImpl(buildCdxUrl(url, limit), {
+  const res = await fetchImpl(buildCdxUrl(url, limit, captureTimestamp), {
     // Bound the wait: undici's default header timeout is multi-minute and would
     // hang the UI on a stalled archive.org. On abort this rejects and the
     // renderer shows the error state.
@@ -82,7 +99,32 @@ export async function lookupSnapshots(
     })
   }
 
+  // The CDX query is ranked by proximity (sort=closest), but the tab presents a
+  // chronological timeline. Re-sort ascending by time for display; closestIndex
+  // then points into that ordering.
+  snapshots.sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+
   return { snapshots, closestIndex: closestIndexTo(snapshots, captureTimestamp), checkedAt }
+}
+
+// Validates a snapshot + lookup time before persisting it as a pinned reference.
+// The renderer supplies these over IPC, so we reject malformed or internally
+// inconsistent input (a forged/garbage snapshotUrl, a non-ISO checkedAt) rather
+// than trusting it blindly. This is shape validation only — it deliberately does
+// NOT re-query archive.org, since a pin must never disclose the URL to a third
+// party (the lookup that produced the snapshot was the user-initiated disclosure).
+export function isPersistableSnapshot(snapshot: WaybackSnapshot, checkedAt: string): boolean {
+  if (!snapshot || typeof snapshot !== 'object') return false
+  if (Number.isNaN(Date.parse(checkedAt))) return false
+  if (Number.isNaN(Date.parse(snapshot.timestamp))) return false
+  if (typeof snapshot.originalUrl !== 'string' || snapshot.originalUrl.length === 0) return false
+  // snapshotUrl must be a well-formed web.archive.org replay URL whose embedded
+  // 14-digit timestamp and original URL match the snapshot's own fields.
+  const match = /^https:\/\/web\.archive\.org\/web\/(\d{14})\/(.+)$/.exec(snapshot.snapshotUrl ?? '')
+  if (!match) return false
+  const [, ts, original] = match
+  if (original !== snapshot.originalUrl) return false
+  return cdxTimestampToEpoch(ts) === Date.parse(snapshot.timestamp)
 }
 
 function closestIndexTo(snapshots: WaybackSnapshot[], captureTimestamp: string): number | null {

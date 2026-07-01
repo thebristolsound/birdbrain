@@ -35,7 +35,7 @@ import * as openrouter from '@main/services/openrouter'
 import * as analysisService from '@main/services/ai/analysisService'
 import { generateReport, getExportPreflight } from '@main/services/export'
 import { getExtensionPath, extensionPathExists } from '@main/services/extensionPath'
-import { lookupSnapshots } from '@main/services/waybackMachine'
+import { lookupSnapshots, isPersistableSnapshot } from '@main/services/waybackMachine'
 import { buildCsv } from '@main/services/csvEscape'
 import { getInstallationId } from '@main/services/installationId'
 import { CAPTURE_SERVER_PORT, getSessionState } from '@main/services/captureServer'
@@ -250,6 +250,13 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.ARCHIVE_PIN, async (_, params: PinArchiveSnapshotParams) => {
     const capture = db.getCapture(params.captureId)
     if (!capture) throw new IpcFailure('Capture not found', 'NOT_FOUND')
+    // The snapshot/checkedAt provenance arrives over IPC from the renderer.
+    // Reject malformed or internally-inconsistent input before persisting so a
+    // buggy renderer can't pin a forged reference. (No re-lookup: a pin must not
+    // disclose the URL to archive.org.)
+    if (!isPersistableSnapshot(params.snapshot, params.checkedAt)) {
+      throw new IpcFailure('Invalid archive snapshot', 'ARCHIVE_INVALID_SNAPSHOT')
+    }
     return db.createArchiveRef({
       captureId: params.captureId,
       snapshot: params.snapshot,

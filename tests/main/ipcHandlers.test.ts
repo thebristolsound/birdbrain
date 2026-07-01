@@ -68,9 +68,13 @@ vi.mock('@main/services/export', () => ({
 }))
 
 const lookupSnapshots = vi.fn()
-vi.mock('@main/services/waybackMachine', () => ({
-  lookupSnapshots: (...a: unknown[]) => lookupSnapshots(...a)
-}))
+vi.mock('@main/services/waybackMachine', async (importActual) => {
+  const actual = await importActual<typeof import('@main/services/waybackMachine')>()
+  return {
+    ...actual,
+    lookupSnapshots: (...a: unknown[]) => lookupSnapshots(...a)
+  }
+})
 
 // --- Real services ----------------------------------------------------------
 import { IPC_CHANNELS } from '@shared/ipc'
@@ -704,6 +708,35 @@ describe('archive handlers', () => {
     const unpin = registered.get('archive:unpin')!
     const removed = (await unpin({} as never, pinned.data.id)) as { ok: boolean; data: boolean }
     expect(removed.ok).toBe(true)
+    expect((await list({} as never, cap.id)) as unknown[]).toHaveLength(0)
+  })
+
+  it('archive:pin rejects a snapshot with a forged snapshotUrl', async () => {
+    const c = createCase({ name: 'C' })
+    const cap = insertCapture({
+      caseId: c.id,
+      url: 'https://example.com/',
+      title: 'Example',
+      hash: 'h',
+      timestamp: '2020-01-15T12:00:00.000Z',
+      format: 'mhtml'
+    })
+    const pin = registered.get('archive:pin')!
+    const result = (await pin({} as never, {
+      captureId: cap.id,
+      // snapshotUrl does not point at web.archive.org — must be rejected.
+      snapshot: {
+        timestamp: '2020-01-15T12:00:00.000Z',
+        snapshotUrl: 'https://evil.example/web/20200115120000/https://example.com/',
+        originalUrl: 'https://example.com/',
+        statusCode: 200
+      },
+      checkedAt: '2026-06-30T00:00:00.000Z'
+    })) as { ok: boolean; code?: string }
+    expect(result.ok).toBe(false)
+    expect(result.code).toBe('ARCHIVE_INVALID_SNAPSHOT')
+
+    const list = registered.get('archive:list')!
     expect((await list({} as never, cap.id)) as unknown[]).toHaveLength(0)
   })
 })

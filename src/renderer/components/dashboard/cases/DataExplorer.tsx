@@ -1,14 +1,16 @@
-import { useState, type ReactNode } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { Database, ChevronRight, RefreshCw, ExternalLink } from 'lucide-react'
-import { Button, Badge, ScrollArea } from '@renderer/components/ui'
+import { Database, ChevronRight, RefreshCw, ExternalLink, Search, Crosshair } from 'lucide-react'
+import { Button, Badge, ScrollArea, Input } from '@renderer/components/ui'
 import { cn } from '@renderer/lib/utils'
+import { CreateSelectorPopover } from '@renderer/components/selectors/CreateSelectorPopover'
 import {
   extractedDataCategoriesQueryOptions,
   extractedDataSubcategoriesQueryOptions,
   extractedDataItemsQueryOptions,
   extractedDataCountQueryOptions,
+  extractedDataSearchQueryOptions,
   useExtractedDataMutations
 } from '@renderer/lib/queries'
 
@@ -17,6 +19,20 @@ export function DataExplorer() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null)
   const [reprocessing, setReprocessing] = useState(false)
+  const [searchInput, setSearchInput] = useState('')
+  const [debouncedQuery, setDebouncedQuery] = useState('')
+  const [popoverFor, setPopoverFor] = useState<string | null>(null)
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(searchInput.trim()), 250)
+    return () => clearTimeout(t)
+  }, [searchInput])
+
+  const { data: searchResults = [], isFetching: searching } = useQuery(
+    extractedDataSearchQueryOptions(caseId, debouncedQuery)
+  )
+
+  const isSearching = debouncedQuery.length > 0
 
   const { data: categories = [], isLoading: loadingCategories } = useQuery(
     extractedDataCategoriesQueryOptions(caseId)
@@ -66,6 +82,18 @@ export function DataExplorer() {
               : `${totalCount.toLocaleString()} indicator${totalCount !== 1 ? 's' : ''} extracted`}
           </span>
         </div>
+        <div className="relative mx-4 max-w-xs flex-1">
+          <Search
+            size={14}
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted"
+          />
+          <Input
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Search indicators..."
+            className="pl-8"
+          />
+        </div>
         <Button
           variant="outline"
           size="sm"
@@ -79,7 +107,82 @@ export function DataExplorer() {
         </Button>
       </div>
 
-      {categories.length === 0 ? (
+      {isSearching ? (
+        <div className="min-h-0 flex-1">
+          {searching && searchResults.length === 0 ? (
+            <div className="flex h-full items-center justify-center text-sm text-text-muted">
+              Searching…
+            </div>
+          ) : searchResults.length === 0 ? (
+            <div className="flex h-full items-center justify-center text-sm text-text-muted">
+              No indicators match “{debouncedQuery}”.
+            </div>
+          ) : (
+            <ScrollArea className="h-full">
+              {searchResults.map((r) => {
+                const key = `${r.category}|${r.subcategory}|${r.value}`
+                return (
+                  <div
+                    key={key}
+                    className="group relative border-b border-border px-4 py-3 last:border-b-0 hover:bg-elevated"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="mb-0.5 text-[11px] uppercase tracking-wide text-text-faint">
+                          {r.category} · {r.subcategory}
+                        </div>
+                        <span className="break-all font-mono text-sm text-text-primary">
+                          {r.value}
+                        </span>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <span className="text-xs text-text-muted">
+                          {r.pageCount} page{r.pageCount !== 1 ? 's' : ''}
+                        </span>
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setPopoverFor((cur) => (cur === key ? null : key))}
+                            className="flex items-center gap-1 rounded-full border border-border bg-surface px-2 py-1 text-xs text-text-muted hover:text-accent"
+                            title="Create selector from this indicator"
+                          >
+                            <Crosshair size={12} strokeWidth={1.8} />
+                            To selector
+                          </button>
+                          {popoverFor === key && (
+                            <CreateSelectorPopover
+                              caseId={caseId}
+                              defaultValue={r.value}
+                              defaultLabel={r.subcategory}
+                              onClose={() => setPopoverFor(null)}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    {r.sourceUrls.length > 0 && (
+                      <div className="mt-1.5 flex flex-col gap-0.5">
+                        {r.sourceUrls.map((url) => (
+                          <button
+                            key={url}
+                            type="button"
+                            onClick={() => handleSourceUrlClick(url)}
+                            className="flex items-center gap-1 truncate text-left text-xs text-accent hover:underline"
+                            title={url}
+                          >
+                            <ExternalLink size={10} strokeWidth={1.8} className="shrink-0" />
+                            <span className="truncate">{url}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </ScrollArea>
+          )}
+        </div>
+      ) : categories.length === 0 ? (
         <div className="flex flex-1 items-center justify-center p-6">
           <div className="max-w-md rounded-lg border border-border bg-surface p-8 text-center">
             <Database size={32} className="mx-auto mb-3 text-text-faint" />

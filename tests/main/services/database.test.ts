@@ -801,10 +801,11 @@ describe('database', () => {
   })
 
   describe('annotations schema (migration 17)', () => {
-    it('LATEST_SCHEMA_VERSION is 20', () => {
+    it('LATEST_SCHEMA_VERSION is 21', () => {
       // Bumped to 19 in #118 (screenshot_hash / text_hash sidecar columns);
-      // bumped to 20 in #123 (tls_cert_chain corroboration column).
-      expect(LATEST_SCHEMA_VERSION).toBe(20)
+      // bumped to 20 in #123 (tls_cert_chain corroboration column);
+      // bumped to 21 in #wayback (capture_archive_refs table).
+      expect(LATEST_SCHEMA_VERSION).toBe(21)
     })
 
     it('creates annotations table with expected columns', () => {

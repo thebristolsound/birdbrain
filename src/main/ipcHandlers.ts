@@ -11,6 +11,7 @@ import type {
   UpdateSelectorParams,
   CreateNoteParams,
   UpdateNoteParams,
+  PinArchiveSnapshotParams,
   BulkCreateSelectorsParams,
   DbTableRowsParams,
   DbCreateRowParams,
@@ -34,6 +35,7 @@ import * as openrouter from '@main/services/openrouter'
 import * as analysisService from '@main/services/ai/analysisService'
 import { generateReport, getExportPreflight } from '@main/services/export'
 import { getExtensionPath, extensionPathExists } from '@main/services/extensionPath'
+import { lookupSnapshots, isPersistableSnapshot } from '@main/services/waybackMachine'
 import { buildCsv } from '@main/services/csvEscape'
 import { getInstallationId } from '@main/services/installationId'
 import { CAPTURE_SERVER_PORT, getSessionState } from '@main/services/captureServer'
@@ -228,6 +230,41 @@ export function registerIpcHandlers(deps: {
       return []
     }
   })
+
+  // Archive (Wayback corroboration)
+  handle(IPC_CHANNELS.ARCHIVE_LOOKUP, async (_, captureId: string) => {
+    const capture = db.getCapture(captureId)
+    if (!capture) throw new IpcFailure('Capture not found', 'NOT_FOUND')
+    try {
+      return await lookupSnapshots(capture.url, capture.timestamp)
+    } catch (err) {
+      throw new IpcFailure(
+        err instanceof Error ? err.message : 'Wayback lookup failed',
+        'WAYBACK_LOOKUP_FAILED'
+      )
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.ARCHIVE_LIST, (_, captureId: string) => db.listArchiveRefs(captureId))
+
+  handle(IPC_CHANNELS.ARCHIVE_PIN, async (_, params: PinArchiveSnapshotParams) => {
+    const capture = db.getCapture(params.captureId)
+    if (!capture) throw new IpcFailure('Capture not found', 'NOT_FOUND')
+    // The snapshot/checkedAt provenance arrives over IPC from the renderer.
+    // Reject malformed or internally-inconsistent input before persisting so a
+    // buggy renderer can't pin a forged reference. (No re-lookup: a pin must not
+    // disclose the URL to archive.org.)
+    if (!isPersistableSnapshot(params.snapshot, params.checkedAt)) {
+      throw new IpcFailure('Invalid archive snapshot', 'ARCHIVE_INVALID_SNAPSHOT')
+    }
+    return db.createArchiveRef({
+      captureId: params.captureId,
+      snapshot: params.snapshot,
+      checkedAt: params.checkedAt
+    })
+  })
+
+  handle(IPC_CHANNELS.ARCHIVE_UNPIN, async (_, refId: string) => db.deleteArchiveRef(refId))
 
   // Annotations
   ipcMain.handle(IPC_CHANNELS.ANNOTATIONS_GET, (_, captureId: string) =>

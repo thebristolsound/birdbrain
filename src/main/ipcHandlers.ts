@@ -532,6 +532,9 @@ export function registerIpcHandlers(deps: {
   ipcMain.handle(IPC_CHANNELS.EXTRACTED_DATA_COUNT, (_, caseId: string) =>
     db.getExtractedDataCountForCase(caseId)
   )
+  ipcMain.handle(IPC_CHANNELS.EXTRACTED_DATA_SEARCH, (_, caseId: string, query: string) =>
+    db.searchExtractedData(caseId, query)
+  )
   handle(IPC_CHANNELS.EXTRACTED_DATA_REPROCESS, (_, caseId: string) =>
     captureLifecycle.reprocessCase(caseId)
   )

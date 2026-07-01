@@ -48,6 +48,8 @@ export const queryKeys = {
   extractedDataItems: (caseId: string, category: string, subcategory: string) =>
     ['extractedData', 'items', caseId, category, subcategory] as const,
   extractedDataCount: (caseId: string) => ['extractedData', 'count', caseId] as const,
+  extractedDataSearch: (caseId: string, query: string) =>
+    ['extractedData', 'search', caseId, query] as const,
   annotations: (captureId: string) => ['annotations', captureId] as const,
   archiveLookup: (captureId: string) => ['archive', 'lookup', captureId] as const,
   archivePins: (captureId: string) => ['archive', 'pins', captureId] as const,
@@ -384,6 +386,13 @@ export const extractedDataCountQueryOptions = (caseId: string) =>
     queryKey: queryKeys.extractedDataCount(caseId),
     queryFn: () => window.birdbrain.extractedData.count(caseId),
     enabled: !!caseId
+  })
+
+export const extractedDataSearchQueryOptions = (caseId: string, query: string) =>
+  queryOptions({
+    queryKey: queryKeys.extractedDataSearch(caseId, query),
+    queryFn: () => window.birdbrain.extractedData.search(caseId, query),
+    enabled: !!caseId && query.trim().length > 0
   })
 
 export function useExtractedDataMutations(caseId: string) {

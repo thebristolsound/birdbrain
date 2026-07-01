@@ -22,7 +22,9 @@ import type {
   AnnotationsBundle,
   CaptureAnnotations,
   AnnotationPin,
-  OperatorIdentity
+  OperatorIdentity,
+  ArchiveRef,
+  WaybackLookupResult
 } from '@shared/types'
 import type {
   CreateCaseParams,
@@ -49,7 +51,8 @@ import type {
   SelectorRematchedEvent,
   DeepLinkTarget,
   ExportProgressEvent,
-  ExportResult
+  ExportResult,
+  PinArchiveSnapshotParams
 } from '@shared/ipc'
 
 interface BirdbrainAPI {
@@ -108,6 +111,12 @@ interface BirdbrainAPI {
     delete(id: string): Promise<boolean>
     count(caseId: string): Promise<number>
     search(caseId: string, query: string): Promise<Note[]>
+  }
+  archive: {
+    lookup(captureId: string): Promise<WaybackLookupResult>
+    list(captureId: string): Promise<ArchiveRef[]>
+    pin(params: PinArchiveSnapshotParams): Promise<ArchiveRef>
+    unpin(refId: string): Promise<boolean>
   }
   annotations: {
     get(captureId: string): Promise<AnnotationsBundle>

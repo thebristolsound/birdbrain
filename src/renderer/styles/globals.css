@@ -1,29 +1,28 @@
 @import "tailwindcss";
-@import "@fontsource-variable/plus-jakarta-sans";
-@import "@fontsource-variable/dm-sans";
+@import "@fontsource-variable/inter";
 @import "@fontsource-variable/jetbrains-mono";
 
 @theme {
-  /* Semantic surface tokens — light mode defaults */
-  --color-canvas: #f4f5f7;
-  --color-surface: #f8fafb;
+  /* Semantic surface tokens — light mode defaults (OpenRouter zinc) */
+  --color-canvas: #fafafa;
+  --color-surface: #f4f4f5;
   --color-card: #ffffff;
   --color-elevated: #ffffff;
 
   /* Semantic text tokens */
-  --color-text-primary: #1e293b;
-  --color-text-secondary: #475569;
-  --color-text-muted: #64748b;
-  --color-text-faint: #94a3b8;
+  --color-text-primary: #09090b;
+  --color-text-secondary: #3f3f46;
+  --color-text-muted: #71717a;
+  --color-text-faint: #a1a1aa;
 
-  /* Accent tokens */
-  --color-accent: #4f46e5;
-  --color-accent-hover: #4338ca;
-  --color-accent-subtle: #eef2ff;
+  /* Accent tokens — light darkens the indigo vs dark's #6467f2 for WCAG AA on zinc-50 */
+  --color-accent: #5659f0;
+  --color-accent-hover: #4f52e0;
+  --color-accent-subtle: rgba(100,103,242,0.10);
 
   /* Border tokens */
-  --color-border: rgba(0,0,0,0.04);
-  --color-border-strong: rgba(0,0,0,0.08);
+  --color-border: #e4e4e7;
+  --color-border-strong: #d4d4d8;
 
   /* Raw palette — entity types, status indicators, one-offs */
   --color-indigo-300: #a5b4fc;
@@ -75,47 +74,50 @@
   --color-ring: var(--color-accent);
 
   /* Radius system */
-  --radius: 0.75rem;
+  --radius: 0.5rem;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: 0.75rem;
 
   /* Fonts */
-  --font-display: "Plus Jakarta Sans Variable", sans-serif;
-  --font-body: "DM Sans Variable", sans-serif;
+  --font-display: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono Variable", monospace;
 }
 
 /* === Dark mode overrides === */
 html.dark {
-  --color-canvas: #000000;
-  --color-surface: color-mix(in srgb, #0f172a 94%, var(--color-accent));
-  --color-card: color-mix(in srgb, #1e293b 92%, var(--color-accent));
-  --color-elevated: color-mix(in srgb, #273548 92%, var(--color-accent));
-  --color-text-primary: #f1f5f9;
-  --color-text-secondary: #cbd5e1;
-  --color-text-muted: #94a3b8;
-  --color-text-faint: #475569;
-  --color-accent: #818cf8;
-  --color-accent-hover: #6366f1;
-  --color-accent-subtle: rgba(79,70,229,0.15);
-  --color-border: rgba(255,255,255,0.06);
-  --color-border-strong: rgba(255,255,255,0.12);
+  --color-canvas: #090a0b;
+  --color-surface: #0e0e11;
+  --color-card: #131316;
+  --color-elevated: #1c1c20;
+  --color-text-primary: #fafafa;
+  --color-text-secondary: #d4d4d8;
+  --color-text-muted: #a1a1aa;
+  --color-text-faint: #71717a;
+  --color-accent: #6467f2;
+  --color-accent-hover: #7a7cf5;
+  --color-accent-subtle: rgba(100,103,242,0.16);
+  --color-border: #27272a;
+  --color-border-strong: #3d3d42;
 }
 
 /* === Shadow tokens (not in @theme — Tailwind doesn't generate shadow utilities from it) === */
 :root {
-  --shadow-card: 0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.02);
-  --shadow-card-hover: 0 2px 8px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.04);
-  --shadow-glow: 0 4px 12px rgba(79,70,229,0.25);
-  --shadow-btn: 0 4px 12px rgba(79,70,229,0.25);
+  --shadow-card: 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-card-hover: 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-overlay: 0 10px 30px rgba(0,0,0,0.12);
+  --shadow-glow: none;
+  --shadow-btn: none;
 }
 html.dark {
-  --shadow-card: 0 1px 3px rgba(0,0,0,0.4), 0 4px 12px rgba(0,0,0,0.3);
-  --shadow-card-hover: 0 2px 12px rgba(0,0,0,0.5), 0 8px 24px rgba(0,0,0,0.4);
-  --shadow-glow: 0 0 20px rgba(99,102,241,0.25), 0 0 60px rgba(99,102,241,0.08);
-  --shadow-btn: 0 4px 20px rgba(99,102,241,0.4), 0 0 40px rgba(99,102,241,0.12);
+  --shadow-card: none;
+  --shadow-card-hover: none;
+  --shadow-overlay: 0 10px 30px rgba(0,0,0,0.5);
+  --shadow-glow: none;
+  --shadow-btn: none;
 }
 
 /* === Suppress transitions during theme swap === */
@@ -129,15 +131,6 @@ html.no-transitions * {
 body {
   @apply bg-canvas text-text-secondary;
   font-family: var(--font-body);
-}
-body::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.035;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
-  z-index: 9999;
 }
 
 /* === Scrollbar === */
@@ -169,91 +162,60 @@ html.dark ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); 
 .neu-card {
   background: var(--color-card);
   border: 1px solid var(--color-border);
-  box-shadow: var(--shadow-card);
+  box-shadow: none;
 }
 .neu-card-hover:hover {
-  box-shadow: var(--shadow-card-hover);
-  transform: translateY(-1px);
+  border-color: var(--color-border-strong);
+}
+.neu-overlay {
+  background: var(--color-elevated);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-overlay);
 }
 
 /* === Glow effects === */
 .glow-indigo {
-  box-shadow: var(--shadow-glow);
+  box-shadow: none;
 }
 .glow-indigo-btn {
-  box-shadow: var(--shadow-btn);
+  box-shadow: none;
 }
 
 /* === Shimmer text — light mode uses darker indigos on light bg === */
 .shimmer-text {
-  background: linear-gradient(90deg, #4f46e5 0%, #6366f1 25%, #4f46e5 50%, #818cf8 75%, #4f46e5 100%);
-  background-size: 200% auto;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  animation: shimmer 4s linear infinite;
+  color: var(--color-accent);
 }
 html.dark .shimmer-text {
-  background: linear-gradient(90deg, #818cf8 0%, #c7d2fe 25%, #818cf8 50%, #a5b4fc 75%, #818cf8 100%);
-  background-size: 200% auto;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--color-accent);
 }
 
 /* === Logo pulse === */
 .logo-pulse {
   position: relative;
-  animation: pulse 3s ease-in-out infinite, float 4s ease-in-out infinite;
-}
-.logo-pulse::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 1rem;
-  background: #6366f1;
-  animation: pulse-ring 2.5s ease-out infinite;
-  z-index: -1;
 }
 
 /* === Grid background — light mode === */
 .grid-bg {
-  background-image:
-    radial-gradient(circle at 50% 0%, rgba(79,70,229,0.06) 0%, transparent 50%),
-    linear-gradient(rgba(0,0,0,0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0,0,0,0.03) 1px, transparent 1px);
-  background-size: 100% 100%, 48px 48px, 48px 48px;
+  background: var(--color-canvas);
 }
 html.dark .grid-bg {
-  background-image:
-    radial-gradient(circle at 50% 0%, rgba(99,102,241,0.12) 0%, transparent 50%),
-    linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
-  background-size: 100% 100%, 48px 48px, 48px 48px;
+  background: var(--color-canvas);
 }
 
 /* === Step connector === */
 .step-connector {
   height: 2px;
-  background: linear-gradient(90deg, rgba(79,70,229,0.3), rgba(79,70,229,0.1));
+  background: var(--color-border);
 }
 
 /* === New case card === */
 .new-case-card {
-  border-color: rgba(79,70,229,0.2);
-  background: rgba(79,70,229,0.04);
+  border-color: var(--color-border);
+  background: transparent;
 }
 .new-case-card:hover {
-  border-color: rgba(79,70,229,0.4);
-  background: rgba(79,70,229,0.08);
-}
-html.dark .new-case-card {
-  border-color: rgba(99,102,241,0.3);
-  background: rgba(99,102,241,0.05);
-}
-html.dark .new-case-card:hover {
-  border-color: rgba(99,102,241,0.5);
-  background: rgba(99,102,241,0.1);
+  border-color: var(--color-accent);
+  background: var(--color-accent-subtle);
 }
 
 .case-tag { transition: all 0.15s ease; }

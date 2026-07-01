@@ -1,7 +1,7 @@
 // Typed IPC channel definitions
 // Every IPC call between renderer and main process goes through these channels
 
-import type { AnnotationShape } from './types'
+import type { AnnotationShape, WaybackSnapshot } from './types'
 
 export const IPC_CHANNELS = {
   // Cases
@@ -75,6 +75,12 @@ export const IPC_CHANNELS = {
   NOTES_DELETE: 'notes:delete',
   NOTES_COUNT: 'notes:count',
   NOTES_SEARCH: 'notes:search',
+
+  // Archive (Wayback corroboration)
+  ARCHIVE_LOOKUP: 'archive:lookup',
+  ARCHIVE_LIST: 'archive:list',
+  ARCHIVE_PIN: 'archive:pin',
+  ARCHIVE_UNPIN: 'archive:unpin',
 
   // Extracted Data
   EXTRACTED_DATA_CATEGORIES: 'extractedData:categories',
@@ -218,6 +224,12 @@ export interface UpdateNoteParams {
   id: string
   title?: string
   body?: string
+}
+
+export interface PinArchiveSnapshotParams {
+  captureId: string
+  snapshot: WaybackSnapshot
+  checkedAt: string
 }
 
 export interface SaveAnnotationsParams {

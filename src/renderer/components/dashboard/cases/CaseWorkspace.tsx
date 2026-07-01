@@ -6,7 +6,6 @@ import { useSelectorFilters } from '@renderer/hooks/useSelectorFilters'
 import { useAppStore } from '@renderer/stores/appStore'
 import { captureServerFetch } from '@renderer/lib/captureServerFetch'
 import type { BirdbrainSettings } from '@shared/types'
-import { CaseHeader } from '@renderer/components/layout/CaseHeader'
 import { Skeleton } from '@renderer/components/ui'
 
 export function CaseWorkspace() {
@@ -76,7 +75,6 @@ export function CaseWorkspace() {
 
   return (
     <div className="flex h-full flex-col">
-      {!isCaptures && !isOverview && <CaseHeader />}
       {isCaptures || isData ? (
         <div className="flex-1 overflow-hidden">
           <Outlet />

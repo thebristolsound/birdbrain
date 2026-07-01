@@ -14,7 +14,9 @@ import type {
   ExtractedDataSubcategory,
   ExtractedDataItem,
   TrustedTime,
-  TlsCertChainResult
+  TlsCertChainResult,
+  ArchiveRef,
+  WaybackSnapshot
 } from '@shared/types'
 import { TlsCertChainResultSchema } from '@shared/schemas'
 import type {
@@ -32,7 +34,7 @@ import type { ExtractedDatum } from '@main/services/dataExtractor'
 import { safeRegexTest } from '@main/services/safeRegex'
 
 let db: Database.Database
-export const LATEST_SCHEMA_VERSION = 20
+export const LATEST_SCHEMA_VERSION = 21
 
 export function initDatabase(dbPath: string): Database.Database {
   db = new Database(dbPath)
@@ -345,7 +347,7 @@ function migrate(db: Database.Database): void {
       );
         CREATE INDEX IF NOT EXISTS idx_capture_analyses_capture ON capture_analyses(capture_id);
       `)
-      db.pragma(`user_version = ${LATEST_SCHEMA_VERSION}`)
+      db.pragma('user_version = 15')
     })()
   }
 
@@ -442,6 +444,32 @@ function migrate(db: Database.Database): void {
         ALTER TABLE captures ADD COLUMN tls_cert_chain TEXT;
       `)
       db.pragma('user_version = 20')
+    })()
+  }
+
+  if (version < 21) {
+    db.transaction(() => {
+      // Pinned Wayback Machine corroboration references (#wayback). Corroboration
+      // only — NOT part of the capture hash chain (cf. TLS cert chain, #123).
+      // contentPath/contentHash/manifestIndex are reserved for the future
+      // download-later phase and added then; references are metadata-only now.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS capture_archive_refs (
+          id TEXT PRIMARY KEY,
+          capture_id TEXT NOT NULL,
+          snapshot_timestamp TEXT NOT NULL,
+          snapshot_url TEXT NOT NULL,
+          original_url TEXT NOT NULL,
+          digest TEXT,
+          status_code INTEGER,
+          mime_type TEXT,
+          checked_at TEXT NOT NULL,
+          pinned_at TEXT NOT NULL,
+          FOREIGN KEY (capture_id) REFERENCES captures(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_archive_refs_capture ON capture_archive_refs(capture_id);
+      `)
+      db.pragma('user_version = 21')
     })()
   }
 }
@@ -1272,6 +1300,73 @@ function rowToNote(row: Record<string, unknown>): Note {
     screenshotPath: (row.screenshot_path as string) || undefined,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string
+  }
+}
+
+// --- Archive refs (Wayback corroboration) ---
+
+export function createArchiveRef(params: {
+  captureId: string
+  snapshot: WaybackSnapshot
+  checkedAt: string
+}): ArchiveRef {
+  const id = uuid()
+  const now = new Date().toISOString()
+  const { snapshot } = params
+  getDb()
+    .prepare(
+      `INSERT INTO capture_archive_refs
+         (id, capture_id, snapshot_timestamp, snapshot_url, original_url, digest, status_code, mime_type, checked_at, pinned_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      id,
+      params.captureId,
+      snapshot.timestamp,
+      snapshot.snapshotUrl,
+      snapshot.originalUrl,
+      snapshot.digest ?? null,
+      snapshot.statusCode ?? null,
+      snapshot.mimeType ?? null,
+      params.checkedAt,
+      now
+    )
+  return getArchiveRef(id)!
+}
+
+export function getArchiveRef(id: string): ArchiveRef | undefined {
+  const row = getDb().prepare('SELECT * FROM capture_archive_refs WHERE id = ?').get(id) as
+    | Record<string, unknown>
+    | undefined
+  return row ? rowToArchiveRef(row) : undefined
+}
+
+export function listArchiveRefs(captureId: string): ArchiveRef[] {
+  const rows = getDb()
+    .prepare(
+      'SELECT * FROM capture_archive_refs WHERE capture_id = ? ORDER BY snapshot_timestamp DESC'
+    )
+    .all(captureId) as Array<Record<string, unknown>>
+  return rows.map(rowToArchiveRef)
+}
+
+export function deleteArchiveRef(id: string): boolean {
+  const result = getDb().prepare('DELETE FROM capture_archive_refs WHERE id = ?').run(id)
+  return result.changes > 0
+}
+
+function rowToArchiveRef(row: Record<string, unknown>): ArchiveRef {
+  return {
+    id: row.id as string,
+    captureId: row.capture_id as string,
+    snapshotTimestamp: row.snapshot_timestamp as string,
+    snapshotUrl: row.snapshot_url as string,
+    originalUrl: row.original_url as string,
+    digest: (row.digest as string) || undefined,
+    statusCode: (row.status_code as number) ?? undefined,
+    mimeType: (row.mime_type as string) || undefined,
+    checkedAt: row.checked_at as string,
+    pinnedAt: row.pinned_at as string
   }
 }
 

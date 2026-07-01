@@ -96,7 +96,7 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
       {...presets.overlay}
     >
       <motion.div
-        className="neu-card w-[28rem] rounded-2xl p-6"
+        className="neu-overlay w-[28rem] rounded-2xl p-6"
         onClick={(e) => e.stopPropagation()}
         {...presets.modal}
       >

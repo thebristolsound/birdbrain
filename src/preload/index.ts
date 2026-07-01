@@ -25,7 +25,8 @@ import type {
   SelectorRematchedEvent,
   DeepLinkTarget,
   ExportProgressEvent,
-  ExportResult
+  ExportResult,
+  PinArchiveSnapshotParams
 } from '@shared/ipc'
 import type {
   Case,
@@ -47,7 +48,9 @@ import type {
   AnnotationsBundle,
   CaptureAnnotations,
   AnnotationPin,
-  OperatorIdentity
+  OperatorIdentity,
+  ArchiveRef,
+  WaybackLookupResult
 } from '@shared/types'
 
 // Unwrap IpcResult from handlers that return structured results
@@ -166,6 +169,16 @@ const birdbrain = {
       ipcRenderer.invoke(IPC_CHANNELS.NOTES_COUNT, caseId),
     search: (caseId: string, query: string): Promise<Note[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.NOTES_SEARCH, caseId, query)
+  },
+  archive: {
+    lookup: (captureId: string): Promise<WaybackLookupResult> =>
+      unwrapIpc<WaybackLookupResult>(ipcRenderer.invoke(IPC_CHANNELS.ARCHIVE_LOOKUP, captureId)),
+    list: (captureId: string): Promise<ArchiveRef[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.ARCHIVE_LIST, captureId),
+    pin: (params: PinArchiveSnapshotParams): Promise<ArchiveRef> =>
+      unwrapIpc<ArchiveRef>(ipcRenderer.invoke(IPC_CHANNELS.ARCHIVE_PIN, params)),
+    unpin: (refId: string): Promise<boolean> =>
+      unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.ARCHIVE_UNPIN, refId))
   },
   annotations: {
     get: (captureId: string): Promise<AnnotationsBundle> =>

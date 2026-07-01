@@ -49,7 +49,7 @@ const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
         <motion.div
           role="dialog"
           aria-modal="true"
-          className={cn('neu-card rounded-2xl p-6 w-full max-w-md', className)}
+          className={cn('neu-overlay rounded-2xl p-6 w-full max-w-md', className)}
           onClick={(e) => e.stopPropagation()}
           ref={ref}
           {...presets.modal}

@@ -88,6 +88,41 @@ export interface Capture {
   trustedTimeStatus?: TrustedTime
 }
 
+// --- Wayback Machine corroboration (#wayback) ---
+// Post-capture, corroboration-only lookup of archive.org's independent record
+// of a captured URL. NOT bound to the captured transaction (cf. TLS cert chain,
+// #123). A WaybackSnapshot is one archive.org capture of the URL.
+export interface WaybackSnapshot {
+  timestamp: string // ISO 8601, UTC — derived from the CDX 14-digit timestamp
+  snapshotUrl: string // https://web.archive.org/web/<cdxTimestamp>/<originalUrl>
+  originalUrl: string
+  statusCode?: number
+  mimeType?: string
+  digest?: string
+}
+
+export interface WaybackLookupResult {
+  snapshots: WaybackSnapshot[]
+  closestIndex: number | null // index into snapshots nearest the capture time; null when empty
+  checkedAt: string // ISO 8601 — when the lookup ran
+}
+
+// A WaybackSnapshot the user has pinned to a capture (persisted corroboration
+// reference). Columns reserved for the future download-later phase
+// (contentPath/contentHash/manifestIndex) are intentionally omitted here.
+export interface ArchiveRef {
+  id: string
+  captureId: string
+  snapshotTimestamp: string // ISO 8601
+  snapshotUrl: string
+  originalUrl: string
+  digest?: string
+  statusCode?: number
+  mimeType?: string
+  checkedAt: string // when the lookup that produced this ran
+  pinnedAt: string // when the user pinned it
+}
+
 export interface Tag {
   id: string
   name: string

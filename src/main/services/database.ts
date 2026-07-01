@@ -13,6 +13,7 @@ import type {
   ExtractedDataCategory,
   ExtractedDataSubcategory,
   ExtractedDataItem,
+  ExtractedDataSearchResult,
   TrustedTime,
   TlsCertChainResult,
   ArchiveRef,
@@ -34,7 +35,7 @@ import type { ExtractedDatum } from '@main/services/dataExtractor'
 import { safeRegexTest } from '@main/services/safeRegex'
 
 let db: Database.Database
-export const LATEST_SCHEMA_VERSION = 21
+export const LATEST_SCHEMA_VERSION = 22
 
 export function initDatabase(dbPath: string): Database.Database {
   db = new Database(dbPath)
@@ -470,6 +471,38 @@ function migrate(db: Database.Database): void {
         CREATE INDEX IF NOT EXISTS idx_archive_refs_capture ON capture_archive_refs(capture_id);
       `)
       db.pragma('user_version = 21')
+    })()
+  }
+
+  if (version < 22) {
+    db.transaction(() => {
+      // FTS5 trigram index over extracted_data for substring search on the Data
+      // page. External-content table kept in sync by INSERT/DELETE triggers;
+      // extracted rows are immutable (insert-or-ignore / delete-by-capture) so no
+      // UPDATE trigger is needed.
+      db.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS extracted_data_fts USING fts5(
+          value,
+          source_url,
+          content='extracted_data',
+          content_rowid='rowid',
+          tokenize='trigram'
+        );
+
+        CREATE TRIGGER IF NOT EXISTS extracted_data_ai AFTER INSERT ON extracted_data BEGIN
+          INSERT INTO extracted_data_fts(rowid, value, source_url)
+          VALUES (new.rowid, new.value, new.source_url);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS extracted_data_ad AFTER DELETE ON extracted_data BEGIN
+          INSERT INTO extracted_data_fts(extracted_data_fts, rowid, value, source_url)
+          VALUES ('delete', old.rowid, old.value, old.source_url);
+        END;
+
+        INSERT INTO extracted_data_fts(rowid, value, source_url)
+        SELECT rowid, value, source_url FROM extracted_data;
+      `)
+      db.pragma('user_version = 22')
     })()
   }
 }
@@ -1457,6 +1490,66 @@ export function getExtractedItems(
   }>
   return rows.map((r) => ({
     value: r.value,
+    pageCount: r.page_count,
+    sourceUrls: r.source_urls ? r.source_urls.split('\n').sort() : []
+  }))
+}
+
+function escapeLike(term: string): string {
+  return term.replace(/[\\%_]/g, (ch) => `\\${ch}`)
+}
+
+export function searchExtractedData(caseId: string, query: string): ExtractedDataSearchResult[] {
+  const trimmed = query.trim()
+  if (!trimmed) return []
+
+  const db = getDb()
+  const rows =
+    trimmed.length >= 3
+      ? db
+          .prepare(
+            `SELECT category, subcategory, value,
+                    COUNT(DISTINCT capture_id) as page_count,
+                    GROUP_CONCAT(source_url, '\n') as source_urls
+             FROM (
+               SELECT DISTINCT ed.category, ed.subcategory, ed.value, ed.capture_id, ed.source_url
+               FROM extracted_data ed
+               JOIN extracted_data_fts f ON f.rowid = ed.rowid
+               WHERE extracted_data_fts MATCH ? AND ed.case_id = ?
+             )
+             GROUP BY category, subcategory, value
+             ORDER BY category, subcategory, value
+             LIMIT 500`
+          )
+          .all(`"${trimmed.replace(/"/g, '""')}"`, caseId)
+      : db
+          .prepare(
+            `SELECT category, subcategory, value,
+                    COUNT(DISTINCT capture_id) as page_count,
+                    GROUP_CONCAT(source_url, '\n') as source_urls
+             FROM (
+               SELECT DISTINCT category, subcategory, value, capture_id, source_url
+               FROM extracted_data
+               WHERE case_id = ? AND (value LIKE ? ESCAPE '\\' OR source_url LIKE ? ESCAPE '\\')
+             )
+             GROUP BY category, subcategory, value
+             ORDER BY category, subcategory, value
+             LIMIT 500`
+          )
+          .all(caseId, `%${escapeLike(trimmed)}%`, `%${escapeLike(trimmed)}%`)
+
+  return (
+    rows as Array<{
+      category: string
+      subcategory: string
+      value: string
+      page_count: number
+      source_urls: string | null
+    }>
+  ).map((r) => ({
+    value: r.value,
+    category: r.category,
+    subcategory: r.subcategory,
     pageCount: r.page_count,
     sourceUrls: r.source_urls ? r.source_urls.split('\n').sort() : []
   }))

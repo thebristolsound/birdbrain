@@ -441,7 +441,11 @@ describe('export', () => {
     expect(entries.get(expectedPath)).toEqual(screenshot)
 
     const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
-      captures: Array<{ id: string; screenshotPath: string | null; screenshotSha256: string | null }>
+      captures: Array<{
+        id: string
+        screenshotPath: string | null
+        screenshotSha256: string | null
+      }>
       artifacts: Array<{ path: string }>
     }
 
@@ -494,7 +498,11 @@ describe('export', () => {
     expect([...entries.keys()].some((k) => k.startsWith('screenshots/'))).toBe(false)
 
     const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
-      captures: Array<{ id: string; screenshotPath: string | null; screenshotSha256: string | null }>
+      captures: Array<{
+        id: string
+        screenshotPath: string | null
+        screenshotSha256: string | null
+      }>
       artifacts: Array<{ path: string }>
     }
     const rec = evidence.captures.find((c) => c.id === capture.id)!
@@ -584,11 +592,9 @@ describe('export', () => {
   it('deletes the written zip when the export audit append throws', async () => {
     await ingest(caseId, '<html><body>Orphan check</body></html>', 'https://example.com', 'O')
 
-    const spy = vi
-      .spyOn(manifest, 'appendManifestEntry')
-      .mockImplementation(() => {
-        throw new Error('signing key failure')
-      })
+    const spy = vi.spyOn(manifest, 'appendManifestEntry').mockImplementation(() => {
+      throw new Error('signing key failure')
+    })
 
     const outputPath = join(tempDir, 'orphan-evidence.zip')
     const options: ExportOptions = {
@@ -770,5 +776,63 @@ describe('export', () => {
     expect(content).toContain('Metro PD')
     // installationId is a UUID — verify its label is present
     expect(content).toContain('Installation ID')
+  })
+
+  it('reports granular per-item progress through the verify and screenshot stages', async () => {
+    const screenshot = Buffer.from('progress-png-bytes')
+    const base = {
+      caseId,
+      timestamp: '2026-04-05T12:00:00.000Z',
+      textContent: 'text',
+      headers: {},
+      browserVersion: '',
+      userAgent: '',
+      httpStatus: 200,
+      extensionVersion: '',
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0',
+      screenshot
+    }
+    await ingestMhtmlCapture({
+      ...base,
+      url: 'https://example.com/1',
+      title: '1',
+      stream: Readable.from([Buffer.from('mhtml-1')]) as unknown as ReadableStream<Uint8Array>
+    })
+    await ingestMhtmlCapture({
+      ...base,
+      url: 'https://example.com/2',
+      title: '2',
+      stream: Readable.from([Buffer.from('mhtml-2')]) as unknown as ReadableStream<Uint8Array>
+    })
+
+    const outputPath = join(tempDir, 'progress.zip')
+    const steps: Array<{ step: string; percent: number }> = []
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: { captures: true, screenshots: true, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle,
+      (step, percent) => steps.push({ step, percent })
+    )
+
+    const labels = steps.map((s) => s.step)
+    expect(labels).toContain('Loading captures...')
+    expect(labels).toContain('Verifying capture 1 of 2...')
+    expect(labels).toContain('Verifying capture 2 of 2...')
+    expect(labels).toContain('Loading screenshot 1 of 2...')
+    expect(labels).toContain('Loading screenshot 2 of 2...')
+    expect(steps.at(-1)).toEqual({ step: 'Complete', percent: 100 })
+
+    // Percent is monotonic non-decreasing so the bar never jumps backwards.
+    const percents = steps.map((s) => s.percent)
+    for (let i = 1; i < percents.length; i++) {
+      expect(percents[i]).toBeGreaterThanOrEqual(percents[i - 1])
+    }
   })
 })

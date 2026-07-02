@@ -427,10 +427,17 @@ export function registerIpcHandlers(deps: {
 
   // Shell — reveal/open a file the main process just wrote (export completion).
   handle(IPC_CHANNELS.SHELL_SHOW_ITEM_IN_FOLDER, (_, path: string) => {
+    if (!path) throw new IpcFailure('Path is required', 'INVALID_PATH')
+    if (!existsSync(path)) throw new IpcFailure('File not found', 'NOT_FOUND')
     shell.showItemInFolder(path)
   })
 
-  handle(IPC_CHANNELS.SHELL_OPEN_PATH, (_, path: string) => shell.openPath(path))
+  handle(IPC_CHANNELS.SHELL_OPEN_PATH, async (_, path: string) => {
+    if (!path) throw new IpcFailure('Path is required', 'INVALID_PATH')
+    if (!existsSync(path)) throw new IpcFailure('File not found', 'NOT_FOUND')
+    const openError = await shell.openPath(path)
+    if (openError) throw new IpcFailure(openError, 'OPEN_PATH_FAILED')
+  })
 
   // AI Analysis
   handle(IPC_CHANNELS.AI_ANALYZE, async (_, params: AnalyzeCaptureParams) => {

@@ -22,10 +22,9 @@ import { ArchiveTab } from './ArchiveTab'
 import { CapturesGettingStarted } from './CapturesGettingStarted'
 import { Button } from '@renderer/components/ui'
 import { getProvenanceColor } from './getProvenanceColor'
-import { ScreenshotZoomBar } from './ScreenshotZoomBar'
+import { CaptureViewerToolbar } from './CaptureViewerToolbar'
 import { BrowserChromeFrame } from './BrowserChromeFrame'
 import { AnnotationToolsTooltip } from './AnnotationToolsTooltip'
-import { AnnotationToolbar } from './annotation/AnnotationToolbar'
 import { useAnnotationEditor } from './annotation/useAnnotationEditor'
 import { useZoomPan } from './annotation/useZoomPan'
 
@@ -291,11 +290,7 @@ function ScreenshotTabPanel({
   })
 
   const drawing = editor.tool !== 'select' && editor.tool !== 'hand'
-  const panMode = editor.tool === 'hand'
 
-  const setPanMode = (next: boolean) => {
-    editor.setTool(next ? 'hand' : 'select')
-  }
   const requestOverlayVisible = (next: boolean) => {
     if (drawing && !next) return
     setOverlayVisible(next)
@@ -315,35 +310,6 @@ function ScreenshotTabPanel({
 
   return (
     <div className="flex h-full w-full flex-col">
-      <ScreenshotZoomBar
-        scale={zoomPan.userScale}
-        zoomIn={zoomIn}
-        zoomOut={zoomOut}
-        fit={fit}
-        oneToOne={oneToOne}
-        panMode={panMode}
-        setPanMode={setPanMode}
-        overlayVisible={overlayVisible}
-        setOverlayVisible={requestOverlayVisible}
-        drawing={drawing}
-      />
-      <AnnotationToolbar
-        tool={editor.tool}
-        setTool={editor.setTool}
-        color={editor.color}
-        setColor={editor.setColor}
-        strokeWidth={editor.strokeWidth}
-        setStrokeWidth={editor.setStrokeWidth}
-        canUndo={editor.canUndo}
-        canRedo={editor.canRedo}
-        onUndo={editor.undo}
-        onRedo={editor.redo}
-        selectedId={editor.selectedId}
-        onDeleteSelected={() => {
-          if (!editor.selectedId) return
-          editor.removeShape(editor.selectedId)
-        }}
-      />
       <div className="flex-1 min-h-0 p-3">
         <BrowserChromeFrame url={url}>
           <div ref={containerRef} className="relative h-full w-full bg-canvas">
@@ -362,6 +328,30 @@ function ScreenshotTabPanel({
                 overlayVisible={overlayVisible}
               />
             )}
+            <CaptureViewerToolbar
+              tool={editor.tool}
+              setTool={editor.setTool}
+              color={editor.color}
+              setColor={editor.setColor}
+              strokeWidth={editor.strokeWidth}
+              setStrokeWidth={editor.setStrokeWidth}
+              scale={zoomPan.userScale}
+              zoomIn={zoomIn}
+              zoomOut={zoomOut}
+              fit={fit}
+              oneToOne={oneToOne}
+              overlayVisible={overlayVisible}
+              setOverlayVisible={requestOverlayVisible}
+              canUndo={editor.canUndo}
+              canRedo={editor.canRedo}
+              onUndo={editor.undo}
+              onRedo={editor.redo}
+              selectedId={editor.selectedId}
+              onDeleteSelected={() => {
+                if (!editor.selectedId) return
+                editor.removeShape(editor.selectedId)
+              }}
+            />
           </div>
         </BrowserChromeFrame>
       </div>

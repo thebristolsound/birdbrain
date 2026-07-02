@@ -21,7 +21,9 @@ import type {
   OrphanReport,
   AnalyzeCaptureParams,
   SaveAnnotationsParams,
-  UpsertAnnotationPinParams
+  UpsertAnnotationPinParams,
+  ExportProgressEvent,
+  ExportResult
 } from '@shared/ipc'
 import * as dbAdmin from '@main/services/dbAdmin'
 import { existsSync } from 'fs'
@@ -397,16 +399,44 @@ export function registerIpcHandlers(deps: {
   // Export
   handle(IPC_CHANNELS.EXPORT_PREFLIGHT, (_, caseId: string) => getExportPreflight(caseId))
 
-  handle(IPC_CHANNELS.EXPORT_GENERATE, async (_, caseId: string, options: ExportOptions) => {
-    const isZip = options.format === 'zip'
-    const { canceled, filePath } = await dialog.showSaveDialog({
-      defaultPath: options.outputPath || (isZip ? 'evidence.zip' : 'report.html'),
-      filters: isZip
-        ? [{ name: 'Evidence Package', extensions: ['zip'] }]
-        : [{ name: 'HTML', extensions: ['html'] }]
-    })
-    if (canceled || !filePath) return
-    await generateReport(caseId, { ...options, outputPath: filePath }, captureLifecycle)
+  handle(
+    IPC_CHANNELS.EXPORT_GENERATE,
+    async (event, caseId: string, options: ExportOptions): Promise<ExportResult> => {
+      const isZip = options.format === 'zip'
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        defaultPath: options.outputPath || (isZip ? 'evidence.zip' : 'report.html'),
+        filters: isZip
+          ? [{ name: 'Evidence Package', extensions: ['zip'] }]
+          : [{ name: 'HTML', extensions: ['html'] }]
+      })
+      if (canceled || !filePath) return { canceled: true }
+      await generateReport(
+        caseId,
+        { ...options, outputPath: filePath },
+        captureLifecycle,
+        (step, percent) =>
+          event.sender.send(IPC_CHANNELS.EXPORT_PROGRESS, {
+            caseId,
+            step,
+            percent
+          } satisfies ExportProgressEvent)
+      )
+      return { canceled: false, filePath }
+    }
+  )
+
+  // Shell — reveal/open a file the main process just wrote (export completion).
+  handle(IPC_CHANNELS.SHELL_SHOW_ITEM_IN_FOLDER, (_, path: string) => {
+    if (!path) throw new IpcFailure('Path is required', 'INVALID_PATH')
+    if (!existsSync(path)) throw new IpcFailure('File not found', 'NOT_FOUND')
+    shell.showItemInFolder(path)
+  })
+
+  handle(IPC_CHANNELS.SHELL_OPEN_PATH, async (_, path: string) => {
+    if (!path) throw new IpcFailure('Path is required', 'INVALID_PATH')
+    if (!existsSync(path)) throw new IpcFailure('File not found', 'NOT_FOUND')
+    const openError = await shell.openPath(path)
+    if (openError) throw new IpcFailure(openError, 'OPEN_PATH_FAILED')
   })
 
   // AI Analysis

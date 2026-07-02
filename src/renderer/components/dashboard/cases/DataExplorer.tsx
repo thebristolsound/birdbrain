@@ -119,8 +119,8 @@ export function DataExplorer() {
             </div>
           ) : (
             <ScrollArea className="h-full">
-              {searchResults.map((r) => {
-                const key = `${r.category}|${r.subcategory}|${r.value}`
+              {searchResults.map((r, idx) => {
+                const key = `${idx}::${r.category}::${r.subcategory}::${r.value}`
                 return (
                   <div
                     key={key}

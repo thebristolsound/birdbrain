@@ -335,7 +335,7 @@ function ScreenshotTabPanel({
               setColor={editor.setColor}
               strokeWidth={editor.strokeWidth}
               setStrokeWidth={editor.setStrokeWidth}
-              scale={zoomPan.userScale}
+              scale={zoomPan.scale}
               zoomIn={zoomIn}
               zoomOut={zoomOut}
               fit={fit}

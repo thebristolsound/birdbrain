@@ -526,12 +526,15 @@ describe('ipcHandlers — export', () => {
   })
 
   it('reveals and opens exported files via the shell', async () => {
-    openPath.mockResolvedValueOnce('')
-    expectOk(await invoke(IPC_CHANNELS.SHELL_SHOW_ITEM_IN_FOLDER, '/path/to/evidence.zip'))
-    expect(showItemInFolder).toHaveBeenCalledWith('/path/to/evidence.zip')
+    const target = join(userDataPath, 'evidence.zip')
+    writeFileSync(target, 'dummy zip payload')
 
-    expectOk(await invoke(IPC_CHANNELS.SHELL_OPEN_PATH, '/path/to/evidence.zip'))
-    expect(openPath).toHaveBeenCalledWith('/path/to/evidence.zip')
+    openPath.mockResolvedValueOnce('')
+    expectOk(await invoke(IPC_CHANNELS.SHELL_SHOW_ITEM_IN_FOLDER, target))
+    expect(showItemInFolder).toHaveBeenCalledWith(target)
+
+    expectOk(await invoke(IPC_CHANNELS.SHELL_OPEN_PATH, target))
+    expect(openPath).toHaveBeenCalledWith(target)
   })
 })
 

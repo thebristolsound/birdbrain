@@ -68,3 +68,4 @@ coverage/
 # artifacts and don't belong in version control. Specs, ADRs, agent
 # conventions, and reference docs under docs/ remain tracked.
 docs/plans/
+.design-bundle

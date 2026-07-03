@@ -105,6 +105,9 @@ export const IPC_CHANNELS = {
   SHELL_SHOW_ITEM_IN_FOLDER: 'shell:showItemInFolder',
   SHELL_OPEN_PATH: 'shell:openPath',
 
+  // App
+  APP_GET_VERSION: 'app:getVersion',
+
   // Events (main -> renderer)
   EXPORT_PROGRESS: 'event:exportProgress',
   NEW_CAPTURE: 'event:newCapture',

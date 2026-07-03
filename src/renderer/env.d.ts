@@ -51,6 +51,8 @@ import type {
   UpsertAnnotationPinParams,
   SelectorRematchedEvent,
   DeepLinkTarget,
+  ExportProgressEvent,
+  ExportResult,
   PinArchiveSnapshotParams
 } from '@shared/ipc'
 
@@ -140,7 +142,11 @@ interface BirdbrainAPI {
   }
   export: {
     preflight(caseId: string): Promise<ExportPreflight>
-    generateReport(caseId: string, options: ExportOptions): Promise<void>
+    generateReport(caseId: string, options: ExportOptions): Promise<ExportResult>
+  }
+  shell: {
+    showItemInFolder(path: string): Promise<void>
+    openPath(path: string): Promise<string>
   }
   ai: {
     analyze(params: AnalyzeCaptureParams): Promise<{ content: string; tokenUsage: TokenUsage }>
@@ -162,6 +168,7 @@ interface BirdbrainAPI {
     restore(): Promise<{ restored: boolean }>
     exportTable(params: DbExportTableParams): Promise<{ path: string } | null>
   }
+  onExportProgress(callback: (event: ExportProgressEvent) => void): () => void
   onNewCapture(callback: (capture: Capture) => void): () => void
   onSessionStateChanged(
     callback: (state: {

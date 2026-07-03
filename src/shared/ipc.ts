@@ -101,6 +101,10 @@ export const IPC_CHANNELS = {
   EXTENSION_PATH: 'extension:path',
   EXTENSION_OPEN_FOLDER: 'extension:openFolder',
 
+  // Shell
+  SHELL_SHOW_ITEM_IN_FOLDER: 'shell:showItemInFolder',
+  SHELL_OPEN_PATH: 'shell:openPath',
+
   // Events (main -> renderer)
   EXPORT_PROGRESS: 'event:exportProgress',
   NEW_CAPTURE: 'event:newCapture',
@@ -138,6 +142,20 @@ export const IPC_CHANNELS = {
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS]
 
 // Event payload types (main -> renderer)
+export interface ExportProgressEvent {
+  caseId: string
+  step: string
+  percent: number
+}
+
+// Result of an export:generate invocation. `canceled` is true when the user
+// dismissed the native save dialog (no file written); `filePath` is the saved
+// path on success.
+export interface ExportResult {
+  canceled: boolean
+  filePath?: string
+}
+
 export type SelectorRematchedStatus = 'done' | 'error'
 
 export interface SelectorRematchedEvent {

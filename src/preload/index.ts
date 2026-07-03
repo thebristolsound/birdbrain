@@ -54,6 +54,12 @@ import type {
   WaybackLookupResult
 } from '@shared/types'
 
+// Fail loudly if a regression ever disables context isolation — without it,
+// exposeInMainWorld would silently hand ipcRenderer to renderer-world code.
+if (!process.contextIsolated) {
+  throw new Error('contextIsolation must be enabled')
+}
+
 // Unwrap IpcResult from handlers that return structured results
 async function unwrapIpc<T>(promise: Promise<unknown>): Promise<T> {
   const result = await promise

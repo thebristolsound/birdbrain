@@ -90,6 +90,29 @@ test.describe('MHTML forensic capture', () => {
     expect(entry.index).toBe(0)
     expect(entry.prevHash).toBe('')
 
+    // Open the capture in the viewer: the MHTML renders via <webview>, so this
+    // proves the will-attach-webview backstop admits the legitimate file:// attach.
+    await page.evaluate((caseId) => {
+      window.location.hash = `/cases/${caseId}/captures`
+    }, caseId)
+    const item = page.getByTestId('capture-item').first()
+    await item.waitFor({ timeout: 10000 })
+    await item.click()
+    // The MhtmlViewer only mounts on the Page tab (default is Screenshot).
+    await page.getByRole('button', { name: 'Page', exact: true }).click()
+    await expect
+      .poll(
+        () =>
+          electronApp.evaluate(({ webContents }) =>
+            webContents
+              .getAllWebContents()
+              .filter((wc) => wc.getType() === 'webview')
+              .map((wc) => wc.getURL())
+          ),
+        { timeout: 10000 }
+      )
+      .toContainEqual(expect.stringMatching(/^file:.*\.mhtml$/))
+
     // Mutate the MHTML file and verify tamper detection
     const mhtmlPath = join(userData, 'captures', caseId, uploadResult.captureId + '.mhtml')
     writeFileSync(mhtmlPath, 'mutated-content')

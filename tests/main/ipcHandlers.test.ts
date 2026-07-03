@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi, beforeAll } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import { pathToFileURL } from 'url'
 import type { IpcMainInvokeEvent } from 'electron'
 
 // --- Module mocks -----------------------------------------------------------
@@ -91,7 +92,13 @@ import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { initManifest } from '@main/services/manifest'
 
-const fakeEvent = {} as IpcMainInvokeEvent
+// Handlers validate event.senderFrame (top frame + trusted URL) before running,
+// so the fake event must look like the app renderer's top frame. ipcWrap
+// resolves the trusted URL from its own module directory (src/main under vitest).
+const trustedUrl = pathToFileURL(join(process.cwd(), 'src/renderer/index.html')).toString()
+const fakeEvent = {
+  senderFrame: { parent: null, url: trustedUrl }
+} as unknown as IpcMainInvokeEvent
 
 // Invoke a registered handler by channel. Returns the raw handler result;
 // `handle()`-wrapped channels return `{ ok, data }`, raw ones return the value.
@@ -516,7 +523,11 @@ describe('ipcHandlers — export', () => {
 
     const send = vi.fn()
     const fn = registered.get(IPC_CHANNELS.EXPORT_GENERATE)!
-    await fn({ sender: { send } } as unknown as IpcMainInvokeEvent, caseId, { format: 'zip' })
+    await fn(
+      { ...fakeEvent, sender: { send } } as unknown as IpcMainInvokeEvent,
+      caseId,
+      { format: 'zip' }
+    )
 
     expect(send).toHaveBeenCalledWith(IPC_CHANNELS.EXPORT_PROGRESS, {
       caseId,
@@ -694,6 +705,57 @@ describe('ipcHandlers — database admin', () => {
     const res = expectOk<{ restored: boolean }>(await invoke(IPC_CHANNELS.DB_RESTORE))
     expect(res.restored).toBe(false)
   })
+
+  it('rejects restoring a file that is not a SQLite database', async () => {
+    const bogus = join(userDataPath, 'bogus.db')
+    writeFileSync(bogus, 'definitely not a database, just long enough to have a header')
+    showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [bogus] })
+
+    const res = await invoke<{ ok: boolean; code?: string }>(IPC_CHANNELS.DB_RESTORE)
+    expect(res.ok).toBe(false)
+    expect(res.code).toBe('RESTORE_INVALID_DB')
+    // Live DB must be untouched.
+    expect(db.getCase(caseId)?.id).toBe(caseId)
+  })
+
+  it('restores a valid backup and snapshots the outgoing database first', async () => {
+    // Produce a valid backup of the live DB via the backup handler.
+    const backupPath = join(userDataPath, 'backup.db')
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: backupPath })
+    expectOk(await invoke(IPC_CHANNELS.DB_BACKUP))
+
+    showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [backupPath] })
+    const res = expectOk<{ restored: boolean }>(await invoke(IPC_CHANNELS.DB_RESTORE))
+    expect(res.restored).toBe(true)
+    expect(db.getCase(caseId)?.id).toBe(caseId)
+    expect(readdirSync(userDataPath).some((f) => f.startsWith('birdbrain-pre-restore-'))).toBe(true)
+  })
+})
+
+describe('ipcHandlers — sender validation', () => {
+  const untrustedEvents: Array<[string, IpcMainInvokeEvent]> = [
+    ['missing senderFrame', {} as IpcMainInvokeEvent],
+    [
+      'sub-frame sender',
+      { senderFrame: { parent: {}, url: trustedUrl } } as unknown as IpcMainInvokeEvent
+    ],
+    [
+      'untrusted URL',
+      {
+        senderFrame: { parent: null, url: 'file:///C:/somewhere/else/evil.html' }
+      } as unknown as IpcMainInvokeEvent
+    ]
+  ]
+
+  it.each(untrustedEvents)('rejects %s on handle()-wrapped channels', async (_label, event) => {
+    const fn = registered.get(IPC_CHANNELS.CASES_CREATE)!
+    await expect(Promise.resolve(fn(event, { name: 'x' }))).rejects.toThrow(/untrusted sender/)
+  })
+
+  it.each(untrustedEvents)('rejects %s on raw channels', (_label, event) => {
+    const fn = registered.get(IPC_CHANNELS.SETTINGS_GET)!
+    expect(() => fn(event)).toThrow(/untrusted sender/)
+  })
 })
 
 describe('archive handlers', () => {
@@ -720,7 +782,7 @@ describe('archive handlers', () => {
       checkedAt: '2026-06-30T00:00:00.000Z'
     })
     const handler = registered.get('archive:lookup')!
-    const result = (await handler({} as never, cap.id)) as { ok: boolean; data: unknown }
+    const result = (await handler(fakeEvent as never, cap.id)) as { ok: boolean; data: unknown }
     expect(lookupSnapshots).toHaveBeenCalledWith('https://example.com/', '2020-01-15T12:00:00.000Z')
     expect(result.ok).toBe(true)
   })
@@ -742,7 +804,7 @@ describe('archive handlers', () => {
       statusCode: 200
     }
     const pin = registered.get('archive:pin')!
-    const pinned = (await pin({} as never, {
+    const pinned = (await pin(fakeEvent as never, {
       captureId: cap.id,
       snapshot,
       checkedAt: '2026-06-30T00:00:00.000Z'
@@ -753,7 +815,7 @@ describe('archive handlers', () => {
     expect(pinned.ok).toBe(true)
 
     const list = registered.get('archive:list')!
-    const refs = (await list({} as never, cap.id)) as Array<{
+    const refs = (await list(fakeEvent as never, cap.id)) as Array<{
       snapshotUrl: string
       checkedAt: string
     }>
@@ -762,9 +824,9 @@ describe('archive handlers', () => {
     expect(refs[0].checkedAt).toBe('2026-06-30T00:00:00.000Z')
 
     const unpin = registered.get('archive:unpin')!
-    const removed = (await unpin({} as never, pinned.data.id)) as { ok: boolean; data: boolean }
+    const removed = (await unpin(fakeEvent as never, pinned.data.id)) as { ok: boolean; data: boolean }
     expect(removed.ok).toBe(true)
-    expect((await list({} as never, cap.id)) as unknown[]).toHaveLength(0)
+    expect((await list(fakeEvent as never, cap.id)) as unknown[]).toHaveLength(0)
   })
 
   it('archive:pin rejects a snapshot with a forged snapshotUrl', async () => {
@@ -778,7 +840,7 @@ describe('archive handlers', () => {
       format: 'mhtml'
     })
     const pin = registered.get('archive:pin')!
-    const result = (await pin({} as never, {
+    const result = (await pin(fakeEvent as never, {
       captureId: cap.id,
       // snapshotUrl does not point at web.archive.org — must be rejected.
       snapshot: {
@@ -793,6 +855,6 @@ describe('archive handlers', () => {
     expect(result.code).toBe('ARCHIVE_INVALID_SNAPSHOT')
 
     const list = registered.get('archive:list')!
-    expect((await list({} as never, cap.id)) as unknown[]).toHaveLength(0)
+    expect((await list(fakeEvent as never, cap.id)) as unknown[]).toHaveLength(0)
   })
 })

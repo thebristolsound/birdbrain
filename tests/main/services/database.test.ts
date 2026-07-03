@@ -46,8 +46,13 @@ import {
   deleteExtractedDataForCapture,
   setCaptureTrustedTime,
   listPendingTimestampCaptures,
+  validateDatabaseFile,
   LATEST_SCHEMA_VERSION
 } from '@main/services/database'
+import Database from 'better-sqlite3'
+import { mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
 
 describe('database', () => {
   beforeEach(() => {
@@ -1472,5 +1477,55 @@ describe('database', () => {
       const entry = pending.find((c) => c.id === pendingId)
       expect(entry).toMatchObject({ caseId, hash: 'h-pending' })
     })
+  })
+})
+
+describe('validateDatabaseFile', () => {
+  let dir: string
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'birdbrain-vdf-'))
+  })
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  function craftDb(userVersion: number): string {
+    const path = join(dir, `v${userVersion}.db`)
+    const db = new Database(path)
+    db.exec('CREATE TABLE t (id INTEGER PRIMARY KEY)')
+    db.pragma(`user_version = ${userVersion}`)
+    db.close()
+    return path
+  }
+
+  it('rejects a missing file', () => {
+    expect(validateDatabaseFile(join(dir, 'nope.db')).valid).toBe(false)
+  })
+
+  it('rejects a file without the SQLite header magic', () => {
+    const path = join(dir, 'bogus.db')
+    writeFileSync(path, 'this is not a sqlite database, padded well past sixteen bytes')
+    const verdict = validateDatabaseFile(path)
+    expect(verdict.valid).toBe(false)
+    expect(verdict.reason).toMatch(/Not a SQLite database/)
+  })
+
+  it('rejects user_version 0 (not a Birdbrain database)', () => {
+    const verdict = validateDatabaseFile(craftDb(0))
+    expect(verdict.valid).toBe(false)
+    expect(verdict.reason).toMatch(/Unsupported schema version/)
+  })
+
+  it('rejects a schema version newer than this build', () => {
+    const verdict = validateDatabaseFile(craftDb(LATEST_SCHEMA_VERSION + 1))
+    expect(verdict.valid).toBe(false)
+    expect(verdict.reason).toMatch(/Unsupported schema version/)
+  })
+
+  it('accepts a database this build can open', () => {
+    expect(validateDatabaseFile(craftDb(LATEST_SCHEMA_VERSION)).valid).toBe(true)
+    expect(validateDatabaseFile(craftDb(1)).valid).toBe(true)
   })
 })

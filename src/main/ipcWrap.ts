@@ -1,5 +1,29 @@
 import { ipcMain, type IpcMainInvokeEvent } from 'electron'
+import { join } from 'path'
+import { pathToFileURL } from 'url'
 import type { IpcChannel } from '@shared/ipc'
+
+// Every IPC channel is privileged (DB writes, file dialogs, API-key access), so
+// invocations are only accepted from the top frame of the app's own renderer —
+// never from sub-frames or webviews. Defense-in-depth against any future
+// renderer-side compromise (issue #88).
+function trustedRendererUrl(): string {
+  const devUrl = process.env['ELECTRON_RENDERER_URL']
+  if (devUrl) return devUrl
+  return pathToFileURL(join(__dirname, '../renderer/index.html')).toString()
+}
+
+function isTrustedIpcSender(event: IpcMainInvokeEvent): boolean {
+  const frame = event.senderFrame
+  if (!frame || frame.parent !== null) return false
+  return frame.url.startsWith(trustedRendererUrl())
+}
+
+function assertTrustedIpcSender(event: IpcMainInvokeEvent): void {
+  if (!isTrustedIpcSender(event)) {
+    throw new Error('IPC invocation rejected: untrusted sender frame')
+  }
+}
 
 export type IpcResult<T = unknown> =
   | { ok: true; data: T }
@@ -48,6 +72,7 @@ export function handle<T, A extends unknown[]>(
   fn: (event: IpcMainInvokeEvent, ...args: A) => T | Promise<T>
 ): void {
   ipcMain.handle(channel, async (event, ...args) => {
+    assertTrustedIpcSender(event)
     try {
       const data = await fn(event, ...(args as A))
       return ipcResult(data)
@@ -57,5 +82,17 @@ export function handle<T, A extends unknown[]>(
       }
       return ipcError(err)
     }
+  })
+}
+
+// Sender-validated ipcMain.handle for channels that return raw values instead
+// of an IpcResult envelope. Use this instead of calling ipcMain.handle directly.
+export function handleRaw<T, A extends unknown[]>(
+  channel: IpcChannel,
+  fn: (event: IpcMainInvokeEvent, ...args: A) => T | Promise<T>
+): void {
+  ipcMain.handle(channel, (event, ...args) => {
+    assertTrustedIpcSender(event)
+    return fn(event, ...(args as A))
   })
 }

@@ -41,6 +41,7 @@ function createWindow(): BrowserWindow {
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,
+      contextIsolation: true,
       webviewTag: true
     }
   })
@@ -118,8 +119,30 @@ function registerProtocolClient(): void {
   }
 }
 
+// Deny renderer permission requests (geolocation, media, notifications, ...)
+// on every session, including webview partitions. The only capability the app
+// uses is sanitized clipboard writes (copy-to-clipboard in the analysis tab).
+app.on('session-created', (ses) => {
+  ses.setPermissionRequestHandler((_wc, permission, callback) => {
+    callback(permission === 'clipboard-sanitized-write')
+  })
+  ses.setPermissionCheckHandler((_wc, permission) => permission === 'clipboard-sanitized-write')
+})
+
 // Enforce security on all web contents (defense-in-depth for webviews)
 app.on('web-contents-created', (_event, contents) => {
+  // Main-process backstop for any <webview> the renderer attaches: strip
+  // dangerous prefs and reject anything that isn't a local file:// document.
+  contents.on('will-attach-webview', (event, webPreferences, params) => {
+    delete webPreferences.preload
+    webPreferences.nodeIntegration = false
+    webPreferences.contextIsolation = true
+    webPreferences.sandbox = true
+    if (typeof params.src !== 'string' || !params.src.startsWith('file://')) {
+      event.preventDefault()
+    }
+  })
+
   if (contents.getType() === 'webview') {
     // Allow the initial file:// load, block all subsequent navigations
     let initialLoadDone = false
@@ -144,6 +167,7 @@ if (!gotSingleInstanceLock) {
 
   // Windows/Linux: the second launch hands its argv to the primary instance.
   app.on('second-instance', (_event, argv) => {
+    focusMainWindow()
     dispatchDeepLink(findDeepLinkInArgv(argv))
   })
 

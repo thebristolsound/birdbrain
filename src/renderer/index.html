@@ -3,16 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' http://127.0.0.1:19845; font-src 'self'; frame-src 'self' data:" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-6BLLPBSEY7Nx8LhBDjmrHwxpeuXWta54AjB0bqdxnaA='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' http://127.0.0.1:19845; font-src 'self'; frame-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'" />
     <title>Birdbrain</title>
-    <script>
-      if (localStorage.getItem('theme') === 'dark') {
-        document.documentElement.classList.add('dark')
-      }
-      if (localStorage.getItem('reduceMotion') === 'true') {
-        document.documentElement.classList.add('reduce-motion')
-      }
-    </script>
+    <!--
+      Theme/motion bootstrap must run inline before first paint to prevent a
+      flash of the wrong theme. It is kept on ONE line (no newlines, so CRLF
+      conversion can't change its bytes) and allowlisted by the sha256 hash in
+      the CSP above. If you edit the script, recompute the hash:
+      node -e "console.log(require('crypto').createHash('sha256').update(<script text>, 'utf8').digest('base64'))"
+    -->
+    <script>if(localStorage.getItem('theme')==='dark')document.documentElement.classList.add('dark');if(localStorage.getItem('reduceMotion')==='true')document.documentElement.classList.add('reduce-motion')</script>
   </head>
   <body>
     <div id="root"></div>

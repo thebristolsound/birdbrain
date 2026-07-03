@@ -79,7 +79,9 @@ const rootRoute = createRootRoute({
     const onboardingOverlayOpen = useAppStore((s) => s.onboardingOverlayOpen)
     const setOnboardingOverlayOpen = useAppStore((s) => s.setOnboardingOverlayOpen)
 
-    const showSidebar = Boolean(matchRoute({ to: '/cases/$caseId', fuzzy: true }))
+    const showSidebar =
+      Boolean(matchRoute({ to: '/cases/$caseId', fuzzy: true })) &&
+      !matchRoute({ to: '/cases/new' })
 
     if (restoring) {
       return (

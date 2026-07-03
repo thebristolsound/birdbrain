@@ -53,7 +53,7 @@ test.describe('Empty Captures State', () => {
     await expect(overlay).toBeVisible()
     await expect(overlay).toHaveAttribute('role', 'dialog')
     await expect(overlay).toHaveAttribute('aria-modal', 'true')
-    await expect(overlay.getByText('Connect Extension')).toBeVisible()
+    await expect(overlay.getByText('Install the Extension')).toBeVisible()
 
     // Escape key dismisses the overlay
     await page.keyboard.press('Escape')

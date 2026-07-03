@@ -85,7 +85,7 @@ export function DataExplorer() {
         <div className="relative mx-4 max-w-xs flex-1">
           <Search
             size={14}
-            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted"
+            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted"
           />
           <Input
             value={searchInput}
@@ -119,8 +119,8 @@ export function DataExplorer() {
             </div>
           ) : (
             <ScrollArea className="h-full">
-              {searchResults.map((r) => {
-                const key = `${r.category}|${r.subcategory}|${r.value}`
+              {searchResults.map((r, idx) => {
+                const key = `${idx}::${r.category}::${r.subcategory}::${r.value}`
                 return (
                   <div
                     key={key}

@@ -1551,7 +1551,7 @@ export function searchExtractedData(caseId: string, query: string): ExtractedDat
     category: r.category,
     subcategory: r.subcategory,
     pageCount: r.page_count,
-    sourceUrls: r.source_urls ? r.source_urls.split('\n').sort() : []
+    sourceUrls: r.source_urls ? Array.from(new Set(r.source_urls.split('\n'))).sort() : []
   }))
 }
 

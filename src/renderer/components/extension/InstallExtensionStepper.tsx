@@ -27,12 +27,15 @@ export function InstallExtensionStepper({
   }
   const current = INSTALL_STEPS[step]
   const isLast = step === INSTALL_STEPS.length - 1
+  const [openFolderError, setOpenFolderError] = useState<string | null>(null)
 
   const handleOpenFolder = async () => {
     try {
+      setOpenFolderError(null)
       await window.birdbrain.extension.openFolder()
     } catch (err) {
       console.error('Failed to open extension folder:', err)
+      setOpenFolderError('Could not open the extension folder. Please try again.')
     }
   }
 
@@ -83,10 +86,25 @@ export function InstallExtensionStepper({
           </div>
           <div className="mt-3 text-xs leading-relaxed text-text-muted">{current.caption}</div>
           {step === 1 && (
-            <Button variant="outline" size="xs" onClick={handleOpenFolder} className="mt-3 gap-1.5">
-              <FolderOpen className="h-3 w-3" />
-              Open extension folder
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={handleOpenFolder}
+                className="mt-3 gap-1.5"
+              >
+                <FolderOpen className="h-3 w-3" />
+                Open extension folder
+              </Button>
+              {openFolderError && (
+                <div
+                  role="alert"
+                  className="mt-2 rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400"
+                >
+                  {openFolderError}
+                </div>
+              )}
+            </>
           )}
         </motion.div>
       </AnimatePresence>

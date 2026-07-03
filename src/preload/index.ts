@@ -45,6 +45,7 @@ import type {
   ExtractedDataCategory,
   ExtractedDataSubcategory,
   ExtractedDataItem,
+  ExtractedDataSearchResult,
   AnnotationsBundle,
   CaptureAnnotations,
   AnnotationPin,
@@ -345,6 +346,8 @@ const birdbrain = {
       ipcRenderer.invoke(IPC_CHANNELS.EXTRACTED_DATA_ITEMS, caseId, category, subcategory),
     count: (caseId: string): Promise<number> =>
       ipcRenderer.invoke(IPC_CHANNELS.EXTRACTED_DATA_COUNT, caseId),
+    search: (caseId: string, query: string): Promise<ExtractedDataSearchResult[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.EXTRACTED_DATA_SEARCH, caseId, query),
     reprocess: (caseId: string): Promise<{ processed: number }> =>
       unwrapIpc<{ processed: number }>(
         ipcRenderer.invoke(IPC_CHANNELS.EXTRACTED_DATA_REPROCESS, caseId)

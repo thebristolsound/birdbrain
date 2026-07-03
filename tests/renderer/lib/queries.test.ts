@@ -29,6 +29,7 @@ import {
   extractedDataSubcategoriesQueryOptions,
   extractedDataItemsQueryOptions,
   extractedDataCountQueryOptions,
+  extractedDataSearchQueryOptions,
   annotationsQueryOptions,
   settingsQueryOptions,
   identityQueryOptions,
@@ -87,6 +88,7 @@ function installBirdbrainMock() {
       subcategories: fn(),
       items: fn(),
       count: fn(),
+      search: fn(),
       reprocess: fn()
     },
     annotations: { get: fn(), save: fn(), upsertPin: fn(), deletePin: fn(), delete: fn() },
@@ -126,6 +128,12 @@ describe('queryKeys', () => {
       'c1',
       'ioc',
       'email'
+    ])
+    expect(queryKeys.extractedDataSearch('c1', 'gmail')).toEqual([
+      'extractedData',
+      'search',
+      'c1',
+      'gmail'
     ])
     expect(queryKeys.annotations('cap1')).toEqual(['annotations', 'cap1'])
     expect(queryKeys.settings).toEqual(['settings'])
@@ -207,6 +215,9 @@ describe('queryOptions queryFns', () => {
     expect(api.extractedData.count).toHaveBeenCalledWith('c1')
     expect(extractedDataSubcategoriesQueryOptions('c1', '').enabled).toBe(false)
     expect(extractedDataItemsQueryOptions('c1', 'ioc', '').enabled).toBe(false)
+    await extractedDataSearchQueryOptions('c1', 'gmail').queryFn?.({} as never)
+    expect(api.extractedData.search).toHaveBeenCalledWith('c1', 'gmail')
+    expect(extractedDataSearchQueryOptions('c1', '  ').enabled).toBe(false)
 
     await annotationsQueryOptions('cap1').queryFn?.({} as never)
     expect(api.annotations.get).toHaveBeenCalledWith('cap1')

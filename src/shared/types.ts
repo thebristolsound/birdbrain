@@ -318,6 +318,14 @@ export interface ExtractedDataItem {
   sourceUrls: string[]
 }
 
+export interface ExtractedDataSearchResult {
+  value: string
+  category: string
+  subcategory: string
+  pageCount: number
+  sourceUrls: string[]
+}
+
 export interface TokenUsage {
   prompt: number
   completion: number

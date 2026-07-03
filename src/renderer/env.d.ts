@@ -19,6 +19,7 @@ import type {
   ExtractedDataCategory,
   ExtractedDataSubcategory,
   ExtractedDataItem,
+  ExtractedDataSearchResult,
   AnnotationsBundle,
   CaptureAnnotations,
   AnnotationPin,
@@ -187,6 +188,7 @@ interface BirdbrainAPI {
     subcategories(caseId: string, category: string): Promise<ExtractedDataSubcategory[]>
     items(caseId: string, category: string, subcategory: string): Promise<ExtractedDataItem[]>
     count(caseId: string): Promise<number>
+    search(caseId: string, query: string): Promise<ExtractedDataSearchResult[]>
     reprocess(caseId: string): Promise<{ processed: number }>
   }
 }

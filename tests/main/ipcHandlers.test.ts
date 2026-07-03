@@ -596,6 +596,18 @@ describe('ipcHandlers — extracted data', () => {
     )
     expect(reprocessed.processed).toBeGreaterThanOrEqual(0)
   })
+
+  it('searches extracted data by substring', async () => {
+    db.insertExtractedData(captureId, caseId, 'https://example.com', [
+      { category: 'ioc', subcategory: 'email', value: 'foo@gmail.com' }
+    ])
+    const results = await invoke<Array<{ value: string }>>(
+      IPC_CHANNELS.EXTRACTED_DATA_SEARCH,
+      caseId,
+      'gmail'
+    )
+    expect(results.map((r) => r.value)).toEqual(['foo@gmail.com'])
+  })
 })
 
 describe('ipcHandlers — extension', () => {

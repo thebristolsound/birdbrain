@@ -1,4 +1,5 @@
-import { Puzzle, FolderOpen, CheckCircle } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import { Puzzle, FolderOpen, CheckCircle, BookOpen } from 'lucide-react'
 import { Card, Button } from '@renderer/components/ui'
 
 interface ExtensionBannerProps {
@@ -54,6 +55,13 @@ export function ExtensionBanner({ connected }: ExtensionBannerProps) {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <Link
+              to="/extension-setup"
+              className="flex items-center gap-2 px-4 py-2.5 font-display font-medium text-xs rounded-xl border border-border-strong text-text-muted hover:bg-elevated hover:text-text-primary transition-colors"
+            >
+              <BookOpen className="h-3.5 w-3.5" />
+              Setup Guide
+            </Link>
             <Button
               onClick={handleOpenFolder}
               className="gap-2 px-5 py-2.5 font-display font-bold text-xs rounded-xl shadow-lg shadow-indigo-500/30 active:scale-[0.98]"

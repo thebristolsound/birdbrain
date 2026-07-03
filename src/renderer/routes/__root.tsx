@@ -22,6 +22,7 @@ import { SelectorsOverview } from '@renderer/components/selectors/SelectorsOverv
 import { NotesOverview } from '@renderer/components/notes/NotesOverview'
 import { TagsOverview } from '@renderer/components/tags/TagsOverview'
 import { DataExplorer } from '@renderer/components/dashboard/cases/DataExplorer'
+import { InstallExtensionGuide } from '@renderer/components/extension/InstallExtensionGuide'
 import { SettingsView } from '@renderer/components/settings/SettingsView'
 import { useSessionRestore } from '@renderer/hooks/useSessionRestore'
 import { useCommandPalette } from '@renderer/hooks/useCommandPalette'
@@ -174,6 +175,20 @@ const settingsRoute = createRoute({
   errorComponent: RouteErrorComponent
 })
 
+// Extension setup guide
+const extensionSetupRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/extension-setup',
+  component: function ExtensionSetupPage() {
+    return (
+      <div className="h-full overflow-y-auto">
+        <InstallExtensionGuide />
+      </div>
+    )
+  },
+  errorComponent: RouteErrorComponent
+})
+
 // New case wizard
 const newCaseRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -254,6 +269,7 @@ const dataRoute = createRoute({
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   settingsRoute,
+  extensionSetupRoute,
   newCaseRoute,
   caseRoute.addChildren([
     caseIndexRoute,

@@ -13,6 +13,7 @@ export default tseslint.config(
       'extension/dist/',
       'node_modules/',
       '.worktrees/',
+      '.design-bundle/',
       '.claude/',
       '.agents/',
       '.codex/',

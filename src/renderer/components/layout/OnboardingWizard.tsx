@@ -69,13 +69,13 @@ export function OnboardingWizard({ mode = 'firstRun', onClose }: OnboardingWizar
       aria-labelledby={isOverlay ? 'onboarding-overlay-title' : undefined}
       className={
         isOverlay
-          ? 'fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6'
+          ? 'fixed inset-0 z-50 flex overflow-y-auto bg-black/40 p-6'
           : 'flex h-full items-center justify-center bg-canvas'
       }
       onClick={isOverlay ? (e) => e.target === e.currentTarget && onClose?.() : undefined}
     >
       <div
-        className={`relative flex w-full flex-col items-center transition-[max-width] duration-300 ${step === 0 ? 'max-w-xl' : 'max-w-md'}`}
+        className={`relative m-auto flex w-full flex-col items-center transition-[max-width] duration-300 ${step === 0 ? 'max-w-xl' : 'max-w-md'}`}
       >
         {isOverlay && (
           <button

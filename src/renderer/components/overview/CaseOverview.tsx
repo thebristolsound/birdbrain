@@ -110,7 +110,7 @@ export function CaseOverview() {
 
   return (
     <div className="flex flex-col gap-4" data-testid="case-overview">
-      <CaseSubhead caseData={caseData} glow />
+      <CaseSubhead caseData={caseData} glow={false} />
 
       {showBanner ? (
         <SinceLastVisitBanner

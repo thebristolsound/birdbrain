@@ -24,6 +24,8 @@ import type {
   UpsertAnnotationPinParams,
   SelectorRematchedEvent,
   DeepLinkTarget,
+  ExportProgressEvent,
+  ExportResult,
   PinArchiveSnapshotParams
 } from '@shared/ipc'
 import type {
@@ -210,7 +212,8 @@ const birdbrain = {
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_TEST_OPENROUTER, apiKey),
     listModels: (apiKey: string): Promise<OpenRouterModel[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_LIST_MODELS, apiKey),
-    getIdentity: (): Promise<OperatorIdentity> => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET_IDENTITY),
+    getIdentity: (): Promise<OperatorIdentity> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET_IDENTITY),
     chooseStoragePath: (): Promise<string | null> =>
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH)
   },
@@ -218,8 +221,15 @@ const birdbrain = {
   export: {
     preflight: (caseId: string): Promise<ExportPreflight> =>
       unwrapIpc<ExportPreflight>(ipcRenderer.invoke(IPC_CHANNELS.EXPORT_PREFLIGHT, caseId)),
-    generateReport: (caseId: string, options: ExportOptions): Promise<void> =>
-      unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, options))
+    generateReport: (caseId: string, options: ExportOptions): Promise<ExportResult> =>
+      unwrapIpc<ExportResult>(ipcRenderer.invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, options))
+  },
+
+  shell: {
+    showItemInFolder: (path: string): Promise<void> =>
+      unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.SHELL_SHOW_ITEM_IN_FOLDER, path)),
+    openPath: (path: string): Promise<string> =>
+      unwrapIpc<string>(ipcRenderer.invoke(IPC_CHANNELS.SHELL_OPEN_PATH, path))
   },
 
   db: {
@@ -270,6 +280,12 @@ const birdbrain = {
   },
 
   // Event listeners (main -> renderer)
+  onExportProgress: (callback: (event: ExportProgressEvent) => void) => {
+    const handler = (_: unknown, ev: ExportProgressEvent) => callback(ev)
+    ipcRenderer.on(IPC_CHANNELS.EXPORT_PROGRESS, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.EXPORT_PROGRESS, handler)
+  },
+
   onNewCapture: (callback: (capture: Capture) => void) => {
     const handler = (_: unknown, capture: Capture) => callback(capture)
     ipcRenderer.on(IPC_CHANNELS.NEW_CAPTURE, handler)

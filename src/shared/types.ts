@@ -12,6 +12,10 @@ export interface Case {
 
 export type CaptureFormat = 'html' | 'mhtml'
 
+// How the capture was produced (#recapture). 'extension' = operator-witnessed
+// via the Chrome extension; 'background' = silent hidden-window recapture.
+export type CaptureMethod = 'extension' | 'background'
+
 // Orthogonal trusted-time axis (#120), independent of integrity status. A
 // capture is 'rfc3161' once an RFC 3161 token anchors its content hash,
 // 'pending' while an eligible (v2) capture awaits stamping, and 'none' for
@@ -59,6 +63,10 @@ export interface Capture {
   createdAt: string
   // Forensic MHTML fields (populated for format='mhtml', undefined for legacy 'html')
   format: CaptureFormat
+  method: CaptureMethod
+  // Set when this capture was created by "Recapture" of an existing capture.
+  // The original is never touched — linked sibling, both fully visible.
+  supersedesCaptureId?: string
   mhtmlPath?: string
   // Content-addressed integrity of the screenshot / extracted-text sidecars (#118).
   // Mirrors the hash recorded in the v2+ manifest capture entry; undefined for
@@ -343,7 +351,7 @@ export interface CaptureAnalysis {
   updatedAt: string
 }
 
-export type CaptureSource = 'auto' | 'manual' | 'selector'
+export type CaptureSource = 'auto' | 'manual' | 'selector' | 'recapture'
 
 export interface CaptureEvent {
   type: 'received' | 'stored' | 'failed' | 'skipped'
@@ -355,6 +363,7 @@ export interface CaptureEvent {
   skipReason?: string
   durationMs?: number
   screenshotWarning?: string
+  warning?: string
 }
 
 export interface OperatorIdentity {

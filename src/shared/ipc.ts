@@ -319,3 +319,15 @@ export interface SaveCaptureParams {
   headers?: Record<string, string>
   textContent?: string
 }
+
+// --- Recapture (background capture queue) ---
+
+export interface RecaptureQueueStatus {
+  pending: number
+  activeUrl: string | null
+}
+
+export interface EnqueueResult {
+  accepted: number
+  rejected: Array<{ url: string; reason: string }>
+}

@@ -23,13 +23,17 @@ export function AddUrlsBox({ caseId }: AddUrlsBoxProps) {
       )
     ]
     if (urls.length === 0) return
-    const result = await enqueue.mutateAsync({ urls })
-    const parts = [`${result.accepted} queued`]
-    if (result.rejected.length > 0) {
-      parts.push(`${result.rejected.length} rejected (${result.rejected[0].reason})`)
+    try {
+      const result = await enqueue.mutateAsync({ urls })
+      const parts = [`${result.accepted} queued`]
+      if (result.rejected.length > 0) {
+        parts.push(`${result.rejected.length} rejected (${result.rejected[0].reason})`)
+      }
+      setFeedback(parts.join(', '))
+      if (result.accepted > 0) setValue('')
+    } catch (err) {
+      setFeedback(err instanceof Error ? err.message : 'Failed to queue captures')
     }
-    setFeedback(parts.join(', '))
-    if (result.accepted > 0) setValue('')
   }
 
   return (

@@ -6,7 +6,7 @@ import type { ReactNode } from 'react'
 import { ArchiveTab } from '@renderer/components/captures/ArchiveTab'
 import type { Capture } from '@shared/types'
 
-const capture = {
+const capture: Capture = {
   id: 'cap1',
   caseId: 'case1',
   url: 'https://example.com/',
@@ -16,7 +16,7 @@ const capture = {
   createdAt: '2020-01-15T12:00:01.000Z',
   format: 'mhtml',
   method: 'extension'
-} as Capture
+}
 
 interface BirdbrainStub {
   archive: {

@@ -70,10 +70,12 @@ export function CaptureHealth() {
   const clearCaptureEvents = useAppStore((s) => s.clearCaptureEvents)
   const sessionActive = useAppStore((s) => s.sessionActive)
   const connectedToExtension = useAppStore((s) => s.connectedToExtension)
+  // Queue status only renders inside the popover — don't poll while closed.
   const { data: queue } = useQuery({
     queryKey: ['recaptureQueue'],
     queryFn: () => window.birdbrain.recapture.queueStatus(),
-    refetchInterval: 2000
+    refetchInterval: 2000,
+    enabled: open
   })
 
   async function runPipelineTest() {

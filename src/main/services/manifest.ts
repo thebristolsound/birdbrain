@@ -14,7 +14,7 @@ import { MANIFEST_FILENAME, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import { canonicalStringify, verifyManifestChainText } from '@shared/verify'
 import type { ChainVerifyResult } from '@shared/verify'
 import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
-import type { TrustedTime } from '@shared/types'
+import type { TrustedTime, ArchiveVerificationResult } from '@shared/types'
 import type { TlsCertChainResult } from '@main/services/tlsCertChain'
 
 export type { TrustedTime }
@@ -115,6 +115,38 @@ export type ManifestEntryInput =
       toolVersion: string
       packageHash: string
       verificationResult: ExportVerificationResult
+    }
+  | {
+      // Signed audit record of a case-archive export (.birdbrain). packageHash
+      // uses the same recipe as the evidence export: sha256(canonicalStringify
+      // (sortedArtifacts)), never hashing the final zip (circular — this
+      // entry's manifest copy ships inside it).
+      type: 'archive-export'
+      caseId: string
+      timestamp: string
+      operatorId: string
+      operatorName: string
+      toolVersion: string
+      packageHash: string
+    }
+  | {
+      // Signed genesis-of-custody record appended when a case archive is
+      // imported. Continues the source chain (prevHash = source head).
+      // sourcePublicKeyPem is the key that signed every entry BEFORE this one
+      // (back to the previous import boundary) — verify-core switches keys at
+      // these entries.
+      type: 'import'
+      caseId: string
+      sourceCaseId: string
+      sourceInstallationId: string
+      sourcePublicKeyPem: string
+      packageHash: string
+      idMapSha256: string
+      verificationResult: ArchiveVerificationResult
+      timestamp: string
+      operatorId: string
+      operatorName: string
+      toolVersion: string
     }
 
 export interface ExportVerificationResult {

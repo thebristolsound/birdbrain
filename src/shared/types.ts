@@ -363,3 +363,15 @@ export interface OperatorIdentity {
   operatorRole: string
   operatorOrganization: string
 }
+
+// Verification summary of a .birdbrain case archive, recorded in the signed
+// `import` manifest entry and surfaced in the import preflight UI.
+export interface ArchiveVerificationResult {
+  overallValid: boolean
+  chainValid: boolean
+  chainReason?: string
+  artifactCount: number
+  artifactFailureCount: number
+  captureCount: number
+  captureHashFailureCount: number
+}

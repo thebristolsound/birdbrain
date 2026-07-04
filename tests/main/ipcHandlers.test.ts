@@ -537,6 +537,12 @@ describe('ipcHandlers — export', () => {
 
   it('reveals and opens exported files via the shell', async () => {
     const evidencePath = join(userDataPath, 'evidence.zip')
+    // Reveal/open is only permitted for a path this process authored, so run a
+    // real export first to register it (#C12).
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: evidencePath })
+    const done = expectOk(await invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, { format: 'zip' }))
+    expect(done).toEqual({ canceled: false, filePath: evidencePath })
+
     writeFileSync(evidencePath, '')
     openPath.mockResolvedValueOnce('')
     expectOk(await invoke(IPC_CHANNELS.SHELL_SHOW_ITEM_IN_FOLDER, evidencePath))
@@ -544,6 +550,28 @@ describe('ipcHandlers — export', () => {
 
     expectOk(await invoke(IPC_CHANNELS.SHELL_OPEN_PATH, evidencePath))
     expect(openPath).toHaveBeenCalledWith(evidencePath)
+  })
+
+  it('refuses to reveal or open a path it did not author (#C12)', async () => {
+    const evil = join(userDataPath, 'evil.exe')
+    writeFileSync(evil, '')
+
+    const openRes = await invoke<{ ok: boolean; error?: string }>(
+      IPC_CHANNELS.SHELL_OPEN_PATH,
+      evil
+    )
+    expect(openRes.ok).toBe(false)
+    expect(openRes.error).toMatch(/not permitted/i)
+
+    const revealRes = await invoke<{ ok: boolean; error?: string }>(
+      IPC_CHANNELS.SHELL_SHOW_ITEM_IN_FOLDER,
+      evil
+    )
+    expect(revealRes.ok).toBe(false)
+    expect(revealRes.error).toMatch(/not permitted/i)
+
+    expect(openPath).not.toHaveBeenCalled()
+    expect(showItemInFolder).not.toHaveBeenCalled()
   })
 })
 

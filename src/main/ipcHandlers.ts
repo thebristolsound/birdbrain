@@ -28,7 +28,7 @@ import type {
 } from '@shared/ipc'
 import * as dbAdmin from '@main/services/dbAdmin'
 import { existsSync } from 'fs'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import { pathToFileURL } from 'url'
 import * as db from '@main/services/database'
 import * as annotations from '@main/services/annotations'
@@ -54,6 +54,11 @@ import type { BirdbrainSettings, ExportOptions, CaptureAnalysis } from '@shared/
 // loopback drops (rather than refuses) SYNs to unbound ports — e.g. WSL2 — hangs
 // long enough to blow past test/UI deadlines.
 const SELF_TEST_TIMEOUT_MS = 2000
+
+// Reveal/open is limited to files THIS process authored (export outputs). A
+// renderer — even a compromised one — can't hand shell.openPath an arbitrary
+// binary, because only paths recorded here on a successful export are openable.
+const revealablePaths = new Set<string>()
 
 export function registerIpcHandlers(deps: {
   selectorLifecycle: SelectorLifecycle
@@ -440,6 +445,8 @@ export function registerIpcHandlers(deps: {
             percent
           } satisfies ExportProgressEvent)
       )
+      // Permit reveal/open for this freshly-written export only.
+      revealablePaths.add(resolve(filePath))
       return { canceled: false, filePath }
     }
   )
@@ -447,12 +454,16 @@ export function registerIpcHandlers(deps: {
   // Shell — reveal/open a file the main process just wrote (export completion).
   handle(IPC_CHANNELS.SHELL_SHOW_ITEM_IN_FOLDER, (_, path: string) => {
     if (!path) throw new IpcFailure('Path is required', 'INVALID_PATH')
+    if (!revealablePaths.has(resolve(path)))
+      throw new IpcFailure('Path not permitted', 'FORBIDDEN_PATH')
     if (!existsSync(path)) throw new IpcFailure('File not found', 'NOT_FOUND')
     shell.showItemInFolder(path)
   })
 
   handle(IPC_CHANNELS.SHELL_OPEN_PATH, async (_, path: string) => {
     if (!path) throw new IpcFailure('Path is required', 'INVALID_PATH')
+    if (!revealablePaths.has(resolve(path)))
+      throw new IpcFailure('Path not permitted', 'FORBIDDEN_PATH')
     if (!existsSync(path)) throw new IpcFailure('File not found', 'NOT_FOUND')
     const openError = await shell.openPath(path)
     if (openError) throw new IpcFailure(openError, 'OPEN_PATH_FAILED')

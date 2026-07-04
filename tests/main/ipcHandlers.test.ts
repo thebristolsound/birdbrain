@@ -69,6 +69,15 @@ vi.mock('@main/services/export', () => ({
   getExportPreflight: (...a: unknown[]) => getExportPreflight(...a)
 }))
 
+const exportCaseArchive = vi.fn()
+const inspectCaseArchive = vi.fn()
+const importCaseArchive = vi.fn()
+vi.mock('@main/services/caseArchive', () => ({
+  exportCaseArchive: (...a: unknown[]) => exportCaseArchive(...a),
+  inspectCaseArchive: (...a: unknown[]) => inspectCaseArchive(...a),
+  importCaseArchive: (...a: unknown[]) => importCaseArchive(...a)
+}))
+
 const lookupSnapshots = vi.fn()
 vi.mock('@main/services/waybackMachine', async (importActual) => {
   const actual = await importActual<typeof import('@main/services/waybackMachine')>()
@@ -534,6 +543,109 @@ describe('ipcHandlers — export', () => {
 
     expectOk(await invoke(IPC_CHANNELS.SHELL_OPEN_PATH, evidencePath))
     expect(openPath).toHaveBeenCalledWith(evidencePath)
+  })
+})
+
+describe('ipcHandlers — case archive', () => {
+  it('writes a file on the export happy path and reports canceled on dialog dismissal', async () => {
+    const canceled = expectOk<{ canceled: boolean; filePath?: string }>(
+      await invoke(IPC_CHANNELS.CASES_EXPORT_ARCHIVE, caseId)
+    )
+    expect(canceled).toEqual({ canceled: true })
+    expect(exportCaseArchive).not.toHaveBeenCalled()
+
+    const target = join(userDataPath, 'archive.birdbrain')
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: target })
+    exportCaseArchive.mockResolvedValue(undefined)
+    const done = expectOk<{ canceled: boolean; filePath?: string }>(
+      await invoke(IPC_CHANNELS.CASES_EXPORT_ARCHIVE, caseId)
+    )
+    expect(exportCaseArchive).toHaveBeenCalledWith(caseId, target, expect.any(Function))
+    expect(done).toEqual({ canceled: false, filePath: target })
+  })
+
+  it('fails with NOT_FOUND when exporting an unknown case', async () => {
+    const res = await invoke<{ ok: boolean; error?: string; code?: string }>(
+      IPC_CHANNELS.CASES_EXPORT_ARCHIVE,
+      'missing-case'
+    )
+    expect(res.ok).toBe(false)
+    expect(res.code).toBe('NOT_FOUND')
+    expect(showSaveDialog).not.toHaveBeenCalled()
+  })
+
+  it('forwards export progress to the renderer via event.sender.send', async () => {
+    const target = join(userDataPath, 'archive.birdbrain')
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: target })
+    exportCaseArchive.mockImplementationOnce(
+      async (_caseId, _outputPath, onProgress: (step: string, percent: number) => void) => {
+        onProgress('Collecting case data...', 10)
+      }
+    )
+
+    const send = vi.fn()
+    const fn = registered.get(IPC_CHANNELS.CASES_EXPORT_ARCHIVE)!
+    await fn({ sender: { send } } as unknown as IpcMainInvokeEvent, caseId)
+
+    expect(send).toHaveBeenCalledWith(IPC_CHANNELS.ARCHIVE_PROGRESS, {
+      caseId,
+      step: 'Collecting case data...',
+      percent: 10
+    })
+  })
+
+  it('returns null when the archive-inspect dialog is cancelled', async () => {
+    expect(expectOk(await invoke(IPC_CHANNELS.CASES_INSPECT_ARCHIVE))).toBeNull()
+    expect(inspectCaseArchive).not.toHaveBeenCalled()
+  })
+
+  it('inspects the chosen archive and returns its report', async () => {
+    const archivePath = join(userDataPath, 'archive.birdbrain')
+    showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [archivePath] })
+    const report = { archivePath, caseName: 'Test Case' }
+    inspectCaseArchive.mockReturnValue(report)
+
+    const result = expectOk(await invoke(IPC_CHANNELS.CASES_INSPECT_ARCHIVE))
+    expect(inspectCaseArchive).toHaveBeenCalledWith(archivePath)
+    expect(result).toBe(report)
+  })
+
+  it('imports an archive and returns the new case id', async () => {
+    const archivePath = join(userDataPath, 'archive.birdbrain')
+    importCaseArchive.mockResolvedValue({ newCaseId: 'new-case-id', report: {} })
+
+    const result = expectOk<{ newCaseId: string }>(
+      await invoke(IPC_CHANNELS.CASES_IMPORT_ARCHIVE, archivePath, false)
+    )
+    expect(result).toEqual({ newCaseId: 'new-case-id' })
+    expect(importCaseArchive).toHaveBeenCalledWith(
+      archivePath,
+      { overrideTamper: false },
+      expect.any(Function)
+    )
+  })
+
+  it('forwards import progress to the renderer via event.sender.send', async () => {
+    const archivePath = join(userDataPath, 'archive.birdbrain')
+    importCaseArchive.mockImplementationOnce(
+      async (
+        _archivePath,
+        _opts,
+        onProgress: (step: string, percent: number) => void
+      ) => {
+        onProgress('Verifying archive...', 5)
+        return { newCaseId: 'new-case-id', report: {} }
+      }
+    )
+
+    const send = vi.fn()
+    const fn = registered.get(IPC_CHANNELS.CASES_IMPORT_ARCHIVE)!
+    await fn({ sender: { send } } as unknown as IpcMainInvokeEvent, archivePath, true)
+
+    expect(send).toHaveBeenCalledWith(IPC_CHANNELS.ARCHIVE_PROGRESS, {
+      step: 'Verifying archive...',
+      percent: 5
+    })
   })
 })
 

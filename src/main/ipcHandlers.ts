@@ -23,7 +23,9 @@ import type {
   SaveAnnotationsParams,
   UpsertAnnotationPinParams,
   ExportProgressEvent,
-  ExportResult
+  ExportResult,
+  ArchiveProgressEvent,
+  ArchiveExportResult
 } from '@shared/ipc'
 import * as dbAdmin from '@main/services/dbAdmin'
 import { existsSync } from 'fs'
@@ -36,6 +38,11 @@ import * as settings from '@main/services/settings'
 import * as openrouter from '@main/services/openrouter'
 import * as analysisService from '@main/services/ai/analysisService'
 import { generateReport, getExportPreflight } from '@main/services/export'
+import {
+  exportCaseArchive,
+  inspectCaseArchive,
+  importCaseArchive
+} from '@main/services/caseArchive'
 import { getExtensionPath, extensionPathExists } from '@main/services/extensionPath'
 import { lookupSnapshots, isPersistableSnapshot } from '@main/services/waybackMachine'
 import { buildCsv } from '@main/services/csvEscape'
@@ -45,7 +52,12 @@ import { getServerToken } from '@main/services/serverToken'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { handle, IpcFailure } from '@main/ipcWrap'
-import type { BirdbrainSettings, ExportOptions, CaptureAnalysis } from '@shared/types'
+import type {
+  BirdbrainSettings,
+  ExportOptions,
+  CaptureAnalysis,
+  ArchiveInspectReport
+} from '@shared/types'
 
 // Self-test fetches must fail fast when the capture server is down. Without an
 // explicit timeout they inherit undici's 10s default, which on platforms whose
@@ -64,6 +76,53 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.CASES_CREATE, (_, params: CreateCaseParams) => db.createCase(params))
   handle(IPC_CHANNELS.CASES_UPDATE, (_, params: UpdateCaseParams) => db.updateCase(params))
   handle(IPC_CHANNELS.CASES_DELETE, (_, id: string) => db.deleteCase(id))
+
+  handle(
+    IPC_CHANNELS.CASES_EXPORT_ARCHIVE,
+    async (event, caseId: string): Promise<ArchiveExportResult> => {
+      const caseData = db.getCase(caseId)
+      if (!caseData) throw new IpcFailure('Case not found', 'NOT_FOUND')
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        defaultPath: `${caseData.name.replace(/[^\w\- ]+/g, '_')}.birdbrain`,
+        filters: [{ name: 'Birdbrain Case Archive', extensions: ['birdbrain'] }]
+      })
+      if (canceled || !filePath) return { canceled: true }
+      await exportCaseArchive(caseId, filePath, (step, percent) =>
+        event.sender.send(IPC_CHANNELS.ARCHIVE_PROGRESS, {
+          caseId,
+          step,
+          percent
+        } satisfies ArchiveProgressEvent)
+      )
+      return { canceled: false, filePath }
+    }
+  )
+
+  handle(IPC_CHANNELS.CASES_INSPECT_ARCHIVE, async (): Promise<ArchiveInspectReport | null> => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      title: 'Import Case Archive',
+      filters: [{ name: 'Birdbrain Case Archive', extensions: ['birdbrain'] }],
+      properties: ['openFile']
+    })
+    if (canceled || filePaths.length === 0) return null
+    return inspectCaseArchive(filePaths[0])
+  })
+
+  handle(
+    IPC_CHANNELS.CASES_IMPORT_ARCHIVE,
+    async (event, archivePath: string, overrideTamper: boolean): Promise<{ newCaseId: string }> => {
+      const { newCaseId } = await importCaseArchive(
+        archivePath,
+        { overrideTamper },
+        (step, percent) =>
+          event.sender.send(IPC_CHANNELS.ARCHIVE_PROGRESS, {
+            step,
+            percent
+          } satisfies ArchiveProgressEvent)
+      )
+      return { newCaseId }
+    }
+  )
 
   // Captures
   ipcMain.handle(IPC_CHANNELS.CAPTURES_LIST, (_, caseId: string) => db.listCaptures(caseId))

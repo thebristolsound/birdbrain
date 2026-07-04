@@ -58,7 +58,17 @@ const SELF_TEST_TIMEOUT_MS = 2000
 // Reveal/open is limited to files THIS process authored (export outputs). A
 // renderer — even a compromised one — can't hand shell.openPath an arbitrary
 // binary, because only paths recorded here on a successful export are openable.
+// Bounded with FIFO eviction so the allowlist can't grow for the life of the
+// process; only recent exports stay openable.
+const MAX_REVEALABLE_PATHS = 64
 const revealablePaths = new Set<string>()
+
+function rememberRevealablePath(filePath: string): void {
+  revealablePaths.add(resolve(filePath))
+  if (revealablePaths.size > MAX_REVEALABLE_PATHS) {
+    revealablePaths.delete(revealablePaths.values().next().value as string)
+  }
+}
 
 export function registerIpcHandlers(deps: {
   selectorLifecycle: SelectorLifecycle
@@ -446,7 +456,7 @@ export function registerIpcHandlers(deps: {
           } satisfies ExportProgressEvent)
       )
       // Permit reveal/open for this freshly-written export only.
-      revealablePaths.add(resolve(filePath))
+      rememberRevealablePath(filePath)
       return { canceled: false, filePath }
     }
   )

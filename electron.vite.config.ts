@@ -14,7 +14,18 @@ const strictProdCsp = {
     order: 'post' as const,
     handler(html: string, ctx: { server?: unknown }): string {
       if (ctx.server) return html
-      return html.replace("script-src 'self' 'unsafe-inline'", "script-src 'self'")
+      const out = html.replace("script-src 'self' 'unsafe-inline'", "script-src 'self'")
+      // Fail the build loudly if the CSP string in index.html drifted and left
+      // script-src allowing 'unsafe-inline' — the exact-match replace above
+      // would otherwise no-op silently and ship an unsafe policy.
+      const scriptSrc = out.match(/script-src[^;]*/)?.[0] ?? ''
+      if (scriptSrc.includes("'unsafe-inline'")) {
+        throw new Error(
+          `strict-prod-csp: production script-src still allows 'unsafe-inline' — ` +
+            `update the CSP rewrite to match index.html. Got: ${scriptSrc}`
+        )
+      }
+      return out
     }
   }
 }

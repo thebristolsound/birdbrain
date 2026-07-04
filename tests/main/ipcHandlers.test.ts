@@ -573,6 +573,29 @@ describe('ipcHandlers — export', () => {
     expect(openPath).not.toHaveBeenCalled()
     expect(showItemInFolder).not.toHaveBeenCalled()
   })
+
+  it('bounds the reveal/open allowlist with FIFO eviction (#C12)', async () => {
+    // Export well past the cap; the earliest paths must be evicted while the
+    // most recent stays openable, so the allowlist can't grow unbounded.
+    const paths = Array.from({ length: 70 }, (_, i) => join(userDataPath, `evd-${i}.zip`))
+    for (const p of paths) {
+      showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: p })
+      expectOk(await invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, { format: 'zip' }))
+    }
+
+    writeFileSync(paths[0], '')
+    const evicted = await invoke<{ ok: boolean; error?: string }>(
+      IPC_CHANNELS.SHELL_OPEN_PATH,
+      paths[0]
+    )
+    expect(evicted.ok).toBe(false)
+    expect(evicted.error).toMatch(/not permitted/i)
+
+    writeFileSync(paths[69], '')
+    openPath.mockResolvedValueOnce('')
+    expectOk(await invoke(IPC_CHANNELS.SHELL_OPEN_PATH, paths[69]))
+    expect(openPath).toHaveBeenCalledWith(paths[69])
+  })
 })
 
 describe('ipcHandlers — AI analysis', () => {

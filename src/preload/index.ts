@@ -26,7 +26,10 @@ import type {
   DeepLinkTarget,
   ExportProgressEvent,
   ExportResult,
-  PinArchiveSnapshotParams
+  PinArchiveSnapshotParams,
+  RecaptureEnqueuePayload,
+  EnqueueResult,
+  RecaptureQueueStatus
 } from '@shared/ipc'
 import type {
   Case,
@@ -111,6 +114,12 @@ const birdbrain = {
       ),
     getMhtmlUrl: (captureId: string): Promise<string | null> =>
       unwrapIpc<string | null>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_GET_MHTML_URL, captureId))
+  },
+  recapture: {
+    enqueue: (payload: RecaptureEnqueuePayload): Promise<EnqueueResult> =>
+      unwrapIpc<EnqueueResult>(ipcRenderer.invoke(IPC_CHANNELS.RECAPTURE_ENQUEUE, payload)),
+    queueStatus: (): Promise<RecaptureQueueStatus> =>
+      unwrapIpc<RecaptureQueueStatus>(ipcRenderer.invoke(IPC_CHANNELS.RECAPTURE_QUEUE_STATUS))
   },
   tags: {
     list: (): Promise<Tag[]> => ipcRenderer.invoke(IPC_CHANNELS.TAGS_LIST),
@@ -230,6 +239,10 @@ const birdbrain = {
       unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.SHELL_SHOW_ITEM_IN_FOLDER, path)),
     openPath: (path: string): Promise<string> =>
       unwrapIpc<string>(ipcRenderer.invoke(IPC_CHANNELS.SHELL_OPEN_PATH, path))
+  },
+
+  app: {
+    getVersion: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.APP_GET_VERSION)
   },
 
   db: {

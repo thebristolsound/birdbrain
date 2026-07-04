@@ -55,7 +55,8 @@ export const queryKeys = {
   archivePins: (captureId: string) => ['archive', 'pins', captureId] as const,
   settings: ['settings'] as const,
   identity: ['identity'] as const,
-  openRouterModels: ['openRouterModels'] as const
+  openRouterModels: ['openRouterModels'] as const,
+  appVersion: ['appVersion'] as const
 }
 
 // --- Cases ---
@@ -171,6 +172,20 @@ export function useCapturesMutations(caseId: string) {
   })
 
   return { remove, toggleFavorite }
+}
+
+export function useRecaptureMutations(caseId: string) {
+  const enqueue = useMutation({
+    mutationFn: (params: { urls: string[]; supersedesCaptureId?: string }) =>
+      window.birdbrain.recapture.enqueue({
+        urls: params.urls,
+        caseId,
+        supersedesCaptureId: params.supersedesCaptureId
+      })
+  })
+  // No cache invalidation here: completion arrives via the NEW_CAPTURE event,
+  // which useServerStatus already folds into the captures cache.
+  return { enqueue }
 }
 
 // --- Tags ---
@@ -514,6 +529,14 @@ export function useSettingsMutations() {
 export const identityQueryOptions = queryOptions({
   queryKey: queryKeys.identity,
   queryFn: () => window.birdbrain.settings.getIdentity()
+})
+
+// --- App version ---
+
+export const appVersionQueryOptions = queryOptions({
+  queryKey: queryKeys.appVersion,
+  queryFn: () => window.birdbrain.app.getVersion(),
+  staleTime: Infinity
 })
 
 // --- OpenRouter Models ---

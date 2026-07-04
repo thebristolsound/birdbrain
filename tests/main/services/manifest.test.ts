@@ -618,6 +618,29 @@ describe('withCaptureEntry', () => {
       rmSync(direct, { recursive: true, force: true })
     }
   })
+
+  it('omits method and supersedesCaptureId from the entry body when absent (grandfathering)', async () => {
+    await withCaptureEntry(tempDir, baseCtx, () => undefined)
+    const lines = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim().split('\n')
+    const entry = JSON.parse(lines[0])
+    expect('method' in entry).toBe(false)
+    expect('supersedesCaptureId' in entry).toBe(false)
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
+  })
+
+  it('anchors method and supersedesCaptureId in the entry body when present', async () => {
+    await withCaptureEntry(
+      tempDir,
+      { ...baseCtx, captureId: 'cap-2', method: 'background', supersedesCaptureId: 'cap-1' },
+      () => undefined
+    )
+    const lines = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim().split('\n')
+    const entry = JSON.parse(lines[0])
+    expect(entry.method).toBe('background')
+    expect(entry.supersedesCaptureId).toBe('cap-1')
+    expect(ManifestEntrySchema.safeParse(entry).success).toBe(true)
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
+  })
 })
 
 describe('manifest schema v2 + grandfathering', () => {

@@ -14,7 +14,7 @@ import { MANIFEST_FILENAME, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import { canonicalStringify, verifyManifestChainText } from '@shared/verify'
 import type { ChainVerifyResult } from '@shared/verify'
 import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
-import type { TrustedTime } from '@shared/types'
+import type { TrustedTime, CaptureMethod } from '@shared/types'
 import type { TlsCertChainResult } from '@main/services/tlsCertChain'
 
 export type { TrustedTime }
@@ -72,6 +72,10 @@ export type ManifestEntryInput =
       // bound to the captured transaction. OMITTED when not re-fetched so legacy /
       // cert-less entries' canonical bodies — and chain hashes — are unchanged.
       tls?: TlsCertChainResult
+      // Recapture provenance (#recapture); omitted from the manifest body when
+      // absent to preserve legacy canonical bodies.
+      method?: CaptureMethod
+      supersedesCaptureId?: string
       sizeBytes: number
       operatorId: string
       operatorName: string
@@ -253,6 +257,10 @@ export interface CaptureEntryContext {
   // Corroboration-only TLS cert chain (#123); omitted from the manifest body
   // when absent to preserve legacy canonical bodies.
   tls?: TlsCertChainResult
+  // Recapture provenance (#recapture); omitted from the manifest body when
+  // absent to preserve legacy canonical bodies.
+  method?: CaptureMethod
+  supersedesCaptureId?: string
   sizeBytes: number
   operatorId: string
   operatorName: string
@@ -281,6 +289,10 @@ export async function withCaptureEntry<T>(
       ...(ctx.textHash !== undefined ? { textHash: ctx.textHash } : {}),
       ...(ctx.headers !== undefined ? { headers: ctx.headers } : {}),
       ...(ctx.tls !== undefined ? { tls: ctx.tls } : {}),
+      ...(ctx.method !== undefined ? { method: ctx.method } : {}),
+      ...(ctx.supersedesCaptureId !== undefined
+        ? { supersedesCaptureId: ctx.supersedesCaptureId }
+        : {}),
       sizeBytes: ctx.sizeBytes,
       operatorId: ctx.operatorId,
       operatorName: ctx.operatorName,

@@ -202,6 +202,8 @@ const ManifestCaptureEntrySchema = z
     textHash: z.string().optional(),
     headers: z.record(z.string(), z.string()).optional(),
     tls: TlsCertChainResultSchema.optional(),
+    method: z.enum(['extension', 'background']).optional(),
+    supersedesCaptureId: z.string().optional(),
     sizeBytes: z.number(),
     operatorId: z.string(),
     operatorName: z.string(),

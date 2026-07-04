@@ -359,15 +359,18 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.CAPTURES_VERIFY, (_, captureId: string) => captureLifecycle.verify(captureId))
 
   // Recapture
-  handle(IPC_CHANNELS.RECAPTURE_ENQUEUE, (_, payload: RecaptureEnqueuePayload) =>
-    recaptureService.enqueue(
+  handle(IPC_CHANNELS.RECAPTURE_ENQUEUE, (_, payload: RecaptureEnqueuePayload) => {
+    if (!payload || !Array.isArray(payload.urls) || typeof payload.caseId !== 'string') {
+      throw new IpcFailure('Invalid recapture payload', 'INVALID_RECAPTURE_PAYLOAD')
+    }
+    return recaptureService.enqueue(
       payload.urls.map((url) => ({
         url,
         caseId: payload.caseId,
         supersedesCaptureId: payload.supersedesCaptureId
       }))
     )
-  )
+  })
 
   handle(IPC_CHANNELS.RECAPTURE_QUEUE_STATUS, () => recaptureService.status())
 

@@ -14,7 +14,8 @@ const capture = {
   hash: 'h',
   timestamp: '2020-01-15T12:00:00.000Z',
   createdAt: '2020-01-15T12:00:01.000Z',
-  format: 'mhtml'
+  format: 'mhtml',
+  method: 'extension'
 } as Capture
 
 interface BirdbrainStub {

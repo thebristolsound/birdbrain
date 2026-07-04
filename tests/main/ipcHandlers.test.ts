@@ -820,6 +820,18 @@ describe('ipcHandlers — recapture', () => {
     ])
   })
 
+  it('recapture:enqueue rejects malformed payloads without reaching the service', async () => {
+    for (const payload of [undefined, {}, { caseId: 'case-1' }, { urls: 'not-an-array' }]) {
+      const res = (await invoke(IPC_CHANNELS.RECAPTURE_ENQUEUE, payload)) as {
+        ok: boolean
+        code?: string
+      }
+      expect(res.ok).toBe(false)
+      expect(res.code).toBe('INVALID_RECAPTURE_PAYLOAD')
+    }
+    expect(recaptureService.enqueue).not.toHaveBeenCalled()
+  })
+
   it('recapture:queueStatus reads the service status', async () => {
     const status = expectOk(await invoke(IPC_CHANNELS.RECAPTURE_QUEUE_STATUS))
     expect(status).toEqual({ pending: 0, activeUrl: null })

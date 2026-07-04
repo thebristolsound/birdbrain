@@ -1,5 +1,5 @@
 import { BrowserWindow, app } from 'electron'
-import type { WebContents, Debugger as ElectronDebugger } from 'electron'
+import type { WebContents, Session } from 'electron'
 import { createReadStream } from 'fs'
 import { unlink } from 'fs/promises'
 import { join } from 'path'
@@ -15,8 +15,9 @@ const SCROLL_STALL_THRESHOLD = 3
 const MAX_SCROLL_PHASE_MS = 75_000
 const FINAL_SETTLE_MS = 500
 const FINAL_ARTIFACT_RESERVE_MS = 10_000
-
-type CaptureDebugger = ElectronDebugger
+// Chromium's max texture dimension; captures beyond it fail or OOM.
+const MAX_CAPTURE_DIMENSION_PX = 16_384
+const MAX_CAPTURE_PIXELS = 32_000_000
 
 interface NetworkIdleTracker {
   waitForIdle: (idleMs: number, maxWaitMs: number) => Promise<void>
@@ -31,33 +32,31 @@ function clampPhaseMs(remainingMs: number, maxMs: number): number {
   return Math.max(0, Math.min(remainingMs, maxMs))
 }
 
-function createNetworkIdleTracker(debuggerInstance: CaptureDebugger): NetworkIdleTracker {
-  const pending = new Set<string>()
+// Tracks in-flight requests via Electron's session webRequest API rather than the
+// CDP Network domain. Enabling CDP event domains (Page/Network.enable) from
+// webContents.debugger evicts any other CDP client attached to the same target —
+// which breaks Playwright's own debugger session in E2E (and is fragile in general).
+// webRequest carries the same request start/finish signal with no such conflict.
+function createNetworkIdleTracker(session: Session): NetworkIdleTracker {
+  const pending = new Set<number>()
   let lastActivityAt = Date.now()
 
   const markActivity = () => {
     lastActivityAt = Date.now()
   }
 
-  const onMessage = (_event: Electron.Event, method: string, params: Record<string, unknown>) => {
-    const requestId = typeof params.requestId === 'string' ? params.requestId : null
+  session.webRequest.onBeforeRequest((details, callback) => {
+    pending.add(details.id)
+    markActivity()
+    callback({})
+  })
 
-    if (method === 'Network.requestWillBeSent' && requestId) {
-      pending.add(requestId)
-      markActivity()
-      return
-    }
-
-    if ((method === 'Network.loadingFinished' || method === 'Network.loadingFailed') && requestId) {
-      pending.delete(requestId)
-      markActivity()
-      return
-    }
-
-    if (method === 'Page.lifecycleEvent') markActivity()
+  const settle = (details: { id: number }): void => {
+    pending.delete(details.id)
+    markActivity()
   }
-
-  debuggerInstance.on('message', onMessage)
+  session.webRequest.onCompleted((details) => settle(details))
+  session.webRequest.onErrorOccurred((details) => settle(details))
 
   return {
     waitForIdle(idleMs, maxWaitMs) {
@@ -82,7 +81,9 @@ function createNetworkIdleTracker(debuggerInstance: CaptureDebugger): NetworkIdl
       })
     },
     dispose() {
-      debuggerInstance.off('message', onMessage)
+      session.webRequest.onBeforeRequest(null)
+      session.webRequest.onCompleted(null)
+      session.webRequest.onErrorOccurred(null)
     }
   }
 }
@@ -165,15 +166,28 @@ async function captureFullPageScreenshot(wc: WebContents): Promise<Buffer> {
   }
 
   const contentSize = metrics.cssContentSize ?? metrics.contentSize
-  const clip = contentSize
-    ? {
-        x: Math.max(0, contentSize.x || 0),
-        y: Math.max(0, contentSize.y || 0),
-        width: Math.max(1, Math.ceil(contentSize.width)),
-        height: Math.max(1, Math.ceil(contentSize.height)),
-        scale: 1
-      }
-    : undefined
+  let clip: { x: number; y: number; width: number; height: number; scale: number } | undefined
+  if (contentSize) {
+    // getLayoutMetrics can omit dimensions on some pages; coalesce so a missing
+    // field yields a valid 1px clip rather than NaN (which fails captureScreenshot).
+    const width = Math.max(1, Math.ceil(contentSize.width ?? 0))
+    const height = Math.max(1, Math.ceil(contentSize.height ?? 0))
+    // Downscale so no output side exceeds the texture ceiling and the total
+    // bitmap stays bounded — scroll discovery can grow pages without limit.
+    const scale = Math.min(
+      1,
+      MAX_CAPTURE_DIMENSION_PX / width,
+      MAX_CAPTURE_DIMENSION_PX / height,
+      Math.sqrt(MAX_CAPTURE_PIXELS / (width * height))
+    )
+    clip = {
+      x: Math.max(0, contentSize.x || 0),
+      y: Math.max(0, contentSize.y || 0),
+      width,
+      height,
+      scale
+    }
+  }
 
   const { data } = (await wc.debugger.sendCommand('Page.captureScreenshot', {
     format: 'png',
@@ -229,14 +243,13 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
       httpStatus = httpResponseCode
     })
 
+    // The debugger is attached for the whole render but no CDP event domains are
+    // enabled — only the one-shot getLayoutMetrics/captureScreenshot commands use
+    // it. Network-idle is tracked out-of-band via the session's webRequest API.
     wc.debugger.attach('1.3')
-    const networkTracker = createNetworkIdleTracker(wc.debugger)
+    const networkTracker = createNetworkIdleTracker(wc.session)
 
     try {
-      await wc.debugger.sendCommand('Page.enable')
-      await wc.debugger.sendCommand('Network.enable')
-      await wc.debugger.sendCommand('Page.setLifecycleEventsEnabled', { enabled: true })
-
       await wc.loadURL(url)
       await waitForDocumentComplete(wc, remainingMs(FINAL_ARTIFACT_RESERVE_MS))
       await networkTracker.waitForIdle(

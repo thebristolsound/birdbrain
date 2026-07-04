@@ -375,3 +375,15 @@ export interface ArchiveVerificationResult {
   captureCount: number
   captureHashFailureCount: number
 }
+
+// Summary counts surfaced in a .birdbrain archive's package.json header, so a
+// reviewer can sanity-check archive contents without parsing data.json.
+export interface CaseArchiveCounts {
+  captures: number
+  notes: number
+  tags: number
+  selectors: number
+  annotations: number
+  extractedData: number
+  archiveRefs: number
+}

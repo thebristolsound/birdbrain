@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { motion } from 'motion/react'
 import { ShieldCheck, ShieldAlert } from 'lucide-react'
@@ -6,6 +6,7 @@ import type { ArchiveInspectReport } from '@shared/types'
 import { presets } from '@renderer/lib/motion'
 import { useCasesMutations } from '@renderer/lib/queries'
 import { Button } from '@renderer/components/ui'
+import { ExportProgress } from '@renderer/components/export/ExportProgress'
 
 interface ImportCaseDialogProps {
   report: ArchiveInspectReport
@@ -15,14 +16,24 @@ interface ImportCaseDialogProps {
 export function ImportCaseDialog({ report, onClose }: ImportCaseDialogProps) {
   const [overrideTamper, setOverrideTamper] = useState(false)
   const [importError, setImportError] = useState('')
+  const [importProgress, setImportProgress] = useState({ step: 'Preparing import…', percent: 0 })
   const { importArchive } = useCasesMutations()
   const navigate = useNavigate()
 
   const { verification } = report
   const canImport = verification.overallValid || overrideTamper
 
+  useEffect(() => {
+    if (!importArchive.isPending) return
+    const unsubscribe = window.birdbrain.onArchiveProgress((event) => {
+      if (!event.caseId) setImportProgress({ step: event.step, percent: event.percent })
+    })
+    return unsubscribe
+  }, [importArchive.isPending])
+
   const handleImport = async () => {
     setImportError('')
+    setImportProgress({ step: 'Preparing import…', percent: 0 })
     try {
       const { newCaseId } = await importArchive.mutateAsync({
         archivePath: report.archivePath,
@@ -67,6 +78,7 @@ export function ImportCaseDialog({ report, onClose }: ImportCaseDialogProps) {
           <CountCell label="Selectors" value={report.counts.selectors} />
           <CountCell label="Annotations" value={report.counts.annotations} />
           <CountCell label="Extracted data" value={report.counts.extractedData} />
+          <CountCell label="Archive refs" value={report.counts.archiveRefs} />
         </div>
 
         {verification.overallValid ? (
@@ -112,6 +124,10 @@ export function ImportCaseDialog({ report, onClose }: ImportCaseDialogProps) {
               </span>
             </label>
           </div>
+        )}
+
+        {importArchive.isPending && (
+          <ExportProgress step={importProgress.step} percent={importProgress.percent} />
         )}
 
         {importError && (

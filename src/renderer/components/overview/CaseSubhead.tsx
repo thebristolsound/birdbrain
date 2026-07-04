@@ -34,6 +34,9 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
   const { update, exportArchive } = useCasesMutations()
   const [archiveResult, setArchiveResult] = useState<{ filePath: string } | null>(null)
   const [archiveError, setArchiveError] = useState('')
+  const [archiveProgress, setArchiveProgress] = useState<{ step: string; percent: number } | null>(
+    null
+  )
 
   const [editingName, setEditingName] = useState(false)
   const [nameValue, setNameValue] = useState('')
@@ -60,6 +63,15 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
       descInputRef.current.focus()
     }
   }, [editingDesc])
+
+  useEffect(() => {
+    const unsubscribe = window.birdbrain.onArchiveProgress((event) => {
+      if (event.caseId === caseData.id) {
+        setArchiveProgress({ step: event.step, percent: event.percent })
+      }
+    })
+    return unsubscribe
+  }, [caseData.id])
 
   async function saveName() {
     const trimmed = nameValue.trim()
@@ -95,6 +107,7 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
   async function handleExportArchive() {
     setArchiveError('')
     setArchiveResult(null)
+    setArchiveProgress({ step: 'Preparing archive…', percent: 0 })
     try {
       const result = await exportArchive.mutateAsync(caseData.id)
       if (!result.canceled && result.filePath) {
@@ -102,6 +115,8 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
       }
     } catch (err) {
       setArchiveError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setArchiveProgress(null)
     }
   }
 
@@ -202,7 +217,9 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
             ) : (
               <Archive size={12} strokeWidth={1.8} />
             )}
-            Export case archive
+            {exportArchive.isPending && archiveProgress
+              ? `${archiveProgress.step} — ${Math.round(archiveProgress.percent)}%`
+              : 'Export case archive'}
           </Button>
         </div>
         <span className="font-mono text-[10.5px] text-text-faint">

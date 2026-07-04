@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react'
 import type { ArchiveInspectReport } from '@shared/types'
+import type { ArchiveProgressEvent } from '@shared/ipc'
 
 const navigateSpy = vi.fn()
 const importMutateSpy = vi.fn()
+let importIsPending = false
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => navigateSpy
@@ -12,7 +14,7 @@ vi.mock('@tanstack/react-router', () => ({
 
 vi.mock('@renderer/lib/queries', () => ({
   useCasesMutations: () => ({
-    importArchive: { mutateAsync: importMutateSpy, isPending: false }
+    importArchive: { mutateAsync: importMutateSpy, get isPending() { return importIsPending } }
   })
 }))
 
@@ -86,11 +88,33 @@ function makeReport(overrides: Partial<ArchiveInspectReport> = {}): ArchiveInspe
   }
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
 describe('ImportCaseDialog', () => {
+  let onArchiveProgress: ReturnType<typeof vi.fn>
+  let progressCb: ((event: ArchiveProgressEvent) => void) | null
+
   beforeEach(() => {
     navigateSpy.mockClear()
     importMutateSpy.mockReset()
     importMutateSpy.mockResolvedValue({ newCaseId: 'case-new-1' })
+    importIsPending = false
+    progressCb = null
+    onArchiveProgress = vi.fn((cb: (event: ArchiveProgressEvent) => void) => {
+      progressCb = cb
+      return vi.fn()
+    })
+    ;(window as unknown as { birdbrain: { onArchiveProgress: typeof onArchiveProgress } }).birdbrain = {
+      onArchiveProgress
+    }
   })
 
   afterEach(() => {
@@ -103,6 +127,60 @@ describe('ImportCaseDialog', () => {
     expect(screen.getByText('Op Nightshade')).toBeDefined()
     expect(screen.getByText('42')).toBeDefined()
     expect(screen.getByText('Captures')).toBeDefined()
+  })
+
+  it('shows the archive refs count', () => {
+    render(<ImportCaseDialog report={makeReport({ counts: { ...makeReport().counts, archiveRefs: 4 } })} onClose={vi.fn()} />)
+
+    expect(screen.getByText('Archive refs')).toBeDefined()
+    expect(screen.getByText('4')).toBeDefined()
+  })
+
+  it('renders the live step and percent from archive progress events during import', async () => {
+    const gate = deferred<{ newCaseId: string }>()
+    importMutateSpy.mockImplementation(() => {
+      importIsPending = true
+      return gate.promise
+    })
+    const { rerender } = render(<ImportCaseDialog report={makeReport()} onClose={vi.fn()} />)
+
+    fireEvent.click(screen.getByText('Import case'))
+    rerender(<ImportCaseDialog report={makeReport()} onClose={vi.fn()} />)
+
+    await waitFor(() => expect(onArchiveProgress).toHaveBeenCalled())
+
+    act(() => {
+      progressCb?.({ step: 'Writing captures...', percent: 45 })
+    })
+
+    expect(await screen.findByText('Writing captures...')).toBeDefined()
+    expect(screen.getByText('45%')).toBeDefined()
+
+    importIsPending = false
+    gate.resolve({ newCaseId: 'case-new-1' })
+  })
+
+  it('ignores progress events that carry a caseId (those belong to export)', async () => {
+    const gate = deferred<{ newCaseId: string }>()
+    importMutateSpy.mockImplementation(() => {
+      importIsPending = true
+      return gate.promise
+    })
+    const { rerender } = render(<ImportCaseDialog report={makeReport()} onClose={vi.fn()} />)
+
+    fireEvent.click(screen.getByText('Import case'))
+    rerender(<ImportCaseDialog report={makeReport()} onClose={vi.fn()} />)
+
+    await waitFor(() => expect(onArchiveProgress).toHaveBeenCalled())
+
+    act(() => {
+      progressCb?.({ caseId: 'some-case', step: 'Should not show', percent: 99 })
+    })
+
+    expect(screen.queryByText('Should not show')).toBeNull()
+
+    importIsPending = false
+    gate.resolve({ newCaseId: 'case-new-1' })
   })
 
   it('shows a green banner when the archive is verified', () => {

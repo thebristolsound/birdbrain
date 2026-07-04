@@ -232,6 +232,10 @@ const birdbrain = {
       unwrapIpc<string>(ipcRenderer.invoke(IPC_CHANNELS.SHELL_OPEN_PATH, path))
   },
 
+  app: {
+    getVersion: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.APP_GET_VERSION)
+  },
+
   db: {
     stats: (): Promise<DbStats> => unwrapIpc<DbStats>(ipcRenderer.invoke(IPC_CHANNELS.DB_STATS)),
     tableRows: (params: DbTableRowsParams): Promise<DbTableRowsResult> =>

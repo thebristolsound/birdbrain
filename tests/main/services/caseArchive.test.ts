@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync } from 'fs'
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { createHash } from 'crypto'
@@ -12,7 +12,13 @@ import {
   addTagToCapture,
   createSelector,
   toggleFavorite,
-  createNote
+  createNote,
+  listCaptures,
+  listNotes,
+  listSelectors,
+  listTags,
+  getTagsForCapture,
+  searchCaptures
 } from '../../../src/main/services/database'
 import { initStorage, ensureCaseDir, getCapturePath } from '../../../src/main/services/storage'
 import {
@@ -27,7 +33,12 @@ import { initInstallationId, resetInstallationId } from '@main/services/installa
 import { initSigningKey, resetSigningKey } from '@main/services/signingKey'
 import { readStoredZip } from '../../../src/main/services/zipRead'
 import { createStoredZip } from '../../../src/main/services/zip'
-import { exportCaseArchive, inspectCaseArchive } from '../../../src/main/services/caseArchive'
+import {
+  exportCaseArchive,
+  inspectCaseArchive,
+  importCaseArchive
+} from '../../../src/main/services/caseArchive'
+import { canonicalStringify } from '@shared/verify'
 
 // Reads the archive, mutates one entry's bytes, and rewrites the zip WITHOUT
 // touching package.json — this is what makes it tampered: the recorded
@@ -53,6 +64,38 @@ function rewritePackageJson(
   const header = JSON.parse(entries.get('package.json')!.toString('utf-8'))
   const mutated = mutate(header)
   entries.set('package.json', Buffer.from(JSON.stringify(mutated, null, 2)))
+  const rebuilt = [...entries.entries()].map(([name, data]) => ({ name, data }))
+  writeFileSync(archivePath, createStoredZip(rebuilt))
+}
+
+// Rewrites data.json's parsed content via `mutate`, then repairs the header so
+// verification still passes: updates data.json's artifact hash/size and
+// re-derives packageHash. Used to force an import DB failure WITHOUT tripping
+// tamper detection — the point of the "cleanup on failure" test.
+function rewriteDataJson(
+  archivePath: string,
+  mutate: (data: Record<string, unknown>) => Record<string, unknown>
+): void {
+  const entries = readStoredZip(readFileSync(archivePath))
+  const data = JSON.parse(entries.get('data.json')!.toString('utf-8'))
+  const mutatedBuf = Buffer.from(JSON.stringify(mutate(data), null, 2))
+  entries.set('data.json', mutatedBuf)
+
+  const header = JSON.parse(entries.get('package.json')!.toString('utf-8'))
+  const newHash = createHash('sha256').update(mutatedBuf).digest('hex')
+  header.artifacts = header.artifacts.map((a: { path: string }) =>
+    a.path === 'data.json'
+      ? { path: 'data.json', sha256: newHash, sizeBytes: mutatedBuf.length }
+      : a
+  )
+  const sorted = [...header.artifacts].sort((a: { path: string }, b: { path: string }) =>
+    a.path < b.path ? -1 : a.path > b.path ? 1 : 0
+  )
+  header.packageHash = createHash('sha256')
+    .update(Buffer.from(canonicalStringify(sorted), 'utf-8'))
+    .digest('hex')
+  entries.set('package.json', Buffer.from(JSON.stringify(header, null, 2)))
+
   const rebuilt = [...entries.entries()].map(([name, data]) => ({ name, data }))
   writeFileSync(archivePath, createStoredZip(rebuilt))
 }
@@ -423,5 +466,218 @@ describe('caseArchive inspect', () => {
     const report = inspectCaseArchive(archivePath)
     expect(report.verification.overallValid).toBe(false)
     expect(report.verification.artifactFailureCount).toBeGreaterThan(0)
+  })
+})
+
+describe('caseArchive import', () => {
+  let tempDir: string
+  let caseId: string
+  let mhtmlCaptureId: string
+  let legacyCaptureId: string
+  let archivePath: string
+  let originalCaptureIds: string[]
+  let originalHashes: string[]
+  const taggedCaptureUrl = 'https://example.com/mhtml'
+  // Single FTS5 token (no hyphens — those parse as column filters in MATCH).
+  const distinctiveText = 'distinctivetextfromtxtsidecar'
+
+  beforeEach(async () => {
+    tempDir = mkdtempSync(join(tmpdir(), 'bb-case-archive-import-'))
+    initStorage(join(tempDir, 'captures'))
+    initDatabase(':memory:')
+    resetInstallationId()
+    initInstallationId(tempDir)
+    resetSigningKey()
+    initSigningKey(tempDir)
+    initSettings(tempDir)
+    updateSettings({ operatorName: 'Test Operator', operatorRole: '', operatorOrganization: '' })
+
+    const c = createCase({ name: 'Import Source Case', description: 'Source for import' })
+    caseId = c.id
+    ensureCaseDir(caseId)
+    const caseDir = join(getStorageRoot(), caseId)
+    initManifest(caseDir)
+
+    // Capture 1: mhtml + png + txt (with distinctive text), manifest-backed.
+    mhtmlCaptureId = 'capture-mhtml-1'
+    const mhtmlBuf = Buffer.from('<html>mhtml content</html>')
+    const pngBuf = Buffer.from('fake-png-bytes')
+    const txtBuf = Buffer.from(distinctiveText)
+    writeFileSync(getCapturePath(caseId, mhtmlCaptureId, 'mhtml'), mhtmlBuf)
+    writeFileSync(getCapturePath(caseId, mhtmlCaptureId, 'png'), pngBuf)
+    writeFileSync(getCapturePath(caseId, mhtmlCaptureId, 'txt'), txtBuf)
+    const contentHash = createHash('sha256').update(mhtmlBuf).digest('hex')
+    const { entryHash } = appendManifestEntry(caseDir, {
+      type: 'capture',
+      captureId: mhtmlCaptureId,
+      caseId,
+      url: taggedCaptureUrl,
+      timestamp: '2026-04-05T12:00:00.000Z',
+      contentHash,
+      sizeBytes: mhtmlBuf.length,
+      operatorId: 'op-1',
+      operatorName: 'Test Operator',
+      toolVersion: '0.1.0'
+    })
+    insertCapture({
+      id: mhtmlCaptureId,
+      caseId,
+      url: taggedCaptureUrl,
+      title: 'MHTML Capture',
+      hash: contentHash,
+      timestamp: '2026-04-05T12:00:00.000Z',
+      format: 'mhtml',
+      mhtmlPath: `${mhtmlCaptureId}.mhtml`,
+      sizeBytes: mhtmlBuf.length,
+      manifestIndex: 0,
+      entryHash,
+      operatorId: 'op-1',
+      operatorName: 'Test Operator'
+    })
+
+    // Capture 2: legacy html-only capture, no manifest entry.
+    legacyCaptureId = 'capture-legacy-1'
+    const legacyBuf = Buffer.from('<html>legacy content</html>')
+    const legacyHash = createHash('sha256').update(legacyBuf).digest('hex')
+    writeFileSync(getCapturePath(caseId, legacyCaptureId, 'html'), legacyBuf)
+    insertCapture({
+      id: legacyCaptureId,
+      caseId,
+      url: 'https://legacy.example.com',
+      title: 'Legacy Capture',
+      hash: legacyHash,
+      timestamp: '2026-04-04T12:00:00.000Z'
+    })
+
+    originalCaptureIds = [mhtmlCaptureId, legacyCaptureId]
+    originalHashes = [contentHash, legacyHash]
+
+    createNote({ caseId, captureId: mhtmlCaptureId, title: 'Note 1', body: 'Body text' })
+
+    const tag = createTag({ name: 'Evidence', color: '#00ff00' })
+    addTagToCapture({ captureId: mhtmlCaptureId, tagId: tag.id })
+
+    createSelector({ caseId, pattern: 'foo', isRegex: false, label: 'Foo selector' })
+
+    toggleFavorite(mhtmlCaptureId)
+
+    const now = new Date().toISOString()
+    getDb()
+      .prepare(
+        `INSERT INTO annotations (capture_id, schema_version, shapes_json, image_width, image_height, updated_at, updated_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(mhtmlCaptureId, 1, '[]', 100, 100, now, null)
+    getDb()
+      .prepare(
+        `INSERT INTO annotation_pins (id, capture_id, number, body, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      )
+      .run('pin-1', mhtmlCaptureId, 1, 'Pin body', now, now)
+
+    archivePath = join(tempDir, 'case.birdbrain')
+    await exportCaseArchive(caseId, archivePath)
+  })
+
+  afterEach(() => {
+    closeDatabase()
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  it('round-trips a case: every table, files, and a verifying chain', async () => {
+    const { newCaseId } = await importCaseArchive(archivePath)
+    expect(newCaseId).not.toBe(caseId)
+
+    const imported = listCaptures(newCaseId)
+    expect(imported).toHaveLength(2)
+    expect(imported.map((c) => c.hash).sort()).toEqual([...originalHashes].sort())
+    expect(listNotes(newCaseId)).toHaveLength(1)
+    expect(listSelectors(newCaseId)).toHaveLength(1)
+
+    // files landed under the new case dir, named by each capture's (possibly
+    // remapped) id — the source case is still present here so ids collide.
+    const importedMhtml = imported.find((c) => c.url === taggedCaptureUrl)!
+    expect(existsSync(join(getStorageRoot(), newCaseId, `${importedMhtml.id}.mhtml`))).toBe(true)
+
+    // chain: source entries + import entry all verify (single instance: same key)
+    const chain = verifyManifestChain(join(getStorageRoot(), newCaseId))
+    expect(chain.valid).toBe(true)
+    const lines = readFileSync(join(getStorageRoot(), newCaseId, 'manifest.jsonl'), 'utf-8')
+      .trim()
+      .split('\n')
+    const last = JSON.parse(lines.at(-1)!)
+    expect(last.type).toBe('import')
+    expect(last.caseId).toBe(newCaseId)
+
+    // FTS works for imported content (from the staged .txt sidecar)
+    expect(searchCaptures(distinctiveText).length).toBeGreaterThan(0)
+  })
+
+  it('keeps original ids when free (source rows absent)', async () => {
+    // Simulate importing into a clean instance: drop the source case so ids are free.
+    getDb().prepare('DELETE FROM captures_fts').run()
+    getDb().prepare('DELETE FROM cases WHERE id = ?').run(caseId)
+
+    const { newCaseId } = await importCaseArchive(archivePath)
+    const imported = listCaptures(newCaseId)
+    expect(imported.map((c) => c.id).sort()).toEqual([...originalCaptureIds].sort())
+    // tag still attached to the mhtml capture
+    expect(getTagsForCapture(mhtmlCaptureId)).toHaveLength(1)
+  })
+
+  it('re-import remaps colliding capture ids consistently and records the map', async () => {
+    const first = await importCaseArchive(archivePath)
+    const second = await importCaseArchive(archivePath)
+    const captures2 = listCaptures(second.newCaseId)
+    expect(captures2).toHaveLength(2)
+    // ids differ from the originals now (source case rows already occupy them)
+    expect(captures2.map((c) => c.id).sort()).not.toEqual([...originalCaptureIds].sort())
+    // FKs intact: tag still attached to the remapped capture
+    const remappedTagged = captures2.find((c) => c.url === taggedCaptureUrl)!
+    expect(getTagsForCapture(remappedTagged.id)).toHaveLength(1)
+    // id map file written
+    const mapPath = join(getStorageRoot(), second.newCaseId, 'import-id-map.json')
+    expect(existsSync(mapPath)).toBe(true)
+    // and files are named by the NEW ids
+    expect(existsSync(join(getStorageRoot(), second.newCaseId, `${remappedTagged.id}.mhtml`))).toBe(
+      true
+    )
+    void first
+  })
+
+  it('merges tags by name instead of duplicating', async () => {
+    // 'Evidence' already exists locally (created in the source fixture).
+    const { newCaseId } = await importCaseArchive(archivePath)
+    const all = listTags().filter((t) => t.name.toLowerCase() === 'evidence')
+    expect(all).toHaveLength(1)
+    void newCaseId
+  })
+
+  it('blocks tampered archives unless overridden, and records the override', async () => {
+    tamperZipEntry(archivePath, `files/${mhtmlCaptureId}.mhtml`)
+    await expect(importCaseArchive(archivePath)).rejects.toThrow(/failed verification/i)
+    const { newCaseId } = await importCaseArchive(archivePath, { overrideTamper: true })
+    const lines = readFileSync(join(getStorageRoot(), newCaseId, 'manifest.jsonl'), 'utf-8')
+      .trim()
+      .split('\n')
+    const last = JSON.parse(lines.at(-1)!)
+    expect(last.type).toBe('import')
+    expect(last.verificationResult.overallValid).toBe(false)
+  })
+
+  it('requires an operator name', async () => {
+    updateSettings({ operatorName: '' })
+    await expect(importCaseArchive(archivePath)).rejects.toThrow(/operator name/i)
+  })
+
+  it('cleans up staging on failure', async () => {
+    // Force a mid-import failure: null out the case row's NOT NULL name column.
+    rewriteDataJson(archivePath, (d) => ({
+      ...d,
+      case: { ...(d.case as Record<string, unknown>), name: null }
+    }))
+    await expect(importCaseArchive(archivePath)).rejects.toThrow()
+    const leftovers = readdirSync(getStorageRoot()).filter((n) => n.startsWith('.import-staging-'))
+    expect(leftovers).toHaveLength(0)
   })
 })

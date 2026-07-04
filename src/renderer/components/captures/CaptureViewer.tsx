@@ -64,7 +64,11 @@ export function CaptureViewer() {
   const { enqueue } = useRecaptureMutations(caseId)
 
   const [activeTab, setActiveTab] = useState<ViewTab>('screenshot')
+  const [recaptureError, setRecaptureError] = useState<string | null>(null)
   const capture = captures.find((item) => item.id === selectedCaptureId) ?? null
+
+  // A recapture failure is only meaningful for the capture it was fired from.
+  useEffect(() => setRecaptureError(null), [selectedCaptureId])
 
   // Determine content type based on active tab and capture format
   const contentType =
@@ -178,10 +182,28 @@ export function CaptureViewer() {
           title="Recapture this page in the background"
           data-testid="recapture-btn"
           disabled={enqueue.isPending}
-          onClick={() => enqueue.mutate({ urls: [capture.url], supersedesCaptureId: capture.id })}
+          onClick={() =>
+            enqueue.mutate(
+              { urls: [capture.url], supersedesCaptureId: capture.id },
+              {
+                onSuccess: (result) => setRecaptureError(result.rejected[0]?.reason ?? null),
+                onError: (err) =>
+                  setRecaptureError(err instanceof Error ? err.message : 'Recapture failed')
+              }
+            )
+          }
         >
           <RefreshCcw className="h-3.5 w-3.5" />
         </Button>
+        {recaptureError && (
+          <span
+            data-testid="recapture-error"
+            title={recaptureError}
+            className="shrink-0 text-[11px] text-red-500"
+          >
+            Recapture failed
+          </span>
+        )}
         <Shield
           data-testid="capture-viewer-breadcrumb-provenance"
           className={`h-3.5 w-3.5 ${getProvenanceColor(capture.lastVerifiedStatus).text}`}

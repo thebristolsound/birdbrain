@@ -272,6 +272,21 @@ describe('createCaptureLifecycle.ingest', () => {
     expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
   })
 
+  it('records background method and supersedes link end-to-end', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const original = await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('original')))
+    const params = buildIngestParams(caseId, Buffer.from('recaptured'), {
+      method: 'background',
+      supersedesCaptureId: original.capture.id,
+      extensionVersion: undefined
+    })
+    const result = await lifecycle.ingest(params)
+    expect(result.capture.method).toBe('background')
+    expect(result.capture.supersedesCaptureId).toBe(original.capture.id)
+    expect(result.capture.extensionVersion).toBeUndefined()
+    expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+  })
+
   it('enqueues the ingested capture for trusted timestamping', async () => {
     const enqueueTimestamp = vi.fn()
     const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub, enqueueTimestamp })

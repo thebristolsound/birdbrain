@@ -352,6 +352,7 @@ describe('caseArchive inspect', () => {
     const report = inspectCaseArchive(archivePath)
     expect(report.verification.overallValid).toBe(false)
     expect(report.verification.artifactFailureCount).toBeGreaterThan(0)
+    expect(report.verification.captureHashFailureCount).toBeGreaterThan(0)
   })
 
   it('detects a tampered manifest', () => {
@@ -371,5 +372,56 @@ describe('caseArchive inspect', () => {
     inspectCaseArchive(archivePath)
     const after = readFileSync(archivePath)
     expect(after.equals(before)).toBe(true)
+  })
+
+  it('throws a clean error when package.json is corrupted JSON', () => {
+    const entries = readStoredZip(readFileSync(archivePath))
+    entries.set('package.json', Buffer.from('{ not valid json'))
+    const rebuilt = [...entries.entries()].map(([name, data]) => ({ name, data }))
+    writeFileSync(archivePath, createStoredZip(rebuilt))
+
+    expect(() => inspectCaseArchive(archivePath)).toThrow(/Not a valid Birdbrain archive/)
+  })
+
+  it('throws a clean error when data.json is missing', () => {
+    const entries = readStoredZip(readFileSync(archivePath))
+    entries.delete('data.json')
+    // remove data.json's declared artifact entry too so this isn't conflated
+    // with the "extraneous/missing artifact" check — we want to isolate the
+    // "data.json itself is absent" path.
+    const header = JSON.parse(entries.get('package.json')!.toString('utf-8'))
+    header.artifacts = header.artifacts.filter((a: { path: string }) => a.path !== 'data.json')
+    entries.set('package.json', Buffer.from(JSON.stringify(header, null, 2)))
+    const rebuilt = [...entries.entries()].map(([name, data]) => ({ name, data }))
+    writeFileSync(archivePath, createStoredZip(rebuilt))
+
+    expect(() => inspectCaseArchive(archivePath)).toThrow(/Not a valid Birdbrain archive/)
+  })
+
+  it('throws a clean error when data.json is corrupted JSON', () => {
+    const entries = readStoredZip(readFileSync(archivePath))
+    entries.set('data.json', Buffer.from('{ not valid json'))
+    const rebuilt = [...entries.entries()].map(([name, data]) => ({ name, data }))
+    writeFileSync(archivePath, createStoredZip(rebuilt))
+
+    expect(() => inspectCaseArchive(archivePath)).toThrow(/Not a valid Birdbrain archive/)
+  })
+
+  it('detects a tampered packageHash field', () => {
+    rewritePackageJson(archivePath, (h) => ({ ...h, packageHash: 'f'.repeat(64) }))
+    const report = inspectCaseArchive(archivePath)
+    expect(report.verification.overallValid).toBe(false)
+    expect(report.verification.artifactFailureCount).toBeGreaterThan(0)
+  })
+
+  it('detects an extraneous undeclared zip entry', () => {
+    const entries = readStoredZip(readFileSync(archivePath))
+    entries.set('files/extra.bin', Buffer.from('undeclared content'))
+    const rebuilt = [...entries.entries()].map(([name, data]) => ({ name, data }))
+    writeFileSync(archivePath, createStoredZip(rebuilt))
+
+    const report = inspectCaseArchive(archivePath)
+    expect(report.verification.overallValid).toBe(false)
+    expect(report.verification.artifactFailureCount).toBeGreaterThan(0)
   })
 })

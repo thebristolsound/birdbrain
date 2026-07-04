@@ -298,7 +298,12 @@ export function inspectCaseArchive(archivePath: string): ArchiveInspectReport {
 
   const packageEntry = entries.get('package.json')
   if (!packageEntry) throw new Error('Not a valid Birdbrain archive: missing package.json')
-  const header = JSON.parse(packageEntry.toString('utf-8')) as CaseArchiveHeader
+  let header: CaseArchiveHeader
+  try {
+    header = JSON.parse(packageEntry.toString('utf-8')) as CaseArchiveHeader
+  } catch {
+    throw new Error('Not a valid Birdbrain archive')
+  }
 
   if (header.schemaVersion > CASE_ARCHIVE_SCHEMA_VERSION) {
     throw new Error(
@@ -341,9 +346,13 @@ export function inspectCaseArchive(archivePath: string): ArchiveInspectReport {
   // capture with no corresponding artifact entry never had content exported
   // (missing at source) and is excluded rather than counted as a failure.
   const dataEntry = entries.get('data.json')
-  const data = dataEntry
-    ? (JSON.parse(dataEntry.toString('utf-8')) as CaseArchiveData)
-    : ({ captures: [] } as unknown as CaseArchiveData)
+  if (!dataEntry) throw new Error('Not a valid Birdbrain archive')
+  let data: CaseArchiveData
+  try {
+    data = JSON.parse(dataEntry.toString('utf-8')) as CaseArchiveData
+  } catch {
+    throw new Error('Not a valid Birdbrain archive')
+  }
   const captures = data.captures as Array<{ id: string; hash?: string; format?: string }>
   let captureHashFailureCount = 0
   for (const capture of captures) {

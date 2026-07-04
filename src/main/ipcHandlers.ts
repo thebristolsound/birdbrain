@@ -64,7 +64,12 @@ const MAX_REVEALABLE_PATHS = 64
 const revealablePaths = new Set<string>()
 
 function rememberRevealablePath(filePath: string): void {
-  revealablePaths.add(resolve(filePath))
+  const resolved = resolve(filePath)
+  // delete-then-add so re-exporting the same destination refreshes its recency.
+  // Set.add on an already-present value keeps its original insertion position,
+  // which would let a just-rewritten path be evicted by newer unrelated exports.
+  revealablePaths.delete(resolved)
+  revealablePaths.add(resolved)
   if (revealablePaths.size > MAX_REVEALABLE_PATHS) {
     revealablePaths.delete(revealablePaths.values().next().value as string)
   }

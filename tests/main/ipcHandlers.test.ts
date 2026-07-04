@@ -596,6 +596,29 @@ describe('ipcHandlers — export', () => {
     expectOk(await invoke(IPC_CHANNELS.SHELL_OPEN_PATH, paths[69]))
     expect(openPath).toHaveBeenCalledWith(paths[69])
   })
+
+  it('re-exporting a path refreshes its FIFO recency so it is not stale-evicted (#C12)', async () => {
+    const target = join(userDataPath, 'repeat.zip')
+    const exportPath = async (p: string) => {
+      showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: p })
+      expectOk(await invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, { format: 'zip' }))
+    }
+
+    // Fill the allowlist to capacity with `target` as the oldest of 64 entries.
+    await exportPath(target)
+    for (let i = 0; i < 63; i++) await exportPath(join(userDataPath, `filler-${i}.zip`))
+
+    // Re-export the same target: it must move to the newest slot, not stay pinned
+    // at its stale position. One more unrelated export then evicts the true
+    // oldest (a filler) rather than the just-rewritten target.
+    await exportPath(target)
+    await exportPath(join(userDataPath, 'newcomer.zip'))
+
+    writeFileSync(target, '')
+    openPath.mockResolvedValueOnce('')
+    expectOk(await invoke(IPC_CHANNELS.SHELL_OPEN_PATH, target))
+    expect(openPath).toHaveBeenCalledWith(target)
+  })
 })
 
 describe('ipcHandlers — AI analysis', () => {

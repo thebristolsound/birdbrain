@@ -455,6 +455,9 @@ export function registerIpcHandlers(deps: {
     if (openError) throw new IpcFailure(openError, 'OPEN_PATH_FAILED')
   })
 
+  // App
+  ipcMain.handle(IPC_CHANNELS.APP_GET_VERSION, () => app.getVersion())
+
   // AI Analysis
   handle(IPC_CHANNELS.AI_ANALYZE, async (_, params: AnalyzeCaptureParams) => {
     const currentSettings = settings.getSettings()

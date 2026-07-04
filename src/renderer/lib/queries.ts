@@ -55,7 +55,8 @@ export const queryKeys = {
   archivePins: (captureId: string) => ['archive', 'pins', captureId] as const,
   settings: ['settings'] as const,
   identity: ['identity'] as const,
-  openRouterModels: ['openRouterModels'] as const
+  openRouterModels: ['openRouterModels'] as const,
+  appVersion: ['appVersion'] as const
 }
 
 // --- Cases ---
@@ -528,6 +529,14 @@ export function useSettingsMutations() {
 export const identityQueryOptions = queryOptions({
   queryKey: queryKeys.identity,
   queryFn: () => window.birdbrain.settings.getIdentity()
+})
+
+// --- App version ---
+
+export const appVersionQueryOptions = queryOptions({
+  queryKey: queryKeys.appVersion,
+  queryFn: () => window.birdbrain.app.getVersion(),
+  staleTime: Infinity
 })
 
 // --- OpenRouter Models ---

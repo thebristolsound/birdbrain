@@ -155,6 +155,9 @@ interface BirdbrainAPI {
     showItemInFolder(path: string): Promise<void>
     openPath(path: string): Promise<string>
   }
+  app: {
+    getVersion(): Promise<string>
+  }
   ai: {
     analyze(params: AnalyzeCaptureParams): Promise<{ content: string; tokenUsage: TokenUsage }>
     saveAnalysis(analysis: CaptureAnalysis): Promise<void>

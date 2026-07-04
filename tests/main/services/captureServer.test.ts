@@ -1420,12 +1420,38 @@ describe('captureServer', () => {
       expect(data.serverToken).toBe(TEST_TOKEN)
     })
 
-    it('exposes serverToken to file:// origins', async () => {
+    it('does not expose serverToken to file:// origins (#D3)', async () => {
       const res = await fetch(`${baseUrl}/api/status`, {
         headers: { Origin: 'file:///Users/foo/page.html' }
       })
       const data = await res.json()
-      expect(data.serverToken).toBe(TEST_TOKEN)
+      expect(data.serverToken).toBeUndefined()
+    })
+
+    // #D3: a rebound hostname resolving to 127.0.0.1 reaches us as same-origin
+    // (no Origin header, so CORS never fires) but carries its own hostname in
+    // Host. The guard rejects it before the token or any route is reachable.
+    it('rejects a non-loopback Host header (DNS-rebinding guard)', async () => {
+      const { request } = await import('http')
+      const url = new URL(baseUrl)
+      const status = await new Promise<number>((resolve, reject) => {
+        const req = request(
+          {
+            hostname: url.hostname,
+            port: Number(url.port),
+            path: '/api/status',
+            method: 'GET',
+            headers: { Host: 'evil.example.com' }
+          },
+          (res) => {
+            res.resume()
+            resolve(res.statusCode ?? 0)
+          }
+        )
+        req.on('error', reject)
+        req.end()
+      })
+      expect(status).toBe(403)
     })
   })
 })

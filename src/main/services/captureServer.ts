@@ -118,6 +118,25 @@ function createApp(deps: CaptureServerDeps): Hono {
   const app = new Hono()
   const requiredToken = token ?? getServerToken()
 
+  // DNS-rebinding guard (#D3): the server binds loopback, but a browser page on
+  // a hostname the attacker has rebound to 127.0.0.1 still reaches us — carrying
+  // that hostname in the Host header. Since a rebound page counts as same-origin
+  // to itself, CORS never engages and it could otherwise read the token or drive
+  // the pipeline. Reject anything whose Host is not a loopback literal, before
+  // any body is read or CORS runs, so no forged origin can talk to us.
+  app.use('*', async (c, next) => {
+    const hostname = (c.req.header('Host') ?? '').replace(/:\d+$/, '').toLowerCase()
+    const isLoopback =
+      hostname === '127.0.0.1' ||
+      hostname === 'localhost' ||
+      hostname === '[::1]' ||
+      hostname === '::1'
+    if (!isLoopback) {
+      return c.json({ error: 'Forbidden' }, 403)
+    }
+    await next()
+  })
+
   // Body size limit: 250 MB max to prevent memory exhaustion
   app.use('*', bodyLimit({ maxSize: 250 * 1024 * 1024 }))
 
@@ -178,14 +197,16 @@ function createApp(deps: CaptureServerDeps): Hono {
     const activeCase = state.activeCaseId ? db.getCase(state.activeCaseId) : null
     const settings = getSettings()
     const allCases = includeCases ? db.listCases() : null
-    // Only expose the auth token to known origins (extension, localhost).
-    // Omit for unknown/external origins so random web pages can't read it.
+    // Only expose the auth token to known origins (extension, localhost) or the
+    // origin-less same-origin/extension pairing fetch. Omit for any web origin
+    // so a page can't read it — and note the DNS-rebinding guard above already
+    // rejects rebound hostnames before this runs. file:// is intentionally NOT
+    // trusted: such a page receives no CORS grant and so can't read the body.
     const includeToken =
       !origin ||
       origin.startsWith('chrome-extension://') ||
       origin.startsWith('http://localhost:') ||
-      origin.startsWith('http://127.0.0.1:') ||
-      origin.startsWith('file://')
+      origin.startsWith('http://127.0.0.1:')
     return c.json({
       running: true,
       ...(includeToken ? { serverToken: requiredToken } : {}),

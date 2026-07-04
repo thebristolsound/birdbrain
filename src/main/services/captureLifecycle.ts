@@ -351,6 +351,25 @@ async function computeVerification(
       reason: chain.reason
     }
   }
+  // A valid chain can be TRUNCATED: removing trailing entries (including this
+  // capture's own record) leaves a shorter, still-internally-valid chain, so
+  // chain validity alone can't vouch for a specific capture (#X-2). Confirm this
+  // capture's content hash is actually anchored at its recorded index before
+  // trusting the stored-hash comparison below. A capture with no manifestIndex
+  // predates the chain (legacy) and is grandfathered past this check.
+  if (
+    typeof capture.manifestIndex === 'number' &&
+    chain.captureHashesByIndex.get(capture.manifestIndex) !== capture.hash
+  ) {
+    return {
+      ...base,
+      computedHash: computed,
+      status: 'chain-broken',
+      manifestIndex: capture.manifestIndex,
+      chainValid: true,
+      reason: 'Capture not anchored in manifest chain'
+    }
+  }
   if (computed !== capture.hash) {
     return {
       ...base,

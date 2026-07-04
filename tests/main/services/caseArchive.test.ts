@@ -15,14 +15,47 @@ import {
   createNote
 } from '../../../src/main/services/database'
 import { initStorage, ensureCaseDir, getCapturePath } from '../../../src/main/services/storage'
-import { initManifest, appendManifestEntry, verifyManifestChain } from '../../../src/main/services/manifest'
+import {
+  initManifest,
+  appendManifestEntry,
+  verifyManifestChain
+} from '../../../src/main/services/manifest'
 import { getStorageRoot } from '../../../src/main/services/storage'
 import { getDb } from '../../../src/main/services/database'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { initSigningKey, resetSigningKey } from '@main/services/signingKey'
 import { readStoredZip } from '../../../src/main/services/zipRead'
-import { exportCaseArchive } from '../../../src/main/services/caseArchive'
+import { createStoredZip } from '../../../src/main/services/zip'
+import { exportCaseArchive, inspectCaseArchive } from '../../../src/main/services/caseArchive'
+
+// Reads the archive, mutates one entry's bytes, and rewrites the zip WITHOUT
+// touching package.json — this is what makes it tampered: the recorded
+// artifact hash/packageHash no longer matches the entry's actual bytes.
+function tamperZipEntry(archivePath: string, entryName: string): void {
+  const entries = readStoredZip(readFileSync(archivePath))
+  const buf = entries.get(entryName)
+  if (!buf) throw new Error(`Entry not found: ${entryName}`)
+  const tampered = Buffer.from(buf)
+  tampered[0] = tampered[0] ^ 0xff
+  entries.set(entryName, tampered)
+  const rebuilt = [...entries.entries()].map(([name, data]) => ({ name, data }))
+  writeFileSync(archivePath, createStoredZip(rebuilt))
+}
+
+// Reads package.json, applies `mutate`, and rewrites the zip with only that
+// entry replaced — used to simulate a header claiming a newer schema version.
+function rewritePackageJson(
+  archivePath: string,
+  mutate: (header: Record<string, unknown>) => Record<string, unknown>
+): void {
+  const entries = readStoredZip(readFileSync(archivePath))
+  const header = JSON.parse(entries.get('package.json')!.toString('utf-8'))
+  const mutated = mutate(header)
+  entries.set('package.json', Buffer.from(JSON.stringify(mutated, null, 2)))
+  const rebuilt = [...entries.entries()].map(([name, data]) => ({ name, data }))
+  writeFileSync(archivePath, createStoredZip(rebuilt))
+}
 
 describe('caseArchive export', () => {
   let tempDir: string
@@ -218,5 +251,125 @@ describe('caseArchive export', () => {
 
     await expect(exportCaseArchive(caseId, out)).rejects.toThrow()
     expect(existsSync(out)).toBe(false)
+  })
+})
+
+describe('caseArchive inspect', () => {
+  let tempDir: string
+  let caseId: string
+  let mhtmlCaptureId: string
+  let archivePath: string
+
+  beforeEach(async () => {
+    tempDir = mkdtempSync(join(tmpdir(), 'bb-case-archive-inspect-'))
+    initStorage(join(tempDir, 'captures'))
+    initDatabase(':memory:')
+    resetInstallationId()
+    initInstallationId(tempDir)
+    resetSigningKey()
+    initSigningKey(tempDir)
+    initSettings(tempDir)
+    updateSettings({ operatorName: 'Test Operator', operatorRole: '', operatorOrganization: '' })
+
+    const c = createCase({ name: 'Test Case', description: 'A case for archive inspection' })
+    caseId = c.id
+    ensureCaseDir(caseId)
+    const caseDir = join(getStorageRoot(), caseId)
+    initManifest(caseDir)
+
+    mhtmlCaptureId = 'capture-mhtml-1'
+    const mhtmlBuf = Buffer.from('<html>mhtml content</html>')
+    writeFileSync(getCapturePath(caseId, mhtmlCaptureId, 'mhtml'), mhtmlBuf)
+    const contentHash = createHash('sha256').update(mhtmlBuf).digest('hex')
+    const { entryHash } = appendManifestEntry(caseDir, {
+      type: 'capture',
+      captureId: mhtmlCaptureId,
+      caseId,
+      url: 'https://example.com/mhtml',
+      timestamp: '2026-04-05T12:00:00.000Z',
+      contentHash,
+      sizeBytes: mhtmlBuf.length,
+      operatorId: 'op-1',
+      operatorName: 'Test Operator',
+      toolVersion: '0.1.0'
+    })
+    insertCapture({
+      id: mhtmlCaptureId,
+      caseId,
+      url: 'https://example.com/mhtml',
+      title: 'MHTML Capture',
+      hash: contentHash,
+      timestamp: '2026-04-05T12:00:00.000Z',
+      format: 'mhtml',
+      mhtmlPath: `${mhtmlCaptureId}.mhtml`,
+      sizeBytes: mhtmlBuf.length,
+      manifestIndex: 0,
+      entryHash,
+      operatorId: 'op-1',
+      operatorName: 'Test Operator'
+    })
+
+    const legacyBuf = Buffer.from('<html>legacy content</html>')
+    const legacyCaptureId = 'capture-legacy-1'
+    writeFileSync(getCapturePath(caseId, legacyCaptureId, 'html'), legacyBuf)
+    insertCapture({
+      id: legacyCaptureId,
+      caseId,
+      url: 'https://legacy.example.com',
+      title: 'Legacy Capture',
+      hash: createHash('sha256').update(legacyBuf).digest('hex'),
+      timestamp: '2026-04-04T12:00:00.000Z'
+    })
+
+    archivePath = join(tempDir, 'case.birdbrain')
+    await exportCaseArchive(caseId, archivePath)
+  })
+
+  afterEach(() => {
+    closeDatabase()
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  it('inspects a clean archive as valid', () => {
+    const report = inspectCaseArchive(archivePath)
+    expect(report.verification.overallValid).toBe(true)
+    expect(report.verification.chainValid).toBe(true)
+    expect(report.verification.artifactFailureCount).toBe(0)
+    expect(report.verification.captureHashFailureCount).toBe(0)
+    expect(report.caseName).toBe('Test Case')
+    expect(report.caseDescription).toBe('A case for archive inspection')
+    expect(report.schemaVersion).toBe(1)
+    expect(report.sourceOperatorName).toBe('Test Operator')
+    expect(typeof report.sourceInstallationId).toBe('string')
+    expect(typeof report.exportedAt).toBe('string')
+    expect(typeof report.toolVersion).toBe('string')
+    expect(report.archivePath).toBe(archivePath)
+    expect(report.counts.captures).toBe(2)
+  })
+
+  it('detects a tampered capture file', () => {
+    tamperZipEntry(archivePath, `files/${mhtmlCaptureId}.mhtml`)
+    const report = inspectCaseArchive(archivePath)
+    expect(report.verification.overallValid).toBe(false)
+    expect(report.verification.artifactFailureCount).toBeGreaterThan(0)
+  })
+
+  it('detects a tampered manifest', () => {
+    tamperZipEntry(archivePath, 'manifest.jsonl')
+    const report = inspectCaseArchive(archivePath)
+    expect(report.verification.overallValid).toBe(false)
+    expect(report.verification.chainValid).toBe(false)
+  })
+
+  it('refuses newer schema versions', () => {
+    rewritePackageJson(archivePath, (h) => ({ ...h, schemaVersion: 99 }))
+    expect(() => inspectCaseArchive(archivePath)).toThrow(/newer version/i)
+  })
+
+  it('does not write to disk or mutate the archive file', () => {
+    const before = readFileSync(archivePath)
+    inspectCaseArchive(archivePath)
+    const after = readFileSync(archivePath)
+    expect(after.equals(before)).toBe(true)
   })
 })

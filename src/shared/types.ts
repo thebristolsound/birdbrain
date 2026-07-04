@@ -387,3 +387,18 @@ export interface CaseArchiveCounts {
   extractedData: number
   archiveRefs: number
 }
+
+// Full read-only inspection report for a .birdbrain case archive, surfaced in
+// the import preflight UI before any data is written.
+export interface ArchiveInspectReport {
+  archivePath: string
+  schemaVersion: number
+  exportedAt: string
+  toolVersion: string
+  caseName: string
+  caseDescription: string | null
+  sourceInstallationId: string
+  sourceOperatorName: string
+  counts: CaseArchiveCounts
+  verification: ArchiveVerificationResult
+}

@@ -9,10 +9,15 @@ import { getInstallationId } from '@main/services/installationId'
 import { getPublicKeyPem } from '@main/services/signingKey'
 import { appendManifestEntry, initManifest } from '@main/services/manifest'
 import { createStoredZip } from '@main/services/zip'
-import { canonicalStringify } from '@shared/verify'
+import { readStoredZip } from '@main/services/zipRead'
+import { canonicalStringify, verifyManifestChainText } from '@shared/verify'
 import { resolveToolVersion } from '@main/services/certification'
 import { MANIFEST_FILENAME } from '@shared/constants'
-import type { CaseArchiveCounts } from '@shared/types'
+import type {
+  ArchiveInspectReport,
+  ArchiveVerificationResult,
+  CaseArchiveCounts
+} from '@shared/types'
 
 export const CASE_ARCHIVE_SCHEMA_VERSION = 1
 
@@ -63,8 +68,7 @@ export function collectCaseData(caseId: string): CaseArchiveData {
   const d = db.getDb()
 
   const caseRow = d.prepare('SELECT * FROM cases WHERE id = ?').get(caseId) as
-    | Record<string, unknown>
-    | undefined
+    Record<string, unknown> | undefined
   if (!caseRow) throw new Error(`Case not found: ${caseId}`)
 
   const captures = d
@@ -88,9 +92,10 @@ export function collectCaseData(caseId: string): CaseArchiveData {
     )
     .all(caseId) as Record<string, unknown>[]
 
-  const selectors = d
-    .prepare('SELECT * FROM selectors WHERE case_id = ?')
-    .all(caseId) as Record<string, unknown>[]
+  const selectors = d.prepare('SELECT * FROM selectors WHERE case_id = ?').all(caseId) as Record<
+    string,
+    unknown
+  >[]
 
   const selectorMatches = d
     .prepare(
@@ -100,9 +105,10 @@ export function collectCaseData(caseId: string): CaseArchiveData {
     )
     .all(caseId) as Record<string, unknown>[]
 
-  const notes = d
-    .prepare('SELECT * FROM notes WHERE case_id = ?')
-    .all(caseId) as Record<string, unknown>[]
+  const notes = d.prepare('SELECT * FROM notes WHERE case_id = ?').all(caseId) as Record<
+    string,
+    unknown
+  >[]
 
   const captureFavorites = d
     .prepare(
@@ -280,4 +286,97 @@ export async function exportCaseArchive(
   }
 
   onProgress?.('Complete', 100)
+}
+
+// Reads a .birdbrain archive and fully re-verifies it — artifact hashes,
+// manifest chain (against the archive's OWN bundled signing key, since this
+// is the source instance's signature, not this machine's), and per-capture
+// content hashes — without writing anything to disk or touching the DB.
+export function inspectCaseArchive(archivePath: string): ArchiveInspectReport {
+  const zipData = readFileSync(archivePath)
+  const entries = readStoredZip(zipData)
+
+  const packageEntry = entries.get('package.json')
+  if (!packageEntry) throw new Error('Not a valid Birdbrain archive: missing package.json')
+  const header = JSON.parse(packageEntry.toString('utf-8')) as CaseArchiveHeader
+
+  if (header.schemaVersion > CASE_ARCHIVE_SCHEMA_VERSION) {
+    throw new Error(
+      'This archive was created by a newer version of Birdbrain. Update Birdbrain to import it.'
+    )
+  }
+
+  // Artifact check: every declared artifact exists with a matching hash, and
+  // every zip entry other than package.json is declared as an artifact.
+  let artifactFailureCount = 0
+  for (const artifact of header.artifacts) {
+    const buf = entries.get(artifact.path)
+    if (!buf || sha256(buf) !== artifact.sha256 || buf.length !== artifact.sizeBytes) {
+      artifactFailureCount++
+    }
+  }
+  const declaredPaths = new Set(header.artifacts.map((a) => a.path))
+  for (const name of entries.keys()) {
+    if (name !== 'package.json' && !declaredPaths.has(name)) {
+      artifactFailureCount++
+    }
+  }
+  const sortedArtifacts = [...header.artifacts].sort((a, b) =>
+    a.path < b.path ? -1 : a.path > b.path ? 1 : 0
+  )
+  const recomputedPackageHash = sha256(Buffer.from(canonicalStringify(sortedArtifacts), 'utf-8'))
+  if (recomputedPackageHash !== header.packageHash) {
+    artifactFailureCount++
+  }
+
+  // Chain check: verified against the archive's OWN bundled public key — the
+  // source instance's key, not this instance's local signing key.
+  const manifestBuf = entries.get('manifest.jsonl') ?? Buffer.alloc(0)
+  const chainResult = verifyManifestChainText(manifestBuf.toString('utf-8'), {
+    publicKeyPem: header.signingPublicKeyPem
+  })
+
+  // Capture content check: for each data.json capture row with a hash,
+  // recompute the sha256 of its files/<id>.<ext> entry and compare. A
+  // capture with no corresponding artifact entry never had content exported
+  // (missing at source) and is excluded rather than counted as a failure.
+  const dataEntry = entries.get('data.json')
+  const data = dataEntry
+    ? (JSON.parse(dataEntry.toString('utf-8')) as CaseArchiveData)
+    : ({ captures: [] } as unknown as CaseArchiveData)
+  const captures = data.captures as Array<{ id: string; hash?: string; format?: string }>
+  let captureHashFailureCount = 0
+  for (const capture of captures) {
+    if (!capture.hash) continue
+    const ext = capture.format === 'mhtml' ? 'mhtml' : 'html'
+    const path = `files/${capture.id}.${ext}`
+    if (!declaredPaths.has(path)) continue
+    const buf = entries.get(path)
+    if (!buf || sha256(buf) !== capture.hash) {
+      captureHashFailureCount++
+    }
+  }
+
+  const verification: ArchiveVerificationResult = {
+    overallValid: artifactFailureCount === 0 && chainResult.valid && captureHashFailureCount === 0,
+    chainValid: chainResult.valid,
+    chainReason: chainResult.reason,
+    artifactCount: header.artifacts.length,
+    artifactFailureCount,
+    captureCount: captures.length,
+    captureHashFailureCount
+  }
+
+  return {
+    archivePath,
+    schemaVersion: header.schemaVersion,
+    exportedAt: header.exportedAt,
+    toolVersion: header.toolVersion,
+    caseName: header.case.name,
+    caseDescription: header.case.description,
+    sourceInstallationId: header.source.installationId,
+    sourceOperatorName: header.source.operatorName,
+    counts: header.counts,
+    verification
+  }
 }

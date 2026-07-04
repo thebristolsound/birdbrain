@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
-import { FolderOpen, ShieldAlert, Users, FileOutput, Pencil } from 'lucide-react'
+import {
+  FolderOpen,
+  ShieldAlert,
+  Users,
+  FileOutput,
+  Pencil,
+  Archive,
+  Loader2,
+  CheckCircle2
+} from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { Case } from '@shared/types'
 import { Button } from '@renderer/components/ui'
@@ -22,7 +31,9 @@ interface CaseSubheadProps {
 
 export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
   const [showExport, setShowExport] = useState(false)
-  const { update } = useCasesMutations()
+  const { update, exportArchive } = useCasesMutations()
+  const [archiveResult, setArchiveResult] = useState<{ filePath: string } | null>(null)
+  const [archiveError, setArchiveError] = useState('')
 
   const [editingName, setEditingName] = useState(false)
   const [nameValue, setNameValue] = useState('')
@@ -78,6 +89,19 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
     } catch (err) {
       // Keep the field in edit mode with the user's value so they can retry.
       console.error('Failed to update case description', err)
+    }
+  }
+
+  async function handleExportArchive() {
+    setArchiveError('')
+    setArchiveResult(null)
+    try {
+      const result = await exportArchive.mutateAsync(caseData.id)
+      if (!result.canceled && result.filePath) {
+        setArchiveResult({ filePath: result.filePath })
+      }
+    } catch (err) {
+      setArchiveError(err instanceof Error ? err.message : String(err))
     }
   }
 
@@ -161,13 +185,49 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
         )}
       </div>
       <div className="flex shrink-0 flex-col items-end gap-2.5">
-        <Button variant="outline" size="sm" onClick={() => setShowExport(true)} className="gap-1.5">
-          <FileOutput size={12} strokeWidth={1.8} />
-          Export
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => setShowExport(true)} className="gap-1.5">
+            <FileOutput size={12} strokeWidth={1.8} />
+            Export
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportArchive}
+            disabled={exportArchive.isPending}
+            className="gap-1.5"
+          >
+            {exportArchive.isPending ? (
+              <Loader2 size={12} strokeWidth={1.8} className="animate-spin" />
+            ) : (
+              <Archive size={12} strokeWidth={1.8} />
+            )}
+            Export case archive
+          </Button>
+        </div>
         <span className="font-mono text-[10.5px] text-text-faint">
           Opened {formatRelativeTime(caseData.createdAt)}
         </span>
+        {archiveResult && (
+          <div className="flex items-center gap-2 rounded border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-400">
+            <CheckCircle2 size={12} strokeWidth={1.8} className="shrink-0" />
+            <span className="max-w-[220px] truncate" title={archiveResult.filePath}>
+              Archive saved
+            </span>
+            <button
+              type="button"
+              className="font-semibold underline underline-offset-2 hover:text-emerald-300"
+              onClick={() => window.birdbrain.shell.showItemInFolder(archiveResult.filePath)}
+            >
+              Show in folder
+            </button>
+          </div>
+        )}
+        {archiveError && (
+          <div className="max-w-[260px] rounded border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-xs text-red-400">
+            {archiveError}
+          </div>
+        )}
       </div>
       {showExport && (
         <ExportDialog

@@ -14,7 +14,8 @@ export type CaptureFormat = 'html' | 'mhtml'
 
 // How the capture was produced (#recapture). 'extension' = operator-witnessed
 // via the Chrome extension; 'background' = silent hidden-window recapture.
-export type CaptureMethod = 'extension' | 'background'
+export const CAPTURE_METHODS = ['extension', 'background'] as const
+export type CaptureMethod = (typeof CAPTURE_METHODS)[number]
 
 // Orthogonal trusted-time axis (#120), independent of integrity status. A
 // capture is 'rfc3161' once an RFC 3161 token anchors its content hash,

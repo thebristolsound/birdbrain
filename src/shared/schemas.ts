@@ -4,6 +4,7 @@ import {
   DEFAULT_TSA_URL,
   MANIFEST_SCHEMA_VERSION
 } from '@shared/constants'
+import { CAPTURE_METHODS } from '@shared/types'
 
 // Shared Zod schemas for Birdbrain's trust boundaries.
 //
@@ -202,7 +203,7 @@ const ManifestCaptureEntrySchema = z
     textHash: z.string().optional(),
     headers: z.record(z.string(), z.string()).optional(),
     tls: TlsCertChainResultSchema.optional(),
-    method: z.enum(['extension', 'background']).optional(),
+    method: z.enum(CAPTURE_METHODS).optional(),
     supersedesCaptureId: z.string().optional(),
     sizeBytes: z.number(),
     operatorId: z.string(),

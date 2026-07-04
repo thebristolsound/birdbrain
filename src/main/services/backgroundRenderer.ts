@@ -32,11 +32,14 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
   })
 
   const tmpPath = join(app.getPath('temp'), `birdbrain-recapture-${randomUUID()}.mhtml`)
-  let tmpWritten = false
 
-  const deadline = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error(`Recapture timed out after ${timeoutMs}ms`)), timeoutMs)
-  )
+  let deadlineTimer: NodeJS.Timeout | undefined
+  const deadline = new Promise<never>((_, reject) => {
+    deadlineTimer = setTimeout(
+      () => reject(new Error(`Recapture timed out after ${timeoutMs}ms`)),
+      timeoutMs
+    )
+  })
 
   async function render(): Promise<RenderedPage> {
     const wc = win.webContents
@@ -82,7 +85,6 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
     }
 
     await wc.savePage(tmpPath, 'MHTML')
-    tmpWritten = true
 
     const text = (await wc.executeJavaScript(
       'document.body ? document.body.innerText : ""'
@@ -99,16 +101,23 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
       browserVersion: `Chrome/${process.versions.chrome}`,
       cleanup: async () => {
         if (!win.isDestroyed()) win.destroy()
-        if (tmpWritten) await unlink(tmpPath).catch(() => {})
+        await unlink(tmpPath).catch(() => {})
       }
     }
   }
 
+  const rendering = render()
   try {
-    return await Promise.race([render(), deadline])
+    return await Promise.race([rendering, deadline])
   } catch (err) {
+    // Destroying the window cancels the in-flight render: its next webContents
+    // call rejects. Wait for it to settle so a mid-flight savePage can't
+    // recreate the temp file after we delete it.
     if (!win.isDestroyed()) win.destroy()
-    if (tmpWritten) await unlink(tmpPath).catch(() => {})
+    await rendering.catch(() => {})
+    await unlink(tmpPath).catch(() => {})
     throw err
+  } finally {
+    clearTimeout(deadlineTimer)
   }
 }

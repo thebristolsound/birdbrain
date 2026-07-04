@@ -112,9 +112,11 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
   } catch (err) {
     // Destroying the window cancels the in-flight render: its next webContents
     // call rejects. Wait for it to settle so a mid-flight savePage can't
-    // recreate the temp file after we delete it.
+    // recreate the temp file after we delete it — but bound the wait, since
+    // Electron doesn't guarantee an already in-flight webContents promise ever
+    // settles after destroy (electron/electron#9102).
     if (!win.isDestroyed()) win.destroy()
-    await rendering.catch(() => {})
+    await Promise.race([rendering.catch(() => {}), sleep(2000)])
     await unlink(tmpPath).catch(() => {})
     throw err
   } finally {

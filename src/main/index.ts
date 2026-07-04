@@ -18,6 +18,8 @@ import { initServerToken } from '@main/services/serverToken'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createTimestampWorker } from '@main/services/timestampWorker'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
+import { createRecaptureService } from '@main/services/recapture'
+import { renderPageInHiddenWindow } from '@main/services/backgroundRenderer'
 import { DEEP_LINK_SCHEME, parseDeepLink, findDeepLinkInArgv } from '@main/services/deepLink'
 import { IPC_CHANNELS, type DeepLinkTarget, type SelectorRematchedEvent } from '@shared/ipc'
 
@@ -197,8 +199,26 @@ if (!gotSingleInstanceLock) {
       enqueueTimestamp: (captureId) => timestampWorker.enqueue(captureId)
     })
 
+    // Background recapture queue (#recapture). Renders pages in a hidden window
+    // and reuses the capture pipeline's observability events, mirroring how the
+    // capture server broadcasts to the (lazily created) main window.
+    const recaptureService = createRecaptureService({
+      renderPage: renderPageInHiddenWindow,
+      captureLifecycle,
+      emitEvent: (event) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(IPC_CHANNELS.CAPTURE_ACTIVITY, event)
+        }
+      },
+      emitNewCapture: (capture) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(IPC_CHANNELS.NEW_CAPTURE, capture)
+        }
+      }
+    })
+
     // Register IPC handlers
-    registerIpcHandlers({ selectorLifecycle, captureLifecycle })
+    registerIpcHandlers({ selectorLifecycle, captureLifecycle, recaptureService })
 
     // Start capture server and extension connection monitor
     await startCaptureServer({ selectorLifecycle, captureLifecycle })

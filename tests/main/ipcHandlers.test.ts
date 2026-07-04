@@ -110,6 +110,11 @@ function expectOk<T = unknown>(res: { ok: boolean; data?: T; error?: string }): 
 let dbPath = ''
 let caseId = ''
 let captureId = ''
+let recaptureService: {
+  enqueue: ReturnType<typeof vi.fn>
+  status: ReturnType<typeof vi.fn>
+  idle: ReturnType<typeof vi.fn>
+}
 
 function seedCapture(overrides: Partial<db.InsertCaptureParams> = {}): db.Capture {
   const cap = db.insertCapture({
@@ -157,7 +162,12 @@ beforeEach(() => {
 
   const selectorLifecycle = createSelectorLifecycle({ emitRematched: vi.fn() })
   const captureLifecycle = createCaptureLifecycle({ selectorLifecycle })
-  registerIpcHandlers({ selectorLifecycle, captureLifecycle })
+  recaptureService = {
+    enqueue: vi.fn(() => ({ accepted: 1, rejected: [] })),
+    status: vi.fn(() => ({ pending: 0, activeUrl: null })),
+    idle: vi.fn()
+  }
+  registerIpcHandlers({ selectorLifecycle, captureLifecycle, recaptureService })
 
   const created = db.createCase({ name: 'Test Case' })
   caseId = created.id
@@ -794,5 +804,25 @@ describe('archive handlers', () => {
 
     const list = registered.get('archive:list')!
     expect((await list({} as never, cap.id)) as unknown[]).toHaveLength(0)
+  })
+})
+
+describe('ipcHandlers — recapture', () => {
+  it('recapture:enqueue fans urls out to jobs', async () => {
+    await invoke(IPC_CHANNELS.RECAPTURE_ENQUEUE, {
+      urls: ['https://a.com/', 'https://b.com/'],
+      caseId: 'case-1',
+      supersedesCaptureId: 'cap-9'
+    })
+    expect(recaptureService.enqueue).toHaveBeenCalledWith([
+      { url: 'https://a.com/', caseId: 'case-1', supersedesCaptureId: 'cap-9' },
+      { url: 'https://b.com/', caseId: 'case-1', supersedesCaptureId: 'cap-9' }
+    ])
+  })
+
+  it('recapture:queueStatus reads the service status', async () => {
+    const status = expectOk(await invoke(IPC_CHANNELS.RECAPTURE_QUEUE_STATUS))
+    expect(status).toEqual({ pending: 0, activeUrl: null })
+    expect(recaptureService.status).toHaveBeenCalled()
   })
 })

@@ -27,6 +27,10 @@ export const IPC_CHANNELS = {
   CAPTURES_VERIFY: 'captures:verify',
   CAPTURES_GET_MHTML_URL: 'captures:getMhtmlUrl',
 
+  // Recapture
+  RECAPTURE_ENQUEUE: 'recapture:enqueue',
+  RECAPTURE_QUEUE_STATUS: 'recapture:queueStatus',
+
   // Tags
   TAGS_LIST: 'tags:list',
   TAGS_CREATE: 'tags:create',
@@ -330,4 +334,10 @@ export interface RecaptureQueueStatus {
 export interface EnqueueResult {
   accepted: number
   rejected: Array<{ url: string; reason: string }>
+}
+
+export interface RecaptureEnqueuePayload {
+  urls: string[]
+  caseId: string
+  supersedesCaptureId?: string
 }

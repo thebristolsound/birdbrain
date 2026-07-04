@@ -174,6 +174,20 @@ export function useCapturesMutations(caseId: string) {
   return { remove, toggleFavorite }
 }
 
+export function useRecaptureMutations(caseId: string) {
+  const enqueue = useMutation({
+    mutationFn: (params: { urls: string[]; supersedesCaptureId?: string }) =>
+      window.birdbrain.recapture.enqueue({
+        urls: params.urls,
+        caseId,
+        supersedesCaptureId: params.supersedesCaptureId
+      })
+  })
+  // No cache invalidation here: completion arrives via the NEW_CAPTURE event,
+  // which useServerStatus already folds into the captures cache.
+  return { enqueue }
+}
+
 // --- Tags ---
 
 export const tagsQueryOptions = queryOptions({

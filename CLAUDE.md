@@ -37,11 +37,11 @@ src/main/ipcHandlers.ts     # All IPC handler registrations
 src/shared/types.ts         # Shared TypeScript types (Case, Capture, Tag, Selector, Note, Settings, etc.)
 src/shared/ipc.ts           # IPC channel definitions and payload types
 src/shared/constants.ts     # Constants (CAPTURE_SERVER_PORT, MAX_MHTML_SIZE, MANIFEST_FILENAME, etc.)
-src/renderer/routes/        # TanStack Router route definitions
+src/renderer/routes/        # TanStack Router route definitions (root tree plus captures route module)
 src/renderer/stores/        # Zustand store (appStore.ts)
-src/renderer/hooks/         # React hooks (useTheme, useCaptureThumbnail, useFavorites, useSearch, useSelectorFilters, useServerStatus)
+src/renderer/hooks/         # React hooks for theme, search, filters, viewport, motion, session restore, server status, etc.
 src/renderer/lib/           # React Query client and query/mutation factories
-src/renderer/components/    # UI organized by feature (11 directories, ~43 components)
+src/renderer/components/    # UI organized by feature (13 top-level directories, ~96 TSX components)
 extension/src/              # Chrome extension source (background, content, popup, utils/api, toast)
 tests/                      # Vitest unit tests
 e2e/                        # Playwright E2E tests
@@ -69,16 +69,19 @@ TanStack Router (`@tanstack/react-router`) with the following route tree:
 ```
 / → Dashboard
 /settings → SettingsView
+/extension-setup → InstallExtensionGuide
 /cases/new → NewCaseWizard
 /cases/$caseId → CaseWorkspace (layout with tabs)
-  ├── / → CaseOverview
+  ├── / → redirects to /overview
+  ├── /overview → CaseOverview
   ├── /captures → CaptureList + CaptureViewer (split view)
   ├── /selectors → SelectorsOverview
   ├── /notes → NotesOverview
-  └── /tags → TagsOverview
+  ├── /tags → TagsOverview
+  └── /data → DataExplorer
 ```
 
-Root layout in `__root.tsx` renders TopBar + main content area.
+Root layout in `__root.tsx` renders TopBar, optional case Sidebar, main content area, CommandPalette, onboarding overlay, and devtools in development.
 
 ### Data fetching
 
@@ -134,19 +137,21 @@ OpenRouter integration (`src/main/services/openrouter.ts`) provides `testApiKey(
 
 ### UI components
 
-Organized into 11 feature directories under `src/renderer/components/`:
+Organized into 13 top-level feature directories under `src/renderer/components/`:
 
-- **captures/** - CaptureItem, CaptureList, CaptureViewer, MhtmlViewer, ProvenanceBadge
-- **cases/** - CaseOverview, CaseSwitcher, CaseWorkspace, CreateCaseDialog, NewCaseWizard
-- **dashboard/** - Dashboard, CaseCard, DashboardFooter, ExtensionBanner, HeroSection, QuickStartGuide, RecentCases
-- **export/** - ExportDialog
-- **layout/** - TopBar
+- **captures/** - Capture list/viewer workflow, details panel/rail, add-URL box, provenance, archive/analysis/forensics tabs, inline tag/note editing hooks, verify mutation, and annotation editor under `captures/annotation/`
+- **dashboard/** - Dashboard, CaseCard, DashboardFooter, ExtensionBanner, HeroSection, QuickStartGuide, RecentCases, plus case workspace components under `dashboard/cases/` (CaseWorkspace, CreateCaseDialog, DataExplorer, NewCaseWizard)
+- **export/** - ExportDialog, ExportProgress, ExportComplete
+- **extension/** - InstallExtensionGuide, InstallExtensionStepper, installSteps.tsx
+- **layout/** - TopBar, Sidebar, CommandPalette, OnboardingWizard, plus export confirmation dialog under `layout/export/`
 - **notes/** - AddNoteModal, CreateNoteCard, NoteCard, NotesOverview
+- **overview/** - CaseOverview, CaseSubhead, ActivityTimeline, MetricRow, RecentCapturesStrip, SelectorCoverageBlock, SinceLastVisitBanner, SourcesBlock, VerifyBar, overviewModel.ts
 - **search/** - SearchBar
-- **selectors/** - BulkAddSelectorsModal, CreateSelectorCard, SelectorFilterFooter, SelectorTable, SelectorTableRow, SelectorsOverview, selectorUtils.ts
-- **settings/** - SettingsView, AIConfig, AppearanceConfig, CapturePreferences, OperatorConfig, StorageConfig, About
+- **selectors/** - BulkAddSelectorsModal, CreateSelectorCard, CreateSelectorPopover, SelectorFilterFooter, SelectorTable, SelectorTableRow, SelectorsOverview, selectorUtils.ts
+- **settings/** - SettingsView, AIConfig, AppearanceConfig, CapturePreferences, DatabaseAdmin, OperatorConfig, StorageConfig, About, plus database utility views under `settings/db/`
 - **status/** - CaptureHealth, ConnectionStatus, SessionControls
 - **tags/** - TagBadge, TagManager, TagsOverview
+- **ui/** - Shared primitives: badge, button, card, dialog, input, label, scroll-area, skeleton, tabs, textarea
 
 ## Documentation conventions
 

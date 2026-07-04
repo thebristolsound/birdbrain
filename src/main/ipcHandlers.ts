@@ -23,7 +23,8 @@ import type {
   SaveAnnotationsParams,
   UpsertAnnotationPinParams,
   ExportProgressEvent,
-  ExportResult
+  ExportResult,
+  RecaptureEnqueuePayload
 } from '@shared/ipc'
 import * as dbAdmin from '@main/services/dbAdmin'
 import { existsSync } from 'fs'
@@ -44,6 +45,7 @@ import { CAPTURE_SERVER_PORT, getSessionState } from '@main/services/captureServ
 import { getServerToken } from '@main/services/serverToken'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
+import type { RecaptureService } from '@main/services/recapture'
 import { handle, IpcFailure } from '@main/ipcWrap'
 import type { BirdbrainSettings, ExportOptions, CaptureAnalysis } from '@shared/types'
 
@@ -56,8 +58,9 @@ const SELF_TEST_TIMEOUT_MS = 2000
 export function registerIpcHandlers(deps: {
   selectorLifecycle: SelectorLifecycle
   captureLifecycle: CaptureLifecycle
+  recaptureService: RecaptureService
 }): void {
-  const { selectorLifecycle, captureLifecycle } = deps
+  const { selectorLifecycle, captureLifecycle, recaptureService } = deps
   // Cases
   ipcMain.handle(IPC_CHANNELS.CASES_LIST, () => db.listCases())
   ipcMain.handle(IPC_CHANNELS.CASES_GET, (_, id: string) => db.getCase(id))
@@ -354,6 +357,22 @@ export function registerIpcHandlers(deps: {
   })
 
   handle(IPC_CHANNELS.CAPTURES_VERIFY, (_, captureId: string) => captureLifecycle.verify(captureId))
+
+  // Recapture
+  handle(IPC_CHANNELS.RECAPTURE_ENQUEUE, (_, payload: RecaptureEnqueuePayload) => {
+    if (!payload || !Array.isArray(payload.urls) || typeof payload.caseId !== 'string') {
+      throw new IpcFailure('Invalid recapture payload', 'INVALID_RECAPTURE_PAYLOAD')
+    }
+    return recaptureService.enqueue(
+      payload.urls.map((url) => ({
+        url,
+        caseId: payload.caseId,
+        supersedesCaptureId: payload.supersedesCaptureId
+      }))
+    )
+  })
+
+  handle(IPC_CHANNELS.RECAPTURE_QUEUE_STATUS, () => recaptureService.status())
 
   // Search
   ipcMain.handle(IPC_CHANNELS.SEARCH, (_, query: string) => {

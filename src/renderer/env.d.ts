@@ -53,7 +53,10 @@ import type {
   DeepLinkTarget,
   ExportProgressEvent,
   ExportResult,
-  PinArchiveSnapshotParams
+  PinArchiveSnapshotParams,
+  RecaptureEnqueuePayload,
+  EnqueueResult,
+  RecaptureQueueStatus
 } from '@shared/ipc'
 
 interface BirdbrainAPI {
@@ -79,6 +82,10 @@ interface BirdbrainAPI {
     listFavorites(caseId: string): Promise<string[]>
     verify(captureId: string): Promise<HashVerification>
     getMhtmlUrl(captureId: string): Promise<string | null>
+  }
+  recapture: {
+    enqueue(payload: RecaptureEnqueuePayload): Promise<EnqueueResult>
+    queueStatus(): Promise<RecaptureQueueStatus>
   }
   tags: {
     list(): Promise<Tag[]>

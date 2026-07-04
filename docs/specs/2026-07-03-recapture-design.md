@@ -54,7 +54,7 @@ capture — no operator eyes on the page, no extension, a different user agent. 
 that honestly:
 
 - **`CaptureMethod = 'extension' | 'background'`** — new field on `Capture` and on the manifest
-  capture entry. DB migration v13; existing rows and new extension captures default `'extension'`.
+  capture entry. DB migration v23; existing rows and new extension captures default `'extension'`.
 - **`supersedesCaptureId?: string`** — new nullable field on `Capture`, also anchored in the
   manifest entry. Set when the job originated from "Recapture this capture"; absent for pasted
   URLs. The original capture is never touched — both remain fully visible ("linked sibling").
@@ -127,7 +127,7 @@ New `src/main/services/recapture.ts`.
 ## Testing
 
 - **Unit (vitest):** queue ordering/serialism, provenance fields on the ingested capture,
-  supersedes linkage, migration v13, login-wall heuristic, failure → event (window layer stubbed
+  supersedes linkage, migration v23, login-wall heuristic, failure → event (window layer stubbed
   behind the `renderPage` seam).
 - **E2E (Playwright + Electron):** serve a fixture page locally, recapture it, assert the new
   capture exists with `method: 'background'`, the supersedes link renders both ways, and the

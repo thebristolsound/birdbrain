@@ -228,8 +228,20 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
     )
   })
 
+  const wc = win.webContents
+  let networkTracker: NetworkIdleTracker | undefined
+  let cleanedUp = false
+
+  // Hoisted cleanup: idempotent so both the inner finally and outer timeout
+  // cleanup can safely invoke it.
+  const cleanup = () => {
+    if (cleanedUp) return
+    cleanedUp = true
+    networkTracker?.dispose()
+    if (wc.debugger.isAttached()) wc.debugger.detach()
+  }
+
   async function render(): Promise<RenderedPage> {
-    const wc = win.webContents
     wc.session.setPermissionRequestHandler((_wc, _permission, callback) => callback(false))
     wc.setWindowOpenHandler(() => ({ action: 'deny' }))
     wc.setAudioMuted(true)
@@ -247,7 +259,7 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
     // enabled — only the one-shot getLayoutMetrics/captureScreenshot commands use
     // it. Network-idle is tracked out-of-band via the session's webRequest API.
     wc.debugger.attach('1.3')
-    const networkTracker = createNetworkIdleTracker(wc.session)
+    networkTracker = createNetworkIdleTracker(wc.session)
 
     try {
       await wc.loadURL(url)
@@ -295,8 +307,7 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
         }
       }
     } finally {
-      networkTracker.dispose()
-      if (wc.debugger.isAttached()) wc.debugger.detach()
+      cleanup()
     }
   }
 
@@ -309,6 +320,7 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
     // recreate the temp file after we delete it — but bound the wait, since
     // Electron doesn't guarantee an already in-flight webContents promise ever
     // settles after destroy (electron/electron#9102).
+    cleanup()
     if (!win.isDestroyed()) win.destroy()
     await Promise.race([rendering.catch(() => {}), sleep(2000)])
     await unlink(tmpPath).catch(() => {})

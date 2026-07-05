@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Activity, CheckCircle2, XCircle, AlertTriangle, Loader2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'motion/react'
+import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '@renderer/stores/appStore'
 import { presets } from '@renderer/lib/motion'
 import type { CaptureEvent } from '@shared/types'
@@ -37,6 +38,7 @@ function EventRow({ event }: { event: CaptureEvent }) {
           {event.screenshotWarning && (
             <span className="text-amber-400">{event.screenshotWarning}</span>
           )}
+          {event.warning && <span className="text-amber-400">{event.warning}</span>}
         </div>
       </div>
     </div>
@@ -68,6 +70,13 @@ export function CaptureHealth() {
   const clearCaptureEvents = useAppStore((s) => s.clearCaptureEvents)
   const sessionActive = useAppStore((s) => s.sessionActive)
   const connectedToExtension = useAppStore((s) => s.connectedToExtension)
+  // Queue status only renders inside the popover — don't poll while closed.
+  const { data: queue } = useQuery({
+    queryKey: ['recaptureQueue'],
+    queryFn: () => window.birdbrain.recapture.queueStatus(),
+    refetchInterval: 2000,
+    enabled: open
+  })
 
   async function runPipelineTest() {
     setTesting(true)
@@ -147,6 +156,11 @@ export function CaptureHealth() {
                 {captureStats.successCount}ok / {captureStats.failCount}fail /{' '}
                 {captureStats.skipCount}skip
               </div>
+              {queue && queue.pending > 0 && (
+                <span data-testid="recapture-pending-badge" className="text-text-muted">
+                  {queue.pending} background capture{queue.pending === 1 ? '' : 's'} pending
+                </span>
+              )}
             </div>
 
             {captureStats.lastError && (

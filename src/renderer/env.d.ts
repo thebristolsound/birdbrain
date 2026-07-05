@@ -56,7 +56,10 @@ import type {
   ExportResult,
   PinArchiveSnapshotParams,
   ArchiveProgressEvent,
-  ArchiveExportResult
+  ArchiveExportResult,
+  RecaptureEnqueuePayload,
+  EnqueueResult,
+  RecaptureQueueStatus
 } from '@shared/ipc'
 
 interface BirdbrainAPI {
@@ -85,6 +88,10 @@ interface BirdbrainAPI {
     listFavorites(caseId: string): Promise<string[]>
     verify(captureId: string): Promise<HashVerification>
     getMhtmlUrl(captureId: string): Promise<string | null>
+  }
+  recapture: {
+    enqueue(payload: RecaptureEnqueuePayload): Promise<EnqueueResult>
+    queueStatus(): Promise<RecaptureQueueStatus>
   }
   tags: {
     list(): Promise<Tag[]>
@@ -153,6 +160,9 @@ interface BirdbrainAPI {
   shell: {
     showItemInFolder(path: string): Promise<void>
     openPath(path: string): Promise<string>
+  }
+  app: {
+    getVersion(): Promise<string>
   }
   ai: {
     analyze(params: AnalyzeCaptureParams): Promise<{ content: string; tokenUsage: TokenUsage }>

@@ -26,7 +26,7 @@ import {
 import { fetchCertChain as defaultFetchCertChain } from '@main/services/tlsCertChain'
 import type { TlsCertChainResult } from '@main/services/tlsCertChain'
 import { MAX_MHTML_SIZE } from '@shared/constants'
-import type { Capture, HashVerification } from '@shared/types'
+import type { Capture, CaptureMethod, HashVerification } from '@shared/types'
 
 // Injectable corroboration-only TLS cert-chain re-fetcher (#123). Defaults to the
 // real Node tls.connect implementation; tests inject a stub to stay hermetic.
@@ -49,10 +49,12 @@ export interface IngestParams {
   browserVersion: string
   userAgent: string
   httpStatus: number
-  extensionVersion: string
+  extensionVersion?: string
   operatorId: string
   operatorName: string
   toolVersion: string
+  method?: CaptureMethod
+  supersedesCaptureId?: string
   screenshot?: Buffer
 }
 
@@ -220,6 +222,8 @@ export async function ingestMhtmlCapture(
         headers: anchoredHeaders,
         tls,
         sizeBytes,
+        method: params.method,
+        supersedesCaptureId: params.supersedesCaptureId,
         operatorId: params.operatorId,
         operatorName: params.operatorName,
         toolVersion: params.toolVersion
@@ -267,7 +271,9 @@ export async function ingestMhtmlCapture(
             userAgent: params.userAgent,
             httpStatus: params.httpStatus,
             operatorId: params.operatorId,
-            operatorName: params.operatorName
+            operatorName: params.operatorName,
+            method: params.method,
+            supersedesCaptureId: params.supersedesCaptureId
           })
           return { capture, contentHash: hash }
         } catch (err) {
@@ -343,6 +349,25 @@ async function computeVerification(
       manifestIndex: capture.manifestIndex,
       chainValid: false,
       reason: chain.reason
+    }
+  }
+  // A valid chain can be TRUNCATED: removing trailing entries (including this
+  // capture's own record) leaves a shorter, still-internally-valid chain, so
+  // chain validity alone can't vouch for a specific capture (#X-2). Confirm this
+  // capture's content hash is actually anchored at its recorded index before
+  // trusting the stored-hash comparison below. A capture with no manifestIndex
+  // predates the chain (legacy) and is grandfathered past this check.
+  if (
+    typeof capture.manifestIndex === 'number' &&
+    chain.captureHashesByIndex.get(capture.manifestIndex) !== capture.hash
+  ) {
+    return {
+      ...base,
+      computedHash: computed,
+      status: 'chain-broken',
+      manifestIndex: capture.manifestIndex,
+      chainValid: true,
+      reason: 'Capture not anchored in manifest chain'
     }
   }
   if (computed !== capture.hash) {
@@ -478,7 +503,10 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
 
   return {
     async ingest(params) {
-      const result = await ingestMhtmlCapture(params, deps.fetchTlsCertChain ?? defaultFetchCertChain)
+      const result = await ingestMhtmlCapture(
+        params,
+        deps.fetchTlsCertChain ?? defaultFetchCertChain
+      )
       // Hand off to the trusted-timestamp worker without blocking the capture.
       deps.enqueueTimestamp?.(result.capture.id)
       runPostCaptureWork(result.capture.id, params.caseId, params.url, params.textContent)

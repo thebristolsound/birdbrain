@@ -63,6 +63,7 @@ coverage/
 .superdesign
 .superpowers
 .kilocode
+.design-bundle
 
 # Local-only working notes. Implementation plans / checklists are author-time
 # artifacts and don't belong in version control. Specs, ADRs, agent

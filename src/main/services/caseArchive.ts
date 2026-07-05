@@ -589,8 +589,8 @@ function insertImportedRows(
        format, mhtml_path, screenshot_hash, text_hash, tls_cert_chain, size_bytes, manifest_index, prev_hash, entry_hash,
        tool_version, extension_version, browser_version, user_agent, http_status,
        operator_id, operator_name, last_verified_at, last_verified_hash, last_verified_status,
-       trusted_time_status
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       trusted_time_status, method, supersedes_capture_id
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
   const insertFts = d.prepare(
     'INSERT INTO captures_fts (rowid, title, url, content) VALUES (?, ?, ?, ?)'
@@ -628,7 +628,9 @@ function insertImportedRows(
       cap.last_verified_at ?? null,
       cap.last_verified_hash ?? null,
       cap.last_verified_status ?? null,
-      cap.trusted_time_status ?? null
+      cap.trusted_time_status ?? null,
+      cap.method ?? 'extension',
+      cap.supersedes_capture_id ? mapId(cap.supersedes_capture_id as string) : null
     )
     const rowid = (rowidOf.get(newId) as { rowid: number }).rowid
     const txtPath = join(caseDir, `${newId}.txt`)

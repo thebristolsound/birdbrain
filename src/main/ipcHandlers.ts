@@ -25,11 +25,12 @@ import type {
   ExportProgressEvent,
   ExportResult,
   ArchiveProgressEvent,
-  ArchiveExportResult
+  ArchiveExportResult,
+  RecaptureEnqueuePayload
 } from '@shared/ipc'
 import * as dbAdmin from '@main/services/dbAdmin'
 import { existsSync } from 'fs'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import { pathToFileURL } from 'url'
 import * as db from '@main/services/database'
 import * as annotations from '@main/services/annotations'
@@ -51,6 +52,7 @@ import { CAPTURE_SERVER_PORT, getSessionState } from '@main/services/captureServ
 import { getServerToken } from '@main/services/serverToken'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
+import type { RecaptureService } from '@main/services/recapture'
 import { handle, IpcFailure } from '@main/ipcWrap'
 import type {
   BirdbrainSettings,
@@ -65,11 +67,32 @@ import type {
 // long enough to blow past test/UI deadlines.
 const SELF_TEST_TIMEOUT_MS = 2000
 
+// Reveal/open is limited to files THIS process authored (export outputs). A
+// renderer — even a compromised one — can't hand shell.openPath an arbitrary
+// binary, because only paths recorded here on a successful export are openable.
+// Bounded with FIFO eviction so the allowlist can't grow for the life of the
+// process; only recent exports stay openable.
+const MAX_REVEALABLE_PATHS = 64
+const revealablePaths = new Set<string>()
+
+function rememberRevealablePath(filePath: string): void {
+  const resolved = resolve(filePath)
+  // delete-then-add so re-exporting the same destination refreshes its recency.
+  // Set.add on an already-present value keeps its original insertion position,
+  // which would let a just-rewritten path be evicted by newer unrelated exports.
+  revealablePaths.delete(resolved)
+  revealablePaths.add(resolved)
+  if (revealablePaths.size > MAX_REVEALABLE_PATHS) {
+    revealablePaths.delete(revealablePaths.values().next().value as string)
+  }
+}
+
 export function registerIpcHandlers(deps: {
   selectorLifecycle: SelectorLifecycle
   captureLifecycle: CaptureLifecycle
+  recaptureService: RecaptureService
 }): void {
-  const { selectorLifecycle, captureLifecycle } = deps
+  const { selectorLifecycle, captureLifecycle, recaptureService } = deps
   // Cases
   ipcMain.handle(IPC_CHANNELS.CASES_LIST, () => db.listCases())
   ipcMain.handle(IPC_CHANNELS.CASES_GET, (_, id: string) => db.getCase(id))
@@ -414,6 +437,22 @@ export function registerIpcHandlers(deps: {
 
   handle(IPC_CHANNELS.CAPTURES_VERIFY, (_, captureId: string) => captureLifecycle.verify(captureId))
 
+  // Recapture
+  handle(IPC_CHANNELS.RECAPTURE_ENQUEUE, (_, payload: RecaptureEnqueuePayload) => {
+    if (!payload || !Array.isArray(payload.urls) || typeof payload.caseId !== 'string') {
+      throw new IpcFailure('Invalid recapture payload', 'INVALID_RECAPTURE_PAYLOAD')
+    }
+    return recaptureService.enqueue(
+      payload.urls.map((url) => ({
+        url,
+        caseId: payload.caseId,
+        supersedesCaptureId: payload.supersedesCaptureId
+      }))
+    )
+  })
+
+  handle(IPC_CHANNELS.RECAPTURE_QUEUE_STATUS, () => recaptureService.status())
+
   // Search
   ipcMain.handle(IPC_CHANNELS.SEARCH, (_, query: string) => {
     try {
@@ -480,6 +519,8 @@ export function registerIpcHandlers(deps: {
             percent
           } satisfies ExportProgressEvent)
       )
+      // Permit reveal/open for this freshly-written export only.
+      rememberRevealablePath(filePath)
       return { canceled: false, filePath }
     }
   )
@@ -487,16 +528,23 @@ export function registerIpcHandlers(deps: {
   // Shell — reveal/open a file the main process just wrote (export completion).
   handle(IPC_CHANNELS.SHELL_SHOW_ITEM_IN_FOLDER, (_, path: string) => {
     if (!path) throw new IpcFailure('Path is required', 'INVALID_PATH')
+    if (!revealablePaths.has(resolve(path)))
+      throw new IpcFailure('Path not permitted', 'FORBIDDEN_PATH')
     if (!existsSync(path)) throw new IpcFailure('File not found', 'NOT_FOUND')
     shell.showItemInFolder(path)
   })
 
   handle(IPC_CHANNELS.SHELL_OPEN_PATH, async (_, path: string) => {
     if (!path) throw new IpcFailure('Path is required', 'INVALID_PATH')
+    if (!revealablePaths.has(resolve(path)))
+      throw new IpcFailure('Path not permitted', 'FORBIDDEN_PATH')
     if (!existsSync(path)) throw new IpcFailure('File not found', 'NOT_FOUND')
     const openError = await shell.openPath(path)
     if (openError) throw new IpcFailure(openError, 'OPEN_PATH_FAILED')
   })
+
+  // App
+  ipcMain.handle(IPC_CHANNELS.APP_GET_VERSION, () => app.getVersion())
 
   // AI Analysis
   handle(IPC_CHANNELS.AI_ANALYZE, async (_, params: AnalyzeCaptureParams) => {

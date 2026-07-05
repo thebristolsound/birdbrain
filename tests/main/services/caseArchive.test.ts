@@ -499,7 +499,10 @@ describe('caseArchive import', () => {
     initManifest(caseDir)
 
     // Capture 1: mhtml + png + txt (with distinctive text), manifest-backed.
+    // Modeled as a background recapture superseding the legacy capture, so the
+    // round-trip exercises the v23 method/supersedes columns and the FK remap.
     mhtmlCaptureId = 'capture-mhtml-1'
+    legacyCaptureId = 'capture-legacy-1'
     const mhtmlBuf = Buffer.from('<html>mhtml content</html>')
     const pngBuf = Buffer.from('fake-png-bytes')
     const txtBuf = Buffer.from(distinctiveText)
@@ -532,11 +535,12 @@ describe('caseArchive import', () => {
       manifestIndex: 0,
       entryHash,
       operatorId: 'op-1',
-      operatorName: 'Test Operator'
+      operatorName: 'Test Operator',
+      method: 'background',
+      supersedesCaptureId: legacyCaptureId
     })
 
     // Capture 2: legacy html-only capture, no manifest entry.
-    legacyCaptureId = 'capture-legacy-1'
     const legacyBuf = Buffer.from('<html>legacy content</html>')
     const legacyHash = createHash('sha256').update(legacyBuf).digest('hex')
     writeFileSync(getCapturePath(caseId, legacyCaptureId, 'html'), legacyBuf)
@@ -598,6 +602,12 @@ describe('caseArchive import', () => {
     // remapped) id — the source case is still present here so ids collide.
     const importedMhtml = imported.find((c) => c.url === taggedCaptureUrl)!
     expect(existsSync(join(getStorageRoot(), newCaseId, `${importedMhtml.id}.mhtml`))).toBe(true)
+
+    // v23 provenance survives the round-trip; the supersedes FK is remapped to
+    // the imported sibling's (possibly remapped) id, not the source id.
+    const importedLegacy = imported.find((c) => c.url === 'https://legacy.example.com')!
+    expect(importedMhtml.method).toBe('background')
+    expect(importedMhtml.supersedesCaptureId).toBe(importedLegacy.id)
 
     // chain: source entries + import entry all verify (single instance: same key)
     const chain = verifyManifestChain(join(getStorageRoot(), newCaseId))

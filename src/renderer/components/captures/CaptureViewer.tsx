@@ -2,7 +2,11 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '@renderer/stores/appStore'
-import { capturesQueryOptions, captureContentQueryOptions } from '@renderer/lib/queries'
+import {
+  capturesQueryOptions,
+  captureContentQueryOptions,
+  useRecaptureMutations
+} from '@renderer/lib/queries'
 import {
   ChevronLeft,
   ChevronRight,
@@ -13,7 +17,8 @@ import {
   FileText,
   ShieldCheck,
   Shield,
-  Archive
+  Archive,
+  RefreshCcw
 } from 'lucide-react'
 import { MhtmlViewer } from '@renderer/components/captures/MhtmlViewer'
 import { AnnotationEditor } from './annotation/AnnotationEditor'
@@ -56,9 +61,14 @@ export function CaptureViewer() {
   const selectCapture = useAppStore((s) => s.selectCapture)
   const sessionActive = useAppStore((s) => s.sessionActive)
   const { data: captures = [] } = useQuery(capturesQueryOptions(caseId))
+  const { enqueue } = useRecaptureMutations(caseId)
 
   const [activeTab, setActiveTab] = useState<ViewTab>('screenshot')
+  const [recaptureError, setRecaptureError] = useState<string | null>(null)
   const capture = captures.find((item) => item.id === selectedCaptureId) ?? null
+
+  // A recapture failure is only meaningful for the capture it was fired from.
+  useEffect(() => setRecaptureError(null), [selectedCaptureId])
 
   // Determine content type based on active tab and capture format
   const contentType =
@@ -72,15 +82,10 @@ export function CaptureViewer() {
 
   // Only fetch content if we have a capture, content type, and it's not MHTML page view
   const shouldFetchContent =
-    selectedCaptureId &&
-    contentType &&
-    !(capture?.format === 'mhtml' && activeTab === 'page')
+    selectedCaptureId && contentType && !(capture?.format === 'mhtml' && activeTab === 'page')
 
   const { data: content } = useQuery({
-    ...captureContentQueryOptions(
-      selectedCaptureId || '',
-      contentType || 'html'
-    ),
+    ...captureContentQueryOptions(selectedCaptureId || '', contentType || 'html'),
     enabled: !!shouldFetchContent
   })
 
@@ -123,6 +128,11 @@ export function CaptureViewer() {
     hostname = capture.url
   }
 
+  const supersededOriginal = capture.supersedesCaptureId
+    ? captures.find((c) => c.id === capture.supersedesCaptureId)
+    : undefined
+  const recaptureOf = captures.find((c) => c.supersedesCaptureId === capture.id)
+
   return (
     <main className="flex flex-1 flex-col overflow-hidden bg-canvas">
       {/* Slim breadcrumb */}
@@ -135,11 +145,65 @@ export function CaptureViewer() {
         >
           <ArrowLeft className="h-3.5 w-3.5" />
         </Button>
-        <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           <span className="truncate text-sm font-medium text-text-primary">
             {capture.title || hostname}
           </span>
+          {capture.method === 'background' && (
+            <span
+              data-testid="method-badge"
+              className="shrink-0 rounded-lg bg-surface px-2 py-0.5 text-[11px] text-text-muted"
+            >
+              Background capture
+            </span>
+          )}
+          {supersededOriginal && (
+            <button
+              data-testid="supersedes-link-original"
+              className="shrink-0 truncate text-xs text-accent underline underline-offset-2"
+              onClick={() => useAppStore.getState().setSelectedCaptureId(supersededOriginal.id)}
+            >
+              ← Recapture of {new Date(supersededOriginal.timestamp).toLocaleString()}
+            </button>
+          )}
+          {recaptureOf && (
+            <button
+              data-testid="supersedes-link-recapture"
+              className="shrink-0 truncate text-xs text-accent underline underline-offset-2"
+              onClick={() => useAppStore.getState().setSelectedCaptureId(recaptureOf.id)}
+            >
+              Recaptured {new Date(recaptureOf.timestamp).toLocaleString()} →
+            </button>
+          )}
         </div>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          title="Recapture this page in the background"
+          data-testid="recapture-btn"
+          disabled={enqueue.isPending}
+          onClick={() =>
+            enqueue.mutate(
+              { urls: [capture.url], supersedesCaptureId: capture.id },
+              {
+                onSuccess: (result) => setRecaptureError(result.rejected[0]?.reason ?? null),
+                onError: (err) =>
+                  setRecaptureError(err instanceof Error ? err.message : 'Recapture failed')
+              }
+            )
+          }
+        >
+          <RefreshCcw className="h-3.5 w-3.5" />
+        </Button>
+        {recaptureError && (
+          <span
+            data-testid="recapture-error"
+            title={recaptureError}
+            className="shrink-0 text-[11px] text-red-500"
+          >
+            Recapture failed
+          </span>
+        )}
         <Shield
           data-testid="capture-viewer-breadcrumb-provenance"
           className={`h-3.5 w-3.5 ${getProvenanceColor(capture.lastVerifiedStatus).text}`}

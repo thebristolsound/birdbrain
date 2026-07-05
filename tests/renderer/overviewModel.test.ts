@@ -24,6 +24,7 @@ function cap(over: Partial<Capture>): Capture {
     timestamp: dayAgo(0),
     createdAt: dayAgo(0),
     format: 'mhtml',
+    method: 'extension',
     ...over
   }
 }

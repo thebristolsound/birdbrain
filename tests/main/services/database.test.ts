@@ -802,12 +802,13 @@ describe('database', () => {
   })
 
   describe('annotations schema (migration 17)', () => {
-    it('LATEST_SCHEMA_VERSION is 22', () => {
+    it('LATEST_SCHEMA_VERSION is 23', () => {
       // Bumped to 19 in #118 (screenshot_hash / text_hash sidecar columns);
       // bumped to 20 in #123 (tls_cert_chain corroboration column);
       // bumped to 21 in #wayback (capture_archive_refs table);
-      // bumped to 22 (extracted_data_fts trigram search index).
-      expect(LATEST_SCHEMA_VERSION).toBe(22)
+      // bumped to 22 (extracted_data_fts trigram search index);
+      // bumped to 23 in #recapture (method / supersedesCaptureId provenance columns).
+      expect(LATEST_SCHEMA_VERSION).toBe(23)
     })
 
     it('creates annotations table with expected columns', () => {

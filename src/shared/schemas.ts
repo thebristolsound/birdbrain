@@ -294,11 +294,72 @@ const ManifestExportEntrySchema = z
   })
   .strict()
 
+export const ArchiveVerificationResultSchema = z
+  .object({
+    overallValid: z.boolean(),
+    chainValid: z.boolean(),
+    chainReason: z.string().optional(),
+    artifactCount: z.number().int().nonnegative(),
+    artifactFailureCount: z.number().int().nonnegative(),
+    captureCount: z.number().int().nonnegative(),
+    captureHashFailureCount: z.number().int().nonnegative()
+  })
+  .strict()
+
+// Signed audit record of a case-archive export (.birdbrain). packageHash uses
+// the same recipe as the evidence export: sha256(canonicalStringify(sorted
+// artifacts)), never hashing the final zip (circular — this entry's manifest
+// copy ships inside it).
+const ManifestArchiveExportEntrySchema = z
+  .object({
+    type: z.literal('archive-export'),
+    caseId: z.string(),
+    timestamp: z.string(),
+    operatorId: z.string(),
+    operatorName: z.string(),
+    toolVersion: z.string(),
+    packageHash: z.string(),
+    index: z.number().int().nonnegative(),
+    prevHash: z.string(),
+    schemaVersion: z.number().int().min(2).max(MANIFEST_SCHEMA_VERSION),
+    signature: z.string().optional(),
+    entryHash: z.string()
+  })
+  .strict()
+
+// Signed genesis-of-custody record appended when a case archive is imported.
+// Continues the source chain (prevHash = source head). sourcePublicKeyPem is
+// the key that signed every entry BEFORE this one (back to the previous import
+// boundary) — verify-core switches keys at these entries.
+const ManifestImportEntrySchema = z
+  .object({
+    type: z.literal('import'),
+    caseId: z.string(),
+    sourceCaseId: z.string(),
+    sourceInstallationId: z.string(),
+    sourcePublicKeyPem: z.string(),
+    packageHash: z.string(),
+    idMapSha256: z.string(),
+    verificationResult: ArchiveVerificationResultSchema,
+    timestamp: z.string(),
+    operatorId: z.string(),
+    operatorName: z.string(),
+    toolVersion: z.string(),
+    index: z.number().int().nonnegative(),
+    prevHash: z.string(),
+    schemaVersion: z.number().int().min(2).max(MANIFEST_SCHEMA_VERSION),
+    signature: z.string().optional(),
+    entryHash: z.string()
+  })
+  .strict()
+
 export const ManifestEntrySchema = z.discriminatedUnion('type', [
   ManifestCaptureEntrySchema,
   ManifestDeletionEntrySchema,
   ManifestTimestampEntrySchema,
-  ManifestExportEntrySchema
+  ManifestExportEntrySchema,
+  ManifestArchiveExportEntrySchema,
+  ManifestImportEntrySchema
 ])
 
 export type ManifestEntry = z.infer<typeof ManifestEntrySchema>

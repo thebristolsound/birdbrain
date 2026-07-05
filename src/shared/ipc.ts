@@ -10,6 +10,9 @@ export const IPC_CHANNELS = {
   CASES_CREATE: 'cases:create',
   CASES_UPDATE: 'cases:update',
   CASES_DELETE: 'cases:delete',
+  CASES_EXPORT_ARCHIVE: 'cases:exportArchive',
+  CASES_INSPECT_ARCHIVE: 'cases:inspectArchive',
+  CASES_IMPORT_ARCHIVE: 'cases:importArchive',
 
   // Captures
   CAPTURES_LIST: 'captures:list',
@@ -119,6 +122,7 @@ export const IPC_CHANNELS = {
   EXTENSION_CONNECTION: 'event:extensionConnection',
   SELECTOR_REMATCHED: 'event:selector:rematched',
   DEEP_LINK_NAVIGATE: 'event:deepLinkNavigate',
+  ARCHIVE_PROGRESS: 'event:archiveProgress',
 
   // Capture pipeline observability
   CAPTURE_ACTIVITY: 'event:captureActivity',
@@ -159,6 +163,23 @@ export interface ExportProgressEvent {
 // dismissed the native save dialog (no file written); `filePath` is the saved
 // path on success.
 export interface ExportResult {
+  canceled: boolean
+  filePath?: string
+}
+
+// Progress updates for cases:exportArchive / cases:importArchive. `caseId` is
+// only present for export (the source case); import has no case until it
+// completes, so it's omitted there.
+export interface ArchiveProgressEvent {
+  caseId?: string
+  step: string
+  percent: number
+}
+
+// Result of a cases:exportArchive invocation. `canceled` is true when the user
+// dismissed the native save dialog (no file written); `filePath` is the saved
+// path on success.
+export interface ArchiveExportResult {
   canceled: boolean
   filePath?: string
 }

@@ -25,7 +25,8 @@ import type {
   AnnotationPin,
   OperatorIdentity,
   ArchiveRef,
-  WaybackLookupResult
+  WaybackLookupResult,
+  ArchiveInspectReport
 } from '@shared/types'
 import type {
   CreateCaseParams,
@@ -54,6 +55,8 @@ import type {
   ExportProgressEvent,
   ExportResult,
   PinArchiveSnapshotParams,
+  ArchiveProgressEvent,
+  ArchiveExportResult,
   RecaptureEnqueuePayload,
   EnqueueResult,
   RecaptureQueueStatus
@@ -66,6 +69,9 @@ interface BirdbrainAPI {
     create(params: CreateCaseParams): Promise<Case>
     update(params: UpdateCaseParams): Promise<Case | undefined>
     delete(id: string): Promise<boolean>
+    exportArchive(caseId: string): Promise<ArchiveExportResult>
+    inspectArchive(): Promise<ArchiveInspectReport | null>
+    importArchive(archivePath: string, overrideTamper: boolean): Promise<{ newCaseId: string }>
   }
   captures: {
     list(caseId: string): Promise<Capture[]>
@@ -179,6 +185,7 @@ interface BirdbrainAPI {
     exportTable(params: DbExportTableParams): Promise<{ path: string } | null>
   }
   onExportProgress(callback: (event: ExportProgressEvent) => void): () => void
+  onArchiveProgress(callback: (event: ArchiveProgressEvent) => void): () => void
   onNewCapture(callback: (capture: Capture) => void): () => void
   onSessionStateChanged(
     callback: (state: {

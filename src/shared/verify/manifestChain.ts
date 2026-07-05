@@ -41,10 +41,6 @@ export function verifyManifestChainText(
   opts: { publicKeyPem: string }
 ): ChainVerifyResult {
   const lines = jsonl.split('\n').filter((l) => l.trim().length > 0)
-  let expectedPrev = ''
-  let expectedIndex = 0
-  let sawSignedVersion = false
-  const verifiedEntries: ManifestEntry[] = []
   const broken = (brokenAt: number, reason: string): ChainVerifyResult => ({
     valid: false,
     brokenAt,
@@ -53,6 +49,12 @@ export function verifyManifestChainText(
     captureHashesByIndex: new Map()
   })
 
+  // Pass 1: parse + schema-validate every line, collecting the parsed
+  // entries. Also record each `import` entry's index and embedded
+  // sourcePublicKeyPem — these are the segment boundaries multi-signer
+  // chains switch verification keys at.
+  const parsedEntries: ManifestEntry[] = []
+  const boundaries: Array<{ index: number; pem: string }> = []
   for (let i = 0; i < lines.length; i++) {
     let parsed: unknown
     try {
@@ -64,6 +66,35 @@ export function verifyManifestChainText(
     if (!schemaResult.success) {
       return broken(i, 'Invalid entry shape')
     }
+    parsedEntries.push(schemaResult.data)
+    if (schemaResult.data.type === 'import') {
+      boundaries.push({ index: i, pem: schemaResult.data.sourcePublicKeyPem })
+    }
+  }
+
+  // KEY RULE: an `import` entry's embedded key covers everything strictly
+  // BEFORE it; the import entry itself is signed by the IMPORTING
+  // installation, so it resolves like any other entry (next boundary or
+  // local key). Entry i therefore verifies against the sourcePublicKeyPem of
+  // the nearest import entry at index j > i, or opts.publicKeyPem if there is
+  // none — which composes naturally across multi-hop imports (A→B→C).
+  //
+  // SECURITY NOTE: embedded pems come from not-yet-verified entries, but any
+  // rewrite of a source segment + its import boundary breaks either the hash
+  // linkage into the locally-signed tail or the tail's signatures — the local
+  // key remains the trust anchor.
+  const keyFor = (i: number): string => {
+    const next = boundaries.find((b) => b.index > i)
+    return next ? next.pem : opts.publicKeyPem
+  }
+
+  // Pass 2: existing per-entry loop (index, prevHash, recomputed hash,
+  // signature) unchanged except the verifying key comes from keyFor(i).
+  let expectedPrev = ''
+  let expectedIndex = 0
+  let sawSignedVersion = false
+  const verifiedEntries: ManifestEntry[] = []
+  for (let i = 0; i < parsedEntries.length; i++) {
     // `signature` (v2+) is computed over `entryHash` and, like `entryHash`
     // itself, is EXCLUDED from the canonical body. Destructure both out before
     // recomputing so a present-or-absent signature never affects the hash.
@@ -72,7 +103,7 @@ export function verifyManifestChainText(
     // `entryHash` and `signature`. That exclusion is what keeps legacy v1
     // hashes stable and ensures the v2 signature does not change the canonical
     // bytes being hashed.
-    const { entryHash, signature, ...body } = schemaResult.data
+    const { entryHash, signature, ...body } = parsedEntries[i]
     if (body.index !== expectedIndex) {
       return broken(i, 'Index mismatch')
     }
@@ -100,11 +131,11 @@ export function verifyManifestChainText(
     // — they predate signing and present as integrity-verified without one.
     if (
       body.schemaVersion >= 2 &&
-      !(signature && verifyEntrySignature(entryHash, signature, opts.publicKeyPem))
+      !(signature && verifyEntrySignature(entryHash, signature, keyFor(i)))
     ) {
       return broken(i, 'Invalid signature')
     }
-    verifiedEntries.push(schemaResult.data)
+    verifiedEntries.push(parsedEntries[i])
     expectedPrev = entryHash
     expectedIndex++
   }

@@ -1,12 +1,14 @@
-import { useRef, useCallback } from 'react'
+import { useRef, useCallback, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '@renderer/stores/appStore'
+import type { ArchiveInspectReport } from '@shared/types'
 import {
   casesQueryOptions,
   captureCountsQueryOptions,
   useCasesMutations
 } from '@renderer/lib/queries'
+import { ImportCaseDialog } from '@renderer/components/cases/ImportCaseDialog'
 import { HeroSection } from './HeroSection'
 import { RecentCases } from './RecentCases'
 import { QuickStartGuide } from './QuickStartGuide'
@@ -19,6 +21,8 @@ export function Dashboard() {
   const { data: captureCounts = {} } = useQuery(captureCountsQueryOptions)
   const { update, remove } = useCasesMutations()
   const connectedToExtension = useAppStore((s) => s.connectedToExtension)
+  const [importReport, setImportReport] = useState<ArchiveInspectReport | null>(null)
+  const [importError, setImportError] = useState('')
 
   const recentCasesRef = useRef<HTMLDivElement>(null)
 
@@ -51,9 +55,31 @@ export function Dashboard() {
     [remove]
   )
 
+  const handleImportCase = useCallback(async () => {
+    setImportError('')
+    try {
+      const report = await window.birdbrain.cases.inspectArchive()
+      if (report) setImportReport(report)
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : String(err))
+    }
+  }, [])
+
   return (
     <div data-testid="dashboard" className="grid-bg min-h-full">
-      <HeroSection onNewInvestigation={handleNewCase} onOpenRecent={handleOpenRecent} />
+      <HeroSection
+        onNewInvestigation={handleNewCase}
+        onOpenRecent={handleOpenRecent}
+        onImportCase={handleImportCase}
+      />
+
+      {importError && (
+        <div className="px-8 pb-4">
+          <div className="max-w-3xl mx-auto rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+            {importError}
+          </div>
+        </div>
+      )}
 
       <div ref={recentCasesRef}>
         <RecentCases
@@ -75,6 +101,10 @@ export function Dashboard() {
       </div>
 
       <DashboardFooter />
+
+      {importReport && (
+        <ImportCaseDialog report={importReport} onClose={() => setImportReport(null)} />
+      )}
     </div>
   )
 }

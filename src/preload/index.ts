@@ -27,6 +27,8 @@ import type {
   ExportProgressEvent,
   ExportResult,
   PinArchiveSnapshotParams,
+  ArchiveProgressEvent,
+  ArchiveExportResult,
   RecaptureEnqueuePayload,
   EnqueueResult,
   RecaptureQueueStatus
@@ -54,7 +56,8 @@ import type {
   AnnotationPin,
   OperatorIdentity,
   ArchiveRef,
-  WaybackLookupResult
+  WaybackLookupResult,
+  ArchiveInspectReport
 } from '@shared/types'
 
 // Unwrap IpcResult from handlers that return structured results
@@ -81,7 +84,17 @@ const birdbrain = {
     update: (params: UpdateCaseParams): Promise<Case | undefined> =>
       unwrapIpc<Case | undefined>(ipcRenderer.invoke(IPC_CHANNELS.CASES_UPDATE, params)),
     delete: (id: string): Promise<boolean> =>
-      unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.CASES_DELETE, id))
+      unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.CASES_DELETE, id)),
+    exportArchive: (caseId: string): Promise<ArchiveExportResult> =>
+      unwrapIpc<ArchiveExportResult>(ipcRenderer.invoke(IPC_CHANNELS.CASES_EXPORT_ARCHIVE, caseId)),
+    inspectArchive: (): Promise<ArchiveInspectReport | null> =>
+      unwrapIpc<ArchiveInspectReport | null>(
+        ipcRenderer.invoke(IPC_CHANNELS.CASES_INSPECT_ARCHIVE)
+      ),
+    importArchive: (archivePath: string, overrideTamper: boolean): Promise<{ newCaseId: string }> =>
+      unwrapIpc<{ newCaseId: string }>(
+        ipcRenderer.invoke(IPC_CHANNELS.CASES_IMPORT_ARCHIVE, archivePath, overrideTamper)
+      )
   },
   captures: {
     list: (caseId: string): Promise<Capture[]> =>
@@ -297,6 +310,12 @@ const birdbrain = {
     const handler = (_: unknown, ev: ExportProgressEvent) => callback(ev)
     ipcRenderer.on(IPC_CHANNELS.EXPORT_PROGRESS, handler)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.EXPORT_PROGRESS, handler)
+  },
+
+  onArchiveProgress: (callback: (event: ArchiveProgressEvent) => void) => {
+    const handler = (_: unknown, ev: ArchiveProgressEvent) => callback(ev)
+    ipcRenderer.on(IPC_CHANNELS.ARCHIVE_PROGRESS, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.ARCHIVE_PROGRESS, handler)
   },
 
   onNewCapture: (callback: (capture: Capture) => void) => {

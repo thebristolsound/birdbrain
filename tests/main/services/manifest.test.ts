@@ -15,7 +15,7 @@ import { statSync } from 'fs'
 import { appendFileSync } from 'fs'
 import { initDatabase, closeDatabase, createCase, insertCapture } from '@main/services/database'
 import { saveAnnotations } from '@main/services/annotations'
-import { signEntryHash, verifyEntrySignature } from '@main/services/signingKey'
+import { signEntryHash, verifyEntrySignature, getPublicKeyPem } from '@main/services/signingKey'
 
 describe('manifest init/getHead', () => {
   let tempDir: string
@@ -1169,5 +1169,53 @@ describe('manifest export audit entry (#124)', () => {
     const entry = readEntry(0)
     entry.surprise = 'nope'
     expect(ManifestEntrySchema.safeParse(entry).success).toBe(false)
+  })
+})
+
+describe('manifest archive-export and import entries', () => {
+  let tempDir: string
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-archive-entry-'))
+    initManifest(tempDir)
+  })
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  it('appends and verifies archive-export and import entries', () => {
+    initManifest(tempDir)
+    appendManifestEntry(tempDir, {
+      type: 'archive-export',
+      caseId: 'case-1',
+      timestamp: new Date().toISOString(),
+      operatorId: 'inst-1',
+      operatorName: 'Op',
+      toolVersion: '1.0.0',
+      packageHash: 'a'.repeat(64)
+    })
+    appendManifestEntry(tempDir, {
+      type: 'import',
+      caseId: 'case-2',
+      sourceCaseId: 'case-1',
+      sourceInstallationId: 'inst-0',
+      sourcePublicKeyPem: getPublicKeyPem(),
+      packageHash: 'b'.repeat(64),
+      idMapSha256: 'c'.repeat(64),
+      verificationResult: {
+        overallValid: true,
+        chainValid: true,
+        artifactCount: 3,
+        artifactFailureCount: 0,
+        captureCount: 1,
+        captureHashFailureCount: 0
+      },
+      timestamp: new Date().toISOString(),
+      operatorId: 'inst-1',
+      operatorName: 'Op',
+      toolVersion: '1.0.0'
+    })
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
   })
 })

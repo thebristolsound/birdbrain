@@ -537,6 +537,12 @@ describe('ipcHandlers — export', () => {
 
   it('reveals and opens exported files via the shell', async () => {
     const evidencePath = join(userDataPath, 'evidence.zip')
+    // Reveal/open is only permitted for a path this process authored, so run a
+    // real export first to register it (#C12).
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: evidencePath })
+    const done = expectOk(await invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, { format: 'zip' }))
+    expect(done).toEqual({ canceled: false, filePath: evidencePath })
+
     writeFileSync(evidencePath, '')
     openPath.mockResolvedValueOnce('')
     expectOk(await invoke(IPC_CHANNELS.SHELL_SHOW_ITEM_IN_FOLDER, evidencePath))
@@ -544,6 +550,74 @@ describe('ipcHandlers — export', () => {
 
     expectOk(await invoke(IPC_CHANNELS.SHELL_OPEN_PATH, evidencePath))
     expect(openPath).toHaveBeenCalledWith(evidencePath)
+  })
+
+  it('refuses to reveal or open a path it did not author (#C12)', async () => {
+    const evil = join(userDataPath, 'evil.exe')
+    writeFileSync(evil, '')
+
+    const openRes = await invoke<{ ok: boolean; error?: string }>(
+      IPC_CHANNELS.SHELL_OPEN_PATH,
+      evil
+    )
+    expect(openRes.ok).toBe(false)
+    expect(openRes.error).toMatch(/not permitted/i)
+
+    const revealRes = await invoke<{ ok: boolean; error?: string }>(
+      IPC_CHANNELS.SHELL_SHOW_ITEM_IN_FOLDER,
+      evil
+    )
+    expect(revealRes.ok).toBe(false)
+    expect(revealRes.error).toMatch(/not permitted/i)
+
+    expect(openPath).not.toHaveBeenCalled()
+    expect(showItemInFolder).not.toHaveBeenCalled()
+  })
+
+  it('bounds the reveal/open allowlist with FIFO eviction (#C12)', async () => {
+    // Export well past the cap; the earliest paths must be evicted while the
+    // most recent stays openable, so the allowlist can't grow unbounded.
+    const paths = Array.from({ length: 70 }, (_, i) => join(userDataPath, `evd-${i}.zip`))
+    for (const p of paths) {
+      showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: p })
+      expectOk(await invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, { format: 'zip' }))
+    }
+
+    writeFileSync(paths[0], '')
+    const evicted = await invoke<{ ok: boolean; error?: string }>(
+      IPC_CHANNELS.SHELL_OPEN_PATH,
+      paths[0]
+    )
+    expect(evicted.ok).toBe(false)
+    expect(evicted.error).toMatch(/not permitted/i)
+
+    writeFileSync(paths[69], '')
+    openPath.mockResolvedValueOnce('')
+    expectOk(await invoke(IPC_CHANNELS.SHELL_OPEN_PATH, paths[69]))
+    expect(openPath).toHaveBeenCalledWith(paths[69])
+  })
+
+  it('re-exporting a path refreshes its FIFO recency so it is not stale-evicted (#C12)', async () => {
+    const target = join(userDataPath, 'repeat.zip')
+    const exportPath = async (p: string) => {
+      showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: p })
+      expectOk(await invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, { format: 'zip' }))
+    }
+
+    // Fill the allowlist to capacity with `target` as the oldest of 64 entries.
+    await exportPath(target)
+    for (let i = 0; i < 63; i++) await exportPath(join(userDataPath, `filler-${i}.zip`))
+
+    // Re-export the same target: it must move to the newest slot, not stay pinned
+    // at its stale position. One more unrelated export then evicts the true
+    // oldest (a filler) rather than the just-rewritten target.
+    await exportPath(target)
+    await exportPath(join(userDataPath, 'newcomer.zip'))
+
+    writeFileSync(target, '')
+    openPath.mockResolvedValueOnce('')
+    expectOk(await invoke(IPC_CHANNELS.SHELL_OPEN_PATH, target))
+    expect(openPath).toHaveBeenCalledWith(target)
   })
 })
 

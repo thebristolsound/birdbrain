@@ -546,6 +546,39 @@ describe('createCaptureLifecycle.verify', () => {
     expect(result.reason).toMatch(/text/i)
   })
 
+  it('FAILS verify when the capture is truncated out of the manifest chain (#X-2)', async () => {
+    const { readFileSync, writeFileSync } = await import('fs')
+    const { MANIFEST_FILENAME } = await import('@shared/constants')
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+
+    const { capture: first } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('first-body'))
+    )
+    const { capture: second } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('second-body'))
+    )
+    expect((await lifecycle.verify(second.id)).status).toBe('verified')
+
+    // Truncate the manifest suffix so the second capture's entry (and anything
+    // after it) is gone. The remaining prefix is a shorter, still-internally-
+    // valid chain — the MHTML bytes on disk are untouched — but the second
+    // capture is no longer anchored.
+    const manifestPath = join(getStorageRoot(), caseId, MANIFEST_FILENAME)
+    const lines = readFileSync(manifestPath, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim())
+    const cut = lines.findIndex((l) => (JSON.parse(l) as { captureId?: string }).captureId === second.id)
+    writeFileSync(manifestPath, lines.slice(0, cut).join('\n') + '\n', 'utf-8')
+
+    // The surviving prefix still verifies the first capture...
+    expect((await lifecycle.verify(first.id)).status).toBe('verified')
+    // ...but the orphaned second capture must NOT report verified.
+    const result = await lifecycle.verify(second.id)
+    expect(result.status).toBe('chain-broken')
+    expect(result.chainValid).toBe(true)
+    expect(result.reason).toMatch(/anchor/i)
+  })
+
   it('verifies a legacy capture with no recorded sidecar hashes (#118 grandfathering)', async () => {
     // No screenshot, empty textContent → no recorded hashes → not sidecar-checked.
     const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })

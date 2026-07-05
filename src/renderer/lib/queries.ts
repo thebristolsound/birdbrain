@@ -93,7 +93,17 @@ export function useCasesMutations() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.cases })
   })
 
-  return { create, update, remove }
+  const exportArchive = useMutation({
+    mutationFn: (caseId: string) => window.birdbrain.cases.exportArchive(caseId)
+  })
+
+  const importArchive = useMutation({
+    mutationFn: (params: { archivePath: string; overrideTamper: boolean }) =>
+      window.birdbrain.cases.importArchive(params.archivePath, params.overrideTamper),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.cases })
+  })
+
+  return { create, update, remove, exportArchive, importArchive }
 }
 
 // --- Captures ---

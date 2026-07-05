@@ -69,6 +69,15 @@ vi.mock('@main/services/export', () => ({
   getExportPreflight: (...a: unknown[]) => getExportPreflight(...a)
 }))
 
+const exportCaseArchive = vi.fn()
+const inspectCaseArchive = vi.fn()
+const importCaseArchive = vi.fn()
+vi.mock('@main/services/caseArchive', () => ({
+  exportCaseArchive: (...a: unknown[]) => exportCaseArchive(...a),
+  inspectCaseArchive: (...a: unknown[]) => inspectCaseArchive(...a),
+  importCaseArchive: (...a: unknown[]) => importCaseArchive(...a)
+}))
+
 const lookupSnapshots = vi.fn()
 vi.mock('@main/services/waybackMachine', async (importActual) => {
   const actual = await importActual<typeof import('@main/services/waybackMachine')>()
@@ -537,6 +546,12 @@ describe('ipcHandlers — export', () => {
 
   it('reveals and opens exported files via the shell', async () => {
     const evidencePath = join(userDataPath, 'evidence.zip')
+    // Reveal/open is only permitted for a path this process authored, so run a
+    // real export first to register it (#C12).
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: evidencePath })
+    const done = expectOk(await invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, { format: 'zip' }))
+    expect(done).toEqual({ canceled: false, filePath: evidencePath })
+
     writeFileSync(evidencePath, '')
     openPath.mockResolvedValueOnce('')
     expectOk(await invoke(IPC_CHANNELS.SHELL_SHOW_ITEM_IN_FOLDER, evidencePath))
@@ -544,6 +559,177 @@ describe('ipcHandlers — export', () => {
 
     expectOk(await invoke(IPC_CHANNELS.SHELL_OPEN_PATH, evidencePath))
     expect(openPath).toHaveBeenCalledWith(evidencePath)
+  })
+
+  it('refuses to reveal or open a path it did not author (#C12)', async () => {
+    const evil = join(userDataPath, 'evil.exe')
+    writeFileSync(evil, '')
+
+    const openRes = await invoke<{ ok: boolean; error?: string }>(
+      IPC_CHANNELS.SHELL_OPEN_PATH,
+      evil
+    )
+    expect(openRes.ok).toBe(false)
+    expect(openRes.error).toMatch(/not permitted/i)
+
+    const revealRes = await invoke<{ ok: boolean; error?: string }>(
+      IPC_CHANNELS.SHELL_SHOW_ITEM_IN_FOLDER,
+      evil
+    )
+    expect(revealRes.ok).toBe(false)
+    expect(revealRes.error).toMatch(/not permitted/i)
+
+    expect(openPath).not.toHaveBeenCalled()
+    expect(showItemInFolder).not.toHaveBeenCalled()
+  })
+
+  it('bounds the reveal/open allowlist with FIFO eviction (#C12)', async () => {
+    // Export well past the cap; the earliest paths must be evicted while the
+    // most recent stays openable, so the allowlist can't grow unbounded.
+    const paths = Array.from({ length: 70 }, (_, i) => join(userDataPath, `evd-${i}.zip`))
+    for (const p of paths) {
+      showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: p })
+      expectOk(await invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, { format: 'zip' }))
+    }
+
+    writeFileSync(paths[0], '')
+    const evicted = await invoke<{ ok: boolean; error?: string }>(
+      IPC_CHANNELS.SHELL_OPEN_PATH,
+      paths[0]
+    )
+    expect(evicted.ok).toBe(false)
+    expect(evicted.error).toMatch(/not permitted/i)
+
+    writeFileSync(paths[69], '')
+    openPath.mockResolvedValueOnce('')
+    expectOk(await invoke(IPC_CHANNELS.SHELL_OPEN_PATH, paths[69]))
+    expect(openPath).toHaveBeenCalledWith(paths[69])
+  })
+
+  it('re-exporting a path refreshes its FIFO recency so it is not stale-evicted (#C12)', async () => {
+    const target = join(userDataPath, 'repeat.zip')
+    const exportPath = async (p: string) => {
+      showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: p })
+      expectOk(await invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, { format: 'zip' }))
+    }
+
+    // Fill the allowlist to capacity with `target` as the oldest of 64 entries.
+    await exportPath(target)
+    for (let i = 0; i < 63; i++) await exportPath(join(userDataPath, `filler-${i}.zip`))
+
+    // Re-export the same target: it must move to the newest slot, not stay pinned
+    // at its stale position. One more unrelated export then evicts the true
+    // oldest (a filler) rather than the just-rewritten target.
+    await exportPath(target)
+    await exportPath(join(userDataPath, 'newcomer.zip'))
+
+    writeFileSync(target, '')
+    openPath.mockResolvedValueOnce('')
+    expectOk(await invoke(IPC_CHANNELS.SHELL_OPEN_PATH, target))
+    expect(openPath).toHaveBeenCalledWith(target)
+  })
+})
+
+describe('ipcHandlers — case archive', () => {
+  it('writes a file on the export happy path and reports canceled on dialog dismissal', async () => {
+    const canceled = expectOk<{ canceled: boolean; filePath?: string }>(
+      await invoke(IPC_CHANNELS.CASES_EXPORT_ARCHIVE, caseId)
+    )
+    expect(canceled).toEqual({ canceled: true })
+    expect(exportCaseArchive).not.toHaveBeenCalled()
+
+    const target = join(userDataPath, 'archive.birdbrain')
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: target })
+    exportCaseArchive.mockResolvedValue(undefined)
+    const done = expectOk<{ canceled: boolean; filePath?: string }>(
+      await invoke(IPC_CHANNELS.CASES_EXPORT_ARCHIVE, caseId)
+    )
+    expect(exportCaseArchive).toHaveBeenCalledWith(caseId, target, expect.any(Function))
+    expect(done).toEqual({ canceled: false, filePath: target })
+  })
+
+  it('fails with NOT_FOUND when exporting an unknown case', async () => {
+    const res = await invoke<{ ok: boolean; error?: string; code?: string }>(
+      IPC_CHANNELS.CASES_EXPORT_ARCHIVE,
+      'missing-case'
+    )
+    expect(res.ok).toBe(false)
+    expect(res.code).toBe('NOT_FOUND')
+    expect(showSaveDialog).not.toHaveBeenCalled()
+  })
+
+  it('forwards export progress to the renderer via event.sender.send', async () => {
+    const target = join(userDataPath, 'archive.birdbrain')
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: target })
+    exportCaseArchive.mockImplementationOnce(
+      async (_caseId, _outputPath, onProgress: (step: string, percent: number) => void) => {
+        onProgress('Collecting case data...', 10)
+      }
+    )
+
+    const send = vi.fn()
+    const fn = registered.get(IPC_CHANNELS.CASES_EXPORT_ARCHIVE)!
+    await fn({ sender: { send } } as unknown as IpcMainInvokeEvent, caseId)
+
+    expect(send).toHaveBeenCalledWith(IPC_CHANNELS.ARCHIVE_PROGRESS, {
+      caseId,
+      step: 'Collecting case data...',
+      percent: 10
+    })
+  })
+
+  it('returns null when the archive-inspect dialog is cancelled', async () => {
+    expect(expectOk(await invoke(IPC_CHANNELS.CASES_INSPECT_ARCHIVE))).toBeNull()
+    expect(inspectCaseArchive).not.toHaveBeenCalled()
+  })
+
+  it('inspects the chosen archive and returns its report', async () => {
+    const archivePath = join(userDataPath, 'archive.birdbrain')
+    showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [archivePath] })
+    const report = { archivePath, caseName: 'Test Case' }
+    inspectCaseArchive.mockReturnValue(report)
+
+    const result = expectOk(await invoke(IPC_CHANNELS.CASES_INSPECT_ARCHIVE))
+    expect(inspectCaseArchive).toHaveBeenCalledWith(archivePath)
+    expect(result).toBe(report)
+  })
+
+  it('imports an archive and returns the new case id', async () => {
+    const archivePath = join(userDataPath, 'archive.birdbrain')
+    importCaseArchive.mockResolvedValue({ newCaseId: 'new-case-id', report: {} })
+
+    const result = expectOk<{ newCaseId: string }>(
+      await invoke(IPC_CHANNELS.CASES_IMPORT_ARCHIVE, archivePath, false)
+    )
+    expect(result).toEqual({ newCaseId: 'new-case-id' })
+    expect(importCaseArchive).toHaveBeenCalledWith(
+      archivePath,
+      { overrideTamper: false },
+      expect.any(Function)
+    )
+  })
+
+  it('forwards import progress to the renderer via event.sender.send', async () => {
+    const archivePath = join(userDataPath, 'archive.birdbrain')
+    importCaseArchive.mockImplementationOnce(
+      async (
+        _archivePath,
+        _opts,
+        onProgress: (step: string, percent: number) => void
+      ) => {
+        onProgress('Verifying archive...', 5)
+        return { newCaseId: 'new-case-id', report: {} }
+      }
+    )
+
+    const send = vi.fn()
+    const fn = registered.get(IPC_CHANNELS.CASES_IMPORT_ARCHIVE)!
+    await fn({ sender: { send } } as unknown as IpcMainInvokeEvent, archivePath, true)
+
+    expect(send).toHaveBeenCalledWith(IPC_CHANNELS.ARCHIVE_PROGRESS, {
+      step: 'Verifying archive...',
+      percent: 5
+    })
   })
 })
 

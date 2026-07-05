@@ -24,11 +24,13 @@ import type {
   UpsertAnnotationPinParams,
   ExportProgressEvent,
   ExportResult,
+  ArchiveProgressEvent,
+  ArchiveExportResult,
   RecaptureEnqueuePayload
 } from '@shared/ipc'
 import * as dbAdmin from '@main/services/dbAdmin'
 import { existsSync } from 'fs'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import { pathToFileURL } from 'url'
 import * as db from '@main/services/database'
 import * as annotations from '@main/services/annotations'
@@ -37,6 +39,11 @@ import * as settings from '@main/services/settings'
 import * as openrouter from '@main/services/openrouter'
 import * as analysisService from '@main/services/ai/analysisService'
 import { generateReport, getExportPreflight } from '@main/services/export'
+import {
+  exportCaseArchive,
+  inspectCaseArchive,
+  importCaseArchive
+} from '@main/services/caseArchive'
 import { getExtensionPath, extensionPathExists } from '@main/services/extensionPath'
 import { lookupSnapshots, isPersistableSnapshot } from '@main/services/waybackMachine'
 import { buildCsv } from '@main/services/csvEscape'
@@ -47,13 +54,38 @@ import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import type { RecaptureService } from '@main/services/recapture'
 import { handle, IpcFailure } from '@main/ipcWrap'
-import type { BirdbrainSettings, ExportOptions, CaptureAnalysis } from '@shared/types'
+import type {
+  BirdbrainSettings,
+  ExportOptions,
+  CaptureAnalysis,
+  ArchiveInspectReport
+} from '@shared/types'
 
 // Self-test fetches must fail fast when the capture server is down. Without an
 // explicit timeout they inherit undici's 10s default, which on platforms whose
 // loopback drops (rather than refuses) SYNs to unbound ports — e.g. WSL2 — hangs
 // long enough to blow past test/UI deadlines.
 const SELF_TEST_TIMEOUT_MS = 2000
+
+// Reveal/open is limited to files THIS process authored (export outputs). A
+// renderer — even a compromised one — can't hand shell.openPath an arbitrary
+// binary, because only paths recorded here on a successful export are openable.
+// Bounded with FIFO eviction so the allowlist can't grow for the life of the
+// process; only recent exports stay openable.
+const MAX_REVEALABLE_PATHS = 64
+const revealablePaths = new Set<string>()
+
+function rememberRevealablePath(filePath: string): void {
+  const resolved = resolve(filePath)
+  // delete-then-add so re-exporting the same destination refreshes its recency.
+  // Set.add on an already-present value keeps its original insertion position,
+  // which would let a just-rewritten path be evicted by newer unrelated exports.
+  revealablePaths.delete(resolved)
+  revealablePaths.add(resolved)
+  if (revealablePaths.size > MAX_REVEALABLE_PATHS) {
+    revealablePaths.delete(revealablePaths.values().next().value as string)
+  }
+}
 
 export function registerIpcHandlers(deps: {
   selectorLifecycle: SelectorLifecycle
@@ -67,6 +99,53 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.CASES_CREATE, (_, params: CreateCaseParams) => db.createCase(params))
   handle(IPC_CHANNELS.CASES_UPDATE, (_, params: UpdateCaseParams) => db.updateCase(params))
   handle(IPC_CHANNELS.CASES_DELETE, (_, id: string) => db.deleteCase(id))
+
+  handle(
+    IPC_CHANNELS.CASES_EXPORT_ARCHIVE,
+    async (event, caseId: string): Promise<ArchiveExportResult> => {
+      const caseData = db.getCase(caseId)
+      if (!caseData) throw new IpcFailure('Case not found', 'NOT_FOUND')
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        defaultPath: `${caseData.name.replace(/[^\w\- ]+/g, '_')}.birdbrain`,
+        filters: [{ name: 'Birdbrain Case Archive', extensions: ['birdbrain'] }]
+      })
+      if (canceled || !filePath) return { canceled: true }
+      await exportCaseArchive(caseId, filePath, (step, percent) =>
+        event.sender.send(IPC_CHANNELS.ARCHIVE_PROGRESS, {
+          caseId,
+          step,
+          percent
+        } satisfies ArchiveProgressEvent)
+      )
+      return { canceled: false, filePath }
+    }
+  )
+
+  handle(IPC_CHANNELS.CASES_INSPECT_ARCHIVE, async (): Promise<ArchiveInspectReport | null> => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      title: 'Import Case Archive',
+      filters: [{ name: 'Birdbrain Case Archive', extensions: ['birdbrain'] }],
+      properties: ['openFile']
+    })
+    if (canceled || filePaths.length === 0) return null
+    return inspectCaseArchive(filePaths[0])
+  })
+
+  handle(
+    IPC_CHANNELS.CASES_IMPORT_ARCHIVE,
+    async (event, archivePath: string, overrideTamper: boolean): Promise<{ newCaseId: string }> => {
+      const { newCaseId } = await importCaseArchive(
+        archivePath,
+        { overrideTamper },
+        (step, percent) =>
+          event.sender.send(IPC_CHANNELS.ARCHIVE_PROGRESS, {
+            step,
+            percent
+          } satisfies ArchiveProgressEvent)
+      )
+      return { newCaseId }
+    }
+  )
 
   // Captures
   ipcMain.handle(IPC_CHANNELS.CAPTURES_LIST, (_, caseId: string) => db.listCaptures(caseId))
@@ -440,6 +519,8 @@ export function registerIpcHandlers(deps: {
             percent
           } satisfies ExportProgressEvent)
       )
+      // Permit reveal/open for this freshly-written export only.
+      rememberRevealablePath(filePath)
       return { canceled: false, filePath }
     }
   )
@@ -447,12 +528,16 @@ export function registerIpcHandlers(deps: {
   // Shell — reveal/open a file the main process just wrote (export completion).
   handle(IPC_CHANNELS.SHELL_SHOW_ITEM_IN_FOLDER, (_, path: string) => {
     if (!path) throw new IpcFailure('Path is required', 'INVALID_PATH')
+    if (!revealablePaths.has(resolve(path)))
+      throw new IpcFailure('Path not permitted', 'FORBIDDEN_PATH')
     if (!existsSync(path)) throw new IpcFailure('File not found', 'NOT_FOUND')
     shell.showItemInFolder(path)
   })
 
   handle(IPC_CHANNELS.SHELL_OPEN_PATH, async (_, path: string) => {
     if (!path) throw new IpcFailure('Path is required', 'INVALID_PATH')
+    if (!revealablePaths.has(resolve(path)))
+      throw new IpcFailure('Path not permitted', 'FORBIDDEN_PATH')
     if (!existsSync(path)) throw new IpcFailure('File not found', 'NOT_FOUND')
     const openError = await shell.openPath(path)
     if (openError) throw new IpcFailure(openError, 'OPEN_PATH_FAILED')

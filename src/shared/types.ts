@@ -373,3 +373,42 @@ export interface OperatorIdentity {
   operatorRole: string
   operatorOrganization: string
 }
+
+// Verification summary of a .birdbrain case archive, recorded in the signed
+// `import` manifest entry and surfaced in the import preflight UI.
+export interface ArchiveVerificationResult {
+  overallValid: boolean
+  chainValid: boolean
+  chainReason?: string
+  artifactCount: number
+  artifactFailureCount: number
+  captureCount: number
+  captureHashFailureCount: number
+}
+
+// Summary counts surfaced in a .birdbrain archive's package.json header, so a
+// reviewer can sanity-check archive contents without parsing data.json.
+export interface CaseArchiveCounts {
+  captures: number
+  notes: number
+  tags: number
+  selectors: number
+  annotations: number
+  extractedData: number
+  archiveRefs: number
+}
+
+// Full read-only inspection report for a .birdbrain case archive, surfaced in
+// the import preflight UI before any data is written.
+export interface ArchiveInspectReport {
+  archivePath: string
+  schemaVersion: number
+  exportedAt: string
+  toolVersion: string
+  caseName: string
+  caseDescription: string | null
+  sourceInstallationId: string
+  sourceOperatorName: string
+  counts: CaseArchiveCounts
+  verification: ArchiveVerificationResult
+}

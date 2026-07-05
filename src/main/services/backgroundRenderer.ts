@@ -170,38 +170,38 @@ async function captureFullPageScreenshot(wc: WebContents): Promise<Buffer> {
     cssContentSize?: { x: number; y: number; width: number; height: number }
   }
 
-  // Only cssContentSize is in CSS pixels, which is what captureScreenshot's clip
-  // expects. The deprecated device-pixel contentSize would mis-scale the clip on
-  // non-1 DPR pages, so skip the clip entirely when cssContentSize is absent.
-  const contentSize = metrics.cssContentSize
-  let clip: { x: number; y: number; width: number; height: number; scale: number } | undefined
-  if (contentSize) {
-    // getLayoutMetrics can omit dimensions on some pages; coalesce so a missing
-    // field yields a valid 1px clip rather than NaN (which fails captureScreenshot).
-    const width = Math.max(1, Math.ceil(contentSize.width ?? 0))
-    const height = Math.max(1, Math.ceil(contentSize.height ?? 0))
-    // Downscale so no output side exceeds the texture ceiling and the total
-    // bitmap stays bounded — scroll discovery can grow pages without limit.
-    const scale = Math.min(
-      1,
-      MAX_CAPTURE_DIMENSION_PX / width,
-      MAX_CAPTURE_DIMENSION_PX / height,
-      Math.sqrt(MAX_CAPTURE_PIXELS / (width * height))
-    )
-    clip = {
-      x: Math.max(0, contentSize.x || 0),
-      y: Math.max(0, contentSize.y || 0),
-      width,
-      height,
-      scale
-    }
+  // cssContentSize is the CSS-pixel content bounds captureScreenshot's clip
+  // expects. The deprecated device-pixel contentSize would mis-scale on non-1 DPR
+  // pages, so on the rare page that omits cssContentSize fall back to the known
+  // viewport bounds. Capturing with no clip at all would bypass the MAX_CAPTURE_*
+  // caps below and risk exceeding GPU texture limits on a large page.
+  const contentSize = metrics.cssContentSize ?? { x: 0, y: 0, ...VIEWPORT }
+
+  // getLayoutMetrics can omit dimensions on some pages; coalesce so a missing
+  // field yields a valid 1px clip rather than NaN (which fails captureScreenshot).
+  const width = Math.max(1, Math.ceil(contentSize.width ?? 0))
+  const height = Math.max(1, Math.ceil(contentSize.height ?? 0))
+  // Downscale so no output side exceeds the texture ceiling and the total
+  // bitmap stays bounded — scroll discovery can grow pages without limit.
+  const scale = Math.min(
+    1,
+    MAX_CAPTURE_DIMENSION_PX / width,
+    MAX_CAPTURE_DIMENSION_PX / height,
+    Math.sqrt(MAX_CAPTURE_PIXELS / (width * height))
+  )
+  const clip = {
+    x: Math.max(0, contentSize.x || 0),
+    y: Math.max(0, contentSize.y || 0),
+    width,
+    height,
+    scale
   }
 
   const { data } = (await wc.debugger.sendCommand('Page.captureScreenshot', {
     format: 'png',
     fromSurface: true,
     captureBeyondViewport: true,
-    ...(clip ? { clip } : {})
+    clip
   })) as { data: string }
 
   return Buffer.from(data, 'base64')

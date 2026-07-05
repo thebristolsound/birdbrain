@@ -49,6 +49,10 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
   useEffect(() => {
     setNameValue(caseData.name)
     setDescValue(caseData.description ?? '')
+    // Switching cases must not carry a stale export banner/progress across.
+    setArchiveResult(null)
+    setArchiveError('')
+    setArchiveProgress(null)
   }, [caseData])
 
   useEffect(() => {

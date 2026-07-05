@@ -2,6 +2,7 @@ import { test, expect } from './fixtures/electronApp'
 import { mkdtemp, rm } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import { CAPTURE_SERVER_BASE_URL } from '../src/shared/constants'
 
 type Page = import('@playwright/test').Page
 type ElectronApplication = import('@playwright/test').ElectronApplication
@@ -22,8 +23,8 @@ async function createCase(page: Page, name: string): Promise<string> {
 
 async function seedCapture(page: Page, caseId: string, url: string, title: string): Promise<void> {
   const ok = await page.evaluate(
-    async ({ caseId, url, title }) => {
-      const status = await fetch('http://127.0.0.1:19845/api/status').then((r) => r.json())
+    async ({ caseId, url, title, baseUrl }) => {
+      const status = await fetch(`${baseUrl}/api/status`).then((r) => r.json())
       const token: string = status.serverToken ?? ''
       const form = new FormData()
       form.append('source', 'manual')
@@ -40,7 +41,7 @@ async function seedCapture(page: Page, caseId: string, url: string, title: strin
         new Blob([`<html><body>${title}</body></html>`], { type: 'multipart/related' }),
         'capture.mhtml'
       )
-      const r = await fetch('http://127.0.0.1:19845/api/captures', {
+      const r = await fetch(`${baseUrl}/api/captures`, {
         method: 'POST',
         body: form,
         headers: { 'X-Birdbrain-Token': token }
@@ -48,7 +49,7 @@ async function seedCapture(page: Page, caseId: string, url: string, title: strin
       const body = await r.json()
       return body.status === 'ok'
     },
-    { caseId, url, title }
+    { caseId, url, title, baseUrl: CAPTURE_SERVER_BASE_URL }
   )
   if (!ok) throw new Error(`capture upload failed for ${title}`)
 }

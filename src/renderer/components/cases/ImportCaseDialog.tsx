@@ -49,7 +49,7 @@ export function ImportCaseDialog({ report, onClose }: ImportCaseDialogProps) {
   return (
     <motion.div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-      onClick={onClose}
+      onClick={importArchive.isPending ? undefined : onClose}
       {...presets.overlay}
     >
       <motion.div
@@ -137,7 +137,7 @@ export function ImportCaseDialog({ report, onClose }: ImportCaseDialogProps) {
         )}
 
         <div className="flex justify-end gap-2">
-          <Button variant="ghost" size="sm" onClick={onClose}>
+          <Button variant="ghost" size="sm" onClick={onClose} disabled={importArchive.isPending}>
             Cancel
           </Button>
           <Button

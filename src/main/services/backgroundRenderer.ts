@@ -46,7 +46,13 @@ function createNetworkIdleTracker(session: Session): NetworkIdleTracker {
   }
 
   session.webRequest.onBeforeRequest((details, callback) => {
-    pending.add(details.id)
+    // WebSocket connections never fire onCompleted/onErrorOccurred until they
+    // close, so counting them would peg waitForIdle at maxWaitMs on any page
+    // holding a live socket. Skip them; short-lived requests still gate idle.
+    // (Electron's resourceType enum has no distinct SSE value — EventSource
+    // streams surface as 'other', so they can't be excluded without also
+    // dropping legitimate short requests.)
+    if (details.resourceType !== 'webSocket') pending.add(details.id)
     markActivity()
     callback({})
   })
@@ -162,10 +168,12 @@ async function scrollToLoadLazyContent(wc: WebContents, timeoutMs: number): Prom
 async function captureFullPageScreenshot(wc: WebContents): Promise<Buffer> {
   const metrics = (await wc.debugger.sendCommand('Page.getLayoutMetrics')) as {
     cssContentSize?: { x: number; y: number; width: number; height: number }
-    contentSize?: { x: number; y: number; width: number; height: number }
   }
 
-  const contentSize = metrics.cssContentSize ?? metrics.contentSize
+  // Only cssContentSize is in CSS pixels, which is what captureScreenshot's clip
+  // expects. The deprecated device-pixel contentSize would mis-scale the clip on
+  // non-1 DPR pages, so skip the clip entirely when cssContentSize is absent.
+  const contentSize = metrics.cssContentSize
   let clip: { x: number; y: number; width: number; height: number; scale: number } | undefined
   if (contentSize) {
     // getLayoutMetrics can omit dimensions on some pages; coalesce so a missing

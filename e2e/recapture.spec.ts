@@ -26,6 +26,10 @@ test.describe('Recapture (background capture)', () => {
   })
 
   test('captures a URL in the background with full provenance', async ({ page }) => {
+    // Two sequential background renders, each allowed up to 60s below; the
+    // default 30s per-test cap would undercut them on a slow CI runner.
+    test.setTimeout(150000)
+
     // Create a case (same flow as mhtml-capture.spec.ts)
     await page.evaluate(() => {
       window.location.hash = '/cases/new'

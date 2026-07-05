@@ -23,13 +23,15 @@ export function ImportCaseDialog({ report, onClose }: ImportCaseDialogProps) {
   const { verification } = report
   const canImport = verification.overallValid || overrideTamper
 
+  // Always-on subscription (matching CaseSubhead) so a progress event fired
+  // immediately after mutateAsync can't be missed. Import events carry no
+  // caseId; the dialog only exists while its own import runs.
   useEffect(() => {
-    if (!importArchive.isPending) return
     const unsubscribe = window.birdbrain.onArchiveProgress((event) => {
       if (!event.caseId) setImportProgress({ step: event.step, percent: event.percent })
     })
     return unsubscribe
-  }, [importArchive.isPending])
+  }, [])
 
   const handleImport = async () => {
     setImportError('')

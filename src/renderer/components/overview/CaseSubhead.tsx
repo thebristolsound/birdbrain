@@ -38,6 +38,11 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
     null
   )
 
+  // Tracks the currently-displayed case so a still-in-flight export that resolves
+  // after a case switch can detect it's stale (the async closure captured the
+  // old caseData). This route stays mounted across $caseId changes.
+  const caseIdRef = useRef(caseData.id)
+
   const [editingName, setEditingName] = useState(false)
   const [nameValue, setNameValue] = useState('')
   const nameInputRef = useRef<HTMLInputElement>(null)
@@ -49,6 +54,7 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
   useEffect(() => {
     setNameValue(caseData.name)
     setDescValue(caseData.description ?? '')
+    caseIdRef.current = caseData.id
     // Switching cases must not carry a stale export banner/progress across.
     setArchiveResult(null)
     setArchiveError('')
@@ -109,18 +115,22 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
   }
 
   async function handleExportArchive() {
+    const exportCaseId = caseData.id
     setArchiveError('')
     setArchiveResult(null)
     setArchiveProgress({ step: 'Preparing archive…', percent: 0 })
     try {
-      const result = await exportArchive.mutateAsync(caseData.id)
+      const result = await exportArchive.mutateAsync(exportCaseId)
+      // Ignore a completion that lands after the user switched cases.
+      if (caseIdRef.current !== exportCaseId) return
       if (!result.canceled && result.filePath) {
         setArchiveResult({ filePath: result.filePath })
       }
     } catch (err) {
+      if (caseIdRef.current !== exportCaseId) return
       setArchiveError(err instanceof Error ? err.message : String(err))
     } finally {
-      setArchiveProgress(null)
+      if (caseIdRef.current === exportCaseId) setArchiveProgress(null)
     }
   }
 
@@ -230,7 +240,11 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
           Opened {formatRelativeTime(caseData.createdAt)}
         </span>
         {archiveResult && (
-          <div className="flex items-center gap-2 rounded border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-400">
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex items-center gap-2 rounded border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-400"
+          >
             <CheckCircle2 size={12} strokeWidth={1.8} className="shrink-0" />
             <span className="max-w-[220px] truncate" title={archiveResult.filePath}>
               Archive saved
@@ -245,7 +259,11 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
           </div>
         )}
         {archiveError && (
-          <div className="max-w-[260px] rounded border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-xs text-red-400">
+          <div
+            role="alert"
+            aria-live="assertive"
+            className="max-w-[260px] rounded border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-xs text-red-400"
+          >
             {archiveError}
           </div>
         )}

@@ -35,7 +35,14 @@ export function readStoredZip(zipData: Buffer): Map<string, Buffer> {
     const commentLength = zipData.readUInt16LE(offset + 32)
     const localOffset = zipData.readUInt32LE(offset + 42)
     if (method !== 0) invalid()
+    // Bound the variable-length fields before slicing: Buffer.subarray silently
+    // clamps out-of-range indices, so a truncated buffer would yield a garbled
+    // name instead of failing. Reject unsafe names here too (defense-in-depth
+    // against zip-slip) — this reader parses user-supplied, possibly hostile
+    // archives, so it should not depend on consumers to sanitize entry names.
+    if (offset + 46 + nameLength + extraLength + commentLength > zipData.length) invalid()
     const name = zipData.subarray(offset + 46, offset + 46 + nameLength).toString('utf-8')
+    if (name.includes('..') || name.startsWith('/') || name.includes('\\')) invalid()
 
     if (localOffset + 30 > zipData.length || zipData.readUInt32LE(localOffset) !== LOCAL_SIG)
       invalid()

@@ -21,4 +21,14 @@ describe('readStoredZip', () => {
     const zip = createStoredZip([{ name: 'a.txt', data: 'hello' }])
     expect(() => readStoredZip(zip.subarray(0, zip.length - 4))).toThrow(/not a valid/i)
   })
+
+  it('rejects unsafe entry names (zip-slip defense-in-depth)', () => {
+    // createStoredZip normalizes backslashes to '/', so only '..' and leading-'/'
+    // names can be produced through the writer; the reader also guards '\\' for
+    // hand-crafted archives.
+    expect(() => readStoredZip(createStoredZip([{ name: 'files/../evil', data: 'x' }]))).toThrow(
+      /not a valid/i
+    )
+    expect(() => readStoredZip(createStoredZip([{ name: '/abs', data: 'x' }]))).toThrow(/not a valid/i)
+  })
 })

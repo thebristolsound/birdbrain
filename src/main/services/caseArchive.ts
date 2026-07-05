@@ -171,6 +171,14 @@ function sha256(buf: Buffer): string {
   return createHash('sha256').update(buf).digest('hex')
 }
 
+// The tamper-check hash tying all artifacts together. Export and inspect MUST
+// compute it identically, so the recipe lives in one place: sort by path, then
+// sha256 of the canonical JSON. Never hashes the zip itself (circular).
+function computePackageHash(artifacts: CaseArchiveArtifact[]): string {
+  const sorted = [...artifacts].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+  return sha256(Buffer.from(canonicalStringify(sorted), 'utf-8'))
+}
+
 // Builds and writes a self-contained .birdbrain case archive: a raw DB
 // snapshot (data.json), the case's live signed manifest, every on-disk
 // capture file, and a package.json header whose packageHash commits to all
@@ -224,10 +232,7 @@ export async function exportCaseArchive(
     }
   }
 
-  const sortedArtifacts = [...artifacts].sort((a, b) =>
-    a.path < b.path ? -1 : a.path > b.path ? 1 : 0
-  )
-  const packageHash = sha256(Buffer.from(canonicalStringify(sortedArtifacts), 'utf-8'))
+  const packageHash = computePackageHash(artifacts)
 
   const counts: CaseArchiveCounts = {
     captures: data.captures.length,
@@ -266,11 +271,12 @@ export async function exportCaseArchive(
   entries.unshift({ name: 'package.json', data: JSON.stringify(header, null, 2) })
 
   onProgress?.('Writing archive...', 90)
-  writeFileSync(outputPath, createStoredZip(entries))
-
   const caseDir = join(getStorageRoot(), caseId)
-  initManifest(caseDir)
+  // Any failure from here on can leave a partial/orphaned .birdbrain on disk:
+  // the write itself, initManifest, or the signed append. Clean up on all of them.
   try {
+    writeFileSync(outputPath, createStoredZip(entries))
+    initManifest(caseDir)
     appendManifestEntry(caseDir, {
       type: 'archive-export',
       caseId,
@@ -326,10 +332,7 @@ export function inspectCaseArchive(archivePath: string): ArchiveInspectReport {
       artifactFailureCount++
     }
   }
-  const sortedArtifacts = [...header.artifacts].sort((a, b) =>
-    a.path < b.path ? -1 : a.path > b.path ? 1 : 0
-  )
-  const recomputedPackageHash = sha256(Buffer.from(canonicalStringify(sortedArtifacts), 'utf-8'))
+  const recomputedPackageHash = computePackageHash(header.artifacts)
   if (recomputedPackageHash !== header.packageHash) {
     artifactFailureCount++
   }
@@ -476,6 +479,12 @@ export async function importCaseArchive(
     for (const [name, buf] of entries) {
       if (!name.startsWith('files/')) continue
       const base = name.slice('files/'.length) // <oldCaptureId>.<ext>
+      // Zip-slip guard: the entry name is attacker-controlled (a crafted archive
+      // can self-sign as valid), and stagingDir is later renamed into the live
+      // storage root. Only a bare filename is ever legitimate here.
+      if (base.length === 0 || base.includes('/') || base.includes('\\') || base.includes('..')) {
+        throw new Error('Not a valid Birdbrain archive: malformed file entry name')
+      }
       const dot = base.lastIndexOf('.')
       const oldCaptureId = dot === -1 ? base : base.slice(0, dot)
       const ext = dot === -1 ? '' : base.slice(dot)

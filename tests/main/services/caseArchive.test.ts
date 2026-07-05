@@ -680,14 +680,25 @@ describe('caseArchive import', () => {
     await expect(importCaseArchive(archivePath)).rejects.toThrow(/operator name/i)
   })
 
-  it('cleans up staging on failure', async () => {
-    // Force a mid-import failure: null out the case row's NOT NULL name column.
+  it('cleans up staging and the moved case dir on failure', async () => {
+    // Null out the case row's NOT NULL name so the cases INSERT fails inside the
+    // transaction — which runs AFTER renameSync(stagingDir → caseDir), so this
+    // exercises the post-move rmSync(caseDir) cleanup, not just staging removal.
     rewriteDataJson(archivePath, (d) => ({
       ...d,
       case: { ...(d.case as Record<string, unknown>), name: null }
     }))
+    const dirsBefore = [...readdirSync(getStorageRoot())].sort()
     await expect(importCaseArchive(archivePath)).rejects.toThrow()
-    const leftovers = readdirSync(getStorageRoot()).filter((n) => n.startsWith('.import-staging-'))
-    expect(leftovers).toHaveLength(0)
+    // Neither an orphaned staging dir nor the renamed case dir survives.
+    expect([...readdirSync(getStorageRoot())].sort()).toEqual(dirsBefore)
+  })
+
+  it('rejects an archive with a path-traversal file entry (zip-slip)', async () => {
+    const entries = readStoredZip(readFileSync(archivePath))
+    entries.set('files/../evil.txt', Buffer.from('pwned'))
+    const rebuilt = [...entries.entries()].map(([name, data]) => ({ name, data }))
+    writeFileSync(archivePath, createStoredZip(rebuilt))
+    await expect(importCaseArchive(archivePath)).rejects.toThrow(/not a valid Birdbrain archive/i)
   })
 })

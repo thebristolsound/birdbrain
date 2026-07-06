@@ -281,7 +281,11 @@ async function scrollToLoadLazyContent(wc: WebContents, timeoutMs: number): Prom
       lastY = state.y
     }
   } finally {
-    await wc.executeJavaScript(scrollResetScript(priorOverflow), true)
+    // Fail-soft: this only restores scroll position and the lifted overflow
+    // lock. If the page navigated or the webContents was destroyed mid-teardown
+    // the reset throws, but the scroll phase is best-effort and must not fail an
+    // otherwise-complete capture (mirrors the stitched-screenshot cleanup).
+    await wc.executeJavaScript(scrollResetScript(priorOverflow), true).catch(() => {})
     await forceRenderPass(wc)
     await sleep(SCROLL_PAUSE_MS)
   }

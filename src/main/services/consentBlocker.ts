@@ -16,6 +16,7 @@ const CONSENT_FILTER_LISTS = [
 ]
 
 let blockerPromise: Promise<ElectronBlocker | null> | undefined
+let blockerKey: string | undefined
 
 // Lazily builds (and disk-caches) the consent filter engine. Lazy so the app
 // never fetches filter lists at startup — only when a background recapture
@@ -25,9 +26,14 @@ let blockerPromise: Promise<ElectronBlocker | null> | undefined
 //
 // BIRDBRAIN_CONSENT_LISTS (comma-separated URLs) is the E2E seam: tests point
 // it at a locally served fixture list, and the disk cache is skipped so runs
-// are deterministic and offline.
+// are deterministic and offline. The memo is keyed on the resolved list source
+// so changing (or clearing) the override rebuilds rather than leaking a stale
+// fixture engine into a later run.
 export function getConsentBlocker(): Promise<ElectronBlocker | null> {
   const override = process.env.BIRDBRAIN_CONSENT_LISTS
+  const key = override ?? ''
+  if (blockerPromise && blockerKey === key) return blockerPromise
+
   const lists = override ? override.split(',') : CONSENT_FILTER_LISTS
   const caching = override
     ? undefined
@@ -36,10 +42,17 @@ export function getConsentBlocker(): Promise<ElectronBlocker | null> {
         read: fs.readFile,
         write: fs.writeFile
       }
-  blockerPromise ??= ElectronBlocker.fromLists(fetch, lists, undefined, caching).catch(
+  blockerKey = key
+  blockerPromise = ElectronBlocker.fromLists(fetch, lists, undefined, caching).catch(
     (err): null => {
       console.error('consentBlocker: failed to build consent filter engine', err)
-      blockerPromise = undefined
+      // Only clear if this is still the in-flight build for this key, so a
+      // newer getConsentBlocker() call's promise isn't wiped by an older
+      // rejection.
+      if (blockerKey === key) {
+        blockerPromise = undefined
+        blockerKey = undefined
+      }
       return null
     }
   )

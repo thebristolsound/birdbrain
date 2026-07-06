@@ -3,7 +3,7 @@ import * as db from '@main/services/database'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import { getInstallationId } from '@main/services/installationId'
 import { getSettings } from '@main/services/settings'
-import type { Capture, CaptureEvent } from '@shared/types'
+import type { Capture, CaptureEvent, ConsentSuppression } from '@shared/types'
 import type { EnqueueResult, RecaptureQueueStatus } from '@shared/ipc'
 
 export interface RenderedPage {
@@ -15,6 +15,8 @@ export interface RenderedPage {
   httpStatus: number
   userAgent: string
   browserVersion: string
+  // Set when consent/cookie-notice filter lists were active while rendering.
+  consentSuppression?: ConsentSuppression
   // Releases renderer-owned resources (tmp file, window). Always called.
   cleanup: () => Promise<void>
 }
@@ -128,7 +130,8 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         toolVersion: getToolVersion(),
         screenshot: rendered.screenshot,
         method: 'background',
-        supersedesCaptureId: job.supersedesCaptureId
+        supersedesCaptureId: job.supersedesCaptureId,
+        consentSuppression: rendered.consentSuppression
       })
 
       const warning = looksLikeLoginWall({

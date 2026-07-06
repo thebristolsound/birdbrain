@@ -14,7 +14,12 @@ import { MANIFEST_FILENAME, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import { canonicalStringify, verifyManifestChainText } from '@shared/verify'
 import type { ChainVerifyResult } from '@shared/verify'
 import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
-import type { TrustedTime, ArchiveVerificationResult, CaptureMethod } from '@shared/types'
+import type {
+  TrustedTime,
+  ArchiveVerificationResult,
+  CaptureMethod,
+  ConsentSuppression
+} from '@shared/types'
 import type { TlsCertChainResult } from '@main/services/tlsCertChain'
 
 export type { TrustedTime }
@@ -76,6 +81,10 @@ export type ManifestEntryInput =
       // absent to preserve legacy canonical bodies.
       method?: CaptureMethod
       supersedesCaptureId?: string
+      // Consent-overlay suppression active in the rendering session. OMITTED
+      // when absent so pre-existing entries' canonical bodies — and chain
+      // hashes — are unchanged.
+      consentSuppression?: ConsentSuppression
       sizeBytes: number
       operatorId: string
       operatorName: string
@@ -293,6 +302,9 @@ export interface CaptureEntryContext {
   // absent to preserve legacy canonical bodies.
   method?: CaptureMethod
   supersedesCaptureId?: string
+  // Consent-overlay suppression provenance; omitted from the manifest body when
+  // absent to preserve legacy canonical bodies.
+  consentSuppression?: ConsentSuppression
   sizeBytes: number
   operatorId: string
   operatorName: string
@@ -324,6 +336,9 @@ export async function withCaptureEntry<T>(
       ...(ctx.method !== undefined ? { method: ctx.method } : {}),
       ...(ctx.supersedesCaptureId !== undefined
         ? { supersedesCaptureId: ctx.supersedesCaptureId }
+        : {}),
+      ...(ctx.consentSuppression !== undefined
+        ? { consentSuppression: ctx.consentSuppression }
         : {}),
       sizeBytes: ctx.sizeBytes,
       operatorId: ctx.operatorId,

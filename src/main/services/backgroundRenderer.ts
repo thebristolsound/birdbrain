@@ -1,10 +1,14 @@
 import { BrowserWindow, app } from 'electron'
 import type { WebContents, Session } from 'electron'
+import type { ElectronBlocker } from '@ghostery/adblocker-electron'
+import sharp from 'sharp'
 import { createReadStream } from 'fs'
 import { unlink } from 'fs/promises'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
+import { getConsentBlocker } from '@main/services/consentBlocker'
 import type { RenderPage, RenderedPage } from '@main/services/recapture'
+import type { ConsentSuppression } from '@shared/types'
 
 const VIEWPORT = { width: 1280, height: 900 }
 const NETWORK_IDLE_MS = 1200
@@ -14,10 +18,18 @@ const SCROLL_PAUSE_MS = 500
 const SCROLL_STALL_THRESHOLD = 3
 const MAX_SCROLL_PHASE_MS = 75_000
 const FINAL_SETTLE_MS = 500
-const FINAL_ARTIFACT_RESERVE_MS = 10_000
+// Reserved for screenshot + MHTML + text extraction. Sized for the worst case
+// the scroll cap below allows — a page at the full screenshot pixel budget —
+// so the artifact phase can't be starved into the outer deadline.
+const FINAL_ARTIFACT_RESERVE_MS = 20_000
 // Chromium's max texture dimension; captures beyond it fail or OOM.
 const MAX_CAPTURE_DIMENSION_PX = 16_384
 const MAX_CAPTURE_PIXELS = 32_000_000
+// Infinite-scroll feeds grow without bound (the render kicks in the scroll
+// loop make their IntersectionObservers fire for real), so scroll discovery
+// stops once the page reaches the height the screenshot budget can render at
+// scale 1 — content past it would only be downscaled away and bloat the MHTML.
+const MAX_SCROLL_CONTENT_HEIGHT_PX = Math.floor(MAX_CAPTURE_PIXELS / VIEWPORT.width)
 
 interface NetworkIdleTracker {
   waitForIdle: (idleMs: number, maxWaitMs: number) => Promise<void>
@@ -45,7 +57,12 @@ function createNetworkIdleTracker(session: Session): NetworkIdleTracker {
     lastActivityAt = Date.now()
   }
 
-  session.webRequest.onBeforeRequest((details, callback) => {
+  // Requests are observed at onSendHeaders, NOT onBeforeRequest: Electron's
+  // webRequest allows a single listener per event, and the consent blocker owns
+  // the onBeforeRequest slot for this session. Requests the blocker cancels
+  // never reach onSendHeaders, so they never pend; their onErrorOccurred below
+  // still marks activity.
+  session.webRequest.onSendHeaders((details) => {
     // WebSocket connections never fire onCompleted/onErrorOccurred until they
     // close, so counting them would peg waitForIdle at maxWaitMs on any page
     // holding a live socket. Skip them; short-lived requests still gate idle.
@@ -54,7 +71,6 @@ function createNetworkIdleTracker(session: Session): NetworkIdleTracker {
     // dropping legitimate short requests.)
     if (details.resourceType !== 'webSocket') pending.add(details.id)
     markActivity()
-    callback({})
   })
 
   const settle = (details: { id: number }): void => {
@@ -87,7 +103,7 @@ function createNetworkIdleTracker(session: Session): NetworkIdleTracker {
       })
     },
     dispose() {
-      session.webRequest.onBeforeRequest(null)
+      session.webRequest.onSendHeaders(null)
       session.webRequest.onCompleted(null)
       session.webRequest.onErrorOccurred(null)
     }
@@ -110,60 +126,172 @@ async function waitForDocumentComplete(wc: WebContents, timeoutMs: number): Prom
   )
 }
 
+// Shared by the scroll-phase scripts below. canScroll probes actual movement —
+// a viewport scroll-locked by overflow: hidden clamps even programmatic
+// scrolling. pickRoot prefers the document, falling back to the largest
+// scrollable descendant (app-shell layouts scroll an inner container).
+const SCROLL_HELPERS = `
+  // scrollTo with behavior 'instant' so CSS scroll-behavior: smooth can't turn
+  // programmatic scrolls into animations the probes would misread.
+  const setScrollTop = (el, y) => {
+    if (el.scrollTo) el.scrollTo({ top: y, behavior: 'instant' })
+    else el.scrollTop = y
+  }
+  const canScroll = (el) => {
+    if (!el || el.scrollHeight <= el.clientHeight + 2) return false
+    const prev = el.scrollTop
+    setScrollTop(el, prev + 1)
+    const moved = el.scrollTop !== prev
+    setScrollTop(el, prev)
+    return moved
+  }
+  const doc = document.scrollingElement || document.documentElement || document.body
+  const pickRoot = () => {
+    if (canScroll(doc)) return doc
+    let best = null
+    let bestGain = 0
+    const minHeight = Math.max((window.innerHeight || 0) / 2, 150)
+    for (const el of document.querySelectorAll('body *')) {
+      const gain = el.scrollHeight - el.clientHeight
+      if (gain > bestGain && el.clientHeight >= minHeight && canScroll(el)) {
+        best = el
+        bestGain = gain
+      }
+    }
+    return best
+  }
+`
+
+// Consent walls scroll-lock the page with overflow: hidden on <html>/<body>.
+// When nothing scrolls but content overflows the viewport, lift the lock for
+// the scroll phase ONLY. Returns the original inline overflow values
+// ([html, body]) for the restore script, or null when no lock was lifted.
+const SCROLL_UNLOCK_SCRIPT = `(() => {
+  ${SCROLL_HELPERS}
+  if (pickRoot()) return null
+  if (!doc || doc.scrollHeight <= doc.clientHeight + 2) return null
+  const prior = []
+  for (const el of [document.documentElement, document.body]) {
+    prior.push(el ? el.style.overflow : '')
+    if (el) el.style.overflow = 'visible'
+  }
+  return prior
+})()`
+
+// One scroll step: advance the root by one viewport (re-picked each step so a
+// layout change mid-phase can't strand the loop) and report position/height
+// for the main-process stall detector. null = nothing scrollable.
+const SCROLL_STEP_SCRIPT = `(() => {
+  ${SCROLL_HELPERS}
+  const root = pickRoot()
+  if (!root) return null
+  const viewportHeight = Math.max(root.clientHeight || 0, window.innerHeight || 0, 1)
+  const maxY = Math.max(0, root.scrollHeight - viewportHeight)
+  setScrollTop(root, Math.min(maxY, root.scrollTop + viewportHeight))
+  return { y: root.scrollTop, height: root.scrollHeight, viewportHeight }
+})()`
+
+// Positions the scroll root at an absolute offset for the stitched-screenshot
+// fallback below. null = nothing scrollable.
+function scrollToOffsetScript(y: number): string {
+  return `(() => {
+    ${SCROLL_HELPERS}
+    const root = pickRoot()
+    if (!root) return null
+    setScrollTop(root, ${Math.max(0, Math.floor(y))})
+    const viewportHeight = Math.max(root.clientHeight || 0, window.innerHeight || 0, 1)
+    return { y: root.scrollTop, viewportHeight }
+  })()`
+}
+
+function scrollResetScript(priorOverflow: string[] | null): string {
+  return `(() => {
+    ${SCROLL_HELPERS}
+    const root = pickRoot()
+    if (root) setScrollTop(root, 0)
+    window.scrollTo(0, 0)
+    const prior = ${JSON.stringify(priorOverflow)}
+    if (prior) {
+      const els = [document.documentElement, document.body]
+      for (let i = 0; i < els.length; i++) {
+        if (els[i]) els[i].style.overflow = prior[i] ?? ''
+      }
+    }
+  })()`
+}
+
+// A hidden window stops producing compositor frames, so rendering-lifecycle
+// work — IntersectionObserver notifications in particular — is not delivered
+// while the scroll phase runs, and lazy loaders never fire. A minimal clipped
+// CDP screenshot forces one BeginFrame, flushing pending notifications.
+async function forceRenderPass(wc: WebContents): Promise<void> {
+  try {
+    await wc.debugger.sendCommand('Page.captureScreenshot', {
+      format: 'jpeg',
+      quality: 10,
+      fromSurface: true,
+      clip: { x: 0, y: 0, width: 1, height: 1, scale: 1 }
+    })
+  } catch {
+    // Best-effort: a failed kick only means lazy content may not load.
+  }
+}
+
+// Scrolls through the complete document (main-process-driven loop) to trigger
+// lazy-loaded/infinite-scroll content before the artifacts are captured. The
+// scroll lock lifted by SCROLL_UNLOCK_SCRIPT is always restored — before the
+// screenshot and MHTML are taken, so they reflect what the page actually set.
 async function scrollToLoadLazyContent(wc: WebContents, timeoutMs: number): Promise<void> {
   if (timeoutMs <= 0) return
+  const deadlineAt = Date.now() + timeoutMs
 
-  await wc.executeJavaScript(
-    `(async () => {
-      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-      const root = document.scrollingElement || document.documentElement || document.body
-      if (!root) return
+  const priorOverflow = (await wc.executeJavaScript(SCROLL_UNLOCK_SCRIPT, true)) as
+    | string[]
+    | null
 
-      const getHeight = () => Math.max(
-        root.scrollHeight || 0,
-        document.documentElement?.scrollHeight || 0,
-        document.body?.scrollHeight || 0
-      )
+  try {
+    let stalls = 0
+    let lastHeight = 0
+    let lastY = -1
 
-      const pauseMs = ${SCROLL_PAUSE_MS}
-      const stallThreshold = ${SCROLL_STALL_THRESHOLD}
-      const deadline = Date.now() + ${Math.max(0, Math.floor(timeoutMs))}
-      const viewportHeight = Math.max(window.innerHeight || 0, root.clientHeight || 0, 1)
-      let stalls = 0
-      let lastHeight = getHeight()
-      let lastY = window.scrollY
+    while (Date.now() < deadlineAt) {
+      const state = (await wc.executeJavaScript(SCROLL_STEP_SCRIPT, true)) as {
+        y: number
+        height: number
+        viewportHeight: number
+      } | null
+      if (!state) break
+      if (state.height >= MAX_SCROLL_CONTENT_HEIGHT_PX) break
 
-      while (Date.now() < deadline) {
-        const beforeHeight = getHeight()
-        const maxY = Math.max(0, beforeHeight - viewportHeight)
-        const nextY = Math.min(maxY, window.scrollY + viewportHeight)
+      await forceRenderPass(wc)
+      await sleep(SCROLL_PAUSE_MS)
 
-        window.scrollTo(0, nextY)
-        await sleep(pauseMs)
+      const atBottom = state.y + state.viewportHeight >= state.height - 2
+      const noHeightGrowth = state.height <= lastHeight
+      const noScrollProgress = state.y <= lastY + 1
 
-        const currentHeight = getHeight()
-        const currentY = window.scrollY
-        const atBottom = currentY + viewportHeight >= currentHeight - 2
-        const noHeightGrowth = currentHeight <= lastHeight
-        const noScrollProgress = currentY <= lastY + 1
-
-        if ((atBottom && noHeightGrowth) || (noHeightGrowth && noScrollProgress)) {
-          stalls += 1
-          if (stalls >= stallThreshold) break
-        } else {
-          stalls = 0
-        }
-
-        lastHeight = currentHeight
-        lastY = currentY
+      if ((atBottom && noHeightGrowth) || (noHeightGrowth && noScrollProgress)) {
+        stalls += 1
+        if (stalls >= SCROLL_STALL_THRESHOLD) break
+      } else {
+        stalls = 0
       }
 
-      window.scrollTo(0, 0)
-      await sleep(pauseMs)
-    })()`,
-    true
-  )
+      lastHeight = state.height
+      lastY = state.y
+    }
+  } finally {
+    await wc.executeJavaScript(scrollResetScript(priorOverflow), true)
+    await forceRenderPass(wc)
+    await sleep(SCROLL_PAUSE_MS)
+  }
 }
+
+// Max content height captured with one captureBeyondViewport shot. Beyond-
+// viewport capture rasterizes the ENTIRE content surface at once regardless of
+// clip — observed to hang for minutes on heavy pages past ~10k px (an infinite
+// feed at the scroll cap). Above this, the stitched fallback below is used.
+const MAX_SINGLE_SHOT_HEIGHT_PX = 8_000
 
 async function captureFullPageScreenshot(wc: WebContents): Promise<Buffer> {
   const metrics = (await wc.debugger.sendCommand('Page.getLayoutMetrics')) as {
@@ -180,38 +308,125 @@ async function captureFullPageScreenshot(wc: WebContents): Promise<Buffer> {
   // getLayoutMetrics can omit dimensions on some pages; coalesce so a missing
   // field yields a valid 1px clip rather than NaN (which fails captureScreenshot).
   const width = Math.max(1, Math.ceil(contentSize.width ?? 0))
-  const height = Math.max(1, Math.ceil(contentSize.height ?? 0))
-  // Downscale so no output side exceeds the texture ceiling and the total
-  // bitmap stays bounded — scroll discovery can grow pages without limit.
-  const scale = Math.min(
-    1,
-    MAX_CAPTURE_DIMENSION_PX / width,
-    MAX_CAPTURE_DIMENSION_PX / height,
-    Math.sqrt(MAX_CAPTURE_PIXELS / (width * height))
+  const fullHeight = Math.max(1, Math.ceil(contentSize.height ?? 0))
+  // Downscale so the output width fits the texture ceiling, and cap the
+  // captured height so the total bitmap stays bounded — scroll discovery grows
+  // infinite feeds up to MAX_SCROLL_CONTENT_HEIGHT_PX. The screenshot is
+  // truncated at the cap; the MHTML and extracted text keep everything.
+  const scale = Math.min(1, MAX_CAPTURE_DIMENSION_PX / width)
+  const height = Math.min(
+    fullHeight,
+    MAX_CAPTURE_DIMENSION_PX,
+    Math.max(1, Math.floor(MAX_CAPTURE_PIXELS / (width * scale * scale)))
   )
-  const clip = {
-    x: Math.max(0, contentSize.x || 0),
-    y: Math.max(0, contentSize.y || 0),
-    width,
-    height,
-    scale
+
+  // Artifact-free path: one beyond-viewport shot of the whole content box.
+  if (height <= MAX_SINGLE_SHOT_HEIGHT_PX) {
+    const { data } = (await wc.debugger.sendCommand('Page.captureScreenshot', {
+      format: 'png',
+      fromSurface: true,
+      captureBeyondViewport: true,
+      clip: {
+        x: Math.max(0, contentSize.x || 0),
+        y: Math.max(0, contentSize.y || 0),
+        width,
+        height,
+        scale
+      }
+    })) as { data: string }
+    return Buffer.from(data, 'base64')
   }
 
-  const { data } = (await wc.debugger.sendCommand('Page.captureScreenshot', {
-    format: 'png',
-    fromSurface: true,
-    captureBeyondViewport: true,
-    clip
-  })) as { data: string }
+  return captureStitchedScreenshot(wc, { width, height, scale })
+}
 
-  return Buffer.from(data, 'base64')
+// Tall-page fallback: scroll the root viewport-by-viewport, capture each
+// visible viewport (an ordinary surface shot — cheap at any page height), and
+// composite the strips. Position: fixed/sticky chrome repeats at the seams —
+// the accepted trade-off for pages whose full surface Chromium can't
+// rasterize in one pass. Reuses the scroll-lock lift so locked pages don't
+// stitch thirty copies of their top viewport; the lock is restored before the
+// MHTML is saved.
+async function captureStitchedScreenshot(
+  wc: WebContents,
+  dims: { width: number; height: number; scale: number }
+): Promise<Buffer> {
+  const outputWidth = Math.max(1, Math.round(dims.width * dims.scale))
+  const outputHeight = Math.max(1, Math.round(dims.height * dims.scale))
+
+  const captureViewport = async (): Promise<Buffer> => {
+    const { data } = (await wc.debugger.sendCommand('Page.captureScreenshot', {
+      format: 'png',
+      fromSurface: true
+    })) as { data: string }
+    return Buffer.from(data, 'base64')
+  }
+
+  const priorOverflow = (await wc.executeJavaScript(SCROLL_UNLOCK_SCRIPT, true)) as
+    | string[]
+    | null
+  const shots: Array<{ png: Buffer; cssY: number }> = []
+  try {
+    let targetY = 0
+    while (targetY < dims.height) {
+      const state = (await wc.executeJavaScript(scrollToOffsetScript(targetY), true)) as {
+        y: number
+        viewportHeight: number
+      } | null
+      if (!state) break
+      shots.push({ png: await captureViewport(), cssY: state.y })
+      if (state.y + state.viewportHeight >= dims.height) break
+      // Root clamped short of the target — no further progress is possible.
+      if (state.y + 1 < targetY) break
+      targetY = state.y + state.viewportHeight
+    }
+  } finally {
+    await wc.executeJavaScript(scrollResetScript(priorOverflow), true).catch(() => {})
+  }
+
+  if (shots.length === 0) return captureViewport()
+
+  const composites = await Promise.all(
+    shots.map(async (shot) => {
+      // Normalize each strip to the output width (also folds away the display
+      // scale factor baked into viewport surface shots), then crop anything
+      // hanging past the canvas bottom so composite() accepts it.
+      let strip = sharp(shot.png).resize({ width: outputWidth })
+      const top = Math.min(Math.round(shot.cssY * dims.scale), outputHeight - 1)
+      const meta = await strip.png().toBuffer()
+      const stripHeight = (await sharp(meta).metadata()).height ?? 1
+      if (top + stripHeight > outputHeight) {
+        strip = sharp(meta).extract({
+          left: 0,
+          top: 0,
+          width: outputWidth,
+          height: Math.max(1, outputHeight - top)
+        })
+        return { input: await strip.png().toBuffer(), left: 0, top }
+      }
+      return { input: meta, left: 0, top }
+    })
+  )
+
+  return sharp({
+    create: {
+      width: outputWidth,
+      height: outputHeight,
+      channels: 4,
+      background: { r: 255, g: 255, b: 255, alpha: 1 }
+    }
+  })
+    .composite(composites)
+    .png()
+    .toBuffer()
 }
 
 // Renders a URL in a locked-down, invisible BrowserWindow with a fresh
 // in-memory session (no persist: prefix = nothing touches disk, nothing is
 // shared with the app or previous jobs). A hostile page runs in our process,
-// so: sandboxed, isolated, no preload, no node, every permission denied,
-// popups denied, window destroyed in finally.
+// so: sandboxed, isolated, no node, every permission denied, popups denied,
+// window destroyed in finally. The only preload is the consent blocker's
+// isolated cosmetic-filter bridge (see below).
 export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) => {
   const win = new BrowserWindow({
     show: false,
@@ -238,6 +453,7 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
 
   const wc = win.webContents
   let networkTracker: NetworkIdleTracker | undefined
+  let blocker: ElectronBlocker | null = null
   let cleanedUp = false
 
   // Hoisted cleanup: idempotent so both the inner finally and outer timeout
@@ -245,6 +461,9 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
   const cleanup = () => {
     if (cleanedUp) return
     cleanedUp = true
+    // Must be released per-job: enable() registers global ipcMain handlers that
+    // throw if a later job's session enables them while still registered.
+    if (blocker?.isBlockingEnabled(wc.session)) blocker.disableBlockingInSession(wc.session)
     networkTracker?.dispose()
     if (wc.debugger.isAttached()) wc.debugger.detach()
   }
@@ -267,6 +486,26 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
     // enabled — only the one-shot getLayoutMetrics/captureScreenshot commands use
     // it. Network-idle is tracked out-of-band via the session's webRequest API.
     wc.debugger.attach('1.3')
+
+    // Neutralize consent/cookie-notice overlays before the page loads: the fresh
+    // session guarantees every consent wall fires, and walls scroll-lock the page
+    // (starving the lazy-load phase) and obscure the screenshot. Fail-soft — a
+    // capture without suppression beats no capture. Enabled before the idle
+    // tracker so blocked requests never register as pending. Note this DOES add
+    // the blocker's isolated preload to this otherwise preload-free window; it
+    // only bridges cosmetic-filter lookups over IPC and exposes nothing to the
+    // page (contextIsolation holds).
+    let consentSuppression: ConsentSuppression | undefined
+    blocker = await getConsentBlocker()
+    if (blocker) {
+      try {
+        blocker.enableBlockingInSession(wc.session)
+        consentSuppression = 'filter-list'
+      } catch (err) {
+        console.error('backgroundRenderer: enabling consent blocker failed', err)
+      }
+    }
+
     networkTracker = createNetworkIdleTracker(wc.session)
 
     try {
@@ -290,8 +529,8 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
       )
       await sleep(Math.min(FINAL_SETTLE_MS, remainingMs(FINAL_ARTIFACT_RESERVE_MS)))
 
-      // Whole-page screenshot via CDP using the document content bounds, not just
-      // the visible viewport. captureBeyondViewport avoids stitching artifacts.
+      // Whole-page screenshot: one beyond-viewport shot when the page is short
+      // enough to rasterize in one pass, stitched viewport strips otherwise.
       const screenshot = await captureFullPageScreenshot(wc)
 
       await wc.savePage(tmpPath, 'MHTML')
@@ -309,6 +548,7 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
         httpStatus,
         userAgent: wc.getUserAgent(),
         browserVersion: `Chrome/${process.versions.chrome}`,
+        consentSuppression,
         cleanup: async () => {
           if (!win.isDestroyed()) win.destroy()
           await unlink(tmpPath).catch(() => {})

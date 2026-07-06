@@ -87,6 +87,9 @@ test.describe('Recapture (background capture)', () => {
     // Recapture the capture itself → linked sibling
     await page.getByTestId('capture-item').filter({ hasText: 'Recapture Fixture' }).first().click()
     await page.click('[data-testid="recapture-btn"]')
+    // While the background job runs, the button reflects the in-flight state
+    // (driven by the recapture 'received' event, not the enqueue IPC).
+    await expect(page.getByTestId('recapture-in-progress')).toBeVisible({ timeout: 8000 })
     await expect(page.locator('[data-testid="supersedes-link-recapture"]')).toBeVisible({
       timeout: 60000
     })

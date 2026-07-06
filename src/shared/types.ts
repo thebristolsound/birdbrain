@@ -17,6 +17,14 @@ export type CaptureFormat = 'html' | 'mhtml'
 export const CAPTURE_METHODS = ['extension', 'background'] as const
 export type CaptureMethod = (typeof CAPTURE_METHODS)[number]
 
+// How consent/cookie-notice overlays were neutralized during a background
+// recapture. 'filter-list' = maintained consent filter lists (EasyList Cookie +
+// uBO annoyances-cookies) were active in the rendering session. Absent for
+// operator-witnessed captures and for recaptures where the filter engine was
+// unavailable — the clean session saw the page bare.
+export const CONSENT_SUPPRESSIONS = ['filter-list'] as const
+export type ConsentSuppression = (typeof CONSENT_SUPPRESSIONS)[number]
+
 // Orthogonal trusted-time axis (#120), independent of integrity status. A
 // capture is 'rfc3161' once an RFC 3161 token anchors its content hash,
 // 'pending' while an eligible (v2) capture awaits stamping, and 'none' for
@@ -68,6 +76,9 @@ export interface Capture {
   // Set when this capture was created by "Recapture" of an existing capture.
   // The original is never touched — linked sibling, both fully visible.
   supersedesCaptureId?: string
+  // Consent-overlay suppression active while the page rendered; mirrors the
+  // value anchored in the manifest capture entry. undefined = none.
+  consentSuppression?: ConsentSuppression
   mhtmlPath?: string
   // Content-addressed integrity of the screenshot / extracted-text sidecars (#118).
   // Mirrors the hash recorded in the v2+ manifest capture entry; undefined for
@@ -365,6 +376,11 @@ export interface CaptureEvent {
   durationMs?: number
   screenshotWarning?: string
   warning?: string
+  // The capture a background recapture supersedes (set only for recapture jobs
+  // fired from an existing capture). Lets the UI scope in-progress state to the
+  // exact capture being recaptured, not every capture that shares its URL —
+  // recapture creates same-URL siblings, so URL alone is ambiguous.
+  supersedesCaptureId?: string
 }
 
 export interface OperatorIdentity {

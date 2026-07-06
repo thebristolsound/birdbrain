@@ -26,7 +26,7 @@ import {
 import { fetchCertChain as defaultFetchCertChain } from '@main/services/tlsCertChain'
 import type { TlsCertChainResult } from '@main/services/tlsCertChain'
 import { MAX_MHTML_SIZE } from '@shared/constants'
-import type { Capture, CaptureMethod, HashVerification } from '@shared/types'
+import type { Capture, CaptureMethod, ConsentSuppression, HashVerification } from '@shared/types'
 
 // Injectable corroboration-only TLS cert-chain re-fetcher (#123). Defaults to the
 // real Node tls.connect implementation; tests inject a stub to stay hermetic.
@@ -55,6 +55,7 @@ export interface IngestParams {
   toolVersion: string
   method?: CaptureMethod
   supersedesCaptureId?: string
+  consentSuppression?: ConsentSuppression
   screenshot?: Buffer
 }
 
@@ -224,6 +225,7 @@ export async function ingestMhtmlCapture(
         sizeBytes,
         method: params.method,
         supersedesCaptureId: params.supersedesCaptureId,
+        consentSuppression: params.consentSuppression,
         operatorId: params.operatorId,
         operatorName: params.operatorName,
         toolVersion: params.toolVersion
@@ -273,7 +275,8 @@ export async function ingestMhtmlCapture(
             operatorId: params.operatorId,
             operatorName: params.operatorName,
             method: params.method,
-            supersedesCaptureId: params.supersedesCaptureId
+            supersedesCaptureId: params.supersedesCaptureId,
+            consentSuppression: params.consentSuppression
           })
           return { capture, contentHash: hash }
         } catch (err) {

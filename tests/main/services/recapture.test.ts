@@ -1,12 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, rmSync } from 'fs'
+import { mkdtempSync, readFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { initStorage, ensureCaseDir } from '@main/services/storage'
+import { MANIFEST_FILENAME } from '@shared/constants'
+import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
 import { initDatabase, closeDatabase, createCase, getCapture } from '@main/services/database'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { initSettings, updateSettings } from '@main/services/settings'
-import { createCaptureLifecycle } from '@main/services/captureLifecycle'
+import { createCaptureLifecycle, verifyCapture } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import {
   createRecaptureService,
@@ -99,6 +100,29 @@ describe('recapture service', () => {
     svc.enqueue([{ url: 'https://example.com/a', caseId, supersedesCaptureId: originalId }])
     await svc.idle()
     expect(getCapture(newCaptures[1].id)!.supersedesCaptureId).toBe(originalId)
+  })
+
+  it('records consent-suppression provenance in the capture row and manifest entry', async () => {
+    const svc = makeService(fakeRender({ consentSuppression: 'filter-list' }))
+    svc.enqueue([{ url: 'https://example.com/page', caseId }])
+    await svc.idle()
+    expect(newCaptures).toHaveLength(1)
+    expect(getCapture(newCaptures[0].id)!.consentSuppression).toBe('filter-list')
+    const manifest = readFileSync(join(getStorageRoot(), caseId, MANIFEST_FILENAME), 'utf-8')
+    expect(manifest).toContain('"consentSuppression":"filter-list"')
+    // The chain must still verify with the new field present — the verifier's
+    // strict entry schema silently rejects unknown keys as chain-broken.
+    const verification = await verifyCapture(newCaptures[0].id)
+    expect(verification.status).toBe('verified')
+  })
+
+  it('omits consent-suppression provenance when the renderer did not suppress', async () => {
+    const svc = makeService(fakeRender())
+    svc.enqueue([{ url: 'https://example.com/page', caseId }])
+    await svc.idle()
+    expect(getCapture(newCaptures[0].id)!.consentSuppression).toBeUndefined()
+    const manifest = readFileSync(join(getStorageRoot(), caseId, MANIFEST_FILENAME), 'utf-8')
+    expect(manifest).not.toContain('consentSuppression')
   })
 
   it('runs jobs serially in FIFO order', async () => {

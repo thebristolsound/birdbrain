@@ -5,6 +5,7 @@ import type {
   Capture,
   CaptureFormat,
   CaptureMethod,
+  ConsentSuppression,
   HashVerification,
   Tag,
   Selector,
@@ -36,7 +37,7 @@ import type { ExtractedDatum } from '@main/services/dataExtractor'
 import { safeRegexTest } from '@main/services/safeRegex'
 
 let db: Database.Database
-export const LATEST_SCHEMA_VERSION = 23
+export const LATEST_SCHEMA_VERSION = 24
 
 export function initDatabase(dbPath: string): Database.Database {
   db = new Database(dbPath)
@@ -518,6 +519,18 @@ function migrate(db: Database.Database): void {
       db.pragma('user_version = 23')
     })()
   }
+
+  if (version < 24) {
+    db.transaction(() => {
+      // Consent-overlay suppression provenance for background recaptures.
+      // Mirrors the value anchored in the manifest capture entry; NULL for
+      // existing rows and operator-witnessed captures.
+      db.exec(`
+        ALTER TABLE captures ADD COLUMN consent_suppression TEXT;
+      `)
+      db.pragma('user_version = 24')
+    })()
+  }
 }
 
 // --- Cases ---
@@ -626,6 +639,7 @@ export interface InsertCaptureParams {
   operatorName?: string
   method?: CaptureMethod
   supersedesCaptureId?: string
+  consentSuppression?: ConsentSuppression
 }
 
 export const insertCapture = function (params: InsertCaptureParams & { id?: string }): Capture {
@@ -639,8 +653,8 @@ export const insertCapture = function (params: InsertCaptureParams & { id?: stri
          id, case_id, url, title, html_path, screenshot_path, hash, timestamp, headers, created_at,
          format, mhtml_path, screenshot_hash, text_hash, tls_cert_chain, size_bytes, manifest_index, prev_hash, entry_hash,
          tool_version, extension_version, browser_version, user_agent, http_status,
-         operator_id, operator_name, method, supersedes_capture_id
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         operator_id, operator_name, method, supersedes_capture_id, consent_suppression
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       params.caseId,
@@ -669,7 +683,8 @@ export const insertCapture = function (params: InsertCaptureParams & { id?: stri
       params.operatorId ?? null,
       params.operatorName ?? null,
       params.method ?? 'extension',
-      params.supersedesCaptureId ?? null
+      params.supersedesCaptureId ?? null,
+      params.consentSuppression ?? null
     )
 
     // Insert into FTS index
@@ -1229,6 +1244,7 @@ function rowToCapture(row: Record<string, unknown>): Capture {
     format: ((row.format as string) || 'html') as CaptureFormat,
     method: ((row.method as string) || 'extension') as CaptureMethod,
     supersedesCaptureId: (row.supersedes_capture_id as string) || undefined,
+    consentSuppression: (row.consent_suppression as ConsentSuppression) || undefined,
     mhtmlPath: (row.mhtml_path as string) || undefined,
     screenshotHash: (row.screenshot_hash as string) || undefined,
     textHash: (row.text_hash as string) || undefined,

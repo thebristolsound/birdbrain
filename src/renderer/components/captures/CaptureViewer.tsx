@@ -67,6 +67,24 @@ export function CaptureViewer() {
   const [recaptureError, setRecaptureError] = useState<string | null>(null)
   const capture = captures.find((item) => item.id === selectedCaptureId) ?? null
 
+  // A background recapture emits a 'received' event at the start of its job and a
+  // terminal 'stored'/'failed' event when it finishes; the store keeps the
+  // 'received' entry alive for the whole run. The enqueue mutation's isPending
+  // only covers the millisecond IPC hand-off, so drive the in-progress UI off the
+  // live event instead. Scope by supersedesCaptureId (the exact capture being
+  // recaptured), not URL — recapture creates same-URL siblings. Select the
+  // derived boolean so Zustand's Object.is check skips unrelated event updates.
+  const isRecapturing = useAppStore((s) =>
+    capture
+      ? s.captureEvents.some(
+          (e) =>
+            e.type === 'received' &&
+            e.source === 'recapture' &&
+            e.supersedesCaptureId === capture.id
+        )
+      : false
+  )
+
   // A recapture failure is only meaningful for the capture it was fired from.
   useEffect(() => setRecaptureError(null), [selectedCaptureId])
 
@@ -179,9 +197,13 @@ export function CaptureViewer() {
         <Button
           variant="ghost"
           size="icon-sm"
-          title="Recapture this page in the background"
+          title={
+            isRecapturing
+              ? 'Recapture in progress…'
+              : 'Recapture this page in the background'
+          }
           data-testid="recapture-btn"
-          disabled={enqueue.isPending}
+          disabled={enqueue.isPending || isRecapturing}
           onClick={() =>
             enqueue.mutate(
               { urls: [capture.url], supersedesCaptureId: capture.id },
@@ -193,9 +215,17 @@ export function CaptureViewer() {
             )
           }
         >
-          <RefreshCcw className="h-3.5 w-3.5" />
+          <RefreshCcw className={`h-3.5 w-3.5 ${isRecapturing ? 'animate-spin' : ''}`} />
         </Button>
-        {recaptureError && (
+        {isRecapturing && (
+          <span
+            data-testid="recapture-in-progress"
+            className="shrink-0 text-[11px] text-text-muted"
+          >
+            Recapturing…
+          </span>
+        )}
+        {recaptureError && !isRecapturing && (
           <span
             data-testid="recapture-error"
             title={recaptureError}

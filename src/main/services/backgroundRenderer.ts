@@ -456,20 +456,39 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
   })
 
   const wc = win.webContents
+  // Captured up front: cleanup can run after win.destroy() (the timeout path),
+  // when wc.session would throw — but the partition session object outlives the
+  // window and the blocker/webRequest teardown still needs it.
+  const session = wc.session
   let networkTracker: NetworkIdleTracker | undefined
   let blocker: ElectronBlocker | null = null
-  let cleanedUp = false
 
-  // Hoisted cleanup: idempotent so both the inner finally and outer timeout
-  // cleanup can safely invoke it.
+  // Step-level idempotent teardown — NOT a single once-guard. Both the inner
+  // finally and the outer timeout path invoke this, and the blocker may only be
+  // enabled AFTER the timeout already ran cleanup (render() is still awaiting
+  // getConsentBlocker() when the deadline fires). A single guard would skip the
+  // blocker teardown in that race and leak its global ipcMain handlers, wedging
+  // the next recapture job. Each release re-checks its own state instead, and is
+  // wrapped so a post-destroy call can't throw out of cleanup.
   const cleanup = () => {
-    if (cleanedUp) return
-    cleanedUp = true
-    // Must be released per-job: enable() registers global ipcMain handlers that
-    // throw if a later job's session enables them while still registered.
-    if (blocker?.isBlockingEnabled(wc.session)) blocker.disableBlockingInSession(wc.session)
-    networkTracker?.dispose()
-    if (wc.debugger.isAttached()) wc.debugger.detach()
+    try {
+      // Must be released per-job: enable() registers global ipcMain handlers
+      // that throw if a later job's session enables them while still registered.
+      if (blocker?.isBlockingEnabled(session)) blocker.disableBlockingInSession(session)
+    } catch (err) {
+      console.error('backgroundRenderer: disabling consent blocker failed', err)
+    }
+    try {
+      networkTracker?.dispose()
+    } catch {
+      // Session already torn down with the window — listeners went with it.
+    }
+    networkTracker = undefined
+    try {
+      if (wc.debugger.isAttached()) wc.debugger.detach()
+    } catch {
+      // webContents already destroyed — its debugger went with it.
+    }
   }
 
   async function render(): Promise<RenderedPage> {
@@ -503,14 +522,14 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
     blocker = await getConsentBlocker()
     if (blocker) {
       try {
-        blocker.enableBlockingInSession(wc.session)
+        blocker.enableBlockingInSession(session)
         consentSuppression = 'filter-list'
       } catch (err) {
         console.error('backgroundRenderer: enabling consent blocker failed', err)
       }
     }
 
-    networkTracker = createNetworkIdleTracker(wc.session)
+    networkTracker = createNetworkIdleTracker(session)
 
     try {
       await wc.loadURL(url)

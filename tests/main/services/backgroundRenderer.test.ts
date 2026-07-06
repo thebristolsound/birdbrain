@@ -27,6 +27,14 @@ function solidPng(width: number, height: number, color: Rgb): Promise<Buffer> {
     .toBuffer()
 }
 
+// Only the WebContents surface captureStitchedScreenshot actually calls. Typing
+// the mock against this (instead of a blanket `as unknown as WebContents`) makes
+// a wrong mock shape a compile error rather than a silent runtime mismatch; the
+// single widening cast to the full interface stays at the return boundary.
+type StitchWebContents = Pick<WebContents, 'executeJavaScript'> & {
+  debugger: Pick<WebContents['debugger'], 'sendCommand'>
+}
+
 // Emulates the page side of the stitched-capture protocol: a scrollable
 // document of the given content height, and one solid-color viewport surface
 // shot per scroll position (sized by dpr, as Page.captureScreenshot returns
@@ -34,7 +42,7 @@ function solidPng(width: number, height: number, color: Rgb): Promise<Buffer> {
 function fakeWebContents(contentHeight: number, strips: Buffer[]): WebContents {
   let shotIndex = 0
   const maxY = Math.max(0, contentHeight - VIEWPORT.height)
-  return {
+  const mock: StitchWebContents = {
     executeJavaScript: async (script: string) => {
       if (script.includes("overflow = 'visible'")) return null
       if (script.includes('const prior =')) return undefined
@@ -50,7 +58,8 @@ function fakeWebContents(contentHeight: number, strips: Buffer[]): WebContents {
         return { data: png.toString('base64') }
       }
     }
-  } as unknown as WebContents
+  }
+  return mock as unknown as WebContents
 }
 
 async function pixelAt(image: Buffer, x: number, y: number): Promise<Rgb> {

@@ -97,12 +97,19 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
     try {
       // The renderer honors timeoutMs itself; race defensively so a hung
       // implementation can never wedge the serial queue.
-      rendered = await Promise.race([
-        deps.renderPage(job.url, { timeoutMs }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error(`Recapture timed out after ${timeoutMs}ms`)), timeoutMs)
+      let fallbackTimer: NodeJS.Timeout | undefined
+      const fallbackTimeout = new Promise<never>((_, reject) => {
+        fallbackTimer = setTimeout(
+          () => reject(new Error(`Recapture timed out after ${timeoutMs}ms`)),
+          timeoutMs
         )
-      ])
+      })
+
+      try {
+        rendered = await Promise.race([deps.renderPage(job.url, { timeoutMs }), fallbackTimeout])
+      } finally {
+        clearTimeout(fallbackTimer)
+      }
 
       const settings = getSettings()
       const result = await deps.captureLifecycle.ingest({

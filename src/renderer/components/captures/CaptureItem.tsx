@@ -1,4 +1,4 @@
-import { Star, Check } from 'lucide-react'
+import { Star, Check, RefreshCcw } from 'lucide-react'
 import type { Capture, Selector } from '@shared/types'
 import { useCaptureThumbnail } from '@renderer/hooks/useCaptureThumbnail'
 
@@ -107,9 +107,9 @@ export function CaptureItem({
           </button>
         )}
         {/* Thumbnail */}
-        <div className="h-12 w-16 shrink-0 rounded-lg overflow-hidden flex items-center justify-center bg-gray-900/50">
+        <div className="relative h-12 w-16 shrink-0 rounded-lg overflow-hidden flex items-center justify-center bg-gray-900/50">
           {thumbnail ? (
-            <img src={thumbnail} alt="" className="h-full w-full object-cover" />
+            <img src={thumbnail} alt="" className="h-full w-full object-cover object-top" />
           ) : (
             <div
               className="h-full w-full flex flex-col justify-center gap-1 px-1.5"
@@ -126,6 +126,16 @@ export function CaptureItem({
                 className="h-1 w-1/2 rounded-full"
                 style={{ backgroundColor: color.bar, opacity: 0.5 }}
               />
+            </div>
+          )}
+          {/* Distinguish background recaptures from operator-witnessed captures */}
+          {capture.method === 'background' && (
+            <div
+              data-testid="recapture-thumb-badge"
+              title="Background recapture"
+              className="absolute bottom-0.5 right-0.5 flex items-center justify-center rounded bg-black/65 p-0.5"
+            >
+              <RefreshCcw className="h-2.5 w-2.5 text-white" />
             </div>
           )}
         </div>

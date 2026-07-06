@@ -92,7 +92,13 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
 
   async function runJob(job: RecaptureJob): Promise<void> {
     const timestamp = new Date().toISOString()
-    deps.emitEvent({ type: 'received', source: 'recapture', url: job.url, timestamp })
+    deps.emitEvent({
+      type: 'received',
+      source: 'recapture',
+      url: job.url,
+      timestamp,
+      supersedesCaptureId: job.supersedesCaptureId
+    })
 
     let rendered: RenderedPage | undefined
     const started = Date.now()

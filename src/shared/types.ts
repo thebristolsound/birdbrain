@@ -376,6 +376,11 @@ export interface CaptureEvent {
   durationMs?: number
   screenshotWarning?: string
   warning?: string
+  // The capture a background recapture supersedes (set only for recapture jobs
+  // fired from an existing capture). Lets the UI scope in-progress state to the
+  // exact capture being recaptured, not every capture that shares its URL —
+  // recapture creates same-URL siblings, so URL alone is ambiguous.
+  supersedesCaptureId?: string
 }
 
 export interface OperatorIdentity {

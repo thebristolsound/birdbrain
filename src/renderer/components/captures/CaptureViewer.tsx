@@ -60,13 +60,30 @@ export function CaptureViewer() {
   const selectedCaptureId = useAppStore((s) => s.selectedCaptureId)
   const selectCapture = useAppStore((s) => s.selectCapture)
   const sessionActive = useAppStore((s) => s.sessionActive)
-  const captureEvents = useAppStore((s) => s.captureEvents)
   const { data: captures = [] } = useQuery(capturesQueryOptions(caseId))
   const { enqueue } = useRecaptureMutations(caseId)
 
   const [activeTab, setActiveTab] = useState<ViewTab>('screenshot')
   const [recaptureError, setRecaptureError] = useState<string | null>(null)
   const capture = captures.find((item) => item.id === selectedCaptureId) ?? null
+
+  // A background recapture emits a 'received' event at the start of its job and a
+  // terminal 'stored'/'failed' event when it finishes; the store keeps the
+  // 'received' entry alive for the whole run. The enqueue mutation's isPending
+  // only covers the millisecond IPC hand-off, so drive the in-progress UI off the
+  // live event instead. Scope by supersedesCaptureId (the exact capture being
+  // recaptured), not URL — recapture creates same-URL siblings. Select the
+  // derived boolean so Zustand's Object.is check skips unrelated event updates.
+  const isRecapturing = useAppStore((s) =>
+    capture
+      ? s.captureEvents.some(
+          (e) =>
+            e.type === 'received' &&
+            e.source === 'recapture' &&
+            e.supersedesCaptureId === capture.id
+        )
+      : false
+  )
 
   // A recapture failure is only meaningful for the capture it was fired from.
   useEffect(() => setRecaptureError(null), [selectedCaptureId])
@@ -133,15 +150,6 @@ export function CaptureViewer() {
     ? captures.find((c) => c.id === capture.supersedesCaptureId)
     : undefined
   const recaptureOf = captures.find((c) => c.supersedesCaptureId === capture.id)
-
-  // A background recapture emits a 'received' event at the start of its job and a
-  // terminal 'stored'/'failed' event when it finishes; the store keeps the
-  // 'received' entry alive for the whole run. The enqueue mutation's isPending
-  // only covers the millisecond IPC hand-off, so drive the in-progress UI off the
-  // live event instead — matched to this capture's URL.
-  const isRecapturing = captureEvents.some(
-    (e) => e.type === 'received' && e.source === 'recapture' && e.url === capture.url
-  )
 
   return (
     <main className="flex flex-1 flex-col overflow-hidden bg-canvas">

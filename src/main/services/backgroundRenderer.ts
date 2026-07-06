@@ -220,23 +220,6 @@ function scrollResetScript(priorOverflow: string[] | null): string {
   })()`
 }
 
-// A hidden window stops producing compositor frames, so rendering-lifecycle
-// work — IntersectionObserver notifications in particular — is not delivered
-// while the scroll phase runs, and lazy loaders never fire. A minimal clipped
-// CDP screenshot forces one BeginFrame, flushing pending notifications.
-async function forceRenderPass(wc: WebContents): Promise<void> {
-  try {
-    await wc.debugger.sendCommand('Page.captureScreenshot', {
-      format: 'jpeg',
-      quality: 10,
-      fromSurface: true,
-      clip: { x: 0, y: 0, width: 1, height: 1, scale: 1 }
-    })
-  } catch {
-    // Best-effort: a failed kick only means lazy content may not load.
-  }
-}
-
 // Scrolls through the complete document (main-process-driven loop) to trigger
 // lazy-loaded/infinite-scroll content before the artifacts are captured. The
 // scroll lock lifted by SCROLL_UNLOCK_SCRIPT is always restored — before the
@@ -263,7 +246,8 @@ async function scrollToLoadLazyContent(wc: WebContents, timeoutMs: number): Prom
       if (!state) break
       if (state.height >= MAX_SCROLL_CONTENT_HEIGHT_PX) break
 
-      await forceRenderPass(wc)
+      // OSR composites continuously, so IntersectionObserver/rAF-driven lazy
+      // loaders fire on their own between scroll steps — no forced frame needed.
       await sleep(SCROLL_PAUSE_MS)
 
       const atBottom = state.y + state.viewportHeight >= state.height - 2
@@ -286,7 +270,6 @@ async function scrollToLoadLazyContent(wc: WebContents, timeoutMs: number): Prom
     // the reset throws, but the scroll phase is best-effort and must not fail an
     // otherwise-complete capture (mirrors the stitched-screenshot cleanup).
     await wc.executeJavaScript(scrollResetScript(priorOverflow), true).catch(() => {})
-    await forceRenderPass(wc)
     await sleep(SCROLL_PAUSE_MS)
   }
 }
@@ -437,6 +420,14 @@ export async function captureStitchedScreenshot(
 // window destroyed in finally. The only preload is the consent blocker's
 // isolated cosmetic-filter bridge (see below).
 export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) => {
+  // Offscreen rendering (OSR), NOT a plain show:false window. A hidden window
+  // never composites, so JS/SPA sites (CNN, most news) never lay out or hydrate,
+  // and IntersectionObserver/requestAnimationFrame never fire — lazy content
+  // stays unloaded. OSR runs the compositor to an offscreen surface: the page
+  // renders and IO/rAF fire naturally, while nothing is ever shown on screen
+  // (silent background preserved). This also removed the per-scroll-step forced
+  // CDP screenshot, which rasterized the whole surface (~6.5s/call on heavy
+  // pages) and blew the recapture budget on ad-heavy sites.
   const win = new BrowserWindow({
     show: false,
     width: VIEWPORT.width,
@@ -446,9 +437,11 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
       contextIsolation: true,
       nodeIntegration: false,
       partition: `recapture-${randomUUID()}`,
-      backgroundThrottling: false
+      backgroundThrottling: false,
+      offscreen: true
     }
   })
+  win.webContents.setFrameRate(30)
 
   const tmpPath = join(app.getPath('temp'), `birdbrain-recapture-${randomUUID()}.mhtml`)
 

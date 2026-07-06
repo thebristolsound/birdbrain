@@ -225,6 +225,29 @@ describe('database', () => {
       })
       expect(getCapture(cap.id)!.format).toBe('html')
     })
+
+    it('persists and reads back consentSuppression (round-trip)', () => {
+      const cap = insertCapture({
+        caseId,
+        url: 'https://example.com',
+        title: 'Example',
+        hash: 'd'.repeat(64),
+        timestamp: new Date().toISOString(),
+        consentSuppression: 'filter-list'
+      })
+      expect(getCapture(cap.id)!.consentSuppression).toBe('filter-list')
+    })
+
+    it('leaves consentSuppression undefined for captures without it', () => {
+      const cap = insertCapture({
+        caseId,
+        url: 'https://example.com',
+        title: 'Example',
+        hash: 'e'.repeat(64),
+        timestamp: new Date().toISOString()
+      })
+      expect(getCapture(cap.id)!.consentSuppression).toBeUndefined()
+    })
   })
 
   describe('tags', () => {

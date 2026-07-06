@@ -51,6 +51,10 @@ test.describe('Recapture (background capture)', () => {
     // The capture appears in the list when the background job completes
     await expect(page.getByText('Recapture Fixture')).toBeVisible({ timeout: 60000 })
 
+    // Background captures are visually distinguished by a recapture badge on the
+    // list thumbnail.
+    await expect(page.getByTestId('recapture-thumb-badge').first()).toBeVisible()
+
     // Provenance: background method + supersedes-free + verified chain
     const capture = await page.evaluate(async (id) => {
       const w = window as unknown as {

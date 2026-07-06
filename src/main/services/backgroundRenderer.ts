@@ -351,11 +351,16 @@ async function captureFullPageScreenshot(wc: WebContents): Promise<Buffer> {
 // rasterize in one pass. Reuses the scroll-lock lift so locked pages don't
 // stitch thirty copies of their top viewport; the lock is restored before the
 // MHTML is saved.
-async function captureStitchedScreenshot(
+export async function captureStitchedScreenshot(
   wc: WebContents,
   dims: { width: number; height: number; scale: number }
 ): Promise<Buffer> {
-  const outputWidth = Math.max(1, Math.round(dims.width * dims.scale))
+  // Each strip depicts the viewport's CSS width, not the content width — a
+  // page with horizontal overflow renders only its leftmost VIEWPORT.width px.
+  // Sizing the canvas (and the strip resize below) from the content width
+  // would stretch each strip's height by width/VIEWPORT.width while `top`
+  // spacing stays viewport-based, overpainting every seam.
+  const outputWidth = Math.max(1, Math.round(VIEWPORT.width * dims.scale))
   const outputHeight = Math.max(1, Math.round(dims.height * dims.scale))
 
   const captureViewport = async (): Promise<Buffer> => {

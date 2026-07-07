@@ -21,12 +21,8 @@ import {
   searchCaptures
 } from '@main/services/database'
 import { getDb } from '@main/services/database'
-import {
-  initStorage,
-  ensureCaseDir,
-  getCapturePath,
-  getStorageRoot
-} from '@main/services/storage'
+import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
+import { defaultCaptureStore } from '@main/services/captureStore'
 import {
   initManifest,
   appendManifestEntry,
@@ -43,6 +39,9 @@ import {
   importCaseArchive
 } from '@main/services/caseArchive'
 import { canonicalStringify } from '@shared/verify'
+
+const artifactPath = (caseId: string, captureId: string, type: 'mhtml' | 'html' | 'png' | 'txt') =>
+  defaultCaptureStore.artifactPaths(caseId, captureId, type).abs
 
 // Reads the archive, mutates one entry's bytes, and rewrites the zip WITHOUT
 // touching package.json — this is what makes it tampered: the recorded
@@ -131,9 +130,9 @@ describe('caseArchive export', () => {
     const mhtmlBuf = Buffer.from('<html>mhtml content</html>')
     const pngBuf = Buffer.from('fake-png-bytes')
     const txtBuf = Buffer.from('extracted text')
-    writeFileSync(getCapturePath(caseId, mhtmlCaptureId, 'mhtml'), mhtmlBuf)
-    writeFileSync(getCapturePath(caseId, mhtmlCaptureId, 'png'), pngBuf)
-    writeFileSync(getCapturePath(caseId, mhtmlCaptureId, 'txt'), txtBuf)
+    writeFileSync(artifactPath(caseId, mhtmlCaptureId, 'mhtml'), mhtmlBuf)
+    writeFileSync(artifactPath(caseId, mhtmlCaptureId, 'png'), pngBuf)
+    writeFileSync(artifactPath(caseId, mhtmlCaptureId, 'txt'), txtBuf)
     const contentHash = createHash('sha256').update(mhtmlBuf).digest('hex')
     const { entryHash } = appendManifestEntry(caseDir, {
       type: 'capture',
@@ -326,7 +325,7 @@ describe('caseArchive inspect', () => {
 
     mhtmlCaptureId = 'capture-mhtml-1'
     const mhtmlBuf = Buffer.from('<html>mhtml content</html>')
-    writeFileSync(getCapturePath(caseId, mhtmlCaptureId, 'mhtml'), mhtmlBuf)
+    writeFileSync(artifactPath(caseId, mhtmlCaptureId, 'mhtml'), mhtmlBuf)
     const contentHash = createHash('sha256').update(mhtmlBuf).digest('hex')
     const { entryHash } = appendManifestEntry(caseDir, {
       type: 'capture',
@@ -358,7 +357,7 @@ describe('caseArchive inspect', () => {
 
     const legacyBuf = Buffer.from('<html>legacy content</html>')
     const legacyCaptureId = 'capture-legacy-1'
-    writeFileSync(getCapturePath(caseId, legacyCaptureId, 'html'), legacyBuf)
+    writeFileSync(artifactPath(caseId, legacyCaptureId, 'html'), legacyBuf)
     insertCapture({
       id: legacyCaptureId,
       caseId,
@@ -510,9 +509,9 @@ describe('caseArchive import', () => {
     const mhtmlBuf = Buffer.from('<html>mhtml content</html>')
     const pngBuf = Buffer.from('fake-png-bytes')
     const txtBuf = Buffer.from(distinctiveText)
-    writeFileSync(getCapturePath(caseId, mhtmlCaptureId, 'mhtml'), mhtmlBuf)
-    writeFileSync(getCapturePath(caseId, mhtmlCaptureId, 'png'), pngBuf)
-    writeFileSync(getCapturePath(caseId, mhtmlCaptureId, 'txt'), txtBuf)
+    writeFileSync(artifactPath(caseId, mhtmlCaptureId, 'mhtml'), mhtmlBuf)
+    writeFileSync(artifactPath(caseId, mhtmlCaptureId, 'png'), pngBuf)
+    writeFileSync(artifactPath(caseId, mhtmlCaptureId, 'txt'), txtBuf)
     const contentHash = createHash('sha256').update(mhtmlBuf).digest('hex')
     const { entryHash } = appendManifestEntry(caseDir, {
       type: 'capture',
@@ -547,7 +546,7 @@ describe('caseArchive import', () => {
     // Capture 2: legacy html-only capture, no manifest entry.
     const legacyBuf = Buffer.from('<html>legacy content</html>')
     const legacyHash = createHash('sha256').update(legacyBuf).digest('hex')
-    writeFileSync(getCapturePath(caseId, legacyCaptureId, 'html'), legacyBuf)
+    writeFileSync(artifactPath(caseId, legacyCaptureId, 'html'), legacyBuf)
     insertCapture({
       id: legacyCaptureId,
       caseId,

@@ -2,14 +2,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, rmSync, readFileSync, existsSync, readdirSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { createHash } from 'crypto'
 import { Readable } from 'stream'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
-import {
-  streamWriteAndHash,
-  ingestMhtmlCapture,
-  verifyCapture
-} from '@main/services/captureLifecycle'
+import { ingestMhtmlCapture, verifyCapture } from '@main/services/captureLifecycle'
+import { defaultCaptureStore } from '@main/services/captureStore'
+import { fetchCertChain } from '@main/services/tlsCertChain'
 import {
   initDatabase,
   closeDatabase,
@@ -26,71 +23,6 @@ import { initManifest, appendManifestEntry, verifyManifestChain } from '@main/se
 vi.mock('@main/services/tlsCertChain', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@main/services/tlsCertChain')>()
   return { ...actual, fetchCertChain: vi.fn(async () => null) }
-})
-
-describe('streamWriteAndHash', () => {
-  let tempDir: string
-
-  beforeEach(() => {
-    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-ingest-'))
-    initStorage(tempDir)
-  })
-
-  afterEach(() => {
-    rmSync(tempDir, { recursive: true, force: true })
-  })
-
-  it('writes stream to disk and returns SHA-256 + size', async () => {
-    const content = Buffer.from('hello mhtml world')
-    const stream = Readable.from([content])
-    const result = await streamWriteAndHash(
-      'case-x',
-      'cap-x',
-      stream as unknown as ReadableStream<Uint8Array>
-    )
-    expect(result.hash).toBe(createHash('sha256').update(content).digest('hex'))
-    expect(result.sizeBytes).toBe(content.length)
-    expect(result.mhtmlPath).toBe(join('case-x', 'cap-x.mhtml'))
-
-    const onDisk = readFileSync(join(tempDir, 'case-x', 'cap-x.mhtml'))
-    expect(onDisk.equals(content)).toBe(true)
-  })
-
-  it('aborts and deletes partial file when size cap exceeded', async () => {
-    const oneMb = Buffer.alloc(1024 * 1024, 0x41)
-    async function* gen() {
-      for (let i = 0; i < 3; i++) yield oneMb
-    }
-    const stream = Readable.from(gen())
-    await expect(
-      streamWriteAndHash(
-        'case-x',
-        'cap-big',
-        stream as unknown as ReadableStream<Uint8Array>,
-        2 * 1024 * 1024
-      )
-    ).rejects.toThrow(/size.*exceed/i)
-    expect(existsSync(join(tempDir, 'case-x', 'cap-big.mhtml'))).toBe(false)
-  })
-
-  it('hashes large streams in a single pass', async () => {
-    const chunk = Buffer.alloc(64 * 1024, 0x7a)
-    const expected = createHash('sha256')
-    async function* gen() {
-      for (let i = 0; i < 10; i++) {
-        expected.update(chunk)
-        yield chunk
-      }
-    }
-    const stream = Readable.from(gen())
-    const result = await streamWriteAndHash(
-      'case-x',
-      'cap-big-ok',
-      stream as unknown as ReadableStream<Uint8Array>
-    )
-    expect(result.hash).toBe(expected.digest('hex'))
-    expect(result.sizeBytes).toBe(64 * 1024 * 10)
-  })
 })
 
 describe('ingestMhtmlCapture', () => {
@@ -326,6 +258,52 @@ describe('ingestMhtmlCapture', () => {
     expect(after.filter((f) => f.endsWith('.mhtml'))).toEqual([])
     expect(after).toEqual(before)
     expect(listCaptures(caseId)).toHaveLength(0)
+  })
+
+  it('delegates rollback cleanup to the store instead of unlinking per extension (#142)', async () => {
+    // Same DB-insert failure as the rollback test above, but asserted purely
+    // through the store seam: the lifecycle hands cleanup to deleteArtifacts,
+    // no per-extension knowledge required in the test.
+    const bogusCaseId = 'store-seam-case'
+    ensureCaseDir(bogusCaseId)
+    initManifest(join(tempDir, 'captures', bogusCaseId))
+
+    const store = {
+      ...defaultCaptureStore,
+      deleteArtifacts: vi.fn(defaultCaptureStore.deleteArtifacts)
+    }
+
+    const stream = Readable.from([Buffer.from('x')])
+    await expect(
+      ingestMhtmlCapture(
+        {
+          caseId: bogusCaseId,
+          url: 'https://example.com',
+          title: 'x',
+          timestamp: '2026-04-05T12:00:00.000Z',
+          stream: stream as unknown as ReadableStream<Uint8Array>,
+          textContent: 'orphan text',
+          headers: {},
+          browserVersion: '',
+          userAgent: '',
+          httpStatus: 200,
+          extensionVersion: '',
+          operatorId: '',
+          operatorName: '',
+          toolVersion: '',
+          screenshot: Buffer.from('fake-png')
+        },
+        fetchCertChain,
+        store
+      )
+    ).rejects.toThrow()
+
+    expect(store.deleteArtifacts).toHaveBeenCalledTimes(1)
+    expect(store.deleteArtifacts).toHaveBeenCalledWith(bogusCaseId, expect.any(String))
+    const leftover = readdirSync(join(tempDir, 'captures', bogusCaseId)).filter(
+      (f) => f !== 'manifest.jsonl'
+    )
+    expect(leftover).toEqual([])
   })
 })
 

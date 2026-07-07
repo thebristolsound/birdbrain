@@ -1,5 +1,5 @@
 import * as db from '@main/services/database'
-import { readCaptureFile } from '@main/services/storage'
+import { defaultCaptureStore } from '@main/services/captureStore'
 import type { Selector } from '@shared/types'
 import type {
   CreateSelectorParams,
@@ -27,7 +27,7 @@ export interface SelectorLifecycle {
 
 export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLifecycle {
   function loadCaptureText(caseId: string, captureId: string): string | null {
-    const buffer = readCaptureFile(caseId, captureId, 'txt')
+    const buffer = defaultCaptureStore.readArtifact(caseId, captureId, 'txt')
     if (buffer) return buffer.toString('utf-8')
     return db.getCaptureTextContent(captureId)
   }

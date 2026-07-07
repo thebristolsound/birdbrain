@@ -2,6 +2,7 @@ import { getDb } from '@main/services/database'
 import { statSync, existsSync, readdirSync, unlinkSync, copyFileSync } from 'fs'
 import { join, resolve, sep } from 'path'
 import { getStorageRoot } from '@main/services/storage'
+import { defaultCaptureStore, parseArtifactFilename } from '@main/services/captureStore'
 import { buildCsv } from '@main/services/csvEscape'
 import type { DbStats, DbTableRowsParams, DbTableRowsResult, OrphanReport } from '@shared/ipc'
 
@@ -308,11 +309,9 @@ export function findOrphans(): OrphanReport {
       const casePath = join(storageRoot, caseDir)
       const files = readdirSync(casePath)
       for (const file of files) {
-        const match = file.match(/^(.+)\.(html|png|txt|mhtml|jpg)$/)
-        if (!match) continue
-        let captureId = match[1]
-        captureId = captureId.replace(/_thumb$/, '')
-        if (!captureIds.has(captureId)) {
+        const parsed = parseArtifactFilename(file)
+        if (!parsed) continue
+        if (!captureIds.has(parsed.captureId)) {
           fileOrphans.push(join(caseDir, file))
         }
       }
@@ -357,7 +356,7 @@ export function cleanOrphans(report: OrphanReport): {
 
   const resolvedRoot = resolve(storageRoot) + sep
   for (const relPath of report.fileOrphans) {
-    const absPath = resolve(join(storageRoot, relPath))
+    const absPath = resolve(defaultCaptureStore.resolveAbsolute(relPath))
     if (!absPath.startsWith(resolvedRoot)) continue
     if (existsSync(absPath)) {
       unlinkSync(absPath)

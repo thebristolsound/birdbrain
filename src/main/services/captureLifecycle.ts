@@ -1,9 +1,8 @@
 import { app } from 'electron'
-import { createReadStream, createWriteStream, writeFileSync, type WriteStream } from 'fs'
-import { unlink } from 'fs/promises'
-import { join } from 'path'
+import { createReadStream } from 'fs'
 import { createHash, randomUUID } from 'crypto'
-import { finished } from 'stream/promises'
+import { defaultCaptureStore } from '@main/services/captureStore'
+import type { CaptureStore } from '@main/services/captureStore'
 import * as db from '@main/services/database'
 import { extractData } from '@main/services/dataExtractor'
 import { readExtractionHtml } from '@main/services/extraction/extractionSource'
@@ -17,26 +16,13 @@ import {
 import { reconcileCaptureTrustedTime } from '@main/services/trustedTime'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { getSettings } from '@main/services/settings'
-import {
-  deleteCaptureFiles,
-  ensureCaseDir,
-  getStorageRoot,
-  readCaptureFile
-} from '@main/services/storage'
 import { fetchCertChain as defaultFetchCertChain } from '@main/services/tlsCertChain'
 import type { TlsCertChainResult } from '@main/services/tlsCertChain'
-import { MAX_MHTML_SIZE } from '@shared/constants'
 import type { Capture, CaptureMethod, ConsentSuppression, HashVerification } from '@shared/types'
 
 // Injectable corroboration-only TLS cert-chain re-fetcher (#123). Defaults to the
 // real Node tls.connect implementation; tests inject a stub to stay hermetic.
 export type FetchCertChain = (url: string) => Promise<TlsCertChainResult | null>
-
-export interface StreamWriteResult {
-  mhtmlPath: string // relative path (caseId/captureId.mhtml)
-  hash: string
-  sizeBytes: number
-}
 
 export interface IngestParams {
   caseId: string
@@ -72,6 +58,9 @@ export interface CaptureLifecycleDeps {
   // Injectable corroboration-only TLS cert-chain re-fetcher (#123). Optional;
   // defaults to the real Node tls.connect implementation. Tests inject a stub.
   fetchTlsCertChain?: FetchCertChain
+  // Capture Store owning on-disk artifact layout (#142). Optional; defaults to
+  // the store bound to the storage-root singleton. Tests inject their own.
+  store?: CaptureStore
 }
 
 export interface CaptureLifecycle {
@@ -86,90 +75,24 @@ function getToolVersion(): string {
   return process.env.npm_package_version ?? '0.0.0'
 }
 
-async function closeAndUnlink(ws: WriteStream, path: string): Promise<void> {
-  if (!ws.destroyed) {
-    const closed = new Promise<void>((resolve) => ws.on('close', resolve))
-    ws.destroy()
-    await closed
-  }
-  await unlink(path).catch(() => {})
-}
-
-// Streams an MHTML upload to disk in a single pass while computing SHA-256.
-// Aborts (and removes the partial file) if size exceeds MAX_MHTML_SIZE.
-export async function streamWriteAndHash(
-  caseId: string,
-  captureId: string,
-  body: ReadableStream<Uint8Array>,
-  maxSizeBytes = MAX_MHTML_SIZE
-): Promise<StreamWriteResult> {
-  const dir = ensureCaseDir(caseId)
-  const absPath = join(dir, `${captureId}.mhtml`)
-  const relPath = join(caseId, `${captureId}.mhtml`)
-
-  const writeStream = createWriteStream(absPath)
-  const hasher = createHash('sha256')
-  let size = 0
-
-  try {
-    // Support both Web ReadableStream (getReader) and Node Readable (asyncIterator)
-    const iterable: AsyncIterable<Uint8Array> =
-      typeof (body as unknown as { getReader?: unknown }).getReader === 'function'
-        ? (async function* () {
-            const reader = (body as ReadableStream<Uint8Array>).getReader()
-            try {
-              while (true) {
-                const { done, value } = await reader.read()
-                if (done) break
-                yield value
-              }
-            } finally {
-              reader.releaseLock()
-            }
-          })()
-        : (body as unknown as AsyncIterable<Uint8Array>)
-
-    for await (const chunk of iterable) {
-      size += chunk.byteLength
-      if (size > maxSizeBytes) {
-        await closeAndUnlink(writeStream, absPath)
-        throw new Error(`MHTML size ${size} exceeds cap of ${maxSizeBytes} bytes`)
-      }
-      hasher.update(chunk)
-      if (!writeStream.write(chunk)) {
-        await new Promise<void>((resolve) => writeStream.once('drain', () => resolve()))
-      }
-    }
-    writeStream.end()
-    await finished(writeStream)
-  } catch (err) {
-    await closeAndUnlink(writeStream, absPath)
-    throw err
-  }
-
-  return { mhtmlPath: relPath, hash: hasher.digest('hex'), sizeBytes: size }
-}
-
 // End-to-end MHTML ingest:
-// 1. Stream-write + hash to disk
+// 1. Stream-write + hash to disk (through the Capture Store)
 // 2. Inside withCaptureEntry's write-ahead seam: write sidecar files (.txt, .png) and insert the
-//    DB row. Any failure unlinks the written artifacts and re-throws, so the seam rolls the
-//    manifest back to its anchor — the manifest never records a capture that didn't land.
+//    DB row. Any failure re-throws, so the seam rolls the manifest back to its anchor and the
+//    store cleans up the written artifacts — the manifest never records a capture that didn't land.
 export async function ingestMhtmlCapture(
   params: IngestParams,
-  fetchTlsCertChain: FetchCertChain = defaultFetchCertChain
+  fetchTlsCertChain: FetchCertChain = defaultFetchCertChain,
+  store: CaptureStore = defaultCaptureStore
 ): Promise<IngestResult> {
   const captureId = randomUUID()
-  const { mhtmlPath, hash, sizeBytes } = await streamWriteAndHash(
+  const { rel: mhtmlPath, hash, sizeBytes } = await store.writeMhtmlStream(
     params.caseId,
     captureId,
     params.stream
   )
 
-  const caseDir = join(getStorageRoot(), params.caseId)
-  const txtAbsPath = join(getStorageRoot(), params.caseId, `${captureId}.txt`)
-  const pngRelPath = join(params.caseId, `${captureId}.png`)
-  const pngAbsPath = join(getStorageRoot(), pngRelPath)
+  const caseDir = store.caseDir(params.caseId)
 
   // Content-address the screenshot and extracted text (#118). Compute the
   // digests BEFORE the manifest entry is appended so the same hex binds the
@@ -205,10 +128,10 @@ export async function ingestMhtmlCapture(
   }
 
   // The write-ahead manifest entry + rollback-on-throw is owned by withCaptureEntry.
-  // The .mhtml is written before the seam, so its cleanup wraps the whole call: a
-  // manifest init/append failure throws before the callback runs and would otherwise
-  // orphan it. The sidecars are written inside the callback, so they are cleaned there.
-  // Every path re-throws so the seam rolls the manifest back to its anchor.
+  // Every path re-throws so the seam rolls the manifest back to its anchor; the outer
+  // catch then delegates ALL artifact cleanup (mhtml + sidecars) to the store, covering
+  // both the pre-callback manifest failure (only the mhtml written) and a failure inside
+  // the callback (sidecars written too). The store never touches manifest.jsonl.
   try {
     return await withCaptureEntry(
       caseDir,
@@ -231,73 +154,64 @@ export async function ingestMhtmlCapture(
         toolVersion: params.toolVersion
       },
       async (manifestResult) => {
-        let txtWritten = false
-        let pngWritten = false
-        try {
-          // Write plain text content to disk for the viewer's Text tab
-          if (params.textContent) {
-            writeFileSync(txtAbsPath, params.textContent, 'utf-8')
-            txtWritten = true
-          }
-
-          // Write screenshot to disk
-          let screenshotPath: string | undefined
-          if (params.screenshot) {
-            writeFileSync(pngAbsPath, params.screenshot)
-            pngWritten = true
-            screenshotPath = pngRelPath
-          }
-
-          const capture = db.insertCapture({
-            id: captureId,
-            caseId: params.caseId,
-            url: params.url,
-            title: params.title,
-            hash,
-            timestamp: params.timestamp,
-            headers: JSON.stringify(params.headers),
-            textContent: params.textContent,
-            format: 'mhtml',
-            mhtmlPath,
-            screenshotPath,
-            screenshotHash,
-            textHash,
-            tlsCertChain: tls !== undefined ? JSON.stringify(tls) : undefined,
-            sizeBytes,
-            manifestIndex: manifestResult.index,
-            prevHash: manifestResult.prevHash,
-            entryHash: manifestResult.entryHash,
-            toolVersion: params.toolVersion,
-            extensionVersion: params.extensionVersion,
-            browserVersion: params.browserVersion,
-            userAgent: params.userAgent,
-            httpStatus: params.httpStatus,
-            operatorId: params.operatorId,
-            operatorName: params.operatorName,
-            method: params.method,
-            supersedesCaptureId: params.supersedesCaptureId,
-            consentSuppression: params.consentSuppression
-          })
-          return { capture, contentHash: hash }
-        } catch (err) {
-          if (txtWritten) {
-            await unlink(txtAbsPath).catch(() => {})
-          }
-          if (pngWritten) {
-            await unlink(pngAbsPath).catch(() => {})
-          }
-          throw err
+        // Write plain text content to disk for the viewer's Text tab
+        if (params.textContent) {
+          store.writeText(params.caseId, captureId, params.textContent)
         }
+
+        // Write screenshot to disk
+        let screenshotPath: string | undefined
+        if (params.screenshot) {
+          screenshotPath = store.writeScreenshot(params.caseId, captureId, params.screenshot).rel
+        }
+
+        const capture = db.insertCapture({
+          id: captureId,
+          caseId: params.caseId,
+          url: params.url,
+          title: params.title,
+          hash,
+          timestamp: params.timestamp,
+          headers: JSON.stringify(params.headers),
+          textContent: params.textContent,
+          format: 'mhtml',
+          mhtmlPath,
+          screenshotPath,
+          screenshotHash,
+          textHash,
+          tlsCertChain: tls !== undefined ? JSON.stringify(tls) : undefined,
+          sizeBytes,
+          manifestIndex: manifestResult.index,
+          prevHash: manifestResult.prevHash,
+          entryHash: manifestResult.entryHash,
+          toolVersion: params.toolVersion,
+          extensionVersion: params.extensionVersion,
+          browserVersion: params.browserVersion,
+          userAgent: params.userAgent,
+          httpStatus: params.httpStatus,
+          operatorId: params.operatorId,
+          operatorName: params.operatorName,
+          method: params.method,
+          supersedesCaptureId: params.supersedesCaptureId,
+          consentSuppression: params.consentSuppression
+        })
+        return { capture, contentHash: hash }
       }
     )
   } catch (err) {
-    await unlink(join(getStorageRoot(), mhtmlPath)).catch(() => {})
+    // Best-effort cleanup: never let an unlink failure mask the ingest error.
+    try {
+      store.deleteArtifacts(params.caseId, captureId)
+    } catch {
+      /* ignore */
+    }
     throw err
   }
 }
 
 async function computeVerification(
-  capture: NonNullable<ReturnType<typeof db.getCapture>>
+  capture: NonNullable<ReturnType<typeof db.getCapture>>,
+  store: CaptureStore
 ): Promise<HashVerification> {
   // Trusted time is ORTHOGONAL to integrity, so resolve it once up front and
   // attach it to every result regardless of the integrity outcome. Derived from
@@ -324,7 +238,7 @@ async function computeVerification(
     }
   }
 
-  const absPath = join(getStorageRoot(), capture.mhtmlPath)
+  const absPath = store.resolveAbsolute(capture.mhtmlPath)
   const hasher = createHash('sha256')
   try {
     await new Promise<void>((resolve, reject) => {
@@ -343,7 +257,7 @@ async function computeVerification(
   }
   const computed = hasher.digest('hex')
 
-  const chain = verifyManifestChain(join(getStorageRoot(), capture.caseId))
+  const chain = verifyManifestChain(store.caseDir(capture.caseId))
   if (!chain.valid) {
     return {
       ...base,
@@ -389,7 +303,7 @@ async function computeVerification(
   // though the primary MHTML survived, so it FAILS with an artifact-specific
   // reason. Absent recorded hashes (legacy/no-screenshot) are simply skipped —
   // grandfathering is preserved.
-  const sidecarFailure = await verifySidecars(capture)
+  const sidecarFailure = await verifySidecars(capture, store)
   if (sidecarFailure) {
     return {
       ...base,
@@ -415,10 +329,11 @@ async function computeVerification(
 // sidecar whose hash was recorded), or undefined when everything binds. Captures
 // with no recorded hash for an artifact are not checked.
 async function verifySidecars(
-  capture: NonNullable<ReturnType<typeof db.getCapture>>
+  capture: NonNullable<ReturnType<typeof db.getCapture>>,
+  store: CaptureStore
 ): Promise<string | undefined> {
   if (capture.screenshotHash) {
-    const buf = readCaptureFile(capture.caseId, capture.id, 'png')
+    const buf = store.readArtifact(capture.caseId, capture.id, 'png')
     if (!buf) {
       return 'Screenshot missing: expected ' + capture.screenshotHash.slice(0, 12) + '...'
     }
@@ -429,7 +344,7 @@ async function verifySidecars(
   }
 
   if (capture.textHash) {
-    const buf = readCaptureFile(capture.caseId, capture.id, 'txt')
+    const buf = store.readArtifact(capture.caseId, capture.id, 'txt')
     if (!buf) {
       return 'Extracted text missing: expected ' + capture.textHash.slice(0, 12) + '...'
     }
@@ -443,7 +358,10 @@ async function verifySidecars(
 }
 
 // Streams the MHTML file from disk, recomputes SHA-256, and checks the manifest chain.
-export async function verifyCapture(captureId: string): Promise<HashVerification> {
+export async function verifyCapture(
+  captureId: string,
+  store: CaptureStore = defaultCaptureStore
+): Promise<HashVerification> {
   const capture = db.getCapture(captureId)
   if (!capture) {
     return {
@@ -458,7 +376,7 @@ export async function verifyCapture(captureId: string): Promise<HashVerification
     }
   }
 
-  const result = await computeVerification(capture)
+  const result = await computeVerification(capture, store)
 
   // Persist so the UI can rehydrate across remounts/sessions and export can read
   // a stable snapshot without re-hashing when nothing has changed on disk. The
@@ -473,9 +391,11 @@ export async function verifyCapture(captureId: string): Promise<HashVerification
 }
 
 export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifecycle {
+  const store = deps.store ?? defaultCaptureStore
+
   function runDataExtraction(captureId: string, caseId: string, url: string): void {
     try {
-      const html = readExtractionHtml(caseId, captureId)
+      const html = readExtractionHtml(caseId, captureId, store)
       if (html) {
         const extracted = extractData(html)
         db.insertExtractedData(captureId, caseId, url, extracted)
@@ -508,7 +428,8 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
     async ingest(params) {
       const result = await ingestMhtmlCapture(
         params,
-        deps.fetchTlsCertChain ?? defaultFetchCertChain
+        deps.fetchTlsCertChain ?? defaultFetchCertChain,
+        store
       )
       // Hand off to the trusted-timestamp worker without blocking the capture.
       deps.enqueueTimestamp?.(result.capture.id)
@@ -521,7 +442,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
       if (!capture) return false
 
       if (capture.format === 'mhtml') {
-        const caseDir = join(getStorageRoot(), capture.caseId)
+        const caseDir = store.caseDir(capture.caseId)
         try {
           await withDeletionEntry(
             caseDir,
@@ -540,7 +461,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
               // rolls back and the user sees a broken capture row they can retry —
               // strictly better than the inverse, where a filesystem failure
               // after the DB delete would leave permanently orphaned files.
-              deleteCaptureFiles(capture.caseId, captureId)
+              store.deleteArtifacts(capture.caseId, captureId)
               const deleted = db.deleteCapture(captureId)
               if (!deleted) throw new ManifestRollback()
             }
@@ -553,12 +474,12 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
       }
 
       const deleted = db.deleteCapture(captureId)
-      if (deleted) deleteCaptureFiles(capture.caseId, captureId)
+      if (deleted) store.deleteArtifacts(capture.caseId, captureId)
       return deleted
     },
 
     verify(captureId) {
-      return verifyCapture(captureId)
+      return verifyCapture(captureId, store)
     },
 
     async reprocessCase(caseId) {

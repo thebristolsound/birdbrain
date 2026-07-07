@@ -116,8 +116,9 @@ test.describe('Recapture through a consent wall', () => {
       const png = await w.birdbrain.captures.getContent(captureId, 'png')
       if (!png) return -1
       const img = new Image()
-      await new Promise((resolve) => {
-        img.onload = resolve
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve()
+        img.onerror = () => reject(new Error('Failed to decode captured PNG'))
         img.src = `data:image/png;base64,${png}`
       })
       return img.naturalHeight

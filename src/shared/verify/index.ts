@@ -5,20 +5,20 @@
 // that wants `canonicalStringify` or `ManifestEntrySchema` ever pulls in `fs`.
 // Forbidden anywhere under src/shared/verify/: electron, src/main,
 // better-sqlite3, keytar, hono, network calls.
-export { canonicalStringify } from './canonicalJson'
-export { verifyEntrySignature } from './signature'
+export { canonicalStringify } from '@shared/verify/canonicalJson'
+export { verifyEntrySignature } from '@shared/verify/signature'
 export {
   parseTimestampToken,
   extractTimestampTokenCertificatesPem,
   SHA256_OID,
   COMMON_NAME_OID
-} from './timestampToken'
-export type { ParsedTimestampToken } from './timestampToken'
-export { verifyManifestChainText } from './manifestChain'
-export type { ChainVerifyResult } from './manifestChain'
+} from '@shared/verify/timestampToken'
+export type { ParsedTimestampToken } from '@shared/verify/timestampToken'
+export { verifyManifestChainText } from '@shared/verify/manifestChain'
+export type { ChainVerifyResult } from '@shared/verify/manifestChain'
 export {
   resolveTrustedTimeFromEntries,
   buildTrustedTimeIndexFromEntries
-} from './trustedTime'
-export type { TrustedTimeResult } from './trustedTime'
+} from '@shared/verify/trustedTime'
+export type { TrustedTimeResult } from '@shared/verify/trustedTime'
 export { ManifestEntrySchema } from '@shared/schemas'

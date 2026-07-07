@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { truncateForContext } from '../../../../src/main/services/ai/openrouter'
+import { truncateForContext } from '@main/services/ai/openrouter'
 
 describe('ai/openrouter', () => {
   describe('truncateForContext', () => {

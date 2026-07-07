@@ -10,35 +10,35 @@ import {
   closeDatabase,
   createCase,
   insertCapture
-} from '../../../src/main/services/database'
-import { initStorage, ensureCaseDir, getCapturePath } from '../../../src/main/services/storage'
-import * as manifest from '../../../src/main/services/manifest'
+} from '@main/services/database'
+import { initStorage, ensureCaseDir, getCapturePath } from '@main/services/storage'
+import * as manifest from '@main/services/manifest'
 import {
   appendManifestEntry,
   getManifestHead,
   initManifest,
   verifyManifestChain
-} from '../../../src/main/services/manifest'
+} from '@main/services/manifest'
 import { canonicalStringify } from '@shared/verify'
-import { ingestMhtmlCapture } from '../../../src/main/services/captureLifecycle'
+import { ingestMhtmlCapture } from '@main/services/captureLifecycle'
 import {
   createCaptureLifecycle,
   type CaptureLifecycle
-} from '../../../src/main/services/captureLifecycle'
-import { createSelectorLifecycle } from '../../../src/main/services/selectorLifecycle'
+} from '@main/services/captureLifecycle'
+import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import {
   verifyCaptures,
   generateReport,
   getExportPreflight
-} from '../../../src/main/services/export'
-import { saveAnnotations } from '../../../src/main/services/annotations'
+} from '@main/services/export'
+import { saveAnnotations } from '@main/services/annotations'
 import { initSettings, updateSettings } from '@main/services/settings'
 import {
   getInstallationId,
   initInstallationId,
   resetInstallationId
 } from '@main/services/installationId'
-import type { ExportOptions } from '../../../src/shared/types'
+import type { ExportOptions } from '@shared/types'
 
 function readStoredZipEntries(path: string): Map<string, Buffer> {
   const zip = readFileSync(path)

@@ -7,8 +7,8 @@ import { Button, Skeleton } from '@renderer/components/ui'
 import { presets, STAGGER_INTERVAL, STAGGER_VISIBLE_CAP } from '@renderer/lib/motion'
 import { useAppStore } from '@renderer/stores/appStore'
 import { useFavorites } from '@renderer/hooks/useFavorites'
-import { CaptureItem } from './CaptureItem'
-import { CaptureListEmptyState } from './CaptureListEmptyState'
+import { CaptureItem } from '@renderer/components/captures/CaptureItem'
+import { CaptureListEmptyState } from '@renderer/components/captures/CaptureListEmptyState'
 import type { Capture, Selector } from '@shared/types'
 
 interface CaptureListProps {

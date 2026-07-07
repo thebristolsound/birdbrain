@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import type { AnnotationTool } from './useAnnotationEditor'
+import type { AnnotationTool } from '@renderer/components/captures/annotation/useAnnotationEditor'
 
 interface Bindings {
   enabled: boolean

@@ -26,7 +26,7 @@ describe('extensionPath', () => {
       vi.doMock('electron', () => ({
         app: { isPackaged: false }
       }))
-      const { getExtensionPath } = await import('../../../src/main/services/extensionPath')
+      const { getExtensionPath } = await import('@main/services/extensionPath')
       const result = getExtensionPath()
       const expectedPath = join(process.cwd(), 'extension', 'dist')
       expect(result).toBe(expectedPath)
@@ -43,7 +43,7 @@ describe('extensionPath', () => {
         configurable: true
       })
       try {
-        const { getExtensionPath } = await import('../../../src/main/services/extensionPath')
+        const { getExtensionPath } = await import('@main/services/extensionPath')
         const result = getExtensionPath()
         expect(result).toBe(join('/mock/resources', 'extension'))
       } finally {
@@ -65,7 +65,7 @@ describe('extensionPath', () => {
         const actual = await vi.importActual<typeof import('fs')>('fs')
         return { ...actual, existsSync: vi.fn().mockReturnValue(true) }
       })
-      const { extensionPathExists } = await import('../../../src/main/services/extensionPath')
+      const { extensionPathExists } = await import('@main/services/extensionPath')
       expect(extensionPathExists()).toBe(true)
     })
 
@@ -77,7 +77,7 @@ describe('extensionPath', () => {
         const actual = await vi.importActual<typeof import('fs')>('fs')
         return { ...actual, existsSync: vi.fn().mockReturnValue(false) }
       })
-      const { extensionPathExists } = await import('../../../src/main/services/extensionPath')
+      const { extensionPathExists } = await import('@main/services/extensionPath')
       expect(extensionPathExists()).toBe(false)
     })
   })

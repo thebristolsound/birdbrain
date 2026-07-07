@@ -14,7 +14,7 @@ import {
   Redo2,
   Trash2
 } from 'lucide-react'
-import type { AnnotationTool } from './annotation/useAnnotationEditor'
+import type { AnnotationTool } from '@renderer/components/captures/annotation/useAnnotationEditor'
 
 interface Props {
   tool: AnnotationTool

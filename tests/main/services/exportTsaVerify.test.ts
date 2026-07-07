@@ -8,20 +8,20 @@ import {
   initDatabase,
   closeDatabase,
   createCase
-} from '../../../src/main/services/database'
-import { initStorage, ensureCaseDir } from '../../../src/main/services/storage'
-import { appendManifestEntry, initManifest } from '../../../src/main/services/manifest'
-import { ingestMhtmlCapture } from '../../../src/main/services/captureLifecycle'
+} from '@main/services/database'
+import { initStorage, ensureCaseDir } from '@main/services/storage'
+import { appendManifestEntry, initManifest } from '@main/services/manifest'
+import { ingestMhtmlCapture } from '@main/services/captureLifecycle'
 import {
   createCaptureLifecycle,
   type CaptureLifecycle
-} from '../../../src/main/services/captureLifecycle'
-import { createSelectorLifecycle } from '../../../src/main/services/selectorLifecycle'
-import { generateReport } from '../../../src/main/services/export'
+} from '@main/services/captureLifecycle'
+import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
+import { generateReport } from '@main/services/export'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { HAS_OPENSSL } from '../../helpers/openssl'
-import type { ExportOptions } from '../../../src/shared/types'
+import type { ExportOptions } from '@shared/types'
 
 const FIXTURES = join(process.cwd(), 'tests/fixtures/timestamp')
 

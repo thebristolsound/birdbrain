@@ -1,6 +1,6 @@
 import type { TargetAndTransition, Transition } from 'motion/react'
-import { springs } from './springs'
-import { STAGGER_INTERVAL, OVERLAY_DURATION } from './constants'
+import { springs } from '@renderer/lib/motion/springs'
+import { STAGGER_INTERVAL, OVERLAY_DURATION } from '@renderer/lib/motion/constants'
 
 function makePreset(
   initial: TargetAndTransition,

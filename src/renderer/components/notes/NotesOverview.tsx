@@ -6,8 +6,8 @@ import { Search } from 'lucide-react'
 import { notesQueryOptions, notesSearchQueryOptions } from '@renderer/lib/queries'
 import { Button } from '@renderer/components/ui'
 import { presets } from '@renderer/lib/motion'
-import { NoteCard } from './NoteCard'
-import { CreateNoteCard } from './CreateNoteCard'
+import { NoteCard } from '@renderer/components/notes/NoteCard'
+import { CreateNoteCard } from '@renderer/components/notes/CreateNoteCard'
 
 export function NotesOverview() {
   const { caseId } = useParams({ from: '/cases/$caseId/notes' })

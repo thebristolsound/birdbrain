@@ -24,11 +24,11 @@ import { useTimeTick } from '@renderer/hooks/useTimeTick'
 import { presets } from '@renderer/lib/motion/presets'
 import { formatRelativeTime } from '@renderer/lib/formatRelativeTime'
 import { TagBadge } from '@renderer/components/tags/TagBadge'
-import { TagEditorPopover } from './TagEditorPopover'
-import { useCaptureTagEditor } from './useCaptureTagEditor'
-import { useInlineNoteEditor } from './useInlineNoteEditor'
-import { useVerifyMutation } from './useVerifyMutation'
-import { getProvenanceColor } from './getProvenanceColor'
+import { TagEditorPopover } from '@renderer/components/captures/TagEditorPopover'
+import { useCaptureTagEditor } from '@renderer/components/captures/useCaptureTagEditor'
+import { useInlineNoteEditor } from '@renderer/components/captures/useInlineNoteEditor'
+import { useVerifyMutation } from '@renderer/components/captures/useVerifyMutation'
+import { getProvenanceColor } from '@renderer/components/captures/getProvenanceColor'
 
 interface Props {
   capture: Capture

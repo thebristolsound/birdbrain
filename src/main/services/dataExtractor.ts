@@ -1,12 +1,12 @@
 import { parse as parseTld } from 'tldts'
-import { sanitizeHtml, MAX_HTML_BYTES } from './extraction/sanitizer'
-import { extractIocs } from './extraction/iocAdapter'
+import { sanitizeHtml, MAX_HTML_BYTES } from '@main/services/extraction/sanitizer'
+import { extractIocs } from '@main/services/extraction/iocAdapter'
 import {
   isPublicIpv4,
   isValidDomain,
   isValidDomainParsed,
   isValidEmail
-} from './extraction/validators'
+} from '@main/services/extraction/validators'
 
 const FB_PIXEL_ID = /["'](\d{15,16})["']/
 const TWITTER_X_HANDLE = /(?:twitter\.com|x\.com)\/([a-zA-Z0-9_]{1,15})/i

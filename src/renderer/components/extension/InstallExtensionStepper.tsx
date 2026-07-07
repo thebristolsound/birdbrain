@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { ArrowLeft, ArrowRight, Check, FolderOpen } from 'lucide-react'
 import { Button } from '@renderer/components/ui'
-import { INSTALL_STEPS } from './installSteps'
+import { INSTALL_STEPS } from '@renderer/components/extension/installSteps'
 
 interface InstallExtensionStepperProps {
   className?: string

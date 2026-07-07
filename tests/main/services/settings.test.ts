@@ -9,8 +9,8 @@ import {
   updateSettings,
   resetSettings,
   getDefaultSettings
-} from '../../../src/main/services/settings'
-import { DEFAULT_TSA_URL } from '../../../src/shared/constants'
+} from '@main/services/settings'
+import { DEFAULT_TSA_URL } from '@shared/constants'
 
 describe('settings', () => {
   let tempDir: string

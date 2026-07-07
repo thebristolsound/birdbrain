@@ -4,8 +4,8 @@ import type { ExportOptions, ExportPreflight } from '@shared/types'
 import { presets } from '@renderer/lib/motion'
 import { useCompletionCelebration } from '@renderer/hooks/useCompletionCelebration'
 import { Button, Input, Label } from '@renderer/components/ui'
-import { ExportProgress } from './ExportProgress'
-import { ExportComplete } from './ExportComplete'
+import { ExportProgress } from '@renderer/components/export/ExportProgress'
+import { ExportComplete } from '@renderer/components/export/ExportComplete'
 
 interface ExportDialogProps {
   caseId: string

@@ -1,5 +1,5 @@
 import { createRouter, createHashHistory } from '@tanstack/react-router'
-import { routeTree } from './routes/__root'
+import { routeTree } from '@renderer/routes/__root'
 
 const hashHistory = createHashHistory()
 

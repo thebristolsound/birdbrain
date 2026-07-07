@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ConfirmDialog } from './ConfirmDialog'
+import { ConfirmDialog } from '@renderer/components/settings/db/ConfirmDialog'
 import type { OrphanReport } from '@shared/ipc'
 import { Button } from '@renderer/components/ui'
 

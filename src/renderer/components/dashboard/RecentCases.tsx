@@ -2,7 +2,7 @@ import { Plus } from 'lucide-react'
 import { motion } from 'motion/react'
 import type { Case } from '@shared/types'
 import { presets, STAGGER_INTERVAL, STAGGER_VISIBLE_CAP } from '@renderer/lib/motion'
-import { CaseCard } from './CaseCard'
+import { CaseCard } from '@renderer/components/dashboard/CaseCard'
 
 interface RecentCasesProps {
   cases: Case[]

@@ -1,10 +1,10 @@
 import { createHash } from 'crypto'
 import { ManifestEntrySchema } from '@shared/schemas'
 import type { ManifestEntry } from '@shared/schemas'
-import { canonicalStringify } from './canonicalJson'
-import { verifyEntrySignature } from './signature'
-import { buildTrustedTimeIndexFromEntries } from './trustedTime'
-import type { TrustedTimeResult } from './trustedTime'
+import { canonicalStringify } from '@shared/verify/canonicalJson'
+import { verifyEntrySignature } from '@shared/verify/signature'
+import { buildTrustedTimeIndexFromEntries } from '@shared/verify/trustedTime'
+import type { TrustedTimeResult } from '@shared/verify/trustedTime'
 
 export interface ChainVerifyResult {
   valid: boolean

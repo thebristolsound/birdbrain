@@ -51,16 +51,6 @@ test.describe('Recapture (background capture)', () => {
     // The capture appears in the list when the background job completes
     await expect(page.getByText('Recapture Fixture')).toBeVisible({ timeout: 60000 })
 
-    // Background captures are visually distinguished by a recapture badge on the
-    // list thumbnail. Scope to the specific capture item under test rather than
-    // any badge on the page.
-    await expect(
-      page
-        .getByTestId('capture-item')
-        .filter({ hasText: 'Recapture Fixture' })
-        .getByTestId('recapture-thumb-badge')
-    ).toBeVisible()
-
     // Provenance: background method + supersedes-free + verified chain
     const capture = await page.evaluate(async (id) => {
       const w = window as unknown as {
@@ -85,6 +75,12 @@ test.describe('Recapture (background capture)', () => {
     expect(capture.supersedesCaptureId).toBeUndefined()
     expect(capture.screenshotPath).toBeTruthy()
     expect(capture.hash).toMatch(/^[0-9a-f]{64}$/)
+
+    // Background captures are visually distinguished by a recapture badge on the
+    // list thumbnail. Scope by the stable data-capture-id, not display copy.
+    await expect(
+      page.locator(`[data-capture-id="${capture.id}"] [data-testid="recapture-thumb-badge"]`)
+    ).toBeVisible()
 
     const verification = await page.evaluate(async (captureId: string) => {
       const w = window as unknown as {

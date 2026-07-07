@@ -76,6 +76,12 @@ test.describe('Recapture (background capture)', () => {
     expect(capture.screenshotPath).toBeTruthy()
     expect(capture.hash).toMatch(/^[0-9a-f]{64}$/)
 
+    // Background captures are visually distinguished by a recapture badge on the
+    // list thumbnail. Scope by the stable data-capture-id, not display copy.
+    await expect(
+      page.locator(`[data-capture-id="${capture.id}"] [data-testid="recapture-thumb-badge"]`)
+    ).toBeVisible()
+
     const verification = await page.evaluate(async (captureId: string) => {
       const w = window as unknown as {
         birdbrain: { captures: { verify: (id: string) => Promise<{ status: string }> } }

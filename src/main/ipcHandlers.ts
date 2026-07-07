@@ -400,11 +400,11 @@ export function registerIpcHandlers(deps: {
   )
 
   // Captures - get thumbnail
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_GET_THUMBNAIL, (_, captureId: string) => {
+  ipcMain.handle(IPC_CHANNELS.CAPTURES_GET_THUMBNAIL, async (_, captureId: string) => {
     try {
       const capture = db.getCapture(captureId)
       if (!capture) return null
-      const buffer = storage.getThumbnail(capture.caseId, captureId)
+      const buffer = await storage.getThumbnail(capture.caseId, captureId)
       if (!buffer) return null
       return buffer.toString('base64')
     } catch (err) {

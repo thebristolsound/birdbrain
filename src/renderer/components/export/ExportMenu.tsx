@@ -26,6 +26,7 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
   const [archiveProgress, setArchiveProgress] = useState<{ step: string; percent: number } | null>(
     null
   )
+  const [exportingCaseId, setExportingCaseId] = useState<string | null>(null)
 
   // Tracks the currently-displayed case so a still-in-flight export that resolves
   // after a case switch can detect it's stale (the async closure captured the old id).
@@ -40,6 +41,7 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
     setArchiveResult(null)
     setArchiveError('')
     setArchiveProgress(null)
+    setExportingCaseId(null)
   }, [caseId])
 
   useEffect(() => {
@@ -59,8 +61,17 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
       if (anchorRef.current?.contains(target)) return
       setOpen(false)
     }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setOpen(false)
+      }
+    }
     document.addEventListener('mousedown', onDocClick)
-    return () => document.removeEventListener('mousedown', onDocClick)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onDocClick)
+      document.removeEventListener('keydown', onKeyDown)
+    }
   }, [open])
 
   async function handleExportArchive() {
@@ -69,6 +80,7 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
     setArchiveError('')
     setArchiveResult(null)
     setArchiveProgress({ step: 'Preparing archive…', percent: 0 })
+    setExportingCaseId(exportCaseId)
     try {
       const result = await exportArchive.mutateAsync(exportCaseId)
       // Ignore a completion that lands after the user switched cases.
@@ -80,9 +92,14 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
       if (caseIdRef.current !== exportCaseId) return
       setArchiveError(err instanceof Error ? err.message : String(err))
     } finally {
-      if (caseIdRef.current === exportCaseId) setArchiveProgress(null)
+      if (caseIdRef.current === exportCaseId) {
+        setArchiveProgress(null)
+        setExportingCaseId(null)
+      }
     }
   }
+
+  const isExporting = exportingCaseId === caseId
 
   return (
     <div className="relative">
@@ -91,15 +108,17 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
         variant="outline"
         size="sm"
         onClick={() => setOpen((v) => !v)}
-        disabled={exportArchive.isPending}
+        disabled={isExporting}
+        aria-haspopup="menu"
+        aria-expanded={open}
         className="gap-1.5"
       >
-        {exportArchive.isPending ? (
+        {isExporting ? (
           <Loader2 className="h-3 w-3 animate-spin" strokeWidth={1.8} />
         ) : (
           <FileOutput className="h-3 w-3" strokeWidth={1.8} />
         )}
-        {exportArchive.isPending && archiveProgress
+        {isExporting && archiveProgress
           ? `${archiveProgress.step} — ${Math.round(archiveProgress.percent)}%`
           : 'Export'}
         <ChevronDown className="h-3 w-3" strokeWidth={1.8} />
@@ -108,9 +127,11 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
       {open && (
         <div
           ref={menuRef}
+          role="menu"
           className="absolute right-0 top-full z-50 mt-1 w-56 rounded-lg border border-border-strong bg-card py-1 shadow-xl"
         >
           <button
+            role="menuitem"
             onClick={() => {
               setOpen(false)
               setShowReport(true)
@@ -121,6 +142,7 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
             Export evidence report
           </button>
           <button
+            role="menuitem"
             onClick={handleExportArchive}
             className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary hover:bg-elevated"
           >

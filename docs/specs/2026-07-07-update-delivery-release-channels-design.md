@@ -17,12 +17,19 @@ We want:
 
 Use **`electron-updater`** (from the electron-builder ecosystem) with the **GitHub Releases provider**. This is the standard path for our exact setup: electron-builder packaging, GitHub Releases hosting, no dedicated update server.
 
-Channel semantics ride on what the release workflow already does: tags containing `alpha`/`beta` are published as GitHub *prereleases*. On the client, `autoUpdater.allowPrerelease` toggles whether prereleases are considered:
+### How channel selection actually works with the GitHub provider
 
-- **Stable channel** → `allowPrerelease = false`: only the latest non-prerelease release.
-- **Beta channel** → `allowPrerelease = true`: latest release including prereleases. Semver ordering means a newer stable also reaches beta users.
+electron-updater has two distinct channel mechanisms, and we deliberately use only one:
 
-Switching Beta → Stable never downgrades (`allowDowngrade` stays `false`); the user stays on their beta build until a higher-versioned stable ships.
+1. **Named channel files** (`autoUpdater.channel` → fetches `beta.yml` instead of `latest.yml`). This is the mechanism for generic/S3-style providers. The GitHub provider does *not* derive channel files from the semver prerelease component — every GitHub release gets a plain `latest.yml` — so channel-named files would require extra publish config and buy us nothing. **We do not use this: `autoUpdater.channel` is never assigned and stays at its default (`latest`).**
+2. **The GitHub prerelease flag** (`autoUpdater.allowPrerelease`). The GitHub provider resolves "newest release" by scanning release tags, skipping releases marked *prerelease* unless `allowPrerelease` is true, then reads `latest.yml` from that release's assets. **This is our channel switch**, and it rides on what the release workflow already does: tags containing `alpha`/`beta` are published as GitHub prereleases.
+
+So the `releaseChannel` setting maps to exactly one updater property, assigned in the updater service (§4) at startup and whenever the setting changes:
+
+- **Stable channel** → `autoUpdater.allowPrerelease = false`: only the latest non-prerelease release.
+- **Beta channel** → `autoUpdater.allowPrerelease = true`: latest release including prereleases. Semver ordering means a newer stable also reaches beta users.
+
+Switching Beta → Stable never downgrades: the updater service pins `autoUpdater.allowDowngrade = false` **after** setting `allowPrerelease` (electron-updater implicitly flips `allowDowngrade` to true when `allowPrerelease` is true, so the explicit assignment order matters). The user stays on their beta build until a higher-versioned stable ships.
 
 ### Platform support matrix
 
@@ -39,8 +46,8 @@ Where auto-update isn't possible, the same UI degrades to *notify*: "Update avai
 
 ### 1. Build & publish configuration (`package.json` `build` block)
 
-- Add `publish: [{ "provider": "github", "owner": "thebristolsound", "repo": "birdbrain" }]`. With a publish config present, electron-builder generates the update-info files (`latest.yml`, `latest-mac.yml`, `latest-linux.yml`, or `beta*.yml` for prerelease versions) and `.blockmap` files even under `--publish never`.
-- Add `generateUpdatesFilesForAllChannels: true` so stable releases also emit `beta.yml` — beta-channel clients can then resolve updates from stable releases without special-casing.
+- Add `publish: [{ "provider": "github", "owner": "thebristolsound", "repo": "birdbrain" }]`. With a publish config present, electron-builder generates the update-info files (`latest.yml`, `latest-mac.yml`, `latest-linux.yml`) and `.blockmap` files even under `--publish never`. Every release — stable or prerelease — carries the same `latest*.yml` names; channel separation happens client-side via `allowPrerelease` (see above).
+- Do **not** set `generateUpdatesFilesForAllChannels`. It exists for channel-file providers (mechanism 1 above), which we don't use — and enabling it implicitly turns on `allowDowngrade`, contradicting the no-downgrade rule.
 - macOS: change target from `["dmg"]` to `["dmg", "zip"]` (zip is what Squirrel.Mac consumes; dmg remains the human download).
 
 ### 2. Release workflow (`.github/workflows/release.yml`)
@@ -69,7 +76,7 @@ Default for `releaseChannel`: derived at first run from the installed version �
 New main-process service wrapping `electron-updater`'s `autoUpdater`:
 
 - **Guard:** no-op when `!app.isPackaged` (dev) and on unsupported install formats (deb, unsigned mac) — in those cases checks still run but resolution is *notify-only* (expose `supportsAutoInstall: false` in status).
-- **Config:** `autoDownload = false` (download only on explicit user action or when `autoCheckForUpdates` policy says so — see below), `autoInstallOnAppQuit = true`, `allowDowngrade = false`, `allowPrerelease` from `releaseChannel`.
+- **Config:** `autoDownload = false` (download only on explicit user action or when `autoCheckForUpdates` policy says so — see below), `autoInstallOnAppQuit = true`, `allowPrerelease` from `releaseChannel`, then `allowDowngrade = false` (in that order — see channel-selection section; `autoUpdater.channel` is never touched).
 - **Never restart on its own.** Birdbrain is a forensic capture tool; an update must never interrupt an active capture session. Install happens only via the explicit "Restart to update" action or naturally on next quit.
 - **Schedule:** when `autoCheckForUpdates` is true, check ~30 s after launch and every 4 h thereafter; manual "Check for updates" is always available.
 - **State machine** exposed to the renderer:

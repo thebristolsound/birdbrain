@@ -1,14 +1,4 @@
-import { useState } from 'react'
-import {
-  Sun,
-  Moon,
-  ChevronsUpDown,
-  ChevronRight,
-  Settings,
-  ArrowLeft,
-  FileOutput
-} from 'lucide-react'
-import { AnimatePresence } from 'motion/react'
+import { Sun, Moon, ChevronsUpDown, ChevronRight, Settings, ArrowLeft } from 'lucide-react'
 import logoImg from '@renderer/assets/logo.png'
 import { Button } from '@renderer/components/ui'
 import { useMatchRoute, useNavigate, useRouter } from '@tanstack/react-router'
@@ -19,7 +9,7 @@ import { SearchBar } from '@renderer/components/search/SearchBar'
 import { SessionControls } from '@renderer/components/status/SessionControls'
 import { ConnectionStatus } from '@renderer/components/status/ConnectionStatus'
 import { CaptureHealth } from '@renderer/components/status/CaptureHealth'
-import { ExportDialog } from '@renderer/components/export/ExportDialog'
+import { ExportMenu } from '@renderer/components/export/ExportMenu'
 import { useTheme } from '@renderer/hooks/useTheme'
 
 export function TopBar() {
@@ -29,7 +19,6 @@ export function TopBar() {
   const sessionActive = useAppStore((s) => s.sessionActive)
   const setCommandPaletteOpen = useAppStore((s) => s.setCommandPaletteOpen)
   const { theme, toggleTheme } = useTheme()
-  const [showExport, setShowExport] = useState(false)
 
   const isOnSettings = Boolean(matchRoute({ to: '/settings' }))
   const caseMatch = matchRoute({ to: '/cases/$caseId', fuzzy: true })
@@ -123,16 +112,8 @@ export function TopBar() {
         <ConnectionStatus />
         <CaptureHealth />
 
-        {activeCaseId && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowExport(true)}
-            className="gap-1.5"
-          >
-            <FileOutput className="h-3 w-3" strokeWidth={1.8} />
-            Export
-          </Button>
+        {activeCaseId && activeCase && (
+          <ExportMenu caseId={activeCase.id} caseName={activeCase.name} />
         )}
 
         <Button
@@ -153,17 +134,6 @@ export function TopBar() {
           {theme === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
         </Button>
       </div>
-
-      {/* Export dialog */}
-      <AnimatePresence>
-        {showExport && activeCase && (
-          <ExportDialog
-            caseId={activeCase.id}
-            caseName={activeCase.name}
-            onClose={() => setShowExport(false)}
-          />
-        )}
-      </AnimatePresence>
     </header>
   )
 }

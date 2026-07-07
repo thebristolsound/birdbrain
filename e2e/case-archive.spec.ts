@@ -103,7 +103,8 @@ test.describe('Case archive export/import round-trip', () => {
       await page.waitForURL(/#\/cases\/.+\/overview/)
 
       await stubSaveDialog(electronApp, archivePath)
-      await page.getByRole('button', { name: 'Export case archive' }).click()
+      await page.getByRole('button', { name: 'Export' }).click()
+      await page.getByRole('menuitem', { name: 'Export case file' }).click()
       await expect(page.getByText('Archive saved')).toBeVisible({ timeout: 15000 })
 
       // Navigate to the dashboard to trigger the import flow.

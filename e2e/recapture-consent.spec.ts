@@ -7,9 +7,9 @@ import { createServer, type Server } from 'http'
 // (fed a locally served filter list via the BIRDBRAIN_CONSENT_LISTS seam) must
 // hide the wall, the scroll phase must still reach the bottom despite the
 // overflow lock, and the capture must record consent-suppression provenance
-// with a manifest chain that still verifies. The 12 chunks (~9.7k px) push the
-// page past MAX_SINGLE_SHOT_HEIGHT_PX so the stitched-screenshot fallback is
-// exercised too.
+// with a manifest chain that still verifies. The 12 chunks (~9.7k px) also
+// exercise the beyond-viewport screenshot on a page much taller than the
+// viewport.
 const FIXTURE_PAGE = `<!doctype html><html><head><title>Consent Wall Fixture</title><style>
   body{margin:0;font-family:sans-serif}
   #onetrust-consent-sdk{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;display:flex;align-items:center;justify-content:center;color:#fff;font-size:32px}
@@ -102,6 +102,28 @@ test.describe('Recapture through a consent wall', () => {
     expect(capture.method).toBe('background')
     expect(capture.consentSuppression).toBe('filter-list')
     expect(capture.screenshotPath).toBeTruthy()
+
+    // The screenshot must cover the whole ~9.7k px document, painted. A capture
+    // that loses content below the fold (or paints it blank) comes back short:
+    // the trailing-background trim crops unpainted rows, so height is a proxy
+    // for "content actually rendered all the way down".
+    const screenshotHeight = await page.evaluate(async (captureId: string) => {
+      const w = window as unknown as {
+        birdbrain: {
+          captures: { getContent: (id: string, type: 'png') => Promise<string | null> }
+        }
+      }
+      const png = await w.birdbrain.captures.getContent(captureId, 'png')
+      if (!png) return -1
+      const img = new Image()
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve()
+        img.onerror = () => reject(new Error('Failed to decode captured PNG'))
+        img.src = `data:image/png;base64,${png}`
+      })
+      return img.naturalHeight
+    }, capture.id)
+    expect(screenshotHeight).toBeGreaterThan(9000)
 
     // The manifest chain must verify with the consentSuppression field present.
     const verification = await page.evaluate(async (captureId: string) => {

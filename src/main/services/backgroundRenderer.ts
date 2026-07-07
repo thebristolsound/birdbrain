@@ -191,19 +191,6 @@ const SCROLL_STEP_SCRIPT = `(() => {
   return { y: root.scrollTop, height: root.scrollHeight, viewportHeight }
 })()`
 
-// Positions the scroll root at an absolute offset for the stitched-screenshot
-// fallback below. null = nothing scrollable.
-function scrollToOffsetScript(y: number): string {
-  return `(() => {
-    ${SCROLL_HELPERS}
-    const root = pickRoot()
-    if (!root) return null
-    setScrollTop(root, ${Math.max(0, Math.floor(y))})
-    const viewportHeight = Math.max(root.clientHeight || 0, window.innerHeight || 0, 1)
-    return { y: root.scrollTop, viewportHeight }
-  })()`
-}
-
 function scrollResetScript(priorOverflow: string[] | null): string {
   return `(() => {
     ${SCROLL_HELPERS}
@@ -268,17 +255,11 @@ async function scrollToLoadLazyContent(wc: WebContents, timeoutMs: number): Prom
     // Fail-soft: this only restores scroll position and the lifted overflow
     // lock. If the page navigated or the webContents was destroyed mid-teardown
     // the reset throws, but the scroll phase is best-effort and must not fail an
-    // otherwise-complete capture (mirrors the stitched-screenshot cleanup).
+    // otherwise-complete capture.
     await wc.executeJavaScript(scrollResetScript(priorOverflow), true).catch(() => {})
     await sleep(SCROLL_PAUSE_MS)
   }
 }
-
-// Max content height captured with one captureBeyondViewport shot. Beyond-
-// viewport capture rasterizes the ENTIRE content surface at once regardless of
-// clip — observed to hang for minutes on heavy pages past ~10k px (an infinite
-// feed at the scroll cap). Above this, the stitched fallback below is used.
-const MAX_SINGLE_SHOT_HEIGHT_PX = 8_000
 
 async function captureFullPageScreenshot(wc: WebContents): Promise<Buffer> {
   const metrics = (await wc.debugger.sendCommand('Page.getLayoutMetrics')) as {
@@ -307,110 +288,82 @@ async function captureFullPageScreenshot(wc: WebContents): Promise<Buffer> {
     Math.max(1, Math.floor(MAX_CAPTURE_PIXELS / (width * scale * scale)))
   )
 
-  // Artifact-free path: one beyond-viewport shot of the whole content box.
-  if (height <= MAX_SINGLE_SHOT_HEIGHT_PX) {
-    const { data } = (await wc.debugger.sendCommand('Page.captureScreenshot', {
-      format: 'png',
-      fromSurface: true,
-      captureBeyondViewport: true,
-      clip: {
-        x: Math.max(0, contentSize.x || 0),
-        y: Math.max(0, contentSize.y || 0),
-        width,
-        height,
-        scale
-      }
-    })) as { data: string }
-    return Buffer.from(data, 'base64')
-  }
+  // One beyond-viewport shot of the whole content box. This rasterizes the
+  // entire content surface in one pass, which hung for minutes on tall pages
+  // in the pre-OSR hidden window (never composited) — with OSR compositing
+  // continuously it completes in ~1s even at the MAX_CAPTURE_* caps, so no
+  // stitched-strip fallback is needed.
+  const { data } = (await wc.debugger.sendCommand('Page.captureScreenshot', {
+    format: 'png',
+    fromSurface: true,
+    captureBeyondViewport: true,
+    clip: {
+      x: Math.max(0, contentSize.x || 0),
+      y: Math.max(0, contentSize.y || 0),
+      width,
+      height,
+      scale
+    }
+  })) as { data: string }
 
-  return captureStitchedScreenshot(wc, { width, height, scale })
+  return trimTrailingBackground(Buffer.from(data, 'base64'))
 }
 
-// Tall-page fallback: scroll the root viewport-by-viewport, capture each
-// visible viewport (an ordinary surface shot — cheap at any page height), and
-// composite the strips. Position: fixed/sticky chrome repeats at the seams —
-// the accepted trade-off for pages whose full surface Chromium can't
-// rasterize in one pass. Reuses the scroll-lock lift so locked pages don't
-// stitch thirty copies of their top viewport; the lock is restored before the
-// MHTML is saved.
-export async function captureStitchedScreenshot(
-  wc: WebContents,
-  dims: { width: number; height: number; scale: number }
-): Promise<Buffer> {
-  // Each strip depicts the viewport's CSS width, not the content width — a
-  // page with horizontal overflow renders only its leftmost VIEWPORT.width px.
-  // Sizing the canvas (and the strip resize below) from the content width
-  // would stretch each strip's height by width/VIEWPORT.width while `top`
-  // spacing stays viewport-based, overpainting every seam.
-  const outputWidth = Math.max(1, Math.round(VIEWPORT.width * dims.scale))
-  const outputHeight = Math.max(1, Math.round(dims.height * dims.scale))
+// The screenshot clips to the full document height, but ad/embed-heavy and
+// lazy-recirculation pages reserve tall containers that never fill in the clean
+// background session — leaving the capture with a large band of trailing
+// whitespace below the real content (often >75% of a news article's height).
+// Scan the captured screenshot from the bottom up and crop off the run of
+// trailing rows that are uniformly the page's background colour (sampled from
+// the bottom edge, so it adapts to white/grey/dark). Only trailing whitespace —
+// below the last row with content — is removed; interior gaps are preserved,
+// and a page that fills to its footer (or is all one colour) is left untouched.
+// Cosmetic-only and fail-soft: any error returns the original screenshot.
+const TRIM_TOLERANCE = 8
+const TRIM_PADDING_PX = 8
 
-  const captureViewport = async (): Promise<Buffer> => {
-    const { data } = (await wc.debugger.sendCommand('Page.captureScreenshot', {
-      format: 'png',
-      fromSurface: true
-    })) as { data: string }
-    return Buffer.from(data, 'base64')
-  }
-
-  const priorOverflow = (await wc.executeJavaScript(SCROLL_UNLOCK_SCRIPT, true)) as
-    | string[]
-    | null
-  const shots: Array<{ png: Buffer; cssY: number }> = []
+export async function trimTrailingBackground(png: Buffer): Promise<Buffer> {
   try {
-    let targetY = 0
-    while (targetY < dims.height) {
-      const state = (await wc.executeJavaScript(scrollToOffsetScript(targetY), true)) as {
-        y: number
-        viewportHeight: number
-      } | null
-      if (!state) break
-      shots.push({ png: await captureViewport(), cssY: state.y })
-      if (state.y + state.viewportHeight >= dims.height) break
-      // Root clamped short of the target — no further progress is possible.
-      if (state.y + 1 < targetY) break
-      targetY = state.y + state.viewportHeight
-    }
-  } finally {
-    await wc.executeJavaScript(scrollResetScript(priorOverflow), true).catch(() => {})
-  }
+    const { data, info } = await sharp(png)
+      .greyscale()
+      .raw()
+      .toBuffer({ resolveWithObject: true })
+    const w = info.width
+    const h = info.height
+    if (!w || !h) return png
 
-  if (shots.length === 0) return captureViewport()
+    const bg = data[(h - 1) * w + (w >> 1)]
+    // A row counts as content when more than this many pixels differ from the
+    // background — high enough to ignore JPEG/anti-alias speckle, low enough to
+    // keep a thin divider rule or a short line of text.
+    const minContentPx = Math.max(4, Math.round(w * 0.004))
 
-  const composites = await Promise.all(
-    shots.map(async (shot) => {
-      // Normalize each strip to the output width (also folds away the display
-      // scale factor baked into viewport surface shots), then crop anything
-      // hanging past the canvas bottom so composite() accepts it.
-      let strip = sharp(shot.png).resize({ width: outputWidth })
-      const top = Math.min(Math.round(shot.cssY * dims.scale), outputHeight - 1)
-      const meta = await strip.png().toBuffer()
-      const stripHeight = (await sharp(meta).metadata()).height ?? 1
-      if (top + stripHeight > outputHeight) {
-        strip = sharp(meta).extract({
-          left: 0,
-          top: 0,
-          width: outputWidth,
-          height: Math.max(1, outputHeight - top)
-        })
-        return { input: await strip.png().toBuffer(), left: 0, top }
+    let lastContentRow = -1
+    for (let y = h - 1; y >= 0; y--) {
+      let diff = 0
+      const base = y * w
+      for (let x = 0; x < w; x++) {
+        if (Math.abs(data[base + x] - bg) > TRIM_TOLERANCE && ++diff > minContentPx) break
       }
-      return { input: meta, left: 0, top }
-    })
-  )
-
-  return sharp({
-    create: {
-      width: outputWidth,
-      height: outputHeight,
-      channels: 4,
-      background: { r: 255, g: 255, b: 255, alpha: 1 }
+      if (diff > minContentPx) {
+        lastContentRow = y
+        break
+      }
     }
-  })
-    .composite(composites)
-    .png()
-    .toBuffer()
+
+    // Entirely background (blank capture) or nothing to trim: leave as-is.
+    if (lastContentRow < 0) return png
+    const cropHeight = Math.min(h, lastContentRow + 1 + TRIM_PADDING_PX)
+    if (cropHeight >= h) return png
+
+    return await sharp(png)
+      .extract({ left: 0, top: 0, width: w, height: cropHeight })
+      .png()
+      .toBuffer()
+  } catch (err) {
+    console.error('backgroundRenderer: trailing-whitespace trim failed', err)
+    return png
+  }
 }
 
 // Renders a URL in a locked-down, invisible BrowserWindow with a fresh
@@ -550,8 +503,6 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
       )
       await sleep(Math.min(FINAL_SETTLE_MS, remainingMs(FINAL_ARTIFACT_RESERVE_MS)))
 
-      // Whole-page screenshot: one beyond-viewport shot when the page is short
-      // enough to rasterize in one pass, stitched viewport strips otherwise.
       const screenshot = await captureFullPageScreenshot(wc)
 
       await wc.savePage(tmpPath, 'MHTML')

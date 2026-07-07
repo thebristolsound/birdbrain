@@ -1,18 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import {
-  FolderOpen,
-  ShieldAlert,
-  Users,
-  FileOutput,
-  Pencil,
-  Archive,
-  Loader2,
-  CheckCircle2
-} from 'lucide-react'
+import { FolderOpen, ShieldAlert, Users, Pencil } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { Case } from '@shared/types'
-import { Button } from '@renderer/components/ui'
-import { ExportDialog } from '@renderer/components/export/ExportDialog'
 import { useCasesMutations } from '@renderer/lib/queries'
 import { formatRelativeTime } from '@renderer/lib/formatRelativeTime'
 
@@ -30,18 +19,7 @@ interface CaseSubheadProps {
 }
 
 export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
-  const [showExport, setShowExport] = useState(false)
-  const { update, exportArchive } = useCasesMutations()
-  const [archiveResult, setArchiveResult] = useState<{ filePath: string } | null>(null)
-  const [archiveError, setArchiveError] = useState('')
-  const [archiveProgress, setArchiveProgress] = useState<{ step: string; percent: number } | null>(
-    null
-  )
-
-  // Tracks the currently-displayed case so a still-in-flight export that resolves
-  // after a case switch can detect it's stale (the async closure captured the
-  // old caseData). This route stays mounted across $caseId changes.
-  const caseIdRef = useRef(caseData.id)
+  const { update } = useCasesMutations()
 
   const [editingName, setEditingName] = useState(false)
   const [nameValue, setNameValue] = useState('')
@@ -54,11 +32,6 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
   useEffect(() => {
     setNameValue(caseData.name)
     setDescValue(caseData.description ?? '')
-    caseIdRef.current = caseData.id
-    // Switching cases must not carry a stale export banner/progress across.
-    setArchiveResult(null)
-    setArchiveError('')
-    setArchiveProgress(null)
   }, [caseData])
 
   useEffect(() => {
@@ -73,15 +46,6 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
       descInputRef.current.focus()
     }
   }, [editingDesc])
-
-  useEffect(() => {
-    const unsubscribe = window.birdbrain.onArchiveProgress((event) => {
-      if (event.caseId === caseData.id) {
-        setArchiveProgress({ step: event.step, percent: event.percent })
-      }
-    })
-    return unsubscribe
-  }, [caseData.id])
 
   async function saveName() {
     const trimmed = nameValue.trim()
@@ -111,26 +75,6 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
     } catch (err) {
       // Keep the field in edit mode with the user's value so they can retry.
       console.error('Failed to update case description', err)
-    }
-  }
-
-  async function handleExportArchive() {
-    const exportCaseId = caseData.id
-    setArchiveError('')
-    setArchiveResult(null)
-    setArchiveProgress({ step: 'Preparing archive…', percent: 0 })
-    try {
-      const result = await exportArchive.mutateAsync(exportCaseId)
-      // Ignore a completion that lands after the user switched cases.
-      if (caseIdRef.current !== exportCaseId) return
-      if (!result.canceled && result.filePath) {
-        setArchiveResult({ filePath: result.filePath })
-      }
-    } catch (err) {
-      if (caseIdRef.current !== exportCaseId) return
-      setArchiveError(err instanceof Error ? err.message : String(err))
-    } finally {
-      if (caseIdRef.current === exportCaseId) setArchiveProgress(null)
     }
   }
 
@@ -214,67 +158,10 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
         )}
       </div>
       <div className="flex shrink-0 flex-col items-end gap-2.5">
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => setShowExport(true)} className="gap-1.5">
-            <FileOutput size={12} strokeWidth={1.8} />
-            Export
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExportArchive}
-            disabled={exportArchive.isPending}
-            className="gap-1.5"
-          >
-            {exportArchive.isPending ? (
-              <Loader2 size={12} strokeWidth={1.8} className="animate-spin" />
-            ) : (
-              <Archive size={12} strokeWidth={1.8} />
-            )}
-            {exportArchive.isPending && archiveProgress
-              ? `${archiveProgress.step} — ${Math.round(archiveProgress.percent)}%`
-              : 'Export case archive'}
-          </Button>
-        </div>
         <span className="font-mono text-[10.5px] text-text-faint">
           Opened {formatRelativeTime(caseData.createdAt)}
         </span>
-        {archiveResult && (
-          <div
-            role="status"
-            aria-live="polite"
-            className="flex items-center gap-2 rounded border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-400"
-          >
-            <CheckCircle2 size={12} strokeWidth={1.8} className="shrink-0" />
-            <span className="max-w-[220px] truncate" title={archiveResult.filePath}>
-              Archive saved
-            </span>
-            <button
-              type="button"
-              className="font-semibold underline underline-offset-2 hover:text-emerald-300"
-              onClick={() => window.birdbrain.shell.showItemInFolder(archiveResult.filePath)}
-            >
-              Show in folder
-            </button>
-          </div>
-        )}
-        {archiveError && (
-          <div
-            role="alert"
-            aria-live="assertive"
-            className="max-w-[260px] rounded border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-xs text-red-400"
-          >
-            {archiveError}
-          </div>
-        )}
       </div>
-      {showExport && (
-        <ExportDialog
-          caseId={caseData.id}
-          caseName={caseData.name}
-          onClose={() => setShowExport(false)}
-        />
-      )}
     </div>
   )
 }

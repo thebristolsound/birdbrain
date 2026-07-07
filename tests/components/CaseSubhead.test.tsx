@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react'
-import type { Case } from '@shared/types'
 import type { ArchiveProgressEvent, ArchiveExportResult } from '@shared/ipc'
 
 const updateMutateSpy = vi.fn()
@@ -24,8 +23,6 @@ vi.mock('@renderer/components/export/ExportDialog', () => ({
   ExportDialog: () => null
 }))
 
-import { CaseSubhead } from '@renderer/components/overview/CaseSubhead'
-
 function deferred<T>() {
   let resolve!: (value: T) => void
   let reject!: (reason?: unknown) => void
@@ -36,20 +33,14 @@ function deferred<T>() {
   return { promise, resolve, reject }
 }
 
-function makeCase(overrides: Partial<Case> = {}): Case {
-  return {
-    id: 'case-1',
-    name: 'Op Nightshade',
-    description: 'Investigation into shell companies',
-    type: 'fraud',
-    createdAt: '2026-06-01T00:00:00.000Z',
-    updatedAt: '2026-06-01T00:00:00.000Z',
-    archived: false,
-    ...overrides
-  }
+import { ExportMenu } from '@renderer/components/export/ExportMenu'
+
+async function clickExportCaseFile() {
+  fireEvent.click(screen.getByRole('button', { name: /Export/i }))
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Export case file' }))
 }
 
-describe('CaseSubhead', () => {
+describe('ExportMenu', () => {
   let onArchiveProgress: ReturnType<typeof vi.fn>
   let progressCb: ((event: ArchiveProgressEvent) => void) | null
   let showItemInFolder: ReturnType<typeof vi.fn>
@@ -87,10 +78,10 @@ describe('CaseSubhead', () => {
       exportArchiveIsPending = true
       return gate.promise
     })
-    const { rerender } = render(<CaseSubhead caseData={makeCase()} />)
+    const { rerender } = render(<ExportMenu caseId="case-1" caseName="Op Nightshade" />)
 
-    fireEvent.click(screen.getByText('Export case archive'))
-    rerender(<CaseSubhead caseData={makeCase()} />)
+    await clickExportCaseFile()
+    rerender(<ExportMenu caseId="case-1" caseName="Op Nightshade" />)
 
     await waitFor(() => expect(onArchiveProgress).toHaveBeenCalled())
 
@@ -110,10 +101,10 @@ describe('CaseSubhead', () => {
       exportArchiveIsPending = true
       return gate.promise
     })
-    const { rerender } = render(<CaseSubhead caseData={makeCase()} />)
+    const { rerender } = render(<ExportMenu caseId="case-1" caseName="Op Nightshade" />)
 
-    fireEvent.click(screen.getByText('Export case archive'))
-    rerender(<CaseSubhead caseData={makeCase()} />)
+    await clickExportCaseFile()
+    rerender(<ExportMenu caseId="case-1" caseName="Op Nightshade" />)
 
     await waitFor(() => expect(onArchiveProgress).toHaveBeenCalled())
 
@@ -132,9 +123,9 @@ describe('CaseSubhead', () => {
       canceled: false,
       filePath: 'archive.birdbrain'
     } satisfies ArchiveExportResult)
-    render(<CaseSubhead caseData={makeCase()} />)
+    render(<ExportMenu caseId="case-1" caseName="Op Nightshade" />)
 
-    fireEvent.click(screen.getByText('Export case archive'))
+    await clickExportCaseFile()
 
     expect(await screen.findByText('Archive saved')).toBeDefined()
 
@@ -144,9 +135,9 @@ describe('CaseSubhead', () => {
 
   it('surfaces an error from a failed export', async () => {
     exportArchiveMutateSpy.mockRejectedValueOnce(new Error('disk full'))
-    render(<CaseSubhead caseData={makeCase()} />)
+    render(<ExportMenu caseId="case-1" caseName="Op Nightshade" />)
 
-    fireEvent.click(screen.getByText('Export case archive'))
+    await clickExportCaseFile()
 
     expect(await screen.findByText(/disk full/)).toBeDefined()
   })

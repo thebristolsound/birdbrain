@@ -133,6 +133,7 @@ export function CaptureItem({
             <div
               data-testid="recapture-thumb-badge"
               title="Background recapture"
+              aria-hidden="true"
               className="absolute bottom-0.5 right-0.5 flex items-center justify-center rounded bg-black/65 p-0.5"
             >
               <RefreshCcw className="h-2.5 w-2.5 text-white" />

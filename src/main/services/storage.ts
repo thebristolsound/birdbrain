@@ -7,6 +7,7 @@ import {
   readdirSync,
   statSync
 } from 'fs'
+import { readFile, writeFile } from 'fs/promises'
 import { join } from 'path'
 import sharp from 'sharp'
 
@@ -110,21 +111,19 @@ export function getCaseStorageSize(caseId: string): number {
   return totalSize
 }
 
-// ~4:3 thumbnail aspect (height / width). Full-page recapture screenshots are
-// very tall (e.g. 1280x11200); resizing the whole strip to 160px wide yields a
-// 160x1400 sliver that renders as an arbitrary mid-page crop in the list's small
-// box. Cropping to the top region at this aspect previews the top of the page
-// instead — and leaves normal viewport-sized captures (shorter than the crop)
-// untouched.
+// ~4:3 thumbnail box. Full-page recapture screenshots are very tall (e.g.
+// 1280x11200); scaling the whole strip to 160px wide yields a 160x1400 sliver
+// that renders as an arbitrary mid-page crop in the list's small box. A
+// cover+top resize previews the top of the page at a fixed box size instead.
 const THUMB_WIDTH = 160
-const THUMB_ASPECT = 0.75
+const THUMB_HEIGHT = 120
 
 export async function getThumbnail(caseId: string, captureId: string): Promise<Buffer | null> {
   const thumbPath = join(getStorageRoot(), caseId, `${captureId}_thumb.jpg`)
 
   // Return existing thumbnail if it exists
   if (existsSync(thumbPath)) {
-    return readFileSync(thumbPath)
+    return readFile(thumbPath)
   }
 
   // Try to generate thumbnail from screenshot
@@ -134,22 +133,17 @@ export async function getThumbnail(caseId: string, captureId: string): Promise<B
   }
 
   try {
-    // sharp (libvips) over nativeImage: it handles arbitrarily tall screenshots
-    // without loading a full GPU texture, and top-crops in the same pipeline.
-    const screenshot = readFileSync(screenshotPath)
-    const meta = await sharp(screenshot).metadata()
-    if (!meta.width || !meta.height) {
-      return null
-    }
-
-    const cropHeight = Math.min(meta.height, Math.round(meta.width * THUMB_ASPECT))
+    // Async fs (this runs on the main-process thread, once per visible list item)
+    // + a single sharp pipeline: cover-fit anchored to the top crops the page top
+    // into the box without a separate metadata decode. sharp (libvips) handles
+    // arbitrarily tall screenshots without loading a full GPU texture.
+    const screenshot = await readFile(screenshotPath)
     const thumbBuffer = await sharp(screenshot)
-      .extract({ left: 0, top: 0, width: meta.width, height: cropHeight })
-      .resize({ width: THUMB_WIDTH })
+      .resize(THUMB_WIDTH, THUMB_HEIGHT, { fit: 'cover', position: 'top' })
       .jpeg({ quality: 75 })
       .toBuffer()
 
-    writeFileSync(thumbPath, thumbBuffer)
+    await writeFile(thumbPath, thumbBuffer)
     return thumbBuffer
   } catch (error) {
     console.error(`Failed to generate thumbnail for ${captureId}:`, error)

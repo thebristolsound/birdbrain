@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { testApiKey, listModels } from '../../../src/main/services/openrouter'
+import { testApiKey, listModels } from '@main/services/openrouter'
 
 describe('openrouter', () => {
   beforeEach(() => {

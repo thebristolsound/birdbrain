@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react'
 import { Pencil, Trash2, Plus, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@renderer/components/ui'
 import type { DbTableRowsResult } from '@shared/ipc'
-import { RowEditModal } from './RowEditModal'
-import { ConfirmDialog } from './ConfirmDialog'
+import { RowEditModal } from '@renderer/components/settings/db/RowEditModal'
+import { ConfirmDialog } from '@renderer/components/settings/db/ConfirmDialog'
 
 const TABLES = [
   'cases',

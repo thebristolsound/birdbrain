@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { TagBadge } from '@renderer/components/tags/TagBadge'
-import { useCaptureTagEditor } from './useCaptureTagEditor'
+import { useCaptureTagEditor } from '@renderer/components/captures/useCaptureTagEditor'
 
 interface Props {
   captureId: string

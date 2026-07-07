@@ -3,11 +3,11 @@ import useImage from 'use-image'
 import { useCallback, useRef } from 'react'
 import type Konva from 'konva'
 import type { AnnotationShape } from '@shared/types'
-import type { AnnotationTool } from './useAnnotationEditor'
-import { RectShape } from './shapes/RectShape'
-import { ArrowShape } from './shapes/ArrowShape'
-import { RedactShape } from './shapes/RedactShape'
-import { PinShape } from './shapes/PinShape'
+import type { AnnotationTool } from '@renderer/components/captures/annotation/useAnnotationEditor'
+import { RectShape } from '@renderer/components/captures/annotation/shapes/RectShape'
+import { ArrowShape } from '@renderer/components/captures/annotation/shapes/ArrowShape'
+import { RedactShape } from '@renderer/components/captures/annotation/shapes/RedactShape'
+import { PinShape } from '@renderer/components/captures/annotation/shapes/PinShape'
 
 interface Props {
   imageUrl: string

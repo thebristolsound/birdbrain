@@ -1,6 +1,6 @@
 import sharp from 'sharp'
 import type { CaptureAnnotations } from '@shared/types'
-import { renderAnnotationsSvg } from './renderAnnotationsSvg'
+import { renderAnnotationsSvg } from '@main/services/renderAnnotationsSvg'
 
 export async function burnAnnotations(
   pngBuffer: Buffer,

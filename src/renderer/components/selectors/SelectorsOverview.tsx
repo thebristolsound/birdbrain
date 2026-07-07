@@ -10,10 +10,10 @@ import {
   capturesQueryOptions,
   queryKeys
 } from '@renderer/lib/queries'
-import { CreateSelectorCard } from './CreateSelectorCard'
-import { SelectorTable } from './SelectorTable'
-import { SelectorFilterFooter } from './SelectorFilterFooter'
-import { BulkAddSelectorsModal } from './BulkAddSelectorsModal'
+import { CreateSelectorCard } from '@renderer/components/selectors/CreateSelectorCard'
+import { SelectorTable } from '@renderer/components/selectors/SelectorTable'
+import { SelectorFilterFooter } from '@renderer/components/selectors/SelectorFilterFooter'
+import { BulkAddSelectorsModal } from '@renderer/components/selectors/BulkAddSelectorsModal'
 import { AnimatePresence } from 'motion/react'
 
 export function SelectorsOverview() {

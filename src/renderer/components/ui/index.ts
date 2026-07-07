@@ -1,6 +1,6 @@
-export { Button, buttonVariants } from './button'
-export { Input } from './input'
-export { Textarea } from './textarea'
+export { Button, buttonVariants } from '@renderer/components/ui/button'
+export { Input } from '@renderer/components/ui/input'
+export { Textarea } from '@renderer/components/ui/textarea'
 export {
   Dialog,
   DialogContent,
@@ -8,10 +8,10 @@ export {
   DialogTitle,
   DialogDescription,
   DialogFooter
-} from './dialog'
-export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from './card'
-export { Label } from './label'
-export { Badge, badgeVariants } from './badge'
-export { ScrollArea } from './scroll-area'
-export { Tabs, TabsList, TabsTrigger, TabsContent } from './tabs'
-export { Skeleton } from './skeleton'
+} from '@renderer/components/ui/dialog'
+export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@renderer/components/ui/card'
+export { Label } from '@renderer/components/ui/label'
+export { Badge, badgeVariants } from '@renderer/components/ui/badge'
+export { ScrollArea } from '@renderer/components/ui/scroll-area'
+export { Tabs, TabsList, TabsTrigger, TabsContent } from '@renderer/components/ui/tabs'
+export { Skeleton } from '@renderer/components/ui/skeleton'

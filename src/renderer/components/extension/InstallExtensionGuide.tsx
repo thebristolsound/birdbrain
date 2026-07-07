@@ -3,7 +3,7 @@ import { Link } from '@tanstack/react-router'
 import { ArrowLeft, Pin } from 'lucide-react'
 import { Card } from '@renderer/components/ui'
 import logoImg from '@renderer/assets/logo.png'
-import { INSTALL_STEPS } from './installSteps'
+import { INSTALL_STEPS } from '@renderer/components/extension/installSteps'
 
 interface StepPanelProps {
   number: number

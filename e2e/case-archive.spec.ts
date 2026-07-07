@@ -2,7 +2,7 @@ import { test, expect } from './fixtures/electronApp'
 import { mkdtemp, rm } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { CAPTURE_SERVER_BASE_URL } from '../src/shared/constants'
+import { CAPTURE_SERVER_BASE_URL } from '@shared/constants'
 
 type Page = import('@playwright/test').Page
 type ElectronApplication = import('@playwright/test').ElectronApplication

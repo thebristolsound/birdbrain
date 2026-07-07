@@ -1,7 +1,7 @@
 // Typed IPC channel definitions
 // Every IPC call between renderer and main process goes through these channels
 
-import type { AnnotationShape, WaybackSnapshot } from './types'
+import type { AnnotationShape, WaybackSnapshot } from '@shared/types'
 
 export const IPC_CHANNELS = {
   // Cases

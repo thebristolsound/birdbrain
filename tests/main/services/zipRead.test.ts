@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { createStoredZip } from '../../../src/main/services/zip'
-import { readStoredZip } from '../../../src/main/services/zipRead'
+import { createStoredZip } from '@main/services/zip'
+import { readStoredZip } from '@main/services/zipRead'
 
 describe('readStoredZip', () => {
   it('round-trips createStoredZip output', () => {

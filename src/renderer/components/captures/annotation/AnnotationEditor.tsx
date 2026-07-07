@@ -2,11 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { AnnotationShape } from '@shared/types'
 import { annotationsQueryOptions, useAnnotationsMutations } from '@renderer/lib/queries'
-import { AnnotationCanvas } from './AnnotationCanvas'
-import { PinCommentPopover } from './PinCommentPopover'
-import { useAnnotationKeyboardShortcuts } from './keyboardShortcuts'
-import type { useAnnotationEditor } from './useAnnotationEditor'
-import type { useZoomPan } from './useZoomPan'
+import { AnnotationCanvas } from '@renderer/components/captures/annotation/AnnotationCanvas'
+import { PinCommentPopover } from '@renderer/components/captures/annotation/PinCommentPopover'
+import { useAnnotationKeyboardShortcuts } from '@renderer/components/captures/annotation/keyboardShortcuts'
+import type { useAnnotationEditor } from '@renderer/components/captures/annotation/useAnnotationEditor'
+import type { useZoomPan } from '@renderer/components/captures/annotation/useZoomPan'
 
 type EditorApi = ReturnType<typeof useAnnotationEditor>
 type ZoomPanApi = ReturnType<typeof useZoomPan>

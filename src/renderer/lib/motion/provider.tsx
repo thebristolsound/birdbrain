@@ -1,5 +1,5 @@
 import { MotionConfig } from 'motion/react'
-import { springs } from './springs'
+import { springs } from '@renderer/lib/motion/springs'
 import { useReduceMotion } from '@renderer/hooks/useReduceMotion'
 import type { ReactNode } from 'react'
 

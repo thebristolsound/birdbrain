@@ -1,6 +1,6 @@
-export { springs } from './springs'
-export { presets } from './presets'
-export { MotionProvider } from './provider'
+export { springs } from '@renderer/lib/motion/springs'
+export { presets } from '@renderer/lib/motion/presets'
+export { MotionProvider } from '@renderer/lib/motion/provider'
 export {
   MIN_THEATER_MS,
   MIN_STAGE_TIME_MS,
@@ -9,4 +9,4 @@ export {
   STAGGER_VISIBLE_CAP,
   CELEBRATION_HOLD_MS,
   OVERLAY_DURATION
-} from './constants'
+} from '@renderer/lib/motion/constants'

@@ -3,8 +3,8 @@ import { existsSync, readFileSync, readdirSync, realpathSync } from 'fs'
 import { join, resolve, sep } from 'path'
 import { EvidencePackageSchema, ManifestEntrySchema } from '@shared/schemas'
 import type { ManifestEntry } from '@shared/schemas'
-import { parseTimestampToken } from './timestampToken'
-import { verifyManifestChainText } from './manifestChain'
+import { parseTimestampToken } from '@shared/verify/timestampToken'
+import { verifyManifestChainText } from '@shared/verify/manifestChain'
 
 // The standalone package verifier (#122 §7). This is the ONLY fs-touching
 // module under src/shared/verify and is deliberately kept OFF the `index.ts`

@@ -8,18 +8,18 @@ import {
   initDatabase,
   closeDatabase,
   createCase
-} from '../../../src/main/services/database'
-import { initStorage, ensureCaseDir } from '../../../src/main/services/storage'
-import { appendManifestEntry, initManifest } from '../../../src/main/services/manifest'
-import { ingestMhtmlCapture, createCaptureLifecycle } from '../../../src/main/services/captureLifecycle'
-import { createSelectorLifecycle } from '../../../src/main/services/selectorLifecycle'
-import { generateReport } from '../../../src/main/services/export'
+} from '@main/services/database'
+import { initStorage, ensureCaseDir } from '@main/services/storage'
+import { appendManifestEntry, initManifest } from '@main/services/manifest'
+import { ingestMhtmlCapture, createCaptureLifecycle } from '@main/services/captureLifecycle'
+import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
+import { generateReport } from '@main/services/export'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
 import { EvidencePackageSchema } from '@shared/schemas'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
-import type { ExportOptions } from '../../../src/shared/types'
+import type { ExportOptions } from '@shared/types'
 
 // Parses a Birdbrain stored-ZIP (all entries STORE/method 0) into a name->bytes
 // map, mirroring the export test's reader.

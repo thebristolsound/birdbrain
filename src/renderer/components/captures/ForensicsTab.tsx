@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from 'react'
 import type { Capture } from '@shared/types'
-import { useVerifyMutation } from './useVerifyMutation'
-import { getProvenanceColor } from './getProvenanceColor'
+import { useVerifyMutation } from '@renderer/components/captures/useVerifyMutation'
+import { getProvenanceColor } from '@renderer/components/captures/getProvenanceColor'
 
 interface Props {
   capture: Capture

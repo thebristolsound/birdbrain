@@ -9,11 +9,11 @@ import {
   useCasesMutations
 } from '@renderer/lib/queries'
 import { ImportCaseDialog } from '@renderer/components/cases/ImportCaseDialog'
-import { HeroSection } from './HeroSection'
-import { RecentCases } from './RecentCases'
-import { QuickStartGuide } from './QuickStartGuide'
-import { ExtensionBanner } from './ExtensionBanner'
-import { DashboardFooter } from './DashboardFooter'
+import { HeroSection } from '@renderer/components/dashboard/HeroSection'
+import { RecentCases } from '@renderer/components/dashboard/RecentCases'
+import { QuickStartGuide } from '@renderer/components/dashboard/QuickStartGuide'
+import { ExtensionBanner } from '@renderer/components/dashboard/ExtensionBanner'
+import { DashboardFooter } from '@renderer/components/dashboard/DashboardFooter'
 
 export function Dashboard() {
   const navigate = useNavigate()

@@ -19,25 +19,25 @@ import {
   listTags,
   getTagsForCapture,
   searchCaptures
-} from '../../../src/main/services/database'
-import { initStorage, ensureCaseDir, getCapturePath } from '../../../src/main/services/storage'
+} from '@main/services/database'
+import { initStorage, ensureCaseDir, getCapturePath } from '@main/services/storage'
 import {
   initManifest,
   appendManifestEntry,
   verifyManifestChain
-} from '../../../src/main/services/manifest'
-import { getStorageRoot } from '../../../src/main/services/storage'
-import { getDb } from '../../../src/main/services/database'
+} from '@main/services/manifest'
+import { getStorageRoot } from '@main/services/storage'
+import { getDb } from '@main/services/database'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { initSigningKey, resetSigningKey } from '@main/services/signingKey'
-import { readStoredZip } from '../../../src/main/services/zipRead'
-import { createStoredZip } from '../../../src/main/services/zip'
+import { readStoredZip } from '@main/services/zipRead'
+import { createStoredZip } from '@main/services/zip'
 import {
   exportCaseArchive,
   inspectCaseArchive,
   importCaseArchive
-} from '../../../src/main/services/caseArchive'
+} from '@main/services/caseArchive'
 import { canonicalStringify } from '@shared/verify'
 
 // Reads the archive, mutates one entry's bytes, and rewrites the zip WITHOUT

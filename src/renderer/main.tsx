@@ -5,7 +5,7 @@ import { RouterProvider } from '@tanstack/react-router'
 import { queryClient } from '@renderer/lib/queryClient'
 import { router } from '@renderer/router'
 import { useServerStatus } from '@renderer/hooks/useServerStatus'
-import './styles/globals.css'
+import '@renderer/styles/globals.css'
 
 function App() {
   useServerStatus()

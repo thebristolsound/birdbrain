@@ -103,6 +103,27 @@ test.describe('Recapture through a consent wall', () => {
     expect(capture.consentSuppression).toBe('filter-list')
     expect(capture.screenshotPath).toBeTruthy()
 
+    // The screenshot must cover the whole ~9.7k px document, painted. A capture
+    // that loses content below the fold (or paints it blank) comes back short:
+    // the trailing-background trim crops unpainted rows, so height is a proxy
+    // for "content actually rendered all the way down".
+    const screenshotHeight = await page.evaluate(async (captureId: string) => {
+      const w = window as unknown as {
+        birdbrain: {
+          captures: { getContent: (id: string, type: 'png') => Promise<string | null> }
+        }
+      }
+      const png = await w.birdbrain.captures.getContent(captureId, 'png')
+      if (!png) return -1
+      const img = new Image()
+      await new Promise((resolve) => {
+        img.onload = resolve
+        img.src = `data:image/png;base64,${png}`
+      })
+      return img.naturalHeight
+    }, capture.id)
+    expect(screenshotHeight).toBeGreaterThan(9000)
+
     // The manifest chain must verify with the consentSuppression field present.
     const verification = await page.evaluate(async (captureId: string) => {
       const w = window as unknown as {

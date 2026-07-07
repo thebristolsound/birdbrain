@@ -9,7 +9,7 @@ import {
 } from 'lucide-react'
 import { AnimatePresence } from 'motion/react'
 import { Button } from '@renderer/components/ui'
-import { ExportDialog } from './ExportDialog'
+import { ExportDialog } from '@renderer/components/export/ExportDialog'
 import { useCasesMutations } from '@renderer/lib/queries'
 
 interface ExportMenuProps {

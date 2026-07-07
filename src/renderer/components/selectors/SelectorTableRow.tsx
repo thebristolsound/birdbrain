@@ -2,7 +2,11 @@ import { Fragment, useState } from 'react'
 import { FlaskConical, Trash2, Globe } from 'lucide-react'
 import type { Selector } from '@shared/types'
 import { useAppStore } from '@renderer/stores/appStore'
-import { highlightRegexSyntax, testPatternAgainstText, type MatchResult } from '@renderer/components/selectors/selectorUtils'
+import {
+  highlightRegexSyntax,
+  testPatternAgainstText,
+  type MatchResult
+} from '@renderer/components/selectors/selectorUtils'
 
 interface MatchPreview {
   captureTitle: string

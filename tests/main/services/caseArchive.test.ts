@@ -20,14 +20,18 @@ import {
   getTagsForCapture,
   searchCaptures
 } from '@main/services/database'
-import { initStorage, ensureCaseDir, getCapturePath } from '@main/services/storage'
+import { getDb } from '@main/services/database'
+import {
+  initStorage,
+  ensureCaseDir,
+  getCapturePath,
+  getStorageRoot
+} from '@main/services/storage'
 import {
   initManifest,
   appendManifestEntry,
   verifyManifestChain
 } from '@main/services/manifest'
-import { getStorageRoot } from '@main/services/storage'
-import { getDb } from '@main/services/database'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { initSigningKey, resetSigningKey } from '@main/services/signingKey'

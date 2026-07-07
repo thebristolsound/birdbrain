@@ -5,8 +5,13 @@ import { join, relative, resolve, sep } from 'path'
 const ROOT = join(__dirname, '..')
 const SCAN_DIRS = ['src', 'tests', 'e2e']
 const SOURCE_EXTENSIONS = /\.(ts|tsx|js|jsx|mts|cts)$/
-const IMPORT_PATTERN =
-  /(?:import|export)\s+(?:type\s+)?(?:[\s\S]*?\s+from\s+)?['"](\.{1,2}\/[^'"]+)['"]|import\(\s*['"](\.{1,2}\/[^'"]+)['"]\s*\)/g
+const IMPORT_PATTERN = new RegExp(
+  [
+    `(?:import|export)\\s+(?:type\\s+)?(?:[\\s\\S]*?\\s+from\\s+)?['"](\\.{1,2}\\/[^'"]+)['"]`,
+    `import\\(\\s*['"](\\.{1,2}\\/[^'"]+)['"]\\s*\\)`
+  ].join('|'),
+  'g'
+)
 
 const ALIASED_ROOTS = [
   { dir: join(ROOT, 'src', 'main'), alias: '@main' },

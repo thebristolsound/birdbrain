@@ -7,9 +7,9 @@ import { createServer, type Server } from 'http'
 // (fed a locally served filter list via the BIRDBRAIN_CONSENT_LISTS seam) must
 // hide the wall, the scroll phase must still reach the bottom despite the
 // overflow lock, and the capture must record consent-suppression provenance
-// with a manifest chain that still verifies. The 12 chunks (~9.7k px) push the
-// page past MAX_SINGLE_SHOT_HEIGHT_PX so the stitched-screenshot fallback is
-// exercised too.
+// with a manifest chain that still verifies. The 12 chunks (~9.7k px) also
+// exercise the beyond-viewport screenshot on a page much taller than the
+// viewport.
 const FIXTURE_PAGE = `<!doctype html><html><head><title>Consent Wall Fixture</title><style>
   body{margin:0;font-family:sans-serif}
   #onetrust-consent-sdk{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;display:flex;align-items:center;justify-content:center;color:#fff;font-size:32px}

@@ -7,13 +7,9 @@ import {
   readdirSync,
   statSync
 } from 'fs'
+import { readFile, writeFile } from 'fs/promises'
 import { join } from 'path'
-
-// Lazy-load nativeImage to avoid breaking node tests
-function getNativeImage() {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  return require('electron').nativeImage
-}
+import sharp from 'sharp'
 
 let storageRoot: string
 
@@ -115,12 +111,19 @@ export function getCaseStorageSize(caseId: string): number {
   return totalSize
 }
 
-export function getThumbnail(caseId: string, captureId: string): Buffer | null {
+// ~4:3 thumbnail box. Full-page recapture screenshots are very tall (e.g.
+// 1280x11200); scaling the whole strip to 160px wide yields a 160x1400 sliver
+// that renders as an arbitrary mid-page crop in the list's small box. A
+// cover+top resize previews the top of the page at a fixed box size instead.
+const THUMB_WIDTH = 160
+const THUMB_HEIGHT = 120
+
+export async function getThumbnail(caseId: string, captureId: string): Promise<Buffer | null> {
   const thumbPath = join(getStorageRoot(), caseId, `${captureId}_thumb.jpg`)
 
   // Return existing thumbnail if it exists
   if (existsSync(thumbPath)) {
-    return readFileSync(thumbPath)
+    return readFile(thumbPath)
   }
 
   // Try to generate thumbnail from screenshot
@@ -130,35 +133,17 @@ export function getThumbnail(caseId: string, captureId: string): Buffer | null {
   }
 
   try {
-    const screenshot = readFileSync(screenshotPath)
-    const nativeImage = getNativeImage()
-    const image = nativeImage.createFromBuffer(screenshot)
+    // Async fs (this runs on the main-process thread, once per visible list item)
+    // + a single sharp pipeline: cover-fit anchored to the top crops the page top
+    // into the box without a separate metadata decode. sharp (libvips) handles
+    // arbitrarily tall screenshots without loading a full GPU texture.
+    const screenshot = await readFile(screenshotPath)
+    const thumbBuffer = await sharp(screenshot)
+      .resize(THUMB_WIDTH, THUMB_HEIGHT, { fit: 'cover', position: 'top' })
+      .jpeg({ quality: 75 })
+      .toBuffer()
 
-    // Guard against invalid/empty images
-    if (image.isEmpty()) {
-      return null
-    }
-
-    const size = image.getSize()
-    // Guard against zero-width images to avoid divide-by-zero
-    if (size.width === 0 || size.height === 0) {
-      return null
-    }
-
-    // Resize to ~160x100px thumbnail (maintaining aspect ratio)
-    const targetWidth = 160
-    const targetHeight = Math.round((size.height / size.width) * targetWidth)
-
-    const resized = image.resize({
-      width: targetWidth,
-      height: targetHeight,
-      quality: 'good'
-    })
-
-    // Save as JPEG at 75% quality
-    const thumbBuffer = resized.toJPEG(75)
-    writeFileSync(thumbPath, thumbBuffer)
-
+    await writeFile(thumbPath, thumbBuffer)
     return thumbBuffer
   } catch (error) {
     console.error(`Failed to generate thumbnail for ${captureId}:`, error)

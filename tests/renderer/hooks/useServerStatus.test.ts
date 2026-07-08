@@ -51,7 +51,17 @@ function installBirdbrain(handlers: Handlers, unsubs: Record<string, ReturnType<
 }
 
 function makeCapture(caseId: string, id: string): Capture {
-  return { id, caseId } as Capture
+  return {
+    id,
+    caseId,
+    url: 'https://example.test',
+    title: 'Example',
+    hash: 'a'.repeat(64),
+    timestamp: '2026-01-01T00:00:00.000Z',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    format: 'mhtml',
+    method: 'extension'
+  } satisfies Capture
 }
 
 describe('useServerStatus', () => {

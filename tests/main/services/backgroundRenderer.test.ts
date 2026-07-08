@@ -10,7 +10,7 @@ const ctl = vi.hoisted(() => ({
   loadUrlShouldReject: false,
   loadUrlShouldHang: false,
   blocker: null as unknown,
-  lastWindow: null as unknown as FakeWindow,
+  lastWindow: null as FakeWindow | null,
   createdWindows: 0
 }))
 
@@ -59,7 +59,7 @@ const { MockBrowserWindow } = vi.hoisted(() => {
     setPermissionRequestHandler: vi.fn()
   })
 
-  class MockBrowserWindow {
+  class MockBrowserWindow implements FakeWindow {
     destroyed = false
     webContents: FakeWebContents
     constructor() {
@@ -124,7 +124,7 @@ const { MockBrowserWindow } = vi.hoisted(() => {
           return 'MockAgent/1.0'
         }
       }
-      ctl.lastWindow = this as unknown as FakeWindow
+      ctl.lastWindow = this
     }
     isDestroyed() {
       return this.destroyed
@@ -311,7 +311,7 @@ describe('renderPageInHiddenWindow', () => {
     expect(Buffer.concat(chunks).toString()).toContain('MHTML body')
 
     // The MHTML temp file exists until cleanup() removes it and destroys the window.
-    const win = ctl.lastWindow
+    const win = ctl.lastWindow!
     expect(win.isDestroyed()).toBe(false)
     await result.cleanup()
     expect(win.isDestroyed()).toBe(true)
@@ -333,7 +333,7 @@ describe('renderPageInHiddenWindow', () => {
     ).rejects.toThrow(/navigation failed/)
 
     // The error path destroys the window and removes the temp MHTML file.
-    expect(ctl.lastWindow.isDestroyed()).toBe(true)
+    expect(ctl.lastWindow!.isDestroyed()).toBe(true)
   }, 30_000)
 
   it('rejects when the render exceeds the timeout budget', async () => {
@@ -345,6 +345,6 @@ describe('renderPageInHiddenWindow', () => {
     ).rejects.toThrow(/timed out/)
 
     // The timeout path also tears the window down.
-    expect(ctl.lastWindow.isDestroyed()).toBe(true)
+    expect(ctl.lastWindow!.isDestroyed()).toBe(true)
   }, 30_000)
 })

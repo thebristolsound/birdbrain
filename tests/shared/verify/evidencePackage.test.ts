@@ -59,6 +59,20 @@ function hasReason(result: { checks: Array<{ reason?: string }> }, needle: strin
   return reasons(result).some((r) => r.includes(needle))
 }
 
+interface EvidenceJson {
+  captures: Array<{ id: string; timestampTokenPaths: string[] }>
+  artifacts: Array<{ path: string; sha256?: string; sizeBytes?: number }>
+}
+
+// Reads evidence.json from the package, hands the parsed object to `mutate`, and
+// writes it back — the read/mutate/write dance the tampering tests share.
+function mutateEvidenceJson(pkgDir: string, mutate: (evidence: EvidenceJson) => void): void {
+  const p = join(pkgDir, 'evidence.json')
+  const evidence: EvidenceJson = JSON.parse(readFileSync(p, 'utf-8'))
+  mutate(evidence)
+  writeFileSync(p, JSON.stringify(evidence, null, 2))
+}
+
 describe('verifyEvidencePackage', () => {
   let tempDir: string
   let caseId: string
@@ -270,13 +284,13 @@ describe('verifyEvidencePackage', () => {
     // Point evidence.json at an in-package artifact path that does not exist on
     // disk. safeJoin resolves it (no traversal), so the sweep reaches the
     // existsSync branch and reports the file as missing.
-    const evidence = JSON.parse(readFileSync(join(pkgDir, 'evidence.json'), 'utf-8'))
-    evidence.artifacts.push({
-      path: 'pages/does-not-exist.mhtml',
-      sha256: 'a'.repeat(64),
-      sizeBytes: 42
+    mutateEvidenceJson(pkgDir, (evidence) => {
+      evidence.artifacts.push({
+        path: 'pages/does-not-exist.mhtml',
+        sha256: 'a'.repeat(64),
+        sizeBytes: 42
+      })
     })
-    writeFileSync(join(pkgDir, 'evidence.json'), JSON.stringify(evidence, null, 2))
     const result = verifyEvidencePackage(pkgDir)
     expect(result.pass).toBe(false)
     expect(hasReason(result, 'pages/does-not-exist.mhtml: file missing')).toBe(true)
@@ -293,16 +307,15 @@ describe('verifyEvidencePackage', () => {
     writeFileSync(join(pkgDir, newRel), bytes)
     rmSync(join(pkgDir, ownRel))
 
-    const evidence = JSON.parse(readFileSync(join(pkgDir, 'evidence.json'), 'utf-8'))
-    const rec = evidence.captures.find((c: { id: string }) => c.id === captureId)
-    rec.timestampTokenPaths = ['timestamps/shared-token.tst']
-    // Keep the artifact sweep consistent: the token file moved, so its recorded
-    // path must move with it (bytes and thus sha256 are unchanged).
-    const artifact = evidence.artifacts.find(
-      (a: { path: string }) => a.path === `timestamps/${captureId}.tst`
-    )
-    if (artifact) artifact.path = 'timestamps/shared-token.tst'
-    writeFileSync(join(pkgDir, 'evidence.json'), JSON.stringify(evidence, null, 2))
+    mutateEvidenceJson(pkgDir, (evidence) => {
+      const rec = evidence.captures.find((c) => c.id === captureId)
+      rec!.timestampTokenPaths = ['timestamps/shared-token.tst']
+      // Keep the artifact sweep consistent: the token file moved, so its recorded
+      // path must move with it (bytes and thus sha256 are unchanged).
+      const artifact = evidence.artifacts.find((a) => a.path === `timestamps/${captureId}.tst`)
+      expect(artifact).toBeDefined()
+      artifact!.path = 'timestamps/shared-token.tst'
+    })
 
     const result = verifyEvidencePackage(pkgDir)
     const ts = result.checks.find((c) => c.name === `capture ${captureId} timestamp`)
@@ -320,14 +333,13 @@ describe('verifyEvidencePackage', () => {
     writeFileSync(join(pkgDir, newRel), bytes)
     rmSync(join(pkgDir, ownRel))
 
-    const evidence = JSON.parse(readFileSync(join(pkgDir, 'evidence.json'), 'utf-8'))
-    const rec = evidence.captures.find((c: { id: string }) => c.id === captureId)
-    rec.timestampTokenPaths = [] // index gives no help → force the disk scan
-    const artifact = evidence.artifacts.find(
-      (a: { path: string }) => a.path === `timestamps/${captureId}.tst`
-    )
-    if (artifact) artifact.path = 'timestamps/orphan-token.tst'
-    writeFileSync(join(pkgDir, 'evidence.json'), JSON.stringify(evidence, null, 2))
+    mutateEvidenceJson(pkgDir, (evidence) => {
+      const rec = evidence.captures.find((c) => c.id === captureId)
+      rec!.timestampTokenPaths = [] // index gives no help → force the disk scan
+      const artifact = evidence.artifacts.find((a) => a.path === `timestamps/${captureId}.tst`)
+      expect(artifact).toBeDefined()
+      artifact!.path = 'timestamps/orphan-token.tst'
+    })
 
     const result = verifyEvidencePackage(pkgDir)
     const ts = result.checks.find((c) => c.name === `capture ${captureId} timestamp`)
@@ -339,13 +351,13 @@ describe('verifyEvidencePackage', () => {
     // Remove the token file and every index pointer to it. The signed manifest
     // still asserts a token, so there is nothing to byte-bind → FAIL.
     rmSync(join(pkgDir, 'timestamps', `${captureId}.tst`))
-    const evidence = JSON.parse(readFileSync(join(pkgDir, 'evidence.json'), 'utf-8'))
-    const rec = evidence.captures.find((c: { id: string }) => c.id === captureId)
-    rec.timestampTokenPaths = []
-    evidence.artifacts = evidence.artifacts.filter(
-      (a: { path: string }) => a.path !== `timestamps/${captureId}.tst`
-    )
-    writeFileSync(join(pkgDir, 'evidence.json'), JSON.stringify(evidence, null, 2))
+    mutateEvidenceJson(pkgDir, (evidence) => {
+      const rec = evidence.captures.find((c) => c.id === captureId)
+      rec!.timestampTokenPaths = []
+      evidence.artifacts = evidence.artifacts.filter(
+        (a) => a.path !== `timestamps/${captureId}.tst`
+      )
+    })
     const result = verifyEvidencePackage(pkgDir)
     expect(result.pass).toBe(false)
     expect(hasReason(result, 'timestamp token file missing')).toBe(true)

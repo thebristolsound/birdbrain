@@ -13,10 +13,22 @@ function deferred<T>() {
   return { promise, resolve, reject }
 }
 
-function setThumbnailImpl(impl: (id: string) => Promise<string | null>) {
-  ;(window as unknown as { birdbrain: unknown }).birdbrain = {
-    captures: { getThumbnail: vi.fn(impl) }
+type GetThumbnail = (id: string) => Promise<string | null>
+
+interface MockBirdbrain {
+  captures: { getThumbnail: GetThumbnail }
+}
+
+function setBirdbrain(getThumbnail: GetThumbnail): (id: string) => Promise<string | null> {
+  const mock = vi.fn(getThumbnail)
+  ;(window as unknown as { birdbrain: MockBirdbrain }).birdbrain = {
+    captures: { getThumbnail: mock }
   }
+  return mock
+}
+
+function setThumbnailImpl(impl: GetThumbnail) {
+  return setBirdbrain(impl)
 }
 
 describe('useCaptureThumbnail', () => {
@@ -29,9 +41,10 @@ describe('useCaptureThumbnail', () => {
   })
 
   it('returns null and not-loading when captureId is null', () => {
-    setThumbnailImpl(async () => 'unused')
+    const getThumbnailMock = setThumbnailImpl(async () => 'unused')
     const { result } = renderHook(() => useCaptureThumbnail(null))
     expect(result.current).toEqual({ thumbnail: null, loading: false })
+    expect(getThumbnailMock).not.toHaveBeenCalled()
   })
 
   it('loads and base64-decorates the thumbnail for a captureId', async () => {
@@ -68,7 +81,7 @@ describe('useCaptureThumbnail', () => {
       .fn()
       .mockReturnValueOnce(first.promise)
       .mockResolvedValueOnce('SECOND')
-    ;(window as unknown as { birdbrain: unknown }).birdbrain = {
+    ;(window as unknown as { birdbrain: MockBirdbrain }).birdbrain = {
       captures: { getThumbnail }
     }
 

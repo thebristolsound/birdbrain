@@ -44,13 +44,19 @@ function buildNonTstSignedData(opts: { withEContentType: boolean }): Buffer {
   )
 }
 
+// A CMS ContentInfo whose contentType is id-data (a DER NULL payload), i.e. NOT
+// signed-data. Both parse paths must reject it as an unexpected contentType.
+function buildNonSignedDataContentInfo(): Buffer {
+  const notSignedData = new ContentInfo({
+    contentType: id_data,
+    content: new Uint8Array([0x05, 0x00]).buffer // DER NULL
+  })
+  return Buffer.from(AsnConvert.serialize(notSignedData))
+}
+
 describe('parseTimestampToken (malformed structures)', () => {
   it('throws when the CMS envelope is not signed-data', () => {
-    const notSignedData = new ContentInfo({
-      contentType: id_data,
-      content: new Uint8Array([0x05, 0x00]).buffer // DER NULL
-    })
-    const der = Buffer.from(AsnConvert.serialize(notSignedData))
+    const der = buildNonSignedDataContentInfo()
     expect(() => parseTimestampToken(der)).toThrow('Unexpected token contentType')
   })
 
@@ -80,11 +86,7 @@ describe('extractTimestampTokenCertificatesPem', () => {
   })
 
   it('throws when handed a CMS envelope that is not signed-data', () => {
-    const notSignedData = new ContentInfo({
-      contentType: id_data,
-      content: new Uint8Array([0x05, 0x00]).buffer
-    })
-    const der = Buffer.from(AsnConvert.serialize(notSignedData))
+    const der = buildNonSignedDataContentInfo()
     expect(() => extractTimestampTokenCertificatesPem(der)).toThrow('Unexpected token contentType')
   })
 

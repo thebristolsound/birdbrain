@@ -18,6 +18,7 @@ describe('serverToken', () => {
 
   afterEach(() => {
     rmSync(tempDir, { recursive: true, force: true })
+    vi.restoreAllMocks()
   })
 
   it('generates a persisted 64-char hex token on first init', () => {
@@ -70,7 +71,6 @@ describe('serverToken', () => {
 
     expect(getServerToken()).toMatch(/^[0-9a-f]{64}$/)
     expect(warnSpy).toHaveBeenCalled()
-    warnSpy.mockRestore()
   })
 
   it('keeps an in-memory token when persistence fails', () => {
@@ -87,6 +87,5 @@ describe('serverToken', () => {
       '[serverToken] failed to persist token, using in-memory value:',
       expect.anything()
     )
-    warnSpy.mockRestore()
   })
 })

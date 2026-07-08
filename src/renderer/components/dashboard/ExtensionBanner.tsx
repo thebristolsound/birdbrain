@@ -50,7 +50,7 @@ export function ExtensionBanner({ connected }: ExtensionBannerProps) {
                 Install the Browser Extension
               </h4>
               <p className="text-[11px] text-text-muted leading-relaxed">
-                Capture pages seamlessly while you browse. Works with Chrome, Edge, and Brave.
+                Capture pages from Chrome, Edge, and Brave while the desktop app is running.
               </p>
             </div>
           </div>

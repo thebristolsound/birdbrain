@@ -165,8 +165,16 @@ export function createCaptureStore(deps: { getRoot: () => string }): CaptureStor
         hasher.update(chunk)
         if (!writeStream.write(chunk)) {
           await new Promise<void>((resolve) => {
-            writeStream.once('drain', resolve)
-            writeStream.once('error', () => resolve())
+            const onDrain = (): void => {
+              writeStream.off('error', onError)
+              resolve()
+            }
+            const onError = (): void => {
+              writeStream.off('drain', onDrain)
+              resolve()
+            }
+            writeStream.once('drain', onDrain)
+            writeStream.once('error', onError)
           })
           if (streamError) throw streamError
         }

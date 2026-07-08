@@ -54,6 +54,7 @@ import { getServerToken } from '@main/services/serverToken'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import type { RecaptureService } from '@main/services/recapture'
+import type { UpdaterService } from '@main/services/updater'
 import { handle, IpcFailure } from '@main/ipcWrap'
 import type {
   BirdbrainSettings,
@@ -92,8 +93,9 @@ export function registerIpcHandlers(deps: {
   selectorLifecycle: SelectorLifecycle
   captureLifecycle: CaptureLifecycle
   recaptureService: RecaptureService
+  updaterService: UpdaterService
 }): void {
-  const { selectorLifecycle, captureLifecycle, recaptureService } = deps
+  const { selectorLifecycle, captureLifecycle, recaptureService, updaterService } = deps
   // Cases
   ipcMain.handle(IPC_CHANNELS.CASES_LIST, () => db.listCases())
   ipcMain.handle(IPC_CHANNELS.CASES_GET, (_, id: string) => db.getCase(id))
@@ -467,10 +469,18 @@ export function registerIpcHandlers(deps: {
 
   // Settings
   ipcMain.handle(IPC_CHANNELS.SETTINGS_GET, () => settings.getSettings())
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_UPDATE, (_, partial: Partial<BirdbrainSettings>) =>
-    settings.updateSettings(partial)
-  )
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_RESET, () => settings.resetSettings())
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_UPDATE, (_, partial: Partial<BirdbrainSettings>) => {
+    const updated = settings.updateSettings(partial)
+    // A channel switch or auto-check toggle must reconfigure the live updater.
+    updaterService.applySettingsChange(partial)
+    return updated
+  })
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_RESET, () => {
+    const reset = settings.resetSettings()
+    // Reset reverts the channel + auto-check policy, so reconfigure the updater.
+    updaterService.applySettingsChange(reset)
+    return reset
+  })
   ipcMain.handle(IPC_CHANNELS.SETTINGS_TEST_OPENROUTER, (_, apiKey: string) =>
     openrouter.testApiKey(apiKey)
   )
@@ -546,6 +556,10 @@ export function registerIpcHandlers(deps: {
 
   // App
   ipcMain.handle(IPC_CHANNELS.APP_GET_VERSION, () => app.getVersion())
+
+  // Updates (update delivery)
+  ipcMain.handle(IPC_CHANNELS.UPDATES_GET_STATUS, () => updaterService.getStatus())
+  ipcMain.handle(IPC_CHANNELS.UPDATES_CHECK, () => updaterService.check())
 
   // AI Analysis
   handle(IPC_CHANNELS.AI_ANALYZE, async (_, params: AnalyzeCaptureParams) => {

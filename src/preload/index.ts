@@ -57,7 +57,8 @@ import type {
   OperatorIdentity,
   ArchiveRef,
   WaybackLookupResult,
-  ArchiveInspectReport
+  ArchiveInspectReport,
+  UpdateStatus
 } from '@shared/types'
 
 // Unwrap IpcResult from handlers that return structured results
@@ -258,6 +259,12 @@ const birdbrain = {
     getVersion: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.APP_GET_VERSION)
   },
 
+  updates: {
+    getStatus: (): Promise<UpdateStatus> =>
+      ipcRenderer.invoke(IPC_CHANNELS.UPDATES_GET_STATUS),
+    check: (): Promise<UpdateStatus> => ipcRenderer.invoke(IPC_CHANNELS.UPDATES_CHECK)
+  },
+
   db: {
     stats: (): Promise<DbStats> => unwrapIpc<DbStats>(ipcRenderer.invoke(IPC_CHANNELS.DB_STATS)),
     tableRows: (params: DbTableRowsParams): Promise<DbTableRowsResult> =>
@@ -361,6 +368,12 @@ const birdbrain = {
     const handler = (_: unknown, target: DeepLinkTarget) => callback(target)
     ipcRenderer.on(IPC_CHANNELS.DEEP_LINK_NAVIGATE, handler)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.DEEP_LINK_NAVIGATE, handler)
+  },
+
+  onUpdateStatus: (callback: (status: UpdateStatus) => void) => {
+    const handler = (_: unknown, status: UpdateStatus) => callback(status)
+    ipcRenderer.on(IPC_CHANNELS.UPDATE_STATUS, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.UPDATE_STATUS, handler)
   },
 
   testPipeline: (): Promise<{ success: boolean; durationMs: number; error?: string }> =>

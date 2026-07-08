@@ -48,6 +48,13 @@
     "directories": {
       "output": "dist"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "thebristolsound",
+        "repo": "birdbrain"
+      }
+    ],
     "asarUnpack": [
       "**/node_modules/sharp/**",
       "**/node_modules/@img/**"
@@ -68,7 +75,8 @@
     },
     "mac": {
       "target": [
-        "dmg"
+        "dmg",
+        "zip"
       ]
     },
     "linux": {
@@ -109,6 +117,7 @@
     "cheerio": "^1.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "electron-updater": "^6.8.9",
     "hono": "^4.12.27",
     "ioc-extractor": "^8.1.7",
     "konva": "^10.3.0",

@@ -154,6 +154,12 @@ export interface CaptureTag {
   tagId: string
 }
 
+// Release track the app follows for update delivery. 'stable' sees only tagged
+// (non-prerelease) GitHub releases; 'beta' additionally sees alpha/beta
+// prereleases. Maps to electron-updater's `allowPrerelease` in the updater
+// service — see docs/specs/2026-07-07-update-delivery-release-channels-design.md.
+export type ReleaseChannel = 'stable' | 'beta'
+
 export interface BirdbrainSettings {
   openRouterApiKey: string | null
   defaultModel: string
@@ -175,6 +181,40 @@ export interface BirdbrainSettings {
   analysisSystemPrompt: string
   detailsPanelCollapsed: boolean
   tooltipsSeen: Record<string, boolean>
+  // Update delivery. `releaseChannel` selects the GitHub release track;
+  // `autoCheckForUpdates` gates the background check schedule (manual checks are
+  // always available). First-run `releaseChannel` is derived from the installed
+  // version's prerelease suffix in initSettings().
+  releaseChannel: ReleaseChannel
+  autoCheckForUpdates: boolean
+}
+
+// Update-delivery state machine surfaced to the renderer. Phase 1 (notify) only
+// ever reaches idle → checking → up-to-date | available | error; the
+// downloading/downloaded states are reserved for the Phase 2 auto-install path.
+export type UpdateState =
+  | 'idle'
+  | 'checking'
+  | 'up-to-date'
+  | 'available'
+  | 'downloading'
+  | 'downloaded'
+  | 'error'
+
+export interface UpdateStatus {
+  state: UpdateState
+  currentVersion: string
+  // Present when state is 'available'/'downloading'/'downloaded'.
+  availableVersion?: string
+  // GitHub release page for `availableVersion`, for the notify "View release" link.
+  releaseNotesUrl?: string
+  // Download progress percent (0–100); present only while 'downloading'.
+  percent?: number
+  // Human-readable error message; present only when state is 'error'.
+  error?: string
+  // False on platforms/builds where the app can only notify (deb, unsigned mac,
+  // dev). The UI degrades to a "View release" link instead of download/install.
+  supportsAutoInstall: boolean
 }
 
 export interface OpenRouterModel {

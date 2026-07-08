@@ -31,13 +31,22 @@ jobs:
           # until pnpm ships node-gyp >=12.1 (pnpm/pnpm#10268).
           - os: windows-2022
             script: package:win
-            glob: dist/*.exe
+            glob: |
+              dist/*.exe
+              dist/*.blockmap
+              dist/*.yml
           - os: macos-latest
             script: package:mac
-            glob: dist/*.dmg
+            glob: |
+              dist/*.dmg
+              dist/*.zip
+              dist/*.blockmap
+              dist/*-mac.yml
           - os: ubuntu-latest
             script: package:linux
-            glob: dist/*.{AppImage,deb}
+            glob: |
+              dist/*.{AppImage,deb}
+              dist/*-linux.yml
 
     runs-on: ${{ matrix.os }}
 

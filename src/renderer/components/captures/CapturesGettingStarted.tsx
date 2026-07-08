@@ -30,7 +30,7 @@ const STEPS = [
     n: 3,
     icon: Search,
     title: 'Browse and investigate',
-    body: 'Visit web pages relevant to your case. Birdbrain will capture screenshots, metadata, and run AI analysis.'
+    body: 'Visit web pages relevant to your case. Birdbrain saves screenshots, metadata, text, and source archives.'
   }
 ]
 
@@ -89,8 +89,7 @@ export function CapturesGettingStarted() {
           </div>
           <h2 className="mb-2 text-xl font-semibold text-text-primary">Start capturing the web</h2>
           <p className="mx-auto max-w-sm text-sm leading-relaxed text-text-muted">
-            Birdbrain automatically saves and analyzes web pages as you browse. Get started in three
-            simple steps.
+            Birdbrain saves pages to the current case as you browse. Get started in three steps.
           </p>
         </div>
 

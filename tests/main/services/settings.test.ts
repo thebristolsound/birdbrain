@@ -151,4 +151,12 @@ describe('settings', () => {
     updateSettings({ lastActiveSection: 'overview' })
     expect(getSettings().lastActiveSection).toBe('overview')
   })
+
+  it('throws on a schema-invalid update rather than persisting garbage', () => {
+    expect(() =>
+      updateSettings({ captureScreenshots: 'yes' as unknown as boolean })
+    ).toThrow(/Invalid settings/)
+    // Nothing was written, so getSettings still yields defaults.
+    expect(getSettings().captureScreenshots).toBe(true)
+  })
 })

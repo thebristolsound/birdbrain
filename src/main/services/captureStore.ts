@@ -159,7 +159,6 @@ export function createCaptureStore(deps: { getRoot: () => string }): CaptureStor
         if (streamError) throw streamError
         size += chunk.byteLength
         if (size > maxSizeBytes) {
-          await closeAndUnlink(writeStream, abs)
           throw new Error(`MHTML size ${size} exceeds cap of ${maxSizeBytes} bytes`)
         }
         hasher.update(chunk)

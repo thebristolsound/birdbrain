@@ -117,6 +117,16 @@ describe('signingKey: persistence', () => {
     // service falls back to plaintext at-rest (same contract as settings.ts).
     expect(readFileSync(keyPath, 'utf-8')).toContain('-----BEGIN PRIVATE KEY-----')
   })
+
+  it('fails closed when an existing key cannot be unwrapped', () => {
+    // A wrapped (enc:-prefixed) private key alongside a public key, but no OS
+    // credential store to decrypt it. Regenerating would silently rotate the
+    // installation key, so init must throw instead.
+    writeFileSync(join(dir, 'signing-key.pem'), 'enc:' + Buffer.from('opaque').toString('base64'))
+    writeFileSync(join(dir, 'signing-public-key.pem'), '-----BEGIN PUBLIC KEY-----\n')
+
+    expect(() => initSigningKey(dir)).toThrow(/refusing to generate a new keypair/)
+  })
 })
 
 describe('signingKey: openssl interop', () => {

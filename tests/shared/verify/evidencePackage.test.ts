@@ -266,6 +266,91 @@ describe('verifyEvidencePackage', () => {
     expect(hasReason(result, 'path escapes package')).toBe(true)
   })
 
+  it('FAILs the artifact sweep when an indexed artifact file is missing from the package', () => {
+    // Point evidence.json at an in-package artifact path that does not exist on
+    // disk. safeJoin resolves it (no traversal), so the sweep reaches the
+    // existsSync branch and reports the file as missing.
+    const evidence = JSON.parse(readFileSync(join(pkgDir, 'evidence.json'), 'utf-8'))
+    evidence.artifacts.push({
+      path: 'pages/does-not-exist.mhtml',
+      sha256: 'a'.repeat(64),
+      sizeBytes: 42
+    })
+    writeFileSync(join(pkgDir, 'evidence.json'), JSON.stringify(evidence, null, 2))
+    const result = verifyEvidencePackage(pkgDir)
+    expect(result.pass).toBe(false)
+    expect(hasReason(result, 'pages/does-not-exist.mhtml: file missing')).toBe(true)
+  })
+
+  it('locates a dedup-renamed .tst via the evidence.json timestampTokenPaths index', () => {
+    // buildEvidenceZip names a shared token after the FIRST capture holding it,
+    // so a capture is not guaranteed timestamps/{ownId}.tst. Rename the file away
+    // from the own-id path and point the index at the new name: the verifier must
+    // still find + byte-bind it and PASS the structural timestamp check.
+    const ownRel = join('timestamps', `${captureId}.tst`)
+    const newRel = join('timestamps', 'shared-token.tst')
+    const bytes = readFileSync(join(pkgDir, ownRel))
+    writeFileSync(join(pkgDir, newRel), bytes)
+    rmSync(join(pkgDir, ownRel))
+
+    const evidence = JSON.parse(readFileSync(join(pkgDir, 'evidence.json'), 'utf-8'))
+    const rec = evidence.captures.find((c: { id: string }) => c.id === captureId)
+    rec.timestampTokenPaths = ['timestamps/shared-token.tst']
+    // Keep the artifact sweep consistent: the token file moved, so its recorded
+    // path must move with it (bytes and thus sha256 are unchanged).
+    const artifact = evidence.artifacts.find(
+      (a: { path: string }) => a.path === `timestamps/${captureId}.tst`
+    )
+    if (artifact) artifact.path = 'timestamps/shared-token.tst'
+    writeFileSync(join(pkgDir, 'evidence.json'), JSON.stringify(evidence, null, 2))
+
+    const result = verifyEvidencePackage(pkgDir)
+    const ts = result.checks.find((c) => c.name === `capture ${captureId} timestamp`)
+    expect(ts?.status, JSON.stringify(result.checks, null, 2)).toBe('pass')
+    expect(result.pass).toBe(true)
+  })
+
+  it('locates a dedup-renamed .tst by scanning timestamps/ when the index omits it', () => {
+    // Neither the own-id path nor the untrusted index point at the token; the
+    // verifier falls back to scanning timestamps/ for bytes matching the signed
+    // token. This is the last resolution tier in locateTimestampFile.
+    const ownRel = join('timestamps', `${captureId}.tst`)
+    const newRel = join('timestamps', 'orphan-token.tst')
+    const bytes = readFileSync(join(pkgDir, ownRel))
+    writeFileSync(join(pkgDir, newRel), bytes)
+    rmSync(join(pkgDir, ownRel))
+
+    const evidence = JSON.parse(readFileSync(join(pkgDir, 'evidence.json'), 'utf-8'))
+    const rec = evidence.captures.find((c: { id: string }) => c.id === captureId)
+    rec.timestampTokenPaths = [] // index gives no help → force the disk scan
+    const artifact = evidence.artifacts.find(
+      (a: { path: string }) => a.path === `timestamps/${captureId}.tst`
+    )
+    if (artifact) artifact.path = 'timestamps/orphan-token.tst'
+    writeFileSync(join(pkgDir, 'evidence.json'), JSON.stringify(evidence, null, 2))
+
+    const result = verifyEvidencePackage(pkgDir)
+    const ts = result.checks.find((c) => c.name === `capture ${captureId} timestamp`)
+    expect(ts?.status, JSON.stringify(result.checks, null, 2)).toBe('pass')
+    expect(result.pass).toBe(true)
+  })
+
+  it('FAILs with token-file-missing when no .tst can be located anywhere', () => {
+    // Remove the token file and every index pointer to it. The signed manifest
+    // still asserts a token, so there is nothing to byte-bind → FAIL.
+    rmSync(join(pkgDir, 'timestamps', `${captureId}.tst`))
+    const evidence = JSON.parse(readFileSync(join(pkgDir, 'evidence.json'), 'utf-8'))
+    const rec = evidence.captures.find((c: { id: string }) => c.id === captureId)
+    rec.timestampTokenPaths = []
+    evidence.artifacts = evidence.artifacts.filter(
+      (a: { path: string }) => a.path !== `timestamps/${captureId}.tst`
+    )
+    writeFileSync(join(pkgDir, 'evidence.json'), JSON.stringify(evidence, null, 2))
+    const result = verifyEvidencePackage(pkgDir)
+    expect(result.pass).toBe(false)
+    expect(hasReason(result, 'timestamp token file missing')).toBe(true)
+  })
+
   it('PASSes a package whose capture was deleted (artifacts absent)', () => {
     // Append a deletion entry for the active capture, drop its artifacts and its
     // evidence.json record + artifacts so the package reflects a hard-delete.

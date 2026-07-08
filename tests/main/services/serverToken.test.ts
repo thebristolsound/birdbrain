@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import {
@@ -58,5 +58,35 @@ describe('serverToken', () => {
     // if init is skipped (tests, unusual startup orders).
     const token = getServerToken()
     expect(token).toMatch(/^[0-9a-f]{64}$/)
+  })
+
+  it('regenerates when the token path is unreadable for a non-ENOENT reason', () => {
+    // A directory where the token file should be: readFileSync throws EISDIR
+    // (not ENOENT), which is warned about rather than silently ignored.
+    mkdirSync(join(tempDir, 'server-token'))
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    initServerToken(tempDir)
+
+    expect(getServerToken()).toMatch(/^[0-9a-f]{64}$/)
+    expect(warnSpy).toHaveBeenCalled()
+    warnSpy.mockRestore()
+  })
+
+  it('keeps an in-memory token when persistence fails', () => {
+    // A missing parent directory makes readFileSync ENOENT (no warn) but
+    // writeFileSync fail — the fresh token is kept in memory regardless.
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const missingDir = join(tempDir, 'does', 'not', 'exist')
+
+    initServerToken(missingDir)
+
+    expect(getServerToken()).toMatch(/^[0-9a-f]{64}$/)
+    expect(existsSync(join(missingDir, 'server-token'))).toBe(false)
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[serverToken] failed to persist token, using in-memory value:',
+      expect.anything()
+    )
+    warnSpy.mockRestore()
   })
 })

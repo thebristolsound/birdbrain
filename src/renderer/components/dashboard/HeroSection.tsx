@@ -20,8 +20,7 @@ export function HeroSection({ onNewInvestigation, onOpenRecent, onImportCase }: 
         </h1>
 
         <p className="text-base text-text-muted max-w-lg mx-auto leading-relaxed mb-10">
-          Your comprehensive open-source intelligence platform. Capture, extract, and analyze web
-          intelligence with precision.
+          Capture web pages, organize evidence by case, and verify what changed over time.
         </p>
 
         <div className="flex items-center justify-center gap-4 mb-6">

@@ -19,7 +19,7 @@
 
 ---
 
-Birdbrain is an open-source desktop application with a companion Chrome extension for capturing, organizing, and verifying web evidence. Pages are saved as MHTML with a full-page screenshot and extracted text, streamed to the desktop app over a loopback HTTP server, and stored on your machine in per-case archives. There is no cloud, no account, and no telemetry — captures never leave your computer unless you export them.
+Birdbrain is an open-source desktop app with a companion Chromium extension for capturing, organizing, and verifying web evidence. Captures include MHTML, a full-page screenshot, and extracted text, sent to the desktop app over `127.0.0.1` and stored locally in per-case archives. There is no cloud account or telemetry; captures stay on your machine unless you export them.
 
 <p align="center">
   <img src="docs/assets/screenshot-case.png" alt="Birdbrain case workspace" width="100%" />
@@ -27,31 +27,31 @@ Birdbrain is an open-source desktop application with a companion Chrome extensio
 
 ## Why Birdbrain exists
 
-The tools independent investigators rely on keep getting absorbed into enterprise investigation platforms. Capture tools that cost a hundred dollars a year become line items in plans that cost thousands, tethered to accounts and license servers. Open-source projects get acquired and quietly stop shipping. The people who most need evidence-grade tooling — independent researchers, journalists, activists, students — are the least able to pay enterprise prices for it, and the least able to accept a phone-home dependency in software that handles their evidence.
+OSINT capture tools that independent investigators rely on often move into enterprise platforms, add account or license-server dependencies, or stop shipping. That leaves researchers, journalists, activists, students, and small teams with fewer affordable, local-first options for preserving web evidence.
 
-Birdbrain is a commitment that the capture-and-prove workflow — an approach pioneered by [Hunchly](https://hunch.ly/), which inspired this project — stays available to everyone. It is MIT-licensed and local-first: no account, no license server, no telemetry. Everything it does runs on your machine, so if this project ever stops shipping, fork it and keep working.
+Birdbrain keeps the capture-and-prove workflow available in an MIT-licensed desktop app. The workflow is inspired by [Hunchly](https://hunch.ly/). It runs locally, avoids account and license checks, and stores evidence in formats you can inspect, export, and keep using if the project is forked.
 
 ## Features
 
 ### Capture
 
-Save any page from Chrome as MHTML with a screenshot and the extracted page text. Captures are triggered from the extension and stream into the desktop app over `127.0.0.1` — nothing transits the network beyond your own machine.
+Save pages from a supported Chromium browser as MHTML with a screenshot and extracted page text. Captures are triggered from the extension and sent to the desktop app over `127.0.0.1`; nothing leaves your machine during capture.
 
 ### Annotate
 
-Mark up screenshots with shapes and pinned comments. Write per-capture notes. Annotations are burned into exports, so markup travels with the evidence.
+Mark up screenshots with shapes and pinned comments. Write per-capture notes. Exported reports include the annotations with the evidence.
 
 ### Search
 
-Per-case full-text search across captures and notes (SQLite FTS5). Define text or regex **Selectors** and Birdbrain runs them against every capture in the case — past and future — caching matches for case-wide counts.
+Search captures and notes within a case using SQLite FTS5. Define text or regex **Selectors** and Birdbrain checks them against existing and future captures, caching matches for case-wide counts.
 
 ### Recon
 
-Every capture is mined for indicators as it lands: IoCs (IPs, domains, hashes, CVEs), tracking pixels (GA, GTM, Facebook Pixel), social handles, `.onion` and I2P hosts, and email addresses. Browse them in a column navigator and pivot from category to indicator to the pages it appeared on — passive recon over everything you visit during an investigation.
+Birdbrain extracts indicators from each capture: IoCs (IPs, domains, hashes, CVEs), tracking pixels (GA, GTM, Facebook Pixel), social handles, `.onion` and I2P hosts, and email addresses. Browse indicators by category and open the captures where each one appeared.
 
 ### Verify + Export
 
-Every capture is fingerprinted with SHA-256, timestamped, and chained to the previous capture in a per-case manifest. Verify the chain in-app at any time. Export a case as a self-contained HTML report with the manifest included — readable in any browser, verifiable without Birdbrain installed.
+Every capture is fingerprinted with SHA-256, timestamped, and chained to the previous capture in a per-case manifest. Verify the chain in-app, or export a self-contained HTML report with the manifest included. Reports are readable in any browser and verifiable without Birdbrain installed.
 
 <!-- Screenshots section: drop assets into docs/assets/ and uncomment, including the heading. One shot per feature claim:
 
@@ -77,10 +77,10 @@ Every capture is fingerprinted with SHA-256, timestamped, and chained to the pre
 
 ## Use cases
 
-- **OSINT investigators** — case-organized capture with search, selectors, and indicator pivoting
-- **Journalists, researchers, and activists** — evidence that can survive scrutiny, on hardware you control, at no cost
-- **Pentesters and red teamers** — passive recon artifacts from every page you touch, plus engagement evidence with a documented chain of custody
-- **CTI analysts** — automatic indicator extraction from captured pages, exportable alongside the source evidence
+- **OSINT investigators** - case-organized capture with search, selectors, and indicator pivoting
+- **Journalists, researchers, and activists** - local evidence capture on hardware you control
+- **Pentesters and red teamers** - passive recon artifacts and engagement evidence with a documented chain of custody
+- **CTI analysts** - extracted indicators alongside the source evidence
 
 ## Install
 
@@ -94,7 +94,7 @@ Works with Chrome, Edge, and Brave. The extension is not on the Chrome Web Store
 
 ## Current limitations
 
-Beta software, built by one person. Know before you commit:
+Birdbrain is beta software. Current limits:
 
 - **Search is per-case.** No cross-case search.
 - **Capture is page-level.** No element selection, region screenshots, PDF, or video capture.
@@ -103,11 +103,11 @@ Beta software, built by one person. Know before you commit:
 
 ## Contributing
 
-Bug reports and feature requests are welcome — open an [issue](https://github.com/thebristolsound/birdbrain/issues). For non-trivial PRs, open an issue first to discuss the shape.
+Open an [issue](https://github.com/thebristolsound/birdbrain/issues) for bug reports and feature requests. For non-trivial PRs, open an issue first to discuss the approach.
 
 ## Acknowledgements
 
-Birdbrain is built on good open source:
+Birdbrain uses these open-source projects:
 
 - [ioc-extractor](https://github.com/ninoseki/ioc-extractor) — indicator extraction
 - [Konva](https://konvajs.org/) — screenshot annotation canvas

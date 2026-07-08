@@ -578,7 +578,6 @@ export function startCaptureServer(
         hostname: '127.0.0.1'
       },
       () => {
-        console.log(`Birdbrain capture server running on http://127.0.0.1:${port}`)
         resolve()
       }
     ) as unknown as Server

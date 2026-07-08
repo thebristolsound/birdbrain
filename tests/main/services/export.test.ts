@@ -11,7 +11,8 @@ import {
   createCase,
   insertCapture
 } from '@main/services/database'
-import { initStorage, ensureCaseDir, getCapturePath } from '@main/services/storage'
+import { initStorage, ensureCaseDir } from '@main/services/storage'
+import { defaultCaptureStore } from '@main/services/captureStore'
 import * as manifest from '@main/services/manifest'
 import {
   appendManifestEntry,
@@ -666,7 +667,7 @@ describe('export', () => {
       timestamp: new Date().toISOString()
     })
     ensureCaseDir(c.id)
-    const pngPath = getCapturePath(c.id, cap.id, 'png')
+    const pngPath = defaultCaptureStore.artifactPaths(c.id, cap.id, 'png').abs
     const white = await sharp({
       create: {
         width: 100,

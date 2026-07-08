@@ -34,7 +34,8 @@ import { join, resolve } from 'path'
 import { pathToFileURL } from 'url'
 import * as db from '@main/services/database'
 import * as annotations from '@main/services/annotations'
-import * as storage from '@main/services/storage'
+import { defaultCaptureStore } from '@main/services/captureStore'
+import { getThumbnail } from '@main/services/thumbnails'
 import * as settings from '@main/services/settings'
 import * as openrouter from '@main/services/openrouter'
 import * as analysisService from '@main/services/ai/analysisService'
@@ -162,7 +163,7 @@ export function registerIpcHandlers(deps: {
       filters: [{ name: 'HTML', extensions: ['html'] }]
     })
     if (canceled || !filePath) return null
-    const buffer = storage.readCaptureFile(capture.caseId, captureId, 'html')
+    const buffer = defaultCaptureStore.readArtifact(capture.caseId, captureId, 'html')
     if (!buffer) throw new IpcFailure('HTML file not found')
     const { writeFileSync } = await import('fs')
     writeFileSync(filePath, buffer)
@@ -392,7 +393,7 @@ export function registerIpcHandlers(deps: {
     (_, captureId: string, type: 'html' | 'png' | 'txt') => {
       const capture = db.getCapture(captureId)
       if (!capture) return null
-      const buffer = storage.readCaptureFile(capture.caseId, captureId, type)
+      const buffer = defaultCaptureStore.readArtifact(capture.caseId, captureId, type)
       if (!buffer) return null
       if (type === 'png') return buffer.toString('base64')
       return buffer.toString('utf-8')
@@ -404,7 +405,7 @@ export function registerIpcHandlers(deps: {
     try {
       const capture = db.getCapture(captureId)
       if (!capture) return null
-      const buffer = await storage.getThumbnail(capture.caseId, captureId)
+      const buffer = await getThumbnail(capture.caseId, captureId)
       if (!buffer) return null
       return buffer.toString('base64')
     } catch (err) {
@@ -430,7 +431,7 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.CAPTURES_GET_MHTML_URL, (_, captureId: string): string | null => {
     const capture = db.getCapture(captureId)
     if (!capture || !capture.mhtmlPath) return null
-    const abs = join(storage.getStorageRoot(), capture.mhtmlPath)
+    const abs = defaultCaptureStore.resolveAbsolute(capture.mhtmlPath)
     if (!existsSync(abs)) return null
     return pathToFileURL(abs).toString()
   })

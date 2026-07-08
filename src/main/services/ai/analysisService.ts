@@ -1,7 +1,7 @@
 import { v4 as uuid } from 'uuid'
 import { getDb } from '@main/services/database'
 import { sendPrompt, truncateForContext } from '@main/services/ai/openrouter'
-import * as storage from '@main/services/storage'
+import { defaultCaptureStore } from '@main/services/captureStore'
 import type { CaptureAnalysis, TokenUsage } from '@shared/types'
 
 interface AnalyzeResult {
@@ -38,7 +38,7 @@ export async function analyzeCapture(
     | undefined
 
   // Load text content
-  const textBuffer = storage.readCaptureFile(captureCaseId, captureId, 'txt')
+  const textBuffer = defaultCaptureStore.readArtifact(captureCaseId, captureId, 'txt')
   const textContent = textBuffer ? textBuffer.toString('utf-8') : ''
 
   // Build user message

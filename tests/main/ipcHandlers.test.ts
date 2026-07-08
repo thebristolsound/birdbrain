@@ -93,6 +93,7 @@ import { registerIpcHandlers } from '@main/ipcHandlers'
 import * as db from '@main/services/database'
 import { createCase, insertCapture } from '@main/services/database'
 import * as storage from '@main/services/storage'
+import { defaultCaptureStore } from '@main/services/captureStore'
 import * as settings from '@main/services/settings'
 import { initInstallationId } from '@main/services/installationId'
 import { initServerToken } from '@main/services/serverToken'
@@ -135,15 +136,12 @@ function seedCapture(overrides: Partial<db.InsertCaptureParams> = {}): db.Captur
     textContent: 'hello world content',
     ...overrides
   })
-  storage.saveCapture(
-    caseId,
-    cap.id,
-    '<html>hi</html>',
-    Buffer.from('png-bytes'),
-    'hello world content'
-  )
+  defaultCaptureStore.writeScreenshot(caseId, cap.id, Buffer.from('png-bytes'))
+  defaultCaptureStore.writeText(caseId, cap.id, 'hello world content')
+  // Legacy .html artifact: the store never writes html, so seed it directly.
+  writeFileSync(defaultCaptureStore.artifactPaths(caseId, cap.id, 'html').abs, '<html>hi</html>')
   // Pre-write a thumbnail so getThumbnail returns without invoking nativeImage.
-  writeFileSync(join(storage.getStorageRoot(), caseId, `${cap.id}_thumb.jpg`), Buffer.from('jpg'))
+  defaultCaptureStore.writeThumbnail(caseId, cap.id, Buffer.from('jpg'))
   return cap
 }
 

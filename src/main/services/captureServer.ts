@@ -8,7 +8,7 @@ import { app } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
 import * as db from '@main/services/database'
-import { deleteCaptureFiles } from '@main/services/storage'
+import { defaultCaptureStore } from '@main/services/captureStore'
 import { getSettings } from '@main/services/settings'
 import { ingestMhtmlCapture } from '@main/services/captureLifecycle'
 import { getInstallationId } from '@main/services/installationId'
@@ -554,7 +554,7 @@ function createApp(deps: CaptureServerDeps): Hono {
       }
       if (testCaseId && testCaptureId) {
         try {
-          deleteCaptureFiles(testCaseId, testCaptureId)
+          defaultCaptureStore.deleteArtifacts(testCaseId, testCaptureId)
         } catch {
           /* best effort */
         }

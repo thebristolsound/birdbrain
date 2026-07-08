@@ -3,7 +3,8 @@ import { unlink } from 'fs/promises'
 import { createHash, randomUUID } from 'crypto'
 import { join } from 'path'
 import * as db from '@main/services/database'
-import { getStorageRoot, readCaptureFile } from '@main/services/storage'
+import { getStorageRoot } from '@main/services/storage'
+import { CAPTURE_ARTIFACT_TYPES, defaultCaptureStore } from '@main/services/captureStore'
 import { getSettings } from '@main/services/settings'
 import { getInstallationId } from '@main/services/installationId'
 import { getPublicKeyPem } from '@main/services/signingKey'
@@ -217,12 +218,11 @@ export async function exportCaseArchive(
   add('manifest.jsonl', manifestJsonl)
 
   const captures = data.captures as Array<{ id: string }>
-  const fileTypes = ['mhtml', 'html', 'png', 'txt'] as const
-  const totalFileChecks = captures.length * fileTypes.length || 1
+  const totalFileChecks = captures.length * CAPTURE_ARTIFACT_TYPES.length || 1
   let fileChecks = 0
   for (const capture of captures) {
-    for (const type of fileTypes) {
-      const buf = readCaptureFile(caseId, capture.id, type)
+    for (const type of CAPTURE_ARTIFACT_TYPES) {
+      const buf = defaultCaptureStore.readArtifact(caseId, capture.id, type)
       if (buf) add(`files/${capture.id}.${type}`, buf)
       fileChecks++
       onProgress?.(
@@ -534,7 +534,7 @@ export async function importCaseArchive(
   // self-rolls-back).
   try {
     const insertAll = d.transaction(() => {
-      insertImportedRows(d, data, newCaseId, mapId, caseDir)
+      insertImportedRows(d, data, newCaseId, mapId)
     })
     insertAll()
   } catch (err) {
@@ -549,14 +549,13 @@ export async function importCaseArchive(
 
 // Re-inserts all archived rows into the DB under `newCaseId`, remapping row ids
 // via `mapId` and merging tags by case-insensitive name. Runs inside the
-// caller's transaction. `caseDir` is the moved-into-place case directory, used
-// to read staged .txt sidecars for the captures_fts content column.
+// caller's transaction. Reads the moved-into-place .txt sidecars through the
+// capture store for the captures_fts content column.
 function insertImportedRows(
   d: import('better-sqlite3').Database,
   data: CaseArchiveData,
   newCaseId: string,
-  mapId: (id: string) => string,
-  caseDir: string
+  mapId: (id: string) => string
 ): void {
   const caseRow = data.case as Record<string, unknown>
   d.prepare(
@@ -643,8 +642,8 @@ function insertImportedRows(
       cap.consent_suppression ?? null
     )
     const rowid = (rowidOf.get(newId) as { rowid: number }).rowid
-    const txtPath = join(caseDir, `${newId}.txt`)
-    const textContent = existsSync(txtPath) ? readFileSync(txtPath, 'utf-8') : ''
+    const textContent =
+      defaultCaptureStore.readArtifact(newCaseId, newId, 'txt')?.toString('utf-8') ?? ''
     insertFts.run(rowid, (cap.title as string) ?? '', (cap.url as string) ?? '', textContent)
   }
 

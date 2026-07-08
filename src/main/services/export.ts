@@ -3,7 +3,8 @@ import { unlink } from 'fs/promises'
 import { createHash } from 'crypto'
 import { join } from 'path'
 import * as db from '@main/services/database'
-import { getStorageRoot, readCaptureFile } from '@main/services/storage'
+import { getStorageRoot } from '@main/services/storage'
+import { defaultCaptureStore } from '@main/services/captureStore'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import { getAnnotations } from '@main/services/annotations'
 import { burnAnnotations } from '@main/services/burnAnnotations'
@@ -157,7 +158,7 @@ export async function generateReport(
         `Loading screenshot ${index + 1} of ${total}...`,
         60 + Math.round(((index + 1) / total) * 20)
       )
-      const screenshotBuffer = readCaptureFile(cap.caseId, cap.id, 'png')
+      const screenshotBuffer = defaultCaptureStore.readArtifact(cap.caseId, cap.id, 'png')
       if (!screenshotBuffer) continue
 
       let finalBuffer: Buffer = screenshotBuffer
@@ -288,7 +289,7 @@ function buildEvidenceZip(caseId: string, data: ExportData, reportHtml: string):
   const capturesMissingContent: string[] = []
   const emittedScreenshotPaths = new Set<string>()
   const captureEvidence = data.captures.map((capture) => {
-    const mhtml = readCaptureFile(capture.caseId, capture.id, 'mhtml')
+    const mhtml = defaultCaptureStore.readArtifact(capture.caseId, capture.id, 'mhtml')
     const mhtmlPath = `pages/${capture.id}.mhtml`
     const mhtmlSha256 = mhtml ? add(mhtmlPath, mhtml) : null
     if (!mhtml) capturesMissingContent.push(capture.id)
@@ -307,7 +308,7 @@ function buildEvidenceZip(caseId: string, data: ExportData, reportHtml: string):
     // used (not the possibly-annotated report copy) so the digest matches the
     // screenshotHash anchored at ingest.
     const screenshot = data.screenshots.has(capture.id)
-      ? readCaptureFile(capture.caseId, capture.id, 'png')
+      ? defaultCaptureStore.readArtifact(capture.caseId, capture.id, 'png')
       : null
     let screenshotPath: string | null = null
     let screenshotSha256: string | null = null

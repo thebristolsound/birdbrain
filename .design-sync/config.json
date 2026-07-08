@@ -1,0 +1,29 @@
+{
+  "pkg": "birdbrain-ui",
+  "globalName": "BirdbrainUI",
+  "shape": "package",
+  "tsconfig": "tsconfig.web.json",
+  "srcDir": "src/renderer",
+  "componentSrcMap": {
+    "Button": "src/renderer/components/ui/button.tsx",
+    "Input": "src/renderer/components/ui/input.tsx",
+    "Textarea": "src/renderer/components/ui/textarea.tsx",
+    "Dialog": "src/renderer/components/ui/dialog.tsx",
+    "Card": "src/renderer/components/ui/card.tsx",
+    "Label": "src/renderer/components/ui/label.tsx",
+    "Badge": "src/renderer/components/ui/badge.tsx",
+    "ScrollArea": "src/renderer/components/ui/scroll-area.tsx",
+    "Tabs": "src/renderer/components/ui/tabs.tsx",
+    "Skeleton": "src/renderer/components/ui/skeleton.tsx"
+  },
+  "cssEntry": ".design-sync/.cache/compiled-tailwind.css",
+  "extraFonts": [
+    ".design-sync/fonts/inter/wght.css",
+    ".design-sync/fonts/jetbrains-mono/wght.css"
+  ],
+  "overrides": {
+    "Dialog": { "cardMode": "single", "viewport": "480x360", "primaryStory": "ConfirmDelete" },
+    "Tabs": { "cardMode": "column" }
+  },
+  "readmeHeader": ".design-sync/conventions.md"
+}

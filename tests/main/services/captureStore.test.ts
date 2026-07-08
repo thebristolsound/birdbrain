@@ -1,11 +1,26 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, readFileSync, existsSync, writeFileSync, mkdirSync } from 'fs'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import {
+  mkdtempSync,
+  rmSync,
+  readFileSync,
+  existsSync,
+  writeFileSync,
+  mkdirSync,
+  createWriteStream
+} from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { createHash } from 'crypto'
-import { Readable } from 'stream'
+import { Readable, Writable } from 'stream'
 import { createCaptureStore, parseArtifactFilename } from '@main/services/captureStore'
 import type { CaptureStore } from '@main/services/captureStore'
+
+// Wrap createWriteStream so a single test can substitute a failing stream;
+// everything else in 'fs' stays real.
+vi.mock('fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs')>()
+  return { ...actual, createWriteStream: vi.fn(actual.createWriteStream) }
+})
 
 // The store is created with an injected root getter — no initStorage — proving
 // the storage-root seam is injectable (#142 AC#6).
@@ -81,6 +96,32 @@ describe('captureStore', () => {
         )
       ).rejects.toThrow(/size.*exceed/i)
       expect(existsSync(join(tempDir, 'case-x', 'cap-big.mhtml'))).toBe(false)
+    })
+
+    it('rejects instead of hanging when the stream errors during a backpressure wait', async () => {
+      // highWaterMark 1 forces write() to return false (backpressure wait);
+      // the write callback then fails before 'drain' can ever fire.
+      const failing = new Writable({
+        highWaterMark: 1,
+        write(_chunk, _enc, cb) {
+          queueMicrotask(() => cb(new Error('disk gone')))
+        }
+      })
+      vi.mocked(createWriteStream).mockReturnValueOnce(
+        failing as unknown as ReturnType<typeof createWriteStream>
+      )
+
+      async function* gen() {
+        yield Buffer.alloc(64)
+        yield Buffer.alloc(64)
+      }
+      await expect(
+        store.writeMhtmlStream(
+          'case-x',
+          'cap-err',
+          Readable.from(gen()) as unknown as ReadableStream<Uint8Array>
+        )
+      ).rejects.toThrow('disk gone')
     })
 
     it('hashes large streams in a single pass', async () => {

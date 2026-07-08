@@ -128,6 +128,15 @@ export function createCaptureStore(deps: { getRoot: () => string }): CaptureStor
     const hasher = createHash('sha256')
     let size = 0
 
+    // Record stream errors as they surface: 'drain' never fires on an errored
+    // stream, so the backpressure wait below must also wake on 'error' or a
+    // mid-write failure would hang the ingest forever (and crash the process
+    // as an unhandled 'error' event).
+    let streamError: Error | undefined
+    writeStream.on('error', (err) => {
+      streamError = err
+    })
+
     try {
       // Support both Web ReadableStream (getReader) and Node Readable (asyncIterator)
       const iterable: AsyncIterable<Uint8Array> =
@@ -147,6 +156,7 @@ export function createCaptureStore(deps: { getRoot: () => string }): CaptureStor
           : (body as unknown as AsyncIterable<Uint8Array>)
 
       for await (const chunk of iterable) {
+        if (streamError) throw streamError
         size += chunk.byteLength
         if (size > maxSizeBytes) {
           await closeAndUnlink(writeStream, abs)
@@ -154,7 +164,11 @@ export function createCaptureStore(deps: { getRoot: () => string }): CaptureStor
         }
         hasher.update(chunk)
         if (!writeStream.write(chunk)) {
-          await new Promise<void>((resolve) => writeStream.once('drain', () => resolve()))
+          await new Promise<void>((resolve) => {
+            writeStream.once('drain', resolve)
+            writeStream.once('error', () => resolve())
+          })
+          if (streamError) throw streamError
         }
       }
       writeStream.end()

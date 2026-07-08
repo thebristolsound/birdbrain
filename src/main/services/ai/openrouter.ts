@@ -28,8 +28,6 @@ export async function sendPrompt(
 
   let lastError: Error | null = null
 
-  console.log(`[OpenRouter] Sending request to model ${modelId} (${messages.length} messages)`)
-
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
       const res = await fetch(`${OPENROUTER_BASE}/chat/completions`, {
@@ -73,9 +71,6 @@ export async function sendPrompt(
       }
       const data = parsed.data
       const content = data.choices[0]?.message?.content ?? ''
-      console.log(
-        `[OpenRouter] Response received (${content.length} chars, ${data.usage?.total_tokens ?? '?'} tokens)`
-      )
 
       return {
         content,

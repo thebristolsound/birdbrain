@@ -69,3 +69,11 @@ coverage/
 # artifacts and don't belong in version control. Specs, ADRs, agent
 # conventions, and reference docs under docs/ remain tracked.
 docs/plans/
+
+# design-sync (build tooling + generated output; durable inputs under .design-sync/ ARE committed)
+.ds-sync/
+ds-bundle/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules
+/node_modules

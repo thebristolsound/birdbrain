@@ -353,7 +353,6 @@ async function captureFullPage(maxBytes: number = CAPTURE_MAX_BYTES): Promise<st
     for (let i = 0; i < maxSlices; i++) {
       // Check byte budget before capturing this slice
       if (accumulatedBytes + bytesPerSlice > maxBytes && slices.length > 0) {
-        console.log('[Birdbrain] Byte budget reached after', slices.length, 'slices')
         break
       }
 
@@ -450,17 +449,12 @@ async function captureFullPageScrolling(
       if (currentScrollHeight === lastScrollHeight) {
         stalls++
         if (stalls >= SCROLL_STALL_THRESHOLD) {
-          console.log('[Birdbrain] Scroll stalled after', stalls, 'attempts — page end reached')
           break
         }
       } else {
         stalls = 0
         lastScrollHeight = currentScrollHeight
       }
-    }
-
-    if (Date.now() - startTime >= scrollTimeoutMs) {
-      console.log('[Birdbrain] Scroll phase timed out after', scrollTimeoutMs / 1000, 'seconds')
     }
 
     // Phase 2: Scroll back to top and capture with byte budget

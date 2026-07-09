@@ -72,6 +72,10 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: ${{ matrix.glob }}
+          # Fail loudly if any expected artifact (installer, blockmap, or the
+          # latest*.yml update manifest) is missing rather than shipping a
+          # partial, broken electron-updater feed with no CI signal.
+          fail_on_unmatched_files: true
 
   build-extension:
     needs: create-release

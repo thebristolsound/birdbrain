@@ -149,7 +149,7 @@ export function UpdatesConfig({ settings, onUpdate }: UpdatesConfigProps) {
             >
               <span
                 className={cn(
-                  'inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform',
+                  'inline-block h-3.5 w-3.5 rounded-full bg-accent-foreground transition-transform',
                   settings.autoCheckForUpdates ? 'translate-x-[18px]' : 'translate-x-0.5'
                 )}
               />

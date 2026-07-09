@@ -87,7 +87,9 @@ export function initSettings(userDataPath: string): void {
   // testers stay on beta. Never throws — falls back to the 'stable' default.
   try {
     const version = _app?.getVersion?.()
-    DEFAULT_SETTINGS.releaseChannel = version && isPrereleaseVersion(version) ? 'beta' : 'stable'
+    if (version) {
+      DEFAULT_SETTINGS.releaseChannel = isPrereleaseVersion(version) ? 'beta' : 'stable'
+    }
   } catch {
     /* keep the 'stable' default */
   }

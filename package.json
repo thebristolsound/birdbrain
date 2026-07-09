@@ -22,6 +22,8 @@
     "test": "cross-env ELECTRON_RUN_AS_NODE=1 electron ./node_modules/vitest/vitest.mjs run",
     "test:watch": "cross-env ELECTRON_RUN_AS_NODE=1 electron ./node_modules/vitest/vitest.mjs",
     "test:coverage": "cross-env ELECTRON_RUN_AS_NODE=1 electron ./node_modules/vitest/vitest.mjs run --coverage",
+    "coverage:report": "node scripts/coverage-report.mjs",
+    "coverage:all": "node scripts/coverage-all.mjs",
     "lint": "eslint . --ext .ts,.tsx",
     "format": "prettier --write \"src/**/*.{ts,tsx}\" \"extension/**/*.{ts,tsx}\"",
     "pretest:e2e": "pnpm build",

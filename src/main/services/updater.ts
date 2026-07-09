@@ -72,6 +72,7 @@ export function createUpdaterService(deps: UpdaterServiceDeps): UpdaterService {
   let initialTimer: ReturnType<typeof setTimeout> | null = null
   let intervalTimer: ReturnType<typeof setInterval> | null = null
   let listenersAttached = false
+  let checkInProgress = false
 
   // Build a status from scratch per transition so stale fields (availableVersion,
   // error, …) never leak across states.
@@ -133,16 +134,21 @@ export function createUpdaterService(deps: UpdaterServiceDeps): UpdaterService {
 
   async function check(): Promise<UpdateStatus> {
     if (!canCheck) return status
+    // Short-circuit concurrent invocations (manual + scheduled can overlap).
+    if (checkInProgress) return status
+    checkInProgress = true
     try {
       await autoUpdater.checkForUpdates()
     } catch (err) {
-      // electron-updater emits 'error' before rejecting, which already recorded
-      // the failure — swallow the rejection so it never surfaces as an unhandled
-      // promise rejection. Belt-and-braces: if a rejection somehow arrived with
-      // no 'error' event, the state is still mid-check, so synthesize one.
-      if (status.state === 'checking') {
+      // electron-updater normally emits 'error' before rejecting, which already
+      // records the failure. Belt-and-braces: if a rejection arrives without a
+      // prior 'error' event (e.g. a pre-emit network failure), the state won't
+      // yet be 'error', so synthesize one to ensure the UI always gets feedback.
+      if (status.state !== 'error') {
         transition({ ...base('error'), error: messageOf(err) })
       }
+    } finally {
+      checkInProgress = false
     }
     return status
   }

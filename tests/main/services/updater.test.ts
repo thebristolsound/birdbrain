@@ -237,7 +237,7 @@ describe('updater service — auto-install detection', () => {
 })
 
 describe('updater service — scheduling', () => {
-  it('checks ~30s after start and again on the interval', () => {
+  it('checks ~30s after start and again on the interval', async () => {
     vi.useFakeTimers()
     const { deps } = makeDeps()
     const svc = createUpdaterService(deps)
@@ -245,6 +245,9 @@ describe('updater service — scheduling', () => {
     expect(autoUpdater.checkForUpdates).not.toHaveBeenCalled()
 
     vi.advanceTimersByTime(30_000)
+    // Flush microtasks so the first check's async cleanup (checkInProgress reset)
+    // completes before the interval fires.
+    await Promise.resolve()
     expect(autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1)
 
     vi.advanceTimersByTime(4 * 60 * 60 * 1000)

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { UpdateStatus } from '@shared/types'
 
 // Subscribes to update-delivery status. Fetches the current snapshot on mount,
@@ -7,8 +7,10 @@ import type { UpdateStatus } from '@shared/types'
 // warranted (see the update-delivery design spec).
 export function useUpdateStatus() {
   const [status, setStatus] = useState<UpdateStatus | null>(null)
+  const mountedRef = useRef(false)
 
   useEffect(() => {
+    mountedRef.current = true
     let active = true
     window.birdbrain.updates
       .getStatus()
@@ -23,6 +25,7 @@ export function useUpdateStatus() {
     const unsubscribe = window.birdbrain.onUpdateStatus((s) => setStatus(s))
     return () => {
       active = false
+      mountedRef.current = false
       unsubscribe()
     }
   }, [])
@@ -30,11 +33,15 @@ export function useUpdateStatus() {
   // check() resolves with a status even on failure (the main-process service folds
   // errors into an error-state snapshot), but guard the IPC boundary itself so a
   // rejected invoke never leaves the button stuck spinning or throws unhandled.
+  // Also guard against calling setStatus after unmount (e.g. navigating away
+  // while a manual check is in flight).
   const check = useCallback(
     () =>
       window.birdbrain.updates
         .check()
-        .then(setStatus)
+        .then((s) => {
+          if (mountedRef.current) setStatus(s)
+        })
         .catch((err) => console.error('Failed to check for updates', err)),
     []
   )

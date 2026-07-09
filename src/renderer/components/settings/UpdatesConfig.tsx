@@ -75,7 +75,7 @@ function StatusLine({
 
 export function UpdatesConfig({ settings, onUpdate }: UpdatesConfigProps) {
   const { status, check } = useUpdateStatus()
-  const currentVersion = status?.currentVersion ?? ''
+  const currentVersion = status?.currentVersion ?? '…'
   const checking = status?.state === 'checking'
 
   return (

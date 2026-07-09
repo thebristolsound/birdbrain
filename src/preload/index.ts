@@ -262,7 +262,9 @@ const birdbrain = {
   updates: {
     getStatus: (): Promise<UpdateStatus> =>
       ipcRenderer.invoke(IPC_CHANNELS.UPDATES_GET_STATUS),
-    check: (): Promise<UpdateStatus> => ipcRenderer.invoke(IPC_CHANNELS.UPDATES_CHECK)
+    check: (): Promise<UpdateStatus> => ipcRenderer.invoke(IPC_CHANNELS.UPDATES_CHECK),
+    download: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.UPDATES_DOWNLOAD),
+    install: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.UPDATES_INSTALL)
   },
 
   db: {

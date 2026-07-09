@@ -3,11 +3,13 @@ import { app } from 'electron'
 import type { BirdbrainSettings, ReleaseChannel, UpdateState, UpdateStatus } from '@shared/types'
 import { GITHUB_RELEASES_URL } from '@shared/constants'
 
-// Update delivery (Phase 1: notify / check-only). Wraps electron-updater's
-// GitHub-provider `autoUpdater` and exposes a small state machine to the
-// renderer. Downloads/installs are deliberately NOT wired here — Birdbrain is a
-// forensic capture tool, so nothing restarts on its own; Phase 1 only detects
-// new releases and points the user at the release page. See
+// Update delivery. Wraps electron-updater's GitHub-provider `autoUpdater` and
+// exposes a small state machine to the renderer. Downloads run only on explicit
+// user action or under the auto-check policy, and only on platforms that can
+// install in place (Windows NSIS, Linux AppImage) — everywhere else resolution
+// is notify-only. Birdbrain is a forensic capture tool, so nothing ever
+// restarts on its own: install happens via the explicit "Restart to update"
+// action or naturally on next quit (autoInstallOnAppQuit). See
 // docs/specs/2026-07-07-update-delivery-release-channels-design.md.
 
 // Background check cadence: a short delay after launch, then every few hours.
@@ -30,15 +32,19 @@ export interface UpdaterService {
   getStatus(): UpdateStatus
   // Run a check now. Resolves with the resulting status.
   check(): Promise<UpdateStatus>
+  // Download the available update (auto-install platforms only). Progress
+  // arrives via status events; resolves once the download settles.
+  download(): Promise<void>
+  // Quit and install a downloaded update. Only ever user-triggered.
+  install(): void
   // React to a settings change: reconfigure the channel and/or reschedule checks.
   applySettingsChange(partial: Partial<BirdbrainSettings>): void
   // Tear down timers and listeners (app quit / tests).
   dispose(): void
 }
 
-// Can this build install an update itself, or only notify? Phase 1 treats every
-// platform as notify at the UI level, but the flag is computed correctly so the
-// Phase 2/3 auto-install path can rely on it.
+// Can this build install an update itself, or only notify? The download/install
+// path is gated on this flag; notify-only platforms surface a release link.
 function detectSupportsAutoInstall(): boolean {
   if (!app.isPackaged) return false
   switch (process.platform) {
@@ -73,6 +79,10 @@ export function createUpdaterService(deps: UpdaterServiceDeps): UpdaterService {
   let intervalTimer: ReturnType<typeof setInterval> | null = null
   let listenersAttached = false
   let checkInProgress = false
+  let downloadInProgress = false
+  // The version last reported available, so progress transitions can carry it
+  // (electron-updater's progress events don't include version info).
+  let availableVersion: string | null = null
 
   // Build a status from scratch per transition so stale fields (availableVersion,
   // error, …) never leak across states.
@@ -89,16 +99,40 @@ export function createUpdaterService(deps: UpdaterServiceDeps): UpdaterService {
     if (listenersAttached) return
     listenersAttached = true
     autoUpdater.on('checking-for-update', () => transition(base('checking')))
-    // We read only `version`; typing the param minimally avoids depending on
-    // electron-updater's non-re-exported UpdateInfo type.
-    autoUpdater.on('update-available', (info: { version: string }) =>
+    // We read only `version`/`percent`; typing the params minimally avoids
+    // depending on electron-updater's non-re-exported UpdateInfo/ProgressInfo.
+    autoUpdater.on('update-available', (info: { version: string }) => {
+      availableVersion = info.version
       transition({
         ...base('available'),
         availableVersion: info.version,
         releaseNotesUrl: releasePageUrl(info.version)
       })
+      // Auto-download when the platform can install in place AND the user has
+      // background checking on — that's the "auto" in auto-update. With
+      // auto-check off, downloading stays a deliberate click.
+      if (supportsAutoInstall && deps.isAutoCheckEnabled()) void download()
+    })
+    autoUpdater.on('update-not-available', () => {
+      availableVersion = null
+      transition(base('up-to-date'))
+    })
+    autoUpdater.on('download-progress', (progress: { percent: number }) =>
+      transition({
+        ...base('downloading'),
+        availableVersion: availableVersion ?? undefined,
+        releaseNotesUrl: availableVersion ? releasePageUrl(availableVersion) : undefined,
+        percent: progress.percent
+      })
     )
-    autoUpdater.on('update-not-available', () => transition(base('up-to-date')))
+    autoUpdater.on('update-downloaded', (info: { version: string }) => {
+      availableVersion = info.version
+      transition({
+        ...base('downloaded'),
+        availableVersion: info.version,
+        releaseNotesUrl: releasePageUrl(info.version)
+      })
+    })
     autoUpdater.on('error', (err) => transition({ ...base('error'), error: messageOf(err) }))
   }
 
@@ -153,6 +187,33 @@ export function createUpdaterService(deps: UpdaterServiceDeps): UpdaterService {
     return status
   }
 
+  async function download(): Promise<void> {
+    // Only from a known-available update, on a platform that can install it,
+    // and never twice concurrently — auto-download and a manual click can race
+    // before the first progress event moves the state off 'available'.
+    if (!canCheck || !supportsAutoInstall || status.state !== 'available') return
+    if (downloadInProgress) return
+    downloadInProgress = true
+    try {
+      await autoUpdater.downloadUpdate()
+    } catch (err) {
+      // Mirrors check(): 'error' usually fired already; synthesize one only if
+      // the rejection arrived mid-download with no error event.
+      if (status.state === 'available' || status.state === 'downloading') {
+        transition({ ...base('error'), error: messageOf(err) })
+      }
+    } finally {
+      downloadInProgress = false
+    }
+  }
+
+  function install(): void {
+    // Forensic safety: installing restarts the app, so it must be impossible to
+    // reach without a fully downloaded update and an explicit user click.
+    if (status.state !== 'downloaded') return
+    autoUpdater.quitAndInstall()
+  }
+
   function start(): void {
     attachListeners()
     configure()
@@ -174,6 +235,8 @@ export function createUpdaterService(deps: UpdaterServiceDeps): UpdaterService {
     autoUpdater.removeAllListeners('checking-for-update')
     autoUpdater.removeAllListeners('update-available')
     autoUpdater.removeAllListeners('update-not-available')
+    autoUpdater.removeAllListeners('download-progress')
+    autoUpdater.removeAllListeners('update-downloaded')
     autoUpdater.removeAllListeners('error')
     listenersAttached = false
   }
@@ -182,6 +245,8 @@ export function createUpdaterService(deps: UpdaterServiceDeps): UpdaterService {
     start,
     getStatus: () => status,
     check,
+    download,
+    install,
     applySettingsChange,
     dispose
   }

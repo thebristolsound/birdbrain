@@ -16,6 +16,8 @@ const { autoUpdater, appMock } = vi.hoisted(() => {
     allowDowngrade: undefined as boolean | undefined,
     channel: undefined as string | null | undefined,
     checkForUpdates: vi.fn(async () => ({})),
+    downloadUpdate: vi.fn(async () => []),
+    quitAndInstall: vi.fn(),
     on(event: string, cb: Listener) {
       const arr = listeners.get(event) ?? []
       arr.push(cb)
@@ -62,6 +64,8 @@ function makeDeps(overrides: Partial<UpdaterServiceDeps> = {}): {
 beforeEach(() => {
   autoUpdater.removeAllListeners()
   autoUpdater.checkForUpdates = vi.fn(async () => ({}))
+  autoUpdater.downloadUpdate = vi.fn(async () => [])
+  autoUpdater.quitAndInstall = vi.fn()
   autoUpdater.autoDownload = undefined
   autoUpdater.autoInstallOnAppQuit = undefined
   autoUpdater.allowPrerelease = undefined
@@ -289,6 +293,90 @@ describe('updater service — scheduling', () => {
   })
 })
 
+describe('updater service — download & install', () => {
+  // Drives a fresh service to the 'available' state on an auto-install
+  // platform. Auto-check defaults OFF so downloads stay manual unless the
+  // test opts in.
+  function makeAvailable(opts: { autoCheck?: boolean } = {}) {
+    setPlatform('win32')
+    const { deps, emitted } = makeDeps({ isAutoCheckEnabled: () => opts.autoCheck ?? false })
+    const svc = createUpdaterService(deps)
+    svc.start()
+    autoUpdater.emit('update-available', { version: '2.0.0' })
+    return { svc, emitted }
+  }
+
+  it('auto-downloads an available update when auto-check is on', () => {
+    makeAvailable({ autoCheck: true })
+    expect(autoUpdater.downloadUpdate).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves downloading to a manual click when auto-check is off', async () => {
+    const { svc } = makeAvailable()
+    expect(autoUpdater.downloadUpdate).not.toHaveBeenCalled()
+    await svc.download()
+    expect(autoUpdater.downloadUpdate).toHaveBeenCalledTimes(1)
+  })
+
+  it('never downloads on a notify-only platform', async () => {
+    setPlatform('darwin')
+    const { deps } = makeDeps({ isAutoCheckEnabled: () => true })
+    const svc = createUpdaterService(deps)
+    svc.start()
+    autoUpdater.emit('update-available', { version: '2.0.0' })
+    await svc.download()
+    expect(autoUpdater.downloadUpdate).not.toHaveBeenCalled()
+  })
+
+  it('ignores download() unless an update is available', async () => {
+    setPlatform('win32')
+    const { deps } = makeDeps()
+    const svc = createUpdaterService(deps)
+    svc.start()
+    await svc.download() // still idle
+    expect(autoUpdater.downloadUpdate).not.toHaveBeenCalled()
+  })
+
+  it('tracks progress and lands in downloaded with a release URL', () => {
+    const { svc, emitted } = makeAvailable()
+    autoUpdater.emit('download-progress', { percent: 41.5 })
+    expect(svc.getStatus().state).toBe('downloading')
+    expect(svc.getStatus().percent).toBe(41.5)
+    expect(svc.getStatus().availableVersion).toBe('2.0.0')
+
+    autoUpdater.emit('update-downloaded', { version: '2.0.0' })
+    const status = svc.getStatus()
+    expect(status.state).toBe('downloaded')
+    expect(status.availableVersion).toBe('2.0.0')
+    expect(status.releaseNotesUrl).toBe(
+      'https://github.com/thebristolsound/birdbrain/releases/tag/v2.0.0'
+    )
+    expect(emitted.map((s) => s.state)).toEqual(
+      expect.arrayContaining(['available', 'downloading', 'downloaded'])
+    )
+  })
+
+  it('synthesizes an error if the download rejects without an error event', async () => {
+    const { svc } = makeAvailable()
+    autoUpdater.downloadUpdate = vi.fn(async () => {
+      throw new Error('disk full')
+    })
+    await svc.download()
+    expect(svc.getStatus().state).toBe('error')
+    expect(svc.getStatus().error).toBe('disk full')
+  })
+
+  it('install() is a no-op until downloaded, then quits and installs', () => {
+    const { svc } = makeAvailable()
+    svc.install() // available but not yet downloaded
+    expect(autoUpdater.quitAndInstall).not.toHaveBeenCalled()
+
+    autoUpdater.emit('update-downloaded', { version: '2.0.0' })
+    svc.install()
+    expect(autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('updater service — dispose', () => {
   it('detaches listeners and clears timers', () => {
     vi.useFakeTimers()
@@ -301,9 +389,11 @@ describe('updater service — dispose', () => {
     vi.advanceTimersByTime(4 * 60 * 60 * 1000)
     expect(autoUpdater.checkForUpdates).not.toHaveBeenCalled()
 
-    // Listeners detached: a stray event no longer transitions status.
+    // Listeners detached: stray events no longer transition status.
     emitted.length = 0
     autoUpdater.emit('update-available', { version: '9.9.9' })
+    autoUpdater.emit('download-progress', { percent: 50 })
+    autoUpdater.emit('update-downloaded', { version: '9.9.9' })
     expect(emitted).toHaveLength(0)
     expect(svc.getStatus().state).toBe('idle')
   })

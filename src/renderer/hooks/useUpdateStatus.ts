@@ -46,5 +46,23 @@ export function useUpdateStatus() {
     []
   )
 
-  return { status, check }
+  // Download/install progress and completion arrive via onUpdateStatus events;
+  // these only kick the main process, so no local status update on resolve.
+  const download = useCallback(
+    () =>
+      window.birdbrain.updates
+        .download()
+        .catch((err) => console.error('Failed to download update', err)),
+    []
+  )
+
+  const install = useCallback(
+    () =>
+      window.birdbrain.updates
+        .install()
+        .catch((err) => console.error('Failed to install update', err)),
+    []
+  )
+
+  return { status, check, download, install }
 }

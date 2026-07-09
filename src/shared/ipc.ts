@@ -118,6 +118,8 @@ export const IPC_CHANNELS = {
   // Updates (update delivery)
   UPDATES_GET_STATUS: 'updates:getStatus',
   UPDATES_CHECK: 'updates:check',
+  UPDATES_DOWNLOAD: 'updates:download',
+  UPDATES_INSTALL: 'updates:install',
 
   // Events (main -> renderer)
   EXPORT_PROGRESS: 'event:exportProgress',

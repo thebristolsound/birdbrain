@@ -129,6 +129,8 @@ let updaterService: {
   start: ReturnType<typeof vi.fn>
   getStatus: ReturnType<typeof vi.fn>
   check: ReturnType<typeof vi.fn>
+  download: ReturnType<typeof vi.fn>
+  install: ReturnType<typeof vi.fn>
   applySettingsChange: ReturnType<typeof vi.fn>
   dispose: ReturnType<typeof vi.fn>
 }
@@ -193,6 +195,8 @@ beforeEach(() => {
       currentVersion: '1.2.3',
       supportsAutoInstall: false
     })),
+    download: vi.fn(async () => undefined),
+    install: vi.fn(),
     applySettingsChange: vi.fn(),
     dispose: vi.fn()
   }
@@ -532,6 +536,14 @@ describe('ipcHandlers — updates', () => {
       supportsAutoInstall: false
     })
     expect(updaterService.check).toHaveBeenCalled()
+  })
+
+  it('delegates download and install to the updater service', async () => {
+    await invoke(IPC_CHANNELS.UPDATES_DOWNLOAD)
+    expect(updaterService.download).toHaveBeenCalled()
+
+    await invoke(IPC_CHANNELS.UPDATES_INSTALL)
+    expect(updaterService.install).toHaveBeenCalled()
   })
 
   it('reconfigures the updater when settings change', async () => {

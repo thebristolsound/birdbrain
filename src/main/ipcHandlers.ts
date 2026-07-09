@@ -560,6 +560,8 @@ export function registerIpcHandlers(deps: {
   // Updates (update delivery)
   ipcMain.handle(IPC_CHANNELS.UPDATES_GET_STATUS, () => updaterService.getStatus())
   ipcMain.handle(IPC_CHANNELS.UPDATES_CHECK, () => updaterService.check())
+  ipcMain.handle(IPC_CHANNELS.UPDATES_DOWNLOAD, () => updaterService.download())
+  ipcMain.handle(IPC_CHANNELS.UPDATES_INSTALL, () => updaterService.install())
 
   // AI Analysis
   handle(IPC_CHANNELS.AI_ANALYZE, async (_, params: AnalyzeCaptureParams) => {

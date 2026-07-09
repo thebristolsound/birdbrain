@@ -1,4 +1,4 @@
-import { RefreshCw, CheckCircle2, AlertCircle, ExternalLink, Loader2 } from 'lucide-react'
+import { RefreshCw, CheckCircle2, AlertCircle, ExternalLink, Loader2, Download } from 'lucide-react'
 import type { BirdbrainSettings, ReleaseChannel, UpdateStatus } from '@shared/types'
 import { Card, CardContent, Button, Label } from '@renderer/components/ui'
 import { cn } from '@renderer/lib/utils'
@@ -16,10 +16,14 @@ const CHANNELS: [ReleaseChannel, string, string][] = [
 
 function StatusLine({
   status,
-  currentVersion
+  currentVersion,
+  onDownload,
+  onInstall
 }: {
   status: UpdateStatus | null
   currentVersion: string
+  onDownload: () => void
+  onInstall: () => void
 }) {
   if (!status || status.state === 'idle') {
     return <p className="text-xs text-text-muted">Version {currentVersion}</p>
@@ -60,6 +64,45 @@ function StatusLine({
             <ExternalLink className="h-3 w-3" />
           </a>
         )}
+        {status.supportsAutoInstall && (
+          <Button size="sm" onClick={onDownload} className="gap-1.5">
+            <Download className="h-3 w-3" />
+            Download
+          </Button>
+        )}
+      </div>
+    )
+  }
+
+  if (status.state === 'downloading') {
+    const percent = Math.round(status.percent ?? 0)
+    return (
+      <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        <span>Downloading version {status.availableVersion}…</span>
+        <div className="h-1.5 w-32 overflow-hidden rounded-full bg-elevated">
+          <div
+            className="h-full rounded-full bg-accent transition-[width]"
+            style={{ width: `${percent}%` }}
+          />
+        </div>
+        <span className="tabular-nums">{percent}%</span>
+      </div>
+    )
+  }
+
+  if (status.state === 'downloaded') {
+    return (
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
+        <span className="flex items-center gap-1.5 font-medium text-text-primary">
+          <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+          Version {status.availableVersion} downloaded.
+        </span>
+        <Button size="sm" onClick={onInstall} className="gap-1.5">
+          <RefreshCw className="h-3 w-3" />
+          Restart to update
+        </Button>
+        <span className="text-text-muted">Installs automatically on next quit.</span>
       </div>
     )
   }
@@ -74,9 +117,9 @@ function StatusLine({
 }
 
 export function UpdatesConfig({ settings, onUpdate }: UpdatesConfigProps) {
-  const { status, check } = useUpdateStatus()
+  const { status, check, download, install } = useUpdateStatus()
   const currentVersion = status?.currentVersion ?? '…'
-  const checking = status?.state === 'checking'
+  const checking = status?.state === 'checking' || status?.state === 'downloading'
 
   return (
     <Card>
@@ -96,7 +139,12 @@ export function UpdatesConfig({ settings, onUpdate }: UpdatesConfigProps) {
         </div>
 
         <div className="space-y-5">
-          <StatusLine status={status} currentVersion={currentVersion} />
+          <StatusLine
+            status={status}
+            currentVersion={currentVersion}
+            onDownload={download}
+            onInstall={install}
+          />
 
           <div>
             <Label>Release channel</Label>

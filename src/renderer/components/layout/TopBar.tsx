@@ -21,7 +21,8 @@ export function TopBar() {
   const setCommandPaletteOpen = useAppStore((s) => s.setCommandPaletteOpen)
   const { theme, toggleTheme } = useTheme()
   const { status: updateStatus } = useUpdateStatus()
-  const updateAvailable = updateStatus?.state === 'available'
+  const updateAvailable =
+    updateStatus?.state === 'available' || updateStatus?.state === 'downloaded'
 
   const isOnSettings = Boolean(matchRoute({ to: '/settings' }))
   const caseMatch = matchRoute({ to: '/cases/$caseId', fuzzy: true })

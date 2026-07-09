@@ -168,6 +168,8 @@ interface BirdbrainAPI {
   updates: {
     getStatus(): Promise<UpdateStatus>
     check(): Promise<UpdateStatus>
+    download(): Promise<void>
+    install(): Promise<void>
   }
   ai: {
     analyze(params: AnalyzeCaptureParams): Promise<{ content: string; tokenUsage: TokenUsage }>

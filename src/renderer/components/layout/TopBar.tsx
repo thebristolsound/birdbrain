@@ -11,6 +11,7 @@ import { ConnectionStatus } from '@renderer/components/status/ConnectionStatus'
 import { CaptureHealth } from '@renderer/components/status/CaptureHealth'
 import { ExportMenu } from '@renderer/components/export/ExportMenu'
 import { useTheme } from '@renderer/hooks/useTheme'
+import { useUpdateStatus } from '@renderer/hooks/useUpdateStatus'
 
 export function TopBar() {
   const navigate = useNavigate()
@@ -19,6 +20,9 @@ export function TopBar() {
   const sessionActive = useAppStore((s) => s.sessionActive)
   const setCommandPaletteOpen = useAppStore((s) => s.setCommandPaletteOpen)
   const { theme, toggleTheme } = useTheme()
+  const { status: updateStatus } = useUpdateStatus()
+  const updateAvailable =
+    updateStatus?.state === 'available' || updateStatus?.state === 'downloaded'
 
   const isOnSettings = Boolean(matchRoute({ to: '/settings' }))
   const caseMatch = matchRoute({ to: '/cases/$caseId', fuzzy: true })
@@ -120,9 +124,16 @@ export function TopBar() {
           variant="ghost"
           size="icon-sm"
           onClick={() => navigate({ to: '/settings' })}
-          title="Settings"
+          title={updateAvailable ? 'Settings — update available' : 'Settings'}
+          className="relative"
         >
           <Settings className="h-3.5 w-3.5" />
+          {updateAvailable && (
+            <span
+              data-testid="topbar-update-dot"
+              className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-accent"
+            />
+          )}
         </Button>
 
         <Button

@@ -19,6 +19,12 @@ export const MANIFEST_SCHEMA_VERSION = 2
 // (e.g. freetsa.org) are a documented dev/test fallback only.
 export const DEFAULT_TSA_URL = 'http://timestamp.digicert.com'
 
+// GitHub repository that hosts Birdbrain releases. The updater service builds
+// release-page URLs from this for the "View release" notify action, and it
+// mirrors the electron-builder `publish` target in package.json.
+export const GITHUB_REPO_SLUG = 'thebristolsound/birdbrain'
+export const GITHUB_RELEASES_URL = `https://github.com/${GITHUB_REPO_SLUG}/releases`
+
 // Default system prompt sent with every capture analysis request. Users can
 // override this from Settings → AI; this constant is the fallback on first run
 // and when the stored value is blank.

@@ -19,6 +19,7 @@ import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createTimestampWorker } from '@main/services/timestampWorker'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { createRecaptureService } from '@main/services/recapture'
+import { createUpdaterService, type UpdaterService } from '@main/services/updater'
 import { renderPageInHiddenWindow } from '@main/services/backgroundRenderer'
 import { DEEP_LINK_SCHEME, parseDeepLink, findDeepLinkInArgv } from '@main/services/deepLink'
 import { IPC_CHANNELS, type DeepLinkTarget, type SelectorRematchedEvent } from '@shared/ipc'
@@ -27,6 +28,8 @@ let mainWindow: BrowserWindow | null = null
 // Deep link received before the renderer was ready (cold start); flushed once
 // the window finishes loading.
 let pendingNavigate: DeepLinkTarget | null = null
+// Update-delivery service; disposed on quit.
+let updaterService: UpdaterService | null = null
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -217,8 +220,20 @@ if (!gotSingleInstanceLock) {
       }
     })
 
+    // Update-delivery service (notify/check-only). Broadcasts status transitions
+    // to the renderer; reads the release channel + auto-check policy from settings.
+    updaterService = createUpdaterService({
+      emit: (updateStatus) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(IPC_CHANNELS.UPDATE_STATUS, updateStatus)
+        }
+      },
+      getChannel: () => getSettings().releaseChannel,
+      isAutoCheckEnabled: () => getSettings().autoCheckForUpdates
+    })
+
     // Register IPC handlers
-    registerIpcHandlers({ selectorLifecycle, captureLifecycle, recaptureService })
+    registerIpcHandlers({ selectorLifecycle, captureLifecycle, recaptureService, updaterService })
 
     // Start capture server and extension connection monitor
     await startCaptureServer({ selectorLifecycle, captureLifecycle })
@@ -227,6 +242,9 @@ if (!gotSingleInstanceLock) {
     // Create window and connect to capture server
     const win = createWindow()
     setMainWindow(win)
+
+    // Arm the updater once the window exists so status events have a target.
+    updaterService.start()
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
@@ -248,6 +266,7 @@ if (!gotSingleInstanceLock) {
 
   app.on('before-quit', async () => {
     stopExtensionConnectionCheck()
+    updaterService?.dispose()
     await stopCaptureServer()
     closeDatabase()
   })

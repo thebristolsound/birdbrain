@@ -115,6 +115,12 @@ export const IPC_CHANNELS = {
   // App
   APP_GET_VERSION: 'app:getVersion',
 
+  // Updates (update delivery)
+  UPDATES_GET_STATUS: 'updates:getStatus',
+  UPDATES_CHECK: 'updates:check',
+  UPDATES_DOWNLOAD: 'updates:download',
+  UPDATES_INSTALL: 'updates:install',
+
   // Events (main -> renderer)
   EXPORT_PROGRESS: 'event:exportProgress',
   NEW_CAPTURE: 'event:newCapture',
@@ -123,6 +129,7 @@ export const IPC_CHANNELS = {
   SELECTOR_REMATCHED: 'event:selector:rematched',
   DEEP_LINK_NAVIGATE: 'event:deepLinkNavigate',
   ARCHIVE_PROGRESS: 'event:archiveProgress',
+  UPDATE_STATUS: 'event:updateStatus',
 
   // Capture pipeline observability
   CAPTURE_ACTIVITY: 'event:captureActivity',

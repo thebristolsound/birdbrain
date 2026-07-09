@@ -26,7 +26,8 @@ import type {
   OperatorIdentity,
   ArchiveRef,
   WaybackLookupResult,
-  ArchiveInspectReport
+  ArchiveInspectReport,
+  UpdateStatus
 } from '@shared/types'
 import type {
   CreateCaseParams,
@@ -164,6 +165,12 @@ interface BirdbrainAPI {
   app: {
     getVersion(): Promise<string>
   }
+  updates: {
+    getStatus(): Promise<UpdateStatus>
+    check(): Promise<UpdateStatus>
+    download(): Promise<void>
+    install(): Promise<void>
+  }
   ai: {
     analyze(params: AnalyzeCaptureParams): Promise<{ content: string; tokenUsage: TokenUsage }>
     saveAnalysis(analysis: CaptureAnalysis): Promise<void>
@@ -198,6 +205,7 @@ interface BirdbrainAPI {
   onCaptureActivity(callback: (event: CaptureEvent) => void): () => void
   onSelectorRematched(callback: (event: SelectorRematchedEvent) => void): () => void
   onDeepLinkNavigate(callback: (target: DeepLinkTarget) => void): () => void
+  onUpdateStatus(callback: (status: UpdateStatus) => void): () => void
   testPipeline(): Promise<{ success: boolean; durationMs: number; error?: string }>
   testHttp(): Promise<{ success: boolean; durationMs: number; error?: string }>
   extractedData: {

@@ -31,7 +31,7 @@ Electron + React 19 + TanStack Router + React Query + Chrome Extension + SQLite 
 ### Key directories
 
 ```
-src/main/services/           # Core services: database, captureServer, storage, export, settings, hash, safeRegex, openrouter, canonicalJson, csvEscape, installationId, manifest, captureLifecycle
+src/main/services/           # Core services: database, captureServer, storage, export, settings, hash, safeRegex, openrouter, canonicalJson, csvEscape, installationId, manifest, captureLifecycle, updater
 src/main/services/ai/       # AI services (OpenRouter client)
 src/main/ipcHandlers.ts     # All IPC handler registrations
 src/shared/types.ts         # Shared TypeScript types (Case, Capture, Tag, Selector, Note, Settings, etc.)
@@ -58,7 +58,7 @@ docs/                       # Local working notes — see docs/README.md for lay
 
 All renderer↔main communication uses typed IPC channels defined in `src/shared/ipc.ts`. Channels follow `domain:action` naming (e.g., `cases:create`, `selectors:create`). Event channels (main→renderer) use `event:` prefix.
 
-**Domains:** cases (5), captures (16), tags (9), search (1), settings (6), export (1), selectors (11), notes (7), events (5).
+**Domains:** cases (5), captures (16), tags (9), search (1), settings (6), export (1), selectors (11), notes (7), updates (4), events (5).
 
 The preload script exposes these via `window.birdbrain` with typed invoke/on methods.
 
@@ -148,7 +148,7 @@ Organized into 13 top-level feature directories under `src/renderer/components/`
 - **overview/** - CaseOverview, CaseSubhead, ActivityTimeline, MetricRow, RecentCapturesStrip, SelectorCoverageBlock, SinceLastVisitBanner, SourcesBlock, VerifyBar, overviewModel.ts
 - **search/** - SearchBar
 - **selectors/** - BulkAddSelectorsModal, CreateSelectorCard, CreateSelectorPopover, SelectorFilterFooter, SelectorTable, SelectorTableRow, SelectorsOverview, selectorUtils.ts
-- **settings/** - SettingsView, AIConfig, AppearanceConfig, CapturePreferences, DatabaseAdmin, OperatorConfig, StorageConfig, About, plus database utility views under `settings/db/`
+- **settings/** - SettingsView, AIConfig, AppearanceConfig, CapturePreferences, DatabaseAdmin, OperatorConfig, StorageConfig, UpdatesConfig, About, plus database utility views under `settings/db/`
 - **status/** - CaptureHealth, ConnectionStatus, SessionControls
 - **tags/** - TagBadge, TagManager, TagsOverview
 - **ui/** - Shared primitives: badge, button, card, dialog, input, label, scroll-area, skeleton, tabs, textarea

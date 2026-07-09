@@ -159,4 +159,22 @@ describe('settings', () => {
     // Nothing was written, so getSettings still yields defaults.
     expect(getSettings().captureScreenshots).toBe(true)
   })
+
+  it('defaults releaseChannel to stable and autoCheckForUpdates to true', () => {
+    const s = getSettings()
+    expect(s.releaseChannel).toBe('stable')
+    expect(s.autoCheckForUpdates).toBe(true)
+  })
+
+  it('persists releaseChannel and autoCheckForUpdates', () => {
+    updateSettings({ releaseChannel: 'beta', autoCheckForUpdates: false })
+    const s = getSettings()
+    expect(s.releaseChannel).toBe('beta')
+    expect(s.autoCheckForUpdates).toBe(false)
+  })
+
+  it('rejects an unknown releaseChannel and falls back to defaults', () => {
+    writeFileSync(settingsFile, JSON.stringify({ releaseChannel: 'nightly' }), 'utf-8')
+    expect(getSettings().releaseChannel).toBe('stable')
+  })
 })

@@ -125,6 +125,15 @@ let recaptureService: {
   status: ReturnType<typeof vi.fn>
   idle: ReturnType<typeof vi.fn>
 }
+let updaterService: {
+  start: ReturnType<typeof vi.fn>
+  getStatus: ReturnType<typeof vi.fn>
+  check: ReturnType<typeof vi.fn>
+  download: ReturnType<typeof vi.fn>
+  install: ReturnType<typeof vi.fn>
+  applySettingsChange: ReturnType<typeof vi.fn>
+  dispose: ReturnType<typeof vi.fn>
+}
 
 function seedCapture(overrides: Partial<db.InsertCaptureParams> = {}): db.Capture {
   const cap = db.insertCapture({
@@ -174,7 +183,29 @@ beforeEach(() => {
     status: vi.fn(() => ({ pending: 0, activeUrl: null })),
     idle: vi.fn()
   }
-  registerIpcHandlers({ selectorLifecycle, captureLifecycle, recaptureService })
+  updaterService = {
+    start: vi.fn(),
+    getStatus: vi.fn(() => ({
+      state: 'idle',
+      currentVersion: '1.2.3',
+      supportsAutoInstall: false
+    })),
+    check: vi.fn(async () => ({
+      state: 'up-to-date',
+      currentVersion: '1.2.3',
+      supportsAutoInstall: false
+    })),
+    download: vi.fn(async () => undefined),
+    install: vi.fn(),
+    applySettingsChange: vi.fn(),
+    dispose: vi.fn()
+  }
+  registerIpcHandlers({
+    selectorLifecycle,
+    captureLifecycle,
+    recaptureService,
+    updaterService
+  })
 
   const created = db.createCase({ name: 'Test Case' })
   caseId = created.id
@@ -489,6 +520,35 @@ describe('ipcHandlers — settings', () => {
     expect(await invoke(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH)).toBeNull()
     showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: ['/data/x'] })
     expect(await invoke(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH)).toBe('/data/x')
+  })
+})
+
+describe('ipcHandlers — updates', () => {
+  it('reports status and runs a check via the updater service', async () => {
+    const status = await invoke(IPC_CHANNELS.UPDATES_GET_STATUS)
+    expect(status).toEqual({ state: 'idle', currentVersion: '1.2.3', supportsAutoInstall: false })
+    expect(updaterService.getStatus).toHaveBeenCalled()
+
+    const checked = await invoke(IPC_CHANNELS.UPDATES_CHECK)
+    expect(checked).toEqual({
+      state: 'up-to-date',
+      currentVersion: '1.2.3',
+      supportsAutoInstall: false
+    })
+    expect(updaterService.check).toHaveBeenCalled()
+  })
+
+  it('delegates download and install to the updater service', async () => {
+    await invoke(IPC_CHANNELS.UPDATES_DOWNLOAD)
+    expect(updaterService.download).toHaveBeenCalled()
+
+    await invoke(IPC_CHANNELS.UPDATES_INSTALL)
+    expect(updaterService.install).toHaveBeenCalled()
+  })
+
+  it('reconfigures the updater when settings change', async () => {
+    await invoke(IPC_CHANNELS.SETTINGS_UPDATE, { releaseChannel: 'beta' })
+    expect(updaterService.applySettingsChange).toHaveBeenCalledWith({ releaseChannel: 'beta' })
   })
 })
 

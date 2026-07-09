@@ -7,9 +7,12 @@ import { DEFAULT_ANALYSIS_SYSTEM_PROMPT, DEFAULT_TSA_URL } from '@shared/constan
 // Encrypt/decrypt API keys at rest using Electron's OS credential store.
 // Falls back to plaintext when safeStorage is unavailable (e.g. tests, headless Linux).
 let _safeStorage: typeof import('electron').safeStorage | null = null
+let _app: typeof import('electron').app | null = null
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  _safeStorage = require('electron').safeStorage
+  const electron = require('electron')
+  _safeStorage = electron.safeStorage
+  _app = electron.app
 } catch {
   /* not in Electron context (e.g. tests) */
 }
@@ -60,7 +63,18 @@ const DEFAULT_SETTINGS: BirdbrainSettings = {
   hasCompletedOnboarding: false,
   analysisSystemPrompt: DEFAULT_ANALYSIS_SYSTEM_PROMPT,
   detailsPanelCollapsed: false,
-  tooltipsSeen: {}
+  tooltipsSeen: {},
+  releaseChannel: 'stable',
+  autoCheckForUpdates: true
+}
+
+// A semver prerelease is signalled by a hyphen before any build-metadata `+`
+// (e.g. `1.0.1-beta.11`). Beta testers install prerelease builds, so on first
+// run they default to the beta channel rather than being parked on stable.
+// Exported for unit testing the release-channel derivation.
+export function isPrereleaseVersion(version: string): boolean {
+  const core = version.split('+')[0]
+  return core.includes('-')
 }
 
 export function initSettings(userDataPath: string): void {
@@ -68,6 +82,16 @@ export function initSettings(userDataPath: string): void {
   // Set default storage path
   if (!DEFAULT_SETTINGS.storagePath) {
     DEFAULT_SETTINGS.storagePath = join(userDataPath, 'captures')
+  }
+  // Derive the first-run release channel from the installed build so prerelease
+  // testers stay on beta. Never throws — falls back to the 'stable' default.
+  try {
+    const version = _app?.getVersion?.()
+    if (version) {
+      DEFAULT_SETTINGS.releaseChannel = isPrereleaseVersion(version) ? 'beta' : 'stable'
+    }
+  } catch {
+    /* keep the 'stable' default */
   }
 }
 

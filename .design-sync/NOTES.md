@@ -73,6 +73,18 @@ below before re-syncing.
 - **Group is `general`** — all 10 land in the `general` group (the `ui/` dir is a
   generic container name). Cosmetic; regroup later via per-component docsMap
   category stubs if desired.
+- **Styling-superset drift (benign, expected once)** — Tailwind v4 auto
+  content-detection scans committed, non-gitignored repo files, which now include
+  `.design-sync/conventions.md` (its token-vocabulary table) and
+  `.design-sync/previews/*.tsx` (className strings). The ORIGINAL closure (first
+  sync, 2026-07-07) was compiled before those files existed, so the first re-sync
+  after they were committed recompiles to a **superset** CSS: `styleSha` changes
+  and the driver reports `upload.any: true` with `styling: true` **while every
+  component is `unchanged`** (`renderHashes` and `bundleSha12` identical). This is
+  NOT a defect — it's a one-time convergence; upload the refreshed styling (done
+  2026-07-08) and subsequent re-syncs are no-ops. If you ever see `styling: true`
+  again with all components unchanged, first check whether a committed file gained
+  new utility-class references before suspecting nondeterminism.
 
 ## Re-sync command (from the main checkout)
 

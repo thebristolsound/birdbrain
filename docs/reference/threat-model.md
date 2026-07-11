@@ -19,7 +19,7 @@ apart is deliberate.
 
 A byte-perfect capture is **integrity-verified** whether or not it carries a
 trusted timestamp. Lacking a timestamp is *not* an integrity failure — it is
-simply an empty (or pending) trusted-time axis. The trusted-time axis has three
+an empty (or pending) trusted-time axis. The trusted-time axis has three
 states: `rfc3161` (a TSA token attests the content hash), `pending` (an eligible
 capture awaiting its token), and `none` (a grandfathered legacy capture that
 predates timestamping).

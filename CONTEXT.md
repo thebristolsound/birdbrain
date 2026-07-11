@@ -54,7 +54,7 @@ _Avoid_: ingest server, capture API.
 ## Example dialogue
 
 > **Dev:** "When the extension posts a capture, who writes the **Manifest** entry?"
-> **Domain expert:** "The **Capture Server** receives the request, but the **Manifest** write is part of the **Capture Lifecycle**'s ingest step — the server is just the transport."
+> **Domain expert:** "The **Capture Server** receives the request, but the **Manifest** write is part of the **Capture Lifecycle**'s ingest step — the server is only the transport."
 >
 > **Dev:** "And when the user creates a **Selector**, who runs it against existing **Captures**?"
 > **Domain expert:** "The **Selector Lifecycle**. It owns 'create + match retroactively' as one operation. Whether it was triggered from the IPC handler or the **Capture Server**'s `/api/selectors` endpoint shouldn't matter."

@@ -513,7 +513,7 @@ Auto-capture deduplication (60-second window per URL) runs in the extension's `b
 
 - The extension already knows recent URLs it has captured -- no HTTP round-trip needed for dedup checks
 - Server-side dedup would require maintaining URL state or querying the database on every request
-- The `skipped` event is never emitted from the server for dedup -- the extension simply does not send the request
+- The `skipped` event is never emitted from the server for dedup -- the extension does not send the request
 - Selector captures have their own dedup keyed by `caseId:url` (different URLs can match the same selectors for different cases)
 
 ### Why Fire-and-Forget for Entity Extraction

@@ -1,7 +1,7 @@
 import { v4 as uuid } from 'uuid'
 import type { Tag } from '@shared/types'
 import type { CreateTagParams, UpdateTagParams, CaptureTagParams } from '@shared/ipc'
-import { getDb } from '@main/services/db/core'
+import { getDb, type ImportCtx } from '@main/services/db/core'
 
 export function listTags(): Tag[] {
   return getDb().prepare('SELECT * FROM tags ORDER BY name').all() as Tag[]
@@ -81,4 +81,55 @@ export function getTagUsageCountsForCase(caseId: string): Record<string, number>
     result[row.tag_id] = row.count
   }
   return result
+}
+
+// --- Archive bulk ops ---
+
+export function collectTagsForCase(caseId: string): Record<string, unknown>[] {
+  return getDb()
+    .prepare(
+      `SELECT DISTINCT t.* FROM tags t
+       JOIN capture_tags ct ON ct.tag_id = t.id
+       JOIN captures c ON c.id = ct.capture_id
+       WHERE c.case_id = ?`
+    )
+    .all(caseId) as Record<string, unknown>[]
+}
+
+export function collectCaptureTagsForCase(caseId: string): Record<string, unknown>[] {
+  return getDb()
+    .prepare(
+      `SELECT ct.* FROM capture_tags ct
+       JOIN captures c ON c.id = ct.capture_id
+       WHERE c.case_id = ?`
+    )
+    .all(caseId) as Record<string, unknown>[]
+}
+
+export function findTagIdByNameInsensitive(name: string): string | undefined {
+  const hit = getDb().prepare('SELECT id FROM tags WHERE lower(name) = lower(?)').get(name) as
+    | { id: string }
+    | undefined
+  return hit?.id
+}
+
+export function tagIdExists(id: string): boolean {
+  return getDb().prepare('SELECT 1 FROM tags WHERE id = ?').get(id) !== undefined
+}
+
+// Rows arrive with their FINAL ids — merge-by-name policy is caseArchive's.
+export function importTagRows(rows: Record<string, unknown>[]): void {
+  const insert = getDb().prepare('INSERT INTO tags (id, name, color) VALUES (?, ?, ?)')
+  for (const tag of rows) {
+    insert.run(tag.id as string, tag.name ?? null, tag.color ?? null)
+  }
+}
+
+export function importCaptureTagRows(rows: Record<string, unknown>[], ctx: ImportCtx): void {
+  const insert = getDb().prepare(
+    'INSERT OR IGNORE INTO capture_tags (capture_id, tag_id) VALUES (?, ?)'
+  )
+  for (const ct of rows) {
+    insert.run(ctx.mapId(ct.capture_id as string), ctx.mapTag(ct.tag_id as string))
+  }
 }

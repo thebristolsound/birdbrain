@@ -6,7 +6,7 @@ import type {
   ExtractedDataSearchResult
 } from '@shared/types'
 import type { ExtractedDatum } from '@main/services/dataExtractor'
-import { getDb } from '@main/services/db/core'
+import { getDb, type ImportCtx } from '@main/services/db/core'
 
 export function insertExtractedData(
   captureId: string,
@@ -167,4 +167,33 @@ export function getExtractedDataCountForCase(caseId: string): number {
 
 export function deleteExtractedDataForCapture(captureId: string): void {
   getDb().prepare('DELETE FROM extracted_data WHERE capture_id = ?').run(captureId)
+}
+
+// --- Archive bulk ops ---
+
+export function collectExtractedDataForCase(caseId: string): Record<string, unknown>[] {
+  return getDb().prepare('SELECT * FROM extracted_data WHERE case_id = ?').all(caseId) as Record<
+    string,
+    unknown
+  >[]
+}
+
+// extracted_data_fts is maintained by trigger.
+export function importExtractedDataRows(rows: Record<string, unknown>[], ctx: ImportCtx): void {
+  const insert = getDb().prepare(
+    `INSERT INTO extracted_data (id, capture_id, case_id, category, subcategory, value, source_url, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  )
+  for (const ed of rows) {
+    insert.run(
+      ctx.mapId(ed.id as string),
+      ctx.mapId(ed.capture_id as string),
+      ctx.newCaseId,
+      ed.category ?? null,
+      ed.subcategory ?? null,
+      ed.value ?? null,
+      ed.source_url ?? null,
+      ed.created_at ?? null
+    )
+  }
 }

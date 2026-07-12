@@ -1,7 +1,7 @@
 import { v4 as uuid } from 'uuid'
 import type { Note } from '@shared/types'
 import type { CreateNoteParams, UpdateNoteParams } from '@shared/ipc'
-import { getDb } from '@main/services/db/core'
+import { getDb, type ImportCtx } from '@main/services/db/core'
 
 export function listNotes(caseId: string): Note[] {
   const rows = getDb()
@@ -90,5 +90,34 @@ function rowToNote(row: Record<string, unknown>): Note {
     screenshotPath: (row.screenshot_path as string) || undefined,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string
+  }
+}
+
+// --- Archive bulk ops ---
+
+export function collectNotesForCase(caseId: string): Record<string, unknown>[] {
+  return getDb().prepare('SELECT * FROM notes WHERE case_id = ?').all(caseId) as Record<
+    string,
+    unknown
+  >[]
+}
+
+export function importNoteRows(rows: Record<string, unknown>[], ctx: ImportCtx): void {
+  const insert = getDb().prepare(
+    `INSERT INTO notes (id, case_id, capture_id, title, body, source_url, screenshot_path, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  )
+  for (const n of rows) {
+    insert.run(
+      ctx.mapId(n.id as string),
+      ctx.newCaseId,
+      n.capture_id ? ctx.mapId(n.capture_id as string) : null,
+      n.title ?? '',
+      n.body ?? '',
+      n.source_url ?? null,
+      n.screenshot_path ?? null,
+      n.created_at ?? null,
+      n.updated_at ?? null
+    )
   }
 }

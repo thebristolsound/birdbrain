@@ -1,6 +1,6 @@
 import { v4 as uuid } from 'uuid'
 // eslint-disable-next-line no-restricted-imports -- owns the capture_analyses aggregate's SQL; repo home resolved by 2026-07-11-capture-row-ownership plan
-import { getDb } from '@main/services/db/core'
+import { getDb, type ImportCtx } from '@main/services/db/core'
 import { sendPrompt, truncateForContext } from '@main/services/ai/openrouter'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import type { CaptureAnalysis, TokenUsage } from '@shared/types'
@@ -138,5 +138,32 @@ export function getAnalysis(captureId: string): CaptureAnalysis | null {
     tokenUsage,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string
+  }
+}
+
+// --- Archive bulk ops (this service owns the capture_analyses SQL) ---
+
+export function collectCaptureAnalysesForCase(caseId: string): Record<string, unknown>[] {
+  return getDb()
+    .prepare('SELECT ca.* FROM capture_analyses ca WHERE ca.case_id = ?')
+    .all(caseId) as Record<string, unknown>[]
+}
+
+export function importCaptureAnalysisRows(rows: Record<string, unknown>[], ctx: ImportCtx): void {
+  const insert = getDb().prepare(
+    `INSERT INTO capture_analyses (id, capture_id, case_id, content, model, token_usage, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  )
+  for (const ca of rows) {
+    insert.run(
+      ctx.mapId(ca.id as string),
+      ctx.mapId(ca.capture_id as string),
+      ctx.newCaseId,
+      ca.content ?? null,
+      ca.model ?? null,
+      ca.token_usage ?? null,
+      ca.created_at ?? null,
+      ca.updated_at ?? null
+    )
   }
 }

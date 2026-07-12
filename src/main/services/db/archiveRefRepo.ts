@@ -1,6 +1,6 @@
 import { v4 as uuid } from 'uuid'
 import type { ArchiveRef, WaybackSnapshot } from '@shared/types'
-import { getDb } from '@main/services/db/core'
+import { getDb, type ImportCtx } from '@main/services/db/core'
 
 export function createArchiveRef(params: {
   captureId: string
@@ -64,5 +64,38 @@ function rowToArchiveRef(row: Record<string, unknown>): ArchiveRef {
     mimeType: (row.mime_type as string) || undefined,
     checkedAt: row.checked_at as string,
     pinnedAt: row.pinned_at as string
+  }
+}
+
+// --- Archive bulk ops ---
+
+export function collectArchiveRefsForCase(caseId: string): Record<string, unknown>[] {
+  return getDb()
+    .prepare(
+      `SELECT ar.* FROM capture_archive_refs ar
+       JOIN captures c ON c.id = ar.capture_id
+       WHERE c.case_id = ?`
+    )
+    .all(caseId) as Record<string, unknown>[]
+}
+
+export function importArchiveRefRows(rows: Record<string, unknown>[], ctx: ImportCtx): void {
+  const insert = getDb().prepare(
+    `INSERT INTO capture_archive_refs (id, capture_id, snapshot_timestamp, snapshot_url, original_url, digest, status_code, mime_type, checked_at, pinned_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  )
+  for (const ar of rows) {
+    insert.run(
+      ctx.mapId(ar.id as string),
+      ctx.mapId(ar.capture_id as string),
+      ar.snapshot_timestamp ?? null,
+      ar.snapshot_url ?? null,
+      ar.original_url ?? null,
+      ar.digest ?? null,
+      ar.status_code ?? null,
+      ar.mime_type ?? null,
+      ar.checked_at ?? null,
+      ar.pinned_at ?? null
+    )
   }
 }

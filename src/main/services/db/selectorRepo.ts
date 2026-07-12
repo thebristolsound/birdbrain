@@ -2,7 +2,7 @@ import { v4 as uuid } from 'uuid'
 import type { Selector, ActiveCaseSelectors, SelectorMatchExportRow } from '@shared/types'
 import type { CreateSelectorParams, UpdateSelectorParams } from '@shared/ipc'
 import { safeRegexTest } from '@main/services/safeRegex'
-import { getDb } from '@main/services/db/core'
+import { getDb, type ImportCtx } from '@main/services/db/core'
 
 export function listSelectors(caseId: string): Selector[] {
   const rows = getDb()
@@ -285,5 +285,51 @@ function rowToSelector(row: Record<string, unknown>): Selector {
     enabled: row.enabled === 1,
     label: (row.label as string) || undefined,
     createdAt: row.created_at as string
+  }
+}
+
+// --- Archive bulk ops ---
+
+export function collectSelectorsForCase(caseId: string): Record<string, unknown>[] {
+  return getDb().prepare('SELECT * FROM selectors WHERE case_id = ?').all(caseId) as Record<
+    string,
+    unknown
+  >[]
+}
+
+export function collectSelectorMatchesForCase(caseId: string): Record<string, unknown>[] {
+  return getDb()
+    .prepare(
+      `SELECT sm.* FROM selector_matches sm
+       JOIN captures c ON c.id = sm.capture_id
+       WHERE c.case_id = ?`
+    )
+    .all(caseId) as Record<string, unknown>[]
+}
+
+export function importSelectorRows(rows: Record<string, unknown>[], ctx: ImportCtx): void {
+  const insert = getDb().prepare(
+    `INSERT INTO selectors (id, case_id, pattern, is_regex, enabled, label, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  )
+  for (const s of rows) {
+    insert.run(
+      ctx.mapId(s.id as string),
+      ctx.newCaseId,
+      s.pattern ?? null,
+      s.is_regex ?? 0,
+      s.enabled ?? 1,
+      s.label ?? null,
+      s.created_at ?? null
+    )
+  }
+}
+
+export function importSelectorMatchRows(rows: Record<string, unknown>[], ctx: ImportCtx): void {
+  const insert = getDb().prepare(
+    'INSERT INTO selector_matches (selector_id, capture_id) VALUES (?, ?)'
+  )
+  for (const sm of rows) {
+    insert.run(ctx.mapId(sm.selector_id as string), ctx.mapId(sm.capture_id as string))
   }
 }

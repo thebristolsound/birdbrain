@@ -9,7 +9,7 @@ import type {
   TlsCertChainResult
 } from '@shared/types'
 import { TlsCertChainResultSchema } from '@shared/schemas'
-import { getDb } from '@main/services/db/core'
+import { getDb, type ImportCtx } from '@main/services/db/core'
 
 export function listCaptures(caseId: string): Capture[] {
   const rows = getDb()
@@ -333,5 +333,62 @@ function rowToCapture(row: Record<string, unknown>): Capture {
     lastVerifiedHash: (row.last_verified_hash as string) || undefined,
     lastVerifiedStatus: (row.last_verified_status as HashVerification['status']) || undefined,
     trustedTimeStatus: (row.trusted_time_status as TrustedTime) || undefined
+  }
+}
+
+// --- Archive bulk ops ---
+
+export function collectCapturesForCase(caseId: string): Record<string, unknown>[] {
+  return getDb()
+    .prepare('SELECT * FROM captures WHERE case_id = ? ORDER BY timestamp')
+    .all(caseId) as Record<string, unknown>[]
+}
+
+export function collectCaptureFavoritesForCase(caseId: string): Record<string, unknown>[] {
+  return getDb()
+    .prepare(
+      `SELECT cf.* FROM capture_favorites cf
+       JOIN captures c ON c.id = cf.capture_id
+       WHERE c.case_id = ?`
+    )
+    .all(caseId) as Record<string, unknown>[]
+}
+
+// Rows come from a (possibly old-epoch) archive: missing keys fall back to the
+// drift-tested CAPTURE_COLUMNS defaults. id/case_id/supersedes_capture_id are
+// remapped; every capture gets a capture_texts row via ctx.getText.
+export function importCaptureRows(rows: Record<string, unknown>[], ctx: ImportCtx): void {
+  const d = getDb()
+  const insertCap = d.prepare(CAPTURE_INSERT_SQL)
+  const insertText = d.prepare(
+    'INSERT INTO capture_texts (capture_id, title, url, content) VALUES (?, ?, ?, ?)'
+  )
+  for (const cap of rows) {
+    const newId = ctx.mapId(cap.id as string)
+    insertCap.run(
+      ...CAPTURE_COLUMNS.map((c) => {
+        if (c.column === 'id') return newId
+        if (c.column === 'case_id') return ctx.newCaseId
+        if (c.column === 'supersedes_capture_id') {
+          return cap.supersedes_capture_id ? ctx.mapId(cap.supersedes_capture_id as string) : null
+        }
+        return cap[c.column] ?? c.default ?? null
+      })
+    )
+    insertText.run(
+      newId,
+      (cap.title as string) ?? '',
+      (cap.url as string) ?? '',
+      ctx.getText(cap.id as string, newId)
+    )
+  }
+}
+
+export function importCaptureFavoriteRows(rows: Record<string, unknown>[], ctx: ImportCtx): void {
+  const insert = getDb().prepare(
+    'INSERT INTO capture_favorites (capture_id, created_at) VALUES (?, ?)'
+  )
+  for (const f of rows) {
+    insert.run(ctx.mapId(f.capture_id as string), f.created_at ?? null)
   }
 }

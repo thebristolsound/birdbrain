@@ -27,3 +27,12 @@ export function closeDatabase(): void {
 export function withTransaction<T>(fn: () => T): T {
   return getDb().transaction(fn)()
 }
+
+// Context threaded through the per-repo archive-import bulk ops. Repos never
+// touch the filesystem: the staged-sidecar read arrives as `getText`.
+export interface ImportCtx {
+  newCaseId: string
+  mapId: (id: string) => string
+  mapTag: (id: string) => string
+  getText: (oldId: string, newId: string) => string
+}

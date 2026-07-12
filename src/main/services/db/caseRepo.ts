@@ -1,7 +1,7 @@
 import { v4 as uuid } from 'uuid'
 import type { Case } from '@shared/types'
 import type { CreateCaseParams, UpdateCaseParams } from '@shared/ipc'
-import { getDb } from '@main/services/db/core'
+import { getDb, type ImportCtx } from '@main/services/db/core'
 
 export function listCases(): Case[] {
   const rows = getDb()
@@ -69,3 +69,30 @@ function rowToCase(row: Record<string, unknown>): Case {
 
 // Safely parses the JSON-serialized corroboration-only TLS cert chain (#123)
 // from its DB column. Returns undefined for NULL/legacy rows or any malformed
+
+// --- Archive bulk ops ---
+
+export function collectCaseRow(caseId: string): Record<string, unknown> {
+  const row = getDb().prepare('SELECT * FROM cases WHERE id = ?').get(caseId) as
+    | Record<string, unknown>
+    | undefined
+  if (!row) throw new Error(`Case not found: ${caseId}`)
+  return row
+}
+
+export function importCaseRow(caseRow: Record<string, unknown>, ctx: ImportCtx): void {
+  getDb()
+    .prepare(
+      `INSERT INTO cases (id, name, description, type, created_at, updated_at, archived)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      ctx.newCaseId,
+      caseRow.name ?? null,
+      caseRow.description ?? null,
+      caseRow.type ?? 'custom',
+      caseRow.created_at ?? null,
+      caseRow.updated_at ?? null,
+      caseRow.archived ?? 0
+    )
+}

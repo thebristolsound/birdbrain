@@ -10,14 +10,9 @@ import {
   reconcileCaptureTrustedTime,
   reconcileAllMirrors
 } from '@main/services/trustedTime'
-import {
-  initDatabase,
-  closeDatabase,
-  createCase,
-  insertCapture,
-  getCapture,
-  setCaptureTrustedTime
-} from '@main/services/database'
+import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { createCase } from '@main/services/db/caseRepo'
+import { insertCapture, getCapture, setCaptureTrustedTime } from '@main/services/db/captureRepo'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 

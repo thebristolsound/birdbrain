@@ -7,14 +7,9 @@ import { initStorage, ensureCaseDir } from '@main/services/storage'
 import { ingestMhtmlCapture, verifyCapture } from '@main/services/captureLifecycle'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import { fetchCertChain } from '@main/services/tlsCertChain'
-import {
-  initDatabase,
-  closeDatabase,
-  createCase,
-  getCapture,
-  insertCapture,
-  listCaptures
-} from '@main/services/database'
+import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { createCase } from '@main/services/db/caseRepo'
+import { getCapture, insertCapture, listCaptures } from '@main/services/db/captureRepo'
 import { initManifest, appendManifestEntry, verifyManifestChain } from '@main/services/manifest'
 
 // Keep ingest hermetic: the corroboration-only TLS re-fetch (#123) would

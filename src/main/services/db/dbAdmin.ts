@@ -1,8 +1,12 @@
-import { getDb } from '@main/services/database'
+import { getDb } from '@main/services/db/core'
 import { statSync, existsSync, readdirSync, unlinkSync, copyFileSync } from 'fs'
 import { join, resolve, sep } from 'path'
 import { getStorageRoot } from '@main/services/storage'
-import { defaultCaptureStore, parseArtifactFilename } from '@main/services/captureStore'
+import {
+  defaultCaptureStore,
+  parseArtifactFilename,
+  type CaptureStore
+} from '@main/services/captureStore'
 import { buildCsv } from '@main/services/csvEscape'
 import type { DbStats, DbTableRowsParams, DbTableRowsResult, OrphanReport } from '@shared/ipc'
 
@@ -14,14 +18,10 @@ export const ALLOWED_TABLES = [
   'selectors',
   'selector_matches',
   'capture_favorites',
-  'notes',
-  'captures_fts',
-  'notes_fts'
+  'notes'
 ] as const
 
 type AllowedTable = (typeof ALLOWED_TABLES)[number]
-
-const FTS_TABLES: ReadonlySet<string> = new Set(['captures_fts', 'notes_fts'])
 
 function assertAllowedTable(table: string): asserts table is AllowedTable {
   if (!(ALLOWED_TABLES as readonly string[]).includes(table)) {
@@ -115,7 +115,6 @@ export function getTableRows(params: DbTableRowsParams): DbTableRowsResult {
 
 export function createRow(table: string, data: Record<string, unknown>): Record<string, unknown> {
   assertAllowedTable(table)
-  if (FTS_TABLES.has(table)) throw new Error('Cannot insert into FTS virtual tables directly')
   assertValidColumns(table, data)
 
   const db = getDb()
@@ -138,7 +137,6 @@ export function updateRow(
   data: Record<string, unknown>
 ): boolean {
   assertAllowedTable(table)
-  if (FTS_TABLES.has(table)) throw new Error('Cannot update FTS virtual tables directly')
   assertValidColumns(table, pk)
   assertValidColumns(table, data)
   const dataKeys = Object.keys(data)
@@ -159,7 +157,6 @@ export function updateRow(
 
 export function deleteRow(table: string, pk: Record<string, string>): boolean {
   assertAllowedTable(table)
-  if (FTS_TABLES.has(table)) throw new Error('Cannot delete from FTS virtual tables directly')
   assertValidColumns(table, pk)
 
   const db = getDb()
@@ -169,23 +166,6 @@ export function deleteRow(table: string, pk: Record<string, string>): boolean {
   const values = Object.values(pk)
 
   const run = db.transaction(() => {
-    // Clean up FTS entries before deleting captures or cases (CASCADE)
-    if (table === 'captures') {
-      db.prepare(
-        `DELETE FROM captures_fts WHERE rowid IN (
-          SELECT rowid FROM captures WHERE ${whereClauses}
-        )`
-      ).run(...values)
-    } else if (table === 'cases') {
-      db.prepare(
-        `DELETE FROM captures_fts WHERE rowid IN (
-          SELECT rowid FROM captures WHERE case_id IN (
-            SELECT id FROM cases WHERE ${whereClauses}
-          )
-        )`
-      ).run(...values)
-    }
-
     return db.prepare(`DELETE FROM "${table}" WHERE ${whereClauses}`).run(...values)
   })
 
@@ -219,8 +199,31 @@ export function vacuumDb(dbPath: string): { freedBytes: number } {
   return { freedBytes: Math.max(0, sizeBefore - sizeAfter) }
 }
 
-export function rebuildFts(): { rowsIndexed: number } {
+export function rebuildFts(store: Pick<CaptureStore, 'readArtifact'> = defaultCaptureStore): {
+  rowsIndexed: number
+  textsHealed: number
+} {
   const db = getDb()
+  // The .txt sidecars are the authoritative copy of Extracted Text; heal the
+  // database copy from disk, then rebuild the derived indexes in one pass.
+  const rows = db
+    .prepare(
+      'SELECT ct.capture_id AS captureId, c.case_id AS caseId FROM capture_texts ct JOIN captures c ON c.id = ct.capture_id'
+    )
+    .all() as Array<{ captureId: string; caseId: string }>
+  // Only count a heal when the stored copy actually differed, so re-running
+  // rebuild on an already-consistent DB reports textsHealed: 0.
+  const update = db.prepare(
+    'UPDATE capture_texts SET content = ? WHERE capture_id = ? AND content IS NOT ?'
+  )
+  let textsHealed = 0
+  for (const row of rows) {
+    const buf = store.readArtifact(row.caseId, row.captureId, 'txt')
+    if (buf) {
+      const content = buf.toString('utf-8')
+      textsHealed += update.run(content, row.captureId, content).changes
+    }
+  }
   db.exec("INSERT INTO captures_fts(captures_fts) VALUES ('rebuild')")
   db.exec("INSERT INTO notes_fts(notes_fts) VALUES ('rebuild')")
   const captureCount = db.prepare('SELECT COUNT(*) as count FROM captures').get() as {
@@ -229,7 +232,7 @@ export function rebuildFts(): { rowsIndexed: number } {
   const noteCount = db.prepare('SELECT COUNT(*) as count FROM notes').get() as { count: number }
   const rowsIndexed = captureCount.count + noteCount.count
 
-  return { rowsIndexed }
+  return { rowsIndexed, textsHealed }
 }
 
 export function purgeArchived(): { casesDeleted: number; capturesDeleted: number } {
@@ -242,14 +245,6 @@ export function purgeArchived(): { casesDeleted: number; capturesDeleted: number
     )
     .get() as { count: number }
   const capturesDeleted = captureCountRow.count
-
-  db.prepare(
-    `DELETE FROM captures_fts WHERE rowid IN (
-      SELECT c.rowid FROM captures c
-      JOIN cases cs ON c.case_id = cs.id
-      WHERE cs.archived = 1
-    )`
-  ).run()
 
   const result = db.prepare('DELETE FROM cases WHERE archived = 1').run()
 
@@ -335,12 +330,6 @@ export function cleanOrphans(report: OrphanReport): {
       continue
     }
     const run = db.transaction(() => {
-      // Clean up FTS entries before deleting the capture row
-      if (orphan.table === 'captures') {
-        db.prepare(
-          'DELETE FROM captures_fts WHERE rowid IN (SELECT rowid FROM captures WHERE id = ?)'
-        ).run(orphan.id)
-      }
       return db.prepare(`DELETE FROM "${orphan.table}" WHERE id = ?`).run(orphan.id)
     })
     const result = run()

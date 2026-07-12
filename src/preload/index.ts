@@ -279,8 +279,10 @@ const birdbrain = {
       unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.DB_DELETE_ROW, params)),
     vacuum: (): Promise<{ freedBytes: number }> =>
       unwrapIpc<{ freedBytes: number }>(ipcRenderer.invoke(IPC_CHANNELS.DB_VACUUM)),
-    rebuildFts: (): Promise<{ rowsIndexed: number }> =>
-      unwrapIpc<{ rowsIndexed: number }>(ipcRenderer.invoke(IPC_CHANNELS.DB_REBUILD_FTS)),
+    rebuildFts: (): Promise<{ rowsIndexed: number; textsHealed: number }> =>
+      unwrapIpc<{ rowsIndexed: number; textsHealed: number }>(
+        ipcRenderer.invoke(IPC_CHANNELS.DB_REBUILD_FTS)
+      ),
     purgeArchived: (): Promise<{ casesDeleted: number; capturesDeleted: number }> =>
       unwrapIpc<{ casesDeleted: number; capturesDeleted: number }>(
         ipcRenderer.invoke(IPC_CHANNELS.DB_PURGE_ARCHIVED)

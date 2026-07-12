@@ -183,7 +183,7 @@ interface BirdbrainAPI {
     updateRow(params: DbUpdateRowParams): Promise<boolean>
     deleteRow(params: DbRowIdentifier): Promise<boolean>
     vacuum(): Promise<{ freedBytes: number }>
-    rebuildFts(): Promise<{ rowsIndexed: number }>
+    rebuildFts(): Promise<{ rowsIndexed: number; textsHealed: number }>
     purgeArchived(): Promise<{ casesDeleted: number; capturesDeleted: number }>
     findOrphans(): Promise<OrphanReport>
     cleanOrphans(report: OrphanReport): Promise<{ dbRecordsRemoved: number; filesRemoved: number }>

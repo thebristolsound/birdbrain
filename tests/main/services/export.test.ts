@@ -5,12 +5,9 @@ import { tmpdir } from 'os'
 import { Readable } from 'stream'
 import { createHash } from 'crypto'
 import sharp from 'sharp'
-import {
-  initDatabase,
-  closeDatabase,
-  createCase,
-  insertCapture
-} from '@main/services/database'
+import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { createCase } from '@main/services/db/caseRepo'
+import { insertCapture } from '@main/services/db/captureRepo'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import * as manifest from '@main/services/manifest'

@@ -1,7 +1,7 @@
 import { app, BrowserWindow, shell } from 'electron'
 import { join, resolve } from 'path'
 import { is } from '@electron-toolkit/utils'
-import { initDatabase, closeDatabase } from '@main/services/database'
+import { initDatabase, closeDatabase } from '@main/services/db/core'
 import { initStorage } from '@main/services/storage'
 import {
   startCaptureServer,

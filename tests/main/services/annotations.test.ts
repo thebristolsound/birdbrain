@@ -1,11 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import {
-  initDatabase,
-  closeDatabase,
-  createCase,
-  insertCapture,
-  deleteCapture
-} from '@main/services/database'
+import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { createCase } from '@main/services/db/caseRepo'
+import { insertCapture, deleteCapture } from '@main/services/db/captureRepo'
 import {
   getAnnotations,
   saveAnnotations,

@@ -4,15 +4,9 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { createHash } from 'crypto'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
-import {
-  initDatabase,
-  closeDatabase,
-  createCase,
-  insertCapture,
-  getCapture,
-  getDb,
-  setCaptureTrustedTime
-} from '@main/services/database'
+import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
+import { createCase } from '@main/services/db/caseRepo'
+import { insertCapture, getCapture, setCaptureTrustedTime } from '@main/services/db/captureRepo'
 import { initManifest, appendManifestEntry } from '@main/services/manifest'
 import { resolveTrustedTime } from '@main/services/trustedTime'
 import { initSettings, updateSettings } from '@main/services/settings'

@@ -1,12 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import {
-  initDatabase,
-  closeDatabase,
-  createCase,
-  insertCapture,
-  updateCase,
-  listCases
-} from '@main/services/database'
+import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { createCase, updateCase, listCases } from '@main/services/db/caseRepo'
+import { insertCapture, getCaptureTextContent } from '@main/services/db/captureRepo'
 import {
   getDbStats,
   getTableRows,
@@ -20,7 +15,7 @@ import {
   purgeArchived,
   findOrphans,
   exportTableData
-} from '@main/services/dbAdmin'
+} from '@main/services/db/dbAdmin'
 
 describe('dbAdmin', () => {
   beforeEach(() => {
@@ -97,7 +92,11 @@ describe('dbAdmin', () => {
       expect(ALLOWED_TABLES).toContain('captures')
       expect(ALLOWED_TABLES).toContain('tags')
       expect(ALLOWED_TABLES).toContain('notes')
-      expect(ALLOWED_TABLES).toContain('captures_fts')
+    })
+
+    it('excludes derived FTS indexes from admin editing', () => {
+      expect(ALLOWED_TABLES).not.toContain('captures_fts')
+      expect(ALLOWED_TABLES).not.toContain('notes_fts')
     })
   })
 
@@ -108,7 +107,7 @@ describe('dbAdmin', () => {
     })
 
     it('throws for FTS tables', () => {
-      expect(() => createRow('captures_fts', { title: 'x' })).toThrow('FTS virtual tables')
+      expect(() => createRow('captures_fts', { title: 'x' })).toThrow('not allowed')
     })
 
     it('throws for invalid column names', () => {
@@ -154,7 +153,7 @@ describe('dbAdmin', () => {
     })
 
     it('throws for FTS tables', () => {
-      expect(() => deleteRow('captures_fts', { rowid: '1' })).toThrow('FTS virtual tables')
+      expect(() => deleteRow('captures_fts', { rowid: '1' })).toThrow('not allowed')
     })
   })
 
@@ -169,7 +168,7 @@ describe('dbAdmin', () => {
   describe('rebuildFts', () => {
     it('rebuilds FTS indexes and preserves capture text content', () => {
       const c = createCase({ name: 'Test' })
-      insertCapture({
+      const cap = insertCapture({
         caseId: c.id,
         url: 'https://example.com',
         title: 'Example',
@@ -177,10 +176,10 @@ describe('dbAdmin', () => {
         timestamp: new Date().toISOString(),
         textContent: 'hello world'
       })
-      const result = rebuildFts()
+      const result = rebuildFts({ readArtifact: () => null })
       expect(result.rowsIndexed).toBeGreaterThanOrEqual(1)
-      const rows = getTableRows({ table: 'captures_fts', offset: 0, limit: 10 })
-      expect(rows.rows[0]).toMatchObject({ content: 'hello world' })
+      // no sidecar on disk → the DB copy of the text survives the rebuild
+      expect(getCaptureTextContent(cap.id)).toBe('hello world')
     })
   })
 

@@ -3,24 +3,18 @@ import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSy
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { createHash } from 'crypto'
+import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { createCase } from '@main/services/db/caseRepo'
 import {
-  initDatabase,
-  closeDatabase,
-  createCase,
   insertCapture,
-  createTag,
-  addTagToCapture,
-  createSelector,
   toggleFavorite,
-  createNote,
   listCaptures,
-  listNotes,
-  listSelectors,
-  listTags,
-  getTagsForCapture,
   searchCaptures
-} from '@main/services/database'
-import { getDb } from '@main/services/database'
+} from '@main/services/db/captureRepo'
+import { createTag, addTagToCapture, listTags, getTagsForCapture } from '@main/services/db/tagRepo'
+import { createSelector, listSelectors } from '@main/services/db/selectorRepo'
+import { createNote, listNotes } from '@main/services/db/noteRepo'
+import { getDb } from '@main/services/db/core'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import {
@@ -627,8 +621,8 @@ describe('caseArchive import', () => {
   })
 
   it('keeps original ids when free (source rows absent)', async () => {
-    // Simulate importing into a clean instance: drop the source case so ids are free.
-    getDb().prepare('DELETE FROM captures_fts').run()
+    // Simulate importing into a clean instance: drop the source case so ids are
+    // free. The cascade (captures → capture_texts → trigger) cleans the index.
     getDb().prepare('DELETE FROM cases WHERE id = ?').run(caseId)
 
     const { newCaseId } = await importCaseArchive(archivePath)

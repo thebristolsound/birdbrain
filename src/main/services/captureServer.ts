@@ -7,7 +7,9 @@ import type { Server } from 'http'
 import { app } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
-import * as db from '@main/services/database'
+import * as caseRepo from '@main/services/db/caseRepo'
+import * as captureRepo from '@main/services/db/captureRepo'
+import * as selectorRepo from '@main/services/db/selectorRepo'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import { getSettings } from '@main/services/settings'
 import { ingestMhtmlCapture } from '@main/services/captureLifecycle'
@@ -194,9 +196,9 @@ function createApp(deps: CaptureServerDeps): Hono {
     } else {
       includeCases = true
     }
-    const activeCase = state.activeCaseId ? db.getCase(state.activeCaseId) : null
+    const activeCase = state.activeCaseId ? caseRepo.getCase(state.activeCaseId) : null
     const settings = getSettings()
-    const allCases = includeCases ? db.listCases() : null
+    const allCases = includeCases ? caseRepo.listCases() : null
     // Only expose the auth token to known origins (extension, localhost) or the
     // origin-less same-origin/extension pairing fetch. Omit for any web origin
     // so a page can't read it — and note the DNS-rebinding guard above already
@@ -224,12 +226,12 @@ function createApp(deps: CaptureServerDeps): Hono {
 
   // List cases
   app.get('/api/cases', (c) => {
-    const cases = db.listCases()
+    const cases = caseRepo.listCases()
     return c.json(
       cases.map((cs) => ({
         id: cs.id,
         name: cs.name,
-        captureCount: db.getCaptureCount(cs.id)
+        captureCount: captureRepo.getCaptureCount(cs.id)
       }))
     )
   })
@@ -237,7 +239,7 @@ function createApp(deps: CaptureServerDeps): Hono {
   // Activate a case
   app.post('/api/cases/:id/activate', (c) => {
     const id = c.req.param('id')
-    const caseData = db.getCase(id)
+    const caseData = caseRepo.getCase(id)
     if (!caseData) {
       return c.json({ error: 'Case not found' }, 404)
     }
@@ -323,7 +325,7 @@ function createApp(deps: CaptureServerDeps): Hono {
           caseId = state.activeCaseId
         } else {
           if (!caseIdField) return c.json({ error: 'Missing required field: caseId' }, 400)
-          const caseData = db.getCase(caseIdField)
+          const caseData = caseRepo.getCase(caseIdField)
           if (!caseData) return c.json({ error: 'Case not found' }, 404)
           if (caseData.archived) return c.json({ error: 'Case is archived' }, 400)
           caseId = caseIdField
@@ -430,7 +432,7 @@ function createApp(deps: CaptureServerDeps): Hono {
     if (!state.activeCaseId) {
       return c.json([])
     }
-    const activeSelectors = db.listActiveSelectors(state.activeCaseId)
+    const activeSelectors = selectorRepo.listActiveSelectors(state.activeCaseId)
     return c.json(activeSelectors)
   })
 
@@ -454,7 +456,7 @@ function createApp(deps: CaptureServerDeps): Hono {
           return c.json({ error: 'caseId does not match active case' }, 400)
         }
 
-        const caseData = db.getCase(caseId)
+        const caseData = caseRepo.getCase(caseId)
         if (!caseData) {
           return c.json({ error: 'Case not found' }, 404)
         }
@@ -494,7 +496,7 @@ function createApp(deps: CaptureServerDeps): Hono {
         })
         return c.json({ error: OPERATOR_NAME_REQUIRED_MSG }, 400)
       }
-      const cases = db.listCases()
+      const cases = caseRepo.listCases()
       if (cases.length === 0) {
         return c.json({
           success: false,
@@ -547,7 +549,7 @@ function createApp(deps: CaptureServerDeps): Hono {
     } finally {
       if (testCaptureId) {
         try {
-          db.deleteCapture(testCaptureId)
+          captureRepo.deleteCapture(testCaptureId)
         } catch {
           /* best effort */
         }

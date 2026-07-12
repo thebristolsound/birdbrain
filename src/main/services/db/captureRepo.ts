@@ -57,49 +57,93 @@ export interface InsertCaptureParams {
   consentSuppression?: ConsentSuppression
 }
 
+// The single declaration of the captures row shape: every column in schema
+// order, with the DDL default where the DDL declares one. Drift-tested against
+// PRAGMA table_info; feeds insertCapture and the archive bulk import.
+export const CAPTURE_COLUMNS: ReadonlyArray<{ column: string; default: unknown }> = [
+  { column: 'id', default: null },
+  { column: 'case_id', default: null },
+  { column: 'url', default: null },
+  { column: 'title', default: null },
+  { column: 'html_path', default: null },
+  { column: 'screenshot_path', default: null },
+  { column: 'hash', default: null },
+  { column: 'timestamp', default: null },
+  { column: 'headers', default: null },
+  { column: 'created_at', default: null },
+  { column: 'format', default: 'html' },
+  { column: 'mhtml_path', default: null },
+  { column: 'size_bytes', default: null },
+  { column: 'manifest_index', default: null },
+  { column: 'prev_hash', default: null },
+  { column: 'entry_hash', default: null },
+  { column: 'tool_version', default: null },
+  { column: 'extension_version', default: null },
+  { column: 'browser_version', default: null },
+  { column: 'user_agent', default: null },
+  { column: 'http_status', default: null },
+  { column: 'operator_id', default: null },
+  { column: 'operator_name', default: null },
+  { column: 'last_verified_at', default: null },
+  { column: 'last_verified_hash', default: null },
+  { column: 'last_verified_status', default: null },
+  { column: 'trusted_time_status', default: null },
+  { column: 'screenshot_hash', default: null },
+  { column: 'text_hash', default: null },
+  { column: 'tls_cert_chain', default: null },
+  { column: 'method', default: 'extension' },
+  { column: 'supersedes_capture_id', default: null },
+  { column: 'consent_suppression', default: null }
+]
+
+const CAPTURE_INSERT_SQL = `INSERT INTO captures (${CAPTURE_COLUMNS.map((c) => c.column).join(
+  ', '
+)}) VALUES (${CAPTURE_COLUMNS.map(() => '?').join(', ')})`
+
 export const insertCapture = function (params: InsertCaptureParams & { id?: string }): Capture {
   const id = params.id || uuid()
   const now = new Date().toISOString()
   const d = getDb()
 
+  const row: Record<string, unknown> = {
+    id,
+    case_id: params.caseId,
+    url: params.url,
+    title: params.title,
+    html_path: params.htmlPath ?? null,
+    screenshot_path: params.screenshotPath ?? null,
+    hash: params.hash,
+    timestamp: params.timestamp,
+    headers: params.headers ?? null,
+    created_at: now,
+    format: params.format ?? null,
+    mhtml_path: params.mhtmlPath ?? null,
+    size_bytes: params.sizeBytes ?? null,
+    manifest_index: params.manifestIndex ?? null,
+    prev_hash: params.prevHash ?? null,
+    entry_hash: params.entryHash ?? null,
+    tool_version: params.toolVersion ?? null,
+    extension_version: params.extensionVersion ?? null,
+    browser_version: params.browserVersion ?? null,
+    user_agent: params.userAgent ?? null,
+    http_status: params.httpStatus ?? null,
+    operator_id: params.operatorId ?? null,
+    operator_name: params.operatorName ?? null,
+    last_verified_at: null,
+    last_verified_hash: null,
+    last_verified_status: null,
+    trusted_time_status: null,
+    screenshot_hash: params.screenshotHash ?? null,
+    text_hash: params.textHash ?? null,
+    tls_cert_chain: params.tlsCertChain ?? null,
+    method: params.method ?? null,
+    supersedes_capture_id: params.supersedesCaptureId ?? null,
+    consent_suppression: params.consentSuppression ?? null
+  }
+
   const run = d.transaction(() => {
-    d.prepare(
-      `INSERT INTO captures (
-         id, case_id, url, title, html_path, screenshot_path, hash, timestamp, headers, created_at,
-         format, mhtml_path, screenshot_hash, text_hash, tls_cert_chain, size_bytes, manifest_index, prev_hash, entry_hash,
-         tool_version, extension_version, browser_version, user_agent, http_status,
-         operator_id, operator_name, method, supersedes_capture_id, consent_suppression
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(
-      id,
-      params.caseId,
-      params.url,
-      params.title,
-      params.htmlPath ?? null,
-      params.screenshotPath ?? null,
-      params.hash,
-      params.timestamp,
-      params.headers ?? null,
-      now,
-      params.format ?? 'html',
-      params.mhtmlPath ?? null,
-      params.screenshotHash ?? null,
-      params.textHash ?? null,
-      params.tlsCertChain ?? null,
-      params.sizeBytes ?? null,
-      params.manifestIndex ?? null,
-      params.prevHash ?? null,
-      params.entryHash ?? null,
-      params.toolVersion ?? null,
-      params.extensionVersion ?? null,
-      params.browserVersion ?? null,
-      params.userAgent ?? null,
-      params.httpStatus ?? null,
-      params.operatorId ?? null,
-      params.operatorName ?? null,
-      params.method ?? 'extension',
-      params.supersedesCaptureId ?? null,
-      params.consentSuppression ?? null
+    d.prepare(CAPTURE_INSERT_SQL).run(
+      ...CAPTURE_COLUMNS.map((c) => row[c.column] ?? c.default ?? null)
     )
 
     // Every capture gets a capture_texts row; triggers keep captures_fts in sync

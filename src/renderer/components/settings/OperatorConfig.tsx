@@ -4,7 +4,7 @@ import {
   identityQueryOptions,
   settingsQueryOptions,
   useSettingsMutations
-} from '@renderer/lib/queries'
+} from '@renderer/lib/api/settings'
 import { Input, Label } from '@renderer/components/ui'
 import { DEFAULT_TSA_URL } from '@shared/constants'
 

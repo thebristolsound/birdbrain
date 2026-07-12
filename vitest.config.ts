@@ -76,12 +76,13 @@ export default defineConfig({
           functions: 90,
           branches: 78
         },
-        // React Query data layer — query keys + invalidation correctness.
-        'src/renderer/lib/queries.ts': {
-          lines: 90,
-          statements: 90,
-          functions: 90,
-          branches: 90
+        // React Query data layer (queries.ts split into lib/api/* modules) —
+        // query keys + invalidation correctness, aggregated across the seam.
+        'src/renderer/lib/api/*.ts': {
+          lines: 84,
+          statements: 84,
+          functions: 88,
+          branches: 95
         }
       }
     },

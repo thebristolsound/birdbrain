@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { tagsQueryOptions, useTagsMutations } from '@renderer/lib/queries'
+import { tagsQueryOptions, useTagsMutations } from '@renderer/lib/api/tags'
 import { Dialog, DialogContent, Button, Input } from '@renderer/components/ui'
 
 const TAG_COLORS = [

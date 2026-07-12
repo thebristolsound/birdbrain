@@ -3,7 +3,7 @@ import {
   tagsQueryOptions,
   tagsForCaptureQueryOptions,
   useTagsMutations
-} from '@renderer/lib/queries'
+} from '@renderer/lib/api/tags'
 
 export function useCaptureTagEditor(captureId: string) {
   const tagsQuery = useQuery(tagsQueryOptions)

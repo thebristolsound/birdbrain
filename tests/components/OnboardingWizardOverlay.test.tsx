@@ -12,10 +12,13 @@ vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => navigateSpy
 }))
 
-vi.mock('@renderer/lib/queries', () => ({
+vi.mock('@renderer/lib/api/cases', () => ({
   useCasesMutations: () => ({
     create: { mutateAsync: createMutateSpy }
-  }),
+  })
+}))
+
+vi.mock('@renderer/lib/api/settings', () => ({
   useSettingsMutations: () => ({
     update: { mutateAsync: settingsUpdateSpy }
   })

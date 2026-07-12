@@ -7,7 +7,7 @@ const updateMutateSpy = vi.fn()
 const exportArchiveMutateSpy = vi.fn()
 let exportArchiveIsPending = false
 
-vi.mock('@renderer/lib/queries', () => ({
+vi.mock('@renderer/lib/api/cases', () => ({
   useCasesMutations: () => ({
     update: { mutateAsync: updateMutateSpy },
     exportArchive: {

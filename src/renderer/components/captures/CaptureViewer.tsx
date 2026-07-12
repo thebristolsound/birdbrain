@@ -6,7 +6,7 @@ import {
   capturesQueryOptions,
   captureContentQueryOptions,
   useRecaptureMutations
-} from '@renderer/lib/queries'
+} from '@renderer/lib/api/captures'
 import {
   ChevronLeft,
   ChevronRight,
@@ -197,11 +197,7 @@ export function CaptureViewer() {
         <Button
           variant="ghost"
           size="icon-sm"
-          title={
-            isRecapturing
-              ? 'Recapture in progress…'
-              : 'Recapture this page in the background'
-          }
+          title={isRecapturing ? 'Recapture in progress…' : 'Recapture this page in the background'}
           data-testid="recapture-btn"
           disabled={enqueue.isPending || isRecapturing}
           onClick={() =>

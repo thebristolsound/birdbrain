@@ -3,11 +3,8 @@ import { useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '@renderer/stores/appStore'
 import type { ArchiveInspectReport } from '@shared/types'
-import {
-  casesQueryOptions,
-  captureCountsQueryOptions,
-  useCasesMutations
-} from '@renderer/lib/queries'
+import { casesQueryOptions, useCasesMutations } from '@renderer/lib/api/cases'
+import { captureCountsQueryOptions } from '@renderer/lib/api/captures'
 import { inspectCaseArchive } from '@renderer/lib/api/system'
 import { ImportCaseDialog } from '@renderer/components/cases/ImportCaseDialog'
 import { HeroSection } from '@renderer/components/dashboard/HeroSection'

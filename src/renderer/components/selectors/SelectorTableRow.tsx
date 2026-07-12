@@ -8,11 +8,8 @@ import {
   testPatternAgainstText,
   type MatchResult
 } from '@renderer/components/selectors/selectorUtils'
-import {
-  capturesQueryOptions,
-  captureContentQueryOptions,
-  selectorMatchingCapturesQueryOptions
-} from '@renderer/lib/queries'
+import { capturesQueryOptions, captureContentQueryOptions } from '@renderer/lib/api/captures'
+import { selectorMatchingCapturesQueryOptions } from '@renderer/lib/api/selectors'
 
 interface MatchPreview {
   captureTitle: string

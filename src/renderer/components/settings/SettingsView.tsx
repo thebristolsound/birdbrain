@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { settingsQueryOptions, useSettingsMutations } from '@renderer/lib/queries'
+import { settingsQueryOptions, useSettingsMutations } from '@renderer/lib/api/settings'
 import type { BirdbrainSettings } from '@shared/types'
 import { AIConfig } from '@renderer/components/settings/AIConfig'
 import { CapturePreferences } from '@renderer/components/settings/CapturePreferences'
@@ -9,19 +9,21 @@ import { AppearanceConfig } from '@renderer/components/settings/AppearanceConfig
 import { OperatorConfig } from '@renderer/components/settings/OperatorConfig'
 import { UpdatesConfig } from '@renderer/components/settings/UpdatesConfig'
 import { About } from '@renderer/components/settings/About'
-import { Key, Camera, HardDrive, Palette, Info, UserCircle, Database, RefreshCw } from 'lucide-react'
+import {
+  Key,
+  Camera,
+  HardDrive,
+  Palette,
+  Info,
+  UserCircle,
+  Database,
+  RefreshCw
+} from 'lucide-react'
 import { DatabaseAdmin } from '@renderer/components/settings/DatabaseAdmin'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@renderer/components/ui'
 
 type SettingsTab =
-  | 'ai'
-  | 'capture'
-  | 'storage'
-  | 'appearance'
-  | 'operator'
-  | 'database'
-  | 'updates'
-  | 'about'
+  'ai' | 'capture' | 'storage' | 'appearance' | 'operator' | 'database' | 'updates' | 'about'
 
 const settingsTabs: { id: SettingsTab; label: string; icon: typeof Key }[] = [
   // { id: 'ai', label: 'AI', icon: Key }, // temporarily hidden until AI features are ready

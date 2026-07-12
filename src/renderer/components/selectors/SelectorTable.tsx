@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { Search, ArrowUpDown } from 'lucide-react'
 import type { Selector } from '@shared/types'
 import { SelectorTableRow } from '@renderer/components/selectors/SelectorTableRow'
-import { useSelectorsMutations } from '@renderer/lib/queries'
+import { useSelectorsMutations } from '@renderer/lib/api/selectors'
 import { Card, Button } from '@renderer/components/ui'
 
 interface SelectorTableProps {

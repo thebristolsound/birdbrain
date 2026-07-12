@@ -5,11 +5,8 @@ import {
   testPatternAgainstText,
   type MatchResult
 } from '@renderer/components/selectors/selectorUtils'
-import {
-  capturesQueryOptions,
-  captureContentQueryOptions,
-  useSelectorsMutations
-} from '@renderer/lib/queries'
+import { capturesQueryOptions, captureContentQueryOptions } from '@renderer/lib/api/captures'
+import { useSelectorsMutations } from '@renderer/lib/api/selectors'
 import { Card, Button, Label } from '@renderer/components/ui'
 
 interface TestResult {

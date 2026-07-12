@@ -3,7 +3,7 @@ import { FileOutput, ChevronDown, FileText, Archive, Loader2, CheckCircle2 } fro
 import { AnimatePresence } from 'motion/react'
 import { Button } from '@renderer/components/ui'
 import { ExportDialog } from '@renderer/components/export/ExportDialog'
-import { useCasesMutations } from '@renderer/lib/queries'
+import { useCasesMutations } from '@renderer/lib/api/cases'
 import { subscribeArchiveProgress } from '@renderer/lib/api/export'
 import { revealInFolder } from '@renderer/lib/api/system'
 

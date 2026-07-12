@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { AnnotationShape } from '@shared/types'
-import { annotationsQueryOptions, useAnnotationsMutations } from '@renderer/lib/queries'
+import { annotationsQueryOptions, useAnnotationsMutations } from '@renderer/lib/api/annotations'
 import { AnnotationCanvas } from '@renderer/components/captures/annotation/AnnotationCanvas'
 import { PinCommentPopover } from '@renderer/components/captures/annotation/PinCommentPopover'
 import { useAnnotationKeyboardShortcuts } from '@renderer/components/captures/annotation/keyboardShortcuts'
@@ -141,8 +141,7 @@ export function AnnotationEditor(props: Props) {
   }
 
   const popoverShape = editor.shapes.find((s) => s.id === popoverPinShapeId && s.kind === 'pin') as
-    | Extract<AnnotationShape, { kind: 'pin' }>
-    | undefined
+    Extract<AnnotationShape, { kind: 'pin' }> | undefined
   const popoverPin = popoverShape
     ? bundle?.pins.find((p) => p.id === popoverShape.pinId)
     : undefined

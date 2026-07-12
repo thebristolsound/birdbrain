@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { X } from 'lucide-react'
-import { useNotesMutations } from '@renderer/lib/queries'
+import { useNotesMutations } from '@renderer/lib/api/notes'
 import {
   Dialog,
   DialogContent,

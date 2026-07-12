@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { ChevronLeft, Star, ExternalLink, Tag as TagIcon, StickyNote } from 'lucide-react'
 import type { Capture } from '@shared/types'
-import { notesQueryOptions, tagsForCaptureQueryOptions } from '@renderer/lib/queries'
+import { tagsForCaptureQueryOptions } from '@renderer/lib/api/tags'
+import { notesQueryOptions } from '@renderer/lib/api/notes'
 import { useFavorites } from '@renderer/hooks/useFavorites'
 
 interface Props {

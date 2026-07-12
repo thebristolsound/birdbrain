@@ -12,7 +12,7 @@ import {
   extractedDataCountQueryOptions,
   extractedDataSearchQueryOptions,
   useExtractedDataMutations
-} from '@renderer/lib/queries'
+} from '@renderer/lib/api/extractedData'
 import { openExternal } from '@renderer/lib/api/system'
 
 export function DataExplorer() {

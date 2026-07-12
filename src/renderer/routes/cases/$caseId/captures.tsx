@@ -1,12 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import {
-  capturesQueryOptions,
-  settingsQueryOptions,
-  useCapturesMutations,
-  useSettingsMutations
-} from '@renderer/lib/queries'
+import { capturesQueryOptions, useCapturesMutations } from '@renderer/lib/api/captures'
+import { settingsQueryOptions, useSettingsMutations } from '@renderer/lib/api/settings'
 import { downloadCapture, openExternal } from '@renderer/lib/api/system'
 import { AddUrlsBox } from '@renderer/components/captures/AddUrlsBox'
 import { CaptureList } from '@renderer/components/captures/CaptureList'

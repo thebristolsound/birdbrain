@@ -4,7 +4,8 @@ import { useQuery } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'motion/react'
 import { Search, Plus, Clock } from 'lucide-react'
 import { useAppStore } from '@renderer/stores/appStore'
-import { casesQueryOptions, captureCountsQueryOptions } from '@renderer/lib/queries'
+import { casesQueryOptions } from '@renderer/lib/api/cases'
+import { captureCountsQueryOptions } from '@renderer/lib/api/captures'
 import { presets } from '@renderer/lib/motion'
 
 function formatAge(dateStr: string): string {

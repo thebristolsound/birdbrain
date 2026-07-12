@@ -12,9 +12,14 @@ vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => navigateSpy
 }))
 
-vi.mock('@renderer/lib/queries', () => ({
+vi.mock('@renderer/lib/api/cases', () => ({
   useCasesMutations: () => ({
-    importArchive: { mutateAsync: importMutateSpy, get isPending() { return importIsPending } }
+    importArchive: {
+      mutateAsync: importMutateSpy,
+      get isPending() {
+        return importIsPending
+      }
+    }
   })
 }))
 
@@ -112,7 +117,9 @@ describe('ImportCaseDialog', () => {
       progressCb = cb
       return vi.fn()
     })
-    ;(window as unknown as { birdbrain: { onArchiveProgress: typeof onArchiveProgress } }).birdbrain = {
+    ;(
+      window as unknown as { birdbrain: { onArchiveProgress: typeof onArchiveProgress } }
+    ).birdbrain = {
       onArchiveProgress
     }
   })
@@ -130,7 +137,12 @@ describe('ImportCaseDialog', () => {
   })
 
   it('shows the archive refs count', () => {
-    render(<ImportCaseDialog report={makeReport({ counts: { ...makeReport().counts, archiveRefs: 4 } })} onClose={vi.fn()} />)
+    render(
+      <ImportCaseDialog
+        report={makeReport({ counts: { ...makeReport().counts, archiveRefs: 4 } })}
+        onClose={vi.fn()}
+      />
+    )
 
     expect(screen.getByText('Archive refs')).toBeDefined()
     expect(screen.getByText('4')).toBeDefined()

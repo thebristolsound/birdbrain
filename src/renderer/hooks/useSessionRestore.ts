@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { casesQueryOptions, settingsQueryOptions } from '@renderer/lib/queries'
+import { casesQueryOptions } from '@renderer/lib/api/cases'
+import { settingsQueryOptions } from '@renderer/lib/api/settings'
 import type { BirdbrainSettings } from '@shared/types'
 
 type Section = BirdbrainSettings['lastActiveSection']

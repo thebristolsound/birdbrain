@@ -3,10 +3,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createElement, type ReactNode } from 'react'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { queryKeys } from '@renderer/lib/api/keys'
+import { casesQueryOptions, caseQueryOptions, useCasesMutations } from '@renderer/lib/api/cases'
 import {
-  queryKeys,
-  casesQueryOptions,
-  caseQueryOptions,
   capturesQueryOptions,
   captureCountsQueryOptions,
   captureContentQueryOptions,
@@ -15,34 +14,42 @@ import {
   captureMatchingSelectorsQueryOptions,
   captureFavoritesQueryOptions,
   searchQueryOptions,
+  useCapturesMutations
+} from '@renderer/lib/api/captures'
+import {
   tagsQueryOptions,
   tagsForCaptureQueryOptions,
   tagCountForCaseQueryOptions,
   tagUsageCountsForCaseQueryOptions,
+  useTagsMutations
+} from '@renderer/lib/api/tags'
+import {
   selectorsQueryOptions,
   selectorMatchCountsQueryOptions,
   selectorCoverageQueryOptions,
+  useSelectorsMutations
+} from '@renderer/lib/api/selectors'
+import {
   notesQueryOptions,
   noteCountQueryOptions,
   notesSearchQueryOptions,
+  useNotesMutations
+} from '@renderer/lib/api/notes'
+import {
   extractedDataCategoriesQueryOptions,
   extractedDataSubcategoriesQueryOptions,
   extractedDataItemsQueryOptions,
   extractedDataCountQueryOptions,
   extractedDataSearchQueryOptions,
-  annotationsQueryOptions,
+  useExtractedDataMutations
+} from '@renderer/lib/api/extractedData'
+import { annotationsQueryOptions, useAnnotationsMutations } from '@renderer/lib/api/annotations'
+import {
   settingsQueryOptions,
   identityQueryOptions,
   openRouterModelsQueryOptions,
-  useCasesMutations,
-  useCapturesMutations,
-  useTagsMutations,
-  useSelectorsMutations,
-  useNotesMutations,
-  useExtractedDataMutations,
-  useAnnotationsMutations,
   useSettingsMutations
-} from '@renderer/lib/queries'
+} from '@renderer/lib/api/settings'
 
 // Build a fully-stubbed window.birdbrain whose every method records calls and
 // resolves to a sentinel value, so queryFns/mutationFns can be exercised.

@@ -5,7 +5,7 @@ import {
   archiveLookupQueryOptions,
   archivePinsQueryOptions,
   useArchiveMutations
-} from '@renderer/lib/queries'
+} from '@renderer/lib/api/archive'
 import { openExternal } from '@renderer/lib/api/system'
 
 interface Props {

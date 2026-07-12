@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Plus, X } from 'lucide-react'
-import { useNotesMutations } from '@renderer/lib/queries'
+import { useNotesMutations } from '@renderer/lib/api/notes'
 import { Button, Input, Textarea } from '@renderer/components/ui'
 
 interface CreateNoteCardProps {

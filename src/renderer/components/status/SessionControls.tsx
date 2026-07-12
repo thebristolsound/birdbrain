@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useParams } from '@tanstack/react-router'
 import { motion, AnimatePresence } from 'motion/react'
 import { useAppStore } from '@renderer/stores/appStore'
-import { casesQueryOptions } from '@renderer/lib/queries'
+import { casesQueryOptions } from '@renderer/lib/api/cases'
 import { presets } from '@renderer/lib/motion'
 import { captureServerFetch } from '@renderer/lib/captureServerFetch'
 

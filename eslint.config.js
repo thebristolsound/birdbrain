@@ -43,5 +43,18 @@ export default tseslint.config(
     rules: {
       'no-empty-pattern': 'off'
     }
+  },
+  {
+    files: ['src/renderer/**/*.{ts,tsx}'],
+    ignores: ['src/renderer/lib/api/**'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "MemberExpression[object.name='window'][property.name='birdbrain']",
+          message: 'Access window.birdbrain only via src/renderer/lib/api/ wrappers'
+        }
+      ]
+    }
   }
 )

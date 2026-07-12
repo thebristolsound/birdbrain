@@ -2,7 +2,7 @@ import { type ChangeEvent, useMemo, useRef, useState } from 'react'
 import { Upload, X } from 'lucide-react'
 import { motion } from 'motion/react'
 import type { Selector } from '@shared/types'
-import { useSelectorsMutations } from '@renderer/lib/queries'
+import { useSelectorsMutations } from '@renderer/lib/api/selectors'
 import { presets } from '@renderer/lib/motion'
 import { Button, Input, Textarea } from '@renderer/components/ui'
 

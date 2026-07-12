@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { Button, Input, Label } from '@renderer/components/ui'
-import { useSelectorsMutations } from '@renderer/lib/queries'
+import { useSelectorsMutations } from '@renderer/lib/api/selectors'
 
 interface CreateSelectorPopoverProps {
   caseId: string

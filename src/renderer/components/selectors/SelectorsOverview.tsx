@@ -4,13 +4,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Download, ListPlus } from 'lucide-react'
 import { Button } from '@renderer/components/ui'
 import { useAppStore } from '@renderer/stores/appStore'
+import { queryKeys } from '@renderer/lib/api/keys'
+import { capturesQueryOptions } from '@renderer/lib/api/captures'
 import {
   selectorsQueryOptions,
   selectorMatchCountsQueryOptions,
-  capturesQueryOptions,
-  exportSelectorMatches,
-  queryKeys
-} from '@renderer/lib/queries'
+  exportSelectorMatches
+} from '@renderer/lib/api/selectors'
 import { CreateSelectorCard } from '@renderer/components/selectors/CreateSelectorCard'
 import { SelectorTable } from '@renderer/components/selectors/SelectorTable'
 import { SelectorFilterFooter } from '@renderer/components/selectors/SelectorFilterFooter'

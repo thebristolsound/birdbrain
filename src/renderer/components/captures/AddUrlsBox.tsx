@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Button, Textarea } from '@renderer/components/ui'
-import { useRecaptureMutations } from '@renderer/lib/queries'
+import { useRecaptureMutations } from '@renderer/lib/api/captures'
 
 interface AddUrlsBoxProps {
   caseId: string

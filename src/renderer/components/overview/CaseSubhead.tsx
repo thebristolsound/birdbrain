@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { FolderOpen, ShieldAlert, Users, Pencil } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { Case } from '@shared/types'
-import { useCasesMutations } from '@renderer/lib/queries'
+import { useCasesMutations } from '@renderer/lib/api/cases'
 import { formatRelativeTime } from '@renderer/lib/formatRelativeTime'
 
 // Type pill colours mirror CASE_ICONS in dashboard/CaseCard.tsx.
@@ -80,9 +80,7 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
 
   const style = (caseData.type && TYPE_STYLES[caseData.type]) || DEFAULT_STYLE
   const PillIcon = style.icon
-  const typeLabel = caseData.type
-    ? caseData.type[0].toUpperCase() + caseData.type.slice(1)
-    : 'Case'
+  const typeLabel = caseData.type ? caseData.type[0].toUpperCase() + caseData.type.slice(1) : 'Case'
 
   return (
     <div className="flex items-start gap-4">

@@ -21,7 +21,7 @@ vi.mock('@renderer/router', () => ({
 import { useServerStatus } from '@renderer/hooks/useServerStatus'
 import { useAppStore } from '@renderer/stores/appStore'
 import { queryClient } from '@renderer/lib/queryClient'
-import { queryKeys } from '@renderer/lib/queries'
+import { queryKeys } from '@renderer/lib/api/keys'
 import type { Capture } from '@shared/types'
 
 // Registry of the callbacks the hook subscribes with, keyed by channel.

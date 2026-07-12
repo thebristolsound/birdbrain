@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { motion } from 'motion/react'
-import { useCasesMutations } from '@renderer/lib/queries'
+import { useCasesMutations } from '@renderer/lib/api/cases'
 import { presets } from '@renderer/lib/motion'
 import { Button, Input, Textarea, Label } from '@renderer/components/ui'
 

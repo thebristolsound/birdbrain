@@ -1,18 +1,12 @@
 import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { tagsQueryOptions, tagUsageCountsForCaseQueryOptions } from '@renderer/lib/queries'
+import { tagsQueryOptions, tagUsageCountsForCaseQueryOptions } from '@renderer/lib/api/tags'
 import { TagManager } from '@renderer/components/tags/TagManager'
 import { Button, Card } from '@renderer/components/ui'
 
 export function TagsOverview() {
   const { caseId } = useParams({ from: '/cases/$caseId/tags' })
-  const {
-    data: tags = [],
-    isLoading,
-    isError,
-    error,
-    refetch
-  } = useQuery(tagsQueryOptions)
+  const { data: tags = [], isLoading, isError, error, refetch } = useQuery(tagsQueryOptions)
   const { data: usageCounts = {} } = useQuery(tagUsageCountsForCaseQueryOptions(caseId))
 
   if (isLoading) {

@@ -17,7 +17,8 @@ import {
   ChevronRight
 } from 'lucide-react'
 import type { Capture } from '@shared/types'
-import { caseQueryOptions, notesQueryOptions, useNotesMutations } from '@renderer/lib/queries'
+import { caseQueryOptions } from '@renderer/lib/api/cases'
+import { notesQueryOptions, useNotesMutations } from '@renderer/lib/api/notes'
 import { useFavorites } from '@renderer/hooks/useFavorites'
 import { useReduceMotion } from '@renderer/hooks/useReduceMotion'
 import { useTimeTick } from '@renderer/hooks/useTimeTick'

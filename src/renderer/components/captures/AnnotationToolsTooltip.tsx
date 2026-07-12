@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { X } from 'lucide-react'
-import { settingsQueryOptions, useSettingsMutations } from '@renderer/lib/queries'
+import { settingsQueryOptions, useSettingsMutations } from '@renderer/lib/api/settings'
 
 const KEY = 'annotation-tools-always-live'
 

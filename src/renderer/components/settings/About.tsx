@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { appVersionQueryOptions } from '@renderer/lib/queries'
+import { appVersionQueryOptions } from '@renderer/lib/api/settings'
 import { Card, CardContent } from '@renderer/components/ui'
 
 export function About() {

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { captureFavoritesQueryOptions, useCapturesMutations } from '@renderer/lib/queries'
+import { captureFavoritesQueryOptions, useCapturesMutations } from '@renderer/lib/api/captures'
 
 export function useFavorites(caseId: string) {
   const { data: favoriteIds = [], isLoading } = useQuery(captureFavoritesQueryOptions(caseId))

@@ -2,7 +2,10 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import { Search, ArrowUpDown, Filter, Crosshair, X, Check } from 'lucide-react'
 import { useQuery, useQueries } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'motion/react'
-import { capturesQueryOptions, captureMatchingSelectorsQueryOptions } from '@renderer/lib/queries'
+import {
+  capturesQueryOptions,
+  captureMatchingSelectorsQueryOptions
+} from '@renderer/lib/api/captures'
 import { Button, Skeleton } from '@renderer/components/ui'
 import { presets, STAGGER_INTERVAL, STAGGER_VISIBLE_CAP } from '@renderer/lib/motion'
 import { useAppStore } from '@renderer/stores/appStore'

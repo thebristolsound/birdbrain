@@ -3,14 +3,11 @@ import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { Activity, Camera, ChevronRight, Globe, ShieldCheck, Target } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import {
-  caseQueryOptions,
-  capturesQueryOptions,
-  notesQueryOptions,
-  selectorMatchCountsQueryOptions,
-  selectorsQueryOptions,
-  tagCountForCaseQueryOptions
-} from '@renderer/lib/queries'
+import { caseQueryOptions } from '@renderer/lib/api/cases'
+import { capturesQueryOptions } from '@renderer/lib/api/captures'
+import { tagCountForCaseQueryOptions } from '@renderer/lib/api/tags'
+import { selectorMatchCountsQueryOptions, selectorsQueryOptions } from '@renderer/lib/api/selectors'
+import { notesQueryOptions } from '@renderer/lib/api/notes'
 import { useLastVisit } from '@renderer/hooks/useLastVisit'
 import { useAppStore } from '@renderer/stores/appStore'
 import { Skeleton } from '@renderer/components/ui'
@@ -152,8 +149,16 @@ export function CaseOverview() {
           </SectionCard>
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-4">
-          <SectionCard icon={Target} title="Selector coverage" action="Manage" onAction={goToSelectors}>
-            <SelectorCoverageBlock selectors={derived.coverageRows} totalCaptures={captures.length} />
+          <SectionCard
+            icon={Target}
+            title="Selector coverage"
+            action="Manage"
+            onAction={goToSelectors}
+          >
+            <SelectorCoverageBlock
+              selectors={derived.coverageRows}
+              totalCaptures={captures.length}
+            />
           </SectionCard>
           <SectionCard icon={ShieldCheck} title="Evidence integrity" className="flex-1">
             <VerifyBar
@@ -166,7 +171,11 @@ export function CaseOverview() {
       </div>
 
       <SectionCard icon={Camera} title="Recent captures" action="View all" onAction={goToCaptures}>
-        <RecentCapturesStrip captures={derived.recent} lastVisitAt={lastVisitAt} onOpen={openCapture} />
+        <RecentCapturesStrip
+          captures={derived.recent}
+          lastVisitAt={lastVisitAt}
+          onOpen={openCapture}
+        />
       </SectionCard>
     </div>
   )

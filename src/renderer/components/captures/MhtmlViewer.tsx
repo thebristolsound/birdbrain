@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { captureMhtmlUrlQueryOptions } from '@renderer/lib/queries'
+import { captureMhtmlUrlQueryOptions } from '@renderer/lib/api/captures'
 
 interface Props {
   captureId: string

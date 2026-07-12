@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { searchQueryOptions } from '@renderer/lib/queries'
+import { searchQueryOptions } from '@renderer/lib/api/captures'
 
 export function useSearch() {
   const [query, setQuery] = useState('')

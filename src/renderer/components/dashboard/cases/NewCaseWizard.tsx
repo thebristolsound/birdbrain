@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { createSelector, useCasesMutations, useSettingsMutations } from '@renderer/lib/queries'
+import { useCasesMutations } from '@renderer/lib/api/cases'
+import { createSelector } from '@renderer/lib/api/selectors'
+import { useSettingsMutations } from '@renderer/lib/api/settings'
 import { FolderPlus, ArrowLeft } from 'lucide-react'
 import { Card, Button, Input, Textarea, Label } from '@renderer/components/ui'
 

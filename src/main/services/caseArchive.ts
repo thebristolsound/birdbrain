@@ -2,7 +2,12 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync, rmSync 
 import { unlink } from 'fs/promises'
 import { createHash, randomUUID } from 'crypto'
 import { join } from 'path'
-import { withTransaction, hasRowWithId, type ImportCtx } from '@main/services/db/core'
+import {
+  withTransaction,
+  hasRowWithId,
+  ID_PROBE_TABLES,
+  type ImportCtx
+} from '@main/services/db/core'
 import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
 import * as tagRepo from '@main/services/db/tagRepo'
@@ -326,19 +331,11 @@ export function inspectCaseArchive(archivePath: string): ArchiveInspectReport {
   }
 }
 
-// Tables whose primary key is a standalone row id that could collide with an
-// existing local row on import. `annotations`/`capture_favorites` are keyed by
-// `capture_id` and `capture_tags`/`selector_matches` by their FKs, so they
-// follow the capture/selector/tag remapping automatically — they are NOT here.
-const ID_REMAP_TABLES = [
-  'captures',
-  'notes',
-  'selectors',
-  'capture_analyses',
-  'extracted_data',
-  'capture_archive_refs',
-  'annotation_pins'
-] as const
+// The id-keyed tables that could collide with an existing local row on import
+// live in db/core as ID_PROBE_TABLES, so this remap loop and hasRowWithId's SQL
+// allowlist share one definition. `annotations`/`capture_favorites` are keyed
+// by `capture_id` and `capture_tags`/`selector_matches` by their FKs, so they
+// follow the capture/selector/tag remapping automatically — they are NOT there.
 
 // Imports a .birdbrain case archive as a NEW case: re-verifies it, allocates a
 // fresh case id, remaps any colliding row ids, stages the files + manifest off
@@ -379,7 +376,7 @@ export async function importCaseArchive(
 
   const newCaseId = randomUUID()
   const idMap: Record<string, string> = {}
-  const tableRows: Record<(typeof ID_REMAP_TABLES)[number], Record<string, unknown>[]> = {
+  const tableRows: Record<(typeof ID_PROBE_TABLES)[number], Record<string, unknown>[]> = {
     captures: data.captures,
     notes: data.notes,
     selectors: data.selectors,
@@ -388,7 +385,7 @@ export async function importCaseArchive(
     capture_archive_refs: data.captureArchiveRefs,
     annotation_pins: data.annotationPins
   }
-  for (const table of ID_REMAP_TABLES) {
+  for (const table of ID_PROBE_TABLES) {
     for (const row of tableRows[table]) {
       const oldId = row.id as string | undefined
       if (!oldId || idMap[oldId]) continue

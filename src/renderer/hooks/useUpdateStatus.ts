@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { UpdateStatus } from '@shared/types'
+import {
+  getUpdateStatus,
+  checkForUpdates,
+  downloadUpdate,
+  installUpdate,
+  subscribeUpdateStatus
+} from '@renderer/lib/api/updates'
 
 // Subscribes to update-delivery status. Fetches the current snapshot on mount,
 // then folds in every main→renderer transition. Hook-local by design: only the
@@ -12,8 +19,7 @@ export function useUpdateStatus() {
   useEffect(() => {
     mountedRef.current = true
     let active = true
-    window.birdbrain.updates
-      .getStatus()
+    getUpdateStatus()
       .then((s) => {
         if (active) setStatus(s)
       })
@@ -22,7 +28,7 @@ export function useUpdateStatus() {
         // the current version until the next main→renderer transition arrives.
         if (active) console.error('Failed to fetch update status', err)
       })
-    const unsubscribe = window.birdbrain.onUpdateStatus((s) => setStatus(s))
+    const unsubscribe = subscribeUpdateStatus((s) => setStatus(s))
     return () => {
       active = false
       mountedRef.current = false
@@ -37,8 +43,7 @@ export function useUpdateStatus() {
   // while a manual check is in flight).
   const check = useCallback(
     () =>
-      window.birdbrain.updates
-        .check()
+      checkForUpdates()
         .then((s) => {
           if (mountedRef.current) setStatus(s)
         })
@@ -49,18 +54,12 @@ export function useUpdateStatus() {
   // Download/install progress and completion arrive via onUpdateStatus events;
   // these only kick the main process, so no local status update on resolve.
   const download = useCallback(
-    () =>
-      window.birdbrain.updates
-        .download()
-        .catch((err) => console.error('Failed to download update', err)),
+    () => downloadUpdate().catch((err) => console.error('Failed to download update', err)),
     []
   )
 
   const install = useCallback(
-    () =>
-      window.birdbrain.updates
-        .install()
-        .catch((err) => console.error('Failed to install update', err)),
+    () => installUpdate().catch((err) => console.error('Failed to install update', err)),
     []
   )
 

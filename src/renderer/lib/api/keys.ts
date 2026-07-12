@@ -34,6 +34,8 @@ export const queryKeys = {
   extractedDataSearch: (caseId: string, query: string) =>
     ['extractedData', 'search', caseId, query] as const,
   annotations: (captureId: string) => ['annotations', captureId] as const,
+  analysis: (captureId: string) => ['analysis', captureId] as const,
+  recaptureQueue: ['recapture', 'queueStatus'] as const,
   archiveLookup: (captureId: string) => ['archive', 'lookup', captureId] as const,
   archivePins: (captureId: string) => ['archive', 'pins', captureId] as const,
   dbStats: ['dbStats'] as const,

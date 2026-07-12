@@ -27,6 +27,22 @@ export const selectorCoverageQueryOptions = (caseId: string) =>
     enabled: !!caseId
   })
 
+export const selectorMatchingCapturesQueryOptions = (caseId: string, selectorIds: string[]) =>
+  queryOptions({
+    queryKey: queryKeys.selectorMatchingCaptures(caseId, selectorIds),
+    queryFn: () => window.birdbrain.selectors.matchingCaptures(caseId, selectorIds),
+    enabled: !!caseId && selectorIds.length > 0
+  })
+
+// One-shot create for flows that mint selectors for a case whose queries are
+// not cached yet (e.g. the new-case wizard) — no invalidation needed there.
+export const createSelector = (params: CreateSelectorParams) =>
+  window.birdbrain.selectors.create(params)
+
+export const exportSelectorMatches = (
+  caseId: string
+): Promise<{ exported: boolean; path?: string }> => window.birdbrain.selectors.exportMatches(caseId)
+
 export function useSelectorsMutations(caseId: string) {
   const queryClient = useQueryClient()
 

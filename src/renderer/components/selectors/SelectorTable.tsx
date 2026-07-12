@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { Search, ArrowUpDown } from 'lucide-react'
 import type { Selector } from '@shared/types'
 import { SelectorTableRow } from '@renderer/components/selectors/SelectorTableRow'
+import { useSelectorsMutations } from '@renderer/lib/queries'
 import { Card, Button } from '@renderer/components/ui'
 
 interface SelectorTableProps {
@@ -15,6 +16,7 @@ type SortField = 'pattern' | 'matches' | 'type' | 'label'
 type SortDir = 'asc' | 'desc'
 
 export function SelectorTable({ selectors, matchCounts, onRefresh, caseId }: SelectorTableProps) {
+  const { update, remove } = useSelectorsMutations(caseId)
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null)
   const [searchFilter, setSearchFilter] = useState('')
   const [sortBy, setSortBy] = useState<SortField>('matches')
@@ -59,12 +61,12 @@ export function SelectorTable({ selectors, matchCounts, onRefresh, caseId }: Sel
   }
 
   async function handleToggleEnabled(sel: Selector) {
-    await window.birdbrain.selectors.update({ id: sel.id, enabled: !sel.enabled })
+    await update.mutateAsync({ id: sel.id, enabled: !sel.enabled })
     onRefresh()
   }
 
   async function handleDelete(id: string) {
-    await window.birdbrain.selectors.delete(id)
+    await remove.mutateAsync(id)
     onRefresh()
   }
 

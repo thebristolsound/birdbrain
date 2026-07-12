@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { StickyNote, Pencil, Trash2, ExternalLink, X, Check } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { captureThumbnailQueryOptions, useNotesMutations } from '@renderer/lib/queries'
+import { openExternal } from '@renderer/lib/api/system'
 import type { Note } from '@shared/types'
 import { Button, Input, Textarea } from '@renderer/components/ui'
 
@@ -46,7 +47,7 @@ export function NoteCard({ note, caseId }: NoteCardProps) {
 
   async function handleOpenUrl() {
     if (note.sourceUrl) {
-      await window.birdbrain.captures.openExternal(note.sourceUrl)
+      await openExternal(note.sourceUrl)
     }
   }
 
@@ -100,7 +101,13 @@ export function NoteCard({ note, caseId }: NoteCardProps) {
               className="border-border bg-canvas text-text-secondary"
             />
             <div className="flex items-center justify-end gap-2">
-              <Button variant="ghost" size="xs" onClick={handleCancel} className="gap-1" type="button">
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={handleCancel}
+                className="gap-1"
+                type="button"
+              >
                 <X className="h-3.5 w-3.5" />
                 Cancel
               </Button>

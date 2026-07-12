@@ -12,6 +12,7 @@ import { motion } from 'motion/react'
 import { useAppStore } from '@renderer/stores/appStore'
 import { useReduceMotion } from '@renderer/hooks/useReduceMotion'
 import { Button } from '@renderer/components/ui'
+import { openExtensionFolder } from '@renderer/lib/api/system'
 
 const STEPS = [
   {
@@ -40,7 +41,7 @@ export function CapturesGettingStarted() {
 
   const handleInstall = async () => {
     try {
-      await window.birdbrain.extension.openFolder()
+      await openExtensionFolder()
     } catch (err) {
       console.error('Failed to open extension folder:', err)
     }

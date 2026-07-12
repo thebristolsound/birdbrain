@@ -7,6 +7,7 @@ import {
   useCapturesMutations,
   useSettingsMutations
 } from '@renderer/lib/queries'
+import { downloadCapture, openExternal } from '@renderer/lib/api/system'
 import { AddUrlsBox } from '@renderer/components/captures/AddUrlsBox'
 import { CaptureList } from '@renderer/components/captures/CaptureList'
 import { CaptureViewer } from '@renderer/components/captures/CaptureViewer'
@@ -78,12 +79,12 @@ export function CapturesRoute() {
 
   async function handleDownload() {
     if (!selectedCaptureId) return
-    await window.birdbrain.captures.download(selectedCaptureId)
+    await downloadCapture(selectedCaptureId)
   }
 
   async function handleOpenExternal() {
     if (!selectedCapture) return
-    await window.birdbrain.captures.openExternal(selectedCapture.url)
+    await openExternal(selectedCapture.url)
   }
 
   return (

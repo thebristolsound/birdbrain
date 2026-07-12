@@ -1,16 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import {
-  FileOutput,
-  ChevronDown,
-  FileText,
-  Archive,
-  Loader2,
-  CheckCircle2
-} from 'lucide-react'
+import { FileOutput, ChevronDown, FileText, Archive, Loader2, CheckCircle2 } from 'lucide-react'
 import { AnimatePresence } from 'motion/react'
 import { Button } from '@renderer/components/ui'
 import { ExportDialog } from '@renderer/components/export/ExportDialog'
 import { useCasesMutations } from '@renderer/lib/queries'
+import { subscribeArchiveProgress } from '@renderer/lib/api/export'
+import { revealInFolder } from '@renderer/lib/api/system'
 
 interface ExportMenuProps {
   caseId: string
@@ -45,7 +40,7 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
   }, [caseId])
 
   useEffect(() => {
-    const unsubscribe = window.birdbrain.onArchiveProgress((event) => {
+    const unsubscribe = subscribeArchiveProgress((event) => {
       if (event.caseId === caseId) {
         setArchiveProgress({ step: event.step, percent: event.percent })
       }
@@ -167,7 +162,7 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
               <button
                 type="button"
                 className="font-semibold underline underline-offset-2 hover:text-emerald-300"
-                onClick={() => window.birdbrain.shell.showItemInFolder(archiveResult.filePath)}
+                onClick={() => revealInFolder(archiveResult.filePath)}
               >
                 Show in folder
               </button>

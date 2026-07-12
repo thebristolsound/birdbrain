@@ -3,6 +3,7 @@ import { Activity, CheckCircle2, XCircle, AlertTriangle, Loader2 } from 'lucide-
 import { motion, AnimatePresence } from 'motion/react'
 import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '@renderer/stores/appStore'
+import { recaptureQueueStatusQueryOptions, usePipelineTests } from '@renderer/lib/api/recapture'
 import { presets } from '@renderer/lib/motion'
 import type { CaptureEvent } from '@shared/types'
 import { Button } from '@renderer/components/ui'
@@ -64,7 +65,8 @@ export function CaptureHealth() {
     durationMs: number
     error?: string
   } | null>(null)
-  const [testing, setTesting] = useState(false)
+  const { testPipeline, testHttp } = usePipelineTests()
+  const testing = testPipeline.isPending || testHttp.isPending
   const captureEvents = useAppStore((s) => s.captureEvents)
   const captureStats = useAppStore((s) => s.captureStats)
   const clearCaptureEvents = useAppStore((s) => s.clearCaptureEvents)
@@ -72,35 +74,28 @@ export function CaptureHealth() {
   const connectedToExtension = useAppStore((s) => s.connectedToExtension)
   // Queue status only renders inside the popover — don't poll while closed.
   const { data: queue } = useQuery({
-    queryKey: ['recaptureQueue'],
-    queryFn: () => window.birdbrain.recapture.queueStatus(),
+    ...recaptureQueueStatusQueryOptions,
     refetchInterval: 2000,
     enabled: open
   })
 
   async function runPipelineTest() {
-    setTesting(true)
     setTestResult(null)
     try {
-      const result = await window.birdbrain.testPipeline()
+      const result = await testPipeline.mutateAsync()
       setTestResult(result)
     } catch (err) {
       setTestResult({ success: false, durationMs: 0, error: String(err) })
-    } finally {
-      setTesting(false)
     }
   }
 
   async function runHttpTest() {
-    setTesting(true)
     setTestResult(null)
     try {
-      const result = await window.birdbrain.testHttp()
+      const result = await testHttp.mutateAsync()
       setTestResult(result)
     } catch (err) {
       setTestResult({ success: false, durationMs: 0, error: String(err) })
-    } finally {
-      setTesting(false)
     }
   }
 

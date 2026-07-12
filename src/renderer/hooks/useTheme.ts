@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
+import { useSettingsMutations } from '@renderer/lib/api/settings'
 
 type Theme = 'light' | 'dark'
 
@@ -18,6 +19,7 @@ function applyTheme(theme: Theme): void {
 
 export function useTheme() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme)
+  const { update: updateSettings } = useSettingsMutations()
 
   useEffect(() => {
     applyTheme(theme)
@@ -30,7 +32,7 @@ export function useTheme() {
     applyTheme(next)
     setTheme(next)
     localStorage.setItem('theme', next)
-    window.birdbrain.settings.update({ theme: next })
+    updateSettings.mutate({ theme: next })
 
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {

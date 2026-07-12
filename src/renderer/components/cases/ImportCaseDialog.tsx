@@ -5,6 +5,7 @@ import { ShieldCheck, ShieldAlert } from 'lucide-react'
 import type { ArchiveInspectReport } from '@shared/types'
 import { presets } from '@renderer/lib/motion'
 import { useCasesMutations } from '@renderer/lib/queries'
+import { subscribeArchiveProgress } from '@renderer/lib/api/export'
 import { Button } from '@renderer/components/ui'
 import { ExportProgress } from '@renderer/components/export/ExportProgress'
 
@@ -27,7 +28,7 @@ export function ImportCaseDialog({ report, onClose }: ImportCaseDialogProps) {
   // immediately after mutateAsync can't be missed. Import events carry no
   // caseId; the dialog only exists while its own import runs.
   useEffect(() => {
-    const unsubscribe = window.birdbrain.onArchiveProgress((event) => {
+    const unsubscribe = subscribeArchiveProgress((event) => {
       if (!event.caseId) setImportProgress({ step: event.step, percent: event.percent })
     })
     return unsubscribe
@@ -142,11 +143,7 @@ export function ImportCaseDialog({ report, onClose }: ImportCaseDialogProps) {
           <Button variant="ghost" size="sm" onClick={onClose} disabled={importArchive.isPending}>
             Cancel
           </Button>
-          <Button
-            size="sm"
-            onClick={handleImport}
-            disabled={!canImport || importArchive.isPending}
-          >
+          <Button size="sm" onClick={handleImport} disabled={!canImport || importArchive.isPending}>
             {importArchive.isPending ? 'Importing…' : 'Import case'}
           </Button>
         </div>

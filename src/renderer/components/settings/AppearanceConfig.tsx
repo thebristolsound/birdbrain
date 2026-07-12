@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTheme } from '@renderer/hooks/useTheme'
+import { useSettingsMutations } from '@renderer/lib/api/settings'
 import { REDUCE_MOTION_STORAGE_KEY as STORAGE_KEY } from '@renderer/hooks/useReduceMotion'
 import { Card, CardContent, Label } from '@renderer/components/ui'
 import { cn } from '@renderer/lib/utils'
@@ -14,6 +15,7 @@ function applyReduceMotionClass(enabled: boolean): void {
 
 export function AppearanceConfig() {
   const { theme, toggleTheme } = useTheme()
+  const { update: updateSettings } = useSettingsMutations()
   const [reduce, setReduce] = useState<boolean>(readInitial)
 
   useEffect(() => {
@@ -25,7 +27,7 @@ export function AppearanceConfig() {
     setReduce(next)
     localStorage.setItem(STORAGE_KEY, String(next))
     window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_KEY, newValue: String(next) }))
-    window.birdbrain.settings.update({ reduceMotion: next })
+    updateSettings.mutate({ reduceMotion: next })
   }
 
   return (

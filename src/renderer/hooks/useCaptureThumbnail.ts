@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { getCaptureThumbnail } from '@renderer/lib/api/captures'
 
 export function useCaptureThumbnail(captureId: string | null) {
   const [thumbnail, setThumbnail] = useState<string | null>(null)
@@ -15,8 +16,7 @@ export function useCaptureThumbnail(captureId: string | null) {
     setThumbnail(null)
     setLoading(true)
 
-    window.birdbrain.captures
-      .getThumbnail(captureId)
+    getCaptureThumbnail(captureId)
       .then((data) => {
         if (!cancelled) {
           if (data) {

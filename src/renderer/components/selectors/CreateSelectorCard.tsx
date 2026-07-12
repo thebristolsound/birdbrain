@@ -1,9 +1,15 @@
 import { useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Plus, ChevronUp, ChevronDown, Search, FlaskConical, Crosshair } from 'lucide-react'
 import {
   testPatternAgainstText,
   type MatchResult
 } from '@renderer/components/selectors/selectorUtils'
+import {
+  capturesQueryOptions,
+  captureContentQueryOptions,
+  useSelectorsMutations
+} from '@renderer/lib/queries'
 import { Card, Button, Label } from '@renderer/components/ui'
 
 interface TestResult {
@@ -25,6 +31,8 @@ export function CreateSelectorCard({
   onCreated,
   caseId
 }: CreateSelectorCardProps) {
+  const queryClient = useQueryClient()
+  const { create } = useSelectorsMutations(caseId)
   const [pattern, setPattern] = useState('')
   const [isRegex, setIsRegex] = useState(false)
   const [label, setLabel] = useState('')
@@ -51,7 +59,7 @@ export function CreateSelectorCard({
 
     setCreating(true)
     try {
-      await window.birdbrain.selectors.create({
+      await create.mutateAsync({
         caseId,
         pattern: pattern.trim(),
         isRegex,
@@ -76,13 +84,13 @@ export function CreateSelectorCard({
 
     setTesting(true)
     try {
-      const captures = await window.birdbrain.captures.list(caseId)
+      const captures = await queryClient.fetchQuery(capturesQueryOptions(caseId))
       const results: TestResult[] = []
       const toTest = captures.slice(0, 10)
 
       for (const capture of toTest) {
         try {
-          const text = await window.birdbrain.captures.getContent(capture.id, 'txt')
+          const text = await queryClient.fetchQuery(captureContentQueryOptions(capture.id, 'txt'))
           if (!text) continue
           const matches = testPatternAgainstText(pattern, isRegex, text)
           if (matches.length > 0) {

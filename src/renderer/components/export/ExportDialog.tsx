@@ -4,6 +4,11 @@ import type { ExportOptions, ExportPreflight } from '@shared/types'
 import { presets } from '@renderer/lib/motion'
 import { useCompletionCelebration } from '@renderer/hooks/useCompletionCelebration'
 import { Button, Input, Label } from '@renderer/components/ui'
+import {
+  preflightExport,
+  subscribeExportProgress,
+  useGenerateReport
+} from '@renderer/lib/api/export'
 import { ExportProgress } from '@renderer/components/export/ExportProgress'
 import { ExportComplete } from '@renderer/components/export/ExportComplete'
 
@@ -31,11 +36,11 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
   const [preflight, setPreflight] = useState<ExportPreflight | null>(null)
 
   const { celebrate, celebrationProps } = useCompletionCelebration({ style: 'ripple' })
+  const generateReport = useGenerateReport()
 
   useEffect(() => {
     let alive = true
-    window.birdbrain.export
-      .preflight(caseId)
+    preflightExport(caseId)
       .then((summary) => {
         if (alive) setPreflight(summary)
       })
@@ -48,7 +53,7 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
   }, [caseId])
 
   useEffect(() => {
-    const unsubscribe = window.birdbrain.onExportProgress((event) => {
+    const unsubscribe = subscribeExportProgress((event) => {
       if (event.caseId === caseId) setProgress({ step: event.step, percent: event.percent })
     })
     return unsubscribe
@@ -70,7 +75,7 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
     setProgress({ step: 'Preparing export…', percent: 0 })
     setPhase('exporting')
     try {
-      const result = await window.birdbrain.export.generateReport(caseId, options)
+      const result = await generateReport.mutateAsync({ caseId, options })
       if (result.canceled) {
         setPhase('form')
         return

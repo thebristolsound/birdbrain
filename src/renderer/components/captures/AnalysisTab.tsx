@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { v4 as uuid } from 'uuid'
+import { useQuery } from '@tanstack/react-query'
 import Markdown from 'react-markdown'
 import type { ExtraProps } from 'react-markdown'
 import { Button } from '@renderer/components/ui'
 import { Loader2, Save, RefreshCw, StickyNote, Settings, Sparkles, Copy } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
-import type { CaptureAnalysis, BirdbrainSettings, TokenUsage } from '@shared/types'
 import { useOpenRouterModels } from '@renderer/hooks/useOpenRouterModels'
+import { settingsQueryOptions } from '@renderer/lib/api/settings'
+import { analysisQueryOptions, useAnalysisMutations } from '@renderer/lib/api/ai'
+import { openExternal } from '@renderer/lib/api/system'
 import { presets } from '@renderer/lib/motion'
 
 interface AnalysisTabProps {
@@ -19,103 +20,53 @@ interface AnalysisTabProps {
 }
 
 export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: AnalysisTabProps) {
-  const queryClient = useQueryClient()
   const navigate = useNavigate()
 
-  const [settings, setSettings] = useState<BirdbrainSettings | null>(null)
   const [selectedModel, setSelectedModel] = useState('')
-  const [liveContent, setLiveContent] = useState<string | null>(null)
-  const [liveTokenUsage, setLiveTokenUsage] = useState<TokenUsage | null>(null)
-  const [analysisTimestamp, setAnalysisTimestamp] = useState<string | null>(null)
-  const [analyzeError, setAnalyzeError] = useState<string | null>(null)
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [copied, setCopied] = useState(false)
 
-  // Load settings once; selectedModel seeds from the stored default.
+  // selectedModel seeds from the stored default once settings load.
+  const { data: settings } = useQuery(settingsQueryOptions)
   useEffect(() => {
-    window.birdbrain.settings.get().then((s) => {
-      setSettings(s)
-      setSelectedModel(s.defaultModel)
-    })
-  }, [])
+    if (settings && selectedModel === '') setSelectedModel(settings.defaultModel)
+  }, [settings, selectedModel])
 
   const { models } = useOpenRouterModels(settings?.openRouterApiKey)
 
   // Load saved analysis
-  const { data: savedAnalysis, isLoading: isLoadingSaved } = useQuery({
-    queryKey: ['analysis', captureId],
-    queryFn: () => window.birdbrain.ai.getAnalysis(captureId),
-    enabled: !!captureId
-  })
+  const { data: savedAnalysis, isLoading: isLoadingSaved } = useQuery(
+    analysisQueryOptions(captureId)
+  )
 
-  // Reset local analysis state when switching captures to avoid showing stale data
+  const { analyze, saveAnalysis } = useAnalysisMutations(captureId, caseId)
+  const { reset: resetAnalyze } = analyze
+  const { reset: resetSave } = saveAnalysis
+
+  // Reset mutation state when switching captures to avoid showing stale data
   useEffect(() => {
-    setLiveContent(null)
-    setLiveTokenUsage(null)
-    setAnalysisTimestamp(null)
-    setAnalyzeError(null)
-    setHasUnsavedChanges(false)
-  }, [captureId])
+    resetAnalyze()
+    resetSave()
+  }, [captureId, resetAnalyze, resetSave])
 
-  // When saved analysis loads, populate the live state or clear it if none exists
-  useEffect(() => {
-    if (savedAnalysis) {
-      setLiveContent(savedAnalysis.content)
-      setLiveTokenUsage(savedAnalysis.tokenUsage)
-      setAnalysisTimestamp(savedAnalysis.updatedAt || savedAnalysis.createdAt)
-      setHasUnsavedChanges(false)
-      setAnalyzeError(null)
-    } else {
-      setLiveContent(null)
-      setLiveTokenUsage(null)
-      setAnalysisTimestamp(null)
-      setAnalyzeError(null)
-      setHasUnsavedChanges(false)
-    }
-  }, [savedAnalysis])
+  // A fresh (unsaved) analyze result takes precedence over the saved analysis.
+  const liveContent = analyze.data?.content ?? savedAnalysis?.content ?? null
+  const liveTokenUsage = analyze.data?.tokenUsage ?? savedAnalysis?.tokenUsage ?? null
+  const analysisTimestamp = analyze.data
+    ? analyze.data.completedAt
+    : savedAnalysis
+      ? savedAnalysis.updatedAt || savedAnalysis.createdAt
+      : null
+  const hasUnsavedChanges = !!analyze.data
+  const analyzeError = analyze.error ? analyze.error.message : null
 
-  // Analyze mutation
-  const analyzeMutation = useMutation({
-    mutationFn: () =>
-      window.birdbrain.ai.analyze({
-        captureId,
-        caseId,
-        model: selectedModel
-      }),
-    onSuccess: (result) => {
-      setLiveContent(result.content)
-      setLiveTokenUsage(result.tokenUsage)
-      setAnalysisTimestamp(new Date().toISOString())
-      setHasUnsavedChanges(true)
-      setAnalyzeError(null)
-    },
-    onError: (err: Error) => {
-      setAnalyzeError(err.message)
-    }
-  })
-
-  // Save mutation — saveAnalysis is upsert-by-captureId in the main process
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      if (!liveContent || !liveTokenUsage) return
-      const now = new Date().toISOString()
-      const analysis: CaptureAnalysis = {
-        id: savedAnalysis?.id ?? uuid(),
-        captureId,
-        caseId,
-        content: liveContent,
-        model: selectedModel,
-        tokenUsage: liveTokenUsage,
-        createdAt: savedAnalysis?.createdAt ?? now,
-        updatedAt: now
-      }
-      await window.birdbrain.ai.saveAnalysis(analysis)
-    },
-    onSuccess: () => {
-      setHasUnsavedChanges(false)
-      queryClient.invalidateQueries({ queryKey: ['analysis', captureId] })
-    }
-  })
+  const handleSave = () => {
+    if (!liveContent || !liveTokenUsage) return
+    saveAnalysis.mutate(
+      { content: liveContent, model: selectedModel, tokenUsage: liveTokenUsage },
+      // Once saved, the upserted analysis is the saved one — drop the live result.
+      { onSuccess: () => resetAnalyze() }
+    )
+  }
 
   const handleCopyToClipboard = async () => {
     if (!liveContent) return
@@ -125,8 +76,8 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
   }
 
   const hasApiKey = !!settings?.openRouterApiKey
-  const isAnalyzing = analyzeMutation.isPending
-  const isSaving = saveMutation.isPending
+  const isAnalyzing = analyze.isPending
+  const isSaving = saveAnalysis.isPending
 
   // --- No API key state ---
   if (settings && !hasApiKey) {
@@ -180,7 +131,7 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
             ))}
           </select>
         )}
-        <Button size="sm" onClick={() => analyzeMutation.mutate()} disabled={isAnalyzing}>
+        <Button size="sm" onClick={() => analyze.mutate(selectedModel)} disabled={isAnalyzing}>
           <Sparkles className="mr-1.5 h-3.5 w-3.5" />
           Analyze
         </Button>
@@ -196,7 +147,7 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
           <h3 className="text-sm font-semibold text-red-400">Analysis Failed</h3>
           <p className="mt-1 max-w-sm text-xs text-red-400/80">{analyzeError}</p>
         </div>
-        <Button size="sm" onClick={() => analyzeMutation.mutate()}>
+        <Button size="sm" onClick={() => analyze.mutate(selectedModel)}>
           Retry
         </Button>
       </div>
@@ -251,7 +202,7 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => analyzeMutation.mutate()}
+                onClick={() => analyze.mutate(selectedModel)}
                 disabled={isAnalyzing}
                 title="Re-analyze"
               >
@@ -262,7 +213,7 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => saveMutation.mutate()}
+                onClick={handleSave}
                 disabled={isSaving || !hasUnsavedChanges}
                 title={savedAnalysis && hasUnsavedChanges ? 'Save changes' : 'Save'}
               >
@@ -320,7 +271,7 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
                         rel="noreferrer noopener"
                         onClick={(e) => {
                           e.preventDefault()
-                          if (href) window.birdbrain.captures.openExternal(href)
+                          if (href) openExternal(href)
                         }}
                       >
                         {children}

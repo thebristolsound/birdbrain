@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
-import { useVerifyMutation } from '@renderer/components/captures/useVerifyMutation'
+import { useVerifyCapture } from '@renderer/lib/api/captures'
 
 function withClient(client: QueryClient) {
   return function Wrapper({ children }: { children: ReactNode }) {
@@ -19,7 +19,7 @@ function deferred<T>() {
   return { promise, resolve }
 }
 
-describe('useVerifyMutation', () => {
+describe('useVerifyCapture', () => {
   it('shares pending state across observers for the same capture', async () => {
     const verifyResult = deferred<{
       status: 'verified'
@@ -46,8 +46,8 @@ describe('useVerifyMutation', () => {
 
     const { result } = renderHook(
       () => ({
-        first: useVerifyMutation('capture-1', 'case-1'),
-        second: useVerifyMutation('capture-1', 'case-1')
+        first: useVerifyCapture('capture-1', 'case-1'),
+        second: useVerifyCapture('capture-1', 'case-1')
       }),
       {
         wrapper: withClient(client)

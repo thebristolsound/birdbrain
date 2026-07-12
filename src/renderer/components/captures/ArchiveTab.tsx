@@ -6,6 +6,7 @@ import {
   archivePinsQueryOptions,
   useArchiveMutations
 } from '@renderer/lib/queries'
+import { openExternal } from '@renderer/lib/api/system'
 
 interface Props {
   capture: Capture
@@ -23,7 +24,7 @@ export function ArchiveTab({ capture }: Props) {
   const result = lookup.data
   const pinnedUrls = new Set((pins.data ?? []).map((r) => r.snapshotUrl))
 
-  const open = (url: string) => void window.birdbrain.captures.openExternal(url)
+  const open = (url: string) => void openExternal(url)
 
   return (
     <div className="h-full overflow-y-auto p-5 text-sm">
@@ -151,9 +152,7 @@ function SnapshotRow({
             closest to capture
           </span>
         )}
-        {snapshot.mimeType && (
-          <span className="text-xs text-text-faint">{snapshot.mimeType}</span>
-        )}
+        {snapshot.mimeType && <span className="text-xs text-text-faint">{snapshot.mimeType}</span>}
       </span>
       <span className="flex items-center gap-2">
         <button

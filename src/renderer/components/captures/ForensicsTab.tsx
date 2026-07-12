@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from 'react'
 import type { Capture } from '@shared/types'
-import { useVerifyMutation } from '@renderer/components/captures/useVerifyMutation'
+import { useVerifyCapture } from '@renderer/lib/api/captures'
 import { getProvenanceColor } from '@renderer/components/captures/getProvenanceColor'
 
 interface Props {
@@ -9,7 +9,7 @@ interface Props {
 }
 
 export function ForensicsTab({ capture, caseId }: Props) {
-  const verify = useVerifyMutation(capture.id, caseId)
+  const verify = useVerifyCapture(capture.id, caseId)
   const provenance = getProvenanceColor(capture.lastVerifiedStatus)
   const [headersOpen, setHeadersOpen] = useState(false)
   const headersRegionId = useId()

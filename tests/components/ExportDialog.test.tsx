@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import type { ReactNode } from 'react'
 import type { ExportOptions, ExportPreflight } from '@shared/types'
 import type { ExportProgressEvent, ExportResult } from '@shared/ipc'
 
@@ -69,6 +71,12 @@ function deferred<T>() {
   return { promise, resolve, reject }
 }
 
+let client: QueryClient
+
+function Wrapper({ children }: { children: ReactNode }) {
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+}
+
 describe('ExportDialog', () => {
   let preflight: ReturnType<typeof vi.fn>
   let generateReport: ReturnType<typeof vi.fn>
@@ -78,6 +86,9 @@ describe('ExportDialog', () => {
   let progressCb: ((event: ExportProgressEvent) => void) | null
 
   beforeEach(() => {
+    client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
+    })
     progressCb = null
     preflight = vi.fn().mockResolvedValue({
       captureCount: 3,
@@ -108,7 +119,9 @@ describe('ExportDialog', () => {
   })
 
   it('shows the un-stamped capture warning before export', async () => {
-    render(<ExportDialog caseId="case-1" caseName="Case One" onClose={vi.fn()} />)
+    render(<ExportDialog caseId="case-1" caseName="Case One" onClose={vi.fn()} />, {
+      wrapper: Wrapper
+    })
 
     expect(
       await screen.findByText(/2 captures will export without RFC 3161 trusted time/)
@@ -117,7 +130,9 @@ describe('ExportDialog', () => {
   })
 
   it('exports a ZIP evidence package by default', async () => {
-    render(<ExportDialog caseId="case-1" caseName="Case One" onClose={vi.fn()} />)
+    render(<ExportDialog caseId="case-1" caseName="Case One" onClose={vi.fn()} />, {
+      wrapper: Wrapper
+    })
 
     fireEvent.click(screen.getByText('Export'))
 
@@ -130,7 +145,9 @@ describe('ExportDialog', () => {
   it('renders the live step and percent from export progress events', async () => {
     const gate = deferred<ExportResult>()
     generateReport.mockReturnValue(gate.promise)
-    render(<ExportDialog caseId="case-1" caseName="Case One" onClose={vi.fn()} />)
+    render(<ExportDialog caseId="case-1" caseName="Case One" onClose={vi.fn()} />, {
+      wrapper: Wrapper
+    })
 
     fireEvent.click(screen.getByText('Export'))
     await waitFor(() => expect(onExportProgress).toHaveBeenCalled())
@@ -148,7 +165,9 @@ describe('ExportDialog', () => {
   it('ignores progress events for other cases', async () => {
     const gate = deferred<ExportResult>()
     generateReport.mockReturnValue(gate.promise)
-    render(<ExportDialog caseId="case-1" caseName="Case One" onClose={vi.fn()} />)
+    render(<ExportDialog caseId="case-1" caseName="Case One" onClose={vi.fn()} />, {
+      wrapper: Wrapper
+    })
 
     fireEvent.click(screen.getByText('Export'))
     await waitFor(() => expect(onExportProgress).toHaveBeenCalled())
@@ -162,7 +181,9 @@ describe('ExportDialog', () => {
   })
 
   it('shows the completion screen with file actions on success', async () => {
-    render(<ExportDialog caseId="case-1" caseName="Case One" onClose={vi.fn()} />)
+    render(<ExportDialog caseId="case-1" caseName="Case One" onClose={vi.fn()} />, {
+      wrapper: Wrapper
+    })
 
     fireEvent.click(screen.getByText('Export'))
 
@@ -178,7 +199,9 @@ describe('ExportDialog', () => {
 
   it('returns to the form when the save dialog is canceled (no false success)', async () => {
     generateReport.mockResolvedValue({ canceled: true } satisfies ExportResult)
-    render(<ExportDialog caseId="case-1" caseName="Case One" onClose={vi.fn()} />)
+    render(<ExportDialog caseId="case-1" caseName="Case One" onClose={vi.fn()} />, {
+      wrapper: Wrapper
+    })
 
     fireEvent.click(screen.getByText('Export'))
 
@@ -189,7 +212,9 @@ describe('ExportDialog', () => {
 
   it('surfaces an error and offers retry', async () => {
     generateReport.mockRejectedValueOnce(new Error('disk full'))
-    render(<ExportDialog caseId="case-1" caseName="Case One" onClose={vi.fn()} />)
+    render(<ExportDialog caseId="case-1" caseName="Case One" onClose={vi.fn()} />, {
+      wrapper: Wrapper
+    })
 
     fireEvent.click(screen.getByText('Export'))
 

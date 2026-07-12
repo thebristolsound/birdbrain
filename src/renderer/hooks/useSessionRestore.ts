@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { useQuery } from '@tanstack/react-query'
-import { casesQueryOptions } from '@renderer/lib/queries'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { casesQueryOptions, settingsQueryOptions } from '@renderer/lib/queries'
 import type { BirdbrainSettings } from '@shared/types'
 
 type Section = BirdbrainSettings['lastActiveSection']
@@ -51,6 +51,7 @@ export function resolveStartRoute(input: ResolveInput): RouteResult {
 export function useSessionRestore() {
   const [restoring, setRestoring] = useState(true)
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { data: cases, isLoading, isError } = useQuery(casesQueryOptions)
   const hasRestoredRef = useRef(false)
 
@@ -69,7 +70,7 @@ export function useSessionRestore() {
 
     async function restore() {
       try {
-        const settings = await window.birdbrain.settings.get()
+        const settings = await queryClient.fetchQuery(settingsQueryOptions)
         if (cancelled) return
 
         const route = resolveStartRoute({
@@ -89,7 +90,7 @@ export function useSessionRestore() {
     return () => {
       cancelled = true
     }
-  }, [isLoading, isError, cases, navigate])
+  }, [isLoading, isError, cases, navigate, queryClient])
 
   return { restoring }
 }

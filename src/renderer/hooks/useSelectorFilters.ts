@@ -1,7 +1,10 @@
 import { useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useAppStore } from '@renderer/stores/appStore'
+import { selectorMatchingCapturesQueryOptions } from '@renderer/lib/api/selectors'
 
 export function useSelectorFilters(caseId: string | null) {
+  const queryClient = useQueryClient()
   const activeSelectorFilters = useAppStore((s) => s.activeSelectorFilters)
 
   useEffect(() => {
@@ -12,8 +15,8 @@ export function useSelectorFilters(caseId: string | null) {
 
     let cancelled = false
 
-    window.birdbrain.selectors
-      .matchingCaptures(caseId, activeSelectorFilters)
+    queryClient
+      .fetchQuery(selectorMatchingCapturesQueryOptions(caseId, activeSelectorFilters))
       .then((ids) => {
         if (!cancelled) useAppStore.getState().setFilteredCaptureIds(ids)
       })
@@ -27,5 +30,5 @@ export function useSelectorFilters(caseId: string | null) {
     return () => {
       cancelled = true
     }
-  }, [caseId, activeSelectorFilters])
+  }, [caseId, activeSelectorFilters, queryClient])
 }

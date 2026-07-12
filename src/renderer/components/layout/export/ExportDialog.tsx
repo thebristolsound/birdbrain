@@ -5,6 +5,7 @@ import { presets } from '@renderer/lib/motion'
 import { useTheater } from '@renderer/hooks/useTheater'
 import { useCompletionCelebration } from '@renderer/hooks/useCompletionCelebration'
 import { Button, Input, Label } from '@renderer/components/ui'
+import { useGenerateReport } from '@renderer/lib/api/export'
 
 interface ExportDialogProps {
   caseId: string
@@ -32,6 +33,7 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
   })
 
   const { celebrate, celebrationProps } = useCompletionCelebration({ style: 'ripple' })
+  const generateReport = useGenerateReport()
 
   const handleExport = async () => {
     const ext = 'html'
@@ -49,7 +51,7 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
     setExportComplete(false)
     setExportError('')
     try {
-      await window.birdbrain.export.generateReport(caseId, options)
+      await generateReport.mutateAsync({ caseId, options })
       setExportComplete(true)
       celebrate()
     } catch (err) {

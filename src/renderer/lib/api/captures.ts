@@ -1,4 +1,4 @@
-import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
+import { queryOptions, useIsMutating, useMutation, useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@renderer/lib/api/keys'
 
 export const capturesQueryOptions = (caseId: string) =>
@@ -19,6 +19,11 @@ export const captureContentQueryOptions = (captureId: string, type: 'html' | 'pn
     queryFn: () => window.birdbrain.captures.getContent(captureId, type),
     enabled: !!captureId
   })
+
+// One-shot fetch for the hand-rolled useCaptureThumbnail hook, which manages
+// its own cancellation/loading state outside the query cache.
+export const getCaptureThumbnail = (captureId: string): Promise<string | null> =>
+  window.birdbrain.captures.getThumbnail(captureId)
 
 export const captureThumbnailQueryOptions = (captureId: string) =>
   queryOptions({
@@ -75,6 +80,28 @@ export function useCapturesMutations(caseId: string) {
   })
 
   return { remove, toggleFavorite }
+}
+
+export function useVerifyCapture(captureId: string, caseId: string) {
+  const queryClient = useQueryClient()
+  const mutationKey = ['verify-capture', captureId] as const
+
+  const mutation = useMutation({
+    mutationKey,
+    mutationFn: () => window.birdbrain.captures.verify(captureId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.captures(caseId) })
+    }
+  })
+
+  const isPending = useIsMutating({ mutationKey }) > 0
+
+  return {
+    verify: () => mutation.mutate(),
+    isPending,
+    data: mutation.data,
+    error: mutation.error
+  }
 }
 
 export function useRecaptureMutations(caseId: string) {

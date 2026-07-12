@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { Puzzle, FolderOpen, CheckCircle, BookOpen } from 'lucide-react'
 import { Card, Button } from '@renderer/components/ui'
+import { openExtensionFolder } from '@renderer/lib/api/system'
 
 interface ExtensionBannerProps {
   connected: boolean
@@ -9,7 +10,7 @@ interface ExtensionBannerProps {
 export function ExtensionBanner({ connected }: ExtensionBannerProps) {
   const handleOpenFolder = async () => {
     try {
-      await window.birdbrain.extension.openFolder()
+      await openExtensionFolder()
     } catch (err) {
       console.error('Failed to open extension folder:', err)
     }

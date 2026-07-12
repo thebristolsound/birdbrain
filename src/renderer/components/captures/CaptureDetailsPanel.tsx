@@ -27,7 +27,7 @@ import { TagBadge } from '@renderer/components/tags/TagBadge'
 import { TagEditorPopover } from '@renderer/components/captures/TagEditorPopover'
 import { useCaptureTagEditor } from '@renderer/components/captures/useCaptureTagEditor'
 import { useInlineNoteEditor } from '@renderer/components/captures/useInlineNoteEditor'
-import { useVerifyMutation } from '@renderer/components/captures/useVerifyMutation'
+import { useVerifyCapture } from '@renderer/lib/api/captures'
 import { getProvenanceColor } from '@renderer/components/captures/getProvenanceColor'
 
 interface Props {
@@ -56,7 +56,7 @@ export function CaptureDetailsPanel({
   const { create: createNote, update: updateNote } = useNotesMutations(caseId)
   const { favorites, toggleFavorite } = useFavorites(caseId)
   const { tags } = useCaptureTagEditor(capture.id)
-  const verify = useVerifyMutation(capture.id, caseId)
+  const verify = useVerifyCapture(capture.id, caseId)
 
   const [tagPopoverOpen, setTagPopoverOpen] = useState(false)
   const tagAnchorRef = useRef<HTMLButtonElement>(null)
@@ -217,23 +217,20 @@ export function CaptureDetailsPanel({
           label="Provenance"
           value={
             <div className="flex items-center gap-2">
-                <span
-                  data-testid="capture-details-provenance-dot"
-                  className={`inline-block h-1.5 w-1.5 rounded-full ${provenance.dot} ${
-                    verify.isPending ? 'animate-pulse' : ''
-                  }`}
-                />
-                <span
-                  data-testid="capture-details-provenance-label"
-                  className={provenance.text}
-                >
-                  {provenance.label}
-                </span>
-                <button
-                  data-testid="capture-details-reverify-btn"
-                  onClick={verify.verify}
-                  disabled={verify.isPending}
-                  className="ml-auto rounded-md px-2 py-0.5 text-[11px] text-accent hover:bg-accent-subtle disabled:opacity-50"
+              <span
+                data-testid="capture-details-provenance-dot"
+                className={`inline-block h-1.5 w-1.5 rounded-full ${provenance.dot} ${
+                  verify.isPending ? 'animate-pulse' : ''
+                }`}
+              />
+              <span data-testid="capture-details-provenance-label" className={provenance.text}>
+                {provenance.label}
+              </span>
+              <button
+                data-testid="capture-details-reverify-btn"
+                onClick={verify.verify}
+                disabled={verify.isPending}
+                className="ml-auto rounded-md px-2 py-0.5 text-[11px] text-accent hover:bg-accent-subtle disabled:opacity-50"
               >
                 {verify.isPending ? 'Verifying…' : 'Re-verify'}
               </button>

@@ -90,8 +90,13 @@ vi.mock('@main/services/waybackMachine', async (importActual) => {
 // --- Real services ----------------------------------------------------------
 import { IPC_CHANNELS } from '@shared/ipc'
 import { registerIpcHandlers } from '@main/ipcHandlers'
-import * as db from '@main/services/database'
-import { createCase, insertCapture } from '@main/services/database'
+import type { Capture, Case } from '@shared/types'
+import { closeDatabase, initDatabase } from '@main/services/db/core'
+import * as caseRepo from '@main/services/db/caseRepo'
+import * as captureRepo from '@main/services/db/captureRepo'
+import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
+import { createCase } from '@main/services/db/caseRepo'
+import { insertCapture } from '@main/services/db/captureRepo'
 import * as storage from '@main/services/storage'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import * as settings from '@main/services/settings'
@@ -135,8 +140,8 @@ let updaterService: {
   dispose: ReturnType<typeof vi.fn>
 }
 
-function seedCapture(overrides: Partial<db.InsertCaptureParams> = {}): db.Capture {
-  const cap = db.insertCapture({
+function seedCapture(overrides: Partial<captureRepo.InsertCaptureParams> = {}): Capture {
+  const cap = captureRepo.insertCapture({
     caseId,
     url: 'https://example.com',
     title: 'Example',
@@ -171,7 +176,7 @@ beforeEach(() => {
   dbPath = join(userDataPath, 'birdbrain.db')
 
   storage.initStorage(join(userDataPath, 'captures'))
-  db.initDatabase(dbPath)
+  initDatabase(dbPath)
   settings.initSettings(userDataPath)
   initInstallationId(userDataPath)
   initServerToken(userDataPath)
@@ -207,7 +212,7 @@ beforeEach(() => {
     updaterService
   })
 
-  const created = db.createCase({ name: 'Test Case' })
+  const created = caseRepo.createCase({ name: 'Test Case' })
   caseId = created.id
   storage.ensureCaseDir(caseId)
   initManifest(join(storage.getStorageRoot(), caseId))
@@ -215,7 +220,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  db.closeDatabase()
+  closeDatabase()
   rmSync(userDataPath, { recursive: true, force: true })
   delete process.env.BIRDBRAIN_USER_DATA
 })
@@ -240,22 +245,22 @@ describe('ipcHandlers — registration', () => {
 
 describe('ipcHandlers — cases', () => {
   it('lists, gets, creates, updates and deletes cases', async () => {
-    const list = await invoke<db.Case[]>(IPC_CHANNELS.CASES_LIST)
+    const list = await invoke<Case[]>(IPC_CHANNELS.CASES_LIST)
     expect(list.some((c) => c.id === caseId)).toBe(true)
 
-    const one = await invoke<db.Case>(IPC_CHANNELS.CASES_GET, caseId)
+    const one = await invoke<Case>(IPC_CHANNELS.CASES_GET, caseId)
     expect(one.name).toBe('Test Case')
 
-    const created = expectOk<db.Case>(await invoke(IPC_CHANNELS.CASES_CREATE, { name: 'Another' }))
+    const created = expectOk<Case>(await invoke(IPC_CHANNELS.CASES_CREATE, { name: 'Another' }))
     expect(created.name).toBe('Another')
 
-    const updated = expectOk<db.Case>(
+    const updated = expectOk<Case>(
       await invoke(IPC_CHANNELS.CASES_UPDATE, { id: created.id, name: 'Renamed' })
     )
     expect(updated.name).toBe('Renamed')
 
     expectOk(await invoke(IPC_CHANNELS.CASES_DELETE, created.id))
-    const after = await invoke<db.Case[]>(IPC_CHANNELS.CASES_LIST)
+    const after = await invoke<Case[]>(IPC_CHANNELS.CASES_LIST)
     expect(after.some((c) => c.id === created.id)).toBe(false)
   })
 
@@ -273,9 +278,9 @@ describe('ipcHandlers — cases', () => {
 
 describe('ipcHandlers — captures', () => {
   it('lists and gets captures', async () => {
-    const list = await invoke<db.Capture[]>(IPC_CHANNELS.CAPTURES_LIST, caseId)
+    const list = await invoke<Capture[]>(IPC_CHANNELS.CAPTURES_LIST, caseId)
     expect(list).toHaveLength(1)
-    const one = await invoke<db.Capture>(IPC_CHANNELS.CAPTURES_GET, captureId)
+    const one = await invoke<Capture>(IPC_CHANNELS.CAPTURES_GET, captureId)
     expect(one.id).toBe(captureId)
   })
 
@@ -308,7 +313,7 @@ describe('ipcHandlers — captures', () => {
   it('toggles, reads and lists favorites', async () => {
     expectOk(await invoke(IPC_CHANNELS.CAPTURES_TOGGLE_FAVORITE, captureId))
     expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_IS_FAVORITE, captureId))).toBe(true)
-    const favs = expectOk<db.Capture[]>(await invoke(IPC_CHANNELS.CAPTURES_LIST_FAVORITES, caseId))
+    const favs = expectOk<Capture[]>(await invoke(IPC_CHANNELS.CAPTURES_LIST_FAVORITES, caseId))
     expect(favs).toHaveLength(1)
   })
 
@@ -352,7 +357,7 @@ describe('ipcHandlers — captures', () => {
     expect(verification.status).toBeDefined()
 
     expectOk(await invoke(IPC_CHANNELS.CAPTURES_DELETE, captureId))
-    expect(await invoke<db.Capture[]>(IPC_CHANNELS.CAPTURES_LIST, caseId)).toHaveLength(0)
+    expect(await invoke<Capture[]>(IPC_CHANNELS.CAPTURES_LIST, caseId)).toHaveLength(0)
   })
 
   it('reports failure for the http/pipeline self-tests when the server is down', async () => {
@@ -836,7 +841,7 @@ describe('ipcHandlers — AI analysis', () => {
 
 describe('ipcHandlers — extracted data', () => {
   it('lists categories, subcategories, items and counts, and reprocesses', async () => {
-    db.insertExtractedData(captureId, caseId, 'https://example.com', [
+    extractedDataRepo.insertExtractedData(captureId, caseId, 'https://example.com', [
       { category: 'ioc', subcategory: 'email', value: 'a@b.com' }
     ])
     const categories = await invoke<unknown[]>(IPC_CHANNELS.EXTRACTED_DATA_CATEGORIES, caseId)
@@ -852,7 +857,7 @@ describe('ipcHandlers — extracted data', () => {
   })
 
   it('searches extracted data by substring', async () => {
-    db.insertExtractedData(captureId, caseId, 'https://example.com', [
+    extractedDataRepo.insertExtractedData(captureId, caseId, 'https://example.com', [
       { category: 'ioc', subcategory: 'email', value: 'foo@gmail.com' }
     ])
     const results = await invoke<Array<{ value: string }>>(

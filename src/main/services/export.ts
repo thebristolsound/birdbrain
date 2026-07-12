@@ -2,7 +2,8 @@ import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { unlink } from 'fs/promises'
 import { createHash } from 'crypto'
 import { join } from 'path'
-import * as db from '@main/services/database'
+import * as caseRepo from '@main/services/db/caseRepo'
+import * as captureRepo from '@main/services/db/captureRepo'
 import { getStorageRoot } from '@main/services/storage'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
@@ -66,7 +67,7 @@ export async function verifyCaptures(
   captureLifecycle: CaptureLifecycle,
   onItem?: (done: number, total: number) => void
 ): Promise<HashVerification[]> {
-  const captures = db.listCaptures(caseId)
+  const captures = captureRepo.listCaptures(caseId)
   const results: HashVerification[] = []
   for (const [index, capture] of captures.entries()) {
     // Delegate to the MHTML-aware pipeline so export-time verification matches the
@@ -79,7 +80,7 @@ export async function verifyCaptures(
 }
 
 export function getExportPreflight(caseId: string): ExportPreflight {
-  const captures = db.listCaptures(caseId)
+  const captures = captureRepo.listCaptures(caseId)
   const trustedTimes = buildTrustedTimeIndex(join(getStorageRoot(), caseId))
   const counts: Record<TrustedTime, number> = { rfc3161: 0, pending: 0, none: 0 }
 
@@ -111,11 +112,11 @@ export async function generateReport(
     )
   }
 
-  const caseData = db.getCase(caseId)
+  const caseData = caseRepo.getCase(caseId)
   if (!caseData) throw new Error(`Case not found: ${caseId}`)
 
   onProgress?.('Loading captures...', 10)
-  const captures = db.listCaptures(caseId)
+  const captures = captureRepo.listCaptures(caseId)
 
   // Build export data
   const data: ExportData = {

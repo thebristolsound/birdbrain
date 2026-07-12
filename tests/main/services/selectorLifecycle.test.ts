@@ -2,15 +2,14 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { createCase } from '@main/services/db/caseRepo'
+import { insertCapture } from '@main/services/db/captureRepo'
 import {
-  initDatabase,
-  closeDatabase,
-  createCase,
-  insertCapture,
   getSelectorMatchCounts,
   getCapturesMatchingSelectors,
   listSelectors
-} from '@main/services/database'
+} from '@main/services/db/selectorRepo'
 import { initStorage } from '@main/services/storage'
 import { createSelectorLifecycle, RETRO_MAX_CAPTURES } from '@main/services/selectorLifecycle'
 import type { SelectorRematchedEvent } from '@shared/ipc'

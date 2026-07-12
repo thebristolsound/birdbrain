@@ -4,14 +4,9 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
-import {
-  initDatabase,
-  closeDatabase,
-  createCase,
-  getCapture,
-  insertCapture,
-  listCaptures
-} from '@main/services/database'
+import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { createCase } from '@main/services/db/caseRepo'
+import { getCapture, insertCapture, listCaptures } from '@main/services/db/captureRepo'
 import { initManifest, verifyManifestChain, appendManifestEntry } from '@main/services/manifest'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'

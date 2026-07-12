@@ -1,15 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { createCase, updateCase, deleteCase } from '@main/services/db/caseRepo'
 import {
-  initDatabase,
-  closeDatabase,
-  createCase,
-  updateCase,
   insertCapture,
   deleteCapture,
-  deleteCase,
   searchCaptures,
   getCaptureTextContent
-} from '@main/services/database'
+} from '@main/services/db/captureRepo'
 import { deleteRow, purgeArchived, vacuumDb } from '@main/services/db/dbAdmin'
 
 function makeCapture(caseId: string, text: string, title = 'T') {

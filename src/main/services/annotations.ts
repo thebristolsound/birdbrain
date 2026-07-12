@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto'
-import { getDb } from '@main/services/database'
+import { getDb } from '@main/services/db/core'
 import type {
   AnnotationsBundle,
   AnnotationPin,

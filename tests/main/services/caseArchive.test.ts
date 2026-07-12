@@ -3,24 +3,18 @@ import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSy
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { createHash } from 'crypto'
+import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { createCase } from '@main/services/db/caseRepo'
 import {
-  initDatabase,
-  closeDatabase,
-  createCase,
   insertCapture,
-  createTag,
-  addTagToCapture,
-  createSelector,
   toggleFavorite,
-  createNote,
   listCaptures,
-  listNotes,
-  listSelectors,
-  listTags,
-  getTagsForCapture,
   searchCaptures
-} from '@main/services/database'
-import { getDb } from '@main/services/database'
+} from '@main/services/db/captureRepo'
+import { createTag, addTagToCapture, listTags, getTagsForCapture } from '@main/services/db/tagRepo'
+import { createSelector, listSelectors } from '@main/services/db/selectorRepo'
+import { createNote, listNotes } from '@main/services/db/noteRepo'
+import { getDb } from '@main/services/db/core'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import {

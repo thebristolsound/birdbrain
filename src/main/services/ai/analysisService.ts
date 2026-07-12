@@ -1,5 +1,5 @@
 import { v4 as uuid } from 'uuid'
-import { getDb } from '@main/services/database'
+import { getDb } from '@main/services/db/core'
 import { sendPrompt, truncateForContext } from '@main/services/ai/openrouter'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import type { CaptureAnalysis, TokenUsage } from '@shared/types'

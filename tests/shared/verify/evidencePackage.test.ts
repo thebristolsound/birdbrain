@@ -4,11 +4,8 @@ import { join, dirname } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
 import { createHash } from 'crypto'
-import {
-  initDatabase,
-  closeDatabase,
-  createCase
-} from '@main/services/database'
+import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { createCase } from '@main/services/db/caseRepo'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
 import { appendManifestEntry, initManifest } from '@main/services/manifest'
 import { ingestMhtmlCapture, createCaptureLifecycle } from '@main/services/captureLifecycle'

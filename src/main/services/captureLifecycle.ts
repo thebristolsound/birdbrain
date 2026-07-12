@@ -3,7 +3,8 @@ import { createReadStream } from 'fs'
 import { createHash, randomUUID } from 'crypto'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import type { CaptureStore } from '@main/services/captureStore'
-import * as db from '@main/services/database'
+import * as captureRepo from '@main/services/db/captureRepo'
+import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
 import { extractData } from '@main/services/dataExtractor'
 import { readExtractionHtml } from '@main/services/extraction/extractionSource'
 import { getInstallationId } from '@main/services/installationId'
@@ -165,7 +166,7 @@ export async function ingestMhtmlCapture(
           screenshotPath = store.writeScreenshot(params.caseId, captureId, params.screenshot).rel
         }
 
-        const capture = db.insertCapture({
+        const capture = captureRepo.insertCapture({
           id: captureId,
           caseId: params.caseId,
           url: params.url,
@@ -210,7 +211,7 @@ export async function ingestMhtmlCapture(
 }
 
 async function computeVerification(
-  capture: NonNullable<ReturnType<typeof db.getCapture>>,
+  capture: NonNullable<ReturnType<typeof captureRepo.getCapture>>,
   store: CaptureStore
 ): Promise<HashVerification> {
   // Trusted time is ORTHOGONAL to integrity, so resolve it once up front and
@@ -329,7 +330,7 @@ async function computeVerification(
 // sidecar whose hash was recorded), or undefined when everything binds. Captures
 // with no recorded hash for an artifact are not checked.
 async function verifySidecars(
-  capture: NonNullable<ReturnType<typeof db.getCapture>>,
+  capture: NonNullable<ReturnType<typeof captureRepo.getCapture>>,
   store: CaptureStore
 ): Promise<string | undefined> {
   if (capture.screenshotHash) {
@@ -362,7 +363,7 @@ export async function verifyCapture(
   captureId: string,
   store: CaptureStore = defaultCaptureStore
 ): Promise<HashVerification> {
-  const capture = db.getCapture(captureId)
+  const capture = captureRepo.getCapture(captureId)
   if (!capture) {
     return {
       captureId,
@@ -381,7 +382,7 @@ export async function verifyCapture(
   // Persist so the UI can rehydrate across remounts/sessions and export can read
   // a stable snapshot without re-hashing when nothing has changed on disk. The
   // trusted-time mirror was already reconciled inside computeVerification.
-  db.setCaptureVerification(captureId, {
+  captureRepo.setCaptureVerification(captureId, {
     status: result.status,
     computedHash: result.computedHash,
     verifiedAt: new Date().toISOString()
@@ -398,7 +399,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
       const html = readExtractionHtml(caseId, captureId, store)
       if (html) {
         const extracted = extractData(html)
-        db.insertExtractedData(captureId, caseId, url, extracted)
+        extractedDataRepo.insertExtractedData(captureId, caseId, url, extracted)
       }
     } catch (err) {
       console.error('captureLifecycle: data extraction failed for capture', captureId, err)
@@ -438,7 +439,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
     },
 
     async delete(captureId) {
-      const capture = db.getCapture(captureId)
+      const capture = captureRepo.getCapture(captureId)
       if (!capture) return false
 
       if (capture.format === 'mhtml') {
@@ -462,7 +463,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
               // strictly better than the inverse, where a filesystem failure
               // after the DB delete would leave permanently orphaned files.
               store.deleteArtifacts(capture.caseId, captureId)
-              const deleted = db.deleteCapture(captureId)
+              const deleted = captureRepo.deleteCapture(captureId)
               if (!deleted) throw new ManifestRollback()
             }
           )
@@ -473,7 +474,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
         }
       }
 
-      const deleted = db.deleteCapture(captureId)
+      const deleted = captureRepo.deleteCapture(captureId)
       if (deleted) store.deleteArtifacts(capture.caseId, captureId)
       return deleted
     },
@@ -483,14 +484,14 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
     },
 
     async reprocessCase(caseId) {
-      const captures = db.listCaptures(caseId)
+      const captures = captureRepo.listCaptures(caseId)
       for (const cap of captures) {
         await new Promise<void>((resolve) => setImmediate(resolve))
         // Swallow per-capture errors so one bad capture doesn't poison the batch.
         try {
           // Always clear first so legacy rows don't linger when a capture has no
           // readable source file anymore.
-          db.deleteExtractedDataForCapture(cap.id)
+          extractedDataRepo.deleteExtractedDataForCapture(cap.id)
           runDataExtraction(cap.id, caseId, cap.url)
         } catch (err) {
           console.error('captureLifecycle: reprocess failed for capture', cap.id, err)

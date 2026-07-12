@@ -1,12 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import {
-  initDatabase,
-  closeDatabase,
-  createCase,
-  insertCapture,
-  getCaptureTextContent,
-  searchCaptures
-} from '@main/services/database'
+import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { createCase } from '@main/services/db/caseRepo'
+import { insertCapture, getCaptureTextContent, searchCaptures } from '@main/services/db/captureRepo'
 import { rebuildFts } from '@main/services/db/dbAdmin'
 import type { CaptureStore } from '@main/services/captureStore'
 

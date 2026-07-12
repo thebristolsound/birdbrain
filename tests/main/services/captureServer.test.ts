@@ -2,16 +2,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { existsSync, mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { createCase, updateCase } from '@main/services/db/caseRepo'
+import { listCaptures } from '@main/services/db/captureRepo'
 import {
-  initDatabase,
-  closeDatabase,
-  createCase,
   createSelector,
-  updateCase,
-  listCaptures,
   listSelectors,
   getSelectorMatchCounts
-} from '@main/services/database'
+} from '@main/services/db/selectorRepo'
 import { initStorage } from '@main/services/storage'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'

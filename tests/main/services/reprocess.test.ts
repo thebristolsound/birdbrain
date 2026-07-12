@@ -2,15 +2,15 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import * as db from '@main/services/database'
+
+import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { createCase } from '@main/services/db/caseRepo'
+import { insertCapture } from '@main/services/db/captureRepo'
 import {
-  initDatabase,
-  closeDatabase,
-  createCase,
-  insertCapture,
   getExtractedDataCountForCase,
   insertExtractedData
-} from '@main/services/database'
+} from '@main/services/db/extractedDataRepo'
+import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
 import { initStorage } from '@main/services/storage'
 import { createCaptureLifecycle, type CaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
@@ -161,7 +161,7 @@ describe('captureLifecycle.reprocessCase', () => {
     writeHtml(tempDir, c.id, cap2.id, '<html><body>email me at b@example.com</body></html>')
 
     // Throw only for cap1; cap2 should still get processed.
-    const spy = vi.spyOn(db, 'deleteExtractedDataForCapture').mockImplementation((id: string) => {
+    const spy = vi.spyOn(extractedDataRepo, 'deleteExtractedDataForCapture').mockImplementation((id: string) => {
       if (id === cap1.id) throw new Error('boom')
       return 0
     })

@@ -32,7 +32,13 @@ import * as dbAdmin from '@main/services/db/dbAdmin'
 import { existsSync } from 'fs'
 import { join, resolve } from 'path'
 import { pathToFileURL } from 'url'
-import * as db from '@main/services/database'
+import * as caseRepo from '@main/services/db/caseRepo'
+import * as captureRepo from '@main/services/db/captureRepo'
+import * as tagRepo from '@main/services/db/tagRepo'
+import * as selectorRepo from '@main/services/db/selectorRepo'
+import * as noteRepo from '@main/services/db/noteRepo'
+import * as archiveRefRepo from '@main/services/db/archiveRefRepo'
+import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
 import * as annotations from '@main/services/annotations'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import { getThumbnail } from '@main/services/thumbnails'
@@ -97,16 +103,16 @@ export function registerIpcHandlers(deps: {
 }): void {
   const { selectorLifecycle, captureLifecycle, recaptureService, updaterService } = deps
   // Cases
-  ipcMain.handle(IPC_CHANNELS.CASES_LIST, () => db.listCases())
-  ipcMain.handle(IPC_CHANNELS.CASES_GET, (_, id: string) => db.getCase(id))
-  handle(IPC_CHANNELS.CASES_CREATE, (_, params: CreateCaseParams) => db.createCase(params))
-  handle(IPC_CHANNELS.CASES_UPDATE, (_, params: UpdateCaseParams) => db.updateCase(params))
-  handle(IPC_CHANNELS.CASES_DELETE, (_, id: string) => db.deleteCase(id))
+  ipcMain.handle(IPC_CHANNELS.CASES_LIST, () => caseRepo.listCases())
+  ipcMain.handle(IPC_CHANNELS.CASES_GET, (_, id: string) => caseRepo.getCase(id))
+  handle(IPC_CHANNELS.CASES_CREATE, (_, params: CreateCaseParams) => caseRepo.createCase(params))
+  handle(IPC_CHANNELS.CASES_UPDATE, (_, params: UpdateCaseParams) => caseRepo.updateCase(params))
+  handle(IPC_CHANNELS.CASES_DELETE, (_, id: string) => caseRepo.deleteCase(id))
 
   handle(
     IPC_CHANNELS.CASES_EXPORT_ARCHIVE,
     async (event, caseId: string): Promise<ArchiveExportResult> => {
-      const caseData = db.getCase(caseId)
+      const caseData = caseRepo.getCase(caseId)
       if (!caseData) throw new IpcFailure('Case not found', 'NOT_FOUND')
       const { canceled, filePath } = await dialog.showSaveDialog({
         defaultPath: `${caseData.name.replace(/[^\w\- ]+/g, '_')}.birdbrain`,
@@ -151,14 +157,14 @@ export function registerIpcHandlers(deps: {
   )
 
   // Captures
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_LIST, (_, caseId: string) => db.listCaptures(caseId))
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_GET, (_, id: string) => db.getCapture(id))
+  ipcMain.handle(IPC_CHANNELS.CAPTURES_LIST, (_, caseId: string) => captureRepo.listCaptures(caseId))
+  ipcMain.handle(IPC_CHANNELS.CAPTURES_GET, (_, id: string) => captureRepo.getCapture(id))
   handle(IPC_CHANNELS.CAPTURES_DELETE, (_, id: string) => captureLifecycle.delete(id))
 
-  handle(IPC_CHANNELS.CAPTURES_COUNTS_BY_CASE, () => db.getCaptureCountsByCase())
+  handle(IPC_CHANNELS.CAPTURES_COUNTS_BY_CASE, () => captureRepo.getCaptureCountsByCase())
 
   handle(IPC_CHANNELS.CAPTURES_DOWNLOAD, async (_, captureId: string): Promise<string | null> => {
-    const capture = db.getCapture(captureId)
+    const capture = captureRepo.getCapture(captureId)
     if (!capture) return null
     const { canceled, filePath } = await dialog.showSaveDialog({
       defaultPath: `${capture.title || 'capture'}.html`,
@@ -220,29 +226,29 @@ export function registerIpcHandlers(deps: {
   })
 
   // Tags
-  ipcMain.handle(IPC_CHANNELS.TAGS_LIST, () => db.listTags())
-  handle(IPC_CHANNELS.TAGS_CREATE, (_, params: CreateTagParams) => db.createTag(params))
-  handle(IPC_CHANNELS.TAGS_UPDATE, (_, params: UpdateTagParams) => db.updateTag(params))
-  handle(IPC_CHANNELS.TAGS_DELETE, (_, id: string) => db.deleteTag(id))
+  ipcMain.handle(IPC_CHANNELS.TAGS_LIST, () => tagRepo.listTags())
+  handle(IPC_CHANNELS.TAGS_CREATE, (_, params: CreateTagParams) => tagRepo.createTag(params))
+  handle(IPC_CHANNELS.TAGS_UPDATE, (_, params: UpdateTagParams) => tagRepo.updateTag(params))
+  handle(IPC_CHANNELS.TAGS_DELETE, (_, id: string) => tagRepo.deleteTag(id))
   handle(IPC_CHANNELS.TAGS_ADD_TO_CAPTURE, (_, params: CaptureTagParams) => {
-    db.addTagToCapture(params)
+    tagRepo.addTagToCapture(params)
   })
   handle(IPC_CHANNELS.TAGS_REMOVE_FROM_CAPTURE, (_, params: CaptureTagParams) => {
-    db.removeTagFromCapture(params)
+    tagRepo.removeTagFromCapture(params)
   })
   ipcMain.handle(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, (_, captureId: string) =>
-    db.getTagsForCapture(captureId)
+    tagRepo.getTagsForCapture(captureId)
   )
   ipcMain.handle(IPC_CHANNELS.TAGS_COUNT_FOR_CASE, (_, caseId: string) =>
-    db.getTagCountForCase(caseId)
+    tagRepo.getTagCountForCase(caseId)
   )
   ipcMain.handle(IPC_CHANNELS.TAGS_USAGE_COUNTS_FOR_CASE, (_, caseId: string) =>
-    db.getTagUsageCountsForCase(caseId)
+    tagRepo.getTagUsageCountsForCase(caseId)
   )
 
   // Selectors
-  ipcMain.handle(IPC_CHANNELS.SELECTORS_LIST, (_, caseId: string) => db.listSelectors(caseId))
-  ipcMain.handle(IPC_CHANNELS.SELECTORS_GET, (_, id: string) => db.getSelector(id))
+  ipcMain.handle(IPC_CHANNELS.SELECTORS_LIST, (_, caseId: string) => selectorRepo.listSelectors(caseId))
+  ipcMain.handle(IPC_CHANNELS.SELECTORS_GET, (_, id: string) => selectorRepo.getSelector(id))
   handle(IPC_CHANNELS.SELECTORS_CREATE, (_, params: CreateSelectorParams) =>
     selectorLifecycle.createSelector(params)
   )
@@ -252,26 +258,26 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.SELECTORS_UPDATE, (_, params: UpdateSelectorParams) =>
     selectorLifecycle.updateSelector(params)
   )
-  handle(IPC_CHANNELS.SELECTORS_DELETE, (_, id: string) => db.deleteSelector(id))
+  handle(IPC_CHANNELS.SELECTORS_DELETE, (_, id: string) => selectorRepo.deleteSelector(id))
   ipcMain.handle(IPC_CHANNELS.SELECTORS_LIST_ACTIVE, () => {
     const { activeCaseId } = getSessionState()
-    return db.listActiveSelectors(activeCaseId ?? undefined)
+    return selectorRepo.listActiveSelectors(activeCaseId ?? undefined)
   })
   ipcMain.handle(IPC_CHANNELS.SELECTORS_MATCH_COUNTS, (_, caseId: string) =>
-    db.getSelectorMatchCounts(caseId)
+    selectorRepo.getSelectorMatchCounts(caseId)
   )
   ipcMain.handle(
     IPC_CHANNELS.SELECTORS_MATCHING_CAPTURES,
     (_, caseId: string, selectorIds: string[]) =>
-      db.getCapturesMatchingSelectors(caseId, selectorIds)
+      selectorRepo.getCapturesMatchingSelectors(caseId, selectorIds)
   )
   ipcMain.handle(IPC_CHANNELS.SELECTORS_COVERAGE, (_, caseId: string) =>
-    db.getSelectorCoverage(caseId)
+    selectorRepo.getSelectorCoverage(caseId)
   )
   handle(IPC_CHANNELS.SELECTORS_EXPORT_MATCHES, async (_, caseId: string) => {
-    const caseRow = db.getCase(caseId)
+    const caseRow = caseRepo.getCase(caseId)
     if (!caseRow) return { exported: false }
-    const rows = db.getSelectorMatchesForExport(caseId)
+    const rows = selectorRepo.getSelectorMatchesForExport(caseId)
     const csv = buildCsv(
       [
         'Selector Pattern',
@@ -302,15 +308,15 @@ export function registerIpcHandlers(deps: {
   })
 
   // Notes
-  ipcMain.handle(IPC_CHANNELS.NOTES_LIST, (_, caseId: string) => db.listNotes(caseId))
-  ipcMain.handle(IPC_CHANNELS.NOTES_GET, (_, id: string) => db.getNote(id))
-  handle(IPC_CHANNELS.NOTES_CREATE, (_, params: CreateNoteParams) => db.createNote(params))
-  handle(IPC_CHANNELS.NOTES_UPDATE, (_, params: UpdateNoteParams) => db.updateNote(params))
-  handle(IPC_CHANNELS.NOTES_DELETE, (_, id: string) => db.deleteNote(id))
-  ipcMain.handle(IPC_CHANNELS.NOTES_COUNT, (_, caseId: string) => db.getNoteCount(caseId))
+  ipcMain.handle(IPC_CHANNELS.NOTES_LIST, (_, caseId: string) => noteRepo.listNotes(caseId))
+  ipcMain.handle(IPC_CHANNELS.NOTES_GET, (_, id: string) => noteRepo.getNote(id))
+  handle(IPC_CHANNELS.NOTES_CREATE, (_, params: CreateNoteParams) => noteRepo.createNote(params))
+  handle(IPC_CHANNELS.NOTES_UPDATE, (_, params: UpdateNoteParams) => noteRepo.updateNote(params))
+  handle(IPC_CHANNELS.NOTES_DELETE, (_, id: string) => noteRepo.deleteNote(id))
+  ipcMain.handle(IPC_CHANNELS.NOTES_COUNT, (_, caseId: string) => noteRepo.getNoteCount(caseId))
   ipcMain.handle(IPC_CHANNELS.NOTES_SEARCH, (_, caseId: string, query: string) => {
     try {
-      return db.searchNotes(caseId, query)
+      return noteRepo.searchNotes(caseId, query)
     } catch {
       // FTS5 can throw on malformed queries (e.g. unmatched quotes, reserved keywords).
       // Return empty results so the UI gracefully handles bad input.
@@ -320,7 +326,7 @@ export function registerIpcHandlers(deps: {
 
   // Archive (Wayback corroboration)
   handle(IPC_CHANNELS.ARCHIVE_LOOKUP, async (_, captureId: string) => {
-    const capture = db.getCapture(captureId)
+    const capture = captureRepo.getCapture(captureId)
     if (!capture) throw new IpcFailure('Capture not found', 'NOT_FOUND')
     try {
       return await lookupSnapshots(capture.url, capture.timestamp)
@@ -332,10 +338,10 @@ export function registerIpcHandlers(deps: {
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.ARCHIVE_LIST, (_, captureId: string) => db.listArchiveRefs(captureId))
+  ipcMain.handle(IPC_CHANNELS.ARCHIVE_LIST, (_, captureId: string) => archiveRefRepo.listArchiveRefs(captureId))
 
   handle(IPC_CHANNELS.ARCHIVE_PIN, async (_, params: PinArchiveSnapshotParams) => {
-    const capture = db.getCapture(params.captureId)
+    const capture = captureRepo.getCapture(params.captureId)
     if (!capture) throw new IpcFailure('Capture not found', 'NOT_FOUND')
     // The snapshot/checkedAt provenance arrives over IPC from the renderer.
     // Reject malformed or internally-inconsistent input before persisting so a
@@ -344,14 +350,14 @@ export function registerIpcHandlers(deps: {
     if (!isPersistableSnapshot(params.snapshot, params.checkedAt)) {
       throw new IpcFailure('Invalid archive snapshot', 'ARCHIVE_INVALID_SNAPSHOT')
     }
-    return db.createArchiveRef({
+    return archiveRefRepo.createArchiveRef({
       captureId: params.captureId,
       snapshot: params.snapshot,
       checkedAt: params.checkedAt
     })
   })
 
-  handle(IPC_CHANNELS.ARCHIVE_UNPIN, async (_, refId: string) => db.deleteArchiveRef(refId))
+  handle(IPC_CHANNELS.ARCHIVE_UNPIN, async (_, refId: string) => archiveRefRepo.deleteArchiveRef(refId))
 
   // Annotations
   ipcMain.handle(IPC_CHANNELS.ANNOTATIONS_GET, (_, captureId: string) =>
@@ -393,7 +399,7 @@ export function registerIpcHandlers(deps: {
   ipcMain.handle(
     IPC_CHANNELS.CAPTURES_GET_CONTENT,
     (_, captureId: string, type: 'html' | 'png' | 'txt') => {
-      const capture = db.getCapture(captureId)
+      const capture = captureRepo.getCapture(captureId)
       if (!capture) return null
       const buffer = defaultCaptureStore.readArtifact(capture.caseId, captureId, type)
       if (!buffer) return null
@@ -405,7 +411,7 @@ export function registerIpcHandlers(deps: {
   // Captures - get thumbnail
   ipcMain.handle(IPC_CHANNELS.CAPTURES_GET_THUMBNAIL, async (_, captureId: string) => {
     try {
-      const capture = db.getCapture(captureId)
+      const capture = captureRepo.getCapture(captureId)
       if (!capture) return null
       const buffer = await getThumbnail(capture.caseId, captureId)
       if (!buffer) return null
@@ -418,20 +424,20 @@ export function registerIpcHandlers(deps: {
 
   // Captures - get matching selectors
   ipcMain.handle(IPC_CHANNELS.CAPTURES_GET_MATCHING_SELECTORS, (_, captureId: string) => {
-    return db.getCaptureMatchingSelectors(captureId)
+    return selectorRepo.getCaptureMatchingSelectors(captureId)
   })
 
   // Captures - favorites
   handle(IPC_CHANNELS.CAPTURES_TOGGLE_FAVORITE, (_, captureId: string) =>
-    db.toggleFavorite(captureId)
+    captureRepo.toggleFavorite(captureId)
   )
 
-  handle(IPC_CHANNELS.CAPTURES_IS_FAVORITE, (_, captureId: string) => db.isFavorite(captureId))
+  handle(IPC_CHANNELS.CAPTURES_IS_FAVORITE, (_, captureId: string) => captureRepo.isFavorite(captureId))
 
-  handle(IPC_CHANNELS.CAPTURES_LIST_FAVORITES, (_, caseId: string) => db.listFavorites(caseId))
+  handle(IPC_CHANNELS.CAPTURES_LIST_FAVORITES, (_, caseId: string) => captureRepo.listFavorites(caseId))
 
   handle(IPC_CHANNELS.CAPTURES_GET_MHTML_URL, (_, captureId: string): string | null => {
-    const capture = db.getCapture(captureId)
+    const capture = captureRepo.getCapture(captureId)
     if (!capture || !capture.mhtmlPath) return null
     const abs = defaultCaptureStore.resolveAbsolute(capture.mhtmlPath)
     if (!existsSync(abs)) return null
@@ -459,7 +465,7 @@ export function registerIpcHandlers(deps: {
   // Search
   ipcMain.handle(IPC_CHANNELS.SEARCH, (_, query: string) => {
     try {
-      return db.searchCaptures(query)
+      return captureRepo.searchCaptures(query)
     } catch {
       // FTS5 can throw on malformed queries (e.g. unmatched quotes, reserved keywords).
       // Return empty results so the UI gracefully handles bad input.
@@ -648,7 +654,7 @@ export function registerIpcHandlers(deps: {
 
     const userDataPath = process.env.BIRDBRAIN_USER_DATA || app.getPath('userData')
     const dbPath = join(userDataPath, 'birdbrain.db')
-    const { closeDatabase, initDatabase } = await import('@main/services/database')
+    const { closeDatabase, initDatabase } = await import('@main/services/db/core')
     const { copyFileSync } = await import('fs')
 
     closeDatabase()
@@ -673,21 +679,21 @@ export function registerIpcHandlers(deps: {
 
   // Extracted Data
   ipcMain.handle(IPC_CHANNELS.EXTRACTED_DATA_CATEGORIES, (_, caseId: string) =>
-    db.getExtractedCategories(caseId)
+    extractedDataRepo.getExtractedCategories(caseId)
   )
   ipcMain.handle(IPC_CHANNELS.EXTRACTED_DATA_SUBCATEGORIES, (_, caseId: string, category: string) =>
-    db.getExtractedSubcategories(caseId, category)
+    extractedDataRepo.getExtractedSubcategories(caseId, category)
   )
   ipcMain.handle(
     IPC_CHANNELS.EXTRACTED_DATA_ITEMS,
     (_, caseId: string, category: string, subcategory: string) =>
-      db.getExtractedItems(caseId, category, subcategory)
+      extractedDataRepo.getExtractedItems(caseId, category, subcategory)
   )
   ipcMain.handle(IPC_CHANNELS.EXTRACTED_DATA_COUNT, (_, caseId: string) =>
-    db.getExtractedDataCountForCase(caseId)
+    extractedDataRepo.getExtractedDataCountForCase(caseId)
   )
   ipcMain.handle(IPC_CHANNELS.EXTRACTED_DATA_SEARCH, (_, caseId: string, query: string) =>
-    db.searchExtractedData(caseId, query)
+    extractedDataRepo.searchExtractedData(caseId, query)
   )
   handle(IPC_CHANNELS.EXTRACTED_DATA_REPROCESS, (_, caseId: string) =>
     captureLifecycle.reprocessCase(caseId)

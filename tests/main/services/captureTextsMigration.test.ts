@@ -3,13 +3,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import Database from 'better-sqlite3'
-import {
-  initDatabase,
-  closeDatabase,
-  getCaptureTextContent,
-  getDb,
-  searchCaptures
-} from '@main/services/database'
+import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
+import { getCaptureTextContent, searchCaptures } from '@main/services/db/captureRepo'
 
 describe('migration v25: capture_texts', () => {
   let dir: string

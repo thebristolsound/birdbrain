@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync, rmSync 
 import { unlink } from 'fs/promises'
 import { createHash, randomUUID } from 'crypto'
 import { join } from 'path'
-import * as db from '@main/services/database'
+import { getDb } from '@main/services/db/core'
 import { getStorageRoot } from '@main/services/storage'
 import { CAPTURE_ARTIFACT_TYPES, defaultCaptureStore } from '@main/services/captureStore'
 import { getSettings } from '@main/services/settings'
@@ -66,7 +66,7 @@ interface CaseArchiveHeader {
 // archive bundles, as raw snake_case DB rows (no camelCase mapping — the
 // archive is a portable snapshot of the schema, not a domain model).
 export function collectCaseData(caseId: string): CaseArchiveData {
-  const d = db.getDb()
+  const d = getDb()
 
   const caseRow = d.prepare('SELECT * FROM cases WHERE id = ?').get(caseId) as
     Record<string, unknown> | undefined
@@ -445,7 +445,7 @@ export async function importCaseArchive(
   const data = JSON.parse(entries.get('data.json')!.toString('utf-8')) as CaseArchiveData
 
   const newCaseId = randomUUID()
-  const d = db.getDb()
+  const d = getDb()
   const idMap: Record<string, string> = {}
   const tableRows: Record<(typeof ID_REMAP_TABLES)[number], Record<string, unknown>[]> = {
     captures: data.captures,

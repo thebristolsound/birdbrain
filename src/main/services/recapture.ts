@@ -1,5 +1,5 @@
 import { app } from 'electron'
-import * as db from '@main/services/database'
+import * as captureRepo from '@main/services/db/captureRepo'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import { getInstallationId } from '@main/services/installationId'
 import { getSettings } from '@main/services/settings'
@@ -148,7 +148,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         ? 'Page looks like a login wall — the clean background session is not signed in'
         : undefined
 
-      const capture = db.getCapture(result.capture.id) ?? result.capture
+      const capture = captureRepo.getCapture(result.capture.id) ?? result.capture
       deps.emitNewCapture(capture)
       deps.emitEvent({
         type: 'stored',

@@ -1,18 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { initDatabase, closeDatabase, getDb, LATEST_SCHEMA_VERSION } from '@main/services/db/core'
+import { listCases, getCase, createCase, updateCase, deleteCase } from '@main/services/db/caseRepo'
 import {
-  initDatabase,
-  closeDatabase,
-  getDb,
-  listCases,
-  getCase,
-  createCase,
-  updateCase,
-  deleteCase,
   listCaptures,
   getCapture,
   insertCapture,
   deleteCapture,
   getCaptureCount,
+  searchCaptures,
+  setCaptureTrustedTime,
+  listPendingTimestampCaptures
+} from '@main/services/db/captureRepo'
+import {
   listTags,
   createTag,
   updateTag,
@@ -20,34 +19,36 @@ import {
   addTagToCapture,
   removeTagFromCapture,
   getTagsForCapture,
-  searchCaptures,
   getTagCountForCase,
-  getTagUsageCountsForCase,
+  getTagUsageCountsForCase
+} from '@main/services/db/tagRepo'
+import {
   getSelectorCoverage,
   createSelector,
   matchSelectorAgainstCaptures,
   listActiveSelectors,
   listSelectors,
   bulkCreateSelectors,
-  getSelectorMatchesForExport,
+  getSelectorMatchesForExport
+} from '@main/services/db/selectorRepo'
+import {
   createNote,
   getNote,
   listNotes,
   deleteNote,
   getNoteCount,
   updateNote,
-  searchNotes,
+  searchNotes
+} from '@main/services/db/noteRepo'
+import {
   insertExtractedData,
   getExtractedCategories,
   getExtractedSubcategories,
   getExtractedItems,
   searchExtractedData,
   getExtractedDataCountForCase,
-  deleteExtractedDataForCapture,
-  setCaptureTrustedTime,
-  listPendingTimestampCaptures,
-  LATEST_SCHEMA_VERSION
-} from '@main/services/database'
+  deleteExtractedDataForCapture
+} from '@main/services/db/extractedDataRepo'
 
 describe('database', () => {
   beforeEach(() => {

@@ -627,8 +627,8 @@ describe('caseArchive import', () => {
   })
 
   it('keeps original ids when free (source rows absent)', async () => {
-    // Simulate importing into a clean instance: drop the source case so ids are free.
-    getDb().prepare('DELETE FROM captures_fts').run()
+    // Simulate importing into a clean instance: drop the source case so ids are
+    // free. The cascade (captures → capture_texts → trigger) cleans the index.
     getDb().prepare('DELETE FROM cases WHERE id = ?').run(caseId)
 
     const { newCaseId } = await importCaseArchive(archivePath)

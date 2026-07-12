@@ -169,23 +169,6 @@ export function deleteRow(table: string, pk: Record<string, string>): boolean {
   const values = Object.values(pk)
 
   const run = db.transaction(() => {
-    // Clean up FTS entries before deleting captures or cases (CASCADE)
-    if (table === 'captures') {
-      db.prepare(
-        `DELETE FROM captures_fts WHERE rowid IN (
-          SELECT rowid FROM captures WHERE ${whereClauses}
-        )`
-      ).run(...values)
-    } else if (table === 'cases') {
-      db.prepare(
-        `DELETE FROM captures_fts WHERE rowid IN (
-          SELECT rowid FROM captures WHERE case_id IN (
-            SELECT id FROM cases WHERE ${whereClauses}
-          )
-        )`
-      ).run(...values)
-    }
-
     return db.prepare(`DELETE FROM "${table}" WHERE ${whereClauses}`).run(...values)
   })
 
@@ -242,14 +225,6 @@ export function purgeArchived(): { casesDeleted: number; capturesDeleted: number
     )
     .get() as { count: number }
   const capturesDeleted = captureCountRow.count
-
-  db.prepare(
-    `DELETE FROM captures_fts WHERE rowid IN (
-      SELECT c.rowid FROM captures c
-      JOIN cases cs ON c.case_id = cs.id
-      WHERE cs.archived = 1
-    )`
-  ).run()
 
   const result = db.prepare('DELETE FROM cases WHERE archived = 1').run()
 
@@ -335,12 +310,6 @@ export function cleanOrphans(report: OrphanReport): {
       continue
     }
     const run = db.transaction(() => {
-      // Clean up FTS entries before deleting the capture row
-      if (orphan.table === 'captures') {
-        db.prepare(
-          'DELETE FROM captures_fts WHERE rowid IN (SELECT rowid FROM captures WHERE id = ?)'
-        ).run(orphan.id)
-      }
       return db.prepare(`DELETE FROM "${orphan.table}" WHERE id = ?`).run(orphan.id)
     })
     const result = run()

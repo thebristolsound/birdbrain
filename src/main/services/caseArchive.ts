@@ -589,8 +589,9 @@ function insertImportedRows(
   }
   const mapTag = (id: string): string => tagIdMap[id] ?? id
 
-  // Captures: raw INSERT mirroring insertCapture's column list, plus the manual
-  // captures_fts insert using the staged .txt sidecar content when present.
+  // Captures: raw INSERT mirroring insertCapture's column list, plus the
+  // capture_texts row using the staged .txt sidecar content when present
+  // (triggers keep captures_fts in sync).
   const insertCap = d.prepare(
     `INSERT INTO captures (
        id, case_id, url, title, html_path, screenshot_path, hash, timestamp, headers, created_at,
@@ -600,10 +601,9 @@ function insertImportedRows(
        trusted_time_status, method, supersedes_capture_id, consent_suppression
      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
-  const insertFts = d.prepare(
-    'INSERT INTO captures_fts (rowid, title, url, content) VALUES (?, ?, ?, ?)'
+  const insertText = d.prepare(
+    'INSERT INTO capture_texts (capture_id, title, url, content) VALUES (?, ?, ?, ?)'
   )
-  const rowidOf = d.prepare('SELECT rowid FROM captures WHERE id = ?')
   for (const cap of data.captures) {
     const newId = mapId(cap.id as string)
     insertCap.run(
@@ -641,10 +641,9 @@ function insertImportedRows(
       cap.supersedes_capture_id ? mapId(cap.supersedes_capture_id as string) : null,
       cap.consent_suppression ?? null
     )
-    const rowid = (rowidOf.get(newId) as { rowid: number }).rowid
     const textContent =
       defaultCaptureStore.readArtifact(newCaseId, newId, 'txt')?.toString('utf-8') ?? ''
-    insertFts.run(rowid, (cap.title as string) ?? '', (cap.url as string) ?? '', textContent)
+    insertText.run(newId, (cap.title as string) ?? '', (cap.url as string) ?? '', textContent)
   }
 
   const insertCaptureTag = d.prepare(

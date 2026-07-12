@@ -37,7 +37,7 @@ import type { ExtractedDatum } from '@main/services/dataExtractor'
 import { safeRegexTest } from '@main/services/safeRegex'
 
 let db: Database.Database
-export const LATEST_SCHEMA_VERSION = 24
+export const LATEST_SCHEMA_VERSION = 25
 
 export function initDatabase(dbPath: string): Database.Database {
   db = new Database(dbPath)
@@ -531,6 +531,61 @@ function migrate(db: Database.Database): void {
       db.pragma('user_version = 24')
     })()
   }
+
+  if (version < 25) {
+    db.transaction(() => {
+      // Split text storage from the search index: capture_texts holds the DB
+      // copy of Extracted Text (explicit INTEGER PK — vacuum-safe, unlike
+      // captures.rowid), and captures_fts becomes an external-content index
+      // over it, maintained by triggers. Kills the manual-sync invariant that
+      // caused the migration-12 and migration-14 bug classes.
+      db.exec(`
+        CREATE TABLE capture_texts (
+          id INTEGER PRIMARY KEY,
+          capture_id TEXT NOT NULL UNIQUE REFERENCES captures(id) ON DELETE CASCADE,
+          title TEXT NOT NULL DEFAULT '',
+          url TEXT NOT NULL DEFAULT '',
+          content TEXT NOT NULL DEFAULT ''
+        );
+
+        INSERT INTO capture_texts (capture_id, title, url, content)
+          SELECT c.id,
+                 coalesce(f.title, coalesce(c.title, '')),
+                 coalesce(f.url, coalesce(c.url, '')),
+                 coalesce(f.content, '')
+          FROM captures c
+          LEFT JOIN captures_fts f ON f.rowid = c.rowid;
+
+        DROP TABLE captures_fts;
+
+        CREATE VIRTUAL TABLE captures_fts USING fts5(
+          title,
+          url,
+          content,
+          content=capture_texts,
+          content_rowid=id
+        );
+
+        INSERT INTO captures_fts(captures_fts) VALUES ('rebuild');
+
+        CREATE TRIGGER capture_texts_ai AFTER INSERT ON capture_texts BEGIN
+          INSERT INTO captures_fts(rowid, title, url, content)
+          VALUES (new.id, new.title, new.url, new.content);
+        END;
+        CREATE TRIGGER capture_texts_ad AFTER DELETE ON capture_texts BEGIN
+          INSERT INTO captures_fts(captures_fts, rowid, title, url, content)
+          VALUES('delete', old.id, old.title, old.url, old.content);
+        END;
+        CREATE TRIGGER capture_texts_au AFTER UPDATE ON capture_texts BEGIN
+          INSERT INTO captures_fts(captures_fts, rowid, title, url, content)
+          VALUES('delete', old.id, old.title, old.url, old.content);
+          INSERT INTO captures_fts(rowid, title, url, content)
+          VALUES (new.id, new.title, new.url, new.content);
+        END;
+      `)
+      db.pragma('user_version = 25')
+    })()
+  }
 }
 
 // --- Cases ---
@@ -581,13 +636,6 @@ export function updateCase(params: UpdateCaseParams): Case | undefined {
 export function deleteCase(id: string): boolean {
   const d = getDb()
   const run = d.transaction(() => {
-    // Clean up FTS entries for all captures in this case before CASCADE deletes them
-    d.prepare(
-      `DELETE FROM captures_fts WHERE rowid IN (
-        SELECT rowid FROM captures WHERE case_id = ?
-      )`
-    ).run(id)
-
     return d.prepare('DELETE FROM cases WHERE id = ?').run(id)
   })
   const result = run()
@@ -687,19 +735,10 @@ export const insertCapture = function (params: InsertCaptureParams & { id?: stri
       params.consentSuppression ?? null
     )
 
-    // Insert into FTS index
-    if (params.textContent || params.title || params.url) {
-      const row = d.prepare('SELECT rowid FROM captures WHERE id = ?').get(id) as
-        | { rowid: number }
-        | undefined
-      if (!row) throw new Error(`Failed to retrieve rowid for capture ${id}`)
-      d.prepare('INSERT INTO captures_fts (rowid, title, url, content) VALUES (?, ?, ?, ?)').run(
-        row.rowid,
-        params.title ?? '',
-        params.url,
-        params.textContent ?? ''
-      )
-    }
+    // Every capture gets a capture_texts row; triggers keep captures_fts in sync
+    d.prepare(
+      'INSERT INTO capture_texts (capture_id, title, url, content) VALUES (?, ?, ?, ?)'
+    ).run(id, params.title ?? '', params.url ?? '', params.textContent ?? '')
 
     // Touch the case's updated_at
     d.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(now, params.caseId)
@@ -715,14 +754,6 @@ export function deleteCapture(id: string): boolean {
   if (!capture) return false
 
   const run = d.transaction(() => {
-    // Delete FTS entry
-    const row = d.prepare('SELECT rowid FROM captures WHERE id = ?').get(id) as
-      | { rowid: number }
-      | undefined
-    if (row) {
-      d.prepare('DELETE FROM captures_fts WHERE rowid = ?').run(row.rowid)
-    }
-
     return d.prepare('DELETE FROM captures WHERE id = ?').run(id)
   })
 
@@ -872,7 +903,8 @@ export function searchCaptures(query: string): Capture[] {
   const rows = getDb()
     .prepare(
       `SELECT c.* FROM captures c
-       JOIN captures_fts fts ON c.rowid = fts.rowid
+       JOIN capture_texts t ON t.capture_id = c.id
+       JOIN captures_fts fts ON fts.rowid = t.id
        WHERE captures_fts MATCH ?
        ORDER BY rank`
     )
@@ -881,15 +913,10 @@ export function searchCaptures(query: string): Capture[] {
 }
 
 export function getCaptureTextContent(captureId: string): string | null {
-  const d = getDb()
-  const row = d.prepare('SELECT rowid FROM captures WHERE id = ?').get(captureId) as
-    | { rowid: number }
-    | undefined
-  if (!row) return null
-  const ftsRow = d.prepare('SELECT content FROM captures_fts WHERE rowid = ?').get(row.rowid) as
-    | { content: string }
-    | undefined
-  return ftsRow?.content || null
+  const row = getDb()
+    .prepare('SELECT content FROM capture_texts WHERE capture_id = ?')
+    .get(captureId) as { content: string } | undefined
+  return row?.content || null
 }
 
 // --- Selectors ---

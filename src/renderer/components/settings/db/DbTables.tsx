@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Pencil, Trash2, Plus, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@renderer/components/ui'
-import type { DbTableRowsResult } from '@shared/ipc'
+import { dbTableRowsQueryOptions, DB_PAGE_SIZE, useDbAdminMutations } from '@renderer/lib/api/db'
 import { RowEditModal } from '@renderer/components/settings/db/RowEditModal'
 import { ConfirmDialog } from '@renderer/components/settings/db/ConfirmDialog'
 
@@ -19,14 +20,14 @@ const TABLES = [
 ] as const
 
 const FTS_TABLES = new Set(['captures_fts', 'notes_fts'])
-const PAGE_SIZE = 50
 
 export function DbTables() {
   const [selectedTable, setSelectedTable] = useState<string>('cases')
-  const [data, setData] = useState<DbTableRowsResult | null>(null)
   const [page, setPage] = useState(0)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+
+  const rowsQuery = useQuery(dbTableRowsQueryOptions(selectedTable, page))
+  const { createRow, updateRow, deleteRow } = useDbAdminMutations()
+  const data = rowsQuery.data ?? null
 
   // Modal state
   const [editModal, setEditModal] = useState<{
@@ -44,30 +45,25 @@ export function DbTables() {
   const editableColumns = data?.columns.filter((c) => !c.pk) ?? []
   const canEditRows = !isFts && editableColumns.length > 0
 
-  async function fetchRows() {
-    setLoading(true)
-    setError(null)
-    try {
-      const result = await window.birdbrain.db.tableRows({
-        table: selectedTable,
-        offset: page * PAGE_SIZE,
-        limit: PAGE_SIZE
-      })
-      setData(result)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load rows')
-    } finally {
-      setLoading(false)
-    }
-  }
-
   useEffect(() => {
     setPage(0)
   }, [selectedTable])
 
-  useEffect(() => {
-    fetchRows()
-  }, [selectedTable, page])
+  const saveError = createRow.error ?? updateRow.error
+  const error =
+    rowsQuery.error != null
+      ? rowsQuery.error instanceof Error
+        ? rowsQuery.error.message
+        : 'Failed to load rows'
+      : saveError != null
+        ? saveError instanceof Error
+          ? saveError.message
+          : 'Save failed'
+        : deleteRow.error != null
+          ? deleteRow.error instanceof Error
+            ? deleteRow.error.message
+            : 'Delete failed'
+          : null
 
   function getPk(row: Record<string, unknown>): Record<string, string> {
     if (!data) return {}
@@ -82,7 +78,7 @@ export function DbTables() {
   async function handleSave(rowData: Record<string, unknown>) {
     try {
       if (editModal.mode === 'create') {
-        await window.birdbrain.db.createRow({ table: selectedTable, data: rowData })
+        await createRow.mutateAsync({ table: selectedTable, data: rowData })
       } else {
         const pk = getPk(editModal.row!)
         const pkCols = data?.columns.filter((c) => c.pk).map((c) => c.name) ?? []
@@ -95,29 +91,27 @@ export function DbTables() {
         }
         if (Object.keys(changedData).length === 0) {
           setEditModal({ open: false, mode: 'create' })
-          fetchRows()
+          rowsQuery.refetch()
           return
         }
-        await window.birdbrain.db.updateRow({ table: selectedTable, pk, data: changedData })
+        await updateRow.mutateAsync({ table: selectedTable, pk, data: changedData })
       }
       setEditModal({ open: false, mode: 'create' })
-      fetchRows()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed')
+    } catch {
+      // Error is surfaced via the mutation's error state above.
     }
   }
 
   async function handleDelete() {
     try {
-      await window.birdbrain.db.deleteRow({ table: selectedTable, pk: deleteConfirm.pk })
+      await deleteRow.mutateAsync({ table: selectedTable, pk: deleteConfirm.pk })
       setDeleteConfirm({ open: false, pk: {} })
-      fetchRows()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Delete failed')
+    } catch {
+      // Error is surfaced via the mutation's error state above.
     }
   }
 
-  const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1
+  const totalPages = data ? Math.max(1, Math.ceil(data.total / DB_PAGE_SIZE)) : 1
 
   return (
     <div className="space-y-4">
@@ -155,7 +149,7 @@ export function DbTables() {
 
       {error && <div className="rounded-lg bg-red-900/20 p-3 text-sm text-red-400">{error}</div>}
 
-      {loading && !data && <div className="text-sm text-text-muted">Loading...</div>}
+      {rowsQuery.isPending && !data && <div className="text-sm text-text-muted">Loading...</div>}
 
       {data && (
         <>

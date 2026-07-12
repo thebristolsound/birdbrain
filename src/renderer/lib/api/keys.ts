@@ -36,6 +36,8 @@ export const queryKeys = {
   annotations: (captureId: string) => ['annotations', captureId] as const,
   archiveLookup: (captureId: string) => ['archive', 'lookup', captureId] as const,
   archivePins: (captureId: string) => ['archive', 'pins', captureId] as const,
+  dbStats: ['dbStats'] as const,
+  dbTableRows: (table: string, page: number) => ['dbTableRows', table, page] as const,
   settings: ['settings'] as const,
   identity: ['identity'] as const,
   openRouterModels: ['openRouterModels'] as const,

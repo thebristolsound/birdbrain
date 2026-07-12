@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ConfirmDialog } from '@renderer/components/settings/db/ConfirmDialog'
-import type { OrphanReport } from '@shared/ipc'
 import { Button } from '@renderer/components/ui'
+import { useDbAdminMutations } from '@renderer/lib/api/db'
 
 const EXPORT_TABLES = [
   'cases',
@@ -29,7 +29,17 @@ interface UtilityResult {
 }
 
 export function DbUtilities() {
-  const [loading, setLoading] = useState<string | null>(null)
+  const {
+    vacuum,
+    rebuildFts,
+    purgeArchived,
+    findOrphans,
+    cleanOrphans,
+    backup,
+    restore,
+    exportTable
+  } = useDbAdminMutations()
+
   const [results, setResults] = useState<Record<string, UtilityResult>>({})
   const [confirm, setConfirm] = useState<{
     open: boolean
@@ -40,20 +50,29 @@ export function DbUtilities() {
   }>({ open: false, key: '', title: '', message: '', action: async () => {} })
 
   // Orphan state
-  const [orphanReport, setOrphanReport] = useState<OrphanReport | null>(null)
+  const orphanReport = findOrphans.data ?? null
 
   // Export state
-  const [exportTable, setExportTable] = useState('cases')
+  const [exportTableName, setExportTableName] = useState('cases')
   const [exportFormat, setExportFormat] = useState<'csv' | 'json'>('csv')
+
+  const anyPending =
+    vacuum.isPending ||
+    rebuildFts.isPending ||
+    purgeArchived.isPending ||
+    findOrphans.isPending ||
+    cleanOrphans.isPending ||
+    backup.isPending ||
+    restore.isPending ||
+    exportTable.isPending
 
   function setResult(key: string, result: UtilityResult) {
     setResults((prev) => ({ ...prev, [key]: result }))
   }
 
   async function handleVacuum() {
-    setLoading('vacuum')
     try {
-      const result = await window.birdbrain.db.vacuum()
+      const result = await vacuum.mutateAsync()
       setResult('vacuum', {
         message: `Vacuum complete. Freed ${formatBytes(result.freedBytes)}.`,
         type: 'success'
@@ -63,15 +82,12 @@ export function DbUtilities() {
         message: err instanceof Error ? err.message : 'Vacuum failed',
         type: 'error'
       })
-    } finally {
-      setLoading(null)
     }
   }
 
   async function handleRebuildFts() {
-    setLoading('fts')
     try {
-      const result = await window.birdbrain.db.rebuildFts()
+      const result = await rebuildFts.mutateAsync()
       setResult('fts', {
         message: `Rebuilt FTS indexes. ${result.rowsIndexed} rows indexed.`,
         type: 'success'
@@ -81,15 +97,12 @@ export function DbUtilities() {
         message: err instanceof Error ? err.message : 'FTS rebuild failed',
         type: 'error'
       })
-    } finally {
-      setLoading(null)
     }
   }
 
   async function handlePurge() {
-    setLoading('purge')
     try {
-      const result = await window.birdbrain.db.purgeArchived()
+      const result = await purgeArchived.mutateAsync()
       setResult('purge', {
         message: `Purged ${result.casesDeleted} case(s) and ${result.capturesDeleted} capture(s).`,
         type: 'success'
@@ -99,16 +112,12 @@ export function DbUtilities() {
         message: err instanceof Error ? err.message : 'Purge failed',
         type: 'error'
       })
-    } finally {
-      setLoading(null)
     }
   }
 
   async function handleScanOrphans() {
-    setLoading('orphans')
     try {
-      const report = await window.birdbrain.db.findOrphans()
-      setOrphanReport(report)
+      const report = await findOrphans.mutateAsync()
       const total = report.dbOrphans.length + report.fileOrphans.length
       setResult('orphans', {
         message:
@@ -122,17 +131,14 @@ export function DbUtilities() {
         message: err instanceof Error ? err.message : 'Scan failed',
         type: 'error'
       })
-    } finally {
-      setLoading(null)
     }
   }
 
   async function handleCleanOrphans() {
     if (!orphanReport) return
-    setLoading('orphans-clean')
     try {
-      const result = await window.birdbrain.db.cleanOrphans(orphanReport)
-      setOrphanReport(null)
+      const result = await cleanOrphans.mutateAsync(orphanReport)
+      findOrphans.reset()
       setResult('orphans', {
         message: `Cleaned ${result.dbRecordsRemoved} DB record(s) and ${result.filesRemoved} file(s).`,
         type: 'success'
@@ -142,15 +148,12 @@ export function DbUtilities() {
         message: err instanceof Error ? err.message : 'Clean failed',
         type: 'error'
       })
-    } finally {
-      setLoading(null)
     }
   }
 
   async function handleBackup() {
-    setLoading('backup')
     try {
-      const result = await window.birdbrain.db.backup()
+      const result = await backup.mutateAsync()
       if (result) {
         setResult('backup', {
           message: `Backup saved to ${result.path}`,
@@ -164,15 +167,12 @@ export function DbUtilities() {
         message: err instanceof Error ? err.message : 'Backup failed',
         type: 'error'
       })
-    } finally {
-      setLoading(null)
     }
   }
 
   async function handleRestore() {
-    setLoading('restore')
     try {
-      const result = await window.birdbrain.db.restore()
+      const result = await restore.mutateAsync()
       if (result.restored) {
         setResult('restore', {
           message: 'Database restored. Please restart the app for full effect.',
@@ -186,16 +186,13 @@ export function DbUtilities() {
         message: err instanceof Error ? err.message : 'Restore failed',
         type: 'error'
       })
-    } finally {
-      setLoading(null)
     }
   }
 
   async function handleExport() {
-    setLoading('export')
     try {
-      const result = await window.birdbrain.db.exportTable({
-        table: exportTable,
+      const result = await exportTable.mutateAsync({
+        table: exportTableName,
         format: exportFormat
       })
       if (result) {
@@ -211,8 +208,6 @@ export function DbUtilities() {
         message: err instanceof Error ? err.message : 'Export failed',
         type: 'error'
       })
-    } finally {
-      setLoading(null)
     }
   }
 
@@ -253,8 +248,8 @@ export function DbUtilities() {
         title="Vacuum & Optimize"
         description="Reclaim unused space and optimize query performance."
       >
-        <Button variant="outline" size="sm" onClick={handleVacuum} disabled={loading !== null}>
-          {loading === 'vacuum' ? 'Running...' : 'Run Vacuum'}
+        <Button variant="outline" size="sm" onClick={handleVacuum} disabled={anyPending}>
+          {vacuum.isPending ? 'Running...' : 'Run Vacuum'}
         </Button>
       </UtilCard>
 
@@ -263,8 +258,8 @@ export function DbUtilities() {
         title="Rebuild FTS Indexes"
         description="Drop and rebuild full-text search indexes for captures and notes."
       >
-        <Button variant="outline" size="sm" onClick={handleRebuildFts} disabled={loading !== null}>
-          {loading === 'fts' ? 'Rebuilding...' : 'Rebuild'}
+        <Button variant="outline" size="sm" onClick={handleRebuildFts} disabled={anyPending}>
+          {rebuildFts.isPending ? 'Rebuilding...' : 'Rebuild'}
         </Button>
       </UtilCard>
 
@@ -284,7 +279,7 @@ export function DbUtilities() {
               action: handlePurge
             })
           }
-          disabled={loading !== null}
+          disabled={anyPending}
           className="rounded-lg border border-red-800 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/20 disabled:opacity-50"
         >
           Purge
@@ -296,8 +291,8 @@ export function DbUtilities() {
         title="Find & Clean Orphans"
         description="Scan for DB records with missing files and files with no DB record."
       >
-        <Button variant="outline" size="sm" onClick={handleScanOrphans} disabled={loading !== null}>
-          {loading === 'orphans' ? 'Scanning...' : 'Scan'}
+        <Button variant="outline" size="sm" onClick={handleScanOrphans} disabled={anyPending}>
+          {findOrphans.isPending ? 'Scanning...' : 'Scan'}
         </Button>
         {orphanReport &&
           (orphanReport.dbOrphans.length > 0 || orphanReport.fileOrphans.length > 0) && (
@@ -311,10 +306,10 @@ export function DbUtilities() {
                   action: handleCleanOrphans
                 })
               }
-              disabled={loading !== null}
+              disabled={anyPending}
               className="rounded-lg border border-red-800 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/20 disabled:opacity-50"
             >
-              {loading === 'orphans-clean' ? 'Cleaning...' : 'Clean'}
+              {cleanOrphans.isPending ? 'Cleaning...' : 'Clean'}
             </button>
           )}
       </UtilCard>
@@ -324,8 +319,8 @@ export function DbUtilities() {
         title="Backup Database"
         description="Copy the database file to a location of your choice."
       >
-        <Button variant="outline" size="sm" onClick={handleBackup} disabled={loading !== null}>
-          {loading === 'backup' ? 'Saving...' : 'Create Backup'}
+        <Button variant="outline" size="sm" onClick={handleBackup} disabled={anyPending}>
+          {backup.isPending ? 'Saving...' : 'Create Backup'}
         </Button>
       </UtilCard>
 
@@ -345,7 +340,7 @@ export function DbUtilities() {
               action: handleRestore
             })
           }
-          disabled={loading !== null}
+          disabled={anyPending}
           className="rounded-lg border border-red-800 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/20 disabled:opacity-50"
         >
           Restore from File
@@ -358,8 +353,8 @@ export function DbUtilities() {
         description="Export a table's contents to CSV or JSON."
       >
         <select
-          value={exportTable}
-          onChange={(e) => setExportTable(e.target.value)}
+          value={exportTableName}
+          onChange={(e) => setExportTableName(e.target.value)}
           className="rounded-lg border border-border bg-surface px-2 py-1.5 text-xs text-text-primary outline-none"
         >
           {EXPORT_TABLES.map((t) => (
@@ -376,8 +371,8 @@ export function DbUtilities() {
           <option value="csv">CSV</option>
           <option value="json">JSON</option>
         </select>
-        <Button variant="outline" size="sm" onClick={handleExport} disabled={loading !== null}>
-          {loading === 'export' ? 'Exporting...' : 'Export'}
+        <Button variant="outline" size="sm" onClick={handleExport} disabled={anyPending}>
+          {exportTable.isPending ? 'Exporting...' : 'Export'}
         </Button>
       </UtilCard>
 

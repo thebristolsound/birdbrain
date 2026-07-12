@@ -161,10 +161,12 @@ describe('captureLifecycle.reprocessCase', () => {
     writeHtml(tempDir, c.id, cap2.id, '<html><body>email me at b@example.com</body></html>')
 
     // Throw only for cap1; cap2 should still get processed.
-    const spy = vi.spyOn(extractedDataRepo, 'deleteExtractedDataForCapture').mockImplementation((id: string) => {
-      if (id === cap1.id) throw new Error('boom')
-      return 0
-    })
+    const spy = vi
+      .spyOn(extractedDataRepo, 'deleteExtractedDataForCapture')
+      .mockImplementation((id: string) => {
+        if (id === cap1.id) throw new Error('boom')
+        return 0
+      })
 
     const result = await captureLifecycle.reprocessCase(c.id)
     expect(result).toEqual({ processed: 2 })

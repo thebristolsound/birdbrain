@@ -44,9 +44,13 @@ describe('capture_texts keeps captures_fts in sync', () => {
     deleteCase(c.id)
     expect(searchCaptures('zebra')).toEqual([])
     // and a new capture inserts cleanly afterwards (migration-14 bug class:
-    // stale index rows used to collide with reused rowids)
+    // stale index rows used to collide with reused rowids). Assert the stale
+    // term stays gone and the fresh term resolves to the new capture — a reused
+    // rowid must not resurrect 'zebra' against 'fresh'.
     const c2 = createCase({ name: 'C2', description: '', type: 'custom' })
-    expect(() => makeCapture(c2.id, 'fresh')).not.toThrow()
+    const fresh = makeCapture(c2.id, 'fresh')
+    expect(searchCaptures('zebra')).toEqual([])
+    expect(searchCaptures('fresh').map((x) => x.id)).toEqual([fresh.id])
   })
 
   it('dbAdmin.deleteRow on captures cleans the index (migration-14 bug class)', () => {

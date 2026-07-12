@@ -71,7 +71,9 @@ export function DbUtilities() {
     try {
       const result = await window.birdbrain.db.rebuildFts()
       setResult('fts', {
-        message: `Rebuilt FTS indexes. ${result.rowsIndexed} rows indexed, ${result.textsHealed} text(s) healed from disk.`,
+        message:
+          `Rebuilt FTS indexes. ${result.rowsIndexed} rows indexed, ` +
+          `${result.textsHealed} text(s) healed from disk.`,
         type: 'success'
       })
     } catch (err) {

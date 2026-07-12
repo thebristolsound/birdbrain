@@ -37,8 +37,23 @@ export interface ImportCtx {
   getText: (oldId: string, newId: string) => string
 }
 
-// Generic id-existence probe for the archive import's collision remap. The
-// table name must be a compile-time constant at the call site, never input.
+// The only tables the archive import probes for id collisions. `table` is
+// interpolated into SQL, so it is validated against this closed set — a future
+// caller cannot smuggle an arbitrary identifier into the statement.
+const ID_PROBE_TABLES: ReadonlySet<string> = new Set([
+  'captures',
+  'notes',
+  'selectors',
+  'capture_analyses',
+  'extracted_data',
+  'capture_archive_refs',
+  'annotation_pins'
+])
+
+// Id-existence probe for the archive import's collision remap.
 export function hasRowWithId(table: string, id: string): boolean {
+  if (!ID_PROBE_TABLES.has(table)) {
+    throw new Error(`hasRowWithId: table "${table}" is not permitted`)
+  }
   return getDb().prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(id) !== undefined
 }

@@ -3,7 +3,6 @@ import { initDatabase, closeDatabase } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
 import { insertCapture, getCaptureTextContent, searchCaptures } from '@main/services/db/captureRepo'
 import { rebuildFts } from '@main/services/db/dbAdmin'
-import type { CaptureStore } from '@main/services/captureStore'
 
 function makeCapture(caseId: string, text: string) {
   return insertCapture({
@@ -27,7 +26,7 @@ describe('rebuildFts heals capture_texts from sidecars', () => {
     const fakeStore = {
       readArtifact: (_caseId: string, captureId: string, type: string) =>
         captureId === cap.id && type === 'txt' ? Buffer.from('healed sidecar text') : null
-    } as unknown as CaptureStore
+    }
     const result = rebuildFts(fakeStore)
     expect(getCaptureTextContent(cap.id)).toBe('healed sidecar text')
     expect(searchCaptures('healed').map((x) => x.id)).toEqual([cap.id])
@@ -38,7 +37,7 @@ describe('rebuildFts heals capture_texts from sidecars', () => {
   it('leaves captures without a sidecar untouched (legacy HTML captures)', () => {
     const c = createCase({ name: 'C', description: '', type: 'custom' })
     const cap = makeCapture(c.id, 'original')
-    const emptyStore = { readArtifact: () => null } as unknown as CaptureStore
+    const emptyStore = { readArtifact: () => null }
     const result = rebuildFts(emptyStore)
     expect(getCaptureTextContent(cap.id)).toBe('original')
     expect(result.textsHealed).toBe(0)

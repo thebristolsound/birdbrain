@@ -491,8 +491,8 @@ export function runMigrations(db: Database.Database): void {
 
         INSERT INTO capture_texts (capture_id, title, url, content)
           SELECT c.id,
-                 coalesce(f.title, coalesce(c.title, '')),
-                 coalesce(f.url, coalesce(c.url, '')),
+                 coalesce(c.title, ''),
+                 coalesce(c.url, ''),
                  coalesce(f.content, '')
           FROM captures c
           LEFT JOIN captures_fts f ON f.rowid = c.rowid;

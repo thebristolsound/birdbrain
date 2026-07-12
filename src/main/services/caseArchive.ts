@@ -487,12 +487,17 @@ function insertImportedRows(
   newCaseId: string,
   mapId: (id: string) => string
 ): void {
-  // Tags: merge by case-insensitive name; keep the archived id when free.
+  // Tags: merge by case-insensitive name against BOTH the persisted tags and
+  // names already seen earlier in this same archive batch (an archive can carry
+  // Foo and foo — neither is persisted, so only pendingByName catches them).
   const tagIdMap: Record<string, string> = {}
   const tagRowsToInsert: Record<string, unknown>[] = []
+  const pendingByName = new Map<string, string>()
   for (const tag of data.tags) {
     const oldId = tag.id as string
-    const hit = tagRepo.findTagIdByNameInsensitive(tag.name as string)
+    const name = tag.name as string
+    const normalized = name.toLowerCase()
+    const hit = tagRepo.findTagIdByNameInsensitive(name) ?? pendingByName.get(normalized)
     if (hit) {
       tagIdMap[oldId] = hit
       continue
@@ -500,6 +505,7 @@ function insertImportedRows(
     const newId = tagRepo.tagIdExists(oldId) ? randomUUID() : oldId
     tagRowsToInsert.push({ ...tag, id: newId })
     tagIdMap[oldId] = newId
+    pendingByName.set(normalized, newId)
   }
   const mapTag = (id: string): string => tagIdMap[id] ?? id
 

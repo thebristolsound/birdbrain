@@ -199,7 +199,7 @@ export function vacuumDb(dbPath: string): { freedBytes: number } {
   return { freedBytes: Math.max(0, sizeBefore - sizeAfter) }
 }
 
-export function rebuildFts(store: CaptureStore = defaultCaptureStore): {
+export function rebuildFts(store: Pick<CaptureStore, 'readArtifact'> = defaultCaptureStore): {
   rowsIndexed: number
   textsHealed: number
 } {
@@ -211,13 +211,17 @@ export function rebuildFts(store: CaptureStore = defaultCaptureStore): {
       'SELECT ct.capture_id AS captureId, c.case_id AS caseId FROM capture_texts ct JOIN captures c ON c.id = ct.capture_id'
     )
     .all() as Array<{ captureId: string; caseId: string }>
-  const update = db.prepare('UPDATE capture_texts SET content = ? WHERE capture_id = ?')
+  // Only count a heal when the stored copy actually differed, so re-running
+  // rebuild on an already-consistent DB reports textsHealed: 0.
+  const update = db.prepare(
+    'UPDATE capture_texts SET content = ? WHERE capture_id = ? AND content IS NOT ?'
+  )
   let textsHealed = 0
   for (const row of rows) {
     const buf = store.readArtifact(row.caseId, row.captureId, 'txt')
     if (buf) {
-      update.run(buf.toString('utf-8'), row.captureId)
-      textsHealed++
+      const content = buf.toString('utf-8')
+      textsHealed += update.run(content, row.captureId, content).changes
     }
   }
   db.exec("INSERT INTO captures_fts(captures_fts) VALUES ('rebuild')")

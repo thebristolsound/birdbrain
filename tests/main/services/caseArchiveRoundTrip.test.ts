@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { initDatabase, closeDatabase, withTransaction, type ImportCtx } from '@main/services/db/core'
+import { initDatabase, closeDatabase, withTransaction } from '@main/services/db/core'
+import type { ImportCtx } from '@main/services/db/core'
 import { createCase, collectCaseRow, importCaseRow } from '@main/services/db/caseRepo'
 import {
   insertCapture,
@@ -249,7 +250,9 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
       src.captureTags.map((r) => ({ ...r, capture_id: mapId(r.capture_id as string) }))
     )
     expect(collectSelectorsForCase(NEW_CASE).sort(byId)).toEqual(
-      src.selectors.map((r) => ({ ...r, id: mapId(r.id as string), case_id: NEW_CASE })).sort(byId)
+      src.selectors
+        .map((r) => ({ ...r, id: mapId(r.id as string), case_id: NEW_CASE }))
+        .sort(byId)
     )
     expect(collectSelectorMatchesForCase(NEW_CASE)).toEqual(
       src.selectorMatches.map((r) => ({

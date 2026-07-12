@@ -176,7 +176,7 @@ describe('dbAdmin', () => {
         timestamp: new Date().toISOString(),
         textContent: 'hello world'
       })
-      const result = rebuildFts({ readArtifact: () => null } as never)
+      const result = rebuildFts({ readArtifact: () => null })
       expect(result.rowsIndexed).toBeGreaterThanOrEqual(1)
       // no sidecar on disk → the DB copy of the text survives the rebuild
       expect(getCaptureTextContent(cap.id)).toBe('hello world')

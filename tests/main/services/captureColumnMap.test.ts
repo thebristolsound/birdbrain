@@ -22,8 +22,10 @@ describe('CAPTURE_COLUMNS matches live schema', () => {
     for (const col of info) {
       if (col.dflt_value === null) continue
       const entry = CAPTURE_COLUMNS.find((c) => c.column === col.name)
+      expect(entry, `no CAPTURE_COLUMNS entry for column ${col.name}`).toBeDefined()
       // SQLite reports defaults as SQL literals: 'html' → "'html'", 0 → "0"
-      const literal = typeof entry!.default === 'string' ? `'${entry!.default}'` : String(entry!.default)
+      const literal =
+        typeof entry!.default === 'string' ? `'${entry!.default}'` : String(entry!.default)
       expect(literal, `column ${col.name}`).toBe(col.dflt_value)
     }
   })

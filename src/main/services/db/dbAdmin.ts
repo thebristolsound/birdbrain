@@ -1,4 +1,4 @@
-import { getDb } from '@main/services/database'
+import { getDb } from '@main/services/db/core'
 import { statSync, existsSync, readdirSync, unlinkSync, copyFileSync } from 'fs'
 import { join, resolve, sep } from 'path'
 import { getStorageRoot } from '@main/services/storage'

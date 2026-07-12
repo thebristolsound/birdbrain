@@ -28,7 +28,7 @@ import type {
   ArchiveExportResult,
   RecaptureEnqueuePayload
 } from '@shared/ipc'
-import * as dbAdmin from '@main/services/dbAdmin'
+import * as dbAdmin from '@main/services/db/dbAdmin'
 import { existsSync } from 'fs'
 import { join, resolve } from 'path'
 import { pathToFileURL } from 'url'

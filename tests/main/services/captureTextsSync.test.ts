@@ -10,7 +10,7 @@ import {
   searchCaptures,
   getCaptureTextContent
 } from '@main/services/database'
-import { deleteRow, purgeArchived, vacuumDb } from '@main/services/dbAdmin'
+import { deleteRow, purgeArchived, vacuumDb } from '@main/services/db/dbAdmin'
 
 function makeCapture(caseId: string, text: string, title = 'T') {
   return insertCapture({

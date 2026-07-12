@@ -21,7 +21,7 @@ import {
   purgeArchived,
   findOrphans,
   exportTableData
-} from '@main/services/dbAdmin'
+} from '@main/services/db/dbAdmin'
 
 describe('dbAdmin', () => {
   beforeEach(() => {

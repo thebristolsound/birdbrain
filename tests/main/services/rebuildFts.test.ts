@@ -7,7 +7,7 @@ import {
   getCaptureTextContent,
   searchCaptures
 } from '@main/services/database'
-import { rebuildFts } from '@main/services/dbAdmin'
+import { rebuildFts } from '@main/services/db/dbAdmin'
 import type { CaptureStore } from '@main/services/captureStore'
 
 function makeCapture(caseId: string, text: string) {

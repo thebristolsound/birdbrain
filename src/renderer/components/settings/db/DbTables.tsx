@@ -13,12 +13,9 @@ const TABLES = [
   'selectors',
   'selector_matches',
   'capture_favorites',
-  'notes',
-  'captures_fts',
-  'notes_fts'
+  'notes'
 ] as const
 
-const FTS_TABLES = new Set(['captures_fts', 'notes_fts'])
 const PAGE_SIZE = 50
 
 export function DbTables() {
@@ -40,9 +37,8 @@ export function DbTables() {
     pk: Record<string, string>
   }>({ open: false, pk: {} })
 
-  const isFts = FTS_TABLES.has(selectedTable)
   const editableColumns = data?.columns.filter((c) => !c.pk) ?? []
-  const canEditRows = !isFts && editableColumns.length > 0
+  const canEditRows = editableColumns.length > 0
 
   async function fetchRows() {
     setLoading(true)
@@ -141,16 +137,14 @@ export function DbTables() {
             </span>
           )}
         </div>
-        {!isFts && (
-          <Button
-            size="sm"
-            onClick={() => setEditModal({ open: true, mode: 'create' })}
-            className="gap-1"
-          >
-            <Plus size={12} />
-            Create
-          </Button>
-        )}
+        <Button
+          size="sm"
+          onClick={() => setEditModal({ open: true, mode: 'create' })}
+          className="gap-1"
+        >
+          <Plus size={12} />
+          Create
+        </Button>
       </div>
 
       {error && <div className="rounded-lg bg-red-900/20 p-3 text-sm text-red-400">{error}</div>}
@@ -172,7 +166,7 @@ export function DbTables() {
                       {col.pk && <span className="ml-1 text-[9px] text-accent">PK</span>}
                     </th>
                   ))}
-                  {!isFts && <th className="w-20 px-3 py-2" />}
+                  <th className="w-20 px-3 py-2" />
                 </tr>
               </thead>
               <tbody>

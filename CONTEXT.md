@@ -16,6 +16,13 @@ _Avoid_: page, snapshot, record.
 Operations that mutate an MHTML Capture beyond its database row — ingestion (parse, hash, store, schedule selector matching), deletion (manifest entry + DB row + on-disk files), verification, and case-wide re-extraction. The forensic-bearing path. Legacy HTML Captures (pre-migration v11) appear in deletion and verification but have no manifest entry and no ingest path; new Captures are MHTML-only.
 _Avoid_: capture service, capture manager.
 
+**Extracted Text**:
+The plain text pulled from a Capture at ingest. The authoritative copy is the `.txt` sidecar on
+disk (integrity-bound via `textSha256` in the Manifest); `capture_texts` holds the database copy
+for query paths, and `captures_fts` is a derived index over it, maintained by triggers — never
+written directly. Healing a suspect database copy (`rebuildFts`) re-reads the sidecars.
+_Avoid_: text content, FTS content.
+
 **Selector**:
 A user-defined text or regex pattern that the investigator wants to find across a Case's Captures.
 
@@ -50,6 +57,7 @@ _Avoid_: ingest server, capture API.
 - The **Capture Server** receives raw captures from the Chrome extension and hands them to the **Capture Lifecycle**
 - Creating or updating a **Selector** triggers the **Selector Lifecycle** to (re)compute **Persisted Matches** for the **Case**'s existing **Captures**, asynchronously
 - A **Foreground Match Preview** is computed in the renderer against the open **Capture**'s text and never touches **Persisted Matches**
+- A **Capture**'s **Extracted Text** lives in its `.txt` sidecar (authoritative) and is mirrored to the database for the **Selector Lifecycle** and search
 
 ## Example dialogue
 

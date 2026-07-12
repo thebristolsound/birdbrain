@@ -2,8 +2,24 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync, rmSync 
 import { unlink } from 'fs/promises'
 import { createHash, randomUUID } from 'crypto'
 import { join } from 'path'
-// eslint-disable-next-line no-restricted-imports -- removed by 2026-07-11-capture-row-ownership plan
-import { getDb } from '@main/services/db/core'
+import { withTransaction, hasRowWithId, type ImportCtx } from '@main/services/db/core'
+import * as caseRepo from '@main/services/db/caseRepo'
+import * as captureRepo from '@main/services/db/captureRepo'
+import * as tagRepo from '@main/services/db/tagRepo'
+import * as selectorRepo from '@main/services/db/selectorRepo'
+import * as noteRepo from '@main/services/db/noteRepo'
+import * as archiveRefRepo from '@main/services/db/archiveRefRepo'
+import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
+import {
+  collectAnnotationsForCase,
+  collectAnnotationPinsForCase,
+  importAnnotationRows,
+  importAnnotationPinRows
+} from '@main/services/annotations'
+import {
+  collectCaptureAnalysesForCase,
+  importCaptureAnalysisRows
+} from '@main/services/ai/analysisService'
 import { getStorageRoot } from '@main/services/storage'
 import { CAPTURE_ARTIFACT_TYPES, defaultCaptureStore } from '@main/services/captureStore'
 import { getSettings } from '@main/services/settings'
@@ -65,107 +81,23 @@ interface CaseArchiveHeader {
 
 // Collects every row belonging to `caseId` across the tables a .birdbrain
 // archive bundles, as raw snake_case DB rows (no camelCase mapping — the
-// archive is a portable snapshot of the schema, not a domain model).
+// archive is a portable snapshot of the schema, not a domain model). Each
+// table's SELECT lives on the repo that owns the aggregate.
 export function collectCaseData(caseId: string): CaseArchiveData {
-  const d = getDb()
-
-  const caseRow = d.prepare('SELECT * FROM cases WHERE id = ?').get(caseId) as
-    Record<string, unknown> | undefined
-  if (!caseRow) throw new Error(`Case not found: ${caseId}`)
-
-  const captures = d
-    .prepare('SELECT * FROM captures WHERE case_id = ? ORDER BY timestamp')
-    .all(caseId) as Record<string, unknown>[]
-
-  const tags = d
-    .prepare(
-      `SELECT DISTINCT t.* FROM tags t
-       JOIN capture_tags ct ON ct.tag_id = t.id
-       JOIN captures c ON c.id = ct.capture_id
-       WHERE c.case_id = ?`
-    )
-    .all(caseId) as Record<string, unknown>[]
-
-  const captureTags = d
-    .prepare(
-      `SELECT ct.* FROM capture_tags ct
-       JOIN captures c ON c.id = ct.capture_id
-       WHERE c.case_id = ?`
-    )
-    .all(caseId) as Record<string, unknown>[]
-
-  const selectors = d.prepare('SELECT * FROM selectors WHERE case_id = ?').all(caseId) as Record<
-    string,
-    unknown
-  >[]
-
-  const selectorMatches = d
-    .prepare(
-      `SELECT sm.* FROM selector_matches sm
-       JOIN captures c ON c.id = sm.capture_id
-       WHERE c.case_id = ?`
-    )
-    .all(caseId) as Record<string, unknown>[]
-
-  const notes = d.prepare('SELECT * FROM notes WHERE case_id = ?').all(caseId) as Record<
-    string,
-    unknown
-  >[]
-
-  const captureFavorites = d
-    .prepare(
-      `SELECT cf.* FROM capture_favorites cf
-       JOIN captures c ON c.id = cf.capture_id
-       WHERE c.case_id = ?`
-    )
-    .all(caseId) as Record<string, unknown>[]
-
-  const annotations = d
-    .prepare(
-      `SELECT a.* FROM annotations a
-       JOIN captures c ON c.id = a.capture_id
-       WHERE c.case_id = ?`
-    )
-    .all(caseId) as Record<string, unknown>[]
-
-  const annotationPins = d
-    .prepare(
-      `SELECT p.* FROM annotation_pins p
-       JOIN captures c ON c.id = p.capture_id
-       WHERE c.case_id = ?`
-    )
-    .all(caseId) as Record<string, unknown>[]
-
-  const captureAnalyses = d
-    .prepare('SELECT ca.* FROM capture_analyses ca WHERE ca.case_id = ?')
-    .all(caseId) as Record<string, unknown>[]
-
-  const extractedData = d
-    .prepare('SELECT * FROM extracted_data WHERE case_id = ?')
-    .all(caseId) as Record<string, unknown>[]
-
-  const captureArchiveRefs = d
-    .prepare(
-      `SELECT ar.* FROM capture_archive_refs ar
-       JOIN captures c ON c.id = ar.capture_id
-       WHERE c.case_id = ?`
-    )
-    .all(caseId) as Record<string, unknown>[]
-
   return {
-    case: caseRow,
-    captures,
-    tags,
-    captureTags,
-    selectors,
-    selectorMatches,
-    notes,
-    captureFavorites,
-    annotations,
-    annotationPins,
-    captureAnalyses,
-    extractedData,
-    captureArchiveRefs
+    case: caseRepo.collectCaseRow(caseId),
+    captures: captureRepo.collectCapturesForCase(caseId),
+    tags: tagRepo.collectTagsForCase(caseId),
+    captureTags: tagRepo.collectCaptureTagsForCase(caseId),
+    selectors: selectorRepo.collectSelectorsForCase(caseId),
+    selectorMatches: selectorRepo.collectSelectorMatchesForCase(caseId),
+    notes: noteRepo.collectNotesForCase(caseId),
+    captureFavorites: captureRepo.collectCaptureFavoritesForCase(caseId),
+    annotations: collectAnnotationsForCase(caseId),
+    annotationPins: collectAnnotationPinsForCase(caseId),
+    captureAnalyses: collectCaptureAnalysesForCase(caseId),
+    extractedData: extractedDataRepo.collectExtractedDataForCase(caseId),
+    captureArchiveRefs: archiveRefRepo.collectArchiveRefsForCase(caseId)
   }
 }
 
@@ -446,7 +378,6 @@ export async function importCaseArchive(
   const data = JSON.parse(entries.get('data.json')!.toString('utf-8')) as CaseArchiveData
 
   const newCaseId = randomUUID()
-  const d = getDb()
   const idMap: Record<string, string> = {}
   const tableRows: Record<(typeof ID_REMAP_TABLES)[number], Record<string, unknown>[]> = {
     captures: data.captures,
@@ -458,11 +389,10 @@ export async function importCaseArchive(
     annotation_pins: data.annotationPins
   }
   for (const table of ID_REMAP_TABLES) {
-    const check = d.prepare(`SELECT 1 FROM ${table} WHERE id = ?`)
     for (const row of tableRows[table]) {
       const oldId = row.id as string | undefined
       if (!oldId || idMap[oldId]) continue
-      if (check.get(oldId)) idMap[oldId] = randomUUID()
+      if (hasRowWithId(table, oldId)) idMap[oldId] = randomUUID()
     }
   }
   const mapId = (id: string): string => idMap[id] ?? id
@@ -534,10 +464,9 @@ export async function importCaseArchive(
   // throw after the move, remove the case dir and rethrow (the transaction
   // self-rolls-back).
   try {
-    const insertAll = d.transaction(() => {
-      insertImportedRows(d, data, newCaseId, mapId)
+    withTransaction(() => {
+      insertImportedRows(data, newCaseId, mapId)
     })
-    insertAll()
   } catch (err) {
     rmSync(caseDir, { recursive: true, force: true })
     throw err
@@ -548,244 +477,51 @@ export async function importCaseArchive(
   return { newCaseId, report }
 }
 
-// Re-inserts all archived rows into the DB under `newCaseId`, remapping row ids
-// via `mapId` and merging tags by case-insensitive name. Runs inside the
-// caller's transaction. Reads the moved-into-place .txt sidecars through the
-// capture store for the captures_fts content column.
+// Re-inserts all archived rows into the DB under `newCaseId` via the repo bulk
+// ops, remapping row ids via `mapId` and merging tags by case-insensitive name
+// (a policy of this module, not of the repos). Runs inside the caller's
+// transaction. The staged .txt sidecars reach captureRepo through ctx.getText —
+// repos never touch the filesystem.
 function insertImportedRows(
-  d: import('better-sqlite3').Database,
   data: CaseArchiveData,
   newCaseId: string,
   mapId: (id: string) => string
 ): void {
-  const caseRow = data.case as Record<string, unknown>
-  d.prepare(
-    `INSERT INTO cases (id, name, description, type, created_at, updated_at, archived)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
-  ).run(
-    newCaseId,
-    caseRow.name ?? null,
-    caseRow.description ?? null,
-    caseRow.type ?? 'custom',
-    caseRow.created_at ?? null,
-    caseRow.updated_at ?? null,
-    caseRow.archived ?? 0
-  )
-
   // Tags: merge by case-insensitive name; keep the archived id when free.
   const tagIdMap: Record<string, string> = {}
-  const findTag = d.prepare('SELECT id FROM tags WHERE lower(name) = lower(?)')
-  const tagIdTaken = d.prepare('SELECT 1 FROM tags WHERE id = ?')
-  const insertTag = d.prepare('INSERT INTO tags (id, name, color) VALUES (?, ?, ?)')
+  const tagRowsToInsert: Record<string, unknown>[] = []
   for (const tag of data.tags) {
     const oldId = tag.id as string
-    const hit = findTag.get(tag.name as string) as { id: string } | undefined
+    const hit = tagRepo.findTagIdByNameInsensitive(tag.name as string)
     if (hit) {
-      tagIdMap[oldId] = hit.id
+      tagIdMap[oldId] = hit
       continue
     }
-    const newId = tagIdTaken.get(oldId) ? randomUUID() : oldId
-    insertTag.run(newId, tag.name ?? null, tag.color ?? null)
+    const newId = tagRepo.tagIdExists(oldId) ? randomUUID() : oldId
+    tagRowsToInsert.push({ ...tag, id: newId })
     tagIdMap[oldId] = newId
   }
   const mapTag = (id: string): string => tagIdMap[id] ?? id
 
-  // Captures: raw INSERT mirroring insertCapture's column list, plus the
-  // capture_texts row using the staged .txt sidecar content when present
-  // (triggers keep captures_fts in sync).
-  const insertCap = d.prepare(
-    `INSERT INTO captures (
-       id, case_id, url, title, html_path, screenshot_path, hash, timestamp, headers, created_at,
-       format, mhtml_path, screenshot_hash, text_hash, tls_cert_chain, size_bytes, manifest_index, prev_hash, entry_hash,
-       tool_version, extension_version, browser_version, user_agent, http_status,
-       operator_id, operator_name, last_verified_at, last_verified_hash, last_verified_status,
-       trusted_time_status, method, supersedes_capture_id, consent_suppression
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  )
-  const insertText = d.prepare(
-    'INSERT INTO capture_texts (capture_id, title, url, content) VALUES (?, ?, ?, ?)'
-  )
-  for (const cap of data.captures) {
-    const newId = mapId(cap.id as string)
-    insertCap.run(
-      newId,
-      newCaseId,
-      cap.url ?? null,
-      cap.title ?? null,
-      cap.html_path ?? null,
-      cap.screenshot_path ?? null,
-      cap.hash ?? null,
-      cap.timestamp ?? null,
-      cap.headers ?? null,
-      cap.created_at ?? null,
-      cap.format ?? 'html',
-      cap.mhtml_path ?? null,
-      cap.screenshot_hash ?? null,
-      cap.text_hash ?? null,
-      cap.tls_cert_chain ?? null,
-      cap.size_bytes ?? null,
-      cap.manifest_index ?? null,
-      cap.prev_hash ?? null,
-      cap.entry_hash ?? null,
-      cap.tool_version ?? null,
-      cap.extension_version ?? null,
-      cap.browser_version ?? null,
-      cap.user_agent ?? null,
-      cap.http_status ?? null,
-      cap.operator_id ?? null,
-      cap.operator_name ?? null,
-      cap.last_verified_at ?? null,
-      cap.last_verified_hash ?? null,
-      cap.last_verified_status ?? null,
-      cap.trusted_time_status ?? null,
-      cap.method ?? 'extension',
-      cap.supersedes_capture_id ? mapId(cap.supersedes_capture_id as string) : null,
-      cap.consent_suppression ?? null
-    )
-    const textContent =
+  const ctx: ImportCtx = {
+    newCaseId,
+    mapId,
+    mapTag,
+    getText: (_oldId, newId) =>
       defaultCaptureStore.readArtifact(newCaseId, newId, 'txt')?.toString('utf-8') ?? ''
-    insertText.run(newId, (cap.title as string) ?? '', (cap.url as string) ?? '', textContent)
   }
 
-  const insertCaptureTag = d.prepare(
-    'INSERT OR IGNORE INTO capture_tags (capture_id, tag_id) VALUES (?, ?)'
-  )
-  for (const ct of data.captureTags) {
-    insertCaptureTag.run(mapId(ct.capture_id as string), mapTag(ct.tag_id as string))
-  }
-
-  // Selectors (case_id remapped).
-  const insertSelector = d.prepare(
-    `INSERT INTO selectors (id, case_id, pattern, is_regex, enabled, label, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
-  )
-  for (const s of data.selectors) {
-    insertSelector.run(
-      mapId(s.id as string),
-      newCaseId,
-      s.pattern ?? null,
-      s.is_regex ?? 0,
-      s.enabled ?? 1,
-      s.label ?? null,
-      s.created_at ?? null
-    )
-  }
-
-  const insertSelectorMatch = d.prepare(
-    'INSERT INTO selector_matches (selector_id, capture_id) VALUES (?, ?)'
-  )
-  for (const sm of data.selectorMatches) {
-    insertSelectorMatch.run(mapId(sm.selector_id as string), mapId(sm.capture_id as string))
-  }
-
-  const insertFavorite = d.prepare(
-    'INSERT INTO capture_favorites (capture_id, created_at) VALUES (?, ?)'
-  )
-  for (const f of data.captureFavorites) {
-    insertFavorite.run(mapId(f.capture_id as string), f.created_at ?? null)
-  }
-
-  const insertAnnotation = d.prepare(
-    `INSERT INTO annotations (capture_id, schema_version, shapes_json, image_width, image_height, updated_at, updated_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
-  )
-  for (const a of data.annotations) {
-    insertAnnotation.run(
-      mapId(a.capture_id as string),
-      a.schema_version ?? null,
-      a.shapes_json ?? null,
-      a.image_width ?? null,
-      a.image_height ?? null,
-      a.updated_at ?? null,
-      a.updated_by ?? null
-    )
-  }
-
-  const insertPin = d.prepare(
-    `INSERT INTO annotation_pins (id, capture_id, number, body, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?)`
-  )
-  for (const p of data.annotationPins) {
-    insertPin.run(
-      mapId(p.id as string),
-      mapId(p.capture_id as string),
-      p.number ?? null,
-      p.body ?? null,
-      p.created_at ?? null,
-      p.updated_at ?? null
-    )
-  }
-
-  const insertAnalysis = d.prepare(
-    `INSERT INTO capture_analyses (id, capture_id, case_id, content, model, token_usage, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  )
-  for (const ca of data.captureAnalyses) {
-    insertAnalysis.run(
-      mapId(ca.id as string),
-      mapId(ca.capture_id as string),
-      newCaseId,
-      ca.content ?? null,
-      ca.model ?? null,
-      ca.token_usage ?? null,
-      ca.created_at ?? null,
-      ca.updated_at ?? null
-    )
-  }
-
-  // extracted_data (case_id remapped; extracted_data_fts maintained by trigger).
-  const insertExtracted = d.prepare(
-    `INSERT INTO extracted_data (id, capture_id, case_id, category, subcategory, value, source_url, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  )
-  for (const ed of data.extractedData) {
-    insertExtracted.run(
-      mapId(ed.id as string),
-      mapId(ed.capture_id as string),
-      newCaseId,
-      ed.category ?? null,
-      ed.subcategory ?? null,
-      ed.value ?? null,
-      ed.source_url ?? null,
-      ed.created_at ?? null
-    )
-  }
-
-  const insertArchiveRef = d.prepare(
-    `INSERT INTO capture_archive_refs (id, capture_id, snapshot_timestamp, snapshot_url, original_url, digest, status_code, mime_type, checked_at, pinned_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  )
-  for (const ar of data.captureArchiveRefs) {
-    insertArchiveRef.run(
-      mapId(ar.id as string),
-      mapId(ar.capture_id as string),
-      ar.snapshot_timestamp ?? null,
-      ar.snapshot_url ?? null,
-      ar.original_url ?? null,
-      ar.digest ?? null,
-      ar.status_code ?? null,
-      ar.mime_type ?? null,
-      ar.checked_at ?? null,
-      ar.pinned_at ?? null
-    )
-  }
-
-  // notes (case_id remapped; capture_id remapped; notes_fts maintained by trigger).
-  const insertNote = d.prepare(
-    `INSERT INTO notes (id, case_id, capture_id, title, body, source_url, screenshot_path, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  )
-  for (const n of data.notes) {
-    insertNote.run(
-      mapId(n.id as string),
-      newCaseId,
-      n.capture_id ? mapId(n.capture_id as string) : null,
-      n.title ?? '',
-      n.body ?? '',
-      n.source_url ?? null,
-      n.screenshot_path ?? null,
-      n.created_at ?? null,
-      n.updated_at ?? null
-    )
-  }
+  caseRepo.importCaseRow(data.case, ctx)
+  tagRepo.importTagRows(tagRowsToInsert)
+  captureRepo.importCaptureRows(data.captures, ctx)
+  tagRepo.importCaptureTagRows(data.captureTags, ctx)
+  selectorRepo.importSelectorRows(data.selectors, ctx)
+  selectorRepo.importSelectorMatchRows(data.selectorMatches, ctx)
+  captureRepo.importCaptureFavoriteRows(data.captureFavorites, ctx)
+  importAnnotationRows(data.annotations, ctx)
+  importAnnotationPinRows(data.annotationPins, ctx)
+  importCaptureAnalysisRows(data.captureAnalyses, ctx)
+  extractedDataRepo.importExtractedDataRows(data.extractedData, ctx)
+  archiveRefRepo.importArchiveRefRows(data.captureArchiveRefs, ctx)
+  noteRepo.importNoteRows(data.notes, ctx)
 }

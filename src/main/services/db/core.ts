@@ -36,3 +36,9 @@ export interface ImportCtx {
   mapTag: (id: string) => string
   getText: (oldId: string, newId: string) => string
 }
+
+// Generic id-existence probe for the archive import's collision remap. The
+// table name must be a compile-time constant at the call site, never input.
+export function hasRowWithId(table: string, id: string): boolean {
+  return getDb().prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(id) !== undefined
+}

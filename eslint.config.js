@@ -43,5 +43,24 @@ export default tseslint.config(
     rules: {
       'no-empty-pattern': 'off'
     }
+  },
+  {
+    // Raw connection access is restricted to the aggregate repos in services/db/
+    files: ['src/main/**/*.ts'],
+    ignores: ['src/main/services/db/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@main/services/db/core',
+              importNames: ['getDb'],
+              message: 'Raw connection access is restricted to src/main/services/db/'
+            }
+          ]
+        }
+      ]
+    }
   }
 )

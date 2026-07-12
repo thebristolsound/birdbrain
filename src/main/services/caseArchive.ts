@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync, rmSync 
 import { unlink } from 'fs/promises'
 import { createHash, randomUUID } from 'crypto'
 import { join } from 'path'
+// eslint-disable-next-line no-restricted-imports -- removed by 2026-07-11-capture-row-ownership plan
 import { getDb } from '@main/services/db/core'
 import { getStorageRoot } from '@main/services/storage'
 import { CAPTURE_ARTIFACT_TYPES, defaultCaptureStore } from '@main/services/captureStore'

@@ -1,4 +1,5 @@
 import { v4 as uuid } from 'uuid'
+// eslint-disable-next-line no-restricted-imports -- owns the capture_analyses aggregate's SQL; repo home resolved by 2026-07-11-capture-row-ownership plan
 import { getDb } from '@main/services/db/core'
 import { sendPrompt, truncateForContext } from '@main/services/ai/openrouter'
 import { defaultCaptureStore } from '@main/services/captureStore'

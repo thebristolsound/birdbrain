@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { Search, ArrowUpDown, Filter, Crosshair, X, Check } from 'lucide-react'
+import { ArrowUpDown, Filter, Crosshair, X, Check } from 'lucide-react'
 import { useQuery, useQueries } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'motion/react'
 import { capturesQueryOptions, captureMatchingSelectorsQueryOptions } from '@renderer/lib/queries'
@@ -83,7 +83,6 @@ export function CaptureList({ caseId }: CaptureListProps) {
   const activeSelectorFilters = useAppStore((s) => s.activeSelectorFilters)
   const clearSelectorFilters = useAppStore((s) => s.clearSelectorFilters)
   const { favorites, toggleFavorite } = useFavorites(caseId)
-  const [searchQuery, setSearchQuery] = useState('')
 
   // Batch-fetch matching selectors for all captures (avoids N+1 per CaptureItem)
   const matchingSelectorsResults = useQueries({
@@ -119,11 +118,6 @@ export function CaptureList({ caseId }: CaptureListProps) {
 
   const displayedCaptures = sortCaptures(
     (filteredCaptureIds ? captures.filter((c) => filteredCaptureIds.includes(c.id)) : captures)
-      .filter((c) => {
-        if (!searchQuery) return true
-        const q = searchQuery.toLowerCase()
-        return c.title?.toLowerCase().includes(q) || c.url.toLowerCase().includes(q)
-      })
       .filter((c) => {
         if (formatFilter !== 'all' && c.format !== formatFilter) return false
         if (favoritesOnly && !favorites.has(c.id)) return false
@@ -183,21 +177,10 @@ export function CaptureList({ caseId }: CaptureListProps) {
 
   return (
     <aside className="flex h-full flex-1 flex-col bg-surface min-w-0">
-      {/* Header: search + sort/filter + selector indicator */}
+      {/* Header: sort/filter + selector indicator */}
       <div className="border-b p-2 border-border">
-        {/* Search input */}
-        <div className="relative">
-          <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
-          <input
-            type="text"
-            placeholder="Search captures..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full rounded-lg border border-border bg-card py-1.5 pl-7 pr-2 text-xs text-text-secondary placeholder:text-text-faint outline-none focus:border-accent/30"
-          />
-        </div>
         {/* Sort + Filter buttons */}
-        <div className="mt-1.5 flex gap-1">
+        <div className="flex gap-1">
           {/* Sort dropdown */}
           <div ref={sortRef} className="relative">
             <button
@@ -369,11 +352,9 @@ export function CaptureList({ caseId }: CaptureListProps) {
           ))}
         </AnimatePresence>
         {displayedCaptures.length === 0 &&
-          (filteredCaptureIds || activeFilterCount > 0 || searchQuery ? (
+          (filteredCaptureIds || activeFilterCount > 0 ? (
             <div className="px-3 py-4 text-center text-xs text-text-faint">
-              {searchQuery && activeFilterCount === 0 && !filteredCaptureIds
-                ? `No captures match "${searchQuery}"`
-                : 'No captures match the active filters'}
+              No captures match the active filters
             </div>
           ) : (
             <CaptureListEmptyState />

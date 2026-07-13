@@ -77,9 +77,13 @@ test.describe('Capture detail panel', () => {
     await expect(aside).toBeVisible()
     await expect(aside).toHaveClass(/w-\[400px\]/)
 
-    // Toggle favorite — title flips from "Favorite" to "Unfavorite".
-    await page.getByTitle('Favorite').click()
-    await expect(page.getByTitle('Unfavorite')).toBeVisible()
+    // Toggle favorite — the star action now lives in the header ⋯ menu and its
+    // label flips from "Star" to "Unstar".
+    await page.getByTestId('capture-details-actions-btn').click()
+    await page.getByTestId('capture-details-star-btn').click()
+    await page.getByTestId('capture-details-actions-btn').click()
+    await expect(page.getByTestId('capture-details-star-btn')).toContainText('Unstar')
+    await page.keyboard.press('Escape')
 
     // Inline note: type, blur, expect "Saved …" line.
     const textarea = page.getByTestId('inline-note-textarea')

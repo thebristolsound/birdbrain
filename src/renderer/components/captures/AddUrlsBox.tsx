@@ -7,7 +7,8 @@ interface AddUrlsBoxProps {
 }
 
 // Paste one or many URLs (whitespace-separated); they are captured
-// silently in the background by the recapture queue.
+// silently in the background by the recapture queue. Rendered inside the
+// top-bar Capture menu's dialog.
 export function AddUrlsBox({ caseId }: AddUrlsBoxProps) {
   const [value, setValue] = useState('')
   const [feedback, setFeedback] = useState<string | null>(null)
@@ -37,7 +38,7 @@ export function AddUrlsBox({ caseId }: AddUrlsBoxProps) {
   }
 
   return (
-    <div className="flex flex-col gap-1.5 border-b border-border p-2">
+    <div className="flex flex-col gap-1.5">
       <div className="flex gap-2">
         <Textarea
           data-testid="add-urls-input"

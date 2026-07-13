@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from '@tanstack/react-router'
+import { Search } from 'lucide-react'
 import { useAppStore } from '@renderer/stores/appStore'
 import { useSearch } from '@renderer/hooks/useSearch'
 
+// Permanently expanded case-wide search, centered in the top bar. Ctrl+F
+// focuses it; Ctrl+K stays on the command palette (case switcher).
 export function SearchBar() {
-  const [expanded, setExpanded] = useState(false)
   const [query, setQuery] = useState('')
   const { results, searching, search, clear } = useSearch()
   const navigate = useNavigate()
@@ -20,10 +22,16 @@ export function SearchBar() {
   }, [])
 
   useEffect(() => {
-    if (expanded && inputRef.current) {
-      inputRef.current.focus()
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.repeat) return
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault()
+        inputRef.current?.focus()
+      }
     }
-  }, [expanded])
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   const handleChange = (value: string) => {
     setQuery(value)
@@ -38,62 +46,34 @@ export function SearchBar() {
     setQuery('')
     setSearchQuery('')
     clear()
-    setExpanded(false)
-  }
-
-  if (!expanded) {
-    return (
-      <button
-        onClick={() => setExpanded(true)}
-        className="flex items-center gap-2 rounded px-3 py-1 text-sm text-text-muted hover:text-text-secondary"
-      >
-        <svg
-          className="h-4 w-4"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2}
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-          />
-        </svg>
-        Search...
-      </button>
-    )
+    inputRef.current?.blur()
   }
 
   return (
-    <div className="relative max-w-md">
-      <div className="flex items-center rounded border border-border-strong bg-elevated focus-within:border-accent/40 focus-within:ring-2 focus-within:ring-accent/25">
-        <svg
-          className="ml-2 h-4 w-4 text-text-muted"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2}
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-          />
-        </svg>
+    <div className="relative w-[400px] shrink-0">
+      <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-2.5 py-1 focus-within:border-accent/40 focus-within:ring-2 focus-within:ring-accent/25">
+        <Search className="h-3.5 w-3.5 shrink-0 text-text-muted" />
         <input
           ref={inputRef}
           type="text"
+          data-testid="global-search-input"
           value={query}
           onChange={(e) => handleChange(e.target.value)}
           onKeyDown={(e) => e.key === 'Escape' && handleClose()}
-          className="flex-1 bg-transparent px-2 py-1 text-sm text-text-primary placeholder:text-text-faint outline-none"
-          placeholder="Search captures..."
+          className="min-w-0 flex-1 bg-transparent text-xs text-text-primary placeholder:text-text-faint outline-none"
+          placeholder="Search this case — titles, URLs, full text, notes…"
         />
-        {query && (
-          <button onClick={handleClose} className="px-2 text-text-muted hover:text-text-secondary">
+        {query ? (
+          <button
+            onClick={handleClose}
+            className="shrink-0 px-1 text-text-muted hover:text-text-secondary"
+          >
             &times;
           </button>
+        ) : (
+          <span className="shrink-0 rounded border border-border-strong bg-surface px-1.5 py-0.5 font-mono text-[10px] text-text-faint">
+            Ctrl F
+          </span>
         )}
       </div>
 

@@ -7,7 +7,6 @@ import {
   useCapturesMutations,
   useSettingsMutations
 } from '@renderer/lib/queries'
-import { AddUrlsBox } from '@renderer/components/captures/AddUrlsBox'
 import { CaptureList } from '@renderer/components/captures/CaptureList'
 import { CaptureViewer } from '@renderer/components/captures/CaptureViewer'
 import { CaptureDetailsPanel } from '@renderer/components/captures/CaptureDetailsPanel'
@@ -89,7 +88,6 @@ export function CapturesRoute() {
   return (
     <div className="flex h-full flex-1 overflow-hidden">
       <div className="flex w-[380px] shrink-0 flex-col border-r border-border">
-        <AddUrlsBox caseId={caseId} />
         <div className="flex flex-1 min-h-0 overflow-hidden">
           <CaptureList caseId={caseId} />
         </div>

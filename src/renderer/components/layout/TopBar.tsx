@@ -10,6 +10,7 @@ import { SessionControls } from '@renderer/components/status/SessionControls'
 import { ConnectionStatus } from '@renderer/components/status/ConnectionStatus'
 import { CaptureHealth } from '@renderer/components/status/CaptureHealth'
 import { ExportMenu } from '@renderer/components/export/ExportMenu'
+import { CaptureMenu } from '@renderer/components/captures/CaptureMenu'
 import { useTheme } from '@renderer/hooks/useTheme'
 import { useUpdateStatus } from '@renderer/hooks/useUpdateStatus'
 
@@ -98,12 +99,13 @@ export function TopBar() {
         </>
       )}
 
+      {/* Centered global search — spacers on both sides keep it centered */}
+      <div className="flex-1" />
+      {activeCaseId && <SearchBar />}
       <div className="flex-1" />
 
       {/* Right controls */}
       <div className="flex items-center gap-2">
-        {activeCaseId && <SearchBar />}
-
         {activeCaseId && <SessionControls />}
 
         {sessionActive && (
@@ -115,6 +117,8 @@ export function TopBar() {
 
         <ConnectionStatus />
         <CaptureHealth />
+
+        {activeCaseId && <CaptureMenu caseId={activeCaseId} />}
 
         {activeCaseId && activeCase && (
           <ExportMenu caseId={activeCase.id} caseName={activeCase.name} />

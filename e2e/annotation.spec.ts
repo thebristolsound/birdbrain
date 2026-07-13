@@ -114,9 +114,9 @@ test.describe('Annotations', () => {
       )
       .toBeGreaterThan(0)
 
-    // Switch to forensics tab and back to screenshot to force a remount of the editor.
-    await page.getByRole('button', { name: /Forensics/ }).click()
-    await page.getByRole('button', { name: /Screenshot/ }).click()
+    // Switch to another view and back to screenshot to force a remount of the editor.
+    await page.getByRole('tab', { name: 'Source' }).click()
+    await page.getByRole('tab', { name: 'Screenshot' }).click()
 
     // Verify the saved shape is rendered after reload by inspecting the editor's react-konva tree.
     // Konva exposes window.Konva when react-konva loads — fall back to IPC if not.

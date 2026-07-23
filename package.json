@@ -1,6 +1,6 @@
 {
   "name": "birdbrain",
-  "version": "1.0.1-beta.13",
+  "version": "1.0.1-beta.14",
   "description": "Open source web investigation & capture tool",
   "main": "./out/main/index.js",
   "packageManager": "pnpm@10.28.2",

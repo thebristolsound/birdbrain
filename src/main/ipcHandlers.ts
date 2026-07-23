@@ -166,13 +166,18 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.CAPTURES_DOWNLOAD, async (_, captureId: string): Promise<string | null> => {
     const capture = captureRepo.getCapture(captureId)
     if (!capture) return null
+    // Modern captures store a raw .mhtml artifact; only legacy pre-v11 rows have .html.
+    const ext = capture.format === 'mhtml' ? 'mhtml' : 'html'
     const { canceled, filePath } = await dialog.showSaveDialog({
-      defaultPath: `${capture.title || 'capture'}.html`,
-      filters: [{ name: 'HTML', extensions: ['html'] }]
+      defaultPath: `${capture.title || 'capture'}.${ext}`,
+      filters:
+        ext === 'mhtml'
+          ? [{ name: 'MHTML Archive', extensions: ['mhtml'] }]
+          : [{ name: 'HTML', extensions: ['html'] }]
     })
     if (canceled || !filePath) return null
-    const buffer = defaultCaptureStore.readArtifact(capture.caseId, captureId, 'html')
-    if (!buffer) throw new IpcFailure('HTML file not found')
+    const buffer = defaultCaptureStore.readArtifact(capture.caseId, captureId, ext)
+    if (!buffer) throw new IpcFailure(`Capture file (.${ext}) not found`)
     const { writeFileSync } = await import('fs')
     writeFileSync(filePath, buffer)
     return filePath

@@ -244,6 +244,15 @@ export function CaptureDetailsPanel({
             </span>
           </span>
           <div className="ml-auto flex items-center gap-0.5">
+            <button
+              onClick={onDownload}
+              title={`Download capture file (.${capture.format === 'mhtml' ? 'mhtml' : 'html'})`}
+              data-testid="capture-details-download-btn"
+              className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium text-accent hover:bg-accent-subtle"
+            >
+              <Download className="h-3.5 w-3.5" />
+              Download
+            </button>
             <div className="relative">
               <button
                 ref={menuAnchorRef}
@@ -288,17 +297,6 @@ export function CaptureDetailsPanel({
                   >
                     <ExternalLink className="h-3.5 w-3.5 shrink-0 text-text-muted" />
                     Open URL
-                  </button>
-                  <button
-                    role="menuitem"
-                    onClick={() => {
-                      setMenuOpen(false)
-                      onDownload()
-                    }}
-                    className={menuItemClass}
-                  >
-                    <Download className="h-3.5 w-3.5 shrink-0 text-text-muted" />
-                    Download capture
                   </button>
                   <button
                     role="menuitem"

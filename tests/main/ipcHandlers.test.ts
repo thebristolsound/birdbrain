@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi, beforeAll } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { IpcMainInvokeEvent } from 'electron'
@@ -348,6 +348,27 @@ describe('ipcHandlers — captures', () => {
     showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: target })
     const saved = expectOk<string>(await invoke(IPC_CHANNELS.CAPTURES_DOWNLOAD, captureId))
     expect(saved).toBe(target)
+    expect(readFileSync(target, 'utf-8')).toBe('<html>hi</html>')
+  })
+
+  it('downloads the raw .mhtml artifact for mhtml-format captures', async () => {
+    const mhtmlBody = 'MIME-Version: 1.0\r\nContent-Type: multipart/related\r\n\r\nmhtml-bytes'
+    const cap = seedCapture({ format: 'mhtml' })
+    const mhtmlPaths = defaultCaptureStore.artifactPaths(caseId, cap.id, 'mhtml')
+    writeFileSync(mhtmlPaths.abs, mhtmlBody)
+
+    const target = join(userDataPath, 'out.mhtml')
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: target })
+    const saved = expectOk<string>(await invoke(IPC_CHANNELS.CAPTURES_DOWNLOAD, cap.id))
+    expect(saved).toBe(target)
+    expect(readFileSync(target, 'utf-8')).toBe(mhtmlBody)
+
+    const dialogArgs = showSaveDialog.mock.calls.at(-1)![0] as {
+      defaultPath: string
+      filters: Array<{ extensions: string[] }>
+    }
+    expect(dialogArgs.defaultPath.endsWith('.mhtml')).toBe(true)
+    expect(dialogArgs.filters[0].extensions).toContain('mhtml')
   })
 
   it('verifies a capture and deletes it', async () => {

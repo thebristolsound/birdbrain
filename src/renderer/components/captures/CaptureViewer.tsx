@@ -152,7 +152,34 @@ export function CaptureViewer() {
                 key={tab}
                 role="tab"
                 aria-selected={isActive}
+                tabIndex={isActive ? 0 : -1}
                 onClick={() => setActiveTab(tab)}
+                onKeyDown={(e) => {
+                  const currentIndex = TABS.indexOf(tab)
+                  let nextIndex = currentIndex
+                  if (e.key === 'ArrowLeft') {
+                    e.stopPropagation()
+                    nextIndex = currentIndex > 0 ? currentIndex - 1 : TABS.length - 1
+                  } else if (e.key === 'ArrowRight') {
+                    e.stopPropagation()
+                    nextIndex = currentIndex < TABS.length - 1 ? currentIndex + 1 : 0
+                  } else if (e.key === 'Home') {
+                    e.stopPropagation()
+                    nextIndex = 0
+                  } else if (e.key === 'End') {
+                    e.stopPropagation()
+                    nextIndex = TABS.length - 1
+                  } else {
+                    return
+                  }
+                  const nextTab = TABS[nextIndex]
+                  setActiveTab(nextTab)
+                  // Focus the new button after state update
+                  requestAnimationFrame(() => {
+                    const buttons = document.querySelectorAll('[role="tab"]')
+                    ;(buttons[nextIndex] as HTMLButtonElement)?.focus()
+                  })
+                }}
                 className={`rounded-md px-2.5 py-1 text-[11px] transition-colors ${
                   isActive
                     ? 'bg-card font-semibold text-text-primary shadow-sm'

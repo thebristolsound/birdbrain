@@ -86,7 +86,9 @@ export function CaptureDetailsPanel({
   const tagAnchorRef = useRef<HTMLButtonElement>(null)
 
   const [menuOpen, setMenuOpen] = useState(false)
-  const [recaptureError, setRecaptureError] = useState<string | null>(null)
+  const [recaptureError, setRecaptureError] = useState<{ captureId: string; message: string } | null>(
+    null
+  )
   const menuRef = useRef<HTMLDivElement>(null)
   const menuAnchorRef = useRef<HTMLButtonElement>(null)
 
@@ -186,9 +188,17 @@ export function CaptureDetailsPanel({
     enqueue.mutate(
       { urls: [capture.url], supersedesCaptureId: capture.id },
       {
-        onSuccess: (result) => setRecaptureError(result.rejected[0]?.reason ?? null),
+        onSuccess: (result) => {
+          const reason = result.rejected[0]?.reason
+          if (reason) {
+            setRecaptureError({ captureId: capture.id, message: reason })
+          }
+        },
         onError: (err) =>
-          setRecaptureError(err instanceof Error ? err.message : 'Recapture failed')
+          setRecaptureError({
+            captureId: capture.id,
+            message: err instanceof Error ? err.message : 'Recapture failed'
+          })
       }
     )
   }
@@ -329,13 +339,13 @@ export function CaptureDetailsPanel({
             </button>
           </div>
         </div>
-        {recaptureError && !isRecapturing && (
+        {recaptureError && recaptureError.captureId === capture.id && !isRecapturing && (
           <p
             data-testid="capture-details-recapture-error"
-            title={recaptureError}
+            title={recaptureError.message}
             className="mt-2 text-[11px] text-red-500"
           >
-            Recapture failed: {recaptureError}
+            Recapture failed: {recaptureError.message}
           </p>
         )}
       </section>

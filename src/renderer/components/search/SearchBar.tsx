@@ -57,6 +57,7 @@ export function SearchBar() {
           ref={inputRef}
           type="text"
           data-testid="global-search-input"
+          aria-label="Search case captures"
           value={query}
           onChange={(e) => handleChange(e.target.value)}
           onKeyDown={(e) => e.key === 'Escape' && handleClose()}
@@ -66,6 +67,7 @@ export function SearchBar() {
         {query ? (
           <button
             onClick={handleClose}
+            aria-label="Clear search"
             className="shrink-0 px-1 text-text-muted hover:text-text-secondary"
           >
             &times;

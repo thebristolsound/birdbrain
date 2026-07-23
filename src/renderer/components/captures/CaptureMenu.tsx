@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { Plus, ChevronDown, ClipboardList, RefreshCcw } from 'lucide-react'
-import { useMatchRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { Button, Dialog, DialogContent, DialogHeader, DialogTitle } from '@renderer/components/ui'
 import { AddUrlsBox } from '@renderer/components/captures/AddUrlsBox'
@@ -11,7 +10,7 @@ interface CaptureMenuProps {
   caseId: string
 }
 
-// Case-level capture actions, promoted to the top bar next to Export:
+// Case-level capture actions, shown in the capture list header:
 // paste-URLs bulk capture (the old AddUrlsBox) and recapture of the
 // currently selected capture (the old viewer breadcrumb button).
 export function CaptureMenu({ caseId }: CaptureMenuProps) {
@@ -19,16 +18,9 @@ export function CaptureMenu({ caseId }: CaptureMenuProps) {
   const [showPasteUrls, setShowPasteUrls] = useState(false)
   const [recaptureError, setRecaptureError] = useState<string | null>(null)
 
-  // The store keeps selectedCaptureId alive when navigating away from the
-  // Captures tab, so only honor it while that tab is visible — otherwise
-  // "Recapture current page" would silently target a capture the user can't see.
-  const matchRoute = useMatchRoute()
-  const onCapturesRoute = Boolean(matchRoute({ to: '/cases/$caseId/captures' }))
   const selectedCaptureId = useAppStore((s) => s.selectedCaptureId)
   const { data: captures = [] } = useQuery(capturesQueryOptions(caseId))
-  const selectedCapture = onCapturesRoute
-    ? (captures.find((c) => c.id === selectedCaptureId) ?? null)
-    : null
+  const selectedCapture = captures.find((c) => c.id === selectedCaptureId) ?? null
   const { enqueue } = useRecaptureMutations(caseId)
 
   // A background recapture emits a 'received' event at the start of its job and a
@@ -84,8 +76,7 @@ export function CaptureMenu({ caseId }: CaptureMenuProps) {
       { urls: [selectedCapture.url], supersedesCaptureId: selectedCapture.id },
       {
         onSuccess: (result) => setRecaptureError(result.rejected[0]?.reason ?? null),
-        onError: (err) =>
-          setRecaptureError(err instanceof Error ? err.message : 'Recapture failed')
+        onError: (err) => setRecaptureError(err instanceof Error ? err.message : 'Recapture failed')
       }
     )
   }
@@ -144,9 +135,7 @@ export function CaptureMenu({ caseId }: CaptureMenuProps) {
             disabled={!selectedCapture || enqueue.isPending || isRecapturing}
             title={
               !selectedCapture
-                ? onCapturesRoute
-                  ? 'Select a capture first'
-                  : 'Select a capture on the Captures tab first'
+                ? 'Select a capture first'
                 : isRecapturing
                   ? 'Recapture in progress…'
                   : 'Recapture this page in the background'
@@ -171,7 +160,7 @@ export function CaptureMenu({ caseId }: CaptureMenuProps) {
           <DialogHeader className="mb-2">
             <DialogTitle className="text-sm">Paste URLs to capture</DialogTitle>
           </DialogHeader>
-          <AddUrlsBox caseId={caseId} />
+          <AddUrlsBox caseId={caseId} onQueued={() => setShowPasteUrls(false)} />
         </DialogContent>
       </Dialog>
     </div>

@@ -9,6 +9,7 @@ import { useAppStore } from '@renderer/stores/appStore'
 import { useFavorites } from '@renderer/hooks/useFavorites'
 import { CaptureItem } from '@renderer/components/captures/CaptureItem'
 import { CaptureListEmptyState } from '@renderer/components/captures/CaptureListEmptyState'
+import { CaptureMenu } from '@renderer/components/captures/CaptureMenu'
 import type { Capture, Selector } from '@shared/types'
 
 interface CaptureListProps {
@@ -179,136 +180,139 @@ export function CaptureList({ caseId }: CaptureListProps) {
     <aside className="flex h-full flex-1 flex-col bg-surface min-w-0">
       {/* Header: sort/filter + selector indicator */}
       <div className="border-b p-2 border-border">
-        {/* Sort + Filter buttons */}
-        <div className="flex gap-1">
-          {/* Sort dropdown */}
-          <div ref={sortRef} className="relative">
-            <button
-              onClick={() => {
-                setShowSortMenu(!showSortMenu)
-                setShowFilterMenu(false)
-              }}
-              className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] hover:bg-elevated ${
-                sortBy !== 'newest' ? 'text-accent' : 'text-text-muted hover:text-text-muted'
-              }`}
-            >
-              <ArrowUpDown className="h-3 w-3" />
-              {SORT_OPTIONS.find((o) => o.value === sortBy)?.label ?? 'Sort'}
-            </button>
-            {showSortMenu && (
-              <div className="absolute left-0 top-full z-50 mt-1 w-40 rounded-lg border border-border bg-card py-1 shadow-lg">
-                {SORT_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => {
-                      setSortBy(opt.value)
-                      setShowSortMenu(false)
-                    }}
-                    className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] hover:bg-elevated ${
-                      sortBy === opt.value ? 'text-accent' : 'text-text-secondary'
-                    }`}
-                  >
-                    <Check
-                      className={`h-3 w-3 shrink-0 ${sortBy === opt.value ? 'opacity-100' : 'opacity-0'}`}
-                    />
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          {/* Filter dropdown */}
-          <div ref={filterRef} className="relative">
-            <button
-              onClick={() => {
-                setShowFilterMenu(!showFilterMenu)
-                setShowSortMenu(false)
-              }}
-              className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] hover:bg-elevated ${
-                activeFilterCount > 0 ? 'text-accent' : 'text-text-muted hover:text-text-muted'
-              }`}
-            >
-              <Filter className="h-3 w-3" />
-              Filter
-              {activeFilterCount > 0 && (
-                <span className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[9px] font-medium text-white">
-                  {activeFilterCount}
-                </span>
-              )}
-            </button>
-            {showFilterMenu && (
-              <div className="absolute left-0 top-full z-50 mt-1 w-48 rounded-lg border border-border bg-card py-1 shadow-lg">
-                {/* Format section */}
-                <div className="px-3 py-1 text-[10px] font-medium uppercase tracking-wider text-text-faint">
-                  Format
-                </div>
-                {FORMAT_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setFormatFilter(opt.value)}
-                    className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] hover:bg-elevated ${
-                      formatFilter === opt.value ? 'text-accent' : 'text-text-secondary'
-                    }`}
-                  >
-                    <Check
-                      className={`h-3 w-3 shrink-0 ${formatFilter === opt.value ? 'opacity-100' : 'opacity-0'}`}
-                    />
-                    {opt.label}
-                  </button>
-                ))}
-                {/* Divider */}
-                <div className="my-1 border-t border-border" />
-                {/* Date section */}
-                <div className="px-3 py-1 text-[10px] font-medium uppercase tracking-wider text-text-faint">
-                  Date
-                </div>
-                {DATE_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setDateFilter(opt.value)}
-                    className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] hover:bg-elevated ${
-                      dateFilter === opt.value ? 'text-accent' : 'text-text-secondary'
-                    }`}
-                  >
-                    <Check
-                      className={`h-3 w-3 shrink-0 ${dateFilter === opt.value ? 'opacity-100' : 'opacity-0'}`}
-                    />
-                    {opt.label}
-                  </button>
-                ))}
-                {/* Divider */}
-                <div className="my-1 border-t border-border" />
-                {/* Favorites toggle */}
-                <button
-                  onClick={() => setFavoritesOnly(!favoritesOnly)}
-                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] hover:bg-elevated ${
-                    favoritesOnly ? 'text-accent' : 'text-text-secondary'
-                  }`}
-                >
-                  <Check
-                    className={`h-3 w-3 shrink-0 ${favoritesOnly ? 'opacity-100' : 'opacity-0'}`}
-                  />
-                  Favorites only
-                </button>
-                {/* Clear all */}
-                {activeFilterCount > 0 && (
-                  <>
-                    <div className="my-1 border-t border-border" />
+        {/* Sort + Filter buttons, Capture menu on the right */}
+        <div className="flex items-center justify-between gap-1">
+          <div className="flex gap-1">
+            {/* Sort dropdown */}
+            <div ref={sortRef} className="relative">
+              <button
+                onClick={() => {
+                  setShowSortMenu(!showSortMenu)
+                  setShowFilterMenu(false)
+                }}
+                className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] hover:bg-elevated ${
+                  sortBy !== 'newest' ? 'text-accent' : 'text-text-muted hover:text-text-muted'
+                }`}
+              >
+                <ArrowUpDown className="h-3 w-3" />
+                {SORT_OPTIONS.find((o) => o.value === sortBy)?.label ?? 'Sort'}
+              </button>
+              {showSortMenu && (
+                <div className="absolute left-0 top-full z-50 mt-1 w-40 rounded-lg border border-border bg-card py-1 shadow-lg">
+                  {SORT_OPTIONS.map((opt) => (
                     <button
+                      key={opt.value}
                       onClick={() => {
-                        clearAllFilters()
-                        setShowFilterMenu(false)
+                        setSortBy(opt.value)
+                        setShowSortMenu(false)
                       }}
-                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-red-400 hover:bg-elevated"
+                      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] hover:bg-elevated ${
+                        sortBy === opt.value ? 'text-accent' : 'text-text-secondary'
+                      }`}
                     >
-                      <X className="h-3 w-3 shrink-0" />
-                      Clear all filters
+                      <Check
+                        className={`h-3 w-3 shrink-0 ${sortBy === opt.value ? 'opacity-100' : 'opacity-0'}`}
+                      />
+                      {opt.label}
                     </button>
-                  </>
+                  ))}
+                </div>
+              )}
+            </div>
+            {/* Filter dropdown */}
+            <div ref={filterRef} className="relative">
+              <button
+                onClick={() => {
+                  setShowFilterMenu(!showFilterMenu)
+                  setShowSortMenu(false)
+                }}
+                className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] hover:bg-elevated ${
+                  activeFilterCount > 0 ? 'text-accent' : 'text-text-muted hover:text-text-muted'
+                }`}
+              >
+                <Filter className="h-3 w-3" />
+                Filter
+                {activeFilterCount > 0 && (
+                  <span className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[9px] font-medium text-white">
+                    {activeFilterCount}
+                  </span>
                 )}
-              </div>
-            )}
+              </button>
+              {showFilterMenu && (
+                <div className="absolute left-0 top-full z-50 mt-1 w-48 rounded-lg border border-border bg-card py-1 shadow-lg">
+                  {/* Format section */}
+                  <div className="px-3 py-1 text-[10px] font-medium uppercase tracking-wider text-text-faint">
+                    Format
+                  </div>
+                  {FORMAT_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setFormatFilter(opt.value)}
+                      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] hover:bg-elevated ${
+                        formatFilter === opt.value ? 'text-accent' : 'text-text-secondary'
+                      }`}
+                    >
+                      <Check
+                        className={`h-3 w-3 shrink-0 ${formatFilter === opt.value ? 'opacity-100' : 'opacity-0'}`}
+                      />
+                      {opt.label}
+                    </button>
+                  ))}
+                  {/* Divider */}
+                  <div className="my-1 border-t border-border" />
+                  {/* Date section */}
+                  <div className="px-3 py-1 text-[10px] font-medium uppercase tracking-wider text-text-faint">
+                    Date
+                  </div>
+                  {DATE_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setDateFilter(opt.value)}
+                      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] hover:bg-elevated ${
+                        dateFilter === opt.value ? 'text-accent' : 'text-text-secondary'
+                      }`}
+                    >
+                      <Check
+                        className={`h-3 w-3 shrink-0 ${dateFilter === opt.value ? 'opacity-100' : 'opacity-0'}`}
+                      />
+                      {opt.label}
+                    </button>
+                  ))}
+                  {/* Divider */}
+                  <div className="my-1 border-t border-border" />
+                  {/* Favorites toggle */}
+                  <button
+                    onClick={() => setFavoritesOnly(!favoritesOnly)}
+                    className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] hover:bg-elevated ${
+                      favoritesOnly ? 'text-accent' : 'text-text-secondary'
+                    }`}
+                  >
+                    <Check
+                      className={`h-3 w-3 shrink-0 ${favoritesOnly ? 'opacity-100' : 'opacity-0'}`}
+                    />
+                    Favorites only
+                  </button>
+                  {/* Clear all */}
+                  {activeFilterCount > 0 && (
+                    <>
+                      <div className="my-1 border-t border-border" />
+                      <button
+                        onClick={() => {
+                          clearAllFilters()
+                          setShowFilterMenu(false)
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-red-400 hover:bg-elevated"
+                      >
+                        <X className="h-3 w-3 shrink-0" />
+                        Clear all filters
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
+          <CaptureMenu caseId={caseId} />
         </div>
         {/* Selector filter indicator */}
         {activeSelectorFilters.length > 0 && (

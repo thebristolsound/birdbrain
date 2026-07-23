@@ -4,11 +4,13 @@ import { useRecaptureMutations } from '@renderer/lib/queries'
 
 interface AddUrlsBoxProps {
   caseId: string
+  onQueued?: () => void
 }
 
 // Paste one or many URLs (whitespace-separated); they are captured
-// silently in the background by the recapture queue.
-export function AddUrlsBox({ caseId }: AddUrlsBoxProps) {
+// silently in the background by the recapture queue. Rendered inside the
+// Capture menu's dialog.
+export function AddUrlsBox({ caseId, onQueued }: AddUrlsBoxProps) {
   const [value, setValue] = useState('')
   const [feedback, setFeedback] = useState<string | null>(null)
   const { enqueue } = useRecaptureMutations(caseId)
@@ -31,13 +33,16 @@ export function AddUrlsBox({ caseId }: AddUrlsBoxProps) {
       }
       setFeedback(parts.join(', '))
       if (result.accepted > 0) setValue('')
+      // Everything queued cleanly — dismiss the dialog. Keep it open when
+      // some URLs were rejected so the feedback stays readable.
+      if (result.accepted > 0 && result.rejected.length === 0) onQueued?.()
     } catch (err) {
       setFeedback(err instanceof Error ? err.message : 'Failed to queue captures')
     }
   }
 
   return (
-    <div className="flex flex-col gap-1.5 border-b border-border p-2">
+    <div className="flex flex-col gap-1.5">
       <div className="flex gap-2">
         <Textarea
           data-testid="add-urls-input"

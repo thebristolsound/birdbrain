@@ -111,7 +111,7 @@ describe('queryKeys', () => {
     expect(queryKeys.captures('c1')).toEqual(['captures', 'c1'])
     expect(queryKeys.captureContent('cap1', 'png')).toEqual(['captures', 'content', 'cap1', 'png'])
     expect(queryKeys.captureFavorites('c1')).toEqual(['captures', 'favorites', 'c1'])
-    expect(queryKeys.search('foo')).toEqual(['search', 'foo'])
+    expect(queryKeys.search('c1', 'foo')).toEqual(['search', 'c1', 'foo'])
     expect(queryKeys.tagsForCapture('cap1')).toEqual(['tags', 'capture', 'cap1'])
     expect(queryKeys.selectorMatchCounts('c1')).toEqual(['selectors', 'matchCounts', 'c1'])
     expect(queryKeys.selectorMatchingCaptures('c1', ['s1', 's2'])).toEqual([
@@ -173,11 +173,12 @@ describe('queryOptions queryFns', () => {
     await captureFavoritesQueryOptions('c1').queryFn?.({} as never)
     expect(api.captures.listFavorites).toHaveBeenCalledWith('c1')
 
-    const searchOpts = searchQueryOptions('foo')
+    const searchOpts = searchQueryOptions('c1', 'foo')
     expect(searchOpts.enabled).toBe(true)
     await searchOpts.queryFn?.({} as never)
-    expect(api.search).toHaveBeenCalledWith('foo')
-    expect(searchQueryOptions('   ').enabled).toBe(false)
+    expect(api.search).toHaveBeenCalledWith('c1', 'foo')
+    expect(searchQueryOptions('c1', '   ').enabled).toBe(false)
+    expect(searchQueryOptions('', 'foo').enabled).toBe(false)
 
     await tagsQueryOptions.queryFn?.({} as never)
     expect(api.tags.list).toHaveBeenCalled()

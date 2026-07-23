@@ -44,9 +44,14 @@ test.describe('Recapture (background capture)', () => {
     await page.evaluate((id) => {
       window.location.hash = `/cases/${id}/captures`
     }, caseId)
+    // The paste-URLs box now lives in the top-bar Capture menu dialog.
+    await page.click('[data-testid="capture-menu-btn"]')
+    await page.click('[data-testid="capture-menu-paste-urls"]')
     await page.waitForSelector('[data-testid="add-urls-input"]', { timeout: 10000 })
     await page.fill('[data-testid="add-urls-input"]', `${baseUrl}/page`)
     await page.click('[data-testid="add-urls-submit"]')
+    // Close the dialog so it doesn't overlay the capture list.
+    await page.keyboard.press('Escape')
 
     // The capture appears in the list when the background job completes
     await expect(page.getByText('Recapture Fixture')).toBeVisible({ timeout: 60000 })
@@ -90,8 +95,10 @@ test.describe('Recapture (background capture)', () => {
     }, capture.id)
     expect(verification.status).toBe('verified')
 
-    // Recapture the capture itself → linked sibling
+    // Recapture the capture itself → linked sibling. Recapture now lives in the
+    // top-bar Capture menu; it targets the currently selected capture.
     await page.getByTestId('capture-item').filter({ hasText: 'Recapture Fixture' }).first().click()
+    await page.click('[data-testid="capture-menu-btn"]')
     await page.click('[data-testid="recapture-btn"]')
     // While the background job runs, the button reflects the in-flight state
     // (driven by the recapture 'received' event, not the enqueue IPC).

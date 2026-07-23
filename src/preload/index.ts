@@ -224,7 +224,8 @@ const birdbrain = {
       unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.EXTENSION_OPEN_FOLDER))
   },
 
-  search: (query: string): Promise<Capture[]> => ipcRenderer.invoke(IPC_CHANNELS.SEARCH, query),
+  search: (caseId: string, query: string): Promise<Capture[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SEARCH, caseId, query),
 
   settings: {
     get: (): Promise<BirdbrainSettings> => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET),

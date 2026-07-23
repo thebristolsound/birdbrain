@@ -7,7 +7,6 @@ import {
   useCapturesMutations,
   useSettingsMutations
 } from '@renderer/lib/queries'
-import { AddUrlsBox } from '@renderer/components/captures/AddUrlsBox'
 import { CaptureList } from '@renderer/components/captures/CaptureList'
 import { CaptureViewer } from '@renderer/components/captures/CaptureViewer'
 import { CaptureDetailsPanel } from '@renderer/components/captures/CaptureDetailsPanel'
@@ -45,11 +44,18 @@ export function CapturesRoute() {
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showAddNote, setShowAddNote] = useState(false)
+  // When the viewport forces the rail, the panel can still be opened as an
+  // overlay so custody/Wayback/tags/notes stay reachable on narrow windows.
+  const [forcedPanelOpen, setForcedPanelOpen] = useState(false)
 
   // Sync forced flag from viewport width.
   useEffect(() => {
     setPanelCollapsedForced(viewportWidth < COLLAPSE_THRESHOLD)
   }, [viewportWidth, setPanelCollapsedForced])
+
+  useEffect(() => {
+    if (!panelCollapsedForced) setForcedPanelOpen(false)
+  }, [panelCollapsedForced])
 
   const userPref = settings?.detailsPanelCollapsed ?? false
   const panelDisplayedCollapsed = panelCollapsedForced || userPref
@@ -87,9 +93,8 @@ export function CapturesRoute() {
   }
 
   return (
-    <div className="flex h-full flex-1 overflow-hidden">
+    <div className="relative flex h-full flex-1 overflow-hidden">
       <div className="flex w-[380px] shrink-0 flex-col border-r border-border">
-        <AddUrlsBox caseId={caseId} />
         <div className="flex flex-1 min-h-0 overflow-hidden">
           <CaptureList caseId={caseId} />
         </div>
@@ -109,7 +114,9 @@ export function CapturesRoute() {
               capture={selectedCapture}
               caseId={caseId}
               forced={panelCollapsedForced}
-              onExpand={toggleUserPref}
+              onExpand={
+                panelCollapsedForced ? () => setForcedPanelOpen(true) : toggleUserPref
+              }
               onOpenExternal={handleOpenExternal}
             />
           ) : (
@@ -124,6 +131,24 @@ export function CapturesRoute() {
             />
           )}
         </aside>
+      )}
+
+      {/* Overlay details panel for viewports too narrow for the docked panel */}
+      {selectedCapture && panelCollapsedForced && forcedPanelOpen && (
+        <div
+          data-testid="capture-details-overlay"
+          className="absolute right-0 top-0 z-40 h-full w-[400px] border-l border-border bg-surface shadow-xl"
+        >
+          <CaptureDetailsPanel
+            capture={selectedCapture}
+            caseId={caseId}
+            onCollapse={() => setForcedPanelOpen(false)}
+            onDownload={handleDownload}
+            onOpenExternal={handleOpenExternal}
+            onDelete={() => setShowDeleteConfirm(true)}
+            onOpenAddNote={() => setShowAddNote(true)}
+          />
+        </div>
       )}
 
       <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>

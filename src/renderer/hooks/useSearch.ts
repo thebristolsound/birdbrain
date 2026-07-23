@@ -1,10 +1,13 @@
 import { useState, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { searchQueryOptions } from '@renderer/lib/queries'
+import { searchQueryOptions, notesSearchQueryOptions } from '@renderer/lib/queries'
 
-export function useSearch() {
+export function useSearch(caseId: string) {
   const [query, setQuery] = useState('')
-  const { data: results = [], isLoading } = useQuery(searchQueryOptions(query))
+  const { data: results = [], isLoading } = useQuery(searchQueryOptions(caseId, query))
+  const { data: noteResults = [], isLoading: notesLoading } = useQuery(
+    notesSearchQueryOptions(caseId, query)
+  )
 
   const search = useCallback((q: string) => {
     setQuery(q.trim())
@@ -14,5 +17,5 @@ export function useSearch() {
     setQuery('')
   }, [])
 
-  return { results, searching: isLoading, search, clear }
+  return { results, noteResults, searching: isLoading || notesLoading, search, clear }
 }

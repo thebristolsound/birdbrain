@@ -27,7 +27,7 @@ export const queryKeys = {
     ['captures', 'matchingSelectors', captureId] as const,
   captureCounts: ['captureCounts'] as const,
   captureFavorites: (caseId: string) => ['captures', 'favorites', caseId] as const,
-  search: (query: string) => ['search', query] as const,
+  search: (caseId: string, query: string) => ['search', caseId, query] as const,
   tags: ['tags'] as const,
   tagsForCapture: (captureId: string) => ['tags', 'capture', captureId] as const,
   tagCountForCase: (caseId: string) => ['tags', 'caseCount', caseId] as const,
@@ -155,11 +155,11 @@ export const captureFavoritesQueryOptions = (caseId: string) =>
     enabled: !!caseId
   })
 
-export const searchQueryOptions = (query: string) =>
+export const searchQueryOptions = (caseId: string, query: string) =>
   queryOptions({
-    queryKey: queryKeys.search(query),
-    queryFn: () => window.birdbrain.search(query),
-    enabled: query.trim().length > 0
+    queryKey: queryKeys.search(caseId, query),
+    queryFn: () => window.birdbrain.search(caseId, query),
+    enabled: !!caseId && query.trim().length > 0
   })
 
 export function useCapturesMutations(caseId: string) {

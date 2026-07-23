@@ -2,57 +2,27 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '@renderer/stores/appStore'
-import {
-  capturesQueryOptions,
-  captureContentQueryOptions,
-  useRecaptureMutations
-} from '@renderer/lib/queries'
-import {
-  ChevronLeft,
-  ChevronRight,
-  ArrowLeft,
-  Image,
-  Globe,
-  Code,
-  FileText,
-  ShieldCheck,
-  Shield,
-  Archive,
-  RefreshCcw
-} from 'lucide-react'
+import { capturesQueryOptions, captureContentQueryOptions } from '@renderer/lib/queries'
+import { ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react'
 import { MhtmlViewer } from '@renderer/components/captures/MhtmlViewer'
 import { AnnotationEditor } from '@renderer/components/captures/annotation/AnnotationEditor'
-import { ForensicsTab } from '@renderer/components/captures/ForensicsTab'
-import { ArchiveTab } from '@renderer/components/captures/ArchiveTab'
 import { CapturesGettingStarted } from '@renderer/components/captures/CapturesGettingStarted'
 import { Button } from '@renderer/components/ui'
-import { getProvenanceColor } from '@renderer/components/captures/getProvenanceColor'
 import { CaptureViewerToolbar } from '@renderer/components/captures/CaptureViewerToolbar'
 import { BrowserChromeFrame } from '@renderer/components/captures/BrowserChromeFrame'
 import { AnnotationToolsTooltip } from '@renderer/components/captures/AnnotationToolsTooltip'
 import { useAnnotationEditor } from '@renderer/components/captures/annotation/useAnnotationEditor'
 import { useZoomPan } from '@renderer/components/captures/annotation/useZoomPan'
 
-type ViewTab = 'screenshot' | 'page' | 'source' | 'text' | 'forensics' | 'archive'
+type ViewTab = 'screenshot' | 'page' | 'source' | 'text'
 
-const TABS: ViewTab[] = ['screenshot', 'page', 'source', 'text', 'forensics', 'archive']
-
-const TAB_ICONS: Record<ViewTab, typeof Image> = {
-  screenshot: Image,
-  page: Globe,
-  source: Code,
-  text: FileText,
-  forensics: ShieldCheck,
-  archive: Archive
-}
+const TABS: ViewTab[] = ['screenshot', 'page', 'source', 'text']
 
 const TAB_LABELS: Record<ViewTab, string> = {
   screenshot: 'Screenshot',
   page: 'Page',
   source: 'Source',
-  text: 'Text',
-  forensics: 'Forensics',
-  archive: 'Archive'
+  text: 'Text'
 }
 
 export function CaptureViewer() {
@@ -61,32 +31,9 @@ export function CaptureViewer() {
   const selectCapture = useAppStore((s) => s.selectCapture)
   const sessionActive = useAppStore((s) => s.sessionActive)
   const { data: captures = [] } = useQuery(capturesQueryOptions(caseId))
-  const { enqueue } = useRecaptureMutations(caseId)
 
   const [activeTab, setActiveTab] = useState<ViewTab>('screenshot')
-  const [recaptureError, setRecaptureError] = useState<string | null>(null)
   const capture = captures.find((item) => item.id === selectedCaptureId) ?? null
-
-  // A background recapture emits a 'received' event at the start of its job and a
-  // terminal 'stored'/'failed' event when it finishes; the store keeps the
-  // 'received' entry alive for the whole run. The enqueue mutation's isPending
-  // only covers the millisecond IPC hand-off, so drive the in-progress UI off the
-  // live event instead. Scope by supersedesCaptureId (the exact capture being
-  // recaptured), not URL — recapture creates same-URL siblings. Select the
-  // derived boolean so Zustand's Object.is check skips unrelated event updates.
-  const isRecapturing = useAppStore((s) =>
-    capture
-      ? s.captureEvents.some(
-          (e) =>
-            e.type === 'received' &&
-            e.source === 'recapture' &&
-            e.supersedesCaptureId === capture.id
-        )
-      : false
-  )
-
-  // A recapture failure is only meaningful for the capture it was fired from.
-  useEffect(() => setRecaptureError(null), [selectedCaptureId])
 
   // Determine content type based on active tab and capture format
   const contentType =
@@ -153,8 +100,8 @@ export function CaptureViewer() {
 
   return (
     <main className="flex flex-1 flex-col overflow-hidden bg-canvas">
-      {/* Slim breadcrumb */}
-      <div className="flex h-9 items-center gap-2 border-b border-border px-3">
+      {/* Merged viewer toolbar: breadcrumb + view switcher */}
+      <div className="flex h-11 items-center gap-2.5 border-b border-border px-3">
         <Button
           variant="ghost"
           size="icon-sm"
@@ -172,7 +119,7 @@ export function CaptureViewer() {
               data-testid="method-badge"
               className="shrink-0 rounded-lg bg-surface px-2 py-0.5 text-[11px] text-text-muted"
             >
-              Background capture
+              Background
             </span>
           )}
           {supersededOriginal && (
@@ -194,51 +141,56 @@ export function CaptureViewer() {
             </button>
           )}
         </div>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          title={
-            isRecapturing
-              ? 'Recapture in progress…'
-              : 'Recapture this page in the background'
-          }
-          data-testid="recapture-btn"
-          disabled={enqueue.isPending || isRecapturing}
-          onClick={() =>
-            enqueue.mutate(
-              { urls: [capture.url], supersedesCaptureId: capture.id },
-              {
-                onSuccess: (result) => setRecaptureError(result.rejected[0]?.reason ?? null),
-                onError: (err) =>
-                  setRecaptureError(err instanceof Error ? err.message : 'Recapture failed')
-              }
-            )
-          }
+        <div
+          role="tablist"
+          className="flex shrink-0 items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5"
         >
-          <RefreshCcw className={`h-3.5 w-3.5 ${isRecapturing ? 'animate-spin' : ''}`} />
-        </Button>
-        {isRecapturing && (
-          <span
-            data-testid="recapture-in-progress"
-            className="shrink-0 text-[11px] text-text-muted"
-          >
-            Recapturing…
-          </span>
-        )}
-        {recaptureError && !isRecapturing && (
-          <span
-            data-testid="recapture-error"
-            title={recaptureError}
-            className="shrink-0 text-[11px] text-red-500"
-          >
-            Recapture failed
-          </span>
-        )}
-        <Shield
-          data-testid="capture-viewer-breadcrumb-provenance"
-          className={`h-3.5 w-3.5 ${getProvenanceColor(capture.lastVerifiedStatus).text}`}
-          aria-label={getProvenanceColor(capture.lastVerifiedStatus).label}
-        />
+          {TABS.map((tab) => {
+            const isActive = activeTab === tab
+            return (
+              <button
+                key={tab}
+                role="tab"
+                aria-selected={isActive}
+                tabIndex={isActive ? 0 : -1}
+                onClick={() => setActiveTab(tab)}
+                onKeyDown={(e) => {
+                  const currentIndex = TABS.indexOf(tab)
+                  let nextIndex = currentIndex
+                  if (e.key === 'ArrowLeft') {
+                    e.stopPropagation()
+                    nextIndex = currentIndex > 0 ? currentIndex - 1 : TABS.length - 1
+                  } else if (e.key === 'ArrowRight') {
+                    e.stopPropagation()
+                    nextIndex = currentIndex < TABS.length - 1 ? currentIndex + 1 : 0
+                  } else if (e.key === 'Home') {
+                    e.stopPropagation()
+                    nextIndex = 0
+                  } else if (e.key === 'End') {
+                    e.stopPropagation()
+                    nextIndex = TABS.length - 1
+                  } else {
+                    return
+                  }
+                  const nextTab = TABS[nextIndex]
+                  setActiveTab(nextTab)
+                  // Focus the new button after state update
+                  requestAnimationFrame(() => {
+                    const buttons = document.querySelectorAll('[role="tab"]')
+                    ;(buttons[nextIndex] as HTMLButtonElement)?.focus()
+                  })
+                }}
+                className={`rounded-md px-2.5 py-1 text-[11px] transition-colors ${
+                  isActive
+                    ? 'bg-card font-semibold text-text-primary shadow-sm'
+                    : 'font-medium text-text-muted hover:text-text-secondary'
+                }`}
+              >
+                {TAB_LABELS[tab]}
+              </button>
+            )
+          })}
+        </div>
         <Button
           variant="ghost"
           size="icon-sm"
@@ -260,29 +212,6 @@ export function CaptureViewer() {
         >
           <ChevronRight className="h-3.5 w-3.5" />
         </Button>
-      </div>
-
-      {/* Sub-tabs row */}
-      <div className="flex items-center gap-1 border-b border-border bg-surface px-3">
-        {TABS.map((tab) => {
-          const Icon = TAB_ICONS[tab]
-          const isActive = activeTab === tab
-          return (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`relative flex items-center gap-1.5 px-3 py-2.5 text-[11px] font-medium transition-colors ${
-                isActive ? 'text-accent' : 'text-text-muted hover:text-text-secondary'
-              }`}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {TAB_LABELS[tab]}
-              {isActive && (
-                <span className="absolute bottom-0 left-1/2 h-0.5 w-6 -translate-x-1/2 rounded-full bg-accent" />
-              )}
-            </button>
-          )
-        })}
       </div>
 
       {/* Content area — keep existing content branches except analysis */}
@@ -337,8 +266,6 @@ export function CaptureViewer() {
           ) : (
             <div className="p-4 text-text-muted">No text content available</div>
           ))}
-        {activeTab === 'forensics' && <ForensicsTab capture={capture} caseId={caseId} />}
-        {activeTab === 'archive' && <ArchiveTab capture={capture} />}
       </div>
     </main>
   )

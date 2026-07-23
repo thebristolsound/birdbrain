@@ -67,7 +67,7 @@ export function TopBar() {
   }
 
   return (
-    <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border bg-surface px-4">
+    <header className="relative flex h-12 shrink-0 items-center gap-3 border-b border-border bg-surface px-4">
       {/* Logo — click to go home */}
       <button
         onClick={() => navigate({ to: '/' })}
@@ -98,12 +98,20 @@ export function TopBar() {
         </>
       )}
 
-      <div className="flex-1" />
+      {/* Spacer */}
+      <div className="flex-1 min-w-0" />
+
+      {/* Centered global search — absolutely positioned to viewport center */}
+      {activeCaseId && (
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+          <div className="pointer-events-auto">
+            <SearchBar caseId={activeCaseId} />
+          </div>
+        </div>
+      )}
 
       {/* Right controls */}
       <div className="flex items-center gap-2">
-        {activeCaseId && <SearchBar />}
-
         {activeCaseId && <SessionControls />}
 
         {sessionActive && (

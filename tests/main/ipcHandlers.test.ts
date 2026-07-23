@@ -489,8 +489,8 @@ describe('ipcHandlers — annotations', () => {
 
 describe('ipcHandlers — search', () => {
   it('searches captures and swallows malformed FTS queries', async () => {
-    expect(await invoke(IPC_CHANNELS.SEARCH, 'hello')).toBeDefined()
-    expect(await invoke(IPC_CHANNELS.SEARCH, '"unbalanced')).toEqual([])
+    expect(await invoke(IPC_CHANNELS.SEARCH, 'case-1', 'hello')).toBeDefined()
+    expect(await invoke(IPC_CHANNELS.SEARCH, 'case-1', '"unbalanced')).toEqual([])
   })
 })
 

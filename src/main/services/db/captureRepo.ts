@@ -228,16 +228,16 @@ export function getCaptureCountsByCase(): Record<string, number> {
 
 // --- Search ---
 
-export function searchCaptures(query: string): Capture[] {
+export function searchCaptures(query: string, caseId?: string): Capture[] {
   const rows = getDb()
     .prepare(
       `SELECT c.* FROM captures c
        JOIN capture_texts t ON t.capture_id = c.id
        JOIN captures_fts fts ON fts.rowid = t.id
-       WHERE captures_fts MATCH ?
+       WHERE captures_fts MATCH ?${caseId ? ' AND c.case_id = ?' : ''}
        ORDER BY rank`
     )
-    .all(query) as Array<Record<string, unknown>>
+    .all(...(caseId ? [query, caseId] : [query])) as Array<Record<string, unknown>>
   return rows.map(rowToCapture)
 }
 

@@ -463,9 +463,9 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.RECAPTURE_QUEUE_STATUS, () => recaptureService.status())
 
   // Search
-  ipcMain.handle(IPC_CHANNELS.SEARCH, (_, query: string) => {
+  ipcMain.handle(IPC_CHANNELS.SEARCH, (_, caseId: string, query: string) => {
     try {
-      return captureRepo.searchCaptures(query)
+      return captureRepo.searchCaptures(query, caseId)
     } catch {
       // FTS5 can throw on malformed queries (e.g. unmatched quotes, reserved keywords).
       // Return empty results so the UI gracefully handles bad input.

@@ -144,7 +144,7 @@ interface BirdbrainAPI {
     getPath(): Promise<string>
     openFolder(): Promise<void>
   }
-  search(query: string): Promise<Capture[]>
+  search(caseId: string, query: string): Promise<Capture[]>
   settings: {
     get(): Promise<BirdbrainSettings>
     update(partial: Partial<BirdbrainSettings>): Promise<BirdbrainSettings>

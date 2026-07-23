@@ -1,14 +1,18 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { Search } from 'lucide-react'
+import { Search, StickyNote } from 'lucide-react'
 import { useAppStore } from '@renderer/stores/appStore'
 import { useSearch } from '@renderer/hooks/useSearch'
 
+interface SearchBarProps {
+  caseId: string
+}
+
 // Permanently expanded case-wide search, centered in the top bar. Ctrl+F
 // focuses it; Ctrl+K stays on the command palette (case switcher).
-export function SearchBar() {
+export function SearchBar({ caseId }: SearchBarProps) {
   const [query, setQuery] = useState('')
-  const { results, searching, search, clear } = useSearch()
+  const { results, noteResults, searching, search, clear } = useSearch(caseId)
   const navigate = useNavigate()
   const setSearchQuery = useAppStore((s) => s.setSearchQuery)
   const selectCapture = useAppStore((s) => s.selectCapture)
@@ -80,7 +84,7 @@ export function SearchBar() {
       </div>
 
       {/* Results dropdown */}
-      {query && (results.length > 0 || searching) && (
+      {query && (results.length > 0 || noteResults.length > 0 || searching) && (
         <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded border border-border-strong bg-elevated shadow-lg">
           {searching && <div className="px-3 py-2 text-xs text-text-muted">Searching...</div>}
           {results.map((cap) => (
@@ -98,6 +102,30 @@ export function SearchBar() {
             >
               <div className="truncate text-sm text-text-primary">{cap.title}</div>
               <div className="truncate font-mono text-xs text-text-muted">{cap.url}</div>
+            </button>
+          ))}
+          {noteResults.length > 0 && (
+            <div className="border-t border-border px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-text-faint">
+              Notes
+            </div>
+          )}
+          {noteResults.map((note) => (
+            <button
+              key={note.id}
+              onClick={() => {
+                navigate({
+                  to: '/cases/$caseId/notes',
+                  params: { caseId: note.caseId }
+                })
+                handleClose()
+              }}
+              className="block w-full px-3 py-2 text-left hover:bg-elevated"
+            >
+              <div className="flex items-center gap-1.5 truncate text-sm text-text-primary">
+                <StickyNote className="h-3 w-3 shrink-0 text-text-muted" />
+                <span className="truncate">{note.title || 'Untitled note'}</span>
+              </div>
+              <div className="truncate text-xs text-text-muted">{note.body}</div>
             </button>
           ))}
         </div>

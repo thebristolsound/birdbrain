@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Plus, ChevronDown, ClipboardList, RefreshCcw } from 'lucide-react'
+import { useMatchRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { Button, Dialog, DialogContent, DialogHeader, DialogTitle } from '@renderer/components/ui'
 import { AddUrlsBox } from '@renderer/components/captures/AddUrlsBox'
@@ -18,9 +19,16 @@ export function CaptureMenu({ caseId }: CaptureMenuProps) {
   const [showPasteUrls, setShowPasteUrls] = useState(false)
   const [recaptureError, setRecaptureError] = useState<string | null>(null)
 
+  // The store keeps selectedCaptureId alive when navigating away from the
+  // Captures tab, so only honor it while that tab is visible — otherwise
+  // "Recapture current page" would silently target a capture the user can't see.
+  const matchRoute = useMatchRoute()
+  const onCapturesRoute = Boolean(matchRoute({ to: '/cases/$caseId/captures' }))
   const selectedCaptureId = useAppStore((s) => s.selectedCaptureId)
   const { data: captures = [] } = useQuery(capturesQueryOptions(caseId))
-  const selectedCapture = captures.find((c) => c.id === selectedCaptureId) ?? null
+  const selectedCapture = onCapturesRoute
+    ? (captures.find((c) => c.id === selectedCaptureId) ?? null)
+    : null
   const { enqueue } = useRecaptureMutations(caseId)
 
   // A background recapture emits a 'received' event at the start of its job and a
@@ -136,7 +144,9 @@ export function CaptureMenu({ caseId }: CaptureMenuProps) {
             disabled={!selectedCapture || enqueue.isPending || isRecapturing}
             title={
               !selectedCapture
-                ? 'Select a capture first'
+                ? onCapturesRoute
+                  ? 'Select a capture first'
+                  : 'Select a capture on the Captures tab first'
                 : isRecapturing
                   ? 'Recapture in progress…'
                   : 'Recapture this page in the background'

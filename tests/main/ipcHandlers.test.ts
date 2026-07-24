@@ -193,12 +193,14 @@ beforeEach(() => {
     getStatus: vi.fn(() => ({
       state: 'idle',
       currentVersion: '1.2.3',
-      supportsAutoInstall: false
+      supportsAutoInstall: false,
+      installOnQuit: false
     })),
     check: vi.fn(async () => ({
       state: 'up-to-date',
       currentVersion: '1.2.3',
-      supportsAutoInstall: false
+      supportsAutoInstall: false,
+      installOnQuit: false
     })),
     download: vi.fn(async () => undefined),
     install: vi.fn(),
@@ -552,14 +554,20 @@ describe('ipcHandlers — settings', () => {
 describe('ipcHandlers — updates', () => {
   it('reports status and runs a check via the updater service', async () => {
     const status = await invoke(IPC_CHANNELS.UPDATES_GET_STATUS)
-    expect(status).toEqual({ state: 'idle', currentVersion: '1.2.3', supportsAutoInstall: false })
+    expect(status).toEqual({
+      state: 'idle',
+      currentVersion: '1.2.3',
+      supportsAutoInstall: false,
+      installOnQuit: false
+    })
     expect(updaterService.getStatus).toHaveBeenCalled()
 
     const checked = await invoke(IPC_CHANNELS.UPDATES_CHECK)
     expect(checked).toEqual({
       state: 'up-to-date',
       currentVersion: '1.2.3',
-      supportsAutoInstall: false
+      supportsAutoInstall: false,
+      installOnQuit: false
     })
     expect(updaterService.check).toHaveBeenCalled()
   })

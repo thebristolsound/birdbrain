@@ -7,7 +7,7 @@ import type { UpdateStatus, ReleaseChannel } from '@shared/types'
 // event emitter; `appMock` is mutable so each test can vary isPackaged/version.
 type Listener = (...args: unknown[]) => void
 
-const { autoUpdater, appMock } = vi.hoisted(() => {
+const { autoUpdater, appMock, fsMock } = vi.hoisted(() => {
   const listeners = new Map<string, Listener[]>()
   const au = {
     autoDownload: undefined as boolean | undefined,
@@ -34,11 +34,23 @@ const { autoUpdater, appMock } = vi.hoisted(() => {
       return au
     }
   }
-  return { autoUpdater: au, appMock: { isPackaged: true, getVersion: vi.fn(() => '1.2.3') } }
+  return {
+    autoUpdater: au,
+    appMock: { isPackaged: true, getVersion: vi.fn(() => '1.2.3') },
+    // Contents of the electron-builder `package-type` resource file, or null
+    // for "file missing" (AppImage/archive installs).
+    fsMock: { packageType: null as string | null }
+  }
 })
 
 vi.mock('electron', () => ({ app: appMock }))
 vi.mock('electron-updater', () => ({ autoUpdater }))
+vi.mock('node:fs', () => ({
+  readFileSync: () => {
+    if (fsMock.packageType === null) throw new Error('ENOENT')
+    return fsMock.packageType
+  }
+}))
 
 import { createUpdaterService, type UpdaterServiceDeps } from '@main/services/updater'
 
@@ -75,6 +87,7 @@ beforeEach(() => {
   appMock.getVersion = vi.fn(() => '1.2.3')
   setPlatform('linux')
   delete process.env.APPIMAGE
+  fsMock.packageType = null
   vi.useRealTimers()
 })
 
@@ -172,6 +185,7 @@ describe('updater service — check transitions', () => {
 
 describe('updater service — channel configuration', () => {
   it('maps stable → allowPrerelease false and pins allowDowngrade false', () => {
+    setPlatform('win32')
     const { deps } = makeDeps({ getChannel: () => 'stable' })
     const svc = createUpdaterService(deps)
     svc.start()
@@ -215,16 +229,25 @@ describe('updater service — channel configuration', () => {
 })
 
 describe('updater service — auto-install detection', () => {
-  const cases: Array<{ platform: NodeJS.Platform; appImage: boolean; expected: boolean }> = [
-    { platform: 'win32', appImage: false, expected: true },
-    { platform: 'linux', appImage: true, expected: true },
-    { platform: 'linux', appImage: false, expected: false },
-    { platform: 'darwin', appImage: false, expected: false }
+  const cases: Array<{
+    platform: NodeJS.Platform
+    appImage?: boolean
+    packageType?: string
+    expected: boolean
+    label: string
+  }> = [
+    { platform: 'win32', expected: true, label: 'win32' },
+    { platform: 'linux', appImage: true, expected: true, label: 'linux (AppImage)' },
+    { platform: 'linux', packageType: 'deb\n', expected: true, label: 'linux (deb)' },
+    { platform: 'linux', packageType: 'rpm', expected: false, label: 'linux (rpm — not shipped)' },
+    { platform: 'linux', expected: false, label: 'linux (archive)' },
+    { platform: 'darwin', expected: false, label: 'darwin' }
   ]
-  for (const { platform, appImage, expected } of cases) {
-    it(`${platform}${appImage ? ' (AppImage)' : ''} → supportsAutoInstall=${expected}`, () => {
+  for (const { platform, appImage, packageType, expected, label } of cases) {
+    it(`${label} → supportsAutoInstall=${expected}`, () => {
       setPlatform(platform)
       if (appImage) process.env.APPIMAGE = '/tmp/app.AppImage'
+      if (packageType !== undefined) fsMock.packageType = packageType
       const { deps } = makeDeps()
       const svc = createUpdaterService(deps)
       expect(svc.getStatus().supportsAutoInstall).toBe(expected)
@@ -237,6 +260,25 @@ describe('updater service — auto-install detection', () => {
     const { deps } = makeDeps()
     const svc = createUpdaterService(deps)
     expect(svc.getStatus().supportsAutoInstall).toBe(false)
+  })
+
+  it('deb installs never auto-install on quit — install stays an explicit action', () => {
+    fsMock.packageType = 'deb'
+    const { deps } = makeDeps()
+    const svc = createUpdaterService(deps)
+    svc.start()
+    expect(svc.getStatus().supportsAutoInstall).toBe(true)
+    expect(svc.getStatus().installOnQuit).toBe(false)
+    expect(autoUpdater.autoInstallOnAppQuit).toBe(false)
+  })
+
+  it('AppImage installs report installOnQuit and configure it on the updater', () => {
+    process.env.APPIMAGE = '/tmp/app.AppImage'
+    const { deps } = makeDeps()
+    const svc = createUpdaterService(deps)
+    svc.start()
+    expect(svc.getStatus().installOnQuit).toBe(true)
+    expect(autoUpdater.autoInstallOnAppQuit).toBe(true)
   })
 })
 
@@ -374,6 +416,19 @@ describe('updater service — download & install', () => {
     autoUpdater.emit('update-downloaded', { version: '2.0.0' })
     svc.install()
     expect(autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1)
+    expect(autoUpdater.quitAndInstall).toHaveBeenCalledWith()
+  })
+
+  it('deb install() relaunches after the privileged install (isForceRunAfter)', () => {
+    setPlatform('linux')
+    fsMock.packageType = 'deb'
+    const { deps } = makeDeps()
+    const svc = createUpdaterService(deps)
+    svc.start()
+    autoUpdater.emit('update-available', { version: '2.0.0' })
+    autoUpdater.emit('update-downloaded', { version: '2.0.0' })
+    svc.install()
+    expect(autoUpdater.quitAndInstall).toHaveBeenCalledWith(false, true)
   })
 })
 

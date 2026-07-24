@@ -92,6 +92,21 @@ Every capture is fingerprinted with SHA-256, timestamped, and chained to the pre
 
 Works with Chrome, Edge, and Brave. The extension is not on the Chrome Web Store yet, so it installs unpacked (see above).
 
+### Linux packages and updates
+
+Two package formats are published with each release:
+
+- **AppImage** — self-updating. Birdbrain downloads new versions and replaces itself in place; no package manager involved.
+- **deb** — also updates in-app: when an update is ready, **Restart to update** installs the new package (your system will ask for your password) and relaunches Birdbrain.
+
+To update a deb install manually instead, download the new `.deb` and run:
+
+```bash
+sudo apt install ./birdbrain_<version>_amd64.deb
+```
+
+This upgrades in place — there is no need to remove the previous version first.
+
 ## Current limitations
 
 Birdbrain is beta software. Current limits:

@@ -23,6 +23,7 @@ import { createCaptureLifecycle, type CaptureLifecycle } from '@main/services/ca
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { verifyCaptures, generateReport, getExportPreflight } from '@main/services/export'
 import { saveAnnotations, upsertPin, deletePin } from '@main/services/annotations'
+import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 import { initSettings, updateSettings } from '@main/services/settings'
 import {
   getInstallationId,
@@ -1022,6 +1023,51 @@ describe('export', () => {
     expect(html).toContain(`image SHA-256 ${actual}`)
     expect(html).toContain('no longer matches the digest recorded for it')
     expect(html).toContain('f'.repeat(64))
+  })
+
+  it('claims RFC 3161 trusted time only when the token is in the package', async () => {
+    const { capture } = await ingest(caseId, '<html>tt</html>')
+    // A synthetic token whose messageImprint matches the capture hash, so
+    // trusted-time resolution actually yields rfc3161 rather than pending.
+    const token = buildSyntheticToken({
+      contentHash: capture.hash,
+      genTime: new Date('2026-04-05T12:01:00.000Z'),
+      tsaDnsName: 'tsa.example.com'
+    })
+    appendManifestEntry(join(tempDir, 'captures', caseId), {
+      type: 'timestamp',
+      caseId,
+      captureContentHash: capture.hash,
+      timestamp: '2026-04-05T12:01:00.000Z',
+      tsaToken: token.toString('base64'),
+      operatorId: 'op',
+      operatorName: 'Test Operator',
+      toolVersion: '0.1.0'
+    })
+
+    const outputPath = join(tempDir, 'tt-consistency.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        // auditTrail off, so the claim comes from the manifest fallback rather
+        // than from a verification result — the path that read a stale mirror.
+        include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const entries = readStoredZipEntries(outputPath)
+    const html = entries.get('report.html')!.toString('utf-8')
+    const packagedTokens = [...entries.keys()].filter((k) => k.startsWith('timestamps/'))
+
+    // The trusted-time index and the token paths come from one manifest
+    // snapshot, so a claimed token is always a packaged token.
+    expect(packagedTokens).toHaveLength(1)
+    expect(html).toContain('RFC 3161 token retained')
+    expect(html).toContain(packagedTokens[0])
   })
 
   it('numbers legend entries with the pin numbers burned into the image', async () => {

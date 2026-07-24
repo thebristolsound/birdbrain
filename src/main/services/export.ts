@@ -143,7 +143,8 @@ export async function generateReport(
     // Filled in below, once the awaited stages are done and the manifest can be
     // snapshotted at the same instant the package is built from.
     manifestHead: null,
-    packagedPaths: new Map()
+    packagedPaths: new Map(),
+    trustedTimeByCaptureId: new Map()
   }
 
   if (options.include.auditTrail) {
@@ -205,6 +206,13 @@ export async function generateReport(
     manifest,
     screenshotDigests,
     annotatedCaptureIds
+  )
+
+  // Same manifest-authoritative resolution getExportPreflight uses, so the
+  // cover tallies and the per-exhibit clock basis cannot disagree.
+  const trustedTimes = buildTrustedTimeIndex(join(getStorageRoot(), caseId))
+  data.trustedTimeByCaptureId = new Map(
+    captures.map((c) => [c.id, trustedTimes.get(c.hash)?.trustedTime ?? 'none'])
   )
 
   onProgress?.('Generating report...', 80)
@@ -546,6 +554,9 @@ function buildPackagedPaths(
       pageArchive: isPackage && existsSync(abs) ? `pages/${capture.id}.mhtml` : null,
       screenshot: isPackage && screenshotDigest ? `screenshots/${screenshotDigest}.png` : null,
       timestampToken: tokenPaths.get(capture.hash) ?? null,
+      // Recorded regardless of format: the exhibit reproduces the image either
+      // way, so it must be able to label it with the digest of what it shows.
+      screenshotDigest: screenshotDigest ?? null,
       imageAnnotated: annotatedCaptureIds.has(capture.id)
     })
   }

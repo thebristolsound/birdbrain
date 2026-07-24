@@ -63,6 +63,13 @@ export interface PackagedArtifacts {
   /** `timestamps/<id>.tst`, or null when no token is packaged for this capture. */
   timestampToken: string | null
   /**
+   * SHA-256 of the screenshot bytes this export actually read, which is what
+   * the package stores and what the exhibit reproduces. Not the same as the
+   * capture's recorded screenshotHash if the sidecar has changed since ingest —
+   * the exhibit reports both when they disagree rather than picking one.
+   */
+  screenshotDigest: string | null
+  /**
    * True when the image reproduced in the report differs from the packaged
    * original because annotations were burned into its pixels. Derived from
    * whether burning actually changed the bytes, not from the presence of pins —
@@ -104,6 +111,13 @@ export interface ReportData {
    * file paths at all rather than pointing at a package that was never built.
    */
   packagedPaths: Map<string, PackagedArtifacts>
+  /**
+   * Manifest-derived trusted time, keyed by capture id. The manifest is
+   * authoritative; the capture row's trustedTimeStatus is a rebuildable mirror
+   * that can be stale, and trusting it would let an exhibit claim RFC 3161 time
+   * with no token packaged, or call a bundled token local-clock-only.
+   */
+  trustedTimeByCaptureId: Map<string, TrustedTime>
 }
 
 export type ReportModuleId =
@@ -191,6 +205,7 @@ const NO_ARTIFACTS: PackagedArtifacts = {
   pageArchive: null,
   screenshot: null,
   timestampToken: null,
+  screenshotDigest: null,
   imageAnnotated: false
 }
 
@@ -202,7 +217,11 @@ function buildExhibits(data: ReportData, options: ExportOptions): ExhibitView[] 
 
   return ordered.map((capture, index) => {
     const verification = byCaptureId.get(capture.id)
-    const basis: TrustedTime = verification?.trustedTime ?? capture.trustedTimeStatus ?? 'none'
+    // Precedence: a verification run this export computed, then the manifest,
+    // then nothing. The capture row's mirror is deliberately not consulted — it
+    // is rebuildable state that can disagree with the tokens actually retained.
+    const basis: TrustedTime =
+      verification?.trustedTime ?? data.trustedTimeByCaptureId.get(capture.id) ?? 'none'
     const packaged = data.packagedPaths.get(capture.id) ?? NO_ARTIFACTS
     return {
       number: index + 1,
@@ -460,10 +479,13 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   <dl class="scope rule-top">
     <div class="scope-row">
       <dt>Is attested</dt>
-      <dd>That the stored bytes of each capture recompute to the recorded SHA-256 digest, that
-      each digest is bound into an append-only hash-chained manifest, and — where a timestamp
-      token is retained — that the digest existed no later than the time asserted by the named
-      RFC 3161 authority.</dd>
+      <dd>Of each capture <em>whose exhibit records a verified result</em>: that its stored bytes
+      recompute to the recorded SHA-256 digest, and that the digest is bound into an append-only
+      hash-chained manifest. Where a timestamp token is retained, that the digest existed no later
+      than the time asserted by the named RFC 3161 authority. This is asserted per capture and
+      never for the package as a whole — the exhibit index states the result for each, and any
+      capture recorded there as altered, chain-broken, absent, legacy or not verified is excluded
+      from this statement.</dd>
     </div>
     <div class="scope-row">
       <dt>Is not attested</dt>
@@ -716,9 +738,17 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
 <section class="sheet">
   <h2>Operator statement and signature</h2>
   <div class="rule-medium"></div>
-  <p>I generated this report from the Birdbrain case identified on the cover. I have not altered
+  ${
+    data.verifications.length > 0
+      ? `<p>I generated this report from the Birdbrain case identified on the cover. I have not altered
   the captures, the manifest or the packaged artefacts, and the counts and digests reproduced here
-  are those produced by the tool at the verification run recorded under “Chain of custody”.</p>
+  are those produced by the tool at the verification run recorded under “Chain of custody”.</p>`
+      : `<p>I generated this report from the Birdbrain case identified on the cover. I have not altered
+  the captures, the manifest or the packaged artefacts. <strong>No verification was run for this
+  export</strong>, so the digests reproduced here are those recorded for each capture rather than
+  values recomputed from the stored bytes at the time of export, and I make no statement about
+  whether the stored bytes still match them.</p>`
+  }
   <div class="tbd">
     <p class="tbd-title">Sworn declaration wording not supplied</p>
     <p>The statement above is a factual operator statement, not a sworn declaration. Certifying
@@ -822,13 +852,7 @@ function renderExhibit(e: ExhibitView, total: number): string {
             ? `Packaged copy: <code>${esc(e.packaged.screenshot)}</code>.`
             : ''
       }</span>
-      ${
-        c.screenshotHash
-          ? `<span class="cap-meta mono">${
-              e.annotationsBurned ? 'unannotated original SHA-256' : 'image SHA-256'
-            } ${esc(c.screenshotHash)}</span>`
-          : `<span class="cap-meta mono">image digest not recorded for this capture</span>`
-      }
+      ${screenshotDigestCaption(e)}
     </figcaption>
   </figure>`
     : ''
@@ -1186,6 +1210,29 @@ function field(label: string, valueHtml: string, wide = false): string {
     <div class="field-label">${esc(label)}</div>
     <div class="field-value">${valueHtml}</div>
   </div>`
+}
+
+/**
+ * The digest line under an exhibit image. Two digests can be in play: the one
+ * recorded for the capture at ingest, and the one the bytes this export read
+ * actually hash to. They normally match. When they do not, the sidecar has
+ * changed since ingest — which is exactly the kind of drift the document exists
+ * to surface, so both are printed and the disagreement is named.
+ */
+function screenshotDigestCaption(e: ExhibitView): string {
+  const recorded = e.capture.screenshotHash
+  const actual = e.packaged.screenshotDigest
+  const label = e.annotationsBurned ? 'unannotated original SHA-256' : 'image SHA-256'
+
+  if (!recorded && !actual) {
+    return `<span class="cap-meta mono">image digest not recorded for this capture</span>`
+  }
+  if (recorded && actual && recorded !== actual) {
+    return `<span class="cap-meta mono">${label} ${esc(actual)}<br>recorded at capture ${esc(
+      recorded
+    )} — the stored image no longer matches the digest recorded for it</span>`
+  }
+  return `<span class="cap-meta mono">${label} ${esc(actual ?? recorded ?? '')}</span>`
 }
 
 /** One labelled row in an exhibit's metadata rail. `valueHtml` is not escaped. */

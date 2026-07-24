@@ -7,7 +7,7 @@ import { createHash } from 'crypto'
 import sharp from 'sharp'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
-import { insertCapture } from '@main/services/db/captureRepo'
+import { insertCapture, setCaptureTrustedTime } from '@main/services/db/captureRepo'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import * as manifest from '@main/services/manifest'
@@ -912,6 +912,116 @@ describe('export', () => {
     const html = readFileSync(outputPath, 'utf-8')
     expect(html).not.toContain('<img src=x')
     expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;')
+  })
+
+  // --- the report must not assert more than the export established ---
+
+  it('does not have the operator attest to a verification run that did not happen', async () => {
+    await ingest(caseId, '<html>unverified</html>')
+    const outputPath = join(tempDir, 'no-verify.html')
+    await generateReport(
+      caseId,
+      {
+        format: 'html',
+        include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const html = readFileSync(outputPath, 'utf-8')
+    // The signature block is the statement an operator signs; it must not claim
+    // digests were recomputed when nothing recomputed them.
+    expect(html).not.toMatch(/those produced by the tool at the verification run/)
+    expect(html).toMatch(/No verification was run for this\s+export/)
+    expect(html).toContain('I make no statement about')
+  })
+
+  it('qualifies the attestation statement rather than claiming it for every capture', async () => {
+    await ingest(caseId, '<html>scope</html>')
+    const outputPath = join(tempDir, 'scope.html')
+    await generateReport(
+      caseId,
+      {
+        format: 'html',
+        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const html = readFileSync(outputPath, 'utf-8')
+    expect(html).toContain('whose exhibit records a verified result')
+    expect(html).toMatch(/never for the package as a whole/)
+    // The unconditional form claimed every capture rehashed, contradicting any
+    // exhibit recorded as altered, absent or unverified.
+    expect(html).not.toMatch(/That the stored bytes of each capture recompute/)
+  })
+
+  it('takes trusted time from the manifest, not the capture row mirror', async () => {
+    const { capture } = await ingest(caseId, '<html>mirror</html>')
+    // Corrupt the rebuildable mirror so it claims trusted time the manifest
+    // cannot support. The exhibit must follow the manifest.
+    setCaptureTrustedTime(capture.id, 'rfc3161')
+
+    const outputPath = join(tempDir, 'stale-mirror.html')
+    await generateReport(
+      caseId,
+      {
+        format: 'html',
+        include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const html = readFileSync(outputPath, 'utf-8')
+    // A v2+ capture with no timestamp entry is 'pending' by the manifest, so
+    // that is what the exhibit must state — not the mirror's 'rfc3161'.
+    expect(html).toContain('Local clock — token pending')
+    expect(html).not.toContain('RFC 3161 token retained')
+  })
+
+  it('labels an exhibit image with the digest of the bytes it reproduces', async () => {
+    const c = createCase({ name: 'Sidecar drift' })
+    ensureCaseDir(c.id)
+    const png = await sharp({
+      create: { width: 20, height: 20, channels: 4, background: { r: 9, g: 9, b: 9, alpha: 1 } }
+    })
+      .png()
+      .toBuffer()
+    // Record a digest that does not match the bytes on disk, as happens when the
+    // sidecar changes after ingest.
+    const cap = insertCapture({
+      caseId: c.id,
+      url: 'https://example.com',
+      title: 'X',
+      hash: 'h',
+      screenshotHash: 'f'.repeat(64),
+      timestamp: new Date().toISOString()
+    })
+    writeFileSync(defaultCaptureStore.artifactPaths(c.id, cap.id, 'png').abs, png)
+
+    const outputPath = join(tempDir, 'sidecar-drift.html')
+    await generateReport(
+      c.id,
+      {
+        format: 'html',
+        include: { captures: true, screenshots: true, auditTrail: false, annotations: 'none' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const html = readFileSync(outputPath, 'utf-8')
+    const actual = createHash('sha256').update(png).digest('hex')
+    expect(html).toContain(`image SHA-256 ${actual}`)
+    expect(html).toContain('no longer matches the digest recorded for it')
+    expect(html).toContain('f'.repeat(64))
   })
 
   // --- Operator identity gating and report rendering ---

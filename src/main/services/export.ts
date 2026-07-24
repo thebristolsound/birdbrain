@@ -17,7 +17,11 @@ import { buildTrustedTimeIndex } from '@main/services/trustedTime'
 import type { ExportVerificationResult } from '@main/services/manifest'
 import { createStoredZip } from '@main/services/zip'
 import { getTsaTrustBundle } from '@main/services/tsaTrust'
-import { canonicalStringify, extractTimestampTokenCertificatesPem } from '@shared/verify'
+import {
+  buildTrustedTimeIndexFromEntries,
+  canonicalStringify,
+  extractTimestampTokenCertificatesPem
+} from '@shared/verify'
 import { buildCertification, resolveToolVersion } from '@main/services/certification'
 import { buildHtmlReport } from '@main/services/reportHtml'
 import type { PackagedArtifacts, ReportData } from '@main/services/reportHtml'
@@ -144,7 +148,8 @@ export async function generateReport(
     // snapshotted at the same instant the package is built from.
     manifestHead: null,
     packagedPaths: new Map(),
-    trustedTimeByCaptureId: new Map()
+    trustedTimeByCaptureId: new Map(),
+    tsaTrustAnchorBundled: getTsaTrustBundle(settings.tsaUrl).bundled
   }
 
   if (options.include.auditTrail) {
@@ -208,9 +213,11 @@ export async function generateReport(
     annotatedCaptureIds
   )
 
-  // Same manifest-authoritative resolution getExportPreflight uses, so the
-  // cover tallies and the per-exhibit clock basis cannot disagree.
-  const trustedTimes = buildTrustedTimeIndex(join(getStorageRoot(), caseId))
+  // Resolved from the snapshot above, NOT by re-reading the manifest: a second
+  // live read reintroduces exactly the race the snapshot exists to close. The
+  // worker can append between the two, and the exhibit would then claim an
+  // RFC 3161 token that the packaged manifest and token paths do not contain.
+  const trustedTimes = buildTrustedTimeIndexFromEntries(manifest.entries)
   data.trustedTimeByCaptureId = new Map(
     captures.map((c) => [c.id, trustedTimes.get(c.hash)?.trustedTime ?? 'none'])
   )

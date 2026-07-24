@@ -118,6 +118,14 @@ export interface ReportData {
    * with no token packaged, or call a bundled token local-clock-only.
    */
   trustedTimeByCaptureId: Map<string, TrustedTime>
+  /**
+   * Whether tsa-ca-chain.pem carries an independent trust anchor for the
+   * configured TSA. False for a non-default authority, where the file holds only
+   * certificates lifted from the tokens themselves — validating a token against
+   * those is circular, and the verification instructions must say so rather than
+   * implying the check establishes authenticity.
+   */
+  tsaTrustAnchorBundled: boolean
 }
 
 export type ReportModuleId =
@@ -339,12 +347,14 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   cover: {
     id: 'cover',
     title: 'Cover',
-    render: ({ data, exhibits }) => {
+    render: ({ data, exhibits, options }) => {
       const verified = exhibits.filter((e) => e.integrity.label === 'Verified').length
       const stamped = exhibits.filter((e) => e.time.basis === 'rfc3161').length
       const hosts = new Set(exhibits.map((e) => hostOf(e.capture.url)).filter(Boolean)).size
       const archived = exhibits.filter((e) => !e.pageArchiveMissing).length
       const total = exhibits.length
+      const packaged = isPackagedExport(options)
+      const verificationRan = data.verifications.length > 0
 
       return `
 <section class="sheet cover">
@@ -365,10 +375,13 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
       mono(
         data.dateRange
           ? `${isoUtc(data.dateRange.first)} — ${isoUtc(data.dateRange.last)}`
-          : 'no captures in package'
+          : 'no captures'
       )
     )}
-    ${field('Captures in package', total > 0 ? `${total} (Exhibits 1–${total})` : 'none')}
+    ${field(
+      packaged ? 'Captures in package' : 'Captures described',
+      total > 0 ? `${total} (Exhibits 1–${total})` : 'none'
+    )}
     ${field('Report generated', mono(`${isoUtc(data.exportTimestamp)} (${local(data.exportTimestamp)})`))}
   </div>
 
@@ -403,17 +416,28 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   </div>
 
   <div class="attest-box">
-    <p class="box-title">Attested state of this package</p>
+    <p class="box-title">${packaged ? 'Attested state of this package' : 'State of the captures described'}</p>
     <div class="tally">
-      ${tally(`${verified} / ${total}`, 'Integrity verified')}
+      ${
+        verificationRan
+          ? tally(`${verified} / ${total}`, 'Integrity verified')
+          : tally(`0 / ${total}`, 'Integrity verified')
+      }
       ${tally(`${stamped} / ${total}`, 'RFC 3161 trusted time')}
-      ${tally(`${archived} / ${total}`, 'Page archive present')}
+      ${packaged ? tally(`${archived} / ${total}`, 'Page archive present') : ''}
       ${tally(String(hosts), hosts === 1 ? 'Distinct host' : 'Distinct hosts')}
     </div>
-    <p class="box-note">Counts are produced by the verification run recorded under “Chain of
-    custody”. Identity fields above are entered by the operator and are not authenticated by
+    <p class="box-note">${
+      verificationRan
+        ? 'The integrity count is produced by the verification run recorded under “Chain of custody”.'
+        : '<strong>No verification was run for this export</strong>, so no capture is counted as integrity verified; the figure is not a finding of failure. The trusted-time count is read from the manifest rather than recomputed.'
+    } Identity fields above are entered by the operator and are not authenticated by
     Birdbrain. This report attests to the integrity and timing of stored bytes only — never to
-    the truthfulness of the captured content.</p>
+    the truthfulness of the captured content.${
+      packaged
+        ? ''
+        : ' This document was exported on its own; the captures it describes are not enclosed with it.'
+    }</p>
   </div>
 </section>`
     }
@@ -690,7 +714,7 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   verification: {
     id: 'verification',
     title: 'Independent verification instructions',
-    render: ({ options }) => `
+    render: ({ options, data }) => `
 <section class="sheet">
   <h2>Independent verification instructions</h2>
   <div class="rule-medium"></div>
@@ -721,13 +745,30 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     the cover — not to any named person.</li>
     <li><strong>Validate the timestamp tokens.</strong> For each <code>.tst</code> in
     <code>timestamps/</code>, confirm the token's message imprint equals that exhibit's capture
-    digest and that the signing chain terminates in <code>tsa-ca-chain.pem</code>.</li>
+    digest${
+      data.tsaTrustAnchorBundled
+        ? ' and that the signing chain terminates in <code>tsa-ca-chain.pem</code>, which carries the authority’s trust anchor'
+        : ' and that the signing chain terminates in a trust anchor you obtain independently from the authority named on the cover'
+    }.</li>
     <li><strong>Match the screenshots.</strong> Each file name in <code>screenshots/</code> is its
     own digest; recomputing it confirms that the packaged image is the one the exhibit cites.</li>
     <li><strong>Recompute the package hash.</strong> Hash the canonical, path-sorted artefact list
     in <code>evidence.json</code> and compare it to the package hash in the export entry of the
     live case manifest.</li>
   </ol>
+  ${
+    data.tsaTrustAnchorBundled
+      ? ''
+      : `<div class="alert">
+    <p class="alert-title">No trust anchor is bundled for the configured authority</p>
+    <p>Birdbrain ships a trust anchor only for its default time-stamping authority. A different
+    authority is configured for this case, so <code>tsa-ca-chain.pem</code> contains only
+    certificates carried inside the tokens themselves. Validating a token against certificates it
+    supplied is circular and establishes nothing about who issued it. Step 4 therefore requires a
+    root obtained independently from the authority named on the cover; until one is used, the
+    tokens demonstrate internal consistency but not authenticity.</p>
+  </div>`
+  }
 </section>`
   },
 
@@ -864,7 +905,10 @@ function renderExhibit(e: ExhibitView, total: number): string {
     <ol class="pins">${e.pins
       .slice()
       .sort((a, b) => a.number - b.number)
-      .map((p) => `<li>${esc(p.body)}</li>`)
+      // value= carries the pin's own number. Deleting a pin does not renumber
+      // the rest, so letting the browser count from 1 would caption the image's
+      // pin 2 as legend entry 1 — a legend that disagrees with the exhibit.
+      .map((p) => `<li value="${p.number}">${esc(p.body)}</li>`)
       .join('')}</ol>
   </div>`
       : ''

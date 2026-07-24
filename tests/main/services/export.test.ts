@@ -22,7 +22,7 @@ import { ingestMhtmlCapture } from '@main/services/captureLifecycle'
 import { createCaptureLifecycle, type CaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { verifyCaptures, generateReport, getExportPreflight } from '@main/services/export'
-import { saveAnnotations } from '@main/services/annotations'
+import { saveAnnotations, upsertPin, deletePin } from '@main/services/annotations'
 import { initSettings, updateSettings } from '@main/services/settings'
 import {
   getInstallationId,
@@ -1022,6 +1022,124 @@ describe('export', () => {
     expect(html).toContain(`image SHA-256 ${actual}`)
     expect(html).toContain('no longer matches the digest recorded for it')
     expect(html).toContain('f'.repeat(64))
+  })
+
+  it('numbers legend entries with the pin numbers burned into the image', async () => {
+    const c = createCase({ name: 'Pins' })
+    ensureCaseDir(c.id)
+    const white = await sharp({
+      create: {
+        width: 60,
+        height: 60,
+        channels: 4,
+        background: { r: 255, g: 255, b: 255, alpha: 1 }
+      }
+    })
+      .png()
+      .toBuffer()
+    const cap = insertCapture({
+      caseId: c.id,
+      url: 'https://example.com',
+      title: 'X',
+      hash: 'h',
+      timestamp: new Date().toISOString()
+    })
+    writeFileSync(defaultCaptureStore.artifactPaths(c.id, cap.id, 'png').abs, white)
+    saveAnnotations({
+      captureId: cap.id,
+      shapes: [{ kind: 'redact', id: 'r', x: 5, y: 5, w: 10, h: 10, mode: 'solid' }],
+      imageWidth: 60,
+      imageHeight: 60
+    })
+    // Pins are numbered MAX(number)+1 and deletion does not renumber, so after
+    // removing the first two the survivors are 3 and 4. A legend that lets the
+    // browser count from 1 would then disagree with the burned image.
+    const p1 = upsertPin({ captureId: cap.id, body: 'One' })
+    const p2 = upsertPin({ captureId: cap.id, body: 'Two' })
+    upsertPin({ captureId: cap.id, body: 'Third pin, first surviving entry.' })
+    upsertPin({ captureId: cap.id, body: 'Fourth pin.' })
+    deletePin(p1.id)
+    deletePin(p2.id)
+
+    const outputPath = join(tempDir, 'pins.html')
+    await generateReport(
+      c.id,
+      {
+        format: 'html',
+        include: { captures: true, screenshots: true, auditTrail: false, annotations: 'burned' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const html = readFileSync(outputPath, 'utf-8')
+    expect(html).toContain('<li value="3">')
+    expect(html).toContain('<li value="4">')
+  })
+
+  it('does not make package claims on the cover of a standalone export', async () => {
+    await ingest(caseId, '<html>cover</html>')
+    const outputPath = join(tempDir, 'cover-standalone.html')
+    await generateReport(
+      caseId,
+      {
+        format: 'html',
+        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const html = readFileSync(outputPath, 'utf-8')
+    expect(html).toContain('Captures described')
+    expect(html).not.toContain('Captures in package')
+    // No archive is emitted, so the cover must not tally archives as present.
+    expect(html).not.toContain('Page archive present')
+    expect(html).toContain('not enclosed with it')
+  })
+
+  it('does not attest cover tallies to a verification run that did not happen', async () => {
+    await ingest(caseId, '<html>tally</html>')
+    const outputPath = join(tempDir, 'cover-noverify.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const html = readStoredZipEntries(outputPath).get('report.html')!.toString('utf-8')
+    expect(html).not.toContain('The integrity count is produced by the verification run')
+    expect(html).toMatch(/No verification was run for this export/)
+    expect(html).toContain('the figure is not a finding of failure')
+  })
+
+  it('requires an independently obtained trust anchor for a non-default TSA', async () => {
+    updateSettings({ tsaUrl: 'https://tsa.example.org/timestamp' })
+    await ingest(caseId, '<html>tsa</html>')
+    const outputPath = join(tempDir, 'custom-tsa.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const html = readStoredZipEntries(outputPath).get('report.html')!.toString('utf-8')
+    expect(html).toContain('No trust anchor is bundled for the configured authority')
+    expect(html).toContain('trust anchor you obtain independently')
+    // Must not tell a reviewer that chaining to the bundled file proves anything.
+    expect(html).not.toContain('which carries the authority’s trust anchor')
   })
 
   // --- Operator identity gating and report rendering ---

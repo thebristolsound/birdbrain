@@ -1,4 +1,5 @@
 import { app } from 'electron'
+import { REPORT_PAGE_CSS } from '@main/services/reportHtml'
 import type { ExportPreflight, HashVerification, Capture, TrustedTime } from '@shared/types'
 
 // Minimal shape of the export-time data the certification needs. Kept structural
@@ -116,43 +117,65 @@ export function buildCertification(data: CertificationInput, toolVersion: string
   return renderCertificationHtml(fields)
 }
 
+/**
+ * Rendered with the same stylesheet and class vocabulary as report.html
+ * (REPORT_PAGE_CSS), so the two documents read as one package rather than two
+ * unrelated files. Only the certificate-specific pieces are added below.
+ *
+ * As in report.html: paper geometry lives in @page, no page numbers are written
+ * into the file, nothing encodes meaning in colour, and self-asserted fields are
+ * labelled at every occurrence.
+ */
 function renderCertificationHtml(fields: CertificationFields): string {
   const { certifier, trustedTime } = fields
 
   const stamped = fields.captures.filter((c) => c.trustedTime === 'rfc3161')
   const unstamped = fields.captures.filter((c) => c.trustedTime !== 'rfc3161')
 
-  const trustedTimeSection = trustedTime.allStamped
-    ? `<p>All ${stamped.length} capture${stamped.length === 1 ? '' : 's'} in this export carry an
-        RFC 3161 trusted timestamp asserting the time at which the capture content hash existed.</p>`
+  const trustedTimeProse = trustedTime.allStamped
+    ? `<p>All ${stamped.length} capture${
+        stamped.length === 1 ? '' : 's'
+      } in this export carry an RFC 3161 trusted timestamp asserting the time at which the
+      capture content digest existed.</p>`
     : stamped.length > 0
-      ? `<p>RFC 3161 trusted time is asserted <strong>only</strong> for the
-        ${stamped.length} capture${stamped.length === 1 ? '' : 's'} listed as timestamped below.
-        For the ${unstamped.length} remaining capture${unstamped.length === 1 ? '' : 's'}
-        (${trustedTime.pendingCount} pending, ${trustedTime.noneCount} none),
-        <strong>no trusted timestamp is asserted</strong>; the recorded capture time is the
-        operator's local system clock only.</p>`
-      : `<p><strong>No trusted timestamps are asserted</strong> for any of the
-        ${unstamped.length} capture${unstamped.length === 1 ? '' : 's'} in this export
-        (${trustedTime.pendingCount} pending, ${trustedTime.noneCount} none). The recorded
-        capture time is the operator's local system clock only.</p>`
+      ? `<p>RFC 3161 trusted time is asserted <strong>only</strong> for the ${
+          stamped.length
+        } capture${stamped.length === 1 ? '' : 's'} listed as timestamped below. For the ${
+          unstamped.length
+        } remaining capture${unstamped.length === 1 ? '' : 's'} (${
+          trustedTime.pendingCount
+        } pending, ${trustedTime.noneCount} none), <strong>no trusted timestamp is
+        asserted</strong>; the recorded capture time is the operator's local system clock
+        only.</p>`
+      : `<p><strong>No trusted timestamps are asserted</strong> for any of the ${
+          unstamped.length
+        } capture${unstamped.length === 1 ? '' : 's'} in this export (${
+          trustedTime.pendingCount
+        } pending, ${
+          trustedTime.noneCount
+        } none). The recorded capture time is the operator's local system clock only.</p>`
 
   const stampedRows = stamped
     .map((c) => {
       const who = c.tsaName ? esc(c.tsaName) : 'RFC 3161 TSA'
-      const when = c.stampedAt ? esc(new Date(c.stampedAt).toISOString()) : ''
-      return `<tr><td>${esc(c.title)}</td><td class="mono url">${esc(c.url)}</td><td>${who}${
-        when ? ' — ' + when : ''
-      }</td></tr>`
+      const when = c.stampedAt ? esc(isoUtc(c.stampedAt)) : ''
+      return `<tr>
+        <td><span class="ex-title">${esc(c.title)}</span>
+        <span class="ex-url mono">${esc(c.url)}</span></td>
+        <td class="mono break">${who}${when ? `<br>${when}` : ''}</td>
+      </tr>`
     })
     .join('')
 
   const unstampedRows = unstamped
     .map(
-      (c) =>
-        `<tr><td>${esc(c.title)}</td><td class="mono url">${esc(c.url)}</td><td>${esc(
-          c.trustedTime
-        )} — no trusted timestamp asserted</td></tr>`
+      (c) => `<tr>
+        <td><span class="ex-title">${esc(c.title)}</span>
+        <span class="ex-url mono">${esc(c.url)}</span></td>
+        <td><span class="state-primary">${esc(
+          c.trustedTime === 'pending' ? 'Token pending' : 'Local clock only'
+        )}</span><span class="state-secondary">No trusted timestamp asserted</span></td>
+      </tr>`
     )
     .join('')
 
@@ -161,92 +184,126 @@ function renderCertificationHtml(fields: CertificationFields): string {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Certificate of Authenticity — ${esc(fields.caseName)}</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: Georgia, 'Times New Roman', serif; color: #111; background: #fff; padding: 3rem; max-width: 50rem; margin: 0 auto; line-height: 1.5; }
-  h1 { font-size: 1.6rem; margin-bottom: 0.25rem; }
-  h2 { font-size: 1.1rem; margin: 1.75rem 0 0.5rem; border-bottom: 1px solid #ccc; padding-bottom: 0.25rem; }
-  p { margin: 0.5rem 0; }
-  .subtitle { color: #555; font-size: 0.9rem; margin-bottom: 1.5rem; }
-  table { border-collapse: collapse; width: 100%; margin: 0.5rem 0; font-size: 0.85rem; }
-  th, td { padding: 0.4rem 0.5rem; text-align: left; border-bottom: 1px solid #ddd; vertical-align: top; }
-  th { font-size: 0.75rem; text-transform: uppercase; color: #555; }
-  .mono { font-family: 'Courier New', monospace; font-size: 0.8rem; }
-  .url { word-break: break-all; }
-  dl { margin: 0.5rem 0; }
-  dt { font-weight: bold; margin-top: 0.5rem; }
-  dd { margin-left: 0; }
-  .lawyer-tbd { margin: 1.5rem 0; padding: 1rem; border: 2px dashed #b00; background: #fff5f5; color: #800; font-weight: bold; text-align: center; }
-  .self-asserted { margin: 1rem 0; padding: 0.75rem; border-left: 4px solid #b8860b; background: #fffbeb; }
-  .signature-block { margin-top: 2.5rem; }
-  .sig-line { margin-top: 2rem; border-top: 1px solid #111; width: 22rem; padding-top: 0.25rem; font-size: 0.85rem; }
-</style>
+<title>Certificate of authenticity — ${esc(fields.caseName)}</title>
+<style>${REPORT_PAGE_CSS}</style>
 </head>
 <body>
-<h1>Certificate of Authenticity</h1>
-<p class="subtitle">FRE 902(13)/(14) supporting certification — Case: ${esc(fields.caseName)}</p>
+<section class="sheet">
+  <header class="wordmark">
+    <span class="wordmark-name">${esc(fields.toolName)}</span>
+    <span class="wordmark-kind">Supporting certification</span>
+  </header>
+  <div class="rule-heavy"></div>
 
-<!-- LAWYER-TBD: The sworn declaration / certification legal wording for the applicable
-     jurisdiction and rule (e.g. FRE 902(13)/(14), 28 U.S.C. § 1746) has NOT been drafted.
-     Counsel must supply the operative certifying language. Do not treat the placeholder
-     banner below as finalized legal text. ${LAWYER_TBD_MARKER} -->
-<div class="lawyer-tbd">${LAWYER_TBD_MARKER}<br>
-<span style="font-weight: normal; font-size: 0.8rem;">The operative sworn declaration / certification wording must be supplied by counsel for the relevant jurisdiction and rule. This document is scaffolding only.</span>
-</div>
+  <p class="eyebrow">Case</p>
+  <h1 class="case-name">Certificate of authenticity</h1>
+  <p class="case-desc">${esc(fields.caseName)} — supporting certification offered under
+  FRE 902(13)/(14) or the equivalent rule of the forum, subject to the wording notice below.</p>
 
-<h2>Capturing Tool</h2>
-<dl>
-  <dt>Tool name</dt><dd>${esc(fields.toolName)}</dd>
-  <dt>Tool version</dt><dd>${esc(fields.toolVersion)}</dd>
-  <dt>Hash algorithm</dt><dd>${esc(fields.hashAlgorithm)}</dd>
-  <dt>RFC 3161 Time-Stamping Authority (configured)</dt><dd class="mono">${
-    fields.tsaIdentity ? esc(fields.tsaIdentity) : 'none configured'
-  }</dd>
-</dl>
+  <!-- LAWYER-TBD: The sworn declaration / certification legal wording for the applicable
+       jurisdiction and rule (e.g. FRE 902(13)/(14), 28 U.S.C. § 1746) has NOT been drafted.
+       Counsel must supply the operative certifying language. Do not treat the placeholder
+       banner below as finalized legal text. ${LAWYER_TBD_MARKER} -->
+  <div class="tbd">
+    <p class="tbd-title">${esc(LAWYER_TBD_MARKER)}</p>
+    <p>The operative sworn declaration and certifying wording for the relevant jurisdiction and
+    rule must be supplied by counsel. This document is scaffolding: it records the tool, the
+    process and the certifier, and asserts nothing about the legal sufficiency of that record.</p>
+  </div>
 
-<h2>Process</h2>
-<p>${esc(fields.processDescription)}</p>
+  <p class="eyebrow spaced">Capturing tool</p>
+  <div class="field-grid rule-top">
+    <div class="field"><div class="field-label">Tool name</div>
+      <div class="field-value">${esc(fields.toolName)}</div></div>
+    <div class="field"><div class="field-label">Tool version</div>
+      <div class="field-value">${esc(fields.toolVersion)}</div></div>
+    <div class="field"><div class="field-label">Hash algorithm</div>
+      <div class="field-value">${esc(fields.hashAlgorithm)}</div></div>
+    <div class="field"><div class="field-label">Time-stamping authority (configured)</div>
+      <div class="field-value"><span class="mono break">${
+        fields.tsaIdentity ? esc(fields.tsaIdentity) : 'none configured'
+      }</span></div></div>
+  </div>
 
-<h2>Trusted Time</h2>
-${trustedTimeSection}
-${
-  stampedRows
-    ? `<h3 style="font-size:0.95rem;margin-top:1rem;">Timestamped captures</h3>
-<table><thead><tr><th>Title</th><th>URL</th><th>Timestamp authority</th></tr></thead><tbody>${stampedRows}</tbody></table>`
-    : ''
-}
-${
-  unstampedRows
-    ? `<h3 style="font-size:0.95rem;margin-top:1rem;">Captures without trusted time</h3>
-<table><thead><tr><th>Title</th><th>URL</th><th>Status</th></tr></thead><tbody>${unstampedRows}</tbody></table>`
-    : ''
-}
+  <h2 style="margin-top:22pt">Process</h2>
+  <div class="rule-medium"></div>
+  <p>${esc(fields.processDescription)}</p>
 
-<h2>Certifier</h2>
-<dl>
-  <dt>Name</dt><dd>${esc(certifier.operatorName)}</dd>
-  <dt>Role</dt><dd>${certifier.operatorRole ? esc(certifier.operatorRole) : '—'}</dd>
-  <dt>Organization</dt><dd>${
-    certifier.operatorOrganization ? esc(certifier.operatorOrganization) : '—'
-  }</dd>
-  <dt>Birdbrain installation ID</dt><dd class="mono">${esc(certifier.installationId)}</dd>
-  <dt>Export generated</dt><dd class="mono">${esc(fields.exportTimestamp)}</dd>
-</dl>
+  <h2 style="margin-top:22pt">Trusted time</h2>
+  <div class="rule-medium"></div>
+  ${trustedTimeProse}
+  ${
+    stampedRows
+      ? `<p class="micro-heading">Timestamped captures</p>
+  <table class="index"><thead><tr><th>Page title and URL</th>
+  <th>Authority and asserted time (UTC)</th></tr></thead><tbody>${stampedRows}</tbody></table>`
+      : ''
+  }
+  ${
+    unstampedRows
+      ? `<p class="micro-heading">Captures without trusted time</p>
+  <table class="index"><thead><tr><th>Page title and URL</th>
+  <th>Clock basis</th></tr></thead><tbody>${unstampedRows}</tbody></table>`
+      : ''
+  }
 
-<div class="self-asserted">
-  <strong>Self-asserted identity.</strong> The certifier identity above (name, role, and
-  organization) is self-asserted by the operator. It is <strong>not</strong> cryptographically
-  authenticated by Birdbrain. Birdbrain does not verify the operator's real-world identity.
-</div>
+  <h2 style="margin-top:22pt">Certifier</h2>
+  <div class="rule-medium"></div>
+  <div class="field-grid rule-top">
+    <div class="field"><div class="field-label">Name (self-asserted)</div>
+      <div class="field-value">${esc(certifier.operatorName)}</div></div>
+    <div class="field"><div class="field-label">Role (self-asserted)</div>
+      <div class="field-value">${
+        certifier.operatorRole ? esc(certifier.operatorRole) : 'not stated'
+      }</div></div>
+    <div class="field"><div class="field-label">Organisation (self-asserted)</div>
+      <div class="field-value">${
+        certifier.operatorOrganization ? esc(certifier.operatorOrganization) : 'not stated'
+      }</div></div>
+    <div class="field"><div class="field-label">Installation identifier</div>
+      <div class="field-value"><span class="mono break">${esc(
+        certifier.installationId
+      )}</span></div></div>
+    <div class="field wide"><div class="field-label">Export generated</div>
+      <div class="field-value"><span class="mono">${esc(
+        isoUtc(fields.exportTimestamp)
+      )}</span></div></div>
+  </div>
 
-<div class="signature-block">
-  <div class="sig-line">Signature of certifier</div>
-  <div class="sig-line">Date</div>
-</div>
+  <div class="alert">
+    <p class="alert-title">Self-asserted identity</p>
+    <p>The certifier identity above — name, role and organisation — is entered by the operator.
+    It is <strong>not</strong> cryptographically authenticated by ${esc(fields.toolName)}, which
+    does not verify the operator's real-world identity. Signed manifest entries bind to the
+    installation identifier, not to any named person.</p>
+  </div>
 
+  <div class="sig-grid">
+    <div class="sig-line">
+      <span class="sig-caption">Signature of certifier</span>
+      <span class="sig-name">${esc(certifierLine(certifier))}</span>
+    </div>
+    <div class="sig-line"><span class="sig-caption">Date</span></div>
+  </div>
+</section>
+
+<footer class="running">
+  <span>${esc(fields.toolName)} ${esc(fields.toolVersion)} · certification.html</span>
+  <span class="mono">${esc(fields.caseName)} · ${esc(isoUtc(fields.exportTimestamp))}</span>
+</footer>
 </body>
 </html>`
+}
+
+function certifierLine(certifier: CertificationFields['certifier']): string {
+  const tail = [certifier.operatorRole, certifier.operatorOrganization].filter(Boolean).join(', ')
+  return tail ? `${certifier.operatorName} — ${tail}` : certifier.operatorName
+}
+
+function isoUtc(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toISOString().replace(/\.\d{3}Z$/, 'Z')
 }
 
 function esc(str: string): string {

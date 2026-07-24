@@ -181,8 +181,8 @@ describe('export', () => {
     expect(content).toContain('Test User')
     expect(content).toContain('example.com')
     expect(content).toContain('Birdbrain')
-    expect(content).toContain('Audit Trail')
-    expect(content).toContain('verify-verified')
+    expect(content).toContain('Exhibit index and verification results')
+    expect(content).toContain('Verified')
   })
 
   it('generates a self-contained evidence ZIP with manifest, report, keys, and captures', async () => {
@@ -523,11 +523,11 @@ describe('export', () => {
     await generateReport(caseId, options, captureLifecycle)
     const content = readFileSync(outputPath, 'utf-8')
 
-    // The audit trail has a dedicated Trusted Time column; a freshly-captured
-    // (un-stamped) capture is integrity-verified AND trusted-time Pending.
-    expect(content).toContain('Trusted Time')
-    expect(content).toContain('verify-verified')
-    expect(content).toContain('Pending')
+    // Integrity and trusted time are orthogonal: a freshly-captured (un-stamped)
+    // capture is integrity-Verified AND on a local clock with a token pending.
+    expect(content).toContain('Trusted time')
+    expect(content).toContain('Verified')
+    expect(content).toContain('Local clock — token pending')
   })
 
   it('reports un-stamped captures in preflight and the HTML summary without blocking export', async () => {
@@ -555,8 +555,10 @@ describe('export', () => {
     )
 
     const content = readFileSync(outputPath, 'utf-8')
-    expect(content).toContain('Trusted time warning')
-    expect(content).toContain('Export was not blocked')
+    expect(content).toMatch(/\d+ captures? without trusted time/)
+    // Whitespace-tolerant: the sentence wraps across source lines in the
+    // template literal, so the emitted HTML carries a newline mid-phrase.
+    expect(content).toMatch(/export\s+was\s+not\s+blocked/i)
   })
 
   it('does not record overallValid:true when auditTrail is excluded (no verifications)', async () => {
@@ -631,7 +633,10 @@ describe('export', () => {
     await generateReport(caseId, options, captureLifecycle)
     const content = readFileSync(outputPath, 'utf-8')
     expect(content).toContain('Export Test Case')
-    expect(content).not.toContain('Audit Trail')
+    // With no verification run, the report must decline to make an integrity
+    // finding rather than silently reproducing a stale one.
+    expect(content).toContain('No verification was run for this export.')
+    expect(content).toContain('Not verified in this export')
   })
 
   it('escapes HTML in report output', async () => {
@@ -773,7 +778,7 @@ describe('export', () => {
     expect(content).toContain('Detective')
     expect(content).toContain('Metro PD')
     // installationId is a UUID — verify its label is present
-    expect(content).toContain('Installation ID')
+    expect(content).toContain('Installation identifier')
   })
 
   it('reports granular per-item progress through the verify and screenshot stages', async () => {

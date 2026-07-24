@@ -67,9 +67,8 @@ want to place sensitive source material into a vendor-controlled platform.
 Birdbrain's business context follows from these constraints. It is MIT-licensed,
 has no required cloud account, and does not send telemetry. The core collection
 and evidence-management workflow runs locally. Network egress is limited to
-explicit supporting functions: trusted timestamping, an optional
-operator-configured OpenRouter integration, Wayback Machine corroboration, and
-software updates. This narrow footprint
+explicit supporting functions: trusted timestamping, Wayback Machine
+corroboration, and software updates. This narrow footprint
 reduces custody ambiguity and vendor dependence, although it places more
 operational responsibility on the workstation owner.
 
@@ -174,11 +173,11 @@ A diagram should contain the following blocks and arrows:
    and Zustand. Between renderer and main, place the preload/context bridge.
    Label the bidirectional arrow "typed IPC commands, queries, and events."
 6. **External Optional Services** above the main process. Include an RFC 3161
-   timestamp authority, OpenRouter, Wayback Machine, origin TLS endpoints, and
-   GitHub Releases. Draw outbound-only arrows from their owning main-process
-   services. Label each arrow with the data sent: content hash for the timestamp
-   authority; selected Capture text and context for OpenRouter; URL for Wayback
-   and TLS corroboration; version/update traffic for GitHub.
+   timestamp authority, Wayback Machine, origin TLS endpoints, and GitHub
+   Releases. Draw outbound-only arrows from their owning main-process services.
+   Label each arrow with the data sent: content hash for the timestamp
+   authority; URL for Wayback and TLS corroboration; version/update traffic for
+   GitHub.
 7. **Evidence Consumer** below or to the far right. Draw an export arrow from the
    main process to an evidence ZIP or `.birdbrain` Case archive, then an arrow
    into the standalone verifier and a separate `openssl ts -verify` step.
@@ -335,8 +334,8 @@ Birdbrain has four principal integration surfaces:
   updates, and events.
 - **Portable files:** evidence ZIPs and `.birdbrain` Case archives support review
   and transfer without a live Birdbrain service.
-- **Outbound adapters:** RFC 3161, OpenRouter, Wayback Machine, origin TLS, and
-  GitHub Releases are isolated behind main-process services.
+- **Outbound adapters:** RFC 3161, Wayback Machine, origin TLS, and GitHub
+  Releases are isolated behind main-process services.
 
 There is no supported remote REST API, webhook framework, or network-listening
 administration plane. Extending Birdbrain into a multi-host service would
@@ -464,9 +463,9 @@ does not provide application-level encryption for Cases or the SQLite database.
 Confidentiality at rest therefore depends on OS permissions and full-disk or
 volume encryption.
 
-The OpenRouter API key and Manifest private key use Electron `safeStorage`,
-which maps to operating-system credential protection such as DPAPI or Keychain
-where available. On environments without an available credential store, the
+The Manifest private key uses Electron `safeStorage`, which maps to
+operating-system credential protection such as DPAPI or Keychain where
+available. On environments without an available credential store, the
 implementation can fall back to plaintext local storage. Existing encrypted
 signing keys fail closed if they cannot be unwrapped, avoiding silent key
 rotation that would invalidate prior signatures.
@@ -510,10 +509,7 @@ privacy consequences:
 - automatic TLS corroboration discloses the origin to that origin, while a
   user-initiated Wayback lookup discloses the target URL to the Internet
   Archive;
-- GitHub receives ordinary release-check and download traffic; and
-- the optional OpenRouter integration, when explicitly configured and invoked,
-  sends selected Capture text and metadata to that provider and should be
-  governed separately for sensitive Cases.
+- GitHub receives ordinary release-check and download traffic.
 
 ### Secure development and release posture
 

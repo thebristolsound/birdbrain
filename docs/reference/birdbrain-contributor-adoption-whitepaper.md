@@ -119,7 +119,7 @@ A diagram of Birdbrain should contain these blocks and flows:
    The renderer is a React app. It communicates with the main process through a constrained, typed `contextBridge` API. Node integration is disabled in the renderer.
 
 6. **Optional External Services**
-   Outbound integrations include RFC 3161 timestamp authorities, GitHub Releases for updates, Wayback Machine lookup, TLS endpoints for corroboration, and an optional OpenRouter integration. These are outbound-only and feature-specific.
+   Outbound integrations include RFC 3161 timestamp authorities, GitHub Releases for updates, Wayback Machine lookup, and TLS endpoints for corroboration. These are outbound-only and feature-specific.
 
 7. **Evidence Consumer**
    Exported HTML reports, evidence ZIPs, `.birdbrain` archives, and the standalone verifier allow review outside the running desktop app.
@@ -390,7 +390,7 @@ Birdbrain's security design follows its local-first boundary:
 - The renderer uses Chromium sandboxing and context isolation.
 - The preload bridge exposes named, typed operations rather than raw `ipcRenderer`.
 - Renderer IPC does not accept arbitrary filesystem paths or shell commands.
-- OpenRouter API keys and Manifest signing keys use Electron `safeStorage` where available.
+- Manifest signing keys use Electron `safeStorage` where available.
 - The extension sends captures only to the loopback server and rejects messages from other extensions.
 
 ### Network Egress
@@ -398,7 +398,6 @@ Birdbrain's security design follows its local-first boundary:
 Birdbrain's documented outbound connections are narrow:
 
 - RFC 3161 timestamp authority, sending content hashes rather than captured content;
-- OpenRouter, only if the Operator configures an API key for the optional model integration;
 - GitHub Releases for update checks and downloads;
 - feature-specific corroboration such as Wayback Machine or TLS endpoint checks where implemented.
 

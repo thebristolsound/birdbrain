@@ -22,6 +22,8 @@ export const IPC_CHANNELS = {
   CAPTURES_GET_THUMBNAIL: 'captures:getThumbnail',
   CAPTURES_GET_MATCHING_SELECTORS: 'captures:getMatchingSelectors',
   CAPTURES_DOWNLOAD: 'captures:download',
+  CAPTURES_DOWNLOAD_PDF: 'captures:downloadPdf',
+  CAPTURES_DOWNLOAD_SCREENSHOT: 'captures:downloadScreenshot',
   CAPTURES_OPEN_EXTERNAL: 'captures:openExternal',
   CAPTURES_COUNTS_BY_CASE: 'captures:countsByCase',
   CAPTURES_TOGGLE_FAVORITE: 'captures:toggleFavorite',

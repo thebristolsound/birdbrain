@@ -112,6 +112,12 @@ const birdbrain = {
       ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_GET_MATCHING_SELECTORS, captureId),
     download: (captureId: string): Promise<string | null> =>
       unwrapIpc<string | null>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_DOWNLOAD, captureId)),
+    downloadPdf: (captureId: string): Promise<string | null> =>
+      unwrapIpc<string | null>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_DOWNLOAD_PDF, captureId)),
+    downloadScreenshot: (captureId: string): Promise<string | null> =>
+      unwrapIpc<string | null>(
+        ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_DOWNLOAD_SCREENSHOT, captureId)
+      ),
     openExternal: (url: string): Promise<void> =>
       unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_OPEN_EXTERNAL, url)),
     countsByCase: (): Promise<Record<string, number>> =>

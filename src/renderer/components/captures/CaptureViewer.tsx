@@ -9,6 +9,7 @@ import { AnnotationEditor } from '@renderer/components/captures/annotation/Annot
 import { CapturesGettingStarted } from '@renderer/components/captures/CapturesGettingStarted'
 import { Button } from '@renderer/components/ui'
 import { CaptureViewerToolbar } from '@renderer/components/captures/CaptureViewerToolbar'
+import { CaptureDownloadMenu } from '@renderer/components/captures/CaptureDownloadMenu'
 import { BrowserChromeFrame } from '@renderer/components/captures/BrowserChromeFrame'
 import { AnnotationToolsTooltip } from '@renderer/components/captures/AnnotationToolsTooltip'
 import { useAnnotationEditor } from '@renderer/components/captures/annotation/useAnnotationEditor'
@@ -191,6 +192,7 @@ export function CaptureViewer() {
             )
           })}
         </div>
+        <CaptureDownloadMenu capture={capture} />
         <Button
           variant="ghost"
           size="icon-sm"

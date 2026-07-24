@@ -1,5 +1,17 @@
 # Birdbrain: A Local-First Architecture for Verifiable Web Evidence
 
+> **Birdbrain whitepaper series.** Three companion papers cover this project.
+> This paper is the formal architecture and assurance analysis: trust
+> boundaries, evidence claims and their limits, and deployment posture. Start
+> here for security review. The
+> [contributor and adoption whitepaper](birdbrain-contributor-adoption-whitepaper.md)
+> covers product fit, onboarding, contribution areas, and governance. The
+> [technical whitepaper](birdbrain-technical-whitepaper.md) is the code-grounded
+> implementation companion: exact mechanisms with file references and gaps
+> observed during code review. All three describe version `1.0.1-beta.15`.
+> Where depth differs, this paper is authoritative on assurance claims and the
+> technical whitepaper is authoritative on implementation detail.
+
 ## Executive summary
 
 Birdbrain is an open-source desktop application for collecting, organizing, and

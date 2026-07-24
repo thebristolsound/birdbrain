@@ -1,5 +1,7 @@
 # Birdbrain: A Contributor and Adoption Whitepaper
 
+> **Birdbrain whitepaper series.** Three companion papers cover this project. This paper covers product fit, onboarding, contribution areas, and governance; start here to adopt the tool or contribute. The [architecture whitepaper](birdbrain-architecture-whitepaper.md) is the formal architecture and assurance analysis: trust boundaries, evidence claims and their limits, and deployment posture; start there for security review. The [technical whitepaper](birdbrain-technical-whitepaper.md) is the code-grounded implementation companion: exact mechanisms with file references and gaps observed during code review. All three describe version `1.0.1-beta.15`.
+
 ## Executive Summary
 
 Birdbrain is an open-source, local-first desktop application for capturing, organizing, verifying, and exporting web evidence. It combines an Electron desktop app with a companion Chromium extension so investigators can preserve web pages as MHTML, screenshots, extracted text, metadata, annotations, and provenance inside named Cases. Each Capture is tied into a per-Case Manifest using SHA-256 hashes, chain links, local signatures, and optional RFC 3161 trusted timestamps.

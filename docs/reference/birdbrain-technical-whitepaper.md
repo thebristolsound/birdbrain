@@ -1,8 +1,10 @@
-# Birdbrain: A Verifiable Web Evidence Capture Platform
+# Birdbrain Implementation Whitepaper: Code-Level Design of a Verifiable Web Evidence Platform
 
-**Technical Whitepaper — derived from source at version 1.0.1-beta.15 (July 2026)**
+**Derived from source at version 1.0.1-beta.15 (July 2026)**
 
-> **Scope and assumptions.** This document was produced from a direct reading of the Birdbrain codebase (main process, preload, renderer, Chrome extension, build and CI configuration, and test suites), not from existing project documentation. Intended audience: engineering leaders and security reviewers evaluating the tool for investigation workflows, and prospective open-source contributors. Where a claim rests on inference rather than code, the text says so. File references use repo-relative paths.
+> **Birdbrain whitepaper series.** Three companion papers cover this project. This paper is the code-grounded implementation companion: exact mechanisms with file references, implementation highlights, and gaps observed during code review. The [architecture whitepaper](birdbrain-architecture-whitepaper.md) is the formal architecture and assurance analysis: trust boundaries, evidence claims and their limits, and deployment posture; start there for security review. The [contributor and adoption whitepaper](birdbrain-contributor-adoption-whitepaper.md) covers product fit, onboarding, contribution areas, and governance. Where depth differs, the architecture paper is authoritative on assurance claims and this paper is authoritative on implementation detail.
+
+> **Scope and assumptions.** This document was produced from a direct reading of the Birdbrain codebase (main process, preload, renderer, Chrome extension, build and CI configuration, and test suites), not from existing project documentation. Intended audience: engineers who need to know how a mechanism works at the file level, reviewers verifying the architecture paper's claims against code, and contributors orienting in the codebase. Where a claim rests on inference rather than code, the text says so. File references use repo-relative paths.
 
 ---
 

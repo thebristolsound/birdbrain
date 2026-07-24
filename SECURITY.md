@@ -35,10 +35,13 @@ Out of scope:
 The complete list of outbound connections Birdbrain can make:
 
 1. **RFC 3161 timestamp authority** (default `http://timestamp.digicert.com`, configurable in Settings) — sends content hashes only, never captured content. Timestamp tokens are CMS-signed by the TSA, so their validity does not depend on the transport.
-2. **OpenRouter** (`openrouter.ai`) — only if you configure an API key in Settings.
-3. **GitHub releases** — update checks and downloads.
+2. **The captured site itself** — after each HTTPS capture, a follow-up TLS connection to the captured origin records its current certificate chain as corroborating evidence. Your machine contacts the target a second time, outside the browser.
+3. **Wayback Machine** (`web.archive.org`) — sends the capture's URL, only when you explicitly use the Wayback lookup/pin feature.
+4. **Consent-banner filter lists** (`secure.fanboy.co.nz`, `ublockorigin.github.io`) — public cookie-banner filter lists, downloaded before a background recapture.
+5. **OpenRouter** (`openrouter.ai`) — only if you configure an API key in Settings.
+6. **GitHub releases** — update checks and downloads.
 
-There is no telemetry, no account, and no other network activity. Captured evidence leaves the machine only when you export it.
+There is no telemetry, no account, and no other network activity. Captured evidence leaves the machine only when you export it. Note that items 2–4 disclose the captured or looked-up URL (or your interest in it) to a third party or to the target itself; if you investigate through a VPN or Tor, route the whole machine so these requests do not take your bare network path.
 
 ## Known limitations
 
@@ -47,4 +50,4 @@ Pre-declared so they are not rediscovered as findings:
 - **Release artifacts are unsigned.** There is currently no Authenticode signing or macOS notarization. Update integrity relies on electron-updater's SHA-512 hashes in the `latest*.yml` metadata served from GitHub releases over HTTPS. Expect OS installer warnings.
 - **Renderer CSP allows `'unsafe-inline'`** for scripts and styles (build-tooling constraint), mitigated by sandboxing, context isolation, and the loopback-only `connect-src`.
 - **`safeStorage` plaintext fallback.** On systems without an OS credential store, the API key and signing key are stored unencrypted in the user-data directory.
-- **Loopback GET endpoints are unauthenticated.** `/api/status`, `/api/cases`, and `/api/selectors/active` require no token, so any local process can read case names and selector patterns. Mutations always require the token.
+- **Loopback GET endpoints are unauthenticated.** `/api/status`, `/api/cases`, and `/api/selectors/active` require no token, so any local process can read case names and selector patterns. Mutations require the token — but `/api/status` returns that token to origin-less requests (e.g. `curl`), which is how the extension pairs with the app, so a local process can obtain it and write captures. Defending against hostile code already running as the Birdbrain user is out of scope (see above).

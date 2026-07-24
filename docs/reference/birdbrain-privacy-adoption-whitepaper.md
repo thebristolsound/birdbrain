@@ -1,0 +1,119 @@
+# Birdbrain for Activists and Independent Researchers: A Privacy-Focused Adoption Guide
+
+> **Birdbrain whitepaper series.** Four companion papers cover this project. This paper addresses activists, independent researchers, and small privacy-focused groups deciding whether to adopt Birdbrain. The [architecture whitepaper](birdbrain-architecture-whitepaper.md) is the formal architecture and assurance analysis for security review. The [contributor and adoption whitepaper](birdbrain-contributor-adoption-whitepaper.md) covers general adoption, onboarding, and contribution. The [technical whitepaper](birdbrain-technical-whitepaper.md) is the code-grounded implementation companion. All four describe version `1.0.1-beta.15`.
+
+## Who this paper is for
+
+You document things other people want to disappear: harassment campaigns, scam infrastructure, extremist recruitment, corporate misconduct, human rights abuses. You work alone or with a handful of people you trust. You have no IT department, no legal budget, and good reasons to keep your work off other people's servers.
+
+This paper tells you what Birdbrain does for that situation, what it costs you in operational exposure, and what it cannot protect you from. It assumes you are already careful and would rather hear an uncomfortable limitation now than discover it during a dispute.
+
+## The problem you already know
+
+A screenshot is easy to dismiss. When you publish evidence of abuse, the first response is often "that's photoshopped" or "that's out of context," and the second is the content quietly vanishing. To hold up, a capture needs to answer four challenges:
+
+1. Are these the exact bytes you captured, unmodified?
+2. Did you delete or reorder anything afterward to shape the story?
+3. Can you prove the content existed before it was taken down?
+4. Can someone who distrusts you check all of this without trusting your tools?
+
+Hosted evidence platforms answer these questions by holding your material on their infrastructure. That trade is often unacceptable for this work: a subpoena, a breach, an acquisition, or a policy change at the vendor exposes your sources and your interests. Birdbrain's premise is that you should not have to make that trade.
+
+## What Birdbrain is
+
+Birdbrain is an open-source (MIT) desktop application for Windows, macOS, and Linux, paired with a Chromium browser extension. You browse; the extension captures pages as MHTML (the full page with its resources in one file), plus a screenshot, the extracted text, and response headers. The desktop app files each capture into a case on your own disk.
+
+Under every capture sits an integrity layer:
+
+- Each capture is SHA-256 hashed as it is written to disk.
+- Every capture, deletion, and export is recorded in an append-only, hash-chained log (the Manifest) signed with a key generated on your machine.
+- Captures can receive RFC 3161 trusted timestamps: an external authority attests that a given hash existed no later than a given time, without ever seeing the content.
+- Exports produce a self-contained evidence package that a journalist, lawyer, or hostile reviewer can verify with standard tools (`sha256sum`, `jq`, `openssl`) by following an included runbook. They do not need Birdbrain, an account, or your cooperation to check it.
+
+The everyday tooling sits on top: cases, search, tags, notes, screenshot annotation, pattern watchlists that flag or auto-capture pages containing terms you care about, and extraction of indicators like domains, wallet addresses, and email addresses from captured text.
+
+## The privacy properties that matter to you
+
+**No account, no server, no telemetry.** There is nothing to sign up for. The project's security policy states, and the code confirms, that the application sends no analytics, no crash reports, and no usage data. There is no vendor infrastructure that could be breached or subpoenaed, because none exists.
+
+**Local-first by construction, not configuration.** Captures travel from your browser to the desktop app over a loopback connection on your own machine (127.0.0.1), authenticated with a per-installation token. The connection never touches the network.
+
+**Open formats, no lock-in.** MHTML files open in any Chromium browser. The Manifest is plain-text JSON lines. The database is standard SQLite. If the project dies tomorrow, your evidence remains readable and verifiable with commodity tools.
+
+**Auditable.** The entire codebase is public. The verification logic is deliberately small, free of app dependencies, and reproducible by hand from the runbook, so you are not asked to trust the tool that produced the evidence.
+
+**Works offline.** Capture, storage, search, and verification run without a network connection. Only the optional supporting features below need one.
+
+## Exactly what leaves your machine
+
+For your threat model, this is the section that matters. Every outbound connection in the default capture-and-verify workflow, what it carries, and how to control it:
+
+| Connection | What is sent | When | Your control |
+|---|---|---|---|
+| Timestamp authority (default: DigiCert) | A content hash only, never content. The TSA does see your IP address and the timing of your captures. | Automatically after each capture | Point it at a TSA you prefer in settings, or accept captures without trusted timestamps |
+| The captured site itself | A follow-up TLS connection to record the site's current certificate as corroboration | Automatically at capture time | Not currently toggleable; see the network-identity warning below |
+| Wayback Machine (archive.org) | The URL you ask it to look up or pin | Only when you explicitly click | Never click it for sensitive targets |
+| GitHub | Ordinary release-check traffic | Periodic update checks | Disable automatic update checks in settings |
+
+Two opt-in features sit outside that table: configuring an AI-analysis API key sends captured text to the provider you choose, and background recapture first downloads public cookie-banner filter lists. Leave both off if either disclosure matters to you; the [security policy](https://github.com/thebristolsound/birdbrain/blob/main/SECURITY.md) keeps the authoritative egress list.
+
+Read that table with your adversary in mind. Nothing in it sends captured content anywhere by default. But the timestamp authority learns that *someone at your IP is capturing evidence at these times*, and the TLS corroboration step means your machine contacts the target site a second time, outside your browser.
+
+**The network-identity warning.** If you browse through a VPN or Tor but run the desktop app on your bare connection, the app's outbound requests (timestamps, TLS corroboration, update checks) take your real network route. Route the whole machine, not just the browser, or the split will undo your browser-level anonymity. This is the single most common way a careful browser setup gets betrayed by a helpful desktop tool, and Birdbrain is not exempt.
+
+## Operational security realities
+
+**Your browser session is the lens.** The extension captures what your logged-in browser sees. That is a strength (you can capture content behind logins that no crawler reaches) and a hazard: a captured page may embed your username, your avatar, your notifications, or the fact that you follow the target. The captured bytes are evidence and are deliberately never altered after the fact, so anything sensitive on the page at capture time is in the artifact permanently. Use a dedicated research browser profile or account. Screenshot redaction overlays exist for presentation, but they do not remove content from the underlying capture, by design.
+
+**Operator names are labels, not identities.** Captures require an operator name and embed it in the custody record, along with a random per-installation ID. Nothing verifies the name. A stable pseudonym works and is the sensible choice for this audience; decide your group's naming policy before the first capture, because the name is chained into the evidence record.
+
+**Your disk is the vault, so encrypt it.** Birdbrain does not encrypt cases at rest; confidentiality depends on your operating system. Full-disk encryption (BitLocker, FileVault, LUKS) is a hard prerequisite for this work, and it is your protection in the device-seizure scenario, not the app. Plan backups the same way: encrypted, offline, and physically separate.
+
+**Shared machines leak metadata.** A few read-only endpoints on the local capture port answer without authentication to any process on the same machine, exposing case names and watchlist patterns. On a computer you fully control this is a non-issue. On a shared or organizationally managed machine, treat local metadata as visible.
+
+**Installers are currently unsigned.** Releases come from GitHub without code signing or notarization, so your operating system will warn you, and you carry the burden of fetching from the genuine repository over HTTPS. This is the project's most significant trust gap today, and it is documented rather than hidden. Verify what you install, and treat the warning as a real prompt to check, not noise to click through.
+
+**One more honest wrinkle.** On systems without OS credential storage (mainly some Linux setups), the app's signing key falls back to plaintext storage on disk. Full-disk encryption covers this too, which is one more reason it is a prerequisite.
+
+## Working as a small group without a server
+
+Birdbrain has no shared server, no user accounts, and no access control, and for your situation that is the point: there is no central thing to compromise. Group workflows happen through files.
+
+- **Case archives.** A case exports to a single `.birdbrain` archive and imports on another member's installation. The import is recorded in the receiving machine's custody chain along with the sender's public verification key, so the history stays checkable across the handoff: your colleague's captures verify against their key, yours against yours. Custody does not silently reset when evidence changes hands.
+- **Division of labor.** A workable pattern for a three-person group: collectors capture into their own cases, one member merges via archive import and maintains the master case, and exports for publication come from that machine. Every step stays on hardware your group controls.
+- **Publication handoff.** When you hand evidence to a journalist, lawyer, or NGO, you give them the evidence package: content, hashes, the signed custody log, timestamp tokens, the public key, and the verification runbook. They verify it independently. Your credibility stops depending on them trusting you personally, which also protects you: the evidence argues for itself.
+
+What you give up without a server: simultaneous editing, central assignment, and remote wiping. If a member's laptop is seized, that member's local cases are exposed to whoever can defeat their disk encryption, and nothing your group runs can revoke that remotely. Structure what each member holds accordingly.
+
+## What Birdbrain cannot protect you from
+
+Candor is the project's stated policy, so here is the honest list:
+
+- **A compromised computer.** If your machine has malware or an attacker with your login, no application-level integrity scheme saves you. The evidence chain proves tampering happened *after* capture; it cannot make a hostile machine trustworthy *during* capture.
+- **Yourself, mostly.** A person who controls the machine can discard everything and fabricate a fresh, internally consistent history. External timestamps are the main constraint: they make it impossible to backdate fabrications, which is precisely why you should timestamp promptly and export early. Give copies of evidence packages to people outside the blast radius.
+- **Legal admissibility.** The tool produces strong technical provenance. Whether a specific court accepts it is a question for a lawyer in your jurisdiction, not a promise software can make.
+- **Content truth.** A perfect capture of a lie is still a lie. Birdbrain proves what a page said and when you captured it, not that the page was accurate.
+- **Beta reality.** This is beta software from a small open-source project. Formats may change between versions; test upgrades on a copy, keep backups, and pin a working version during a critical investigation.
+
+## An adoption checklist for your group
+
+1. Decide the machine policy: dedicated or well-partitioned devices, full-disk encryption verified on, OS accounts not shared.
+2. Fetch installers only from the official GitHub releases page over HTTPS; do not accept a copy from chat.
+3. Route the entire machine through your VPN or anonymity network if your browsing is routed; never split them.
+4. Agree on operator pseudonyms before the first capture.
+5. Set the timestamp authority deliberately: keep the default, self-host, or choose one in a jurisdiction you prefer.
+6. Add your own domains, community spaces, and personal sites to the ignored-URL patterns so a live session never captures your own world.
+7. Use a dedicated browser profile for capture sessions; keep personal logins out of it.
+8. Disable automatic update checks if beacon-free operation matters more to you than prompt updates, and calendar a manual check instead.
+9. Rehearse the full cycle once with throwaway content: capture, verify, export, and have a second member verify the package on their machine with the runbook before anything real depends on it.
+10. Decide where evidence packages go for safekeeping: encrypted offline copies, plus a trusted person outside the group.
+
+## Sustainability and exit
+
+Adopting any tool is a bet on its future, and small-project bets deserve sober terms. Birdbrain is MIT-licensed and currently maintained by a small team, in beta. The mitigations are structural rather than promissory: your data lives in open formats you can read without the app, the verification procedure works with standard command-line tools documented in every export, and the code is public and forkable. The worst realistic outcome of project abandonment is that you stop getting updates, not that you lose access to your evidence or the ability to prove its integrity.
+
+## Conclusion
+
+Birdbrain fits a specific niche well: a small group that needs captures which survive hostile scrutiny, refuses to put source material on other people's infrastructure, and can take responsibility for its own machines. It gives you provable integrity, independent time anchors, custody that survives handoffs between members, and evidence packages that argue for themselves, all without an account or a server.
+
+It asks discipline from you in return: encrypted disks, careful network routing, a clean browser profile, verified installs, and clear-eyed acceptance that the tool cannot defend a machine you have already lost. If your group can hold up that end, the trade is a good one, and everything you produce with it remains yours, on your hardware, readable and provable with or without the project behind it.

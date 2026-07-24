@@ -2,7 +2,7 @@
 
 **Derived from source at version 1.0.1-beta.15 (July 2026)**
 
-> **Birdbrain whitepaper series.** Three companion papers cover this project. This paper is the code-grounded implementation companion: exact mechanisms with file references, implementation highlights, and gaps observed during code review. The [architecture whitepaper](birdbrain-architecture-whitepaper.md) is the formal architecture and assurance analysis: trust boundaries, evidence claims and their limits, and deployment posture; start there for security review. The [contributor and adoption whitepaper](birdbrain-contributor-adoption-whitepaper.md) covers product fit, onboarding, contribution areas, and governance. Where depth differs, the architecture paper is authoritative on assurance claims and this paper is authoritative on implementation detail.
+> **Birdbrain whitepaper series.** Four companion papers cover this project. This paper is the code-grounded implementation companion: exact mechanisms with file references, implementation highlights, and gaps observed during code review. The [architecture whitepaper](birdbrain-architecture-whitepaper.md) is the formal architecture and assurance analysis: trust boundaries, evidence claims and their limits, and deployment posture; start there for security review. The [contributor and adoption whitepaper](birdbrain-contributor-adoption-whitepaper.md) covers product fit, onboarding, contribution areas, and governance. The [privacy-focused adoption guide](birdbrain-privacy-adoption-whitepaper.md) addresses activists and independent researchers evaluating Birdbrain for small privacy-focused groups. Where depth differs, the architecture paper is authoritative on assurance claims and this paper is authoritative on implementation detail.
 
 > **Scope and assumptions.** This document was produced from a direct reading of the Birdbrain codebase (main process, preload, renderer, Chrome extension, build and CI configuration, and test suites), not from existing project documentation. Intended audience: engineers who need to know how a mechanism works at the file level, reviewers verifying the architecture paper's claims against code, and contributors orienting in the codebase. Where a claim rests on inference rather than code, the text says so. File references use repo-relative paths.
 
@@ -77,17 +77,17 @@ Draw five vertical zones, left to right:
 
 **Zone 2 — Loopback HTTP boundary.** A single arrow from the background worker to `127.0.0.1:19845`, labeled "multipart POST /api/captures + X-Birdbrain-Token; GET /api/status heartbeat (30 s)". Annotate the boundary with its guards: Host-header allowlist (DNS-rebinding defense), CORS restricted to `chrome-extension://` and localhost origins, 250 MB body limit, token auth on all POSTs.
 
-**Zone 3 — Electron main process.** Boxes: *Hono capture server*, *captureLifecycle* (ingest pipeline), *SQLite (better-sqlite3, WAL, FTS5)*, *File storage* (per-case dirs: `.mhtml`, `.png`, `.txt`, thumbnails), *manifest.jsonl* (signed hash chain, one per case), *signing key + server token + installation id* (per-install secrets), *timestamp worker* (RFC 3161), *export service*, *updater*, *OpenRouter client*. Arrows: server → lifecycle → {storage, SQLite, manifest} with a note "manifest append happens before side effects; rollback truncates on failure".
+**Zone 3 — Electron main process.** Boxes: *Hono capture server*, *captureLifecycle* (ingest pipeline), *SQLite (better-sqlite3, WAL, FTS5)*, *File storage* (per-case dirs: `.mhtml`, `.png`, `.txt`, thumbnails), *manifest.jsonl* (signed hash chain, one per case), *signing key + server token + installation id* (per-install secrets), *timestamp worker* (RFC 3161), *export service*, *updater*. Arrows: server → lifecycle → {storage, SQLite, manifest} with a note "manifest append happens before side effects; rollback truncates on failure".
 
 **Zone 4 — Renderer (sandboxed).** One box for the React 19 UI (TanStack Router, React Query, Zustand, Tailwind v4) connected to Zone 3 through a narrow arrow labeled "typed contextBridge, ~90 fixed IPC channels, no raw ipcRenderer". A side arrow renderer → capture server labeled "connect-src 127.0.0.1:19845 (CSP-pinned)".
 
-**Zone 5 — External services (all optional or user-initiated).** Four boxes with arrows from Zone 3: *DigiCert TSA* ("RFC 3161; hashes only leave the machine"), *OpenRouter* ("only if API key configured"), *GitHub Releases* ("update checks"), *archive.org* ("Wayback pinning, explicit user action"). Add a crossed-out box labeled "telemetry" to make the absence explicit.
+**Zone 5 — External services (all optional or user-initiated).** Six boxes with arrows from Zone 3: *DigiCert TSA* ("RFC 3161; hashes only leave the machine"), *captured origin* ("post-capture TLS handshake recording the site's current certificate chain"), *archive.org* ("Wayback pinning, explicit user action"), *filter-list CDNs* ("cookie-banner lists fetched before a background recapture"), *OpenRouter* ("opt-in analysis; captured text leaves the machine only if an API key is configured"), *GitHub Releases* ("update checks"). Add a crossed-out box labeled "telemetry" to make the absence explicit.
 
 ### 3.2 Component breakdown
 
 **Electron main process** (`src/main/`). Owns everything privileged: database, file storage, capture server, forensic services, settings, export, auto-update. Startup order in `src/main/index.ts` initializes database → settings → installation id → signing key → server token → storage → lifecycle services → IPC handlers → capture server → window. A single-instance lock prevents concurrent instances; `before-quit` tears down the server, updater, and database.
 
-**Preload bridge** (`src/preload/index.ts`). One `contextBridge.exposeInMainWorld('birdbrain', …)` call exposing typed namespaces (cases, captures, recapture, tags, selectors, notes, archive, annotations, extension, search, settings, export, shell, app, updates, db, ai, extractedData) plus nine event subscriptions that each return an unsubscribe closure. Every method references a constant from the fixed `IPC_CHANNELS` object; the renderer cannot address an arbitrary channel. Raw `ipcRenderer` is never exposed.
+**Preload bridge** (`src/preload/index.ts`). One `contextBridge.exposeInMainWorld('birdbrain', …)` call exposing typed namespaces (cases, captures, recapture, tags, selectors, notes, archive, annotations, extension, search, settings, export, shell, app, updates, db, extractedData) plus nine event subscriptions that each return an unsubscribe closure. Every method references a constant from the fixed `IPC_CHANNELS` object; the renderer cannot address an arbitrary channel. Raw `ipcRenderer` is never exposed.
 
 **IPC layer.** `src/shared/ipc.ts` defines ~90 channels under `domain:action` naming; `src/main/ipcHandlers.ts` registers ~80 handlers. Mutations flow through a wrapper (`src/main/ipcWrap.ts`) that returns an `{ ok, data, error, code }` envelope and translates SQLite error codes into user-comprehensible messages; the preload unwraps and rethrows with the code attached.
 
@@ -120,7 +120,7 @@ On disk, artifacts live under `{storageRoot}/{caseId}/{captureId}.{mhtml|png|txt
 
 - **Local HTTP API** (Hono, bound to 127.0.0.1:19845): status/heartbeat, case list and activation, session start/stop, capture upload, selector list/create, and a self-test route that ingests and then deletes a dummy capture. This is the extension's entire integration surface, and Zod schemas validate every payload.
 - **Custom protocol** `birdbrain://` with a closed two-value target enum (`open`, `settings`) lets the extension popup deep-link into the desktop app.
-- **Outbound integrations**: DigiCert TSA (RFC 3161, hash-only), OpenRouter (optional), GitHub Releases (updates), archive.org (explicit user action; the code comments note that lookups are user-initiated to avoid disclosing investigation URLs to archive.org).
+- **Outbound integrations**: DigiCert TSA (RFC 3161, hash-only), the captured origin itself (post-capture TLS certificate corroboration), GitHub Releases (updates), archive.org (explicit user action; the code comments note that lookups are user-initiated to avoid disclosing investigation URLs to archive.org), cookie-banner filter lists (fetched before background recapture), and OpenRouter (opt-in, only with a configured API key). SECURITY.md keeps the authoritative list.
 
 ---
 
@@ -182,7 +182,7 @@ A standalone verifier binary (`build:verifier`, assembled with `postject`, sugge
 
 The code and migration history imply several roads not taken:
 
-- **A cloud backend** would simplify sync and collaboration but was clearly rejected: no accounts, no telemetry, loopback-only server, and an explicit security-policy statement that the only network egress is TSA, OpenRouter (opt-in), and update checks. For evidence handling, local-first is a feature, not a limitation.
+- **A cloud backend** would simplify sync and collaboration but was clearly rejected: no accounts, no telemetry, loopback-only server, and an explicit security-policy statement limiting network egress to a short, documented list. For evidence handling, local-first is a feature, not a limitation.
 - **Playwright/CDP-based capture from the desktop app** instead of an extension. A companion extension captures what the operator actually sees in their authenticated browser session, including logged-in content; a separate automation browser would not. The `method` column (`extension | background`) shows a hybrid emerging: a background recapture path exists in the app.
 - **Trusting the platform's timestamps.** Rejected in favor of RFC 3161; the threat model explicitly includes an operator forging their own evidence, which local clocks cannot survive.
 - **A full JCS implementation.** Rejected with documented reasoning (§4.3): conformance would actively hurt (Unicode normalization would change hashed bytes) and the constrained schema makes the simpler recipe provably equivalent.
@@ -220,7 +220,7 @@ The capture server binds to 127.0.0.1 only and defends in depth:
 
 ### 6.4 Secrets and privacy
 
-The OpenRouter API key and the signing private key are encrypted with OS-level `safeStorage`; both fall back to plaintext where the OS facility is unavailable (documented limitation, primarily headless Linux). The server token file is written with `0o600`. Privacy posture is unusually clean for the category: no telemetry, no crash reporting, no analytics; the installation UUID exists for provenance labeling, not tracking; Wayback lookups require explicit user action precisely to avoid leaking investigation targets.
+The signing private key is encrypted with OS-level `safeStorage`, falling back to plaintext where the OS facility is unavailable (documented limitation, primarily headless Linux). The server token file is written with `0o600`. Privacy posture is unusually clean for the category: no telemetry, no crash reporting, no analytics; the installation UUID exists for provenance labeling, not tracking; Wayback lookups require explicit user action precisely to avoid leaking investigation targets.
 
 ### 6.5 Supply chain and disclosure
 

@@ -21,11 +21,9 @@
 
 Birdbrain is an open-source desktop app with a companion Chromium extension for capturing, organizing, and verifying web evidence. Captures include MHTML, a full-page screenshot, and extracted text, sent to the desktop app over `127.0.0.1` and stored locally in per-case archives. There is no cloud account or telemetry; captures stay on your machine unless you export them.
 
-<!-- Hero screenshot: drop the asset at docs/assets/screenshot-case.png and uncomment.
 <p align="center">
   <img src="docs/assets/screenshot-case.png" alt="Birdbrain case workspace" width="100%" />
 </p>
--->
 
 ## Why Birdbrain exists
 
@@ -55,8 +53,6 @@ Birdbrain extracts indicators from each capture: IoCs (IPs, domains, hashes, CVE
 
 Every capture is fingerprinted with SHA-256, timestamped, and chained to the previous capture in a per-case manifest. Verify the chain in-app, or export a self-contained HTML report with the manifest included. Reports are readable in any browser and verifiable without Birdbrain installed. See the [threat model](docs/reference/threat-model.md) for what these controls do — and do not — defend against.
 
-<!-- Screenshots section: drop assets into docs/assets/ and uncomment, including the heading. One shot per feature claim:
-
 ## Screenshots
 
 <p align="center">
@@ -75,7 +71,8 @@ Every capture is fingerprinted with SHA-256, timestamped, and chained to the pre
   <img src="docs/assets/screenshot-export.png" alt="Exported HTML report" width="100%" />
   <em>Export — self-contained HTML report, verifiable without Birdbrain</em>
 </p>
--->
+
+More screens — onboarding, dashboard, selectors, notes, tags, command palette, settings, and the extension setup guide — in the [screenshot tour](docs/reference/screenshots.md).
 
 ## Use cases
 

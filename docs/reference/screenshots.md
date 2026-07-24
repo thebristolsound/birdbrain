@@ -1,0 +1,123 @@
+# Screenshot tour
+
+A screen-by-screen tour of Birdbrain, generated from a seeded demo investigation
+("Velvet Fox storefront takedown" — all content fictional). To regenerate the full
+series, rebuild and run:
+
+```
+README_SHOTS=1 npx playwright test e2e/readme-screenshots.spec.ts
+```
+
+Output lands in `test-results/readme/` with light and dark variants of every shot;
+the dark variants are copied into `docs/assets/`.
+
+## First run
+
+### Onboarding
+
+First-launch wizard: install the companion extension, then create your first investigation.
+
+![Onboarding wizard](../assets/screenshot-onboarding.png)
+
+### Dashboard (empty)
+
+The launch screen before any case exists.
+
+![Empty dashboard](../assets/screenshot-dashboard-fresh.png)
+
+### Extension setup guide
+
+Step-by-step guide for loading the unpacked Chrome extension.
+
+![Extension setup guide](../assets/screenshot-extension-setup.png)
+
+## Working a case
+
+### Dashboard
+
+Recent cases with capture counts.
+
+![Dashboard](../assets/screenshot-dashboard.png)
+
+### New case wizard
+
+Case details plus initial selector presets (email, crypto, IP, domain patterns).
+
+![New case wizard](../assets/screenshot-new-case.png)
+
+### Case overview
+
+Since-last-visit deltas, capture activity, top sources, and evidence integrity at a glance.
+
+![Case overview](../assets/screenshot-overview.png)
+
+### Captures workspace
+
+Capture list, rendered evidence, and the chain-of-custody inspector side by side.
+
+![Captures workspace](../assets/screenshot-case.png)
+
+### Annotation editor
+
+Shapes and pinned comments on capture screenshots; burned into exports.
+
+![Annotation editor](../assets/screenshot-annotate.png)
+
+### Chain-of-custody verification
+
+Per-capture hash chain (SHA-256, previous/entry hash, manifest index) verified in-app.
+
+![Chain of custody](../assets/screenshot-verify.png)
+
+## Analysis
+
+### Data explorer (recon)
+
+Indicators extracted automatically from captures — accounts, infrastructure, tracking
+codes — with pivot back to the pages they appeared on.
+
+![Data explorer](../assets/screenshot-recon.png)
+
+### Selectors
+
+String and regex patterns matched across all captures in the case.
+
+![Selectors](../assets/screenshot-selectors.png)
+
+### Notes
+
+Case and per-capture notes with source links.
+
+![Notes](../assets/screenshot-notes.png)
+
+### Tags
+
+Color-coded tags with per-case usage counts.
+
+![Tags](../assets/screenshot-tags.png)
+
+## Everything else
+
+### Command palette
+
+`Ctrl+K` — switch investigations or create a new one from anywhere.
+
+![Command palette](../assets/screenshot-command-palette.png)
+
+### Export dialog
+
+Choose what the evidence report includes.
+
+![Export dialog](../assets/screenshot-export-dialog.png)
+
+### Exported report
+
+Self-contained HTML report, verifiable without Birdbrain.
+
+![Exported report](../assets/screenshot-export.png)
+
+### Settings
+
+Capture preferences, storage, appearance, operator identity, database admin, and updates.
+
+![Settings](../assets/screenshot-settings.png)

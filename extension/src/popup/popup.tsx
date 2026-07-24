@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
-import { getStatus, getCases, activateCase, startSession, stopSession } from '@extension/utils/api'
+import { getStatus, getCases, activateCase, stopSession } from '@extension/utils/api'
 import './popup.css'
 
 interface CaseInfo {
@@ -178,14 +178,12 @@ function StatsGrid({
 function Footer({
   sessionActive,
   activeCase,
-  onStartCapture,
   onStopCapture,
   onManualCapture,
   capturing
 }: {
   sessionActive: boolean
   activeCase: { id: string; name: string } | null
-  onStartCapture: () => void
   onStopCapture: () => void
   onManualCapture: () => void
   capturing: boolean
@@ -193,7 +191,9 @@ function Footer({
   return (
     <footer className="p-4 mt-auto bg-surface border-t border-border">
       <div className="flex gap-2 items-center">
-        {sessionActive ? (
+        {/* HOTFIX: Start Capture removed while auto-capture is disabled; Stop remains so an
+            already-recording session can still be ended */}
+        {sessionActive && (
           <button
             onClick={onStopCapture}
             className="flex-1 h-10 flex items-center justify-center gap-2 rounded-md font-display font-bold text-xs active:scale-[0.98] transition-all bg-red-600 hover:bg-red-500 text-white"
@@ -202,25 +202,6 @@ function Footer({
               <rect x="6" y="6" width="12" height="12" rx="1" />
             </svg>
             Stop Capture
-          </button>
-        ) : (
-          <button
-            onClick={activeCase ? onStartCapture : undefined}
-            disabled={!activeCase}
-            className="flex-1 h-10 flex items-center justify-center gap-2 rounded-md font-display font-bold text-xs active:scale-[0.98] transition-all bg-accent hover:bg-accent-hover text-white disabled:opacity-40"
-          >
-            <svg
-              className="w-3 h-3"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="12" cy="12" r="10" />
-            </svg>
-            Start Capture
           </button>
         )}
 
@@ -420,12 +401,6 @@ function Popup(): React.JSX.Element {
     setActiveCase(result.case)
   }
 
-  async function handleStartCapture(): Promise<void> {
-    await startSession()
-    setSessionActive(true)
-    setCaptureCount(0)
-  }
-
   async function handleStopCapture(): Promise<void> {
     await stopSession()
     setSessionActive(false)
@@ -490,7 +465,6 @@ function Popup(): React.JSX.Element {
       <Footer
         sessionActive={sessionActive}
         activeCase={activeCase}
-        onStartCapture={handleStartCapture}
         onStopCapture={handleStopCapture}
         onManualCapture={handleManualCapture}
         capturing={capturing}

@@ -41,6 +41,7 @@ import * as archiveRefRepo from '@main/services/db/archiveRefRepo'
 import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
 import * as annotations from '@main/services/annotations'
 import { defaultCaptureStore } from '@main/services/captureStore'
+import { renderCapturePdf } from '@main/services/pdfExport'
 import { getThumbnail } from '@main/services/thumbnails'
 import * as settings from '@main/services/settings'
 import * as openrouter from '@main/services/openrouter'
@@ -182,6 +183,41 @@ export function registerIpcHandlers(deps: {
     writeFileSync(filePath, buffer)
     return filePath
   })
+
+  handle(IPC_CHANNELS.CAPTURES_DOWNLOAD_PDF, async (_, captureId: string): Promise<string | null> => {
+    const capture = captureRepo.getCapture(captureId)
+    if (!capture) return null
+    const ext = capture.format === 'mhtml' ? 'mhtml' : 'html'
+    const artifact = defaultCaptureStore.artifactPaths(capture.caseId, captureId, ext)
+    if (!existsSync(artifact.abs)) throw new IpcFailure(`Capture file (.${ext}) not found`)
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      defaultPath: `${capture.title || 'capture'}.pdf`,
+      filters: [{ name: 'PDF Document', extensions: ['pdf'] }]
+    })
+    if (canceled || !filePath) return null
+    const pdf = await renderCapturePdf(capture, artifact.abs)
+    const { writeFileSync } = await import('fs')
+    writeFileSync(filePath, pdf)
+    return filePath
+  })
+
+  handle(
+    IPC_CHANNELS.CAPTURES_DOWNLOAD_SCREENSHOT,
+    async (_, captureId: string): Promise<string | null> => {
+      const capture = captureRepo.getCapture(captureId)
+      if (!capture) return null
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        defaultPath: `${capture.title || 'capture'}.png`,
+        filters: [{ name: 'PNG Image', extensions: ['png'] }]
+      })
+      if (canceled || !filePath) return null
+      const buffer = defaultCaptureStore.readArtifact(capture.caseId, captureId, 'png')
+      if (!buffer) throw new IpcFailure('Screenshot (.png) not found')
+      const { writeFileSync } = await import('fs')
+      writeFileSync(filePath, buffer)
+      return filePath
+    }
+  )
 
   handle(IPC_CHANNELS.CAPTURES_OPEN_EXTERNAL, async (_, url: string) => {
     let parsed: URL

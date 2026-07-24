@@ -58,7 +58,7 @@ docs/                       # Local working notes — see docs/README.md for lay
 
 All renderer↔main communication uses typed IPC channels defined in `src/shared/ipc.ts`. Channels follow `domain:action` naming (e.g., `cases:create`, `selectors:create`). Event channels (main→renderer) use `event:` prefix.
 
-**Domains:** cases (5), captures (16), tags (9), search (1), settings (6), export (1), selectors (11), notes (7), updates (4), events (5).
+**Domains:** cases (5), captures (18), tags (9), search (1), settings (6), export (1), selectors (11), notes (7), updates (4), events (5).
 
 The preload script exposes these via `window.birdbrain` with typed invoke/on methods.
 

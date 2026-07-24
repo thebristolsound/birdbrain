@@ -82,11 +82,6 @@ export function CapturesRoute() {
     }
   }
 
-  async function handleDownload() {
-    if (!selectedCaptureId) return
-    await window.birdbrain.captures.download(selectedCaptureId)
-  }
-
   async function handleOpenExternal() {
     if (!selectedCapture) return
     await window.birdbrain.captures.openExternal(selectedCapture.url)
@@ -124,7 +119,6 @@ export function CapturesRoute() {
               capture={selectedCapture}
               caseId={caseId}
               onCollapse={toggleUserPref}
-              onDownload={handleDownload}
               onOpenExternal={handleOpenExternal}
               onDelete={() => setShowDeleteConfirm(true)}
               onOpenAddNote={() => setShowAddNote(true)}
@@ -143,7 +137,6 @@ export function CapturesRoute() {
             capture={selectedCapture}
             caseId={caseId}
             onCollapse={() => setForcedPanelOpen(false)}
-            onDownload={handleDownload}
             onOpenExternal={handleOpenExternal}
             onDelete={() => setShowDeleteConfirm(true)}
             onOpenAddNote={() => setShowAddNote(true)}

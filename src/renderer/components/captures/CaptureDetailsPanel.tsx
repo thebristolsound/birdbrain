@@ -4,7 +4,6 @@ import { motion } from 'motion/react'
 import {
   Star,
   ExternalLink,
-  Download,
   Trash2,
   Globe,
   Calendar,
@@ -44,7 +43,6 @@ interface Props {
   capture: Capture
   caseId: string
   onCollapse: () => void
-  onDownload: () => void
   onOpenExternal: () => void
   onDelete: () => void
   onOpenAddNote: () => void
@@ -66,7 +64,6 @@ export function CaptureDetailsPanel({
   capture,
   caseId,
   onCollapse,
-  onDownload,
   onOpenExternal,
   onDelete,
   onOpenAddNote
@@ -244,15 +241,6 @@ export function CaptureDetailsPanel({
             </span>
           </span>
           <div className="ml-auto flex items-center gap-0.5">
-            <button
-              onClick={onDownload}
-              title={`Download capture file (.${capture.format === 'mhtml' ? 'mhtml' : 'html'})`}
-              data-testid="capture-details-download-btn"
-              className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium text-accent hover:bg-accent-subtle"
-            >
-              <Download className="h-3.5 w-3.5" />
-              Download
-            </button>
             <div className="relative">
               <button
                 ref={menuAnchorRef}

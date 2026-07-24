@@ -58,7 +58,8 @@ import type {
   ArchiveRef,
   WaybackLookupResult,
   ArchiveInspectReport,
-  UpdateStatus
+  UpdateStatus,
+  DiagnosticsSnapshot
 } from '@shared/types'
 
 // Unwrap IpcResult from handlers that return structured results
@@ -264,6 +265,10 @@ const birdbrain = {
 
   app: {
     getVersion: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.APP_GET_VERSION)
+  },
+
+  diagnostics: {
+    get: (): Promise<DiagnosticsSnapshot> => ipcRenderer.invoke(IPC_CHANNELS.DIAGNOSTICS_GET)
   },
 
   updates: {

@@ -46,7 +46,7 @@ The everyday tooling sits on top: cases, search, tags, notes, screenshot annotat
 
 ## Exactly what leaves your machine
 
-For your threat model, this is the section that matters. Every outbound connection, what it carries, and how to control it:
+For your threat model, this is the section that matters. Every outbound connection in the default capture-and-verify workflow, what it carries, and how to control it:
 
 | Connection | What is sent | When | Your control |
 |---|---|---|---|
@@ -54,6 +54,8 @@ For your threat model, this is the section that matters. Every outbound connecti
 | The captured site itself | A follow-up TLS connection to record the site's current certificate as corroboration | Automatically at capture time | Not currently toggleable; see the network-identity warning below |
 | Wayback Machine (archive.org) | The URL you ask it to look up or pin | Only when you explicitly click | Never click it for sensitive targets |
 | GitHub | Ordinary release-check traffic | Periodic update checks | Disable automatic update checks in settings |
+
+Two opt-in features sit outside that table: configuring an AI-analysis API key sends captured text to the provider you choose, and background recapture first downloads public cookie-banner filter lists. Leave both off if either disclosure matters to you; the [security policy](https://github.com/thebristolsound/birdbrain/blob/main/SECURITY.md) keeps the authoritative egress list.
 
 Read that table with your adversary in mind. Nothing in it sends captured content anywhere by default. But the timestamp authority learns that *someone at your IP is capturing evidence at these times*, and the TLS corroboration step means your machine contacts the target site a second time, outside your browser.
 

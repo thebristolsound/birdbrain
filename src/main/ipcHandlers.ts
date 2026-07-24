@@ -63,6 +63,7 @@ import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import type { RecaptureService } from '@main/services/recapture'
 import type { UpdaterService } from '@main/services/updater'
 import { handle, IpcFailure } from '@main/ipcWrap'
+import { diagnosticsService } from '@main/services/diagnostics'
 import type {
   BirdbrainSettings,
   ExportOptions,
@@ -603,6 +604,11 @@ export function registerIpcHandlers(deps: {
 
   // App
   ipcMain.handle(IPC_CHANNELS.APP_GET_VERSION, () => app.getVersion())
+
+  // Diagnostics: start the always-on event-loop sampler with handler
+  // registration (idempotent) so stall history predates opening the panel.
+  diagnosticsService.start()
+  ipcMain.handle(IPC_CHANNELS.DIAGNOSTICS_GET, () => diagnosticsService.snapshot())
 
   // Updates (update delivery)
   ipcMain.handle(IPC_CHANNELS.UPDATES_GET_STATUS, () => updaterService.getStatus())

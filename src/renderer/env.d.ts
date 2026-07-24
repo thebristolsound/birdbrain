@@ -27,7 +27,8 @@ import type {
   ArchiveRef,
   WaybackLookupResult,
   ArchiveInspectReport,
-  UpdateStatus
+  UpdateStatus,
+  DiagnosticsSnapshot
 } from '@shared/types'
 import type {
   CreateCaseParams,
@@ -166,6 +167,9 @@ interface BirdbrainAPI {
   }
   app: {
     getVersion(): Promise<string>
+  }
+  diagnostics: {
+    get(): Promise<DiagnosticsSnapshot>
   }
   updates: {
     getStatus(): Promise<UpdateStatus>

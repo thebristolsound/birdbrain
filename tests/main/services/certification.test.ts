@@ -130,7 +130,7 @@ describe('certification', () => {
     expect(html).toContain('Birdbrain')
     expect(html).toContain('SHA-256')
     expect(html).toContain('https://tsa.example/timestamp')
-    expect(html).toContain('Birdbrain installation ID')
+    expect(html).toContain('Installation identifier')
   })
 
   it('includes the lawyer-TBD placeholder marker', async () => {
@@ -190,7 +190,9 @@ describe('certification', () => {
     expect(html).not.toMatch(/All \d+ captures? in this export carry an/i)
     // Honest scoped assertion + explicit no-trusted-time statement.
     expect(html).toMatch(/asserted\s+<strong>only<\/strong>/i)
-    expect(html).toMatch(/no trusted timestamp is asserted/i)
+    // Whitespace-tolerant: the sentence wraps across source lines inside the
+    // template literal, so the emitted HTML carries newlines mid-phrase.
+    expect(html).toMatch(/no\s+trusted\s+timestamp\s+is\s+asserted/i)
 
     // The stamped page appears in the timestamped table; the pending page does not.
     expect(html).toContain('Timestamped captures')

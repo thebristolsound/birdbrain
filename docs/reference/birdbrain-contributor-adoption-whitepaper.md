@@ -1,6 +1,6 @@
 # Birdbrain: A Contributor and Adoption Whitepaper
 
-> **Birdbrain whitepaper series.** Three companion papers cover this project. This paper covers product fit, onboarding, contribution areas, and governance; start here to adopt the tool or contribute. The [architecture whitepaper](birdbrain-architecture-whitepaper.md) is the formal architecture and assurance analysis: trust boundaries, evidence claims and their limits, and deployment posture; start there for security review. The [technical whitepaper](birdbrain-technical-whitepaper.md) is the code-grounded implementation companion: exact mechanisms with file references and gaps observed during code review. All three describe version `1.0.1-beta.15`.
+> **Birdbrain whitepaper series.** Four companion papers cover this project. This paper covers product fit, onboarding, contribution areas, and governance; start here to adopt the tool or contribute. The [architecture whitepaper](birdbrain-architecture-whitepaper.md) is the formal architecture and assurance analysis: trust boundaries, evidence claims and their limits, and deployment posture; start there for security review. The [technical whitepaper](birdbrain-technical-whitepaper.md) is the code-grounded implementation companion: exact mechanisms with file references and gaps observed during code review. The [privacy-focused adoption guide](birdbrain-privacy-adoption-whitepaper.md) addresses activists and independent researchers evaluating Birdbrain for small privacy-focused groups. All four describe version `1.0.1-beta.15`.
 
 ## Executive Summary
 

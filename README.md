@@ -51,7 +51,7 @@ Birdbrain extracts indicators from each capture: IoCs (IPs, domains, hashes, CVE
 
 ### Verify + Export
 
-Every capture is fingerprinted with SHA-256, timestamped, and chained to the previous capture in a per-case manifest. Verify the chain in-app, or export a self-contained HTML report with the manifest included. Reports are readable in any browser and verifiable without Birdbrain installed.
+Every capture is fingerprinted with SHA-256, timestamped, and chained to the previous capture in a per-case manifest. Verify the chain in-app, or export a self-contained HTML report with the manifest included. Reports are readable in any browser and verifiable without Birdbrain installed. See the [threat model](docs/reference/threat-model.md) for what these controls do — and do not — defend against.
 
 <!-- Screenshots section: drop assets into docs/assets/ and uncomment, including the heading. One shot per feature claim:
 
@@ -118,7 +118,7 @@ Birdbrain is beta software. Current limits:
 
 ## Contributing
 
-Open an [issue](https://github.com/thebristolsound/birdbrain/issues) for bug reports and feature requests. For non-trivial PRs, open an issue first to discuss the approach.
+Open an [issue](https://github.com/thebristolsound/birdbrain/issues) for bug reports and feature requests. For non-trivial PRs, open an issue first to discuss the approach. To report a security issue, see [SECURITY.md](SECURITY.md).
 
 ## Acknowledgements
 

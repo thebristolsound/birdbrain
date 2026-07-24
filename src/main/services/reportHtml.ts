@@ -47,9 +47,34 @@ import type {
 // ---------------------------------------------------------------------------
 
 /**
+ * What the export package actually contains for one capture, as opposed to what
+ * the capture record suggests it should. The renderer must never derive these
+ * from proxies — a stored screenshotHash does not mean a screenshot was
+ * packaged, and a capture id does not determine the timestamp token's filename
+ * when duplicates share a content hash. The caller computes these from the same
+ * manifest and filesystem snapshot the package is built from, so report.html
+ * cannot cite a file the package does not contain.
+ */
+export interface PackagedArtifacts {
+  /** `pages/<id>.mhtml`, or null when the archive could not be read. */
+  pageArchive: string | null
+  /** `screenshots/<sha256>.png`, or null when screenshots were not packaged. */
+  screenshot: string | null
+  /** `timestamps/<id>.tst`, or null when no token is packaged for this capture. */
+  timestampToken: string | null
+  /**
+   * True when the image reproduced in the report differs from the packaged
+   * original because annotations were burned into its pixels. Derived from
+   * whether burning actually changed the bytes, not from the presence of pins —
+   * shapes (redactions, highlights) burn without producing any pin.
+   */
+  imageAnnotated: boolean
+}
+
+/**
  * Everything the report renders. This is the existing ExportData shape plus
- * three fields the old renderer did not have access to: caseId, manifestHead
- * and toolVersion. See the export.ts call-site diff in the handoff notes.
+ * fields the old renderer did not have access to: caseId, manifestHead,
+ * toolVersion and packagedPaths.
  */
 export interface ReportData {
   caseId: string
@@ -73,6 +98,12 @@ export interface ReportData {
   toolVersion: string
   /** Manifest state this report was generated against; null when unreadable. */
   manifestHead: { index: number; entryHash: string } | null
+  /**
+   * Per-capture packaged artefact paths, keyed by capture id. Empty for a
+   * standalone HTML export, which produces no package — the report then cites no
+   * file paths at all rather than pointing at a package that was never built.
+   */
+  packagedPaths: Map<string, PackagedArtifacts>
 }
 
 export type ReportModuleId =
@@ -136,19 +167,43 @@ interface ExhibitView {
   screenshot?: string
   pins: AnnotationPin[]
   annotationsBurned: boolean
-  /** True when the stored page archive could not be located for this capture. */
+  /** Packaged artefact paths for this capture; all null for a non-package export. */
+  packaged: PackagedArtifacts
+  /**
+   * True when the stored page archive is not in the package. Read from the
+   * packaged path rather than from verification status, because an export that
+   * runs no verification still knows perfectly well whether it packaged the file.
+   */
   pageArchiveMissing: boolean
+}
+
+/**
+ * True when this export produces an evidence package alongside the report. Only
+ * then may the document refer to enclosed companion files; a standalone HTML
+ * export bundles nothing, and sending a reviewer looking for files that were
+ * never generated undermines the rest of the document.
+ */
+function isPackagedExport(options: ExportOptions): boolean {
+  return options.format === 'zip'
+}
+
+const NO_ARTIFACTS: PackagedArtifacts = {
+  pageArchive: null,
+  screenshot: null,
+  timestampToken: null,
+  imageAnnotated: false
 }
 
 function buildExhibits(data: ReportData, options: ExportOptions): ExhibitView[] {
   const byCaptureId = new Map(data.verifications.map((v) => [v.captureId, v]))
   // Captures arrive newest-first from captureRepo; exhibits read chronologically.
   const ordered = [...data.captures].sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+  const isPackage = options.format === 'zip'
 
   return ordered.map((capture, index) => {
     const verification = byCaptureId.get(capture.id)
     const basis: TrustedTime = verification?.trustedTime ?? capture.trustedTimeStatus ?? 'none'
-    const pins = data.pins.get(capture.id) ?? []
+    const packaged = data.packagedPaths.get(capture.id) ?? NO_ARTIFACTS
     return {
       number: index + 1,
       capture,
@@ -156,9 +211,12 @@ function buildExhibits(data: ReportData, options: ExportOptions): ExhibitView[] 
       integrity: integrityView(verification, capture),
       time: { basis, ...trustedTimeView(basis, verification) },
       screenshot: data.screenshots.get(capture.id),
-      pins,
-      annotationsBurned: options.include.annotations === 'burned' && pins.length > 0,
-      pageArchiveMissing: verification?.status === 'missing'
+      pins: data.pins.get(capture.id) ?? [],
+      annotationsBurned: packaged.imageAnnotated,
+      packaged,
+      // Only a package can be missing a packaged file. A standalone HTML export
+      // bundles nothing, so absence there is not a gap to report.
+      pageArchiveMissing: isPackage && packaged.pageArchive === null
     }
   })
 }
@@ -345,7 +403,7 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   contents: {
     id: 'contents',
     title: 'Contents',
-    render: ({ included, exhibits }) => {
+    render: ({ included, exhibits, options }) => {
       const listed = included.filter((id) => id !== 'cover' && id !== 'contents')
       if (listed.length === 0) return null
       const rows = listed
@@ -374,11 +432,17 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   <p class="fine">Page numbers are supplied by the printing engine rather than written into this
   file, so that a printed copy can never disagree with its own index. Sections and exhibits are
   listed in document order.</p>
-  <p class="fine">Companion files in this evidence package: <code>evidence.json</code>,
+  ${
+    isPackagedExport(options)
+      ? `<p class="fine">Companion files in this evidence package: <code>evidence.json</code>,
   <code>manifest.jsonl</code>, <code>certification.html</code>,
   <code>signing-public-key.pem</code>, <code>tsa-ca-chain.pem</code>, <code>VERIFY.md</code>,
   and the <code>pages/</code>, <code>screenshots/</code> and <code>timestamps/</code>
-  directories.</p>
+  directories.</p>`
+      : `<p class="fine">This is a standalone report, not an evidence package. The stored page
+  archives, timestamp tokens, signing key and machine-readable record described in the following
+  sections are not enclosed with it; export the case as an evidence package to obtain them.</p>`
+  }
 </section>`
     }
   },
@@ -428,7 +492,7 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   methodology: {
     id: 'methodology',
     title: 'Method of capture and preservation',
-    render: () => `
+    render: ({ options }) => `
 <section class="sheet">
   <h2>Method of capture and preservation</h2>
   <div class="rule-medium"></div>
@@ -442,22 +506,27 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   breaks the chain at that point and is detectable by recomputation.</p>
   <p>Where trusted time is enabled, the capture content digest — not the page content — was
   submitted to an RFC 3161 Time-Stamping Authority, and the returned token was retained beside
-  the capture and bundled under <code>timestamps/</code>. A token asserts that the digest existed
+  the capture${
+    isPackagedExport(options) ? ' and bundled under <code>timestamps/</code>' : ''
+  }. A token asserts that the digest existed
   at or before the time the authority states; it says nothing about what the page contained or
   who published it.</p>
-  <p>Screenshots are stored content-addressed: the file name of each image in
-  <code>screenshots/</code> is its own SHA-256 digest, so an image reproduced in an exhibit can be
-  matched to the packaged file by name alone. Where annotations were burned into an exhibit image
-  for legibility, the exhibit says so and the unannotated original remains the packaged,
-  digest-anchored copy.</p>
+  <p>Screenshots are stored content-addressed: the file name of each image is its own SHA-256
+  digest${
+    isPackagedExport(options)
+      ? ', so an image reproduced in an exhibit can be matched to the packaged file by name alone'
+      : ''
+  }. Where annotations were burned into an exhibit image for legibility, the exhibit says so and
+  the unannotated original remains the stored, digest-anchored copy.</p>
 </section>`
   },
 
   custody: {
     id: 'custody',
     title: 'Chain of custody and manifest reference',
-    render: ({ data, exhibits }) => {
+    render: ({ data, exhibits, options }) => {
       const verifiedCount = exhibits.filter((e) => e.integrity.label === 'Verified').length
+      const packaged = isPackagedExport(options)
       return `
 <section class="sheet">
   <h2>Chain of custody and manifest reference</h2>
@@ -485,7 +554,9 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     )}
   </div>
 
-  <div class="note">
+  ${
+    packaged
+      ? `<div class="note">
     <p class="note-title">Disclosed ordering artefact</p>
     <p>The export event is written to the live case manifest after this package is sealed, so the
     bundled copy of <code>manifest.jsonl</code> ends one entry earlier than the live case
@@ -499,7 +570,15 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     hashed artefacts, so printing the hash here could not be self-consistent. It is recorded in
     the export entry of the live case manifest and can be recomputed from the artefact list in
     <code>evidence.json</code>.</p>
-  </div>
+  </div>`
+      : `<div class="note">
+    <p class="note-title">Nothing is enclosed with this report</p>
+    <p>This document was exported on its own rather than as an evidence package. The manifest and
+    signing key named above are held by the tool; they are not enclosed here, and neither are the
+    stored page archives or timestamp tokens. The values above therefore identify the state this
+    report describes, but a reader holding only this file cannot reconcile them independently.</p>
+  </div>`
+  }
 </section>`
     }
   },
@@ -589,13 +668,25 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   verification: {
     id: 'verification',
     title: 'Independent verification instructions',
-    render: () => `
+    render: ({ options }) => `
 <section class="sheet">
   <h2>Independent verification instructions</h2>
   <div class="rule-medium"></div>
   <p>Nothing in this report needs to be taken on trust. A reviewer holding the evidence package
   can reproduce every integrity claim it makes using standard tools. The full procedure,
   including exact commands, is in <code>VERIFY.md</code>.</p>
+  ${
+    isPackagedExport(options)
+      ? ''
+      : `<div class="alert">
+    <p class="alert-title">These steps require the evidence package</p>
+    <p>This document was exported on its own. The files named below — the stored page archives,
+    the manifest, the signing key, the timestamp tokens and <code>evidence.json</code> — are not
+    enclosed with it, so none of the steps can be carried out against this file alone. They are
+    reproduced here so that a reader knows exactly what an independent reviewer would be able to
+    check, and what to request in order to check it.</p>
+  </div>`
+  }
   <ol class="steps rule-top">
     <li><strong>Rehash each stored page.</strong> Compute the SHA-256 of each file in
     <code>pages/</code> and compare it to that exhibit's digest in <code>evidence.json</code> and
@@ -673,16 +764,20 @@ function renderExhibit(e: ExhibitView, total: number): string {
   add('Consent overlay', c.consentSuppression ? `suppressed (${c.consentSuppression})` : undefined)
   add('Supersedes', c.supersedesCaptureId)
 
+  // Every path here comes from what the package actually contains. Nothing is
+  // inferred from the capture record, so the report cannot send a reviewer
+  // looking for a file that was never written.
   const artefacts: Array<[string, string]> = []
-  artefacts.push([
-    'Page archive',
-    e.pageArchiveMissing ? 'not available' : `pages/${esc(c.id)}.mhtml`
-  ])
-  if (e.time.basis === 'rfc3161') {
-    artefacts.push(['Timestamp token', `timestamps/${esc(c.id)}.tst`])
+  if (e.packaged.pageArchive) {
+    artefacts.push(['Page archive', esc(e.packaged.pageArchive)])
+  } else if (e.pageArchiveMissing) {
+    artefacts.push(['Page archive', 'not available'])
   }
-  if (c.screenshotHash) {
-    artefacts.push(['Screenshot', `screenshots/${esc(c.screenshotHash)}.png`])
+  if (e.packaged.timestampToken) {
+    artefacts.push(['Timestamp token', esc(e.packaged.timestampToken)])
+  }
+  if (e.packaged.screenshot) {
+    artefacts.push(['Screenshot', esc(e.packaged.screenshot)])
   }
   if (c.textHash) {
     artefacts.push(['Text digest', `${esc(c.textHash.slice(0, 16))}… (first 16 of 64)`])
@@ -695,12 +790,8 @@ function renderExhibit(e: ExhibitView, total: number): string {
       <p class="note-title">Corroboration only — not bound to the capture</p>
       <p>${
         'error' in tls
-          ? `A TLS certificate chain could not be retrieved from the origin at ${esc(
-              isoUtc(tls.refetchedAt)
-            )}: ${esc(tls.error)}.`
-          : `A TLS certificate chain was retrieved from the origin at ${esc(
-              isoUtc(tls.refetchedAt)
-            )}, after this capture was stored. It records the certificate served at that
+          ? `A TLS certificate chain could not be retrieved from the origin at ${isoUtc(tls.refetchedAt)}: ${esc(tls.error)}.`
+          : `A TLS certificate chain was retrieved from the origin at ${isoUtc(tls.refetchedAt)}, after this capture was stored. It records the certificate served at that
             retrieval time, not at capture time. The interval between the two is stated so that a
             reviewer can weigh it.`
       }</p></div>`
@@ -726,14 +817,16 @@ function renderExhibit(e: ExhibitView, total: number): string {
       captured${e.annotationsBurned ? ', with operator annotations burned in for legibility' : ''}.
       ${
         e.annotationsBurned
-          ? 'Because the annotations are burned into the pixels, this image intentionally differs from the unannotated, digest-anchored copy in the package.'
-          : c.screenshotHash
-            ? `Packaged copy: <code>screenshots/${esc(c.screenshotHash)}.png</code>.`
+          ? 'Because the annotations are burned into the pixels, this image intentionally differs from the unannotated, digest-anchored copy in the package. Hashing the image reproduced here will not reproduce the digest below, and that mismatch is expected rather than evidence of alteration.'
+          : e.packaged.screenshot
+            ? `Packaged copy: <code>${esc(e.packaged.screenshot)}</code>.`
             : ''
       }</span>
       ${
         c.screenshotHash
-          ? `<span class="cap-meta mono">image SHA-256 ${esc(c.screenshotHash)}</span>`
+          ? `<span class="cap-meta mono">${
+              e.annotationsBurned ? 'unannotated original SHA-256' : 'image SHA-256'
+            } ${esc(c.screenshotHash)}</span>`
           : `<span class="cap-meta mono">image digest not recorded for this capture</span>`
       }
     </figcaption>
@@ -856,7 +949,7 @@ export function buildHtmlReport(
 ${body}
 <footer class="running">
   <span>Birdbrain ${esc(data.toolVersion)} · report.html</span>
-  <span class="mono">${esc(data.caseName)} · ${esc(isoUtc(data.exportTimestamp))}</span>
+  <span class="mono">${esc(data.caseName)} · ${isoUtc(data.exportTimestamp)}</span>
 </footer>
 </body>
 </html>`
@@ -916,6 +1009,15 @@ strong, .strong { font-weight: 650; color: var(--ink); }
 .sheet { break-after: page; page-break-after: always; }
 .sheet:last-of-type { break-after: auto; page-break-after: auto; }
 .exhibit { break-inside: auto; }
+
+/* On screen the page breaks are invisible, so sections would otherwise run
+   together with nothing between them. Separate them with a rule and space, and
+   give the document room to breathe at the end — print keeps its own geometry. */
+@media screen {
+  .sheet + .sheet { border-top: 1px solid var(--rule); margin-top: 34pt; padding-top: 30pt; }
+  body { padding-bottom: 3rem; }
+  .running { margin-top: 34pt; }
+}
 
 /* Cover ----------------------------------------------------------------- */
 .wordmark { display: flex; justify-content: space-between; align-items: baseline; }
@@ -1037,6 +1139,30 @@ td.num, th.num { width: 22pt; font-weight: 700; color: var(--ink); }
 @media print {
   .running { position: fixed; bottom: 0; left: 0; right: 0; margin: 0; padding: 5pt 0; background: #fff; }
 }
+
+/* Narrow screens ---------------------------------------------------------
+   Every multi-column grid above is sized in inches for paper. Below roughly a
+   sheet's text width those columns stop working — a 2.3in rail leaves too
+   little for the plate, and 64-character digests shred a half-width field. Fold
+   them to a single column on screen only; @page and print layout are untouched,
+   so this can never change what comes out of a printer. */
+@media screen and (max-width: 680px) {
+  body { padding: 1.25rem 1rem 3rem; font-size: 10.5pt; }
+  .field-grid, .plate-grid { grid-template-columns: 1fr; }
+  .plate-grid { gap: 0; }
+  .rail { border-top: none; }
+  .plate-main { margin-top: 16pt; }
+  .scope-row, .legend-row, .steps > li { grid-template-columns: 1fr; gap: 4pt; }
+  .sig-grid { grid-template-columns: 1fr; gap: 24pt; }
+  .tally { gap: 14pt; }
+  .case-name { font-size: 20pt; }
+  .exhibit-title { font-size: 14pt; }
+  /* The index table cannot fold, so let it scroll inside its own box rather
+     than forcing the whole document to scroll sideways. */
+  table.index { display: block; overflow-x: auto; white-space: nowrap; }
+  table.index td, table.index th { white-space: normal; }
+  .running { flex-direction: column; gap: 3pt; }
+}
 `
 
 /**
@@ -1097,17 +1223,24 @@ function hostOf(url: string): string {
   }
 }
 
-/** ISO 8601 UTC, seconds precision — the canonical form for every timestamp. */
+/**
+ * ISO 8601 UTC, seconds precision — the canonical form for every timestamp.
+ *
+ * Both this and local() return HTML-safe output, including on the unparseable
+ * path: capture timestamps originate from an upload payload, so an unparseable
+ * value is attacker-controlled text that most call sites interpolate without
+ * escaping. Callers must therefore NOT wrap these in esc().
+ */
 function isoUtc(iso: string): string {
   const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
+  if (Number.isNaN(d.getTime())) return esc(iso)
   return d.toISOString().replace(/\.\d{3}Z$/, 'Z')
 }
 
 /** Operator-local rendering, shown only alongside the UTC form, never alone. */
 function local(iso: string): string {
   const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
+  if (Number.isNaN(d.getTime())) return esc(iso)
   return d.toLocaleString()
 }
 

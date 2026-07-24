@@ -158,7 +158,7 @@ function renderCertificationHtml(fields: CertificationFields): string {
   const stampedRows = stamped
     .map((c) => {
       const who = c.tsaName ? esc(c.tsaName) : 'RFC 3161 TSA'
-      const when = c.stampedAt ? esc(isoUtc(c.stampedAt)) : ''
+      const when = c.stampedAt ? isoUtc(c.stampedAt) : ''
       return `<tr>
         <td><span class="ex-title">${esc(c.title)}</span>
         <span class="ex-url mono">${esc(c.url)}</span></td>
@@ -265,9 +265,7 @@ function renderCertificationHtml(fields: CertificationFields): string {
         certifier.installationId
       )}</span></div></div>
     <div class="field wide"><div class="field-label">Export generated</div>
-      <div class="field-value"><span class="mono">${esc(
-        isoUtc(fields.exportTimestamp)
-      )}</span></div></div>
+      <div class="field-value"><span class="mono">${isoUtc(fields.exportTimestamp)}</span></div></div>
   </div>
 
   <div class="alert">
@@ -289,7 +287,7 @@ function renderCertificationHtml(fields: CertificationFields): string {
 
 <footer class="running">
   <span>${esc(fields.toolName)} ${esc(fields.toolVersion)} · certification.html</span>
-  <span class="mono">${esc(fields.caseName)} · ${esc(isoUtc(fields.exportTimestamp))}</span>
+  <span class="mono">${esc(fields.caseName)} · ${isoUtc(fields.exportTimestamp)}</span>
 </footer>
 </body>
 </html>`
@@ -300,9 +298,14 @@ function certifierLine(certifier: CertificationFields['certifier']): string {
   return tail ? `${certifier.operatorName} — ${tail}` : certifier.operatorName
 }
 
+/**
+ * Returns HTML-safe output on both paths. Capture timestamps come from an
+ * upload payload, so an unparseable value is attacker-controlled text that call
+ * sites interpolate directly. Callers must therefore NOT wrap this in esc().
+ */
 function isoUtc(iso: string): string {
   const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
+  if (Number.isNaN(d.getTime())) return esc(iso)
   return d.toISOString().replace(/\.\d{3}Z$/, 'Z')
 }
 

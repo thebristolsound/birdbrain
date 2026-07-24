@@ -19,16 +19,9 @@ import {
 } from '@main/services/manifest'
 import { canonicalStringify } from '@shared/verify'
 import { ingestMhtmlCapture } from '@main/services/captureLifecycle'
-import {
-  createCaptureLifecycle,
-  type CaptureLifecycle
-} from '@main/services/captureLifecycle'
+import { createCaptureLifecycle, type CaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
-import {
-  verifyCaptures,
-  generateReport,
-  getExportPreflight
-} from '@main/services/export'
+import { verifyCaptures, generateReport, getExportPreflight } from '@main/services/export'
 import { saveAnnotations } from '@main/services/annotations'
 import { initSettings, updateSettings } from '@main/services/settings'
 import {
@@ -714,6 +707,211 @@ describe('export', () => {
     }
     expect(pixelAt(40, 40)).toEqual([0, 0, 0])
     expect(pixelAt(80, 80)).toEqual([255, 255, 255])
+  })
+
+  // --- report.html must never cite a file the package does not contain ---
+
+  it('reports a missing page archive as absent even when no verification runs', async () => {
+    const { capture } = await ingest(caseId, '<html>gone</html>', 'https://example.com/gone', 'G')
+    // Delete the stored archive after ingest, then export without an audit trail
+    // so no verification result exists to infer absence from.
+    rmSync(defaultCaptureStore.artifactPaths(caseId, capture.id, 'mhtml').abs)
+
+    const outputPath = join(tempDir, 'missing-archive.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const entries = readStoredZipEntries(outputPath)
+    const html = entries.get('report.html')!.toString('utf-8')
+
+    expect(entries.has(`pages/${capture.id}.mhtml`)).toBe(false)
+    expect(html).not.toContain(`pages/${capture.id}.mhtml`)
+    expect(html).toContain('Stored page archive not available')
+  })
+
+  it('cites no screenshot path when screenshots are excluded from the package', async () => {
+    const { capture } = await ingest(caseId, '<html>s</html>', 'https://example.com/s', 'S')
+    ensureCaseDir(caseId)
+    const png = await sharp({
+      create: { width: 10, height: 10, channels: 4, background: { r: 1, g: 1, b: 1, alpha: 1 } }
+    })
+      .png()
+      .toBuffer()
+    writeFileSync(defaultCaptureStore.artifactPaths(caseId, capture.id, 'png').abs, png)
+
+    const outputPath = join(tempDir, 'no-screenshots.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const entries = readStoredZipEntries(outputPath)
+    const html = entries.get('report.html')!.toString('utf-8')
+
+    expect([...entries.keys()].some((k) => k.startsWith('screenshots/'))).toBe(false)
+    // The methodology section still explains content-addressing in prose; what
+    // must not appear is a citation of a specific screenshot file.
+    expect(html).not.toMatch(/screenshots\/[0-9a-f]{64}\.png/)
+  })
+
+  it('names the shared timestamp token path for captures with a duplicate content hash', async () => {
+    const payload = '<html>dupe</html>'
+    const a = await ingest(caseId, payload, 'https://example.com/a', 'A')
+    const b = await ingest(caseId, payload, 'https://example.com/b', 'B')
+    expect(a.capture.hash).toBe(b.capture.hash)
+
+    const token = readFileSync(join(process.cwd(), 'tests/fixtures/timestamp/digicert-token.der'))
+    appendManifestEntry(join(tempDir, 'captures', caseId), {
+      type: 'timestamp',
+      caseId,
+      captureContentHash: a.capture.hash,
+      timestamp: '2026-04-05T12:01:00.000Z',
+      tsaToken: token.toString('base64'),
+      operatorId: 'op',
+      operatorName: 'Test Operator',
+      toolVersion: '0.1.0'
+    })
+
+    const outputPath = join(tempDir, 'dupe-token.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const entries = readStoredZipEntries(outputPath)
+    const html = entries.get('report.html')!.toString('utf-8')
+    const tokenPaths = [...entries.keys()].filter((k) => k.startsWith('timestamps/'))
+
+    // One token file is packaged for the shared hash; both exhibits must cite it
+    // rather than each naming a file after its own capture id.
+    expect(tokenPaths).toHaveLength(1)
+    for (const cited of html.match(/timestamps\/[\w-]+\.tst/g) ?? []) {
+      expect(tokenPaths).toContain(cited)
+    }
+  })
+
+  it('does not describe companion files for a standalone HTML export', async () => {
+    await ingest(caseId, '<html>standalone</html>')
+    const outputPath = join(tempDir, 'standalone.html')
+    await generateReport(
+      caseId,
+      {
+        format: 'html',
+        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const html = readFileSync(outputPath, 'utf-8')
+    expect(html).toContain('This is a standalone report, not an evidence package')
+    expect(html).toContain('These steps require the evidence package')
+    expect(html).not.toContain('Companion files in this evidence package')
+    // The verification steps still name pages/ generically — deliberately, so a
+    // reader knows what to request. What must not appear is a per-exhibit
+    // citation of a file this export did not write.
+    expect(html).not.toMatch(/pages\/[0-9a-f-]{36}\.mhtml/)
+    expect(html).not.toMatch(/timestamps\/[0-9a-f-]{36}\.tst/)
+  })
+
+  it('discloses burned annotations when shapes exist but no pins do', async () => {
+    const c = createCase({ name: 'Shapes only' })
+    ensureCaseDir(c.id)
+    const white = await sharp({
+      create: {
+        width: 50,
+        height: 50,
+        channels: 4,
+        background: { r: 255, g: 255, b: 255, alpha: 1 }
+      }
+    })
+      .png()
+      .toBuffer()
+    const cap = insertCapture({
+      caseId: c.id,
+      url: 'https://example.com',
+      title: 'X',
+      hash: 'h',
+      screenshotHash: createHash('sha256').update(white).digest('hex'),
+      timestamp: new Date().toISOString()
+    })
+    writeFileSync(defaultCaptureStore.artifactPaths(c.id, cap.id, 'png').abs, white)
+
+    // A redaction burns pixels without producing any pin — the case where
+    // inferring "annotated" from pins.length silently omits the disclosure.
+    saveAnnotations({
+      captureId: cap.id,
+      shapes: [{ kind: 'redact', id: 'r', x: 10, y: 10, w: 20, h: 20, mode: 'solid' }],
+      imageWidth: 50,
+      imageHeight: 50
+    })
+
+    const outputPath = join(tempDir, 'shapes-only.html')
+    await generateReport(
+      c.id,
+      {
+        format: 'html',
+        include: { captures: true, screenshots: true, auditTrail: false, annotations: 'burned' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const html = readFileSync(outputPath, 'utf-8')
+    expect(html).toContain('annotations burned in for legibility')
+    // The digest belongs to the unannotated original, not to the pixels shown,
+    // and the caption must say so rather than inviting a false mismatch.
+    expect(html).toContain('unannotated original SHA-256')
+    expect(html).toContain('that mismatch is expected rather than evidence of alteration')
+  })
+
+  it('escapes an unparseable capture timestamp instead of emitting it as markup', async () => {
+    const c = createCase({ name: 'Bad clock' })
+    insertCapture({
+      caseId: c.id,
+      url: 'https://example.com',
+      title: 'X',
+      hash: 'h',
+      timestamp: '<img src=x onerror=alert(1)>'
+    })
+
+    const outputPath = join(tempDir, 'bad-timestamp.html')
+    await generateReport(
+      c.id,
+      {
+        format: 'html',
+        include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const html = readFileSync(outputPath, 'utf-8')
+    expect(html).not.toContain('<img src=x')
+    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;')
   })
 
   // --- Operator identity gating and report rendering ---

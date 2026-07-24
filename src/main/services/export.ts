@@ -20,14 +20,33 @@ import { getTsaTrustBundle } from '@main/services/tsaTrust'
 import { canonicalStringify, extractTimestampTokenCertificatesPem } from '@shared/verify'
 import { buildCertification, resolveToolVersion } from '@main/services/certification'
 import { buildHtmlReport } from '@main/services/reportHtml'
-import type { ReportData } from '@main/services/reportHtml'
+import type { PackagedArtifacts, ReportData } from '@main/services/reportHtml'
 import { VERIFY_RUNBOOK } from '@main/services/verifyRunbook'
 import { MANIFEST_FILENAME } from '@shared/constants'
-import type { ExportOptions, ExportPreflight, HashVerification, TrustedTime } from '@shared/types'
+import type {
+  Capture,
+  ExportOptions,
+  ExportPreflight,
+  HashVerification,
+  TrustedTime
+} from '@shared/types'
 
 // The report renderer owns this shape. Aliasing rather than restating it keeps
 // the two from drifting apart, since every field here exists to be rendered.
 type ExportData = ReportData
+
+/** One read of the case manifest, shared by the report and the package. */
+interface ManifestSnapshot {
+  jsonl: Buffer
+  entries: Record<string, unknown>[]
+  head: { index: number; entryHash: string } | null
+}
+
+/** evidence.json keeps this as a list; a capture has at most one token path. */
+function packagedTimestampTokenPaths(byHash: Map<string, string>, capture: Capture): string[] {
+  const path = byHash.get(capture.hash)
+  return path ? [path] : []
+}
 
 interface ManifestTimestampEntry {
   [key: string]: unknown
@@ -121,7 +140,10 @@ export async function generateReport(
     tsaUrl: settings.tsaUrl,
     preflight: getExportPreflight(caseId),
     toolVersion: resolveToolVersion(),
-    manifestHead: readManifestHead(caseId)
+    // Filled in below, once the awaited stages are done and the manifest can be
+    // snapshotted at the same instant the package is built from.
+    manifestHead: null,
+    packagedPaths: new Map()
   }
 
   if (options.include.auditTrail) {
@@ -132,6 +154,11 @@ export async function generateReport(
       onProgress?.(`Verifying capture ${done} of ${total}...`, 10 + Math.round((done / total) * 40))
     )
   }
+
+  // captureId -> sha256 of the raw on-disk screenshot, and whether the copy
+  // reproduced in the report had annotations burned into its pixels.
+  const screenshotDigests = new Map<string, string>()
+  const annotatedCaptureIds = new Set<string>()
 
   if (options.include.screenshots) {
     onProgress?.('Loading screenshots...', 60)
@@ -151,19 +178,41 @@ export async function generateReport(
         const bundle = getAnnotations(cap.id)
         if (bundle.annotations) {
           finalBuffer = await burnAnnotations(screenshotBuffer, bundle.annotations)
+          // Shapes are what burnAnnotations actually draws; pins are numbered
+          // notes that may exist without any. Only shapes change the pixels, so
+          // only shapes make the reproduced image differ from the packaged copy.
+          if (bundle.annotations.shapes.length > 0) annotatedCaptureIds.add(cap.id)
         }
         data.pins.set(cap.id, bundle.pins)
       }
+      // Digest the raw bytes, not the possibly-annotated copy: the package
+      // content-addresses the unannotated original.
+      screenshotDigests.set(cap.id, sha256(screenshotBuffer))
       data.screenshots.set(cap.id, finalBuffer.toString('base64'))
     }
   }
+
+  // One manifest snapshot, taken after every awaited stage and shared by the
+  // report and the package. Reading it twice would let the timestamp worker
+  // append between the two, so report.html could cite a head the bundled
+  // manifest.jsonl does not end at — telling reviewers to reconcile a valid
+  // package against a stale hash.
+  const manifest = readManifestSnapshot(caseId)
+  data.manifestHead = manifest.head
+  data.packagedPaths = buildPackagedPaths(
+    data,
+    options,
+    manifest,
+    screenshotDigests,
+    annotatedCaptureIds
+  )
 
   onProgress?.('Generating report...', 80)
   const html = buildHtmlReport(data, options)
 
   if (options.format === 'zip') {
     onProgress?.('Packaging evidence...', 90)
-    const { zip, packageHash, verificationResult } = buildEvidenceZip(caseId, data, html)
+    const { zip, packageHash, verificationResult } = buildEvidenceZip(caseId, data, html, manifest)
     writeFileSync(options.outputPath, zip)
 
     // Record the export as a signed, hash-chained audit entry (#124). Ordering
@@ -205,7 +254,12 @@ interface EvidenceZipResult {
   verificationResult: ExportVerificationResult
 }
 
-function buildEvidenceZip(caseId: string, data: ExportData, reportHtml: string): EvidenceZipResult {
+function buildEvidenceZip(
+  caseId: string,
+  data: ExportData,
+  reportHtml: string,
+  manifest: ManifestSnapshot
+): EvidenceZipResult {
   const entries: Array<{ name: string; data: Buffer | string }> = []
   const artifacts: EvidenceArtifact[] = []
   const add = (name: string, value: Buffer | string): string => {
@@ -216,15 +270,13 @@ function buildEvidenceZip(caseId: string, data: ExportData, reportHtml: string):
     return digest
   }
 
-  const manifestPath = join(getStorageRoot(), caseId, MANIFEST_FILENAME)
-  const manifestJsonl = existsSync(manifestPath) ? readFileSync(manifestPath) : Buffer.alloc(0)
-  const manifestEntries = readManifestEntries(manifestJsonl.toString('utf-8'))
-  const timestampEntries = manifestEntries.filter(isTimestampEntry)
-  const latestManifestEntry = manifestEntries.at(-1) as
-    | { index?: number; entryHash?: string }
-    | undefined
+  const manifestJsonl = manifest.jsonl
+  const timestampEntries = manifest.entries.filter(isTimestampEntry)
+  const latestManifestEntry = manifest.head
 
-  const timestampPathsByHash = new Map<string, string[]>()
+  // Same path rule the report was rendered against — see buildTimestampTokenPaths.
+  const timestampPathsByHash = buildTimestampTokenPaths(data.captures, timestampEntries)
+  const emittedTokenPaths = new Set<string>()
   const timestampTokenChainPems: string[] = []
   for (const entry of timestampEntries) {
     if (typeof entry.tsaToken !== 'string') continue
@@ -236,12 +288,10 @@ function buildEvidenceZip(caseId: string, data: ExportData, reportHtml: string):
       // Malformed tokens still belong in the evidence package; they simply
       // cannot contribute certificate material to the TSA chain bundle.
     }
-    const captures = data.captures.filter((capture) => capture.hash === entry.captureContentHash)
-    for (const capture of captures) {
-      if (timestampPathsByHash.get(capture.hash)?.length) continue
-      const path = `timestamps/${capture.id}.tst`
+    const path = timestampPathsByHash.get(entry.captureContentHash)
+    if (path && !emittedTokenPaths.has(path)) {
       add(path, token)
-      timestampPathsByHash.set(capture.hash, [path])
+      emittedTokenPaths.add(path)
     }
   }
 
@@ -332,7 +382,7 @@ function buildEvidenceZip(caseId: string, data: ExportData, reportHtml: string):
       // differs from `capturedAt`. Surfaced labelled as corroboration; both
       // timestamps are present so a reviewer understands the interval.
       tlsCorroboration: capture.tlsCertChain ?? null,
-      timestampTokenPaths: timestampPathsByHash.get(capture.hash) ?? []
+      timestampTokenPaths: packagedTimestampTokenPaths(timestampPathsByHash, capture)
     }
   })
 
@@ -420,20 +470,86 @@ function readManifestEntries(manifestJsonl: string): Record<string, unknown>[] {
 }
 
 /**
- * Head entry of the live case manifest, for the report to cite as the exact
- * state it was generated against. Null when the manifest is absent or its last
- * line is unreadable — the report renders that as an explicit gap rather than
- * omitting the reference.
+ * A single read of the case manifest, shared by the report and the package so
+ * the two cannot describe different manifest states. `head` is null when the
+ * manifest is absent or its last line is unreadable; the report renders that as
+ * an explicit gap rather than omitting the reference.
  */
-function readManifestHead(caseId: string): { index: number; entryHash: string } | null {
+function readManifestSnapshot(caseId: string): ManifestSnapshot {
   const path = join(getStorageRoot(), caseId, MANIFEST_FILENAME)
-  if (!existsSync(path)) return null
-  const last = readManifestEntries(readFileSync(path, 'utf-8')).at(-1) as
-    | { index?: number; entryHash?: string }
-    | undefined
-  return typeof last?.index === 'number' && typeof last.entryHash === 'string'
-    ? { index: last.index, entryHash: last.entryHash }
-    : null
+  const jsonl = existsSync(path) ? readFileSync(path) : Buffer.alloc(0)
+  const entries = readManifestEntries(jsonl.toString('utf-8'))
+  const last = entries.at(-1) as { index?: number; entryHash?: string } | undefined
+  return {
+    jsonl,
+    entries,
+    head:
+      typeof last?.index === 'number' && typeof last.entryHash === 'string'
+        ? { index: last.index, entryHash: last.entryHash }
+        : null
+  }
+}
+
+/**
+ * Maps a capture content hash to the single timestamp-token path the package
+ * uses for it. Captures that share a content hash share one token file, named
+ * after the first such capture — so a per-capture path would be wrong for the
+ * rest. Defined once here and consumed by both the packager and the report to
+ * remove any chance of the two disagreeing.
+ */
+function buildTimestampTokenPaths(
+  captures: Capture[],
+  timestampEntries: ManifestTimestampEntry[]
+): Map<string, string> {
+  const byHash = new Map<string, string>()
+  for (const entry of timestampEntries) {
+    if (typeof entry.tsaToken !== 'string') continue
+    for (const capture of captures) {
+      if (capture.hash !== entry.captureContentHash) continue
+      if (byHash.has(capture.hash)) break
+      byHash.set(capture.hash, `timestamps/${capture.id}.tst`)
+      break
+    }
+  }
+  return byHash
+}
+
+/**
+ * What the package will actually contain for each capture. Paths are derived
+ * from the same manifest snapshot and the same filesystem the packager reads,
+ * so the report cannot cite a file that was never written; a non-package export
+ * encloses nothing and therefore gets no paths at all.
+ *
+ * imageAnnotated is deliberately NOT gated on the format: burning happens
+ * whenever annotations are set to 'burned', so a standalone HTML report must
+ * disclose it just as loudly as a packaged one.
+ */
+function buildPackagedPaths(
+  data: ExportData,
+  options: ExportOptions,
+  manifest: ManifestSnapshot,
+  screenshotDigests: Map<string, string>,
+  annotatedCaptureIds: Set<string>
+): Map<string, PackagedArtifacts> {
+  const paths = new Map<string, PackagedArtifacts>()
+  const isPackage = options.format === 'zip'
+  const tokenPaths = isPackage
+    ? buildTimestampTokenPaths(data.captures, manifest.entries.filter(isTimestampEntry))
+    : new Map<string, string>()
+
+  for (const capture of data.captures) {
+    // existsSync rather than a read: the packager skips exactly the artifacts
+    // that are absent, and the archives can be large.
+    const { abs } = defaultCaptureStore.artifactPaths(capture.caseId, capture.id, 'mhtml')
+    const screenshotDigest = screenshotDigests.get(capture.id)
+    paths.set(capture.id, {
+      pageArchive: isPackage && existsSync(abs) ? `pages/${capture.id}.mhtml` : null,
+      screenshot: isPackage && screenshotDigest ? `screenshots/${screenshotDigest}.png` : null,
+      timestampToken: tokenPaths.get(capture.hash) ?? null,
+      imageAnnotated: annotatedCaptureIds.has(capture.id)
+    })
+  }
+  return paths
 }
 
 function isTimestampEntry(entry: Record<string, unknown>): entry is ManifestTimestampEntry {

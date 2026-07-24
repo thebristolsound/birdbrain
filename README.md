@@ -21,9 +21,11 @@
 
 Birdbrain is an open-source desktop app with a companion Chromium extension for capturing, organizing, and verifying web evidence. Captures include MHTML, a full-page screenshot, and extracted text, sent to the desktop app over `127.0.0.1` and stored locally in per-case archives. There is no cloud account or telemetry; captures stay on your machine unless you export them.
 
+<!-- Hero screenshot: drop the asset at docs/assets/screenshot-case.png and uncomment.
 <p align="center">
   <img src="docs/assets/screenshot-case.png" alt="Birdbrain case workspace" width="100%" />
 </p>
+-->
 
 ## Why Birdbrain exists
 

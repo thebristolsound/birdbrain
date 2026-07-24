@@ -212,9 +212,75 @@ export interface UpdateStatus {
   percent?: number
   // Human-readable error message; present only when state is 'error'.
   error?: string
-  // False on platforms/builds where the app can only notify (deb, unsigned mac,
-  // dev). The UI degrades to a "View release" link instead of download/install.
+  // False on platforms/builds where the app can only notify (unsigned mac,
+  // archive installs, dev). The UI degrades to a "View release" link instead
+  // of download/install.
   supportsAutoInstall: boolean
+  // Whether a downloaded update installs itself on next quit. False for deb,
+  // where installing needs a system password prompt and therefore only runs
+  // via the explicit "Restart to update" action.
+  installOnQuit: boolean
+}
+
+// Runtime diagnostics (Settings → Diagnostics). Snapshot of app environment,
+// main-process responsiveness, storage, and the slow-operation log.
+export interface DiagnosticsProcessInfo {
+  type: string
+  pid: number
+  cpuPercent: number
+  memoryMB: number
+}
+
+// A span where the main-process event loop was blocked (the macOS "pinwheel").
+export interface DiagnosticsStall {
+  at: string
+  ms: number
+}
+
+// A recorded expensive operation (e.g. per-capture data extraction).
+export interface DiagnosticsSlowOp {
+  at: string
+  kind: string
+  detail: string
+  ms: number
+}
+
+export interface DiagnosticsSnapshot {
+  generatedAt: string
+  app: {
+    version: string
+    electron: string
+    chrome: string
+    node: string
+    platform: string
+    arch: string
+    packaged: boolean
+    // 'nsis' | 'appimage' | 'deb' | 'mac' | 'archive' | 'dev'
+    installFormat: string
+  }
+  uptimeSeconds: number
+  processes: DiagnosticsProcessInfo[]
+  eventLoop: {
+    currentLagMs: number
+    maxLagLastMinuteMs: number
+    stalls: DiagnosticsStall[]
+  }
+  storage: {
+    storageRoot: string
+    dbPath: string
+    dbSizeBytes: number
+    walSizeBytes: number
+  }
+  data: {
+    schemaVersion: number
+    latestSchemaVersion: number
+    cases: number
+    captures: number
+    notes: number
+    selectors: number
+    extractedData: number
+  }
+  slowOps: DiagnosticsSlowOp[]
 }
 
 export interface OpenRouterModel {

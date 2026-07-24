@@ -9,7 +9,18 @@ import { AppearanceConfig } from '@renderer/components/settings/AppearanceConfig
 import { OperatorConfig } from '@renderer/components/settings/OperatorConfig'
 import { UpdatesConfig } from '@renderer/components/settings/UpdatesConfig'
 import { About } from '@renderer/components/settings/About'
-import { Key, Camera, HardDrive, Palette, Info, UserCircle, Database, RefreshCw } from 'lucide-react'
+import { DiagnosticsPanel } from '@renderer/components/settings/DiagnosticsPanel'
+import {
+  Key,
+  Camera,
+  HardDrive,
+  Palette,
+  Info,
+  UserCircle,
+  Database,
+  RefreshCw,
+  Activity
+} from 'lucide-react'
 import { DatabaseAdmin } from '@renderer/components/settings/DatabaseAdmin'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@renderer/components/ui'
 
@@ -21,6 +32,7 @@ type SettingsTab =
   | 'operator'
   | 'database'
   | 'updates'
+  | 'diagnostics'
   | 'about'
 
 const settingsTabs: { id: SettingsTab; label: string; icon: typeof Key }[] = [
@@ -31,6 +43,7 @@ const settingsTabs: { id: SettingsTab; label: string; icon: typeof Key }[] = [
   { id: 'operator', label: 'Operator', icon: UserCircle },
   { id: 'database', label: 'Database', icon: Database },
   { id: 'updates', label: 'Updates', icon: RefreshCw },
+  { id: 'diagnostics', label: 'Diagnostics', icon: Activity },
   { id: 'about', label: 'About', icon: Info }
 ]
 
@@ -92,6 +105,9 @@ export function SettingsView() {
         </TabsContent>
         <TabsContent value="updates" className="mt-0">
           <UpdatesConfig settings={settings} onUpdate={handleUpdate} />
+        </TabsContent>
+        <TabsContent value="diagnostics" className="mt-0">
+          <DiagnosticsPanel />
         </TabsContent>
         <TabsContent value="about" className="mt-0">
           <About />

@@ -117,6 +117,9 @@ export const IPC_CHANNELS = {
   // App
   APP_GET_VERSION: 'app:getVersion',
 
+  // Diagnostics
+  DIAGNOSTICS_GET: 'diagnostics:get',
+
   // Updates (update delivery)
   UPDATES_GET_STATUS: 'updates:getStatus',
   UPDATES_CHECK: 'updates:check',

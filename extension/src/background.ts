@@ -120,7 +120,8 @@ const DEFAULT_IGNORE = [
 
 // Deduplication: url -> timestamp of last capture
 const dedupeMap = new Map<string, number>()
-let dedupeWindowMs = 60_000
+// HOTFIX: auto-capture temporarily disabled — dedupe window only used by auto paths
+// let dedupeWindowMs = 60_000
 const CONTEXT_MENU_PARENT_ID = 'birdbrain-parent'
 const CONTEXT_MENU_FULL_PAGE_ID = 'birdbrain-capture-full-page'
 const CONTEXT_MENU_SCROLLING_ID = 'birdbrain-capture-scrolling'
@@ -190,7 +191,8 @@ let activeSelectors: Array<{
     enabled: boolean
   }>
 }> = []
-let autoCaptureMode: string = 'notify'
+// HOTFIX: auto-capture temporarily disabled
+// let autoCaptureMode: string = 'notify'
 let availableCases: Array<{ id: string; name: string }> = []
 let activeCaseId: string | null = null
 let userIgnoredPatterns: string[] = []
@@ -206,12 +208,13 @@ async function checkStatus(): Promise<void> {
     connected = status.running
     sessionActive = status.sessionActive
     captureCount = status.captureCount
-    autoCaptureMode = status.autoCaptureMode || 'notify'
+    // HOTFIX: auto-capture temporarily disabled
+    // autoCaptureMode = status.autoCaptureMode || 'notify'
     availableCases = status.cases || []
     activeCaseId = status.activeCase?.id || null
     userIgnoredPatterns = status.ignoredUrlPatterns || []
     captureScreenshotsEnabled = status.captureScreenshots !== false
-    dedupeWindowMs = (status.dedupeWindowSeconds ?? 60) * 1000
+    // dedupeWindowMs = (status.dedupeWindowSeconds ?? 60) * 1000
 
     if (connected && !wasConnected) {
       updateIcon('connected')
@@ -449,6 +452,10 @@ function isIgnoredByUser(url: string): boolean {
   return false
 }
 
+// HOTFIX: auto-capture temporarily disabled — shouldCapture/captureTab (session auto-capture)
+// and shouldSelectorCapture/handleSelectorCapture (selector auto-capture) are commented out.
+// Manual capture (popup camera button + context menu) is unaffected.
+/*
 function shouldCapture(url: string): boolean {
   if (!sessionActive || !connected) return false
   if (DEFAULT_IGNORE.some((pattern) => pattern.test(url))) return false
@@ -511,6 +518,7 @@ async function captureTab(tabId: number, url: string): Promise<void> {
       .catch(() => {})
   }
 }
+*/
 
 async function manualCaptureTab(
   tabId: number,
@@ -586,6 +594,7 @@ async function manualCaptureTab(
   }
 }
 
+/*
 async function handleSelectorCapture(tabId: number, url: string, caseId: string): Promise<void> {
   if (!shouldSelectorCapture(caseId, url)) return
   try {
@@ -616,6 +625,7 @@ async function handleSelectorCapture(tabId: number, url: string, caseId: string)
     console.error('Selector capture failed:', err)
   }
 }
+*/
 
 async function checkSelectorsOnTab(tabId: number, url: string): Promise<void> {
   if (activeSelectors.length === 0) return
@@ -638,6 +648,12 @@ async function checkSelectorsOnTab(tabId: number, url: string): Promise<void> {
 
     if (!matches || matches.length === 0) return
 
+    // Update badge to show match count
+    chrome.action.setBadgeText({ text: String(matches.length) })
+    chrome.action.setBadgeBackgroundColor({ color: '#3b82f6' })
+
+    // HOTFIX: auto-capture temporarily disabled — selector matches only update the badge
+    /*
     // Group matches by case
     const caseMatches = new Map<string, typeof matches>()
     for (const m of matches) {
@@ -645,16 +661,13 @@ async function checkSelectorsOnTab(tabId: number, url: string): Promise<void> {
       caseMatches.get(m.caseId)!.push(m)
     }
 
-    // Update badge to show match count
-    chrome.action.setBadgeText({ text: String(matches.length) })
-    chrome.action.setBadgeBackgroundColor({ color: '#3b82f6' })
-
     if (autoCaptureMode === 'auto') {
       // Auto-capture for each matching case
       for (const [caseId] of caseMatches) {
         handleSelectorCapture(tabId, url, caseId)
       }
     }
+    */
   } catch {
     // Content script may not be ready
   }
@@ -663,10 +676,13 @@ async function checkSelectorsOnTab(tabId: number, url: string): Promise<void> {
 // Listen for page load completions
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete' && tab.url) {
+    // HOTFIX: auto-capture temporarily disabled
+    /*
     // Existing session capture
     if (shouldCapture(tab.url)) {
       captureTab(tabId, tab.url)
     }
+    */
 
     // Selector matching (independent of session capture)
     if (sessionActive && activeSelectors.length > 0) {

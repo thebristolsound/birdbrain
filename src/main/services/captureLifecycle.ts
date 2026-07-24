@@ -6,6 +6,7 @@ import type { CaptureStore } from '@main/services/captureStore'
 import * as captureRepo from '@main/services/db/captureRepo'
 import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
 import { extractData } from '@main/services/dataExtractor'
+import { recordSlowOp } from '@main/services/diagnostics'
 import { readExtractionHtml } from '@main/services/extraction/extractionSource'
 import { getInstallationId } from '@main/services/installationId'
 import {
@@ -395,6 +396,9 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
   const store = deps.store ?? defaultCaptureStore
 
   function runDataExtraction(captureId: string, caseId: string, url: string): void {
+    // Timed for Settings → Diagnostics: this runs synchronously on the main
+    // process, so its duration is exactly how long the app was unresponsive.
+    const t0 = performance.now()
     try {
       const html = readExtractionHtml(caseId, captureId, store)
       if (html) {
@@ -403,6 +407,8 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
       }
     } catch (err) {
       console.error('captureLifecycle: data extraction failed for capture', captureId, err)
+    } finally {
+      recordSlowOp('data-extraction', url, performance.now() - t0)
     }
   }
 

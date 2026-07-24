@@ -102,7 +102,11 @@ function StatusLine({
           <RefreshCw className="h-3 w-3" />
           Restart to update
         </Button>
-        <span className="text-text-muted">Installs automatically on next quit.</span>
+        <span className="text-text-muted">
+          {status.installOnQuit
+            ? 'Installs automatically on next quit.'
+            : 'Installing will ask for your system password.'}
+        </span>
       </div>
     )
   }

@@ -1,0 +1,50 @@
+name: Security
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  secrets:
+    name: Secret scan (full history)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+        run: |
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz gitleaks
+          ./gitleaks version
+
+      # Scans every commit on every ref, not just the pushed branch, so a secret
+      # committed to any historical branch fails the build. Known false positives
+      # are allowlisted by fingerprint in .gitleaksignore.
+      - name: Scan git history
+        run: ./gitleaks git --log-opts="--all" --redact --no-banner --verbose
+
+  dependencies:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # Advisory-only: the tree currently carries known high-severity advisories
+      # (sharp < 0.35.0 libvips CVEs, fast-uri via electron-builder). Drop
+      # continue-on-error once those are resolved so regressions fail the build.
+      - name: pnpm audit
+        run: pnpm audit --audit-level high
+        continue-on-error: true

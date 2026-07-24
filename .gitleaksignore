@@ -1,0 +1,12 @@
+# Allowlisted gitleaks findings. Each line is a finding fingerprint
+# (commit:path:rule:line). Only add an entry after confirming the match is
+# not a credential.
+#
+# generic-api-key on a plan doc listing Tailwind classes:
+#   "Key: `border-neutral-800 bg-neutral-900 p-5` -> `neu-card rounded-2xl p-5`"
+# The rule fires on the word "Key:" preceding a backticked string.
+1bb3963d0e14615c596cedd8197b35f355760f01:docs/superpowers/plans/2026-03-18-captures-workspace-redesign.md:generic-api-key:496
+231407378302b4754fc678b6f4204235be716bef:docs/superpowers/plans/2026-03-18-captures-workspace-redesign.md:generic-api-key:496
+e110997ac02e43a5d988737180b5c137bcfddbd0:docs/superpowers/plans/2026-03-18-captures-workspace-redesign.md:generic-api-key:496
+0b3ce694524a4c28a65e38aef0c23f4e29274354:docs/superpowers/plans/2026-03-18-captures-workspace-redesign.md:generic-api-key:496
+30da1bf581814128fdaee92e7488349ef7b84660:docs/superpowers/plans/2026-03-18-captures-workspace-redesign.md:generic-api-key:496

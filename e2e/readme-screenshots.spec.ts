@@ -75,7 +75,7 @@ const STOREFRONT_HTML = `<html><head><title>Velvet Fox Deals - Clearance Electro
   Velvet Fox Trading Ltd - support@velvetfox-deals.net - Telegram: t.me/velvetfoxdeals<br/>
   Twitter: twitter.com/velvetfoxdeals - Instagram: instagram.com/velvetfox.deals<br/>
   Mirror: vfxmarketplace4hzt6qqkxkdzk3ojjmi2xn2nl2bsqvyv3j5nvz7cnnid.onion<br/>
-  Served by edge node 91.219.238.44 - AS208843
+  Served by edge node 198.51.100.24 - AS64500
 </footer>
 </body></html>`
 
@@ -101,7 +101,7 @@ const CONTACT_HTML = `<html><head><title>Velvet Fox Deals - Contact and Payment<
     <dt>Backup domain</dt>
     <dd>velvetfox-outlet.com</dd>
     <dt>Payment API host</dt>
-    <dd>pay.vfx-gateway.net (185.220.101.47)</dd>
+    <dd>pay.vfx-gateway.net (203.0.113.47)</dd>
   </dl>
 </div>
 <footer>Velvet Fox Trading Ltd - Registered agent: Wexford Formations, Roseau</footer>
@@ -120,7 +120,7 @@ const REVIEW_HTML = `<html><head><title>ScamRadar Forum - Velvet Fox Deals threa
   <div class="post"><div class="meta">rustbelt_saver - 2 days ago</div>
     <p>Paid 0.0041 BTC for a NovaPhone on the 12th. Tracking number never arrived and now support redirects me to a Telegram bot. The checkout page posted my card BIN to pay.vfx-gateway.net before switching me to crypto.</p></div>
   <div class="post"><div class="meta">dns_diver - 2 days ago</div>
-    <p>Domain is 11 days old. Same registrant rotated through velvetfox-outlet.com and aurora-clearance.shop last month. All three resolve to 185.220.101.47, and the checkout script matches the kit tracked as CVE-2025-31842 exploitation follow-on.</p></div>
+    <p>Domain is 11 days old. Same registrant rotated through velvetfox-outlet.com and aurora-clearance.shop last month. All three resolve to 203.0.113.47, and the checkout script matches the skimmer kit seen on the registrant's earlier storefronts.</p></div>
   <div class="post"><div class="meta">mod_annika - 1 day ago</div>
     <p>Marking as confirmed scam. Evidence archived. Do not send funds. If you paid, file a report and include the wallet bc1q9d3xk2m4pq71w8n5v0t2r6y4u9i3o5p7a1s3d5.</p></div>
 </div>
@@ -407,7 +407,7 @@ test.describe('README screenshots', () => {
         })
         await bb.selectors.create({
           caseId,
-          pattern: '185.220.101.47',
+          pattern: '203.0.113.47',
           label: 'Shared hosting IP'
         })
         await bb.selectors.create({
@@ -430,7 +430,7 @@ test.describe('README screenshots', () => {
         await bb.notes.create({
           caseId,
           title: 'Registrar abuse report - draft timeline',
-          body: 'Domain registered 11 days ago via privacy proxy. Same registrant previously rotated velvetfox-outlet.com and aurora-clearance.shop. All three resolve to 185.220.101.47. Report filed with registrar abuse desk; awaiting case number.'
+          body: 'Domain registered 11 days ago via privacy proxy. Same registrant previously rotated velvetfox-outlet.com and aurora-clearance.shop. All three resolve to 203.0.113.47. Report filed with registrar abuse desk; awaiting case number.'
         })
         await bb.notes.create({
           caseId,

@@ -54,7 +54,6 @@ For your threat model, this is the section that matters. Every outbound connecti
 | The captured site itself | A follow-up TLS connection to record the site's current certificate as corroboration | Automatically at capture time | Not currently toggleable; see the network-identity warning below |
 | Wayback Machine (archive.org) | The URL you ask it to look up or pin | Only when you explicitly click | Never click it for sensitive targets |
 | GitHub | Ordinary release-check traffic | Periodic update checks | Disable automatic update checks in settings |
-| Optional external analysis provider | Selected capture text and metadata | Never, unless you deliberately configure an API key for the optional analysis feature | Leave it unconfigured; it is off by default and nothing prompts you to enable it |
 
 Read that table with your adversary in mind. Nothing in it sends captured content anywhere by default. But the timestamp authority learns that *someone at your IP is capturing evidence at these times*, and the TLS corroboration step means your machine contacts the target site a second time, outside your browser.
 
@@ -104,9 +103,8 @@ Candor is the project's stated policy, so here is the honest list:
 6. Add your own domains, community spaces, and personal sites to the ignored-URL patterns so a live session never captures your own world.
 7. Use a dedicated browser profile for capture sessions; keep personal logins out of it.
 8. Disable automatic update checks if beacon-free operation matters more to you than prompt updates, and calendar a manual check instead.
-9. Leave the optional external analysis integration unconfigured.
-10. Rehearse the full cycle once with throwaway content: capture, verify, export, and have a second member verify the package on their machine with the runbook before anything real depends on it.
-11. Decide where evidence packages go for safekeeping: encrypted offline copies, plus a trusted person outside the group.
+9. Rehearse the full cycle once with throwaway content: capture, verify, export, and have a second member verify the package on their machine with the runbook before anything real depends on it.
+10. Decide where evidence packages go for safekeeping: encrypted offline copies, plus a trusted person outside the group.
 
 ## Sustainability and exit
 

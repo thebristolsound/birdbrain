@@ -1,15 +1,18 @@
 import { autoUpdater } from 'electron-updater'
 import { app } from 'electron'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import type { BirdbrainSettings, ReleaseChannel, UpdateState, UpdateStatus } from '@shared/types'
 import { GITHUB_RELEASES_URL } from '@shared/constants'
 
 // Update delivery. Wraps electron-updater's GitHub-provider `autoUpdater` and
 // exposes a small state machine to the renderer. Downloads run only on explicit
 // user action or under the auto-check policy, and only on platforms that can
-// install in place (Windows NSIS, Linux AppImage) — everywhere else resolution
-// is notify-only. Birdbrain is a forensic capture tool, so nothing ever
-// restarts on its own: install happens via the explicit "Restart to update"
-// action or naturally on next quit (autoInstallOnAppQuit). See
+// install an update (Windows NSIS, Linux AppImage, Linux deb) — everywhere else
+// resolution is notify-only. Birdbrain is a forensic capture tool, so nothing
+// ever restarts on its own: install happens via the explicit "Restart to
+// update" action or naturally on next quit (autoInstallOnAppQuit; deb installs
+// are explicit-only because they need a system password prompt). See
 // docs/specs/2026-07-07-update-delivery-release-channels-design.md.
 
 // Background check cadence: a short delay after launch, then every few hours.
@@ -43,15 +46,34 @@ export interface UpdaterService {
   dispose(): void
 }
 
+// How was this Linux build installed? AppImage advertises itself via the
+// APPIMAGE env var; for package installs electron-builder embeds a
+// `package-type` file in the app resources, which is also what electron-updater
+// reads to pick its DebUpdater. Archive installs (tar/zip) have neither.
+type LinuxPackageFormat = 'appimage' | 'deb' | null
+
+function detectLinuxPackageFormat(): LinuxPackageFormat {
+  if (process.env.APPIMAGE) return 'appimage'
+  try {
+    const packageType = readFileSync(join(process.resourcesPath, 'package-type'), 'utf8').trim()
+    if (packageType === 'deb') return 'deb'
+  } catch {
+    // No package-type file — not a package-manager install.
+  }
+  return null
+}
+
 // Can this build install an update itself, or only notify? The download/install
 // path is gated on this flag; notify-only platforms surface a release link.
-function detectSupportsAutoInstall(): boolean {
+function detectSupportsAutoInstall(linuxFormat: LinuxPackageFormat): boolean {
   if (!app.isPackaged) return false
   switch (process.platform) {
     case 'win32':
       return true // NSIS full auto-update
     case 'linux':
-      return !!process.env.APPIMAGE // AppImage updates in place; deb does not
+      // AppImage replaces itself in place; deb installs via electron-updater's
+      // DebUpdater (dpkg behind a system password prompt).
+      return linuxFormat !== null
     default:
       return false // macOS blocked until Developer ID signing + notarization
   }
@@ -69,12 +91,17 @@ function messageOf(err: unknown): string {
 
 export function createUpdaterService(deps: UpdaterServiceDeps): UpdaterService {
   const currentVersion = app.getVersion()
-  const supportsAutoInstall = detectSupportsAutoInstall()
+  const linuxFormat = process.platform === 'linux' ? detectLinuxPackageFormat() : null
+  const isDebInstall = linuxFormat === 'deb'
+  const supportsAutoInstall = detectSupportsAutoInstall(linuxFormat)
+  // deb installs go through dpkg behind a system password prompt, so they must
+  // never run implicitly at quit — only via the explicit "Restart to update".
+  const installOnQuit = supportsAutoInstall && !isDebInstall
   // Only a packaged build has real release metadata to check against; in dev the
   // service stays inert (no checks, no schedule).
   const canCheck = app.isPackaged
 
-  let status: UpdateStatus = { state: 'idle', currentVersion, supportsAutoInstall }
+  let status: UpdateStatus = { state: 'idle', currentVersion, supportsAutoInstall, installOnQuit }
   let initialTimer: ReturnType<typeof setTimeout> | null = null
   let intervalTimer: ReturnType<typeof setInterval> | null = null
   let listenersAttached = false
@@ -87,7 +114,7 @@ export function createUpdaterService(deps: UpdaterServiceDeps): UpdaterService {
   // Build a status from scratch per transition so stale fields (availableVersion,
   // error, …) never leak across states.
   function base(state: UpdateState): UpdateStatus {
-    return { state, currentVersion, supportsAutoInstall }
+    return { state, currentVersion, supportsAutoInstall, installOnQuit }
   }
 
   function transition(next: UpdateStatus): void {
@@ -138,7 +165,7 @@ export function createUpdaterService(deps: UpdaterServiceDeps): UpdaterService {
 
   function configure(): void {
     autoUpdater.autoDownload = false
-    autoUpdater.autoInstallOnAppQuit = true
+    autoUpdater.autoInstallOnAppQuit = installOnQuit
     // Channel selection rides on the GitHub prerelease flag. Set allowPrerelease
     // FIRST, then pin allowDowngrade false: electron-updater implicitly flips
     // allowDowngrade true whenever allowPrerelease is true, so the order matters.
@@ -211,7 +238,13 @@ export function createUpdaterService(deps: UpdaterServiceDeps): UpdaterService {
     // Forensic safety: installing restarts the app, so it must be impossible to
     // reach without a fully downloaded update and an explicit user click.
     if (status.state !== 'downloaded') return
-    autoUpdater.quitAndInstall()
+    if (isDebInstall) {
+      // isForceRunAfter relaunches the app once dpkg finishes — without it a
+      // deb install would quit and leave the user to reopen Birdbrain manually.
+      autoUpdater.quitAndInstall(false, true)
+    } else {
+      autoUpdater.quitAndInstall()
+    }
   }
 
   function start(): void {

@@ -1,6 +1,6 @@
 {
   "name": "birdbrain",
-  "version": "1.0.1-beta.15",
+  "version": "1.0.1-beta.16",
   "description": "Open source web investigation & capture tool",
   "main": "./out/main/index.js",
   "packageManager": "pnpm@10.28.2",
@@ -77,8 +77,20 @@
     },
     "mac": {
       "target": [
-        "dmg",
-        "zip"
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
       ]
     },
     "linux": {
@@ -92,6 +104,15 @@
     }
   },
   "pnpm": {
+    "supportedArchitectures": {
+      "os": [
+        "current"
+      ],
+      "cpu": [
+        "x64",
+        "arm64"
+      ]
+    },
     "onlyBuiltDependencies": [
       "better-sqlite3",
       "electron",

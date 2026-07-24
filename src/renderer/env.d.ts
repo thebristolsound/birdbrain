@@ -82,6 +82,8 @@ interface BirdbrainAPI {
     getThumbnail(captureId: string): Promise<string | null>
     getMatchingSelectors(captureId: string): Promise<Selector[]>
     download(captureId: string): Promise<string | null>
+    downloadPdf(captureId: string): Promise<string | null>
+    downloadScreenshot(captureId: string): Promise<string | null>
     openExternal(url: string): Promise<void>
     countsByCase(): Promise<Record<string, number>>
     toggleFavorite(captureId: string): Promise<boolean>

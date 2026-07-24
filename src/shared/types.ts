@@ -212,9 +212,14 @@ export interface UpdateStatus {
   percent?: number
   // Human-readable error message; present only when state is 'error'.
   error?: string
-  // False on platforms/builds where the app can only notify (deb, unsigned mac,
-  // dev). The UI degrades to a "View release" link instead of download/install.
+  // False on platforms/builds where the app can only notify (unsigned mac,
+  // archive installs, dev). The UI degrades to a "View release" link instead
+  // of download/install.
   supportsAutoInstall: boolean
+  // Whether a downloaded update installs itself on next quit. False for deb,
+  // where installing needs a system password prompt and therefore only runs
+  // via the explicit "Restart to update" action.
+  installOnQuit: boolean
 }
 
 export interface OpenRouterModel {

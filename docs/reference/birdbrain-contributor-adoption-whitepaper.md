@@ -75,8 +75,6 @@ Its core capabilities include:
 - **Case archives:** `.birdbrain` archives support transfer between installations while preserving custody boundaries.
 - **Recapture and corroboration:** The app includes workflows for recapturing pages and adding supporting archive or TLS corroboration.
 
-Optional model-integration plumbing is present through OpenRouter settings and Capture-scoped analysis storage. This should be treated as experimental: it is not part of evidence verification, it is not an agent or RAG subsystem, and future work should approach it carefully with privacy, cost, prompt-injection, and evaluation concerns in mind.
-
 ### Example Use Cases
 
 An investigative journalist can preserve a volatile webpage before publication, annotate the screenshot for editors, and export a reviewable package with hashes and verification notes.
@@ -121,7 +119,7 @@ A diagram of Birdbrain should contain these blocks and flows:
    The renderer is a React app. It communicates with the main process through a constrained, typed `contextBridge` API. Node integration is disabled in the renderer.
 
 6. **Optional External Services**
-   Outbound integrations include RFC 3161 timestamp authorities, GitHub Releases for updates, Wayback Machine lookup, TLS endpoints for corroboration, and experimental OpenRouter model integration. These are outbound-only and feature-specific.
+   Outbound integrations include RFC 3161 timestamp authorities, GitHub Releases for updates, Wayback Machine lookup, TLS endpoints for corroboration, and an optional OpenRouter integration. These are outbound-only and feature-specific.
 
 7. **Evidence Consumer**
    Exported HTML reports, evidence ZIPs, `.birdbrain` archives, and the standalone verifier allow review outside the running desktop app.
@@ -345,7 +343,6 @@ Birdbrain uses Vitest for unit and integration coverage across the Electron main
 - Manifest hashing and signing;
 - trusted timestamp parsing and verification fixtures;
 - export and archive round trips;
-- OpenRouter client behavior;
 - renderer hooks and UI components;
 - extension header handling;
 - standalone verifier behavior; and
@@ -401,7 +398,7 @@ Birdbrain's security design follows its local-first boundary:
 Birdbrain's documented outbound connections are narrow:
 
 - RFC 3161 timestamp authority, sending content hashes rather than captured content;
-- OpenRouter, only if the Operator configures an API key and uses the experimental analysis plumbing;
+- OpenRouter, only if the Operator configures an API key for the optional model integration;
 - GitHub Releases for update checks and downloads;
 - feature-specific corroboration such as Wayback Machine or TLS endpoint checks where implemented.
 
@@ -447,7 +444,6 @@ For adopters, operational planning should cover:
 - storage location policy;
 - extension installation and update process;
 - timestamp-authority configuration;
-- whether experimental external model integration is allowed;
 - export verification procedure; and
 - version/update channel policy.
 
@@ -498,8 +494,7 @@ Experienced contributors can have high impact in areas that affect trust, archit
 - scalable background work queues and cancellation;
 - privacy-preserving diagnostics;
 - performance benchmarks for search, selectors, export, and verification;
-- stronger dependency security gates; and
-- careful experimentation around optional model integrations, including evals, privacy controls, and cost preflight.
+- stronger dependency security gates.
 
 ### Contributor Cautions
 
@@ -567,9 +562,9 @@ The practical adoption pattern is:
 
 ### Configuration and Customization
 
-Operators can configure storage location, screenshot collection, deduplication behavior, ignored URL patterns, automatic capture behavior, Operator provenance fields, timestamp authority, appearance, reduced motion, update channel, and experimental model integration settings.
+Operators can configure storage location, screenshot collection, deduplication behavior, ignored URL patterns, automatic capture behavior, Operator provenance fields, timestamp authority, appearance, reduced motion, and update channel.
 
-For most teams, the most important settings are storage, ignored URLs, timestamp authority, update channel, and whether external model calls are allowed.
+For most teams, the most important settings are storage, ignored URLs, timestamp authority, and update channel.
 
 ### Debugging Tips
 
@@ -589,38 +584,6 @@ For adopters troubleshooting Birdbrain:
 Birdbrain is beta software. The README states that data formats may change between releases. Teams evaluating adoption should test upgrade paths with representative Cases and retain backups before moving important evidence between versions.
 
 A future compatibility policy should define supported archive schema versions, verifier availability guarantees, migration behavior, and breaking-change communication.
-
-## AI/LLM Subsystem
-
-### What Exists Today
-
-Birdbrain includes an optional, Operator-configured analysis feature built on OpenRouter. It is deliberately small:
-
-- **Client:** `src/main/services/ai/openrouter.ts` talks to `https://openrouter.ai/api/v1` and provides API-key testing, model listing, prompt sending, and context-window truncation.
-- **Analysis service:** `src/main/services/ai/analysisService.ts` assembles a single prompt from Case context (name, description, type), Capture metadata (URL, title, timestamp, format), and the extracted-text sidecar, then stores the model's response as a `CaptureAnalysis` row with token usage.
-- **Settings:** `openRouterApiKey` (stored via Electron `safeStorage` where available), `defaultModel`, and an editable `analysisSystemPrompt`.
-- **UI:** an analysis tab on the Capture viewer surfaces stored analyses per Capture.
-
-There is no RAG pipeline, no agent framework, no tool use, no automatic background analysis, and no model calls without an Operator-supplied key. Nothing model-generated enters the Manifest, hashes, signatures, or any other evidence-bearing state. Analysis output is derived state, stored in SQLite alongside other projections.
-
-### Design Constraints Contributors Must Preserve
-
-- **Opt-in egress:** capture text leaves the machine only when the Operator explicitly runs analysis with a configured key. Any feature that widens this (batch analysis, auto-analysis on capture) needs explicit consent design and cost preflight.
-- **Evidence separation:** model output must never be presented as, or mixed into, source evidence or verification results.
-- **Prompt-injection awareness:** analyzed text is untrusted web content. The system prompt is Operator-editable, and responses should be treated as untrusted display content, not instructions.
-- **Cost visibility:** token usage is recorded per analysis; new features should keep spend inspectable.
-
-### Where Contributors Can Experiment
-
-- improving the default `analysisSystemPrompt` and offering task-specific prompt presets;
-- evaluation fixtures that check analysis quality and truncation behavior against known captures;
-- local-model or self-hosted backend adapters as alternatives to OpenRouter;
-- redaction options that strip indicators before text is sent externally;
-- clearer UI framing that distinguishes model commentary from verified evidence.
-
-### Known Limitations
-
-Single-shot prompting over truncated text will miss content on very large captures; screenshots and MHTML structure are not sent, so purely visual content is invisible to the model; and there is no evaluation harness yet, so prompt changes are currently judged manually.
 
 ## Community and Governance
 
@@ -662,9 +625,7 @@ Longer-term work can explore:
 - authenticated loopback read endpoints;
 - richer archive interoperability, possibly including WARC;
 - better background-job cancellation and retry visibility;
-- cross-Case search, if it can preserve the Case-centered model;
-- local-model or organization-hosted experimental analysis adapters; and
-- formal evaluation harnesses for any optional model-assisted workflows.
+- cross-Case search, if it can preserve the Case-centered model.
 
 ### Where Community Input Is Most Valuable
 
@@ -675,8 +636,7 @@ The most valuable community input will come from real investigative workflows:
 - how Cases should be transferred between Operators;
 - what archive compatibility guarantees adopters need;
 - which extracted indicators are worth first-class support;
-- what managed deployment policies small organizations need; and
-- how to expose optional model-assisted analysis without weakening privacy, cost control, or evidentiary clarity.
+- what managed deployment policies small organizations need.
 
 ## Conclusion
 

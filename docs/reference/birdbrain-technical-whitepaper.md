@@ -14,7 +14,7 @@ Birdbrain is an open-source (MIT) desktop application for capturing web pages as
 
 What separates Birdbrain from a bookmarking or scraping tool is its integrity layer. Every capture is SHA-256 hashed while it streams to disk, then committed to a per-case, append-only JSONL manifest in which each entry links to the previous entry's hash and carries an RSA-2048 signature from a per-installation key. Trusted time arrives through RFC 3161 timestamps from an external Time Stamping Authority, and corroboration options include TLS certificate records and Wayback Machine pins. Exports produce a self-contained evidence ZIP whose contents can be verified by a third party with nothing more exotic than `jq`, `sha256sum`, and `openssl`, following a bundled runbook.
 
-The application layers investigation tooling on top of that foundation: case workspaces, text/regex selector watchlists that trigger automatic captures, IOC extraction with trigram full-text search, notes, tags, screenshot annotation with redaction, and optional per-capture AI analysis through OpenRouter using a user-supplied API key. The system runs entirely on the operator's machine, makes a short, documented list of outbound connections, and ships with no telemetry.
+The application layers investigation tooling on top of that foundation: case workspaces, text/regex selector watchlists that trigger automatic captures, IOC extraction with trigram full-text search, notes, tags, and screenshot annotation with redaction. The system runs entirely on the operator's machine, makes a short, documented list of outbound connections, and ships with no telemetry.
 
 ---
 
@@ -97,7 +97,7 @@ Draw five vertical zones, left to right:
 
 ### 3.3 Data model and key entities
 
-SQLite via better-sqlite3 with WAL journaling, foreign keys on, and a 5-second busy timeout. Schema migrations use the `user_version` pragma; the schema is at **version 25**, and the migration history is itself informative (see §4 and §11).
+SQLite via better-sqlite3 with WAL journaling, foreign keys on, and a 5-second busy timeout. Schema migrations use the `user_version` pragma; the schema is at **version 25**, and the migration history is itself informative (see §4 and §10).
 
 Core entities:
 
@@ -107,7 +107,6 @@ Core entities:
 | `captures` | One preserved page | `hash`, `mhtml_path`, `screenshot_hash`, `text_hash`, `manifest_index`, `prev_hash`, `entry_hash`, `trusted_time_status`, `tls_cert_chain`, `method`, `supersedes_capture_id`, operator fields, `last_verified_*` |
 | `selectors` / `selector_matches` | Watchlist patterns and which captures matched | `pattern`, `is_regex`, `enabled` |
 | `notes`, `tags`, `capture_tags`, `capture_favorites` | Investigation annotations | notes optionally attach to a capture |
-| `capture_analyses` | AI analysis results | one per capture, stores model and token usage |
 | `extracted_data` | IOCs extracted from capture text | unique on (capture, category, subcategory, value) |
 | `annotations`, `annotation_pins` | Screenshot markup | arrows, rects, redactions, pinned comments |
 | `capture_archive_refs` | Wayback Machine pins | corroboration records |
@@ -187,8 +186,6 @@ The code and migration history imply several roads not taken:
 - **Playwright/CDP-based capture from the desktop app** instead of an extension. A companion extension captures what the operator actually sees in their authenticated browser session, including logged-in content; a separate automation browser would not. The `method` column (`extension | background`) shows a hybrid emerging: a background recapture path exists in the app.
 - **Trusting the platform's timestamps.** Rejected in favor of RFC 3161; the threat model explicitly includes an operator forging their own evidence, which local clocks cannot survive.
 - **A full JCS implementation.** Rejected with documented reasoning (§4.3): conformance would actively hurt (Unicode normalization would change hashed bytes) and the constrained schema makes the simpler recipe provably equivalent.
-- **AI-heavier design.** Migrations v1–v7 show case-level AI analysis and AI entity extraction were built and then dropped; current AI is per-capture, on-demand, and clearly bounded (§9). The trajectory suggests deliberate scope reduction toward the forensic core.
-
 ### 5.3 Notable trade-offs accepted
 
 - **`webviewTag: true`** is enabled for MHTML display, an attack-surface expansion mitigated by JS-disabled webviews, a navigation guard that allows only the initial `file://` load, and the sandbox. A `<webview>` is the only practical way to render captured MHTML in isolation, but it is a trade.
@@ -253,31 +250,18 @@ Operational maturity instead shows up in CI and tests:
 
 ---
 
-## 9. AI/LLM Subsystem
-
-The AI layer is intentionally small, optional, and operator-controlled.
-
-- **Provider**: OpenRouter, with a user-supplied API key stored encrypted. No key, no AI: the analyze handler throws a typed error if unconfigured, and the security policy lists OpenRouter as egress "only if an API key is set".
-- **Capability**: per-capture analysis. `analysisService.analyzeCapture` builds a markdown prompt from case context plus capture metadata (URL, title, timestamp, format, HTTP status, operator) and the capture's extracted text, truncated at 100,000 characters with an explicit truncation marker. The system prompt is a user-editable setting. Results persist to `capture_analyses` (one row per capture, upsert) with the model name and token usage.
-- **Model selection**: no hardcoded model list; models and pricing are fetched live from OpenRouter and chosen in settings (default `anthropic/claude-sonnet-4`).
-- **Cost/latency handling**: token usage is recorded and displayed per analysis; the client retries with exponential backoff and explicit 429 handling (3 attempts). There is no aggregate spend cap; cost control is the operator's key plus per-request visibility.
-- **Safety and evidentiary hygiene**: AI output lives in a separate table and never touches the capture artifacts, hashes, or manifest; analysis is annotation, not evidence. Access control (a capture must belong to the requested case) is enforced server-side before any API call.
-- **History**: migrations show a larger AI ambition (case-level analyses, AI entity extraction) was built in v1–v4 and removed in v7. The current design keeps deterministic IOC extraction (`ioc-extractor`) in the evidence-adjacent path and confines the LLM to on-demand summarization, a defensible split for a forensic tool.
-
----
-
-## 10. Extensibility and Customization
+## 9. Extensibility and Customization
 
 - **Typed IPC as the internal API.** Adding a feature means adding a channel constant, a Zod/TS payload type, a handler, and a preload method; the pattern is uniform across ~90 channels and hard to get wrong.
 - **The verification core is a library.** `src/shared/verify/` is filesystem-free and key-injected, which is why the same code serves the app, the tests, and the standalone verifier. Third parties could embed it.
-- **Operator-tunable behavior**: ignore patterns (substring, glob, or `/regex/flags`), dedupe window, auto-capture mode (notify vs auto), capture screenshot toggle, storage path, custom TSA URL (normalized defensively), AI system prompt, release channel.
+- **Operator-tunable behavior**: ignore patterns (substring, glob, or `/regex/flags`), dedupe window, auto-capture mode (notify vs auto), capture screenshot toggle, storage path, custom TSA URL (normalized defensively), release channel.
 - **Selector system** as a user-level extension point: per-case watchlists created from the app or directly from a browser text selection via context menu.
 - **Case archives** (export/import with custody-preserving manifest entries) enable transfer between installations, effectively a federation primitive.
 - **What is absent**: no plugin API, no scripting hooks, no user-defined extractors. For an evidence tool this conservatism is arguably correct (arbitrary plugins would undermine the integrity story), but a sanctioned read-only extension point (e.g., custom extractors over capture text) is a plausible future seam.
 
 ---
 
-## 11. Implementation Highlights
+## 10. Implementation Highlights
 
 Details a code reviewer would flag as unusually good:
 
@@ -286,7 +270,7 @@ Details a code reviewer would flag as unusually good:
 3. **The documented deviation from RFC 8785**, with the two invariants that make the simpler canonicalization provably equivalent, and a CI job that requires `openssl` so the external verification recipe is exercised on every push.
 4. **The downgrade guard and truncation check** in chain verification: both attacks (rewrite-as-unsigned, chop-the-tail) are anticipated and specifically closed, with the capture table's duplicated chain fields serving as the cross-check anchor.
 5. **The "omit-when-absent" discipline**: optional manifest fields are `undefined`, never `null` or empty, so legacy entry bodies remain byte-stable as the schema grows; hash stability across schema evolution is treated as an invariant, not an accident.
-6. **Migration history as institutional memory**: repair migrations (v12, v14) for FTS orphan rows followed by a structural fix (v25 external-content tables with triggers) that removes the bug class; dropped AI tables (v7) recording a scope decision.
+6. **Migration history as institutional memory**: repair migrations (v12, v14) for FTS orphan rows followed by a structural fix (v25 external-content tables with triggers) that removes the bug class.
 7. **Screenshot stitching** in the content script: viewport slicing through the background worker's `captureVisibleTab`, sticky-element suppression after the first slice, lazy-load scroll priming with stall detection, and a hard byte budget.
 8. **Coverage as policy**: the barbell profile (90 % on the forensic core, relaxed elsewhere) encodes the risk model into CI.
 
@@ -294,7 +278,7 @@ Code organization follows the process boundary cleanly: `src/main/services/` (on
 
 ---
 
-## 12. Deployment and Infrastructure
+## 11. Deployment and Infrastructure
 
 - **Packaging**: electron-builder; Windows NSIS, macOS dmg+zip, Linux AppImage+deb. `sharp`'s native modules are asar-unpacked; the built extension ships inside the app's resources so the in-app setup guide can point at it.
 - **Updates**: electron-updater against GitHub Releases. Auto-download only where auto-install is safe (Windows NSIS; Linux only when running as AppImage; macOS notify-only pending signing). Checks run 30 s after launch and every 4 h, only in packaged builds, and installation always requires explicit user action.
@@ -304,7 +288,7 @@ Code organization follows the process boundary cleanly: `src/main/services/` (on
 
 ---
 
-## 13. Roadmap and Future Directions (inferred)
+## 12. Roadmap and Future Directions (inferred)
 
 Grounded in code structure, explicit code comments, and documented limitations rather than any stated plan:
 
@@ -319,8 +303,8 @@ Grounded in code structure, explicit code comments, and documented limitations r
 
 ---
 
-## 14. Conclusion
+## 13. Conclusion
 
-Birdbrain is a focused answer to a real evidentiary problem: it makes web captures that a skeptical third party can verify with standard tools, and it wraps that core in a genuinely usable investigation workspace. The architecture is disciplined where discipline pays (a narrow, typed IPC surface; a defense-in-depth loopback boundary; an append-only signed chain with rollback semantics; 90 % test coverage enforced exactly on the forensic core) and pragmatic where pragmatism pays (synchronous SQLite, a small optional AI layer, no server infrastructure at all).
+Birdbrain is a focused answer to a real evidentiary problem: it makes web captures that a skeptical third party can verify with standard tools, and it wraps that core in a genuinely usable investigation workspace. The architecture is disciplined where discipline pays (a narrow, typed IPC surface; a defense-in-depth loopback boundary; an append-only signed chain with rollback semantics; 90 % test coverage enforced exactly on the forensic core) and pragmatic where pragmatism pays (synchronous SQLite, no server infrastructure at all).
 
 The honest limitations are the ones the project itself documents: unsigned binaries, a style-CSP concession, and plaintext fallback for secrets on platforms without OS key storage. None undermine the central design claim. For engineering leaders, the codebase demonstrates that chain-of-custody guarantees fit inside a modern Electron/React application without enterprise tooling. For security reviewers, the threat model is written down, the trust boundaries are few and inspectable, and the verification story deliberately removes the tool itself from the trust path. For contributors, the seams (services, typed channels, the shared verify core) are clean enough that the next feature has an obvious place to live.

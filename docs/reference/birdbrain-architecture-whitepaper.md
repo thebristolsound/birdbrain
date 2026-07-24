@@ -34,9 +34,8 @@ Portable evidence packages and a standalone verifier allow these checks to
 continue outside the running application.
 
 Birdbrain is intentionally a workstation product, not a multi-tenant service.
-SQLite, filesystem artifact storage, a loopback-only Capture Server, typed
-Electron IPC, and optional OpenRouter analysis keep deployment simple and data
-custody legible. This design provides strong local workflows and portable
+SQLite, filesystem artifact storage, a loopback-only Capture Server, and typed
+Electron IPC keep deployment simple and data custody legible. This design provides strong local workflows and portable
 verification, but it does not provide centralized identity, role-based access
 control, remote administration, or protection against an Operator who fully
 controls the host.
@@ -68,8 +67,9 @@ want to place sensitive source material into a vendor-controlled platform.
 Birdbrain's business context follows from these constraints. It is MIT-licensed,
 has no required cloud account, and does not send telemetry. The core collection
 and evidence-management workflow runs locally. Network egress is limited to
-explicit supporting functions: trusted timestamping, optional AI analysis,
-Wayback Machine corroboration, and software updates. This narrow footprint
+explicit supporting functions: trusted timestamping, an optional
+operator-configured OpenRouter integration, Wayback Machine corroboration, and
+software updates. This narrow footprint
 reduces custody ambiguity and vendor dependence, although it places more
 operational responsibility on the workstation owner.
 
@@ -308,7 +308,6 @@ The primary entities and their roles are:
 | Annotation        | Non-destructive shapes and pin comments associated with a screenshot                   |
 | Extracted Data    | Structured indicator projected from Capture content                                    |
 | Archive Reference | Pinned Wayback snapshot metadata used as corroboration                                 |
-| Capture Analysis  | Optional model-generated assessment and token accounting                               |
 
 The storage design distinguishes three levels of authority:
 
@@ -512,11 +511,9 @@ privacy consequences:
   user-initiated Wayback lookup discloses the target URL to the Internet
   Archive;
 - GitHub receives ordinary release-check and download traffic; and
-- OpenRouter receives the selected model identifier, prompt, Case context,
-  Capture metadata, and up to the configured truncation limit of extracted text.
-
-AI analysis is therefore not local-first in the same sense as capture and
-storage. Its use should be governed separately for sensitive Cases.
+- the optional OpenRouter integration, when explicitly configured and invoked,
+  sends selected Capture text and metadata to that provider and should be
+  governed separately for sensitive Cases.
 
 ### Secure development and release posture
 
@@ -569,11 +566,6 @@ persists evidence before non-critical enrichment. Selector retroactive matching
 is chunked and asynchronous; match caps and safe-regex controls bound runaway
 work. Timestamp operations run through a worker with retry behavior rather than
 blocking collection.
-
-OpenRouter requests retry up to three times with exponential backoff, including
-handling for rate limiting. This helps with transient failure but can amplify
-latency. The current client does not expose cancellation, concurrency quotas,
-per-Case budgets, or a circuit breaker.
 
 ### Consistency and recovery
 
@@ -660,7 +652,6 @@ Operators can configure:
 - automatic capture behavior;
 - Operator provenance fields;
 - timestamp-authority URL;
-- OpenRouter API key, model, and system prompt;
 - appearance and reduced motion; and
 - stable or beta update channels.
 
@@ -683,98 +674,6 @@ third-party plugins, scripts, hooks, or custom extractors at runtime. Adding suc
 a system would introduce code-signing, sandboxing, compatibility, and
 evidence-contamination questions that should be resolved before an API is
 published.
-
-## AI/LLM subsystem
-
-### Model usage and prompt strategy
-
-AI analysis is optional and Capture-scoped. The Operator supplies an OpenRouter
-API key and selects a model. For each request, Birdbrain constructs:
-
-1. a configurable system prompt;
-2. Case name, description, and type;
-3. Capture URL, title, time, format, HTTP status, and Operator metadata; and
-4. authoritative extracted text read from the Capture sidecar.
-
-Text is truncated to 100,000 characters with an explicit truncation marker.
-The request uses OpenRouter's chat-completions API. Responses are validated with
-Zod, and prompt, completion, and total token counts are stored with the analysis.
-One analysis is retained per Capture and updated on rerun.
-
-The default prompt asks for findings, notable entities, potential risks, and
-recommended next steps. Operators may replace it in settings. There are no
-hidden multi-stage prompts, tool calls, model-generated writes to evidence, or
-autonomous actions.
-
-### RAG and agents
-
-The current subsystem is neither retrieval-augmented generation nor an agent
-architecture. It supplies one Capture and limited Case context directly to the
-model. It does not retrieve semantically related Captures, use embeddings,
-maintain an agent memory, invoke tools, or run iterative planning loops.
-
-This simplicity has useful properties: requests are inspectable, the blast
-radius is Capture-scoped, and model output remains a derived analysis rather
-than evidence. It also limits cross-Capture synthesis and may omit relevant
-Case context.
-
-### Safety and guardrails
-
-Implemented guardrails include explicit user configuration, local storage of
-credentials through `safeStorage` where available, context truncation, response
-schema validation, ownership checks ensuring the Capture belongs to the
-specified Case, bounded retry behavior, and token accounting.
-
-Important gaps remain:
-
-- captured page text is untrusted and may contain prompt-injection instructions;
-- the prompt does not strongly delimit evidence from instructions;
-- there is no output citation or grounding check;
-- there is no redaction or data-loss-prevention pass before transmission;
-- model and provider retention policies are not enforced by Birdbrain;
-- there is no content-safety classifier or high-risk action gate;
-- there is no regression evaluation suite for analysis quality; and
-- model output can sound authoritative despite being probabilistic.
-
-The UI and whitepaper should characterize AI output as investigator assistance,
-never as verified evidence or an integrity result. A stronger prompt protocol
-should delimit Capture content as quoted data, instruct the model to ignore
-instructions within it, request evidence-linked findings, and expose the exact
-model and prompt used.
-
-### Evaluation approach
-
-The repository tests client response validation, error handling, ownership
-checks, persistence, and retry-relevant behavior. These are software correctness
-tests, not model-quality evaluations.
-
-A production evaluation program should add a versioned corpus of representative
-Captures and score:
-
-- factual consistency with Capture text;
-- unsupported claim rate;
-- extraction precision and recall;
-- prompt-injection resistance;
-- usefulness across Case types;
-- refusal behavior for insufficient evidence;
-- sensitivity to model and prompt changes; and
-- reproducibility of cited findings.
-
-Evaluation results should be tied to model identifier, provider, prompt version,
-and application version.
-
-### Latency, cost, and throughput
-
-Latency and price depend on the selected OpenRouter model, input length, provider
-routing, and retries. A 100,000-character upper bound can still produce a large
-token request. Birdbrain records realized token usage but does not estimate cost
-before submission, cap Case-level spend, batch requests, cache by prompt and
-content hash, or constrain concurrent analyses.
-
-Practical improvements include a preflight token and cost estimate, configurable
-input limits, cancellation, concurrency control, content-hash caching, provider
-policy display, and optional local-model adapters. Any summarization stage would
-need evaluation because it can remove or distort investigative detail.
 
 ## Implementation highlights
 
@@ -840,7 +739,7 @@ dependency. The design states this explicitly rather than hiding it.
 ### Testing strategy
 
 Vitest covers database migrations, repositories, lifecycles, capture ingestion,
-archives, cryptographic helpers, timestamp parsing, OpenRouter integration,
+archives, cryptographic helpers, timestamp parsing,
 renderer hooks, and components. Playwright drives the packaged Electron
 application through Case, Capture, annotation, recapture, MHTML, export, and
 navigation workflows. CI also verifies a real RFC 3161 fixture with OpenSSL,
@@ -878,7 +777,7 @@ The runtime starts:
 6. the renderer window and updater integration.
 
 This deployment model supports disconnected evidence management. Features that
-depend on timestamping, AI, archive lookup, TLS reachability, or updates degrade
+depend on timestamping, archive lookup, TLS reachability, or updates degrade
 when offline, while existing evidence remains locally accessible.
 
 ### Delivery pipeline
@@ -903,7 +802,7 @@ need:
 - silent installation and policy configuration;
 - controlled extension deployment;
 - storage and backup policy;
-- approved TSA and AI-provider configuration;
+- approved TSA configuration;
 - endpoint encryption and OS-account controls;
 - log collection that does not leak evidence; and
 - version support and vulnerability-remediation commitments.
@@ -937,7 +836,7 @@ They are recommendations, not committed features.
    signing services, key rotation records, and independent public-key
    registration without making them mandatory for local use.
 3. **Add policy controls.** Provide managed defaults for storage, TSA, network
-   egress, update channels, and AI availability.
+   egress, and update channels.
 4. **Improve metadata confidentiality.** Authenticate loopback read routes and
    evaluate application-level Case encryption.
 5. **Benchmark realistic Case sizes.** Establish supported envelopes for Capture
@@ -954,19 +853,6 @@ They are recommendations, not committed features.
    replacing the Case and Manifest model.
 4. **Strengthen background-work controls.** Add bounded queues, cancellation,
    visible retry state, and operator-directed retry.
-
-### AI maturity
-
-1. **Harden prompt boundaries and provenance.** Delimit untrusted Capture text
-   and record prompt versions with each analysis.
-2. **Add an evaluation harness.** Gate prompt and model changes on a stable,
-   security-relevant corpus.
-3. **Expose privacy and cost preflight.** Show what will leave the workstation,
-   estimated tokens, provider, and expected cost before submission.
-4. **Support local model adapters.** Allow sensitive Cases to use compatible
-   on-device or organization-hosted inference.
-5. **Add evidence-linked analysis.** Require quoted or offset-based support for
-   material claims before considering Case-wide retrieval or agentic workflows.
 
 ## Conclusion
 
@@ -985,8 +871,7 @@ gives reviewers a defensible vocabulary for interpreting results.
 The same boundary defines the trade-offs. Birdbrain is not a centralized,
 multi-user evidence platform. It relies on workstation security, local key
 custody, Operator procedure, and external governance for regulated deployments.
-AI analysis sends selected evidence context to a third party and currently lacks
-formal quality evaluation. Release signing, structured diagnostics, stronger
+Release signing, structured diagnostics, stronger
 policy management, and documented scale benchmarks remain important maturity
 steps.
 

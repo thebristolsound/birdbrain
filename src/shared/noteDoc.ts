@@ -9,7 +9,8 @@
  *
  * Keep this module free of React and of node views. Main loads it too.
  */
-import { generateText, type Extensions, type JSONContent } from '@tiptap/core'
+import { generateText, getSchema, type Extensions, type JSONContent } from '@tiptap/core'
+import { Node, type Schema } from '@tiptap/pm/model'
 import { StarterKit } from '@tiptap/starter-kit'
 
 /**
@@ -31,6 +32,15 @@ export function noteExtensions(): Extensions {
 }
 
 export const EMPTY_NOTE_DOC: JSONContent = { type: 'doc', content: [{ type: 'paragraph' }] }
+
+// Building the schema walks every extension. Validation runs per note, and an
+// archive import runs it per row, so build it once.
+let schemaCache: Schema | null = null
+
+function noteSchema(): Schema {
+  if (!schemaCache) schemaCache = getSchema(noteExtensions())
+  return schemaCache
+}
 
 /**
  * Derive the plain text that FTS indexes. Blocks are separated by newlines so
@@ -57,8 +67,15 @@ export function parseNoteDoc(json: string): JSONContent {
     throw new Error('Note body is not a ProseMirror document')
   }
   const doc = parsed as JSONContent
-  // Round-trips the document through the schema; unknown nodes or marks throw.
-  noteDocToText(doc)
+  try {
+    // fromJSON rejects unknown node and mark types but builds whatever
+    // structure it is handed — a text node directly under the document
+    // survives it, and so would have survived deriving text from it. check()
+    // is what enforces the schema's content expressions.
+    Node.fromJSON(noteSchema(), doc).check()
+  } catch (e) {
+    throw new Error(`Note body does not fit the note schema: ${(e as Error).message}`)
+  }
   return doc
 }
 

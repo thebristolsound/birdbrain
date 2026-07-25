@@ -2,6 +2,27 @@ import { v4 as uuid } from 'uuid'
 import type { Note } from '@shared/types'
 import type { CreateNoteParams, UpdateNoteParams } from '@shared/ipc'
 import { getDb, type ImportCtx } from '@main/services/db/core'
+import { noteDocToText, parseNoteDoc } from '@shared/noteDoc'
+
+/**
+ * Resolve the two body columns from what the caller supplied.
+ *
+ * A `bodyDoc` wins and dictates `body`: the searchable text is derived here,
+ * from the stored document, so no renderer can put text into the index that
+ * the note does not contain. A `body` on its own is a plain-text write and
+ * clears `body_doc` — the note becomes what was actually written, rather than
+ * keeping a rich document the plain text no longer matches.
+ */
+function resolveBody(params: { body?: string; bodyDoc?: string }): {
+  body: string
+  bodyDoc: string | null
+} {
+  if (params.bodyDoc !== undefined) {
+    const doc = parseNoteDoc(params.bodyDoc)
+    return { body: noteDocToText(doc), bodyDoc: JSON.stringify(doc) }
+  }
+  return { body: params.body ?? '', bodyDoc: null }
+}
 
 export function listNotes(caseId: string): Note[] {
   const rows = getDb()
@@ -20,17 +41,19 @@ export function getNote(id: string): Note | undefined {
 export function createNote(params: CreateNoteParams): Note {
   const id = uuid()
   const now = new Date().toISOString()
+  const { body, bodyDoc } = resolveBody(params)
   getDb()
     .prepare(
-      `INSERT INTO notes (id, case_id, capture_id, title, body, source_url, screenshot_path, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO notes (id, case_id, capture_id, title, body, body_doc, source_url, screenshot_path, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       id,
       params.caseId,
       params.captureId ?? null,
       params.title ?? '',
-      params.body ?? '',
+      body,
+      bodyDoc,
       params.sourceUrl ?? null,
       params.screenshotPath ?? null,
       now,
@@ -43,11 +66,18 @@ export function updateNote(params: UpdateNoteParams): Note | undefined {
   const existing = getNote(params.id)
   if (!existing) return undefined
   const now = new Date().toISOString()
+  // A body-less update (title only) must leave both columns as they are,
+  // rather than resolving an absent body to the empty string.
+  const touchesBody = params.body !== undefined || params.bodyDoc !== undefined
+  const resolved = touchesBody
+    ? resolveBody(params)
+    : { body: existing.body, bodyDoc: existing.bodyDoc ?? null }
   getDb()
-    .prepare('UPDATE notes SET title = ?, body = ?, updated_at = ? WHERE id = ?')
+    .prepare('UPDATE notes SET title = ?, body = ?, body_doc = ?, updated_at = ? WHERE id = ?')
     .run(
       params.title !== undefined ? params.title : existing.title,
-      params.body !== undefined ? params.body : existing.body,
+      resolved.body,
+      resolved.bodyDoc,
       now,
       params.id
     )
@@ -86,6 +116,7 @@ function rowToNote(row: Record<string, unknown>): Note {
     captureId: (row.capture_id as string) || undefined,
     title: row.title as string,
     body: row.body as string,
+    bodyDoc: (row.body_doc as string) || undefined,
     sourceUrl: (row.source_url as string) || undefined,
     screenshotPath: (row.screenshot_path as string) || undefined,
     createdAt: row.created_at as string,
@@ -104,8 +135,8 @@ export function collectNotesForCase(caseId: string): Record<string, unknown>[] {
 
 export function importNoteRows(rows: Record<string, unknown>[], ctx: ImportCtx): void {
   const insert = getDb().prepare(
-    `INSERT INTO notes (id, case_id, capture_id, title, body, source_url, screenshot_path, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO notes (id, case_id, capture_id, title, body, body_doc, source_url, screenshot_path, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
   for (const n of rows) {
     insert.run(
@@ -114,6 +145,8 @@ export function importNoteRows(rows: Record<string, unknown>[], ctx: ImportCtx):
       n.capture_id ? ctx.mapId(n.capture_id as string) : null,
       n.title ?? '',
       n.body ?? '',
+      // Rows written by an older Birdbrain have no body_doc key at all.
+      n.body_doc ?? null,
       n.source_url ?? null,
       n.screenshot_path ?? null,
       n.created_at ?? null,

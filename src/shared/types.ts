@@ -369,7 +369,10 @@ export interface Note {
   caseId: string
   captureId?: string
   title: string
+  /** Plain text, derived from bodyDoc in main. This is what FTS indexes. */
   body: string
+  /** Serialized ProseMirror JSON. Absent on notes written before rich text. */
+  bodyDoc?: string
   sourceUrl?: string
   screenshotPath?: string
   createdAt: string

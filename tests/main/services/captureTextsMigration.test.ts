@@ -14,15 +14,19 @@ describe('migration v25: capture_texts', () => {
     dir = mkdtempSync(join(tmpdir(), 'bb-mig25-'))
     dbPath = join(dir, 'test.db')
     const raw = new Database(dbPath)
-    // Minimal pre-v25 schema: standalone FTS shape, user_version pinned to 24 so
-    // only the v25 migration runs. searchCaptures does SELECT c.* and asserts on
-    // id only, so captures needs only the columns exercised here.
+    // Minimal pre-v25 schema: standalone FTS shape, user_version pinned to 24.
+    // searchCaptures does SELECT c.* and asserts on id only, so captures needs
+    // only the columns exercised here. `notes` is present but unused: every
+    // migration from 25 onwards runs against this fixture, and v26 alters it.
     raw.exec(`
       CREATE TABLE cases (id TEXT PRIMARY KEY, name TEXT, description TEXT, type TEXT,
         created_at TEXT, updated_at TEXT, archived INTEGER DEFAULT 0);
       CREATE TABLE captures (id TEXT PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
         url TEXT, title TEXT, html_path TEXT, screenshot_path TEXT, hash TEXT, timestamp TEXT,
         headers TEXT, created_at TEXT);
+      CREATE TABLE notes (id TEXT PRIMARY KEY, case_id TEXT NOT NULL, capture_id TEXT,
+        title TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', source_url TEXT,
+        screenshot_path TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
       CREATE VIRTUAL TABLE captures_fts USING fts5(title, url, content);
     `)
     raw.prepare(`INSERT INTO cases VALUES ('case1','C','','custom','2026-01-01','2026-01-01',0)`).run()

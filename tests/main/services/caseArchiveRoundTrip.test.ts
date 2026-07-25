@@ -116,7 +116,16 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
     const sel = createSelector({ caseId: c.id, pattern: 'alpha', isRegex: false })
     matchSelectorAgainstCaptures(sel.id, [{ captureId: cap1.id, text: 'alpha text' }])
 
-    createNote({ caseId: c.id, captureId: cap1.id, title: 'N', body: 'note body' })
+    // Rich body, so the deep column comparison below covers body_doc too.
+    createNote({
+      caseId: c.id,
+      captureId: cap1.id,
+      title: 'N',
+      bodyDoc: JSON.stringify({
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'note body' }] }]
+      })
+    })
 
     insertExtractedData(cap1.id, c.id, 'https://a.example', [
       { category: 'contact', subcategory: 'email', value: 'a@example.com' }

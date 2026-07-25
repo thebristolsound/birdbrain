@@ -252,11 +252,18 @@ export interface UpdateSelectorParams {
   label?: string
 }
 
+/**
+ * `body` and `bodyDoc` are alternatives, not a pair. Pass `bodyDoc` and main
+ * derives `body` from it; pass `body` alone and the note is plain text. A
+ * renderer-computed `body` is never stored alongside a `bodyDoc`, so the two
+ * columns cannot drift apart.
+ */
 export interface CreateNoteParams {
   caseId: string
   captureId?: string
   title?: string
   body?: string
+  bodyDoc?: string
   sourceUrl?: string
   screenshotPath?: string
 }
@@ -265,6 +272,7 @@ export interface UpdateNoteParams {
   id: string
   title?: string
   body?: string
+  bodyDoc?: string
 }
 
 export interface PinArchiveSnapshotParams {

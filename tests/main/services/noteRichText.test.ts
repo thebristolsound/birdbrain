@@ -8,7 +8,14 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
-import { createNote, updateNote, searchNotes, getNote } from '@main/services/db/noteRepo'
+import {
+  createNote,
+  updateNote,
+  searchNotes,
+  getNote,
+  importNoteRows,
+  listNotes
+} from '@main/services/db/noteRepo'
 import { noteDocToText } from '@shared/noteDoc'
 
 const DOC = {
@@ -139,5 +146,59 @@ describe('rich-text notes', () => {
 
     expect(() => updateNote({ id: note.id, bodyDoc: '{oops' })).toThrow(/not valid JSON/)
     expect(getNote(note.id)!.body).toBe(DOC_TEXT)
+  })
+
+  describe('archive import', () => {
+    // An archive comes from outside this installation, so its `body` column is
+    // no more trustworthy than a renderer's. It is the one path that could
+    // make a body/body_doc disagreement permanent.
+    const ctx = { newCaseId: '', mapId: (id: string) => id }
+
+    function importRow(row: Record<string, unknown>): void {
+      importNoteRows([{ created_at: 'x', updated_at: 'x', ...row }], {
+        ...ctx,
+        newCaseId: caseId
+      } as Parameters<typeof importNoteRows>[1])
+    }
+
+    it('re-derives body from the imported document rather than trusting the archive', () => {
+      importRow({
+        id: 'imported-1',
+        title: 'Imported',
+        body: 'text the archive claims',
+        body_doc: JSON.stringify(DOC)
+      })
+
+      const imported = getNote('imported-1')!
+      expect(imported.body).toBe(DOC_TEXT)
+      expect(searchNotes(caseId, 'Acme')).toHaveLength(1)
+      expect(searchNotes(caseId, 'claims')).toHaveLength(0)
+    })
+
+    it('imports a pre-v26 row, which has no body_doc at all, as plain text', () => {
+      importRow({ id: 'imported-2', title: 'Legacy', body: 'plain from an old archive' })
+
+      const imported = getNote('imported-2')!
+      expect(imported.body).toBe('plain from an old archive')
+      expect(imported.bodyDoc).toBeUndefined()
+    })
+
+    it('rejects an off-schema document rather than importing it', () => {
+      expect(() =>
+        importRow({
+          id: 'imported-3',
+          title: 'Rogue',
+          body: 'looks fine',
+          body_doc: JSON.stringify({
+            type: 'doc',
+            content: [{ type: 'text', text: 'no paragraph around me' }]
+          })
+        })
+      ).toThrow(/does not fit the note schema/)
+
+      // The whole import runs in one transaction upstream, so failing here
+      // fails the import; nothing half-lands.
+      expect(listNotes(caseId).map((n) => n.id)).not.toContain('imported-3')
+    })
   })
 })

@@ -87,6 +87,35 @@ describe('noteDoc', () => {
       content: [{ type: 'codeBlock', content: [{ type: 'text', text: 'rm -rf' }] }]
     })
 
-    expect(() => parseNoteDoc(rogue)).toThrow()
+    expect(() => parseNoteDoc(rogue)).toThrow(/does not fit the note schema/)
+  })
+
+  it('rejects a document whose nodes are known but arranged against the schema', () => {
+    // Every node type here exists. Only the arrangement is illegal: doc holds
+    // blocks, and this puts inline text directly inside it. Deriving text from
+    // such a document succeeds, so text derivation alone is not validation —
+    // the schema's content expressions have to be checked explicitly.
+    const bareText = JSON.stringify({
+      type: 'doc',
+      content: [{ type: 'text', text: 'no paragraph around me' }]
+    })
+
+    expect(() => parseNoteDoc(bareText)).toThrow(/does not fit the note schema/)
+  })
+
+  it('rejects a mark applied where the schema does not allow it', () => {
+    const markedParagraph = JSON.stringify({
+      type: 'doc',
+      content: [{ type: 'paragraph', marks: [{ type: 'bold' }] }]
+    })
+
+    expect(() => parseNoteDoc(markedParagraph)).toThrow(/does not fit the note schema/)
+  })
+
+  it('accepts every document the editor can actually produce', () => {
+    // Guards against the structural check being stricter than the editor.
+    expect(() => parseNoteDoc(JSON.stringify(EMPTY_NOTE_DOC))).not.toThrow()
+    expect(() => parseNoteDoc(JSON.stringify(RICH_DOC))).not.toThrow()
+    expect(() => parseNoteDoc(JSON.stringify(plainTextToNoteDoc('a\n\nb')))).not.toThrow()
   })
 })

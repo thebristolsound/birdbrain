@@ -85,10 +85,11 @@ test.describe('Capture detail panel', () => {
     await expect(page.getByTestId('capture-details-star-btn')).toContainText('Unstar')
     await page.keyboard.press('Escape')
 
-    // Inline note: type, blur, expect "Saved …" line.
-    const textarea = page.getByTestId('inline-note-textarea')
-    await textarea.fill('hello from e2e')
-    await textarea.blur()
+    // Inline note: type, blur, expect "Saved …" line. The editor is a rich-text
+    // contenteditable now, not a textarea.
+    const noteEditor = page.getByTestId('inline-note-editor')
+    await noteEditor.fill('hello from e2e')
+    await noteEditor.blur()
     await expect(page.getByText(/^Saved /)).toBeVisible({ timeout: 5000 })
 
     // Narrow viewport — panel collapses to 40px rail; expand chevron hidden.

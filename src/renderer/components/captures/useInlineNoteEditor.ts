@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Note } from '@shared/types'
+import { isEmptyNoteDocString, noteDocString } from '@shared/noteDoc'
 
 const DEBOUNCE_MS = 1500
 
 interface CreateArgs {
   title: string
-  body: string
+  bodyDoc: string
 }
 
 interface UpdateArgs {
   id: string
-  body: string
+  bodyDoc: string
 }
 
 export interface UseInlineNoteEditorArgs {
@@ -27,6 +28,12 @@ function pickLatest(notes: Note[], captureId: string): Note | null {
   return [...filtered].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]
 }
 
+/**
+ * `value` is a serialized ProseMirror document, not plain text. Comparisons
+ * against the server copy go through noteDocString so a legacy plain-text note
+ * is measured against the same lifted form the editor loads — otherwise
+ * opening one would register as an edit and autosave would rewrite it.
+ */
 export function useInlineNoteEditor({
   notes,
   captureId,
@@ -39,14 +46,14 @@ export function useInlineNoteEditor({
   const effectiveLatest = latest ?? localLatest
   const boundNoteId = effectiveLatest?.id ?? null
 
-  // The last server body we observed for the bound note. Used to detect dirty
-  // state vs server, and to revert via Esc.
-  const lastServerBodyRef = useRef<string>(effectiveLatest?.body ?? '')
+  // The last server document we observed for the bound note. Used to detect
+  // dirty state vs server, and to revert via Esc.
+  const lastServerBodyRef = useRef<string>(noteDocString(effectiveLatest))
   const lastServerUpdatedRef = useRef<string>(effectiveLatest?.updatedAt ?? '')
   const lastBoundIdRef = useRef<string | null>(boundNoteId)
   const createInFlightRef = useRef<Promise<Note> | null>(null)
 
-  const [value, setValue] = useState<string>(effectiveLatest?.body ?? '')
+  const [value, setValue] = useState<string>(noteDocString(effectiveLatest))
   const debounceRef = useRef<number | null>(null)
 
   useEffect(() => {
@@ -60,18 +67,18 @@ export function useInlineNoteEditor({
   useEffect(() => {
     if (lastBoundIdRef.current !== boundNoteId) {
       lastBoundIdRef.current = boundNoteId
-      lastServerBodyRef.current = effectiveLatest?.body ?? ''
+      lastServerBodyRef.current = noteDocString(effectiveLatest)
       lastServerUpdatedRef.current = effectiveLatest?.updatedAt ?? ''
-      setValue(effectiveLatest?.body ?? '')
+      setValue(noteDocString(effectiveLatest))
       return
     }
     if (!effectiveLatest) return
     const advanced = effectiveLatest.updatedAt > lastServerUpdatedRef.current
     const localClean = value === lastServerBodyRef.current
     if (advanced && localClean) {
-      lastServerBodyRef.current = effectiveLatest.body
+      lastServerBodyRef.current = noteDocString(effectiveLatest)
       lastServerUpdatedRef.current = effectiveLatest.updatedAt
-      setValue(effectiveLatest.body)
+      setValue(noteDocString(effectiveLatest))
     }
   }, [effectiveLatest, boundNoteId, value])
 
@@ -84,27 +91,26 @@ export function useInlineNoteEditor({
     // Existing note: persist whatever the user has, even empty (no silent delete).
     if (boundNoteId) {
       if (current === lastServerBodyRef.current) return
-      const updated = await onUpdate({ id: boundNoteId, body: current })
-      lastServerBodyRef.current = updated?.body ?? current
+      const updated = await onUpdate({ id: boundNoteId, bodyDoc: current })
+      lastServerBodyRef.current = updated ? noteDocString(updated) : current
       if (updated?.updatedAt) {
         lastServerUpdatedRef.current = updated.updatedAt
       }
       return
     }
     // No note: blank blur is a no-op.
-    const trimmed = current.trim()
-    if (trimmed.length === 0) return
+    if (isEmptyNoteDocString(current)) return
     if (createInFlightRef.current) {
       await createInFlightRef.current
       return
     }
-    const createPromise = onCreate({ title: captureTitle, body: current })
+    const createPromise = onCreate({ title: captureTitle, bodyDoc: current })
     createInFlightRef.current = createPromise
     try {
       const created = await createPromise
       setLocalLatest(created)
       lastBoundIdRef.current = created.id
-      lastServerBodyRef.current = created.body
+      lastServerBodyRef.current = noteDocString(created)
       lastServerUpdatedRef.current = created.updatedAt
     } finally {
       createInFlightRef.current = null
@@ -116,7 +122,7 @@ export function useInlineNoteEditor({
     if (debounceRef.current !== null) {
       window.clearTimeout(debounceRef.current)
     }
-    if (boundNoteId === null && value.trim().length === 0) return
+    if (boundNoteId === null && isEmptyNoteDocString(value)) return
     if (boundNoteId !== null && value === lastServerBodyRef.current) return
     debounceRef.current = window.setTimeout(() => {
       debounceRef.current = null
@@ -135,7 +141,7 @@ export function useInlineNoteEditor({
   }, [])
 
   const isDirty =
-    boundNoteId === null ? value.trim().length > 0 : value !== lastServerBodyRef.current
+    boundNoteId === null ? !isEmptyNoteDocString(value) : value !== lastServerBodyRef.current
 
   return {
     value,

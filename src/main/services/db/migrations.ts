@@ -527,4 +527,15 @@ export function runMigrations(db: Database.Database): void {
       db.pragma('user_version = 25')
     })()
   }
+
+  if (version < 26) {
+    db.transaction(() => {
+      // Rich-text note bodies. `body` keeps its meaning — the plain text the
+      // notes_fts triggers index — and is derived in main from body_doc at
+      // write time. Nothing is backfilled: a legacy note has body_doc = NULL
+      // and is still a valid note, so notes_fts needs no rebuild.
+      db.exec(`ALTER TABLE notes ADD COLUMN body_doc TEXT`)
+      db.pragma('user_version = 26')
+    })()
+  }
 }

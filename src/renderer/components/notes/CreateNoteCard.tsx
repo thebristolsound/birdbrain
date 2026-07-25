@@ -1,7 +1,10 @@
 import { useState } from 'react'
 import { Plus, X } from 'lucide-react'
 import { useNotesMutations } from '@renderer/lib/queries'
-import { Button, Input, Textarea } from '@renderer/components/ui'
+import { Button, Input } from '@renderer/components/ui'
+import { NoteEditor } from '@renderer/components/notes/NoteEditor'
+import { useNoteEditor } from '@renderer/components/notes/useNoteEditor'
+import { EMPTY_NOTE_DOC } from '@shared/noteDoc'
 
 interface CreateNoteCardProps {
   caseId: string
@@ -13,17 +16,20 @@ interface CreateNoteCardProps {
 export function CreateNoteCard({ caseId, isOpen, onToggle, onCreated }: CreateNoteCardProps) {
   const { create } = useNotesMutations(caseId)
   const [title, setTitle] = useState('')
-  const [body, setBody] = useState('')
+  const [bodyDoc, setBodyDoc] = useState<string | null>(null)
+  const editor = useNoteEditor({ onChange: setBodyDoc, testId: 'create-note-body' })
+  const hasBody = editor ? !editor.isEmpty : false
 
   async function handleSubmit() {
-    if (!title.trim() && !body.trim()) return
+    if (!title.trim() && !hasBody) return
     await create.mutateAsync({
       caseId,
       title: title.trim(),
-      body: body.trim()
+      bodyDoc: bodyDoc ?? JSON.stringify(EMPTY_NOTE_DOC)
     })
     setTitle('')
-    setBody('')
+    setBodyDoc(null)
+    editor?.commands.clearContent()
     onCreated?.()
   }
 
@@ -55,14 +61,9 @@ export function CreateNoteCard({ caseId, isOpen, onToggle, onCreated }: CreateNo
         placeholder="Title (optional)"
         className="mb-2 border-border bg-canvas font-semibold"
       />
-      <Textarea
-        data-testid="create-note-body"
-        value={body}
-        onChange={(e) => setBody(e.target.value)}
-        placeholder="Note body"
-        rows={4}
-        className="mb-3 border-border bg-canvas text-text-secondary"
-      />
+      <div className="mb-3">
+        <NoteEditor editor={editor} placeholder="Note body" />
+      </div>
       <div className="flex items-center justify-end gap-2">
         <Button variant="ghost" size="sm" onClick={onToggle}>
           Cancel
@@ -71,7 +72,7 @@ export function CreateNoteCard({ caseId, isOpen, onToggle, onCreated }: CreateNo
           data-testid="create-note-submit"
           size="sm"
           onClick={handleSubmit}
-          disabled={(!title.trim() && !body.trim()) || create.isPending}
+          disabled={(!title.trim() && !hasBody) || create.isPending}
         >
           {create.isPending ? 'Saving...' : 'Save note'}
         </Button>

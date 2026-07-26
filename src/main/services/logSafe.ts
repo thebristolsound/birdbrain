@@ -52,7 +52,15 @@ export function tag(value: string, allowed: readonly string[]): LogSafe {
 // name) exposed. URLs are replaced before the generic path patterns because a
 // URL contains '//' that the posix path pattern would otherwise consume.
 const URL_LIKE = /\b[a-z][a-z0-9+.-]*:\/\/\S+/gi
-const WIN_PATH = /[A-Za-z]:\\[^\s'"()]+/g
+// Drive-rooted ('D:\...') or UNC ('\\server\share\...') paths, either of which
+// can have spaces in an intermediate folder name ("Operation Blackbird"). A
+// segment may contain a space only when it is followed by another '\'
+// separator — that keeps the match anchored to real path structure instead of
+// running on into trailing prose ("... capture.mhtml failed"), where the
+// final component still stops at the first whitespace/quote/paren. The
+// segment class excludes '\', so each iteration consumes a disjoint run up to
+// the next separator — same shape as POSIX_PATH below, so this stays linear.
+const WIN_PATH = /(?:[A-Za-z]:\\|\\\\)(?:[^\\'"()]+\\)*[^\s'"()]+/g
 const POSIX_PATH = /(?<![\w-])\/(?:[\w.-]+\/)+[\w.-]*/g
 
 function escapeRegExp(value: string): string {

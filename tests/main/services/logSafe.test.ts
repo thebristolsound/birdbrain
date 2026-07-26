@@ -82,6 +82,32 @@ describe('sanitizeText', () => {
     expect(out).not.toContain('OperationBlackbird')
     expect(out).toContain('‹path›')
   })
+
+  it('strips a non-home windows path with a space in an intermediate folder', () => {
+    const out = sanitizeText(
+      String.raw`open D:\Evidence\Operation Blackbird\capture.mhtml failed`,
+      String.raw`C:\Users\matt`
+    )
+    expect(out).not.toContain('Blackbird')
+    expect(out).not.toContain('capture.mhtml')
+    expect(out).toContain('‹path›')
+  })
+
+  it('strips a UNC path', () => {
+    const out = sanitizeText(
+      String.raw`open \\server\share\cases\OperationBlackbird\x.mhtml failed`,
+      String.raw`C:\Users\matt`
+    )
+    expect(out).not.toContain('server')
+    expect(out).not.toContain('share')
+    expect(out).not.toContain('OperationBlackbird')
+    expect(out).toContain('‹path›')
+  })
+
+  it('does not swallow trailing prose after a windows path', () => {
+    const out = sanitizeText(String.raw`open D:\Evidence\x.mhtml failed`, String.raw`C:\Users\matt`)
+    expect(out).toContain('failed')
+  })
 })
 
 describe('sanitizeError', () => {

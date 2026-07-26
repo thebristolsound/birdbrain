@@ -194,16 +194,17 @@ function createApp(deps: CaptureServerDeps): Hono {
     const activeCase = session.activeCaseId ? caseRepo.getCase(session.activeCaseId) : null
     const settings = getSettings()
     const allCases = includeCases ? caseRepo.listCases() : null
-    // Only expose the auth token to known origins (extension, localhost) or the
-    // origin-less same-origin/extension pairing fetch. Omit for any web origin
-    // so a page can't read it — and note the DNS-rebinding guard above already
-    // rejects rebound hostnames before this runs. file:// is intentionally NOT
-    // trusted: such a page receives no CORS grant and so can't read the body.
-    const includeToken =
-      !origin ||
-      origin.startsWith('chrome-extension://') ||
-      origin.startsWith('http://localhost:') ||
-      origin.startsWith('http://127.0.0.1:')
+    // Token exposure is now extension-only (#228): the renderer talks to main
+    // over IPC and never reads this. The two dev-server origins that used to be
+    // granted (http://localhost:<port>, http://127.0.0.1:<port>) existed solely
+    // to bootstrap the renderer's fetch wrapper, which no longer exists.
+    //
+    // The origin-less grant stays: Chrome normally sends an Origin on the
+    // extension's status poll, but a fetch that omits it would otherwise lose
+    // pairing. The DNS-rebinding guard above already rejects rebound hostnames
+    // before this runs, and file:// is still not trusted — such a page receives
+    // no CORS grant and so cannot read the body.
+    const includeToken = !origin || origin.startsWith('chrome-extension://')
     return c.json({
       running: true,
       ...(includeToken ? { serverToken: requiredToken } : {}),

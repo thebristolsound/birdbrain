@@ -7,7 +7,7 @@ import type {
   AnnotationShape,
   AnnotationsBundle,
   ArchiveInspectReport,
-  ArchiveRef,
+  WaybackRef,
   BirdbrainSettings,
   Capture,
   CaptureAnalysis,
@@ -325,7 +325,7 @@ export interface UpdateNoteParams {
   anchor?: string | null
 }
 
-export interface PinArchiveSnapshotParams {
+export interface PinWaybackSnapshotParams {
   captureId: string
   snapshot: WaybackSnapshot
   checkedAt: string
@@ -542,8 +542,8 @@ export interface IpcInvokeContract {
   'export:generate': { args: [caseId: string, options: ExportOptions]; result: ExportResult }
 
   'archive:lookup': { args: [captureId: string]; result: WaybackLookupResult }
-  'archive:list': { args: [captureId: string]; result: ArchiveRef[] }
-  'archive:pin': { args: [params: PinArchiveSnapshotParams]; result: ArchiveRef }
+  'archive:list': { args: [captureId: string]; result: WaybackRef[] }
+  'archive:pin': { args: [params: PinWaybackSnapshotParams]; result: WaybackRef }
   'archive:unpin': { args: [refId: string]; result: boolean }
 
   'annotations:get': { args: [captureId: string]; result: AnnotationsBundle }

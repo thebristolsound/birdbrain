@@ -1,12 +1,12 @@
 import { v4 as uuid } from 'uuid'
-import type { ArchiveRef, WaybackSnapshot } from '@shared/types'
+import type { WaybackRef, WaybackSnapshot } from '@shared/types'
 import { getDb, type ImportCtx } from '@main/services/db/core'
 
 export function createArchiveRef(params: {
   captureId: string
   snapshot: WaybackSnapshot
   checkedAt: string
-}): ArchiveRef {
+}): WaybackRef {
   const id = uuid()
   const now = new Date().toISOString()
   const { snapshot } = params
@@ -31,14 +31,14 @@ export function createArchiveRef(params: {
   return getArchiveRef(id)!
 }
 
-export function getArchiveRef(id: string): ArchiveRef | undefined {
+export function getArchiveRef(id: string): WaybackRef | undefined {
   const row = getDb().prepare('SELECT * FROM capture_archive_refs WHERE id = ?').get(id) as
     | Record<string, unknown>
     | undefined
   return row ? rowToArchiveRef(row) : undefined
 }
 
-export function listArchiveRefs(captureId: string): ArchiveRef[] {
+export function listArchiveRefs(captureId: string): WaybackRef[] {
   const rows = getDb()
     .prepare(
       'SELECT * FROM capture_archive_refs WHERE capture_id = ? ORDER BY snapshot_timestamp DESC'
@@ -52,7 +52,7 @@ export function deleteArchiveRef(id: string): boolean {
   return result.changes > 0
 }
 
-function rowToArchiveRef(row: Record<string, unknown>): ArchiveRef {
+function rowToArchiveRef(row: Record<string, unknown>): WaybackRef {
   return {
     id: row.id as string,
     captureId: row.capture_id as string,

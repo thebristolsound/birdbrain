@@ -59,17 +59,11 @@ const OPERATOR_NAME_REQUIRED_MSG =
 let server: Server | null = null
 let mainWindow: BrowserWindow | null = null
 
-// Default instance, replaced when startCaptureServer is given one. Its
-// notifications go through this module's window reference for now; commit 4
-// moves that responsibility to the main-process wiring.
-let sessionService: SessionService = createSessionService({
-  emitSessionChange: (payload) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      sendEvent(mainWindow.webContents, IPC_CHANNELS.SESSION_STATE_CHANGED, payload)
-    }
-  },
-  emitExtensionConnection: (connected) => notifyExtensionConnection(connected)
-})
+// Fallback for callers that don't inject one (the test suite). It has no
+// notification callbacks: broadcasting session events is the main-process
+// wiring's job, so this module's window reference now serves capture events
+// only.
+let sessionService: SessionService = createSessionService()
 
 export function getSessionState(): SessionSnapshot {
   return sessionService.snapshot()
@@ -598,12 +592,6 @@ export function stopCaptureServer(): Promise<void> {
       resolve()
     }
   })
-}
-
-function notifyExtensionConnection(connected: boolean): void {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    sendEvent(mainWindow.webContents, IPC_CHANNELS.EXTENSION_CONNECTION, { connected })
-  }
 }
 
 export function startExtensionConnectionCheck(): void {

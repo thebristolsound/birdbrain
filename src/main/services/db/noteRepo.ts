@@ -3,7 +3,7 @@ import type { Note } from '@shared/types'
 import type { CreateNoteParams, UpdateNoteParams } from '@shared/ipc'
 import { getDb, type ImportCtx } from '@main/services/db/core'
 import { noteDocToText, parseNoteDoc } from '@shared/noteDoc'
-import { parseNoteAnchor, type NoteAnchorKind } from '@shared/noteAnchor'
+import { parseNoteAnchor, remapAnchorIds, type NoteAnchorKind } from '@shared/noteAnchor'
 
 /**
  * Resolve the two anchor columns from a serialized payload.
@@ -18,13 +18,17 @@ import { parseNoteAnchor, type NoteAnchorKind } from '@shared/noteAnchor'
  * the note — a falsy guard here would let a renderer clear an anchor by sending
  * a broken one, which is the coercion this module exists to prevent.
  */
-function resolveAnchor(anchor: string | null | undefined): {
+function resolveAnchor(
+  anchor: string | null | undefined,
+  mapId?: (id: string) => string
+): {
   kind: NoteAnchorKind | null
   json: string | null
 } {
   if (anchor === undefined || anchor === null) return { kind: null, json: null }
   const parsed = parseNoteAnchor(anchor)
-  return { kind: parsed.kind, json: JSON.stringify(parsed) }
+  const remapped = mapId ? remapAnchorIds(parsed, mapId) : parsed
+  return { kind: remapped.kind, json: JSON.stringify(remapped) }
 }
 
 /**
@@ -195,7 +199,10 @@ export function importNoteRows(rows: Record<string, unknown>[], ctx: ImportCtx):
     // The archive's anchor_kind column is ignored in favour of the kind the
     // anchor itself declares, so the two cannot land in the database
     // disagreeing. A pre-v27 archive has no anchor at all and imports loose.
-    const anchor = resolveAnchor((n.anchor_json as string) ?? null)
+    // Ids embedded in the anchor go through the same remap as the capture_id
+    // column below — an anchor left pointing at a pre-import id would cite
+    // whatever already holds that id in this installation.
+    const anchor = resolveAnchor((n.anchor_json as string) ?? null, ctx.mapId)
     insert.run(
       ctx.mapId(n.id as string),
       ctx.newCaseId,

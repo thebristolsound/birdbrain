@@ -209,5 +209,60 @@ describe('anchored notes', () => {
 
       expect(listNotes(caseId).map((n) => n.id)).not.toContain('imported-4')
     })
+
+    // The collision remap rewrites the capture_id column; an anchor left
+    // holding the pre-import id would point at whatever already owns that id
+    // here -- a note citing evidence it was never written about.
+    function importRemapped(row: Record<string, unknown>): void {
+      importNoteRows([{ created_at: 'x', updated_at: 'x', ...row }], {
+        newCaseId: caseId,
+        mapId: (id: string) => (id === 'cap-1' ? 'cap-1-remapped' : id)
+      } as Parameters<typeof importNoteRows>[1])
+    }
+
+    it('remaps the captureId embedded in an imported anchor', () => {
+      importRemapped({
+        id: 'imported-5',
+        title: 'Anchored',
+        body: 'x',
+        anchor_json: JSON.stringify(TEXT_ANCHOR)
+      })
+
+      expect(getNote('imported-5')!.anchor).toMatchObject({
+        kind: 'text',
+        captureId: 'cap-1-remapped'
+      })
+    })
+
+    it('remaps the selectorId inside an imported selector-match anchor', () => {
+      importNoteRows(
+        [
+          {
+            id: 'imported-6',
+            title: 'Selector',
+            body: 'x',
+            created_at: 'x',
+            updated_at: 'x',
+            anchor_json: JSON.stringify({
+              kind: 'finding',
+              finding: 'selectorMatch',
+              captureId: 'cap-1',
+              selectorId: 'sel-1'
+            })
+          }
+        ],
+        {
+          newCaseId: caseId,
+          mapId: (id: string) => `${id}-remapped`
+        } as Parameters<typeof importNoteRows>[1]
+      )
+
+      expect(getNote('imported-6-remapped')!.anchor).toEqual({
+        kind: 'finding',
+        finding: 'selectorMatch',
+        captureId: 'cap-1-remapped',
+        selectorId: 'sel-1-remapped'
+      })
+    })
   })
 })

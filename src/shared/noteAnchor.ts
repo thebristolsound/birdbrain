@@ -166,6 +166,35 @@ export function parseNoteAnchor(json: string): NoteAnchor {
 }
 
 /**
+ * Rewrite the row ids an anchor embeds, for the archive import's collision remap.
+ *
+ * An imported note's `capture_id` column is remapped, so the anchor's own
+ * `captureId` must move with it. Leaving it behind is worse than a dangling
+ * reference: when the old id already exists in the destination installation,
+ * the anchor silently resolves against *that* capture, and the note cites
+ * evidence it was never written about.
+ *
+ * The switch is exhaustive on purpose. A future anchor kind carrying an id
+ * fails to compile here rather than importing subtly wrong.
+ *
+ * Spreading is safe here and not in `parseNoteAnchor` because the input is
+ * already a validated `NoteAnchor` — there is no unlisted field to carry over.
+ */
+export function remapAnchorIds(anchor: NoteAnchor, mapId: (id: string) => string): NoteAnchor {
+  const captureId = mapId(anchor.captureId)
+  switch (anchor.kind) {
+    case 'capture':
+    case 'region':
+    case 'text':
+      return { ...anchor, captureId }
+    case 'finding':
+      return anchor.finding === 'selectorMatch'
+        ? { ...anchor, captureId, selectorId: mapId(anchor.selectorId) }
+        : { ...anchor, captureId }
+  }
+}
+
+/**
  * Where a text anchor landed, and which rung of the ladder found it.
  *
  * `via` is kept rather than reduced to a boolean because the rungs do not mean

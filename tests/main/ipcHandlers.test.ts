@@ -228,29 +228,30 @@ afterEach(() => {
 })
 
 describe('ipcHandlers — registration', () => {
-  it('registers a handler for every IPC channel referenced by handlers', () => {
-    // Spot-check a representative set across domains.
-    for (const ch of [
-      IPC_CHANNELS.CASES_LIST,
-      IPC_CHANNELS.CAPTURES_LIST,
-      IPC_CHANNELS.TAGS_LIST,
-      IPC_CHANNELS.SELECTORS_LIST,
-      IPC_CHANNELS.NOTES_LIST,
-      IPC_CHANNELS.SETTINGS_GET,
-      IPC_CHANNELS.DB_STATS,
-      IPC_CHANNELS.EXPORT_PREFLIGHT
-    ]) {
-      expect(registered.has(ch)).toBe(true)
-    }
+  // Every declared channel is an invoke channel or an `event:` push — the
+  // compile-time ChannelsAreExhaustive check in @shared/ipc enforces that split.
+  // Here we close the other half of the loop at runtime: every invoke channel
+  // has a handler, and no handler exists for a channel nobody declared.
+  const invokeChannels = Object.values(IPC_CHANNELS).filter((ch) => !ch.startsWith('event:'))
+
+  it('registers a handler for every declared invoke channel', () => {
+    const missing = invokeChannels.filter((ch) => !registered.has(ch))
+    expect(missing).toEqual([])
+  })
+
+  it('registers no handler for an undeclared channel', () => {
+    const declared = new Set<string>(invokeChannels)
+    const unexpected = [...registered.keys()].filter((ch) => !declared.has(ch))
+    expect(unexpected).toEqual([])
   })
 })
 
 describe('ipcHandlers — cases', () => {
   it('lists, gets, creates, updates and deletes cases', async () => {
-    const list = await invoke<Case[]>(IPC_CHANNELS.CASES_LIST)
+    const list = expectOk<Case[]>(await invoke(IPC_CHANNELS.CASES_LIST))
     expect(list.some((c) => c.id === caseId)).toBe(true)
 
-    const one = await invoke<Case>(IPC_CHANNELS.CASES_GET, caseId)
+    const one = expectOk<Case>(await invoke(IPC_CHANNELS.CASES_GET, caseId))
     expect(one.name).toBe('Test Case')
 
     const created = expectOk<Case>(await invoke(IPC_CHANNELS.CASES_CREATE, { name: 'Another' }))
@@ -262,7 +263,7 @@ describe('ipcHandlers — cases', () => {
     expect(updated.name).toBe('Renamed')
 
     expectOk(await invoke(IPC_CHANNELS.CASES_DELETE, created.id))
-    const after = await invoke<Case[]>(IPC_CHANNELS.CASES_LIST)
+    const after = expectOk<Case[]>(await invoke(IPC_CHANNELS.CASES_LIST))
     expect(after.some((c) => c.id === created.id)).toBe(false)
   })
 
@@ -280,28 +281,30 @@ describe('ipcHandlers — cases', () => {
 
 describe('ipcHandlers — captures', () => {
   it('lists and gets captures', async () => {
-    const list = await invoke<Capture[]>(IPC_CHANNELS.CAPTURES_LIST, caseId)
+    const list = expectOk<Capture[]>(await invoke(IPC_CHANNELS.CAPTURES_LIST, caseId))
     expect(list).toHaveLength(1)
-    const one = await invoke<Capture>(IPC_CHANNELS.CAPTURES_GET, captureId)
+    const one = expectOk<Capture>(await invoke(IPC_CHANNELS.CAPTURES_GET, captureId))
     expect(one.id).toBe(captureId)
   })
 
   it('returns capture content for html, png and txt', async () => {
-    const html = await invoke<string>(IPC_CHANNELS.CAPTURES_GET_CONTENT, captureId, 'html')
+    const html = expectOk<string>(
+      await invoke(IPC_CHANNELS.CAPTURES_GET_CONTENT, captureId, 'html')
+    )
     expect(html).toContain('<html>')
-    const png = await invoke<string>(IPC_CHANNELS.CAPTURES_GET_CONTENT, captureId, 'png')
+    const png = expectOk<string>(await invoke(IPC_CHANNELS.CAPTURES_GET_CONTENT, captureId, 'png'))
     expect(png).toBe(Buffer.from('png-bytes').toString('base64'))
-    const txt = await invoke<string>(IPC_CHANNELS.CAPTURES_GET_CONTENT, captureId, 'txt')
+    const txt = expectOk<string>(await invoke(IPC_CHANNELS.CAPTURES_GET_CONTENT, captureId, 'txt'))
     expect(txt).toContain('hello world')
-    const missing = await invoke(IPC_CHANNELS.CAPTURES_GET_CONTENT, 'nope', 'html')
+    const missing = expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_CONTENT, 'nope', 'html'))
     expect(missing).toBeNull()
   })
 
   it('returns a thumbnail and matching selectors', async () => {
-    const thumb = await invoke<string>(IPC_CHANNELS.CAPTURES_GET_THUMBNAIL, captureId)
+    const thumb = expectOk<string>(await invoke(IPC_CHANNELS.CAPTURES_GET_THUMBNAIL, captureId))
     expect(typeof thumb).toBe('string')
-    expect(await invoke(IPC_CHANNELS.CAPTURES_GET_THUMBNAIL, 'missing')).toBeNull()
-    const sel = await invoke(IPC_CHANNELS.CAPTURES_GET_MATCHING_SELECTORS, captureId)
+    expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_THUMBNAIL, 'missing'))).toBeNull()
+    const sel = expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_MATCHING_SELECTORS, captureId))
     expect(Array.isArray(sel)).toBe(true)
   })
 
@@ -315,7 +318,7 @@ describe('ipcHandlers — captures', () => {
   it('toggles, reads and lists favorites', async () => {
     expectOk(await invoke(IPC_CHANNELS.CAPTURES_TOGGLE_FAVORITE, captureId))
     expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_IS_FAVORITE, captureId))).toBe(true)
-    const favs = expectOk<Capture[]>(await invoke(IPC_CHANNELS.CAPTURES_LIST_FAVORITES, caseId))
+    const favs = expectOk<string[]>(await invoke(IPC_CHANNELS.CAPTURES_LIST_FAVORITES, caseId))
     expect(favs).toHaveLength(1)
   })
 
@@ -380,13 +383,15 @@ describe('ipcHandlers — captures', () => {
     expect(verification.status).toBeDefined()
 
     expectOk(await invoke(IPC_CHANNELS.CAPTURES_DELETE, captureId))
-    expect(await invoke<Capture[]>(IPC_CHANNELS.CAPTURES_LIST, caseId)).toHaveLength(0)
+    expect(expectOk<Capture[]>(await invoke(IPC_CHANNELS.CAPTURES_LIST, caseId))).toHaveLength(0)
   })
 
   it('reports failure for the http/pipeline self-tests when the server is down', async () => {
-    const http = await invoke<{ success: boolean }>(IPC_CHANNELS.CAPTURES_TEST_HTTP)
+    const http = expectOk<{ success: boolean }>(await invoke(IPC_CHANNELS.CAPTURES_TEST_HTTP))
     expect(http.success).toBe(false)
-    const pipeline = await invoke<{ success: boolean }>(IPC_CHANNELS.CAPTURES_TEST_PIPELINE)
+    const pipeline = expectOk<{ success: boolean }>(
+      await invoke(IPC_CHANNELS.CAPTURES_TEST_PIPELINE)
+    )
     expect(pipeline.success).toBe(false)
   })
 })
@@ -398,15 +403,19 @@ describe('ipcHandlers — tags', () => {
     )
     expectOk(await invoke(IPC_CHANNELS.TAGS_UPDATE, { id: tag.id, name: 'urgent2', color: '#0f0' }))
 
-    const list = await invoke<{ id: string }[]>(IPC_CHANNELS.TAGS_LIST)
+    const list = expectOk<{ id: string }[]>(await invoke(IPC_CHANNELS.TAGS_LIST))
     expect(list.some((t) => t.id === tag.id)).toBe(true)
 
     expectOk(await invoke(IPC_CHANNELS.TAGS_ADD_TO_CAPTURE, { captureId, tagId: tag.id }))
-    const forCapture = await invoke<{ id: string }[]>(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, captureId)
+    const forCapture = expectOk<{ id: string }[]>(
+      await invoke(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, captureId)
+    )
     expect(forCapture.some((t) => t.id === tag.id)).toBe(true)
 
-    expect(await invoke<number>(IPC_CHANNELS.TAGS_COUNT_FOR_CASE, caseId)).toBeGreaterThan(0)
-    expect(await invoke(IPC_CHANNELS.TAGS_USAGE_COUNTS_FOR_CASE, caseId)).toBeDefined()
+    expect(
+      expectOk<number>(await invoke(IPC_CHANNELS.TAGS_COUNT_FOR_CASE, caseId))
+    ).toBeGreaterThan(0)
+    expect(expectOk(await invoke(IPC_CHANNELS.TAGS_USAGE_COUNTS_FOR_CASE, caseId))).toBeDefined()
 
     expectOk(await invoke(IPC_CHANNELS.TAGS_REMOVE_FROM_CAPTURE, { captureId, tagId: tag.id }))
     expectOk(await invoke(IPC_CHANNELS.TAGS_DELETE, tag.id))
@@ -433,13 +442,15 @@ describe('ipcHandlers — selectors', () => {
       await invoke(IPC_CHANNELS.SELECTORS_UPDATE, { id: sel.id, pattern: 'hello2', isRegex: false })
     )
 
-    const list = await invoke<{ id: string }[]>(IPC_CHANNELS.SELECTORS_LIST, caseId)
+    const list = expectOk<{ id: string }[]>(await invoke(IPC_CHANNELS.SELECTORS_LIST, caseId))
     expect(list.length).toBeGreaterThanOrEqual(2)
-    expect(await invoke(IPC_CHANNELS.SELECTORS_GET, sel.id)).toBeDefined()
-    expect(await invoke(IPC_CHANNELS.SELECTORS_LIST_ACTIVE)).toBeDefined()
-    expect(await invoke(IPC_CHANNELS.SELECTORS_MATCH_COUNTS, caseId)).toBeDefined()
-    expect(await invoke(IPC_CHANNELS.SELECTORS_COVERAGE, caseId)).toBeDefined()
-    expect(await invoke(IPC_CHANNELS.SELECTORS_MATCHING_CAPTURES, caseId, [sel.id])).toBeDefined()
+    expect(expectOk(await invoke(IPC_CHANNELS.SELECTORS_GET, sel.id))).toBeDefined()
+    expect(expectOk(await invoke(IPC_CHANNELS.SELECTORS_LIST_ACTIVE))).toBeDefined()
+    expect(expectOk(await invoke(IPC_CHANNELS.SELECTORS_MATCH_COUNTS, caseId))).toBeDefined()
+    expect(expectOk(await invoke(IPC_CHANNELS.SELECTORS_COVERAGE, caseId))).toBeDefined()
+    expect(
+      expectOk(await invoke(IPC_CHANNELS.SELECTORS_MATCHING_CAPTURES, caseId, [sel.id]))
+    ).toBeDefined()
 
     expectOk(await invoke(IPC_CHANNELS.SELECTORS_DELETE, sel.id))
   })
@@ -472,15 +483,17 @@ describe('ipcHandlers — notes', () => {
     )
     expectOk(await invoke(IPC_CHANNELS.NOTES_UPDATE, { id: note.id, content: 'updated finding' }))
 
-    expect(await invoke<{ id: string }[]>(IPC_CHANNELS.NOTES_LIST, caseId)).toHaveLength(1)
-    expect(await invoke(IPC_CHANNELS.NOTES_GET, note.id)).toBeDefined()
-    expect(await invoke<number>(IPC_CHANNELS.NOTES_COUNT, caseId)).toBe(1)
-    expect(await invoke(IPC_CHANNELS.NOTES_SEARCH, caseId, 'finding')).toBeDefined()
+    expect(expectOk<{ id: string }[]>(await invoke(IPC_CHANNELS.NOTES_LIST, caseId))).toHaveLength(
+      1
+    )
+    expect(expectOk(await invoke(IPC_CHANNELS.NOTES_GET, note.id))).toBeDefined()
+    expect(expectOk<number>(await invoke(IPC_CHANNELS.NOTES_COUNT, caseId))).toBe(1)
+    expect(expectOk(await invoke(IPC_CHANNELS.NOTES_SEARCH, caseId, 'finding'))).toBeDefined()
     // Malformed FTS query is swallowed and returns [].
-    expect(await invoke(IPC_CHANNELS.NOTES_SEARCH, caseId, '"unbalanced')).toEqual([])
+    expect(expectOk(await invoke(IPC_CHANNELS.NOTES_SEARCH, caseId, '"unbalanced'))).toEqual([])
 
     expectOk(await invoke(IPC_CHANNELS.NOTES_DELETE, note.id))
-    expect(await invoke<number>(IPC_CHANNELS.NOTES_COUNT, caseId)).toBe(0)
+    expect(expectOk<number>(await invoke(IPC_CHANNELS.NOTES_COUNT, caseId))).toBe(0)
   })
 })
 
@@ -494,9 +507,8 @@ describe('ipcHandlers — annotations', () => {
         imageHeight: 100
       })
     )
-    const bundle = await invoke<{ annotations: unknown; pins: unknown[] }>(
-      IPC_CHANNELS.ANNOTATIONS_GET,
-      captureId
+    const bundle = expectOk<{ annotations: unknown; pins: unknown[] }>(
+      await invoke(IPC_CHANNELS.ANNOTATIONS_GET, captureId)
     )
     expect(bundle.annotations).not.toBeNull()
     expect(Array.isArray(bundle.pins)).toBe(true)
@@ -512,48 +524,50 @@ describe('ipcHandlers — annotations', () => {
 
 describe('ipcHandlers — search', () => {
   it('searches captures and swallows malformed FTS queries', async () => {
-    expect(await invoke(IPC_CHANNELS.SEARCH, 'case-1', 'hello')).toBeDefined()
-    expect(await invoke(IPC_CHANNELS.SEARCH, 'case-1', '"unbalanced')).toEqual([])
+    expect(expectOk(await invoke(IPC_CHANNELS.SEARCH, 'case-1', 'hello'))).toBeDefined()
+    expect(expectOk(await invoke(IPC_CHANNELS.SEARCH, 'case-1', '"unbalanced'))).toEqual([])
   })
 })
 
 describe('ipcHandlers — settings', () => {
   it('gets, updates, resets and reports identity', async () => {
-    const s = await invoke<{ operatorName?: string }>(IPC_CHANNELS.SETTINGS_GET)
+    const s = expectOk<{ operatorName?: string }>(await invoke(IPC_CHANNELS.SETTINGS_GET))
     expect(s).toBeDefined()
 
-    const updated = await invoke<{ operatorName?: string }>(IPC_CHANNELS.SETTINGS_UPDATE, {
-      operatorName: 'Agent Smith'
-    })
+    const updated = expectOk<{ operatorName?: string }>(
+      await invoke(IPC_CHANNELS.SETTINGS_UPDATE, { operatorName: 'Agent Smith' })
+    )
     expect(updated.operatorName).toBe('Agent Smith')
 
-    const identity = await invoke<{ installationId: string; operatorName: string }>(
-      IPC_CHANNELS.SETTINGS_GET_IDENTITY
+    const identity = expectOk<{ installationId: string; operatorName: string }>(
+      await invoke(IPC_CHANNELS.SETTINGS_GET_IDENTITY)
     )
     expect(identity.installationId).toBeTruthy()
     expect(identity.operatorName).toBe('Agent Smith')
 
-    const reset = await invoke<{ operatorName?: string }>(IPC_CHANNELS.SETTINGS_RESET)
+    const reset = expectOk<{ operatorName?: string }>(await invoke(IPC_CHANNELS.SETTINGS_RESET))
     expect(reset).toBeDefined()
   })
 
   it('delegates openrouter key tests and model listing', async () => {
     testApiKey.mockResolvedValue(true)
     listModels.mockResolvedValue([{ id: 'gpt' }])
-    expect(await invoke(IPC_CHANNELS.SETTINGS_TEST_OPENROUTER, 'key')).toBe(true)
-    expect(await invoke(IPC_CHANNELS.SETTINGS_LIST_MODELS, 'key')).toEqual([{ id: 'gpt' }])
+    expect(expectOk(await invoke(IPC_CHANNELS.SETTINGS_TEST_OPENROUTER, 'key'))).toBe(true)
+    expect(expectOk(await invoke(IPC_CHANNELS.SETTINGS_LIST_MODELS, 'key'))).toEqual([
+      { id: 'gpt' }
+    ])
   })
 
   it('returns null when the storage-path picker is cancelled and a path otherwise', async () => {
-    expect(await invoke(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH)).toBeNull()
+    expect(expectOk(await invoke(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH))).toBeNull()
     showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: ['/data/x'] })
-    expect(await invoke(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH)).toBe('/data/x')
+    expect(expectOk(await invoke(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH))).toBe('/data/x')
   })
 })
 
 describe('ipcHandlers — updates', () => {
   it('reports status and runs a check via the updater service', async () => {
-    const status = await invoke(IPC_CHANNELS.UPDATES_GET_STATUS)
+    const status = expectOk(await invoke(IPC_CHANNELS.UPDATES_GET_STATUS))
     expect(status).toEqual({
       state: 'idle',
       currentVersion: '1.2.3',
@@ -562,7 +576,7 @@ describe('ipcHandlers — updates', () => {
     })
     expect(updaterService.getStatus).toHaveBeenCalled()
 
-    const checked = await invoke(IPC_CHANNELS.UPDATES_CHECK)
+    const checked = expectOk(await invoke(IPC_CHANNELS.UPDATES_CHECK))
     expect(checked).toEqual({
       state: 'up-to-date',
       currentVersion: '1.2.3',
@@ -804,11 +818,7 @@ describe('ipcHandlers — case archive', () => {
   it('forwards import progress to the renderer via event.sender.send', async () => {
     const archivePath = join(userDataPath, 'archive.birdbrain')
     importCaseArchive.mockImplementationOnce(
-      async (
-        _archivePath,
-        _opts,
-        onProgress: (step: string, percent: number) => void
-      ) => {
+      async (_archivePath, _opts, onProgress: (step: string, percent: number) => void) => {
         onProgress('Verifying archive...', 5)
         return { newCaseId: 'new-case-id', report: {} }
       }
@@ -873,11 +883,19 @@ describe('ipcHandlers — extracted data', () => {
     extractedDataRepo.insertExtractedData(captureId, caseId, 'https://example.com', [
       { category: 'ioc', subcategory: 'email', value: 'a@b.com' }
     ])
-    const categories = await invoke<unknown[]>(IPC_CHANNELS.EXTRACTED_DATA_CATEGORIES, caseId)
+    const categories = expectOk<unknown[]>(
+      await invoke(IPC_CHANNELS.EXTRACTED_DATA_CATEGORIES, caseId)
+    )
     expect(categories.length).toBeGreaterThan(0)
-    expect(await invoke(IPC_CHANNELS.EXTRACTED_DATA_SUBCATEGORIES, caseId, 'ioc')).toBeDefined()
-    expect(await invoke(IPC_CHANNELS.EXTRACTED_DATA_ITEMS, caseId, 'ioc', 'email')).toBeDefined()
-    expect(await invoke<number>(IPC_CHANNELS.EXTRACTED_DATA_COUNT, caseId)).toBeGreaterThan(0)
+    expect(
+      expectOk(await invoke(IPC_CHANNELS.EXTRACTED_DATA_SUBCATEGORIES, caseId, 'ioc'))
+    ).toBeDefined()
+    expect(
+      expectOk(await invoke(IPC_CHANNELS.EXTRACTED_DATA_ITEMS, caseId, 'ioc', 'email'))
+    ).toBeDefined()
+    expect(
+      expectOk<number>(await invoke(IPC_CHANNELS.EXTRACTED_DATA_COUNT, caseId))
+    ).toBeGreaterThan(0)
 
     const reprocessed = expectOk<{ processed: number }>(
       await invoke(IPC_CHANNELS.EXTRACTED_DATA_REPROCESS, caseId)
@@ -889,10 +907,8 @@ describe('ipcHandlers — extracted data', () => {
     extractedDataRepo.insertExtractedData(captureId, caseId, 'https://example.com', [
       { category: 'ioc', subcategory: 'email', value: 'foo@gmail.com' }
     ])
-    const results = await invoke<Array<{ value: string }>>(
-      IPC_CHANNELS.EXTRACTED_DATA_SEARCH,
-      caseId,
-      'gmail'
+    const results = expectOk<Array<{ value: string }>>(
+      await invoke(IPC_CHANNELS.EXTRACTED_DATA_SEARCH, caseId, 'gmail')
     )
     expect(results.map((r) => r.value)).toEqual(['foo@gmail.com'])
   })
@@ -1041,10 +1057,12 @@ describe('archive handlers', () => {
     expect(pinned.ok).toBe(true)
 
     const list = registered.get('archive:list')!
-    const refs = (await list({} as never, cap.id)) as Array<{
-      snapshotUrl: string
-      checkedAt: string
-    }>
+    const refs = expectOk<
+      Array<{
+        snapshotUrl: string
+        checkedAt: string
+      }>
+    >((await list({} as never, cap.id)) as { ok: boolean; data: unknown })
     expect(refs).toHaveLength(1)
     expect(refs[0].snapshotUrl).toBe(snapshot.snapshotUrl)
     expect(refs[0].checkedAt).toBe('2026-06-30T00:00:00.000Z')
@@ -1052,7 +1070,9 @@ describe('archive handlers', () => {
     const unpin = registered.get('archive:unpin')!
     const removed = (await unpin({} as never, pinned.data.id)) as { ok: boolean; data: boolean }
     expect(removed.ok).toBe(true)
-    expect((await list({} as never, cap.id)) as unknown[]).toHaveLength(0)
+    expect(
+      expectOk<unknown[]>((await list({} as never, cap.id)) as { ok: boolean; data: unknown })
+    ).toHaveLength(0)
   })
 
   it('archive:pin rejects a snapshot with a forged snapshotUrl', async () => {
@@ -1081,7 +1101,9 @@ describe('archive handlers', () => {
     expect(result.code).toBe('ARCHIVE_INVALID_SNAPSHOT')
 
     const list = registered.get('archive:list')!
-    expect((await list({} as never, cap.id)) as unknown[]).toHaveLength(0)
+    expect(
+      expectOk<unknown[]>((await list({} as never, cap.id)) as { ok: boolean; data: unknown })
+    ).toHaveLength(0)
   })
 })
 

@@ -1,4 +1,4 @@
-import { app, ipcMain, dialog, shell } from 'electron'
+import { app, dialog, shell } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
 import { DEFAULT_ANALYSIS_SYSTEM_PROMPT } from '@shared/constants'
 import type {
@@ -22,11 +22,10 @@ import type {
   AnalyzeCaptureParams,
   SaveAnnotationsParams,
   UpsertAnnotationPinParams,
-  ExportProgressEvent,
   ExportResult,
-  ArchiveProgressEvent,
   ArchiveExportResult,
-  RecaptureEnqueuePayload
+  RecaptureEnqueuePayload,
+  SelfTestResult
 } from '@shared/ipc'
 import * as dbAdmin from '@main/services/db/dbAdmin'
 import { existsSync } from 'fs'
@@ -62,7 +61,7 @@ import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import type { RecaptureService } from '@main/services/recapture'
 import type { UpdaterService } from '@main/services/updater'
-import { handle, IpcFailure } from '@main/ipcWrap'
+import { handle, IpcFailure, sendEvent } from '@main/ipcWrap'
 import { diagnosticsService } from '@main/services/diagnostics'
 import type {
   BirdbrainSettings,
@@ -105,8 +104,8 @@ export function registerIpcHandlers(deps: {
 }): void {
   const { selectorLifecycle, captureLifecycle, recaptureService, updaterService } = deps
   // Cases
-  ipcMain.handle(IPC_CHANNELS.CASES_LIST, () => caseRepo.listCases())
-  ipcMain.handle(IPC_CHANNELS.CASES_GET, (_, id: string) => caseRepo.getCase(id))
+  handle(IPC_CHANNELS.CASES_LIST, () => caseRepo.listCases())
+  handle(IPC_CHANNELS.CASES_GET, (_, id: string) => caseRepo.getCase(id))
   handle(IPC_CHANNELS.CASES_CREATE, (_, params: CreateCaseParams) => caseRepo.createCase(params))
   handle(IPC_CHANNELS.CASES_UPDATE, (_, params: UpdateCaseParams) => caseRepo.updateCase(params))
   handle(IPC_CHANNELS.CASES_DELETE, (_, id: string) => caseRepo.deleteCase(id))
@@ -122,11 +121,11 @@ export function registerIpcHandlers(deps: {
       })
       if (canceled || !filePath) return { canceled: true }
       await exportCaseArchive(caseId, filePath, (step, percent) =>
-        event.sender.send(IPC_CHANNELS.ARCHIVE_PROGRESS, {
+        sendEvent(event.sender, IPC_CHANNELS.ARCHIVE_PROGRESS, {
           caseId,
           step,
           percent
-        } satisfies ArchiveProgressEvent)
+        })
       )
       return { canceled: false, filePath }
     }
@@ -149,18 +148,18 @@ export function registerIpcHandlers(deps: {
         archivePath,
         { overrideTamper },
         (step, percent) =>
-          event.sender.send(IPC_CHANNELS.ARCHIVE_PROGRESS, {
+          sendEvent(event.sender, IPC_CHANNELS.ARCHIVE_PROGRESS, {
             step,
             percent
-          } satisfies ArchiveProgressEvent)
+          })
       )
       return { newCaseId }
     }
   )
 
   // Captures
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_LIST, (_, caseId: string) => captureRepo.listCaptures(caseId))
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_GET, (_, id: string) => captureRepo.getCapture(id))
+  handle(IPC_CHANNELS.CAPTURES_LIST, (_, caseId: string) => captureRepo.listCaptures(caseId))
+  handle(IPC_CHANNELS.CAPTURES_GET, (_, id: string) => captureRepo.getCapture(id))
   handle(IPC_CHANNELS.CAPTURES_DELETE, (_, id: string) => captureLifecycle.delete(id))
 
   handle(IPC_CHANNELS.CAPTURES_COUNTS_BY_CASE, () => captureRepo.getCaptureCountsByCase())
@@ -185,22 +184,25 @@ export function registerIpcHandlers(deps: {
     return filePath
   })
 
-  handle(IPC_CHANNELS.CAPTURES_DOWNLOAD_PDF, async (_, captureId: string): Promise<string | null> => {
-    const capture = captureRepo.getCapture(captureId)
-    if (!capture) return null
-    const ext = capture.format === 'mhtml' ? 'mhtml' : 'html'
-    const artifact = defaultCaptureStore.artifactPaths(capture.caseId, captureId, ext)
-    if (!existsSync(artifact.abs)) throw new IpcFailure(`Capture file (.${ext}) not found`)
-    const { canceled, filePath } = await dialog.showSaveDialog({
-      defaultPath: `${capture.title || 'capture'}.pdf`,
-      filters: [{ name: 'PDF Document', extensions: ['pdf'] }]
-    })
-    if (canceled || !filePath) return null
-    const pdf = await renderCapturePdf(capture, artifact.abs)
-    const { writeFileSync } = await import('fs')
-    writeFileSync(filePath, pdf)
-    return filePath
-  })
+  handle(
+    IPC_CHANNELS.CAPTURES_DOWNLOAD_PDF,
+    async (_, captureId: string): Promise<string | null> => {
+      const capture = captureRepo.getCapture(captureId)
+      if (!capture) return null
+      const ext = capture.format === 'mhtml' ? 'mhtml' : 'html'
+      const artifact = defaultCaptureStore.artifactPaths(capture.caseId, captureId, ext)
+      if (!existsSync(artifact.abs)) throw new IpcFailure(`Capture file (.${ext}) not found`)
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        defaultPath: `${capture.title || 'capture'}.pdf`,
+        filters: [{ name: 'PDF Document', extensions: ['pdf'] }]
+      })
+      if (canceled || !filePath) return null
+      const pdf = await renderCapturePdf(capture, artifact.abs)
+      const { writeFileSync } = await import('fs')
+      writeFileSync(filePath, pdf)
+      return filePath
+    }
+  )
 
   handle(
     IPC_CHANNELS.CAPTURES_DOWNLOAD_SCREENSHOT,
@@ -236,21 +238,23 @@ export function registerIpcHandlers(deps: {
   })
 
   // Capture pipeline test
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_TEST_PIPELINE, async () => {
+  handle(IPC_CHANNELS.CAPTURES_TEST_PIPELINE, async () => {
     try {
       const res = await fetch(`http://127.0.0.1:${CAPTURE_SERVER_PORT}/api/captures/test`, {
         method: 'POST',
         headers: { 'X-Birdbrain-Token': getServerToken() },
         signal: AbortSignal.timeout(SELF_TEST_TIMEOUT_MS)
       })
-      return res.json()
+      // The capture server owns this response shape; res.json() is untyped, so
+      // the contract entry is what pins it.
+      return (await res.json()) as SelfTestResult
     } catch (err) {
       return { success: false, durationMs: 0, error: String(err) }
     }
   })
 
   // HTTP test (verifies Hono server is reachable)
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_TEST_HTTP, async () => {
+  handle(IPC_CHANNELS.CAPTURES_TEST_HTTP, async () => {
     const start = Date.now()
     try {
       const res = await fetch(`http://127.0.0.1:${CAPTURE_SERVER_PORT}/api/status`, {
@@ -268,7 +272,7 @@ export function registerIpcHandlers(deps: {
   })
 
   // Tags
-  ipcMain.handle(IPC_CHANNELS.TAGS_LIST, () => tagRepo.listTags())
+  handle(IPC_CHANNELS.TAGS_LIST, () => tagRepo.listTags())
   handle(IPC_CHANNELS.TAGS_CREATE, (_, params: CreateTagParams) => tagRepo.createTag(params))
   handle(IPC_CHANNELS.TAGS_UPDATE, (_, params: UpdateTagParams) => tagRepo.updateTag(params))
   handle(IPC_CHANNELS.TAGS_DELETE, (_, id: string) => tagRepo.deleteTag(id))
@@ -278,19 +282,19 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.TAGS_REMOVE_FROM_CAPTURE, (_, params: CaptureTagParams) => {
     tagRepo.removeTagFromCapture(params)
   })
-  ipcMain.handle(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, (_, captureId: string) =>
+  handle(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, (_, captureId: string) =>
     tagRepo.getTagsForCapture(captureId)
   )
-  ipcMain.handle(IPC_CHANNELS.TAGS_COUNT_FOR_CASE, (_, caseId: string) =>
+  handle(IPC_CHANNELS.TAGS_COUNT_FOR_CASE, (_, caseId: string) =>
     tagRepo.getTagCountForCase(caseId)
   )
-  ipcMain.handle(IPC_CHANNELS.TAGS_USAGE_COUNTS_FOR_CASE, (_, caseId: string) =>
+  handle(IPC_CHANNELS.TAGS_USAGE_COUNTS_FOR_CASE, (_, caseId: string) =>
     tagRepo.getTagUsageCountsForCase(caseId)
   )
 
   // Selectors
-  ipcMain.handle(IPC_CHANNELS.SELECTORS_LIST, (_, caseId: string) => selectorRepo.listSelectors(caseId))
-  ipcMain.handle(IPC_CHANNELS.SELECTORS_GET, (_, id: string) => selectorRepo.getSelector(id))
+  handle(IPC_CHANNELS.SELECTORS_LIST, (_, caseId: string) => selectorRepo.listSelectors(caseId))
+  handle(IPC_CHANNELS.SELECTORS_GET, (_, id: string) => selectorRepo.getSelector(id))
   handle(IPC_CHANNELS.SELECTORS_CREATE, (_, params: CreateSelectorParams) =>
     selectorLifecycle.createSelector(params)
   )
@@ -301,19 +305,17 @@ export function registerIpcHandlers(deps: {
     selectorLifecycle.updateSelector(params)
   )
   handle(IPC_CHANNELS.SELECTORS_DELETE, (_, id: string) => selectorRepo.deleteSelector(id))
-  ipcMain.handle(IPC_CHANNELS.SELECTORS_LIST_ACTIVE, () => {
+  handle(IPC_CHANNELS.SELECTORS_LIST_ACTIVE, () => {
     const { activeCaseId } = getSessionState()
     return selectorRepo.listActiveSelectors(activeCaseId ?? undefined)
   })
-  ipcMain.handle(IPC_CHANNELS.SELECTORS_MATCH_COUNTS, (_, caseId: string) =>
+  handle(IPC_CHANNELS.SELECTORS_MATCH_COUNTS, (_, caseId: string) =>
     selectorRepo.getSelectorMatchCounts(caseId)
   )
-  ipcMain.handle(
-    IPC_CHANNELS.SELECTORS_MATCHING_CAPTURES,
-    (_, caseId: string, selectorIds: string[]) =>
-      selectorRepo.getCapturesMatchingSelectors(caseId, selectorIds)
+  handle(IPC_CHANNELS.SELECTORS_MATCHING_CAPTURES, (_, caseId: string, selectorIds: string[]) =>
+    selectorRepo.getCapturesMatchingSelectors(caseId, selectorIds)
   )
-  ipcMain.handle(IPC_CHANNELS.SELECTORS_COVERAGE, (_, caseId: string) =>
+  handle(IPC_CHANNELS.SELECTORS_COVERAGE, (_, caseId: string) =>
     selectorRepo.getSelectorCoverage(caseId)
   )
   handle(IPC_CHANNELS.SELECTORS_EXPORT_MATCHES, async (_, caseId: string) => {
@@ -350,13 +352,13 @@ export function registerIpcHandlers(deps: {
   })
 
   // Notes
-  ipcMain.handle(IPC_CHANNELS.NOTES_LIST, (_, caseId: string) => noteRepo.listNotes(caseId))
-  ipcMain.handle(IPC_CHANNELS.NOTES_GET, (_, id: string) => noteRepo.getNote(id))
+  handle(IPC_CHANNELS.NOTES_LIST, (_, caseId: string) => noteRepo.listNotes(caseId))
+  handle(IPC_CHANNELS.NOTES_GET, (_, id: string) => noteRepo.getNote(id))
   handle(IPC_CHANNELS.NOTES_CREATE, (_, params: CreateNoteParams) => noteRepo.createNote(params))
   handle(IPC_CHANNELS.NOTES_UPDATE, (_, params: UpdateNoteParams) => noteRepo.updateNote(params))
   handle(IPC_CHANNELS.NOTES_DELETE, (_, id: string) => noteRepo.deleteNote(id))
-  ipcMain.handle(IPC_CHANNELS.NOTES_COUNT, (_, caseId: string) => noteRepo.getNoteCount(caseId))
-  ipcMain.handle(IPC_CHANNELS.NOTES_SEARCH, (_, caseId: string, query: string) => {
+  handle(IPC_CHANNELS.NOTES_COUNT, (_, caseId: string) => noteRepo.getNoteCount(caseId))
+  handle(IPC_CHANNELS.NOTES_SEARCH, (_, caseId: string, query: string) => {
     try {
       return noteRepo.searchNotes(caseId, query)
     } catch {
@@ -380,7 +382,9 @@ export function registerIpcHandlers(deps: {
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.ARCHIVE_LIST, (_, captureId: string) => archiveRefRepo.listArchiveRefs(captureId))
+  handle(IPC_CHANNELS.ARCHIVE_LIST, (_, captureId: string) =>
+    archiveRefRepo.listArchiveRefs(captureId)
+  )
 
   handle(IPC_CHANNELS.ARCHIVE_PIN, async (_, params: PinArchiveSnapshotParams) => {
     const capture = captureRepo.getCapture(params.captureId)
@@ -399,10 +403,12 @@ export function registerIpcHandlers(deps: {
     })
   })
 
-  handle(IPC_CHANNELS.ARCHIVE_UNPIN, async (_, refId: string) => archiveRefRepo.deleteArchiveRef(refId))
+  handle(IPC_CHANNELS.ARCHIVE_UNPIN, async (_, refId: string) =>
+    archiveRefRepo.deleteArchiveRef(refId)
+  )
 
   // Annotations
-  ipcMain.handle(IPC_CHANNELS.ANNOTATIONS_GET, (_, captureId: string) =>
+  handle(IPC_CHANNELS.ANNOTATIONS_GET, (_, captureId: string) =>
     annotations.getAnnotations(captureId)
   )
   handle(IPC_CHANNELS.ANNOTATIONS_SAVE, (_, params: SaveAnnotationsParams) =>
@@ -438,7 +444,7 @@ export function registerIpcHandlers(deps: {
   })
 
   // Captures - get content
-  ipcMain.handle(
+  handle(
     IPC_CHANNELS.CAPTURES_GET_CONTENT,
     (_, captureId: string, type: 'html' | 'png' | 'txt') => {
       const capture = captureRepo.getCapture(captureId)
@@ -451,7 +457,7 @@ export function registerIpcHandlers(deps: {
   )
 
   // Captures - get thumbnail
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_GET_THUMBNAIL, async (_, captureId: string) => {
+  handle(IPC_CHANNELS.CAPTURES_GET_THUMBNAIL, async (_, captureId: string) => {
     try {
       const capture = captureRepo.getCapture(captureId)
       if (!capture) return null
@@ -465,7 +471,7 @@ export function registerIpcHandlers(deps: {
   })
 
   // Captures - get matching selectors
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_GET_MATCHING_SELECTORS, (_, captureId: string) => {
+  handle(IPC_CHANNELS.CAPTURES_GET_MATCHING_SELECTORS, (_, captureId: string) => {
     return selectorRepo.getCaptureMatchingSelectors(captureId)
   })
 
@@ -474,9 +480,13 @@ export function registerIpcHandlers(deps: {
     captureRepo.toggleFavorite(captureId)
   )
 
-  handle(IPC_CHANNELS.CAPTURES_IS_FAVORITE, (_, captureId: string) => captureRepo.isFavorite(captureId))
+  handle(IPC_CHANNELS.CAPTURES_IS_FAVORITE, (_, captureId: string) =>
+    captureRepo.isFavorite(captureId)
+  )
 
-  handle(IPC_CHANNELS.CAPTURES_LIST_FAVORITES, (_, caseId: string) => captureRepo.listFavorites(caseId))
+  handle(IPC_CHANNELS.CAPTURES_LIST_FAVORITES, (_, caseId: string) =>
+    captureRepo.listFavorites(caseId)
+  )
 
   handle(IPC_CHANNELS.CAPTURES_GET_MHTML_URL, (_, captureId: string): string | null => {
     const capture = captureRepo.getCapture(captureId)
@@ -505,7 +515,7 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.RECAPTURE_QUEUE_STATUS, () => recaptureService.status())
 
   // Search
-  ipcMain.handle(IPC_CHANNELS.SEARCH, (_, caseId: string, query: string) => {
+  handle(IPC_CHANNELS.SEARCH, (_, caseId: string, query: string) => {
     try {
       return captureRepo.searchCaptures(query, caseId)
     } catch {
@@ -516,26 +526,24 @@ export function registerIpcHandlers(deps: {
   })
 
   // Settings
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_GET, () => settings.getSettings())
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_UPDATE, (_, partial: Partial<BirdbrainSettings>) => {
+  handle(IPC_CHANNELS.SETTINGS_GET, () => settings.getSettings())
+  handle(IPC_CHANNELS.SETTINGS_UPDATE, (_, partial: Partial<BirdbrainSettings>) => {
     const updated = settings.updateSettings(partial)
     // A channel switch or auto-check toggle must reconfigure the live updater.
     updaterService.applySettingsChange(partial)
     return updated
   })
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_RESET, () => {
+  handle(IPC_CHANNELS.SETTINGS_RESET, () => {
     const reset = settings.resetSettings()
     // Reset reverts the channel + auto-check policy, so reconfigure the updater.
     updaterService.applySettingsChange(reset)
     return reset
   })
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_TEST_OPENROUTER, (_, apiKey: string) =>
+  handle(IPC_CHANNELS.SETTINGS_TEST_OPENROUTER, (_, apiKey: string) =>
     openrouter.testApiKey(apiKey)
   )
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_LIST_MODELS, (_, apiKey: string) =>
-    openrouter.listModels(apiKey)
-  )
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_GET_IDENTITY, () => {
+  handle(IPC_CHANNELS.SETTINGS_LIST_MODELS, (_, apiKey: string) => openrouter.listModels(apiKey))
+  handle(IPC_CHANNELS.SETTINGS_GET_IDENTITY, () => {
     const s = settings.getSettings()
     return {
       installationId: getInstallationId(),
@@ -544,7 +552,7 @@ export function registerIpcHandlers(deps: {
       operatorOrganization: s.operatorOrganization ?? ''
     }
   })
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH, async () => {
+  handle(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH, async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openDirectory'],
       title: 'Choose Storage Location'
@@ -572,11 +580,11 @@ export function registerIpcHandlers(deps: {
         { ...options, outputPath: filePath },
         captureLifecycle,
         (step, percent) =>
-          event.sender.send(IPC_CHANNELS.EXPORT_PROGRESS, {
+          sendEvent(event.sender, IPC_CHANNELS.EXPORT_PROGRESS, {
             caseId,
             step,
             percent
-          } satisfies ExportProgressEvent)
+          })
       )
       // Permit reveal/open for this freshly-written export only.
       rememberRevealablePath(filePath)
@@ -603,18 +611,18 @@ export function registerIpcHandlers(deps: {
   })
 
   // App
-  ipcMain.handle(IPC_CHANNELS.APP_GET_VERSION, () => app.getVersion())
+  handle(IPC_CHANNELS.APP_GET_VERSION, () => app.getVersion())
 
   // Diagnostics: start the always-on event-loop sampler with handler
   // registration (idempotent) so stall history predates opening the panel.
   diagnosticsService.start()
-  ipcMain.handle(IPC_CHANNELS.DIAGNOSTICS_GET, () => diagnosticsService.snapshot())
+  handle(IPC_CHANNELS.DIAGNOSTICS_GET, () => diagnosticsService.snapshot())
 
   // Updates (update delivery)
-  ipcMain.handle(IPC_CHANNELS.UPDATES_GET_STATUS, () => updaterService.getStatus())
-  ipcMain.handle(IPC_CHANNELS.UPDATES_CHECK, () => updaterService.check())
-  ipcMain.handle(IPC_CHANNELS.UPDATES_DOWNLOAD, () => updaterService.download())
-  ipcMain.handle(IPC_CHANNELS.UPDATES_INSTALL, () => updaterService.install())
+  handle(IPC_CHANNELS.UPDATES_GET_STATUS, () => updaterService.getStatus())
+  handle(IPC_CHANNELS.UPDATES_CHECK, () => updaterService.check())
+  handle(IPC_CHANNELS.UPDATES_DOWNLOAD, () => updaterService.download())
+  handle(IPC_CHANNELS.UPDATES_INSTALL, () => updaterService.install())
 
   // AI Analysis
   handle(IPC_CHANNELS.AI_ANALYZE, async (_, params: AnalyzeCaptureParams) => {
@@ -725,21 +733,21 @@ export function registerIpcHandlers(deps: {
   })
 
   // Extracted Data
-  ipcMain.handle(IPC_CHANNELS.EXTRACTED_DATA_CATEGORIES, (_, caseId: string) =>
+  handle(IPC_CHANNELS.EXTRACTED_DATA_CATEGORIES, (_, caseId: string) =>
     extractedDataRepo.getExtractedCategories(caseId)
   )
-  ipcMain.handle(IPC_CHANNELS.EXTRACTED_DATA_SUBCATEGORIES, (_, caseId: string, category: string) =>
+  handle(IPC_CHANNELS.EXTRACTED_DATA_SUBCATEGORIES, (_, caseId: string, category: string) =>
     extractedDataRepo.getExtractedSubcategories(caseId, category)
   )
-  ipcMain.handle(
+  handle(
     IPC_CHANNELS.EXTRACTED_DATA_ITEMS,
     (_, caseId: string, category: string, subcategory: string) =>
       extractedDataRepo.getExtractedItems(caseId, category, subcategory)
   )
-  ipcMain.handle(IPC_CHANNELS.EXTRACTED_DATA_COUNT, (_, caseId: string) =>
+  handle(IPC_CHANNELS.EXTRACTED_DATA_COUNT, (_, caseId: string) =>
     extractedDataRepo.getExtractedDataCountForCase(caseId)
   )
-  ipcMain.handle(IPC_CHANNELS.EXTRACTED_DATA_SEARCH, (_, caseId: string, query: string) =>
+  handle(IPC_CHANNELS.EXTRACTED_DATA_SEARCH, (_, caseId: string, query: string) =>
     extractedDataRepo.searchExtractedData(caseId, query)
   )
   handle(IPC_CHANNELS.EXTRACTED_DATA_REPROCESS, (_, caseId: string) =>

@@ -23,6 +23,7 @@ import { createUpdaterService, type UpdaterService } from '@main/services/update
 import { renderPageInHiddenWindow } from '@main/services/backgroundRenderer'
 import { DEEP_LINK_SCHEME, parseDeepLink, findDeepLinkInArgv } from '@main/services/deepLink'
 import { IPC_CHANNELS, type DeepLinkTarget, type SelectorRematchedEvent } from '@shared/ipc'
+import { sendEvent } from '@main/ipcWrap'
 
 let mainWindow: BrowserWindow | null = null
 // Deep link received before the renderer was ready (cold start); flushed once
@@ -65,7 +66,7 @@ function createWindow(): BrowserWindow {
   // Flush a deep link that arrived before the renderer was listening (cold start).
   win.webContents.on('did-finish-load', () => {
     if (pendingNavigate) {
-      win.webContents.send(IPC_CHANNELS.DEEP_LINK_NAVIGATE, pendingNavigate)
+      sendEvent(win.webContents, IPC_CHANNELS.DEEP_LINK_NAVIGATE, pendingNavigate)
       pendingNavigate = null
     }
   })
@@ -107,7 +108,7 @@ function dispatchDeepLink(url: string | null): void {
   focusMainWindow()
   if (!target) return
   if (mainWindow && !mainWindow.webContents.isLoading()) {
-    mainWindow.webContents.send(IPC_CHANNELS.DEEP_LINK_NAVIGATE, target)
+    sendEvent(mainWindow.webContents, IPC_CHANNELS.DEEP_LINK_NAVIGATE, target)
   } else {
     pendingNavigate = target
   }
@@ -189,7 +190,7 @@ if (!gotSingleInstanceLock) {
     const selectorLifecycle = createSelectorLifecycle({
       emitRematched: (event: SelectorRematchedEvent) => {
         for (const win of BrowserWindow.getAllWindows()) {
-          win.webContents.send(IPC_CHANNELS.SELECTOR_REMATCHED, event)
+          sendEvent(win.webContents, IPC_CHANNELS.SELECTOR_REMATCHED, event)
         }
       }
     })
@@ -212,12 +213,12 @@ if (!gotSingleInstanceLock) {
       captureLifecycle,
       emitEvent: (event) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send(IPC_CHANNELS.CAPTURE_ACTIVITY, event)
+          sendEvent(mainWindow.webContents, IPC_CHANNELS.CAPTURE_ACTIVITY, event)
         }
       },
       emitNewCapture: (capture) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send(IPC_CHANNELS.NEW_CAPTURE, capture)
+          sendEvent(mainWindow.webContents, IPC_CHANNELS.NEW_CAPTURE, capture)
         }
       }
     })
@@ -227,7 +228,7 @@ if (!gotSingleInstanceLock) {
     updaterService = createUpdaterService({
       emit: (updateStatus) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send(IPC_CHANNELS.UPDATE_STATUS, updateStatus)
+          sendEvent(mainWindow.webContents, IPC_CHANNELS.UPDATE_STATUS, updateStatus)
         }
       },
       getChannel: () => getSettings().releaseChannel,

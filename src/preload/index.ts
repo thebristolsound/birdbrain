@@ -62,19 +62,21 @@ import type {
   DiagnosticsSnapshot
 } from '@shared/types'
 
-// Unwrap IpcResult from handlers that return structured results
+// Every invoke channel is registered through handle(), so every result carries
+// the { ok, data | error } envelope. A result without one means the channel was
+// registered raw — a wiring bug we surface rather than pass through.
 async function unwrapIpc<T>(promise: Promise<unknown>): Promise<T> {
   const result = await promise
-  if (result && typeof result === 'object' && 'ok' in result) {
-    if ((result as { ok: boolean }).ok) {
-      return (result as { ok: true; data: T }).data
-    }
-    const err = result as { ok: false; error: string; code?: string }
-    const error = new Error(err.error)
-    ;(error as unknown as { code?: string }).code = err.code
-    throw error
+  if (!result || typeof result !== 'object' || !('ok' in result)) {
+    throw new Error('IPC result is missing its envelope')
   }
-  return result as T
+  if ((result as { ok: boolean }).ok) {
+    return (result as { ok: true; data: T }).data
+  }
+  const err = result as { ok: false; error: string; code?: string }
+  const error = new Error(err.error)
+  ;(error as unknown as { code?: string }).code = err.code
+  throw error
 }
 
 const birdbrain = {

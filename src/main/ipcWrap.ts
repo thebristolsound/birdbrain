@@ -1,5 +1,21 @@
 import { ipcMain, type IpcMainInvokeEvent } from 'electron'
-import type { IpcChannel, IpcInvokeContract } from '@shared/ipc'
+import type { IpcChannel, IpcEventChannel, IpcEventContract, IpcInvokeContract } from '@shared/ipc'
+
+// Anything that can push a main→renderer event: a WebContents, or the sender
+// on an IpcMainInvokeEvent.
+interface EventTarget {
+  send(channel: string, ...args: unknown[]): void
+}
+
+// Pushes a main→renderer event whose payload is pinned by IpcEventContract.
+// Sending the wrong shape on a channel is a compile error.
+export function sendEvent<C extends IpcEventChannel>(
+  target: EventTarget,
+  channel: C,
+  payload: IpcEventContract[C]
+): void {
+  target.send(channel, payload)
+}
 
 export type IpcResult<T = unknown> =
   | { ok: true; data: T }

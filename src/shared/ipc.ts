@@ -12,6 +12,7 @@ import type {
   Capture,
   CaptureAnalysis,
   CaptureAnnotations,
+  CaptureEvent,
   Case,
   DiagnosticsSnapshot,
   ExportOptions,
@@ -223,6 +224,18 @@ export interface ArchiveProgressEvent {
 export interface ArchiveExportResult {
   canceled: boolean
   filePath?: string
+}
+
+// Session snapshot pushed whenever capture session state changes.
+export interface SessionStateEvent {
+  sessionActive: boolean
+  activeCaseId: string | null
+  captureCount: number
+}
+
+// Extension reachability, pushed when the companion extension connects or drops.
+export interface ExtensionConnectionEvent {
+  connected: boolean
 }
 
 export type SelectorRematchedStatus = 'done' | 'error'
@@ -587,3 +600,22 @@ export interface IpcInvokeContract {
 }
 
 export type ContractedChannel = keyof IpcInvokeContract
+
+// --- Event contract ---------------------------------------------------------
+//
+// Main → renderer pushes, kept separate from the invoke map: these carry a
+// single payload and have no reply. The preload subscribe helpers derive their
+// callback types from here.
+export interface IpcEventContract {
+  'event:exportProgress': ExportProgressEvent
+  'event:archiveProgress': ArchiveProgressEvent
+  'event:newCapture': Capture
+  'event:sessionStateChanged': SessionStateEvent
+  'event:extensionConnection': ExtensionConnectionEvent
+  'event:captureActivity': CaptureEvent
+  'event:selector:rematched': SelectorRematchedEvent
+  'event:deepLinkNavigate': DeepLinkTarget
+  'event:updateStatus': UpdateStatus
+}
+
+export type IpcEventChannel = keyof IpcEventContract

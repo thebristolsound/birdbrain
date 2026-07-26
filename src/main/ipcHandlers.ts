@@ -22,9 +22,7 @@ import type {
   AnalyzeCaptureParams,
   SaveAnnotationsParams,
   UpsertAnnotationPinParams,
-  ExportProgressEvent,
   ExportResult,
-  ArchiveProgressEvent,
   ArchiveExportResult,
   RecaptureEnqueuePayload,
   SelfTestResult
@@ -63,7 +61,7 @@ import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import type { RecaptureService } from '@main/services/recapture'
 import type { UpdaterService } from '@main/services/updater'
-import { handle, IpcFailure } from '@main/ipcWrap'
+import { handle, IpcFailure, sendEvent } from '@main/ipcWrap'
 import { diagnosticsService } from '@main/services/diagnostics'
 import type {
   BirdbrainSettings,
@@ -123,11 +121,11 @@ export function registerIpcHandlers(deps: {
       })
       if (canceled || !filePath) return { canceled: true }
       await exportCaseArchive(caseId, filePath, (step, percent) =>
-        event.sender.send(IPC_CHANNELS.ARCHIVE_PROGRESS, {
+        sendEvent(event.sender, IPC_CHANNELS.ARCHIVE_PROGRESS, {
           caseId,
           step,
           percent
-        } satisfies ArchiveProgressEvent)
+        })
       )
       return { canceled: false, filePath }
     }
@@ -150,10 +148,10 @@ export function registerIpcHandlers(deps: {
         archivePath,
         { overrideTamper },
         (step, percent) =>
-          event.sender.send(IPC_CHANNELS.ARCHIVE_PROGRESS, {
+          sendEvent(event.sender, IPC_CHANNELS.ARCHIVE_PROGRESS, {
             step,
             percent
-          } satisfies ArchiveProgressEvent)
+          })
       )
       return { newCaseId }
     }
@@ -582,11 +580,11 @@ export function registerIpcHandlers(deps: {
         { ...options, outputPath: filePath },
         captureLifecycle,
         (step, percent) =>
-          event.sender.send(IPC_CHANNELS.EXPORT_PROGRESS, {
+          sendEvent(event.sender, IPC_CHANNELS.EXPORT_PROGRESS, {
             caseId,
             step,
             percent
-          } satisfies ExportProgressEvent)
+          })
       )
       // Permit reveal/open for this freshly-written export only.
       rememberRevealablePath(filePath)

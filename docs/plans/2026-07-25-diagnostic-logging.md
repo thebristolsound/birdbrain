@@ -467,6 +467,7 @@ In `src/shared/ipc.ts`, replace the Diagnostics section:
   DIAGNOSTICS_REVEAL_LOG: 'diagnostics:revealLog',
   DIAGNOSTICS_CREATE_REPORT: 'diagnostics:createReport',
   DIAGNOSTICS_LAST_SESSION: 'diagnostics:lastSession',
+  DIAGNOSTICS_RECENT: 'diagnostics:recent',
 ```
 
 And add to the events block, after `CAPTURE_ACTIVITY`:
@@ -614,10 +615,23 @@ function lockPath(logDir: string): string {
   return join(logDir, LOCK_FILE)
 }
 
+// A record is only usable if the fields startup and recovery dereference are
+// actually there. `[null]` and `[{}]` are valid JSON arrays, so the shape check
+// alone lets them through: null then throws on `r.sessionId` during launch, and
+// `{}` reads as cleanExit-falsy and raises a false crash prompt on every start.
+function isSessionRecord(value: unknown): value is SessionRecord {
+  if (typeof value !== 'object' || value === null) return false
+  const r = value as Record<string, unknown>
+  return typeof r.sessionId === 'string' && r.sessionId.length > 0
+}
+
 export function readSessions(logDir: string): SessionRecord[] {
   try {
     const parsed: unknown = JSON.parse(readFileSync(sessionsPath(logDir), 'utf8'))
-    return Array.isArray(parsed) ? (parsed as SessionRecord[]) : []
+    if (!Array.isArray(parsed)) return []
+    // Drop bad records rather than rejecting the whole file: one corrupt entry
+    // must not discard the crash evidence sitting beside it.
+    return parsed.filter(isSessionRecord).map((r) => ({ ...r, cleanExit: r.cleanExit === true }))
   } catch {
     // Missing or corrupt: a diagnostics file must never block startup.
     return []
@@ -865,7 +879,7 @@ describe('logger', () => {
 
   it('rotates when the file exceeds the limit and keeps one backup', () => {
     const log = createLogger({ logDir: dir, sessionId: 's1', maxBytes: 1024 })
-    for (let i = 0; i < 200; i++) log.info('app', `entry ${i} ${'x'.repeat(50)}`)
+    for (let i = 0; i < 200; i++) log.info('app', 'app.session_start', { count: i })
     log.flushSync()
 
     expect(statSync(join(dir, 'birdbrain.log.1')).size).toBeGreaterThan(0)
@@ -874,7 +888,7 @@ describe('logger', () => {
 
   it('flushes buffered entries when the buffer fills without an explicit flush', () => {
     const log = createLogger({ logDir: dir, sessionId: 's1', maxBuffer: 4 })
-    for (let i = 0; i < 4; i++) log.info('app', `entry ${i}`)
+    for (let i = 0; i < 4; i++) log.info('app', 'app.session_start', { count: i })
     expect(lines(dir)).toHaveLength(4)
   })
 
@@ -896,7 +910,7 @@ Expected: FAIL — cannot resolve `@main/services/logger`.
 - [ ] **Step 3: Write the implementation**
 
 ```typescript
-import { appendFileSync, existsSync, mkdirSync, renameSync, statSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { BrowserWindow } from 'electron'
@@ -915,6 +929,11 @@ const BACKUP_FILE = 'birdbrain.log.1'
 const MAX_BYTES = 2 * 1024 * 1024
 const MAX_BUFFER = 32
 const FLUSH_MS = 1000
+// How far the retry buffer may grow past MAX_BUFFER before a permanently
+// unwritable log directory starts costing unbounded memory. On overflow the
+// OLDEST entries go: a tester reporting a problem cares about what just
+// happened, and the newest entries are the ones whose ids are in live toasts.
+const DROP_FACTOR = 8
 
 export interface LoggerDeps {
   logDir: string
@@ -952,14 +971,25 @@ export function createLogger(deps: LoggerDeps): Logger {
 
   function flushSync(): void {
     if (buffer.length === 0) return
-    const payload = buffer.join('')
-    buffer = []
+    const pending = buffer
+    const payload = pending.join('')
     try {
       mkdirSync(deps.logDir, { recursive: true })
       rotateIfNeeded()
       appendFileSync(path, payload)
+      // Cleared only on success. Clearing first discards the batch on any
+      // transient error (a locked file, a full disk, an antivirus scan) — and
+      // those entries have often already been toasted with a Report this
+      // action, so the tester ends up citing a correlation id that appears in
+      // neither log file. Keeping them means the next flush retries.
+      buffer = buffer.slice(pending.length)
     } catch {
       // A tester with an unwritable userData must still get a working app.
+      // Bounded: if the directory is permanently unwritable, the buffer would
+      // otherwise grow without limit for the life of the process.
+      if (buffer.length > maxBuffer * DROP_FACTOR) {
+        buffer = buffer.slice(-maxBuffer)
+      }
     }
   }
 
@@ -976,7 +1006,13 @@ export function createLogger(deps: LoggerDeps): Logger {
       source,
       code,
       ...(context ? { context: context as Record<string, string | number | boolean | null> } : {}),
-      ...(err === undefined ? {} : { error: sanitizeError(err) })
+      // An already-structured LoggedError passes through untouched — it came
+      // from a boundary that validated it (the IPC handler), and re-running
+      // sanitizeError on it would map it to UnknownError, since it is not an
+      // Error instance.
+      ...(err === undefined
+        ? {}
+        : { error: isLoggedError(err) ? err : sanitizeError(err) })
     }
 
     buffer.push(`${JSON.stringify(entry)}\n`)
@@ -1045,6 +1081,31 @@ export function getLogPath(): string {
 
 export function flushSync(): void {
   instance?.flushSync()
+}
+
+// Newest-first tail of the durable log, for the Log tab (Task 12). Flushes
+// first so entries still sitting in the buffer are included — otherwise the
+// most recent failure, the one the tester came to look at, is the one missing.
+// A malformed line is skipped rather than throwing: the file is append-only
+// from multiple crash paths, so a torn final write is expected, not exceptional.
+export function readRecentEntries(limit: number): LogEntry[] {
+  instance?.flushSync()
+  const path = getLogPath()
+  if (!path) return []
+  try {
+    const lines = readFileSync(path, 'utf8').split('\n').filter(Boolean).slice(-limit)
+    const out: LogEntry[] = []
+    for (const line of lines.reverse()) {
+      try {
+        out.push(JSON.parse(line) as LogEntry)
+      } catch {
+        continue
+      }
+    }
+    return out
+  } catch {
+    return []
+  }
 }
 
 export function disposeLogger(): void {
@@ -1172,7 +1233,9 @@ import { markCleanExit, startSession } from '@main/services/sessionLog'
 
 - [ ] **Step 2: Initialise the logger inside `whenReady`**
 
-In `app.whenReady().then(async () => {`, immediately after `initInstallationId(userDataPath)`:
+In `app.whenReady().then(async () => {`, **before** `initInstallationId(userDataPath)` — not after.
+
+Ordering matters here and the obvious placement is wrong. `initInstallationId` does uncaught synchronous reads and writes under `userData`. If that path is unwritable or the id file is malformed, it throws, the `uncaughtException` handler fires, and the handler shows a dialog telling the tester "a diagnostic log has been saved" — while `logger` is still a no-op singleton and nothing was saved. The first thing the crash handler needs is the thing that must be initialised first.
 
 ```typescript
     // detectInstallFormat, not process.platform: SessionRecord promises the
@@ -1191,13 +1254,21 @@ In `app.whenReady().then(async () => {`, immediately after `initInstallationId(u
     // Without them a standalone log cannot correlate repeat reports to one
     // installation or distinguish appimage/deb/nsis failures.
     logger.info('app', 'app.session_start', {
-      installationId: ident(getInstallationId()),
       version: ident(app.getVersion().replace(/\./g, '-')),
       platform: tag(process.platform, 'platform'),
       installFormat: tag(session.installFormat, 'installFormat'),
       packaged: app.isPackaged
     })
 ```
+
+Then run `initInstallationId(userDataPath)` where it is today, and log the id in a second entry once it is known:
+
+```typescript
+    initInstallationId(userDataPath)
+    logger.info('app', 'app.installation_id', { installationId: ident(getInstallationId()) })
+```
+
+Splitting the entry is the cost of the reordering — the alternative is initialising the id first and losing crash capture for the window in which it runs. A bug report reads both lines from the same `sessionId`, so nothing is lost analytically. Add `'app.installation_id'` to `LOG_CODES` and a label for it.
 
 Then find where the main `BrowserWindow` is created (around line 35) and, wherever `setMainWindow` is already called for the capture server, add:
 
@@ -1280,7 +1351,27 @@ In `src/main/ipcHandlers.ts`, after the existing `DIAGNOSTICS_GET` registration:
     // Source is not taken from the payload at all. Every entry that arrives
     // through this channel came from the renderer by definition, and the code
     // already says which subsystem failed.
-    return logger[level]('renderer', payload.code, context, errorName(payload.error))
+    //
+    // The error is passed pre-structured, NOT as a bare string. logger routes
+    // its `err` argument through sanitizeError, which maps every non-Error
+    // value to UnknownError — so handing it the validated name would erase the
+    // very classification we just validated, and every renderer query,
+    // mutation and render failure would land on disk as UnknownError.
+    const name = errorName(payload.error)
+    return logger[level](
+      'renderer',
+      payload.code,
+      context,
+      name === undefined ? undefined : ({ name, code: null, stack: null } satisfies LoggedError)
+    )
+  })
+
+  // The Log tab needs what already happened, not just what happens next —
+  // see Task 12. Reads the tail of the current log file only; the rotated
+  // backup is for the bug-report bundle, not the live viewer.
+  ipcMain.handle(IPC_CHANNELS.DIAGNOSTICS_RECENT, (_e, limit: unknown) => {
+    const max = typeof limit === 'number' && limit > 0 && limit <= 500 ? Math.floor(limit) : 200
+    return readRecentEntries(max)
   })
 
   ipcMain.handle(IPC_CHANNELS.DIAGNOSTICS_REVEAL_LOG, () => {
@@ -1294,7 +1385,7 @@ In `src/main/ipcHandlers.ts`, after the existing `DIAGNOSTICS_GET` registration:
 Imports to add:
 
 ```typescript
-import { getLogDir, getLogPath, logger } from '@main/services/logger'
+import { getLogDir, getLogPath, logger, readRecentEntries } from '@main/services/logger'
 import { takeUncleanSession } from '@main/services/sessionLog'
 import { errorName, ident, isLogCode, isLogContextKey } from '@main/services/logSafe'
 import type { LogContext } from '@main/services/logSafe'
@@ -1304,6 +1395,14 @@ import type { RendererLogPayload } from '@shared/ipc'
 `isLogCode`, `isLogContextKey` and `errorName` are the runtime halves of Task 2's unions and belong beside `ident`/`tag` in `logSafe.ts`. Add them there if Task 1 has not already:
 
 ```typescript
+// Distinguishes an already-validated LoggedError from a raw thrown value, so
+// logger can pass the former through instead of flattening it to UnknownError.
+export function isLoggedError(value: unknown): value is LoggedError {
+  if (typeof value !== 'object' || value === null || value instanceof Error) return false
+  const v = value as Record<string, unknown>
+  return typeof v.name === 'string' && 'code' in v && 'stack' in v
+}
+
 export function isLogCode(value: unknown): value is LogCode {
   return typeof value === 'string' && (LOG_CODES as readonly string[]).includes(value)
 }
@@ -1332,6 +1431,8 @@ Replace the `diagnostics` object in `src/preload/index.ts`:
     get: (): Promise<DiagnosticsSnapshot> => ipcRenderer.invoke(IPC_CHANNELS.DIAGNOSTICS_GET),
     log: (payload: RendererLogPayload): Promise<string> =>
       ipcRenderer.invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, payload),
+    recentEntries: (limit: number): Promise<LogEntry[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.DIAGNOSTICS_RECENT, limit),
     revealLog: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.DIAGNOSTICS_REVEAL_LOG),
     lastSession: (): Promise<SessionRecord | null> =>
       ipcRenderer.invoke(IPC_CHANNELS.DIAGNOSTICS_LAST_SESSION)
@@ -1368,6 +1469,7 @@ export interface RendererLogPayload {
   diagnostics: {
     get(): Promise<DiagnosticsSnapshot>
     log(payload: RendererLogPayload): Promise<string>
+    recentEntries(limit: number): Promise<LogEntry[]>
     revealLog(): Promise<void>
     lastSession(): Promise<SessionRecord | null>
   }
@@ -1522,7 +1624,7 @@ git commit -m "refactor(logging): route main-process diagnostics through the log
 
 ```typescript
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { LogTab } from '@renderer/components/diagnostics/LogTab'
 import type { LogEntry } from '@shared/types'
 
@@ -1549,7 +1651,7 @@ beforeEach(() => {
         listener = null
       }
     },
-    diagnostics: { revealLog: vi.fn() }
+    diagnostics: { revealLog: vi.fn(), recentEntries: vi.fn().mockResolvedValue([]) }
   })
 })
 
@@ -1557,6 +1659,23 @@ describe('LogTab', () => {
   it('shows an empty state before any entry arrives', () => {
     render(<LogTab />)
     expect(screen.getByText('No log entries')).toBeTruthy()
+  })
+
+  it('loads entries that were written before the tab was opened', async () => {
+    // The tester opens this tab BECAUSE something failed, so the failure they
+    // came to look at is always already in the past.
+    window.birdbrain.diagnostics.recentEntries = vi
+      .fn()
+      .mockResolvedValue([entry({ id: 'old', code: 'capture.failed' })])
+    render(<LogTab />)
+    expect(await screen.findByText('Capture failed')).toBeTruthy()
+  })
+
+  it('does not double-list an entry present in both history and the live feed', async () => {
+    window.birdbrain.diagnostics.recentEntries = vi.fn().mockResolvedValue([entry({ id: 'dup' })])
+    render(<LogTab />)
+    listener?.(entry({ id: 'dup' }))
+    await waitFor(() => expect(screen.getAllByText('Capture failed')).toHaveLength(1))
   })
 
   it('renders entries pushed from main', () => {
@@ -1618,9 +1737,34 @@ export function LogTab() {
   const [active, setActive] = useState<LogLevel[]>(LEVELS)
 
   useEffect(() => {
-    return window.birdbrain.onLogEntry((entry) => {
+    // Subscribe BEFORE loading history, so an entry arriving mid-load is not
+    // dropped in the gap between the two.
+    const unsubscribe = window.birdbrain.onLogEntry((entry) => {
       setEntries((prev) => [entry, ...prev].slice(0, MAX_ENTRIES))
     })
+
+    // Live events alone would start this tab empty, which fails its actual
+    // use: a tester opens Settings → Diagnostics BECAUSE something failed, and
+    // the failure they came to look at has already happened. Merge by id —
+    // history and the live subscription overlap by design.
+    let cancelled = false
+    void window.birdbrain.diagnostics
+      .recentEntries(MAX_ENTRIES)
+      .then((history) => {
+        if (cancelled) return
+        setEntries((prev) => {
+          const seen = new Set(prev.map((e) => e.id))
+          return [...prev, ...history.filter((e) => !seen.has(e.id))].slice(0, MAX_ENTRIES)
+        })
+      })
+      .catch(() => {
+        // No history is a degraded tab, not a broken one.
+      })
+
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
   }, [])
 
   function toggle(level: LogLevel): void {
@@ -2341,6 +2485,22 @@ describe('mainLogBridge', () => {
     listener?.({ ...entry('error'), source: 'renderer:mutation' })
     expect(toastFns.error).not.toHaveBeenCalled()
   })
+
+  it('collapses a retry storm onto one toast while citing the newest entry', async () => {
+    const { subscribeToMainLog } = await import('@renderer/lib/mainLogBridge')
+    subscribeToMainLog()
+    listener?.({ ...entry('error'), id: 'aaa' })
+    listener?.({ ...entry('error'), id: 'bbb' })
+    listener?.({ ...entry('error'), id: 'ccc' })
+
+    const ids = toastFns.error.mock.calls.map((c) => c[1].id)
+    expect(new Set(ids).size).toBe(1)
+
+    const dispatched = vi.fn()
+    window.addEventListener('birdbrain:report', dispatched)
+    toastFns.error.mock.calls.at(-1)![1].action.onClick()
+    expect(dispatched.mock.calls[0][0].detail).toEqual({ correlationId: 'ccc' })
+  })
 })
 ```
 
@@ -2368,11 +2528,14 @@ export function subscribeToMainLog(): () => void {
     if (entry.source === 'renderer') return
     if (entry.level !== 'error' && entry.level !== 'warn') return
 
-    // entry.id IS the correlation id, so main-process failures get the same
-    // per-error Report this trigger as renderer ones. Without this, capture
-    // server / storage / export failures could not use it at all.
+    // Two different ids do two different jobs here, and conflating them was a
+    // bug: entry.id is unique PER ENTRY, so using it as the sonner id gives a
+    // retry loop or a failing capture batch one toast per occurrence and
+    // buries the UI — exactly the storm that notify's dedup exists to prevent.
+    // The sonner id must be stable per failure KIND; the correlation id must
+    // be the newest actual entry, so Report this cites something real.
     const opts = {
-      id: entry.id,
+      id: `m:${entry.source}:${entry.code}`,
       action: {
         label: 'Report this',
         onClick: () =>

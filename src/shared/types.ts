@@ -283,6 +283,15 @@ export interface DiagnosticsSnapshot {
   slowOps: DiagnosticsSlowOp[]
 }
 
+// Diagnostic logging. Entries are structural only — see logSafe.ts for the
+// boundary that keeps investigation data (URLs, case names, paths) out of them.
+export interface LoggedError {
+  name: string
+  code: string | null
+  message: string
+  stack: string | null
+}
+
 export interface OpenRouterModel {
   id: string
   name: string

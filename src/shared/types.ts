@@ -283,6 +283,19 @@ export interface DiagnosticsSnapshot {
   slowOps: DiagnosticsSlowOp[]
 }
 
+// Diagnostic logging. Entries are structural only — see logSafe.ts for the
+// boundary that keeps investigation data (URLs, case names, paths) out of
+// them. No `message` field: free-form prose (e.g. a case name typed into an
+// error string) has no path/URL shape a regex could catch, so the field that
+// would carry it is simply not part of the type. `name` and `code` are
+// allowlisted (see logSafe.ERROR_NAMES); `stack` is capped and relativized to
+// the app root.
+export interface LoggedError {
+  name: string
+  code: string | null
+  stack: string | null
+}
+
 export interface OpenRouterModel {
   id: string
   name: string

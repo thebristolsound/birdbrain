@@ -452,8 +452,8 @@ export interface SelfTestResult {
 // signature by its channel, so a handler that drifts from its entry is a
 // compile error rather than a runtime surprise.
 //
-// Channels are added here domain by domain; a channel absent from the map still
-// registers, but without the signature check.
+// All invoke channels live in this map; `handle()` is keyed by ContractedChannel, so missing entries are
+// compile errors.
 export interface IpcInvokeContract {
   'cases:list': { args: []; result: Case[] }
   'cases:get': { args: [id: string]; result: Case | undefined }

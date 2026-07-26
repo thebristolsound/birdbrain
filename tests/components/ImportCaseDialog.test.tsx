@@ -55,7 +55,7 @@ vi.mock('motion/react', async () => {
   }
 })
 
-import { ImportCaseDialog } from '@renderer/components/cases/ImportCaseDialog'
+import { ImportCaseDialog } from '@renderer/components/dashboard/cases/ImportCaseDialog'
 
 function makeReport(overrides: Partial<ArchiveInspectReport> = {}): ArchiveInspectReport {
   return {

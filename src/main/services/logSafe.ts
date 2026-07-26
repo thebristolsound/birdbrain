@@ -52,16 +52,37 @@ export function tag(value: string, allowed: readonly string[]): LogSafe {
 // name) exposed. URLs are replaced before the generic path patterns because a
 // URL contains '//' that the posix path pattern would otherwise consume.
 const URL_LIKE = /\b[a-z][a-z0-9+.-]*:\/\/\S+/gi
-// Drive-rooted ('D:\...') or UNC ('\\server\share\...') paths, either of which
-// can have spaces in an intermediate folder name ("Operation Blackbird"). A
-// segment may contain a space only when it is followed by another '\'
-// separator — that keeps the match anchored to real path structure instead of
-// running on into trailing prose ("... capture.mhtml failed"), where the
-// final component still stops at the first whitespace/quote/paren. The
-// segment class excludes '\', so each iteration consumes a disjoint run up to
-// the next separator — same shape as POSIX_PATH below, so this stays linear.
-const WIN_PATH = /(?:[A-Za-z]:\\|\\\\)(?:[^\\'"()]+\\)*[^\s'"()]+/g
-const POSIX_PATH = /(?<![\w-])\/(?:[\w.-]+\/)+[\w.-]*/g
+// Windows (drive-rooted 'D:\...', drive-relative 'D:...', or UNC
+// '\\server\share\...') and POSIX paths share one shape, described once here
+// — POSIX_PATH below is the mirror with '/' in place of '\'. A case file is
+// exactly as likely to be named "Operation Blackbird.mhtml" as a case folder
+// is to be named "Operation Blackbird", so both intermediate AND final
+// segments need to tolerate an embedded space. Intermediate segments are
+// unambiguous — each is anchored by a mandatory trailing separator — but the
+// final segment is ambiguous with trailing prose ("...capture.mhtml failed")
+// unless something else bounds it. A recognizable file extension is that
+// bound: the final segment is matched lazily up to the first '.' plus a short
+// alphanumeric run sitting at a whitespace/quote/paren/end-of-string
+// boundary, so "Operation Blackbird.mhtml failed" stops cleanly before
+// "failed" instead of swallowing it. When no such extension exists — an
+// extensionless final segment containing a space, with no surrounding quotes
+// — there is no reliable end-of-path signal short of consuming trailing
+// prose, so the pattern falls back to stopping at the first
+// whitespace/separator, same as the original design; that is an accepted,
+// tested trade-off (see the "pinned" tests below), not an oversight. Every
+// segment/final class excludes the separator itself, so each repetition
+// consumes a disjoint run — no ambiguous overlapping splits for the engine to
+// try — keeping both patterns linear regardless of the added lazy quantifier
+// (verified empirically, see the task report).
+//
+// Windows requires zero or more intermediate segments (a bare 'C:\x.mhtml' or
+// UNC share root is already unambiguous). POSIX requires at least one, kept
+// from the original design, to avoid treating a bare '/2' (e.g. inside "1/2
+// chance") as a path.
+const WIN_PATH =
+  /(?:[A-Za-z]:\\?|\\\\)(?:[^\\'"()]+\\)*(?:[^\\'"()]*?\.[A-Za-z0-9]{1,10}(?=[\s'"()]|$)|[^\\\s'"()]+)/g
+const POSIX_PATH =
+  /(?<![\w-])\/(?:[^/'"()]+\/)+(?:[^/'"()]*?\.[A-Za-z0-9]{1,10}(?=[\s'"()]|$)|[^/\s'"()]+)/g
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')

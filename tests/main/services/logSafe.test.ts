@@ -108,6 +108,79 @@ describe('sanitizeText', () => {
     const out = sanitizeText(String.raw`open D:\Evidence\x.mhtml failed`, String.raw`C:\Users\matt`)
     expect(out).toContain('failed')
   })
+
+  it('strips a windows path with a space in the FINAL segment (terminal case name)', () => {
+    const out = sanitizeText(
+      String.raw`open D:\Evidence\Operation Blackbird.mhtml failed`,
+      String.raw`C:\Users\matt`
+    )
+    expect(out).not.toContain('Blackbird')
+    expect(out).toContain('failed')
+  })
+
+  it('strips a UNC path with a space in the FINAL segment (terminal case name)', () => {
+    const out = sanitizeText(
+      String.raw`open \\server\share\Operation Blackbird.mhtml failed`,
+      String.raw`C:\Users\matt`
+    )
+    expect(out).not.toContain('Blackbird')
+    expect(out).toContain('failed')
+  })
+
+  it('strips a windows filename with a space before the extension', () => {
+    const out = sanitizeText(
+      String.raw`open D:\Evidence\Operation Blackbird\capture file.mhtml failed`,
+      String.raw`C:\Users\matt`
+    )
+    expect(out).not.toContain('file.mhtml')
+    expect(out).toContain('failed')
+  })
+
+  it('strips a drive-relative windows path (no backslash after the colon)', () => {
+    const out = sanitizeText(
+      String.raw`open D:Evidence\Operation Blackbird\x.mhtml failed`,
+      String.raw`C:\Users\matt`
+    )
+    expect(out).not.toContain('Blackbird')
+  })
+
+  // Documented trade-off, not a bug: an extensionless final segment with a
+  // space and no surrounding quotes has no reliable end-of-path signal, so
+  // the pattern falls back to stopping at the first whitespace — the same
+  // way it always has — and the remainder of that one segment survives.
+  it('pins the accepted limitation: an extensionless windows final segment with a space truncates at the first word', () => {
+    const out = sanitizeText(
+      String.raw`open D:\Evidence\Operation Blackbird failed`,
+      String.raw`C:\Users\matt`
+    )
+    expect(out).toContain('‹path›')
+    expect(out).not.toContain('Operation')
+    expect(out).toContain('Blackbird failed')
+  })
+
+  it('strips a posix path with a space in an intermediate folder and the final filename', () => {
+    const out = sanitizeText(
+      'open /mnt/evidence/Operation Blackbird/capture.mhtml failed',
+      '/home/matt'
+    )
+    expect(out).not.toContain('Blackbird')
+    expect(out).not.toContain('capture.mhtml')
+    expect(out).toContain('failed')
+  })
+
+  it('strips a posix path with a space in the FINAL segment (terminal case name)', () => {
+    const out = sanitizeText('open /mnt/evidence/Operation Blackbird.mhtml failed', '/home/matt')
+    expect(out).not.toContain('Blackbird')
+    expect(out).toContain('failed')
+  })
+
+  // POSIX mirror of the windows accepted trade-off above.
+  it('pins the accepted limitation: an extensionless posix final segment with a space truncates at the first word', () => {
+    const out = sanitizeText('open /mnt/evidence/Operation Blackbird failed', '/home/matt')
+    expect(out).toContain('‹path›')
+    expect(out).not.toContain('Operation')
+    expect(out).toContain('Blackbird failed')
+  })
 })
 
 describe('sanitizeError', () => {

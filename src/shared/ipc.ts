@@ -1,7 +1,7 @@
 // Typed IPC channel definitions
 // Every IPC call between renderer and main process goes through these channels
 
-import type { AnnotationShape, WaybackSnapshot } from '@shared/types'
+import type { AnnotationShape, ArchiveInspectReport, Case, WaybackSnapshot } from '@shared/types'
 
 export const IPC_CHANNELS = {
   // Cases
@@ -385,3 +385,29 @@ export interface RecaptureEnqueuePayload {
   caseId: string
   supersedesCaptureId?: string
 }
+
+// --- Invoke contract --------------------------------------------------------
+//
+// One entry per invoke channel: the argument tuple the renderer sends and the
+// value the handler resolves to (before the { ok, data } envelope is applied).
+// This is the single source of truth — `handle()` constrains a handler's
+// signature by its channel, so a handler that drifts from its entry is a
+// compile error rather than a runtime surprise.
+//
+// Channels are added here domain by domain; a channel absent from the map still
+// registers, but without the signature check.
+export interface IpcInvokeContract {
+  'cases:list': { args: []; result: Case[] }
+  'cases:get': { args: [id: string]; result: Case | undefined }
+  'cases:create': { args: [params: CreateCaseParams]; result: Case }
+  'cases:update': { args: [params: UpdateCaseParams]; result: Case | undefined }
+  'cases:delete': { args: [id: string]; result: boolean }
+  'cases:exportArchive': { args: [caseId: string]; result: ArchiveExportResult }
+  'cases:inspectArchive': { args: []; result: ArchiveInspectReport | null }
+  'cases:importArchive': {
+    args: [archivePath: string, overrideTamper: boolean]
+    result: { newCaseId: string }
+  }
+}
+
+export type ContractedChannel = keyof IpcInvokeContract

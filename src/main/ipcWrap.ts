@@ -1,5 +1,5 @@
 import { ipcMain, type IpcMainInvokeEvent } from 'electron'
-import type { IpcChannel } from '@shared/ipc'
+import type { IpcChannel, IpcInvokeContract } from '@shared/ipc'
 
 export type IpcResult<T = unknown> =
   | { ok: true; data: T }
@@ -39,17 +39,29 @@ export function ipcError(err: unknown): IpcResult<never> {
   throw err
 }
 
+// The handler signature a channel must have. For a channel declared in
+// IpcInvokeContract the argument tuple and return type are pinned by its entry;
+// for one not yet declared the signature is inferred as before. As domains move
+// into the contract the unconstrained branch shrinks to nothing.
+type IpcHandler<C extends IpcChannel, T, A extends unknown[]> = C extends keyof IpcInvokeContract
+  ? (
+      event: IpcMainInvokeEvent,
+      ...args: IpcInvokeContract[C]['args']
+    ) => IpcInvokeContract[C]['result'] | Promise<IpcInvokeContract[C]['result']>
+  : (event: IpcMainInvokeEvent, ...args: A) => T | Promise<T>
+
 // Registers an ipcMain.handle that wraps the handler's return value in an
 // IpcResult. Translates `IpcFailure` and known SQLite errors into structured
 // `{ ok: false }` responses; other errors are rethrown so Electron surfaces
 // them as rejected promises in the renderer.
-export function handle<T, A extends unknown[]>(
-  channel: IpcChannel,
-  fn: (event: IpcMainInvokeEvent, ...args: A) => T | Promise<T>
+export function handle<C extends IpcChannel, T, A extends unknown[]>(
+  channel: C,
+  fn: IpcHandler<C, T, A>
 ): void {
+  const invoke = fn as (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown
   ipcMain.handle(channel, async (event, ...args) => {
     try {
-      const data = await fn(event, ...(args as A))
+      const data = await invoke(event, ...args)
       return ipcResult(data)
     } catch (err) {
       if (err instanceof IpcFailure) {

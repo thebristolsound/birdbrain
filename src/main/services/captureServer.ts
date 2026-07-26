@@ -25,11 +25,7 @@ import {
 } from '@shared/schemas'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
-import {
-  createSessionService,
-  type SessionService,
-  type SessionSnapshot
-} from '@main/services/session'
+import { createSessionService, type SessionService } from '@main/services/session'
 
 import { CAPTURE_SERVER_PORT, MAX_SCREENSHOT_SIZE } from '@shared/constants'
 import { safeRegexTest } from '@main/services/safeRegex'
@@ -65,12 +61,9 @@ let mainWindow: BrowserWindow | null = null
 // only.
 let sessionService: SessionService = createSessionService()
 
-export function getSessionState(): SessionSnapshot {
-  return sessionService.snapshot()
-}
-
-export function resetSessionState(): void {
-  sessionService.reset()
+// Test seam: the manual-capture dedup window is capture-server state, not
+// session state, so it outlives a session service instance.
+export function resetManualDedup(): void {
   manualDedup.clear()
 }
 

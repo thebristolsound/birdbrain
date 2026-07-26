@@ -48,6 +48,7 @@ make it compile.
   - `tests/components/**/*.test.tsx`, `tests/renderer/**/*.test.ts`, `tests/hooks/**/*.test.ts` → **jsdom** project. React component tests must be `tests/components/*.test.tsx` — `tests/renderer/**/*.test.tsx` matches **no** project.
   After adding a test, confirm it actually ran (the count in the Vitest summary must increase). A test that never executes is worse than no test.
 - **Coverage gates apply to the new services.** `pnpm test:coverage` enforces `src/main/services/*.ts` at 90% lines/statements/functions and 78% branches. `logSafe.ts`, `logger.ts`, `sessionLog.ts` and `bugReport.ts` all land under that glob, which is checked against the aggregate. Cover error paths and fallbacks, not just happy paths.
+- **`@ts-expect-error` directives in tests are not machine-checked.** No tsconfig covers `tests/` (`tsconfig.node.json` includes only `src/main`, `src/preload`, `src/shared`; the root has `"files": []`), and ESLint is not type-aware here. A directive asserting that a boundary type rejects something will rot silently if the type is later widened — and several of this feature's guarantees are pinned that way. Where you rely on one, verify it by hand (delete the directive, confirm the exact compile error, restore it) and say so in your report. Closing the gap properly is out of scope for this plan; it is recorded for the final review.
 - Commits: `<type>(<scope>): <subject>`. **Never** add `Co-authored-by`. **Never** `git add .` or `git add -A` — stage files explicitly.
 - **Nothing in this feature may perform network I/O.** No upload, endpoint, or telemetry of any kind.
 - The log must never contain URLs, page titles, case names, absolute paths, or settings values.
@@ -213,8 +214,26 @@ function brand(value: string): LogSafe {
 // Loud in dev so a bad call site is caught in review; inert in production so a
 // logging mistake can never crash a tester's app. The offending value is never
 // echoed — that would defeat the point of rejecting it.
+//
+// NOT process.env.NODE_ENV. Nothing in this repo sets it: electron.vite.config.ts
+// declares no `define`, and electron-vite keeps `process.env` a runtime lookup
+// rather than substituting at build time. A packaged app launched from the
+// desktop therefore has it undefined, `!== 'production'` is TRUE in production,
+// and this function throws exactly where it promised not to — from inside a
+// crash handler. app.isPackaged is what the rest of the codebase uses
+// (updater.ts:69, index.ts:85).
+function isDev(): boolean {
+  // Resolved lazily and defensively: logSafe must stay unit-testable outside
+  // an Electron runtime, where requiring 'electron' fails.
+  try {
+    return !require('electron').app?.isPackaged
+  } catch {
+    return true
+  }
+}
+
 function reject(kind: string): LogSafe {
-  if (process.env.NODE_ENV !== 'production') {
+  if (isDev()) {
     throw new Error(`logSafe.${kind}: value failed validation and was not logged`)
   }
   return brand('[invalid]')

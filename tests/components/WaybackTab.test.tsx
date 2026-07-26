@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, cleanup } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
-import { ArchiveTab } from '@renderer/components/captures/ArchiveTab'
+import { WaybackTab } from '@renderer/components/captures/WaybackTab'
 import type { Capture } from '@shared/types'
 
 const capture: Capture = {
@@ -19,7 +19,7 @@ const capture: Capture = {
 }
 
 interface BirdbrainStub {
-  archive: {
+  wayback: {
     lookup: ReturnType<typeof vi.fn>
     list: ReturnType<typeof vi.fn>
     pin: ReturnType<typeof vi.fn>
@@ -36,12 +36,12 @@ function withClient(client: QueryClient) {
 
 function renderTab() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(<ArchiveTab capture={capture} />, { wrapper: withClient(client) })
+  return render(<WaybackTab capture={capture} />, { wrapper: withClient(client) })
 }
 
 beforeEach(() => {
   ;(window as unknown as { birdbrain: BirdbrainStub }).birdbrain = {
-    archive: {
+    wayback: {
       lookup: vi.fn().mockResolvedValue({
         snapshots: [
           {
@@ -67,42 +67,42 @@ afterEach(() => {
   cleanup()
 })
 
-describe('ArchiveTab', () => {
+describe('WaybackTab', () => {
   it('shows the look-up button initially and does not auto-query', () => {
     renderTab()
-    expect(screen.getByTestId('archive-lookup-btn')).toBeDefined()
-    expect(window.birdbrain.archive.lookup).not.toHaveBeenCalled()
+    expect(screen.getByTestId('wayback-lookup-btn')).toBeDefined()
+    expect(window.birdbrain.wayback.lookup).not.toHaveBeenCalled()
   })
 
   it('runs the lookup on click and renders snapshots', async () => {
     renderTab()
-    fireEvent.click(screen.getByTestId('archive-lookup-btn'))
-    await waitFor(() => expect(window.birdbrain.archive.lookup).toHaveBeenCalledWith('cap1'))
-    expect(await screen.findByTestId('archive-snapshot-row')).toBeDefined()
+    fireEvent.click(screen.getByTestId('wayback-lookup-btn'))
+    await waitFor(() => expect(window.birdbrain.wayback.lookup).toHaveBeenCalledWith('cap1'))
+    expect(await screen.findByTestId('wayback-snapshot-row')).toBeDefined()
   })
 
   it('renders an empty state when no snapshots are found', async () => {
-    ;(window.birdbrain.archive.lookup as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    ;(window.birdbrain.wayback.lookup as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       snapshots: [],
       closestIndex: null,
       checkedAt: '2026-06-30T00:00:00.000Z'
     })
     renderTab()
-    fireEvent.click(screen.getByTestId('archive-lookup-btn'))
-    expect(await screen.findByTestId('archive-empty')).toBeDefined()
+    fireEvent.click(screen.getByTestId('wayback-lookup-btn'))
+    expect(await screen.findByTestId('wayback-empty')).toBeDefined()
   })
 
   it('shows the error state when the lookup rejects', async () => {
-    ;(window.birdbrain.archive.lookup as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+    ;(window.birdbrain.wayback.lookup as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
       new Error('boom')
     )
     renderTab()
-    fireEvent.click(screen.getByTestId('archive-lookup-btn'))
-    expect(await screen.findByTestId('archive-error')).toBeDefined()
+    fireEvent.click(screen.getByTestId('wayback-lookup-btn'))
+    expect(await screen.findByTestId('wayback-error')).toBeDefined()
   })
 
   it('renders pinned snapshots from the pins list', async () => {
-    ;(window.birdbrain.archive.list as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+    ;(window.birdbrain.wayback.list as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
       {
         id: 'ref1',
         captureId: 'cap1',
@@ -123,11 +123,11 @@ describe('ArchiveTab', () => {
     const pending = new Promise((resolve) => {
       resolveLookup = resolve
     })
-    ;(window.birdbrain.archive.lookup as ReturnType<typeof vi.fn>).mockReturnValueOnce(pending)
+    ;(window.birdbrain.wayback.lookup as ReturnType<typeof vi.fn>).mockReturnValueOnce(pending)
     renderTab()
-    fireEvent.click(screen.getByTestId('archive-lookup-btn'))
-    expect(await screen.findByTestId('archive-loading')).toBeDefined()
+    fireEvent.click(screen.getByTestId('wayback-lookup-btn'))
+    expect(await screen.findByTestId('wayback-loading')).toBeDefined()
     resolveLookup({ snapshots: [], closestIndex: null, checkedAt: '2026-06-30T00:00:00.000Z' })
-    await waitFor(() => expect(screen.queryByTestId('archive-loading')).toBeNull())
+    await waitFor(() => expect(screen.queryByTestId('wayback-loading')).toBeNull())
   })
 })

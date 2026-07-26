@@ -1023,7 +1023,7 @@ describe('archive handlers', () => {
       closestIndex: 0,
       checkedAt: '2026-06-30T00:00:00.000Z'
     })
-    const handler = registered.get('archive:lookup')!
+    const handler = registered.get('wayback:lookup')!
     const result = (await handler({} as never, cap.id)) as { ok: boolean; data: unknown }
     expect(lookupSnapshots).toHaveBeenCalledWith('https://example.com/', '2020-01-15T12:00:00.000Z')
     expect(result.ok).toBe(true)
@@ -1045,7 +1045,7 @@ describe('archive handlers', () => {
       originalUrl: 'https://example.com/',
       statusCode: 200
     }
-    const pin = registered.get('archive:pin')!
+    const pin = registered.get('wayback:pin')!
     const pinned = (await pin({} as never, {
       captureId: cap.id,
       snapshot,
@@ -1056,7 +1056,7 @@ describe('archive handlers', () => {
     }
     expect(pinned.ok).toBe(true)
 
-    const list = registered.get('archive:list')!
+    const list = registered.get('wayback:list')!
     const refs = expectOk<
       Array<{
         snapshotUrl: string
@@ -1067,7 +1067,7 @@ describe('archive handlers', () => {
     expect(refs[0].snapshotUrl).toBe(snapshot.snapshotUrl)
     expect(refs[0].checkedAt).toBe('2026-06-30T00:00:00.000Z')
 
-    const unpin = registered.get('archive:unpin')!
+    const unpin = registered.get('wayback:unpin')!
     const removed = (await unpin({} as never, pinned.data.id)) as { ok: boolean; data: boolean }
     expect(removed.ok).toBe(true)
     expect(
@@ -1085,7 +1085,7 @@ describe('archive handlers', () => {
       timestamp: '2020-01-15T12:00:00.000Z',
       format: 'mhtml'
     })
-    const pin = registered.get('archive:pin')!
+    const pin = registered.get('wayback:pin')!
     const result = (await pin({} as never, {
       captureId: cap.id,
       // snapshotUrl does not point at web.archive.org — must be rejected.
@@ -1098,9 +1098,9 @@ describe('archive handlers', () => {
       checkedAt: '2026-06-30T00:00:00.000Z'
     })) as { ok: boolean; code?: string }
     expect(result.ok).toBe(false)
-    expect(result.code).toBe('ARCHIVE_INVALID_SNAPSHOT')
+    expect(result.code).toBe('WAYBACK_INVALID_SNAPSHOT')
 
-    const list = registered.get('archive:list')!
+    const list = registered.get('wayback:list')!
     expect(
       expectOk<unknown[]>((await list({} as never, cap.id)) as { ok: boolean; data: unknown })
     ).toHaveLength(0)

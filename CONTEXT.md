@@ -2,6 +2,30 @@
 
 Open-source web investigation and capture tool. An Electron desktop app and companion Chrome extension that capture web content into per-case archives with a hash-chained audit trail, then let an investigator search, tag, annotate, and export findings.
 
+## Assurance baseline
+
+Birdbrain has adopted a standards-based OSINT assurance baseline in
+[`ADR-0004`](docs/adr/0004-adopt-osint-assurance-baseline.md). The maintained source register,
+jurisdiction notes, architectural consequences, and decision gate live in
+[`docs/reference/osint-investigation-standards.md`](docs/reference/osint-investigation-standards.md).
+
+There is no universal "OSINT-compliant" product certification. Birdbrain must make narrow,
+versioned, independently testable claims across investigation methodology, acquisition,
+preservation, analysis, provenance, security, privacy, accessibility, and reporting.
+
+For every evidence-affecting change:
+
+- preserve immutable originals and model derivatives and assertions separately;
+- record complete provenance, observation context, omissions, errors, and limitations;
+- state exactly what verification proves and does not prove;
+- retain backward verification for historical Evidence Profile versions;
+- validate the affected method against known-answer data for the supported environment; and
+- document remaining operator, organizational, and jurisdiction-specific obligations.
+
+An evidence-affecting change includes acquisition, parsing, extraction, storage, hashing,
+signing, trusted time, manifests, verification, redaction, export, reporting, AI analysis, and
+software distribution when it can alter an evidentiary result or its interpretation.
+
 ## Language
 
 **Case**:

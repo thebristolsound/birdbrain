@@ -400,15 +400,19 @@ describe('ipcHandlers — tags', () => {
     )
     expectOk(await invoke(IPC_CHANNELS.TAGS_UPDATE, { id: tag.id, name: 'urgent2', color: '#0f0' }))
 
-    const list = await invoke<{ id: string }[]>(IPC_CHANNELS.TAGS_LIST)
+    const list = expectOk<{ id: string }[]>(await invoke(IPC_CHANNELS.TAGS_LIST))
     expect(list.some((t) => t.id === tag.id)).toBe(true)
 
     expectOk(await invoke(IPC_CHANNELS.TAGS_ADD_TO_CAPTURE, { captureId, tagId: tag.id }))
-    const forCapture = await invoke<{ id: string }[]>(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, captureId)
+    const forCapture = expectOk<{ id: string }[]>(
+      await invoke(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, captureId)
+    )
     expect(forCapture.some((t) => t.id === tag.id)).toBe(true)
 
-    expect(await invoke<number>(IPC_CHANNELS.TAGS_COUNT_FOR_CASE, caseId)).toBeGreaterThan(0)
-    expect(await invoke(IPC_CHANNELS.TAGS_USAGE_COUNTS_FOR_CASE, caseId)).toBeDefined()
+    expect(
+      expectOk<number>(await invoke(IPC_CHANNELS.TAGS_COUNT_FOR_CASE, caseId))
+    ).toBeGreaterThan(0)
+    expect(expectOk(await invoke(IPC_CHANNELS.TAGS_USAGE_COUNTS_FOR_CASE, caseId))).toBeDefined()
 
     expectOk(await invoke(IPC_CHANNELS.TAGS_REMOVE_FROM_CAPTURE, { captureId, tagId: tag.id }))
     expectOk(await invoke(IPC_CHANNELS.TAGS_DELETE, tag.id))

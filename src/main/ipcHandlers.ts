@@ -268,7 +268,7 @@ export function registerIpcHandlers(deps: {
   })
 
   // Tags
-  ipcMain.handle(IPC_CHANNELS.TAGS_LIST, () => tagRepo.listTags())
+  handle(IPC_CHANNELS.TAGS_LIST, () => tagRepo.listTags())
   handle(IPC_CHANNELS.TAGS_CREATE, (_, params: CreateTagParams) => tagRepo.createTag(params))
   handle(IPC_CHANNELS.TAGS_UPDATE, (_, params: UpdateTagParams) => tagRepo.updateTag(params))
   handle(IPC_CHANNELS.TAGS_DELETE, (_, id: string) => tagRepo.deleteTag(id))
@@ -278,13 +278,11 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.TAGS_REMOVE_FROM_CAPTURE, (_, params: CaptureTagParams) => {
     tagRepo.removeTagFromCapture(params)
   })
-  ipcMain.handle(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, (_, captureId: string) =>
+  handle(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, (_, captureId: string) =>
     tagRepo.getTagsForCapture(captureId)
   )
-  ipcMain.handle(IPC_CHANNELS.TAGS_COUNT_FOR_CASE, (_, caseId: string) =>
-    tagRepo.getTagCountForCase(caseId)
-  )
-  ipcMain.handle(IPC_CHANNELS.TAGS_USAGE_COUNTS_FOR_CASE, (_, caseId: string) =>
+  handle(IPC_CHANNELS.TAGS_COUNT_FOR_CASE, (_, caseId: string) => tagRepo.getTagCountForCase(caseId))
+  handle(IPC_CHANNELS.TAGS_USAGE_COUNTS_FOR_CASE, (_, caseId: string) =>
     tagRepo.getTagUsageCountsForCase(caseId)
   )
 

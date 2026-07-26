@@ -148,7 +148,7 @@ const birdbrain = {
       unwrapIpc<RecaptureQueueStatus>(ipcRenderer.invoke(IPC_CHANNELS.RECAPTURE_QUEUE_STATUS))
   },
   tags: {
-    list: (): Promise<Tag[]> => ipcRenderer.invoke(IPC_CHANNELS.TAGS_LIST),
+    list: (): Promise<Tag[]> => unwrapIpc<Tag[]>(ipcRenderer.invoke(IPC_CHANNELS.TAGS_LIST)),
     create: (params: CreateTagParams): Promise<Tag> =>
       unwrapIpc<Tag>(ipcRenderer.invoke(IPC_CHANNELS.TAGS_CREATE, params)),
     update: (params: UpdateTagParams): Promise<Tag | undefined> =>
@@ -160,11 +160,13 @@ const birdbrain = {
     removeFromCapture: (params: CaptureTagParams): Promise<void> =>
       unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.TAGS_REMOVE_FROM_CAPTURE, params)),
     getForCapture: (captureId: string): Promise<Tag[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, captureId),
+      unwrapIpc<Tag[]>(ipcRenderer.invoke(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, captureId)),
     countForCase: (caseId: string): Promise<number> =>
-      ipcRenderer.invoke(IPC_CHANNELS.TAGS_COUNT_FOR_CASE, caseId),
+      unwrapIpc<number>(ipcRenderer.invoke(IPC_CHANNELS.TAGS_COUNT_FOR_CASE, caseId)),
     usageCountsForCase: (caseId: string): Promise<Record<string, number>> =>
-      ipcRenderer.invoke(IPC_CHANNELS.TAGS_USAGE_COUNTS_FOR_CASE, caseId)
+      unwrapIpc<Record<string, number>>(
+        ipcRenderer.invoke(IPC_CHANNELS.TAGS_USAGE_COUNTS_FOR_CASE, caseId)
+      )
   },
   selectors: {
     list: (caseId: string): Promise<Selector[]> =>

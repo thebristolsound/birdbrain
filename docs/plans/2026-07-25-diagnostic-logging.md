@@ -1168,6 +1168,12 @@ process.on('uncaughtException', (err) => {
     'Birdbrain encountered a fatal error',
     'The app must close. A diagnostic log has been saved — you can attach it to a bug report from Settings → Diagnostics after restarting.'
   )
+  // app.exit, NOT app.quit — and this is load-bearing, not a style choice.
+  // app.quit() emits 'before-quit', which calls markCleanExit() and deletes
+  // session.lock. A fatal crash would then look identical to a normal quit on
+  // the next launch and the recovery prompt would never appear. app.exit()
+  // skips the lifecycle events, leaving the lock in place, which is exactly
+  // the signal the next launch needs.
   app.exit(1)
 })
 
@@ -1265,6 +1271,8 @@ app
       'Birdbrain could not start',
       'A diagnostic log has been saved. You can attach it to a bug report — see the logs folder in your Birdbrain data directory.'
     )
+    // Same reasoning as the uncaughtException handler above: exit, not quit,
+    // so before-quit does not clear the lock on a startup crash.
     app.exit(1)
   })
 ```

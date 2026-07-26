@@ -130,7 +130,7 @@ interface BirdbrainAPI {
     count(caseId: string): Promise<number>
     search(caseId: string, query: string): Promise<Note[]>
   }
-  archive: {
+  wayback: {
     lookup(captureId: string): Promise<WaybackLookupResult>
     list(captureId: string): Promise<WaybackRef[]>
     pin(params: PinWaybackSnapshotParams): Promise<WaybackRef>

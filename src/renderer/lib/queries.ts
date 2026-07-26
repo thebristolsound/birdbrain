@@ -480,7 +480,7 @@ export function useAnnotationsMutations(captureId: string) {
 export const archiveLookupQueryOptions = (captureId: string) =>
   queryOptions({
     queryKey: queryKeys.archiveLookup(captureId),
-    queryFn: () => window.birdbrain.archive.lookup(captureId),
+    queryFn: () => window.birdbrain.wayback.lookup(captureId),
     enabled: false,
     staleTime: 5 * 60 * 1000
   })
@@ -488,7 +488,7 @@ export const archiveLookupQueryOptions = (captureId: string) =>
 export const archivePinsQueryOptions = (captureId: string) =>
   queryOptions({
     queryKey: queryKeys.archivePins(captureId),
-    queryFn: () => window.birdbrain.archive.list(captureId),
+    queryFn: () => window.birdbrain.wayback.list(captureId),
     enabled: !!captureId
   })
 
@@ -499,12 +499,12 @@ export function useArchiveMutations(captureId: string) {
   }
 
   const pin = useMutation({
-    mutationFn: (params: PinWaybackSnapshotParams) => window.birdbrain.archive.pin(params),
+    mutationFn: (params: PinWaybackSnapshotParams) => window.birdbrain.wayback.pin(params),
     onSuccess: invalidate
   })
 
   const unpin = useMutation({
-    mutationFn: (refId: string) => window.birdbrain.archive.unpin(refId),
+    mutationFn: (refId: string) => window.birdbrain.wayback.unpin(refId),
     onSuccess: invalidate
   })
 

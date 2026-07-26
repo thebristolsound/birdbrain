@@ -19,7 +19,7 @@ const capture: Capture = {
 }
 
 interface BirdbrainStub {
-  archive: {
+  wayback: {
     lookup: ReturnType<typeof vi.fn>
     list: ReturnType<typeof vi.fn>
     pin: ReturnType<typeof vi.fn>
@@ -41,7 +41,7 @@ function renderTab() {
 
 beforeEach(() => {
   ;(window as unknown as { birdbrain: BirdbrainStub }).birdbrain = {
-    archive: {
+    wayback: {
       lookup: vi.fn().mockResolvedValue({
         snapshots: [
           {
@@ -71,18 +71,18 @@ describe('ArchiveTab', () => {
   it('shows the look-up button initially and does not auto-query', () => {
     renderTab()
     expect(screen.getByTestId('archive-lookup-btn')).toBeDefined()
-    expect(window.birdbrain.archive.lookup).not.toHaveBeenCalled()
+    expect(window.birdbrain.wayback.lookup).not.toHaveBeenCalled()
   })
 
   it('runs the lookup on click and renders snapshots', async () => {
     renderTab()
     fireEvent.click(screen.getByTestId('archive-lookup-btn'))
-    await waitFor(() => expect(window.birdbrain.archive.lookup).toHaveBeenCalledWith('cap1'))
+    await waitFor(() => expect(window.birdbrain.wayback.lookup).toHaveBeenCalledWith('cap1'))
     expect(await screen.findByTestId('archive-snapshot-row')).toBeDefined()
   })
 
   it('renders an empty state when no snapshots are found', async () => {
-    ;(window.birdbrain.archive.lookup as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    ;(window.birdbrain.wayback.lookup as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       snapshots: [],
       closestIndex: null,
       checkedAt: '2026-06-30T00:00:00.000Z'
@@ -93,7 +93,7 @@ describe('ArchiveTab', () => {
   })
 
   it('shows the error state when the lookup rejects', async () => {
-    ;(window.birdbrain.archive.lookup as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+    ;(window.birdbrain.wayback.lookup as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
       new Error('boom')
     )
     renderTab()
@@ -102,7 +102,7 @@ describe('ArchiveTab', () => {
   })
 
   it('renders pinned snapshots from the pins list', async () => {
-    ;(window.birdbrain.archive.list as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+    ;(window.birdbrain.wayback.list as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
       {
         id: 'ref1',
         captureId: 'cap1',
@@ -123,7 +123,7 @@ describe('ArchiveTab', () => {
     const pending = new Promise((resolve) => {
       resolveLookup = resolve
     })
-    ;(window.birdbrain.archive.lookup as ReturnType<typeof vi.fn>).mockReturnValueOnce(pending)
+    ;(window.birdbrain.wayback.lookup as ReturnType<typeof vi.fn>).mockReturnValueOnce(pending)
     renderTab()
     fireEvent.click(screen.getByTestId('archive-lookup-btn'))
     expect(await screen.findByTestId('archive-loading')).toBeDefined()

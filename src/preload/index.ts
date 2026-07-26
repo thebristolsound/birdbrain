@@ -101,17 +101,21 @@ const birdbrain = {
   },
   captures: {
     list: (caseId: string): Promise<Capture[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_LIST, caseId),
+      unwrapIpc<Capture[]>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_LIST, caseId)),
     get: (id: string): Promise<Capture | undefined> =>
-      ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_GET, id),
+      unwrapIpc<Capture | undefined>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_GET, id)),
     delete: (id: string): Promise<boolean> =>
       unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_DELETE, id)),
     getContent: (captureId: string, type: 'html' | 'png' | 'txt'): Promise<string | null> =>
-      ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_GET_CONTENT, captureId, type),
+      unwrapIpc<string | null>(
+        ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_GET_CONTENT, captureId, type)
+      ),
     getThumbnail: (captureId: string): Promise<string | null> =>
-      ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_GET_THUMBNAIL, captureId),
+      unwrapIpc<string | null>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_GET_THUMBNAIL, captureId)),
     getMatchingSelectors: (captureId: string): Promise<Selector[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_GET_MATCHING_SELECTORS, captureId),
+      unwrapIpc<Selector[]>(
+        ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_GET_MATCHING_SELECTORS, captureId)
+      ),
     download: (captureId: string): Promise<string | null> =>
       unwrapIpc<string | null>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_DOWNLOAD, captureId)),
     downloadPdf: (captureId: string): Promise<string | null> =>

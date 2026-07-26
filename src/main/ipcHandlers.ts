@@ -159,8 +159,8 @@ export function registerIpcHandlers(deps: {
   )
 
   // Captures
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_LIST, (_, caseId: string) => captureRepo.listCaptures(caseId))
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_GET, (_, id: string) => captureRepo.getCapture(id))
+  handle(IPC_CHANNELS.CAPTURES_LIST, (_, caseId: string) => captureRepo.listCaptures(caseId))
+  handle(IPC_CHANNELS.CAPTURES_GET, (_, id: string) => captureRepo.getCapture(id))
   handle(IPC_CHANNELS.CAPTURES_DELETE, (_, id: string) => captureLifecycle.delete(id))
 
   handle(IPC_CHANNELS.CAPTURES_COUNTS_BY_CASE, () => captureRepo.getCaptureCountsByCase())
@@ -438,7 +438,7 @@ export function registerIpcHandlers(deps: {
   })
 
   // Captures - get content
-  ipcMain.handle(
+  handle(
     IPC_CHANNELS.CAPTURES_GET_CONTENT,
     (_, captureId: string, type: 'html' | 'png' | 'txt') => {
       const capture = captureRepo.getCapture(captureId)
@@ -451,7 +451,7 @@ export function registerIpcHandlers(deps: {
   )
 
   // Captures - get thumbnail
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_GET_THUMBNAIL, async (_, captureId: string) => {
+  handle(IPC_CHANNELS.CAPTURES_GET_THUMBNAIL, async (_, captureId: string) => {
     try {
       const capture = captureRepo.getCapture(captureId)
       if (!capture) return null
@@ -465,7 +465,7 @@ export function registerIpcHandlers(deps: {
   })
 
   // Captures - get matching selectors
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_GET_MATCHING_SELECTORS, (_, captureId: string) => {
+  handle(IPC_CHANNELS.CAPTURES_GET_MATCHING_SELECTORS, (_, captureId: string) => {
     return selectorRepo.getCaptureMatchingSelectors(captureId)
   })
 

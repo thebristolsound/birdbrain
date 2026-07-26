@@ -280,28 +280,30 @@ describe('ipcHandlers — cases', () => {
 
 describe('ipcHandlers — captures', () => {
   it('lists and gets captures', async () => {
-    const list = await invoke<Capture[]>(IPC_CHANNELS.CAPTURES_LIST, caseId)
+    const list = expectOk<Capture[]>(await invoke(IPC_CHANNELS.CAPTURES_LIST, caseId))
     expect(list).toHaveLength(1)
-    const one = await invoke<Capture>(IPC_CHANNELS.CAPTURES_GET, captureId)
+    const one = expectOk<Capture>(await invoke(IPC_CHANNELS.CAPTURES_GET, captureId))
     expect(one.id).toBe(captureId)
   })
 
   it('returns capture content for html, png and txt', async () => {
-    const html = await invoke<string>(IPC_CHANNELS.CAPTURES_GET_CONTENT, captureId, 'html')
+    const html = expectOk<string>(
+      await invoke(IPC_CHANNELS.CAPTURES_GET_CONTENT, captureId, 'html')
+    )
     expect(html).toContain('<html>')
-    const png = await invoke<string>(IPC_CHANNELS.CAPTURES_GET_CONTENT, captureId, 'png')
+    const png = expectOk<string>(await invoke(IPC_CHANNELS.CAPTURES_GET_CONTENT, captureId, 'png'))
     expect(png).toBe(Buffer.from('png-bytes').toString('base64'))
-    const txt = await invoke<string>(IPC_CHANNELS.CAPTURES_GET_CONTENT, captureId, 'txt')
+    const txt = expectOk<string>(await invoke(IPC_CHANNELS.CAPTURES_GET_CONTENT, captureId, 'txt'))
     expect(txt).toContain('hello world')
-    const missing = await invoke(IPC_CHANNELS.CAPTURES_GET_CONTENT, 'nope', 'html')
+    const missing = expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_CONTENT, 'nope', 'html'))
     expect(missing).toBeNull()
   })
 
   it('returns a thumbnail and matching selectors', async () => {
-    const thumb = await invoke<string>(IPC_CHANNELS.CAPTURES_GET_THUMBNAIL, captureId)
+    const thumb = expectOk<string>(await invoke(IPC_CHANNELS.CAPTURES_GET_THUMBNAIL, captureId))
     expect(typeof thumb).toBe('string')
-    expect(await invoke(IPC_CHANNELS.CAPTURES_GET_THUMBNAIL, 'missing')).toBeNull()
-    const sel = await invoke(IPC_CHANNELS.CAPTURES_GET_MATCHING_SELECTORS, captureId)
+    expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_THUMBNAIL, 'missing'))).toBeNull()
+    const sel = expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_MATCHING_SELECTORS, captureId))
     expect(Array.isArray(sel)).toBe(true)
   })
 
@@ -380,7 +382,7 @@ describe('ipcHandlers — captures', () => {
     expect(verification.status).toBeDefined()
 
     expectOk(await invoke(IPC_CHANNELS.CAPTURES_DELETE, captureId))
-    expect(await invoke<Capture[]>(IPC_CHANNELS.CAPTURES_LIST, caseId)).toHaveLength(0)
+    expect(expectOk<Capture[]>(await invoke(IPC_CHANNELS.CAPTURES_LIST, caseId))).toHaveLength(0)
   })
 
   it('reports failure for the http/pipeline self-tests when the server is down', async () => {

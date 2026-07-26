@@ -62,7 +62,8 @@ describe('resolveTextAnchor', () => {
     expect(result).toEqual({
       status: 'resolved',
       via: 'offset',
-      offset: PAGE.indexOf('transferred')
+      offset: PAGE.indexOf('transferred'),
+      basis: 'hash-verified'
     })
   })
 
@@ -81,14 +82,48 @@ describe('resolveTextAnchor', () => {
 
     const result = resolveTextAnchor(target({ textHash: sha256(rewritten) }), anchor(), store)
 
-    expect(result).toEqual({ status: 'unresolved' })
+    expect(result).toEqual({ status: 'unresolved', basis: 'hash-verified' })
   })
 
   it('distinguishes a capture that never had stored text from one that lost the passage', () => {
-    // No textHash was recorded at ingest, so no .txt sidecar was ever written.
+    // No textHash was recorded at ingest, and no .txt sidecar exists either.
     const result = resolveTextAnchor(target({ textHash: undefined }), anchor(), store)
 
     expect(result).toEqual({ status: 'no-stored-text' })
+  })
+
+  // A capture taken before schema v19 has a sidecar but a NULL text_hash --
+  // the migration left existing rows unhashed. Its text is readable and can
+  // be searched; what cannot be said is that it is the text that was captured.
+  describe('a pre-v19 capture, whose sidecar exists but is unhashed', () => {
+    it('does not claim the capture has no stored text', () => {
+      store.writeText('case-1', 'cap-1', PAGE)
+
+      const result = resolveTextAnchor(target({ textHash: undefined }), anchor(), store)
+
+      expect(result.status).not.toBe('no-stored-text')
+    })
+
+    it('resolves the passage but marks the text unattested', () => {
+      store.writeText('case-1', 'cap-1', PAGE)
+
+      const result = resolveTextAnchor(target({ textHash: undefined }), anchor(), store)
+
+      expect(result).toEqual({
+        status: 'resolved',
+        via: 'offset',
+        offset: PAGE.indexOf('transferred'),
+        basis: 'unattested'
+      })
+    })
+
+    it('carries the unattested basis onto an unresolved result too', () => {
+      store.writeText('case-1', 'cap-1', 'This page says nothing of the kind.')
+
+      const result = resolveTextAnchor(target({ textHash: undefined }), anchor(), store)
+
+      expect(result).toEqual({ status: 'unresolved', basis: 'unattested' })
+    })
   })
 
   it('reports an integrity failure when the recorded sidecar is missing', () => {

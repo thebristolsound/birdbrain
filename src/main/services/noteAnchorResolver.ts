@@ -16,9 +16,25 @@ import { matchTextAnchor, type TextAnchor } from '@shared/noteAnchor'
 export interface AnchorTarget {
   id: string
   caseId: string
-  /** Absent when the capture was ingested with no extracted text at all. */
+  /**
+   * Absent for a capture ingested with no extracted text — and also for one
+   * captured before schema v19, which added the column and left existing rows
+   * NULL (`migrations.ts:369`). A missing hash therefore means "nothing attests
+   * to this text", not "there is no text": the sidecar has to be looked for
+   * before either can be claimed.
+   */
   textHash?: string
 }
+
+/**
+ * What backed the text a result was computed against.
+ *
+ * `hash-verified` is the normal case. `unattested` means the sidecar was read
+ * but `text_hash` is NULL, so nothing binds those bytes to the capture — a
+ * pre-v19 capture. The passage may well be found in it; what cannot be said is
+ * that the text is the text that was captured.
+ */
+export type TextBasis = 'hash-verified' | 'unattested'
 
 /**
  * Four outcomes, because there are four situations and they mean different
@@ -31,8 +47,8 @@ export interface AnchorTarget {
  * as if it were a moved paragraph.
  */
 export type NoteAnchorResolution =
-  | { status: 'resolved'; via: 'offset' | 'quote' | 'context'; offset: number }
-  | { status: 'unresolved' }
+  | { status: 'resolved'; via: 'offset' | 'quote' | 'context'; offset: number; basis: TextBasis }
+  | { status: 'unresolved'; basis: TextBasis }
   | { status: 'no-stored-text' }
   | { status: 'integrity-failed'; reason: 'missing' | 'digest-mismatch' }
 
@@ -41,9 +57,17 @@ export function resolveTextAnchor(
   anchor: TextAnchor,
   store: CaptureStore
 ): NoteAnchorResolution {
-  if (!target.textHash) return { status: 'no-stored-text' }
-
   const buf = store.readArtifact(target.caseId, target.id, 'txt')
+
+  // No hash and no sidecar: the capture genuinely has no stored text. No hash
+  // but a sidecar on disk: a pre-v19 capture, whose text can be searched but
+  // cannot be attested. Reporting the second as `no-stored-text` would deny
+  // the existence of text a reader can plainly see.
+  if (!target.textHash) {
+    if (!buf) return { status: 'no-stored-text' }
+    return { ...matchTextAnchor(buf.toString('utf-8'), anchor), basis: 'unattested' }
+  }
+
   if (!buf) return { status: 'integrity-failed', reason: 'missing' }
 
   const computed = createHash('sha256').update(buf).digest('hex')
@@ -51,5 +75,5 @@ export function resolveTextAnchor(
     return { status: 'integrity-failed', reason: 'digest-mismatch' }
   }
 
-  return matchTextAnchor(buf.toString('utf-8'), anchor)
+  return { ...matchTextAnchor(buf.toString('utf-8'), anchor), basis: 'hash-verified' }
 }

@@ -4,7 +4,6 @@ import { useQuery } from '@tanstack/react-query'
 import { casesQueryOptions } from '@renderer/lib/queries'
 import { useSelectorFilters } from '@renderer/hooks/useSelectorFilters'
 import { useAppStore } from '@renderer/stores/appStore'
-import { captureServerFetch } from '@renderer/lib/captureServerFetch'
 import type { BirdbrainSettings } from '@shared/types'
 import { Skeleton } from '@renderer/components/ui'
 
@@ -23,12 +22,12 @@ export function CaseWorkspace() {
     store.clearSelectorFilters()
   }, [caseId])
 
-  // Activate case on the capture server + persist session state
+  // Activate case in the session service + persist session state
   useEffect(() => {
     if (caseId) {
-      captureServerFetch(`/api/cases/${caseId}/activate`, { method: 'POST' }).catch((err) =>
-        console.error('Failed to activate case on server:', err)
-      )
+      window.birdbrain.session
+        .activateCase(caseId)
+        .catch((err) => console.error('Failed to activate case:', err))
       // Persist last active case for session restore
       window.birdbrain.settings.update({ lastActiveCaseId: caseId })
     }

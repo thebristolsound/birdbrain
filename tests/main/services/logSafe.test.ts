@@ -619,3 +619,36 @@ describe('context', () => {
     expect(asPackagedApp(() => context(dynamic))).toEqual({ bytes: 4096 })
   })
 })
+
+// sanitizeError runs inside crash handlers, so a hostile or merely unusual
+// Error must never make it throw — that would replace the failure being
+// recorded with a second one and lose the original entirely.
+describe('sanitizeError against hostile Error shapes', () => {
+  it('survives a stack getter that throws', () => {
+    const err = new Error('boom')
+    Object.defineProperty(err, 'stack', {
+      get() {
+        throw new Error('lazy capture failed')
+      }
+    })
+    expect(() => sanitizeError(err)).not.toThrow()
+    expect(sanitizeError(err).stack).toBeNull()
+  })
+
+  it('survives a name getter that throws', () => {
+    const err = new Error('boom')
+    Object.defineProperty(err, 'name', {
+      get() {
+        throw new Error('nope')
+      }
+    })
+    expect(sanitizeError(err).name).toBe('UnknownError')
+  })
+
+  it('ignores a truthy non-string stack', () => {
+    const err = new Error('boom')
+    Object.defineProperty(err, 'stack', { value: { toString: () => 'at fake' } })
+    expect(() => sanitizeError(err)).not.toThrow()
+    expect(sanitizeError(err).stack).toBeNull()
+  })
+})

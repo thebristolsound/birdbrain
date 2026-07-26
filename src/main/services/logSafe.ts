@@ -509,6 +509,19 @@ function relativizeStack(stack: string, appRoot: string): string {
 
 // appRoot defaults to cwd for standalone/test use; real (Electron) call sites
 // should pass `app.getAppPath()` so packaged installs relativize correctly.
+// `name`, `code` and `stack` are ordinary writable properties, and an Error
+// subclass or a library error may define any of them as a getter that throws
+// (lazy stack capture is a real pattern). sanitizeError runs inside the crash
+// handlers, so a throw here would replace the failure being recorded with a
+// second, worse one — the diagnostic path destroying the diagnostic.
+function readProp(err: Error, key: 'name' | 'code' | 'stack'): unknown {
+  try {
+    return (err as unknown as Record<string, unknown>)[key]
+  } catch {
+    return undefined
+  }
+}
+
 export function sanitizeError(
   err: unknown,
   appRoot: string = defaultAppRoot(),
@@ -518,14 +531,22 @@ export function sanitizeError(
     return { name: 'UnknownError', code: null, stack: null }
   }
 
-  const name = (ERROR_NAMES as readonly string[]).includes(err.name) ? err.name : 'UnknownError'
+  const rawName = readProp(err, 'name')
+  const name =
+    typeof rawName === 'string' && (ERROR_NAMES as readonly string[]).includes(rawName)
+      ? rawName
+      : 'UnknownError'
 
-  const raw = (err as { code?: unknown }).code
+  const raw = readProp(err, 'code')
   const errCode = typeof raw === 'string' && CODE.test(raw) ? raw : null
 
+  const rawStack = readProp(err, 'stack')
   let stack: string | null = null
-  if (err.stack) {
-    const frames = stackFrames(err.stack)
+  // typeof, not truthiness: `stack` is declared `string | undefined`, but a
+  // subclass or library error can assign anything to it, and a non-string
+  // truthy value would throw on .split inside stackFrames.
+  if (typeof rawStack === 'string' && rawStack.length > 0) {
+    const frames = stackFrames(rawStack)
     if (frames.length > 0) {
       const relativized = relativizeStack(frames.join('\n'), appRoot)
       stack = sanitizeText(relativized, homeDir)

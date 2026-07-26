@@ -170,9 +170,9 @@ const birdbrain = {
   },
   selectors: {
     list: (caseId: string): Promise<Selector[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_LIST, caseId),
+      unwrapIpc<Selector[]>(ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_LIST, caseId)),
     get: (id: string): Promise<Selector | undefined> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_GET, id),
+      unwrapIpc<Selector | undefined>(ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_GET, id)),
     create: (params: CreateSelectorParams): Promise<Selector> =>
       unwrapIpc<Selector>(ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_CREATE, params)),
     update: (params: UpdateSelectorParams): Promise<Selector | undefined> =>
@@ -180,13 +180,19 @@ const birdbrain = {
     delete: (id: string): Promise<boolean> =>
       unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_DELETE, id)),
     listActive: (): Promise<ActiveCaseSelectors[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_LIST_ACTIVE),
+      unwrapIpc<ActiveCaseSelectors[]>(ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_LIST_ACTIVE)),
     matchCounts: (caseId: string): Promise<Record<string, number>> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_MATCH_COUNTS, caseId),
+      unwrapIpc<Record<string, number>>(
+        ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_MATCH_COUNTS, caseId)
+      ),
     matchingCaptures: (caseId: string, selectorIds: string[]): Promise<string[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_MATCHING_CAPTURES, caseId, selectorIds),
+      unwrapIpc<string[]>(
+        ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_MATCHING_CAPTURES, caseId, selectorIds)
+      ),
     coverage: (caseId: string): Promise<{ matched: number; total: number }> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_COVERAGE, caseId),
+      unwrapIpc<{ matched: number; total: number }>(
+        ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_COVERAGE, caseId)
+      ),
     bulkCreate: (params: BulkCreateSelectorsParams): Promise<Selector[]> =>
       unwrapIpc<Selector[]>(ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_BULK_CREATE, params)),
     exportMatches: (caseId: string): Promise<{ exported: boolean; path?: string }> =>

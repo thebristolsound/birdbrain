@@ -439,13 +439,15 @@ describe('ipcHandlers — selectors', () => {
       await invoke(IPC_CHANNELS.SELECTORS_UPDATE, { id: sel.id, pattern: 'hello2', isRegex: false })
     )
 
-    const list = await invoke<{ id: string }[]>(IPC_CHANNELS.SELECTORS_LIST, caseId)
+    const list = expectOk<{ id: string }[]>(await invoke(IPC_CHANNELS.SELECTORS_LIST, caseId))
     expect(list.length).toBeGreaterThanOrEqual(2)
-    expect(await invoke(IPC_CHANNELS.SELECTORS_GET, sel.id)).toBeDefined()
-    expect(await invoke(IPC_CHANNELS.SELECTORS_LIST_ACTIVE)).toBeDefined()
-    expect(await invoke(IPC_CHANNELS.SELECTORS_MATCH_COUNTS, caseId)).toBeDefined()
-    expect(await invoke(IPC_CHANNELS.SELECTORS_COVERAGE, caseId)).toBeDefined()
-    expect(await invoke(IPC_CHANNELS.SELECTORS_MATCHING_CAPTURES, caseId, [sel.id])).toBeDefined()
+    expect(expectOk(await invoke(IPC_CHANNELS.SELECTORS_GET, sel.id))).toBeDefined()
+    expect(expectOk(await invoke(IPC_CHANNELS.SELECTORS_LIST_ACTIVE))).toBeDefined()
+    expect(expectOk(await invoke(IPC_CHANNELS.SELECTORS_MATCH_COUNTS, caseId))).toBeDefined()
+    expect(expectOk(await invoke(IPC_CHANNELS.SELECTORS_COVERAGE, caseId))).toBeDefined()
+    expect(
+      expectOk(await invoke(IPC_CHANNELS.SELECTORS_MATCHING_CAPTURES, caseId, [sel.id]))
+    ).toBeDefined()
 
     expectOk(await invoke(IPC_CHANNELS.SELECTORS_DELETE, sel.id))
   })

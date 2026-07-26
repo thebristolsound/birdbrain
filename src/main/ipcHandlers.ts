@@ -287,8 +287,8 @@ export function registerIpcHandlers(deps: {
   )
 
   // Selectors
-  ipcMain.handle(IPC_CHANNELS.SELECTORS_LIST, (_, caseId: string) => selectorRepo.listSelectors(caseId))
-  ipcMain.handle(IPC_CHANNELS.SELECTORS_GET, (_, id: string) => selectorRepo.getSelector(id))
+  handle(IPC_CHANNELS.SELECTORS_LIST, (_, caseId: string) => selectorRepo.listSelectors(caseId))
+  handle(IPC_CHANNELS.SELECTORS_GET, (_, id: string) => selectorRepo.getSelector(id))
   handle(IPC_CHANNELS.SELECTORS_CREATE, (_, params: CreateSelectorParams) =>
     selectorLifecycle.createSelector(params)
   )
@@ -299,19 +299,17 @@ export function registerIpcHandlers(deps: {
     selectorLifecycle.updateSelector(params)
   )
   handle(IPC_CHANNELS.SELECTORS_DELETE, (_, id: string) => selectorRepo.deleteSelector(id))
-  ipcMain.handle(IPC_CHANNELS.SELECTORS_LIST_ACTIVE, () => {
+  handle(IPC_CHANNELS.SELECTORS_LIST_ACTIVE, () => {
     const { activeCaseId } = getSessionState()
     return selectorRepo.listActiveSelectors(activeCaseId ?? undefined)
   })
-  ipcMain.handle(IPC_CHANNELS.SELECTORS_MATCH_COUNTS, (_, caseId: string) =>
+  handle(IPC_CHANNELS.SELECTORS_MATCH_COUNTS, (_, caseId: string) =>
     selectorRepo.getSelectorMatchCounts(caseId)
   )
-  ipcMain.handle(
-    IPC_CHANNELS.SELECTORS_MATCHING_CAPTURES,
-    (_, caseId: string, selectorIds: string[]) =>
-      selectorRepo.getCapturesMatchingSelectors(caseId, selectorIds)
+  handle(IPC_CHANNELS.SELECTORS_MATCHING_CAPTURES, (_, caseId: string, selectorIds: string[]) =>
+    selectorRepo.getCapturesMatchingSelectors(caseId, selectorIds)
   )
-  ipcMain.handle(IPC_CHANNELS.SELECTORS_COVERAGE, (_, caseId: string) =>
+  handle(IPC_CHANNELS.SELECTORS_COVERAGE, (_, caseId: string) =>
     selectorRepo.getSelectorCoverage(caseId)
   )
   handle(IPC_CHANNELS.SELECTORS_EXPORT_MATCHES, async (_, caseId: string) => {

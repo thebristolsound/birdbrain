@@ -307,6 +307,12 @@ Land this before Tasks 3–15; every later task imports from it. It is deliberat
 
 - [ ] **Step 1: Add the types**
 
+**Task 1 shipped `LOG_CODES`, `LOG_SOURCES`, `LOG_CONTEXT_KEYS` and `ERROR_NAMES` inside `src/main/services/logSafe.ts`, and that is the wrong home.** `src/shared/types.ts` cannot import from `@main/*` — the alias is main-and-preload only, and `tests/importAliases.test.ts` enforces it — and the renderer needs `LogCode` for `RendererLogPayload` (Task 6) and `labelForCode` (Task 10). A main-process module cannot be the source of truth for a type three processes share.
+
+So **move** the four `as const` arrays and their derived types from `logSafe.ts` into `src/shared/types.ts` as part of this task, and have `logSafe.ts` import them. Nothing else moves: the branding, `TAG_VOCABULARIES`, `ident`, `tag`, `sanitizeText`, `sanitizeError` and the validators stay in `logSafe.ts`, which is main-only by design — the boundary logic belongs where it is enforced, and only the vocabulary is shared. Re-run `pnpm test -- logSafe` after the move; the existing 49 tests should pass untouched.
+
+Take the union *contents* from the shipped `logSafe.ts`, not from the block below. Task 1 audited the real `console.*` call sites across the 12 main-process files and appended codes for those with no pinned-code fit, so the shipped list is longer than what follows and the extras are load-bearing for Task 7.
+
 Append to `src/shared/types.ts`:
 
 ```typescript
@@ -1958,6 +1964,8 @@ export function labelForCode(code: LogCode): string {
   return CODE_LABELS[code]
 }
 ```
+
+The block above covers the pinned codes only. `LOG_CODES` also carries the entries Task 1 added for real `console.*` call sites (`captureLifecycle.tls_refetch_failed`, `backgroundRenderer.trim_failed`, and the rest), so this map **will not compile** until every one has a label — which is the point. Read the union from `src/shared/types.ts` and write a label for each; the original `console.*` string that each code replaced, rewritten for a tester rather than a developer, is the right text. Keep them plain: a tester reads these in a toast.
 
 - [ ] **Step 4: Run to verify it passes**
 

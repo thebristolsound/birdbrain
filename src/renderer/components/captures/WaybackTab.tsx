@@ -2,9 +2,9 @@ import { useQuery } from '@tanstack/react-query'
 import { ExternalLink, Pin, PinOff, RefreshCw } from 'lucide-react'
 import type { Capture, WaybackSnapshot } from '@shared/types'
 import {
-  archiveLookupQueryOptions,
-  archivePinsQueryOptions,
-  useArchiveMutations
+  waybackLookupQueryOptions,
+  waybackPinsQueryOptions,
+  useWaybackMutations
 } from '@renderer/lib/queries'
 
 interface Props {
@@ -15,10 +15,10 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleString()
 }
 
-export function ArchiveTab({ capture }: Props) {
-  const lookup = useQuery(archiveLookupQueryOptions(capture.id))
-  const pins = useQuery(archivePinsQueryOptions(capture.id))
-  const { pin, unpin } = useArchiveMutations(capture.id)
+export function WaybackTab({ capture }: Props) {
+  const lookup = useQuery(waybackLookupQueryOptions(capture.id))
+  const pins = useQuery(waybackPinsQueryOptions(capture.id))
+  const { pin, unpin } = useWaybackMutations(capture.id)
 
   const result = lookup.data
   const pinnedUrls = new Set((pins.data ?? []).map((r) => r.snapshotUrl))
@@ -39,7 +39,7 @@ export function ArchiveTab({ capture }: Props) {
         </div>
         <button
           type="button"
-          data-testid="archive-lookup-btn"
+          data-testid="wayback-lookup-btn"
           onClick={() => void lookup.refetch()}
           disabled={lookup.isFetching}
           className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs text-accent hover:bg-accent-subtle disabled:opacity-50"
@@ -86,20 +86,20 @@ export function ArchiveTab({ capture }: Props) {
       )}
 
       {lookup.isFetching && (
-        <div data-testid="archive-loading" className="text-text-muted">
+        <div data-testid="wayback-loading" className="text-text-muted">
           Querying the Wayback Machine…
         </div>
       )}
 
       {lookup.isError && !lookup.isFetching && (
-        <div data-testid="archive-error" className="text-red-500">
+        <div data-testid="wayback-error" className="text-red-500">
           Lookup failed:{' '}
           {lookup.error instanceof Error ? lookup.error.message : String(lookup.error)}
         </div>
       )}
 
       {result && !lookup.isFetching && result.snapshots.length === 0 && (
-        <div data-testid="archive-empty" className="text-text-muted">
+        <div data-testid="wayback-empty" className="text-text-muted">
           No archive.org snapshots found for this URL.
         </div>
       )}
@@ -139,7 +139,7 @@ function SnapshotRow({
 }) {
   return (
     <li
-      data-testid="archive-snapshot-row"
+      data-testid="wayback-snapshot-row"
       className={`flex items-center justify-between rounded-md border px-3 py-2 ${
         isClosest ? 'border-accent bg-accent-subtle' : 'border-border'
       }`}

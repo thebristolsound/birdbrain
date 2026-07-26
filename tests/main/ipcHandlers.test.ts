@@ -504,9 +504,8 @@ describe('ipcHandlers — annotations', () => {
         imageHeight: 100
       })
     )
-    const bundle = await invoke<{ annotations: unknown; pins: unknown[] }>(
-      IPC_CHANNELS.ANNOTATIONS_GET,
-      captureId
+    const bundle = expectOk<{ annotations: unknown; pins: unknown[] }>(
+      await invoke(IPC_CHANNELS.ANNOTATIONS_GET, captureId)
     )
     expect(bundle.annotations).not.toBeNull()
     expect(Array.isArray(bundle.pins)).toBe(true)
@@ -529,35 +528,37 @@ describe('ipcHandlers — search', () => {
 
 describe('ipcHandlers — settings', () => {
   it('gets, updates, resets and reports identity', async () => {
-    const s = await invoke<{ operatorName?: string }>(IPC_CHANNELS.SETTINGS_GET)
+    const s = expectOk<{ operatorName?: string }>(await invoke(IPC_CHANNELS.SETTINGS_GET))
     expect(s).toBeDefined()
 
-    const updated = await invoke<{ operatorName?: string }>(IPC_CHANNELS.SETTINGS_UPDATE, {
-      operatorName: 'Agent Smith'
-    })
+    const updated = expectOk<{ operatorName?: string }>(
+      await invoke(IPC_CHANNELS.SETTINGS_UPDATE, { operatorName: 'Agent Smith' })
+    )
     expect(updated.operatorName).toBe('Agent Smith')
 
-    const identity = await invoke<{ installationId: string; operatorName: string }>(
-      IPC_CHANNELS.SETTINGS_GET_IDENTITY
+    const identity = expectOk<{ installationId: string; operatorName: string }>(
+      await invoke(IPC_CHANNELS.SETTINGS_GET_IDENTITY)
     )
     expect(identity.installationId).toBeTruthy()
     expect(identity.operatorName).toBe('Agent Smith')
 
-    const reset = await invoke<{ operatorName?: string }>(IPC_CHANNELS.SETTINGS_RESET)
+    const reset = expectOk<{ operatorName?: string }>(await invoke(IPC_CHANNELS.SETTINGS_RESET))
     expect(reset).toBeDefined()
   })
 
   it('delegates openrouter key tests and model listing', async () => {
     testApiKey.mockResolvedValue(true)
     listModels.mockResolvedValue([{ id: 'gpt' }])
-    expect(await invoke(IPC_CHANNELS.SETTINGS_TEST_OPENROUTER, 'key')).toBe(true)
-    expect(await invoke(IPC_CHANNELS.SETTINGS_LIST_MODELS, 'key')).toEqual([{ id: 'gpt' }])
+    expect(expectOk(await invoke(IPC_CHANNELS.SETTINGS_TEST_OPENROUTER, 'key'))).toBe(true)
+    expect(expectOk(await invoke(IPC_CHANNELS.SETTINGS_LIST_MODELS, 'key'))).toEqual([
+      { id: 'gpt' }
+    ])
   })
 
   it('returns null when the storage-path picker is cancelled and a path otherwise', async () => {
-    expect(await invoke(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH)).toBeNull()
+    expect(expectOk(await invoke(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH))).toBeNull()
     showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: ['/data/x'] })
-    expect(await invoke(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH)).toBe('/data/x')
+    expect(expectOk(await invoke(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH))).toBe('/data/x')
   })
 })
 
@@ -814,11 +815,7 @@ describe('ipcHandlers — case archive', () => {
   it('forwards import progress to the renderer via event.sender.send', async () => {
     const archivePath = join(userDataPath, 'archive.birdbrain')
     importCaseArchive.mockImplementationOnce(
-      async (
-        _archivePath,
-        _opts,
-        onProgress: (step: string, percent: number) => void
-      ) => {
+      async (_archivePath, _opts, onProgress: (step: string, percent: number) => void) => {
         onProgress('Verifying archive...', 5)
         return { newCaseId: 'new-case-id', report: {} }
       }
@@ -883,11 +880,19 @@ describe('ipcHandlers — extracted data', () => {
     extractedDataRepo.insertExtractedData(captureId, caseId, 'https://example.com', [
       { category: 'ioc', subcategory: 'email', value: 'a@b.com' }
     ])
-    const categories = await invoke<unknown[]>(IPC_CHANNELS.EXTRACTED_DATA_CATEGORIES, caseId)
+    const categories = expectOk<unknown[]>(
+      await invoke(IPC_CHANNELS.EXTRACTED_DATA_CATEGORIES, caseId)
+    )
     expect(categories.length).toBeGreaterThan(0)
-    expect(await invoke(IPC_CHANNELS.EXTRACTED_DATA_SUBCATEGORIES, caseId, 'ioc')).toBeDefined()
-    expect(await invoke(IPC_CHANNELS.EXTRACTED_DATA_ITEMS, caseId, 'ioc', 'email')).toBeDefined()
-    expect(await invoke<number>(IPC_CHANNELS.EXTRACTED_DATA_COUNT, caseId)).toBeGreaterThan(0)
+    expect(
+      expectOk(await invoke(IPC_CHANNELS.EXTRACTED_DATA_SUBCATEGORIES, caseId, 'ioc'))
+    ).toBeDefined()
+    expect(
+      expectOk(await invoke(IPC_CHANNELS.EXTRACTED_DATA_ITEMS, caseId, 'ioc', 'email'))
+    ).toBeDefined()
+    expect(
+      expectOk<number>(await invoke(IPC_CHANNELS.EXTRACTED_DATA_COUNT, caseId))
+    ).toBeGreaterThan(0)
 
     const reprocessed = expectOk<{ processed: number }>(
       await invoke(IPC_CHANNELS.EXTRACTED_DATA_REPROCESS, caseId)
@@ -899,10 +904,8 @@ describe('ipcHandlers — extracted data', () => {
     extractedDataRepo.insertExtractedData(captureId, caseId, 'https://example.com', [
       { category: 'ioc', subcategory: 'email', value: 'foo@gmail.com' }
     ])
-    const results = await invoke<Array<{ value: string }>>(
-      IPC_CHANNELS.EXTRACTED_DATA_SEARCH,
-      caseId,
-      'gmail'
+    const results = expectOk<Array<{ value: string }>>(
+      await invoke(IPC_CHANNELS.EXTRACTED_DATA_SEARCH, caseId, 'gmail')
     )
     expect(results.map((r) => r.value)).toEqual(['foo@gmail.com'])
   })
@@ -1051,10 +1054,12 @@ describe('archive handlers', () => {
     expect(pinned.ok).toBe(true)
 
     const list = registered.get('archive:list')!
-    const refs = (await list({} as never, cap.id)) as Array<{
-      snapshotUrl: string
-      checkedAt: string
-    }>
+    const refs = expectOk<
+      Array<{
+        snapshotUrl: string
+        checkedAt: string
+      }>
+    >((await list({} as never, cap.id)) as { ok: boolean; data: unknown })
     expect(refs).toHaveLength(1)
     expect(refs[0].snapshotUrl).toBe(snapshot.snapshotUrl)
     expect(refs[0].checkedAt).toBe('2026-06-30T00:00:00.000Z')
@@ -1062,7 +1067,9 @@ describe('archive handlers', () => {
     const unpin = registered.get('archive:unpin')!
     const removed = (await unpin({} as never, pinned.data.id)) as { ok: boolean; data: boolean }
     expect(removed.ok).toBe(true)
-    expect((await list({} as never, cap.id)) as unknown[]).toHaveLength(0)
+    expect(
+      expectOk<unknown[]>((await list({} as never, cap.id)) as { ok: boolean; data: unknown })
+    ).toHaveLength(0)
   })
 
   it('archive:pin rejects a snapshot with a forged snapshotUrl', async () => {
@@ -1091,7 +1098,9 @@ describe('archive handlers', () => {
     expect(result.code).toBe('ARCHIVE_INVALID_SNAPSHOT')
 
     const list = registered.get('archive:list')!
-    expect((await list({} as never, cap.id)) as unknown[]).toHaveLength(0)
+    expect(
+      expectOk<unknown[]>((await list({} as never, cap.id)) as { ok: boolean; data: unknown })
+    ).toHaveLength(0)
   })
 })
 

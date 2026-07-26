@@ -220,7 +220,7 @@ const birdbrain = {
     lookup: (captureId: string): Promise<WaybackLookupResult> =>
       unwrapIpc<WaybackLookupResult>(ipcRenderer.invoke(IPC_CHANNELS.ARCHIVE_LOOKUP, captureId)),
     list: (captureId: string): Promise<ArchiveRef[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.ARCHIVE_LIST, captureId),
+      unwrapIpc<ArchiveRef[]>(ipcRenderer.invoke(IPC_CHANNELS.ARCHIVE_LIST, captureId)),
     pin: (params: PinArchiveSnapshotParams): Promise<ArchiveRef> =>
       unwrapIpc<ArchiveRef>(ipcRenderer.invoke(IPC_CHANNELS.ARCHIVE_PIN, params)),
     unpin: (refId: string): Promise<boolean> =>
@@ -228,7 +228,7 @@ const birdbrain = {
   },
   annotations: {
     get: (captureId: string): Promise<AnnotationsBundle> =>
-      ipcRenderer.invoke(IPC_CHANNELS.ANNOTATIONS_GET, captureId),
+      unwrapIpc<AnnotationsBundle>(ipcRenderer.invoke(IPC_CHANNELS.ANNOTATIONS_GET, captureId)),
     save: (params: SaveAnnotationsParams): Promise<CaptureAnnotations> =>
       unwrapIpc<CaptureAnnotations>(ipcRenderer.invoke(IPC_CHANNELS.ANNOTATIONS_SAVE, params)),
     delete: (captureId: string): Promise<void> =>
@@ -250,18 +250,20 @@ const birdbrain = {
     unwrapIpc<Capture[]>(ipcRenderer.invoke(IPC_CHANNELS.SEARCH, caseId, query)),
 
   settings: {
-    get: (): Promise<BirdbrainSettings> => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET),
+    get: (): Promise<BirdbrainSettings> =>
+      unwrapIpc<BirdbrainSettings>(ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET)),
     update: (partial: Partial<BirdbrainSettings>): Promise<BirdbrainSettings> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_UPDATE, partial),
-    reset: (): Promise<BirdbrainSettings> => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_RESET),
+      unwrapIpc<BirdbrainSettings>(ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_UPDATE, partial)),
+    reset: (): Promise<BirdbrainSettings> =>
+      unwrapIpc<BirdbrainSettings>(ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_RESET)),
     testOpenRouter: (apiKey: string): Promise<boolean> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_TEST_OPENROUTER, apiKey),
+      unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_TEST_OPENROUTER, apiKey)),
     listModels: (apiKey: string): Promise<OpenRouterModel[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_LIST_MODELS, apiKey),
+      unwrapIpc<OpenRouterModel[]>(ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_LIST_MODELS, apiKey)),
     getIdentity: (): Promise<OperatorIdentity> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET_IDENTITY),
+      unwrapIpc<OperatorIdentity>(ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET_IDENTITY)),
     chooseStoragePath: (): Promise<string | null> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH)
+      unwrapIpc<string | null>(ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH))
   },
 
   export: {
@@ -287,8 +289,7 @@ const birdbrain = {
   },
 
   updates: {
-    getStatus: (): Promise<UpdateStatus> =>
-      ipcRenderer.invoke(IPC_CHANNELS.UPDATES_GET_STATUS),
+    getStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke(IPC_CHANNELS.UPDATES_GET_STATUS),
     check: (): Promise<UpdateStatus> => ipcRenderer.invoke(IPC_CHANNELS.UPDATES_CHECK),
     download: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.UPDATES_DOWNLOAD),
     install: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.UPDATES_INSTALL)
@@ -415,15 +416,23 @@ const birdbrain = {
 
   extractedData: {
     categories: (caseId: string): Promise<ExtractedDataCategory[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.EXTRACTED_DATA_CATEGORIES, caseId),
+      unwrapIpc<ExtractedDataCategory[]>(
+        ipcRenderer.invoke(IPC_CHANNELS.EXTRACTED_DATA_CATEGORIES, caseId)
+      ),
     subcategories: (caseId: string, category: string): Promise<ExtractedDataSubcategory[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.EXTRACTED_DATA_SUBCATEGORIES, caseId, category),
+      unwrapIpc<ExtractedDataSubcategory[]>(
+        ipcRenderer.invoke(IPC_CHANNELS.EXTRACTED_DATA_SUBCATEGORIES, caseId, category)
+      ),
     items: (caseId: string, category: string, subcategory: string): Promise<ExtractedDataItem[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.EXTRACTED_DATA_ITEMS, caseId, category, subcategory),
+      unwrapIpc<ExtractedDataItem[]>(
+        ipcRenderer.invoke(IPC_CHANNELS.EXTRACTED_DATA_ITEMS, caseId, category, subcategory)
+      ),
     count: (caseId: string): Promise<number> =>
-      ipcRenderer.invoke(IPC_CHANNELS.EXTRACTED_DATA_COUNT, caseId),
+      unwrapIpc<number>(ipcRenderer.invoke(IPC_CHANNELS.EXTRACTED_DATA_COUNT, caseId)),
     search: (caseId: string, query: string): Promise<ExtractedDataSearchResult[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.EXTRACTED_DATA_SEARCH, caseId, query),
+      unwrapIpc<ExtractedDataSearchResult[]>(
+        ipcRenderer.invoke(IPC_CHANNELS.EXTRACTED_DATA_SEARCH, caseId, query)
+      ),
     reprocess: (caseId: string): Promise<{ processed: number }> =>
       unwrapIpc<{ processed: number }>(
         ipcRenderer.invoke(IPC_CHANNELS.EXTRACTED_DATA_REPROCESS, caseId)

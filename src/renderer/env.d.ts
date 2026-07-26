@@ -24,7 +24,7 @@ import type {
   CaptureAnnotations,
   AnnotationPin,
   OperatorIdentity,
-  ArchiveRef,
+  WaybackRef,
   WaybackLookupResult,
   ArchiveInspectReport,
   UpdateStatus,
@@ -56,7 +56,7 @@ import type {
   DeepLinkTarget,
   ExportProgressEvent,
   ExportResult,
-  PinArchiveSnapshotParams,
+  PinWaybackSnapshotParams,
   ArchiveProgressEvent,
   ArchiveExportResult,
   RecaptureEnqueuePayload,
@@ -130,10 +130,10 @@ interface BirdbrainAPI {
     count(caseId: string): Promise<number>
     search(caseId: string, query: string): Promise<Note[]>
   }
-  archive: {
+  wayback: {
     lookup(captureId: string): Promise<WaybackLookupResult>
-    list(captureId: string): Promise<ArchiveRef[]>
-    pin(params: PinArchiveSnapshotParams): Promise<ArchiveRef>
+    list(captureId: string): Promise<WaybackRef[]>
+    pin(params: PinWaybackSnapshotParams): Promise<WaybackRef>
     unpin(refId: string): Promise<boolean>
   }
   annotations: {

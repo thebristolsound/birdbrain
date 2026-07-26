@@ -148,17 +148,43 @@ second net: a value failing its pattern throws in development and is replaced wi
 `'[invalid]'` in production, so a bad call can never both pass silently and write
 unvalidated text.
 
-**`message` is the hole this does not close, and it must be sealed separately.** `message`
-is necessarily a free string, and the real call sites prove the risk is not theoretical —
-[`captureServer.ts:360`](../../src/main/services/captureServer.ts) today reads
-``console.warn(`[Birdbrain] ${screenshotDropReason} for ${url}`)``, interpolating the
-captured URL. A migration rule saying "never interpolate a URL" is precisely the
-convention this design set out to replace with enforcement.
+### No free-form prose reaches disk
 
-So the logger runs `sanitizeText()` over **every** `message` and `source` before writing,
-using the same scrubber the error path uses. Structural context stays exact; prose gets
-scrubbed. A call site that interpolates a URL produces `… for ‹url›` rather than a leak,
-and no reviewer has to catch it.
+An earlier revision of this spec tried to seal `message` by running a regex scrubber over
+it. **That approach was abandoned after it failed five times.** The record is worth keeping,
+because it is the argument for what replaced it: successive audits found leaks via Windows
+intermediate path segments, UNC paths, Windows terminal segments, POSIX paths, and
+home-rooted paths with a spaced subdirectory. Each fix was correct and each round found
+another shape.
+
+Two further findings showed the approach could not converge at all:
+
+- **A case name as prose has no shape to match.** `Error: failed to parse Operation
+  Blackbird` contains no path and no URL. A scrubber cannot distinguish it from ordinary
+  text, and `Error.name` is a writable field.
+- **Branded values do not constrain keys.** `Record<string, LogValue>` accepts
+  `{ [capturedUrl]: true }`, which compiles and serialises verbatim.
+
+Scrubbing is a filter against an open-ended set of bypasses. The guarantee this design
+promises requires an allowlist, so:
+
+**The durable log carries no free-form text at all.** An entry's `code` is a member of a
+fixed `LOG_CODES` union, its `source` a member of a fixed `LOG_SOURCES` union, and its
+context keys are drawn from a fixed `LOG_CONTEXT_KEYS` union with branded values. There is
+no field a call site can write arbitrary text into, so no regex has to be correct for the
+invariant to hold.
+
+Human prose still exists — it just never reaches disk. `notify` renders a readable sentence
+in the toast, and `LogTab` maps codes to labels for display. Both are ephemeral.
+
+For errors, only `err.name` validated against a known set and `err.code` matching the
+`code()` pattern are retained. `err.message` is **dropped**. Stack traces are kept but
+reduced to app-relative frames, which name Birdbrain's own source files rather than
+anything case-derived — `sanitizeText` survives for exactly this one narrow job.
+
+The cost is real and accepted: a log line reads `capture.screenshot_dropped
+{captureId, bytes}` rather than a sentence, and a library error's prose is lost. What is
+bought is that the promise made to a tester handing over a bundle is true by construction.
 
 ### Error sanitization
 

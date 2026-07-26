@@ -388,6 +388,15 @@ describe('sanitizeError', () => {
     expect(out.name).toBe('UnknownError')
   })
 
+  // ReferenceError in particular is how an unexpected app crash usually
+  // classifies, so collapsing it to UnknownError would blunt exactly the
+  // diagnostics this module exists to produce.
+  it.each(['ReferenceError', 'EvalError', 'AggregateError'])('preserves %s', (name) => {
+    const err = new Error('boom')
+    err.name = name
+    expect(sanitizeError(err).name).toBe(name)
+  })
+
   it('produces app-relative stack frames with no home directory, and drops the header line', () => {
     const appRoot = String.raw`C:\Users\matt\birdbrain`
     const err = new Error('boom')

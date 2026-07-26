@@ -44,6 +44,22 @@ function isPackagedApp(): boolean {
   }
 }
 
+// Same defensive resolution, for the stack-relativization anchor. cwd is the
+// app root only when the app was started from it: launched from Finder, a
+// shortcut, or an unrelated directory, cwd is somewhere else entirely, no
+// Birdbrain frame matches the anchor, and the generic absolute-path pass then
+// replaces each frame's file:line:col with '‹path›' — deleting exactly the
+// frames a crash report exists to carry. Callers may still override.
+function defaultAppRoot(): string {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- see above
+    const electron: unknown = require('electron')
+    return (electron as { app?: { getAppPath?: () => string } }).app?.getAppPath?.() ?? process.cwd()
+  } catch {
+    return process.cwd()
+  }
+}
+
 // Loud in development so a bad call site is caught in review; inert in a
 // packaged build so a logging mistake can never crash a tester's app. The
 // offending value is never echoed — that would defeat the point of rejecting
@@ -356,6 +372,10 @@ export const ERROR_NAMES = [
   'RangeError',
   'SyntaxError',
   'URIError',
+  'ReferenceError',
+  'EvalError',
+  'AggregateError',
+  'DOMException',
   'AbortError',
   'SqliteError',
   'IpcFailure',
@@ -491,7 +511,7 @@ function relativizeStack(stack: string, appRoot: string): string {
 // should pass `app.getAppPath()` so packaged installs relativize correctly.
 export function sanitizeError(
   err: unknown,
-  appRoot: string = process.cwd(),
+  appRoot: string = defaultAppRoot(),
   homeDir: string = homedir()
 ): LoggedError {
   if (!(err instanceof Error)) {

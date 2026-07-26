@@ -79,8 +79,9 @@ async function unwrapIpc<T>(promise: Promise<unknown>): Promise<T> {
 
 const birdbrain = {
   cases: {
-    list: (): Promise<Case[]> => ipcRenderer.invoke(IPC_CHANNELS.CASES_LIST),
-    get: (id: string): Promise<Case | undefined> => ipcRenderer.invoke(IPC_CHANNELS.CASES_GET, id),
+    list: (): Promise<Case[]> => unwrapIpc<Case[]>(ipcRenderer.invoke(IPC_CHANNELS.CASES_LIST)),
+    get: (id: string): Promise<Case | undefined> =>
+      unwrapIpc<Case | undefined>(ipcRenderer.invoke(IPC_CHANNELS.CASES_GET, id)),
     create: (params: CreateCaseParams): Promise<Case> =>
       unwrapIpc<Case>(ipcRenderer.invoke(IPC_CHANNELS.CASES_CREATE, params)),
     update: (params: UpdateCaseParams): Promise<Case | undefined> =>

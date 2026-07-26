@@ -105,8 +105,8 @@ export function registerIpcHandlers(deps: {
 }): void {
   const { selectorLifecycle, captureLifecycle, recaptureService, updaterService } = deps
   // Cases
-  ipcMain.handle(IPC_CHANNELS.CASES_LIST, () => caseRepo.listCases())
-  ipcMain.handle(IPC_CHANNELS.CASES_GET, (_, id: string) => caseRepo.getCase(id))
+  handle(IPC_CHANNELS.CASES_LIST, () => caseRepo.listCases())
+  handle(IPC_CHANNELS.CASES_GET, (_, id: string) => caseRepo.getCase(id))
   handle(IPC_CHANNELS.CASES_CREATE, (_, params: CreateCaseParams) => caseRepo.createCase(params))
   handle(IPC_CHANNELS.CASES_UPDATE, (_, params: UpdateCaseParams) => caseRepo.updateCase(params))
   handle(IPC_CHANNELS.CASES_DELETE, (_, id: string) => caseRepo.deleteCase(id))

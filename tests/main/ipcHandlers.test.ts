@@ -247,10 +247,10 @@ describe('ipcHandlers — registration', () => {
 
 describe('ipcHandlers — cases', () => {
   it('lists, gets, creates, updates and deletes cases', async () => {
-    const list = await invoke<Case[]>(IPC_CHANNELS.CASES_LIST)
+    const list = expectOk<Case[]>(await invoke(IPC_CHANNELS.CASES_LIST))
     expect(list.some((c) => c.id === caseId)).toBe(true)
 
-    const one = await invoke<Case>(IPC_CHANNELS.CASES_GET, caseId)
+    const one = expectOk<Case>(await invoke(IPC_CHANNELS.CASES_GET, caseId))
     expect(one.name).toBe('Test Case')
 
     const created = expectOk<Case>(await invoke(IPC_CHANNELS.CASES_CREATE, { name: 'Another' }))
@@ -262,7 +262,7 @@ describe('ipcHandlers — cases', () => {
     expect(updated.name).toBe('Renamed')
 
     expectOk(await invoke(IPC_CHANNELS.CASES_DELETE, created.id))
-    const after = await invoke<Case[]>(IPC_CHANNELS.CASES_LIST)
+    const after = expectOk<Case[]>(await invoke(IPC_CHANNELS.CASES_LIST))
     expect(after.some((c) => c.id === created.id)).toBe(false)
   })
 

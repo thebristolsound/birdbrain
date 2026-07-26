@@ -139,14 +139,25 @@ export function importNoteRows(rows: Record<string, unknown>[], ctx: ImportCtx):
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
   for (const n of rows) {
+    // An archive is a file from outside this installation, so its `body` is no
+    // more trustworthy than a renderer's: resolve both columns the same way
+    // createNote does rather than copying them across independently. A note
+    // whose rich body and indexed text disagree is exactly what the derivation
+    // exists to prevent, and an import is the one path that could make it
+    // permanent. Rows written by an older Birdbrain have no body_doc key at
+    // all and stay plain text. The whole import runs in one transaction, so a
+    // body that fails validation fails the import rather than half-landing it.
+    const { body, bodyDoc } = resolveBody({
+      body: (n.body as string) ?? '',
+      bodyDoc: (n.body_doc as string) ?? undefined
+    })
     insert.run(
       ctx.mapId(n.id as string),
       ctx.newCaseId,
       n.capture_id ? ctx.mapId(n.capture_id as string) : null,
       n.title ?? '',
-      n.body ?? '',
-      // Rows written by an older Birdbrain have no body_doc key at all.
-      n.body_doc ?? null,
+      body,
+      bodyDoc,
       n.source_url ?? null,
       n.screenshot_path ?? null,
       n.created_at ?? null,

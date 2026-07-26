@@ -880,6 +880,7 @@ git commit -m "feat(logging): buffered jsonl logger with rotation and correlatio
 
 **Files:**
 - Modify: `src/main/index.ts` (register handlers before `app.whenReady()` around line 163; init inside `whenReady` after `initInstallationId`; extend `before-quit` at line 269)
+- Modify: `src/main/services/diagnostics.ts` (add `export` to the existing `detectInstallFormat` function — it is currently module-private; do not change its body)
 
 **Interfaces:**
 - Consumes: `initLogger`, `logger`, `flushSync`, `disposeLogger`, `setMainWindow` from `@main/services/logger`; `startSession`, `markCleanExit` from `@main/services/sessionLog`.
@@ -936,9 +937,14 @@ app.on('render-process-gone', (_event, contents, details) => {
 })
 
 app.on('child-process-gone', (_event, details) => {
+  // tag(), NOT ident(): Electron's child-process type labels contain spaces
+  // ('Pepper Plugin', 'Sandbox helper'), which ident() rejects — and a
+  // rejection throws outside production, escalating a child-process failure
+  // into a fatal main-process exception from inside the crash handler itself.
   logger.error('app', 'child process gone', {
-    processType: ident(details.type),
-    reason: ident(details.reason)
+    processType: tag(details.type, CHILD_PROCESS_TYPES),
+    reason: tag(details.reason, CHILD_GONE_REASONS),
+    exitCode: details.exitCode
   })
   flushSync()
 })
@@ -956,13 +962,36 @@ const RENDER_GONE_REASONS = [
   'launch-failed',
   'integrity-failure'
 ] as const
+
+// Electron's documented child-process type labels. Several contain spaces, so
+// they must go through tag() against this set rather than ident().
+const CHILD_PROCESS_TYPES = [
+  'Utility',
+  'Zygote',
+  'Sandbox helper',
+  'GPU',
+  'Pepper Plugin',
+  'Pepper Plugin Broker',
+  'Unknown'
+] as const
+
+const CHILD_GONE_REASONS = [
+  'clean-exit',
+  'abnormal-exit',
+  'killed',
+  'crashed',
+  'oom',
+  'launch-failed',
+  'integrity-failure'
+] as const
 ```
 
 Imports to add:
 
 ```typescript
 import { flushSync, initLogger, logger, setMainWindow as setLoggerWindow } from '@main/services/logger'
-import { ident, tag } from '@main/services/logSafe'
+import { tag } from '@main/services/logSafe'
+import { detectInstallFormat } from '@main/services/diagnostics'
 import { markCleanExit, startSession } from '@main/services/sessionLog'
 ```
 
@@ -973,10 +1002,15 @@ import { markCleanExit, startSession } from '@main/services/sessionLog'
 In `app.whenReady().then(async () => {`, immediately after `initInstallationId(userDataPath)`:
 
 ```typescript
+    // detectInstallFormat, not process.platform: SessionRecord promises the
+    // package format, and on Linux the AppImage/deb/archive distinction is
+    // exactly what a crash report needs. Export the existing helper from
+    // diagnostics.ts rather than reimplementing it — it already reads the
+    // APPIMAGE env var and the electron-builder package-type marker.
     const session = startSession(join(userDataPath, 'logs'), {
       version: app.getVersion(),
       platform: process.platform,
-      installFormat: app.isPackaged ? process.platform : 'dev'
+      installFormat: detectInstallFormat(app.isPackaged)
     })
     initLogger(userDataPath, session.sessionId)
     logger.info('app', 'session started', {
@@ -1950,6 +1984,15 @@ describe('mainLogBridge', () => {
     listener?.(entry('info'))
     expect(toastFns.info).not.toHaveBeenCalled()
   })
+
+  it('ignores renderer-originated entries so they do not toast twice', async () => {
+    const { subscribeToMainLog } = await import('@renderer/lib/mainLogBridge')
+    subscribeToMainLog()
+    // notify.error already toasted this one before sending it to main; main
+    // wrote it and echoed it straight back out.
+    listener?.({ ...entry('error'), source: 'renderer:mutation' })
+    expect(toastFns.error).not.toHaveBeenCalled()
+  })
 })
 ```
 
@@ -1967,8 +2010,14 @@ import type { LogEntry } from '@shared/types'
 // Main already wrote these to disk, so this path toasts ONLY — routing them
 // back through notify.error would write a duplicate entry and, because that
 // write emits again, risk a feedback loop.
+//
+// The 'renderer:' prefix filter is load-bearing. A renderer notify.error()
+// travels to main over diagnostics:log, gets written, and is emitted straight
+// back out over event:logEntry. Without this guard every renderer failure
+// raises two toasts with different ids, so dedup cannot collapse them.
 export function subscribeToMainLog(): () => void {
   return window.birdbrain.onLogEntry((entry: LogEntry) => {
+    if (entry.source.startsWith('renderer:')) return
     if (entry.level === 'error') toast.error(entry.message, { id: entry.id })
     else if (entry.level === 'warn') toast.warning(entry.message, { id: entry.id })
   })

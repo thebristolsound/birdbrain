@@ -1,4 +1,4 @@
-// Stub types — real implementations come in later specs
+// The cross-process domain types shared by main, preload, and renderer.
 
 export interface Case {
   id: string

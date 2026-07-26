@@ -25,8 +25,15 @@ Every task below obeys these rules:
   and `err.code` matching the `code()` pattern survive, plus app-relative stack frames.
 - Human prose lives only in ephemeral UI: `notify` toasts and `LogTab` labels.
 
-Tasks 1–4 as originally written assumed free-form `message`. Where a task's code block
-still shows `message: string`, the allowlist rules above govern.
+- `tag()` selects a fixed vocabulary by name from a table inside `logSafe.ts`. Call sites
+  never pass their own array — `tag(url, [url])` would otherwise brand a captured URL.
+- Anything arriving from the renderer over IPC is re-validated in main against the same
+  unions. A compile-time union does not survive a process hop.
+
+Every code block below has been written against these rules. If you find one that has not
+— a `message` field, a `source: string`, a caller-supplied `tag` array — that block is
+stale and the rules above govern; say so in your report rather than widening a type to
+make it compile.
 
 ## Global Constraints
 
@@ -243,28 +250,32 @@ export function sanitizeText(text: string, homeDir: string): string {
 }
 
 export function sanitizeError(err: unknown, homeDir: string = homedir()): LoggedError {
-  if (!(err instanceof Error)) {
-    return {
-      name: 'UnknownError',
-      code: null,
-      message: sanitizeText(String(err), homeDir),
-      stack: null
-    }
-  }
+  // String(err) on a thrown string IS the prose — there is nothing to salvage.
+  if (!(err instanceof Error)) return { name: 'UnknownError', code: null, stack: null }
 
   const raw = (err as { code?: unknown }).code
   const errCode = typeof raw === 'string' && CODE.test(raw) ? raw : null
 
-  const stack = err.stack
-    ? sanitizeText(err.stack, homeDir).split('\n').slice(0, MAX_STACK_FRAMES + 1).join('\n')
-    : null
-
   return {
-    name: err.name,
+    // Error.name is writable, so a caller can set it to anything. Validate it
+    // against ERROR_NAMES like every other string that reaches disk.
+    name: errorName(err.name) ?? 'UnknownError',
     code: errCode,
-    message: sanitizeText(err.message, homeDir),
-    stack
+    stack: safeStack(err.stack, homeDir)
   }
+}
+
+// A stack's first line is `${name}: ${message}` — prose, not a frame. Dropping
+// `message` from LoggedError buys nothing while that header survives, so keep
+// only lines that look like frames, and only after sanitizeText has run.
+function safeStack(stack: string | undefined, homeDir: string): string | null {
+  if (!stack) return null
+  const frames = stack
+    .split('\n')
+    .filter((line) => /^\s*at\s/.test(line))
+    .slice(0, MAX_STACK_FRAMES)
+    .map((line) => sanitizeText(line, homeDir))
+  return frames.length > 0 ? frames.join('\n') : null
 }
 ```
 
@@ -363,7 +374,14 @@ export const LOG_CONTEXT_KEYS = [
   'version',
   'platform',
   'installFormat',
-  'packaged'
+  'packaged',
+  // renderer-originated keys (Tasks 10 and 11): the query-key domain segment,
+  // the ErrorBoundary that caught, and the IPC channel that threw. All three
+  // are static identifiers from the source, never user data — but they still
+  // pass through ident() on the main side, because the renderer is not trusted.
+  'domain',
+  'boundary',
+  'channel'
 ] as const
 export type LogContextKey = (typeof LOG_CONTEXT_KEYS)[number]
 
@@ -582,12 +600,47 @@ export function readSessions(logDir: string): SessionRecord[] {
 }
 
 function writeSessions(logDir: string, records: SessionRecord[]): void {
-  writeFileSync(sessionsPath(logDir), JSON.stringify(records.slice(-MAX_SESSIONS), null, 2))
+  // Best-effort, like readSessions. A read-only logs directory or a `logs`
+  // path that is a file makes every write here throw; startSession runs inside
+  // whenReady before the window exists, so an escaping throw would stop
+  // Birdbrain launching at all. Losing session history is an acceptable
+  // degradation; refusing to start is not.
+  try {
+    writeFileSync(sessionsPath(logDir), JSON.stringify(records.slice(-MAX_SESSIONS), null, 2))
+  } catch {
+    // Session persistence disabled for this run.
+  }
+}
+
+// A lock naming a session with no matching record is the residue of an unclean
+// exit whose sessions.json was lost or corrupted. Without this, that crash is
+// invisible: takeUncleanSession only reads records, and startSession is about
+// to overwrite the lock. Synthesize the minimum record the recovery prompt
+// needs — the fields we cannot recover are marked unknown rather than guessed.
+function reclaimOrphanedLock(logDir: string, records: SessionRecord[]): SessionRecord[] {
+  let lockedId = ''
+  try {
+    lockedId = readFileSync(lockPath(logDir), 'utf8').trim()
+  } catch {
+    return records
+  }
+  if (!lockedId || records.some((r) => r.sessionId === lockedId)) return records
+
+  return [
+    ...records,
+    {
+      sessionId: lockedId,
+      startedAt: '',
+      endedAt: null,
+      version: 'unknown',
+      platform: 'unknown',
+      installFormat: 'unknown',
+      cleanExit: false
+    }
+  ]
 }
 
 export function startSession(logDir: string, info: SessionInfo): SessionRecord {
-  mkdirSync(logDir, { recursive: true })
-
   const record: SessionRecord = {
     sessionId: randomUUID(),
     startedAt: new Date().toISOString(),
@@ -598,9 +651,22 @@ export function startSession(logDir: string, info: SessionInfo): SessionRecord {
     cleanExit: false
   }
 
+  // Set before any I/O: the logger stamps every entry with this, and it must
+  // be correct even when nothing below can be written to disk.
   currentSessionId = record.sessionId
-  writeSessions(logDir, [...readSessions(logDir), record])
-  writeFileSync(lockPath(logDir), record.sessionId)
+
+  try {
+    mkdirSync(logDir, { recursive: true })
+  } catch {
+    return record
+  }
+
+  writeSessions(logDir, [...reclaimOrphanedLock(logDir, readSessions(logDir)), record])
+  try {
+    writeFileSync(lockPath(logDir), record.sessionId)
+  } catch {
+    // No lock means the next launch cannot detect an OOM kill for this run.
+  }
   return record
 }
 
@@ -612,7 +678,12 @@ export function markCleanExit(logDir: string): void {
     current.endedAt = new Date().toISOString()
     writeSessions(logDir, records)
   }
-  rmSync(lockPath(logDir), { force: true })
+  try {
+    rmSync(lockPath(logDir), { force: true })
+  } catch {
+    // A lock we cannot remove makes the next launch report a false crash —
+    // annoying, but not a reason to throw out of before-quit and block exit.
+  }
 }
 
 // Take-once. Without acknowledging, a single genuine crash leaves cleanExit
@@ -633,7 +704,27 @@ export function currentSession(): string {
 }
 ```
 
-Note on the lock file: `startSession` overwrites it unconditionally. The unclean signal is carried by the *record* whose `cleanExit` stayed false, which is why `takeUncleanSession` reads records rather than the lock. The lock exists so a future `startSession` can be certain a previous run never reached `before-quit`, and so the file is visible to a human inspecting the folder.
+Note on the lock file: the unclean signal is normally carried by the *record* whose `cleanExit` stayed false, which is why `takeUncleanSession` reads records rather than the lock. But records and lock can disagree — an unclean exit that also lost or corrupted `sessions.json` leaves the lock as the only surviving evidence — so `startSession` consumes the old lock before writing its own and reconstructs a minimal record for it. Reading before overwriting is what makes the lock load-bearing rather than decorative.
+
+Add these cases to the test written in Step 1:
+
+```typescript
+  it('reconstructs an unclean record when only the lock survives', () => {
+    writeFileSync(join(dir, 'session.lock'), 'ghost-session')
+    startSession(dir, info)
+    const ghost = readSessions(dir).find((r) => r.sessionId === 'ghost-session')
+    expect(ghost).toMatchObject({ cleanExit: false, version: 'unknown' })
+    expect(takeUncleanSession(dir)?.sessionId).toBe('ghost-session')
+  })
+
+  it('returns a usable session when the log directory cannot be written', () => {
+    const record = startSession(join(dir, 'unwritable', 'logs'), info)
+    expect(record.sessionId).toBeTruthy()
+    expect(currentSession()).toBe(record.sessionId)
+  })
+```
+
+The second case needs `mkdirSync` to fail. Create a *file* at the parent path first (`writeFileSync(join(dir, 'unwritable'), '')`), which makes `mkdirSync(join(dir,'unwritable','logs'), {recursive:true})` throw ENOTDIR on every platform — unlike chmod, which is a no-op for an administrator on Windows.
 
 - [ ] **Step 4: Run the test to verify it passes**
 
@@ -809,9 +900,9 @@ export interface LoggerDeps {
 }
 
 export interface Logger {
-  error(source: string, message: string, context?: LogContext, err?: unknown): string
-  warn(source: string, message: string, context?: LogContext, err?: unknown): string
-  info(source: string, message: string, context?: LogContext, err?: unknown): string
+  error(source: LogSource, code: LogCode, context?: LogContext, err?: unknown): string
+  warn(source: LogSource, code: LogCode, context?: LogContext, err?: unknown): string
+  info(source: LogSource, code: LogCode, context?: LogContext, err?: unknown): string
   flushSync(): void
   logPath(): string
   dispose(): void
@@ -937,12 +1028,12 @@ export function disposeLogger(): void {
 }
 
 export const logger = {
-  error: (source: string, message: string, context?: LogContext, err?: unknown): string =>
-    instance ? instance.error(source, message, context, err) : '',
-  warn: (source: string, message: string, context?: LogContext, err?: unknown): string =>
-    instance ? instance.warn(source, message, context, err) : '',
-  info: (source: string, message: string, context?: LogContext, err?: unknown): string =>
-    instance ? instance.info(source, message, context, err) : ''
+  error: (source: LogSource, code: LogCode, context?: LogContext, err?: unknown): string =>
+    instance ? instance.error(source, code, context, err) : '',
+  warn: (source: LogSource, code: LogCode, context?: LogContext, err?: unknown): string =>
+    instance ? instance.warn(source, code, context, err) : '',
+  info: (source: LogSource, code: LogCode, context?: LogContext, err?: unknown): string =>
+    instance ? instance.info(source, code, context, err) : ''
 }
 ```
 
@@ -979,7 +1070,7 @@ Add near the top of `src/main/index.ts`, after the imports and before `app.whenR
 // Registered before whenReady so a failure during startup is still captured.
 // logger.* is a no-op until initLogger runs, which is safe by construction.
 process.on('uncaughtException', (err) => {
-  logger.error('app', 'uncaught exception', undefined, err)
+  logger.error('app', 'app.uncaught_exception', undefined, err)
   flushSync()
   dialog.showErrorBox(
     'Birdbrain encountered a fatal error',
@@ -989,13 +1080,13 @@ process.on('uncaughtException', (err) => {
 })
 
 process.on('unhandledRejection', (reason) => {
-  logger.error('app', 'unhandled rejection', undefined, reason)
+  logger.error('app', 'app.unhandled_rejection', undefined, reason)
   flushSync()
 })
 
 app.on('render-process-gone', (_event, contents, details) => {
-  logger.error('app', 'render process gone', {
-    reason: tag(details.reason, RENDER_GONE_REASONS),
+  logger.error('app', 'app.render_process_gone', {
+    reason: tag(details.reason, 'renderGoneReason'),
     exitCode: details.exitCode
   })
   flushSync()
@@ -1026,53 +1117,22 @@ app.on('child-process-gone', (_event, details) => {
   // ('Pepper Plugin', 'Sandbox helper'), which ident() rejects — and a
   // rejection throws outside production, escalating a child-process failure
   // into a fatal main-process exception from inside the crash handler itself.
-  logger.error('app', 'child process gone', {
-    processType: tag(details.type, CHILD_PROCESS_TYPES),
-    reason: tag(details.reason, CHILD_GONE_REASONS),
+  logger.error('app', 'app.child_process_gone', {
+    processType: tag(details.type, 'childProcessType'),
+    reason: tag(details.reason, 'childGoneReason'),
     exitCode: details.exitCode
   })
   flushSync()
 })
 ```
 
-Add the reason constant near the top of the file:
-
-```typescript
-const RENDER_GONE_REASONS = [
-  'clean-exit',
-  'abnormal-exit',
-  'killed',
-  'crashed',
-  'oom',
-  'launch-failed',
-  'integrity-failure'
-] as const
-
-// Electron's documented child-process type labels. Several contain spaces, so
-// they must go through tag() against this set rather than ident().
-const CHILD_PROCESS_TYPES = [
-  'Utility',
-  'Zygote',
-  'Sandbox helper',
-  'GPU',
-  'Pepper Plugin',
-  'Pepper Plugin Broker',
-  'Unknown'
-] as const
-
-const CHILD_GONE_REASONS = [
-  'clean-exit',
-  'abnormal-exit',
-  'killed',
-  'crashed',
-  'oom',
-  'launch-failed',
-  'integrity-failure'
-] as const
-
-const PLATFORMS = ['win32', 'darwin', 'linux'] as const
-const INSTALL_FORMATS = ['nsis', 'appimage', 'deb', 'rpm', 'mac', 'archive', 'dev', 'unknown'] as const
-```
+No vocabulary constants are declared here. `tag()` selects a fixed vocabulary
+by name from the table inside `logSafe.ts` (Task 1) — `'renderGoneReason'`,
+`'childProcessType'`, `'childGoneReason'`, `'platform'`, `'installFormat'`.
+A caller that could pass its own array could pass `tag(url, [url])` and brand
+a captured URL as log-safe, so the approved vocabularies live in one reviewable
+file and call sites reference them by key. If a vocabulary you need is missing,
+add it to `logSafe.ts` rather than declaring a local array.
 
 Imports to add:
 
@@ -1108,8 +1168,8 @@ In `app.whenReady().then(async () => {`, immediately after `initInstallationId(u
     logger.info('app', 'app.session_start', {
       installationId: ident(getInstallationId()),
       version: ident(app.getVersion().replace(/\./g, '-')),
-      platform: tag(process.platform, PLATFORMS),
-      installFormat: tag(session.installFormat, INSTALL_FORMATS),
+      platform: tag(process.platform, 'platform'),
+      installFormat: tag(session.installFormat, 'installFormat'),
       packaged: app.isPackaged
     })
 ```
@@ -1177,16 +1237,26 @@ In `src/main/ipcHandlers.ts`, after the existing `DIAGNOSTICS_GET` registration:
 
 ```typescript
   // Renderer-side failures join the same durable log as main-process ones.
-  // The renderer cannot pass branded context, so only level/source/message
-  // cross the boundary — everything structural is added on this side.
-  ipcMain.handle(
-    IPC_CHANNELS.DIAGNOSTICS_LOG,
-    (_e, payload: { level: LogLevel; source: string; message: string; error?: string }) => {
-      const level = payload.level === 'error' || payload.level === 'warn' ? payload.level : 'info'
-      const source = `renderer:${payload.source}`
-      return logger[level](source, payload.message, undefined, payload.error)
+  // Everything crossing this boundary is untrusted: the renderer holds page
+  // titles, case names and URLs, and a compile-time union does not survive an
+  // IPC hop. Re-validate every field against the same allowlists here, and
+  // drop anything unrecognised rather than coercing it into the log.
+  ipcMain.handle(IPC_CHANNELS.DIAGNOSTICS_LOG, (_e, payload: RendererLogPayload) => {
+    const level = payload?.level === 'error' || payload?.level === 'warn' ? payload.level : 'info'
+    if (!isLogCode(payload?.code)) return ''
+
+    const context: LogContext = {}
+    for (const [key, value] of Object.entries(payload.context ?? {})) {
+      if (!isLogContextKey(key)) continue
+      if (typeof value === 'number' || typeof value === 'boolean') context[key] = value
+      else if (typeof value === 'string') context[key] = ident(value)
     }
-  )
+
+    // Source is not taken from the payload at all. Every entry that arrives
+    // through this channel came from the renderer by definition, and the code
+    // already says which subsystem failed.
+    return logger[level]('renderer', payload.code, context, errorName(payload.error))
+  })
 
   ipcMain.handle(IPC_CHANNELS.DIAGNOSTICS_REVEAL_LOG, () => {
     const path = getLogPath()
@@ -1201,7 +1271,31 @@ Imports to add:
 ```typescript
 import { getLogDir, getLogPath, logger } from '@main/services/logger'
 import { takeUncleanSession } from '@main/services/sessionLog'
-import type { LogLevel } from '@shared/types'
+import { errorName, ident, isLogCode, isLogContextKey } from '@main/services/logSafe'
+import type { LogContext } from '@main/services/logSafe'
+import type { RendererLogPayload } from '@shared/ipc'
+```
+
+`isLogCode`, `isLogContextKey` and `errorName` are the runtime halves of Task 2's unions and belong beside `ident`/`tag` in `logSafe.ts`. Add them there if Task 1 has not already:
+
+```typescript
+export function isLogCode(value: unknown): value is LogCode {
+  return typeof value === 'string' && (LOG_CODES as readonly string[]).includes(value)
+}
+
+export function isLogContextKey(value: unknown): value is LogContextKey {
+  return typeof value === 'string' && (LOG_CONTEXT_KEYS as readonly string[]).includes(value)
+}
+
+// The renderer sends a bare name, never a message or stack. An unrecognised
+// name is recorded as UnknownError so a novel error type cannot smuggle prose
+// through the one string field that survives this hop.
+export function errorName(value: unknown): string | undefined {
+  if (value === undefined) return undefined
+  return typeof value === 'string' && (ERROR_NAMES as readonly string[]).includes(value)
+    ? value
+    : 'UnknownError'
+}
 ```
 
 - [ ] **Step 2: Extend the preload bridge**
@@ -1211,12 +1305,8 @@ Replace the `diagnostics` object in `src/preload/index.ts`:
 ```typescript
   diagnostics: {
     get: (): Promise<DiagnosticsSnapshot> => ipcRenderer.invoke(IPC_CHANNELS.DIAGNOSTICS_GET),
-    log: (payload: {
-      level: LogLevel
-      source: string
-      message: string
-      error?: string
-    }): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, payload),
+    log: (payload: RendererLogPayload): Promise<string> =>
+      ipcRenderer.invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, payload),
     revealLog: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.DIAGNOSTICS_REVEAL_LOG),
     lastSession: (): Promise<SessionRecord | null> =>
       ipcRenderer.invoke(IPC_CHANNELS.DIAGNOSTICS_LAST_SESSION)
@@ -1233,14 +1323,26 @@ And add beside `onCaptureActivity`:
   },
 ```
 
-Add `LogEntry`, `LogLevel`, `SessionRecord` to the existing `@shared/types` type import.
+Add `LogEntry`, `SessionRecord` to the existing `@shared/types` type import and `RendererLogPayload` to the `@shared/ipc` type import. Define that payload alongside the other IPC types in `src/shared/ipc.ts`:
+
+```typescript
+// The renderer's half of the logging contract. Codes and context keys are the
+// same unions the main process enforces, so a mistake is a compile error in
+// the renderer and a dropped entry in main — never a leak.
+export interface RendererLogPayload {
+  level: LogLevel
+  code: LogCode
+  context?: Partial<Record<LogContextKey, string | number | boolean | null>>
+  error?: string
+}
+```
 
 - [ ] **Step 3: Mirror the types in `env.d.ts`**
 
 ```typescript
   diagnostics: {
     get(): Promise<DiagnosticsSnapshot>
-    log(payload: { level: LogLevel; source: string; message: string; error?: string }): Promise<string>
+    log(payload: RendererLogPayload): Promise<string>
     revealLog(): Promise<void>
     lastSession(): Promise<SessionRecord | null>
   }
@@ -1252,7 +1354,7 @@ And in the event-listener section of the same interface:
   onLogEntry(callback: (entry: LogEntry) => void): () => void
 ```
 
-Add `LogEntry`, `LogLevel`, `SessionRecord` to the type import at line 31.
+Add `LogEntry`, `SessionRecord` to the `@shared/types` import at line 31 and `RendererLogPayload` to the `@shared/ipc` import at line 33.
 
 - [ ] **Step 4: Verify**
 
@@ -1326,8 +1428,10 @@ Work through the offenders the test names. The source tag is the module name. Wo
 `capturesDir` is an absolute path and must not be interpolated. It becomes:
 
 ```typescript
-      logger.warn('app', 'storage init failed, falling back to default', undefined, err)
+      logger.warn('app', 'app.storage_init_failed', undefined, err)
 ```
+
+The prose that used to be the message now lives in `labelForCode` (Task 10), where it is displayed but never written to disk.
 
 Apply the same shape elsewhere:
 
@@ -1347,12 +1451,19 @@ Apply the same shape elsewhere:
 | `src/main/services/timestampWorker.ts` | `'timestampWorker'` |
 
 Rules:
-- `console.error(msg, err)` → `logger.error(tag, msg, undefined, err)`
-- `console.warn(msg)` → `logger.warn(tag, msg)`
-- `console.log(msg)` → `logger.info(tag, msg)`
-- Template literals interpolating a value: move the value into `context` with `ident()`/`code()`/`tag()` if it is structural, or drop it. **Never** interpolate a path, URL, case name or capture title.
+- `console.error(msg, err)` → `logger.error(source, code, context?, err)`; `console.warn` → `logger.warn`; `console.log` → `logger.info`.
+- **The message does not come with it.** `logger` takes a `LogCode`, not a string. Choose the closest member of `LOG_CODES`; if nothing fits, add a new one named `<source>.<snake_case_what>` to the union in `src/shared/types.ts` and a display string for it in `labelForCode` (Task 10). Adding codes during this migration is expected — the union is meant to grow to cover real call sites, and every addition is one reviewable line in one file.
+- Template literals interpolating a value: move the value into `context` with `ident()`/`tag()` if it is structural, or drop it. **Never** interpolate a path, URL, case name or capture title — and since there is no free-form field left, there is nowhere to put one even by mistake.
+- A `console` call whose entire content is prose with no structural payload is usually not worth a code. Delete it rather than inventing a code to preserve a debug print.
 
-Also add `logger.error('captureServer', 'capture failed', { captureId: ident(id) })` alongside the existing `emitCaptureEvent({ type: 'failed' })` call, and a `logger.warn` beside the screenshot-drop path, so capture failures leave a durable trace.
+Also add these two, so capture failures leave a durable trace:
+
+```typescript
+logger.error('captureServer', 'capture.failed', { captureId: ident(id) })
+logger.warn('captureServer', 'capture.screenshot_dropped', { reason: tag(screenshotDropReason, 'screenshotDropReason') })
+```
+
+The first goes alongside the existing `emitCaptureEvent({ type: 'failed' })` call. The second replaces `console.warn(\`[Birdbrain] ${screenshotDropReason} for ${url}\`)` at `captureServer.ts:360` — note that the existing line interpolates the captured URL, which is exactly the leak this whole task removes. Add a `screenshotDropReason` vocabulary to `logSafe.ts` covering the reasons that call site can produce.
 
 - [ ] **Step 4: Run the guard and the full suite**
 
@@ -1397,7 +1508,7 @@ function entry(over: Partial<LogEntry> = {}): LogEntry {
     timestamp: '2026-07-25T10:00:00.000Z',
     level: 'error',
     source: 'captureServer',
-    message: 'capture failed',
+    code: 'capture.failed',
     ...over
   }
 }
@@ -1426,18 +1537,18 @@ describe('LogTab', () => {
   it('renders entries pushed from main', () => {
     render(<LogTab />)
     listener?.(entry())
-    expect(screen.getByText('capture failed')).toBeTruthy()
+    expect(screen.getByText('Capture failed')).toBeTruthy()
     expect(screen.getByText('captureServer')).toBeTruthy()
   })
 
   it('filters out a level when its chip is toggled off', () => {
     render(<LogTab />)
-    listener?.(entry({ id: 'a1', level: 'error', message: 'boom' }))
-    listener?.(entry({ id: 'a2', level: 'info', message: 'started' }))
+    listener?.(entry({ id: 'a1', level: 'error', code: 'capture.failed' }))
+    listener?.(entry({ id: 'a2', level: 'info', code: 'app.session_start' }))
 
     fireEvent.click(screen.getByRole('button', { name: /error/i }))
-    expect(screen.queryByText('boom')).toBeNull()
-    expect(screen.getByText('started')).toBeTruthy()
+    expect(screen.queryByText('Capture failed')).toBeNull()
+    expect(screen.getByText('Session started')).toBeTruthy()
   })
 
   it('reveals the log file', () => {
@@ -1660,12 +1771,25 @@ beforeEach(() => {
 describe('notify', () => {
   it('raises a toast and writes a durable log entry for an error', async () => {
     const { notify } = await import('@renderer/lib/notify')
-    notify.error('Could not save note', { source: 'notes' })
+    notify.error('Could not save note', { code: 'mutation.failed' })
 
     expect(toastFns.error).toHaveBeenCalled()
     expect(log).toHaveBeenCalledWith(
-      expect.objectContaining({ level: 'error', source: 'notes', message: 'Could not save note' })
+      expect.objectContaining({ level: 'error', code: 'mutation.failed' })
     )
+  })
+
+  it('never sends the toast text or the error message to the durable log', async () => {
+    const { notify } = await import('@renderer/lib/notify')
+    notify.error('Could not save note in Operation Blackbird', {
+      code: 'mutation.failed',
+      cause: new Error('ENOENT: no such file, open /home/tester/Operation Blackbird/x.mhtml')
+    })
+
+    const payload = JSON.stringify(log.mock.calls[0][0])
+    expect(payload).not.toContain('Blackbird')
+    expect(payload).not.toContain('tester')
+    expect(payload).toContain('"error":"Error"')
   })
 
   it('does not write success toasts to the durable log', async () => {
@@ -1678,12 +1802,27 @@ describe('notify', () => {
 
   it('collapses a storm of identical errors onto one toast id', async () => {
     const { notify } = await import('@renderer/lib/notify')
-    notify.error('Capture failed', { source: 'captures' })
-    notify.error('Capture failed', { source: 'captures' })
-    notify.error('Capture failed', { source: 'captures' })
+    notify.error('Capture failed', { code: 'capture.failed' })
+    notify.error('Capture failed', { code: 'capture.failed' })
+    notify.error('Capture failed', { code: 'capture.failed' })
 
     const ids = toastFns.error.mock.calls.map((c) => c[1]?.id)
     expect(new Set(ids).size).toBe(1)
+  })
+
+  it('re-renders the toast with the correlation id once the log resolves', async () => {
+    const { notify } = await import('@renderer/lib/notify')
+    notify.error('Capture failed', { code: 'capture.failed' })
+    await vi.waitFor(() => expect(toastFns.error).toHaveBeenCalledTimes(2))
+
+    const [first, second] = toastFns.error.mock.calls
+    expect(second[1].id).toBe(first[1].id)
+
+    // Report this must cite the entry the tester is actually looking at.
+    const dispatched = vi.fn()
+    window.addEventListener('birdbrain:report', dispatched)
+    second[1].action.onClick()
+    expect(dispatched.mock.calls[0][0].detail).toEqual({ correlationId: 'cid-1' })
   })
 })
 ```
@@ -1702,34 +1841,43 @@ import { toast } from 'sonner'
 // Errors and warnings are logged AND toasted; success and info are toast-only,
 // because a durable log of "Case exported" is noise in a bug report.
 
+// message is what the tester reads; code is what survives on disk. They are
+// separate parameters precisely because the first may name a case and the
+// second may not.
 export interface NotifyOpts {
-  source?: string
+  code?: LogCode
+  context?: RendererLogPayload['context']
   cause?: unknown
   correlationId?: string
 }
 
 // A retry loop would otherwise fire dozens of toasts and bury the app, so
 // identical messages collapse onto one sonner id and repeat in place.
-function toastId(source: string, message: string): string {
+function toastId(message: string): string {
   let hash = 0
-  const key = `${source}:${message}`
-  for (let i = 0; i < key.length; i++) {
-    hash = (hash * 31 + key.charCodeAt(i)) | 0
+  for (let i = 0; i < message.length; i++) {
+    hash = (hash * 31 + message.charCodeAt(i)) | 0
   }
   return `n${hash}`
 }
 
-function causeText(cause: unknown): string | undefined {
+// Only the constructor name crosses the boundary. cause.message is the prose
+// vector the allowlist exists to exclude, and String(cause) is worse — for a
+// thrown string it IS the prose.
+function causeName(cause: unknown): string | undefined {
   if (cause === undefined) return undefined
-  return cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause)
+  return cause instanceof Error ? cause.name : 'UnknownError'
 }
 
-function durable(level: 'error' | 'warn', source: string, message: string, cause: unknown): void {
-  void window.birdbrain.diagnostics
-    .log({ level, source, message, error: causeText(cause) })
-    .catch(() => {
-      // The logger is best-effort; a failed log must not mask the original error.
-    })
+function durable(
+  level: 'error' | 'warn',
+  opts: NotifyOpts
+): Promise<string | undefined> {
+  if (!opts.code) return Promise.resolve(undefined)
+  return window.birdbrain.diagnostics
+    .log({ level, code: opts.code, context: opts.context, error: causeName(opts.cause) })
+    .catch(() => undefined)
+  // The logger is best-effort; a failed log must not mask the original error.
 }
 
 function reportAction(correlationId?: string) {
@@ -1739,30 +1887,77 @@ function reportAction(correlationId?: string) {
   }
 }
 
+// The log id is only known once the IPC round-trip resolves, but the toast has
+// to appear immediately — a tester must not wait on the main process to see
+// that something failed. So show the toast now with whatever id the caller
+// supplied, then re-render it under the same sonner id once the real
+// correlation id arrives. Without this second call, Report this dispatches
+// undefined and the bug report cites no log entry at all.
+function toastWithReport(
+  kind: 'error' | 'warning',
+  message: string,
+  opts: NotifyOpts
+): void {
+  const id = toastId(message)
+  const show = (correlationId?: string): void => {
+    const config = { id, action: reportAction(correlationId) }
+    if (kind === 'error') toast.error(message, config)
+    else toast.warning(message, config)
+  }
+
+  show(opts.correlationId)
+  void durable(kind === 'error' ? 'error' : 'warn', opts).then((logged) => {
+    if (logged) show(logged)
+  })
+}
+
 export const notify = {
   error(message: string, opts: NotifyOpts = {}): void {
-    const source = opts.source ?? 'app'
-    durable('error', source, message, opts.cause)
-    toast.error(message, { id: toastId(source, message), action: reportAction(opts.correlationId) })
+    toastWithReport('error', message, opts)
   },
 
   warn(message: string, opts: NotifyOpts = {}): void {
-    const source = opts.source ?? 'app'
-    durable('warn', source, message, opts.cause)
-    toast.warning(message, { id: toastId(source, message), action: reportAction(opts.correlationId) })
+    toastWithReport('warning', message, opts)
   },
 
   success(message: string): void {
-    toast.success(message, { id: toastId('success', message) })
+    toast.success(message, { id: toastId(message) })
   },
 
   info(message: string): void {
-    toast.info(message, { id: toastId('info', message) })
+    toast.info(message, { id: toastId(message) })
   }
 }
 ```
 
 The `birdbrain:report` window event is consumed in Task 15; dispatching it now is harmless with no listener attached.
+
+Add the display map in the same file. It is the home for every string the old `message` parameter used to carry — visible in toasts and the log tab, never serialised:
+
+```typescript
+const CODE_LABELS: Record<LogCode, string> = {
+  'app.session_start': 'Session started',
+  'app.uncaught_exception': 'Birdbrain hit an unexpected error',
+  'app.unhandled_rejection': 'A background task failed',
+  'app.render_process_gone': 'The window stopped responding',
+  'app.child_process_gone': 'A helper process stopped',
+  'app.storage_init_failed': "Couldn't open the storage folder — using the default location",
+  'capture.failed': 'Capture failed',
+  'capture.screenshot_dropped': 'Screenshot was skipped',
+  'capture.server_started': 'Capture server started',
+  'capture.extraction_failed': "Couldn't extract data from the page",
+  'ipc.handler_threw': 'An internal request failed',
+  'query.failed': "Couldn't load data",
+  'mutation.failed': 'Something went wrong. Please try again.',
+  'react.render_error': 'This part of the app failed to render'
+}
+
+// Record<LogCode, string> makes a new code a compile error until it has a
+// label, which is what keeps the two lists from drifting.
+export function labelForCode(code: LogCode): string {
+  return CODE_LABELS[code]
+}
+```
 
 - [ ] **Step 4: Run to verify it passes**
 
@@ -1845,23 +2040,31 @@ export const queryClient = new QueryClient({
   },
   mutationCache: new MutationCache({
     onError: (error, _vars, _ctx, mutation) => {
-      notify.error(failureMessage(mutation), { source: 'mutation', cause: error })
+      notify.error(failureMessage(mutation), { code: 'mutation.failed', cause: error })
     }
   }),
   queryCache: new QueryCache({
     onError: (error, query) => {
-      void window.birdbrain.diagnostics.log({
-        level: 'warn',
-        source: 'query',
-        message: `query failed: ${String(query.queryKey[0] ?? 'unknown')}`,
-        error: error instanceof Error ? `${error.name}: ${error.message}` : String(error)
-      })
+      // .catch, not bare void: if the main process is gone or the handler is
+      // not registered yet, invoke() rejects. An unconsumed rejection here
+      // turns one handled query failure into a second, renderer-level
+      // unhandledrejection — the logging path manufacturing the very event
+      // class it exists to record.
+      window.birdbrain.diagnostics
+        .log({
+          level: 'warn',
+          source: 'renderer',
+          code: 'query.failed',
+          context: { domain: String(query.queryKey[0] ?? 'unknown') },
+          error: error instanceof Error ? error.name : 'UnknownError'
+        })
+        .catch(() => {})
     }
   })
 })
 ```
 
-The query key's first segment is a static domain string from the key factory (`'cases'`, `'captures'`), never user data, so interpolating it is safe.
+The query key's first segment is a static domain string from the key factory (`'cases'`, `'captures'`), never user data, so it is safe to pass as context. It still goes through `ident()` on the main side like every other context value — the renderer is not a trusted source.
 
 - [ ] **Step 4: Add `meta.action` to the mutation hooks**
 
@@ -1907,8 +2110,8 @@ import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
 
 const log = vi.fn().mockResolvedValue('cid')
 
-function Boom(): JSX.Element {
-  throw new Error('render exploded')
+function Boom({ message = 'render exploded' }: { message?: string }): JSX.Element {
+  throw new Error(message)
 }
 
 beforeEach(() => {
@@ -1934,7 +2137,22 @@ describe('ErrorBoundary', () => {
       </ErrorBoundary>
     )
     expect(screen.getByText('Something went wrong')).toBeTruthy()
-    expect(log).toHaveBeenCalledWith(expect.objectContaining({ level: 'error', source: 'test' }))
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        level: 'error',
+        code: 'react.render_error',
+        context: { boundary: 'test' }
+      })
+    )
+  })
+
+  it('does not send the thrown message to the log', () => {
+    render(
+      <ErrorBoundary source="test">
+        <Boom message="cannot render Operation Blackbird" />
+      </ErrorBoundary>
+    )
+    expect(JSON.stringify(log.mock.calls[0][0])).not.toContain('Blackbird')
   })
 })
 ```
@@ -1970,16 +2188,24 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
+    // Neither error.message nor the component stack is sent. The message is
+    // prose written by whatever threw; the component stack reads like a safe
+    // list of component names but is built from displayName, which several
+    // components set from data (a case title, a capture name). The code plus
+    // the boundary identifies the failure well enough to find it.
     void window.birdbrain.diagnostics
       .log({
         level: 'error',
-        source: this.props.source,
-        message: 'react render error',
-        error: `${error.name}: ${error.message}\n${info.componentStack ?? ''}`
+        code: 'react.render_error',
+        context: { boundary: this.props.source },
+        error: error.name
       })
       .catch(() => {
         /* best effort */
       })
+    // The full detail still reaches a developer running with devtools open,
+    // where it never touches disk.
+    if (import.meta.env.DEV) console.error(error, info.componentStack)
   }
 
   render(): ReactNode {
@@ -2054,7 +2280,7 @@ beforeEach(() => {
 })
 
 function entry(level: string) {
-  return { id: 'a1', sessionId: 's1', timestamp: '', level, source: 'captureServer', message: 'capture failed' }
+  return { id: 'a1', sessionId: 's1', timestamp: '', level, source: 'captureServer', code: 'capture.failed' }
 }
 
 describe('mainLogBridge', () => {
@@ -2325,7 +2551,7 @@ Expected: FAIL — module not found.
 
 ```typescript
 import { readFileSync } from 'node:fs'
-import { basename, join } from 'node:path'
+import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { sanitizeText } from '@main/services/logSafe'
 import { createStoredZip } from '@main/services/zip'
@@ -2397,6 +2623,15 @@ function reportMarkdown(input: BugReportInput, snap: DiagnosticsSnapshot, instal
     .join('\n')
 }
 
+// node:path.basename is host-relative: on Linux CI it treats backslashes as
+// ordinary characters, so basename('C:\\Users\\tester\\bb.db') returns the
+// WHOLE string and the bundle ships the operator's username. A redaction
+// helper must not depend on which OS is running it — split on both separators.
+function fileName(p: string): string {
+  const parts = p.split(/[\\/]/)
+  return parts[parts.length - 1] || p
+}
+
 // DiagnosticsSnapshot is NOT safe to ship as-is. storageRoot and dbPath are
 // absolute paths carrying the operator's username, and slowOps[].detail is
 // populated by recordSlowOp('data-extraction', url, ...) in captureLifecycle —
@@ -2407,7 +2642,7 @@ export function redactSnapshot(snap: DiagnosticsSnapshot): DiagnosticsSnapshot {
     storage: {
       ...snap.storage,
       storageRoot: snap.storage.storageRoot ? '‹path›' : '',
-      dbPath: snap.storage.dbPath ? basename(snap.storage.dbPath) : ''
+      dbPath: snap.storage.dbPath ? fileName(snap.storage.dbPath) : ''
     },
     slowOps: snap.slowOps.map((op) => ({ ...op, detail: sanitizeText(op.detail, homedir()) }))
   }

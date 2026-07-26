@@ -58,30 +58,42 @@ function assertValidColumns(table: string, data: Record<string, unknown>): void 
 }
 
 /**
- * Columns whose contents the rest of the app parses rather than merely displays.
+ * Validate an admin write and derive whatever the app derives from it.
+ *
+ * Returns the row to actually write, which may differ from the one submitted.
  *
  * Admin editing is a deliberate escape hatch, but a column holding structured
- * JSON is different in kind from a text field: `notes.anchor_json` is parsed on
- * every note read, so a malformed value written here does not corrupt one row,
- * it takes out the whole notes surface. The escape hatch may set an anchor to
- * NULL; it may not invent one this codebase cannot read back.
+ * JSON is different in kind from a text field. `notes.anchor_json` is parsed on
+ * every note read, so a malformed value here does not corrupt one row — it
+ * takes out the whole notes surface. And `anchor_kind` is derived from that
+ * payload everywhere else precisely so the two cannot disagree; the admin
+ * surface must not be the one place that can pull them apart, since a stale
+ * kind or a kind with no payload corrupts the counts and filters
+ * `idx_notes_anchor_kind` exists to serve.
+ *
+ * So the hatch may clear an anchor, but it may not invent one this codebase
+ * cannot read back, nor set the derived column by hand.
  */
-const STRUCTURED_COLUMNS: Record<string, Record<string, (value: unknown) => void>> = {
-  notes: {
-    anchor_json: (value) => {
-      if (value === null || value === undefined || value === '') return
-      if (typeof value !== 'string') throw new Error('notes.anchor_json must be a string or NULL')
-      parseNoteAnchor(value)
-    }
-  }
-}
+function validatedRow(table: string, data: Record<string, unknown>): Record<string, unknown> {
+  if (table !== 'notes') return data
 
-function assertValidValues(table: string, data: Record<string, unknown>): void {
-  const validators = STRUCTURED_COLUMNS[table]
-  if (!validators) return
-  for (const [column, validate] of Object.entries(validators)) {
-    if (column in data) validate(data[column])
+  const writesJson = 'anchor_json' in data
+  const writesKind = 'anchor_kind' in data
+
+  if (writesKind && !writesJson) {
+    throw new Error('notes.anchor_kind is derived from anchor_json; edit anchor_json instead')
   }
+  if (!writesJson) return data
+
+  const value = data.anchor_json
+  if (value === null || value === undefined || value === '') {
+    return { ...data, anchor_json: null, anchor_kind: null }
+  }
+  if (typeof value !== 'string') {
+    throw new Error('notes.anchor_json must be a string or NULL')
+  }
+  const parsed = parseNoteAnchor(value)
+  return { ...data, anchor_json: JSON.stringify(parsed), anchor_kind: parsed.kind }
 }
 
 export function getDbStats(dbPath: string): DbStats {
@@ -144,12 +156,12 @@ export function getTableRows(params: DbTableRowsParams): DbTableRowsResult {
 export function createRow(table: string, data: Record<string, unknown>): Record<string, unknown> {
   assertAllowedTable(table)
   assertValidColumns(table, data)
-  assertValidValues(table, data)
+  const row = validatedRow(table, data)
 
   const db = getDb()
-  const keys = Object.keys(data)
+  const keys = Object.keys(row)
   const placeholders = keys.map(() => '?').join(', ')
-  const values = keys.map((k) => data[k])
+  const values = keys.map((k) => row[k])
 
   db.prepare(
     `INSERT INTO "${table}" (${keys.map((k) => `"${k}"`).join(', ')}) VALUES (${placeholders})`
@@ -168,8 +180,8 @@ export function updateRow(
   assertAllowedTable(table)
   assertValidColumns(table, pk)
   assertValidColumns(table, data)
-  assertValidValues(table, data)
-  const dataKeys = Object.keys(data)
+  const row = validatedRow(table, data)
+  const dataKeys = Object.keys(row)
   if (dataKeys.length === 0) return false
 
   const db = getDb()
@@ -177,7 +189,7 @@ export function updateRow(
   const whereClauses = Object.keys(pk)
     .map((k) => `"${k}" = ?`)
     .join(' AND ')
-  const values = [...Object.values(data), ...Object.values(pk)]
+  const values = [...Object.values(row), ...Object.values(pk)]
 
   const result = db
     .prepare(`UPDATE "${table}" SET ${setClauses} WHERE ${whereClauses}`)

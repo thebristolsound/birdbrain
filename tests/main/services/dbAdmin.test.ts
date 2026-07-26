@@ -174,6 +174,67 @@ describe('dbAdmin', () => {
     it('leaves unstructured columns on other tables alone', () => {
       expect(() => createRow('tags', { id: 't-1', name: '{not json' })).not.toThrow()
     })
+
+    // anchor_kind is derived everywhere else so it cannot disagree with the
+    // payload. The admin surface must not be the one place that can.
+    function anchorRow(id: string): Record<string, unknown> {
+      return getTableRows({ table: 'notes', offset: 0, limit: 50 }).rows.find(
+        (r) => r.id === id
+      ) as Record<string, unknown>
+    }
+
+    it('derives anchor_kind from the payload rather than trusting the submitted one', () => {
+      const caseId = newCase()
+      createRow('notes', {
+        ...noteRow('n-5', caseId),
+        anchor_json: JSON.stringify({ kind: 'capture', captureId: 'cap-1' }),
+        anchor_kind: 'text'
+      })
+
+      expect(anchorRow('n-5').anchor_kind).toBe('capture')
+    })
+
+    it('clears anchor_kind when the payload is cleared', () => {
+      const caseId = newCase()
+      createRow('notes', { ...noteRow('n-6', caseId), anchor_json: VALID_ANCHOR })
+      expect(anchorRow('n-6').anchor_kind).toBe('capture')
+
+      updateRow('notes', { id: 'n-6' }, { anchor_json: null })
+
+      expect(anchorRow('n-6').anchor_kind).toBeNull()
+    })
+
+    it('re-derives anchor_kind when the payload changes kind', () => {
+      const caseId = newCase()
+      createRow('notes', { ...noteRow('n-7', caseId), anchor_json: VALID_ANCHOR })
+
+      updateRow(
+        'notes',
+        { id: 'n-7' },
+        {
+          anchor_json: JSON.stringify({
+            kind: 'text',
+            captureId: 'cap-1',
+            quote: 'q',
+            prefix: '',
+            suffix: '',
+            textOffset: 0
+          })
+        }
+      )
+
+      expect(anchorRow('n-7').anchor_kind).toBe('text')
+    })
+
+    it('refuses to set the derived anchor_kind on its own', () => {
+      const caseId = newCase()
+      createRow('notes', { ...noteRow('n-8', caseId), anchor_json: VALID_ANCHOR })
+
+      expect(() => updateRow('notes', { id: 'n-8' }, { anchor_kind: 'region' })).toThrow(
+        /derived from anchor_json/
+      )
+      expect(anchorRow('n-8').anchor_kind).toBe('capture')
+    })
   })
 
   describe('updateRow', () => {

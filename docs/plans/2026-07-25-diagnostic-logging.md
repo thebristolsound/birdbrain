@@ -313,6 +313,8 @@ export interface SessionRecord {
   platform: string
   installFormat: string
   cleanExit: boolean
+  // Set once the crash prompt has been shown, so it is offered exactly once.
+  acknowledged?: boolean
 }
 
 export interface BugReportInput {
@@ -368,7 +370,7 @@ git commit -m "feat(logging): shared log entry types and diagnostics ipc channel
 
 **Interfaces:**
 - Consumes: `SessionRecord` from `@shared/types`.
-- Produces: `startSession(logDir, info)` → `SessionRecord`; `markCleanExit(logDir)`; `readSessions(logDir)` → `SessionRecord[]`; `lastUncleanSession(logDir)` → `SessionRecord | null`.
+- Produces: `startSession(logDir, info)` → `SessionRecord`; `markCleanExit(logDir)`; `readSessions(logDir)` → `SessionRecord[]`; `takeUncleanSession(logDir)` → `SessionRecord | null`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -378,7 +380,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
-  lastUncleanSession,
+  takeUncleanSession,
   markCleanExit,
   readSessions,
   startSession
@@ -407,19 +409,28 @@ describe('sessionLog', () => {
     startSession(dir, INFO)
     markCleanExit(dir)
     startSession(dir, INFO)
-    expect(lastUncleanSession(dir)).toBeNull()
+    expect(takeUncleanSession(dir)).toBeNull()
   })
 
   it('reports the previous session as unclean when the lock survived', () => {
     const first = startSession(dir, INFO)
     // No markCleanExit — simulates a crash or power loss.
     startSession(dir, INFO)
-    expect(lastUncleanSession(dir)?.sessionId).toBe(first.sessionId)
+    expect(takeUncleanSession(dir)?.sessionId).toBe(first.sessionId)
   })
 
   it('never reports the current session as unclean', () => {
     startSession(dir, INFO)
-    expect(lastUncleanSession(dir)).toBeNull()
+    expect(takeUncleanSession(dir)).toBeNull()
+  })
+
+  it('offers a given crash exactly once', () => {
+    startSession(dir, INFO)
+    startSession(dir, INFO)
+    expect(takeUncleanSession(dir)).not.toBeNull()
+    // Without take-once semantics this crash would re-prompt on every launch
+    // until the 20-record cap evicted it.
+    expect(takeUncleanSession(dir)).toBeNull()
   })
 
   it('caps stored sessions at 20', () => {
@@ -520,11 +531,17 @@ export function markCleanExit(logDir: string): void {
   rmSync(lockPath(logDir), { force: true })
 }
 
-export function lastUncleanSession(logDir: string): SessionRecord | null {
-  const unclean = readSessions(logDir)
-    .filter((r) => !r.cleanExit && r.sessionId !== currentSessionId)
-    .pop()
-  return unclean ?? null
+// Take-once. Without acknowledging, a single genuine crash leaves cleanExit
+// false forever and every subsequent launch re-shows the recovery prompt until
+// the 20-record cap finally evicts it.
+export function takeUncleanSession(logDir: string): SessionRecord | null {
+  const records = readSessions(logDir)
+  const unclean = records.filter((r) => !r.cleanExit && !r.acknowledged && r.sessionId !== currentSessionId).pop()
+  if (!unclean) return null
+
+  unclean.acknowledged = true
+  writeSessions(logDir, records)
+  return unclean
 }
 
 export function currentSession(): string {
@@ -532,7 +549,7 @@ export function currentSession(): string {
 }
 ```
 
-Note on the lock file: `startSession` overwrites it unconditionally. The unclean signal is carried by the *record* whose `cleanExit` stayed false, which is why `lastUncleanSession` reads records rather than the lock. The lock exists so a future `startSession` can be certain a previous run never reached `before-quit`, and so the file is visible to a human inspecting the folder.
+Note on the lock file: `startSession` overwrites it unconditionally. The unclean signal is carried by the *record* whose `cleanExit` stayed false, which is why `takeUncleanSession` reads records rather than the lock. The lock exists so a future `startSession` can be certain a previous run never reached `before-quit`, and so the file is visible to a human inspecting the folder.
 
 - [ ] **Step 4: Run the test to verify it passes**
 
@@ -627,6 +644,17 @@ describe('logger', () => {
     expect(error?.name).toBe('Error')
   })
 
+  it('scrubs a url interpolated into the message', () => {
+    // Guards the real captureServer.ts pattern: `${reason} for ${url}`.
+    const log = createLogger({ logDir: dir, sessionId: 's1' })
+    log.warn('captureServer', 'screenshot dropped for https://target.example/secret')
+    log.flushSync()
+
+    const { message } = lines(dir)[0]
+    expect(message).not.toContain('target.example')
+    expect(message).toContain('‹url›')
+  })
+
   it('emits each entry to the renderer callback', () => {
     const seen: LogEntry[] = []
     const log = createLogger({ logDir: dir, sessionId: 's1', emit: (e) => seen.push(e) })
@@ -674,7 +702,8 @@ import { randomUUID } from 'node:crypto'
 import type { BrowserWindow } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
 import type { LogEntry, LogLevel } from '@shared/types'
-import { sanitizeError, type LogContext } from '@main/services/logSafe'
+import { homedir } from 'node:os'
+import { sanitizeError, sanitizeText, type LogContext } from '@main/services/logSafe'
 
 // The single durable sink. Writes are buffered and flushed on a timer so
 // per-entry sync I/O never lands on the main-process event loop that
@@ -740,8 +769,11 @@ export function createLogger(deps: LoggerDeps): Logger {
       sessionId: deps.sessionId,
       timestamp: new Date().toISOString(),
       level,
-      source,
-      message,
+      // Branded context cannot protect `message` — it is necessarily a free
+      // string, and real call sites interpolate URLs into it. Scrubbing here
+      // makes the boundary enforced rather than a migration convention.
+      source: sanitizeText(source, homedir()),
+      message: sanitizeText(message, homedir()),
       ...(context ? { context: context as Record<string, string | number | boolean | null> } : {}),
       ...(err === undefined ? {} : { error: sanitizeError(err) })
     }
@@ -875,12 +907,32 @@ process.on('unhandledRejection', (reason) => {
   flushSync()
 })
 
-app.on('render-process-gone', (_event, _contents, details) => {
+app.on('render-process-gone', (_event, contents, details) => {
   logger.error('app', 'render process gone', {
     reason: tag(details.reason, RENDER_GONE_REASONS),
     exitCode: details.exitCode
   })
   flushSync()
+
+  // Logging alone leaves the tester staring at a dead window until they
+  // restart the app by hand. 'clean-exit' and 'killed' are ordinary shutdown
+  // paths and must not trigger a recovery prompt.
+  if (details.reason === 'clean-exit' || details.reason === 'killed') return
+
+  const win = BrowserWindow.fromWebContents(contents)
+  if (!win || win.isDestroyed()) return
+
+  const { response } = dialog.showMessageBoxSync
+    ? { response: dialog.showMessageBoxSync(win, {
+        type: 'error',
+        buttons: ['Reload', 'Ignore'],
+        defaultId: 0,
+        title: 'Birdbrain stopped responding',
+        message: 'The window crashed. Reloading recovers it — your captures are unaffected.'
+      }) }
+    : { response: 1 }
+
+  if (response === 0) win.reload()
 })
 
 app.on('child-process-gone', (_event, details) => {
@@ -945,12 +997,17 @@ Extend the existing `before-quit` handler at line 269:
 
 ```typescript
   app.on('before-quit', async () => {
+    // markCleanExit MUST run first and synchronously. Electron does not await
+    // an async before-quit listener, so anything sequenced after `await
+    // stopCaptureServer()` may never run — which would leave session.lock in
+    // place and make every ordinary quit look like a crash on next launch.
+    markCleanExit(join(process.env.BIRDBRAIN_USER_DATA || app.getPath('userData'), 'logs'))
+    disposeLogger()
+
     stopExtensionConnectionCheck()
     updaterService?.dispose()
     await stopCaptureServer()
     closeDatabase()
-    markCleanExit(join(process.env.BIRDBRAIN_USER_DATA || app.getPath('userData'), 'logs'))
-    disposeLogger()
   })
 ```
 
@@ -982,7 +1039,7 @@ git commit -m "feat(logging): crash handlers and session lifecycle wiring"
 - Modify: `src/renderer/env.d.ts` (extend `diagnostics` at line 171)
 
 **Interfaces:**
-- Consumes: `getLogPath`, `logger` from `@main/services/logger`; `lastUncleanSession` from `@main/services/sessionLog`.
+- Consumes: `getLogPath`, `logger` from `@main/services/logger`; `takeUncleanSession` from `@main/services/sessionLog`.
 - Produces: `window.birdbrain.diagnostics.log(entry)` → `Promise<string>`, `.revealLog()` → `Promise<void>`, `.lastSession()` → `Promise<SessionRecord | null>`, and `window.birdbrain.onLogEntry(cb)` → unsubscribe function. `createReport` is added in Task 13.
 
 - [ ] **Step 1: Add the main-process handlers**
@@ -1007,14 +1064,14 @@ In `src/main/ipcHandlers.ts`, after the existing `DIAGNOSTICS_GET` registration:
     if (path) shell.showItemInFolder(path)
   })
 
-  ipcMain.handle(IPC_CHANNELS.DIAGNOSTICS_LAST_SESSION, () => lastUncleanSession(getLogDir()))
+  ipcMain.handle(IPC_CHANNELS.DIAGNOSTICS_LAST_SESSION, () => takeUncleanSession(getLogDir()))
 ```
 
 Imports to add:
 
 ```typescript
 import { getLogDir, getLogPath, logger } from '@main/services/logger'
-import { lastUncleanSession } from '@main/services/sessionLog'
+import { takeUncleanSession } from '@main/services/sessionLog'
 import type { LogLevel } from '@shared/types'
 ```
 
@@ -1834,6 +1891,108 @@ git add src/renderer/components/ErrorBoundary.tsx src/renderer/routes/__root.tsx
 git commit -m "feat(notify): react error boundaries at root and capture viewer"
 ```
 
+---
+
+### Task 12b: Surface main-process failures in the renderer
+
+Without this, "global notification layer" is false for the entire main process. `logger.error` already emits `event:logEntry`, but Task 8's `LogTab` is the only consumer and it is unmounted unless the user is sitting in Settings → Diagnostics. Capture-server, storage, export and update failures would stay invisible.
+
+**Files:**
+- Modify: `src/renderer/routes/__root.tsx`
+- Test: `tests/renderer/lib/mainLogBridge.test.ts`
+- Create: `src/renderer/lib/mainLogBridge.ts`
+
+- [ ] **Step 1: Write the failing test**
+
+```typescript
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const toastFns = { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() }
+vi.mock('sonner', () => ({ toast: toastFns }))
+
+let listener: ((e: unknown) => void) | null = null
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  listener = null
+  vi.stubGlobal('birdbrain', {
+    onLogEntry: (cb: (e: unknown) => void) => {
+      listener = cb
+      return () => {}
+    },
+    diagnostics: { log: vi.fn() }
+  })
+})
+
+function entry(level: string) {
+  return { id: 'a1', sessionId: 's1', timestamp: '', level, source: 'captureServer', message: 'capture failed' }
+}
+
+describe('mainLogBridge', () => {
+  it('toasts main-process errors', async () => {
+    const { subscribeToMainLog } = await import('@renderer/lib/mainLogBridge')
+    subscribeToMainLog()
+    listener?.(entry('error'))
+    expect(toastFns.error).toHaveBeenCalled()
+  })
+
+  it('does not re-log a main entry back to main', async () => {
+    const { subscribeToMainLog } = await import('@renderer/lib/mainLogBridge')
+    subscribeToMainLog()
+    listener?.(entry('error'))
+    // The entry is already on disk — logging it again would loop.
+    expect(window.birdbrain.diagnostics.log).not.toHaveBeenCalled()
+  })
+
+  it('ignores info entries', async () => {
+    const { subscribeToMainLog } = await import('@renderer/lib/mainLogBridge')
+    subscribeToMainLog()
+    listener?.(entry('info'))
+    expect(toastFns.info).not.toHaveBeenCalled()
+  })
+})
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `pnpm test -- mainLogBridge`
+Expected: FAIL — module not found.
+
+- [ ] **Step 3: Implement**
+
+```typescript
+import { toast } from 'sonner'
+import type { LogEntry } from '@shared/types'
+
+// Main already wrote these to disk, so this path toasts ONLY — routing them
+// back through notify.error would write a duplicate entry and, because that
+// write emits again, risk a feedback loop.
+export function subscribeToMainLog(): () => void {
+  return window.birdbrain.onLogEntry((entry: LogEntry) => {
+    if (entry.level === 'error') toast.error(entry.message, { id: entry.id })
+    else if (entry.level === 'warn') toast.warning(entry.message, { id: entry.id })
+  })
+}
+```
+
+- [ ] **Step 4: Mount in `__root.tsx`**
+
+```typescript
+  useEffect(() => subscribeToMainLog(), [])
+```
+
+- [ ] **Step 5: Verify and commit**
+
+Run: `pnpm test -- mainLogBridge && pnpm lint`
+Expected: PASS. Report actual output.
+
+```bash
+git add src/renderer/lib/mainLogBridge.ts src/renderer/routes/__root.tsx tests/renderer/lib/mainLogBridge.test.ts
+git commit -m "feat(notify): surface main-process failures as toasts"
+```
+
+---
+
 **Phase 2 is complete. Failures are now both durable and visible.**
 
 ---
@@ -1878,7 +2037,12 @@ const SNAPSHOT = {
   uptimeSeconds: 120,
   processes: [],
   eventLoop: { currentLagMs: 0, maxLagLastMinuteMs: 0, stalls: [] },
-  storage: { storageRoot: 'C:/x', dbPath: 'C:/x/b.db', dbSizeBytes: 1, walSizeBytes: 0 },
+  storage: {
+    storageRoot: 'C:\\Users\\tester\\Birdbrain\\captures',
+    dbPath: 'C:\\Users\\tester\\Birdbrain\\birdbrain.db',
+    dbSizeBytes: 1,
+    walSizeBytes: 0
+  },
   data: {
     schemaVersion: 12,
     latestSchemaVersion: 12,
@@ -1888,7 +2052,11 @@ const SNAPSHOT = {
     selectors: 0,
     extractedData: 0
   },
-  slowOps: []
+  // captureLifecycle passes the captured page URL as slowOp detail — the most
+  // sensitive value in the app. This fixture exists to prove it gets scrubbed.
+  slowOps: [
+    { at: '2026-07-25T09:30:00.000Z', kind: 'data-extraction', detail: 'https://target.example/case-file?id=9', ms: 812 }
+  ]
 } satisfies DiagnosticsSnapshot
 
 const SESSIONS: SessionRecord[] = [
@@ -1952,6 +2120,32 @@ describe('buildBugReport', () => {
     expect(zip).not.toContain('sk-or-')
   })
 
+  // These four exist because an earlier draft asserted only the API-key case
+  // and would have shipped every captured URL to the maintainer.
+  it('never carries a captured url from slowOps into the bundle', () => {
+    const zip = buildBugReport(INPUT, deps).toString('utf8')
+    expect(zip).not.toContain('target.example')
+    expect(zip).not.toContain('case-file')
+  })
+
+  it('never carries any url scheme into the bundle', () => {
+    const zip = buildBugReport(INPUT, deps).toString('utf8')
+    expect(zip).not.toMatch(/https?:\/\//)
+  })
+
+  it('never carries an absolute storage path or the operator username', () => {
+    const zip = buildBugReport(INPUT, deps).toString('utf8')
+    expect(zip).not.toContain('tester')
+    expect(zip).not.toContain('C:\\Users')
+  })
+
+  it('keeps the structural fields that make the snapshot useful', () => {
+    const zip = buildBugReport(INPUT, deps).toString('utf8')
+    expect(zip).toContain('data-extraction')
+    expect(zip).toContain('812')
+    expect(zip).toContain('birdbrain.db')
+  })
+
   it('omits the backup log when it does not exist', () => {
     const names = entryNames(buildBugReport(INPUT, deps))
     expect(names).not.toContain('birdbrain.log.1')
@@ -1968,7 +2162,9 @@ Expected: FAIL — module not found.
 
 ```typescript
 import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
+import { homedir } from 'node:os'
+import { sanitizeText } from '@main/services/logSafe'
 import { createStoredZip } from '@main/services/zip'
 import { diagnosticsService } from '@main/services/diagnostics'
 import { getLogDir } from '@main/services/logger'
@@ -2038,8 +2234,24 @@ function reportMarkdown(input: BugReportInput, snap: DiagnosticsSnapshot, instal
     .join('\n')
 }
 
+// DiagnosticsSnapshot is NOT safe to ship as-is. storageRoot and dbPath are
+// absolute paths carrying the operator's username, and slowOps[].detail is
+// populated by recordSlowOp('data-extraction', url, ...) in captureLifecycle —
+// it is the captured page URL. Project, don't serialize.
+export function redactSnapshot(snap: DiagnosticsSnapshot): DiagnosticsSnapshot {
+  return {
+    ...snap,
+    storage: {
+      ...snap.storage,
+      storageRoot: snap.storage.storageRoot ? '‹path›' : '',
+      dbPath: snap.storage.dbPath ? basename(snap.storage.dbPath) : ''
+    },
+    slowOps: snap.slowOps.map((op) => ({ ...op, detail: sanitizeText(op.detail, homedir()) }))
+  }
+}
+
 export function buildBugReport(input: BugReportInput, deps: BugReportDeps = defaultDeps()): Buffer {
-  const snap = deps.snapshot()
+  const snap = redactSnapshot(deps.snapshot())
   const entries: Array<{ name: string; data: string }> = [
     { name: 'report.md', data: reportMarkdown(input, snap, deps.installationId()) },
     { name: 'diagnostics.json', data: JSON.stringify(snap, null, 2) },

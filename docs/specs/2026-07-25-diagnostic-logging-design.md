@@ -143,9 +143,22 @@ logger.error('captureServer', 'capture failed', {
 })
 ```
 
-Passing a raw `string` is a **compile error**. The runtime validators are a second net:
-a value failing its pattern throws in development and is replaced with `'[invalid]'` in
-production, so a bad call can never both pass silently and write unvalidated text.
+Passing a raw `string` as **context** is a compile error. The runtime validators are a
+second net: a value failing its pattern throws in development and is replaced with
+`'[invalid]'` in production, so a bad call can never both pass silently and write
+unvalidated text.
+
+**`message` is the hole this does not close, and it must be sealed separately.** `message`
+is necessarily a free string, and the real call sites prove the risk is not theoretical —
+[`captureServer.ts:360`](../../src/main/services/captureServer.ts) today reads
+``console.warn(`[Birdbrain] ${screenshotDropReason} for ${url}`)``, interpolating the
+captured URL. A migration rule saying "never interpolate a URL" is precisely the
+convention this design set out to replace with enforcement.
+
+So the logger runs `sanitizeText()` over **every** `message` and `source` before writing,
+using the same scrubber the error path uses. Structural context stays exact; prose gets
+scrubbed. A call site that interpolates a URL produces `… for ‹url›` rather than a leak,
+and no reviewer has to catch it.
 
 ### Error sanitization
 
@@ -286,9 +299,23 @@ Builds `birdbrain-report-YYYYMMDD-HHMM.zip` with the existing
 | `sessions.json` | Recent sessions with clean/unclean exit flags |
 
 **Excluded by construction: capture files, the database, screenshots, and all settings
-values.** The last matters most — settings hold `openRouterApiKey`, which must never be in
-reach of the bundler. `DiagnosticsSnapshot` is already clean: it carries only app, process,
-storage, data and event-loop fields, no secrets.
+values.** Settings hold `openRouterApiKey`, which must never be in reach of the bundler.
+
+**`DiagnosticsSnapshot` must be redacted before it enters the bundle — it is not clean.**
+An earlier draft of this spec claimed otherwise; that claim was false, and the audit that
+caught it is the reason this section exists. Two fields carry investigation data today:
+
+- `storage.storageRoot` and `storage.dbPath` are absolute paths, so they contain the
+  operator's username and possibly a case-derived directory name.
+- `slowOps[].detail` is populated by `recordSlowOp('data-extraction', url, …)` in
+  [`captureLifecycle.ts`](../../src/main/services/captureLifecycle.ts) — **it is the
+  captured page URL**, the single most sensitive value in the app.
+
+The bundler therefore builds a `redactSnapshot()` projection rather than serialising the
+live object: path fields are reduced to their basename plus a size, and every `slowOps`
+entry has `detail` replaced by `sanitizeText(detail)`. The negative test asserts the
+absence of URL schemes and home-directory fragments, not merely the absence of API keys —
+checking only for secrets is what let the original claim survive review.
 
 Screenshots are excluded deliberately. The tester is dragging the zip into a chat client
 where they can drop a screenshot in the same message; a file picker inside the dialog adds

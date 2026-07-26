@@ -98,7 +98,7 @@ describe('parseNoteAnchor', () => {
     })
   })
 
-  it('parses a region anchor, keeping the image dimensions its coordinates mean nothing without', () => {
+  it('parses a region anchor, keeping the image dimensions that give its coordinates meaning', () => {
     const region = {
       kind: 'region',
       captureId: 'cap-1',

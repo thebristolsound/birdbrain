@@ -1,4 +1,5 @@
-// Stub types — real implementations come in later specs
+// Shared domain types. Imported by main, preload and renderer alike, so a
+// change here is a change to the contract between all three.
 
 import type { NoteAnchor } from '@shared/noteAnchor'
 

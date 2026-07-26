@@ -36,7 +36,7 @@ import * as captureRepo from '@main/services/db/captureRepo'
 import * as tagRepo from '@main/services/db/tagRepo'
 import * as selectorRepo from '@main/services/db/selectorRepo'
 import * as noteRepo from '@main/services/db/noteRepo'
-import * as archiveRefRepo from '@main/services/db/archiveRefRepo'
+import * as waybackRefRepo from '@main/services/db/waybackRefRepo'
 import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
 import * as annotations from '@main/services/annotations'
 import { defaultCaptureStore } from '@main/services/captureStore'
@@ -383,7 +383,7 @@ export function registerIpcHandlers(deps: {
   })
 
   handle(IPC_CHANNELS.WAYBACK_LIST, (_, captureId: string) =>
-    archiveRefRepo.listArchiveRefs(captureId)
+    waybackRefRepo.listWaybackRefs(captureId)
   )
 
   handle(IPC_CHANNELS.WAYBACK_PIN, async (_, params: PinWaybackSnapshotParams) => {
@@ -396,7 +396,7 @@ export function registerIpcHandlers(deps: {
     if (!isPersistableSnapshot(params.snapshot, params.checkedAt)) {
       throw new IpcFailure('Invalid Wayback snapshot', 'WAYBACK_INVALID_SNAPSHOT')
     }
-    return archiveRefRepo.createArchiveRef({
+    return waybackRefRepo.createWaybackRef({
       captureId: params.captureId,
       snapshot: params.snapshot,
       checkedAt: params.checkedAt
@@ -404,7 +404,7 @@ export function registerIpcHandlers(deps: {
   })
 
   handle(IPC_CHANNELS.WAYBACK_UNPIN, async (_, refId: string) =>
-    archiveRefRepo.deleteArchiveRef(refId)
+    waybackRefRepo.deleteWaybackRef(refId)
   )
 
   // Annotations

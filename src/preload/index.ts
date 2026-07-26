@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { IPC_CHANNELS } from '@shared/ipc'
+import { IPC_CHANNELS, type ContractedChannel, type IpcInvokeContract } from '@shared/ipc'
 import type {
   CreateCaseParams,
   UpdateCaseParams,
@@ -79,27 +79,25 @@ async function unwrapIpc<T>(promise: Promise<unknown>): Promise<T> {
   throw error
 }
 
+// Builds a renderer-facing method for one invoke channel. Both the argument
+// tuple and the resolved type come from IpcInvokeContract, so a bridge method
+// has no hand-written signature that could drift from its handler.
+function bridge<C extends ContractedChannel>(
+  channel: C
+): (...args: IpcInvokeContract[C]['args']) => Promise<IpcInvokeContract[C]['result']> {
+  return (...args) => unwrapIpc(ipcRenderer.invoke(channel, ...args))
+}
+
 const birdbrain = {
   cases: {
-    list: (): Promise<Case[]> => unwrapIpc<Case[]>(ipcRenderer.invoke(IPC_CHANNELS.CASES_LIST)),
-    get: (id: string): Promise<Case | undefined> =>
-      unwrapIpc<Case | undefined>(ipcRenderer.invoke(IPC_CHANNELS.CASES_GET, id)),
-    create: (params: CreateCaseParams): Promise<Case> =>
-      unwrapIpc<Case>(ipcRenderer.invoke(IPC_CHANNELS.CASES_CREATE, params)),
-    update: (params: UpdateCaseParams): Promise<Case | undefined> =>
-      unwrapIpc<Case | undefined>(ipcRenderer.invoke(IPC_CHANNELS.CASES_UPDATE, params)),
-    delete: (id: string): Promise<boolean> =>
-      unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.CASES_DELETE, id)),
-    exportArchive: (caseId: string): Promise<ArchiveExportResult> =>
-      unwrapIpc<ArchiveExportResult>(ipcRenderer.invoke(IPC_CHANNELS.CASES_EXPORT_ARCHIVE, caseId)),
-    inspectArchive: (): Promise<ArchiveInspectReport | null> =>
-      unwrapIpc<ArchiveInspectReport | null>(
-        ipcRenderer.invoke(IPC_CHANNELS.CASES_INSPECT_ARCHIVE)
-      ),
-    importArchive: (archivePath: string, overrideTamper: boolean): Promise<{ newCaseId: string }> =>
-      unwrapIpc<{ newCaseId: string }>(
-        ipcRenderer.invoke(IPC_CHANNELS.CASES_IMPORT_ARCHIVE, archivePath, overrideTamper)
-      )
+    list: bridge(IPC_CHANNELS.CASES_LIST),
+    get: bridge(IPC_CHANNELS.CASES_GET),
+    create: bridge(IPC_CHANNELS.CASES_CREATE),
+    update: bridge(IPC_CHANNELS.CASES_UPDATE),
+    delete: bridge(IPC_CHANNELS.CASES_DELETE),
+    exportArchive: bridge(IPC_CHANNELS.CASES_EXPORT_ARCHIVE),
+    inspectArchive: bridge(IPC_CHANNELS.CASES_INSPECT_ARCHIVE),
+    importArchive: bridge(IPC_CHANNELS.CASES_IMPORT_ARCHIVE)
   },
   captures: {
     list: (caseId: string): Promise<Capture[]> =>

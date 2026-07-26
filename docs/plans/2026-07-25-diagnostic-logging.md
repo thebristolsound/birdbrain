@@ -643,7 +643,7 @@ export function readSessions(logDir: string): SessionRecord[] {
   }
 }
 
-function writeSessions(logDir: string, records: SessionRecord[]): void {
+function writeSessions(logDir: string, records: SessionRecord[]): boolean {
   // Best-effort, like readSessions. A read-only logs directory or a `logs`
   // path that is a file makes every write here throw; startSession runs inside
   // whenReady before the window exists, so an escaping throw would stop
@@ -651,8 +651,11 @@ function writeSessions(logDir: string, records: SessionRecord[]): void {
   // degradation; refusing to start is not.
   try {
     writeFileSync(sessionsPath(logDir), JSON.stringify(records.slice(-MAX_SESSIONS), null, 2))
+    return true
   } catch {
-    // Session persistence disabled for this run.
+    // Session persistence disabled for this run. The caller decides what that
+    // means — markCleanExit, for one, must not clear the lock after a failure.
+    return false
   }
 }
 
@@ -717,11 +720,20 @@ export function startSession(logDir: string, info: SessionInfo): SessionRecord {
 export function markCleanExit(logDir: string): void {
   const records = readSessions(logDir)
   const current = records.find((r) => r.sessionId === currentSessionId)
-  if (current) {
-    current.cleanExit = true
-    current.endedAt = new Date().toISOString()
-    writeSessions(logDir, records)
-  }
+  if (!current) return
+
+  current.cleanExit = true
+  current.endedAt = new Date().toISOString()
+
+  // The lock goes ONLY if the clean state actually reached disk. writeSessions
+  // swallows its errors, so a transiently locked sessions.json during an
+  // otherwise normal quit would leave the record at cleanExit:false while the
+  // lock disappeared — and takeUncleanSession reads records, not the lock, so
+  // the next launch would greet the tester with a recovery prompt for a crash
+  // that never happened. Keeping the lock costs nothing: reclaimOrphanedLock
+  // reconciles it on the next start.
+  if (!writeSessions(logDir, records)) return
+
   try {
     rmSync(lockPath(logDir), { force: true })
   } catch {
@@ -1399,11 +1411,19 @@ In `src/main/ipcHandlers.ts`, after the existing `DIAGNOSTICS_GET` registration:
     const level = payload?.level === 'error' || payload?.level === 'warn' ? payload.level : 'info'
     if (!isLogCode(payload?.code)) return ''
 
-    const context: LogContext = {}
-    for (const [key, value] of Object.entries(payload.context ?? {})) {
-      if (!isLogContextKey(key)) continue
-      if (typeof value === 'number' || typeof value === 'boolean') context[key] = value
-      else if (typeof value === 'string') context[key] = ident(value)
+    // context(), NOT a hand-rolled ident() loop. ident() is the generic
+    // identifier rule; the per-key CONTEXT_FORMATS table inside logSafe is the
+    // real gate. A renderer payload of { caseId: 'OperationBlackbird' } passes
+    // ident() but fails caseId's uuid format — and the renderer is precisely
+    // where case names live, so this is the boundary that most needs the
+    // stricter check. In a packaged build the offending value records as
+    // [invalid] and the rest of the entry survives.
+    let ctx: LogContext = {}
+    try {
+      ctx = context((payload.context ?? {}) as Record<string, LogValue>)
+    } catch {
+      // Development-mode rejection: drop the context, keep the entry. A bad
+      // renderer payload must not take down the IPC handler.
     }
 
     // Source is not taken from the payload at all. Every entry that arrives
@@ -1419,7 +1439,7 @@ In `src/main/ipcHandlers.ts`, after the existing `DIAGNOSTICS_GET` registration:
     return logger[level](
       'renderer',
       payload.code,
-      context,
+      ctx,
       name === undefined ? undefined : new ValidatedError({ name, code: null, stack: null })
     )
   })
@@ -1445,8 +1465,8 @@ Imports to add:
 ```typescript
 import { getLogDir, getLogPath, logger, readRecentEntries } from '@main/services/logger'
 import { takeUncleanSession } from '@main/services/sessionLog'
-import { ValidatedError, errorName, ident, isLogCode, isLogContextKey } from '@main/services/logSafe'
-import type { LogContext } from '@main/services/logSafe'
+import { ValidatedError, context, errorName, isLogCode } from '@main/services/logSafe'
+import type { LogContext, LogValue } from '@main/services/logSafe'
 import type { RendererLogPayload } from '@shared/ipc'
 ```
 
@@ -2151,7 +2171,16 @@ function toastWithReport(
 ): void {
   const id = toastId(message)
   const show = (correlationId?: string): void => {
-    const config = { id, action: reportAction(correlationId) }
+    const config = {
+      id,
+      // No correlation id yet means the log write is still in flight. Showing
+      // an enabled Report this in that window is worse than showing none: the
+      // click opens the dialog with an undefined id, and the later re-render
+      // cannot reach into an already-open dialog to correct it — so the
+      // tester's bundle silently fails to identify the failure they picked.
+      // The toast itself appears immediately either way; only the action waits.
+      action: correlationId ? reportAction(correlationId) : undefined
+    }
     if (kind === 'error') toast.error(message, config)
     else toast.warning(message, config)
   }
@@ -2609,9 +2638,13 @@ import type { LogEntry } from '@shared/types'
 // back out over event:logEntry. Without this guard every renderer failure
 // raises two toasts with different ids, so dedup cannot collapse them.
 export function subscribeToMainLog(): () => void {
-  return window.birdbrain.onLogEntry((entry: LogEntry) => {
+  const seen = new Set<string>()
+
+  const handle = (entry: LogEntry): void => {
     if (entry.source === 'renderer') return
     if (entry.level !== 'error' && entry.level !== 'warn') return
+    if (seen.has(entry.id)) return
+    seen.add(entry.id)
 
     // Two different ids do two different jobs here, and conflating them was a
     // bug: entry.id is unique PER ENTRY, so using it as the sonner id gives a
@@ -2635,7 +2668,28 @@ export function subscribeToMainLog(): () => void {
     const text = labelForCode(entry.code)
     if (entry.level === 'error') toast.error(text, opts)
     else toast.warning(text, opts)
-  })
+  }
+
+  const unsubscribe = window.birdbrain.onLogEntry(handle)
+
+  // onLogEntry is a one-shot event with no replay. Between setLoggerWindow()
+  // and this subscription mounting — on first load, on reload, and on macOS
+  // window recreation — main-process entries are written durably but their
+  // event is lost, so an early updater, storage or capture failure produced no
+  // toast at all. Replaying the current session's tail closes that window.
+  // Ordered oldest-first so the newest failure ends up as the surviving toast
+  // under each deduped id, and filtered through the same `seen` set so an
+  // entry present in both paths is handled once.
+  void window.birdbrain.diagnostics
+    .recentEntries(50)
+    .then((history) => {
+      for (const entry of [...history].reverse()) handle(entry)
+    })
+    .catch(() => {
+      // No replay is a degraded bridge, not a broken one.
+    })
+
+  return unsubscribe
 }
 ```
 

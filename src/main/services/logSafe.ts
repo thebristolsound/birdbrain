@@ -11,7 +11,6 @@ declare const logSafeBrand: unique symbol
 export type LogSafe = string & { readonly [logSafeBrand]: true }
 
 export type LogValue = number | boolean | null | LogSafe
-export type LogContext = Record<string, LogValue>
 
 const IDENT = /^[A-Za-z0-9_-]{1,64}$/
 const CODE = /^[A-Z][A-Z0-9_]{0,47}$/
@@ -39,19 +38,213 @@ export function code(value: string): LogSafe {
   return CODE.test(value) ? brand(value) : reject('code')
 }
 
-export function tag(value: string, allowed: readonly string[]): LogSafe {
-  return allowed.includes(value) ? brand(value) : reject('tag')
+// Electron API vocabularies (values confirmed against the electron/electron
+// docs, not guessed) for the crash-handler call sites this module exists to
+// serve. Both '-gone' events share the same reason set today, per Electron's
+// own docs, but are kept as separately named vocabulary slots below in case
+// the two ever diverge.
+const PROCESS_GONE_REASONS = [
+  'clean-exit',
+  'abnormal-exit',
+  'killed',
+  'crashed',
+  'oom',
+  'launch-failed',
+  'integrity-failure',
+  'memory-eviction'
+] as const
+const CHILD_PROCESS_TYPES = [
+  'Utility',
+  'Zygote',
+  'Sandbox helper',
+  'GPU',
+  'Pepper Plugin',
+  'Pepper Plugin Broker',
+  'Unknown'
+] as const
+// Must stay in sync with CaptureFormat in @shared/types (no runtime const
+// array exists there to import).
+const CAPTURE_FORMATS = ['html', 'mhtml'] as const
+
+// Fixed vocabularies `tag()` may select from. `allowed` as a caller-supplied
+// parameter would let a call site mint its own allowlist —
+// `tag(capturedUrl, [capturedUrl])` would brand a URL as log-safe — so the
+// vocabulary is a closed, module-level set chosen by name; widening it means
+// editing this file, which is the point: the boundary stays reviewable in
+// one place instead of depending on every call site behaving.
+const TAG_VOCABULARIES = {
+  childProcessType: CHILD_PROCESS_TYPES,
+  childGoneReason: PROCESS_GONE_REASONS,
+  renderGoneReason: PROCESS_GONE_REASONS,
+  captureFormat: CAPTURE_FORMATS
+} as const
+
+export function tag(value: string, vocabulary: keyof typeof TAG_VOCABULARIES): LogSafe {
+  // `allowed` can be undefined despite the compile-time constraint: a
+  // runtime-only caller (plain JS, or a type-system bypass) can still pass a
+  // vocabulary name that was never one of the fixed keys. That falls through
+  // to reject('tag') below rather than throwing a raw TypeError.
+  const allowed = TAG_VOCABULARIES[vocabulary] as readonly string[] | undefined
+  return allowed?.includes(value) ? brand(value) : reject('tag')
 }
 
-// Node embeds absolute paths in error messages ("ENOENT: ... open 'C:\Users\...'"),
-// so errors are the one place branded types cannot reach. Order matters: the
-// homeDir-rooted path is replaced whole, in one pass, before the generic
-// patterns run — a profile folder with a space in it (e.g. 'C:\Users\John Doe')
-// would otherwise let WIN_PATH's space-terminated match chew off only part of
-// homeDir, leaving the rest of the path (and anything after it, like a case
-// name) exposed. URLs are replaced before the generic path patterns because a
-// URL contains '//' that the posix path pattern would otherwise consume.
-const URL_LIKE = /\b[a-z][a-z0-9+.-]*:\/\/\S+/gi
+// --- Allowlist boundary --------------------------------------------------
+//
+// Regex scrubbing of free-form text failed repeatedly (Windows intermediate
+// segments, UNC paths, Windows terminal segments, POSIX paths, home-rooted
+// paths with a spaced subdirectory — five rounds of the same defect class
+// relocating), and two more leaks can't be fixed by any regex at all: a case
+// name as ordinary prose ("Error: failed to parse Operation Blackbird") has
+// no path/URL shape to match, and a branded *value* does nothing to stop a
+// computed *key* (`{ [capturedUrl]: true }` compiles and serializes
+// verbatim against `Record<string, LogValue>`). So the boundary moves from
+// "scrub what's on the page" to "nothing free-form is allowed on the page in
+// the first place": codes, sources, and context keys are closed sets, and
+// `sanitizeError` no longer carries a message field for prose to hide in.
+
+// Pinned by the diagnostic-logging plan so later tasks (the LogEntry wire
+// type in shared/types.ts, the actual logger) compile against stable names.
+// The plan's own set is deliberately coarse — `capture.failed` covers both
+// captureServer's and captureLifecycle's generic-failure catches, with
+// `source` and `context` doing the fine-grained differentiation — plus three
+// renderer-originated codes ('query.failed', 'mutation.failed',
+// 'react.render_error') for entries forwarded with source 'renderer'.
+// Appended below the pinned set: real console.* call sites in src/main (12
+// files, audited for this task) that don't map onto any pinned code without
+// forcing a poor fit — see the task report for the full mapping.
+export const LOG_CODES = [
+  // --- pinned ---
+  'app.session_start',
+  'app.uncaught_exception',
+  'app.unhandled_rejection',
+  'app.render_process_gone',
+  'app.child_process_gone',
+  'app.storage_init_failed',
+  'capture.failed',
+  'capture.screenshot_dropped',
+  'capture.server_started',
+  'capture.extraction_failed',
+  'ipc.handler_threw',
+  'query.failed',
+  'mutation.failed',
+  'react.render_error',
+  // --- appended: real call sites with no pinned-code fit ---
+  'captureServer.selector_create_failed',
+  'captureLifecycle.tls_refetch_failed',
+  'captureLifecycle.selector_match_failed',
+  'captureLifecycle.reprocess_failed',
+  'backgroundRenderer.trim_failed',
+  'backgroundRenderer.consent_blocker_disable_failed',
+  'backgroundRenderer.consent_blocker_enable_failed',
+  'consentBlocker.filter_engine_failed',
+  'selectorLifecycle.retroactive_match_failed',
+  'serverToken.token_invalid',
+  'serverToken.token_read_failed',
+  'serverToken.token_persist_failed',
+  'settings.schema_invalid',
+  'thumbnails.generate_failed',
+  'openrouter.rate_limited',
+  'openrouter.request_failed',
+  'openrouter.retry',
+  'openrouter.retries_exhausted'
+] as const
+export type LogCode = (typeof LOG_CODES)[number]
+
+// Pinned set of main-process log sources, plus a plain 'renderer' member —
+// not a `renderer:*` prefix convention — so the forwarding bridge can filter
+// on a single equality check (`entry.source === 'renderer'`); the renderer's
+// own codes ('query.failed' etc.) already carry whatever differentiation is
+// needed for that side.
+export const LOG_SOURCES = [
+  'app',
+  'ipc',
+  'captureServer',
+  'captureLifecycle',
+  'backgroundRenderer',
+  'openrouter',
+  'serverToken',
+  'settings',
+  'thumbnails',
+  'selectorLifecycle',
+  'consentBlocker',
+  'timestampWorker',
+  'renderer'
+] as const
+export type LogSource = (typeof LOG_SOURCES)[number]
+
+// Pinned context key vocabulary. LogContext being
+// `Partial<Record<LogContextKey, LogValue>>` rather than
+// `Record<string, LogValue>` makes a computed or misspelled key a compile
+// error at any call site that writes an object literal; `context()` below is
+// the runtime second net for values built dynamically (spread, computed
+// keys) that bypass that check. 'attempt' is appended for the openrouter
+// retry call sites (backoff/attempt count) — not in the pinned set, no
+// existing key was a good fit for it.
+export const LOG_CONTEXT_KEYS = [
+  'captureId',
+  'caseId',
+  'noteId',
+  'selectorId',
+  'bytes',
+  'count',
+  'ms',
+  'port',
+  'format',
+  'reason',
+  'exitCode',
+  'processType',
+  'errorCode',
+  'status',
+  'installationId',
+  'version',
+  'platform',
+  'installFormat',
+  'packaged',
+  'attempt'
+] as const
+export type LogContextKey = (typeof LOG_CONTEXT_KEYS)[number]
+export type LogContext = Partial<Record<LogContextKey, LogValue>>
+
+// Runtime companion to the LogContext type. A key computed from investigation
+// data (e.g. `{ [capturedUrl]: true }`) is exactly the case a compile-time
+// check can't catch when the object is built dynamically rather than written
+// as a literal — this walks the actual keys and drops (prod) or throws (dev)
+// on anything outside the allowlist. The disallowed key's name is never
+// echoed: if the key itself is the sensitive payload (as in the example
+// above), echoing it back in a thrown message would be the same leak again.
+export function context(ctx: Record<string, unknown>): LogContext {
+  const out: LogContext = {}
+  for (const key of Object.keys(ctx)) {
+    if (!(LOG_CONTEXT_KEYS as readonly string[]).includes(key)) {
+      if (process.env.NODE_ENV !== 'production') {
+        throw new Error(
+          'logSafe.context: an object contained a disallowed key and was not logged'
+        )
+      }
+      continue
+    }
+    out[key as LogContextKey] = ctx[key] as LogValue
+  }
+  return out
+}
+
+// Known error class names seen in this codebase (built-ins, DOM/fetch
+// AbortError, better-sqlite3's SqliteError, and this app's own IpcFailure /
+// ManifestRollback). Not exhaustive — `err.name` is a writable, unvalidated
+// string, so anything outside this set records as 'UnknownError' rather than
+// being passed through.
+export const ERROR_NAMES = [
+  'Error',
+  'TypeError',
+  'RangeError',
+  'SyntaxError',
+  'URIError',
+  'AbortError',
+  'SqliteError',
+  'IpcFailure',
+  'ManifestRollback'
+] as const
+
 // Windows (drive-rooted 'D:\...', drive-relative 'D:...', or UNC
 // '\\server\share\...') and POSIX paths share one shape, described once here
 // — POSIX_PATH below is the mirror with '/' in place of '\'. A case file is
@@ -69,18 +262,39 @@ const URL_LIKE = /\b[a-z][a-z0-9+.-]*:\/\/\S+/gi
 // — there is no reliable end-of-path signal short of consuming trailing
 // prose, so the pattern falls back to stopping at the first
 // whitespace/separator, same as the original design; that is an accepted,
-// tested trade-off (see the "pinned" tests below), not an oversight. Every
-// segment/final class excludes the separator itself, so each repetition
-// consumes a disjoint run — no ambiguous overlapping splits for the engine to
-// try — keeping both patterns linear regardless of the added lazy quantifier
-// (verified empirically, see the task report).
+// tested trade-off, not an oversight. Every segment/final class excludes the
+// separator itself, so each repetition consumes a disjoint run — no
+// ambiguous overlapping splits for the engine to try — keeping both patterns
+// linear regardless of the added lazy quantifier (verified empirically, see
+// the task report).
 //
+// These patterns are now used only as a defense-in-depth pass over relativized
+// stack frames (see sanitizeError) — `.message` is no longer sanitized at all
+// because it isn't logged.
+const URL_LIKE = /\b[a-z][a-z0-9+.-]*:\/\/\S+/gi
+// Node quotes paths in most of its own error messages ("ENOENT: ... open
+// 'C:\Users\...'", "scandir '/mnt/evidence/Operation Blackbird'"), and a
+// quote is an end-of-path signal a regex CAN rely on, unlike whitespace
+// (which trailing prose also uses). This is what makes an extensionless
+// final segment with a space — otherwise genuinely unresolvable, since
+// nothing marks where the path ends — resolvable when it's quoted: matched
+// first, before the unquoted patterns, so the whole quoted run is replaced
+// as one unit and the unquoted rules never get a chance to stop early at the
+// embedded space. `\1` requires the same quote character to close, so a
+// stray apostrophe inside a double-quoted string doesn't end the match early.
+const QUOTED_PATH = /(['"])((?:[A-Za-z]:\\?|\\\\|\/)[^'"]*)\1/g
 // Windows requires zero or more intermediate segments (a bare 'C:\x.mhtml' or
 // UNC share root is already unambiguous). POSIX requires at least one, kept
 // from the original design, to avoid treating a bare '/2' (e.g. inside "1/2
-// chance") as a path.
+// chance") as a path. The drive-letter alternative needs a lookbehind
+// excluding a preceding word character: making the backslash after the colon
+// optional (for drive-relative paths like 'D:Evidence\...') would otherwise
+// match ANY single letter immediately before a colon — including the 's' in
+// a relativized stack frame's own 'bar.ts:10:5' suffix, corrupting exactly
+// the file:line:col info relativizing was meant to preserve. A real drive
+// letter is never preceded by another letter/digit/underscore in practice.
 const WIN_PATH =
-  /(?:[A-Za-z]:\\?|\\\\)(?:[^\\'"()]+\\)*(?:[^\\'"()]*?\.[A-Za-z0-9]{1,10}(?=[\s'"()]|$)|[^\\\s'"()]+)/g
+  /(?:(?<![A-Za-z0-9_])[A-Za-z]:\\?|\\\\)(?:[^\\'"()]+\\)*(?:[^\\'"()]*?\.[A-Za-z0-9]{1,10}(?=[\s'"()]|$)|[^\\\s'"()]+)/g
 const POSIX_PATH =
   /(?<![\w-])\/(?:[^/'"()]+\/)+(?:[^/'"()]*?\.[A-Za-z0-9]{1,10}(?=[\s'"()]|$)|[^/\s'"()]+)/g
 
@@ -89,7 +303,7 @@ function escapeRegExp(value: string): string {
 }
 
 export function sanitizeText(text: string, homeDir: string): string {
-  let out = text
+  let out = text.replace(QUOTED_PATH, '$1‹path›$1')
   if (homeDir) {
     const homeRooted = new RegExp(`${escapeRegExp(homeDir)}[^\\s'"()]*`, 'g')
     out = out.replace(homeRooted, '‹path›')
@@ -100,29 +314,66 @@ export function sanitizeText(text: string, homeDir: string): string {
   return out
 }
 
-export function sanitizeError(err: unknown, homeDir: string = homedir()): LoggedError {
+// Node's Error#stack embeds "`${name}: ${message}`" as its own first line(s)
+// — the exact free-form prose vector this module exists to keep out of logs,
+// smuggled back in through a different field. `name` is already returned
+// separately, so the header is discarded entirely (not sanitized) rather
+// than risk any of it surviving. This filters every line rather than slicing
+// from the first frame match, so it's not just the header that's excluded —
+// any non-frame line anywhere in the stack (e.g. a "Caused by:" line, or an
+// AggregateError's nested detail) is dropped too; only lines that themselves
+// look like a frame ("    at ...") survive.
+function stackFrames(stack: string): string[] {
+  return stack.split('\n').filter((line) => /^\s*at\s/.test(line))
+}
+
+// Strips the app's own install/checkout root from each frame so what remains
+// names Birdbrain's own (open-source) source files relative to that root,
+// instead of an absolute path that embeds the operator's username. Frames
+// outside appRoot (Node/Electron internals, which use special non-path
+// specifiers like 'node:internal/...') are left alone here; sanitizeText
+// below is the safety net for anything that isn't.
+function relativizeStack(stack: string, appRoot: string): string {
+  if (!appRoot) return stack
+  return stack
+    .split('\n')
+    .map((line) => {
+      const idx = line.indexOf(appRoot)
+      if (idx === -1) return line
+      const before = line.slice(0, idx)
+      const after = line.slice(idx + appRoot.length).replace(/^[\\/]+/, '')
+      return before + after
+    })
+    .join('\n')
+}
+
+// appRoot defaults to cwd for standalone/test use; real (Electron) call sites
+// should pass `app.getAppPath()` so packaged installs relativize correctly.
+export function sanitizeError(
+  err: unknown,
+  appRoot: string = process.cwd(),
+  homeDir: string = homedir()
+): LoggedError {
   if (!(err instanceof Error)) {
-    return {
-      name: 'UnknownError',
-      code: null,
-      message: sanitizeText(String(err), homeDir),
-      stack: null
-    }
+    return { name: 'UnknownError', code: null, stack: null }
   }
+
+  const name = (ERROR_NAMES as readonly string[]).includes(err.name) ? err.name : 'UnknownError'
 
   const raw = (err as { code?: unknown }).code
   const errCode = typeof raw === 'string' && CODE.test(raw) ? raw : null
 
-  const stack = err.stack
-    ? sanitizeText(err.stack, homeDir).split('\n').slice(0, MAX_STACK_FRAMES + 1).join('\n')
-    : null
-
-  return {
-    // err.name is assumed to be a short class-like identifier (e.g. 'TypeError'),
-    // not attacker/user-influenced content, so it is passed through unsanitized.
-    name: err.name,
-    code: errCode,
-    message: sanitizeText(err.message, homeDir),
-    stack
+  let stack: string | null = null
+  if (err.stack) {
+    const frames = stackFrames(err.stack)
+    if (frames.length > 0) {
+      const relativized = relativizeStack(frames.join('\n'), appRoot)
+      stack = sanitizeText(relativized, homeDir)
+        .split('\n')
+        .slice(0, MAX_STACK_FRAMES)
+        .join('\n')
+    }
   }
+
+  return { name, code: errCode, stack }
 }

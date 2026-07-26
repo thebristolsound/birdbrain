@@ -201,8 +201,10 @@ const birdbrain = {
       )
   },
   notes: {
-    list: (caseId: string): Promise<Note[]> => ipcRenderer.invoke(IPC_CHANNELS.NOTES_LIST, caseId),
-    get: (id: string): Promise<Note | undefined> => ipcRenderer.invoke(IPC_CHANNELS.NOTES_GET, id),
+    list: (caseId: string): Promise<Note[]> =>
+      unwrapIpc<Note[]>(ipcRenderer.invoke(IPC_CHANNELS.NOTES_LIST, caseId)),
+    get: (id: string): Promise<Note | undefined> =>
+      unwrapIpc<Note | undefined>(ipcRenderer.invoke(IPC_CHANNELS.NOTES_GET, id)),
     create: (params: CreateNoteParams): Promise<Note> =>
       unwrapIpc<Note>(ipcRenderer.invoke(IPC_CHANNELS.NOTES_CREATE, params)),
     update: (params: UpdateNoteParams): Promise<Note | undefined> =>
@@ -210,9 +212,9 @@ const birdbrain = {
     delete: (id: string): Promise<boolean> =>
       unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.NOTES_DELETE, id)),
     count: (caseId: string): Promise<number> =>
-      ipcRenderer.invoke(IPC_CHANNELS.NOTES_COUNT, caseId),
+      unwrapIpc<number>(ipcRenderer.invoke(IPC_CHANNELS.NOTES_COUNT, caseId)),
     search: (caseId: string, query: string): Promise<Note[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.NOTES_SEARCH, caseId, query)
+      unwrapIpc<Note[]>(ipcRenderer.invoke(IPC_CHANNELS.NOTES_SEARCH, caseId, query))
   },
   archive: {
     lookup: (captureId: string): Promise<WaybackLookupResult> =>
@@ -245,7 +247,7 @@ const birdbrain = {
   },
 
   search: (caseId: string, query: string): Promise<Capture[]> =>
-    ipcRenderer.invoke(IPC_CHANNELS.SEARCH, caseId, query),
+    unwrapIpc<Capture[]>(ipcRenderer.invoke(IPC_CHANNELS.SEARCH, caseId, query)),
 
   settings: {
     get: (): Promise<BirdbrainSettings> => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET),

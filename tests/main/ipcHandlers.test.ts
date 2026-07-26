@@ -480,15 +480,17 @@ describe('ipcHandlers — notes', () => {
     )
     expectOk(await invoke(IPC_CHANNELS.NOTES_UPDATE, { id: note.id, content: 'updated finding' }))
 
-    expect(await invoke<{ id: string }[]>(IPC_CHANNELS.NOTES_LIST, caseId)).toHaveLength(1)
-    expect(await invoke(IPC_CHANNELS.NOTES_GET, note.id)).toBeDefined()
-    expect(await invoke<number>(IPC_CHANNELS.NOTES_COUNT, caseId)).toBe(1)
-    expect(await invoke(IPC_CHANNELS.NOTES_SEARCH, caseId, 'finding')).toBeDefined()
+    expect(expectOk<{ id: string }[]>(await invoke(IPC_CHANNELS.NOTES_LIST, caseId))).toHaveLength(
+      1
+    )
+    expect(expectOk(await invoke(IPC_CHANNELS.NOTES_GET, note.id))).toBeDefined()
+    expect(expectOk<number>(await invoke(IPC_CHANNELS.NOTES_COUNT, caseId))).toBe(1)
+    expect(expectOk(await invoke(IPC_CHANNELS.NOTES_SEARCH, caseId, 'finding'))).toBeDefined()
     // Malformed FTS query is swallowed and returns [].
-    expect(await invoke(IPC_CHANNELS.NOTES_SEARCH, caseId, '"unbalanced')).toEqual([])
+    expect(expectOk(await invoke(IPC_CHANNELS.NOTES_SEARCH, caseId, '"unbalanced'))).toEqual([])
 
     expectOk(await invoke(IPC_CHANNELS.NOTES_DELETE, note.id))
-    expect(await invoke<number>(IPC_CHANNELS.NOTES_COUNT, caseId)).toBe(0)
+    expect(expectOk<number>(await invoke(IPC_CHANNELS.NOTES_COUNT, caseId))).toBe(0)
   })
 })
 
@@ -520,8 +522,8 @@ describe('ipcHandlers — annotations', () => {
 
 describe('ipcHandlers — search', () => {
   it('searches captures and swallows malformed FTS queries', async () => {
-    expect(await invoke(IPC_CHANNELS.SEARCH, 'case-1', 'hello')).toBeDefined()
-    expect(await invoke(IPC_CHANNELS.SEARCH, 'case-1', '"unbalanced')).toEqual([])
+    expect(expectOk(await invoke(IPC_CHANNELS.SEARCH, 'case-1', 'hello'))).toBeDefined()
+    expect(expectOk(await invoke(IPC_CHANNELS.SEARCH, 'case-1', '"unbalanced'))).toEqual([])
   })
 })
 

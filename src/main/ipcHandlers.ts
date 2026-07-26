@@ -346,13 +346,13 @@ export function registerIpcHandlers(deps: {
   })
 
   // Notes
-  ipcMain.handle(IPC_CHANNELS.NOTES_LIST, (_, caseId: string) => noteRepo.listNotes(caseId))
-  ipcMain.handle(IPC_CHANNELS.NOTES_GET, (_, id: string) => noteRepo.getNote(id))
+  handle(IPC_CHANNELS.NOTES_LIST, (_, caseId: string) => noteRepo.listNotes(caseId))
+  handle(IPC_CHANNELS.NOTES_GET, (_, id: string) => noteRepo.getNote(id))
   handle(IPC_CHANNELS.NOTES_CREATE, (_, params: CreateNoteParams) => noteRepo.createNote(params))
   handle(IPC_CHANNELS.NOTES_UPDATE, (_, params: UpdateNoteParams) => noteRepo.updateNote(params))
   handle(IPC_CHANNELS.NOTES_DELETE, (_, id: string) => noteRepo.deleteNote(id))
-  ipcMain.handle(IPC_CHANNELS.NOTES_COUNT, (_, caseId: string) => noteRepo.getNoteCount(caseId))
-  ipcMain.handle(IPC_CHANNELS.NOTES_SEARCH, (_, caseId: string, query: string) => {
+  handle(IPC_CHANNELS.NOTES_COUNT, (_, caseId: string) => noteRepo.getNoteCount(caseId))
+  handle(IPC_CHANNELS.NOTES_SEARCH, (_, caseId: string, query: string) => {
     try {
       return noteRepo.searchNotes(caseId, query)
     } catch {
@@ -501,7 +501,7 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.RECAPTURE_QUEUE_STATUS, () => recaptureService.status())
 
   // Search
-  ipcMain.handle(IPC_CHANNELS.SEARCH, (_, caseId: string, query: string) => {
+  handle(IPC_CHANNELS.SEARCH, (_, caseId: string, query: string) => {
     try {
       return captureRepo.searchCaptures(query, caseId)
     } catch {

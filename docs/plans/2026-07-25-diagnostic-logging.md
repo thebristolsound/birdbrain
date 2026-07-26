@@ -10,6 +10,24 @@
 
 **Spec:** [docs/specs/2026-07-25-diagnostic-logging-design.md](../specs/2026-07-25-diagnostic-logging-design.md)
 
+## Design change — read before any task
+
+**Free-form prose never reaches the durable log.** An earlier revision scrubbed `message`
+with regexes; that was abandoned after five successive leak variants and two findings a
+regex cannot address (a case name as ordinary prose has no shape to match; branded values
+do not constrain context *keys*). See the spec section "No free-form prose reaches disk".
+
+Every task below obeys these rules:
+
+- An entry's `code` comes from the fixed `LOG_CODES` union, `source` from `LOG_SOURCES`,
+  and context keys from `LOG_CONTEXT_KEYS`. There is no arbitrary-text field.
+- `err.message` is **never** persisted. Only `err.name` validated against `ERROR_NAMES`
+  and `err.code` matching the `code()` pattern survive, plus app-relative stack frames.
+- Human prose lives only in ephemeral UI: `notify` toasts and `LogTab` labels.
+
+Tasks 1–4 as originally written assumed free-form `message`. Where a task's code block
+still shows `message: string`, the allowlist rules above govern.
+
 ## Global Constraints
 
 - Code style: **no semicolons**, single quotes, no trailing commas, 100 char print width, 2-space indent.

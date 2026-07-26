@@ -1011,13 +1011,14 @@ export function createLogger(deps: LoggerDeps): Logger {
       source,
       code,
       ...(context ? { context: context as Record<string, string | number | boolean | null> } : {}),
-      // An already-structured LoggedError passes through untouched — it came
-      // from a boundary that validated it (the IPC handler), and re-running
+      // A ValidatedError passes through untouched — it came from a boundary
+      // that already validated it (the IPC handler), and re-running
       // sanitizeError on it would map it to UnknownError, since it is not an
-      // Error instance.
+      // Error instance. Everything else is sanitized, including plain objects
+      // that merely LOOK like a LoggedError.
       ...(err === undefined
         ? {}
-        : { error: isLoggedError(err) ? err : sanitizeError(err) })
+        : { error: isValidatedError(err) ? err.error : sanitizeError(err) })
     }
 
     buffer.push(`${JSON.stringify(entry)}\n`)
@@ -1411,7 +1412,7 @@ In `src/main/ipcHandlers.ts`, after the existing `DIAGNOSTICS_GET` registration:
       'renderer',
       payload.code,
       context,
-      name === undefined ? undefined : ({ name, code: null, stack: null } satisfies LoggedError)
+      name === undefined ? undefined : new ValidatedError({ name, code: null, stack: null })
     )
   })
 
@@ -1436,7 +1437,7 @@ Imports to add:
 ```typescript
 import { getLogDir, getLogPath, logger, readRecentEntries } from '@main/services/logger'
 import { takeUncleanSession } from '@main/services/sessionLog'
-import { errorName, ident, isLogCode, isLogContextKey } from '@main/services/logSafe'
+import { ValidatedError, errorName, ident, isLogCode, isLogContextKey } from '@main/services/logSafe'
 import type { LogContext } from '@main/services/logSafe'
 import type { RendererLogPayload } from '@shared/ipc'
 ```
@@ -1444,12 +1445,26 @@ import type { RendererLogPayload } from '@shared/ipc'
 `isLogCode`, `isLogContextKey` and `errorName` are the runtime halves of Task 2's unions and belong beside `ident`/`tag` in `logSafe.ts`. Add them there if Task 1 has not already:
 
 ```typescript
-// Distinguishes an already-validated LoggedError from a raw thrown value, so
-// logger can pass the former through instead of flattening it to UnknownError.
-export function isLoggedError(value: unknown): value is LoggedError {
-  if (typeof value !== 'object' || value === null || value instanceof Error) return false
-  const v = value as Record<string, unknown>
-  return typeof v.name === 'string' && 'code' in v && 'stack' in v
+// Marks a LoggedError as having come from this module's own validation, so
+// logger can pass it through instead of flattening it to UnknownError.
+//
+// A shape test would NOT be safe here. `logger`'s err parameter is `unknown`,
+// and a dependency that rejects with a plain object — `{ name: 'Error', code:
+// null, stack: '    at f (/cases/OperationBlackbird/x.js:1:1)' }` — matches
+// "has name, code and stack" exactly. Duck typing would let that object skip
+// sanitizeError and write the case name straight to disk. Presence of fields
+// says nothing about where they came from; only a brand this module controls
+// does.
+// A branded type would not help: the brand is erased at compile time, and this
+// value arrives through an `unknown` parameter where no type survives. The
+// runtime needs a real marker, and a class a caller cannot construct without
+// importing it from this module is the cheapest one.
+export class ValidatedError {
+  constructor(readonly error: LoggedError) {}
+}
+
+export function isValidatedError(value: unknown): value is ValidatedError {
+  return value instanceof ValidatedError
 }
 
 export function isLogCode(value: unknown): value is LogCode {
@@ -1630,16 +1645,21 @@ Rules:
 - `console.error(msg, err)` → `logger.error(source, code, context?, err)`; `console.warn` → `logger.warn`; `console.log` → `logger.info`.
 - **The message does not come with it.** `logger` takes a `LogCode`, not a string. Choose the closest member of `LOG_CODES`; if nothing fits, add a new one named `<source>.<snake_case_what>` to the union in `src/shared/types.ts` and a display string for it in `labelForCode` (Task 10). Adding codes during this migration is expected — the union is meant to grow to cover real call sites, and every addition is one reviewable line in one file.
 - Template literals interpolating a value: move the value into `context` with `ident()`/`tag()` if it is structural, or drop it. **Never** interpolate a path, URL, case name or capture title — and since there is no free-form field left, there is nowhere to put one even by mistake.
+- **Never pass a formatted sentence to `tag()`.** Several existing `console.*` call sites build their reason string with interpolated measurements. A sentence cannot be a vocabulary member, so `tag()` rejects it — and rejection *throws* in a development build. If that call site sits inside a `try` that returns an HTTP response or guards a non-fatal path, you have converted a warning into a failure. Extract a stable token for the vocabulary and move the varying part into a numeric context key.
 - A `console` call whose entire content is prose with no structural payload is usually not worth a code. Delete it rather than inventing a code to preserve a debug print.
 
 Also add these two, so capture failures leave a durable trace:
 
 ```typescript
 logger.error('captureServer', 'capture.failed', { captureId: ident(id) })
-logger.warn('captureServer', 'capture.screenshot_dropped', { reason: tag(screenshotDropReason, 'screenshotDropReason') })
+logger.warn('captureServer', 'capture.screenshot_dropped', { reason: tag('too_large', 'screenshotDropReason'), bytes: screenshotField.size })
 ```
 
-The first goes alongside the existing `emitCaptureEvent({ type: 'failed' })` call. The second replaces `console.warn(\`[Birdbrain] ${screenshotDropReason} for ${url}\`)` at `captureServer.ts:360` — note that the existing line interpolates the captured URL, which is exactly the leak this whole task removes. Add a `screenshotDropReason` vocabulary to `logSafe.ts` covering the reasons that call site can produce.
+The first goes alongside the existing `emitCaptureEvent({ type: 'failed' })` call. The second replaces `console.warn(\`[Birdbrain] ${screenshotDropReason} for ${url}\`)` at `captureServer.ts:360` — note that the existing line interpolates the captured URL, which is exactly the leak this whole task removes.
+
+**Do not pass `screenshotDropReason` itself to `tag()`.** At `captureServer.ts:359` it is a formatted sentence carrying the measured and maximum sizes (`Screenshot too large: 12.4MB exceeds 8MB limit`), so it can never be a member of a fixed vocabulary. `tag()` would reject it — which throws in a development build, from inside the capture request's `try` block, turning an intentionally non-fatal dropped screenshot into a 500 capture failure. In a packaged build it would quietly record `[invalid]` instead, which is no better. Log a stable `'too_large'` and put the measurement in the numeric `bytes` context field, where it belongs.
+
+Leave `screenshotDropReason` itself unchanged: it is also returned as the user-facing `screenshotWarning` at lines 399 and 414, where the sentence is the point. Add a `screenshotDropReason` vocabulary to `logSafe.ts` containing the stable tokens (`'too_large'` today) rather than the sentences.
 
 - [ ] **Step 4: Run the guard and the full suite**
 

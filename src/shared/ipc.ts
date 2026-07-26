@@ -3,14 +3,28 @@
 
 import type {
   ActiveCaseSelectors,
+  AnnotationPin,
   AnnotationShape,
+  AnnotationsBundle,
   ArchiveInspectReport,
+  ArchiveRef,
+  BirdbrainSettings,
   Capture,
+  CaptureAnnotations,
   Case,
+  ExportOptions,
+  ExportPreflight,
+  ExtractedDataCategory,
+  ExtractedDataItem,
+  ExtractedDataSearchResult,
+  ExtractedDataSubcategory,
   HashVerification,
   Note,
+  OpenRouterModel,
+  OperatorIdentity,
   Selector,
   Tag,
+  WaybackLookupResult,
   WaybackSnapshot
 } from '@shared/types'
 
@@ -490,6 +504,44 @@ export interface IpcInvokeContract {
   'notes:search': { args: [caseId: string, query: string]; result: Note[] }
 
   'search:query': { args: [caseId: string, query: string]; result: Capture[] }
+
+  'settings:get': { args: []; result: BirdbrainSettings }
+  'settings:update': { args: [partial: Partial<BirdbrainSettings>]; result: BirdbrainSettings }
+  'settings:reset': { args: []; result: BirdbrainSettings }
+  'settings:testOpenRouter': { args: [apiKey: string]; result: boolean }
+  'settings:listModels': { args: [apiKey: string]; result: OpenRouterModel[] }
+  'settings:getIdentity': { args: []; result: OperatorIdentity }
+  'settings:chooseStoragePath': { args: []; result: string | null }
+
+  'export:preflight': { args: [caseId: string]; result: ExportPreflight }
+  'export:generate': { args: [caseId: string, options: ExportOptions]; result: ExportResult }
+
+  'archive:lookup': { args: [captureId: string]; result: WaybackLookupResult }
+  'archive:list': { args: [captureId: string]; result: ArchiveRef[] }
+  'archive:pin': { args: [params: PinArchiveSnapshotParams]; result: ArchiveRef }
+  'archive:unpin': { args: [refId: string]; result: boolean }
+
+  'annotations:get': { args: [captureId: string]; result: AnnotationsBundle }
+  'annotations:save': { args: [params: SaveAnnotationsParams]; result: CaptureAnnotations }
+  'annotations:delete': { args: [captureId: string]; result: void }
+  'annotations:upsertPin': { args: [params: UpsertAnnotationPinParams]; result: AnnotationPin }
+  'annotations:deletePin': { args: [pinId: string]; result: void }
+
+  'extractedData:categories': { args: [caseId: string]; result: ExtractedDataCategory[] }
+  'extractedData:subcategories': {
+    args: [caseId: string, category: string]
+    result: ExtractedDataSubcategory[]
+  }
+  'extractedData:items': {
+    args: [caseId: string, category: string, subcategory: string]
+    result: ExtractedDataItem[]
+  }
+  'extractedData:count': { args: [caseId: string]; result: number }
+  'extractedData:search': {
+    args: [caseId: string, query: string]
+    result: ExtractedDataSearchResult[]
+  }
+  'extractedData:reprocess': { args: [caseId: string]; result: { processed: number } }
 }
 
 export type ContractedChannel = keyof IpcInvokeContract

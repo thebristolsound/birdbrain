@@ -133,7 +133,7 @@ export interface WaybackLookupResult {
 // A WaybackSnapshot the user has pinned to a capture (persisted corroboration
 // reference). Columns reserved for the future download-later phase
 // (contentPath/contentHash/manifestIndex) are intentionally omitted here.
-export interface ArchiveRef {
+export interface WaybackRef {
   id: string
   captureId: string
   snapshotTimestamp: string // ISO 8601

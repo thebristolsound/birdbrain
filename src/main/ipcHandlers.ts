@@ -11,7 +11,7 @@ import type {
   UpdateSelectorParams,
   CreateNoteParams,
   UpdateNoteParams,
-  PinArchiveSnapshotParams,
+  PinWaybackSnapshotParams,
   BulkCreateSelectorsParams,
   DbTableRowsParams,
   DbCreateRowParams,
@@ -386,7 +386,7 @@ export function registerIpcHandlers(deps: {
     archiveRefRepo.listArchiveRefs(captureId)
   )
 
-  handle(IPC_CHANNELS.ARCHIVE_PIN, async (_, params: PinArchiveSnapshotParams) => {
+  handle(IPC_CHANNELS.ARCHIVE_PIN, async (_, params: PinWaybackSnapshotParams) => {
     const capture = captureRepo.getCapture(params.captureId)
     if (!capture) throw new IpcFailure('Capture not found', 'NOT_FOUND')
     // The snapshot/checkedAt provenance arrives over IPC from the renderer.

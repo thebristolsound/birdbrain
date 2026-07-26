@@ -11,7 +11,7 @@ import type {
   BulkCreateSelectorsParams,
   SaveAnnotationsParams,
   UpsertAnnotationPinParams,
-  PinArchiveSnapshotParams
+  PinWaybackSnapshotParams
 } from '@shared/ipc'
 import type { BirdbrainSettings } from '@shared/types'
 
@@ -499,7 +499,7 @@ export function useArchiveMutations(captureId: string) {
   }
 
   const pin = useMutation({
-    mutationFn: (params: PinArchiveSnapshotParams) => window.birdbrain.archive.pin(params),
+    mutationFn: (params: PinWaybackSnapshotParams) => window.birdbrain.archive.pin(params),
     onSuccess: invalidate
   })
 

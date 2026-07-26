@@ -101,12 +101,23 @@ describe('captureServer', () => {
     expect(dark.theme).toBe('dark')
   })
 
-  it('GET /api/status exposes serverToken to extension and localhost origins', async () => {
+  it('GET /api/status exposes serverToken to the extension origin', async () => {
     const res = await fetch(`${baseUrl}/api/status`, {
       headers: { Origin: 'chrome-extension://abcdef1234567890' }
     })
     const data = await res.json()
     expect(data.serverToken).toBe(TEST_TOKEN)
+  })
+
+  // #228: the renderer moved to IPC, so the dev-server origins that used to be
+  // granted the token no longer are. Only the extension (and the origin-less
+  // pairing fetch) may read it.
+  it('GET /api/status omits serverToken for dev-server renderer origins', async () => {
+    for (const origin of ['http://localhost:5173', 'http://127.0.0.1:5173']) {
+      const res = await fetch(`${baseUrl}/api/status`, { headers: { Origin: origin } })
+      const data = await res.json()
+      expect(data.serverToken).toBeUndefined()
+    }
   })
 
   it('GET /api/status omits serverToken for unknown origins', async () => {

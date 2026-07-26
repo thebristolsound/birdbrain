@@ -1,12 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { IPC_CHANNELS, type ContractedChannel, type IpcInvokeContract } from '@shared/ipc'
-import type {
-  SelectorRematchedEvent,
-  DeepLinkTarget,
-  ExportProgressEvent,
-  ArchiveProgressEvent
+import {
+  IPC_CHANNELS,
+  type ContractedChannel,
+  type IpcEventChannel,
+  type IpcEventContract,
+  type IpcInvokeContract
 } from '@shared/ipc'
-import type { Capture, CaptureEvent, UpdateStatus } from '@shared/types'
 
 // Every invoke channel is registered through handle(), so every result carries
 // the { ok, data | error } envelope. A result without one means the channel was
@@ -32,6 +31,21 @@ function bridge<C extends ContractedChannel>(
   channel: C
 ): (...args: IpcInvokeContract[C]['args']) => Promise<IpcInvokeContract[C]['result']> {
   return (...args) => unwrapIpc(ipcRenderer.invoke(channel, ...args))
+}
+
+// Builds a renderer-facing subscribe method for one event channel. The callback
+// payload comes from IpcEventContract; the returned function detaches the
+// listener, matching the previous per-event helpers.
+function subscribe<C extends IpcEventChannel>(
+  channel: C
+): (callback: (payload: IpcEventContract[C]) => void) => () => void {
+  return (callback) => {
+    const handler = (_: unknown, payload: IpcEventContract[C]): void => callback(payload)
+    ipcRenderer.on(channel, handler)
+    return () => {
+      ipcRenderer.removeListener(channel, handler)
+    }
+  }
 }
 
 const birdbrain = {
@@ -179,68 +193,23 @@ const birdbrain = {
   },
 
   // Event listeners (main -> renderer)
-  onExportProgress: (callback: (event: ExportProgressEvent) => void) => {
-    const handler = (_: unknown, ev: ExportProgressEvent) => callback(ev)
-    ipcRenderer.on(IPC_CHANNELS.EXPORT_PROGRESS, handler)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.EXPORT_PROGRESS, handler)
-  },
+  onExportProgress: subscribe(IPC_CHANNELS.EXPORT_PROGRESS),
 
-  onArchiveProgress: (callback: (event: ArchiveProgressEvent) => void) => {
-    const handler = (_: unknown, ev: ArchiveProgressEvent) => callback(ev)
-    ipcRenderer.on(IPC_CHANNELS.ARCHIVE_PROGRESS, handler)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.ARCHIVE_PROGRESS, handler)
-  },
+  onArchiveProgress: subscribe(IPC_CHANNELS.ARCHIVE_PROGRESS),
 
-  onNewCapture: (callback: (capture: Capture) => void) => {
-    const handler = (_: unknown, capture: Capture) => callback(capture)
-    ipcRenderer.on(IPC_CHANNELS.NEW_CAPTURE, handler)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.NEW_CAPTURE, handler)
-  },
+  onNewCapture: subscribe(IPC_CHANNELS.NEW_CAPTURE),
 
-  onSessionStateChanged: (
-    callback: (state: {
-      sessionActive: boolean
-      activeCaseId: string | null
-      captureCount: number
-    }) => void
-  ) => {
-    const handler = (
-      _: unknown,
-      state: { sessionActive: boolean; activeCaseId: string | null; captureCount: number }
-    ) => callback(state)
-    ipcRenderer.on(IPC_CHANNELS.SESSION_STATE_CHANGED, handler)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.SESSION_STATE_CHANGED, handler)
-  },
+  onSessionStateChanged: subscribe(IPC_CHANNELS.SESSION_STATE_CHANGED),
 
-  onExtensionConnection: (callback: (data: { connected: boolean }) => void) => {
-    const handler = (_: unknown, data: { connected: boolean }) => callback(data)
-    ipcRenderer.on(IPC_CHANNELS.EXTENSION_CONNECTION, handler)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.EXTENSION_CONNECTION, handler)
-  },
+  onExtensionConnection: subscribe(IPC_CHANNELS.EXTENSION_CONNECTION),
 
-  onCaptureActivity: (callback: (event: CaptureEvent) => void) => {
-    const handler = (_: unknown, event: CaptureEvent) => callback(event)
-    ipcRenderer.on(IPC_CHANNELS.CAPTURE_ACTIVITY, handler)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.CAPTURE_ACTIVITY, handler)
-  },
+  onCaptureActivity: subscribe(IPC_CHANNELS.CAPTURE_ACTIVITY),
 
-  onSelectorRematched: (callback: (event: SelectorRematchedEvent) => void) => {
-    const handler = (_: unknown, event: SelectorRematchedEvent) => callback(event)
-    ipcRenderer.on(IPC_CHANNELS.SELECTOR_REMATCHED, handler)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.SELECTOR_REMATCHED, handler)
-  },
+  onSelectorRematched: subscribe(IPC_CHANNELS.SELECTOR_REMATCHED),
 
-  onDeepLinkNavigate: (callback: (target: DeepLinkTarget) => void) => {
-    const handler = (_: unknown, target: DeepLinkTarget) => callback(target)
-    ipcRenderer.on(IPC_CHANNELS.DEEP_LINK_NAVIGATE, handler)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.DEEP_LINK_NAVIGATE, handler)
-  },
+  onDeepLinkNavigate: subscribe(IPC_CHANNELS.DEEP_LINK_NAVIGATE),
 
-  onUpdateStatus: (callback: (status: UpdateStatus) => void) => {
-    const handler = (_: unknown, status: UpdateStatus) => callback(status)
-    ipcRenderer.on(IPC_CHANNELS.UPDATE_STATUS, handler)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.UPDATE_STATUS, handler)
-  },
+  onUpdateStatus: subscribe(IPC_CHANNELS.UPDATE_STATUS),
 
   testPipeline: bridge(IPC_CHANNELS.CAPTURES_TEST_PIPELINE),
 

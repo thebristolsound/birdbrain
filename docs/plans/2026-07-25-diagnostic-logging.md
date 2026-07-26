@@ -374,7 +374,12 @@ export const LOG_CODES = [
   'ipc.handler_threw',
   'query.failed',
   'mutation.failed',
-  'react.render_error'
+  'react.render_error',
+  // Fallback for notify.error(message) with no explicit code. Its presence in
+  // a log is a signal to give that call site a real code.
+  'app.unclassified_error',
+  'app.startup_failed',
+  'app.installation_id'
 ] as const
 export type LogCode = (typeof LOG_CODES)[number]
 
@@ -1171,16 +1176,22 @@ process.on('unhandledRejection', (reason) => {
 })
 
 app.on('render-process-gone', (_event, contents, details) => {
-  logger.error('app', 'app.render_process_gone', {
+  // 'clean-exit' and 'killed' are ordinary shutdown paths. Classify BEFORE
+  // logging, not after: Task 12b toasts every main-process error, so logging
+  // these at error level would tell a tester "The window stopped responding"
+  // during a normal quit. They are still recorded, at info, because knowing
+  // the renderer went away is useful context around a nearby failure.
+  const ordinary = details.reason === 'clean-exit' || details.reason === 'killed'
+  const level = ordinary ? 'info' : 'error'
+  logger[level]('app', 'app.render_process_gone', {
     reason: tag(details.reason, 'renderGoneReason'),
     exitCode: details.exitCode
   })
   flushSync()
 
   // Logging alone leaves the tester staring at a dead window until they
-  // restart the app by hand. 'clean-exit' and 'killed' are ordinary shutdown
-  // paths and must not trigger a recovery prompt.
-  if (details.reason === 'clean-exit' || details.reason === 'killed') return
+  // restart the app by hand.
+  if (ordinary) return
 
   const win = BrowserWindow.fromWebContents(contents)
   if (!win || win.isDestroyed()) return
@@ -1233,7 +1244,33 @@ import { markCleanExit, startSession } from '@main/services/sessionLog'
 
 - [ ] **Step 2: Initialise the logger inside `whenReady`**
 
-In `app.whenReady().then(async () => {`, **before** `initInstallationId(userDataPath)` — not after.
+**First, give the startup promise a terminal catch.** Registering `unhandledRejection` above changes Electron's behaviour for the worse if nothing else changes: Node's default for an unhandled rejection is to terminate, and the handler replaces that with "log and continue". The `app.whenReady().then(async () => { ... })` callback is a promise, so a rejection from database init or `startCaptureServer()` now lands in that handler — and Birdbrain survives as a headless process holding the single-instance lock, with no window, no dialog, and no way for the tester to start it again. A crash that used to be visible becomes a silent hang.
+
+Chain a catch onto the existing `whenReady` call:
+
+```typescript
+app
+  .whenReady()
+  .then(async () => {
+    // ... existing startup body ...
+  })
+  .catch((err) => {
+    // Startup failures are fatal by definition — there is no window to recover
+    // into. Log, tell the tester where the log is, and exit rather than linger
+    // holding the single-instance lock with nothing on screen.
+    logger.error('app', 'app.startup_failed', undefined, err)
+    flushSync()
+    dialog.showErrorBox(
+      'Birdbrain could not start',
+      'A diagnostic log has been saved. You can attach it to a bug report — see the logs folder in your Birdbrain data directory.'
+    )
+    app.exit(1)
+  })
+```
+
+Add `'app.startup_failed'` to `LOG_CODES` and a label for it.
+
+Then, in the startup body, put the logger init **before** `initInstallationId(userDataPath)` — not after.
 
 Ordering matters here and the obvious placement is wrong. `initInstallationId` does uncaught synchronous reads and writes under `userData`. If that path is unwritable or the id file is malformed, it throws, the `uncaughtException` handler fires, and the handler shows a dialog telling the tester "a diagnostic log has been saved" — while `logger` is still a no-op singleton and nothing was saved. The first thing the crash handler needs is the thing that must be initialised first.
 
@@ -1274,6 +1311,18 @@ Then find where the main `BrowserWindow` is created (around line 35) and, wherev
 
 ```typescript
     setLoggerWindow(win)
+```
+
+**There are two such places, and the second is easy to miss.** `app.on('activate')` at `src/main/index.ts:251-254` calls `setMainWindow(createWindow())` when a macOS user reopens the app after closing the last window. Without the logger equivalent there, the logger keeps a destroyed window, `webContents.send` is skipped for the rest of the session, and every main-process warning and error after reopening produces no toast and no live Log-tab row. Pair them:
+
+```typescript
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        const next = createWindow()
+        setMainWindow(next)
+        setLoggerWindow(next)
+      }
+    })
 ```
 
 - [ ] **Step 3: Mark a clean exit**
@@ -2042,9 +2091,14 @@ function durable(
   level: 'error' | 'warn',
   opts: NotifyOpts
 ): Promise<string | undefined> {
-  if (!opts.code) return Promise.resolve(undefined)
+  // A missing code must NOT skip the write. notify.error(message) is the
+  // advertised one-argument form, and silently dropping those entries would
+  // leave the toast with no correlation id and the failure absent from the
+  // bug report — breaking the guarantee that every error is both visible and
+  // durable, for exactly the call sites that were least careful.
+  const code = opts.code ?? 'app.unclassified_error'
   return window.birdbrain.diagnostics
-    .log({ level, code: opts.code, context: opts.context, error: causeName(opts.cause) })
+    .log({ level, code, context: opts.context, error: causeName(opts.cause) })
     .catch(() => undefined)
   // The logger is best-effort; a failed log must not mask the original error.
 }
@@ -2118,7 +2172,10 @@ const CODE_LABELS: Record<LogCode, string> = {
   'ipc.handler_threw': 'An internal request failed',
   'query.failed': "Couldn't load data",
   'mutation.failed': 'Something went wrong. Please try again.',
-  'react.render_error': 'This part of the app failed to render'
+  'react.render_error': 'This part of the app failed to render',
+  'app.unclassified_error': 'Something went wrong',
+  'app.startup_failed': 'Birdbrain could not start',
+  'app.installation_id': 'Installation identified'
 }
 
 // Record<LogCode, string> makes a new code a compile error until it has a

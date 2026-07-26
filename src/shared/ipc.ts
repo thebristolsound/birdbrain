@@ -2,12 +2,15 @@
 // Every IPC call between renderer and main process goes through these channels
 
 import type {
+  ActiveCaseSelectors,
   AnnotationShape,
   ArchiveInspectReport,
   Capture,
   Case,
   HashVerification,
+  Note,
   Selector,
+  Tag,
   WaybackSnapshot
 } from '@shared/types'
 
@@ -449,6 +452,44 @@ export interface IpcInvokeContract {
 
   'recapture:enqueue': { args: [payload: RecaptureEnqueuePayload]; result: EnqueueResult }
   'recapture:queueStatus': { args: []; result: RecaptureQueueStatus }
+
+  'tags:list': { args: []; result: Tag[] }
+  'tags:create': { args: [params: CreateTagParams]; result: Tag }
+  'tags:update': { args: [params: UpdateTagParams]; result: Tag | undefined }
+  'tags:delete': { args: [id: string]; result: boolean }
+  'tags:addToCapture': { args: [params: CaptureTagParams]; result: void }
+  'tags:removeFromCapture': { args: [params: CaptureTagParams]; result: void }
+  'tags:getForCapture': { args: [captureId: string]; result: Tag[] }
+  'tags:countForCase': { args: [caseId: string]; result: number }
+  'tags:usageCountsForCase': { args: [caseId: string]; result: Record<string, number> }
+
+  'selectors:list': { args: [caseId: string]; result: Selector[] }
+  'selectors:get': { args: [id: string]; result: Selector | undefined }
+  'selectors:create': { args: [params: CreateSelectorParams]; result: Selector }
+  'selectors:update': { args: [params: UpdateSelectorParams]; result: Selector | undefined }
+  'selectors:delete': { args: [id: string]; result: boolean }
+  'selectors:listActive': { args: []; result: ActiveCaseSelectors[] }
+  'selectors:matchCounts': { args: [caseId: string]; result: Record<string, number> }
+  'selectors:matchingCaptures': {
+    args: [caseId: string, selectorIds: string[]]
+    result: string[]
+  }
+  'selectors:coverage': { args: [caseId: string]; result: { matched: number; total: number } }
+  'selectors:bulkCreate': { args: [params: BulkCreateSelectorsParams]; result: Selector[] }
+  'selectors:exportMatches': {
+    args: [caseId: string]
+    result: { exported: boolean; path?: string }
+  }
+
+  'notes:list': { args: [caseId: string]; result: Note[] }
+  'notes:get': { args: [id: string]; result: Note | undefined }
+  'notes:create': { args: [params: CreateNoteParams]; result: Note }
+  'notes:update': { args: [params: UpdateNoteParams]; result: Note | undefined }
+  'notes:delete': { args: [id: string]; result: boolean }
+  'notes:count': { args: [caseId: string]; result: number }
+  'notes:search': { args: [caseId: string, query: string]; result: Note[] }
+
+  'search:query': { args: [caseId: string, query: string]; result: Capture[] }
 }
 
 export type ContractedChannel = keyof IpcInvokeContract

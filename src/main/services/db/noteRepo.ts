@@ -3,6 +3,24 @@ import type { Note } from '@shared/types'
 import type { CreateNoteParams, UpdateNoteParams } from '@shared/ipc'
 import { getDb, type ImportCtx } from '@main/services/db/core'
 import { noteDocToText, parseNoteDoc } from '@shared/noteDoc'
+import { parseNoteAnchor, type NoteAnchorKind } from '@shared/noteAnchor'
+
+/**
+ * Resolve the two anchor columns from a serialized payload.
+ *
+ * `anchor_kind` is derived from the validated anchor rather than accepted
+ * separately, so the column and the payload cannot describe different things.
+ * An archive that supplies a contradictory `anchor_kind` is overruled by what
+ * its own anchor actually says.
+ */
+function resolveAnchor(anchor: string | null | undefined): {
+  kind: NoteAnchorKind | null
+  json: string | null
+} {
+  if (!anchor) return { kind: null, json: null }
+  const parsed = parseNoteAnchor(anchor)
+  return { kind: parsed.kind, json: JSON.stringify(parsed) }
+}
 
 /**
  * Resolve the two body columns from what the caller supplied.
@@ -42,10 +60,11 @@ export function createNote(params: CreateNoteParams): Note {
   const id = uuid()
   const now = new Date().toISOString()
   const { body, bodyDoc } = resolveBody(params)
+  const anchor = resolveAnchor(params.anchor)
   getDb()
     .prepare(
-      `INSERT INTO notes (id, case_id, capture_id, title, body, body_doc, source_url, screenshot_path, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO notes (id, case_id, capture_id, title, body, body_doc, anchor_kind, anchor_json, source_url, screenshot_path, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       id,
@@ -54,6 +73,8 @@ export function createNote(params: CreateNoteParams): Note {
       params.title ?? '',
       body,
       bodyDoc,
+      anchor.kind,
+      anchor.json,
       params.sourceUrl ?? null,
       params.screenshotPath ?? null,
       now,
@@ -72,12 +93,24 @@ export function updateNote(params: UpdateNoteParams): Note | undefined {
   const resolved = touchesBody
     ? resolveBody(params)
     : { body: existing.body, bodyDoc: existing.bodyDoc ?? null }
+  // An absent `anchor` leaves the stored one in place; an explicit null clears
+  // it. Re-serializing the existing anchor rather than reading the raw column
+  // keeps the two paths on one code path.
+  const anchor =
+    params.anchor !== undefined
+      ? resolveAnchor(params.anchor)
+      : resolveAnchor(existing.anchor ? JSON.stringify(existing.anchor) : null)
   getDb()
-    .prepare('UPDATE notes SET title = ?, body = ?, body_doc = ?, updated_at = ? WHERE id = ?')
+    .prepare(
+      `UPDATE notes SET title = ?, body = ?, body_doc = ?, anchor_kind = ?, anchor_json = ?, updated_at = ?
+       WHERE id = ?`
+    )
     .run(
       params.title !== undefined ? params.title : existing.title,
       resolved.body,
       resolved.bodyDoc,
+      anchor.kind,
+      anchor.json,
       now,
       params.id
     )
@@ -117,6 +150,9 @@ function rowToNote(row: Record<string, unknown>): Note {
     title: row.title as string,
     body: row.body as string,
     bodyDoc: (row.body_doc as string) || undefined,
+    // Safe to parse without re-validating: nothing reaches this column that
+    // did not come back out of parseNoteAnchor.
+    anchor: row.anchor_json ? JSON.parse(row.anchor_json as string) : undefined,
     sourceUrl: (row.source_url as string) || undefined,
     screenshotPath: (row.screenshot_path as string) || undefined,
     createdAt: row.created_at as string,
@@ -135,8 +171,8 @@ export function collectNotesForCase(caseId: string): Record<string, unknown>[] {
 
 export function importNoteRows(rows: Record<string, unknown>[], ctx: ImportCtx): void {
   const insert = getDb().prepare(
-    `INSERT INTO notes (id, case_id, capture_id, title, body, body_doc, source_url, screenshot_path, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO notes (id, case_id, capture_id, title, body, body_doc, anchor_kind, anchor_json, source_url, screenshot_path, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
   for (const n of rows) {
     // An archive is a file from outside this installation, so its `body` is no
@@ -151,6 +187,10 @@ export function importNoteRows(rows: Record<string, unknown>[], ctx: ImportCtx):
       body: (n.body as string) ?? '',
       bodyDoc: (n.body_doc as string) ?? undefined
     })
+    // The archive's anchor_kind column is ignored in favour of the kind the
+    // anchor itself declares, so the two cannot land in the database
+    // disagreeing. A pre-v27 archive has no anchor at all and imports loose.
+    const anchor = resolveAnchor((n.anchor_json as string) ?? null)
     insert.run(
       ctx.mapId(n.id as string),
       ctx.newCaseId,
@@ -158,6 +198,8 @@ export function importNoteRows(rows: Record<string, unknown>[], ctx: ImportCtx):
       n.title ?? '',
       body,
       bodyDoc,
+      anchor.kind,
+      anchor.json,
       n.source_url ?? null,
       n.screenshot_path ?? null,
       n.created_at ?? null,

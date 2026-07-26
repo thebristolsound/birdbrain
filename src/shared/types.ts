@@ -1,5 +1,7 @@
 // Stub types — real implementations come in later specs
 
+import type { NoteAnchor } from '@shared/noteAnchor'
+
 export interface Case {
   id: string
   name: string
@@ -373,6 +375,11 @@ export interface Note {
   body: string
   /** Serialized ProseMirror JSON. Absent on notes written before rich text. */
   bodyDoc?: string
+  /**
+   * What the note points at. Parsed and validated in main on every write, so
+   * a stored anchor always fits one of the four kinds. Absent = unanchored.
+   */
+  anchor?: NoteAnchor
   sourceUrl?: string
   screenshotPath?: string
   createdAt: string

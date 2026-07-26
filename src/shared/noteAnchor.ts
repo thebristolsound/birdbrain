@@ -91,6 +91,35 @@ function num(raw: Record<string, unknown>, field: string): number {
   return value
 }
 
+/** A pixel extent. Zero is not a rectangle and a negative one is not a shape. */
+function positive(raw: Record<string, unknown>, field: string): number {
+  const value = num(raw, field)
+  if (value <= 0) throw new Error(`Note anchor has a non-positive ${field}`)
+  return value
+}
+
+/** A pixel coordinate. May sit on the edge, never off it. */
+function nonNegative(raw: Record<string, unknown>, field: string): number {
+  const value = num(raw, field)
+  if (value < 0) throw new Error(`Note anchor has a negative ${field}`)
+  return value
+}
+
+/**
+ * A string index, which is what `textOffset` is used as.
+ *
+ * A fractional offset is not merely odd: `String.prototype.startsWith` coerces
+ * the position it is given, so 1.5 would match at index 1 and then be reported
+ * back as 1.5 — an offset naming a position the quote was not found at.
+ */
+function index(raw: Record<string, unknown>, field: string): number {
+  const value = num(raw, field)
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`Note anchor has a non-integer or negative ${field}`)
+  }
+  return value
+}
+
 /**
  * Parse and validate an anchor arriving from the renderer or an archive.
  *
@@ -119,17 +148,22 @@ export function parseNoteAnchor(json: string): NoteAnchor {
   switch (raw.kind) {
     case 'capture':
       return { kind: 'capture', captureId }
-    case 'region':
-      return {
-        kind: 'region',
-        captureId,
-        x: num(raw, 'x'),
-        y: num(raw, 'y'),
-        w: num(raw, 'w'),
-        h: num(raw, 'h'),
-        imageWidth: num(raw, 'imageWidth'),
-        imageHeight: num(raw, 'imageHeight')
+    case 'region': {
+      // The rectangle must be a rectangle, and it must fit the image it
+      // declares. A region reaching outside its own coordinate space cannot be
+      // normalised against the screenshot, so it would render as a crop of
+      // somewhere the investigator never selected.
+      const imageWidth = positive(raw, 'imageWidth')
+      const imageHeight = positive(raw, 'imageHeight')
+      const x = nonNegative(raw, 'x')
+      const y = nonNegative(raw, 'y')
+      const w = positive(raw, 'w')
+      const h = positive(raw, 'h')
+      if (x + w > imageWidth || y + h > imageHeight) {
+        throw new Error('Note anchor region falls outside the image it declares')
       }
+      return { kind: 'region', captureId, x, y, w, h, imageWidth, imageHeight }
+    }
     case 'text':
       return {
         kind: 'text',
@@ -138,7 +172,7 @@ export function parseNoteAnchor(json: string): NoteAnchor {
         // Context may legitimately be empty at the start or end of a document.
         prefix: typeof raw.prefix === 'string' ? raw.prefix : '',
         suffix: typeof raw.suffix === 'string' ? raw.suffix : '',
-        textOffset: num(raw, 'textOffset')
+        textOffset: index(raw, 'textOffset')
       }
     case 'finding':
       if (raw.finding === 'selectorMatch') {

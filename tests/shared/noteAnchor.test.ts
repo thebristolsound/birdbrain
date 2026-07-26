@@ -182,6 +182,90 @@ describe('parseNoteAnchor', () => {
     ).toThrow(/imageWidth/)
   })
 
+  // Finite is not the same as possible. A zero-width image, a negative
+  // rectangle, or a rectangle hanging off its own coordinate space cannot be
+  // normalised against the screenshot, so it would render as a crop of
+  // somewhere nobody selected.
+  describe('the numeric domain of a region', () => {
+    function region(over: Record<string, unknown>): string {
+      return JSON.stringify({
+        kind: 'region',
+        captureId: 'cap-1',
+        x: 10,
+        y: 20,
+        w: 100,
+        h: 50,
+        imageWidth: 1280,
+        imageHeight: 720,
+        ...over
+      })
+    }
+
+    it('rejects a zero-width image, which no coordinate could be relative to', () => {
+      expect(() => parseNoteAnchor(region({ imageWidth: 0 }))).toThrow(/non-positive imageWidth/)
+    })
+
+    it('rejects a negative rectangle extent', () => {
+      expect(() => parseNoteAnchor(region({ w: -5 }))).toThrow(/non-positive w/)
+    })
+
+    it('rejects a zero-area rectangle, which selects nothing', () => {
+      expect(() => parseNoteAnchor(region({ h: 0 }))).toThrow(/non-positive h/)
+    })
+
+    it('rejects a negative coordinate', () => {
+      expect(() => parseNoteAnchor(region({ x: -1 }))).toThrow(/negative x/)
+    })
+
+    it('rejects a rectangle running off the right edge of its own image', () => {
+      expect(() => parseNoteAnchor(region({ x: 1200, w: 200 }))).toThrow(/outside the image/)
+    })
+
+    it('rejects a rectangle running off the bottom edge of its own image', () => {
+      expect(() => parseNoteAnchor(region({ y: 700, h: 100 }))).toThrow(/outside the image/)
+    })
+
+    it('accepts a rectangle flush against the far edge', () => {
+      expect(parseNoteAnchor(region({ x: 1180, w: 100, y: 670, h: 50 }))).toMatchObject({
+        x: 1180,
+        w: 100
+      })
+    })
+  })
+
+  // startsWith coerces its position argument, so a fractional offset would
+  // match at the floor and then be reported back verbatim -- an offset naming
+  // a position the quote was not found at.
+  it('rejects a fractional textOffset, which would resolve to an offset nothing sits at', () => {
+    expect(() =>
+      parseNoteAnchor(
+        JSON.stringify({
+          kind: 'text',
+          captureId: 'cap-1',
+          quote: 'x',
+          prefix: '',
+          suffix: '',
+          textOffset: 1.5
+        })
+      )
+    ).toThrow(/non-integer or negative textOffset/)
+  })
+
+  it('rejects a negative textOffset', () => {
+    expect(() =>
+      parseNoteAnchor(
+        JSON.stringify({
+          kind: 'text',
+          captureId: 'cap-1',
+          quote: 'x',
+          prefix: '',
+          suffix: '',
+          textOffset: -3
+        })
+      )
+    ).toThrow(/non-integer or negative textOffset/)
+  })
+
   it('rejects a text anchor with an empty quote, which nothing could ever locate', () => {
     expect(() =>
       parseNoteAnchor(

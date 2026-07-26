@@ -60,6 +60,28 @@ describe('sanitizeText', () => {
     expect(out).not.toContain('target.example')
     expect(out).toContain('‹url›')
   })
+
+  it('strips a windows path whose homeDir contains a space, with no leftover username or case name', () => {
+    const homeDir = String.raw`C:\Users\John Doe`
+    const out = sanitizeText(
+      String.raw`open 'C:\Users\John Doe\cases\OperationBlackbird\x.mhtml' failed`,
+      homeDir
+    )
+    expect(out).not.toContain('Doe')
+    expect(out).not.toContain('OperationBlackbird')
+    expect(out).toContain('‹path›')
+  })
+
+  it('strips a posix path whose homeDir contains a space, with no leftover username or case name', () => {
+    const homeDir = '/home/john doe'
+    const out = sanitizeText(
+      'open /home/john doe/cases/OperationBlackbird/x.mhtml failed',
+      homeDir
+    )
+    expect(out).not.toContain('doe')
+    expect(out).not.toContain('OperationBlackbird')
+    expect(out).toContain('‹path›')
+  })
 })
 
 describe('sanitizeError', () => {

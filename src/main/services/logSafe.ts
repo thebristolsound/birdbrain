@@ -44,21 +44,30 @@ export function tag(value: string, allowed: readonly string[]): LogSafe {
 }
 
 // Node embeds absolute paths in error messages ("ENOENT: ... open 'C:\Users\...'"),
-// so errors are the one place branded types cannot reach. Order matters: URLs are
-// replaced first because they contain '//' that the posix path pattern would
-// otherwise chew into.
+// so errors are the one place branded types cannot reach. Order matters: the
+// homeDir-rooted path is replaced whole, in one pass, before the generic
+// patterns run — a profile folder with a space in it (e.g. 'C:\Users\John Doe')
+// would otherwise let WIN_PATH's space-terminated match chew off only part of
+// homeDir, leaving the rest of the path (and anything after it, like a case
+// name) exposed. URLs are replaced before the generic path patterns because a
+// URL contains '//' that the posix path pattern would otherwise consume.
 const URL_LIKE = /\b[a-z][a-z0-9+.-]*:\/\/\S+/gi
 const WIN_PATH = /[A-Za-z]:\\[^\s'"()]+/g
 const POSIX_PATH = /(?<![\w-])\/(?:[\w.-]+\/)+[\w.-]*/g
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 export function sanitizeText(text: string, homeDir: string): string {
   let out = text
+  if (homeDir) {
+    const homeRooted = new RegExp(`${escapeRegExp(homeDir)}[^\\s'"()]*`, 'g')
+    out = out.replace(homeRooted, '‹path›')
+  }
   out = out.replace(URL_LIKE, '‹url›')
   out = out.replace(WIN_PATH, '‹path›')
   out = out.replace(POSIX_PATH, '‹path›')
-  // Fallback for any leftover literal homeDir occurrence the path patterns
-  // didn't fully consume (e.g. a home dir containing spaces).
-  if (homeDir) out = out.split(homeDir).join('‹home›')
   return out
 }
 
@@ -80,6 +89,8 @@ export function sanitizeError(err: unknown, homeDir: string = homedir()): Logged
     : null
 
   return {
+    // err.name is assumed to be a short class-like identifier (e.g. 'TypeError'),
+    // not attacker/user-influenced content, so it is passed through unsanitized.
     name: err.name,
     code: errCode,
     message: sanitizeText(err.message, homeDir),

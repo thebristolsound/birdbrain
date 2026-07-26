@@ -115,11 +115,11 @@ export const IPC_CHANNELS = {
   NOTES_COUNT: 'notes:count',
   NOTES_SEARCH: 'notes:search',
 
-  // Archive (Wayback corroboration)
-  ARCHIVE_LOOKUP: 'archive:lookup',
-  ARCHIVE_LIST: 'archive:list',
-  ARCHIVE_PIN: 'archive:pin',
-  ARCHIVE_UNPIN: 'archive:unpin',
+  // Wayback Machine corroboration
+  WAYBACK_LOOKUP: 'wayback:lookup',
+  WAYBACK_LIST: 'wayback:list',
+  WAYBACK_PIN: 'wayback:pin',
+  WAYBACK_UNPIN: 'wayback:unpin',
 
   // Extracted Data
   EXTRACTED_DATA_CATEGORIES: 'extractedData:categories',
@@ -541,10 +541,10 @@ export interface IpcInvokeContract {
   'export:preflight': { args: [caseId: string]; result: ExportPreflight }
   'export:generate': { args: [caseId: string, options: ExportOptions]; result: ExportResult }
 
-  'archive:lookup': { args: [captureId: string]; result: WaybackLookupResult }
-  'archive:list': { args: [captureId: string]; result: WaybackRef[] }
-  'archive:pin': { args: [params: PinWaybackSnapshotParams]; result: WaybackRef }
-  'archive:unpin': { args: [refId: string]; result: boolean }
+  'wayback:lookup': { args: [captureId: string]; result: WaybackLookupResult }
+  'wayback:list': { args: [captureId: string]; result: WaybackRef[] }
+  'wayback:pin': { args: [params: PinWaybackSnapshotParams]; result: WaybackRef }
+  'wayback:unpin': { args: [refId: string]; result: boolean }
 
   'annotations:get': { args: [captureId: string]; result: AnnotationsBundle }
   'annotations:save': { args: [params: SaveAnnotationsParams]; result: CaptureAnnotations }

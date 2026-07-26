@@ -15,19 +15,44 @@ export type LogValue = number | boolean | null | LogSafe
 const IDENT = /^[A-Za-z0-9_-]{1,64}$/
 const CODE = /^[A-Z][A-Z0-9_]{0,47}$/
 const MAX_STACK_FRAMES = 20
+// Recorded in place of a value that failed validation. Carries no data of its
+// own, so it is itself a legal value under any context key (see matchesFormat).
+const INVALID = '[invalid]'
 
 function brand(value: string): LogSafe {
   return value as LogSafe
 }
 
-// Loud in dev so a bad call site is caught in review; inert in production so a
-// logging mistake can never crash a tester's app. The offending value is never
-// echoed — that would defeat the point of rejecting it.
+// `process.env.NODE_ENV !== 'production'` cannot express "not production" here:
+// NODE_ENV is set nowhere in this repo, so a packaged app launched from the
+// desktop reads as development and every validator below would throw there —
+// the exact inverse of the guarantee this module's call sites (crash handlers)
+// depend on. `app.isPackaged` is the codebase's real signal for the same
+// distinction (updater.ts, index.ts via @electron-toolkit's `is.dev`).
+//
+// Electron is resolved with a defensive require rather than a static import so
+// this module still loads in a plain Node process — the unit tests import it
+// directly, with no Electron runtime around it. No app object means
+// development, i.e. loud, which is the right direction for a test run.
+function isPackagedApp(): boolean {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- see above
+    const electron: unknown = require('electron')
+    return (electron as { app?: { isPackaged?: boolean } }).app?.isPackaged === true
+  } catch {
+    return false
+  }
+}
+
+// Loud in development so a bad call site is caught in review; inert in a
+// packaged build so a logging mistake can never crash a tester's app. The
+// offending value is never echoed — that would defeat the point of rejecting
+// it.
 function reject(kind: string): LogSafe {
-  if (process.env.NODE_ENV !== 'production') {
+  if (!isPackagedApp()) {
     throw new Error(`logSafe.${kind}: value failed validation and was not logged`)
   }
-  return brand('[invalid]')
+  return brand(INVALID)
 }
 
 export function ident(value: string): LogSafe {
@@ -80,12 +105,18 @@ const TAG_VOCABULARIES = {
 } as const
 
 export function tag(value: string, vocabulary: keyof typeof TAG_VOCABULARIES): LogSafe {
-  // `allowed` can be undefined despite the compile-time constraint: a
-  // runtime-only caller (plain JS, or a type-system bypass) can still pass a
-  // vocabulary name that was never one of the fixed keys. That falls through
-  // to reject('tag') below rather than throwing a raw TypeError.
-  const allowed = TAG_VOCABULARIES[vocabulary] as readonly string[] | undefined
-  return allowed?.includes(value) ? brand(value) : reject('tag')
+  // Own-property check, not a bare lookup. TAG_VOCABULARIES is a plain object
+  // literal, so it inherits from Object.prototype: `TAG_VOCABULARIES.toString`
+  // resolves to a *function*, `?.` does not short-circuit on it, and
+  // `.includes` is not there — a raw TypeError. The compile-time constraint on
+  // `vocabulary` is no defence, since the callers that matter here are exactly
+  // the ones that bypass it (plain JS, a cast, or a renderer-supplied value
+  // re-validated at the IPC bridge). tag() runs inside 'child-process-gone',
+  // where a throw would escalate a recoverable child death into a fatal
+  // main-process exception raised from within the crash handler.
+  if (!Object.hasOwn(TAG_VOCABULARIES, vocabulary)) return reject('tag')
+  const allowed: readonly string[] = TAG_VOCABULARIES[vocabulary]
+  return allowed.includes(value) ? brand(value) : reject('tag')
 }
 
 // --- Allowlist boundary --------------------------------------------------
@@ -200,30 +231,116 @@ export const LOG_CONTEXT_KEYS = [
   'platform',
   'installFormat',
   'packaged',
+  // Renderer-originated (plan Tasks 10 and 11): the query-key domain segment,
+  // the ErrorBoundary that caught, and the IPC channel that threw. All three
+  // are static identifiers from the source, never user data.
+  'domain',
+  'boundary',
+  'channel',
   'attempt'
 ] as const
 export type LogContextKey = (typeof LOG_CONTEXT_KEYS)[number]
 export type LogContext = Partial<Record<LogContextKey, LogValue>>
 
-// Runtime companion to the LogContext type. A key computed from investigation
-// data (e.g. `{ [capturedUrl]: true }`) is exactly the case a compile-time
-// check can't catch when the object is built dynamically rather than written
-// as a literal — this walks the actual keys and drops (prod) or throws (dev)
-// on anything outside the allowlist. The disallowed key's name is never
-// echoed: if the key itself is the sensitive payload (as in the example
-// above), echoing it back in a thrown message would be the same leak again.
-export function context(ctx: Record<string, unknown>): LogContext {
+// Per-key value formats: the TAG_VOCABULARIES philosophy applied to shapes
+// instead of members. One generic validator cannot carry this boundary —
+// `ident('OperationBlackbird')` passes (no space, identifier-shaped, under the
+// cap), so a case NAME gets branded log-safe and written to disk. Asking "is
+// this the specific thing I expect under THIS key" closes that: a case name
+// cannot satisfy a UUID.
+//
+// Every id this app mints is a UUID — uuid's v4() in the db repos
+// (caseRepo/noteRepo/selectorRepo), crypto.randomUUID() for capture ids
+// (captureLifecycle) and the installation id. Version and variant nibbles are
+// deliberately not pinned, so an id carried in from an archive still validates;
+// the 8-4-4-4-12 hex shape is what excludes prose.
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+// app.getVersion() ('1.0.1-beta.17'), and the all-dashed variant the plan's
+// session-start block writes.
+const VERSION = /^\d+[.-]\d+[.-]\d+(?:[.-][A-Za-z0-9]+)*$/
+// The platforms Birdbrain is actually built for (electron-builder targets in
+// package.json). Any other process.platform value is genuinely unexpected.
+const PLATFORMS = ['win32', 'darwin', 'linux'] as const
+// Every literal detectInstallFormat() in diagnostics.ts can return, plus 'deb'
+// — the one electron-builder package-type marker updater.ts recognises, which
+// that function passes through from the resources file. A package format
+// neither file knows about records as INVALID rather than being passed through.
+const INSTALL_FORMATS = ['dev', 'nsis', 'mac', 'appimage', 'deb', 'archive', 'unknown'] as const
+
+type ContextFormat = 'number' | 'boolean' | RegExp | readonly string[]
+
+const CONTEXT_FORMATS: Record<LogContextKey, ContextFormat> = {
+  captureId: UUID,
+  caseId: UUID,
+  noteId: UUID,
+  selectorId: UUID,
+  installationId: UUID,
+  bytes: 'number',
+  count: 'number',
+  ms: 'number',
+  port: 'number',
+  exitCode: 'number',
+  status: 'number',
+  attempt: 'number',
+  packaged: 'boolean',
+  format: CAPTURE_FORMATS,
+  reason: PROCESS_GONE_REASONS,
+  processType: CHILD_PROCESS_TYPES,
+  platform: PLATFORMS,
+  installFormat: INSTALL_FORMATS,
+  errorCode: CODE,
+  version: VERSION,
+  // Static identifiers lifted from renderer source, never user data — IDENT's
+  // generic rule is the right one for exactly these three.
+  domain: IDENT,
+  boundary: IDENT,
+  channel: IDENT
+}
+
+function matchesFormat(value: unknown, format: ContextFormat): boolean {
+  // null reads as "absent/unknown" under any key, and INVALID is this module's
+  // own rejection marker; neither can carry investigation data.
+  if (value === null || value === INVALID) return true
+  if (format === 'number') return typeof value === 'number' && Number.isFinite(value)
+  if (format === 'boolean') return typeof value === 'boolean'
+  if (typeof value !== 'string') return false
+  return format instanceof RegExp ? format.test(value) : format.includes(value)
+}
+
+// Dev-loud / packaged-inert, matching reject(). Neither the key nor the value
+// is ever named: if the rejected part IS the sensitive payload (as in
+// `{ [capturedUrl]: true }`), echoing it back in a thrown message would be the
+// same leak again.
+function rejectContext(part: 'key' | 'value'): void {
+  if (!isPackagedApp()) {
+    throw new Error(`logSafe.context: an object contained a disallowed ${part} and was not logged`)
+  }
+}
+
+// Runtime companion to the LogContext type, for objects built dynamically
+// (spread, computed keys) rather than written as literals — the case the
+// compile-time check can't see. `ctx` is typed `Record<string, LogValue>`
+// rather than `Record<string, unknown>` so that a literal still fails to
+// compile: without that, `context({ caseId: capture.caseName })` would type-
+// check as a general-purpose cast from raw string to log-safe, which is the
+// exact escape hatch the branding exists to prevent. Keys and values are both
+// re-checked here, since a cast defeats either.
+export function context(ctx: Record<string, LogValue>): LogContext {
   const out: LogContext = {}
   for (const key of Object.keys(ctx)) {
-    if (!(LOG_CONTEXT_KEYS as readonly string[]).includes(key)) {
-      if (process.env.NODE_ENV !== 'production') {
-        throw new Error(
-          'logSafe.context: an object contained a disallowed key and was not logged'
-        )
-      }
+    // Own-property check for the same reason tag() needs one: a bare lookup on
+    // an inherited name ('toString') would return a function and be treated as
+    // a format.
+    if (!Object.hasOwn(CONTEXT_FORMATS, key)) {
+      rejectContext('key')
       continue
     }
-    out[key as LogContextKey] = ctx[key] as LogValue
+    const value: unknown = ctx[key]
+    if (!matchesFormat(value, CONTEXT_FORMATS[key as LogContextKey])) {
+      rejectContext('value')
+      continue
+    }
+    out[key as LogContextKey] = value as LogValue
   }
   return out
 }
@@ -321,10 +438,26 @@ export function sanitizeText(text: string, homeDir: string): string {
 // than risk any of it surviving. This filters every line rather than slicing
 // from the first frame match, so it's not just the header that's excluded —
 // any non-frame line anywhere in the stack (e.g. a "Caused by:" line, or an
-// AggregateError's nested detail) is dropped too; only lines that themselves
-// look like a frame ("    at ...") survive.
+// AggregateError's nested detail) is dropped too.
+//
+// The "    at " prefix alone is not a frame test. V8 preserves newlines from
+// Error.message, so `new Error('failed\n    at Operation Blackbird (case 7)')`
+// puts a line satisfying that prefix into the stack — free-form prose with no
+// path or URL shape for sanitizeText to catch either. What a real frame always
+// has is a trailing location, in one of V8's four shapes:
+//
+//     at fn (/file.js:10:5)      at /file.js:10:5
+//     at fn (<anonymous>)        at async fn (/file.js:10:5)
+//
+// so both tests must pass: the prefix AND a location. '(case 7)' is not a
+// location and is dropped. A message crafted to end in a real 'file:line:col'
+// is indistinguishable from a frame by construction — but it has a path shape
+// by then, which is what the sanitizeText pass in sanitizeError is for.
+const FRAME_PREFIX = /^\s*at\s/
+const FRAME_LOCATION = /(?::\d+:\d+\)?|\(?(?:<anonymous>|native)\)?)$/
+
 function stackFrames(stack: string): string[] {
-  return stack.split('\n').filter((line) => /^\s*at\s/.test(line))
+  return stack.split('\n').filter((line) => FRAME_PREFIX.test(line) && FRAME_LOCATION.test(line))
 }
 
 // Strips the app's own install/checkout root from each frame so what remains
@@ -333,6 +466,13 @@ function stackFrames(stack: string): string[] {
 // outside appRoot (Node/Electron internals, which use special non-path
 // specifiers like 'node:internal/...') are left alone here; sanitizeText
 // below is the safety net for anything that isn't.
+//
+// Constraint on callers: stripping the anchor leaves a remainder that no path
+// pattern can match, so for the relativized portion sanitizeText is bypassed,
+// not defence-in-depth. That holds only while appRoot is deep enough that
+// everything under it is app source — app.getAppPath() is. Passing something
+// short (homedir(), a drive root) would relativize the operator's whole tree
+// into unmatchable fragments and silently disable the second pass.
 function relativizeStack(stack: string, appRoot: string): string {
   if (!appRoot) return stack
   return stack

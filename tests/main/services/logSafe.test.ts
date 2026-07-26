@@ -1,6 +1,33 @@
 import { describe, expect, it } from 'vitest'
-import type { LogContext } from '@main/services/logSafe'
+import type { LogContext, LogValue } from '@main/services/logSafe'
 import { code, context, ident, sanitizeError, sanitizeText, tag } from '@main/services/logSafe'
+
+// logSafe decides dev-vs-packaged from `app.isPackaged`, reached through a
+// defensive require('electron') so the module still loads outside an Electron
+// runtime (these tests import it directly). vi.mock only intercepts ESM
+// imports, so it cannot reach that require — seeding Node's module cache can.
+// Nothing here touches NODE_ENV, which this repo never sets and which is
+// exactly why the check no longer reads it.
+// Shaped like the ids this app mints (uuid v4 in the db repos,
+// crypto.randomUUID() for capture ids).
+const CAPTURE_UUID = '3f2b9c14-7d8e-4a51-9b62-0c1d2e3f4a5b'
+
+function withElectronStub<T>(stub: object, run: () => T): T {
+  const id = require.resolve('electron')
+  const cache = require.cache as unknown as Record<string, unknown>
+  const original = cache[id]
+  cache[id] = stub
+  try {
+    return run()
+  } finally {
+    if (original === undefined) delete cache[id]
+    else cache[id] = original
+  }
+}
+
+function asPackagedApp<T>(run: () => T): T {
+  return withElectronStub({ exports: { app: { isPackaged: true } }, loaded: true }, run)
+}
 
 describe('ident', () => {
   it('accepts uuid-shaped ids', () => {
@@ -52,13 +79,43 @@ describe('tag', () => {
     }
   })
 
-  it('falls back to a placeholder instead of throwing in production', () => {
-    const original = process.env.NODE_ENV
-    process.env.NODE_ENV = 'production'
-    try {
-      expect(tag('example.com', 'captureFormat')).toBe('[invalid]')
-    } finally {
-      process.env.NODE_ENV = original
+  it('throws on a rejection in development', () => {
+    // The dev half of the pair below. Neither test reads NODE_ENV: it is set
+    // nowhere in this repo, so a packaged app would have taken this throwing
+    // branch — inside a crash handler — under the old `NODE_ENV !==
+    // 'production'` check.
+    expect(() => tag('example.com', 'captureFormat')).toThrow(/failed validation/)
+  })
+
+  it('falls back to the [invalid] sentinel instead of throwing in a packaged app', () => {
+    expect(asPackagedApp(() => tag('example.com', 'captureFormat'))).toBe('[invalid]')
+  })
+
+  it('treats an unresolvable Electron as development rather than as packaged', () => {
+    const broken = {
+      loaded: true,
+      get exports(): never {
+        throw new Error('electron unavailable')
+      }
+    }
+    // Loud is the safe direction when the runtime cannot be identified: a test
+    // or script run should surface a bad call site, not silently swallow it.
+    withElectronStub(broken, () => {
+      expect(() => tag('example.com', 'captureFormat')).toThrow(/failed validation/)
+    })
+  })
+
+  it('rejects an inherited Object.prototype name instead of crashing on it', () => {
+    // TAG_VOCABULARIES is a plain object literal, so a bare lookup on an
+    // inherited name returns a *function* — `?.` does not short-circuit and
+    // `.includes` is missing, which used to surface as a raw TypeError thrown
+    // from inside a crash handler.
+    for (const inherited of ['toString', 'constructor', 'hasOwnProperty']) {
+      expect(() => {
+        // @ts-expect-error - not a TAG_VOCABULARIES key; the runtime net has to
+        // hold anyway, since the callers that matter here bypass the type
+        tag('crashed', inherited)
+      }).toThrow(/failed validation/)
     }
   })
 
@@ -284,6 +341,34 @@ describe('sanitizeError', () => {
     expect(out.stack ?? '').not.toContain('failed to parse')
   })
 
+  it('drops a frame-shaped line injected through a multi-line error message', () => {
+    // V8 preserves newlines from Error.message, so this puts a line satisfying
+    // the "    at " prefix into the real stack — prose with no path or URL
+    // shape for sanitizeText to catch. It survives an `at`-prefix filter and
+    // is dropped by a location-shaped one: '(case 7)' is not a location.
+    const err = new Error('capture failed\n    at Operation Blackbird (case 7)')
+    const out = sanitizeError(err)
+    expect(out.stack).not.toBeNull()
+    expect(out.stack ?? '').not.toContain('Blackbird')
+    expect(out.stack ?? '').not.toContain('case 7')
+  })
+
+  it('keeps the four real V8 frame shapes', () => {
+    const err = new Error('boom')
+    err.stack = [
+      'Error: boom',
+      '    at Object.foo (/app/src/bar.js:10:5)',
+      '    at /app/src/baz.js:3:1',
+      '    at Array.forEach (<anonymous>)',
+      '    at async qux (/app/src/quux.js:7:2)',
+      '    at Operation Blackbird (case 7)'
+    ].join('\n')
+    const out = sanitizeError(err, '/app', '/home/matt')
+    expect((out.stack ?? '').split('\n')).toHaveLength(4)
+    expect(out.stack ?? '').toContain('<anonymous>')
+    expect(out.stack ?? '').not.toContain('Blackbird')
+  })
+
   it('rejects reading a message field at compile time (LoggedError has none)', () => {
     const out = sanitizeError(new Error('boom'))
     // @ts-expect-error - LoggedError has no `message` field
@@ -363,19 +448,99 @@ describe('sanitizeError', () => {
 
 describe('context', () => {
   it('passes through a context object containing only allowed keys', () => {
-    const out: LogContext = context({ captureId: ident('abc123'), bytes: 42 })
-    expect(out).toEqual({ captureId: 'abc123', bytes: 42 })
+    const out: LogContext = context({ captureId: ident(CAPTURE_UUID), bytes: 42 })
+    expect(out).toEqual({ captureId: CAPTURE_UUID, bytes: 42 })
   })
 
-  it('throws outside production when an object contains a disallowed key', () => {
+  it('accepts numbers, booleans, null and tag-vocabulary strings', () => {
+    const out = context({
+      bytes: 42,
+      packaged: true,
+      exitCode: null,
+      processType: tag('Sandbox helper', 'childProcessType')
+    })
+    // 'Sandbox helper' has a space, so IDENT alone would reject it — the
+    // processType key's format is the vocabulary itself.
+    expect(out).toEqual({
+      bytes: 42,
+      packaged: true,
+      exitCode: null,
+      processType: 'Sandbox helper'
+    })
+  })
+
+  it('accepts the real format of every remaining string-shaped key', () => {
+    const out = context({
+      installationId: ident(CAPTURE_UUID),
+      // The dashed form of app.getVersion(); ident() is what the plan's
+      // session-start call site uses, and it rejects dots.
+      version: ident('1-0-1-beta-17'),
+      platform: ident('win32'),
+      installFormat: ident('nsis'),
+      errorCode: code('ENOENT'),
+      format: tag('mhtml', 'captureFormat'),
+      domain: ident('captures'),
+      boundary: ident('CaseWorkspace'),
+      channel: ident('captures-list')
+    })
+    expect(out).toEqual({
+      installationId: CAPTURE_UUID,
+      version: '1-0-1-beta-17',
+      platform: 'win32',
+      installFormat: 'nsis',
+      errorCode: 'ENOENT',
+      format: 'mhtml',
+      domain: 'captures',
+      boundary: 'CaseWorkspace',
+      channel: 'captures-list'
+    })
+  })
+
+  it('rejects a value under a key whose format it does not match', () => {
+    // Each of these is a legal LogValue somewhere — just not under this key.
+    const wrong: Array<Record<string, LogValue>> = [
+      { caseId: ident('win32') }, // identifier-shaped, but not a UUID
+      { platform: ident('plan9') }, // not a platform this app builds for
+      { installFormat: ident('snap') }, // not a package format the code emits
+      { version: ident('unreleased') }, // not dotted/dashed numeric
+      { errorCode: ident('enoent') }, // errorCode is SCREAMING_SNAKE
+      { ms: Number.NaN }, // a number, but not a finite one
+      { packaged: 1 }, // a number under a boolean key
+      { bytes: ident('4096') }, // a string under a numeric key
+      { caseId: 4096 } // a number under a string key
+    ]
+    for (const entry of wrong) {
+      expect(() => context(entry)).toThrow(/disallowed value/)
+    }
+  })
+
+  it('rejects a single-token case name that ident() itself accepts', () => {
+    // The reason a per-key format table exists. 'OperationBlackbird' is
+    // identifier-shaped, so the generic rule brands it log-safe — and a case
+    // name is exactly the investigation data that must never reach disk. Under
+    // caseId it has to be a UUID, which a name cannot be.
+    const caseName = 'OperationBlackbird'
+    expect(ident(caseName)).toBe(caseName)
+    expect(() => context({ caseId: ident(caseName) })).toThrow(/disallowed value/)
+  })
+
+  it('accepts the [invalid] sentinel a packaged-app rejection produces', () => {
+    const rejected = asPackagedApp(() => tag('not-a-documented-reason', 'childGoneReason'))
+    expect(rejected).toBe('[invalid]')
+    // Otherwise a packaged build would drop the whole key rather than record
+    // that a value was rejected.
+    expect(context({ reason: rejected })).toEqual({ reason: '[invalid]' })
+  })
+
+  it('throws in development when an object contains a disallowed key', () => {
     const capturedUrl = 'https://target.example/secret-path'
-    const poisoned: Record<string, unknown> = { [capturedUrl]: true }
+    const poisoned: Record<string, LogValue> = { [capturedUrl]: true }
     expect(() => context(poisoned)).toThrow()
   })
 
   it('never echoes the disallowed key in the thrown error', () => {
     const capturedUrl = 'https://target.example/secret-path'
-    const poisoned: Record<string, unknown> = { [capturedUrl]: true }
+    const poisoned: Record<string, LogValue> = { [capturedUrl]: true }
     try {
       context(poisoned)
       throw new Error('context() should have thrown')
@@ -384,22 +549,64 @@ describe('context', () => {
     }
   })
 
-  it('drops a disallowed key instead of throwing in production, keeping the allowed ones', () => {
-    const original = process.env.NODE_ENV
-    process.env.NODE_ENV = 'production'
-    try {
-      const capturedUrl = 'https://target.example/secret-path'
-      const poisoned: Record<string, unknown> = { [capturedUrl]: true, captureId: 'abc123' }
-      const out = context(poisoned)
-      expect(out).toEqual({ captureId: 'abc123' })
-    } finally {
-      process.env.NODE_ENV = original
+  it('drops a disallowed key instead of throwing in a packaged app, keeping the allowed ones', () => {
+    const capturedUrl = 'https://target.example/secret-path'
+    const poisoned: Record<string, LogValue> = {
+      [capturedUrl]: true,
+      captureId: ident(CAPTURE_UUID)
     }
+    expect(asPackagedApp(() => context(poisoned))).toEqual({ captureId: CAPTURE_UUID })
   })
 
   it('rejects a disallowed context key at compile time', () => {
     // @ts-expect-error - 'capturedUrl' is not a member of LogContextKey
     const bad: LogContext = { capturedUrl: ident('x') }
     expect(bad).toBeTruthy()
+  })
+
+  it('is not a general-purpose cast from raw string to log-safe', () => {
+    // The whole point of the branding: written as a literal,
+    // `const c: LogContext = { caseId: capture.caseName }` is a compile error.
+    // Routing the same thing through context() must not launder it.
+    const caseName = 'Operation Blackbird'
+    expect(() => {
+      // @ts-expect-error - a raw string is not a LogValue
+      context({ caseId: caseName, bytes: 4096 })
+    }).toThrow()
+  })
+
+  it('rejects an unbranded string value built dynamically, where no compile-time check ran', () => {
+    // A cast (or plain JS) defeats the parameter type, so the runtime net has
+    // to catch it too. A case name fails IDENT on its space.
+    const dynamic = { caseId: 'Operation Blackbird' } as unknown as Record<string, LogValue>
+    expect(() => context(dynamic)).toThrow()
+  })
+
+  it('never echoes the disallowed value in the thrown error', () => {
+    const dynamic = { caseId: 'Operation Blackbird' } as unknown as Record<string, LogValue>
+    let thrown: unknown = null
+    try {
+      context(dynamic)
+    } catch (err) {
+      thrown = err
+    }
+    expect(thrown).toBeInstanceOf(Error)
+    expect(String(thrown)).not.toContain('Blackbird')
+  })
+
+  it('rejects a value that is neither a primitive nor a string', () => {
+    const dynamic = { bytes: { toString: () => 'Operation Blackbird' } } as unknown as Record<
+      string,
+      LogValue
+    >
+    expect(() => context(dynamic)).toThrow()
+  })
+
+  it('drops a disallowed value instead of throwing in a packaged app, keeping the allowed ones', () => {
+    const dynamic = { caseId: 'Operation Blackbird', bytes: 4096 } as unknown as Record<
+      string,
+      LogValue
+    >
+    expect(asPackagedApp(() => context(dynamic))).toEqual({ bytes: 4096 })
   })
 })

@@ -8,6 +8,7 @@ import {
   type CaptureStore
 } from '@main/services/captureStore'
 import { buildCsv } from '@main/services/csvEscape'
+import { parseNoteAnchor } from '@shared/noteAnchor'
 import type { DbStats, DbTableRowsParams, DbTableRowsResult, OrphanReport } from '@shared/ipc'
 
 export const ALLOWED_TABLES = [
@@ -53,6 +54,33 @@ function assertValidColumns(table: string, data: Record<string, unknown>): void 
     if (!validNames.has(key)) {
       throw new Error(`Column "${key}" does not exist on table "${table}"`)
     }
+  }
+}
+
+/**
+ * Columns whose contents the rest of the app parses rather than merely displays.
+ *
+ * Admin editing is a deliberate escape hatch, but a column holding structured
+ * JSON is different in kind from a text field: `notes.anchor_json` is parsed on
+ * every note read, so a malformed value written here does not corrupt one row,
+ * it takes out the whole notes surface. The escape hatch may set an anchor to
+ * NULL; it may not invent one this codebase cannot read back.
+ */
+const STRUCTURED_COLUMNS: Record<string, Record<string, (value: unknown) => void>> = {
+  notes: {
+    anchor_json: (value) => {
+      if (value === null || value === undefined || value === '') return
+      if (typeof value !== 'string') throw new Error('notes.anchor_json must be a string or NULL')
+      parseNoteAnchor(value)
+    }
+  }
+}
+
+function assertValidValues(table: string, data: Record<string, unknown>): void {
+  const validators = STRUCTURED_COLUMNS[table]
+  if (!validators) return
+  for (const [column, validate] of Object.entries(validators)) {
+    if (column in data) validate(data[column])
   }
 }
 
@@ -116,6 +144,7 @@ export function getTableRows(params: DbTableRowsParams): DbTableRowsResult {
 export function createRow(table: string, data: Record<string, unknown>): Record<string, unknown> {
   assertAllowedTable(table)
   assertValidColumns(table, data)
+  assertValidValues(table, data)
 
   const db = getDb()
   const keys = Object.keys(data)
@@ -139,6 +168,7 @@ export function updateRow(
   assertAllowedTable(table)
   assertValidColumns(table, pk)
   assertValidColumns(table, data)
+  assertValidValues(table, data)
   const dataKeys = Object.keys(data)
   if (dataKeys.length === 0) return false
 

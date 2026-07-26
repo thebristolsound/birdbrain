@@ -159,8 +159,10 @@ function rowToNote(row: Record<string, unknown>): Note {
     title: row.title as string,
     body: row.body as string,
     bodyDoc: (row.body_doc as string) || undefined,
-    // Safe to parse without re-validating: nothing reaches this column that
-    // did not come back out of parseNoteAnchor.
+    // Parsed without re-validating because every write path -- the two here,
+    // archive import, and Database Admin -- runs the value through
+    // parseNoteAnchor first. That is an invariant maintained by those callers,
+    // not one this function can check, so a new write path must uphold it.
     anchor: row.anchor_json ? JSON.parse(row.anchor_json as string) : undefined,
     sourceUrl: (row.source_url as string) || undefined,
     screenshotPath: (row.screenshot_path as string) || undefined,

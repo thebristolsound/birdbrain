@@ -1,0 +1,2257 @@
+# Diagnostic Logging & Tester Bug Reports Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Give Birdbrain a durable structural-only log, full crash capture, a global notification layer, and a one-click local bug-report bundle a tester can drag into chat.
+
+**Architecture:** A single logger in the main process is the only sink that writes to disk. Renderer failures reach it over IPC; a `notify` layer in the renderer subscribes to the same events and raises toasts. Log and notify are two independent switches on one boundary, so an error is durable and visible by construction. Investigation data is kept out of the log by branded types that make passing a raw string a compile error.
+
+**Tech Stack:** Electron 39, TypeScript strict, React 19, TanStack Query v5, Zustand, Vitest (via Electron runtime), Playwright, sonner (new).
+
+**Spec:** [docs/specs/2026-07-25-diagnostic-logging-design.md](../specs/2026-07-25-diagnostic-logging-design.md)
+
+## Global Constraints
+
+- Code style: **no semicolons**, single quotes, no trailing commas, 100 char print width, 2-space indent.
+- TypeScript strict mode. **No `any`** without an `// eslint-disable` and a stated reason.
+- Imports use path aliases: `@main/*`, `@shared/*`, `@renderer/*`. Relative imports across those roots fail `tests/importAliases.test.ts`.
+- `src/shared/**` must never import from `@main/*` or `@renderer/*`.
+- Renderer components use semantic theme tokens (`bg-surface`, `text-text-primary`, `border-border`, `text-text-muted`), not raw Tailwind colours. Exceptions: overlays and status/severity colours.
+- Tests run with `pnpm test` (Vitest under the Electron runtime). Lint with `pnpm lint`.
+- Commits: `<type>(<scope>): <subject>`. **Never** add `Co-authored-by`. **Never** `git add .` or `git add -A` — stage files explicitly.
+- **Nothing in this feature may perform network I/O.** No upload, endpoint, or telemetry of any kind.
+- The log must never contain URLs, page titles, case names, absolute paths, or settings values.
+- Only one new dependency is authorised: `sonner`. Do not add others.
+
+---
+
+## File Structure
+
+**New — main process**
+
+| File | Responsibility |
+|---|---|
+| `src/main/services/logSafe.ts` | Branded `LogSafe` type, `ident`/`code`/`tag` validators, `sanitizeError`. Pure, no I/O. |
+| `src/main/services/logger.ts` | The sink: buffered JSONL writes, rotation, correlation ids, renderer emit. |
+| `src/main/services/sessionLog.ts` | Session records and the unclean-exit lock. |
+| `src/main/services/bugReport.ts` | Assembles the report zip. |
+
+**New — renderer**
+
+| File | Responsibility |
+|---|---|
+| `src/renderer/lib/notify.ts` | Toast + durable-log boundary with dedup. |
+| `src/renderer/components/ErrorBoundary.tsx` | React error containment and recovery UI. |
+| `src/renderer/components/diagnostics/LogTab.tsx` | Log viewer inside DiagnosticsPanel. |
+| `src/renderer/components/diagnostics/ReportProblemDialog.tsx` | The three-field report form. |
+| `src/renderer/components/diagnostics/CrashRecoveryPrompt.tsx` | Post-crash offer on launch. |
+
+`logSafe.ts` is split from `logger.ts` deliberately: it is pure and heavily tested, while `logger.ts` owns file I/O. `sessionLog.ts` is split because lock-file lifecycle is a different responsibility from log-line writing, and it is the one piece that must work when the logger itself never got a chance to run.
+
+---
+
+# Phase 1 — The Durable Record
+
+*Value on its own: a tester can hit "Reveal log file" and send you the file.*
+
+---
+
+### Task 1: `logSafe.ts` — the redaction boundary
+
+**Files:**
+- Create: `src/main/services/logSafe.ts`
+- Test: `tests/main/services/logSafe.test.ts`
+
+**Interfaces:**
+- Consumes: `LoggedError` from `@shared/types` (created in Task 2 — if Task 2 has not landed, create that interface first).
+- Produces: `LogSafe`, `LogValue`, `LogContext` types; `ident(v)`, `code(v)`, `tag(v, allowed)`, `sanitizeError(err, homeDir?)`, `sanitizeText(text, homeDir)`.
+
+- [ ] **Step 1: Write the failing test**
+
+```typescript
+import { describe, expect, it } from 'vitest'
+import { code, ident, sanitizeError, sanitizeText, tag } from '@main/services/logSafe'
+
+describe('ident', () => {
+  it('accepts uuid-shaped ids', () => {
+    expect(ident('a1b2-c3d4_EF')).toBe('a1b2-c3d4_EF')
+  })
+
+  it('throws outside production on a value with spaces or punctuation', () => {
+    expect(() => ident('Operation Blackbird')).toThrow()
+    expect(() => ident('https://example.com/x')).toThrow()
+  })
+})
+
+describe('code', () => {
+  it('accepts screaming snake case', () => {
+    expect(code('ENOENT')).toBe('ENOENT')
+  })
+
+  it('rejects lowercase prose', () => {
+    expect(() => code('no such file')).toThrow()
+  })
+})
+
+describe('tag', () => {
+  it('accepts a member of the allowed set', () => {
+    expect(tag('mhtml', ['html', 'mhtml'])).toBe('mhtml')
+  })
+
+  it('rejects a non-member', () => {
+    expect(() => tag('example.com', ['html', 'mhtml'])).toThrow()
+  })
+})
+
+describe('sanitizeText', () => {
+  it('strips windows paths', () => {
+    const out = sanitizeText(String.raw`open 'C:\Users\matt\cases\x.mhtml'`, String.raw`C:\Users\matt`)
+    expect(out).not.toContain('matt')
+    expect(out).toContain('‹path›')
+  })
+
+  it('strips posix paths', () => {
+    const out = sanitizeText('open /home/matt/cases/x.mhtml failed', '/home/matt')
+    expect(out).not.toContain('matt')
+    expect(out).toContain('‹path›')
+  })
+
+  it('strips urls', () => {
+    const out = sanitizeText('fetch https://target.example/page?q=1 failed', '/home/matt')
+    expect(out).not.toContain('target.example')
+    expect(out).toContain('‹url›')
+  })
+})
+
+describe('sanitizeError', () => {
+  it('keeps name and code but scrubs the message', () => {
+    const err = Object.assign(new Error(String.raw`ENOENT: open 'C:\Users\matt\a.mhtml'`), {
+      code: 'ENOENT'
+    })
+    const out = sanitizeError(err, String.raw`C:\Users\matt`)
+    expect(out.name).toBe('Error')
+    expect(out.code).toBe('ENOENT')
+    expect(out.message).not.toContain('matt')
+  })
+
+  it('caps the stack at 20 frames', () => {
+    const err = new Error('boom')
+    err.stack = ['Error: boom', ...Array.from({ length: 40 }, (_, i) => `    at f${i} (/a/b.js:1:1)`)].join('\n')
+    const out = sanitizeError(err, '/home/matt')
+    expect((out.stack ?? '').split('\n').length).toBeLessThanOrEqual(21)
+  })
+
+  it('handles a thrown non-Error', () => {
+    const out = sanitizeError('just a string', '/home/matt')
+    expect(out.name).toBe('UnknownError')
+    expect(out.code).toBeNull()
+  })
+})
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `pnpm test -- logSafe`
+Expected: FAIL — cannot resolve `@main/services/logSafe`.
+
+- [ ] **Step 3: Write the implementation**
+
+```typescript
+import { homedir } from 'node:os'
+import type { LoggedError } from '@shared/types'
+
+// The redaction boundary. Birdbrain logs are handed to the maintainer in bug
+// reports, and captures are real investigation material, so URLs, case names
+// and paths must never reach disk. LogSafe is branded: a raw string is a
+// COMPILE error at every logger call site, and the validators below are the
+// runtime second net.
+
+declare const logSafeBrand: unique symbol
+export type LogSafe = string & { readonly [logSafeBrand]: true }
+
+export type LogValue = number | boolean | null | LogSafe
+export type LogContext = Record<string, LogValue>
+
+const IDENT = /^[A-Za-z0-9_-]{1,64}$/
+const CODE = /^[A-Z][A-Z0-9_]{0,47}$/
+const MAX_STACK_FRAMES = 20
+
+function brand(value: string): LogSafe {
+  return value as LogSafe
+}
+
+// Loud in dev so a bad call site is caught in review; inert in production so a
+// logging mistake can never crash a tester's app. The offending value is never
+// echoed — that would defeat the point of rejecting it.
+function reject(kind: string): LogSafe {
+  if (process.env.NODE_ENV !== 'production') {
+    throw new Error(`logSafe.${kind}: value failed validation and was not logged`)
+  }
+  return brand('[invalid]')
+}
+
+export function ident(value: string): LogSafe {
+  return IDENT.test(value) ? brand(value) : reject('ident')
+}
+
+export function code(value: string): LogSafe {
+  return CODE.test(value) ? brand(value) : reject('code')
+}
+
+export function tag(value: string, allowed: readonly string[]): LogSafe {
+  return allowed.includes(value) ? brand(value) : reject('tag')
+}
+
+// Node embeds absolute paths in error messages ("ENOENT: ... open 'C:\Users\...'"),
+// so errors are the one place branded types cannot reach. Order matters: URLs are
+// replaced first because they contain '//' that the posix path pattern would
+// otherwise chew into.
+const URL_LIKE = /\b[a-z][a-z0-9+.-]*:\/\/\S+/gi
+const WIN_PATH = /[A-Za-z]:\\[^\s'"()]+/g
+const POSIX_PATH = /(?<![\w-])\/(?:[\w.-]+\/)+[\w.-]*/g
+
+export function sanitizeText(text: string, homeDir: string): string {
+  let out = text
+  if (homeDir) out = out.split(homeDir).join('‹home›')
+  out = out.replace(URL_LIKE, '‹url›')
+  out = out.replace(WIN_PATH, '‹path›')
+  out = out.replace(POSIX_PATH, '‹path›')
+  return out
+}
+
+export function sanitizeError(err: unknown, homeDir: string = homedir()): LoggedError {
+  if (!(err instanceof Error)) {
+    return {
+      name: 'UnknownError',
+      code: null,
+      message: sanitizeText(String(err), homeDir),
+      stack: null
+    }
+  }
+
+  const raw = (err as { code?: unknown }).code
+  const errCode = typeof raw === 'string' && CODE.test(raw) ? raw : null
+
+  const stack = err.stack
+    ? sanitizeText(err.stack, homeDir).split('\n').slice(0, MAX_STACK_FRAMES + 1).join('\n')
+    : null
+
+  return {
+    name: err.name,
+    code: errCode,
+    message: sanitizeText(err.message, homeDir),
+    stack
+  }
+}
+```
+
+- [ ] **Step 4: Run the test to verify it passes**
+
+Run: `pnpm test -- logSafe`
+Expected: PASS, all cases.
+
+- [ ] **Step 5: Lint and commit**
+
+```bash
+pnpm lint
+git add src/main/services/logSafe.ts tests/main/services/logSafe.test.ts
+git commit -m "feat(logging): branded log-safe types and error sanitizer"
+```
+
+---
+
+### Task 2: Shared contracts — types and IPC channels
+
+Land this before Tasks 3–15; every later task imports from it. It is deliberately one task so the contracts are pinned in a single reviewable commit and parallel work cannot conflict over these four files.
+
+**Files:**
+- Modify: `src/shared/types.ts` (append after the `DiagnosticsSnapshot` block, around line 285)
+- Modify: `src/shared/ipc.ts` (Diagnostics section around line 121, Events section around line 130)
+
+**Interfaces:**
+- Produces: `LogLevel`, `LoggedError`, `LogEntry`, `SessionRecord`, `BugReportInput`, `BugReportResult`; channels `DIAGNOSTICS_LOG`, `DIAGNOSTICS_REVEAL_LOG`, `DIAGNOSTICS_CREATE_REPORT`, `DIAGNOSTICS_LAST_SESSION`, `LOG_ENTRY`.
+
+- [ ] **Step 1: Add the types**
+
+Append to `src/shared/types.ts`:
+
+```typescript
+// Diagnostic logging. Entries are structural only — see logSafe.ts for the
+// boundary that keeps investigation data (URLs, case names, paths) out of them.
+export type LogLevel = 'error' | 'warn' | 'info'
+
+export interface LoggedError {
+  name: string
+  code: string | null
+  message: string
+  stack: string | null
+}
+
+export interface LogEntry {
+  id: string
+  sessionId: string
+  timestamp: string
+  level: LogLevel
+  source: string
+  message: string
+  context?: Record<string, string | number | boolean | null>
+  error?: LoggedError
+}
+
+// One record per app launch. cleanExit flips to true only in before-quit, so a
+// record left false is how a crash or power loss becomes visible next launch.
+export interface SessionRecord {
+  sessionId: string
+  startedAt: string
+  endedAt: string | null
+  version: string
+  platform: string
+  installFormat: string
+  cleanExit: boolean
+}
+
+export interface BugReportInput {
+  whatYouDid: string
+  whatYouExpected: string
+  whatHappened: string
+  correlationId?: string
+}
+
+export interface BugReportResult {
+  path: string
+}
+```
+
+- [ ] **Step 2: Add the IPC channels**
+
+In `src/shared/ipc.ts`, replace the Diagnostics section:
+
+```typescript
+  // Diagnostics
+  DIAGNOSTICS_GET: 'diagnostics:get',
+  DIAGNOSTICS_LOG: 'diagnostics:log',
+  DIAGNOSTICS_REVEAL_LOG: 'diagnostics:revealLog',
+  DIAGNOSTICS_CREATE_REPORT: 'diagnostics:createReport',
+  DIAGNOSTICS_LAST_SESSION: 'diagnostics:lastSession',
+```
+
+And add to the events block, after `CAPTURE_ACTIVITY`:
+
+```typescript
+  LOG_ENTRY: 'event:logEntry',
+```
+
+- [ ] **Step 3: Verify the project still typechecks and lints**
+
+Run: `pnpm lint`
+Expected: no errors. Types are additive, so nothing should break.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/shared/types.ts src/shared/ipc.ts
+git commit -m "feat(logging): shared log entry types and diagnostics ipc channels"
+```
+
+---
+
+### Task 3: `sessionLog.ts` — sessions and unclean-exit detection
+
+**Files:**
+- Create: `src/main/services/sessionLog.ts`
+- Test: `tests/main/services/sessionLog.test.ts`
+
+**Interfaces:**
+- Consumes: `SessionRecord` from `@shared/types`.
+- Produces: `startSession(logDir, info)` → `SessionRecord`; `markCleanExit(logDir)`; `readSessions(logDir)` → `SessionRecord[]`; `lastUncleanSession(logDir)` → `SessionRecord | null`.
+
+- [ ] **Step 1: Write the failing test**
+
+```typescript
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import {
+  lastUncleanSession,
+  markCleanExit,
+  readSessions,
+  startSession
+} from '@main/services/sessionLog'
+
+const INFO = { version: '1.0.0', platform: 'win32', installFormat: 'nsis' }
+
+let dir: string
+
+beforeEach(() => {
+  dir = mkdtempSync(join(tmpdir(), 'bb-session-'))
+})
+
+afterEach(() => {
+  rmSync(dir, { recursive: true, force: true })
+})
+
+describe('sessionLog', () => {
+  it('records a session that starts', () => {
+    const rec = startSession(dir, INFO)
+    expect(rec.cleanExit).toBe(false)
+    expect(readSessions(dir)).toHaveLength(1)
+  })
+
+  it('reports no unclean session after a clean quit', () => {
+    startSession(dir, INFO)
+    markCleanExit(dir)
+    startSession(dir, INFO)
+    expect(lastUncleanSession(dir)).toBeNull()
+  })
+
+  it('reports the previous session as unclean when the lock survived', () => {
+    const first = startSession(dir, INFO)
+    // No markCleanExit — simulates a crash or power loss.
+    startSession(dir, INFO)
+    expect(lastUncleanSession(dir)?.sessionId).toBe(first.sessionId)
+  })
+
+  it('never reports the current session as unclean', () => {
+    startSession(dir, INFO)
+    expect(lastUncleanSession(dir)).toBeNull()
+  })
+
+  it('caps stored sessions at 20', () => {
+    for (let i = 0; i < 25; i++) {
+      startSession(dir, INFO)
+      markCleanExit(dir)
+    }
+    expect(readSessions(dir)).toHaveLength(20)
+  })
+
+  it('recovers from a corrupt sessions file', () => {
+    startSession(dir, INFO)
+    require('node:fs').writeFileSync(join(dir, 'sessions.json'), '{ not json')
+    expect(() => startSession(dir, INFO)).not.toThrow()
+    expect(readSessions(dir)).toHaveLength(1)
+  })
+})
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `pnpm test -- sessionLog`
+Expected: FAIL — cannot resolve `@main/services/sessionLog`.
+
+- [ ] **Step 3: Write the implementation**
+
+```typescript
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
+import type { SessionRecord } from '@shared/types'
+
+// A launch writes session.lock and clears it in before-quit. A lock that is
+// still present at the next launch is the ONLY signal for an OOM kill or power
+// loss — no JS handler observes those — so this drives the crash prompt.
+
+const SESSIONS_FILE = 'sessions.json'
+const LOCK_FILE = 'session.lock'
+const MAX_SESSIONS = 20
+
+export interface SessionInfo {
+  version: string
+  platform: string
+  installFormat: string
+}
+
+let currentSessionId = ''
+
+function sessionsPath(logDir: string): string {
+  return join(logDir, SESSIONS_FILE)
+}
+
+function lockPath(logDir: string): string {
+  return join(logDir, LOCK_FILE)
+}
+
+export function readSessions(logDir: string): SessionRecord[] {
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(sessionsPath(logDir), 'utf8'))
+    return Array.isArray(parsed) ? (parsed as SessionRecord[]) : []
+  } catch {
+    // Missing or corrupt: a diagnostics file must never block startup.
+    return []
+  }
+}
+
+function writeSessions(logDir: string, records: SessionRecord[]): void {
+  writeFileSync(sessionsPath(logDir), JSON.stringify(records.slice(-MAX_SESSIONS), null, 2))
+}
+
+export function startSession(logDir: string, info: SessionInfo): SessionRecord {
+  mkdirSync(logDir, { recursive: true })
+
+  const record: SessionRecord = {
+    sessionId: randomUUID(),
+    startedAt: new Date().toISOString(),
+    endedAt: null,
+    version: info.version,
+    platform: info.platform,
+    installFormat: info.installFormat,
+    cleanExit: false
+  }
+
+  currentSessionId = record.sessionId
+  writeSessions(logDir, [...readSessions(logDir), record])
+  writeFileSync(lockPath(logDir), record.sessionId)
+  return record
+}
+
+export function markCleanExit(logDir: string): void {
+  const records = readSessions(logDir)
+  const current = records.find((r) => r.sessionId === currentSessionId)
+  if (current) {
+    current.cleanExit = true
+    current.endedAt = new Date().toISOString()
+    writeSessions(logDir, records)
+  }
+  rmSync(lockPath(logDir), { force: true })
+}
+
+export function lastUncleanSession(logDir: string): SessionRecord | null {
+  const unclean = readSessions(logDir)
+    .filter((r) => !r.cleanExit && r.sessionId !== currentSessionId)
+    .pop()
+  return unclean ?? null
+}
+
+export function currentSession(): string {
+  return currentSessionId
+}
+```
+
+Note on the lock file: `startSession` overwrites it unconditionally. The unclean signal is carried by the *record* whose `cleanExit` stayed false, which is why `lastUncleanSession` reads records rather than the lock. The lock exists so a future `startSession` can be certain a previous run never reached `before-quit`, and so the file is visible to a human inspecting the folder.
+
+- [ ] **Step 4: Run the test to verify it passes**
+
+Run: `pnpm test -- sessionLog`
+Expected: PASS.
+
+- [ ] **Step 5: Lint and commit**
+
+```bash
+pnpm lint
+git add src/main/services/sessionLog.ts tests/main/services/sessionLog.test.ts
+git commit -m "feat(logging): session records and unclean-exit detection"
+```
+
+---
+
+### Task 4: `logger.ts` — the sink
+
+**Files:**
+- Create: `src/main/services/logger.ts`
+- Test: `tests/main/services/logger.test.ts`
+
+**Interfaces:**
+- Consumes: `LogContext`, `sanitizeError` from `@main/services/logSafe`; `LogEntry`, `LogLevel` from `@shared/types`.
+- Produces: `createLogger(deps)` → `Logger`; module singleton `logger` with `error/warn/info` returning a correlation id string, plus `initLogger(userDataPath, sessionId)`, `setMainWindow(win)`, `flushSync()`, `getLogPath()`, `getLogDir()`.
+
+- [ ] **Step 1: Write the failing test**
+
+```typescript
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { createLogger } from '@main/services/logger'
+import { code, ident } from '@main/services/logSafe'
+import type { LogEntry } from '@shared/types'
+
+let dir: string
+
+beforeEach(() => {
+  dir = mkdtempSync(join(tmpdir(), 'bb-logger-'))
+})
+
+afterEach(() => {
+  rmSync(dir, { recursive: true, force: true })
+})
+
+function lines(logDir: string): LogEntry[] {
+  return readFileSync(join(logDir, 'birdbrain.log'), 'utf8')
+    .split('\n')
+    .filter(Boolean)
+    .map((l) => JSON.parse(l) as LogEntry)
+}
+
+describe('logger', () => {
+  it('writes a json line per entry after flush', () => {
+    const log = createLogger({ logDir: dir, sessionId: 's1' })
+    log.info('captureServer', 'server started', { port: 19845 })
+    log.flushSync()
+
+    const [entry] = lines(dir)
+    expect(entry.level).toBe('info')
+    expect(entry.source).toBe('captureServer')
+    expect(entry.message).toBe('server started')
+    expect(entry.context).toEqual({ port: 19845 })
+    expect(entry.sessionId).toBe('s1')
+  })
+
+  it('returns a correlation id that matches the written entry', () => {
+    const log = createLogger({ logDir: dir, sessionId: 's1' })
+    const id = log.error('ipc', 'handler threw')
+    log.flushSync()
+    expect(lines(dir)[0].id).toBe(id)
+  })
+
+  it('stores branded context values as plain strings', () => {
+    const log = createLogger({ logDir: dir, sessionId: 's1' })
+    log.warn('captureServer', 'screenshot dropped', {
+      captureId: ident('abc-123'),
+      reason: code('TOO_LARGE')
+    })
+    log.flushSync()
+    expect(lines(dir)[0].context).toEqual({ captureId: 'abc-123', reason: 'TOO_LARGE' })
+  })
+
+  it('sanitizes an attached error', () => {
+    const log = createLogger({ logDir: dir, sessionId: 's1' })
+    log.error('storage', 'write failed', undefined, new Error('open /home/tester/case/a.mhtml'))
+    log.flushSync()
+    const { error } = lines(dir)[0]
+    expect(error?.message).not.toContain('tester')
+    expect(error?.name).toBe('Error')
+  })
+
+  it('emits each entry to the renderer callback', () => {
+    const seen: LogEntry[] = []
+    const log = createLogger({ logDir: dir, sessionId: 's1', emit: (e) => seen.push(e) })
+    log.info('app', 'ready')
+    expect(seen).toHaveLength(1)
+    expect(seen[0].message).toBe('ready')
+  })
+
+  it('rotates when the file exceeds the limit and keeps one backup', () => {
+    const log = createLogger({ logDir: dir, sessionId: 's1', maxBytes: 1024 })
+    for (let i = 0; i < 200; i++) log.info('app', `entry ${i} ${'x'.repeat(50)}`)
+    log.flushSync()
+
+    expect(statSync(join(dir, 'birdbrain.log.1')).size).toBeGreaterThan(0)
+    expect(statSync(join(dir, 'birdbrain.log')).size).toBeLessThan(2048)
+  })
+
+  it('flushes buffered entries when the buffer fills without an explicit flush', () => {
+    const log = createLogger({ logDir: dir, sessionId: 's1', maxBuffer: 4 })
+    for (let i = 0; i < 4; i++) log.info('app', `entry ${i}`)
+    expect(lines(dir)).toHaveLength(4)
+  })
+
+  it('survives an unwritable log directory', () => {
+    const log = createLogger({ logDir: join(dir, 'nested', 'deep'), sessionId: 's1' })
+    expect(() => {
+      log.error('app', 'still fine')
+      log.flushSync()
+    }).not.toThrow()
+  })
+})
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `pnpm test -- logger`
+Expected: FAIL — cannot resolve `@main/services/logger`.
+
+- [ ] **Step 3: Write the implementation**
+
+```typescript
+import { appendFileSync, existsSync, mkdirSync, renameSync, statSync } from 'node:fs'
+import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
+import type { BrowserWindow } from 'electron'
+import { IPC_CHANNELS } from '@shared/ipc'
+import type { LogEntry, LogLevel } from '@shared/types'
+import { sanitizeError, type LogContext } from '@main/services/logSafe'
+
+// The single durable sink. Writes are buffered and flushed on a timer so
+// per-entry sync I/O never lands on the main-process event loop that
+// diagnostics.ts is measuring for stalls — but flushSync() is exposed because
+// an uncaughtException handler will not survive an async flush.
+
+const LOG_FILE = 'birdbrain.log'
+const BACKUP_FILE = 'birdbrain.log.1'
+const MAX_BYTES = 2 * 1024 * 1024
+const MAX_BUFFER = 32
+const FLUSH_MS = 1000
+
+export interface LoggerDeps {
+  logDir: string
+  sessionId: string
+  emit?: (entry: LogEntry) => void
+  maxBytes?: number
+  maxBuffer?: number
+}
+
+export interface Logger {
+  error(source: string, message: string, context?: LogContext, err?: unknown): string
+  warn(source: string, message: string, context?: LogContext, err?: unknown): string
+  info(source: string, message: string, context?: LogContext, err?: unknown): string
+  flushSync(): void
+  logPath(): string
+  dispose(): void
+}
+
+export function createLogger(deps: LoggerDeps): Logger {
+  const maxBytes = deps.maxBytes ?? MAX_BYTES
+  const maxBuffer = deps.maxBuffer ?? MAX_BUFFER
+  const path = join(deps.logDir, LOG_FILE)
+  let buffer: string[] = []
+  let timer: ReturnType<typeof setInterval> | null = null
+
+  function rotateIfNeeded(): void {
+    try {
+      if (existsSync(path) && statSync(path).size > maxBytes) {
+        renameSync(path, join(deps.logDir, BACKUP_FILE))
+      }
+    } catch {
+      /* rotation is best-effort; never block a write */
+    }
+  }
+
+  function flushSync(): void {
+    if (buffer.length === 0) return
+    const payload = buffer.join('')
+    buffer = []
+    try {
+      mkdirSync(deps.logDir, { recursive: true })
+      rotateIfNeeded()
+      appendFileSync(path, payload)
+    } catch {
+      // A tester with an unwritable userData must still get a working app.
+    }
+  }
+
+  function write(level: LogLevel, source: string, message: string, context?: LogContext, err?: unknown): string {
+    const entry: LogEntry = {
+      id: randomUUID().slice(0, 8),
+      sessionId: deps.sessionId,
+      timestamp: new Date().toISOString(),
+      level,
+      source,
+      message,
+      ...(context ? { context: context as Record<string, string | number | boolean | null> } : {}),
+      ...(err === undefined ? {} : { error: sanitizeError(err) })
+    }
+
+    buffer.push(`${JSON.stringify(entry)}\n`)
+
+    if (!timer) {
+      timer = setInterval(flushSync, FLUSH_MS)
+      timer.unref?.()
+    }
+    if (buffer.length >= maxBuffer) flushSync()
+
+    try {
+      deps.emit?.(entry)
+    } catch {
+      /* a dead renderer must not break logging */
+    }
+
+    return entry.id
+  }
+
+  return {
+    error: (s, m, c, e) => write('error', s, m, c, e),
+    warn: (s, m, c, e) => write('warn', s, m, c, e),
+    info: (s, m, c, e) => write('info', s, m, c, e),
+    flushSync,
+    logPath: () => path,
+    dispose: () => {
+      if (timer) clearInterval(timer)
+      timer = null
+      flushSync()
+    }
+  }
+}
+
+// --- Module singleton -------------------------------------------------------
+// Crash handlers register before app.whenReady(), so every method must be safe
+// to call before initLogger() has run.
+
+let instance: Logger | null = null
+let mainWindow: BrowserWindow | null = null
+let logDir = ''
+
+export function initLogger(userDataPath: string, sessionId: string): void {
+  logDir = join(userDataPath, 'logs')
+  instance = createLogger({
+    logDir,
+    sessionId,
+    emit: (entry) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IPC_CHANNELS.LOG_ENTRY, entry)
+      }
+    }
+  })
+}
+
+export function setMainWindow(win: BrowserWindow): void {
+  mainWindow = win
+}
+
+export function getLogDir(): string {
+  return logDir
+}
+
+export function getLogPath(): string {
+  return instance ? instance.logPath() : ''
+}
+
+export function flushSync(): void {
+  instance?.flushSync()
+}
+
+export function disposeLogger(): void {
+  instance?.dispose()
+  instance = null
+}
+
+export const logger = {
+  error: (source: string, message: string, context?: LogContext, err?: unknown): string =>
+    instance ? instance.error(source, message, context, err) : '',
+  warn: (source: string, message: string, context?: LogContext, err?: unknown): string =>
+    instance ? instance.warn(source, message, context, err) : '',
+  info: (source: string, message: string, context?: LogContext, err?: unknown): string =>
+    instance ? instance.info(source, message, context, err) : ''
+}
+```
+
+- [ ] **Step 4: Run the test to verify it passes**
+
+Run: `pnpm test -- logger`
+Expected: PASS.
+
+- [ ] **Step 5: Lint and commit**
+
+```bash
+pnpm lint
+git add src/main/services/logger.ts tests/main/services/logger.test.ts
+git commit -m "feat(logging): buffered jsonl logger with rotation and correlation ids"
+```
+
+---
+
+### Task 5: Crash handlers, startup wiring, and clean-exit marking
+
+**Files:**
+- Modify: `src/main/index.ts` (register handlers before `app.whenReady()` around line 163; init inside `whenReady` after `initInstallationId`; extend `before-quit` at line 269)
+
+**Interfaces:**
+- Consumes: `initLogger`, `logger`, `flushSync`, `disposeLogger`, `setMainWindow` from `@main/services/logger`; `startSession`, `markCleanExit` from `@main/services/sessionLog`.
+- Produces: nothing new for later tasks.
+
+- [ ] **Step 1: Register crash handlers before `app.whenReady()`**
+
+Add near the top of `src/main/index.ts`, after the imports and before `app.whenReady()`:
+
+```typescript
+// Registered before whenReady so a failure during startup is still captured.
+// logger.* is a no-op until initLogger runs, which is safe by construction.
+process.on('uncaughtException', (err) => {
+  logger.error('app', 'uncaught exception', undefined, err)
+  flushSync()
+  dialog.showErrorBox(
+    'Birdbrain encountered a fatal error',
+    'The app must close. A diagnostic log has been saved — you can attach it to a bug report from Settings → Diagnostics after restarting.'
+  )
+  app.exit(1)
+})
+
+process.on('unhandledRejection', (reason) => {
+  logger.error('app', 'unhandled rejection', undefined, reason)
+  flushSync()
+})
+
+app.on('render-process-gone', (_event, _contents, details) => {
+  logger.error('app', 'render process gone', {
+    reason: tag(details.reason, RENDER_GONE_REASONS),
+    exitCode: details.exitCode
+  })
+  flushSync()
+})
+
+app.on('child-process-gone', (_event, details) => {
+  logger.error('app', 'child process gone', {
+    processType: ident(details.type),
+    reason: ident(details.reason)
+  })
+  flushSync()
+})
+```
+
+Add the reason constant near the top of the file:
+
+```typescript
+const RENDER_GONE_REASONS = [
+  'clean-exit',
+  'abnormal-exit',
+  'killed',
+  'crashed',
+  'oom',
+  'launch-failed',
+  'integrity-failure'
+] as const
+```
+
+Imports to add:
+
+```typescript
+import { flushSync, initLogger, logger, setMainWindow as setLoggerWindow } from '@main/services/logger'
+import { ident, tag } from '@main/services/logSafe'
+import { markCleanExit, startSession } from '@main/services/sessionLog'
+```
+
+`dialog` must be added to the existing `electron` import if not already present.
+
+- [ ] **Step 2: Initialise the logger inside `whenReady`**
+
+In `app.whenReady().then(async () => {`, immediately after `initInstallationId(userDataPath)`:
+
+```typescript
+    const session = startSession(join(userDataPath, 'logs'), {
+      version: app.getVersion(),
+      platform: process.platform,
+      installFormat: app.isPackaged ? process.platform : 'dev'
+    })
+    initLogger(userDataPath, session.sessionId)
+    logger.info('app', 'session started', {
+      version: ident(app.getVersion().replace(/\./g, '-')),
+      packaged: app.isPackaged
+    })
+```
+
+Then find where the main `BrowserWindow` is created (around line 35) and, wherever `setMainWindow` is already called for the capture server, add:
+
+```typescript
+    setLoggerWindow(win)
+```
+
+- [ ] **Step 3: Mark a clean exit**
+
+Extend the existing `before-quit` handler at line 269:
+
+```typescript
+  app.on('before-quit', async () => {
+    stopExtensionConnectionCheck()
+    updaterService?.dispose()
+    await stopCaptureServer()
+    closeDatabase()
+    markCleanExit(join(process.env.BIRDBRAIN_USER_DATA || app.getPath('userData'), 'logs'))
+    disposeLogger()
+  })
+```
+
+Add `disposeLogger` to the logger import.
+
+- [ ] **Step 4: Verify manually**
+
+Run: `pnpm build`
+Expected: build succeeds.
+
+Then run `pnpm dev`, let the app start, quit it cleanly, and confirm `userData/logs/birdbrain.log` contains a `session started` line and that `session.lock` is **absent** after quitting.
+
+Report the actual file contents. If `session.lock` is still present after a clean quit, the `before-quit` wiring is wrong — fix before committing.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/main/index.ts
+git commit -m "feat(logging): crash handlers and session lifecycle wiring"
+```
+
+---
+
+### Task 6: IPC handlers and the preload bridge
+
+**Files:**
+- Modify: `src/main/ipcHandlers.ts` (near the existing `DIAGNOSTICS_GET` handler at line 611)
+- Modify: `src/preload/index.ts` (extend the `diagnostics` object at line 270; add `onLogEntry` beside `onCaptureActivity` at line 371)
+- Modify: `src/renderer/env.d.ts` (extend `diagnostics` at line 171)
+
+**Interfaces:**
+- Consumes: `getLogPath`, `logger` from `@main/services/logger`; `lastUncleanSession` from `@main/services/sessionLog`.
+- Produces: `window.birdbrain.diagnostics.log(entry)` → `Promise<string>`, `.revealLog()` → `Promise<void>`, `.lastSession()` → `Promise<SessionRecord | null>`, and `window.birdbrain.onLogEntry(cb)` → unsubscribe function. `createReport` is added in Task 13.
+
+- [ ] **Step 1: Add the main-process handlers**
+
+In `src/main/ipcHandlers.ts`, after the existing `DIAGNOSTICS_GET` registration:
+
+```typescript
+  // Renderer-side failures join the same durable log as main-process ones.
+  // The renderer cannot pass branded context, so only level/source/message
+  // cross the boundary — everything structural is added on this side.
+  ipcMain.handle(
+    IPC_CHANNELS.DIAGNOSTICS_LOG,
+    (_e, payload: { level: LogLevel; source: string; message: string; error?: string }) => {
+      const level = payload.level === 'error' || payload.level === 'warn' ? payload.level : 'info'
+      const source = `renderer:${payload.source}`
+      return logger[level](source, payload.message, undefined, payload.error)
+    }
+  )
+
+  ipcMain.handle(IPC_CHANNELS.DIAGNOSTICS_REVEAL_LOG, () => {
+    const path = getLogPath()
+    if (path) shell.showItemInFolder(path)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.DIAGNOSTICS_LAST_SESSION, () => lastUncleanSession(getLogDir()))
+```
+
+Imports to add:
+
+```typescript
+import { getLogDir, getLogPath, logger } from '@main/services/logger'
+import { lastUncleanSession } from '@main/services/sessionLog'
+import type { LogLevel } from '@shared/types'
+```
+
+- [ ] **Step 2: Extend the preload bridge**
+
+Replace the `diagnostics` object in `src/preload/index.ts`:
+
+```typescript
+  diagnostics: {
+    get: (): Promise<DiagnosticsSnapshot> => ipcRenderer.invoke(IPC_CHANNELS.DIAGNOSTICS_GET),
+    log: (payload: {
+      level: LogLevel
+      source: string
+      message: string
+      error?: string
+    }): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, payload),
+    revealLog: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.DIAGNOSTICS_REVEAL_LOG),
+    lastSession: (): Promise<SessionRecord | null> =>
+      ipcRenderer.invoke(IPC_CHANNELS.DIAGNOSTICS_LAST_SESSION)
+  },
+```
+
+And add beside `onCaptureActivity`:
+
+```typescript
+  onLogEntry: (callback: (entry: LogEntry) => void) => {
+    const handler = (_: unknown, entry: LogEntry) => callback(entry)
+    ipcRenderer.on(IPC_CHANNELS.LOG_ENTRY, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.LOG_ENTRY, handler)
+  },
+```
+
+Add `LogEntry`, `LogLevel`, `SessionRecord` to the existing `@shared/types` type import.
+
+- [ ] **Step 3: Mirror the types in `env.d.ts`**
+
+```typescript
+  diagnostics: {
+    get(): Promise<DiagnosticsSnapshot>
+    log(payload: { level: LogLevel; source: string; message: string; error?: string }): Promise<string>
+    revealLog(): Promise<void>
+    lastSession(): Promise<SessionRecord | null>
+  }
+```
+
+And in the event-listener section of the same interface:
+
+```typescript
+  onLogEntry(callback: (entry: LogEntry) => void): () => void
+```
+
+Add `LogEntry`, `LogLevel`, `SessionRecord` to the type import at line 31.
+
+- [ ] **Step 4: Verify**
+
+Run: `pnpm lint && pnpm test && pnpm build`
+Expected: all pass. Report actual output.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/main/ipcHandlers.ts src/preload/index.ts src/renderer/env.d.ts
+git commit -m "feat(logging): diagnostics log ipc handlers and preload bridge"
+```
+
+---
+
+### Task 7: Migrate main-process `console.*` calls
+
+Twelve files carry `console.*` today. Each becomes a `logger.*` call with a source tag. This task is mechanical but must respect the branded-context rule: **any value you are tempted to interpolate into the message is probably unsafe**. Paths, URLs and case names go in the attached error (where `sanitizeError` scrubs them) or are dropped entirely.
+
+**Files:**
+- Modify: `src/main/index.ts`, `src/main/ipcHandlers.ts`, `src/main/services/captureServer.ts`, `captureLifecycle.ts`, `backgroundRenderer.ts`, `ai/openrouter.ts`, `serverToken.ts`, `settings.ts`, `thumbnails.ts`, `selectorLifecycle.ts`, `consentBlocker.ts`, `timestampWorker.ts`
+- Test: `tests/main/noConsole.test.ts`
+
+**Interfaces:**
+- Consumes: `logger` from `@main/services/logger`; `ident`, `code`, `tag` from `@main/services/logSafe`.
+
+- [ ] **Step 1: Write the failing guard test**
+
+```typescript
+import { describe, expect, it } from 'vitest'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { join } from 'node:path'
+
+const MAIN_DIR = join(__dirname, '..', '..', 'src', 'main')
+const CONSOLE_CALL = /\bconsole\.(log|warn|error|info|debug)\s*\(/
+
+function tsFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((entry) => {
+    const full = join(dir, entry)
+    if (statSync(full).isDirectory()) return tsFiles(full)
+    return full.endsWith('.ts') ? [full] : []
+  })
+}
+
+describe('main process logging', () => {
+  it('routes every diagnostic through the logger, never console', () => {
+    const offenders = tsFiles(MAIN_DIR).filter((f) => CONSOLE_CALL.test(readFileSync(f, 'utf8')))
+    expect(offenders).toEqual([])
+  })
+})
+```
+
+This guard is the real deliverable — it stops the 47th `console.log` from being added next month.
+
+- [ ] **Step 2: Run it to verify it fails**
+
+Run: `pnpm test -- noConsole`
+Expected: FAIL, listing the 12 files.
+
+- [ ] **Step 3: Migrate each file**
+
+Work through the offenders the test names. The source tag is the module name. Worked example — `src/main/index.ts` currently has:
+
+```typescript
+      console.warn(
+        `Failed to initialize storage at "${capturesDir}", falling back to default:`,
+        err
+      )
+```
+
+`capturesDir` is an absolute path and must not be interpolated. It becomes:
+
+```typescript
+      logger.warn('app', 'storage init failed, falling back to default', undefined, err)
+```
+
+Apply the same shape elsewhere:
+
+| File | Source tag |
+|---|---|
+| `src/main/index.ts` | `'app'` |
+| `src/main/ipcHandlers.ts` | `'ipc'` |
+| `src/main/services/captureServer.ts` | `'captureServer'` |
+| `src/main/services/captureLifecycle.ts` | `'captureLifecycle'` |
+| `src/main/services/backgroundRenderer.ts` | `'backgroundRenderer'` |
+| `src/main/services/ai/openrouter.ts` | `'openrouter'` |
+| `src/main/services/serverToken.ts` | `'serverToken'` |
+| `src/main/services/settings.ts` | `'settings'` |
+| `src/main/services/thumbnails.ts` | `'thumbnails'` |
+| `src/main/services/selectorLifecycle.ts` | `'selectorLifecycle'` |
+| `src/main/services/consentBlocker.ts` | `'consentBlocker'` |
+| `src/main/services/timestampWorker.ts` | `'timestampWorker'` |
+
+Rules:
+- `console.error(msg, err)` → `logger.error(tag, msg, undefined, err)`
+- `console.warn(msg)` → `logger.warn(tag, msg)`
+- `console.log(msg)` → `logger.info(tag, msg)`
+- Template literals interpolating a value: move the value into `context` with `ident()`/`code()`/`tag()` if it is structural, or drop it. **Never** interpolate a path, URL, case name or capture title.
+
+Also add `logger.error('captureServer', 'capture failed', { captureId: ident(id) })` alongside the existing `emitCaptureEvent({ type: 'failed' })` call, and a `logger.warn` beside the screenshot-drop path, so capture failures leave a durable trace.
+
+- [ ] **Step 4: Run the guard and the full suite**
+
+Run: `pnpm test -- noConsole`
+Expected: PASS.
+
+Run: `pnpm test && pnpm lint`
+Expected: PASS. Report actual output.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/main tests/main/noConsole.test.ts
+git commit -m "refactor(logging): route main-process diagnostics through the logger"
+```
+
+---
+
+### Task 8: Log tab in DiagnosticsPanel
+
+**Files:**
+- Create: `src/renderer/components/diagnostics/LogTab.tsx`
+- Modify: `src/renderer/components/settings/DiagnosticsPanel.tsx`
+- Test: `tests/renderer/components/LogTab.test.tsx`
+
+**Interfaces:**
+- Consumes: `window.birdbrain.onLogEntry`, `window.birdbrain.diagnostics.revealLog`, `LogEntry`.
+- Produces: `<LogTab />`.
+
+- [ ] **Step 1: Write the failing test**
+
+```typescript
+import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { render, screen, fireEvent } from '@testing-library/react'
+import { LogTab } from '@renderer/components/diagnostics/LogTab'
+import type { LogEntry } from '@shared/types'
+
+function entry(over: Partial<LogEntry> = {}): LogEntry {
+  return {
+    id: 'a1',
+    sessionId: 's1',
+    timestamp: '2026-07-25T10:00:00.000Z',
+    level: 'error',
+    source: 'captureServer',
+    message: 'capture failed',
+    ...over
+  }
+}
+
+let listener: ((e: LogEntry) => void) | null = null
+
+beforeEach(() => {
+  listener = null
+  vi.stubGlobal('birdbrain', {
+    onLogEntry: (cb: (e: LogEntry) => void) => {
+      listener = cb
+      return () => {
+        listener = null
+      }
+    },
+    diagnostics: { revealLog: vi.fn() }
+  })
+})
+
+describe('LogTab', () => {
+  it('shows an empty state before any entry arrives', () => {
+    render(<LogTab />)
+    expect(screen.getByText('No log entries')).toBeTruthy()
+  })
+
+  it('renders entries pushed from main', () => {
+    render(<LogTab />)
+    listener?.(entry())
+    expect(screen.getByText('capture failed')).toBeTruthy()
+    expect(screen.getByText('captureServer')).toBeTruthy()
+  })
+
+  it('filters out a level when its chip is toggled off', () => {
+    render(<LogTab />)
+    listener?.(entry({ id: 'a1', level: 'error', message: 'boom' }))
+    listener?.(entry({ id: 'a2', level: 'info', message: 'started' }))
+
+    fireEvent.click(screen.getByRole('button', { name: /error/i }))
+    expect(screen.queryByText('boom')).toBeNull()
+    expect(screen.getByText('started')).toBeTruthy()
+  })
+
+  it('reveals the log file', () => {
+    render(<LogTab />)
+    fireEvent.click(screen.getByRole('button', { name: /reveal log file/i }))
+    expect(window.birdbrain.diagnostics.revealLog).toHaveBeenCalled()
+  })
+})
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `pnpm test -- LogTab`
+Expected: FAIL — module not found.
+
+- [ ] **Step 3: Implement**
+
+```typescript
+import { useEffect, useState } from 'react'
+import { AlertCircle, AlertTriangle, FolderOpen, Info } from 'lucide-react'
+import { Button } from '@renderer/components/ui'
+import { cn } from '@renderer/lib/utils'
+import type { LogEntry, LogLevel } from '@shared/types'
+
+const MAX_ENTRIES = 200
+const LEVELS: LogLevel[] = ['error', 'warn', 'info']
+
+const LEVEL_ICON = {
+  error: AlertCircle,
+  warn: AlertTriangle,
+  info: Info
+} as const
+
+const LEVEL_COLOR = {
+  error: 'text-red-500',
+  warn: 'text-amber-500',
+  info: 'text-text-muted'
+} as const
+
+export function LogTab() {
+  const [entries, setEntries] = useState<LogEntry[]>([])
+  const [active, setActive] = useState<LogLevel[]>(LEVELS)
+
+  useEffect(() => {
+    return window.birdbrain.onLogEntry((entry) => {
+      setEntries((prev) => [entry, ...prev].slice(0, MAX_ENTRIES))
+    })
+  }, [])
+
+  function toggle(level: LogLevel): void {
+    setActive((prev) => (prev.includes(level) ? prev.filter((l) => l !== level) : [...prev, level]))
+  }
+
+  const visible = entries.filter((e) => active.includes(e.level))
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex gap-1.5">
+          {LEVELS.map((level) => (
+            <button
+              key={level}
+              type="button"
+              onClick={() => toggle(level)}
+              className={cn(
+                'rounded-full border px-2.5 py-0.5 text-xs capitalize transition-colors',
+                active.includes(level)
+                  ? 'border-accent bg-accent/10 text-text-primary'
+                  : 'border-border text-text-muted'
+              )}
+            >
+              {level}
+            </button>
+          ))}
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="gap-1.5"
+          onClick={() => window.birdbrain.diagnostics.revealLog()}
+        >
+          <FolderOpen className="h-3.5 w-3.5" />
+          Reveal log file
+        </Button>
+      </div>
+
+      <div className="max-h-[300px] space-y-1 overflow-y-auto">
+        {visible.length === 0 ? (
+          <p className="py-6 text-center text-sm text-text-muted">No log entries</p>
+        ) : (
+          visible.map((entry) => {
+            const Icon = LEVEL_ICON[entry.level]
+            return (
+              <div key={entry.id} className="flex items-start gap-2 rounded border border-border px-2 py-1.5">
+                <Icon className={cn('mt-0.5 h-3.5 w-3.5 shrink-0', LEVEL_COLOR[entry.level])} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm text-text-primary">{entry.message}</p>
+                  <p className="text-xs text-text-muted">
+                    <span className="font-mono">{entry.source}</span>
+                    {' · '}
+                    {new Date(entry.timestamp).toLocaleTimeString()}
+                  </p>
+                </div>
+              </div>
+            )
+          })
+        )}
+      </div>
+    </div>
+  )
+}
+```
+
+Verify the `cn` import path matches the one already used in `DiagnosticsPanel.tsx`; if that file imports `cn` from elsewhere, match it.
+
+- [ ] **Step 4: Mount it in DiagnosticsPanel**
+
+Wrap the existing snapshot sections and the new tab using the `tabs` primitive already in `src/renderer/components/ui`. Keep the existing Refresh and Copy report buttons in the header, unchanged, above the tabs. The snapshot content moves under a "Snapshot" tab; `<LogTab />` goes under a "Log" tab.
+
+- [ ] **Step 5: Run tests and commit**
+
+Run: `pnpm test -- LogTab && pnpm lint`
+Expected: PASS. Report actual output.
+
+```bash
+git add src/renderer/components/diagnostics/LogTab.tsx src/renderer/components/settings/DiagnosticsPanel.tsx tests/renderer/components/LogTab.test.tsx
+git commit -m "feat(logging): log tab with level filters and reveal in diagnostics"
+```
+
+**Phase 1 is complete. The app now keeps a durable, structural-only log across restarts and captures every crash class.**
+
+---
+
+# Phase 2 — Visibility
+
+*Value on its own: the 29 silent mutation failures stop being silent.*
+
+---
+
+### Task 9: Add sonner and mount the Toaster
+
+**Files:**
+- Modify: `package.json`
+- Modify: `src/renderer/routes/__root.tsx`
+
+- [ ] **Step 1: Install**
+
+```bash
+pnpm add sonner
+```
+
+- [ ] **Step 2: Mount the Toaster**
+
+In `__root.tsx`, import and render inside the root layout, beside the existing `CommandPalette`:
+
+```typescript
+import { Toaster } from 'sonner'
+```
+
+```tsx
+      <Toaster
+        position="bottom-right"
+        closeButton
+        toastOptions={{
+          classNames: {
+            toast: 'bg-surface border border-border text-text-primary',
+            description: 'text-text-muted',
+            actionButton: 'bg-accent text-white'
+          }
+        }}
+      />
+```
+
+Semantic tokens keep it tracking the light/dark theme automatically, so no `useTheme` wiring is needed.
+
+- [ ] **Step 3: Verify**
+
+Run: `pnpm build`
+Expected: build succeeds.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add package.json pnpm-lock.yaml src/renderer/routes/__root.tsx
+git commit -m "feat(notify): add sonner and mount the toaster"
+```
+
+---
+
+### Task 10: `notify.ts` — the toast and log boundary
+
+**Files:**
+- Create: `src/renderer/lib/notify.ts`
+- Test: `tests/renderer/lib/notify.test.ts`
+
+**Interfaces:**
+- Consumes: `window.birdbrain.diagnostics.log`; `toast` from `sonner`.
+- Produces: `notify.error(message, opts?)`, `notify.warn(...)`, `notify.success(message)`, `notify.info(message)`, where `opts` is `{ source?: string; cause?: unknown; correlationId?: string }`.
+
+- [ ] **Step 1: Write the failing test**
+
+```typescript
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const toastFns = {
+  error: vi.fn(),
+  warning: vi.fn(),
+  success: vi.fn(),
+  info: vi.fn()
+}
+vi.mock('sonner', () => ({ toast: toastFns }))
+
+const log = vi.fn().mockResolvedValue('cid-1')
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  vi.stubGlobal('birdbrain', { diagnostics: { log } })
+})
+
+describe('notify', () => {
+  it('raises a toast and writes a durable log entry for an error', async () => {
+    const { notify } = await import('@renderer/lib/notify')
+    notify.error('Could not save note', { source: 'notes' })
+
+    expect(toastFns.error).toHaveBeenCalled()
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({ level: 'error', source: 'notes', message: 'Could not save note' })
+    )
+  })
+
+  it('does not write success toasts to the durable log', async () => {
+    const { notify } = await import('@renderer/lib/notify')
+    notify.success('Case exported')
+
+    expect(toastFns.success).toHaveBeenCalled()
+    expect(log).not.toHaveBeenCalled()
+  })
+
+  it('collapses a storm of identical errors onto one toast id', async () => {
+    const { notify } = await import('@renderer/lib/notify')
+    notify.error('Capture failed', { source: 'captures' })
+    notify.error('Capture failed', { source: 'captures' })
+    notify.error('Capture failed', { source: 'captures' })
+
+    const ids = toastFns.error.mock.calls.map((c) => c[1]?.id)
+    expect(new Set(ids).size).toBe(1)
+  })
+})
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `pnpm test -- notify`
+Expected: FAIL — module not found.
+
+- [ ] **Step 3: Implement**
+
+```typescript
+import { toast } from 'sonner'
+
+// The single boundary where a failure becomes both durable and visible.
+// Errors and warnings are logged AND toasted; success and info are toast-only,
+// because a durable log of "Case exported" is noise in a bug report.
+
+export interface NotifyOpts {
+  source?: string
+  cause?: unknown
+  correlationId?: string
+}
+
+// A retry loop would otherwise fire dozens of toasts and bury the app, so
+// identical messages collapse onto one sonner id and repeat in place.
+function toastId(source: string, message: string): string {
+  let hash = 0
+  const key = `${source}:${message}`
+  for (let i = 0; i < key.length; i++) {
+    hash = (hash * 31 + key.charCodeAt(i)) | 0
+  }
+  return `n${hash}`
+}
+
+function causeText(cause: unknown): string | undefined {
+  if (cause === undefined) return undefined
+  return cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause)
+}
+
+function durable(level: 'error' | 'warn', source: string, message: string, cause: unknown): void {
+  void window.birdbrain.diagnostics
+    .log({ level, source, message, error: causeText(cause) })
+    .catch(() => {
+      // The logger is best-effort; a failed log must not mask the original error.
+    })
+}
+
+function reportAction(correlationId?: string) {
+  return {
+    label: 'Report this',
+    onClick: () => window.dispatchEvent(new CustomEvent('birdbrain:report', { detail: { correlationId } }))
+  }
+}
+
+export const notify = {
+  error(message: string, opts: NotifyOpts = {}): void {
+    const source = opts.source ?? 'app'
+    durable('error', source, message, opts.cause)
+    toast.error(message, { id: toastId(source, message), action: reportAction(opts.correlationId) })
+  },
+
+  warn(message: string, opts: NotifyOpts = {}): void {
+    const source = opts.source ?? 'app'
+    durable('warn', source, message, opts.cause)
+    toast.warning(message, { id: toastId(source, message), action: reportAction(opts.correlationId) })
+  },
+
+  success(message: string): void {
+    toast.success(message, { id: toastId('success', message) })
+  },
+
+  info(message: string): void {
+    toast.info(message, { id: toastId('info', message) })
+  }
+}
+```
+
+The `birdbrain:report` window event is consumed in Task 15; dispatching it now is harmless with no listener attached.
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `pnpm test -- notify`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/renderer/lib/notify.ts tests/renderer/lib/notify.test.ts
+git commit -m "feat(notify): toast and durable-log boundary with storm dedup"
+```
+
+---
+
+### Task 11: Wire the 29 mutations and query failures
+
+**Files:**
+- Modify: `src/renderer/lib/queryClient.ts`
+- Modify: `src/renderer/lib/queries.ts` (add `meta` to mutation hooks)
+- Test: `tests/renderer/lib/queryClient.test.ts`
+
+**Interfaces:**
+- Consumes: `notify` from `@renderer/lib/notify`.
+- Produces: `failureMessage(mutation)` exported from `queryClient.ts` for testing.
+
+- [ ] **Step 1: Write the failing test**
+
+```typescript
+import { describe, expect, it, vi } from 'vitest'
+vi.mock('@renderer/lib/notify', () => ({ notify: { error: vi.fn(), warn: vi.fn() } }))
+
+import { failureMessage } from '@renderer/lib/queryClient'
+
+describe('failureMessage', () => {
+  it('uses the action from mutation meta', () => {
+    expect(failureMessage({ options: { meta: { action: 'save note' } } })).toBe("Couldn't save note.")
+  })
+
+  it('falls back to a generic message when meta is absent', () => {
+    expect(failureMessage({ options: {} })).toBe('Something went wrong. Please try again.')
+  })
+})
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `pnpm test -- queryClient`
+Expected: FAIL — `failureMessage` is not exported.
+
+- [ ] **Step 3: Implement**
+
+Replace `src/renderer/lib/queryClient.ts`:
+
+```typescript
+import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query'
+import { notify } from '@renderer/lib/notify'
+
+// Mutations toast; queries only log. With retry:false and services that are
+// not ready at launch, toasting query errors would greet every tester with a
+// wall of toasts on startup. A mutation is user-initiated, so a silent failure
+// there is always worth surfacing.
+
+export function failureMessage(mutation: { options?: { meta?: unknown } }): string {
+  const meta = mutation.options?.meta
+  const action =
+    meta && typeof meta === 'object' && 'action' in meta && typeof meta.action === 'string'
+      ? meta.action
+      : null
+  return action ? `Couldn't ${action}.` : 'Something went wrong. Please try again.'
+}
+
+export const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: false,
+      staleTime: 30_000,
+      refetchOnWindowFocus: false
+    }
+  },
+  mutationCache: new MutationCache({
+    onError: (error, _vars, _ctx, mutation) => {
+      notify.error(failureMessage(mutation), { source: 'mutation', cause: error })
+    }
+  }),
+  queryCache: new QueryCache({
+    onError: (error, query) => {
+      void window.birdbrain.diagnostics.log({
+        level: 'warn',
+        source: 'query',
+        message: `query failed: ${String(query.queryKey[0] ?? 'unknown')}`,
+        error: error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+      })
+    }
+  })
+})
+```
+
+The query key's first segment is a static domain string from the key factory (`'cases'`, `'captures'`), never user data, so interpolating it is safe.
+
+- [ ] **Step 4: Add `meta.action` to the mutation hooks**
+
+In `src/renderer/lib/queries.ts`, add a `meta` field to each of the 29 `useMutation` calls describing the action in lowercase infinitive form, e.g.:
+
+```typescript
+    meta: { action: 'create case' }
+    meta: { action: 'save note' }
+    meta: { action: 'delete capture' }
+```
+
+This is additive. Any hook missed simply falls back to the generic message, so the task is complete and shippable even if a few are left for later — but do all 29 now.
+
+- [ ] **Step 5: Verify and commit**
+
+Run: `pnpm test && pnpm lint`
+Expected: PASS. Report actual output.
+
+```bash
+git add src/renderer/lib/queryClient.ts src/renderer/lib/queries.ts tests/renderer/lib/queryClient.test.ts
+git commit -m "feat(notify): surface mutation failures and log query failures"
+```
+
+---
+
+### Task 12: ErrorBoundary
+
+**Files:**
+- Create: `src/renderer/components/ErrorBoundary.tsx`
+- Modify: `src/renderer/routes/__root.tsx`
+- Modify: `src/renderer/components/captures/CaptureViewer.tsx` (wrap its rendered content; confirm the exact filename with `ls src/renderer/components/captures` first)
+- Test: `tests/renderer/components/ErrorBoundary.test.tsx`
+
+**Interfaces:**
+- Produces: `<ErrorBoundary source="..." children />`.
+
+- [ ] **Step 1: Write the failing test**
+
+```typescript
+import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { render, screen } from '@testing-library/react'
+import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
+
+const log = vi.fn().mockResolvedValue('cid')
+
+function Boom(): JSX.Element {
+  throw new Error('render exploded')
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  vi.stubGlobal('birdbrain', { diagnostics: { log } })
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+})
+
+describe('ErrorBoundary', () => {
+  it('renders children when nothing throws', () => {
+    render(
+      <ErrorBoundary source="test">
+        <p>fine</p>
+      </ErrorBoundary>
+    )
+    expect(screen.getByText('fine')).toBeTruthy()
+  })
+
+  it('shows recovery UI and logs when a child throws', () => {
+    render(
+      <ErrorBoundary source="test">
+        <Boom />
+      </ErrorBoundary>
+    )
+    expect(screen.getByText('Something went wrong')).toBeTruthy()
+    expect(log).toHaveBeenCalledWith(expect.objectContaining({ level: 'error', source: 'test' }))
+  })
+})
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `pnpm test -- ErrorBoundary`
+Expected: FAIL — module not found.
+
+- [ ] **Step 3: Implement**
+
+```typescript
+import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { AlertTriangle } from 'lucide-react'
+import { Button } from '@renderer/components/ui'
+
+interface Props {
+  source: string
+  children: ReactNode
+}
+
+interface State {
+  failed: boolean
+}
+
+// Without this a render error is a white screen with no trace. The component
+// stack is sent to main, where sanitizeError strips paths before it reaches disk.
+export class ErrorBoundary extends Component<Props, State> {
+  state: State = { failed: false }
+
+  static getDerivedStateFromError(): State {
+    return { failed: true }
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo): void {
+    void window.birdbrain.diagnostics
+      .log({
+        level: 'error',
+        source: this.props.source,
+        message: 'react render error',
+        error: `${error.name}: ${error.message}\n${info.componentStack ?? ''}`
+      })
+      .catch(() => {
+        /* best effort */
+      })
+  }
+
+  render(): ReactNode {
+    if (!this.state.failed) return this.props.children
+
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 p-8 text-center">
+        <AlertTriangle className="h-6 w-6 text-amber-500" />
+        <p className="text-sm font-medium text-text-primary">Something went wrong</p>
+        <p className="max-w-sm text-sm text-text-muted">
+          This part of Birdbrain failed to render. Your captures are unaffected.
+        </p>
+        <div className="flex gap-2">
+          <Button variant="ghost" size="sm" onClick={() => this.setState({ failed: false })}>
+            Try again
+          </Button>
+          <Button size="sm" onClick={() => window.location.reload()}>
+            Reload
+          </Button>
+        </div>
+      </div>
+    )
+  }
+}
+```
+
+- [ ] **Step 4: Mount it**
+
+In `__root.tsx`, wrap the main content area with `<ErrorBoundary source="root">`. Then wrap the capture viewer's rendered output with `<ErrorBoundary source="captureViewer">` — it renders untrusted captured HTML, so it is the most likely component to throw, and a failure there must not take down the workspace.
+
+- [ ] **Step 5: Verify and commit**
+
+Run: `pnpm test -- ErrorBoundary && pnpm lint && pnpm build`
+Expected: PASS. Report actual output.
+
+```bash
+git add src/renderer/components/ErrorBoundary.tsx src/renderer/routes/__root.tsx src/renderer/components/captures tests/renderer/components/ErrorBoundary.test.tsx
+git commit -m "feat(notify): react error boundaries at root and capture viewer"
+```
+
+**Phase 2 is complete. Failures are now both durable and visible.**
+
+---
+
+# Phase 3 — The Bundle
+
+*Value on its own: a tester goes from "something broke" to a zip in your chat in one click.*
+
+---
+
+### Task 13: `bugReport.ts` — the bundle builder
+
+**Files:**
+- Create: `src/main/services/bugReport.ts`
+- Test: `tests/main/services/bugReport.test.ts`
+
+**Interfaces:**
+- Consumes: `createStoredZip` from `@main/services/zip`; `diagnosticsService` from `@main/services/diagnostics`; `readSessions` from `@main/services/sessionLog`; `getLogDir` from `@main/services/logger`; `getInstallationId`; `BugReportInput` from `@shared/types`.
+- Produces: `buildBugReport(input, deps)` → `Buffer`; `BUG_REPORT_ENTRIES` (the exact allowed entry names).
+
+- [ ] **Step 1: Write the failing test**
+
+The negative assertion is the point of this task — it is what guarantees the zero-egress and no-secrets promise holds.
+
+```typescript
+import { describe, expect, it } from 'vitest'
+import { buildBugReport, BUG_REPORT_ENTRIES } from '@main/services/bugReport'
+import type { DiagnosticsSnapshot, SessionRecord } from '@shared/types'
+
+const SNAPSHOT = {
+  generatedAt: '2026-07-25T10:00:00.000Z',
+  app: {
+    version: '1.0.1',
+    electron: '39.8.10',
+    chrome: '140',
+    node: '22',
+    platform: 'win32',
+    arch: 'x64',
+    packaged: true,
+    installFormat: 'nsis'
+  },
+  uptimeSeconds: 120,
+  processes: [],
+  eventLoop: { currentLagMs: 0, maxLagLastMinuteMs: 0, stalls: [] },
+  storage: { storageRoot: 'C:/x', dbPath: 'C:/x/b.db', dbSizeBytes: 1, walSizeBytes: 0 },
+  data: {
+    schemaVersion: 12,
+    latestSchemaVersion: 12,
+    cases: 1,
+    captures: 2,
+    notes: 0,
+    selectors: 0,
+    extractedData: 0
+  },
+  slowOps: []
+} satisfies DiagnosticsSnapshot
+
+const SESSIONS: SessionRecord[] = [
+  {
+    sessionId: 's1',
+    startedAt: '2026-07-25T09:00:00.000Z',
+    endedAt: null,
+    version: '1.0.1',
+    platform: 'win32',
+    installFormat: 'nsis',
+    cleanExit: false
+  }
+]
+
+const deps = {
+  snapshot: () => SNAPSHOT,
+  sessions: () => SESSIONS,
+  installationId: () => 'install-abc',
+  readLog: (name: string) => (name === 'birdbrain.log' ? '{"level":"info"}\n' : null)
+}
+
+const INPUT = {
+  whatYouDid: 'Captured a page',
+  whatYouExpected: 'It saves',
+  whatHappened: 'Nothing happened'
+}
+
+function entryNames(zip: Buffer): string[] {
+  // Central-directory scan: entry names follow each 0x02014b50 signature.
+  const names: string[] = []
+  for (let i = 0; i < zip.length - 46; i++) {
+    if (zip.readUInt32LE(i) === 0x02014b50) {
+      const nameLen = zip.readUInt16LE(i + 28)
+      names.push(zip.subarray(i + 46, i + 46 + nameLen).toString('utf8'))
+    }
+  }
+  return names
+}
+
+describe('buildBugReport', () => {
+  it('contains exactly the allowed entries', () => {
+    const names = entryNames(buildBugReport(INPUT, deps))
+    expect(names.sort()).toEqual([...BUG_REPORT_ENTRIES].filter((n) => n !== 'birdbrain.log.1').sort())
+  })
+
+  it('includes the tester description and diagnostics', () => {
+    const zip = buildBugReport(INPUT, deps).toString('utf8')
+    expect(zip).toContain('Captured a page')
+    expect(zip).toContain('install-abc')
+  })
+
+  it('never includes a database, a capture, or a settings file', () => {
+    const names = entryNames(buildBugReport(INPUT, deps))
+    expect(names.some((n) => /\.(db|sqlite|mhtml|html|png)$/i.test(n))).toBe(false)
+    expect(names.some((n) => /settings/i.test(n))).toBe(false)
+  })
+
+  it('never carries an api key through the diagnostics snapshot', () => {
+    const zip = buildBugReport(INPUT, deps).toString('utf8')
+    expect(zip.toLowerCase()).not.toContain('openrouterapikey')
+    expect(zip).not.toContain('sk-or-')
+  })
+
+  it('omits the backup log when it does not exist', () => {
+    const names = entryNames(buildBugReport(INPUT, deps))
+    expect(names).not.toContain('birdbrain.log.1')
+  })
+})
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `pnpm test -- bugReport`
+Expected: FAIL — module not found.
+
+- [ ] **Step 3: Implement**
+
+```typescript
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { createStoredZip } from '@main/services/zip'
+import { diagnosticsService } from '@main/services/diagnostics'
+import { getLogDir } from '@main/services/logger'
+import { readSessions } from '@main/services/sessionLog'
+import { getInstallationId } from '@main/services/installationId'
+import type { BugReportInput, DiagnosticsSnapshot, SessionRecord } from '@shared/types'
+
+// Everything in the bundle is enumerated here. Nothing is globbed off disk, so
+// a capture, the database, or a settings file cannot be swept in by accident —
+// which is what makes the "what's included" disclosure in the dialog truthful.
+export const BUG_REPORT_ENTRIES = [
+  'report.md',
+  'diagnostics.json',
+  'sessions.json',
+  'birdbrain.log',
+  'birdbrain.log.1'
+] as const
+
+export interface BugReportDeps {
+  snapshot: () => DiagnosticsSnapshot
+  sessions: () => SessionRecord[]
+  installationId: () => string
+  readLog: (name: string) => string | null
+}
+
+function defaultDeps(): BugReportDeps {
+  const dir = getLogDir()
+  return {
+    snapshot: () => diagnosticsService.snapshot(),
+    sessions: () => readSessions(dir),
+    installationId: () => getInstallationId(),
+    readLog: (name) => {
+      try {
+        return readFileSync(join(dir, name), 'utf8')
+      } catch {
+        return null
+      }
+    }
+  }
+}
+
+function reportMarkdown(input: BugReportInput, snap: DiagnosticsSnapshot, installId: string): string {
+  return [
+    '# Birdbrain bug report',
+    '',
+    `- **Version:** ${snap.app.version}`,
+    `- **Platform:** ${snap.app.platform} ${snap.app.arch} (${snap.app.installFormat})`,
+    `- **Electron:** ${snap.app.electron} · **Chrome:** ${snap.app.chrome}`,
+    `- **Installation:** ${installId}`,
+    `- **Generated:** ${snap.generatedAt}`,
+    input.correlationId ? `- **Log entry:** ${input.correlationId}` : '',
+    '',
+    '## What I did',
+    '',
+    input.whatYouDid || '_not provided_',
+    '',
+    '## What I expected',
+    '',
+    input.whatYouExpected || '_not provided_',
+    '',
+    '## What happened',
+    '',
+    input.whatHappened || '_not provided_',
+    ''
+  ]
+    .filter((line) => line !== '')
+    .join('\n')
+}
+
+export function buildBugReport(input: BugReportInput, deps: BugReportDeps = defaultDeps()): Buffer {
+  const snap = deps.snapshot()
+  const entries: Array<{ name: string; data: string }> = [
+    { name: 'report.md', data: reportMarkdown(input, snap, deps.installationId()) },
+    { name: 'diagnostics.json', data: JSON.stringify(snap, null, 2) },
+    { name: 'sessions.json', data: JSON.stringify(deps.sessions(), null, 2) }
+  ]
+
+  for (const name of ['birdbrain.log', 'birdbrain.log.1']) {
+    const data = deps.readLog(name)
+    if (data !== null) entries.push({ name, data })
+  }
+
+  return createStoredZip(entries)
+}
+
+export function bugReportFilename(now: Date): string {
+  const stamp = now.toISOString().slice(0, 16).replace(/[-:]/g, '').replace('T', '-')
+  return `birdbrain-report-${stamp}.zip`
+}
+```
+
+Note: `reportMarkdown` filters empty strings, which also collapses intentional blank lines. If the rendered markdown reads badly, use a sentinel for real blanks rather than dropping the filter — the `correlationId` line is the only conditional one.
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `pnpm test -- bugReport`
+Expected: PASS, including the four negative assertions.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/main/services/bugReport.ts tests/main/services/bugReport.test.ts
+git commit -m "feat(diagnostics): bug report bundle builder with enumerated entries"
+```
+
+---
+
+### Task 14: Wire the bundle through IPC
+
+**Files:**
+- Modify: `src/main/ipcHandlers.ts`
+- Modify: `src/preload/index.ts`, `src/renderer/env.d.ts`
+
+- [ ] **Step 1: Add the handler**
+
+```typescript
+  ipcMain.handle(IPC_CHANNELS.DIAGNOSTICS_CREATE_REPORT, async (_e, input: BugReportInput) => {
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: 'Save diagnostic report',
+      defaultPath: bugReportFilename(new Date()),
+      filters: [{ name: 'Zip archive', extensions: ['zip'] }]
+    })
+    if (canceled || !filePath) return null
+
+    flushSync()
+    writeFileSync(filePath, buildBugReport(input))
+    shell.showItemInFolder(filePath)
+    return { path: filePath }
+  })
+```
+
+`flushSync()` before building matters: without it, the entries describing the failure the tester is reporting may still be sitting in the write buffer. Import it from `@main/services/logger`.
+
+Match the surrounding handlers' error-wrapping convention — check how neighbouring handlers in the file return `{ ok, data }` versus raw values, and follow it so `unwrapIpc` behaves consistently.
+
+- [ ] **Step 2: Extend preload and `env.d.ts`**
+
+```typescript
+    createReport: (input: BugReportInput): Promise<BugReportResult | null> =>
+      ipcRenderer.invoke(IPC_CHANNELS.DIAGNOSTICS_CREATE_REPORT, input),
+```
+
+Mirror the same signature in `env.d.ts` and add `BugReportInput`, `BugReportResult` to both type imports.
+
+- [ ] **Step 3: Verify and commit**
+
+Run: `pnpm lint && pnpm test && pnpm build`
+Expected: PASS. Report actual output.
+
+```bash
+git add src/main/ipcHandlers.ts src/preload/index.ts src/renderer/env.d.ts
+git commit -m "feat(diagnostics): create-report ipc handler and bridge"
+```
+
+---
+
+### Task 15: Report dialog, crash prompt, and the three triggers
+
+**Files:**
+- Create: `src/renderer/components/diagnostics/ReportProblemDialog.tsx`
+- Create: `src/renderer/components/diagnostics/CrashRecoveryPrompt.tsx`
+- Modify: `src/renderer/routes/__root.tsx`, `src/renderer/components/settings/DiagnosticsPanel.tsx`, `src/renderer/components/layout/CommandPalette.tsx`
+- Test: `tests/renderer/components/ReportProblemDialog.test.tsx`
+
+**Interfaces:**
+- Consumes: `window.birdbrain.diagnostics.createReport`, `.lastSession()`; the `birdbrain:report` window event dispatched by `notify` in Task 10.
+- Produces: `<ReportProblemDialog open onOpenChange correlationId? />`, `<CrashRecoveryPrompt />`.
+
+- [ ] **Step 1: Write the failing test**
+
+```typescript
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { ReportProblemDialog } from '@renderer/components/diagnostics/ReportProblemDialog'
+
+const createReport = vi.fn().mockResolvedValue({ path: 'C:/x/report.zip' })
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  vi.stubGlobal('birdbrain', { diagnostics: { createReport } })
+})
+
+describe('ReportProblemDialog', () => {
+  it('lists exactly what the bundle will contain', () => {
+    render(<ReportProblemDialog open onOpenChange={() => {}} />)
+    expect(screen.getByText(/diagnostics.json/)).toBeTruthy()
+    expect(screen.getByText(/birdbrain.log/)).toBeTruthy()
+    expect(screen.getByText(/never leaves your computer/i)).toBeTruthy()
+  })
+
+  it('sends the three fields when submitted', async () => {
+    render(<ReportProblemDialog open onOpenChange={() => {}} />)
+    fireEvent.change(screen.getByLabelText(/what did you do/i), { target: { value: 'captured' } })
+    fireEvent.change(screen.getByLabelText(/what did you expect/i), { target: { value: 'saved' } })
+    fireEvent.change(screen.getByLabelText(/what happened/i), { target: { value: 'nothing' } })
+    fireEvent.click(screen.getByRole('button', { name: /create report/i }))
+
+    await waitFor(() =>
+      expect(createReport).toHaveBeenCalledWith(
+        expect.objectContaining({ whatYouDid: 'captured', whatHappened: 'nothing' })
+      )
+    )
+  })
+})
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `pnpm test -- ReportProblemDialog`
+Expected: FAIL — module not found.
+
+- [ ] **Step 3: Implement the dialog**
+
+Build it on the existing `dialog`, `label`, `textarea` and `button` primitives in `src/renderer/components/ui`. Three labelled textareas (What did you do / What did you expect / What happened), a disclosure block listing the entries from `BUG_REPORT_ENTRIES` in prose, and the line "This file is saved to your computer and never leaves it — attach it to the chat yourself." Submit calls `window.birdbrain.diagnostics.createReport({ whatYouDid, whatYouExpected, whatHappened, correlationId })`, then closes on a non-null result.
+
+The disclosure is not decoration: it is what makes the zero-egress promise legible to someone handling real case material.
+
+- [ ] **Step 4: Implement the crash prompt**
+
+`CrashRecoveryPrompt` calls `window.birdbrain.diagnostics.lastSession()` once on mount. If it resolves non-null, render a dismissible banner: "Birdbrain closed unexpectedly last time." with **Create a report** and **Dismiss**. Create opens `ReportProblemDialog`.
+
+- [ ] **Step 5: Wire the three triggers**
+
+1. **Post-crash** — render `<CrashRecoveryPrompt />` in `__root.tsx`.
+2. **Always-available** — a "Report a problem" button in `DiagnosticsPanel`'s header, and a CommandPalette entry with the same label.
+3. **Report this** — in `__root.tsx`, listen for the `birdbrain:report` window event that `notify` dispatches and open the dialog with the event's `correlationId`:
+
+```typescript
+  useEffect(() => {
+    function onReport(e: Event): void {
+      const detail = (e as CustomEvent<{ correlationId?: string }>).detail
+      setReportCorrelationId(detail?.correlationId)
+      setReportOpen(true)
+    }
+    window.addEventListener('birdbrain:report', onReport)
+    return () => window.removeEventListener('birdbrain:report', onReport)
+  }, [])
+```
+
+- [ ] **Step 6: Verify end to end**
+
+Run: `pnpm test && pnpm lint && pnpm build`
+Expected: PASS. Report actual output.
+
+Then run `pnpm dev` and confirm by hand:
+- Settings → Diagnostics → Report a problem produces a zip at the chosen path
+- Unzipping it shows exactly `report.md`, `diagnostics.json`, `sessions.json`, `birdbrain.log`
+- `report.md` contains the text you typed
+
+Report what the zip actually contained. If any unexpected file appears, stop and fix `bugReport.ts` before committing.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/renderer/components/diagnostics src/renderer/routes/__root.tsx src/renderer/components/settings/DiagnosticsPanel.tsx src/renderer/components/layout/CommandPalette.tsx tests/renderer/components/ReportProblemDialog.test.tsx
+git commit -m "feat(diagnostics): report dialog, crash prompt, and report triggers"
+```
+
+---
+
+### Task 16: Update the tester guide
+
+The rollout brief currently tells testers the app has no log. That is now false, and a tester who does not know the feature exists will not use it.
+
+**Files:**
+- Modify: `docs/reference/tester-guide.md`
+
+- [ ] **Step 1: Add a "Reporting a problem" section**
+
+Cover: Settings → Diagnostics → Report a problem; that the zip is saved locally and must be attached to chat manually; that it contains logs and app diagnostics but **no captures, no database, and no API keys**; and that the app will offer to create one automatically after a crash.
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add docs/reference/tester-guide.md
+git commit -m "docs(tester-guide): how to file a diagnostic report"
+```
+
+---
+
+## Self-Review
+
+**Spec coverage:** Every spec section maps to a task. Section 1 (logger, redaction boundary, rotation, sessions, unclean exit) → Tasks 1, 3, 4. Section 2 (crash handlers, ErrorBoundary) → Tasks 5, 12. Section 3 (notify, dedup, MutationCache/QueryCache asymmetry, call-site migration) → Tasks 9, 10, 11, 7. Section 4 (bundle, exclusions, triggers, dialog, Log tab) → Tasks 8, 13, 14, 15. IPC table → Tasks 2, 6, 14. Testing section → covered in the task that owns each unit, with the redaction invariant in Task 1 and the negative bundle test in Task 13. Task 16 was added because the spec's premise invalidates a claim in the tester guide, which no spec section covered.
+
+**Type consistency checked:** `LogEntry`, `LogLevel`, `LoggedError`, `SessionRecord`, `BugReportInput`, `BugReportResult` are defined once in Task 2 and used unchanged thereafter. `logger.error(source, message, context?, err?)` has the same signature in Tasks 4, 5, 6, 7. `notify.error(message, opts)` matches between Tasks 10 and 11. `getLogDir`/`getLogPath` are exported in Task 4 and consumed in Tasks 6 and 13. The `birdbrain:report` event dispatched in Task 10 is consumed in Task 15.
+
+**Known deviation from the spec:** the spec's IPC table names the channel `diagnostics:createReport` with constant `DIAGNOSTICS_CREATE_REPORT`; the spec prose elsewhere writes `diagnostics:revealLog` as `LOG_FILE_REVEAL`-style naming inherited from the April doc. This plan uses `DIAGNOSTICS_*` constants throughout for consistency with the existing `DIAGNOSTICS_GET`.
+
+**Two things the implementer must verify rather than assume:**
+- The exact capture-viewer component filename in Task 12 (`ls src/renderer/components/captures`).
+- Whether neighbouring IPC handlers return raw values or `{ ok, data }` envelopes (Task 14), since `unwrapIpc` treats them differently.

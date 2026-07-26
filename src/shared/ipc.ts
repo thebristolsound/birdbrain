@@ -601,6 +601,13 @@ export interface IpcInvokeContract {
 
 export type ContractedChannel = keyof IpcInvokeContract
 
+// Every declared channel is either an invoke channel with a contract entry or a
+// main→renderer event. A new IPC_CHANNELS entry that is neither makes this type
+// non-empty, and the assignment below fails to compile.
+type UndeclaredChannel = Exclude<IpcChannel, ContractedChannel | IpcEventChannel>
+type AssertNever<T extends never> = T
+export type ChannelsAreExhaustive = AssertNever<UndeclaredChannel>
+
 // --- Event contract ---------------------------------------------------------
 //
 // Main → renderer pushes, kept separate from the invoke map: these carry a

@@ -228,20 +228,21 @@ afterEach(() => {
 })
 
 describe('ipcHandlers — registration', () => {
-  it('registers a handler for every IPC channel referenced by handlers', () => {
-    // Spot-check a representative set across domains.
-    for (const ch of [
-      IPC_CHANNELS.CASES_LIST,
-      IPC_CHANNELS.CAPTURES_LIST,
-      IPC_CHANNELS.TAGS_LIST,
-      IPC_CHANNELS.SELECTORS_LIST,
-      IPC_CHANNELS.NOTES_LIST,
-      IPC_CHANNELS.SETTINGS_GET,
-      IPC_CHANNELS.DB_STATS,
-      IPC_CHANNELS.EXPORT_PREFLIGHT
-    ]) {
-      expect(registered.has(ch)).toBe(true)
-    }
+  // Every declared channel is an invoke channel or an `event:` push — the
+  // compile-time ChannelsAreExhaustive check in @shared/ipc enforces that split.
+  // Here we close the other half of the loop at runtime: every invoke channel
+  // has a handler, and no handler exists for a channel nobody declared.
+  const invokeChannels = Object.values(IPC_CHANNELS).filter((ch) => !ch.startsWith('event:'))
+
+  it('registers a handler for every declared invoke channel', () => {
+    const missing = invokeChannels.filter((ch) => !registered.has(ch))
+    expect(missing).toEqual([])
+  })
+
+  it('registers no handler for an undeclared channel', () => {
+    const declared = new Set<string>(invokeChannels)
+    const unexpected = [...registered.keys()].filter((ch) => !declared.has(ch))
+    expect(unexpected).toEqual([])
   })
 })
 

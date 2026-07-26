@@ -1,5 +1,10 @@
 import { ipcMain, type IpcMainInvokeEvent } from 'electron'
-import type { IpcChannel, IpcEventChannel, IpcEventContract, IpcInvokeContract } from '@shared/ipc'
+import type {
+  ContractedChannel,
+  IpcEventChannel,
+  IpcEventContract,
+  IpcInvokeContract
+} from '@shared/ipc'
 
 // Anything that can push a main→renderer event: a WebContents, or the sender
 // on an IpcMainInvokeEvent.
@@ -55,24 +60,19 @@ export function ipcError(err: unknown): IpcResult<never> {
   throw err
 }
 
-// The handler signature a channel must have. For a channel declared in
-// IpcInvokeContract the argument tuple and return type are pinned by its entry;
-// for one not yet declared the signature is inferred as before. As domains move
-// into the contract the unconstrained branch shrinks to nothing.
-type IpcHandler<C extends IpcChannel, T, A extends unknown[]> = C extends keyof IpcInvokeContract
-  ? (
-      event: IpcMainInvokeEvent,
-      ...args: IpcInvokeContract[C]['args']
-    ) => IpcInvokeContract[C]['result'] | Promise<IpcInvokeContract[C]['result']>
-  : (event: IpcMainInvokeEvent, ...args: A) => T | Promise<T>
-
 // Registers an ipcMain.handle that wraps the handler's return value in an
 // IpcResult. Translates `IpcFailure` and known SQLite errors into structured
 // `{ ok: false }` responses; other errors are rethrown so Electron surfaces
 // them as rejected promises in the renderer.
-export function handle<C extends IpcChannel, T, A extends unknown[]>(
+//
+// The channel must have an IpcInvokeContract entry, and that entry pins the
+// handler's argument tuple and return type.
+export function handle<C extends ContractedChannel>(
   channel: C,
-  fn: IpcHandler<C, T, A>
+  fn: (
+    event: IpcMainInvokeEvent,
+    ...args: IpcInvokeContract[C]['args']
+  ) => IpcInvokeContract[C]['result'] | Promise<IpcInvokeContract[C]['result']>
 ): void {
   const invoke = fn as (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown
   ipcMain.handle(channel, async (event, ...args) => {

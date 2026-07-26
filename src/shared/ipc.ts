@@ -10,8 +10,10 @@ import type {
   ArchiveRef,
   BirdbrainSettings,
   Capture,
+  CaptureAnalysis,
   CaptureAnnotations,
   Case,
+  DiagnosticsSnapshot,
   ExportOptions,
   ExportPreflight,
   ExtractedDataCategory,
@@ -24,6 +26,8 @@ import type {
   OperatorIdentity,
   Selector,
   Tag,
+  TokenUsage,
+  UpdateStatus,
   WaybackLookupResult,
   WaybackSnapshot
 } from '@shared/types'
@@ -542,6 +546,44 @@ export interface IpcInvokeContract {
     result: ExtractedDataSearchResult[]
   }
   'extractedData:reprocess': { args: [caseId: string]; result: { processed: number } }
+
+  'db:stats': { args: []; result: DbStats }
+  'db:tableRows': { args: [params: DbTableRowsParams]; result: DbTableRowsResult }
+  'db:createRow': { args: [params: DbCreateRowParams]; result: Record<string, unknown> }
+  'db:updateRow': { args: [params: DbUpdateRowParams]; result: boolean }
+  'db:deleteRow': { args: [params: DbRowIdentifier]; result: boolean }
+  'db:vacuum': { args: []; result: { freedBytes: number } }
+  'db:rebuildFts': { args: []; result: { rowsIndexed: number; textsHealed: number } }
+  'db:purgeArchived': { args: []; result: { casesDeleted: number; capturesDeleted: number } }
+  'db:findOrphans': { args: []; result: OrphanReport }
+  'db:cleanOrphans': {
+    args: [report: OrphanReport]
+    result: { dbRecordsRemoved: number; filesRemoved: number }
+  }
+  'db:backup': { args: []; result: { path: string } | null }
+  'db:restore': { args: []; result: { restored: boolean } }
+  'db:exportTable': { args: [params: DbExportTableParams]; result: { path: string } | null }
+
+  'ai:analyze': {
+    args: [params: AnalyzeCaptureParams]
+    result: { content: string; tokenUsage: TokenUsage }
+  }
+  'ai:saveAnalysis': { args: [analysis: CaptureAnalysis]; result: void }
+  'ai:getAnalysis': { args: [params: { captureId: string }]; result: CaptureAnalysis | null }
+
+  'shell:showItemInFolder': { args: [path: string]; result: void }
+  'shell:openPath': { args: [path: string]; result: void }
+
+  'extension:path': { args: []; result: string }
+  'extension:openFolder': { args: []; result: void }
+
+  'app:getVersion': { args: []; result: string }
+  'diagnostics:get': { args: []; result: DiagnosticsSnapshot }
+
+  'updates:getStatus': { args: []; result: UpdateStatus }
+  'updates:check': { args: []; result: UpdateStatus }
+  'updates:download': { args: []; result: void }
+  'updates:install': { args: []; result: void }
 }
 
 export type ContractedChannel = keyof IpcInvokeContract

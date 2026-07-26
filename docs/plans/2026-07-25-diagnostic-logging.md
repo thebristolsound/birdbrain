@@ -299,14 +299,79 @@ Land this before Tasks 3–15; every later task imports from it. It is deliberat
 Append to `src/shared/types.ts`:
 
 ```typescript
-// Diagnostic logging. Entries are structural only — see logSafe.ts for the
-// boundary that keeps investigation data (URLs, case names, paths) out of them.
+// Diagnostic logging. There is no free-form text field here BY DESIGN: code,
+// source and context keys are all drawn from fixed unions, so a call site has
+// nowhere to put a URL, case name or path. Regex scrubbing was tried first and
+// abandoned — see the spec's "No free-form prose reaches disk".
 export type LogLevel = 'error' | 'warn' | 'info'
 
+// Fixed vocabularies. Extend these unions when a new call site needs an entry;
+// that edit is the review gate. Sources match the migration table in Task 7.
+export const LOG_SOURCES = [
+  'app',
+  'ipc',
+  'captureServer',
+  'captureLifecycle',
+  'backgroundRenderer',
+  'openrouter',
+  'serverToken',
+  'settings',
+  'thumbnails',
+  'selectorLifecycle',
+  'consentBlocker',
+  'timestampWorker',
+  'renderer'
+] as const
+export type LogSource = (typeof LOG_SOURCES)[number]
+
+export const LOG_CODES = [
+  'app.session_start',
+  'app.uncaught_exception',
+  'app.unhandled_rejection',
+  'app.render_process_gone',
+  'app.child_process_gone',
+  'app.storage_init_failed',
+  'capture.failed',
+  'capture.screenshot_dropped',
+  'capture.server_started',
+  'capture.extraction_failed',
+  'ipc.handler_threw',
+  'query.failed',
+  'mutation.failed',
+  'react.render_error'
+] as const
+export type LogCode = (typeof LOG_CODES)[number]
+
+export const LOG_CONTEXT_KEYS = [
+  'captureId',
+  'caseId',
+  'noteId',
+  'selectorId',
+  'bytes',
+  'count',
+  'ms',
+  'port',
+  'format',
+  'reason',
+  'exitCode',
+  'processType',
+  'errorCode',
+  'status',
+  // session.start metadata — the only identifying fields a standalone
+  // birdbrain.log carries, so they must be permitted keys.
+  'installationId',
+  'version',
+  'platform',
+  'installFormat',
+  'packaged'
+] as const
+export type LogContextKey = (typeof LOG_CONTEXT_KEYS)[number]
+
+// message is absent deliberately — err.message is the prose vector that a
+// regex cannot police, so it is never persisted.
 export interface LoggedError {
   name: string
   code: string | null
-  message: string
   stack: string | null
 }
 
@@ -315,9 +380,10 @@ export interface LogEntry {
   sessionId: string
   timestamp: string
   level: LogLevel
-  source: string
-  message: string
-  context?: Record<string, string | number | boolean | null>
+  source: LogSource
+  code: LogCode
+  // Partial<Record<...>> so an arbitrary computed key is a COMPILE error.
+  context?: Partial<Record<LogContextKey, string | number | boolean | null>>
   error?: LoggedError
 }
 
@@ -781,17 +847,18 @@ export function createLogger(deps: LoggerDeps): Logger {
     }
   }
 
-  function write(level: LogLevel, source: string, message: string, context?: LogContext, err?: unknown): string {
+  function write(level: LogLevel, source: LogSource, code: LogCode, context?: LogContext, err?: unknown): string {
     const entry: LogEntry = {
-      id: randomUUID().slice(0, 8),
+      // 16 hex chars (64 bits), not 8. The bundle cites only this id, so a
+      // birthday collision across two 2MB logs would point Report this at the
+      // wrong entry.
+      id: randomUUID().replace(/-/g, '').slice(0, 16),
       sessionId: deps.sessionId,
       timestamp: new Date().toISOString(),
       level,
-      // Branded context cannot protect `message` — it is necessarily a free
-      // string, and real call sites interpolate URLs into it. Scrubbing here
-      // makes the boundary enforced rather than a migration convention.
-      source: sanitizeText(source, homedir()),
-      message: sanitizeText(message, homedir()),
+      // No sanitization needed: both are union members, not free text.
+      source,
+      code,
       ...(context ? { context: context as Record<string, string | number | boolean | null> } : {}),
       ...(err === undefined ? {} : { error: sanitizeError(err) })
     }
@@ -1002,6 +1069,9 @@ const CHILD_GONE_REASONS = [
   'launch-failed',
   'integrity-failure'
 ] as const
+
+const PLATFORMS = ['win32', 'darwin', 'linux'] as const
+const INSTALL_FORMATS = ['nsis', 'appimage', 'deb', 'rpm', 'mac', 'archive', 'dev', 'unknown'] as const
 ```
 
 Imports to add:
@@ -1031,8 +1101,15 @@ In `app.whenReady().then(async () => {`, immediately after `initInstallationId(u
       installFormat: detectInstallFormat(app.isPackaged)
     })
     initLogger(userDataPath, session.sessionId)
-    logger.info('app', 'session started', {
+    // A Phase 1 tester sends only birdbrain.log via Reveal, so this entry is
+    // the ONLY place installation, platform and package format are recorded.
+    // Without them a standalone log cannot correlate repeat reports to one
+    // installation or distinguish appimage/deb/nsis failures.
+    logger.info('app', 'app.session_start', {
+      installationId: ident(getInstallationId()),
       version: ident(app.getVersion().replace(/\./g, '-')),
+      platform: tag(process.platform, PLATFORMS),
+      installFormat: tag(session.installFormat, INSTALL_FORMATS),
       packaged: app.isPackaged
     })
 ```
@@ -2035,9 +2112,28 @@ import type { LogEntry } from '@shared/types'
 // raises two toasts with different ids, so dedup cannot collapse them.
 export function subscribeToMainLog(): () => void {
   return window.birdbrain.onLogEntry((entry: LogEntry) => {
-    if (entry.source.startsWith('renderer:')) return
-    if (entry.level === 'error') toast.error(entry.message, { id: entry.id })
-    else if (entry.level === 'warn') toast.warning(entry.message, { id: entry.id })
+    if (entry.source === 'renderer') return
+    if (entry.level !== 'error' && entry.level !== 'warn') return
+
+    // entry.id IS the correlation id, so main-process failures get the same
+    // per-error Report this trigger as renderer ones. Without this, capture
+    // server / storage / export failures could not use it at all.
+    const opts = {
+      id: entry.id,
+      action: {
+        label: 'Report this',
+        onClick: () =>
+          window.dispatchEvent(
+            new CustomEvent('birdbrain:report', { detail: { correlationId: entry.id } })
+          )
+      }
+    }
+
+    // Codes are not prose — labelForCode maps them to a readable sentence for
+    // display only. The durable entry keeps the code.
+    const text = labelForCode(entry.code)
+    if (entry.level === 'error') toast.error(text, opts)
+    else toast.warning(text, opts)
   })
 }
 ```

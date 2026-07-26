@@ -1,4 +1,4 @@
-import { app, ipcMain, dialog, shell } from 'electron'
+import { app, dialog, shell } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
 import { DEFAULT_ANALYSIS_SYSTEM_PROMPT } from '@shared/constants'
 import type {
@@ -239,7 +239,7 @@ export function registerIpcHandlers(deps: {
   })
 
   // Capture pipeline test
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_TEST_PIPELINE, async () => {
+  handle(IPC_CHANNELS.CAPTURES_TEST_PIPELINE, async () => {
     try {
       const res = await fetch(`http://127.0.0.1:${CAPTURE_SERVER_PORT}/api/captures/test`, {
         method: 'POST',
@@ -253,7 +253,7 @@ export function registerIpcHandlers(deps: {
   })
 
   // HTTP test (verifies Hono server is reachable)
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_TEST_HTTP, async () => {
+  handle(IPC_CHANNELS.CAPTURES_TEST_HTTP, async () => {
     const start = Date.now()
     try {
       const res = await fetch(`http://127.0.0.1:${CAPTURE_SERVER_PORT}/api/status`, {
@@ -610,18 +610,18 @@ export function registerIpcHandlers(deps: {
   })
 
   // App
-  ipcMain.handle(IPC_CHANNELS.APP_GET_VERSION, () => app.getVersion())
+  handle(IPC_CHANNELS.APP_GET_VERSION, () => app.getVersion())
 
   // Diagnostics: start the always-on event-loop sampler with handler
   // registration (idempotent) so stall history predates opening the panel.
   diagnosticsService.start()
-  ipcMain.handle(IPC_CHANNELS.DIAGNOSTICS_GET, () => diagnosticsService.snapshot())
+  handle(IPC_CHANNELS.DIAGNOSTICS_GET, () => diagnosticsService.snapshot())
 
   // Updates (update delivery)
-  ipcMain.handle(IPC_CHANNELS.UPDATES_GET_STATUS, () => updaterService.getStatus())
-  ipcMain.handle(IPC_CHANNELS.UPDATES_CHECK, () => updaterService.check())
-  ipcMain.handle(IPC_CHANNELS.UPDATES_DOWNLOAD, () => updaterService.download())
-  ipcMain.handle(IPC_CHANNELS.UPDATES_INSTALL, () => updaterService.install())
+  handle(IPC_CHANNELS.UPDATES_GET_STATUS, () => updaterService.getStatus())
+  handle(IPC_CHANNELS.UPDATES_CHECK, () => updaterService.check())
+  handle(IPC_CHANNELS.UPDATES_DOWNLOAD, () => updaterService.download())
+  handle(IPC_CHANNELS.UPDATES_INSTALL, () => updaterService.install())
 
   // AI Analysis
   handle(IPC_CHANNELS.AI_ANALYZE, async (_, params: AnalyzeCaptureParams) => {

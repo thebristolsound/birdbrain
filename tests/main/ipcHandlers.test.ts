@@ -386,9 +386,11 @@ describe('ipcHandlers — captures', () => {
   })
 
   it('reports failure for the http/pipeline self-tests when the server is down', async () => {
-    const http = await invoke<{ success: boolean }>(IPC_CHANNELS.CAPTURES_TEST_HTTP)
+    const http = expectOk<{ success: boolean }>(await invoke(IPC_CHANNELS.CAPTURES_TEST_HTTP))
     expect(http.success).toBe(false)
-    const pipeline = await invoke<{ success: boolean }>(IPC_CHANNELS.CAPTURES_TEST_PIPELINE)
+    const pipeline = expectOk<{ success: boolean }>(
+      await invoke(IPC_CHANNELS.CAPTURES_TEST_PIPELINE)
+    )
     expect(pipeline.success).toBe(false)
   })
 })
@@ -564,7 +566,7 @@ describe('ipcHandlers — settings', () => {
 
 describe('ipcHandlers — updates', () => {
   it('reports status and runs a check via the updater service', async () => {
-    const status = await invoke(IPC_CHANNELS.UPDATES_GET_STATUS)
+    const status = expectOk(await invoke(IPC_CHANNELS.UPDATES_GET_STATUS))
     expect(status).toEqual({
       state: 'idle',
       currentVersion: '1.2.3',
@@ -573,7 +575,7 @@ describe('ipcHandlers — updates', () => {
     })
     expect(updaterService.getStatus).toHaveBeenCalled()
 
-    const checked = await invoke(IPC_CHANNELS.UPDATES_CHECK)
+    const checked = expectOk(await invoke(IPC_CHANNELS.UPDATES_CHECK))
     expect(checked).toEqual({
       state: 'up-to-date',
       currentVersion: '1.2.3',

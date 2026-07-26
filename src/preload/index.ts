@@ -281,18 +281,23 @@ const birdbrain = {
   },
 
   app: {
-    getVersion: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.APP_GET_VERSION)
+    getVersion: (): Promise<string> =>
+      unwrapIpc<string>(ipcRenderer.invoke(IPC_CHANNELS.APP_GET_VERSION))
   },
 
   diagnostics: {
-    get: (): Promise<DiagnosticsSnapshot> => ipcRenderer.invoke(IPC_CHANNELS.DIAGNOSTICS_GET)
+    get: (): Promise<DiagnosticsSnapshot> =>
+      unwrapIpc<DiagnosticsSnapshot>(ipcRenderer.invoke(IPC_CHANNELS.DIAGNOSTICS_GET))
   },
 
   updates: {
-    getStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke(IPC_CHANNELS.UPDATES_GET_STATUS),
-    check: (): Promise<UpdateStatus> => ipcRenderer.invoke(IPC_CHANNELS.UPDATES_CHECK),
-    download: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.UPDATES_DOWNLOAD),
-    install: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.UPDATES_INSTALL)
+    getStatus: (): Promise<UpdateStatus> =>
+      unwrapIpc<UpdateStatus>(ipcRenderer.invoke(IPC_CHANNELS.UPDATES_GET_STATUS)),
+    check: (): Promise<UpdateStatus> =>
+      unwrapIpc<UpdateStatus>(ipcRenderer.invoke(IPC_CHANNELS.UPDATES_CHECK)),
+    download: (): Promise<void> =>
+      unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.UPDATES_DOWNLOAD)),
+    install: (): Promise<void> => unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.UPDATES_INSTALL))
   },
 
   db: {
@@ -409,10 +414,14 @@ const birdbrain = {
   },
 
   testPipeline: (): Promise<{ success: boolean; durationMs: number; error?: string }> =>
-    ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_TEST_PIPELINE),
+    unwrapIpc<{ success: boolean; durationMs: number; error?: string }>(
+      ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_TEST_PIPELINE)
+    ),
 
   testHttp: (): Promise<{ success: boolean; durationMs: number; error?: string }> =>
-    ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_TEST_HTTP),
+    unwrapIpc<{ success: boolean; durationMs: number; error?: string }>(
+      ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_TEST_HTTP)
+    ),
 
   extractedData: {
     categories: (caseId: string): Promise<ExtractedDataCategory[]> =>

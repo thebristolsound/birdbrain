@@ -253,7 +253,13 @@ if (!gotSingleInstanceLock) {
     })
 
     // Register IPC handlers
-    registerIpcHandlers({ selectorLifecycle, captureLifecycle, recaptureService, updaterService })
+    registerIpcHandlers({
+      selectorLifecycle,
+      captureLifecycle,
+      recaptureService,
+      updaterService,
+      sessionService
+    })
 
     // Start capture server and extension connection monitor
     await startCaptureServer({ selectorLifecycle, captureLifecycle, sessionService })

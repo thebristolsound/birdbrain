@@ -133,6 +133,13 @@ const birdbrain = {
     openFolder: bridge(IPC_CHANNELS.EXTENSION_OPEN_FOLDER)
   },
 
+  session: {
+    snapshot: bridge(IPC_CHANNELS.SESSION_SNAPSHOT),
+    activateCase: bridge(IPC_CHANNELS.SESSION_ACTIVATE_CASE),
+    start: bridge(IPC_CHANNELS.SESSION_START),
+    stop: bridge(IPC_CHANNELS.SESSION_STOP)
+  },
+
   search: bridge(IPC_CHANNELS.SEARCH),
 
   settings: {

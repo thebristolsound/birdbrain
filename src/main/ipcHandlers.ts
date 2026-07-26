@@ -25,7 +25,8 @@ import type {
   ExportResult,
   ArchiveExportResult,
   RecaptureEnqueuePayload,
-  SelfTestResult
+  SelfTestResult,
+  SessionStateEvent
 } from '@shared/ipc'
 import * as dbAdmin from '@main/services/db/dbAdmin'
 import { existsSync } from 'fs'
@@ -55,12 +56,13 @@ import { getExtensionPath, extensionPathExists } from '@main/services/extensionP
 import { lookupSnapshots, isPersistableSnapshot } from '@main/services/waybackMachine'
 import { buildCsv } from '@main/services/csvEscape'
 import { getInstallationId } from '@main/services/installationId'
-import { CAPTURE_SERVER_PORT, getSessionState } from '@main/services/captureServer'
+import { CAPTURE_SERVER_PORT } from '@main/services/captureServer'
 import { getServerToken } from '@main/services/serverToken'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import type { RecaptureService } from '@main/services/recapture'
 import type { UpdaterService } from '@main/services/updater'
+import type { SessionService } from '@main/services/session'
 import { handle, IpcFailure, sendEvent } from '@main/ipcWrap'
 import { diagnosticsService } from '@main/services/diagnostics'
 import type {
@@ -101,8 +103,10 @@ export function registerIpcHandlers(deps: {
   captureLifecycle: CaptureLifecycle
   recaptureService: RecaptureService
   updaterService: UpdaterService
+  sessionService: SessionService
 }): void {
-  const { selectorLifecycle, captureLifecycle, recaptureService, updaterService } = deps
+  const { selectorLifecycle, captureLifecycle, recaptureService, updaterService, sessionService } =
+    deps
   // Cases
   handle(IPC_CHANNELS.CASES_LIST, () => caseRepo.listCases())
   handle(IPC_CHANNELS.CASES_GET, (_, id: string) => caseRepo.getCase(id))
@@ -156,6 +160,34 @@ export function registerIpcHandlers(deps: {
       return { newCaseId }
     }
   )
+
+  // Session. The extension drives sessions over HTTP; these are the renderer's
+  // equivalent, backed by the same service instance.
+  const sessionSnapshot = (): SessionStateEvent => {
+    const { sessionActive, activeCaseId, captureCount } = sessionService.snapshot()
+    return { sessionActive, activeCaseId, captureCount }
+  }
+
+  handle(IPC_CHANNELS.SESSION_SNAPSHOT, () => sessionSnapshot())
+
+  handle(IPC_CHANNELS.SESSION_ACTIVATE_CASE, (_, caseId: string) => {
+    if (!caseRepo.getCase(caseId)) throw new IpcFailure('Case not found', 'NOT_FOUND')
+    sessionService.activateCase(caseId)
+    return sessionSnapshot()
+  })
+
+  handle(IPC_CHANNELS.SESSION_START, () => {
+    if (!sessionService.snapshot().activeCaseId) {
+      throw new IpcFailure('No active case selected', 'NO_ACTIVE_CASE')
+    }
+    sessionService.start()
+    return sessionSnapshot()
+  })
+
+  handle(IPC_CHANNELS.SESSION_STOP, () => {
+    sessionService.stop()
+    return sessionSnapshot()
+  })
 
   // Captures
   handle(IPC_CHANNELS.CAPTURES_LIST, (_, caseId: string) => captureRepo.listCaptures(caseId))
@@ -306,7 +338,7 @@ export function registerIpcHandlers(deps: {
   )
   handle(IPC_CHANNELS.SELECTORS_DELETE, (_, id: string) => selectorRepo.deleteSelector(id))
   handle(IPC_CHANNELS.SELECTORS_LIST_ACTIVE, () => {
-    const { activeCaseId } = getSessionState()
+    const { activeCaseId } = sessionService.snapshot()
     return selectorRepo.listActiveSelectors(activeCaseId ?? undefined)
   })
   handle(IPC_CHANNELS.SELECTORS_MATCH_COUNTS, (_, caseId: string) =>

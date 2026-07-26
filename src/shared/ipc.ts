@@ -1,7 +1,15 @@
 // Typed IPC channel definitions
 // Every IPC call between renderer and main process goes through these channels
 
-import type { AnnotationShape, ArchiveInspectReport, Case, WaybackSnapshot } from '@shared/types'
+import type {
+  AnnotationShape,
+  ArchiveInspectReport,
+  Capture,
+  Case,
+  HashVerification,
+  Selector,
+  WaybackSnapshot
+} from '@shared/types'
 
 export const IPC_CHANNELS = {
   // Cases
@@ -386,6 +394,14 @@ export interface RecaptureEnqueuePayload {
   supersedesCaptureId?: string
 }
 
+// Result of the capture-pipeline and HTTP self-tests. `error` carries the
+// failure reason when `success` is false.
+export interface SelfTestResult {
+  success: boolean
+  durationMs: number
+  error?: string
+}
+
 // --- Invoke contract --------------------------------------------------------
 //
 // One entry per invoke channel: the argument tuple the renderer sends and the
@@ -408,6 +424,31 @@ export interface IpcInvokeContract {
     args: [archivePath: string, overrideTamper: boolean]
     result: { newCaseId: string }
   }
+
+  'captures:list': { args: [caseId: string]; result: Capture[] }
+  'captures:get': { args: [id: string]; result: Capture | undefined }
+  'captures:delete': { args: [id: string]; result: boolean }
+  'captures:getContent': {
+    args: [captureId: string, type: 'html' | 'png' | 'txt']
+    result: string | null
+  }
+  'captures:getThumbnail': { args: [captureId: string]; result: string | null }
+  'captures:getMatchingSelectors': { args: [captureId: string]; result: Selector[] }
+  'captures:download': { args: [captureId: string]; result: string | null }
+  'captures:downloadPdf': { args: [captureId: string]; result: string | null }
+  'captures:downloadScreenshot': { args: [captureId: string]; result: string | null }
+  'captures:openExternal': { args: [url: string]; result: void }
+  'captures:countsByCase': { args: []; result: Record<string, number> }
+  'captures:toggleFavorite': { args: [captureId: string]; result: boolean }
+  'captures:isFavorite': { args: [captureId: string]; result: boolean }
+  'captures:listFavorites': { args: [caseId: string]; result: string[] }
+  'captures:verify': { args: [captureId: string]; result: HashVerification }
+  'captures:getMhtmlUrl': { args: [captureId: string]; result: string | null }
+  'captures:testPipeline': { args: []; result: SelfTestResult }
+  'captures:testHttp': { args: []; result: SelfTestResult }
+
+  'recapture:enqueue': { args: [payload: RecaptureEnqueuePayload]; result: EnqueueResult }
+  'recapture:queueStatus': { args: []; result: RecaptureQueueStatus }
 }
 
 export type ContractedChannel = keyof IpcInvokeContract

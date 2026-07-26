@@ -317,7 +317,7 @@ describe('ipcHandlers — captures', () => {
   it('toggles, reads and lists favorites', async () => {
     expectOk(await invoke(IPC_CHANNELS.CAPTURES_TOGGLE_FAVORITE, captureId))
     expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_IS_FAVORITE, captureId))).toBe(true)
-    const favs = expectOk<Capture[]>(await invoke(IPC_CHANNELS.CAPTURES_LIST_FAVORITES, caseId))
+    const favs = expectOk<string[]>(await invoke(IPC_CHANNELS.CAPTURES_LIST_FAVORITES, caseId))
     expect(favs).toHaveLength(1)
   })
 

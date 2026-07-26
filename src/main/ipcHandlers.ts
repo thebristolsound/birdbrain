@@ -26,7 +26,8 @@ import type {
   ExportResult,
   ArchiveProgressEvent,
   ArchiveExportResult,
-  RecaptureEnqueuePayload
+  RecaptureEnqueuePayload,
+  SelfTestResult
 } from '@shared/ipc'
 import * as dbAdmin from '@main/services/db/dbAdmin'
 import { existsSync } from 'fs'
@@ -246,7 +247,9 @@ export function registerIpcHandlers(deps: {
         headers: { 'X-Birdbrain-Token': getServerToken() },
         signal: AbortSignal.timeout(SELF_TEST_TIMEOUT_MS)
       })
-      return res.json()
+      // The capture server owns this response shape; res.json() is untyped, so
+      // the contract entry is what pins it.
+      return (await res.json()) as SelfTestResult
     } catch (err) {
       return { success: false, durationMs: 0, error: String(err) }
     }

@@ -652,3 +652,46 @@ describe('sanitizeError against hostile Error shapes', () => {
     expect(sanitizeError(err).stack).toBeNull()
   })
 })
+
+describe('stack frame validation rejects prose shaped like a location', () => {
+  function stackOf(message: string): string | null {
+    const err = new Error(message)
+    // A real thrown error, so the genuine V8 frames below the injected line
+    // are present too — the test must show the injected line is dropped while
+    // real frames survive, not that everything is discarded.
+    return sanitizeError(err, '/app', '/home/tester').stack
+  }
+
+  it('drops a message line ending in :line:col with no path', () => {
+    const out = stackOf('failed\n    at Operation Blackbird:10:5')
+    expect(out ?? '').not.toContain('Blackbird')
+  })
+
+  it('drops a parenthesised message line ending in :line:col with no path', () => {
+    const out = stackOf('failed\n    at fn (Operation Blackbird:10:5)')
+    expect(out ?? '').not.toContain('Blackbird')
+  })
+
+  it('still keeps genuine frames', () => {
+    const err = new Error('boom')
+    err.stack = [
+      'Error: boom',
+      '    at doThing (/app/src/main/index.js:10:5)',
+      '    at async run (/app/src/main/boot.js:3:1)',
+      '    at node:internal/process/task_queues:95:5',
+      '    at <anonymous>'
+    ].join('\n')
+    const out = sanitizeError(err, '/app', '/home/tester').stack ?? ''
+    expect(out).toContain('src/main/index.js:10:5')
+    expect(out).toContain('boot.js:3:1')
+    expect(out).toContain('node:internal')
+    expect(out).toContain('<anonymous>')
+  })
+
+  it('keeps windows frames', () => {
+    const err = new Error('boom')
+    err.stack = ['Error: boom', String.raw`    at doThing (C:\app\src\main\index.js:10:5)`].join('\n')
+    const out = sanitizeError(err, String.raw`C:\app`, String.raw`C:\Users\tester`).stack ?? ''
+    expect(out).toContain('index.js:10:5')
+  })
+})

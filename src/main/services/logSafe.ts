@@ -470,11 +470,19 @@ export function sanitizeText(text: string, homeDir: string): string {
 //     at fn (<anonymous>)        at async fn (/file.js:10:5)
 //
 // so both tests must pass: the prefix AND a location. '(case 7)' is not a
-// location and is dropped. A message crafted to end in a real 'file:line:col'
-// is indistinguishable from a frame by construction — but it has a path shape
-// by then, which is what the sanitizeText pass in sanitizeError is for.
+// location and is dropped.
+//
+// A ':line:col' suffix alone is still not enough, because prose can end that
+// way too: `new Error('failed\n    at Operation Blackbird:10:5')` satisfies
+// both the prefix and a bare numeric-suffix test, and — having no slash, drive
+// letter or scheme — carries no path shape for sanitizeText to catch either.
+// So the location must also name something that could actually be a file: a
+// path separator, or a module scheme like 'node:'. A real frame always has
+// one; a case name does not. The cost is dropping an exotic frame whose file
+// has no directory at all, which loses one line of diagnostics — the right
+// direction to fail in a module whose job is keeping case names off disk.
 const FRAME_PREFIX = /^\s*at\s/
-const FRAME_LOCATION = /(?::\d+:\d+\)?|\(?(?:<anonymous>|native)\)?)$/
+const FRAME_LOCATION = /(?:[/\\][^\s()]*:\d+:\d+\)?|\b[a-z][a-z0-9+.-]*:[^\s()]*:\d+:\d+\)?|\(?(?:<anonymous>|native)\)?)$/
 
 function stackFrames(stack: string): string[] {
   return stack.split('\n').filter((line) => FRAME_PREFIX.test(line) && FRAME_LOCATION.test(line))

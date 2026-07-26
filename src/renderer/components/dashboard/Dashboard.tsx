@@ -8,7 +8,7 @@ import {
   captureCountsQueryOptions,
   useCasesMutations
 } from '@renderer/lib/queries'
-import { ImportCaseDialog } from '@renderer/components/cases/ImportCaseDialog'
+import { ImportCaseDialog } from '@renderer/components/dashboard/cases/ImportCaseDialog'
 import { HeroSection } from '@renderer/components/dashboard/HeroSection'
 import { RecentCases } from '@renderer/components/dashboard/RecentCases'
 import { QuickStartGuide } from '@renderer/components/dashboard/QuickStartGuide'

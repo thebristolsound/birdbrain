@@ -306,15 +306,23 @@ export interface CreateNoteParams {
   title?: string
   body?: string
   bodyDoc?: string
+  /** Serialized anchor payload. Validated in main; omit for an unanchored note. */
+  anchor?: string
   sourceUrl?: string
   screenshotPath?: string
 }
 
+/**
+ * `anchor` is three-valued on update: omitted leaves the stored anchor alone,
+ * a string replaces it, and `null` clears it. Absent and cleared must be
+ * distinguishable, or a title-only edit would silently unanchor the note.
+ */
 export interface UpdateNoteParams {
   id: string
   title?: string
   body?: string
   bodyDoc?: string
+  anchor?: string | null
 }
 
 export interface PinArchiveSnapshotParams {

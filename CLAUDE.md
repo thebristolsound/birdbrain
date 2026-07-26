@@ -8,14 +8,16 @@ Open source web investigation & capture tool. Electron desktop app with a compan
 - `pnpm build` - Build the Electron app
 - `pnpm build:extension` - Build the Chrome extension
 - `pnpm dev:extension` - Build Chrome extension in watch mode (background and popup bundles only; does not watch/rebuild the content script IIFE build)
+- `pnpm build:verifier` - Build the standalone verifier binary (`scripts/build-verifier.mjs`)
 - `pnpm test` - Run tests (vitest, via Electron runtime)
 - `pnpm test:watch` - Run tests in watch mode
+- `pnpm test:coverage` / `pnpm coverage:report` / `pnpm coverage:all` - Coverage run and reports
 - `pnpm lint` - ESLint (.ts, .tsx)
 - `pnpm format` - Prettier format src/ and extension/
 - `pnpm rebuild:electron` - Rebuild native deps (better-sqlite3)
 - `pnpm test:e2e` - Run E2E tests (Playwright + Electron, runs `pnpm build` first)
 - `pnpm test:e2e:debug` - Run E2E tests with Playwright inspector
-- `pnpm package` / `pnpm package:win` / `pnpm package:mac` - Package for distribution
+- `pnpm package` / `pnpm package:win` / `pnpm package:mac` / `pnpm package:linux` - Package for distribution
 
 ## Architecture
 
@@ -31,21 +33,33 @@ Electron + React 19 + TanStack Router + React Query + Chrome Extension + SQLite 
 ### Key directories
 
 ```
-src/main/services/           # Core services: database, captureServer, storage, export, settings, hash, safeRegex, openrouter, canonicalJson, csvEscape, installationId, manifest, captureLifecycle, updater
-src/main/services/ai/       # AI services (OpenRouter client)
-src/main/ipcHandlers.ts     # All IPC handler registrations
-src/shared/types.ts         # Shared TypeScript types (Case, Capture, Tag, Selector, Note, Settings, etc.)
-src/shared/ipc.ts           # IPC channel definitions and payload types
-src/shared/constants.ts     # Constants (CAPTURE_SERVER_PORT, MAX_MHTML_SIZE, MANIFEST_FILENAME, etc.)
-src/renderer/routes/        # TanStack Router route definitions (root tree plus captures route module)
-src/renderer/stores/        # Zustand store (appStore.ts)
-src/renderer/hooks/         # React hooks for theme, search, filters, viewport, motion, session restore, server status, etc.
-src/renderer/lib/           # React Query client and query/mutation factories
-src/renderer/components/    # UI organized by feature (13 top-level directories, ~96 TSX components)
-extension/src/              # Chrome extension source (background, content, popup, utils/api, toast)
-tests/                      # Vitest unit tests
-e2e/                        # Playwright E2E tests
-docs/                       # Local working notes — see docs/README.md for layout (reference/, specs/, plans/, archive/)
+src/main/services/           # Main-process services: captureServer, captureStore, storage, export, pdfExport,
+                             #   settings, hash, manifest, captureLifecycle, selectorLifecycle, recapture,
+                             #   annotations, caseArchive, zip/zipRead, timestamp/trustedTime/tsaTrust,
+                             #   signingKey, certification, waybackMachine, diagnostics, updater, deepLink,
+                             #   noteAnchorResolver, logSafe
+src/main/services/db/        # Data access layer — see "Database" below (core, migrations, per-domain repos, dbAdmin)
+src/main/services/ai/        # OpenRouter chat client + capture analysis service
+src/main/services/extraction/ # Extracted-data pipeline (source, IOC adapter, sanitizer, validators)
+src/main/ipcHandlers.ts      # All IPC handler registrations
+src/main/ipcWrap.ts          # handle() wrapper + IpcFailure error envelope
+src/shared/types.ts          # Cross-process domain types (Case, Capture, Tag, Selector, Note, Settings, etc.)
+src/shared/ipc.ts            # IPC channel definitions and payload types
+src/shared/constants.ts      # Constants (CAPTURE_SERVER_PORT, MAX_MHTML_SIZE, MANIFEST_FILENAME, etc.)
+src/shared/schemas.ts        # Zod schemas validating settings and imported/exported documents
+src/shared/noteDoc.ts        # Rich-text note document model + body derivation
+src/shared/noteAnchor.ts     # Note anchor model + text-anchor resolution
+src/shared/verify/           # Evidence-package verification (canonicalJson, manifestChain, signature, timestampToken)
+src/verifier/cli.ts          # Standalone verifier CLI entry point
+src/renderer/routes/         # TanStack Router route definitions (root tree plus captures route module)
+src/renderer/stores/         # Zustand store (appStore.ts)
+src/renderer/hooks/          # React hooks for theme, search, filters, viewport, favorites, session restore, server status, etc.
+src/renderer/lib/            # React Query client, query/mutation factories, motion presets, formatting helpers
+src/renderer/components/     # UI organized by feature — see "UI components" below
+extension/src/               # Chrome extension source (background, content, popup, toast, utils/api, utils/headers)
+tests/                       # Vitest unit tests
+e2e/                         # Playwright E2E tests
+docs/                        # Local working notes — see docs/README.md for layout (reference/, specs/, plans/, archive/)
 ```
 
 ### Path aliases
@@ -58,7 +72,7 @@ docs/                       # Local working notes — see docs/README.md for lay
 
 All renderer↔main communication uses typed IPC channels defined in `src/shared/ipc.ts`. Channels follow `domain:action` naming (e.g., `cases:create`, `selectors:create`). Event channels (main→renderer) use `event:` prefix.
 
-**Domains:** cases (5), captures (18), tags (9), search (1), settings (6), export (1), selectors (11), notes (7), updates (4), events (5).
+**Domains** (read `IPC_CHANNELS` in `src/shared/ipc.ts` for the authoritative list): cases, captures, recapture, tags, search, settings, export, selectors, notes, archive, extractedData, annotations, extension, shell, app, diagnostics, updates, ai, db — plus the `event:` main→renderer channels.
 
 The preload script exposes these via `window.birdbrain` with typed invoke/on methods.
 
@@ -101,11 +115,17 @@ Zustand store (`src/renderer/stores/appStore.ts`) for UI-only state:
 
 ### Database
 
-SQLite via better-sqlite3 with WAL mode. Schema migrations use `user_version` pragma (currently v1-v12) in `src/main/services/database.ts`.
+SQLite via better-sqlite3. The data-access layer lives in `src/main/services/db/`:
 
-**Tables:** cases, captures, tags, capture_tags, selectors, selector_matches, captures_fts (FTS5), capture_favorites, notes, notes_fts (FTS5).
+- `core.ts` - Owns the connection. `initDatabase()` opens the file, sets the pragmas (`journal_mode = WAL`, `foreign_keys = ON`, `busy_timeout`), then runs migrations. Also exports `getDb()`, `closeDatabase()`, `withTransaction()`, the `ImportCtx` archive-import context, and `ID_PROBE_TABLES` / `hasRowWithId()` for archive-import id collision remapping.
+- `migrations.ts` - The whole schema history in one `runMigrations(db)` function: a sequence of `if (version < N)` blocks, each running its DDL inside a transaction that ends by setting `db.pragma('user_version = N')`. New schema changes append a new block and bump `LATEST_SCHEMA_VERSION` in `core.ts` — that constant is the single source of truth for the current version, so read it rather than counting blocks.
+- Per-domain repos - `caseRepo.ts`, `captureRepo.ts`, `tagRepo.ts`, `selectorRepo.ts`, `noteRepo.ts`, `extractedDataRepo.ts`, `archiveRefRepo.ts`. Each owns the SQL for its aggregate.
+- `dbAdmin.ts` - Generic table browse/edit, vacuum, FTS rebuild, orphan cleanup, backup/restore, CSV export (backs Settings → Database).
+- `diagnosticsRepo.ts` - Read-only DB facts for Settings → Diagnostics, including the live `user_version` alongside `LATEST_SCHEMA_VERSION`.
 
-**Indexes:** idx_captures_case_id, idx_capture_tags_tag_id, idx_selectors_case_id, idx_selector_matches_capture, idx_capture_favorites_created, idx_captures_format, idx_captures_manifest_index, idx_notes_case_id, idx_notes_capture_id.
+**Raw connection access is lint-enforced:** `eslint.config.js` restricts importing `getDb` from `@main/services/db/core` anywhere under `src/main/` outside `src/main/services/db/`. New SQL belongs in a repo module; the few legacy exceptions carry an `eslint-disable` with a reason.
+
+**Tables and indexes:** read `migrations.ts` — it is the only place tables and indexes are declared, in chronological order. Broadly: case/capture core plus tags, selectors and selector matches, notes, favorites, capture analyses, extracted data, annotations and annotation pins, archive refs, capture texts, and FTS5 virtual tables shadowing captures, notes, and extracted data. Never assume a table exists because it appears in an early migration — later migrations drop and rebuild some (e.g. the v1 `entities` and `case_analyses` tables were dropped, and `captures_fts` was later dropped and recreated).
 
 ### Theme system
 
@@ -133,25 +153,34 @@ Built separately via `pnpm build:extension` (uses `extension/vite.config.ts`).
 
 ### AI services
 
-OpenRouter integration (`src/main/services/openrouter.ts`) provides `testApiKey()` and `listModels()`. Previous entity extraction and case analysis tables were removed in migration v7. Settings persist `openRouterApiKey` and `defaultModel`.
+Two OpenRouter modules, split by role:
+
+- `src/main/services/openrouter.ts` - Credential/catalog surface: `testApiKey()` and `listModels()`, exposed over the `settings:testOpenRouter` and `settings:listModels` channels and driven by Settings → AI.
+- `src/main/services/ai/openrouter.ts` - The chat client: `sendPrompt()` (with retry/backoff) and `truncateForContext()`.
+
+`src/main/services/ai/analysisService.ts` runs per-capture analysis on top of that client (`analyzeCapture`, `saveAnalysis`, `getAnalysis`, plus archive import/export helpers) and persists to the `capture_analyses` table. Handlers are registered for `ai:analyze`, `ai:saveAnalysis`, and `ai:getAnalysis`; the renderer surface is `captures/AnalysisTab.tsx`.
+
+Note: the v1 `entities` and `case_analyses` tables were dropped in an early migration, but **per-capture analysis exists again** via `capture_analyses` — do not assume AI analysis is dead code.
+
+Settings persist `openRouterApiKey`, `defaultModel`, and `analysisSystemPrompt` (defaulting to `DEFAULT_ANALYSIS_SYSTEM_PROMPT` in `src/shared/constants.ts`).
 
 ### UI components
 
-Organized into 13 top-level feature directories under `src/renderer/components/`:
+Organized by feature under `src/renderer/components/`:
 
-- **captures/** - Capture list/viewer workflow, details panel/rail, add-URL box, provenance, archive/analysis/forensics tabs, inline tag/note editing hooks, verify mutation, and annotation editor under `captures/annotation/`
-- **dashboard/** - Dashboard, CaseCard, DashboardFooter, ExtensionBanner, HeroSection, QuickStartGuide, RecentCases, plus case workspace components under `dashboard/cases/` (CaseWorkspace, CreateCaseDialog, DataExplorer, NewCaseWizard)
-- **export/** - ExportDialog, ExportProgress, ExportComplete
+- **captures/** - Capture list/viewer workflow, details panel/rail, add-URL box, provenance, archive/analysis/forensics tabs, MHTML viewer, download menu, inline tag/note editing hooks, verify mutation, and the annotation editor under `captures/annotation/` (canvas, zoom/pan and editor hooks, pin popover, shape components under `annotation/shapes/`)
+- **dashboard/** - Dashboard, CaseCard, DashboardFooter, ExtensionBanner, HeroSection, QuickStartGuide, RecentCases, plus case workspace components under `dashboard/cases/` (CaseWorkspace, CreateCaseDialog, DataExplorer, ImportCaseDialog, NewCaseWizard)
+- **export/** - ExportDialog, ExportMenu, ExportProgress, ExportComplete
 - **extension/** - InstallExtensionGuide, InstallExtensionStepper, installSteps.tsx
-- **layout/** - TopBar, Sidebar, CommandPalette, OnboardingWizard, plus export confirmation dialog under `layout/export/`
-- **notes/** - AddNoteModal, CreateNoteCard, NoteCard, NotesOverview
+- **layout/** - TopBar, Sidebar, CommandPalette, OnboardingWizard
+- **notes/** - AddNoteModal, CreateNoteCard, NoteCard, NoteBody, NoteEditor, NotesOverview, useNoteEditor.ts
 - **overview/** - CaseOverview, CaseSubhead, ActivityTimeline, MetricRow, RecentCapturesStrip, SelectorCoverageBlock, SinceLastVisitBanner, SourcesBlock, VerifyBar, overviewModel.ts
 - **search/** - SearchBar
 - **selectors/** - BulkAddSelectorsModal, CreateSelectorCard, CreateSelectorPopover, SelectorFilterFooter, SelectorTable, SelectorTableRow, SelectorsOverview, selectorUtils.ts
-- **settings/** - SettingsView, AIConfig, AppearanceConfig, CapturePreferences, DatabaseAdmin, OperatorConfig, StorageConfig, UpdatesConfig, About, plus database utility views under `settings/db/`
+- **settings/** - SettingsView, AIConfig, AppearanceConfig, CapturePreferences, DatabaseAdmin, DiagnosticsPanel, OperatorConfig, StorageConfig, UpdatesConfig, About, plus database utility views under `settings/db/`
 - **status/** - CaptureHealth, ConnectionStatus, SessionControls
 - **tags/** - TagBadge, TagManager, TagsOverview
-- **ui/** - Shared primitives: badge, button, card, dialog, input, label, scroll-area, skeleton, tabs, textarea
+- **ui/** - Shared primitives re-exported from `ui/index.ts`: badge, button, card, dialog, input, label, scroll-area, skeleton, tabs, textarea
 
 ## Documentation conventions
 

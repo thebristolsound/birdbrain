@@ -143,6 +143,21 @@ describe('anchored notes', () => {
     expect(getNote(note.id)!.anchor).toEqual(TEXT_ANCHOR)
   })
 
+  // An empty string is a malformed payload, not an absent one. Only null
+  // clears an anchor, and only an omitted `anchor` leaves it alone; a falsy
+  // guard would collapse all three and let a broken payload unanchor a note
+  // without ever reporting an error.
+  it('rejects an empty-string anchor on create rather than storing nothing', () => {
+    expect(() => createNote({ caseId, title: 'T', anchor: '' })).toThrow(/not valid JSON/)
+  })
+
+  it('rejects an empty-string anchor on update, leaving the stored one intact', () => {
+    const note = createNote({ caseId, title: 'T', anchor: JSON.stringify(TEXT_ANCHOR) })
+
+    expect(() => updateNote({ id: note.id, anchor: '' })).toThrow(/not valid JSON/)
+    expect(getNote(note.id)!.anchor).toEqual(TEXT_ANCHOR)
+  })
+
   describe('archive import', () => {
     function importRow(row: Record<string, unknown>): void {
       importNoteRows([{ created_at: 'x', updated_at: 'x', ...row }], {
@@ -183,6 +198,16 @@ describe('anchored notes', () => {
       importRow({ id: 'imported-3', title: 'Legacy', body: 'from an old archive' })
 
       expect(getNote('imported-3')!.anchor).toBeUndefined()
+    })
+
+    // A pre-v27 row is missing the key entirely; an empty string is a present
+    // but corrupt value, and the two must not import the same way.
+    it('fails the import on an empty-string anchor rather than importing it loose', () => {
+      expect(() =>
+        importRow({ id: 'imported-4', title: 'Corrupt', body: 'x', anchor_json: '' })
+      ).toThrow(/not valid JSON/)
+
+      expect(listNotes(caseId).map((n) => n.id)).not.toContain('imported-4')
     })
   })
 })

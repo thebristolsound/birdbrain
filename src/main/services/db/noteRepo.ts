@@ -12,12 +12,17 @@ import { parseNoteAnchor, type NoteAnchorKind } from '@shared/noteAnchor'
  * separately, so the column and the payload cannot describe different things.
  * An archive that supplies a contradictory `anchor_kind` is overruled by what
  * its own anchor actually says.
+ *
+ * Only `undefined` and `null` mean "no anchor". An empty string is a malformed
+ * payload, not an absent one, and is rejected rather than quietly unanchoring
+ * the note — a falsy guard here would let a renderer clear an anchor by sending
+ * a broken one, which is the coercion this module exists to prevent.
  */
 function resolveAnchor(anchor: string | null | undefined): {
   kind: NoteAnchorKind | null
   json: string | null
 } {
-  if (!anchor) return { kind: null, json: null }
+  if (anchor === undefined || anchor === null) return { kind: null, json: null }
   const parsed = parseNoteAnchor(anchor)
   return { kind: parsed.kind, json: JSON.stringify(parsed) }
 }

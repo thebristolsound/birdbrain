@@ -18,6 +18,11 @@
 - `src/shared/**` must never import from `@main/*` or `@renderer/*`.
 - Renderer components use semantic theme tokens (`bg-surface`, `text-text-primary`, `border-border`, `text-text-muted`), not raw Tailwind colours. Exceptions: overlays and status/severity colours.
 - Tests run with `pnpm test` (Vitest under the Electron runtime). Lint with `pnpm lint`.
+- **Test file placement is load-bearing.** `vitest.config.ts` defines two projects with strict includes. A test in the wrong directory is silently never run:
+  - `tests/**/*.test.ts` outside `tests/renderer/` and `tests/hooks/` → **node** project (`environment: 'node'`). Main-process tests go here.
+  - `tests/components/**/*.test.tsx`, `tests/renderer/**/*.test.ts`, `tests/hooks/**/*.test.ts` → **jsdom** project. React component tests must be `tests/components/*.test.tsx` — `tests/renderer/**/*.test.tsx` matches **no** project.
+  After adding a test, confirm it actually ran (the count in the Vitest summary must increase). A test that never executes is worse than no test.
+- **Coverage gates apply to the new services.** `pnpm test:coverage` enforces `src/main/services/*.ts` at 90% lines/statements/functions and 78% branches. `logSafe.ts`, `logger.ts`, `sessionLog.ts` and `bugReport.ts` all land under that glob, which is checked against the aggregate. Cover error paths and fallbacks, not just happy paths.
 - Commits: `<type>(<scope>): <subject>`. **Never** add `Co-authored-by`. **Never** `git add .` or `git add -A` — stage files explicitly.
 - **Nothing in this feature may perform network I/O.** No upload, endpoint, or telemetry of any kind.
 - The log must never contain URLs, page titles, case names, absolute paths, or settings values.
@@ -369,7 +374,7 @@ git commit -m "feat(logging): shared log entry types and diagnostics ipc channel
 
 ```typescript
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -427,7 +432,7 @@ describe('sessionLog', () => {
 
   it('recovers from a corrupt sessions file', () => {
     startSession(dir, INFO)
-    require('node:fs').writeFileSync(join(dir, 'sessions.json'), '{ not json')
+    writeFileSync(join(dir, 'sessions.json'), '{ not json')
     expect(() => startSession(dir, INFO)).not.toThrow()
     expect(readSessions(dir)).toHaveLength(1)
   })
@@ -1185,7 +1190,7 @@ git commit -m "refactor(logging): route main-process diagnostics through the log
 **Files:**
 - Create: `src/renderer/components/diagnostics/LogTab.tsx`
 - Modify: `src/renderer/components/settings/DiagnosticsPanel.tsx`
-- Test: `tests/renderer/components/LogTab.test.tsx`
+- Test: `tests/components/LogTab.test.tsx`
 
 **Interfaces:**
 - Consumes: `window.birdbrain.onLogEntry`, `window.birdbrain.diagnostics.revealLog`, `LogEntry`.
@@ -1372,7 +1377,7 @@ Run: `pnpm test -- LogTab && pnpm lint`
 Expected: PASS. Report actual output.
 
 ```bash
-git add src/renderer/components/diagnostics/LogTab.tsx src/renderer/components/settings/DiagnosticsPanel.tsx tests/renderer/components/LogTab.test.tsx
+git add src/renderer/components/diagnostics/LogTab.tsx src/renderer/components/settings/DiagnosticsPanel.tsx tests/components/LogTab.test.tsx
 git commit -m "feat(logging): log tab with level filters and reveal in diagnostics"
 ```
 
@@ -1702,7 +1707,7 @@ git commit -m "feat(notify): surface mutation failures and log query failures"
 - Create: `src/renderer/components/ErrorBoundary.tsx`
 - Modify: `src/renderer/routes/__root.tsx`
 - Modify: `src/renderer/components/captures/CaptureViewer.tsx` (wrap its rendered content; confirm the exact filename with `ls src/renderer/components/captures` first)
-- Test: `tests/renderer/components/ErrorBoundary.test.tsx`
+- Test: `tests/components/ErrorBoundary.test.tsx`
 
 **Interfaces:**
 - Produces: `<ErrorBoundary source="..." children />`.
@@ -1825,7 +1830,7 @@ Run: `pnpm test -- ErrorBoundary && pnpm lint && pnpm build`
 Expected: PASS. Report actual output.
 
 ```bash
-git add src/renderer/components/ErrorBoundary.tsx src/renderer/routes/__root.tsx src/renderer/components/captures tests/renderer/components/ErrorBoundary.test.tsx
+git add src/renderer/components/ErrorBoundary.tsx src/renderer/routes/__root.tsx src/renderer/components/captures tests/components/ErrorBoundary.test.tsx
 git commit -m "feat(notify): react error boundaries at root and capture viewer"
 ```
 
@@ -2126,7 +2131,7 @@ git commit -m "feat(diagnostics): create-report ipc handler and bridge"
 - Create: `src/renderer/components/diagnostics/ReportProblemDialog.tsx`
 - Create: `src/renderer/components/diagnostics/CrashRecoveryPrompt.tsx`
 - Modify: `src/renderer/routes/__root.tsx`, `src/renderer/components/settings/DiagnosticsPanel.tsx`, `src/renderer/components/layout/CommandPalette.tsx`
-- Test: `tests/renderer/components/ReportProblemDialog.test.tsx`
+- Test: `tests/components/ReportProblemDialog.test.tsx`
 
 **Interfaces:**
 - Consumes: `window.birdbrain.diagnostics.createReport`, `.lastSession()`; the `birdbrain:report` window event dispatched by `notify` in Task 10.
@@ -2218,7 +2223,7 @@ Report what the zip actually contained. If any unexpected file appears, stop and
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/renderer/components/diagnostics src/renderer/routes/__root.tsx src/renderer/components/settings/DiagnosticsPanel.tsx src/renderer/components/layout/CommandPalette.tsx tests/renderer/components/ReportProblemDialog.test.tsx
+git add src/renderer/components/diagnostics src/renderer/routes/__root.tsx src/renderer/components/settings/DiagnosticsPanel.tsx src/renderer/components/layout/CommandPalette.tsx tests/components/ReportProblemDialog.test.tsx
 git commit -m "feat(diagnostics): report dialog, crash prompt, and report triggers"
 ```
 

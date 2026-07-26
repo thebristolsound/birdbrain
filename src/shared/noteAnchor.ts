@@ -83,6 +83,24 @@ function str(raw: Record<string, unknown>, field: string): string {
   return value
 }
 
+/**
+ * A string field that may legitimately be empty, but must still be a string.
+ *
+ * Quote context is the case: a passage at the very start of a document has no
+ * prefix. Empty is meaningful, so it is allowed — but a number or a null is a
+ * malformed payload, and coercing it to '' would silently discard the context
+ * that distinguishes a repeated quote from its twin, storing something other
+ * than what was submitted.
+ */
+function strOrEmpty(raw: Record<string, unknown>, field: string): string {
+  const value = raw[field]
+  if (value === undefined) return ''
+  if (typeof value !== 'string') {
+    throw new Error(`Note anchor has a non-string ${field}`)
+  }
+  return value
+}
+
 function num(raw: Record<string, unknown>, field: string): number {
   const value = raw[field]
   if (typeof value !== 'number' || !Number.isFinite(value)) {
@@ -169,9 +187,8 @@ export function parseNoteAnchor(json: string): NoteAnchor {
         kind: 'text',
         captureId,
         quote: str(raw, 'quote'),
-        // Context may legitimately be empty at the start or end of a document.
-        prefix: typeof raw.prefix === 'string' ? raw.prefix : '',
-        suffix: typeof raw.suffix === 'string' ? raw.suffix : '',
+        prefix: strOrEmpty(raw, 'prefix'),
+        suffix: strOrEmpty(raw, 'suffix'),
         textOffset: index(raw, 'textOffset')
       }
     case 'finding':

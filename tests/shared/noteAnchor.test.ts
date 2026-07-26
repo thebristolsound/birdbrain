@@ -251,6 +251,41 @@ describe('parseNoteAnchor', () => {
     ).toThrow(/non-integer or negative textOffset/)
   })
 
+  // Context is what tells two copies of the same quote apart. Coercing a
+  // malformed one to '' would store a weaker anchor than the one submitted
+  // and silently disarm rung three of the ladder.
+  describe('text-anchor context', () => {
+    function textAnchor(over: Record<string, unknown>): string {
+      return JSON.stringify({
+        kind: 'text',
+        captureId: 'cap-1',
+        quote: 'q',
+        prefix: 'before ',
+        suffix: ' after',
+        textOffset: 0,
+        ...over
+      })
+    }
+
+    it('accepts an empty prefix, which a passage at the start of a document has', () => {
+      expect(parseNoteAnchor(textAnchor({ prefix: '' }))).toMatchObject({ prefix: '' })
+    })
+
+    it('treats an omitted context as empty', () => {
+      const raw = JSON.parse(textAnchor({}))
+      delete raw.prefix
+      expect(parseNoteAnchor(JSON.stringify(raw))).toMatchObject({ prefix: '' })
+    })
+
+    it('rejects a non-string prefix rather than coercing it away', () => {
+      expect(() => parseNoteAnchor(textAnchor({ prefix: 42 }))).toThrow(/non-string prefix/)
+    })
+
+    it('rejects a null suffix rather than coercing it away', () => {
+      expect(() => parseNoteAnchor(textAnchor({ suffix: null }))).toThrow(/non-string suffix/)
+    })
+  })
+
   it('rejects a negative textOffset', () => {
     expect(() =>
       parseNoteAnchor(

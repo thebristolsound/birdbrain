@@ -37,26 +37,45 @@ export interface AnchorTarget {
 export type TextBasis = 'hash-verified' | 'unattested'
 
 /**
- * Four outcomes, because there are four situations and they mean different
- * things to a reader.
+ * One outcome per situation, because they mean different things to a reader.
  *
  * `unresolved` is a claim about a page whose text is intact: the passage is
  * genuinely not there any more. It must not be used to describe a capture that
- * never had stored text, nor one whose stored text failed its digest — those
- * are separate findings, and collapsing them would report a missing artifact
- * as if it were a moved paragraph.
+ * never had stored text, one whose stored text failed its digest, or one that
+ * is no longer in the database at all — those are separate findings, and
+ * collapsing them would report a missing artifact as if it were a moved
+ * paragraph. Each is a gap of a different shape, and the shape is the finding.
  */
 export type NoteAnchorResolution =
   | { status: 'resolved'; via: 'offset' | 'quote' | 'context'; offset: number; basis: TextBasis }
   | { status: 'unresolved'; basis: TextBasis }
   | { status: 'no-stored-text' }
   | { status: 'integrity-failed'; reason: 'missing' | 'digest-mismatch' }
+  | { status: 'capture-missing' }
 
+/**
+ * Resolve a text anchor. A null `target` means the capture it names is no
+ * longer in the database.
+ *
+ * That case is a distinct outcome rather than an error because deleting a
+ * capture does not, and must not, erase the anchors pointing at it. SQLite
+ * sets `notes.capture_id` to NULL on delete but cannot reach the `captureId`
+ * inside `anchor_json`, and the answer to that is not to scrub the anchor: a
+ * note whose evidence was deleted must survive as a visible gap, the same rule
+ * the design states for a brief block whose referent is gone. Erasing it would
+ * destroy the record that the note ever cited anything, leaving prose whose
+ * referent cannot be traced — the opposite of what an evidence tool owes.
+ *
+ * The parameter is nullable so a caller cannot forget: there is no way to ask
+ * this question without deciding what an absent capture means.
+ */
 export function resolveTextAnchor(
-  target: AnchorTarget,
+  target: AnchorTarget | null,
   anchor: TextAnchor,
   store: CaptureStore
 ): NoteAnchorResolution {
+  if (!target) return { status: 'capture-missing' }
+
   const buf = store.readArtifact(target.caseId, target.id, 'txt')
 
   // No hash and no sidecar: the capture genuinely has no stored text. No hash

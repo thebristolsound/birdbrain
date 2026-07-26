@@ -16,6 +16,7 @@ import {
   listNotes,
   importNoteRows
 } from '@main/services/db/noteRepo'
+import { insertCapture, deleteCapture } from '@main/services/db/captureRepo'
 
 const TEXT_ANCHOR = {
   kind: 'text',
@@ -156,6 +157,47 @@ describe('anchored notes', () => {
 
     expect(() => updateNote({ id: note.id, anchor: '' })).toThrow(/not valid JSON/)
     expect(getNote(note.id)!.anchor).toEqual(TEXT_ANCHOR)
+  })
+
+  // SQLite sets notes.capture_id to NULL when a capture goes, but cannot
+  // reach the captureId inside anchor_json. Scrubbing the anchor to match
+  // would destroy the record that the note ever cited evidence -- the same
+  // reason brief blocks keep a deleted referent as a visible gap.
+  describe('when the anchored capture is deleted', () => {
+    function anchoredNote(): { noteId: string; captureId: string } {
+      const capture = insertCapture({
+        caseId,
+        url: 'https://example.com',
+        title: 'Example',
+        hash: 'abc123',
+        timestamp: new Date().toISOString()
+      })
+      const note = createNote({
+        caseId,
+        captureId: capture.id,
+        title: 'Anchored',
+        anchor: JSON.stringify({ ...TEXT_ANCHOR, captureId: capture.id })
+      })
+      return { noteId: note.id, captureId: capture.id }
+    }
+
+    it('nulls the capture_id column, as the foreign key says', () => {
+      const { noteId, captureId } = anchoredNote()
+
+      deleteCapture(captureId)
+
+      expect(getNote(noteId)!.captureId).toBeUndefined()
+    })
+
+    it('keeps the anchor, so the note still records what it cited', () => {
+      const { noteId, captureId } = anchoredNote()
+
+      deleteCapture(captureId)
+
+      const note = getNote(noteId)!
+      expect(note.anchor).toMatchObject({ kind: 'text', captureId })
+      expect(rawRow(noteId).anchor_kind).toBe('text')
+    })
   })
 
   describe('archive import', () => {

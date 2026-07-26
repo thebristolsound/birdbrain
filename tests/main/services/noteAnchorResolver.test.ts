@@ -126,6 +126,24 @@ describe('resolveTextAnchor', () => {
     })
   })
 
+  // Deleting a capture sets notes.capture_id to NULL but cannot reach the
+  // captureId inside anchor_json. The answer is to report the gap, not to
+  // scrub the anchor: a note whose evidence was deleted must still record
+  // that it cited something.
+  it('reports a missing capture as its own outcome, not as a lost passage', () => {
+    const result = resolveTextAnchor(null, anchor(), store)
+
+    expect(result).toEqual({ status: 'capture-missing' })
+  })
+
+  it('does not confuse a missing capture with a capture that has no text', () => {
+    const missing = resolveTextAnchor(null, anchor(), store)
+    const textless = resolveTextAnchor(target({ textHash: undefined }), anchor(), store)
+
+    expect(missing.status).toBe('capture-missing')
+    expect(textless.status).toBe('no-stored-text')
+  })
+
   it('reports an integrity failure when the recorded sidecar is missing', () => {
     // textHash says text was stored; the file is not there.
     const result = resolveTextAnchor(target(), anchor(), store)

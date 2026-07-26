@@ -36,7 +36,8 @@ Electron + React 19 + TanStack Router + React Query + Chrome Extension + SQLite 
 src/main/services/           # Main-process services: captureServer, captureStore, storage, export, pdfExport,
                              #   settings, hash, manifest, captureLifecycle, selectorLifecycle, recapture,
                              #   annotations, caseArchive, zip/zipRead, timestamp/trustedTime/tsaTrust,
-                             #   signingKey, certification, waybackMachine, diagnostics, updater, deepLink
+                             #   signingKey, certification, waybackMachine, diagnostics, updater, deepLink,
+                             #   noteAnchorResolver, logSafe
 src/main/services/db/        # Data access layer — see "Database" below (core, migrations, per-domain repos, dbAdmin)
 src/main/services/ai/        # OpenRouter chat client + capture analysis service
 src/main/services/extraction/ # Extracted-data pipeline (source, IOC adapter, sanitizer, validators)
@@ -47,6 +48,7 @@ src/shared/ipc.ts            # IPC channel definitions and payload types
 src/shared/constants.ts      # Constants (CAPTURE_SERVER_PORT, MAX_MHTML_SIZE, MANIFEST_FILENAME, etc.)
 src/shared/schemas.ts        # Zod schemas validating settings and imported/exported documents
 src/shared/noteDoc.ts        # Rich-text note document model + body derivation
+src/shared/noteAnchor.ts     # Note anchor model + text-anchor resolution
 src/shared/verify/           # Evidence-package verification (canonicalJson, manifestChain, signature, timestampToken)
 src/verifier/cli.ts          # Standalone verifier CLI entry point
 src/renderer/routes/         # TanStack Router route definitions (root tree plus captures route module)

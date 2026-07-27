@@ -231,4 +231,30 @@ describe('buildBugReport with default deps', () => {
     expect(names).not.toContain('birdbrain.log')
     expect(names).not.toContain('birdbrain.log.1')
   })
+
+  // Regression guard from the pre-merge review. slowOps[].detail used to be
+  // run through sanitizeText — the regex approach this design abandoned — and
+  // sanitizeText's URL pattern requires '://', so these three shapes went into
+  // the bundle verbatim. detail is now dropped outright.
+  it('drops slowOps detail entirely, including url shapes no regex catches', () => {
+    const leaky = [
+      'data:text/html,<h1>Operation Blackbird</h1>',
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==',
+      'mailto:target@example.com',
+      'https://target.example/page?q=secret'
+    ]
+    const snap = {
+      ...SNAPSHOT,
+      slowOps: leaky.map((detail, i) => ({ ...SNAPSHOT.slowOps[0], detail, op: `op-${i}` }))
+    } as DiagnosticsSnapshot
+
+    const out = redactSnapshot(snap)
+    const serialized = JSON.stringify(out)
+
+    for (const op of out.slowOps) expect(op.detail).toBe('')
+    expect(serialized).not.toContain('Operation Blackbird')
+    expect(serialized).not.toContain('target@example.com')
+    expect(serialized).not.toContain('target.example')
+    expect(serialized).not.toContain('base64')
+  })
 })

@@ -1,7 +1,5 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { homedir } from 'node:os'
-import { sanitizeText } from '@main/services/logSafe'
 import { createStoredZip } from '@main/services/zip'
 import { diagnosticsService } from '@main/services/diagnostics'
 import { getLogDir } from '@main/services/logger'
@@ -96,7 +94,16 @@ export function redactSnapshot(snap: DiagnosticsSnapshot): DiagnosticsSnapshot {
       storageRoot: snap.storage.storageRoot ? '‹path›' : '',
       dbPath: snap.storage.dbPath ? fileName(snap.storage.dbPath) : ''
     },
-    slowOps: snap.slowOps.map((op) => ({ ...op, detail: sanitizeText(op.detail, homedir()) }))
+    // detail is DROPPED, not scrubbed. It is written by
+    // recordSlowOp('data-extraction', url, ...) in captureLifecycle, so it is a
+    // captured page URL — free-form, attacker-influenced text. Running it
+    // through sanitizeText would be the regex approach this whole design
+    // abandoned, and it demonstrably leaks: sanitizeText's URL pattern requires
+    // '://', so `data:text/html,<h1>Operation Blackbird</h1>`,
+    // `data:...;base64,...` and `mailto:target@example.com` all pass through
+    // untouched. The operation's name and duration are the diagnostic value
+    // here; the URL never was.
+    slowOps: snap.slowOps.map((op) => ({ ...op, detail: '' }))
   }
 }
 

@@ -62,7 +62,17 @@ export function subscribeToMainLog(): () => void {
     void window.birdbrain.diagnostics
       .recentEntries(50)
       .then((history) => {
-        for (const entry of [...history].reverse()) handle(entry)
+        if (history.length === 0) return
+        // Scope the replay to THIS session. recentEntries reads the tail of the
+        // log file, which spans launches, so an unfiltered replay greets the
+        // tester with toasts for failures from a previous run — and their
+        // "Report this" cites a correlation id from a session the bundle's log
+        // may no longer even contain. The newest entry is always from the
+        // current session, because app.session_start is written at every boot.
+        const currentSession = history[0].sessionId
+        for (const entry of [...history].reverse()) {
+          if (entry.sessionId === currentSession) handle(entry)
+        }
       })
       .catch(() => {
         // No replay is a degraded bridge, not a broken one.

@@ -2,8 +2,15 @@ import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import { Button } from '@renderer/components/ui'
 
+// A closed union, not `string`. `source` is written to the durable log as the
+// `boundary` context value, and `source={capture.title}` would compile against
+// `string` and put a page title on disk. Adding a boundary means adding its
+// name here AND to ERROR_BOUNDARIES in logSafe.ts — the compile-time half and
+// the untrusted-boundary half of the same allowlist.
+export type ErrorBoundarySource = 'root' | 'captureViewer'
+
 interface Props {
-  source: string
+  source: ErrorBoundarySource
   children: ReactNode
 }
 

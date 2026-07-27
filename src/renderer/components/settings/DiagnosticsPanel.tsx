@@ -106,7 +106,27 @@ export function DiagnosticsPanel() {
 
   async function handleCopy() {
     if (!data) return
-    await navigator.clipboard.writeText(JSON.stringify(data, null, 2))
+    // The clipboard is an export path, and it is one keystroke from a chat
+    // window or an issue tracker — so it gets the same redaction the bug-report
+    // bundle gets, not the raw snapshot. storageRoot and dbPath are absolute
+    // paths carrying the operator's username, and slowOps[].detail is a
+    // captured page URL. The panel may show them on screen (that is the
+    // operator looking at their own machine); copying them out is different.
+    await navigator.clipboard.writeText(
+      JSON.stringify(
+        {
+          ...data,
+          storage: {
+            ...data.storage,
+            storageRoot: data.storage.storageRoot ? '‹path›' : '',
+            dbPath: data.storage.dbPath ? data.storage.dbPath.split(/[\\/]/).pop() : ''
+          },
+          slowOps: data.slowOps.map((op) => ({ ...op, detail: '' }))
+        },
+        null,
+        2
+      )
+    )
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }

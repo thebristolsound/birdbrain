@@ -196,6 +196,40 @@ const VERSION = /^\d+[.-]\d+[.-]\d+(?:[.-][A-Za-z0-9]+)*$/
 
 type ContextFormat = 'number' | 'boolean' | RegExp | readonly string[]
 
+// Renderer-supplied context vocabularies. Each is the closed set of values the
+// corresponding call site can legitimately produce, so a value outside it is a
+// bug or an attack, never a legitimate log.
+
+// The first segment of every key in queries.ts's queryKeys factory.
+const QUERY_DOMAINS = [
+  'annotations',
+  'appVersion',
+  'captureCounts',
+  'captures',
+  'cases',
+  'extractedData',
+  'identity',
+  'notes',
+  'openRouterModels',
+  'search',
+  'selectors',
+  'session',
+  'settings',
+  'tags',
+  'wayback',
+  // queryClient's fallback when a key is empty.
+  'unknown'
+] as const
+
+// Every ErrorBoundary `source` in the renderer. Adding a boundary means adding
+// its name here — one reviewable line, the same gate as LOG_CODES.
+const ERROR_BOUNDARIES = ['root', 'captureViewer'] as const
+
+// IPC channel names are dotted/colon-separated, so they do not fit IDENT
+// anyway; this pattern pins the shape without importing @shared/ipc (which
+// would drag the whole channel map into the boundary module).
+const IPC_CHANNEL_NAMES = /^[a-z][A-Za-z]*:[a-z][A-Za-z:]*$/
+
 const CONTEXT_FORMATS: Record<LogContextKey, ContextFormat> = {
   captureId: UUID,
   caseId: UUID,
@@ -217,11 +251,16 @@ const CONTEXT_FORMATS: Record<LogContextKey, ContextFormat> = {
   installFormat: INSTALL_FORMATS,
   errorCode: CODE,
   version: VERSION,
-  // Static identifiers lifted from renderer source, never user data — IDENT's
-  // generic rule is the right one for exactly these three.
-  domain: IDENT,
-  boundary: IDENT,
-  channel: IDENT
+  // Closed vocabularies, NOT IDENT. These three arrive from the renderer, which
+  // is where case names live, and IDENT (/^[A-Za-z0-9_-]{1,64}$/) accepts any
+  // spaceless string — 'OperationBlackbird' passes it, which is the exact leak
+  // the caseId/UUID pairing above exists to prevent. "These call sites only
+  // ever pass static literals" is a property of today's callers, not of the
+  // boundary, and this module's whole premise is that the renderer is not
+  // trusted. An unlisted value records as [invalid] and the entry survives.
+  domain: QUERY_DOMAINS,
+  boundary: ERROR_BOUNDARIES,
+  channel: IPC_CHANNEL_NAMES
 }
 
 function matchesFormat(value: unknown, format: ContextFormat): boolean {
@@ -372,11 +411,26 @@ export function sanitizeText(text: string, homeDir: string): string {
 // one; a case name does not. The cost is dropping an exotic frame whose file
 // has no directory at all, which loses one line of diagnostics — the right
 // direction to fail in a module whose job is keeping case names off disk.
-const FRAME_PREFIX = /^\s*at\s/
-const FRAME_LOCATION = /(?:[/\\][^\s()]*:\d+:\d+\)?|\b[a-z][a-z0-9+.-]*:[^\s()]*:\d+:\d+\)?|\(?(?:<anonymous>|native)\)?)$/
+// The whole line is matched, not a prefix and a suffix independently. Testing
+// the two ends separately leaves the middle unconstrained, and the middle is
+// where prose lives: `    at Operation Blackbird bob@example.com <anonymous>`
+// passes a `^\s*at\s` prefix test AND a `<anonymous>$` suffix test, has no
+// path or URL shape for sanitizeText to catch, and lands verbatim on disk.
+// That is reachable without anything exotic — `new Error(\`failed: ${e.stack}\`)`
+// is a common wrapper idiom, and it embeds arbitrary earlier text into a
+// position where the message and the frames are indistinguishable by line.
+//
+// So a kept line must look like a real V8 frame end to end: `at <fn> (<loc>)`
+// or a bare `at <loc>`. A function name is a single identifier-ish token
+// (optionally prefixed `new ` or `async `) with no interior spaces, and a
+// location is a real path, a module scheme like 'node:'/'file:', or the two
+// literal placeholders. Prose fails on the interior spaces it cannot avoid.
+const FRAME_FN = String.raw`(?:new\s|async\s)?[\w$.<>[\]]+`
+const FRAME_LOC = String.raw`(?:[/\\][^\s()]*:\d+:\d+|[A-Za-z]:[\\/][^\s()]*:\d+:\d+|[a-z][a-z0-9+.-]*:[^\s()]*:\d+:\d+|<anonymous>|native)`
+const FRAME = new RegExp(String.raw`^\s*at\s(?:${FRAME_FN}\s\(${FRAME_LOC}\)|${FRAME_LOC})\s*$`)
 
 function stackFrames(stack: string): string[] {
-  return stack.split('\n').filter((line) => FRAME_PREFIX.test(line) && FRAME_LOCATION.test(line))
+  return stack.split('\n').filter((line) => FRAME.test(line))
 }
 
 // Strips the app's own install/checkout root from each frame so what remains

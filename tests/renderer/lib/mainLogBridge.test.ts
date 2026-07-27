@@ -68,4 +68,30 @@ describe('mainLogBridge', () => {
     toastFns.error.mock.calls.at(-1)![1].action.onClick()
     expect(dispatched.mock.calls[0][0].detail).toEqual({ correlationId: 'ccc' })
   })
+
+  // Regression guard: recentEntries reads the tail of the log FILE, which spans
+  // launches. Without a session filter the tester is greeted on every start by
+  // toasts for failures from a previous run, whose "Report this" cites a
+  // correlation id from a session the current bundle may not contain.
+  it('replays only the current session, not failures from previous launches', async () => {
+    const previous = { ...entry('error'), id: 'old', sessionId: 's0', code: 'capture.failed' }
+    const current = { ...entry('error'), id: 'new', sessionId: 's1', code: 'ipc.handler_threw' }
+    vi.stubGlobal('birdbrain', {
+      onLogEntry: (cb: (e: unknown) => void) => {
+        listener = cb
+        return () => {}
+      },
+      diagnostics: {
+        log: vi.fn(),
+        // Newest first, matching readRecentEntries.
+        recentEntries: vi.fn().mockResolvedValue([current, previous])
+      }
+    })
+
+    const { subscribeToMainLog } = await import('@renderer/lib/mainLogBridge')
+    subscribeToMainLog()
+    await vi.waitFor(() => expect(toastFns.error).toHaveBeenCalled())
+
+    expect(toastFns.error).toHaveBeenCalledTimes(1)
+  })
 })

@@ -2077,7 +2077,7 @@ git commit -m "feat(logging): log tab with level filters and reveal in diagnosti
 
 # Phase 2 — Visibility
 
-*Value on its own: the 29 silent mutation failures stop being silent.*
+*Value on its own: the 28 silent mutation failures stop being silent.*
 
 ---
 
@@ -2385,7 +2385,7 @@ git commit -m "feat(notify): toast and durable-log boundary with storm dedup"
 
 ---
 
-### Task 11: Wire the 29 mutations and query failures
+### Task 11: Wire the 28 mutations and query failures
 
 **Files:**
 - Modify: `src/renderer/lib/queryClient.ts`
@@ -2462,10 +2462,12 @@ export const queryClient = new QueryClient({
       // turns one handled query failure into a second, renderer-level
       // unhandledrejection — the logging path manufacturing the very event
       // class it exists to record.
+      // No `source` field. RendererLogPayload does not carry one: every entry
+      // on this channel came from the renderer by definition, and the main-side
+      // handler hardcodes 'renderer' rather than trusting the payload.
       window.birdbrain.diagnostics
         .log({
           level: 'warn',
-          source: 'renderer',
           code: 'query.failed',
           context: { domain: String(query.queryKey[0] ?? 'unknown') },
           error: error instanceof Error ? error.name : 'UnknownError'
@@ -2480,7 +2482,7 @@ The query key's first segment is a static domain string from the key factory (`'
 
 - [ ] **Step 4: Add `meta.action` to the mutation hooks**
 
-In `src/renderer/lib/queries.ts`, add a `meta` field to each of the 29 `useMutation` calls describing the action in lowercase infinitive form, e.g.:
+In `src/renderer/lib/queries.ts`, add a `meta` field to each of the 28 `useMutation` calls describing the action in lowercase infinitive form, e.g.:
 
 ```typescript
     meta: { action: 'create case' }
@@ -2488,7 +2490,7 @@ In `src/renderer/lib/queries.ts`, add a `meta` field to each of the 29 `useMutat
     meta: { action: 'delete capture' }
 ```
 
-This is additive. Any hook missed simply falls back to the generic message, so the task is complete and shippable even if a few are left for later — but do all 29 now.
+This is additive. Any hook missed simply falls back to the generic message, so the task is complete and shippable even if a few are left for later — but do all 28 now.
 
 - [ ] **Step 5: Verify and commit**
 

@@ -9,6 +9,8 @@ import type {
   ArchiveInspectReport,
   WaybackRef,
   BirdbrainSettings,
+  BugReportInput,
+  BugReportResult,
   Capture,
   CaptureAnalysis,
   CaptureAnnotations,
@@ -158,6 +160,7 @@ export const IPC_CHANNELS = {
   DIAGNOSTICS_RECENT: 'diagnostics:recent',
   DIAGNOSTICS_REVEAL_LOG: 'diagnostics:revealLog',
   DIAGNOSTICS_LAST_SESSION: 'diagnostics:lastSession',
+  DIAGNOSTICS_CREATE_REPORT: 'diagnostics:createReport',
   LOG_ENTRY: 'event:logEntry',
 
   // Updates (update delivery)
@@ -627,6 +630,10 @@ export interface IpcInvokeContract {
   'diagnostics:recent': { args: [limit: number]; result: LogEntry[] }
   'diagnostics:revealLog': { args: []; result: void }
   'diagnostics:lastSession': { args: []; result: SessionRecord | null }
+  'diagnostics:createReport': {
+    args: [input: BugReportInput]
+    result: BugReportResult | null
+  }
 
   'updates:getStatus': { args: []; result: UpdateStatus }
   'updates:check': { args: []; result: UpdateStatus }

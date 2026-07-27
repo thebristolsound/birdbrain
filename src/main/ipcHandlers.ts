@@ -63,8 +63,9 @@ import type { RecaptureService } from '@main/services/recapture'
 import type { UpdaterService } from '@main/services/updater'
 import { handle, IpcFailure, sendEvent } from '@main/ipcWrap'
 import { diagnosticsService } from '@main/services/diagnostics'
-import { getLogDir, getLogPath, logger, readRecentEntries } from '@main/services/logger'
+import { flushSync, getLogDir, getLogPath, logger, readRecentEntries } from '@main/services/logger'
 import { takeUncleanSession } from '@main/services/sessionLog'
+import { buildBugReport, bugReportFilename } from '@main/services/bugReport'
 import { ValidatedError, context, errorName, ident, isLogCode } from '@main/services/logSafe'
 import type { LogContext, LogValue } from '@main/services/logSafe'
 import type {
@@ -685,6 +686,26 @@ export function registerIpcHandlers(deps: {
   })
 
   handle(IPC_CHANNELS.DIAGNOSTICS_LAST_SESSION, () => takeUncleanSession(getLogDir()))
+
+  // Zero network egress: the bundle is written only to a path the operator
+  // picks via a native save dialog, then revealed in their file manager.
+  // Nothing here ever leaves the machine.
+  handle(IPC_CHANNELS.DIAGNOSTICS_CREATE_REPORT, async (_e, input) => {
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: 'Save diagnostic report',
+      defaultPath: bugReportFilename(new Date()),
+      filters: [{ name: 'Zip archive', extensions: ['zip'] }]
+    })
+    if (canceled || !filePath) return null
+
+    // Load-bearing: without this, entries describing the very failure being
+    // reported may still be sitting in the logger's write buffer.
+    flushSync()
+    const { writeFileSync } = await import('fs')
+    writeFileSync(filePath, buildBugReport(input))
+    shell.showItemInFolder(filePath)
+    return { path: filePath }
+  })
 
   // Updates (update delivery)
   handle(IPC_CHANNELS.UPDATES_GET_STATUS, () => updaterService.getStatus())

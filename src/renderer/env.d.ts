@@ -30,7 +30,9 @@ import type {
   UpdateStatus,
   DiagnosticsSnapshot,
   LogEntry,
-  SessionRecord
+  SessionRecord,
+  BugReportInput,
+  BugReportResult
 } from '@shared/types'
 import type {
   CreateCaseParams,
@@ -177,6 +179,7 @@ interface BirdbrainAPI {
     recentEntries(limit: number): Promise<LogEntry[]>
     revealLog(): Promise<void>
     lastSession(): Promise<SessionRecord | null>
+    createReport(input: BugReportInput): Promise<BugReportResult | null>
   }
   updates: {
     getStatus(): Promise<UpdateStatus>

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi, beforeAll } from 'vitest'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { IpcMainInvokeEvent } from 'electron'
@@ -21,7 +21,10 @@ vi.mock('electron', () => ({
   app: {
     isPackaged: false,
     getVersion: () => '1.2.3',
-    getPath: () => userDataPath
+    getPath: () => userDataPath,
+    // diagnostics.ts's collectEnv() calls this for the process list in a
+    // DiagnosticsSnapshot; the create-report handler builds one for real.
+    getAppMetrics: () => []
   },
   ipcMain: {
     handle: (channel: string, fn: (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown) => {
@@ -90,7 +93,7 @@ vi.mock('@main/services/waybackMachine', async (importActual) => {
 // --- Real services ----------------------------------------------------------
 import { IPC_CHANNELS } from '@shared/ipc'
 import { registerIpcHandlers } from '@main/ipcHandlers'
-import type { Capture, Case, LogEntry, SessionRecord } from '@shared/types'
+import type { BugReportResult, Capture, Case, LogEntry, SessionRecord } from '@shared/types'
 import {
   disposeLogger,
   flushSync as flushLogger,
@@ -1297,5 +1300,50 @@ describe('ipcHandlers — diagnostics logging', () => {
       await invoke(IPC_CHANNELS.DIAGNOSTICS_LAST_SESSION)
     )
     expect(result?.sessionId).toBe(record.sessionId)
+  })
+})
+
+describe('ipcHandlers — diagnostics create report', () => {
+  // Reuses the real logger/db/installation-id services already initialised in
+  // the outer beforeEach, the same way the diagnostics-logging block above
+  // does — the point of this test is that the handler actually reaches disk.
+  beforeEach(() => {
+    initLogger(userDataPath, 'report-test-session')
+  })
+
+  afterEach(() => {
+    disposeLogger()
+  })
+
+  it('writes the bundle to the chosen path, reveals it, and returns that path', async () => {
+    const target = join(userDataPath, 'report.zip')
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: target })
+
+    const result = expectOk<BugReportResult | null>(
+      await invoke(IPC_CHANNELS.DIAGNOSTICS_CREATE_REPORT, {
+        whatYouDid: 'Captured a page',
+        whatYouExpected: 'It saves',
+        whatHappened: 'Nothing happened'
+      })
+    )
+
+    expect(result?.path).toBe(target)
+    expect(existsSync(target)).toBe(true)
+    expect(showItemInFolder).toHaveBeenCalledWith(target)
+  })
+
+  it('returns null and writes nothing when the save dialog is cancelled', async () => {
+    showSaveDialog.mockResolvedValueOnce({ canceled: true, filePath: undefined })
+
+    const result = expectOk<BugReportResult | null>(
+      await invoke(IPC_CHANNELS.DIAGNOSTICS_CREATE_REPORT, {
+        whatYouDid: 'x',
+        whatYouExpected: 'y',
+        whatHappened: 'z'
+      })
+    )
+
+    expect(result).toBeNull()
+    expect(showItemInFolder).not.toHaveBeenCalled()
   })
 })

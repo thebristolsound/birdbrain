@@ -13,7 +13,7 @@ import * as captureRepo from '@main/services/db/captureRepo'
 import * as tagRepo from '@main/services/db/tagRepo'
 import * as selectorRepo from '@main/services/db/selectorRepo'
 import * as noteRepo from '@main/services/db/noteRepo'
-import * as archiveRefRepo from '@main/services/db/archiveRefRepo'
+import * as waybackRefRepo from '@main/services/db/waybackRefRepo'
 import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
 import {
   collectAnnotationsForCase,
@@ -109,7 +109,7 @@ export function collectCaseData(caseId: string): CaseArchiveData {
     annotationPins: collectAnnotationPinsForCase(caseId),
     captureAnalyses: collectCaptureAnalysesForCase(caseId),
     extractedData: extractedDataRepo.collectExtractedDataForCase(caseId),
-    captureArchiveRefs: archiveRefRepo.collectArchiveRefsForCase(caseId)
+    captureArchiveRefs: waybackRefRepo.collectWaybackRefsForCase(caseId)
   }
 }
 
@@ -532,6 +532,6 @@ function insertImportedRows(
   importAnnotationPinRows(data.annotationPins, ctx)
   importCaptureAnalysisRows(data.captureAnalyses, ctx)
   extractedDataRepo.importExtractedDataRows(data.extractedData, ctx)
-  archiveRefRepo.importArchiveRefRows(data.captureArchiveRefs, ctx)
+  waybackRefRepo.importWaybackRefRows(data.captureArchiveRefs, ctx)
   noteRepo.importNoteRows(data.notes, ctx)
 }

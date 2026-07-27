@@ -11,7 +11,7 @@ import type {
   BulkCreateSelectorsParams,
   SaveAnnotationsParams,
   UpsertAnnotationPinParams,
-  PinArchiveSnapshotParams,
+  PinWaybackSnapshotParams,
   SessionStateEvent
 } from '@shared/ipc'
 import type { BirdbrainSettings } from '@shared/types'
@@ -53,8 +53,8 @@ export const queryKeys = {
   extractedDataSearch: (caseId: string, query: string) =>
     ['extractedData', 'search', caseId, query] as const,
   annotations: (captureId: string) => ['annotations', captureId] as const,
-  archiveLookup: (captureId: string) => ['archive', 'lookup', captureId] as const,
-  archivePins: (captureId: string) => ['archive', 'pins', captureId] as const,
+  waybackLookup: (captureId: string) => ['wayback', 'lookup', captureId] as const,
+  waybackPins: (captureId: string) => ['wayback', 'pins', captureId] as const,
   settings: ['settings'] as const,
   identity: ['identity'] as const,
   openRouterModels: ['openRouterModels'] as const,
@@ -509,38 +509,38 @@ export function useAnnotationsMutations(captureId: string) {
   return { save, upsertPin, deletePin, deleteAll }
 }
 
-// --- Archive (Wayback corroboration) ---
+// --- Wayback Machine corroboration ---
 
 // `enabled: false` — the lookup is user-initiated (it discloses the URL to
-// archive.org). The ArchiveTab triggers it with refetch() on button click.
-export const archiveLookupQueryOptions = (captureId: string) =>
+// archive.org). The WaybackTab triggers it with refetch() on button click.
+export const waybackLookupQueryOptions = (captureId: string) =>
   queryOptions({
-    queryKey: queryKeys.archiveLookup(captureId),
-    queryFn: () => window.birdbrain.archive.lookup(captureId),
+    queryKey: queryKeys.waybackLookup(captureId),
+    queryFn: () => window.birdbrain.wayback.lookup(captureId),
     enabled: false,
     staleTime: 5 * 60 * 1000
   })
 
-export const archivePinsQueryOptions = (captureId: string) =>
+export const waybackPinsQueryOptions = (captureId: string) =>
   queryOptions({
-    queryKey: queryKeys.archivePins(captureId),
-    queryFn: () => window.birdbrain.archive.list(captureId),
+    queryKey: queryKeys.waybackPins(captureId),
+    queryFn: () => window.birdbrain.wayback.list(captureId),
     enabled: !!captureId
   })
 
-export function useArchiveMutations(captureId: string) {
+export function useWaybackMutations(captureId: string) {
   const queryClient = useQueryClient()
   const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: queryKeys.archivePins(captureId) })
+    queryClient.invalidateQueries({ queryKey: queryKeys.waybackPins(captureId) })
   }
 
   const pin = useMutation({
-    mutationFn: (params: PinArchiveSnapshotParams) => window.birdbrain.archive.pin(params),
+    mutationFn: (params: PinWaybackSnapshotParams) => window.birdbrain.wayback.pin(params),
     onSuccess: invalidate
   })
 
   const unpin = useMutation({
-    mutationFn: (refId: string) => window.birdbrain.archive.unpin(refId),
+    mutationFn: (refId: string) => window.birdbrain.wayback.unpin(refId),
     onSuccess: invalidate
   })
 

@@ -70,6 +70,19 @@ updated by hand.
 - `src/shared/**` must never import from `@main/*` or `@renderer/*`.
 - Renderer components use semantic theme tokens (`bg-surface`, `text-text-primary`, `border-border`, `text-text-muted`), not raw Tailwind colours. Exceptions: overlays and status/severity colours.
 - Tests run with `pnpm test` (Vitest under the Electron runtime). Lint with `pnpm lint`.
+- **`pnpm build` does NOT typecheck.** `electron-vite build` transpiles; it does not run `tsc`.
+  ESLint is not type-aware here either. Verified empirically: a deliberate
+  `const x: number = 'str'` in `src/main/services/logger.ts` passes both `pnpm build` and
+  `pnpm lint`. The only gate that catches it is:
+
+  ```bash
+  npx tsc --noEmit -p tsconfig.node.json && npx tsc --noEmit -p tsconfig.web.json
+  ```
+
+  Run **both** in every task's verify step — `tsconfig.node.json` covers `src/main`,
+  `src/preload` and `src/shared`; `tsconfig.web.json` covers the renderer. A task that
+  reports "build and lint pass" has not been typechecked. There is no `typecheck` script
+  in `package.json`; adding one is worth doing but is outside this plan's scope.
 - **Test file placement is load-bearing.** `vitest.config.ts` defines two projects with strict includes. A test in the wrong directory is silently never run:
   - `tests/**/*.test.ts` outside `tests/renderer/` and `tests/hooks/` → **node** project (`environment: 'node'`). Main-process tests go here.
   - `tests/components/**/*.test.tsx`, `tests/renderer/**/*.test.ts`, `tests/hooks/**/*.test.ts` → **jsdom** project. React component tests must be `tests/components/*.test.tsx` — `tests/renderer/**/*.test.tsx` matches **no** project.

@@ -863,8 +863,9 @@ describe('captureServer', () => {
     })
     expect(first.status).toBe(200)
 
-    // Without reset, this would be 409
-    sessionService = createSessionService()
+    // Without reset, this would be 409. Only the dedup map matters here —
+    // reassigning the session service would not affect the running server,
+    // which holds the instance injected at startup.
     resetManualDedup()
 
     const second = await postCapture({

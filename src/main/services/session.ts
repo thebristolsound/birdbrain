@@ -73,7 +73,12 @@ export function createSessionService(deps: SessionServiceDeps = {}): SessionServ
     emitSessionChange?.({ sessionActive, activeCaseId, captureCount })
   }
 
-  const isExtensionConnected = (): boolean => now() - extensionLastSeen < extensionTimeoutMs
+  // 0 is the never-seen sentinel, not a timestamp. Without the guard a clock
+  // whose epoch is near zero — any injected one — reads "never seen" as
+  // connected, which would also swallow the first rising edge in
+  // touchExtension().
+  const isExtensionConnected = (): boolean =>
+    extensionLastSeen > 0 && now() - extensionLastSeen < extensionTimeoutMs
 
   // Zeroing last-seen is what makes this edge-triggered: without it the monitor
   // would re-emit `false` on every tick, and the next extension poll would not

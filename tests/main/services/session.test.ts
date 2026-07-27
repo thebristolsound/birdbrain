@@ -166,6 +166,24 @@ describe('sessionService — extension heartbeat', () => {
     expect(connectionChanges).toEqual([true, false, true])
   })
 
+  // Regression: extensionLastSeen = 0 is a never-seen sentinel, not a
+  // timestamp. A clock whose epoch is inside the timeout window used to report
+  // the extension as connected before it had ever polled.
+  it('is not connected before the first touch, even on a near-zero clock', () => {
+    const clock = makeClock(0)
+    const connections: boolean[] = []
+    const service = createSessionService({
+      emitExtensionConnection: (c) => connections.push(c),
+      now: clock.now
+    })
+
+    expect(service.isExtensionConnected()).toBe(false)
+
+    clock.advance(1_000)
+    service.touchExtension()
+    expect(connections).toEqual([true])
+  })
+
   it('honours an injected timeout', () => {
     const { service, clock } = setup({ extensionTimeoutMs: 50 })
     service.touchExtension()

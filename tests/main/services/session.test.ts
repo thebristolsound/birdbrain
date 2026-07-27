@@ -160,18 +160,16 @@ describe('sessionService — extension heartbeat', () => {
   it('isExtensionConnected is false before any touch even when the clock starts at 0', () => {
     // Regression: without the extensionLastSeen > 0 sentinel guard,
     // now() - extensionLastSeen = 0 - 0 = 0 < timeout, incorrectly returning true.
-    const zeroClock = { now: () => 0, advance: (_: number) => {} }
-    const service = createSessionService({ now: zeroClock.now, extensionTimeoutMs: 10_000 })
+    const service = createSessionService({ now: () => 0, extensionTimeoutMs: 10_000 })
     expect(service.isExtensionConnected()).toBe(false)
   })
 
   it('touchExtension fires a rising edge even when the clock starts at 0', () => {
     // Regression: without the sentinel guard, wasConnected would be true at
     // time 0 (because 0 - 0 = 0 < timeout), suppressing the rising-edge event.
-    let t = 0
     const connectionChanges: boolean[] = []
     const service = createSessionService({
-      now: () => t,
+      now: () => 0,
       extensionTimeoutMs: 10_000,
       emitExtensionConnection: (c) => connectionChanges.push(c)
     })

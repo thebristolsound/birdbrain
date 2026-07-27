@@ -73,7 +73,8 @@ export function createSessionService(deps: SessionServiceDeps = {}): SessionServ
     emitSessionChange?.({ sessionActive, activeCaseId, captureCount })
   }
 
-  const isExtensionConnected = (): boolean => now() - extensionLastSeen < extensionTimeoutMs
+  const isExtensionConnected = (): boolean =>
+    extensionLastSeen > 0 && now() - extensionLastSeen < extensionTimeoutMs
 
   // Zeroing last-seen is what makes this edge-triggered: without it the monitor
   // would re-emit `false` on every tick, and the next extension poll would not

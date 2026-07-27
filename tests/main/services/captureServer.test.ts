@@ -864,7 +864,9 @@ describe('captureServer', () => {
     expect(first.status).toBe(200)
 
     // Without reset, this would be 409
-    sessionService = createSessionService()
+    // Note: the server holds the instance injected at startCaptureServer in
+    // beforeEach; rebinding sessionService here would be inert. Only
+    // resetManualDedup() is needed.
     resetManualDedup()
 
     const second = await postCapture({

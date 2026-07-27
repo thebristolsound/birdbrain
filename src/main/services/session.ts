@@ -73,6 +73,10 @@ export function createSessionService(deps: SessionServiceDeps = {}): SessionServ
     emitSessionChange?.({ sessionActive, activeCaseId, captureCount })
   }
 
+  // 0 is the never-seen sentinel, not a timestamp. Without the guard a clock
+  // whose epoch is near zero — any injected one — reads "never seen" as
+  // connected, which would also swallow the first rising edge in
+  // touchExtension().
   const isExtensionConnected = (): boolean =>
     extensionLastSeen > 0 && now() - extensionLastSeen < extensionTimeoutMs
 

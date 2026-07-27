@@ -19,6 +19,7 @@ import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createTimestampWorker } from '@main/services/timestampWorker'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { createRecaptureService } from '@main/services/recapture'
+import { createSessionService } from '@main/services/session'
 import { createUpdaterService, type UpdaterService } from '@main/services/updater'
 import { renderPageInHiddenWindow } from '@main/services/backgroundRenderer'
 import { DEEP_LINK_SCHEME, parseDeepLink, findDeepLinkInArgv } from '@main/services/deepLink'
@@ -353,11 +354,33 @@ if (!gotSingleInstanceLock) {
         isAutoCheckEnabled: () => getSettings().autoCheckForUpdates
       })
 
+      // Session state machine (#228). Owns the active case, recording flag,
+      // capture count and extension heartbeat; window access is inverted into
+      // these callbacks so the service itself stays Electron-free.
+      const sessionService = createSessionService({
+        emitSessionChange: (payload) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            sendEvent(mainWindow.webContents, IPC_CHANNELS.SESSION_STATE_CHANGED, payload)
+          }
+        },
+        emitExtensionConnection: (connected) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            sendEvent(mainWindow.webContents, IPC_CHANNELS.EXTENSION_CONNECTION, { connected })
+          }
+        }
+      })
+
       // Register IPC handlers
-      registerIpcHandlers({ selectorLifecycle, captureLifecycle, recaptureService, updaterService })
+      registerIpcHandlers({
+        selectorLifecycle,
+        captureLifecycle,
+        recaptureService,
+        updaterService,
+        sessionService
+      })
 
       // Start capture server and extension connection monitor
-      await startCaptureServer({ selectorLifecycle, captureLifecycle })
+      await startCaptureServer({ selectorLifecycle, captureLifecycle, sessionService })
       startExtensionConnectionCheck()
 
       // Create window and connect to capture server

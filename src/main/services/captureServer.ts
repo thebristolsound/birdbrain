@@ -25,6 +25,7 @@ import {
 } from '@shared/schemas'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
+import { createSessionService, type SessionService } from '@main/services/session'
 
 import { CAPTURE_SERVER_PORT, MAX_SCREENSHOT_SIZE } from '@shared/constants'
 import { safeRegexTest } from '@main/services/safeRegex'
@@ -36,6 +37,9 @@ export interface CaptureServerDeps {
   selectorLifecycle: SelectorLifecycle
   captureLifecycle: CaptureLifecycle
   token?: string
+  // Owns the session state machine. Defaults to a module-level instance so
+  // existing callers keep working; main supplies the real one.
+  sessionService?: SessionService
 }
 
 function getToolVersion(): string {
@@ -50,32 +54,18 @@ const MANUAL_DEDUPE_WINDOW_MS = 5_000
 const OPERATOR_NAME_REQUIRED_MSG =
   'Operator name required. Configure your name in Birdbrain settings before capturing.'
 
-interface SessionState {
-  activeCaseId: string | null
-  sessionActive: boolean
-  captureCount: number
-  extensionLastSeen: number
-}
-
 let server: Server | null = null
 let mainWindow: BrowserWindow | null = null
 
-const state: SessionState = {
-  activeCaseId: null,
-  sessionActive: false,
-  captureCount: 0,
-  extensionLastSeen: 0
-}
+// Fallback for callers that don't inject one (the test suite). It has no
+// notification callbacks: broadcasting session events is the main-process
+// wiring's job, so this module's window reference now serves capture events
+// only.
+let sessionService: SessionService = createSessionService()
 
-export function getSessionState(): SessionState {
-  return { ...state }
-}
-
-export function resetSessionState(): void {
-  state.activeCaseId = null
-  state.sessionActive = false
-  state.captureCount = 0
-  state.extensionLastSeen = 0
+// Test seam: the manual-capture dedup window is capture-server state, not
+// session state, so it outlives a session service instance.
+export function resetManualDedup(): void {
   manualDedup.clear()
 }
 
@@ -180,11 +170,7 @@ function createApp(deps: CaptureServerDeps): Hono {
     const origin = c.req.header('Origin') ?? ''
     const fromExtension = origin.startsWith('chrome-extension://')
     if (fromExtension) {
-      const wasConnected = Date.now() - state.extensionLastSeen < 10000
-      state.extensionLastSeen = Date.now()
-      if (!wasConnected) {
-        notifyExtensionConnection(true)
-      }
+      sessionService.touchExtension()
     }
     const query = c.req.query()
     const includeCasesParam = query.includeCases
@@ -199,25 +185,27 @@ function createApp(deps: CaptureServerDeps): Hono {
     } else {
       includeCases = true
     }
-    const activeCase = state.activeCaseId ? caseRepo.getCase(state.activeCaseId) : null
+    const session = sessionService.snapshot()
+    const activeCase = session.activeCaseId ? caseRepo.getCase(session.activeCaseId) : null
     const settings = getSettings()
     const allCases = includeCases ? caseRepo.listCases() : null
-    // Only expose the auth token to known origins (extension, localhost) or the
-    // origin-less same-origin/extension pairing fetch. Omit for any web origin
-    // so a page can't read it — and note the DNS-rebinding guard above already
-    // rejects rebound hostnames before this runs. file:// is intentionally NOT
-    // trusted: such a page receives no CORS grant and so can't read the body.
-    const includeToken =
-      !origin ||
-      origin.startsWith('chrome-extension://') ||
-      origin.startsWith('http://localhost:') ||
-      origin.startsWith('http://127.0.0.1:')
+    // Token exposure is now extension-only (#228): the renderer talks to main
+    // over IPC and never reads this. The two dev-server origins that used to be
+    // granted (http://localhost:<port>, http://127.0.0.1:<port>) existed solely
+    // to bootstrap the renderer's fetch wrapper, which no longer exists.
+    //
+    // The origin-less grant stays: Chrome normally sends an Origin on the
+    // extension's status poll, but a fetch that omits it would otherwise lose
+    // pairing. The DNS-rebinding guard above already rejects rebound hostnames
+    // before this runs, and file:// is still not trusted — such a page receives
+    // no CORS grant and so cannot read the body.
+    const includeToken = !origin || origin.startsWith('chrome-extension://')
     return c.json({
       running: true,
       ...(includeToken ? { serverToken: requiredToken } : {}),
       activeCase: activeCase ? { id: activeCase.id, name: activeCase.name } : null,
-      sessionActive: state.sessionActive,
-      captureCount: state.captureCount,
+      sessionActive: session.sessionActive,
+      captureCount: session.captureCount,
       autoCaptureMode: settings.autoCaptureMode,
       cases: includeCases && allCases ? allCases.map((cs) => ({ id: cs.id, name: cs.name })) : [],
       ignoredUrlPatterns: settings.ignoredUrlPatterns,
@@ -246,26 +234,22 @@ function createApp(deps: CaptureServerDeps): Hono {
     if (!caseData) {
       return c.json({ error: 'Case not found' }, 404)
     }
-    state.activeCaseId = id
-    notifySessionChange()
+    sessionService.activateCase(id)
     return c.json({ status: 'ok', case: { id: caseData.id, name: caseData.name } })
   })
 
   // Start session
   app.post('/api/session/start', (c) => {
-    if (!state.activeCaseId) {
+    if (!sessionService.snapshot().activeCaseId) {
       return c.json({ error: 'No active case selected' }, 400)
     }
-    state.sessionActive = true
-    state.captureCount = 0
-    notifySessionChange()
+    sessionService.start()
     return c.json({ status: 'ok', sessionActive: true })
   })
 
   // Stop session
   app.post('/api/session/stop', (c) => {
-    state.sessionActive = false
-    notifySessionChange()
+    sessionService.stop()
     return c.json({ status: 'ok', sessionActive: false })
   })
 
@@ -323,9 +307,10 @@ function createApp(deps: CaptureServerDeps): Hono {
 
         let caseId = ''
         if (source === 'auto') {
-          if (!state.sessionActive) return c.json({ error: 'No active session' }, 400)
-          if (!state.activeCaseId) return c.json({ error: 'No active case' }, 400)
-          caseId = state.activeCaseId
+          const session = sessionService.snapshot()
+          if (!session.sessionActive) return c.json({ error: 'No active session' }, 400)
+          if (!session.activeCaseId) return c.json({ error: 'No active case' }, 400)
+          caseId = session.activeCaseId
         } else {
           if (!caseIdField) return c.json({ error: 'Missing required field: caseId' }, 400)
           const caseData = caseRepo.getCase(caseIdField)
@@ -388,7 +373,7 @@ function createApp(deps: CaptureServerDeps): Hono {
           screenshot: screenshotBuffer
         })
 
-        if (source === 'auto') state.captureCount++
+        if (source === 'auto') sessionService.countCapture()
 
         if (mainWindow && !mainWindow.isDestroyed()) {
           sendEvent(mainWindow.webContents, IPC_CHANNELS.NEW_CAPTURE, capture)
@@ -435,10 +420,11 @@ function createApp(deps: CaptureServerDeps): Hono {
 
   // List active selectors for the active case only
   app.get('/api/selectors/active', (c) => {
-    if (!state.activeCaseId) {
+    const { activeCaseId } = sessionService.snapshot()
+    if (!activeCaseId) {
       return c.json([])
     }
-    const activeSelectors = selectorRepo.listActiveSelectors(state.activeCaseId)
+    const activeSelectors = selectorRepo.listActiveSelectors(activeCaseId)
     return c.json(activeSelectors)
   })
 
@@ -455,10 +441,10 @@ function createApp(deps: CaptureServerDeps): Hono {
       try {
         const { caseId, pattern, label } = c.req.valid('json')
 
-        if (!state.activeCaseId) {
+        if (!sessionService.snapshot().activeCaseId) {
           return c.json({ error: 'No active case selected' }, 400)
         }
-        if (caseId !== state.activeCaseId) {
+        if (caseId !== sessionService.snapshot().activeCaseId) {
           return c.json({ error: 'caseId does not match active case' }, 400)
         }
 
@@ -577,6 +563,7 @@ export function startCaptureServer(
   deps: CaptureServerDeps,
   port: number = CAPTURE_SERVER_PORT
 ): Promise<void> {
+  if (deps.sessionService) sessionService = deps.sessionService
   return new Promise((resolve) => {
     const app = createApp(deps)
     server = serve(
@@ -606,37 +593,10 @@ export function stopCaptureServer(): Promise<void> {
   })
 }
 
-function notifySessionChange(): void {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    sendEvent(mainWindow.webContents, IPC_CHANNELS.SESSION_STATE_CHANGED, {
-      sessionActive: state.sessionActive,
-      activeCaseId: state.activeCaseId,
-      captureCount: state.captureCount
-    })
-  }
-}
-
-function notifyExtensionConnection(connected: boolean): void {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    sendEvent(mainWindow.webContents, IPC_CHANNELS.EXTENSION_CONNECTION, { connected })
-  }
-}
-
-let extensionCheckInterval: ReturnType<typeof setInterval> | null = null
-
 export function startExtensionConnectionCheck(): void {
-  extensionCheckInterval = setInterval(() => {
-    const connected = Date.now() - state.extensionLastSeen < 10000
-    if (!connected && state.extensionLastSeen > 0) {
-      notifyExtensionConnection(false)
-      state.extensionLastSeen = 0
-    }
-  }, 5000)
+  sessionService.startHeartbeatMonitor()
 }
 
 export function stopExtensionConnectionCheck(): void {
-  if (extensionCheckInterval) {
-    clearInterval(extensionCheckInterval)
-    extensionCheckInterval = null
-  }
+  sessionService.stopHeartbeatMonitor()
 }

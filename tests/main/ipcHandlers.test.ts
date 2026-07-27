@@ -115,6 +115,7 @@ import { initInstallationId } from '@main/services/installationId'
 import { initServerToken } from '@main/services/serverToken'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
+import { createSessionService, type SessionService } from '@main/services/session'
 import { initManifest } from '@main/services/manifest'
 
 const fakeEvent = {} as IpcMainInvokeEvent
@@ -133,6 +134,7 @@ function expectOk<T = unknown>(res: { ok: boolean; data?: T; error?: string }): 
   return res.data as T
 }
 
+let sessionService: SessionService
 let dbPath = ''
 let caseId = ''
 let captureId = ''
@@ -218,11 +220,13 @@ beforeEach(() => {
     applySettingsChange: vi.fn(),
     dispose: vi.fn()
   }
+  sessionService = createSessionService()
   registerIpcHandlers({
     selectorLifecycle,
     captureLifecycle,
     recaptureService,
-    updaterService
+    updaterService,
+    sessionService
   })
 
   const created = caseRepo.createCase({ name: 'Test Case' })
@@ -287,6 +291,57 @@ describe('ipcHandlers — cases', () => {
     })
     expect(res.ok).toBe(false)
     expect(res.code).toBe('SQLITE_CONSTRAINT_UNIQUE')
+  })
+})
+
+describe('ipcHandlers — session', () => {
+  it('reports an empty snapshot before anything is activated', async () => {
+    expect(expectOk(await invoke(IPC_CHANNELS.SESSION_SNAPSHOT))).toEqual({
+      sessionActive: false,
+      activeCaseId: null,
+      captureCount: 0
+    })
+  })
+
+  it('activates a case and reflects it in the snapshot', async () => {
+    const snap = expectOk<{ activeCaseId: string | null }>(
+      await invoke(IPC_CHANNELS.SESSION_ACTIVATE_CASE, caseId)
+    )
+    expect(snap.activeCaseId).toBe(caseId)
+    expect(
+      expectOk<{ activeCaseId: string | null }>(await invoke(IPC_CHANNELS.SESSION_SNAPSHOT))
+        .activeCaseId
+    ).toBe(caseId)
+  })
+
+  it('rejects activating a case that does not exist', async () => {
+    const res = (await invoke(IPC_CHANNELS.SESSION_ACTIVATE_CASE, 'nope')) as {
+      ok: boolean
+      code?: string
+    }
+    expect(res.ok).toBe(false)
+    expect(res.code).toBe('NOT_FOUND')
+  })
+
+  it('refuses to start without an active case', async () => {
+    const res = (await invoke(IPC_CHANNELS.SESSION_START)) as { ok: boolean; code?: string }
+    expect(res.ok).toBe(false)
+    expect(res.code).toBe('NO_ACTIVE_CASE')
+  })
+
+  it('starts and stops a session', async () => {
+    expectOk(await invoke(IPC_CHANNELS.SESSION_ACTIVATE_CASE, caseId))
+
+    const started = expectOk<{ sessionActive: boolean }>(await invoke(IPC_CHANNELS.SESSION_START))
+    expect(started.sessionActive).toBe(true)
+
+    const stopped = expectOk<{ sessionActive: boolean }>(await invoke(IPC_CHANNELS.SESSION_STOP))
+    expect(stopped.sessionActive).toBe(false)
+  })
+
+  it('shares one service instance with the capture-server session state', async () => {
+    expectOk(await invoke(IPC_CHANNELS.SESSION_ACTIVATE_CASE, caseId))
+    expect(sessionService.snapshot().activeCaseId).toBe(caseId)
   })
 })
 

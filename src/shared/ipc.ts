@@ -84,6 +84,12 @@ export const IPC_CHANNELS = {
   TAGS_COUNT_FOR_CASE: 'tags:countForCase',
   TAGS_USAGE_COUNTS_FOR_CASE: 'tags:usageCountsForCase',
 
+  // Session (renderer-side session control; the extension drives HTTP)
+  SESSION_SNAPSHOT: 'session:snapshot',
+  SESSION_ACTIVATE_CASE: 'session:activateCase',
+  SESSION_START: 'session:start',
+  SESSION_STOP: 'session:stop',
+
   // Search
   SEARCH: 'search:query',
 
@@ -553,6 +559,11 @@ export interface IpcInvokeContract {
   'notes:delete': { args: [id: string]; result: boolean }
   'notes:count': { args: [caseId: string]; result: number }
   'notes:search': { args: [caseId: string, query: string]; result: Note[] }
+
+  'session:snapshot': { args: []; result: SessionStateEvent }
+  'session:activateCase': { args: [caseId: string]; result: SessionStateEvent }
+  'session:start': { args: []; result: SessionStateEvent }
+  'session:stop': { args: []; result: SessionStateEvent }
 
   'search:query': { args: [caseId: string, query: string]; result: Capture[] }
 

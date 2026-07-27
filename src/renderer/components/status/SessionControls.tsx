@@ -3,9 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { useParams } from '@tanstack/react-router'
 import { motion, AnimatePresence } from 'motion/react'
 import { useAppStore } from '@renderer/stores/appStore'
-import { casesQueryOptions } from '@renderer/lib/queries'
+import { casesQueryOptions, useSessionMutations } from '@renderer/lib/queries'
 import { presets } from '@renderer/lib/motion'
-import { captureServerFetch } from '@renderer/lib/captureServerFetch'
 
 export function SessionControls() {
   const sessionActive = useAppStore((s) => s.sessionActive)
@@ -13,6 +12,7 @@ export function SessionControls() {
   const connectedToExtension = useAppStore((s) => s.connectedToExtension)
   const { data: cases = [] } = useQuery(casesQueryOptions)
   const [toggling, setToggling] = useState(false)
+  const { activateCase, start, stop } = useSessionMutations()
 
   const params = useParams({ strict: false })
   const activeCaseId = (params as { caseId?: string }).caseId ?? null
@@ -26,26 +26,14 @@ export function SessionControls() {
     setToggling(true)
     try {
       if (sessionActive) {
-        const res = await captureServerFetch('/api/session/stop', { method: 'POST' })
-        if (!res.ok) {
-          console.error('Failed to stop session:', res.status)
-          return
-        }
+        await stop.mutateAsync()
         setSessionActive(false)
       } else {
         if (!activeCaseId) return
-        const activateRes = await captureServerFetch(`/api/cases/${activeCaseId}/activate`, {
-          method: 'POST'
-        })
-        if (!activateRes.ok) {
-          console.error('Failed to activate case:', activateRes.status)
-          return
-        }
-        const startRes = await captureServerFetch('/api/session/start', { method: 'POST' })
-        if (!startRes.ok) {
-          console.error('Failed to start session:', startRes.status)
-          return
-        }
+        // Activate before starting: the main-side start refuses without an
+        // active case, same as the HTTP route it replaces.
+        await activateCase.mutateAsync(activeCaseId)
+        await start.mutateAsync()
         setSessionActive(true)
       }
     } catch (error) {

@@ -16,10 +16,10 @@ import { initInstallationId, resetInstallationId } from '@main/services/installa
 import {
   startCaptureServer,
   stopCaptureServer,
-  getSessionState,
-  resetSessionState
+  resetManualDedup
 } from '@main/services/captureServer'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
+import { createSessionService, type SessionService } from '@main/services/session'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { getManifestHead } from '@main/services/manifest'
 import { MAX_SCREENSHOT_SIZE } from '@shared/constants'
@@ -32,6 +32,7 @@ vi.mock('@main/services/tlsCertChain', async (importOriginal) => {
 })
 
 let nextPort = 19846
+let sessionService: SessionService
 const TEST_TOKEN = 'test-server-token'
 
 describe('captureServer', () => {
@@ -48,11 +49,12 @@ describe('captureServer', () => {
     updateSettings({ operatorName: 'Test Operator' })
     resetInstallationId()
     initInstallationId(tempDir)
-    resetSessionState()
+    sessionService = createSessionService()
+    resetManualDedup()
     baseUrl = `http://127.0.0.1:${port}`
     const selectorLifecycle = createSelectorLifecycle({ emitRematched: () => {} })
     const captureLifecycle = createCaptureLifecycle({ selectorLifecycle })
-    await startCaptureServer({ selectorLifecycle, captureLifecycle, token: TEST_TOKEN }, port)
+    await startCaptureServer({ selectorLifecycle, captureLifecycle, token: TEST_TOKEN, sessionService }, port)
   })
 
   afterEach(async () => {
@@ -101,12 +103,23 @@ describe('captureServer', () => {
     expect(dark.theme).toBe('dark')
   })
 
-  it('GET /api/status exposes serverToken to extension and localhost origins', async () => {
+  it('GET /api/status exposes serverToken to the extension origin', async () => {
     const res = await fetch(`${baseUrl}/api/status`, {
       headers: { Origin: 'chrome-extension://abcdef1234567890' }
     })
     const data = await res.json()
     expect(data.serverToken).toBe(TEST_TOKEN)
+  })
+
+  // #228: the renderer moved to IPC, so the dev-server origins that used to be
+  // granted the token no longer are. Only the extension (and the origin-less
+  // pairing fetch) may read it.
+  it('GET /api/status omits serverToken for dev-server renderer origins', async () => {
+    for (const origin of ['http://localhost:5173', 'http://127.0.0.1:5173']) {
+      const res = await fetch(`${baseUrl}/api/status`, { headers: { Origin: origin } })
+      const data = await res.json()
+      expect(data.serverToken).toBeUndefined()
+    }
   })
 
   it('GET /api/status omits serverToken for unknown origins', async () => {
@@ -119,21 +132,21 @@ describe('captureServer', () => {
 
   it('GET /api/status does not update extensionLastSeen when Origin is not chrome-extension://', async () => {
     await fetch(`${baseUrl}/api/status`)
-    expect(getSessionState().extensionLastSeen).toBe(0)
+    expect(sessionService.snapshot().extensionLastSeen).toBe(0)
 
     await fetch(`${baseUrl}/api/status`, { headers: { Origin: 'https://evil.example.com' } })
-    expect(getSessionState().extensionLastSeen).toBe(0)
+    expect(sessionService.snapshot().extensionLastSeen).toBe(0)
 
     await fetch(`${baseUrl}/api/status`, { headers: { Origin: 'file:///index.html' } })
-    expect(getSessionState().extensionLastSeen).toBe(0)
+    expect(sessionService.snapshot().extensionLastSeen).toBe(0)
   })
 
   it('GET /api/status updates extensionLastSeen when Origin is chrome-extension://', async () => {
-    expect(getSessionState().extensionLastSeen).toBe(0)
+    expect(sessionService.snapshot().extensionLastSeen).toBe(0)
     await fetch(`${baseUrl}/api/status`, {
       headers: { Origin: 'chrome-extension://abcdef1234567890' }
     })
-    expect(getSessionState().extensionLastSeen).toBeGreaterThan(0)
+    expect(sessionService.snapshot().extensionLastSeen).toBeGreaterThan(0)
   })
 
   it('POST endpoints reject requests without a valid token', async () => {
@@ -170,7 +183,7 @@ describe('captureServer', () => {
     expect(data.status).toBe('ok')
     expect(data.case.name).toBe('Active Case')
 
-    const state = getSessionState()
+    const state = sessionService.snapshot()
     expect(state.activeCaseId).toBe(testCase.id)
   })
 
@@ -274,7 +287,7 @@ describe('captureServer', () => {
       '<html>b</html>'
     )
 
-    const state = getSessionState()
+    const state = sessionService.snapshot()
     expect(state.captureCount).toBe(2)
   })
 
@@ -305,7 +318,7 @@ describe('captureServer', () => {
     expect(captures[0].url).toBe('https://example.com/manual')
 
     // Should NOT increment session capture count
-    const state = getSessionState()
+    const state = sessionService.snapshot()
     expect(state.captureCount).toBe(0)
   })
 
@@ -376,7 +389,7 @@ describe('captureServer', () => {
     expect(captures).toHaveLength(1)
 
     // Should NOT increment session capture count
-    const state = getSessionState()
+    const state = sessionService.snapshot()
     expect(state.captureCount).toBe(0)
   })
 
@@ -444,9 +457,9 @@ describe('captureServer', () => {
   // --- Status endpoint ---
 
   it('GET /api/status without Origin does not update extensionLastSeen', async () => {
-    const before = getSessionState().extensionLastSeen
+    const before = sessionService.snapshot().extensionLastSeen
     await fetch(`${baseUrl}/api/status`)
-    const after = getSessionState().extensionLastSeen
+    const after = sessionService.snapshot().extensionLastSeen
     expect(after).toBe(before)
   })
 
@@ -455,7 +468,7 @@ describe('captureServer', () => {
     await fetch(`${baseUrl}/api/status`, {
       headers: { Origin: 'chrome-extension://abcdefghijklmnop' }
     })
-    const after = getSessionState().extensionLastSeen
+    const after = sessionService.snapshot().extensionLastSeen
     expect(after).toBeGreaterThanOrEqual(before)
   })
 
@@ -838,7 +851,7 @@ describe('captureServer', () => {
     expect(captures).toHaveLength(2)
   })
 
-  it('manual dedup state is cleared by resetSessionState', async () => {
+  it('manual dedup state is cleared by resetManualDedup', async () => {
     const testCase = createCase({ name: 'Dedup Reset' })
 
     const first = await postCapture({
@@ -851,7 +864,10 @@ describe('captureServer', () => {
     expect(first.status).toBe(200)
 
     // Without reset, this would be 409
-    resetSessionState()
+    // Note: the server holds the instance injected at startCaptureServer in
+    // beforeEach; rebinding sessionService here would be inert. Only
+    // resetManualDedup() is needed.
+    resetManualDedup()
 
     const second = await postCapture({
       source: 'manual',

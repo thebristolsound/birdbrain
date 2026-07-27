@@ -29,6 +29,7 @@ import { useCommandPalette } from '@renderer/hooks/useCommandPalette'
 import { CommandPalette } from '@renderer/components/layout/CommandPalette'
 import { Toaster } from 'sonner'
 import { useAppStore } from '@renderer/stores/appStore'
+import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
 
 const TanStackRouterDevtools = import.meta.env.DEV
   ? lazy(() =>
@@ -101,7 +102,9 @@ const rootRoute = createRootRoute({
           <div className="flex flex-1 overflow-hidden">
             {showSidebar && <Sidebar />}
             <main className="flex-1 overflow-hidden bg-canvas">
-              <Outlet />
+              <ErrorBoundary source="root">
+                <Outlet />
+              </ErrorBoundary>
             </main>
           </div>
         </div>

@@ -77,3 +77,6 @@ ds-bundle/
 .design-sync/learnings/
 .design-sync/node_modules
 /node_modules
+
+# subagent-driven-development scratch
+.superpowers/

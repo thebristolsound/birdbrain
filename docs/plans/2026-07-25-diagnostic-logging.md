@@ -638,7 +638,12 @@ describe('sessionLog', () => {
     startSession(dir, INFO)
     writeFileSync(join(dir, 'sessions.json'), '{ not json')
     expect(() => startSession(dir, INFO)).not.toThrow()
-    expect(readSessions(dir)).toHaveLength(1)
+    // TWO, not one. The first session's lock is still on disk (no
+    // markCleanExit ran), so reclaimOrphanedLock rebuilds it as an unclean
+    // record alongside the new session's. Corrupting sessions.json must not
+    // also erase the crash evidence the lock is still carrying — that
+    // interaction between the two blocks is the whole point of the reclaim.
+    expect(readSessions(dir)).toHaveLength(2)
   })
 })
 ```

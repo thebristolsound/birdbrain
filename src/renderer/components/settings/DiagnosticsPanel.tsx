@@ -2,8 +2,17 @@ import { useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Activity, Check, Copy, RefreshCw } from 'lucide-react'
 import type { DiagnosticsSnapshot } from '@shared/types'
-import { Card, CardContent, Button } from '@renderer/components/ui'
+import {
+  Card,
+  CardContent,
+  Button,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent
+} from '@renderer/components/ui'
 import { cn } from '@renderer/lib/utils'
+import { LogTab } from '@renderer/components/diagnostics/LogTab'
 
 // Settings → Diagnostics. Live snapshot of app environment, main-process
 // responsiveness (event-loop stalls = the "pinwheel"), storage, and the
@@ -129,131 +138,150 @@ export function DiagnosticsPanel() {
               Refresh
             </Button>
             <Button variant="ghost" size="sm" onClick={handleCopy} className="gap-1.5">
-              {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+              {copied ? (
+                <Check className="h-3.5 w-3.5 text-green-500" />
+              ) : (
+                <Copy className="h-3.5 w-3.5" />
+              )}
               {copied ? 'Copied' : 'Copy report'}
             </Button>
           </div>
         </div>
 
-        <div className="space-y-6">
-          <Section title="Environment">
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <StatBlock label="Version" value={snap.app.version} />
-              <StatBlock label="Platform" value={`${snap.app.platform} ${snap.app.arch}`} />
-              <StatBlock label="Install" value={snap.app.installFormat} />
-              <StatBlock label="Uptime" value={formatUptime(snap.uptimeSeconds)} />
-            </div>
-            <p className="mt-2 text-xs text-text-muted">
-              Electron {snap.app.electron} · Chromium {snap.app.chrome} · Node {snap.app.node}
-            </p>
-          </Section>
+        <Tabs defaultValue="snapshot">
+          <TabsList className="mb-4">
+            <TabsTrigger value="snapshot">Snapshot</TabsTrigger>
+            <TabsTrigger value="log">Log</TabsTrigger>
+          </TabsList>
 
-          <Section title="Responsiveness">
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <StatBlock
-                label="Event-loop lag"
-                value={formatMs(snap.eventLoop.currentLagMs)}
-                tone={lagTone(snap.eventLoop.currentLagMs)}
-              />
-              <StatBlock
-                label="Max lag (60s)"
-                value={formatMs(snap.eventLoop.maxLagLastMinuteMs)}
-                tone={lagTone(snap.eventLoop.maxLagLastMinuteMs)}
-              />
-              <StatBlock label="Freezes logged" value={String(snap.eventLoop.stalls.length)} />
-              <StatBlock label="Slow ops logged" value={String(snap.slowOps.length)} />
-            </div>
-            {snap.eventLoop.stalls.length > 0 && (
-              <ul className="mt-2 space-y-1">
-                {snap.eventLoop.stalls.slice(0, 8).map((s, i) => (
-                  <li key={`${s.at}-${i}`} className="flex justify-between text-xs">
-                    <span className="text-text-muted">{formatTime(s.at)}</span>
-                    <span className="font-mono text-red-500">app frozen {formatMs(s.ms)}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Section>
-
-          <Section title="Recent slow operations">
-            {snap.slowOps.length === 0 ? (
-              <p className="text-xs text-text-muted">
-                None recorded. Data extraction runs are logged here with their duration.
+          <TabsContent value="snapshot" className="space-y-6">
+            <Section title="Environment">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <StatBlock label="Version" value={snap.app.version} />
+                <StatBlock label="Platform" value={`${snap.app.platform} ${snap.app.arch}`} />
+                <StatBlock label="Install" value={snap.app.installFormat} />
+                <StatBlock label="Uptime" value={formatUptime(snap.uptimeSeconds)} />
+              </div>
+              <p className="mt-2 text-xs text-text-muted">
+                Electron {snap.app.electron} · Chromium {snap.app.chrome} · Node {snap.app.node}
               </p>
-            ) : (
-              <ul className="space-y-1">
-                {snap.slowOps.slice(0, 10).map((op, i) => (
-                  <li key={`${op.at}-${i}`} className="flex items-baseline gap-2 text-xs">
-                    <span className="shrink-0 text-text-muted">{formatTime(op.at)}</span>
-                    <span className="shrink-0 rounded bg-elevated px-1.5 py-0.5 text-text-secondary">
-                      {op.kind}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-text-muted">{op.detail}</span>
-                    <span
-                      className={cn(
-                        'shrink-0 font-mono tabular-nums',
-                        op.ms >= 1000 ? 'text-red-500' : op.ms >= 250 ? 'text-amber-500' : 'text-text-secondary'
-                      )}
-                    >
-                      {formatMs(op.ms)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Section>
+            </Section>
 
-          <Section title="Storage & data">
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <StatBlock label="Database" value={formatBytes(snap.storage.dbSizeBytes)} />
-              <StatBlock label="WAL" value={formatBytes(snap.storage.walSizeBytes)} />
-              <StatBlock
-                label="Schema"
-                value={`v${snap.data.schemaVersion}${schemaMismatch ? ` / v${snap.data.latestSchemaVersion}` : ''}`}
-                tone={schemaMismatch ? 'warning' : 'default'}
-              />
-              <StatBlock label="Captures" value={formatCount(snap.data.captures)} />
-            </div>
-            <p className="mt-2 text-xs text-text-muted">
-              {formatCount(snap.data.cases)} cases · {formatCount(snap.data.notes)} notes ·{' '}
-              {formatCount(snap.data.selectors)} selectors · {formatCount(snap.data.extractedData)}{' '}
-              extracted indicators
-            </p>
-            <button
-              type="button"
-              onClick={() => window.birdbrain.shell.openPath(snap.storage.storageRoot)}
-              className="mt-1 block max-w-full truncate font-mono text-xs text-accent hover:text-accent-hover"
-              title="Open storage folder"
-            >
-              {snap.storage.storageRoot}
-            </button>
-          </Section>
-
-          <Section title="Processes">
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-left text-text-muted">
-                    <th className="py-1 pr-4 font-medium">Type</th>
-                    <th className="py-1 pr-4 font-medium">PID</th>
-                    <th className="py-1 pr-4 font-medium">CPU</th>
-                    <th className="py-1 font-medium">Memory</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {snap.processes.map((p) => (
-                    <tr key={p.pid} className="border-t border-border text-text-secondary">
-                      <td className="py-1 pr-4">{p.type}</td>
-                      <td className="py-1 pr-4 font-mono tabular-nums">{p.pid}</td>
-                      <td className="py-1 pr-4 font-mono tabular-nums">{p.cpuPercent}%</td>
-                      <td className="py-1 font-mono tabular-nums">{p.memoryMB} MB</td>
-                    </tr>
+            <Section title="Responsiveness">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <StatBlock
+                  label="Event-loop lag"
+                  value={formatMs(snap.eventLoop.currentLagMs)}
+                  tone={lagTone(snap.eventLoop.currentLagMs)}
+                />
+                <StatBlock
+                  label="Max lag (60s)"
+                  value={formatMs(snap.eventLoop.maxLagLastMinuteMs)}
+                  tone={lagTone(snap.eventLoop.maxLagLastMinuteMs)}
+                />
+                <StatBlock label="Freezes logged" value={String(snap.eventLoop.stalls.length)} />
+                <StatBlock label="Slow ops logged" value={String(snap.slowOps.length)} />
+              </div>
+              {snap.eventLoop.stalls.length > 0 && (
+                <ul className="mt-2 space-y-1">
+                  {snap.eventLoop.stalls.slice(0, 8).map((s, i) => (
+                    <li key={`${s.at}-${i}`} className="flex justify-between text-xs">
+                      <span className="text-text-muted">{formatTime(s.at)}</span>
+                      <span className="font-mono text-red-500">app frozen {formatMs(s.ms)}</span>
+                    </li>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          </Section>
-        </div>
+                </ul>
+              )}
+            </Section>
+
+            <Section title="Recent slow operations">
+              {snap.slowOps.length === 0 ? (
+                <p className="text-xs text-text-muted">
+                  None recorded. Data extraction runs are logged here with their duration.
+                </p>
+              ) : (
+                <ul className="space-y-1">
+                  {snap.slowOps.slice(0, 10).map((op, i) => (
+                    <li key={`${op.at}-${i}`} className="flex items-baseline gap-2 text-xs">
+                      <span className="shrink-0 text-text-muted">{formatTime(op.at)}</span>
+                      <span className="shrink-0 rounded bg-elevated px-1.5 py-0.5 text-text-secondary">
+                        {op.kind}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-text-muted">{op.detail}</span>
+                      <span
+                        className={cn(
+                          'shrink-0 font-mono tabular-nums',
+                          op.ms >= 1000
+                            ? 'text-red-500'
+                            : op.ms >= 250
+                              ? 'text-amber-500'
+                              : 'text-text-secondary'
+                        )}
+                      >
+                        {formatMs(op.ms)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Section>
+
+            <Section title="Storage & data">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <StatBlock label="Database" value={formatBytes(snap.storage.dbSizeBytes)} />
+                <StatBlock label="WAL" value={formatBytes(snap.storage.walSizeBytes)} />
+                <StatBlock
+                  label="Schema"
+                  value={`v${snap.data.schemaVersion}${schemaMismatch ? ` / v${snap.data.latestSchemaVersion}` : ''}`}
+                  tone={schemaMismatch ? 'warning' : 'default'}
+                />
+                <StatBlock label="Captures" value={formatCount(snap.data.captures)} />
+              </div>
+              <p className="mt-2 text-xs text-text-muted">
+                {formatCount(snap.data.cases)} cases · {formatCount(snap.data.notes)} notes ·{' '}
+                {formatCount(snap.data.selectors)} selectors ·{' '}
+                {formatCount(snap.data.extractedData)} extracted indicators
+              </p>
+              <button
+                type="button"
+                onClick={() => window.birdbrain.shell.openPath(snap.storage.storageRoot)}
+                className="mt-1 block max-w-full truncate font-mono text-xs text-accent hover:text-accent-hover"
+                title="Open storage folder"
+              >
+                {snap.storage.storageRoot}
+              </button>
+            </Section>
+
+            <Section title="Processes">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-left text-text-muted">
+                      <th className="py-1 pr-4 font-medium">Type</th>
+                      <th className="py-1 pr-4 font-medium">PID</th>
+                      <th className="py-1 pr-4 font-medium">CPU</th>
+                      <th className="py-1 font-medium">Memory</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {snap.processes.map((p) => (
+                      <tr key={p.pid} className="border-t border-border text-text-secondary">
+                        <td className="py-1 pr-4">{p.type}</td>
+                        <td className="py-1 pr-4 font-mono tabular-nums">{p.pid}</td>
+                        <td className="py-1 pr-4 font-mono tabular-nums">{p.cpuPercent}%</td>
+                        <td className="py-1 font-mono tabular-nums">{p.memoryMB} MB</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Section>
+          </TabsContent>
+
+          <TabsContent value="log">
+            <LogTab />
+          </TabsContent>
+        </Tabs>
       </CardContent>
     </Card>
   )

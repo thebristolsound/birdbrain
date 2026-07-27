@@ -6,7 +6,7 @@ import {
   useMatchRoute,
   useNavigate
 } from '@tanstack/react-router'
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { TopBar } from '@renderer/components/layout/TopBar'
 import { Sidebar } from '@renderer/components/layout/Sidebar'
 import { MotionProvider } from '@renderer/lib/motion'
@@ -30,6 +30,7 @@ import { CommandPalette } from '@renderer/components/layout/CommandPalette'
 import { Toaster } from 'sonner'
 import { useAppStore } from '@renderer/stores/appStore'
 import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
+import { subscribeToMainLog } from '@renderer/lib/mainLogBridge'
 
 const TanStackRouterDevtools = import.meta.env.DEV
   ? lazy(() =>
@@ -78,6 +79,7 @@ const rootRoute = createRootRoute({
   component: function RootLayout() {
     const { restoring } = useSessionRestore()
     useCommandPalette()
+    useEffect(() => subscribeToMainLog(), [])
     const matchRoute = useMatchRoute()
     const onboardingOverlayOpen = useAppStore((s) => s.onboardingOverlayOpen)
     const setOnboardingOverlayOpen = useAppStore((s) => s.setOnboardingOverlayOpen)

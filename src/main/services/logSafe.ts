@@ -115,6 +115,14 @@ const CHILD_PROCESS_TYPES = [
 // Must stay in sync with CaptureFormat in @shared/types (no runtime const
 // array exists there to import).
 const CAPTURE_FORMATS = ['html', 'mhtml'] as const
+// The platforms Birdbrain is actually built for (electron-builder targets in
+// package.json). Any other process.platform value is genuinely unexpected.
+const PLATFORMS = ['win32', 'darwin', 'linux'] as const
+// Every literal detectInstallFormat() in diagnostics.ts can return, plus 'deb'
+// — the one electron-builder package-type marker updater.ts recognises, which
+// that function passes through from the resources file. A package format
+// neither file knows about records as INVALID rather than being passed through.
+const INSTALL_FORMATS = ['dev', 'nsis', 'mac', 'appimage', 'deb', 'archive', 'unknown'] as const
 
 // Fixed vocabularies `tag()` may select from. `allowed` as a caller-supplied
 // parameter would let a call site mint its own allowlist —
@@ -126,7 +134,9 @@ const TAG_VOCABULARIES = {
   childProcessType: CHILD_PROCESS_TYPES,
   childGoneReason: PROCESS_GONE_REASONS,
   renderGoneReason: PROCESS_GONE_REASONS,
-  captureFormat: CAPTURE_FORMATS
+  captureFormat: CAPTURE_FORMATS,
+  platform: PLATFORMS,
+  installFormat: INSTALL_FORMATS
 } as const
 
 export function tag(value: string, vocabulary: keyof typeof TAG_VOCABULARIES): LogSafe {
@@ -178,14 +188,6 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 // app.getVersion() ('1.0.1-beta.17'), and the all-dashed variant the plan's
 // session-start block writes.
 const VERSION = /^\d+[.-]\d+[.-]\d+(?:[.-][A-Za-z0-9]+)*$/
-// The platforms Birdbrain is actually built for (electron-builder targets in
-// package.json). Any other process.platform value is genuinely unexpected.
-const PLATFORMS = ['win32', 'darwin', 'linux'] as const
-// Every literal detectInstallFormat() in diagnostics.ts can return, plus 'deb'
-// — the one electron-builder package-type marker updater.ts recognises, which
-// that function passes through from the resources file. A package format
-// neither file knows about records as INVALID rather than being passed through.
-const INSTALL_FORMATS = ['dev', 'nsis', 'mac', 'appimage', 'deb', 'archive', 'unknown'] as const
 
 type ContextFormat = 'number' | 'boolean' | RegExp | readonly string[]
 

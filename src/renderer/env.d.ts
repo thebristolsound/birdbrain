@@ -61,7 +61,8 @@ import type {
   ArchiveExportResult,
   RecaptureEnqueuePayload,
   EnqueueResult,
-  RecaptureQueueStatus
+  RecaptureQueueStatus,
+  SessionStateEvent
 } from '@shared/ipc'
 
 interface BirdbrainAPI {
@@ -146,6 +147,12 @@ interface BirdbrainAPI {
   extension: {
     getPath(): Promise<string>
     openFolder(): Promise<void>
+  }
+  session: {
+    snapshot(): Promise<SessionStateEvent>
+    activateCase(caseId: string): Promise<SessionStateEvent>
+    start(): Promise<SessionStateEvent>
+    stop(): Promise<SessionStateEvent>
   }
   search(caseId: string, query: string): Promise<Capture[]>
   settings: {

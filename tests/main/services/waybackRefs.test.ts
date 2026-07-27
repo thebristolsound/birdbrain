@@ -6,10 +6,10 @@ import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
 import { insertCapture } from '@main/services/db/captureRepo'
 import {
-  createArchiveRef,
-  listArchiveRefs,
-  deleteArchiveRef
-} from '@main/services/db/archiveRefRepo'
+  createWaybackRef,
+  listWaybackRefs,
+  deleteWaybackRef
+} from '@main/services/db/waybackRefRepo'
 import type { WaybackSnapshot } from '@shared/types'
 
 let dir = ''
@@ -48,7 +48,7 @@ describe('archive refs CRUD', () => {
   it('creates and lists a pinned ref for a capture', () => {
     const c = createCase({ name: 'Case' })
     const cap = makeCapture(c.id)
-    const ref = createArchiveRef({
+    const ref = createWaybackRef({
       captureId: cap.id,
       snapshot,
       checkedAt: '2026-06-30T00:00:00.000Z'
@@ -57,7 +57,7 @@ describe('archive refs CRUD', () => {
     expect(ref.snapshotUrl).toBe(snapshot.snapshotUrl)
     expect(ref.pinnedAt).toMatch(/^\d{4}-/)
 
-    const refs = listArchiveRefs(cap.id)
+    const refs = listWaybackRefs(cap.id)
     expect(refs).toHaveLength(1)
     expect(refs[0].snapshotTimestamp).toBe('2020-01-15T12:00:00.000Z')
     expect(refs[0].statusCode).toBe(200)
@@ -66,18 +66,18 @@ describe('archive refs CRUD', () => {
   it('deletes a ref by id', () => {
     const c = createCase({ name: 'Case' })
     const cap = makeCapture(c.id)
-    const ref = createArchiveRef({ captureId: cap.id, snapshot, checkedAt: '2026-06-30T00:00:00.000Z' })
-    expect(deleteArchiveRef(ref.id)).toBe(true)
-    expect(listArchiveRefs(cap.id)).toHaveLength(0)
-    expect(deleteArchiveRef(ref.id)).toBe(false)
+    const ref = createWaybackRef({ captureId: cap.id, snapshot, checkedAt: '2026-06-30T00:00:00.000Z' })
+    expect(deleteWaybackRef(ref.id)).toBe(true)
+    expect(listWaybackRefs(cap.id)).toHaveLength(0)
+    expect(deleteWaybackRef(ref.id)).toBe(false)
   })
 
   it('cascade-deletes refs when the capture is deleted', () => {
     const c = createCase({ name: 'Case' })
     const cap = makeCapture(c.id)
-    createArchiveRef({ captureId: cap.id, snapshot, checkedAt: '2026-06-30T00:00:00.000Z' })
+    createWaybackRef({ captureId: cap.id, snapshot, checkedAt: '2026-06-30T00:00:00.000Z' })
     // initDatabase sets `foreign_keys = ON`, so deleting the capture cascades.
     getDb().prepare('DELETE FROM captures WHERE id = ?').run(cap.id)
-    expect(listArchiveRefs(cap.id)).toHaveLength(0)
+    expect(listWaybackRefs(cap.id)).toHaveLength(0)
   })
 })

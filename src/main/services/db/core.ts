@@ -2,7 +2,7 @@ import Database from 'better-sqlite3'
 import { runMigrations } from '@main/services/db/migrations'
 
 let db: Database.Database
-export const LATEST_SCHEMA_VERSION = 26
+export const LATEST_SCHEMA_VERSION = 27
 
 export function initDatabase(dbPath: string): Database.Database {
   db = new Database(dbPath)

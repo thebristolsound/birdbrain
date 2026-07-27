@@ -21,7 +21,7 @@ import type { Capture } from '@shared/types'
 import {
   notesQueryOptions,
   useNotesMutations,
-  archiveLookupQueryOptions,
+  waybackLookupQueryOptions,
   useRecaptureMutations
 } from '@renderer/lib/queries'
 import { useAppStore } from '@renderer/stores/appStore'
@@ -39,7 +39,7 @@ import { useNoteEditor } from '@renderer/components/notes/useNoteEditor'
 import { useVerifyMutation } from '@renderer/components/captures/useVerifyMutation'
 import { getProvenanceColor } from '@renderer/components/captures/getProvenanceColor'
 import { ForensicsTab } from '@renderer/components/captures/ForensicsTab'
-import { ArchiveTab } from '@renderer/components/captures/ArchiveTab'
+import { WaybackTab } from '@renderer/components/captures/WaybackTab'
 
 interface Props {
   capture: Capture
@@ -79,7 +79,7 @@ export function CaptureDetailsPanel({
   const verify = useVerifyMutation(capture.id, caseId)
   const { enqueue } = useRecaptureMutations(caseId)
   // enabled:false — reads whatever the last explicit "Look up" cached, never fetches.
-  const lookup = useQuery(archiveLookupQueryOptions(capture.id))
+  const lookup = useQuery(waybackLookupQueryOptions(capture.id))
 
   const [tagPopoverOpen, setTagPopoverOpen] = useState(false)
   const tagAnchorRef = useRef<HTMLButtonElement>(null)
@@ -453,7 +453,7 @@ export function CaptureDetailsPanel({
         </button>
         {waybackOpen && (
           <div data-testid="wayback-section-body" className="border-t border-border">
-            <ArchiveTab capture={capture} />
+            <WaybackTab capture={capture} />
           </div>
         )}
       </section>

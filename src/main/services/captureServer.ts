@@ -7,6 +7,7 @@ import type { Server } from 'http'
 import { app } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
+import { sendEvent } from '@main/ipcWrap'
 import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
 import * as selectorRepo from '@main/services/db/selectorRepo'
@@ -108,7 +109,7 @@ function isUrlBlacklisted(url: string, patterns: string[]): string | null {
 
 function emitCaptureEvent(event: CaptureEvent): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send(IPC_CHANNELS.CAPTURE_ACTIVITY, event)
+    sendEvent(mainWindow.webContents, IPC_CHANNELS.CAPTURE_ACTIVITY, event)
   }
 }
 
@@ -385,7 +386,7 @@ function createApp(deps: CaptureServerDeps): Hono {
         if (source === 'auto') state.captureCount++
 
         if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send(IPC_CHANNELS.NEW_CAPTURE, capture)
+          sendEvent(mainWindow.webContents, IPC_CHANNELS.NEW_CAPTURE, capture)
         }
 
         const durationMs = Date.now() - startTime
@@ -602,7 +603,7 @@ export function stopCaptureServer(): Promise<void> {
 
 function notifySessionChange(): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send(IPC_CHANNELS.SESSION_STATE_CHANGED, {
+    sendEvent(mainWindow.webContents, IPC_CHANNELS.SESSION_STATE_CHANGED, {
       sessionActive: state.sessionActive,
       activeCaseId: state.activeCaseId,
       captureCount: state.captureCount
@@ -612,7 +613,7 @@ function notifySessionChange(): void {
 
 function notifyExtensionConnection(connected: boolean): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send(IPC_CHANNELS.EXTENSION_CONNECTION, { connected })
+    sendEvent(mainWindow.webContents, IPC_CHANNELS.EXTENSION_CONNECTION, { connected })
   }
 }
 

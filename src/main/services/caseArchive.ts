@@ -13,7 +13,7 @@ import * as captureRepo from '@main/services/db/captureRepo'
 import * as tagRepo from '@main/services/db/tagRepo'
 import * as selectorRepo from '@main/services/db/selectorRepo'
 import * as noteRepo from '@main/services/db/noteRepo'
-import * as archiveRefRepo from '@main/services/db/archiveRefRepo'
+import * as waybackRefRepo from '@main/services/db/waybackRefRepo'
 import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
 import {
   collectAnnotationsForCase,
@@ -42,7 +42,12 @@ import type {
   CaseArchiveCounts
 } from '@shared/types'
 
-export const CASE_ARCHIVE_SCHEMA_VERSION = 1
+// 2 since anchored notes (schema v27): note rows now carry anchor_kind and
+// anchor_json. A pre-v27 Birdbrain has no columns for them and its import would
+// drop every anchor without saying so, which the `schemaVersion >` gate in
+// importCaseArchive turns into "update Birdbrain" instead. Bump this whenever
+// an archive gains data an older release would silently discard.
+export const CASE_ARCHIVE_SCHEMA_VERSION = 2
 
 export interface CaseArchiveData {
   case: Record<string, unknown>
@@ -67,7 +72,9 @@ interface CaseArchiveArtifact {
 }
 
 interface CaseArchiveHeader {
-  schemaVersion: 1
+  // Not the current version as a literal: this type also describes archives
+  // being read, which may have been written by any earlier release.
+  schemaVersion: number
   generatedBy: 'Birdbrain'
   exportedAt: string
   toolVersion: string
@@ -102,7 +109,7 @@ export function collectCaseData(caseId: string): CaseArchiveData {
     annotationPins: collectAnnotationPinsForCase(caseId),
     captureAnalyses: collectCaptureAnalysesForCase(caseId),
     extractedData: extractedDataRepo.collectExtractedDataForCase(caseId),
-    captureArchiveRefs: archiveRefRepo.collectArchiveRefsForCase(caseId)
+    captureArchiveRefs: waybackRefRepo.collectWaybackRefsForCase(caseId)
   }
 }
 
@@ -525,6 +532,6 @@ function insertImportedRows(
   importAnnotationPinRows(data.annotationPins, ctx)
   importCaptureAnalysisRows(data.captureAnalyses, ctx)
   extractedDataRepo.importExtractedDataRows(data.extractedData, ctx)
-  archiveRefRepo.importArchiveRefRows(data.captureArchiveRefs, ctx)
+  waybackRefRepo.importWaybackRefRows(data.captureArchiveRefs, ctx)
   noteRepo.importNoteRows(data.notes, ctx)
 }

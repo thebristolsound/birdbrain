@@ -72,26 +72,68 @@ the case an anchor needs to survive.
 
 ## Open questions
 
-Two of the spec's three now bite. Neither should be answered by guessing.
+Both answered 2026-07-26. Recorded here because neither is derivable from the
+code, and both were deliberately left unencoded in slice 1.
 
-1. **Recapture.** When a capture is superseded, do notes anchored to the
-   original follow, stay, or fork? `supersedesCaptureId` already links siblings,
-   so the information exists. This is a product decision — ask.
-2. **Cross-case references.** Current schema says a note belongs to one case.
-   A `finding` anchor may want otherwise. Probably defer: nothing in Phase 2
-   forces it.
+1. **Recapture — notes STAY.** ~~When a capture is superseded, do notes anchored
+   to the original follow, stay, or fork?~~ A note stays on the capture it was
+   written against. It does not follow the supersession chain and does not fork.
+   The design's central claim is that anchoring happens at the moment of
+   observation; moving an anchor onto a capture the investigator never looked at
+   is the drift the feature exists to prevent. Slice 1 encodes no opinion on
+   this — the resolver takes a capture and its stored text and knows nothing of
+   supersession — so the decision lands in slice 2.
+2. **Cross-case references — single case only.** ~~Current schema says a note
+   belongs to one case.~~ An anchor's target must belong to the note's own case,
+   validated on **all four** write paths — `createNote`, `updateNote`,
+   `importNoteRows`, and `dbAdmin`'s `createRow` / `updateRow`. Database Admin
+   is easy to forget and is a genuine fourth path: it already validates anchor
+   *structure* (added in #232) but would happily accept a structurally valid
+   cross-case `captureId`. `collectCaseData` packages only the
+   note's own case, so a cross-case anchor would export dangling. **Not yet
+   implemented** — tracked as item 2 of #234. Two cautions recorded at decision
+   time: rejecting at write time is not reversible, and a naive existence check
+   at import may fail spuriously depending on whether notes are inserted before
+   captures. Verify import ordering first.
 3. *(Phase 3 only)* Standalone brief export.
 
 ## Suggested slicing
 
 Three PRs, each leaving the app working. Do not bundle.
 
-1. **Storage + resolution, no UI.** Migration v27 (`anchor_kind`, `anchor_json`),
-   the anchor types in `src/shared/`, the resolver in main, and its tests. The
-   resolver is pure and deterministic — test it hard here, where it is cheap.
+1. ~~**Storage + resolution, no UI.**~~ **Merged as #232 → `596f0592`.**
+   Migration v27, the anchor types in `src/shared/noteAnchor.ts`, the resolver in
+   `src/main/services/noteAnchorResolver.ts`, and 52 tests.
 2. **Anchor creation.** Select text in the capture viewer → note; drag a region
    → note; anchor from the selector and data views.
 3. **Rendering.** Anchor display on note cards, and the unresolved case.
+
+### What slice 1 actually shipped
+
+Larger than planned, almost entirely from review. Eleven findings across three
+reviewers; ten fixed, two deferred to #234.
+
+- **Five resolution outcomes, not the spec's two.** `resolved` / `unresolved` /
+  `no-stored-text` / `integrity-failed` / `capture-missing`. The ladder below
+  ends in a binary, but the schema can produce four more situations and
+  collapsing them makes false statements — "the passage could not be located in
+  the stored text" is untrue of a capture that has no stored text, and untrue of
+  one that was deleted.
+- **`basis: 'hash-verified' | 'unattested'`** on the two outcomes that read text.
+  A pre-v19 capture has a `.txt` sidecar with `text_hash = NULL`, so its text is
+  readable but nothing attests to it.
+- **Anchor ids are remapped on archive import.** `remapAnchorIds` moves embedded
+  `captureId` / `selectorId` through `ctx.mapId`. Without it, an id collision
+  made an imported note cite a capture already in the destination.
+- **`CASE_ARCHIVE_SCHEMA_VERSION` is now 2**, so a pre-v27 release refuses an
+  anchor-bearing archive rather than importing it with every anchor stripped.
+- **Database Admin validates `notes.anchor_json` and derives `anchor_kind`.**
+  `notes` is in `ALLOWED_TABLES` and previously validated column names only.
+
+Two review findings are **not** fixed, both P1, both in #234: binding text
+verification to the manifest digest rather than the `captures.text_hash` mirror
+(`verifyCapture` trusts the same mirror, so both call sites must move together),
+and the anchor-target case validation above.
 
 ## The rule that matters most
 
@@ -99,6 +141,15 @@ An unresolved anchor is **never** silently downgraded to a capture-level anchor
 and **never** silently dropped. It renders as an explicit statement that the
 passage could not be located, alongside the quote as recorded. Same discipline
 the exhibit renderer applies to a missing page archive: the gap is the finding.
+
+This rule earned its keep during slice 1's review. A reviewer proposed clearing
+both anchor columns when the anchored capture is deleted — reasonable-sounding,
+and a silent drop. It was declined, and the `capture-missing` outcome added
+instead, so the dangling state is *detectable* without destroying the record
+that the note ever cited anything. A note citing deleted evidence is a finding;
+a note that never appears to have cited anything conceals one. The spec already
+answers this for `brief_blocks` — "a visible gap, not vanish from the argument"
+— which is worth quoting back at the next reviewer who proposes a cleanup.
 
 Resolution order (spec §"Text anchors and resolution"):
 
@@ -146,5 +197,19 @@ hits the wrong one and reports failures from the wrong cause.
 
 ## Stale, not fixed
 
-`CLAUDE.md` says the schema is "v1-v12". It is v26. Flagged in the spec as a
-separate correction; deliberately not folded into a feature PR.
+`CLAUDE.md` says the schema is "v1-v12". It is **v27** as of #232. Flagged in
+the spec as a separate correction; deliberately not folded into a feature PR,
+and still not done.
+
+## Notes for slice 2
+
+- **Every new test must be proven non-vacuous** by reintroducing the defect it
+  claims to catch. This is not ceremony: across slice 1's four review rounds,
+  each round found defects in the *previous* round's fixes. The pattern was
+  always the same — the first fix addressed the reported instance rather than
+  the class. Budget for a second pass on every fix.
+- The review rounds that found the most were the ones reading for *invariants
+  the code claims about itself*. Two findings were comments asserting guarantees
+  that were false when written.
+- `main` moved ahead during slice 1 (wayback corroboration domain renamed out of
+  "archive", #256). Rebase before starting rather than after.

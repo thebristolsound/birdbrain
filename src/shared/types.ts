@@ -1,4 +1,7 @@
-// Stub types — real implementations come in later specs
+// Shared domain types. Imported by main, preload and renderer alike, so a
+// change here is a change to the contract between all three.
+
+import type { NoteAnchor } from '@shared/noteAnchor'
 
 export interface Case {
   id: string
@@ -130,7 +133,7 @@ export interface WaybackLookupResult {
 // A WaybackSnapshot the user has pinned to a capture (persisted corroboration
 // reference). Columns reserved for the future download-later phase
 // (contentPath/contentHash/manifestIndex) are intentionally omitted here.
-export interface ArchiveRef {
+export interface WaybackRef {
   id: string
   captureId: string
   snapshotTimestamp: string // ISO 8601
@@ -386,6 +389,11 @@ export interface Note {
   body: string
   /** Serialized ProseMirror JSON. Absent on notes written before rich text. */
   bodyDoc?: string
+  /**
+   * What the note points at. Parsed and validated in main on every write, so
+   * a stored anchor always fits one of the four kinds. Absent = unanchored.
+   */
+  anchor?: NoteAnchor
   sourceUrl?: string
   screenshotPath?: string
   createdAt: string

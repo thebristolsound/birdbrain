@@ -903,13 +903,13 @@ function lines(logDir: string): LogEntry[] {
 describe('logger', () => {
   it('writes a json line per entry after flush', () => {
     const log = createLogger({ logDir: dir, sessionId: 's1' })
-    log.info('captureServer', 'server started', { port: 19845 })
+    log.info('captureServer', 'capture.server_started', { port: 19845 })
     log.flushSync()
 
     const [entry] = lines(dir)
     expect(entry.level).toBe('info')
     expect(entry.source).toBe('captureServer')
-    expect(entry.message).toBe('server started')
+    expect(entry.code).toBe('capture.server_started')
     expect(entry.context).toEqual({ port: 19845 })
     expect(entry.sessionId).toBe('s1')
   })
@@ -940,23 +940,16 @@ describe('logger', () => {
     expect(error?.name).toBe('Error')
   })
 
-  it('scrubs a url interpolated into the message', () => {
-    // Guards the real captureServer.ts pattern: `${reason} for ${url}`.
-    const log = createLogger({ logDir: dir, sessionId: 's1' })
-    log.warn('captureServer', 'screenshot dropped for https://target.example/secret')
-    log.flushSync()
-
-    const { message } = lines(dir)[0]
-    expect(message).not.toContain('target.example')
-    expect(message).toContain('‹url›')
-  })
+  // NOTE: there is deliberately no 'scrubs a url from the message' test.
+  // There is no message field to scrub — see the Design change section. The
+  // url-shaped-prose case is covered in logSafe's own suite, against stacks.
 
   it('emits each entry to the renderer callback', () => {
     const seen: LogEntry[] = []
     const log = createLogger({ logDir: dir, sessionId: 's1', emit: (e) => seen.push(e) })
-    log.info('app', 'ready')
+    log.info('app', 'app.session_start')
     expect(seen).toHaveLength(1)
-    expect(seen[0].message).toBe('ready')
+    expect(seen[0].code).toBe('app.session_start')
   })
 
   it('rotates when the file exceeds the limit and keeps one backup', () => {
@@ -2028,7 +2021,11 @@ export function LogTab() {
               <div key={entry.id} className="flex items-start gap-2 rounded border border-border px-2 py-1.5">
                 <Icon className={cn('mt-0.5 h-3.5 w-3.5 shrink-0', LEVEL_COLOR[entry.level])} />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm text-text-primary">{entry.message}</p>
+                  {/* Codes are not prose. labelForCode (Task 10) maps a code to a
+                      readable sentence for display only — the code is what is on
+                      disk, and LogEntry has no message field to render. If Task 10
+                      has not landed yet, render {entry.code} and swap it after. */}
+                  <p className="truncate text-sm text-text-primary">{labelForCode(entry.code)}</p>
                   <p className="text-xs text-text-muted">
                     <span className="font-mono">{entry.source}</span>
                     {' · '}

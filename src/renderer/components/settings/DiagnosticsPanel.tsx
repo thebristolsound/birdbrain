@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Activity, Check, Copy, RefreshCw } from 'lucide-react'
+import { Activity, Check, Copy, MessageSquareWarning, RefreshCw } from 'lucide-react'
 import type { DiagnosticsSnapshot } from '@shared/types'
 import {
   Card,
@@ -144,6 +144,17 @@ export function DiagnosticsPanel() {
                 <Copy className="h-3.5 w-3.5" />
               )}
               {copied ? 'Copied' : 'Copy report'}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5"
+              onClick={() =>
+                window.dispatchEvent(new CustomEvent('birdbrain:report', { detail: {} }))
+              }
+            >
+              <MessageSquareWarning className="h-3.5 w-3.5" />
+              Report a problem
             </Button>
           </div>
         </div>

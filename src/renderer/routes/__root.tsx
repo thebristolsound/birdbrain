@@ -6,7 +6,7 @@ import {
   useMatchRoute,
   useNavigate
 } from '@tanstack/react-router'
-import { lazy, Suspense, useEffect } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { TopBar } from '@renderer/components/layout/TopBar'
 import { Sidebar } from '@renderer/components/layout/Sidebar'
 import { MotionProvider } from '@renderer/lib/motion'
@@ -31,6 +31,8 @@ import { Toaster } from 'sonner'
 import { useAppStore } from '@renderer/stores/appStore'
 import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
 import { subscribeToMainLog } from '@renderer/lib/mainLogBridge'
+import { ReportProblemDialog } from '@renderer/components/diagnostics/ReportProblemDialog'
+import { CrashRecoveryPrompt } from '@renderer/components/diagnostics/CrashRecoveryPrompt'
 
 const TanStackRouterDevtools = import.meta.env.DEV
   ? lazy(() =>
@@ -84,6 +86,24 @@ const rootRoute = createRootRoute({
     const onboardingOverlayOpen = useAppStore((s) => s.onboardingOverlayOpen)
     const setOnboardingOverlayOpen = useAppStore((s) => s.setOnboardingOverlayOpen)
 
+    const [reportOpen, setReportOpen] = useState(false)
+    const [reportCorrelationId, setReportCorrelationId] = useState<string | undefined>(undefined)
+
+    // The single wiring point between every "Report this" trigger — the toast
+    // action in notify.ts/mainLogBridge.ts, the DiagnosticsPanel button, and
+    // the CommandPalette entry — and the one ReportProblemDialog instance
+    // mounted here. Each trigger just dispatches this event; only this
+    // listener owns open/correlationId state.
+    useEffect(() => {
+      function onReport(e: Event): void {
+        const detail = (e as CustomEvent<{ correlationId?: string }>).detail
+        setReportCorrelationId(detail?.correlationId)
+        setReportOpen(true)
+      }
+      window.addEventListener('birdbrain:report', onReport)
+      return () => window.removeEventListener('birdbrain:report', onReport)
+    }, [])
+
     const showSidebar = Boolean(matchRoute({ to: '/cases/$caseId', fuzzy: true }))
 
     if (restoring) {
@@ -111,6 +131,12 @@ const rootRoute = createRootRoute({
           </div>
         </div>
         <CommandPalette />
+        <CrashRecoveryPrompt />
+        <ReportProblemDialog
+          open={reportOpen}
+          onOpenChange={setReportOpen}
+          correlationId={reportCorrelationId}
+        />
         {/* Every user-visible failure notice routes through notify.ts, which
             renders here. Mounted once at the root so a toast raised from a
             mutation, a query, or the main-process bridge survives navigation. */}

@@ -1,5 +1,14 @@
 import { homedir } from 'node:os'
-import type { LoggedError } from '@shared/types'
+import {
+  ERROR_NAMES,
+  LOG_CODES,
+  LOG_CONTEXT_KEYS,
+  LOG_SOURCES,
+  type LogCode,
+  type LogContextKey,
+  type LoggedError,
+  type LogSource
+} from '@shared/types'
 
 // The redaction boundary. Birdbrain logs are handed to the maintainer in bug
 // reports, and captures are real investigation material, so URLs, case names
@@ -149,113 +158,8 @@ export function tag(value: string, vocabulary: keyof typeof TAG_VOCABULARIES): L
 // the first place": codes, sources, and context keys are closed sets, and
 // `sanitizeError` no longer carries a message field for prose to hide in.
 
-// Pinned by the diagnostic-logging plan so later tasks (the LogEntry wire
-// type in shared/types.ts, the actual logger) compile against stable names.
-// The plan's own set is deliberately coarse — `capture.failed` covers both
-// captureServer's and captureLifecycle's generic-failure catches, with
-// `source` and `context` doing the fine-grained differentiation — plus three
-// renderer-originated codes ('query.failed', 'mutation.failed',
-// 'react.render_error') for entries forwarded with source 'renderer'.
-// Appended below the pinned set: real console.* call sites in src/main (12
-// files, audited for this task) that don't map onto any pinned code without
-// forcing a poor fit — see the task report for the full mapping.
-export const LOG_CODES = [
-  // --- pinned ---
-  'app.session_start',
-  'app.uncaught_exception',
-  'app.unhandled_rejection',
-  'app.render_process_gone',
-  'app.child_process_gone',
-  'app.storage_init_failed',
-  'capture.failed',
-  'capture.screenshot_dropped',
-  'capture.server_started',
-  'capture.extraction_failed',
-  'ipc.handler_threw',
-  'query.failed',
-  'mutation.failed',
-  'react.render_error',
-  // --- appended: real call sites with no pinned-code fit ---
-  'captureServer.selector_create_failed',
-  'captureLifecycle.tls_refetch_failed',
-  'captureLifecycle.selector_match_failed',
-  'captureLifecycle.reprocess_failed',
-  'backgroundRenderer.trim_failed',
-  'backgroundRenderer.consent_blocker_disable_failed',
-  'backgroundRenderer.consent_blocker_enable_failed',
-  'consentBlocker.filter_engine_failed',
-  'selectorLifecycle.retroactive_match_failed',
-  'serverToken.token_invalid',
-  'serverToken.token_read_failed',
-  'serverToken.token_persist_failed',
-  'settings.schema_invalid',
-  'thumbnails.generate_failed',
-  'openrouter.rate_limited',
-  'openrouter.request_failed',
-  'openrouter.retry',
-  'openrouter.retries_exhausted'
-] as const
-export type LogCode = (typeof LOG_CODES)[number]
 
-// Pinned set of main-process log sources, plus a plain 'renderer' member —
-// not a `renderer:*` prefix convention — so the forwarding bridge can filter
-// on a single equality check (`entry.source === 'renderer'`); the renderer's
-// own codes ('query.failed' etc.) already carry whatever differentiation is
-// needed for that side.
-export const LOG_SOURCES = [
-  'app',
-  'ipc',
-  'captureServer',
-  'captureLifecycle',
-  'backgroundRenderer',
-  'openrouter',
-  'serverToken',
-  'settings',
-  'thumbnails',
-  'selectorLifecycle',
-  'consentBlocker',
-  'timestampWorker',
-  'renderer'
-] as const
-export type LogSource = (typeof LOG_SOURCES)[number]
 
-// Pinned context key vocabulary. LogContext being
-// `Partial<Record<LogContextKey, LogValue>>` rather than
-// `Record<string, LogValue>` makes a computed or misspelled key a compile
-// error at any call site that writes an object literal; `context()` below is
-// the runtime second net for values built dynamically (spread, computed
-// keys) that bypass that check. 'attempt' is appended for the openrouter
-// retry call sites (backoff/attempt count) — not in the pinned set, no
-// existing key was a good fit for it.
-export const LOG_CONTEXT_KEYS = [
-  'captureId',
-  'caseId',
-  'noteId',
-  'selectorId',
-  'bytes',
-  'count',
-  'ms',
-  'port',
-  'format',
-  'reason',
-  'exitCode',
-  'processType',
-  'errorCode',
-  'status',
-  'installationId',
-  'version',
-  'platform',
-  'installFormat',
-  'packaged',
-  // Renderer-originated (plan Tasks 10 and 11): the query-key domain segment,
-  // the ErrorBoundary that caught, and the IPC channel that threw. All three
-  // are static identifiers from the source, never user data.
-  'domain',
-  'boundary',
-  'channel',
-  'attempt'
-] as const
-export type LogContextKey = (typeof LOG_CONTEXT_KEYS)[number]
 export type LogContext = Partial<Record<LogContextKey, LogValue>>
 
 // Per-key value formats: the TAG_VOCABULARIES philosophy applied to shapes
@@ -361,26 +265,6 @@ export function context(ctx: Record<string, LogValue>): LogContext {
   return out
 }
 
-// Known error class names seen in this codebase (built-ins, DOM/fetch
-// AbortError, better-sqlite3's SqliteError, and this app's own IpcFailure /
-// ManifestRollback). Not exhaustive — `err.name` is a writable, unvalidated
-// string, so anything outside this set records as 'UnknownError' rather than
-// being passed through.
-export const ERROR_NAMES = [
-  'Error',
-  'TypeError',
-  'RangeError',
-  'SyntaxError',
-  'URIError',
-  'ReferenceError',
-  'EvalError',
-  'AggregateError',
-  'DOMException',
-  'AbortError',
-  'SqliteError',
-  'IpcFailure',
-  'ManifestRollback'
-] as const
 
 // Windows (drive-rooted 'D:\...', drive-relative 'D:...', or UNC
 // '\\server\share\...') and POSIX paths share one shape, described once here
@@ -565,4 +449,53 @@ export function sanitizeError(
   }
 
   return { name, code: errCode, stack }
+}
+
+// --- Runtime halves of the shared unions ------------------------------------
+//
+// The vocabularies in @shared/types are compile-time unions. A value arriving
+// over IPC has been through `unknown`, where no type survives, so the boundary
+// needs these runtime checks too.
+
+// Marks a LoggedError as having come from this module's own validation, so
+// logger can pass it through instead of flattening it to UnknownError.
+//
+// A shape test would NOT be safe here. `logger`'s err parameter is `unknown`,
+// and a dependency that rejects with a plain object — `{ name: 'Error', code:
+// null, stack: '    at f (/cases/OperationBlackbird/x.js:1:1)' }` — matches
+// "has name, code and stack" exactly. Duck typing would let that object skip
+// sanitizeError and write the case name straight to disk. Presence of fields
+// says nothing about where they came from; only a brand this module controls
+// does. A branded type would not help either: the brand is erased at compile
+// time, and this value arrives through an `unknown` parameter. The runtime
+// needs a real marker, and a class a caller cannot construct without importing
+// it from this module is the cheapest one.
+export class ValidatedError {
+  constructor(readonly error: LoggedError) {}
+}
+
+export function isValidatedError(value: unknown): value is ValidatedError {
+  return value instanceof ValidatedError
+}
+
+export function isLogCode(value: unknown): value is LogCode {
+  return typeof value === 'string' && (LOG_CODES as readonly string[]).includes(value)
+}
+
+export function isLogSource(value: unknown): value is LogSource {
+  return typeof value === 'string' && (LOG_SOURCES as readonly string[]).includes(value)
+}
+
+export function isLogContextKey(value: unknown): value is LogContextKey {
+  return typeof value === 'string' && (LOG_CONTEXT_KEYS as readonly string[]).includes(value)
+}
+
+// The renderer sends a bare name, never a message or stack. An unrecognised
+// name is recorded as UnknownError so a novel error type cannot smuggle prose
+// through the one string field that survives this hop.
+export function errorName(value: unknown): string | undefined {
+  if (value === undefined) return undefined
+  return typeof value === 'string' && (ERROR_NAMES as readonly string[]).includes(value)
+    ? value
+    : 'UnknownError'
 }

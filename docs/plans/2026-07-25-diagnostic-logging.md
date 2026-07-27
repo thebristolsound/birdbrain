@@ -490,60 +490,34 @@ export interface BugReportResult {
 
 - [ ] **Step 2: Add the IPC channels**
 
-In `src/shared/ipc.ts`, replace the Diagnostics section:
+**Declare the event channel here, but NOT the invoke channels.**
+`tests/main/ipcHandlers.test.ts` asserts a bidirectional match: every declared
+invoke channel has a registered handler, *and* every registered handler has a
+declared channel. So an invoke channel must be declared in the same commit as
+its handler, or that suite goes red on an intermediate commit. The invoke
+channels therefore belong to Tasks 6 and 14, next to the handlers that serve
+them. Event channels are exempt — the guard only covers invoke.
 
-```typescript
-  // Diagnostics
-  DIAGNOSTICS_GET: 'diagnostics:get',
-  DIAGNOSTICS_LOG: 'diagnostics:log',
-  DIAGNOSTICS_REVEAL_LOG: 'diagnostics:revealLog',
-  DIAGNOSTICS_CREATE_REPORT: 'diagnostics:createReport',
-  DIAGNOSTICS_LAST_SESSION: 'diagnostics:lastSession',
-  DIAGNOSTICS_RECENT: 'diagnostics:recent',
-```
-
-And add to the events block, after `CAPTURE_ACTIVITY`:
+Add to the events block, after `CAPTURE_ACTIVITY`:
 
 ```typescript
   LOG_ENTRY: 'event:logEntry',
 ```
 
-- [ ] **Step 3: Add the contract entries — a channel without one will not compile**
-
-`src/shared/ipc.ts` carries a typed contract map (added by PR #254) that is the
-single source of truth for every channel's argument tuple and result. Adding a
-name to `IPC_CHANNELS` alone is **not** enough: `ChannelsAreExhaustive` asserts
-that every `IpcChannel` is either a `ContractedChannel` or an `IpcEventChannel`,
-so a channel with no entry makes that type non-empty and the file fails to
-compile. This is the intended gate — satisfy it, never widen it.
-
-Add to `IpcInvokeContract`, beside the existing `'diagnostics:get'` entry:
-
-```typescript
-  'diagnostics:log': { args: [payload: RendererLogPayload]; result: string }
-  'diagnostics:recent': { args: [limit: number]; result: LogEntry[] }
-  'diagnostics:revealLog': { args: []; result: void }
-  'diagnostics:lastSession': { args: []; result: SessionRecord | null }
-  'diagnostics:createReport': {
-    args: [input: BugReportInput]
-    result: BugReportResult | null
-  }
-```
-
-Add to `IpcEventContract`:
+and to `IpcEventContract`:
 
 ```typescript
   'event:logEntry': LogEntry
 ```
 
-`'diagnostics:createReport'` is declared here even though its handler does not
-land until Task 14. The map is one compile unit: leaving the entry out until
-then would mean either omitting the channel from `IPC_CHANNELS` too (and
-touching this file twice) or shipping a Task 2 that does not compile. Declaring
-the whole surface once is the reviewable edit.
+Both halves are needed: `ChannelsAreExhaustive` asserts every `IpcChannel` is
+either a `ContractedChannel` or an `IpcEventChannel`, so a name in
+`IPC_CHANNELS` with no contract entry fails to compile. That assert is the
+intended gate — satisfy it, never widen it.
 
-`RendererLogPayload` is defined in this same file — add it alongside the other
-IPC param interfaces:
+- [ ] **Step 3: Add `RendererLogPayload`**
+
+Define it alongside the other IPC param interfaces in `src/shared/ipc.ts`:
 
 ```typescript
 // The renderer's half of the logging contract. Codes and context keys are the
@@ -558,8 +532,9 @@ export interface RendererLogPayload {
 ```
 
 Extend the existing `@shared/types` import at the top of `ipc.ts` with
-`LogLevel`, `LogCode`, `LogContextKey`, `LogEntry`, `SessionRecord`,
-`BugReportInput` and `BugReportResult`.
+`LogLevel`, `LogCode`, `LogContextKey` and `LogEntry`. `SessionRecord`,
+`BugReportInput` and `BugReportResult` are imported by Tasks 6 and 14, when the
+contract entries that use them land.
 
 - [ ] **Step 4: Verify the project still typechecks and lints**
 
@@ -1504,7 +1479,31 @@ drifts from the contract is a compile error. Do not annotate the handler's
 parameters by hand: the types come from the contract, and re-declaring them is
 how drift gets reintroduced.
 
-- [ ] **Step 1: Add the main-process handlers**
+- [ ] **Step 1: Declare the four invoke channels and their contract entries**
+
+These live here, not in Task 2, because `tests/main/ipcHandlers.test.ts`
+requires a declared invoke channel and its handler to land together. Add to
+`IPC_CHANNELS` beside `DIAGNOSTICS_GET`:
+
+```typescript
+  DIAGNOSTICS_LOG: 'diagnostics:log',
+  DIAGNOSTICS_RECENT: 'diagnostics:recent',
+  DIAGNOSTICS_REVEAL_LOG: 'diagnostics:revealLog',
+  DIAGNOSTICS_LAST_SESSION: 'diagnostics:lastSession',
+```
+
+and to `IpcInvokeContract`:
+
+```typescript
+  'diagnostics:log': { args: [payload: RendererLogPayload]; result: string }
+  'diagnostics:recent': { args: [limit: number]; result: LogEntry[] }
+  'diagnostics:revealLog': { args: []; result: void }
+  'diagnostics:lastSession': { args: []; result: SessionRecord | null }
+```
+
+Add `SessionRecord` to the `@shared/types` import in `ipc.ts`.
+
+- [ ] **Step 2: Add the main-process handlers**
 
 In `src/main/ipcHandlers.ts`, after the existing `DIAGNOSTICS_GET` registration:
 
@@ -1631,7 +1630,7 @@ export function errorName(value: unknown): string | undefined {
 }
 ```
 
-- [ ] **Step 2: Extend the preload bridge**
+- [ ] **Step 3: Extend the preload bridge**
 
 Replace the `diagnostics` object in `src/preload/index.ts`:
 
@@ -1660,7 +1659,7 @@ types. If you find yourself importing `LogEntry` or `RendererLogPayload` into
 
 `RendererLogPayload` is defined in Task 2, not here.
 
-- [ ] **Step 3: Mirror the types in `env.d.ts`**
+- [ ] **Step 4: Mirror the types in `env.d.ts`**
 
 ```typescript
   diagnostics: {
@@ -1687,15 +1686,16 @@ is real work, and it is the one place a signature can still drift from the
 contract without the compiler noticing. Copy the shapes from the Task 2 contract
 entries exactly.
 
-- [ ] **Step 4: Verify**
+- [ ] **Step 5: Verify**
 
 Run: `pnpm lint && pnpm test && pnpm build`
-Expected: all pass. Report actual output.
+Expected: all pass, including `tests/main/ipcHandlers.test.ts` — the channel-coverage
+guard is the one that proves Step 1 and Step 2 landed together. Report actual output.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add src/main/ipcHandlers.ts src/preload/index.ts src/renderer/env.d.ts
+git add src/shared/ipc.ts src/main/ipcHandlers.ts src/preload/index.ts src/renderer/env.d.ts
 git commit -m "feat(logging): diagnostics log ipc handlers and preload bridge"
 ```
 
@@ -3135,9 +3135,27 @@ git commit -m "feat(diagnostics): bug report bundle builder with enumerated entr
 
 - [ ] **Step 1: Add the handler**
 
-The channel and its contract entry already exist — Task 2 declared
-`'diagnostics:createReport'` in `IpcInvokeContract`. This task only adds the
-handler behind it.
+Declare the channel and its contract entry **in this task**, alongside the
+handler — `tests/main/ipcHandlers.test.ts` fails if a declared invoke channel
+has no handler registered, so the two cannot be split across commits.
+
+In `src/shared/ipc.ts` add to `IPC_CHANNELS`:
+
+```typescript
+  DIAGNOSTICS_CREATE_REPORT: 'diagnostics:createReport',
+```
+
+and to `IpcInvokeContract`:
+
+```typescript
+  'diagnostics:createReport': {
+    args: [input: BugReportInput]
+    result: BugReportResult | null
+  }
+```
+
+Add `BugReportInput` and `BugReportResult` to the `@shared/types` import in
+`ipc.ts`. Then the handler:
 
 ```typescript
   handle(IPC_CHANNELS.DIAGNOSTICS_CREATE_REPORT, async (_e, input) => {

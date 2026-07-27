@@ -115,10 +115,10 @@ const birdbrain = {
     search: bridge(IPC_CHANNELS.NOTES_SEARCH)
   },
   archive: {
-    lookup: bridge(IPC_CHANNELS.ARCHIVE_LOOKUP),
-    list: bridge(IPC_CHANNELS.ARCHIVE_LIST),
-    pin: bridge(IPC_CHANNELS.ARCHIVE_PIN),
-    unpin: bridge(IPC_CHANNELS.ARCHIVE_UNPIN)
+    lookup: bridge(IPC_CHANNELS.WAYBACK_LOOKUP),
+    list: bridge(IPC_CHANNELS.WAYBACK_LIST),
+    pin: bridge(IPC_CHANNELS.WAYBACK_PIN),
+    unpin: bridge(IPC_CHANNELS.WAYBACK_UNPIN)
   },
   annotations: {
     get: bridge(IPC_CHANNELS.ANNOTATIONS_GET),

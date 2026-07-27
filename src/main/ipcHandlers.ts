@@ -11,7 +11,7 @@ import type {
   UpdateSelectorParams,
   CreateNoteParams,
   UpdateNoteParams,
-  PinArchiveSnapshotParams,
+  PinWaybackSnapshotParams,
   BulkCreateSelectorsParams,
   DbTableRowsParams,
   DbCreateRowParams,
@@ -37,7 +37,7 @@ import * as captureRepo from '@main/services/db/captureRepo'
 import * as tagRepo from '@main/services/db/tagRepo'
 import * as selectorRepo from '@main/services/db/selectorRepo'
 import * as noteRepo from '@main/services/db/noteRepo'
-import * as archiveRefRepo from '@main/services/db/archiveRefRepo'
+import * as waybackRefRepo from '@main/services/db/waybackRefRepo'
 import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
 import * as annotations from '@main/services/annotations'
 import { defaultCaptureStore } from '@main/services/captureStore'
@@ -400,8 +400,8 @@ export function registerIpcHandlers(deps: {
     }
   })
 
-  // Archive (Wayback corroboration)
-  handle(IPC_CHANNELS.ARCHIVE_LOOKUP, async (_, captureId: string) => {
+  // Wayback Machine corroboration
+  handle(IPC_CHANNELS.WAYBACK_LOOKUP, async (_, captureId: string) => {
     const capture = captureRepo.getCapture(captureId)
     if (!capture) throw new IpcFailure('Capture not found', 'NOT_FOUND')
     try {
@@ -414,11 +414,11 @@ export function registerIpcHandlers(deps: {
     }
   })
 
-  handle(IPC_CHANNELS.ARCHIVE_LIST, (_, captureId: string) =>
-    archiveRefRepo.listArchiveRefs(captureId)
+  handle(IPC_CHANNELS.WAYBACK_LIST, (_, captureId: string) =>
+    waybackRefRepo.listWaybackRefs(captureId)
   )
 
-  handle(IPC_CHANNELS.ARCHIVE_PIN, async (_, params: PinArchiveSnapshotParams) => {
+  handle(IPC_CHANNELS.WAYBACK_PIN, async (_, params: PinWaybackSnapshotParams) => {
     const capture = captureRepo.getCapture(params.captureId)
     if (!capture) throw new IpcFailure('Capture not found', 'NOT_FOUND')
     // The snapshot/checkedAt provenance arrives over IPC from the renderer.
@@ -426,17 +426,17 @@ export function registerIpcHandlers(deps: {
     // buggy renderer can't pin a forged reference. (No re-lookup: a pin must not
     // disclose the URL to archive.org.)
     if (!isPersistableSnapshot(params.snapshot, params.checkedAt)) {
-      throw new IpcFailure('Invalid archive snapshot', 'ARCHIVE_INVALID_SNAPSHOT')
+      throw new IpcFailure('Invalid Wayback snapshot', 'WAYBACK_INVALID_SNAPSHOT')
     }
-    return archiveRefRepo.createArchiveRef({
+    return waybackRefRepo.createWaybackRef({
       captureId: params.captureId,
       snapshot: params.snapshot,
       checkedAt: params.checkedAt
     })
   })
 
-  handle(IPC_CHANNELS.ARCHIVE_UNPIN, async (_, refId: string) =>
-    archiveRefRepo.deleteArchiveRef(refId)
+  handle(IPC_CHANNELS.WAYBACK_UNPIN, async (_, refId: string) =>
+    waybackRefRepo.deleteWaybackRef(refId)
   )
 
   // Annotations

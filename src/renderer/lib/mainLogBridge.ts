@@ -6,15 +6,20 @@ import { labelForCode } from '@renderer/lib/notify'
 // back through notify.error would write a duplicate entry and, because that
 // write emits again, risk a feedback loop.
 //
-// The 'renderer' prefix filter is load-bearing. A renderer notify.error()
-// travels to main over diagnostics:log, gets written, and is emitted straight
-// back out over event:logEntry. Without this guard every renderer failure
-// raises two toasts with different ids, so dedup cannot collapse them.
+// The 'renderer' filter is load-bearing. A renderer notify.error() travels to
+// main over diagnostics:log, gets written, and is emitted straight back out
+// over event:logEntry. Without this guard every renderer failure raises two
+// toasts with different ids, so dedup cannot collapse them.
+//
+// Equality, not startsWith. LOG_SOURCES is a closed union with a plain
+// 'renderer' member and no `renderer:*` prefix convention — see its comment in
+// @shared/types. A prefix test would additionally imply that some other source
+// could legitimately begin with 'renderer', which the union does not allow.
 export function subscribeToMainLog(): () => void {
   const seen = new Set<string>()
 
   const handle = (entry: LogEntry): void => {
-    if (entry.source.startsWith('renderer')) return
+    if (entry.source === 'renderer') return
     if (entry.level !== 'error' && entry.level !== 'warn') return
     if (seen.has(entry.id)) return
     seen.add(entry.id)

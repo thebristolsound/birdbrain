@@ -49,7 +49,7 @@ describe('mainLogBridge', () => {
     subscribeToMainLog()
     // notify.error already toasted this one before sending it to main; main
     // wrote it and echoed it straight back out.
-    listener?.({ ...entry('error'), source: 'renderer:mutation' })
+    listener?.({ ...entry('error'), source: 'renderer' })
     expect(toastFns.error).not.toHaveBeenCalled()
   })
 

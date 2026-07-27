@@ -2725,7 +2725,7 @@ describe('mainLogBridge', () => {
     subscribeToMainLog()
     // notify.error already toasted this one before sending it to main; main
     // wrote it and echoed it straight back out.
-    listener?.({ ...entry('error'), source: 'renderer:mutation' })
+    listener?.({ ...entry('error'), source: 'renderer' })
     expect(toastFns.error).not.toHaveBeenCalled()
   })
 
@@ -2762,7 +2762,9 @@ import type { LogEntry } from '@shared/types'
 // back through notify.error would write a duplicate entry and, because that
 // write emits again, risk a feedback loop.
 //
-// The 'renderer:' prefix filter is load-bearing. A renderer notify.error()
+// The 'renderer' equality filter is load-bearing — equality, NOT startsWith.
+// LOG_SOURCES is a closed union with a plain 'renderer' member and no
+// `renderer:*` prefix convention; see its comment in @shared/types. A renderer notify.error()
 // travels to main over diagnostics:log, gets written, and is emitted straight
 // back out over event:logEntry. Without this guard every renderer failure
 // raises two toasts with different ids, so dedup cannot collapse them.

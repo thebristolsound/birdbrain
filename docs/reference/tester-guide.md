@@ -104,6 +104,29 @@ folder moved).
   anything you can't lose before updating or uninstalling.
 - **Chrome/Chromium only** — no Firefox or Safari extension yet.
 
+## Reporting a problem
+
+Birdbrain keeps a local diagnostic log and can bundle it into a report for you:
+
+1. Go to **Settings → Diagnostics → Report a problem**.
+2. Fill in what you did, what you expected, and what happened.
+3. Click **Create report**. Pick where to save it — Birdbrain writes a `.zip`
+   there and opens the folder for you.
+
+That zip is saved **only to your computer**. Birdbrain never uploads it or sends
+it anywhere — attach it to the tester chat yourself, the same way you'd attach any
+other file. It contains the diagnostic log, a few app/session facts (version,
+platform, recent performance stats), and what you typed in the report form. It does
+**not** contain your captures, your case database, or your OpenRouter API key.
+
+If Birdbrain closed unexpectedly last time (a crash, a forced quit, a power loss),
+it will offer to create a report automatically the next time you open it — click
+**Create a report** on that prompt to file it the same way.
+
+You can also open **Settings → Diagnostics → Log** any time to see recent log
+entries in the app itself, filterable by level, with a button to reveal the raw
+log file on disk.
+
 ## Reporting bugs
 
 Post in the tester chat with:
@@ -115,5 +138,6 @@ Post in the tester chat with:
 4. **What you expected**
 5. **What happened** — plus a screenshot if it's visual
 
-There's no log file yet, so good repro steps are the single most useful thing you can
-give us. Small, frequent reports beat one big write-up.
+Use **Report a problem** (above) to attach a diagnostic bundle alongside your
+description — good repro steps plus a report bundle is the single most useful
+thing you can give us. Small, frequent reports beat one big write-up.

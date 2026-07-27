@@ -85,7 +85,11 @@ code, and both were deliberately left unencoded in slice 1.
    supersession — so the decision lands in slice 2.
 2. **Cross-case references — single case only.** ~~Current schema says a note
    belongs to one case.~~ An anchor's target must belong to the note's own case,
-   validated on create, update and import. `collectCaseData` packages only the
+   validated on **all four** write paths — `createNote`, `updateNote`,
+   `importNoteRows`, and `dbAdmin`'s `createRow` / `updateRow`. Database Admin
+   is easy to forget and is a genuine fourth path: it already validates anchor
+   *structure* (added in #232) but would happily accept a structurally valid
+   cross-case `captureId`. `collectCaseData` packages only the
    note's own case, so a cross-case anchor would export dangling. **Not yet
    implemented** — tracked as item 2 of #234. Two cautions recorded at decision
    time: rejecting at write time is not reversible, and a naive existence check

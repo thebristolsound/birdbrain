@@ -30,6 +30,7 @@ import type {
   OpenRouterModel,
   OperatorIdentity,
   Selector,
+  SessionRecord,
   Tag,
   TokenUsage,
   UpdateStatus,
@@ -153,6 +154,10 @@ export const IPC_CHANNELS = {
 
   // Diagnostics
   DIAGNOSTICS_GET: 'diagnostics:get',
+  DIAGNOSTICS_LOG: 'diagnostics:log',
+  DIAGNOSTICS_RECENT: 'diagnostics:recent',
+  DIAGNOSTICS_REVEAL_LOG: 'diagnostics:revealLog',
+  DIAGNOSTICS_LAST_SESSION: 'diagnostics:lastSession',
   LOG_ENTRY: 'event:logEntry',
 
   // Updates (update delivery)
@@ -618,6 +623,10 @@ export interface IpcInvokeContract {
 
   'app:getVersion': { args: []; result: string }
   'diagnostics:get': { args: []; result: DiagnosticsSnapshot }
+  'diagnostics:log': { args: [payload: RendererLogPayload]; result: string }
+  'diagnostics:recent': { args: [limit: number]; result: LogEntry[] }
+  'diagnostics:revealLog': { args: []; result: void }
+  'diagnostics:lastSession': { args: []; result: SessionRecord | null }
 
   'updates:getStatus': { args: []; result: UpdateStatus }
   'updates:check': { args: []; result: UpdateStatus }

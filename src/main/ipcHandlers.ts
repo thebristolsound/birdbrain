@@ -63,6 +63,10 @@ import type { RecaptureService } from '@main/services/recapture'
 import type { UpdaterService } from '@main/services/updater'
 import { handle, IpcFailure, sendEvent } from '@main/ipcWrap'
 import { diagnosticsService } from '@main/services/diagnostics'
+import { getLogDir, getLogPath, logger, readRecentEntries } from '@main/services/logger'
+import { takeUncleanSession } from '@main/services/sessionLog'
+import { ValidatedError, context, errorName, isLogCode } from '@main/services/logSafe'
+import type { LogContext, LogValue } from '@main/services/logSafe'
 import type {
   BirdbrainSettings,
   ExportOptions,
@@ -617,6 +621,70 @@ export function registerIpcHandlers(deps: {
   // registration (idempotent) so stall history predates opening the panel.
   diagnosticsService.start()
   handle(IPC_CHANNELS.DIAGNOSTICS_GET, () => diagnosticsService.snapshot())
+
+  // Renderer-side failures join the same durable log as main-process ones.
+  // Everything crossing this boundary is untrusted: the renderer holds page
+  // titles, case names and URLs, and a compile-time union does not survive an
+  // IPC hop. Re-validate every field against the same allowlists here, and
+  // drop anything unrecognised rather than coercing it into the log.
+  //
+  // `payload` is typed by the contract, but that type describes what a WELL-
+  // BEHAVED renderer sends — a compromised or buggy one can send anything, so
+  // every field below is still re-checked at runtime.
+  handle(IPC_CHANNELS.DIAGNOSTICS_LOG, (_e, payload) => {
+    const level = payload?.level === 'error' || payload?.level === 'warn' ? payload.level : 'info'
+    if (!isLogCode(payload?.code)) return ''
+
+    // context(), NOT a hand-rolled ident() loop. ident() is the generic
+    // identifier rule; the per-key CONTEXT_FORMATS table inside logSafe is the
+    // real gate. A renderer payload of { caseId: 'OperationBlackbird' } passes
+    // ident() but fails caseId's uuid format — and the renderer is precisely
+    // where case names live, so this is the boundary that most needs the
+    // stricter check. In a packaged build the offending value records as
+    // [invalid] and the rest of the entry survives.
+    let ctx: LogContext = {}
+    try {
+      ctx = context((payload.context ?? {}) as Record<string, LogValue>)
+    } catch {
+      // Development-mode rejection: drop the context, keep the entry. A bad
+      // renderer payload must not take down the IPC handler.
+    }
+
+    // Source is not taken from the payload at all. Every entry that arrives
+    // through this channel came from the renderer by definition, and the code
+    // already says which subsystem failed.
+    //
+    // The error is passed pre-structured, NOT as a bare string. logger routes
+    // its `err` argument through sanitizeError, which maps every non-Error
+    // value to UnknownError — so handing it the validated name would erase the
+    // very classification we just validated, and every renderer query,
+    // mutation and render failure would land on disk as UnknownError.
+    const name = errorName(payload.error)
+    return logger[level](
+      'renderer',
+      payload.code,
+      ctx,
+      name === undefined ? undefined : new ValidatedError({ name, code: null, stack: null })
+    )
+  })
+
+  // The Log tab needs what already happened, not just what happens next —
+  // see Task 12. Reads the tail of the current log file only; the rotated
+  // backup is for the bug-report bundle, not the live viewer.
+  //
+  // `limit` is typed `number` by the contract and still range-checked: the
+  // contract constrains the renderer's compile, not the value on the wire.
+  handle(IPC_CHANNELS.DIAGNOSTICS_RECENT, (_e, limit) => {
+    const max = typeof limit === 'number' && limit > 0 && limit <= 500 ? Math.floor(limit) : 200
+    return readRecentEntries(max)
+  })
+
+  handle(IPC_CHANNELS.DIAGNOSTICS_REVEAL_LOG, () => {
+    const path = getLogPath()
+    if (path) shell.showItemInFolder(path)
+  })
+
+  handle(IPC_CHANNELS.DIAGNOSTICS_LAST_SESSION, () => takeUncleanSession(getLogDir()))
 
   // Updates (update delivery)
   handle(IPC_CHANNELS.UPDATES_GET_STATUS, () => updaterService.getStatus())

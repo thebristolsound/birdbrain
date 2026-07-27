@@ -28,7 +28,9 @@ import type {
   WaybackLookupResult,
   ArchiveInspectReport,
   UpdateStatus,
-  DiagnosticsSnapshot
+  DiagnosticsSnapshot,
+  LogEntry,
+  SessionRecord
 } from '@shared/types'
 import type {
   CreateCaseParams,
@@ -61,7 +63,8 @@ import type {
   ArchiveExportResult,
   RecaptureEnqueuePayload,
   EnqueueResult,
-  RecaptureQueueStatus
+  RecaptureQueueStatus,
+  RendererLogPayload
 } from '@shared/ipc'
 
 interface BirdbrainAPI {
@@ -170,6 +173,10 @@ interface BirdbrainAPI {
   }
   diagnostics: {
     get(): Promise<DiagnosticsSnapshot>
+    log(payload: RendererLogPayload): Promise<string>
+    recentEntries(limit: number): Promise<LogEntry[]>
+    revealLog(): Promise<void>
+    lastSession(): Promise<SessionRecord | null>
   }
   updates: {
     getStatus(): Promise<UpdateStatus>
@@ -209,6 +216,7 @@ interface BirdbrainAPI {
   ): () => void
   onExtensionConnection(callback: (data: { connected: boolean }) => void): () => void
   onCaptureActivity(callback: (event: CaptureEvent) => void): () => void
+  onLogEntry(callback: (entry: LogEntry) => void): () => void
   onSelectorRematched(callback: (event: SelectorRematchedEvent) => void): () => void
   onDeepLinkNavigate(callback: (target: DeepLinkTarget) => void): () => void
   onUpdateStatus(callback: (status: UpdateStatus) => void): () => void

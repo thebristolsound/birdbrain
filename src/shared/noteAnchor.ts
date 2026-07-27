@@ -246,6 +246,77 @@ export function remapAnchorIds(anchor: NoteAnchor, mapId: (id: string) => string
 }
 
 /**
+ * How much surrounding text a built anchor carries on each side.
+ *
+ * Enough to distinguish repeated passages, short enough that ordinary editing
+ * nearby does not destroy it. Context is a tiebreaker, not a second quote.
+ */
+export const ANCHOR_CONTEXT_LENGTH = 48
+
+export interface BuildTextAnchorParams {
+  /** The capture's stored text — the same string resolution will search. */
+  text: string
+  /** Selection bounds as offsets into `text`. Half-open: [start, end). */
+  start: number
+  end: number
+  captureId: string
+  contextLength?: number
+}
+
+/**
+ * Build a text anchor from a selection in a capture's stored text.
+ *
+ * The contract is a round trip: the anchor this returns must resolve, via
+ * `matchTextAnchor` against the same text, to exactly the offset it was built
+ * from. A builder that produced anchors the resolver could not locate would be
+ * worse than none — it would manufacture citations that fail later, inside a
+ * report, rather than at the moment the investigator could still fix them.
+ *
+ * The caller must pass offsets into the *stored* text, not into whatever the
+ * DOM happens to render. Those are the same string today because the Text tab
+ * is served from the same `.txt` sidecar the resolver reads, and that is a
+ * property worth keeping deliberately rather than by luck.
+ *
+ * Throws on a selection that could never anchor anything, for the same reason
+ * `parseNoteAnchor` throws: a silently repaired anchor cites something nobody
+ * chose.
+ */
+export function buildTextAnchor({
+  text,
+  start,
+  end,
+  captureId,
+  contextLength = ANCHOR_CONTEXT_LENGTH
+}: BuildTextAnchorParams): TextAnchor {
+  if (!Number.isInteger(start) || !Number.isInteger(end)) {
+    throw new Error('Text selection bounds must be integers')
+  }
+  if (start < 0 || end > text.length) {
+    throw new Error('Text selection falls outside the stored text')
+  }
+  if (end <= start) {
+    throw new Error('Text selection is empty')
+  }
+
+  const quote = text.slice(start, end)
+  // A drag across a gap is a real selection a user can make, and it anchors
+  // nothing: it matches in hundreds of places and carries no content a reader
+  // could check.
+  if (quote.trim().length === 0) {
+    throw new Error('Text selection is whitespace only')
+  }
+
+  return {
+    kind: 'text',
+    captureId,
+    quote,
+    prefix: text.slice(Math.max(0, start - contextLength), start),
+    suffix: text.slice(end, Math.min(text.length, end + contextLength)),
+    textOffset: start
+  }
+}
+
+/**
  * Where a text anchor landed, and which rung of the ladder found it.
  *
  * `via` is kept rather than reduced to a boolean because the rungs do not mean

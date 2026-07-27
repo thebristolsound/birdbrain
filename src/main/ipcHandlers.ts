@@ -65,7 +65,7 @@ import { handle, IpcFailure, sendEvent } from '@main/ipcWrap'
 import { diagnosticsService } from '@main/services/diagnostics'
 import { getLogDir, getLogPath, logger, readRecentEntries } from '@main/services/logger'
 import { takeUncleanSession } from '@main/services/sessionLog'
-import { ValidatedError, context, errorName, isLogCode } from '@main/services/logSafe'
+import { ValidatedError, context, errorName, ident, isLogCode } from '@main/services/logSafe'
 import type { LogContext, LogValue } from '@main/services/logSafe'
 import type {
   BirdbrainSettings,
@@ -469,7 +469,7 @@ export function registerIpcHandlers(deps: {
       if (!buffer) return null
       return buffer.toString('base64')
     } catch (err) {
-      console.error('Error getting thumbnail:', err)
+      logger.error('ipc', 'ipc.handler_threw', { captureId: ident(captureId) }, err)
       return null
     }
   })

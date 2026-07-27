@@ -123,6 +123,10 @@ const PLATFORMS = ['win32', 'darwin', 'linux'] as const
 // that function passes through from the resources file. A package format
 // neither file knows about records as INVALID rather than being passed through.
 const INSTALL_FORMATS = ['dev', 'nsis', 'mac', 'appimage', 'deb', 'archive', 'unknown'] as const
+// Stable tokens for why a captured screenshot was dropped, standing in for the
+// formatted sentence (which carries the measured/max sizes and can never be a
+// vocabulary member — see captureServer.ts's screenshot-too-large call site).
+const SCREENSHOT_DROP_REASONS = ['too_large'] as const
 
 // Fixed vocabularies `tag()` may select from. `allowed` as a caller-supplied
 // parameter would let a call site mint its own allowlist —
@@ -136,7 +140,8 @@ const TAG_VOCABULARIES = {
   renderGoneReason: PROCESS_GONE_REASONS,
   captureFormat: CAPTURE_FORMATS,
   platform: PLATFORMS,
-  installFormat: INSTALL_FORMATS
+  installFormat: INSTALL_FORMATS,
+  screenshotDropReason: SCREENSHOT_DROP_REASONS
 } as const
 
 export function tag(value: string, vocabulary: keyof typeof TAG_VOCABULARIES): LogSafe {

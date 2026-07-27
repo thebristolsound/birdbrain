@@ -21,6 +21,8 @@ import { getSettings } from '@main/services/settings'
 import { fetchCertChain as defaultFetchCertChain } from '@main/services/tlsCertChain'
 import type { TlsCertChainResult } from '@main/services/tlsCertChain'
 import type { Capture, CaptureMethod, ConsentSuppression, HashVerification } from '@shared/types'
+import { logger } from '@main/services/logger'
+import { ident } from '@main/services/logSafe'
 
 // Injectable corroboration-only TLS cert-chain re-fetcher (#123). Defaults to the
 // real Node tls.connect implementation; tests inject a stub to stay hermetic.
@@ -125,7 +127,12 @@ export async function ingestMhtmlCapture(
   try {
     tls = (await fetchTlsCertChain(params.url)) ?? undefined
   } catch (err) {
-    console.error('captureLifecycle: TLS cert re-fetch failed for capture', captureId, err)
+    logger.error(
+      'captureLifecycle',
+      'captureLifecycle.tls_refetch_failed',
+      { captureId: ident(captureId) },
+      err
+    )
     tls = undefined
   }
 
@@ -406,7 +413,12 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
         extractedDataRepo.insertExtractedData(captureId, caseId, url, extracted)
       }
     } catch (err) {
-      console.error('captureLifecycle: data extraction failed for capture', captureId, err)
+      logger.error(
+        'captureLifecycle',
+        'capture.extraction_failed',
+        { captureId: ident(captureId) },
+        err
+      )
     } finally {
       recordSlowOp('data-extraction', url, performance.now() - t0)
     }
@@ -424,7 +436,12 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
           deps.selectorLifecycle.runActiveSelectorsForCapture(captureId, caseId, textContent)
         }
       } catch (err) {
-        console.error('captureLifecycle: selector matching failed for capture', captureId, err)
+        logger.error(
+          'captureLifecycle',
+          'captureLifecycle.selector_match_failed',
+          { captureId: ident(captureId) },
+          err
+        )
       }
 
       runDataExtraction(captureId, caseId, url)
@@ -500,7 +517,12 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
           extractedDataRepo.deleteExtractedDataForCapture(cap.id)
           runDataExtraction(cap.id, caseId, cap.url)
         } catch (err) {
-          console.error('captureLifecycle: reprocess failed for capture', cap.id, err)
+          logger.error(
+            'captureLifecycle',
+            'captureLifecycle.reprocess_failed',
+            { captureId: ident(cap.id) },
+            err
+          )
         }
       }
       return { processed: captures.length }

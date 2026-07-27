@@ -362,6 +362,7 @@ export const LOG_CODES = [
   'openrouter.request_failed',
   'openrouter.retry',
   'openrouter.retries_exhausted',
+  'timestampWorker.stamp_failed',
   // Fallback for notify.error() with no explicit code. Its presence in a log
   // is a signal to give that call site a real code.
   'app.unclassified_error',

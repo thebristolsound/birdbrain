@@ -298,10 +298,7 @@ if (!gotSingleInstanceLock) {
       try {
         initStorage(capturesDir)
       } catch (err) {
-        console.warn(
-          `Failed to initialize storage at "${capturesDir}", falling back to default:`,
-          err
-        )
+        logger.warn('app', 'app.storage_init_failed', undefined, err)
         initStorage(defaultCapturesDir)
       }
 

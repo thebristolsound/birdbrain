@@ -28,6 +28,8 @@ import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 
 import { CAPTURE_SERVER_PORT, MAX_SCREENSHOT_SIZE } from '@shared/constants'
 import { safeRegexTest } from '@main/services/safeRegex'
+import { logger } from '@main/services/logger'
+import { tag } from '@main/services/logSafe'
 export { CAPTURE_SERVER_PORT }
 
 export interface CaptureServerDeps {
@@ -358,7 +360,10 @@ function createApp(deps: CaptureServerDeps): Hono {
             screenshotBuffer = Buffer.from(await screenshotField.arrayBuffer())
           } else {
             screenshotDropReason = `Screenshot too large: ${(screenshotField.size / (1024 * 1024)).toFixed(1)}MB exceeds ${MAX_SCREENSHOT_SIZE / (1024 * 1024)}MB limit`
-            console.warn(`[Birdbrain] ${screenshotDropReason} for ${url}`)
+            logger.warn('captureServer', 'capture.screenshot_dropped', {
+              reason: tag('too_large', 'screenshotDropReason'),
+              bytes: screenshotField.size
+            })
           }
         }
 
@@ -415,7 +420,7 @@ function createApp(deps: CaptureServerDeps): Hono {
           screenshotWarning: screenshotDropReason
         })
       } catch (err) {
-        console.error('Capture error:', err)
+        logger.error('captureServer', 'capture.failed', undefined, err)
         emitCaptureEvent({
           type: 'failed',
           source,
@@ -474,7 +479,7 @@ function createApp(deps: CaptureServerDeps): Hono {
 
         return c.json({ selector, status: 'ok' })
       } catch (err) {
-        console.error('Create selector error:', err)
+        logger.error('captureServer', 'captureServer.selector_create_failed', undefined, err)
         return c.json({ error: 'Failed to create selector' }, 500)
       }
     }

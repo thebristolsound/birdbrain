@@ -3,6 +3,8 @@ import { readFile, writeFile } from 'fs/promises'
 import sharp from 'sharp'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import type { CaptureStore } from '@main/services/captureStore'
+import { logger } from '@main/services/logger'
+import { ident } from '@main/services/logSafe'
 
 // ~4:3 thumbnail box. Full-page recapture screenshots are very tall (e.g.
 // 1280x11200); scaling the whole strip to 160px wide yields a 160x1400 sliver
@@ -43,7 +45,7 @@ export async function getThumbnail(
     await writeFile(thumbPath, thumbBuffer)
     return thumbBuffer
   } catch (error) {
-    console.error(`Failed to generate thumbnail for ${captureId}:`, error)
+    logger.error('thumbnails', 'thumbnails.generate_failed', { captureId: ident(captureId) }, error)
     return null
   }
 }

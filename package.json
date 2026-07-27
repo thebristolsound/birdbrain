@@ -155,6 +155,7 @@
     "react-konva": "^19.2.5",
     "react-markdown": "^10.1.0",
     "sharp": "^0.34.5",
+    "sonner": "^2.0.7",
     "tailwind-merge": "^3.6.0",
     "tldts": "^7.4.6",
     "use-image": "^1.1.4",

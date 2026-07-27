@@ -27,6 +27,7 @@ import { SettingsView } from '@renderer/components/settings/SettingsView'
 import { useSessionRestore } from '@renderer/hooks/useSessionRestore'
 import { useCommandPalette } from '@renderer/hooks/useCommandPalette'
 import { CommandPalette } from '@renderer/components/layout/CommandPalette'
+import { Toaster } from 'sonner'
 import { useAppStore } from '@renderer/stores/appStore'
 
 const TanStackRouterDevtools = import.meta.env.DEV
@@ -105,6 +106,20 @@ const rootRoute = createRootRoute({
           </div>
         </div>
         <CommandPalette />
+        {/* Every user-visible failure notice routes through notify.ts, which
+            renders here. Mounted once at the root so a toast raised from a
+            mutation, a query, or the main-process bridge survives navigation. */}
+        <Toaster
+          position="bottom-right"
+          closeButton
+          toastOptions={{
+            classNames: {
+              toast: 'bg-surface border border-border text-text-primary',
+              description: 'text-text-muted',
+              actionButton: 'bg-accent text-white'
+            }
+          }}
+        />
         {onboardingOverlayOpen && (
           <OnboardingWizard mode="overlay" onClose={() => setOnboardingOverlayOpen(false)} />
         )}

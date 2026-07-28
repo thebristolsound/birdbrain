@@ -94,4 +94,21 @@ describe('mainLogBridge', () => {
 
     expect(toastFns.error).toHaveBeenCalledTimes(1)
   })
+
+  // The dedupe set is bounded, so a long-lived renderer under a retry loop does
+  // not accumulate ids forever. Eviction is FIFO, so recent ids — the ones that
+  // actually matter for replay/live overlap — stay covered.
+  it('keeps deduplicating recent entries after far more than the bound', async () => {
+    const { subscribeToMainLog } = await import('@renderer/lib/mainLogBridge')
+    subscribeToMainLog()
+
+    for (let i = 0; i < 500; i++) {
+      listener?.({ ...entry('error'), id: `e${i}`, code: 'capture.failed' })
+    }
+    const afterFlood = toastFns.error.mock.calls.length
+
+    // A just-seen id must still be recognised as a duplicate.
+    listener?.({ ...entry('error'), id: 'e499', code: 'capture.failed' })
+    expect(toastFns.error.mock.calls.length).toBe(afterFlood)
+  })
 })

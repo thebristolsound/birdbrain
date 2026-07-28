@@ -17,7 +17,7 @@ beforeEach(() => {
 describe('ErrorBoundary', () => {
   it('renders children when nothing throws', () => {
     render(
-      <ErrorBoundary source="test">
+      <ErrorBoundary source="captureViewer">
         <p>fine</p>
       </ErrorBoundary>
     )
@@ -26,7 +26,7 @@ describe('ErrorBoundary', () => {
 
   it('shows recovery UI and logs when a child throws', () => {
     render(
-      <ErrorBoundary source="test">
+      <ErrorBoundary source="captureViewer">
         <Boom />
       </ErrorBoundary>
     )
@@ -35,14 +35,14 @@ describe('ErrorBoundary', () => {
       expect.objectContaining({
         level: 'error',
         code: 'react.render_error',
-        context: { boundary: 'test' }
+        context: { boundary: 'captureViewer' }
       })
     )
   })
 
   it('does not send the thrown message to the log', () => {
     render(
-      <ErrorBoundary source="test">
+      <ErrorBoundary source="captureViewer">
         <Boom message="cannot render Operation Blackbird" />
       </ErrorBoundary>
     )

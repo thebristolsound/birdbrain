@@ -15,14 +15,31 @@ import { labelForCode } from '@renderer/lib/notify'
 // 'renderer' member and no `renderer:*` prefix convention — see its comment in
 // @shared/types. A prefix test would additionally imply that some other source
 // could legitimately begin with 'renderer', which the union does not allow.
+// The `seen` set exists only to stop the replay and the live listener from
+// double-handling the same entry, so it needs to cover the replay window and a
+// little slack — not the whole session. Unbounded, it grows for the lifetime of
+// the renderer, and a component stuck in a retry loop is exactly the case that
+// makes it grow fastest. Set preserves insertion order, so evicting from the
+// front is FIFO.
+const SEEN_LIMIT = 200
+
 export function subscribeToMainLog(): () => void {
   const seen = new Set<string>()
+
+  const remember = (id: string): void => {
+    seen.add(id)
+    while (seen.size > SEEN_LIMIT) {
+      const oldest = seen.values().next()
+      if (oldest.done) break
+      seen.delete(oldest.value)
+    }
+  }
 
   const handle = (entry: LogEntry): void => {
     if (entry.source === 'renderer') return
     if (entry.level !== 'error' && entry.level !== 'warn') return
     if (seen.has(entry.id)) return
-    seen.add(entry.id)
+    remember(entry.id)
 
     // Two different ids do two different jobs here, and conflating them was a
     // bug: entry.id is unique PER ENTRY, so using it as the sonner id gives a

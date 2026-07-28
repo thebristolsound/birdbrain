@@ -89,4 +89,34 @@ describe('sessionLog', () => {
     expect(record.sessionId).toBeTruthy()
     expect(currentSession()).toBe(record.sessionId)
   })
+
+  // A file truncated mid-write loses trailing fields but keeps the id. Dropping
+  // those records would discard crash evidence in exactly the situation where a
+  // crash is most likely, so they are filled instead — every record readSessions
+  // returns has the shape its consumers dereference.
+  it('fills a partially written record instead of dropping it', () => {
+    writeFileSync(
+      join(dir, 'sessions.json'),
+      JSON.stringify([{ sessionId: 'truncated-abc' }, null, {}, { notASession: true }])
+    )
+
+    const records = readSessions(dir)
+
+    // null, {} and the id-less object carry no identity and are dropped.
+    expect(records).toHaveLength(1)
+    expect(records[0]).toEqual({
+      sessionId: 'truncated-abc',
+      startedAt: '',
+      endedAt: null,
+      version: 'unknown',
+      platform: 'unknown',
+      installFormat: 'unknown',
+      cleanExit: false
+    })
+  })
+
+  it('surfaces a partially written record as an unclean session', () => {
+    writeFileSync(join(dir, 'sessions.json'), JSON.stringify([{ sessionId: 'truncated-abc' }]))
+    expect(takeUncleanSession(dir)?.sessionId).toBe('truncated-abc')
+  })
 })

@@ -144,6 +144,9 @@ const rootRoute = createRootRoute({
             onOpenChange={setReportOpen}
             correlationId={reportCorrelationId}
           />
+          {onboardingOverlayOpen && (
+            <OnboardingWizard mode="overlay" onClose={() => setOnboardingOverlayOpen(false)} />
+          )}
         </ErrorBoundary>
         {/* Every user-visible failure notice routes through notify.ts, which
             renders here. Mounted once at the root so a toast raised from a
@@ -161,9 +164,6 @@ const rootRoute = createRootRoute({
             }
           }}
         />
-        {onboardingOverlayOpen && (
-          <OnboardingWizard mode="overlay" onClose={() => setOnboardingOverlayOpen(false)} />
-        )}
         <Suspense>
           <ReactQueryDevtools buttonPosition="bottom-left" />
           <TanStackRouterDevtools position="bottom-right" />

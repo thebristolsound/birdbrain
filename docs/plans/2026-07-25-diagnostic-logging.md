@@ -35,6 +35,33 @@ Every code block below has been written against these rules. If you find one tha
 stale and the rules above govern; say so in your report rather than widening a type to
 make it compile.
 
+## IPC moved to a typed contract — read before Tasks 2, 4, 6 and 14
+
+Task 1 shipped and merged (PR #224). Between then and now, `main` landed
+[PR #254](https://github.com/thebristolsound/birdbrain/pull/254), which replaced
+hand-registered IPC with a typed contract map. Every channel in the app now
+goes through three helpers:
+
+| Use | Not |
+|---|---|
+| `handle(channel, fn)` from `@main/ipcWrap` | `ipcMain.handle(...)` |
+| `sendEvent(target, channel, payload)` from `@main/ipcWrap` | `webContents.send(...)` |
+| `bridge(channel)` / `subscribe(channel)` in `src/preload/index.ts` | hand-written `ipcRenderer.invoke` / `.on` |
+
+Two consequences that will bite if missed:
+
+1. **A channel needs a contract entry or the build fails.** `ChannelsAreExhaustive`
+   in `src/shared/ipc.ts` asserts every `IPC_CHANNELS` name is either a
+   `ContractedChannel` or an `IpcEventChannel`. Task 2 Step 3 adds those entries.
+   Satisfying that assert is the point — never widen it to make a build pass.
+2. **`handle()` applies the `{ ok, data }` envelope; raw `ipcMain.handle` does not.**
+   Preload's `unwrapIpc` throws `IPC result is missing its envelope` on an
+   unenveloped result, so a raw registration fails at runtime, not compile time.
+
+Tasks 2, 4, 6 and 14 have been rewritten against this. `src/renderer/env.d.ts`
+is the one file PR #254 left hand-maintained, so it still needs its mirror
+updated by hand.
+
 ## Global Constraints
 
 - Code style: **no semicolons**, single quotes, no trailing commas, 100 char print width, 2-space indent.
@@ -43,6 +70,19 @@ make it compile.
 - `src/shared/**` must never import from `@main/*` or `@renderer/*`.
 - Renderer components use semantic theme tokens (`bg-surface`, `text-text-primary`, `border-border`, `text-text-muted`), not raw Tailwind colours. Exceptions: overlays and status/severity colours.
 - Tests run with `pnpm test` (Vitest under the Electron runtime). Lint with `pnpm lint`.
+- **`pnpm build` does NOT typecheck.** `electron-vite build` transpiles; it does not run `tsc`.
+  ESLint is not type-aware here either. Verified empirically: a deliberate
+  `const x: number = 'str'` in `src/main/services/logger.ts` passes both `pnpm build` and
+  `pnpm lint`. The only gate that catches it is:
+
+  ```bash
+  npx tsc --noEmit -p tsconfig.node.json && npx tsc --noEmit -p tsconfig.web.json
+  ```
+
+  Run **both** in every task's verify step — `tsconfig.node.json` covers `src/main`,
+  `src/preload` and `src/shared`; `tsconfig.web.json` covers the renderer. A task that
+  reports "build and lint pass" has not been typechecked. There is no `typecheck` script
+  in `package.json`; adding one is worth doing but is outside this plan's scope.
 - **Test file placement is load-bearing.** `vitest.config.ts` defines two projects with strict includes. A test in the wrong directory is silently never run:
   - `tests/**/*.test.ts` outside `tests/renderer/` and `tests/hooks/` → **node** project (`environment: 'node'`). Main-process tests go here.
   - `tests/components/**/*.test.tsx`, `tests/renderer/**/*.test.ts`, `tests/hooks/**/*.test.ts` → **jsdom** project. React component tests must be `tests/components/*.test.tsx` — `tests/renderer/**/*.test.tsx` matches **no** project.
@@ -463,35 +503,68 @@ export interface BugReportResult {
 
 - [ ] **Step 2: Add the IPC channels**
 
-In `src/shared/ipc.ts`, replace the Diagnostics section:
+**Declare the event channel here, but NOT the invoke channels.**
+`tests/main/ipcHandlers.test.ts` asserts a bidirectional match: every declared
+invoke channel has a registered handler, *and* every registered handler has a
+declared channel. So an invoke channel must be declared in the same commit as
+its handler, or that suite goes red on an intermediate commit. The invoke
+channels therefore belong to Tasks 6 and 14, next to the handlers that serve
+them. Event channels are exempt — the guard only covers invoke.
 
-```typescript
-  // Diagnostics
-  DIAGNOSTICS_GET: 'diagnostics:get',
-  DIAGNOSTICS_LOG: 'diagnostics:log',
-  DIAGNOSTICS_REVEAL_LOG: 'diagnostics:revealLog',
-  DIAGNOSTICS_CREATE_REPORT: 'diagnostics:createReport',
-  DIAGNOSTICS_LAST_SESSION: 'diagnostics:lastSession',
-  DIAGNOSTICS_RECENT: 'diagnostics:recent',
-```
-
-And add to the events block, after `CAPTURE_ACTIVITY`:
+Add to the events block, after `CAPTURE_ACTIVITY`:
 
 ```typescript
   LOG_ENTRY: 'event:logEntry',
 ```
 
-- [ ] **Step 3: Verify the project still typechecks and lints**
+and to `IpcEventContract`:
 
-Run: `pnpm lint`
-Expected: no errors. Types are additive, so nothing should break.
+```typescript
+  'event:logEntry': LogEntry
+```
 
-- [ ] **Step 4: Commit**
+Both halves are needed: `ChannelsAreExhaustive` asserts every `IpcChannel` is
+either a `ContractedChannel` or an `IpcEventChannel`, so a name in
+`IPC_CHANNELS` with no contract entry fails to compile. That assert is the
+intended gate — satisfy it, never widen it.
+
+- [ ] **Step 3: Add `RendererLogPayload`**
+
+Define it alongside the other IPC param interfaces in `src/shared/ipc.ts`:
+
+```typescript
+// The renderer's half of the logging contract. Codes and context keys are the
+// same unions the main process enforces, so a mistake is a compile error in
+// the renderer and a dropped entry in main — never a leak.
+export interface RendererLogPayload {
+  level: LogLevel
+  code: LogCode
+  context?: Partial<Record<LogContextKey, string | number | boolean | null>>
+  error?: string
+}
+```
+
+Extend the existing `@shared/types` import at the top of `ipc.ts` with
+`LogLevel`, `LogCode`, `LogContextKey` and `LogEntry`. `SessionRecord`,
+`BugReportInput` and `BugReportResult` are imported by Tasks 6 and 14, when the
+contract entries that use them land.
+
+- [ ] **Step 4: Verify the project still typechecks and lints**
+
+Run: `pnpm lint && pnpm build`
+Expected: no errors. `pnpm build` is the one that exercises `ChannelsAreExhaustive` —
+lint alone is not type-aware enough to catch a missing contract entry.
+
+- [ ] **Step 5: Commit**
 
 ```bash
-git add src/shared/types.ts src/shared/ipc.ts
+git add src/shared/types.ts src/shared/ipc.ts src/main/services/logSafe.ts
 git commit -m "feat(logging): shared log entry types and diagnostics ipc channels"
 ```
+
+`logSafe.ts` is staged here too because Step 1 moves the four vocabulary arrays
+out of it and replaces them with an import — the move and its consumer are one
+change.
 
 ---
 
@@ -578,7 +651,12 @@ describe('sessionLog', () => {
     startSession(dir, INFO)
     writeFileSync(join(dir, 'sessions.json'), '{ not json')
     expect(() => startSession(dir, INFO)).not.toThrow()
-    expect(readSessions(dir)).toHaveLength(1)
+    // TWO, not one. The first session's lock is still on disk (no
+    // markCleanExit ran), so reclaimOrphanedLock rebuilds it as an unclean
+    // record alongside the new session's. Corrupting sessions.json must not
+    // also erase the crash evidence the lock is still carrying — that
+    // interaction between the two blocks is the whole point of the reclaim.
+    expect(readSessions(dir)).toHaveLength(2)
   })
 })
 ```
@@ -838,13 +916,13 @@ function lines(logDir: string): LogEntry[] {
 describe('logger', () => {
   it('writes a json line per entry after flush', () => {
     const log = createLogger({ logDir: dir, sessionId: 's1' })
-    log.info('captureServer', 'server started', { port: 19845 })
+    log.info('captureServer', 'capture.server_started', { port: 19845 })
     log.flushSync()
 
     const [entry] = lines(dir)
     expect(entry.level).toBe('info')
     expect(entry.source).toBe('captureServer')
-    expect(entry.message).toBe('server started')
+    expect(entry.code).toBe('capture.server_started')
     expect(entry.context).toEqual({ port: 19845 })
     expect(entry.sessionId).toBe('s1')
   })
@@ -875,23 +953,16 @@ describe('logger', () => {
     expect(error?.name).toBe('Error')
   })
 
-  it('scrubs a url interpolated into the message', () => {
-    // Guards the real captureServer.ts pattern: `${reason} for ${url}`.
-    const log = createLogger({ logDir: dir, sessionId: 's1' })
-    log.warn('captureServer', 'screenshot dropped for https://target.example/secret')
-    log.flushSync()
-
-    const { message } = lines(dir)[0]
-    expect(message).not.toContain('target.example')
-    expect(message).toContain('‹url›')
-  })
+  // NOTE: there is deliberately no 'scrubs a url from the message' test.
+  // There is no message field to scrub — see the Design change section. The
+  // url-shaped-prose case is covered in logSafe's own suite, against stacks.
 
   it('emits each entry to the renderer callback', () => {
     const seen: LogEntry[] = []
     const log = createLogger({ logDir: dir, sessionId: 's1', emit: (e) => seen.push(e) })
-    log.info('app', 'ready')
+    log.info('app', 'app.session_start')
     expect(seen).toHaveLength(1)
-    expect(seen[0].message).toBe('ready')
+    expect(seen[0].code).toBe('app.session_start')
   })
 
   it('rotates when the file exceeds the limit and keeps one backup', () => {
@@ -1078,8 +1149,11 @@ export function initLogger(userDataPath: string, sessionId: string): void {
     logDir,
     sessionId,
     emit: (entry) => {
+      // sendEvent, not webContents.send — it pins the payload to the channel's
+      // IpcEventContract entry, so emitting the wrong shape is a compile error.
+      // Import it from '@main/ipcWrap'.
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(IPC_CHANNELS.LOG_ENTRY, entry)
+        sendEvent(mainWindow.webContents, IPC_CHANNELS.LOG_ENTRY, entry)
       }
     }
   })
@@ -1389,15 +1463,58 @@ git commit -m "feat(logging): crash handlers and session lifecycle wiring"
 ### Task 6: IPC handlers and the preload bridge
 
 **Files:**
-- Modify: `src/main/ipcHandlers.ts` (near the existing `DIAGNOSTICS_GET` handler at line 611)
-- Modify: `src/preload/index.ts` (extend the `diagnostics` object at line 270; add `onLogEntry` beside `onCaptureActivity` at line 371)
-- Modify: `src/renderer/env.d.ts` (extend `diagnostics` at line 171)
+- Modify: `src/main/ipcHandlers.ts` (near the existing `DIAGNOSTICS_GET` handler)
+- Modify: `src/preload/index.ts` (extend the `diagnostics` object; add `onLogEntry` beside `onCaptureActivity`)
+- Modify: `src/renderer/env.d.ts` (extend `diagnostics`)
 
 **Interfaces:**
-- Consumes: `getLogPath`, `logger` from `@main/services/logger`; `takeUncleanSession` from `@main/services/sessionLog`.
-- Produces: `window.birdbrain.diagnostics.log(entry)` → `Promise<string>`, `.revealLog()` → `Promise<void>`, `.lastSession()` → `Promise<SessionRecord | null>`, and `window.birdbrain.onLogEntry(cb)` → unsubscribe function. `createReport` is added in Task 13.
+- Consumes: `getLogPath`, `logger` from `@main/services/logger`; `takeUncleanSession` from `@main/services/sessionLog`; `handle` from `@main/ipcWrap`.
+- Produces: `window.birdbrain.diagnostics.log(entry)` → `Promise<string>`, `.revealLog()` → `Promise<void>`, `.lastSession()` → `Promise<SessionRecord | null>`, and `window.birdbrain.onLogEntry(cb)` → unsubscribe function. `createReport` is added in Task 14.
 
-- [ ] **Step 1: Add the main-process handlers**
+**Register through the contract, not `ipcMain` directly.** PR #254 replaced raw
+`ipcMain.handle` / `ipcRenderer.invoke` with three helpers, and every channel in
+the app now goes through them:
+
+| Use | Not |
+|---|---|
+| `handle(channel, fn)` from `@main/ipcWrap` | `ipcMain.handle(...)` |
+| `bridge(channel)` in `src/preload/index.ts` | a hand-written `ipcRenderer.invoke` arrow |
+| `subscribe(channel)` in `src/preload/index.ts` | a hand-written `ipcRenderer.on` + `removeListener` pair |
+
+This is not cosmetic. `handle()` wraps every result in the `{ ok, data }`
+envelope that preload's `unwrapIpc` requires — a channel registered with raw
+`ipcMain.handle` returns a bare value, and `unwrapIpc` throws `IPC result is
+missing its envelope` on it. `handle()` also pins the callback's argument tuple
+and return type to the channel's `IpcInvokeContract` entry, so a handler that
+drifts from the contract is a compile error. Do not annotate the handler's
+parameters by hand: the types come from the contract, and re-declaring them is
+how drift gets reintroduced.
+
+- [ ] **Step 1: Declare the four invoke channels and their contract entries**
+
+These live here, not in Task 2, because `tests/main/ipcHandlers.test.ts`
+requires a declared invoke channel and its handler to land together. Add to
+`IPC_CHANNELS` beside `DIAGNOSTICS_GET`:
+
+```typescript
+  DIAGNOSTICS_LOG: 'diagnostics:log',
+  DIAGNOSTICS_RECENT: 'diagnostics:recent',
+  DIAGNOSTICS_REVEAL_LOG: 'diagnostics:revealLog',
+  DIAGNOSTICS_LAST_SESSION: 'diagnostics:lastSession',
+```
+
+and to `IpcInvokeContract`:
+
+```typescript
+  'diagnostics:log': { args: [payload: RendererLogPayload]; result: string }
+  'diagnostics:recent': { args: [limit: number]; result: LogEntry[] }
+  'diagnostics:revealLog': { args: []; result: void }
+  'diagnostics:lastSession': { args: []; result: SessionRecord | null }
+```
+
+Add `SessionRecord` to the `@shared/types` import in `ipc.ts`.
+
+- [ ] **Step 2: Add the main-process handlers**
 
 In `src/main/ipcHandlers.ts`, after the existing `DIAGNOSTICS_GET` registration:
 
@@ -1407,7 +1524,11 @@ In `src/main/ipcHandlers.ts`, after the existing `DIAGNOSTICS_GET` registration:
   // titles, case names and URLs, and a compile-time union does not survive an
   // IPC hop. Re-validate every field against the same allowlists here, and
   // drop anything unrecognised rather than coercing it into the log.
-  ipcMain.handle(IPC_CHANNELS.DIAGNOSTICS_LOG, (_e, payload: RendererLogPayload) => {
+  //
+  // `payload` is typed by the contract, but that type describes what a WELL-
+  // BEHAVED renderer sends — a compromised or buggy one can send anything, so
+  // every field below is still re-checked at runtime.
+  handle(IPC_CHANNELS.DIAGNOSTICS_LOG, (_e, payload) => {
     const level = payload?.level === 'error' || payload?.level === 'warn' ? payload.level : 'info'
     if (!isLogCode(payload?.code)) return ''
 
@@ -1447,17 +1568,20 @@ In `src/main/ipcHandlers.ts`, after the existing `DIAGNOSTICS_GET` registration:
   // The Log tab needs what already happened, not just what happens next —
   // see Task 12. Reads the tail of the current log file only; the rotated
   // backup is for the bug-report bundle, not the live viewer.
-  ipcMain.handle(IPC_CHANNELS.DIAGNOSTICS_RECENT, (_e, limit: unknown) => {
+  //
+  // `limit` is typed `number` by the contract and still range-checked: the
+  // contract constrains the renderer's compile, not the value on the wire.
+  handle(IPC_CHANNELS.DIAGNOSTICS_RECENT, (_e, limit) => {
     const max = typeof limit === 'number' && limit > 0 && limit <= 500 ? Math.floor(limit) : 200
     return readRecentEntries(max)
   })
 
-  ipcMain.handle(IPC_CHANNELS.DIAGNOSTICS_REVEAL_LOG, () => {
+  handle(IPC_CHANNELS.DIAGNOSTICS_REVEAL_LOG, () => {
     const path = getLogPath()
     if (path) shell.showItemInFolder(path)
   })
 
-  ipcMain.handle(IPC_CHANNELS.DIAGNOSTICS_LAST_SESSION, () => takeUncleanSession(getLogDir()))
+  handle(IPC_CHANNELS.DIAGNOSTICS_LAST_SESSION, () => takeUncleanSession(getLogDir()))
 ```
 
 Imports to add:
@@ -1467,8 +1591,11 @@ import { getLogDir, getLogPath, logger, readRecentEntries } from '@main/services
 import { takeUncleanSession } from '@main/services/sessionLog'
 import { ValidatedError, context, errorName, isLogCode } from '@main/services/logSafe'
 import type { LogContext, LogValue } from '@main/services/logSafe'
-import type { RendererLogPayload } from '@shared/ipc'
 ```
+
+`handle` and `shell` are already imported at the top of `ipcHandlers.ts`.
+`RendererLogPayload` does **not** need importing here — `handle()` derives the
+payload type from the channel's contract entry.
 
 `isLogCode`, `isLogContextKey` and `errorName` are the runtime halves of Task 2's unions and belong beside `ident`/`tag` in `logSafe.ts`. Add them there if Task 1 has not already:
 
@@ -1514,48 +1641,36 @@ export function errorName(value: unknown): string | undefined {
 }
 ```
 
-- [ ] **Step 2: Extend the preload bridge**
+- [ ] **Step 3: Extend the preload bridge**
 
 Replace the `diagnostics` object in `src/preload/index.ts`:
 
 ```typescript
   diagnostics: {
-    get: (): Promise<DiagnosticsSnapshot> => ipcRenderer.invoke(IPC_CHANNELS.DIAGNOSTICS_GET),
-    log: (payload: RendererLogPayload): Promise<string> =>
-      ipcRenderer.invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, payload),
-    recentEntries: (limit: number): Promise<LogEntry[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.DIAGNOSTICS_RECENT, limit),
-    revealLog: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.DIAGNOSTICS_REVEAL_LOG),
-    lastSession: (): Promise<SessionRecord | null> =>
-      ipcRenderer.invoke(IPC_CHANNELS.DIAGNOSTICS_LAST_SESSION)
+    get: bridge(IPC_CHANNELS.DIAGNOSTICS_GET),
+    log: bridge(IPC_CHANNELS.DIAGNOSTICS_LOG),
+    recentEntries: bridge(IPC_CHANNELS.DIAGNOSTICS_RECENT),
+    revealLog: bridge(IPC_CHANNELS.DIAGNOSTICS_REVEAL_LOG),
+    lastSession: bridge(IPC_CHANNELS.DIAGNOSTICS_LAST_SESSION)
   },
 ```
 
 And add beside `onCaptureActivity`:
 
 ```typescript
-  onLogEntry: (callback: (entry: LogEntry) => void) => {
-    const handler = (_: unknown, entry: LogEntry) => callback(entry)
-    ipcRenderer.on(IPC_CHANNELS.LOG_ENTRY, handler)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.LOG_ENTRY, handler)
-  },
+  onLogEntry: subscribe(IPC_CHANNELS.LOG_ENTRY),
 ```
 
-Add `LogEntry`, `SessionRecord` to the existing `@shared/types` type import and `RendererLogPayload` to the `@shared/ipc` type import. Define that payload alongside the other IPC types in `src/shared/ipc.ts`:
+That is the whole change. `bridge()` and `subscribe()` already read their
+argument and result types from `IpcInvokeContract` / `IpcEventContract`, so
+preload needs **no** type imports for any of this and no hand-written
+signatures — the entries added in Task 2 are what give these methods their
+types. If you find yourself importing `LogEntry` or `RendererLogPayload` into
+`src/preload/index.ts`, a contract entry is missing.
 
-```typescript
-// The renderer's half of the logging contract. Codes and context keys are the
-// same unions the main process enforces, so a mistake is a compile error in
-// the renderer and a dropped entry in main — never a leak.
-export interface RendererLogPayload {
-  level: LogLevel
-  code: LogCode
-  context?: Partial<Record<LogContextKey, string | number | boolean | null>>
-  error?: string
-}
-```
+`RendererLogPayload` is defined in Task 2, not here.
 
-- [ ] **Step 3: Mirror the types in `env.d.ts`**
+- [ ] **Step 4: Mirror the types in `env.d.ts`**
 
 ```typescript
   diagnostics: {
@@ -1573,17 +1688,25 @@ And in the event-listener section of the same interface:
   onLogEntry(callback: (entry: LogEntry) => void): () => void
 ```
 
-Add `LogEntry`, `SessionRecord` to the `@shared/types` import at line 31 and `RendererLogPayload` to the `@shared/ipc` import at line 33.
+Add `LogEntry`, `SessionRecord` to the `@shared/types` import and
+`RendererLogPayload` to the `@shared/ipc` import at the top of the file.
 
-- [ ] **Step 4: Verify**
+`env.d.ts` is still a hand-maintained mirror — PR #254 derived *preload* from
+the contract but left this file declaring `BirdbrainAPI` by hand. So this step
+is real work, and it is the one place a signature can still drift from the
+contract without the compiler noticing. Copy the shapes from the Task 2 contract
+entries exactly.
+
+- [ ] **Step 5: Verify**
 
 Run: `pnpm lint && pnpm test && pnpm build`
-Expected: all pass. Report actual output.
+Expected: all pass, including `tests/main/ipcHandlers.test.ts` — the channel-coverage
+guard is the one that proves Step 1 and Step 2 landed together. Report actual output.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add src/main/ipcHandlers.ts src/preload/index.ts src/renderer/env.d.ts
+git add src/shared/ipc.ts src/main/ipcHandlers.ts src/preload/index.ts src/renderer/env.d.ts
 git commit -m "feat(logging): diagnostics log ipc handlers and preload bridge"
 ```
 
@@ -1911,7 +2034,11 @@ export function LogTab() {
               <div key={entry.id} className="flex items-start gap-2 rounded border border-border px-2 py-1.5">
                 <Icon className={cn('mt-0.5 h-3.5 w-3.5 shrink-0', LEVEL_COLOR[entry.level])} />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm text-text-primary">{entry.message}</p>
+                  {/* Codes are not prose. labelForCode (Task 10) maps a code to a
+                      readable sentence for display only — the code is what is on
+                      disk, and LogEntry has no message field to render. If Task 10
+                      has not landed yet, render {entry.code} and swap it after. */}
+                  <p className="truncate text-sm text-text-primary">{labelForCode(entry.code)}</p>
                   <p className="text-xs text-text-muted">
                     <span className="font-mono">{entry.source}</span>
                     {' · '}
@@ -1950,7 +2077,7 @@ git commit -m "feat(logging): log tab with level filters and reveal in diagnosti
 
 # Phase 2 — Visibility
 
-*Value on its own: the 29 silent mutation failures stop being silent.*
+*Value on its own: the 28 silent mutation failures stop being silent.*
 
 ---
 
@@ -2258,7 +2385,7 @@ git commit -m "feat(notify): toast and durable-log boundary with storm dedup"
 
 ---
 
-### Task 11: Wire the 29 mutations and query failures
+### Task 11: Wire the 28 mutations and query failures
 
 **Files:**
 - Modify: `src/renderer/lib/queryClient.ts`
@@ -2335,10 +2462,12 @@ export const queryClient = new QueryClient({
       // turns one handled query failure into a second, renderer-level
       // unhandledrejection — the logging path manufacturing the very event
       // class it exists to record.
+      // No `source` field. RendererLogPayload does not carry one: every entry
+      // on this channel came from the renderer by definition, and the main-side
+      // handler hardcodes 'renderer' rather than trusting the payload.
       window.birdbrain.diagnostics
         .log({
           level: 'warn',
-          source: 'renderer',
           code: 'query.failed',
           context: { domain: String(query.queryKey[0] ?? 'unknown') },
           error: error instanceof Error ? error.name : 'UnknownError'
@@ -2353,7 +2482,7 @@ The query key's first segment is a static domain string from the key factory (`'
 
 - [ ] **Step 4: Add `meta.action` to the mutation hooks**
 
-In `src/renderer/lib/queries.ts`, add a `meta` field to each of the 29 `useMutation` calls describing the action in lowercase infinitive form, e.g.:
+In `src/renderer/lib/queries.ts`, add a `meta` field to each of the 28 `useMutation` calls describing the action in lowercase infinitive form, e.g.:
 
 ```typescript
     meta: { action: 'create case' }
@@ -2361,7 +2490,7 @@ In `src/renderer/lib/queries.ts`, add a `meta` field to each of the 29 `useMutat
     meta: { action: 'delete capture' }
 ```
 
-This is additive. Any hook missed simply falls back to the generic message, so the task is complete and shippable even if a few are left for later — but do all 29 now.
+This is additive. Any hook missed simply falls back to the generic message, so the task is complete and shippable even if a few are left for later — but do all 28 now.
 
 - [ ] **Step 5: Verify and commit**
 
@@ -2596,7 +2725,7 @@ describe('mainLogBridge', () => {
     subscribeToMainLog()
     // notify.error already toasted this one before sending it to main; main
     // wrote it and echoed it straight back out.
-    listener?.({ ...entry('error'), source: 'renderer:mutation' })
+    listener?.({ ...entry('error'), source: 'renderer' })
     expect(toastFns.error).not.toHaveBeenCalled()
   })
 
@@ -2633,7 +2762,9 @@ import type { LogEntry } from '@shared/types'
 // back through notify.error would write a duplicate entry and, because that
 // write emits again, risk a feedback loop.
 //
-// The 'renderer:' prefix filter is load-bearing. A renderer notify.error()
+// The 'renderer' equality filter is load-bearing — equality, NOT startsWith.
+// LOG_SOURCES is a closed union with a plain 'renderer' member and no
+// `renderer:*` prefix convention; see its comment in @shared/types. A renderer notify.error()
 // travels to main over diagnostics:log, gets written, and is emitted straight
 // back out over event:logEntry. Without this guard every renderer failure
 // raises two toasts with different ids, so dedup cannot collapse them.
@@ -3023,8 +3154,30 @@ git commit -m "feat(diagnostics): bug report bundle builder with enumerated entr
 
 - [ ] **Step 1: Add the handler**
 
+Declare the channel and its contract entry **in this task**, alongside the
+handler — `tests/main/ipcHandlers.test.ts` fails if a declared invoke channel
+has no handler registered, so the two cannot be split across commits.
+
+In `src/shared/ipc.ts` add to `IPC_CHANNELS`:
+
 ```typescript
-  ipcMain.handle(IPC_CHANNELS.DIAGNOSTICS_CREATE_REPORT, async (_e, input: BugReportInput) => {
+  DIAGNOSTICS_CREATE_REPORT: 'diagnostics:createReport',
+```
+
+and to `IpcInvokeContract`:
+
+```typescript
+  'diagnostics:createReport': {
+    args: [input: BugReportInput]
+    result: BugReportResult | null
+  }
+```
+
+Add `BugReportInput` and `BugReportResult` to the `@shared/types` import in
+`ipc.ts`. Then the handler:
+
+```typescript
+  handle(IPC_CHANNELS.DIAGNOSTICS_CREATE_REPORT, async (_e, input) => {
     const { canceled, filePath } = await dialog.showSaveDialog({
       title: 'Save diagnostic report',
       defaultPath: bugReportFilename(new Date()),
@@ -3041,16 +3194,28 @@ git commit -m "feat(diagnostics): bug report bundle builder with enumerated entr
 
 `flushSync()` before building matters: without it, the entries describing the failure the tester is reporting may still be sitting in the write buffer. Import it from `@main/services/logger`.
 
-Match the surrounding handlers' error-wrapping convention — check how neighbouring handlers in the file return `{ ok, data }` versus raw values, and follow it so `unwrapIpc` behaves consistently.
+`handle()` from `@main/ipcWrap` applies the `{ ok, data }` envelope itself — do
+not wrap the return value by hand, and do not fall back to `ipcMain.handle`
+(preload's `unwrapIpc` rejects an unenveloped result). `input` is typed by the
+contract entry; no parameter annotation.
 
 - [ ] **Step 2: Extend preload and `env.d.ts`**
 
 ```typescript
-    createReport: (input: BugReportInput): Promise<BugReportResult | null> =>
-      ipcRenderer.invoke(IPC_CHANNELS.DIAGNOSTICS_CREATE_REPORT, input),
+    createReport: bridge(IPC_CHANNELS.DIAGNOSTICS_CREATE_REPORT),
 ```
 
-Mirror the same signature in `env.d.ts` and add `BugReportInput`, `BugReportResult` to both type imports.
+Add that one line to the `diagnostics` object in `src/preload/index.ts`. No type
+imports — `bridge()` reads the signature from the contract.
+
+`env.d.ts` is hand-maintained, so it does need the mirror:
+
+```typescript
+    createReport(input: BugReportInput): Promise<BugReportResult | null>
+```
+
+Add `BugReportInput` and `BugReportResult` to the `@shared/types` import in
+`env.d.ts` only.
 
 - [ ] **Step 3: Verify and commit**
 

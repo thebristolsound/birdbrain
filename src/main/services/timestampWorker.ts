@@ -9,6 +9,8 @@ import { getSettings } from '@main/services/settings'
 import { getStorageRoot } from '@main/services/storage'
 import { getInstallationId } from '@main/services/installationId'
 import { DEFAULT_TSA_URL } from '@shared/constants'
+import { logger } from '@main/services/logger'
+import { ident } from '@main/services/logSafe'
 
 // Asynchronous RFC 3161 trusted-timestamping worker (#120). The capture path
 // never blocks on the TSA — captures are enqueued (mirror column 'pending') and
@@ -81,7 +83,12 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
       captureRepo.setCaptureTrustedTime(captureId, 'rfc3161')
       return true
     } catch (err) {
-      console.error('timestampWorker: failed to stamp capture', captureId, err)
+      logger.error(
+        'timestampWorker',
+        'timestampWorker.stamp_failed',
+        { captureId: ident(captureId) },
+        err
+      )
       return false
     }
   }

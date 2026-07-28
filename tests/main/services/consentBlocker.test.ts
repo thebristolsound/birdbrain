@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { mkdtempSync, rmSync } from 'fs'
+import { join } from 'path'
+import { tmpdir } from 'os'
 
 const { fromLists } = vi.hoisted(() => ({ fromLists: vi.fn() }))
 
@@ -93,13 +96,29 @@ describe('consentBlocker', () => {
 
   it('fails soft to null and clears the memo so a later call retries', async () => {
     process.env.BIRDBRAIN_CONSENT_LISTS = 'http://localhost/fixture.txt'
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     fromLists.mockRejectedValueOnce(new Error('offline, no cache'))
 
     const getConsentBlocker = await loadGetConsentBlocker()
+    // Same fresh module registry as the consentBlocker import above (no
+    // resetModules in between), so this resolves to the logger instance
+    // consentBlocker.ts itself calls into.
+    const { initLogger, disposeLogger, flushSync, readRecentEntries } =
+      await import('@main/services/logger')
+    const logDir = mkdtempSync(join(tmpdir(), 'birdbrain-consent-blocker-log-'))
+    initLogger(logDir, 'consent-blocker-test-session')
+
     const failed = await getConsentBlocker()
     expect(failed).toBeNull()
-    expect(errorSpy).toHaveBeenCalled()
+    flushSync()
+    const entries = readRecentEntries(10)
+    expect(
+      entries.some(
+        (e) => e.source === 'consentBlocker' && e.code === 'consentBlocker.filter_engine_failed'
+      )
+    ).toBe(true)
+
+    disposeLogger()
+    rmSync(logDir, { recursive: true, force: true })
 
     // Memo was cleared on failure: the next call rebuilds rather than returning
     // the cached rejected promise.
@@ -108,7 +127,5 @@ describe('consentBlocker', () => {
     const retried = await getConsentBlocker()
     expect(retried).toBe(engine)
     expect(fromLists).toHaveBeenCalledTimes(2)
-
-    errorSpy.mockRestore()
   })
 })

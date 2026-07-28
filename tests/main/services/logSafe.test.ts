@@ -488,9 +488,13 @@ describe('context', () => {
       installFormat: ident('nsis'),
       errorCode: code('ENOENT'),
       format: tag('mhtml', 'captureFormat'),
+      // Real values only. These three keys are closed vocabularies, not IDENT:
+      // 'CaseWorkspace' is not an ErrorBoundary source and 'captures-list' is
+      // not a channel ('captures:list' is), so the old fabricated values in
+      // this test were asserting a permissiveness no call site needed.
       domain: ident('captures'),
-      boundary: ident('CaseWorkspace'),
-      channel: ident('captures-list')
+      boundary: ident('captureViewer'),
+      channel: 'captures:list' as unknown as LogValue
     })
     expect(out).toEqual({
       installationId: CAPTURE_UUID,
@@ -500,8 +504,8 @@ describe('context', () => {
       errorCode: 'ENOENT',
       format: 'mhtml',
       domain: 'captures',
-      boundary: 'CaseWorkspace',
-      channel: 'captures-list'
+      boundary: 'captureViewer',
+      channel: 'captures:list'
     })
   })
 
@@ -693,5 +697,90 @@ describe('stack frame validation rejects prose shaped like a location', () => {
     err.stack = ['Error: boom', String.raw`    at doThing (C:\app\src\main\index.js:10:5)`].join('\n')
     const out = sanitizeError(err, String.raw`C:\app`, String.raw`C:\Users\tester`).stack ?? ''
     expect(out).toContain('index.js:10:5')
+  })
+})
+
+// Regression guard for the leak found in the pre-merge review: `domain`,
+// `boundary` and `channel` arrive from the renderer — the process that holds
+// case names, page titles and URLs — and were validated with the generic IDENT
+// rule. IDENT accepts any spaceless string under 64 chars, so a case name with
+// the spaces removed passed straight through to disk. These three keys now
+// carry closed vocabularies, exactly like caseId carries UUID.
+describe('renderer-supplied context keys are closed vocabularies', () => {
+  const leaky: Array<[string, string]> = [
+    ['boundary', 'OperationBlackbird'],
+    ['domain', 'OperationBlackbird'],
+    ['boundary', 'Operation-Blackbird-2026'],
+    ['domain', 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh'],
+    ['channel', 'MyCaseName']
+  ]
+
+  for (const [key, value] of leaky) {
+    it(`records ${key}: '${value}' as invalid rather than passing it through`, () => {
+      // Packaged-inert path: the value is replaced, the entry survives. In dev
+      // this throws instead, which is the same guarantee stated more loudly.
+      expect(() => context({ [key]: value as unknown as LogValue })).toThrow(
+        /disallowed value/
+      )
+    })
+  }
+
+  it('still accepts the real static identifiers those call sites emit', () => {
+    expect(context({ boundary: 'root' as unknown as LogValue })).toEqual({ boundary: 'root' })
+    expect(context({ boundary: 'captureViewer' as unknown as LogValue })).toEqual({
+      boundary: 'captureViewer'
+    })
+    expect(context({ domain: 'captures' as unknown as LogValue })).toEqual({ domain: 'captures' })
+    expect(context({ domain: 'unknown' as unknown as LogValue })).toEqual({ domain: 'unknown' })
+    expect(context({ channel: 'cases:list' as unknown as LogValue })).toEqual({
+      channel: 'cases:list'
+    })
+  })
+})
+
+// Regression guard for the second Critical finding in the pre-merge review.
+// stackFrames used to test the line's prefix and suffix independently, which
+// left the middle — where prose lives — unconstrained.
+describe('stack frame filtering matches whole frames, not prefix+suffix', () => {
+  function stackOf(lines: string[]): string {
+    return ['Error: boom', ...lines].join('\n')
+  }
+
+  const leaky = [
+    '    at Operation Blackbird target bob@example.com <anonymous>',
+    '    at case Operation Blackbird native',
+    '    at Operation Blackbird /x.js:1:1',
+    '    at sk-or-v1-deadbeefcafe <anonymous>',
+    '    at https://target.example/page.html?q=secret <anonymous>'
+  ]
+
+  for (const line of leaky) {
+    it(`drops prose disguised as a frame: ${line.trim().slice(0, 40)}`, () => {
+      const err = new Error('boom')
+      err.stack = stackOf([line, '    at real (/app/src/main/x.js:1:2)'])
+      const out = sanitizeError(err, '/home/tester', '/app')
+      expect(out.stack ?? '').not.toContain('Blackbird')
+      expect(out.stack ?? '').not.toContain('bob@example.com')
+      expect(out.stack ?? '').not.toContain('sk-or-')
+      expect(out.stack ?? '').not.toContain('target.example')
+    })
+  }
+
+  it('still keeps every real V8 frame shape', () => {
+    const real = [
+      '    at Object.fn (/app/src/main/x.js:1:2)',
+      '    at <anonymous>',
+      '    at foo (<anonymous>)',
+      '    at new Foo (/app/x.js:3:4)',
+      '    at async bar (/app/y.js:5:6)',
+      '    at /app/src/main/index.js:10:20',
+      '    at Module._compile (node:internal/modules/cjs/loader:1234:14)',
+      '    at fn (file:///app/x.js:1:2)',
+      '    at Object.<anonymous> (/app/x.js:1:2)'
+    ]
+    const err = new Error('boom')
+    err.stack = stackOf(real)
+    const out = sanitizeError(err, '/home/tester', '/app')
+    expect((out.stack ?? '').split('\n')).toHaveLength(real.length)
   })
 })

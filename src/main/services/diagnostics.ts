@@ -123,7 +123,7 @@ export function createDiagnosticsService(deps: DiagnosticsServiceDeps = {}): Dia
 
 // --- Default environment collection (electron / fs / db) --------------------
 
-function detectInstallFormat(packaged: boolean): string {
+export function detectInstallFormat(packaged: boolean): string {
   if (!packaged) return 'dev'
   switch (process.platform) {
     case 'win32':

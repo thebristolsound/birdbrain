@@ -167,7 +167,12 @@ const birdbrain = {
   },
 
   diagnostics: {
-    get: bridge(IPC_CHANNELS.DIAGNOSTICS_GET)
+    get: bridge(IPC_CHANNELS.DIAGNOSTICS_GET),
+    log: bridge(IPC_CHANNELS.DIAGNOSTICS_LOG),
+    recentEntries: bridge(IPC_CHANNELS.DIAGNOSTICS_RECENT),
+    revealLog: bridge(IPC_CHANNELS.DIAGNOSTICS_REVEAL_LOG),
+    lastSession: bridge(IPC_CHANNELS.DIAGNOSTICS_LAST_SESSION),
+    createReport: bridge(IPC_CHANNELS.DIAGNOSTICS_CREATE_REPORT)
   },
 
   updates: {
@@ -211,6 +216,8 @@ const birdbrain = {
   onExtensionConnection: subscribe(IPC_CHANNELS.EXTENSION_CONNECTION),
 
   onCaptureActivity: subscribe(IPC_CHANNELS.CAPTURE_ACTIVITY),
+
+  onLogEntry: subscribe(IPC_CHANNELS.LOG_ENTRY),
 
   onSelectorRematched: subscribe(IPC_CHANNELS.SELECTOR_REMATCHED),
 

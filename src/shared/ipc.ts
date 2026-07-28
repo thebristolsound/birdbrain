@@ -9,6 +9,8 @@ import type {
   ArchiveInspectReport,
   WaybackRef,
   BirdbrainSettings,
+  BugReportInput,
+  BugReportResult,
   Capture,
   CaptureAnalysis,
   CaptureAnnotations,
@@ -22,10 +24,15 @@ import type {
   ExtractedDataSearchResult,
   ExtractedDataSubcategory,
   HashVerification,
+  LogCode,
+  LogContextKey,
+  LogEntry,
+  LogLevel,
   Note,
   OpenRouterModel,
   OperatorIdentity,
   Selector,
+  SessionRecord,
   Tag,
   TokenUsage,
   UpdateStatus,
@@ -155,6 +162,12 @@ export const IPC_CHANNELS = {
 
   // Diagnostics
   DIAGNOSTICS_GET: 'diagnostics:get',
+  DIAGNOSTICS_LOG: 'diagnostics:log',
+  DIAGNOSTICS_RECENT: 'diagnostics:recent',
+  DIAGNOSTICS_REVEAL_LOG: 'diagnostics:revealLog',
+  DIAGNOSTICS_LAST_SESSION: 'diagnostics:lastSession',
+  DIAGNOSTICS_CREATE_REPORT: 'diagnostics:createReport',
+  LOG_ENTRY: 'event:logEntry',
 
   // Updates (update delivery)
   UPDATES_GET_STATUS: 'updates:getStatus',
@@ -450,6 +463,19 @@ export interface SelfTestResult {
   error?: string
 }
 
+// The renderer's half of the logging contract. Codes and context keys are the
+// same unions the main process enforces, so a mistake is a compile error in
+// the renderer and a dropped entry in main — never a leak. There is no
+// free-form text field, and `error` is a bare allowlisted class name: the
+// renderer holds page titles, case names and URLs, so nothing that could carry
+// them is given a place to sit.
+export interface RendererLogPayload {
+  level: LogLevel
+  code: LogCode
+  context?: Partial<Record<LogContextKey, string | number | boolean | null>>
+  error?: string
+}
+
 // --- Invoke contract --------------------------------------------------------
 //
 // One entry per invoke channel: the argument tuple the renderer sends and the
@@ -611,6 +637,14 @@ export interface IpcInvokeContract {
 
   'app:getVersion': { args: []; result: string }
   'diagnostics:get': { args: []; result: DiagnosticsSnapshot }
+  'diagnostics:log': { args: [payload: RendererLogPayload]; result: string }
+  'diagnostics:recent': { args: [limit: number]; result: LogEntry[] }
+  'diagnostics:revealLog': { args: []; result: void }
+  'diagnostics:lastSession': { args: []; result: SessionRecord | null }
+  'diagnostics:createReport': {
+    args: [input: BugReportInput]
+    result: BugReportResult | null
+  }
 
   'updates:getStatus': { args: []; result: UpdateStatus }
   'updates:check': { args: []; result: UpdateStatus }
@@ -642,6 +676,7 @@ export interface IpcEventContract {
   'event:selector:rematched': SelectorRematchedEvent
   'event:deepLinkNavigate': DeepLinkTarget
   'event:updateStatus': UpdateStatus
+  'event:logEntry': LogEntry
 }
 
 export type IpcEventChannel = keyof IpcEventContract

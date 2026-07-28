@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi, beforeAll } from 'vitest'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { IpcMainInvokeEvent } from 'electron'
@@ -21,7 +21,10 @@ vi.mock('electron', () => ({
   app: {
     isPackaged: false,
     getVersion: () => '1.2.3',
-    getPath: () => userDataPath
+    getPath: () => userDataPath,
+    // diagnostics.ts's collectEnv() calls this for the process list in a
+    // DiagnosticsSnapshot; the create-report handler builds one for real.
+    getAppMetrics: () => []
   },
   ipcMain: {
     handle: (channel: string, fn: (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown) => {
@@ -90,7 +93,15 @@ vi.mock('@main/services/waybackMachine', async (importActual) => {
 // --- Real services ----------------------------------------------------------
 import { IPC_CHANNELS } from '@shared/ipc'
 import { registerIpcHandlers } from '@main/ipcHandlers'
-import type { Capture, Case } from '@shared/types'
+import type { BugReportResult, Capture, Case, LogEntry, SessionRecord } from '@shared/types'
+import {
+  disposeLogger,
+  flushSync as flushLogger,
+  getLogDir,
+  getLogPath,
+  initLogger,
+  readRecentEntries
+} from '@main/services/logger'
 import { closeDatabase, initDatabase } from '@main/services/db/core'
 import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
@@ -1191,5 +1202,203 @@ describe('ipcHandlers — recapture', () => {
     const status = expectOk(await invoke(IPC_CHANNELS.RECAPTURE_QUEUE_STATUS))
     expect(status).toEqual({ pending: 0, activeUrl: null })
     expect(recaptureService.status).toHaveBeenCalled()
+  })
+})
+
+describe('ipcHandlers — diagnostics logging', () => {
+  // The module-level logger singleton is inert (returns '' and does nothing)
+  // until initLogger runs, so this block owns its own init/dispose around the
+  // real logger rather than mocking it — the point of these tests is that the
+  // handler's re-validation actually reaches disk correctly.
+  beforeEach(() => {
+    initLogger(userDataPath, 'renderer-test-session')
+  })
+
+  afterEach(() => {
+    disposeLogger()
+  })
+
+  it('records a valid renderer entry under source "renderer" and returns its correlation id', async () => {
+    const id = expectOk<string>(
+      await invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, {
+        level: 'error',
+        code: 'query.failed',
+        context: { domain: 'cases' }
+      })
+    )
+    expect(id).toMatch(/^[0-9a-f]{16}$/)
+
+    flushLogger()
+    const [entry] = readRecentEntries(1)
+    expect(entry.source).toBe('renderer')
+    expect(entry.level).toBe('error')
+    expect(entry.code).toBe('query.failed')
+    expect(entry.context).toEqual({ domain: 'cases' })
+    expect(entry.id).toBe(id)
+  })
+
+  it('clamps an unrecognised level to info', async () => {
+    await invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, { level: 'debug', code: 'query.failed' })
+    flushLogger()
+    expect(readRecentEntries(1)[0].level).toBe('info')
+  })
+
+  it('drops the entry when the code is not a recognised LogCode', async () => {
+    const id = expectOk<string>(
+      await invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, { level: 'error', code: 'not.a.real.code' })
+    )
+    expect(id).toBe('')
+    flushLogger()
+    expect(readRecentEntries(1)).toEqual([])
+  })
+
+  it('drops the entry when the payload is missing entirely', async () => {
+    const id = expectOk<string>(await invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, undefined))
+    expect(id).toBe('')
+  })
+
+  it('re-validates context per-key, dropping a case name sent under caseId', async () => {
+    // 'OperationBlackbird' passes the generic ident() rule but fails caseId's
+    // uuid format — the exact leak this handler exists to close (see
+    // logSafe.test.ts for context()'s own dev/packaged behaviour). In this
+    // dev-mode test environment (electron.app.isPackaged is mocked false
+    // above), logSafe's context() throws on that rejection, and the handler
+    // must catch it and drop the WHOLE context rather than propagate the
+    // throw or silently coerce the value.
+    await invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, {
+      level: 'info',
+      code: 'query.failed',
+      context: { caseId: 'OperationBlackbird' }
+    })
+    flushLogger()
+    // The offending key is dropped, not coerced or passed through — the
+    // resulting context is empty rather than containing a case name.
+    expect(readRecentEntries(1)[0].context).toEqual({})
+  })
+
+  it('records a validated error name, never a raw string, for a recognised ERROR_NAMES member', async () => {
+    await invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, {
+      level: 'error',
+      code: 'query.failed',
+      error: 'TypeError'
+    })
+    flushLogger()
+    expect(readRecentEntries(1)[0].error).toEqual({ name: 'TypeError', code: null, stack: null })
+  })
+
+  it('maps an unrecognised error name to UnknownError rather than passing it through', async () => {
+    await invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, {
+      level: 'error',
+      code: 'query.failed',
+      error: 'CaseNameLookingError'
+    })
+    flushLogger()
+    expect(readRecentEntries(1)[0].error?.name).toBe('UnknownError')
+  })
+
+  it('omits the error field when no error is given', async () => {
+    await invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, { level: 'info', code: 'query.failed' })
+    flushLogger()
+    expect(readRecentEntries(1)[0].error).toBeUndefined()
+  })
+
+  it('diagnostics:recent reads back the tail of the durable log', async () => {
+    await invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, { level: 'info', code: 'query.failed' })
+    await invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, { level: 'info', code: 'mutation.failed' })
+    const entries = expectOk<LogEntry[]>(await invoke(IPC_CHANNELS.DIAGNOSTICS_RECENT, 50))
+    expect(entries).toHaveLength(2)
+  })
+
+  it('diagnostics:recent clamps an out-of-range or non-numeric limit to the default', async () => {
+    for (let i = 0; i < 3; i++) {
+      await invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, { level: 'info', code: 'query.failed' })
+    }
+    const viaNegativeLimit = expectOk<LogEntry[]>(await invoke(IPC_CHANNELS.DIAGNOSTICS_RECENT, -5))
+    expect(viaNegativeLimit).toHaveLength(3)
+    const viaStringLimit = expectOk<LogEntry[]>(
+      await invoke(IPC_CHANNELS.DIAGNOSTICS_RECENT, 'not-a-number')
+    )
+    expect(viaStringLimit).toHaveLength(3)
+  })
+
+  it('diagnostics:revealLog reveals the current log file via the shell', async () => {
+    await invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, { level: 'info', code: 'query.failed' })
+    expectOk(await invoke(IPC_CHANNELS.DIAGNOSTICS_REVEAL_LOG))
+    expect(showItemInFolder).toHaveBeenCalledWith(getLogPath())
+  })
+
+  it('diagnostics:lastSession reports null when no unclean session is on record', async () => {
+    const result = expectOk<SessionRecord | null>(
+      await invoke(IPC_CHANNELS.DIAGNOSTICS_LAST_SESSION)
+    )
+    expect(result).toBeNull()
+  })
+
+  it('diagnostics:lastSession surfaces an unclean prior session recorded in the log dir', async () => {
+    // The log dir is created lazily on first flush, not by initLogger itself —
+    // write and flush an entry first so it exists to hold sessions.json.
+    await invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, { level: 'info', code: 'query.failed' })
+    flushLogger()
+
+    const record = {
+      sessionId: 'aaaa1111-bbbb-2222-cccc-333344445555',
+      startedAt: '2026-01-01T00:00:00.000Z',
+      endedAt: null,
+      version: '1.0.0',
+      platform: 'win32',
+      installFormat: 'nsis',
+      cleanExit: false
+    }
+    writeFileSync(join(getLogDir(), 'sessions.json'), JSON.stringify([record]))
+
+    const result = expectOk<{ sessionId: string } | null>(
+      await invoke(IPC_CHANNELS.DIAGNOSTICS_LAST_SESSION)
+    )
+    expect(result?.sessionId).toBe(record.sessionId)
+  })
+})
+
+describe('ipcHandlers — diagnostics create report', () => {
+  // Reuses the real logger/db/installation-id services already initialised in
+  // the outer beforeEach, the same way the diagnostics-logging block above
+  // does — the point of this test is that the handler actually reaches disk.
+  beforeEach(() => {
+    initLogger(userDataPath, 'report-test-session')
+  })
+
+  afterEach(() => {
+    disposeLogger()
+  })
+
+  it('writes the bundle to the chosen path, reveals it, and returns that path', async () => {
+    const target = join(userDataPath, 'report.zip')
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: target })
+
+    const result = expectOk<BugReportResult | null>(
+      await invoke(IPC_CHANNELS.DIAGNOSTICS_CREATE_REPORT, {
+        whatYouDid: 'Captured a page',
+        whatYouExpected: 'It saves',
+        whatHappened: 'Nothing happened'
+      })
+    )
+
+    expect(result?.path).toBe(target)
+    expect(existsSync(target)).toBe(true)
+    expect(showItemInFolder).toHaveBeenCalledWith(target)
+  })
+
+  it('returns null and writes nothing when the save dialog is cancelled', async () => {
+    showSaveDialog.mockResolvedValueOnce({ canceled: true, filePath: undefined })
+
+    const result = expectOk<BugReportResult | null>(
+      await invoke(IPC_CHANNELS.DIAGNOSTICS_CREATE_REPORT, {
+        whatYouDid: 'x',
+        whatYouExpected: 'y',
+        whatHappened: 'z'
+      })
+    )
+
+    expect(result).toBeNull()
+    expect(showItemInFolder).not.toHaveBeenCalled()
   })
 })

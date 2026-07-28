@@ -187,12 +187,14 @@ Organized by feature under `src/renderer/components/`:
 All design docs, specs, and implementation plans live under `docs/` per the layout in `docs/README.md`. Canonical paths:
 
 - **Specs / design briefs / spikes** → `docs/specs/YYYY-MM-DD-<slug>-design.md` (or `-spike.md`, `-brief.md`, `-assessment.md`) — **tracked**
-- **Implementation plans / checklists** → `docs/plans/YYYY-MM-DD-<slug>.md` — **tracked (docs-only commits)**
+- **Implementation plans / checklists** → `docs/plans/YYYY-MM-DD-<slug>.md` — **tracked**
 - **Long-lived reference** → `docs/reference/<topic>.md` (no date prefix) — **tracked**
 - **Architecture decisions** → `docs/adr/NNNN-<slug>.md` — **tracked**
 - **Superseded** → `docs/archive/` (preserve original filename) — **tracked**
 
-**`docs/plans/` is tracked (since July 2026).** Plans are still author-time working notes: they get checked off and go stale, and staleness is expected. Commit them in docs-only commits for history; never bundle them into a `src/**` feature PR. Tracked durable docs (specs, ADRs, reference) **must be committed in their own PR** — never bundled with a `src/**` feature change.
+**`docs/plans/` is tracked (since July 2026).** Plans are still author-time working notes: they get checked off and go stale, and staleness is expected.
+
+**Docs may ship in the same PR as the code they describe.** There is no requirement to split specs, plans, ADRs, or reference docs onto their own PR or their own commit. Bundling a doc with the `src/**` change it documents is normal and preferred — a guide for a feature that has not merged yet is worth less on its own, and the split costs more than it returns.
 
 **Override for agentic tooling:** When a skill or agent specifies a different default path (e.g. Superpowers' `docs/superpowers/specs/` and `docs/superpowers/plans/`), treat the canonical paths above as the user-preference override. Write specs to `docs/specs/` and plans to `docs/plans/`. The legacy `docs/superpowers/` tree is frozen — do not add new files there.
 

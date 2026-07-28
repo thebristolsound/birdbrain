@@ -367,6 +367,7 @@ export const LOG_CODES = [
   // is a signal to give that call site a real code.
   'app.unclassified_error',
   'app.startup_failed',
+  'app.bug_report_failed',
   'app.installation_id'
 ] as const
 export type LogCode = (typeof LOG_CODES)[number]

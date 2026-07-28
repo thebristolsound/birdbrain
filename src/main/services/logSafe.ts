@@ -200,17 +200,25 @@ type ContextFormat = 'number' | 'boolean' | RegExp | readonly string[]
 // corresponding call site can legitimately produce, so a value outside it is a
 // bug or an attack, never a legitimate log.
 
-// The first segment of every key in queries.ts's queryKeys factory.
-const QUERY_DOMAINS = [
+// The first segment of every query key in the renderer. Most come from
+// queries.ts's queryKeys factory, but three are declared inline in components —
+// deriving this list from the factory alone silently drops the `domain` field
+// from those subsystems' query.failed entries, which is the one field naming
+// what broke. tests/main/services/queryDomains.test.ts scans the renderer and
+// fails if a key appears there but not here.
+export const QUERY_DOMAINS = [
+  'analysis',
   'annotations',
   'appVersion',
   'captureCounts',
   'captures',
   'cases',
+  'diagnostics',
   'extractedData',
   'identity',
   'notes',
   'openRouterModels',
+  'recaptureQueue',
   'search',
   'selectors',
   'session',
@@ -223,7 +231,7 @@ const QUERY_DOMAINS = [
 
 // Every ErrorBoundary `source` in the renderer. Adding a boundary means adding
 // its name here — one reviewable line, the same gate as LOG_CODES.
-const ERROR_BOUNDARIES = ['root', 'captureViewer'] as const
+const ERROR_BOUNDARIES = ['root', 'content', 'captureViewer'] as const
 
 // IPC channel names are dotted/colon-separated, so they do not fit IDENT
 // anyway; this pattern pins the shape without importing @shared/ipc (which

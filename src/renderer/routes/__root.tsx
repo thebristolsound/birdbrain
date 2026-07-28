@@ -116,30 +116,40 @@ const rootRoute = createRootRoute({
 
     return (
       <MotionProvider>
-        <div
-          data-testid="app-ready"
-          className="flex h-screen flex-col bg-canvas text-text-secondary"
-        >
-          <TopBar />
-          <div className="flex flex-1 overflow-hidden">
-            {showSidebar && <Sidebar />}
-            <main className="flex-1 overflow-hidden bg-canvas">
-              <ErrorBoundary source="root">
-                <Outlet />
-              </ErrorBoundary>
-            </main>
+        {/* Two nested boundaries, deliberately. The inner one around <Outlet />
+            keeps the chrome alive when a route blows up — the tester can still
+            navigate away. This outer one is the last resort: a render failure in
+            TopBar, Sidebar, CommandPalette, the onboarding overlay or the
+            diagnostic components is outside the inner boundary and would
+            otherwise blank the renderer with no react.render_error recorded. */}
+        <ErrorBoundary source="root">
+          <div
+            data-testid="app-ready"
+            className="flex h-screen flex-col bg-canvas text-text-secondary"
+          >
+            <TopBar />
+            <div className="flex flex-1 overflow-hidden">
+              {showSidebar && <Sidebar />}
+              <main className="flex-1 overflow-hidden bg-canvas">
+                <ErrorBoundary source="content">
+                  <Outlet />
+                </ErrorBoundary>
+              </main>
+            </div>
           </div>
-        </div>
-        <CommandPalette />
-        <CrashRecoveryPrompt />
-        <ReportProblemDialog
-          open={reportOpen}
-          onOpenChange={setReportOpen}
-          correlationId={reportCorrelationId}
-        />
+          <CommandPalette />
+          <CrashRecoveryPrompt />
+          <ReportProblemDialog
+            open={reportOpen}
+            onOpenChange={setReportOpen}
+            correlationId={reportCorrelationId}
+          />
+        </ErrorBoundary>
         {/* Every user-visible failure notice routes through notify.ts, which
             renders here. Mounted once at the root so a toast raised from a
-            mutation, a query, or the main-process bridge survives navigation. */}
+            mutation, a query, or the main-process bridge survives navigation —
+            and kept OUTSIDE the boundary above so the toast describing a shell
+            crash can still render after that shell is gone. */}
         <Toaster
           position="bottom-right"
           closeButton

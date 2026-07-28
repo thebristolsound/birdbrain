@@ -87,6 +87,15 @@ app.on('render-process-gone', (_event, contents, details) => {
   const win = BrowserWindow.fromWebContents(contents)
   if (!win || win.isDestroyed()) return
 
+  // Only the visible main window gets a recovery dialog. renderPageInHiddenWindow
+  // creates a `show: false` offscreen window per background recapture, and a
+  // hostile or memory-heavy captured page crashing that renderer is a recapture
+  // failure, not an application crash: the dialog would be parented to a window
+  // the tester cannot see, and 'Reload' would reload the capture rather than the
+  // UI. The recapture lifecycle owns those failures. The entry is still logged
+  // above either way.
+  if (win !== mainWindow) return
+
   const { response } = dialog.showMessageBoxSync
     ? {
         response: dialog.showMessageBoxSync(win, {
@@ -103,11 +112,20 @@ app.on('render-process-gone', (_event, contents, details) => {
 })
 
 app.on('child-process-gone', (_event, details) => {
+  // Same ordinary-exit classification as render-process-gone above, and for
+  // the same reason: both events draw from PROCESS_GONE_REASONS, and
+  // mainLogBridge turns every main-process error into a toast carrying a
+  // 'Report this' action. A GPU or utility helper shutting down cleanly during
+  // a normal quit would otherwise be presented to the tester as a failure
+  // worth reporting. Still recorded at info — knowing a helper went away is
+  // useful context around a nearby real failure.
+  const ordinary = details.reason === 'clean-exit' || details.reason === 'killed'
+  const level = ordinary ? 'info' : 'error'
   // tag(), NOT ident(): Electron's child-process type labels contain spaces
   // ('Pepper Plugin', 'Sandbox helper'), which ident() rejects — and a
   // rejection throws outside production, escalating a child-process failure
   // into a fatal main-process exception from inside the crash handler itself.
-  logger.error('app', 'app.child_process_gone', {
+  logger[level]('app', 'app.child_process_gone', {
     processType: tag(details.type, 'childProcessType'),
     reason: tag(details.reason, 'childGoneReason'),
     exitCode: details.exitCode

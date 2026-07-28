@@ -123,6 +123,7 @@ const CODE_LABELS: Record<LogCode, string> = {
   'react.render_error': 'This part of the app failed to render',
   'app.unclassified_error': 'Something went wrong',
   'app.startup_failed': 'Birdbrain could not start',
+  'app.bug_report_failed': 'Could not save the diagnostic report',
   'app.installation_id': 'Installation identified',
   // --- appended: labels for the real console.* call sites Task 1 migrated ---
   'captureServer.selector_create_failed': "Couldn't create the selector",

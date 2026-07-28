@@ -7,7 +7,7 @@ import { Button } from '@renderer/components/ui'
 // `string` and put a page title on disk. Adding a boundary means adding its
 // name here AND to ERROR_BOUNDARIES in logSafe.ts — the compile-time half and
 // the untrusted-boundary half of the same allowlist.
-export type ErrorBoundarySource = 'root' | 'captureViewer'
+export type ErrorBoundarySource = 'root' | 'content' | 'captureViewer'
 
 interface Props {
   source: ErrorBoundarySource

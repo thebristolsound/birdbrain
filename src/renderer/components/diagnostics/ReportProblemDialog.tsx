@@ -10,6 +10,7 @@ import {
   Label,
   Textarea
 } from '@renderer/components/ui'
+import { notify } from '@renderer/lib/notify'
 
 interface ReportProblemDialogProps {
   open: boolean
@@ -57,6 +58,18 @@ export function ReportProblemDialog({
       // null means the tester cancelled the save-file dialog — leave this
       // dialog open with what they typed intact so they can try again.
       if (result) onOpenChange(false)
+    } catch (cause) {
+      // An unwritable destination, a full disk, or a failure building the zip
+      // rejects here. Without this catch the rejection is unhandled (the submit
+      // handler is invoked with `void`), the dialog just stops spinning, and the
+      // tester is given no reason and no next step — in the one workflow whose
+      // entire job is reporting that something went wrong. notify.error is both
+      // visible and durable, so the failure to file a report is itself in the
+      // log. The dialog stays open and the typed text is untouched.
+      notify.error('Could not save the diagnostic report. Try a different folder.', {
+        code: 'app.bug_report_failed',
+        cause
+      })
     } finally {
       setSubmitting(false)
     }

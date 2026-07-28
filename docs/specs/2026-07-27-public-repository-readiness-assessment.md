@@ -19,7 +19,7 @@
 
 ## Methodology And Sources Overview
 
-This assessment used a July 2026 snapshot of `/home/matt/dev/personal/birdbrain` and
+This assessment used a July 2026 snapshot of a local checkout of the repository and
 current authoritative web guidance, while retaining historically important definitions and
 Git practices. The local review was read-only except for this report. It inspected tracked file
 names, the current branch and recent history, unique commit-author email addresses, community
@@ -49,9 +49,9 @@ privacy law, export controls, or contractual confidentiality are material.
 
 #### Visibility Is A Disclosure Boundary, Not A Reversible Experiment
 
-GitHub’s current visibility documentation says a private-to-public change makes the code
+GitHub's current visibility documentation says a private-to-public change makes the code
 available to everyone, permits anyone to fork it, publishes repository activity, exposes Actions
-history and logs, disables all push rulesets, and erases stars and watchers. Reusable or required
+history and logs, may affect repository rulesets, and erases stars and watchers. Reusable or required
 workflow paths from other private organization repositories may also appear in logs. These
 platform-specific consequences justify exporting a settings inventory and reviewing workflow
 runs and artifacts before cutover—not merely auditing the Git tree. **Confidence: high**, because
@@ -156,16 +156,20 @@ The live repository setting gives workflows read-only permissions by default and
 allows all Actions and does not require SHA pinning.
 All inspected third-party and GitHub-maintained Actions use movable tags such as
 `actions/checkout@v6`, `pnpm/action-setup@v6`, and `softprops/action-gh-release@v3`. Pin each to a
-reviewed full SHA, retain a comment with the human-readable release, and let Dependabot update the
-SHA. Review shell interpolations, artifact paths, caches, and release uploads for attacker-
-controlled values. Fork PRs should run only the minimal read-only test set until a maintainer
-authorizes anything privileged.
+reviewed full SHA, retain a comment with the human-readable release, and enable Dependabot version
+updates to refresh the SHA. Note that while Dependabot version updates can update SHA-pinned
+Actions, Dependabot vulnerability alerts do not cover SHA-pinned Actions; a separate, reviewed
+monitoring and update process is needed for security advisories affecting pinned Actions. Review
+shell interpolations, artifact paths, caches, and release uploads for attacker-controlled values.
+Fork PRs should run only the minimal read-only test set until a maintainer authorizes anything
+privileged.
 
-The visibility change itself disables push rulesets, according to GitHub. Branch rules and
+The visibility change may affect repository rulesets, according to GitHub. Branch rules and
 rulesets overlap but are not identical; rulesets can combine and make active constraints visible
-to readers. Export the current settings and immediately verify required reviews, required checks,
-force-push/deletion restrictions, signed-commit policy if desired, tag protection, merge policy,
-and administrator bypass after publication. ([GitHub, n.d.](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets))
+to readers. Export the current settings and immediately verify that branch and tag rulesets remain
+effective for the public repository, ensuring required reviews, required checks, force-push/deletion
+restrictions, signed-commit policy if desired, tag protection, merge policy, and administrator
+bypass settings are all properly configured after publication. ([GitHub, n.d.](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets))
 
 For package/release boundaries, distinguish “repository public” from “package published.”
 Birdbrain is an application (`package.json` has no `private: true`) and uses GitHub Releases, not
@@ -229,9 +233,9 @@ and coordinated publication. ([GitHub, n.d.](https://docs.github.com/en/code-sec
 ## Data, Metrics, And Concrete Evidence
 
 - GitHub documents at least six immediate private-to-public effects relevant here: worldwide code
-  visibility, unrestricted forking, public activity, public Actions logs/history, disabled push
-  rulesets, and erased stars/watchers. These must be checked as platform state, not inferred from
-  Git contents. ([GitHub, n.d.](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/managing-repository-settings/setting-repository-visibility))
+  visibility, unrestricted forking, public activity, public Actions logs/history, potential changes
+  to repository rulesets, and erased stars/watchers. These must be checked as platform state, not
+  inferred from Git contents. ([GitHub, n.d.](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/managing-repository-settings/setting-repository-visibility))
 - The inspected Birdbrain repository contains 545 tracked files and three GitHub Actions workflow
   files (`ci.yml`, `release.yml`, and `security.yml`). No tracked `.env` was found; two tracked PEM
   files are certificate fixtures, not private keys.
@@ -283,9 +287,9 @@ and coordinated publication. ([GitHub, n.d.](https://docs.github.com/en/code-sec
   never execute fork code in a privileged trigger.
 - Add CONTRIBUTING, a code of conduct with an enforceable contact path, issue forms, a PR template,
   and ownership/maintainer expectations. Keep promises proportionate to solo-maintainer capacity.
-- At cutover, re-enable or replace disabled push rulesets, turn on Dependabot and code scanning,
-  enable private vulnerability reporting, verify security notifications, and test the full
-  disclosure path with a harmless draft report.
+- At cutover, verify and re-apply branch and tag rulesets as needed for the public repository,
+  turn on Dependabot and code scanning, enable private vulnerability reporting, verify security
+  notifications, and test the full disclosure path with a harmless draft report.
 - From a logged-out session, inspect the repository root, commit patches, branches/tags, Actions
   logs, releases, security tab, community profile, and downloadable artifacts. Treat any
   unexpected exposure as an incident, not a documentation cleanup.

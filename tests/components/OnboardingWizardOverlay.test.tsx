@@ -15,6 +15,9 @@ vi.mock('@tanstack/react-router', () => ({
 vi.mock('@renderer/lib/queries', () => ({
   useCasesMutations: () => ({
     create: { mutateAsync: createMutateSpy }
+  }),
+  useSettingsMutations: () => ({
+    update: { mutate: vi.fn(), mutateAsync: settingsUpdateSpy }
   })
 }))
 

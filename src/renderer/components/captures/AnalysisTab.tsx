@@ -10,6 +10,8 @@ import { useNavigate } from '@tanstack/react-router'
 import type { CaptureAnalysis, BirdbrainSettings, TokenUsage } from '@shared/types'
 import { useOpenRouterModels } from '@renderer/hooks/useOpenRouterModels'
 import { presets } from '@renderer/lib/motion'
+import { settingsQueryOptions } from '@renderer/lib/api/settings'
+import { openCaptureExternal } from '@renderer/lib/api/system'
 
 interface AnalysisTabProps {
   captureId: string
@@ -33,7 +35,7 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
 
   // Load settings once; selectedModel seeds from the stored default.
   useEffect(() => {
-    window.birdbrain.settings.get().then((s) => {
+    queryClient.fetchQuery(settingsQueryOptions).then((s) => {
       setSettings(s)
       setSelectedModel(s.defaultModel)
     })
@@ -320,7 +322,7 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
                         rel="noreferrer noopener"
                         onClick={(e) => {
                           e.preventDefault()
-                          if (href) window.birdbrain.captures.openExternal(href)
+                          if (href) openCaptureExternal(href)
                         }}
                       >
                         {children}

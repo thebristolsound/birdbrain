@@ -22,7 +22,8 @@ import {
   notesQueryOptions,
   useNotesMutations,
   waybackLookupQueryOptions,
-  useRecaptureMutations
+  useRecaptureMutations,
+  useVerifyCapture
 } from '@renderer/lib/queries'
 import { useAppStore } from '@renderer/stores/appStore'
 import { useFavorites } from '@renderer/hooks/useFavorites'
@@ -36,7 +37,6 @@ import { useCaptureTagEditor } from '@renderer/components/captures/useCaptureTag
 import { useInlineNoteEditor } from '@renderer/components/captures/useInlineNoteEditor'
 import { NoteEditor } from '@renderer/components/notes/NoteEditor'
 import { useNoteEditor } from '@renderer/components/notes/useNoteEditor'
-import { useVerifyMutation } from '@renderer/components/captures/useVerifyMutation'
 import { getProvenanceColor } from '@renderer/components/captures/getProvenanceColor'
 import { ForensicsTab } from '@renderer/components/captures/ForensicsTab'
 import { WaybackTab } from '@renderer/components/captures/WaybackTab'
@@ -76,7 +76,7 @@ export function CaptureDetailsPanel({
   const { create: createNote, update: updateNote } = useNotesMutations(caseId)
   const { favorites, toggleFavorite } = useFavorites(caseId)
   const { tags } = useCaptureTagEditor(capture.id)
-  const verify = useVerifyMutation(capture.id, caseId)
+  const verify = useVerifyCapture(capture.id, caseId)
   const { enqueue } = useRecaptureMutations(caseId)
   // enabled:false — reads whatever the last explicit "Look up" cached, never fetches.
   const lookup = useQuery(waybackLookupQueryOptions(capture.id))

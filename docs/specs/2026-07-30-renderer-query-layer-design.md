@@ -42,15 +42,45 @@ src/renderer/lib/api/
   extractedData.ts  annotations.ts  archive.ts  settings.ts       queries.ts
 
   db.ts  ai.ts  export.ts  recapture.ts  updates.ts            ← new; these
-  system.ts                                                       domains are
-  events.ts                                                       bypassed today
+  diagnostics.ts  system.ts  events.ts                            domains are
+                                                                  bypassed today
 ```
 
 - `system.ts` — one-shot commands with no cache identity: `openCaptureExternal`,
   `downloadCapture`, `downloadPdf`, `downloadScreenshot`, `revealInFolder`,
   `openPath`, `openExtensionFolder`, `chooseStoragePath`.
-- `events.ts` — all nine `onX` subscriptions plus the event→invalidation table,
-  moved verbatim out of `useServerStatus` and `useUpdateStatus`.
+- `diagnostics.ts` — `diagnosticsQueryOptions` for `DiagnosticsPanel.tsx:94`.
+  (`DiagnosticsPanel.tsx:224` is a `shell.openPath` call and belongs to
+  `system.ts`.)
+- `events.ts` — owns **all nine** `onX` subscriptions. See below: they split into
+  two shapes, and only one of them carries the invalidation table.
+
+### Two kinds of subscription
+
+The nine `onX` channels are not interchangeable, and the seam must expose both
+shapes or the component-local sites cannot migrate:
+
+**Global invalidation subscriptions** — app-level, fire-and-forget, drive cache
+invalidation and routing. `onExtensionConnection`, `onSessionStateChanged`,
+`onCaptureActivity`, `onNewCapture`, `onSelectorRematched`,
+`onDeepLinkNavigate` (all in `useServerStatus.ts`) and `onUpdateStatus` (in
+`useUpdateStatus.ts`). These move verbatim into a single
+`subscribeToMainEvents()` that owns the event→invalidation table.
+
+**Component-local progress subscriptions** — parameterized, filter by `caseId`,
+and write to a component's own `useState`. `onArchiveProgress`
+(`ImportCaseDialog.tsx:30`, `ExportMenu.tsx:48`) and `onExportProgress`
+(`ExportDialog.tsx:51`). These must **not** be folded into
+`subscribeToMainEvents()` — they are per-instance and have no cache identity.
+`events.ts` instead exports thin typed wrappers —
+`subscribeToArchiveProgress(handler)`, `subscribeToExportProgress(handler)` —
+that each component calls from its own `useEffect`, returning the unsubscribe
+unchanged.
+
+Preserve `ImportCaseDialog`'s always-on subscription invariant (documented in a
+comment at the call site): the subscription must be established on mount, not
+gated on the import starting, or a progress event fired immediately after
+`mutateAsync` is missed.
 
 ### Wrapper shape by texture
 
@@ -150,24 +180,45 @@ Six PRs. Each is independently shippable and single-purpose.
 4. **Remaining domains.** `settings`, `system`, `ai`, `export`, `recapture`,
    `selectors`, `diagnostics` + all remaining call sites. Mechanical commits,
    then the AnalysisTab commit.
-5. **`events.ts`.** Verbatim move of the subscription logic; `useServerStatus`
-   and `useUpdateStatus` shrink to mount-only hooks. Preserve the existing
-   comments — they carry invariants (partial-rematch invalidation,
-   navigate-only-if-not-on-case).
-6. **Enforcement.** ESLint `no-restricted-syntax` on
-   `MemberExpression[object.name='window'][property.name='birdbrain']` for
-   `src/renderer/**`, ignoring `src/renderer/lib/api/**`. Rewrite imports to
-   domain modules and delete the barrel.
+5. **`events.ts`.** Both subscription shapes. `subscribeToMainEvents()` takes the
+   seven global invalidation subscriptions verbatim; `useServerStatus` and
+   `useUpdateStatus` shrink to mount-only hooks. The two progress wrappers land
+   here too, and `ImportCaseDialog`, `ExportMenu`, and `ExportDialog` switch to
+   them. Preserve the existing comments — they carry invariants
+   (partial-rematch invalidation, navigate-only-if-not-on-case, and
+   `ImportCaseDialog`'s always-on subscription).
+6. **Enforcement.** ESLint `no-restricted-syntax` for `src/renderer/**`, ignoring
+   `src/renderer/lib/api/**`. Rewrite imports to domain modules and delete the
+   barrel.
+
+   Three selectors, not one — dot access alone leaves two holes open:
+
+   ```javascript
+   // window.birdbrain / globalThis.window.birdbrain / w.birdbrain
+   "MemberExpression[property.name='birdbrain']",
+   // window['birdbrain'] — bracket access has property.value, not property.name
+   "MemberExpression[property.value='birdbrain']",
+   // const { birdbrain } = window
+   "ObjectPattern > Property[key.name='birdbrain']"
+   ```
+
+   Matching on `property` alone rather than `object.name='window'` is deliberate:
+   it catches aliased objects too, and `birdbrain` is not used as a property name
+   anywhere else in the repo, so false positives aren't a concern.
 
 The lint rule lands last deliberately: it cannot pass until the final straggler
 is wrapped. Any hit during PR 6 gets wrapped, never disabled.
+
+Note the destructuring selector overlaps the lazy-access constraint but does not
+subsume it: that constraint forbids *module-scope* capture for testability, while
+this selector forbids destructuring at any scope.
 
 ## Bypass inventory
 
 Re-grep before each PR — line numbers drift:
 
 ```bash
-grep -rn "window\.birdbrain" src/renderer --include=*.ts --include=*.tsx | grep -v "lib/api/"
+grep -rn "window\.birdbrain" src/renderer --include='*.ts' --include='*.tsx' | grep -v "lib/api/"
 ```
 
 As of 2026-07-30: 77 sites across 37 files. Grouped by owning domain below —
@@ -193,14 +244,17 @@ so the grep above is authoritative for completeness, not this list.
   `SelectorTableRow.tsx:48,49,55`, `SelectorsOverview.tsx:49`,
   `NewCaseWizard.tsx:73`, `useSelectorFilters.ts:15`
 - **ai:** `AnalysisTab.tsx:47,80,112`
-- **export:** `ExportDialog.tsx:37,51,73`
-- **updates:** `useUpdateStatus.ts:15,25,40,53,61`
-- **events:** `useServerStatus.ts:10,14,30,34,41,50`; `ImportCaseDialog.tsx:30`,
-  `ExportMenu.tsx:48` (onArchiveProgress)
+- **export:** `ExportDialog.tsx:37,73`
+- **updates:** `useUpdateStatus.ts:15,40,53,61`
+- **events, global:** `useServerStatus.ts:10,14,30,34,41,50`;
+  `useUpdateStatus.ts:25`
+- **events, component-local progress:** `ImportCaseDialog.tsx:30`,
+  `ExportMenu.tsx:48` (onArchiveProgress); `ExportDialog.tsx:51`
+  (onExportProgress)
+- **diagnostics:** `DiagnosticsPanel.tsx:94`
 - **session:** `CaseWorkspace.tsx:28`
 - **strays:** `Dashboard.tsx:61` (cases.inspectArchive),
-  `CaptureHealth.tsx:76,85,98` (recapture.queueStatus, testPipeline, testHttp),
-  `DiagnosticsPanel.tsx:94` (diagnostics.get)
+  `CaptureHealth.tsx:76,85,98` (recapture.queueStatus, testPipeline, testHttp)
 
 ## Corrections to the 2026-07-11 plan
 

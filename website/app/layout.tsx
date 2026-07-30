@@ -12,6 +12,11 @@ export const metadata: Metadata = {
     'Documentation for Birdbrain, a local-first web evidence capture tool for OSINT investigations.'
 }
 
+/**
+ * Renders the root layout for the application.
+ *
+ * @param children - The content rendered within the application provider.
+ */
 export default function Layout({ children }: LayoutProps<'/'>) {
   return (
     <html lang="en" suppressHydrationWarning>

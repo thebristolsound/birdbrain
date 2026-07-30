@@ -1,6 +1,11 @@
 import Link from 'next/link'
 import { appName, docsRoute, gitConfig } from '@/lib/shared'
 
+/**
+ * Renders the application homepage with documentation and repository links.
+ *
+ * @returns The homepage layout.
+ */
 export default function HomePage() {
   return (
     <main className="flex flex-1 flex-col items-center justify-center px-6 py-24 text-center">

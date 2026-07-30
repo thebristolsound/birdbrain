@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient, queryOptions } from '@tanstack/react-query'
+import { useMutation, useQueryClient, queryOptions, keepPreviousData } from '@tanstack/react-query'
 import type { QueryClient } from '@tanstack/react-query'
 import type {
   DbTableRowsParams,
@@ -18,7 +18,10 @@ export const dbStatsQueryOptions = queryOptions({
 export const dbTableRowsQueryOptions = (params: DbTableRowsParams) =>
   queryOptions({
     queryKey: queryKeys.dbTableRows(params.table, params.offset, params.limit),
-    queryFn: () => window.birdbrain.db.tableRows(params)
+    queryFn: () => window.birdbrain.db.tableRows(params),
+    // Table/page switches move to a not-yet-cached key; without this, data
+    // goes undefined and the table/pager disappear until the fetch resolves.
+    placeholderData: keepPreviousData
   })
 
 // restore/purgeArchived/cleanOrphans mutate rows across every table, so a

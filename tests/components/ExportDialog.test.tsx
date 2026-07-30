@@ -46,18 +46,7 @@ vi.mock('@renderer/hooks/useCompletionCelebration', () => ({
 }))
 
 import { ExportDialog } from '@renderer/components/export/ExportDialog'
-
-interface BirdbrainStub {
-  export: {
-    preflight: ReturnType<typeof vi.fn>
-    generateReport: ReturnType<typeof vi.fn>
-  }
-  shell: {
-    showItemInFolder: ReturnType<typeof vi.fn>
-    openPath: ReturnType<typeof vi.fn>
-  }
-  onExportProgress: ReturnType<typeof vi.fn>
-}
+import { fakeBridge } from '../renderer/fakeBridge'
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -96,11 +85,11 @@ describe('ExportDialog', () => {
       progressCb = cb
       return vi.fn()
     })
-    ;(window as unknown as { birdbrain: BirdbrainStub }).birdbrain = {
+    fakeBridge({
       export: { preflight, generateReport },
       shell: { showItemInFolder, openPath },
       onExportProgress
-    }
+    })
   })
 
   afterEach(() => {

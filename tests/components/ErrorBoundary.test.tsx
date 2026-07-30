@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
+import { fakeBridge } from '../renderer/fakeBridge'
 
 const log = vi.fn().mockResolvedValue('cid')
 
@@ -10,7 +11,7 @@ function Boom({ message = 'render exploded' }: { message?: string }): JSX.Elemen
 
 beforeEach(() => {
   vi.clearAllMocks()
-  vi.stubGlobal('birdbrain', { diagnostics: { log } })
+  fakeBridge({ diagnostics: { log } })
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 

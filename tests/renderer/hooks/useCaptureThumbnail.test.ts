@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
 import { useCaptureThumbnail } from '@renderer/hooks/useCaptureThumbnail'
+import { fakeBridge } from '../fakeBridge'
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -15,15 +16,9 @@ function deferred<T>() {
 
 type GetThumbnail = (id: string) => Promise<string | null>
 
-interface MockBirdbrain {
-  captures: { getThumbnail: GetThumbnail }
-}
-
 function setBirdbrain(getThumbnail: GetThumbnail): (id: string) => Promise<string | null> {
   const mock = vi.fn(getThumbnail)
-  ;(window as unknown as { birdbrain: MockBirdbrain }).birdbrain = {
-    captures: { getThumbnail: mock }
-  }
+  fakeBridge({ captures: { getThumbnail: mock } })
   return mock
 }
 
@@ -81,9 +76,7 @@ describe('useCaptureThumbnail', () => {
       .fn()
       .mockReturnValueOnce(first.promise)
       .mockResolvedValueOnce('SECOND')
-    ;(window as unknown as { birdbrain: MockBirdbrain }).birdbrain = {
-      captures: { getThumbnail }
-    }
+    fakeBridge({ captures: { getThumbnail } })
 
     const { result, rerender } = renderHook(({ id }) => useCaptureThumbnail(id), {
       initialProps: { id: 'cap-a' }

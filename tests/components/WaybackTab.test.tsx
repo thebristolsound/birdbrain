@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { WaybackTab } from '@renderer/components/captures/WaybackTab'
 import type { Capture } from '@shared/types'
+import { fakeBridge } from '../renderer/fakeBridge'
 
 const capture: Capture = {
   id: 'cap1',
@@ -16,16 +17,6 @@ const capture: Capture = {
   createdAt: '2020-01-15T12:00:01.000Z',
   format: 'mhtml',
   method: 'extension'
-}
-
-interface BirdbrainStub {
-  wayback: {
-    lookup: ReturnType<typeof vi.fn>
-    list: ReturnType<typeof vi.fn>
-    pin: ReturnType<typeof vi.fn>
-    unpin: ReturnType<typeof vi.fn>
-  }
-  captures: { openExternal: ReturnType<typeof vi.fn> }
 }
 
 function withClient(client: QueryClient) {
@@ -40,7 +31,7 @@ function renderTab() {
 }
 
 beforeEach(() => {
-  ;(window as unknown as { birdbrain: BirdbrainStub }).birdbrain = {
+  fakeBridge({
     wayback: {
       lookup: vi.fn().mockResolvedValue({
         snapshots: [
@@ -60,7 +51,7 @@ beforeEach(() => {
       unpin: vi.fn().mockResolvedValue(true)
     },
     captures: { openExternal: vi.fn().mockResolvedValue(undefined) }
-  }
+  })
 })
 
 afterEach(() => {

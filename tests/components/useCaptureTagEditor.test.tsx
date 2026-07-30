@@ -4,6 +4,7 @@ import { renderHook, waitFor, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { useCaptureTagEditor } from '@renderer/components/captures/useCaptureTagEditor'
+import { fakeBridge } from '../renderer/fakeBridge'
 
 const captureId = 'cap-1'
 
@@ -13,19 +14,9 @@ function withClient(client: QueryClient) {
   }
 }
 
-interface BirdbrainStub {
-  tags: {
-    list: ReturnType<typeof vi.fn>
-    getForCapture: ReturnType<typeof vi.fn>
-    addToCapture: ReturnType<typeof vi.fn>
-    removeFromCapture: ReturnType<typeof vi.fn>
-    create: ReturnType<typeof vi.fn>
-  }
-}
-
 describe('useCaptureTagEditor', () => {
   beforeEach(() => {
-    const stub: BirdbrainStub = {
+    fakeBridge({
       tags: {
         list: vi.fn().mockResolvedValue([
           { id: 't1', name: 'foo', color: '#fff' },
@@ -36,8 +27,7 @@ describe('useCaptureTagEditor', () => {
         removeFromCapture: vi.fn().mockResolvedValue(undefined),
         create: vi.fn().mockResolvedValue({ id: 't3', name: 'new', color: '#abc' })
       }
-    }
-    ;(window as unknown as { birdbrain: BirdbrainStub }).birdbrain = stub
+    })
   })
 
   it('loads tags + capture tags', async () => {
@@ -60,13 +50,15 @@ describe('useCaptureTagEditor', () => {
     await act(async () => {
       await result.current.toggleTag('t2')
     })
-    const stub = (window as unknown as { birdbrain: BirdbrainStub }).birdbrain
-    expect(stub.tags.addToCapture).toHaveBeenCalledWith({ captureId, tagId: 't2' })
+    expect(window.birdbrain.tags.addToCapture).toHaveBeenCalledWith({ captureId, tagId: 't2' })
 
     await act(async () => {
       await result.current.toggleTag('t1')
     })
-    expect(stub.tags.removeFromCapture).toHaveBeenCalledWith({ captureId, tagId: 't1' })
+    expect(window.birdbrain.tags.removeFromCapture).toHaveBeenCalledWith({
+      captureId,
+      tagId: 't1'
+    })
   })
 
   it('createTag invokes tags.create with provided name + color', async () => {
@@ -79,7 +71,6 @@ describe('useCaptureTagEditor', () => {
     await act(async () => {
       await result.current.createTag('new', '#abc')
     })
-    const stub = (window as unknown as { birdbrain: BirdbrainStub }).birdbrain
-    expect(stub.tags.create).toHaveBeenCalledWith({ name: 'new', color: '#abc' })
+    expect(window.birdbrain.tags.create).toHaveBeenCalledWith({ name: 'new', color: '#abc' })
   })
 })

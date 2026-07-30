@@ -216,20 +216,36 @@ this selector forbids destructuring at any scope.
 
 ## Bypass inventory
 
-Re-grep before each PR — line numbers drift. The check must cover all three
-access forms the lint rule forbids, not just dot access, or it undercounts:
+Re-grep before each PR — line numbers drift. This is a **heuristic for tracking
+progress, not a completeness check**; see the limits below.
 
 ```bash
 grep -rnE "window\.birdbrain|window\[['\"]birdbrain['\"]\]|\{[^}]*\bbirdbrain\b[^}]*\}[[:space:]]*=" \
-  src/renderer --include='*.ts' --include='*.tsx' | grep -v "lib/api/"
+  src/renderer --include='*.ts' --include='*.tsx' | grep -vE "^src/renderer/lib/(api/|queries\.ts)"
 ```
 
+Note the exclusion filter is **anchored to the path** (`^src/renderer/lib/…`). An
+unanchored `grep -v "lib/api/"` matches on line *content*, so a real violation
+with that string in a trailing comment is silently dropped:
+
+```
+const s = window.birdbrain.db.stats() // TODO move to lib/api/db.ts
+```
+
+Known limits of the line-oriented check: it cannot see a destructuring that spans
+lines, and it matches text rather than syntax, so a `birdbrain` mention inside a
+string or comment counts as a hit. Multiline *member* access is fine — the
+`window.birdbrain` fragment still lands on one line, which is how
+`ExportDialog.tsx:37` and `CaseWorkspace.tsx:28` are caught today.
+
 As of 2026-07-30 only dot access exists — bracket access, destructuring, and
-aliased objects all return zero — so the plain `window.birdbrain` grep happens to
-be complete today. It stops being complete the moment someone writes one of the
-other forms, which is exactly what the lint rule exists to prevent, so use the
-broader command. Once PR 6 lands, `pnpm lint` is the authoritative check, since it
-shares the selectors.
+aliased objects all return zero — so the count is trustworthy right now.
+
+**`pnpm lint` is the authoritative check once PR 6 lands**, because it shares the
+selectors and works on the AST. Until then no such rule exists to reuse, which is
+why the interim check is a grep rather than a bespoke AST script: the blind spots
+above are bounded (they require a *new* violation written in a form nothing in the
+tree currently uses), and PR 6 closes them permanently.
 
 77 sites across 37 files. Grouped below by **bridge namespace**, with the
 destination module marked — the two axes differ, because `system.ts`

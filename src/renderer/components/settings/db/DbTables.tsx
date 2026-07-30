@@ -52,6 +52,10 @@ export function DbTables() {
     setPage(0)
   }, [selectedTable])
 
+  useEffect(() => {
+    setError(null)
+  }, [selectedTable, page])
+
   function getPk(row: Record<string, unknown>): Record<string, string> {
     if (!data) return {}
     const pkCols = data.columns.filter((c) => c.pk)
@@ -78,11 +82,13 @@ export function DbTables() {
         }
         if (Object.keys(changedData).length === 0) {
           setEditModal({ open: false, mode: 'create' })
+          setError(null)
           return
         }
         await updateRow.mutateAsync({ table: selectedTable, pk, data: changedData })
       }
       setEditModal({ open: false, mode: 'create' })
+      setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed')
     }
@@ -92,6 +98,7 @@ export function DbTables() {
     try {
       await deleteRow.mutateAsync({ table: selectedTable, pk: deleteConfirm.pk })
       setDeleteConfirm({ open: false, pk: {} })
+      setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Delete failed')
     }

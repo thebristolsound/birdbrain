@@ -21,7 +21,12 @@ export const dbTableRowsQueryOptions = (params: DbTableRowsParams) =>
     queryFn: () => window.birdbrain.db.tableRows(params)
   })
 
+// restore/purgeArchived/cleanOrphans mutate rows across every table, so a
+// targeted invalidation would leave unrelated caches serving deleted rows.
 export function dbAdminMutationOptions(queryClient: QueryClient) {
+  const invalidateAll = () => {
+    queryClient.invalidateQueries()
+  }
   const invalidateStats = () => {
     queryClient.invalidateQueries({ queryKey: queryKeys.dbStats })
   }
@@ -39,11 +44,15 @@ export function dbAdminMutationOptions(queryClient: QueryClient) {
       onSuccess: invalidateStats
     },
     findOrphans: { mutationFn: () => window.birdbrain.db.findOrphans() },
-    purgeArchived: { mutationFn: () => window.birdbrain.db.purgeArchived() },
-    cleanOrphans: {
-      mutationFn: (report: OrphanReport) => window.birdbrain.db.cleanOrphans(report)
+    purgeArchived: {
+      mutationFn: () => window.birdbrain.db.purgeArchived(),
+      onSuccess: invalidateAll
     },
-    restore: { mutationFn: () => window.birdbrain.db.restore() },
+    cleanOrphans: {
+      mutationFn: (report: OrphanReport) => window.birdbrain.db.cleanOrphans(report),
+      onSuccess: invalidateAll
+    },
+    restore: { mutationFn: () => window.birdbrain.db.restore(), onSuccess: invalidateAll },
     createRow: {
       mutationFn: (params: DbCreateRowParams) => window.birdbrain.db.createRow(params),
       onSuccess: invalidateStatsAndRows

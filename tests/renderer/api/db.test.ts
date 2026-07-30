@@ -140,4 +140,41 @@ describe('dbAdminMutationOptions', () => {
     const opts = dbAdminMutationOptions(qc).findOrphans
     expect(opts.onSuccess).toBeUndefined()
   })
+
+  it('restore invalidates every query', async () => {
+    api.restore.mockResolvedValue({ restored: true })
+    const qc = new QueryClient()
+    const spy = vi.spyOn(qc, 'invalidateQueries')
+
+    const opts = dbAdminMutationOptions(qc).restore
+    const data = await opts.mutationFn()
+    opts.onSuccess?.(data, undefined as never, undefined, undefined as never)
+
+    expect(spy).toHaveBeenCalledWith()
+  })
+
+  it('purgeArchived invalidates every query', async () => {
+    api.purgeArchived.mockResolvedValue({ casesDeleted: 1, capturesDeleted: 2 })
+    const qc = new QueryClient()
+    const spy = vi.spyOn(qc, 'invalidateQueries')
+
+    const opts = dbAdminMutationOptions(qc).purgeArchived
+    const data = await opts.mutationFn()
+    opts.onSuccess?.(data, undefined as never, undefined, undefined as never)
+
+    expect(spy).toHaveBeenCalledWith()
+  })
+
+  it('cleanOrphans invalidates every query', async () => {
+    api.cleanOrphans.mockResolvedValue({ dbRecordsRemoved: 1, filesRemoved: 1 })
+    const qc = new QueryClient()
+    const spy = vi.spyOn(qc, 'invalidateQueries')
+
+    const report = { dbOrphans: [], fileOrphans: [] }
+    const opts = dbAdminMutationOptions(qc).cleanOrphans
+    const data = await opts.mutationFn(report)
+    opts.onSuccess?.(data, undefined as never, undefined, undefined as never)
+
+    expect(spy).toHaveBeenCalledWith()
+  })
 })

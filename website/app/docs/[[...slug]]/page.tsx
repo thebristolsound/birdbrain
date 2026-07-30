@@ -5,6 +5,12 @@ import { getMDXComponents } from '@/components/mdx'
 import type { Metadata } from 'next'
 import { createRelativeLink } from 'fumadocs-ui/mdx'
 
+/**
+ * Renders a documentation page for the requested route.
+ *
+ * @param props - Route parameters identifying the documentation page
+ * @returns The rendered documentation page
+ */
 export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
   const params = await props.params
   const page = source.getPage(params.slug)
@@ -28,10 +34,21 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
   )
 }
 
+/**
+ * Generates the static route parameters for the documentation pages.
+ *
+ * @returns The available documentation route parameters.
+ */
 export async function generateStaticParams() {
   return source.generateParams()
 }
 
+/**
+ * Generates metadata for a documentation page.
+ *
+ * @param props - Route properties containing the documentation page slug.
+ * @returns Metadata containing the page title and description.
+ */
 export async function generateMetadata(props: PageProps<'/docs/[[...slug]]'>): Promise<Metadata> {
   const params = await props.params
   const page = source.getPage(params.slug)

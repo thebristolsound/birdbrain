@@ -40,6 +40,7 @@ src/renderer/lib/api/
 
   cases.ts  captures.ts  tags.ts  selectors.ts  notes.ts       ← moved out of
   extractedData.ts  annotations.ts  archive.ts  settings.ts       queries.ts
+  session.ts
 
   db.ts  ai.ts  export.ts  recapture.ts  updates.ts            ← new; these
   diagnostics.ts  system.ts  events.ts                            domains are
@@ -215,46 +216,62 @@ this selector forbids destructuring at any scope.
 
 ## Bypass inventory
 
-Re-grep before each PR — line numbers drift:
+Re-grep before each PR — line numbers drift. The check must cover all three
+access forms the lint rule forbids, not just dot access, or it undercounts:
 
 ```bash
-grep -rn "window\.birdbrain" src/renderer --include='*.ts' --include='*.tsx' | grep -v "lib/api/"
+grep -rnE "window\.birdbrain|window\[['\"]birdbrain['\"]\]|\{[^}]*\bbirdbrain\b[^}]*\}[[:space:]]*=" \
+  src/renderer --include='*.ts' --include='*.tsx' | grep -v "lib/api/"
 ```
 
-As of 2026-07-30: 77 sites across 37 files. Grouped by owning domain below —
-a few sites are dual-natured (`CreateSelectorCard.tsx:79` is a `captures` call
-inside selector preview logic) and are listed where the migration work lands,
-so the grep above is authoritative for completeness, not this list.
+As of 2026-07-30 only dot access exists — bracket access, destructuring, and
+aliased objects all return zero — so the plain `window.birdbrain` grep happens to
+be complete today. It stops being complete the moment someone writes one of the
+other forms, which is exactly what the lint rule exists to prevent, so use the
+broader command. Once PR 6 lands, `pnpm lint` is the authoritative check, since it
+shares the selectors.
 
-- **db:** `DbStats.tsx:22`; `DbTables.tsx:47,81,97,108`;
+77 sites across 37 files. Grouped below by **bridge namespace**, with the
+destination module marked — the two axes differ, because `system.ts`
+deliberately cuts across namespaces to collect one-shot commands. Migrate to the
+destination, not to the namesake module.
+
+- **db** → `db.ts`: `DbStats.tsx:22`; `DbTables.tsx:47,81,97,108`;
   `DbUtilities.tsx:54,72,92,110,134,153,175,197`
-- **settings:** `AnalysisTab.tsx:36`, `useSessionRestore.ts:72` (get);
-  `CaseWorkspace.tsx:32,60`, `OnboardingWizard.tsx:41`, `useTheme.ts:33`,
-  `AppearanceConfig.tsx:28` (update); `StorageConfig.tsx:14` (chooseStoragePath);
-  `AIConfig.tsx:28` (testOpenRouter)
-- **captures one-shots:** openExternal — `AnalysisTab.tsx:323`,
+- **settings** → `settings.ts`: `AnalysisTab.tsx:36`, `useSessionRestore.ts:72`
+  (get); `CaseWorkspace.tsx:32,60`, `OnboardingWizard.tsx:41`, `useTheme.ts:33`,
+  `AppearanceConfig.tsx:28` (update); `AIConfig.tsx:28` (testOpenRouter).
+  **→ `system.ts`:** `StorageConfig.tsx:14` (chooseStoragePath — a dialog
+  command, not a settings write)
+- **captures one-shots** → `system.ts`: openExternal — `AnalysisTab.tsx:323`,
   `WaybackTab.tsx:26`, `DataExplorer.tsx:62`, `NoteCard.tsx:111`,
   `AIConfig.tsx:141`, `captures.tsx:87`; download —
-  `CaptureDownloadMenu.tsx:57,102,123`; verify — `useVerifyMutation.ts:10`,
+  `CaptureDownloadMenu.tsx:57,102,123`.
+  **→ `captures.ts`:** verify — `useVerifyMutation.ts:10`,
   `ProvenanceBadge.tsx:63`; thumbnail — `useCaptureThumbnail.ts:18`
-- **shell / extension:** `ExportComplete.tsx:27,36`, `ExportMenu.tsx:170`,
-  `DiagnosticsPanel.tsx:224`, `InstallExtensionStepper.tsx:35`,
-  `CapturesGettingStarted.tsx:43`, `ExtensionBanner.tsx:12`
-- **selectors:** `CreateSelectorCard.tsx:54,79,85`, `SelectorTable.tsx:62,67`,
-  `SelectorTableRow.tsx:48,49,55`, `SelectorsOverview.tsx:49`,
-  `NewCaseWizard.tsx:73`, `useSelectorFilters.ts:15`
-- **ai:** `AnalysisTab.tsx:47,80,112`
-- **export:** `ExportDialog.tsx:37,73`
-- **updates:** `useUpdateStatus.ts:15,40,53,61`
-- **events, global:** `useServerStatus.ts:10,14,30,34,41,50`;
-  `useUpdateStatus.ts:25`
-- **events, component-local progress:** `ImportCaseDialog.tsx:30`,
-  `ExportMenu.tsx:48` (onArchiveProgress); `ExportDialog.tsx:51`
-  (onExportProgress)
-- **diagnostics:** `DiagnosticsPanel.tsx:94`
-- **session:** `CaseWorkspace.tsx:28`
-- **strays:** `Dashboard.tsx:61` (cases.inspectArchive),
+- **shell / extension** → `system.ts` (all): `ExportComplete.tsx:27,36`,
+  `ExportMenu.tsx:170`, `DiagnosticsPanel.tsx:224` (shell.openPath),
+  `InstallExtensionStepper.tsx:35`, `CapturesGettingStarted.tsx:43`,
+  `ExtensionBanner.tsx:12`
+- **selectors** → `selectors.ts`: `CreateSelectorCard.tsx:54`,
+  `SelectorTable.tsx:62,67`, `SelectorTableRow.tsx:48`,
+  `SelectorsOverview.tsx:49`, `NewCaseWizard.tsx:73`, `useSelectorFilters.ts:15`.
+  **→ `captures.ts`** (via `fetchQuery`, mechanical wrap only):
+  `CreateSelectorCard.tsx:79,85`, `SelectorTableRow.tsx:49,55`
+- **ai** → `ai.ts`: `AnalysisTab.tsx:47,80,112`
+- **export** → `export.ts`: `ExportDialog.tsx:37,73`
+- **updates** → `updates.ts`: `useUpdateStatus.ts:15,40,53,61`
+- **events, global** → `events.ts` (`subscribeToMainEvents`):
+  `useServerStatus.ts:10,14,30,34,41,50`; `useUpdateStatus.ts:25`
+- **events, component-local progress** → `events.ts` (per-instance wrappers):
+  `ImportCaseDialog.tsx:30`, `ExportMenu.tsx:48` (onArchiveProgress);
+  `ExportDialog.tsx:51` (onExportProgress)
+- **diagnostics** → `diagnostics.ts`: `DiagnosticsPanel.tsx:94`
+- **session** → `session.ts` (existing `sessionQueryOptions` /
+  `useSessionMutations`, moved from `queries.ts:81-112`): `CaseWorkspace.tsx:28`
+- **strays:** `Dashboard.tsx:61` (cases.inspectArchive) → `cases.ts`;
   `CaptureHealth.tsx:76,85,98` (recapture.queueStatus, testPipeline, testHttp)
+  → `recapture.ts`
 
 ## Corrections to the 2026-07-11 plan
 

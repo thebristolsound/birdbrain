@@ -1,4 +1,4 @@
-import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
+import { queryOptions, useIsMutating, useMutation, useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@renderer/lib/api/keys'
 
 // --- Captures ---
@@ -79,6 +79,35 @@ export function useCapturesMutations(caseId: string) {
   })
 
   return { remove, toggleFavorite }
+}
+
+// Shared by ProvenanceBadge, ForensicsTab and CaptureDetailsPanel, all three
+// mounted for the same capture at once. `data` on the return is exposed
+// alongside the isPending/verify pair so ProvenanceBadge can render the fresh
+// HashVerification result immediately, ahead of the captures list refetch.
+export function useVerifyCapture(captureId: string, caseId: string) {
+  const queryClient = useQueryClient()
+  const mutationKey = ['verify-capture', captureId] as const
+
+  const mutation = useMutation({
+    mutationKey,
+    mutationFn: () => window.birdbrain.captures.verify(captureId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.captures(caseId) })
+    }
+  })
+
+  // useIsMutating (not mutation.isPending): pending state is keyed by
+  // captureId so every observer of the same capture — the badge and both
+  // detail tabs — agrees on it, not just the instance that triggered it.
+  const isPending = useIsMutating({ mutationKey }) > 0
+
+  return {
+    verify: () => mutation.mutate(),
+    isPending,
+    error: mutation.error,
+    data: mutation.data
+  }
 }
 
 export function useRecaptureMutations(caseId: string) {

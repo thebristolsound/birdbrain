@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { RefreshCw } from 'lucide-react'
-import type { DbStats as DbStatsType } from '@shared/ipc'
+import { dbStatsQueryOptions } from '@renderer/lib/api/db'
 import { Button } from '@renderer/components/ui'
 
 function formatBytes(bytes: number): string {
@@ -11,29 +11,14 @@ function formatBytes(bytes: number): string {
 }
 
 export function DbStats() {
-  const [stats, setStats] = useState<DbStatsType | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function fetchStats() {
-    setLoading(true)
-    setError(null)
-    try {
-      const data = await window.birdbrain.db.stats()
-      setStats(data)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load stats')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchStats()
-  }, [])
+  const { data: stats, isFetching, error, refetch } = useQuery(dbStatsQueryOptions)
 
   if (error) {
-    return <div className="rounded-lg bg-red-900/20 p-4 text-sm text-red-400">{error}</div>
+    return (
+      <div className="rounded-lg bg-red-900/20 p-4 text-sm text-red-400">
+        {error instanceof Error ? error.message : 'Failed to load stats'}
+      </div>
+    )
   }
 
   if (!stats) {
@@ -47,11 +32,11 @@ export function DbStats() {
         <Button
           variant="outline"
           size="sm"
-          onClick={fetchStats}
-          disabled={loading}
+          onClick={() => refetch()}
+          disabled={isFetching}
           className="gap-1"
         >
-          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+          <RefreshCw size={12} className={isFetching ? 'animate-spin' : ''} />
           Refresh
         </Button>
       </div>

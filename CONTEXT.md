@@ -7,7 +7,7 @@ Open-source web investigation and capture tool. An Electron desktop app and comp
 Birdbrain has adopted a standards-based OSINT assurance baseline in
 [`ADR-0004`](docs/adr/0004-adopt-osint-assurance-baseline.md). The maintained source register,
 jurisdiction notes, architectural consequences, and decision gate live in
-[`docs/reference/osint-investigation-standards.md`](docs/reference/osint-investigation-standards.md).
+[`website/content/docs/osint-investigation-standards.mdx`](website/content/docs/osint-investigation-standards.mdx).
 
 There is no universal "OSINT-compliant" product certification. Birdbrain must make narrow,
 versioned, independently testable claims across investigation methodology, acquisition,

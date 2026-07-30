@@ -1,0 +1,28 @@
+version: 2
+
+# Every action in .github/workflows/ is pinned to a full commit SHA, which is the only
+# immutable way to consume an Action. Pins go stale silently, so Dependabot version
+# updates are what keep them current — it rewrites the SHA and the trailing version
+# comment together.
+#
+# Known gap: Dependabot *vulnerability alerts* do not cover SHA-pinned actions, only
+# version-range ones. These weekly version PRs are therefore the only automated signal
+# for a compromised or patched action; an advisory affecting a pinned action will not
+# raise an alert on its own.
+#
+# Deliberately scoped to github-actions. The npm ecosystems are excluded for now: the
+# root tree carries known high-severity advisories that security.yml already tolerates
+# with continue-on-error, and website/ has its own lockfile — opening either to
+# Dependabot is a separate decision.
+updates:
+  - package-ecosystem: github-actions
+    directory: '/'
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: 'ci'
+    groups:
+      # One PR per week for routine action bumps rather than six.
+      actions:
+        patterns:
+          - '*'

@@ -16,6 +16,7 @@ import { create } from '@orama/orama'
 import { basePath } from '@/lib/base-path.mjs'
 
 // The static export has no search server, so the client downloads the exported
+// index and queries it in-browser.
 /**
  * Creates an Orama database configured for English-language search.
  *

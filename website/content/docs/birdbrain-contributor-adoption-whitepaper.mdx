@@ -1,6 +1,9 @@
-# Birdbrain: A Contributor and Adoption Whitepaper
+---
+title: 'Contributor & adoption whitepaper'
+description: 'Product fit, onboarding, contribution areas, and governance. Start here to adopt the tool or to contribute.'
+---
 
-> **Birdbrain whitepaper series.** Four companion papers cover this project. This paper covers product fit, onboarding, contribution areas, and governance; start here to adopt the tool or contribute. The [architecture whitepaper](birdbrain-architecture-whitepaper.md) is the formal architecture and assurance analysis: trust boundaries, evidence claims and their limits, and deployment posture; start there for security review. The [technical whitepaper](birdbrain-technical-whitepaper.md) is the code-grounded implementation companion: exact mechanisms with file references and gaps observed during code review. The [privacy-focused adoption guide](birdbrain-privacy-adoption-whitepaper.md) addresses activists and independent researchers evaluating Birdbrain for small privacy-focused groups. All four describe version `1.0.1-beta.15`.
+> **Birdbrain whitepaper series.** Four companion papers cover this project. This paper covers product fit, onboarding, contribution areas, and governance; start here to adopt the tool or contribute. The [architecture whitepaper](./birdbrain-architecture-whitepaper.mdx) is the formal architecture and assurance analysis: trust boundaries, evidence claims and their limits, and deployment posture; start there for security review. The [technical whitepaper](./birdbrain-technical-whitepaper.mdx) is the code-grounded implementation companion: exact mechanisms with file references and gaps observed during code review. The [privacy-focused adoption guide](./birdbrain-privacy-adoption-whitepaper.mdx) addresses activists and independent researchers evaluating Birdbrain for small privacy-focused groups. All four describe version `1.0.1-beta.15`.
 
 ## Executive Summary
 
@@ -244,7 +247,7 @@ Important top-level paths include:
 - `README.md`: Product overview, installation flow, features, current limitations, and contribution entry point.
 - `CONTEXT.md`: Domain language and relationships. Contributors should read this early.
 - `SECURITY.md`: Supported versions, vulnerability reporting, security architecture, egress list, and known limitations.
-- `docs/reference`: Architecture, threat model, tester guide, and capture-pipeline references.
+- `website/content/docs`: Architecture, threat model, tester guide, and capture-pipeline references — the source of this documentation site.
 - `docs/adr`: Accepted architectural decisions.
 - `docs/specs` and `docs/plans`: Design notes and implementation plans for major features.
 - `src/main`: Electron main process, IPC handlers, and privileged services.
@@ -263,8 +266,8 @@ New contributors should start with:
 
 1. `README.md` for the user-facing product model.
 2. `CONTEXT.md` for domain language.
-3. `docs/reference/threat-model.md` for integrity and trusted-time boundaries.
-4. `docs/reference/capture-pipeline.md` for capture behavior.
+3. The [threat model](./threat-model.mdx) for integrity and trusted-time boundaries.
+4. The [capture pipeline](./capture-pipeline.mdx) reference for capture behavior.
 5. `src/shared/ipc.ts` and `src/preload/index.ts` for renderer-main contracts.
 6. `src/main/services/captureLifecycle.ts` for evidence-bearing Capture operations.
 7. `src/main/services/selectorLifecycle.ts` for Selector semantics.
@@ -452,7 +455,7 @@ For adopters, operational planning should cover:
 
 Good first contributions should be narrow, testable, and unlikely to disturb forensic invariants. Suitable areas include:
 
-- documentation improvements in `README.md`, `docs/reference`, and tester guides;
+- documentation improvements in `README.md`, `website/content/docs`, and tester guides;
 - clearer setup and troubleshooting notes;
 - small UI empty states and error states;
 - focused component tests;

@@ -1,0 +1,19 @@
+{
+  "title": "Documentation",
+  "pages": [
+    "---Get started---",
+    "index",
+    "tester-guide",
+    "screenshots",
+    "---Architecture---",
+    "birdbrain-architecture-whitepaper",
+    "birdbrain-technical-whitepaper",
+    "capture-pipeline",
+    "---Assurance---",
+    "threat-model",
+    "osint-investigation-standards",
+    "---Adopting---",
+    "birdbrain-contributor-adoption-whitepaper",
+    "birdbrain-privacy-adoption-whitepaper"
+  ]
+}

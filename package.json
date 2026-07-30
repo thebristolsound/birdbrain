@@ -50,6 +50,9 @@
     "directories": {
       "output": "dist"
     },
+    "files": [
+      "!website/**/*"
+    ],
     "publish": [
       {
         "provider": "github",

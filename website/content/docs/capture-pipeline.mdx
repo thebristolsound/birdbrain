@@ -1,4 +1,7 @@
-# Capture Pipeline Technical Documentation
+---
+title: 'Capture pipeline'
+description: 'The core ingestion path — from the Chrome extension through the local Hono server to disk, SQLite, and the renderer.'
+---
 
 ## 1. Overview
 
@@ -179,7 +182,7 @@ if blacklisted → 403 "URL blocked by ignored pattern"
 | `auto` | `state.sessionActive` must be true (400), `state.activeCaseId` must exist (400) |
 | `manual` | `body.caseId` required (400), case must exist (404), case must not be archived (400) |
 | `selector` | `body.caseId` required (400), `matchedSelectors` required (400), case must exist (404), case must not be archived (400) |
-| Unknown | 400 "Invalid source: {source}" |
+| Unknown | 400 `"Invalid source: {source}"` |
 
 **Step 4 -- Shared pipeline** (line 319 onward):
 
@@ -397,7 +400,7 @@ When a manual capture fails, the background script categorizes the error by HTTP
 
 | HTTP Status | User-Facing Message |
 |-------------|-------------------|
-| 400 | "Capture rejected: {server detail}" |
+| 400 | `"Capture rejected: {server detail}"` |
 | 403 | "URL is blacklisted" |
 | 404 | "Case not found" |
 | 500 | "Server error -- check Birdbrain app" |
@@ -618,7 +621,7 @@ Both tests are accessible from the `CaptureHealth` popover:
 - **"Test Pipeline"**: Invokes `window.birdbrain.testPipeline()` -> IPC `captures:testPipeline` -> `POST /api/captures/test` on the local server
 - **"Test HTTP"**: Invokes `window.birdbrain.testHttp()` -> IPC `captures:testHttp` -> `GET /api/status` on the local server
 
-Results are displayed inline: "Pipeline OK -- verified in {N}ms" (green) or "Pipeline FAILED: {error}" (red).
+Results are displayed inline: `"Pipeline OK -- verified in {N}ms"` (green) or `"Pipeline FAILED: {error}"` (red).
 
 ### Unit Test Coverage
 

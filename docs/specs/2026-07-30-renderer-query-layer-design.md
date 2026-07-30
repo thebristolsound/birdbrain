@@ -50,15 +50,31 @@ src/renderer/lib/api/
 - `system.ts` — one-shot commands with no cache identity: `openCaptureExternal`,
   `downloadCapture`, `downloadPdf`, `downloadScreenshot`, `revealInFolder`,
   `openPath`, `openExtensionFolder`, `chooseStoragePath`.
-- `diagnostics.ts` — `diagnosticsQueryOptions` for `DiagnosticsPanel.tsx:94`.
-  (`DiagnosticsPanel.tsx:224` is a `shell.openPath` call and belongs to
-  `system.ts`.)
+- `diagnostics.ts` — the full namespace, which is six methods, not one:
+  `get`, `log`, `recentEntries`, `revealLog`, `lastSession`, `createReport`
+  (`src/renderer/env.d.ts:183-190`). Backs `DiagnosticsPanel`, `LogTab`,
+  `ReportProblemDialog`, `CrashRecoveryPrompt`, and `ErrorBoundary`.
+  (`DiagnosticsPanel`'s `shell.openPath` call belongs to `system.ts`.)
 - `events.ts` — owns **all nine** `onX` subscriptions. See below: they split into
   two shapes, and only one of them carries the invalidation table.
 
+### The lib layer, not just `lib/api`
+
+The exemption is **all of `src/renderer/lib/**`**, not only `lib/api/**`. Three
+infrastructure modules call the bridge by design and are lib layer by any
+reading: `queryClient.ts:38` (global query-error handler → diagnostics),
+`mainLogBridge.ts:68,79` (`onLogEntry` + diagnostics), `notify.ts:44`. Issue #229
+states the rule as "components and feature hooks never touch the preload bridge;
+only the renderer lib layer does" — that is the governing intent, and the
+narrower `lib/api/**` wording would outlaw error-reporting paths that must not
+themselves route through another indirection.
+
+Feature code gets no such exemption. The diagnostics *components* migrate like
+any other.
+
 ### Two kinds of subscription
 
-The nine `onX` channels are not interchangeable, and the seam must expose both
+The ten `onX` channels are not interchangeable, and the seam must expose both
 shapes or the component-local sites cannot migrate:
 
 **Global invalidation subscriptions** — app-level, fire-and-forget, drive cache
@@ -70,8 +86,9 @@ invalidation and routing. `onExtensionConnection`, `onSessionStateChanged`,
 
 **Component-local progress subscriptions** — parameterized, filter by `caseId`,
 and write to a component's own `useState`. `onArchiveProgress`
-(`ImportCaseDialog.tsx:30`, `ExportMenu.tsx:48`) and `onExportProgress`
-(`ExportDialog.tsx:51`). These must **not** be folded into
+(`ImportCaseDialog`, `ExportMenu`), `onExportProgress` (`ExportDialog`), and
+`onLogEntry` (`LogTab`, which streams entries into local state; `mainLogBridge`
+also subscribes, and stays at lib layer). These must **not** be folded into
 `subscribeToMainEvents()` — they are per-instance and have no cache identity.
 `events.ts` instead exports thin typed wrappers —
 `subscribeToArchiveProgress(handler)`, `subscribeToExportProgress(handler)` —
@@ -189,8 +206,8 @@ Six PRs. Each is independently shippable and single-purpose.
    (partial-rematch invalidation, navigate-only-if-not-on-case, and
    `ImportCaseDialog`'s always-on subscription).
 6. **Enforcement.** ESLint `no-restricted-syntax` for `src/renderer/**`, ignoring
-   `src/renderer/lib/api/**`. Rewrite imports to domain modules and delete the
-   barrel.
+   **`src/renderer/lib/**`** (see "The lib layer, not just `lib/api`"). Rewrite
+   imports to domain modules and delete the barrel.
 
    Three selectors, not one — dot access alone leaves two holes open:
 
@@ -221,7 +238,7 @@ progress, not a completeness check**; see the limits below.
 
 ```bash
 grep -rnE "\.birdbrain\b|\[['\"]birdbrain['\"]\]|\{[^}]*\bbirdbrain\b[^}]*\}[[:space:]]*=" \
-  src/renderer --include='*.ts' --include='*.tsx' | grep -vE "^src/renderer/lib/(api/|queries\.ts)"
+  src/renderer --include='*.ts' --include='*.tsx' | grep -vE "^src/renderer/lib/"
 ```
 
 The member pattern is `\.birdbrain\b`, deliberately **not** anchored to `window`.
@@ -254,10 +271,16 @@ why the interim check is a grep rather than a bespoke AST script: the blind spot
 above are bounded (they require a *new* violation written in a form nothing in the
 tree currently uses), and PR 6 closes them permanently.
 
-77 sites across 37 files. Grouped below by **bridge namespace**, with the
-destination module marked — the two axes differ, because `system.ts`
-deliberately cuts across namespaces to collect one-shot commands. Migrate to the
-destination, not to the namesake module.
+**87 sites across 44 files**, measured at base `82096ba`. The earlier figure of 77
+across 37 predated PR #261 (durable structural log, crash capture, bug-report
+bundles), which added the diagnostics components, the `onLogEntry` channel, and the
+three lib-layer infrastructure modules. Line numbers below are from `82096ba` and
+drift with every merge — re-run the command above at the start of each PR rather
+than trusting them.
+
+Grouped below by **bridge namespace**, with the destination module marked — the two
+axes differ, because `system.ts` deliberately cuts across namespaces to collect
+one-shot commands. Migrate to the destination, not to the namesake module.
 
 - **db** → `db.ts`: `DbStats.tsx:22`; `DbTables.tsx:47,81,97,108`;
   `DbUtilities.tsx:54,72,92,110,134,153,175,197`
@@ -288,8 +311,12 @@ destination, not to the namesake module.
   `useServerStatus.ts:10,14,30,34,41,50`; `useUpdateStatus.ts:25`
 - **events, component-local progress** → `events.ts` (per-instance wrappers):
   `ImportCaseDialog.tsx:30`, `ExportMenu.tsx:48` (onArchiveProgress);
-  `ExportDialog.tsx:51` (onExportProgress)
-- **diagnostics** → `diagnostics.ts`: `DiagnosticsPanel.tsx:94`
+  `ExportDialog.tsx:51` (onExportProgress); `LogTab.tsx:30` (onLogEntry)
+- **diagnostics** → `diagnostics.ts`: `DiagnosticsPanel.tsx:103` (already an inline
+  `queryOptions` — move it into the module), `CrashRecoveryPrompt.tsx:14`,
+  `LogTab.tsx:39,88`, `ReportProblemDialog.tsx:52`, `ErrorBoundary.tsx:36`
+- **exempt, no migration** — lib layer by design: `queryClient.ts:38`,
+  `mainLogBridge.ts:68,79`, `notify.ts:44`
 - **session** → `session.ts` (existing `sessionQueryOptions` /
   `useSessionMutations`, moved from `queries.ts:81-112`): `CaseWorkspace.tsx:28`
 - **strays:** `Dashboard.tsx:61` (cases.inspectArchive) → `cases.ts`;

@@ -4,11 +4,23 @@
 
 **Goal:** Every `window.birdbrain` call site in the renderer lives under `src/renderer/lib/api/`, enforced by ESLint.
 
-**Architecture:** `queries.ts` (595 lines) splits into per-domain modules under `lib/api/`, mirroring the IPC domain map, with a central `keys.ts`. Wrappers come in three shapes chosen by texture: `queryOptions` factories for cacheable reads, `useMutation` hooks plus exported mutation-options factories for writes with rendered state, and plain typed async functions for one-shot commands. A final PR adds the lint rule and deletes the transitional barrel.
+**Architecture:** `queries.ts` (623 lines at base) splits into per-domain modules under `lib/api/`, mirroring the IPC domain map, with a central `keys.ts`. Wrappers come in three shapes chosen by texture: `queryOptions` factories for cacheable reads, `useMutation` hooks plus exported mutation-options factories for writes with rendered state, and plain typed async functions for one-shot commands. A final PR adds the lint rule and deletes the transitional barrel.
 
 **Tech Stack:** React 19, @tanstack/react-query v5 (`queryOptions` pattern already in use), Zustand, TanStack Router, ESLint 9 flat config, Vitest (jsdom project), @testing-library/react 16.3.2.
 
 **Spec:** `docs/specs/2026-07-30-renderer-query-layer-design.md` — authoritative. Read it before starting.
+
+**Base commit:** `82096ba`. Every line number in this plan was derived there. PR #261
+(diagnostics) landed after the spec's first draft and moved a lot of renderer code,
+so **re-grep at the start of each task** rather than trusting a line reference:
+
+```bash
+grep -rnE "\.birdbrain\b|\[['\"]birdbrain['\"]\]|\{[^}]*\bbirdbrain\b[^}]*\}[[:space:]]*=" \
+  src/renderer --include='*.ts' --include='*.tsx' | grep -vE "^src/renderer/lib/"
+```
+
+Expected at base: 87 sites across 44 files. Baseline test suite at base: 1403 passed,
+5 skipped, 106 files.
 
 ## Global Constraints
 
@@ -45,24 +57,28 @@ Pure move. Zero behavior change. The existing suite is the oracle: if any test c
 - Test: existing suite (move-only, no new tests)
 
 **Interfaces:**
-- Produces: `queryKeys` from `lib/api/keys.ts` (identical shape to today's `queries.ts:19-60`). Every current export of `queries.ts` re-exported unchanged from the barrel, so all 45 importing files keep working untouched.
+- Produces: `queryKeys` from `lib/api/keys.ts` (identical shape to today's `queries.ts:19-62`). Every current export of `queries.ts` re-exported unchanged from the barrel, so all 45 importing files keep working untouched.
 
-- [ ] **Step 1:** Move `queryKeys` verbatim from `queries.ts:19-60` into `src/renderer/lib/api/keys.ts`. Add the export and the `as const` exactly as today.
+- [ ] **Step 1:** Move `queryKeys` verbatim from `queries.ts:19-62` into `src/renderer/lib/api/keys.ts`. Add the export and the `as const` exactly as today.
 
 - [ ] **Step 2:** Move each `// --- Domain ---` section into its module. Section boundaries in the current file:
+
+Section boundaries at base `82096ba` (`queries.ts` is 623 lines). Re-derive with
+`grep -n "^// --- " src/renderer/lib/queries.ts` before starting — this file is
+touched often.
 
 | Lines | Section | Destination |
 | --- | --- | --- |
 | 64-76 | Cases | `cases.ts` |
-| 77-144 | Session | `session.ts` |
-| 145-236 | Captures | `captures.ts` |
-| 237-311 | Tags | `tags.ts` |
-| 312-367 | Selectors | `selectors.ts` |
-| 368-417 | Notes | `notes.ts` |
-| 418-476 | Extracted Data | `extractedData.ts` |
-| 477-511 | Annotations | `annotations.ts` |
-| 512-549 | Wayback | `archive.ts` |
-| 550-594 | Settings, Identity, App version, OpenRouter Models | `settings.ts` |
+| 77-149 | Session | `session.ts` |
+| 150-244 | Captures | `captures.ts` |
+| 245-324 | Tags | `tags.ts` |
+| 325-384 | Selectors | `selectors.ts` |
+| 385-437 | Notes | `notes.ts` |
+| 438-497 | Extracted Data | `extractedData.ts` |
+| 498-536 | Annotations | `annotations.ts` |
+| 537-576 | Wayback | `archive.ts` |
+| 577-623 | Settings, Identity, App version, OpenRouter Models | `settings.ts` |
 
 Each module imports `queryKeys` from `./keys` and its types from `@shared/ipc` / `@shared/types` — copy only the type imports each module actually uses, from the list at `queries.ts:1-17`.
 
@@ -107,7 +123,7 @@ Test-only. **No `src/` changes in this task.**
 **Interfaces:**
 - Produces: `fakeBridge(overrides?): BirdbrainAPI` — installs a stub at `window.birdbrain` and returns it. Unstubbed namespace methods reject with a named error. Event methods default to a no-op returning an unsubscribe.
 
-- [ ] **Step 1: Write the util.** The bridge type is `BirdbrainAPI`, declared in `src/renderer/env.d.ts:235-236`. Namespace and event names come from `src/preload/index.ts:52-226`.
+- [ ] **Step 1: Write the util.** The bridge type is `BirdbrainAPI`, declared in `src/renderer/env.d.ts:235-236`. Namespace and event names come from `src/preload/index.ts` (namespaces from the object literal, events from the `subscribe(...)` entries) — re-read it; PR #261 added `onLogEntry` at line 220.
 
 ```typescript
 // tests/renderer/fakeBridge.ts
@@ -125,7 +141,7 @@ const NAMESPACES = [
 const EVENTS = [
   'onExportProgress', 'onArchiveProgress', 'onNewCapture', 'onSessionStateChanged',
   'onExtensionConnection', 'onCaptureActivity', 'onSelectorRematched',
-  'onDeepLinkNavigate', 'onUpdateStatus'
+  'onDeepLinkNavigate', 'onUpdateStatus', 'onLogEntry'
 ] as const
 
 const TOP_LEVEL = ['search', 'testPipeline', 'testHttp'] as const
@@ -726,17 +742,63 @@ All mechanical.
   diagnostics: ['diagnostics'] as const,
 ```
 
-- [ ] **Step 2: Implement `diagnostics.ts`.**
+- [ ] **Step 2: Implement `diagnostics.ts`** — the namespace is six methods (`src/renderer/env.d.ts:183-190`), not one:
 
 ```typescript
-import { queryOptions } from '@tanstack/react-query'
+diagnostics: {
+  get(): Promise<DiagnosticsSnapshot>
+  log(payload: RendererLogPayload): Promise<string>
+  recentEntries(limit: number): Promise<LogEntry[]>
+  revealLog(): Promise<void>
+  lastSession(): Promise<SessionRecord | null>
+  createReport(input: BugReportInput): Promise<BugReportResult | null>
+}
+```
+
+```typescript
+import { useMutation, queryOptions } from '@tanstack/react-query'
+import type { BugReportInput, RendererLogPayload } from '@shared/ipc'
 import { queryKeys } from './keys'
 
 export const diagnosticsQueryOptions = queryOptions({
   queryKey: queryKeys.diagnostics,
   queryFn: () => window.birdbrain.diagnostics.get()
 })
+
+export const recentLogEntriesQueryOptions = (limit: number) =>
+  queryOptions({
+    queryKey: queryKeys.recentLogEntries(limit),
+    queryFn: () => window.birdbrain.diagnostics.recentEntries(limit)
+  })
+
+export const lastSessionQueryOptions = queryOptions({
+  queryKey: queryKeys.lastSession,
+  queryFn: () => window.birdbrain.diagnostics.lastSession()
+})
+
+export function logFromRenderer(payload: RendererLogPayload): Promise<string> {
+  return window.birdbrain.diagnostics.log(payload)
+}
+
+export function revealLog(): Promise<void> {
+  return window.birdbrain.diagnostics.revealLog()
+}
+
+export function useCreateBugReport() {
+  return useMutation({
+    mutationFn: (input: BugReportInput) => window.birdbrain.diagnostics.createReport(input)
+  })
+}
 ```
+
+Add the two new keys to `keys.ts` alongside `diagnostics`:
+
+```typescript
+  recentLogEntries: (limit: number) => ['diagnostics', 'recentEntries', limit] as const,
+  lastSession: ['diagnostics', 'lastSession'] as const,
+```
+
+**Do not touch `src/renderer/lib/queryClient.ts`, `mainLogBridge.ts`, or `notify.ts`.** They call the bridge as lib-layer infrastructure and are exempt by design — `queryClient.ts` importing from `lib/api` would also risk a circular import. Confirm each type name against `src/shared/ipc.ts` before writing it.
 
 - [ ] **Step 3: Implement `recapture.ts`** — `recaptureQueueStatusQueryOptions` over `window.birdbrain.recapture.queueStatus()`, plus `useCaptureHealthChecks()` wrapping the two top-level bridge functions as mutations (they return `{ success, durationMs, error? }` per `env.d.ts:222-223`):
 
@@ -758,7 +820,13 @@ export function useCaptureHealthChecks() {
 | `ExportDialog.tsx:37,73` | `useGenerateReport()` from `export.ts` |
 | `CaptureHealth.tsx:76` | `recaptureQueueStatusQueryOptions` |
 | `CaptureHealth.tsx:85,98` | `useCaptureHealthChecks()` |
-| `DiagnosticsPanel.tsx:94` | `diagnosticsQueryOptions` |
+| `DiagnosticsPanel.tsx:103` | `diagnosticsQueryOptions` — it is already an inline `queryOptions`; move it into the module and import |
+| `CrashRecoveryPrompt.tsx:14` | `lastSessionQueryOptions` |
+| `LogTab.tsx:39` | `recentLogEntriesQueryOptions` |
+| `LogTab.tsx:88` | `revealLog` |
+| `LogTab.tsx:30` | deferred to Task 7 (`onLogEntry` subscription) |
+| `ReportProblemDialog.tsx:52` | `useCreateBugReport()` |
+| `ErrorBoundary.tsx:36` | `logFromRenderer` |
 | `Dashboard.tsx:61` | add `inspectArchive` to `cases.ts`, call it from there |
 | `CreateSelectorCard.tsx:54`, `SelectorTable.tsx:62,67`, `SelectorTableRow.tsx:48`, `SelectorsOverview.tsx:49`, `NewCaseWizard.tsx:73`, `useSelectorFilters.ts:15` | existing `useSelectorsMutations` / query options in `selectors.ts`; add any missing member there |
 
@@ -792,6 +860,7 @@ git commit -m "refactor(renderer): move export, recapture, diagnostics and selec
   - `subscribeToMainEvents(): () => void` — the seven global subscriptions, returning a combined unsubscribe.
   - `subscribeToArchiveProgress(handler: (event: ArchiveProgressEvent) => void): () => void`
   - `subscribeToExportProgress(handler: (event: ExportProgressEvent) => void): () => void`
+  - `subscribeToLogEntries(handler: (entry: LogEntry) => void): () => void` — the tenth channel, added by PR #261. `LogTab.tsx:30` consumes it. `lib/mainLogBridge.ts:68` also subscribes and stays as-is (lib layer, exempt).
   - `updates.ts`: `updateStatusQueryOptions`, `useUpdateMutations()` returning `{ check, download, install }`.
 
 - [ ] **Step 1: Write the failing test** — the invalidation table is the behavior worth locking down.
@@ -927,7 +996,7 @@ git commit -m "feat(renderer): move main-process subscriptions behind lib/api/ev
 Run:
 ```bash
 grep -rnE "\.birdbrain\b|\[['\"]birdbrain['\"]\]|\{[^}]*\bbirdbrain\b[^}]*\}[[:space:]]*=" \
-  src/renderer --include='*.ts' --include='*.tsx' | grep -vE "^src/renderer/lib/(api/|queries\.ts)"
+  src/renderer --include='*.ts' --include='*.tsx' | grep -vE "^src/renderer/lib/"
 ```
 Expected: no output. Any hit is a missed site — wrap it in the appropriate `lib/api` module. Never add an eslint-disable.
 
@@ -951,7 +1020,7 @@ git rm src/renderer/lib/queries.ts
   {
     // Bridge access is restricted to the api wrappers in lib/api/
     files: ['src/renderer/**/*.{ts,tsx}'],
-    ignores: ['src/renderer/lib/api/**'],
+    ignores: ['src/renderer/lib/**'],
     rules: {
       'no-restricted-syntax': [
         'error',

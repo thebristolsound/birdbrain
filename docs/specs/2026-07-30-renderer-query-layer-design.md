@@ -220,9 +220,15 @@ Re-grep before each PR — line numbers drift. This is a **heuristic for trackin
 progress, not a completeness check**; see the limits below.
 
 ```bash
-grep -rnE "window\.birdbrain|window\[['\"]birdbrain['\"]\]|\{[^}]*\bbirdbrain\b[^}]*\}[[:space:]]*=" \
+grep -rnE "\.birdbrain\b|\[['\"]birdbrain['\"]\]|\{[^}]*\bbirdbrain\b[^}]*\}[[:space:]]*=" \
   src/renderer --include='*.ts' --include='*.tsx' | grep -vE "^src/renderer/lib/(api/|queries\.ts)"
 ```
+
+The member pattern is `\.birdbrain\b`, deliberately **not** anchored to `window`.
+That mirrors the ESLint selectors, which match the property rather than the
+object, so both catch aliases (`const w = window; w.birdbrain…`) and
+`globalThis.window.birdbrain`. The `\b` keeps near-misses like
+`foo.birdbrainish` out.
 
 Note the exclusion filter is **anchored to the path** (`^src/renderer/lib/…`). An
 unanchored `grep -v "lib/api/"` matches on line *content*, so a real violation
@@ -238,8 +244,9 @@ string or comment counts as a hit. Multiline *member* access is fine — the
 `window.birdbrain` fragment still lands on one line, which is how
 `ExportDialog.tsx:37` and `CaseWorkspace.tsx:28` are caught today.
 
-As of 2026-07-30 only dot access exists — bracket access, destructuring, and
-aliased objects all return zero — so the count is trustworthy right now.
+As of 2026-07-30 only plain `window.birdbrain` dot access exists. Bracket access,
+destructuring, and aliased objects each return zero under the command above —
+which now covers all three, so that claim is reproducible rather than asserted.
 
 **`pnpm lint` is the authoritative check once PR 6 lands**, because it shares the
 selectors and works on the AST. Until then no such rule exists to reuse, which is

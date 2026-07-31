@@ -6,12 +6,19 @@ name: Docs
 # Requires repo Settings -> Pages -> Source: GitHub Actions. The deploy job fails
 # until that is set.
 
+# Deliberately unfiltered by path. A `paths:` filter looks like an easy saving, but
+# it makes the published site unrecoverable from a single bad run: the run that
+# failed is the only one that would ever have deployed that content, and no later
+# commit re-triggers it. That is exactly what happened — a transient startup failure
+# on a Dependabot bump took this workflow down alongside CI and Security. CI and
+# Security recovered on the next commit; Docs did not, because that commit touched
+# neither website/ nor this file, so the site stayed unpublished.
+#
+# Running on every push to main costs ~2 idle minutes per unrelated commit and makes
+# the site self-healing: the next commit always republishes.
 on:
   push:
     branches: [main]
-    paths:
-      - 'website/**'
-      - '.github/workflows/docs.yml'
   workflow_dispatch:
 
 # Least privilege by default. The deployment grants live on the deploy job alone, so

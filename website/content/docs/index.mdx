@@ -1,0 +1,48 @@
+---
+title: "Introduction"
+description: "Local-first web evidence capture for OSINT investigations — hashed, timestamped, and chained into a verifiable audit manifest."
+---
+
+Birdbrain is an open-source desktop app with a companion Chromium extension for capturing,
+organizing, and verifying web evidence. Captures include MHTML, a full-page screenshot, and
+extracted text, sent to the desktop app over `127.0.0.1` and stored locally in per-case
+archives. There is no cloud account and no telemetry; captures stay on your machine unless
+you export them.
+
+Every capture is fingerprinted with SHA-256, timestamped, and chained to the previous capture
+in a per-case manifest. You can verify the chain in-app or export a self-contained HTML report
+that a third party can check with nothing more exotic than `jq`, `sha256sum`, and `openssl`.
+
+## Start here
+
+- **[Tester guide](/docs/tester-guide)** — install the beta, know what to look for, and report
+  what you find.
+- **[Screenshot tour](/docs/screenshots)** — a screen-by-screen walk through the app.
+- **[Threat model](/docs/threat-model)** — what the chain-of-custody controls defend against,
+  and what they deliberately do not.
+
+## Going deeper
+
+The whitepaper series covers the project from four angles. All four describe version
+`1.0.1-beta.15`.
+
+- **[Architecture whitepaper](/docs/architecture-whitepaper)** — trust boundaries, evidence
+  claims and their limits, deployment posture. Start here for security review.
+- **[Implementation whitepaper](/docs/technical-whitepaper)** — the code-grounded companion:
+  exact mechanisms with file references, and gaps observed during code review.
+- **[Contributor and adoption whitepaper](/docs/contributor-adoption-whitepaper)** — product
+  fit, onboarding, contribution areas, and governance.
+- **[Privacy adoption guide](/docs/privacy-adoption-whitepaper)** — for activists and
+  independent researchers weighing Birdbrain for small, privacy-focused groups.
+
+For the ingestion path itself — extension to disk — see the
+**[capture pipeline](/docs/capture-pipeline)**. For the assurance layers a defensible
+investigation system is built from, see
+**[OSINT investigation standards](/docs/osint-investigation-standards)**.
+
+## Getting the app
+
+Downloads live on the
+[GitHub releases page](https://github.com/thebristolsound/birdbrain/releases/latest).
+Birdbrain is MIT-licensed and runs on Windows, macOS, and Linux. It is beta software — export
+anything you cannot afford to lose.

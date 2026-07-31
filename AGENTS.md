@@ -59,7 +59,8 @@ src/renderer/components/     # UI organized by feature — see "UI components" b
 extension/src/               # Chrome extension source (background, content, popup, toast, utils/api, utils/headers)
 tests/                       # Vitest unit tests
 e2e/                         # Playwright E2E tests
-docs/                        # Local working notes — see docs/README.md for layout (reference/, specs/, plans/, archive/)
+docs/                        # Local working notes — see docs/README.md for layout (specs/, plans/, adr/, archive/)
+website/                     # Fumadocs documentation site — separate Next.js sub-project, see below
 ```
 
 ### Path aliases
@@ -182,13 +183,31 @@ Organized by feature under `src/renderer/components/`:
 - **tags/** - TagBadge, TagManager, TagsOverview
 - **ui/** - Shared primitives re-exported from `ui/index.ts`: badge, button, card, dialog, input, label, scroll-area, skeleton, tabs, textarea
 
+## Documentation site
+
+`website/` is a **separate Next.js 16 + Fumadocs sub-project** that publishes the long-lived
+reference docs to <https://thebristolsound.github.io/birdbrain/>. It shares nothing with the
+Electron app at runtime and has its **own `package.json`, `pnpm-lock.yaml`, and `node_modules`** —
+there is no pnpm workspace, so run `pnpm install` inside `website/` separately from the root install.
+
+- Reference docs live in `website/content/docs/*.mdx` (moved there from `docs/reference/`), with
+  nav order in `content/docs/meta.json` and screenshots in `website/public/assets/`.
+- `pnpm dev` in `website/` serves at <http://localhost:3000/birdbrain/docs> — `basePath` applies in
+  dev too. `pnpm build` static-exports to `website/out/`.
+- Deployed by `.github/workflows/docs.yml` on push to `main` touching `website/**`.
+- Fumadocs resolves some of its own URLs (the search index, raw-markdown links) against a
+  **Vite-only** base-path helper that is a no-op under Next, so `basePath` is applied by hand in
+  `website/lib/source.ts` and `website/components/search.tsx`. Anything else that builds a
+  Fumadocs asset URL needs the same treatment.
+- Root `pnpm lint`, Prettier, and the packaged Electron app all exclude `website/`.
+
 ## Documentation conventions
 
 All design docs, specs, and implementation plans live under `docs/` per the layout in `docs/README.md`. Canonical paths:
 
 - **Specs / design briefs / spikes** → `docs/specs/YYYY-MM-DD-<slug>-design.md` (or `-spike.md`, `-brief.md`, `-assessment.md`) — **tracked**
 - **Implementation plans / checklists** → `docs/plans/YYYY-MM-DD-<slug>.md` — **tracked**
-- **Long-lived reference** → `docs/reference/<topic>.md` (no date prefix) — **tracked**
+- **Long-lived reference** → `website/content/docs/<topic>.mdx` (no date prefix) — **tracked**, and published to the docs site (see "Documentation site" below)
 - **Architecture decisions** → `docs/adr/NNNN-<slug>.md` — **tracked**
 - **Superseded** → `docs/archive/` (preserve original filename) — **tracked**
 

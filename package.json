@@ -39,6 +39,9 @@
     "appId": "com.birdbrain.app",
     "productName": "Birdbrain",
     "icon": "resources/icon.png",
+    "files": [
+      "!website/**/*"
+    ],
     "protocols": [
       {
         "name": "Birdbrain",

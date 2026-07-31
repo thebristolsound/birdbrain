@@ -1,0 +1,18 @@
+{
+  "pages": [
+    "---Get started---",
+    "index",
+    "tester-guide",
+    "screenshots",
+    "---Architecture---",
+    "architecture-whitepaper",
+    "technical-whitepaper",
+    "capture-pipeline",
+    "---Assurance---",
+    "threat-model",
+    "osint-investigation-standards",
+    "---Adopting Birdbrain---",
+    "contributor-adoption-whitepaper",
+    "privacy-adoption-whitepaper"
+  ]
+}

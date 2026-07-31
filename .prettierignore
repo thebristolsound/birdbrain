@@ -1,0 +1,3 @@
+# Separate Next.js/Fumadocs sub-project — formatted by its own toolchain,
+# and the ported reference docs should not be reflowed.
+website/

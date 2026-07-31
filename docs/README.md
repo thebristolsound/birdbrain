@@ -26,6 +26,6 @@ Author-time documentation for the project. All folders are tracked, including `p
 
 | Tool / skill                | Built-in default                                      | **Override (use this instead)**           |
 | --------------------------- | ----------------------------------------------------- | ----------------------------------------- |
-| `superpowers:brainstorming` | `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` | `docs/specs/YYYY-MM-DD-<topic>-design.md` |
-| `superpowers:writing-plans` | `docs/superpowers/plans/YYYY-MM-DD-<feature>.md`      | `docs/plans/YYYY-MM-DD-<feature>.md`      |
+| `superpowers:brainstorming` | varies (plugin default)                               | `docs/specs/YYYY-MM-DD-<topic>-design.md` |
+| `superpowers:writing-plans` | varies (plugin default)                               | `docs/plans/YYYY-MM-DD-<feature>.md`      |
 | `speckit.*`                 | varies                                                | follow the canonical layout above         |

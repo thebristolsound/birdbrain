@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi, beforeAll } from 'vite
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import { pathToFileURL } from 'url'
 import type { IpcMainInvokeEvent } from 'electron'
 
 // --- Module mocks -----------------------------------------------------------
@@ -118,7 +119,14 @@ import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSessionService, type SessionService } from '@main/services/session'
 import { initManifest } from '@main/services/manifest'
 
-const fakeEvent = {} as IpcMainInvokeEvent
+// handle() validates event.senderFrame (top frame + trusted URL) before running
+// the handler, so the fake event must look like the app renderer's top frame.
+// ipcWrap resolves the trusted URL relative to its own module directory, which
+// is src/main under vitest — hence src/renderer/index.html.
+const trustedUrl = pathToFileURL(join(process.cwd(), 'src/renderer/index.html')).toString()
+const fakeEvent = {
+  senderFrame: { parent: null, url: trustedUrl }
+} as unknown as IpcMainInvokeEvent
 
 // Invoke a registered handler by channel. Returns the raw handler result;
 // `handle()`-wrapped channels return `{ ok, data }`, raw ones return the value.
@@ -707,7 +715,7 @@ describe('ipcHandlers — export', () => {
 
     const send = vi.fn()
     const fn = registered.get(IPC_CHANNELS.EXPORT_GENERATE)!
-    await fn({ sender: { send } } as unknown as IpcMainInvokeEvent, caseId, { format: 'zip' })
+    await fn({ ...fakeEvent, sender: { send } } as unknown as IpcMainInvokeEvent, caseId, { format: 'zip' })
 
     expect(send).toHaveBeenCalledWith(IPC_CHANNELS.EXPORT_PROGRESS, {
       caseId,
@@ -841,7 +849,7 @@ describe('ipcHandlers — case archive', () => {
 
     const send = vi.fn()
     const fn = registered.get(IPC_CHANNELS.CASES_EXPORT_ARCHIVE)!
-    await fn({ sender: { send } } as unknown as IpcMainInvokeEvent, caseId)
+    await fn({ ...fakeEvent, sender: { send } } as unknown as IpcMainInvokeEvent, caseId)
 
     expect(send).toHaveBeenCalledWith(IPC_CHANNELS.ARCHIVE_PROGRESS, {
       caseId,
@@ -892,7 +900,7 @@ describe('ipcHandlers — case archive', () => {
 
     const send = vi.fn()
     const fn = registered.get(IPC_CHANNELS.CASES_IMPORT_ARCHIVE)!
-    await fn({ sender: { send } } as unknown as IpcMainInvokeEvent, archivePath, true)
+    await fn({ ...fakeEvent, sender: { send } } as unknown as IpcMainInvokeEvent, archivePath, true)
 
     expect(send).toHaveBeenCalledWith(IPC_CHANNELS.ARCHIVE_PROGRESS, {
       step: 'Verifying archive...',
@@ -1064,6 +1072,58 @@ describe('ipcHandlers — database admin', () => {
     const res = expectOk<{ restored: boolean }>(await invoke(IPC_CHANNELS.DB_RESTORE))
     expect(res.restored).toBe(false)
   })
+
+  it('refuses to restore a file that is not a SQLite database', async () => {
+    const bogus = join(userDataPath, 'bogus.db')
+    writeFileSync(bogus, 'definitely not a database, just long enough to have a header')
+    showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [bogus] })
+
+    const res = await invoke<{ ok: boolean; code?: string }>(IPC_CHANNELS.DB_RESTORE)
+    expect(res.ok).toBe(false)
+    expect(res.code).toBe('DB_RESTORE_INVALID')
+    // The live database must be untouched by a rejected restore.
+    expect(caseRepo.listCases().length).toBeGreaterThan(0)
+  })
+
+  it('restores a valid backup and snapshots the outgoing database first', async () => {
+    const backupPath = join(userDataPath, 'backup.db')
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: backupPath })
+    expectOk(await invoke(IPC_CHANNELS.DB_BACKUP))
+
+    showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [backupPath] })
+    const res = expectOk<{ restored: boolean }>(await invoke(IPC_CHANNELS.DB_RESTORE))
+    expect(res.restored).toBe(true)
+    expect(caseRepo.listCases().length).toBeGreaterThan(0)
+    expect(existsSync(join(userDataPath, 'birdbrain.db.pre-restore'))).toBe(true)
+  })
+})
+
+// Defense-in-depth: every contracted channel goes through handle(), which
+// rejects invocations that don't come from the renderer's top frame (issue #88).
+describe('ipcHandlers — IPC sender validation', () => {
+  const untrusted: Array<[string, IpcMainInvokeEvent]> = [
+    ['a missing senderFrame', {} as IpcMainInvokeEvent],
+    [
+      'a sub-frame sender',
+      { senderFrame: { parent: {}, url: trustedUrl } } as unknown as IpcMainInvokeEvent
+    ],
+    [
+      'an untrusted frame URL',
+      {
+        senderFrame: { parent: null, url: 'file:///tmp/somewhere/else/evil.html' }
+      } as unknown as IpcMainInvokeEvent
+    ]
+  ]
+
+  it.each(untrusted)('rejects %s', async (_label, event) => {
+    const fn = registered.get(IPC_CHANNELS.CASES_CREATE)!
+    await expect(Promise.resolve(fn(event, { name: 'x' }))).rejects.toThrow(/untrusted sender/)
+  })
+
+  it('accepts the renderer top frame', async () => {
+    const fn = registered.get(IPC_CHANNELS.CASES_LIST)!
+    await expect(Promise.resolve(fn(fakeEvent))).resolves.toMatchObject({ ok: true })
+  })
 })
 
 describe('archive handlers', () => {
@@ -1090,7 +1150,7 @@ describe('archive handlers', () => {
       checkedAt: '2026-06-30T00:00:00.000Z'
     })
     const handler = registered.get('wayback:lookup')!
-    const result = (await handler({} as never, cap.id)) as { ok: boolean; data: unknown }
+    const result = (await handler(fakeEvent as never, cap.id)) as { ok: boolean; data: unknown }
     expect(lookupSnapshots).toHaveBeenCalledWith('https://example.com/', '2020-01-15T12:00:00.000Z')
     expect(result.ok).toBe(true)
   })
@@ -1112,7 +1172,7 @@ describe('archive handlers', () => {
       statusCode: 200
     }
     const pin = registered.get('wayback:pin')!
-    const pinned = (await pin({} as never, {
+    const pinned = (await pin(fakeEvent as never, {
       captureId: cap.id,
       snapshot,
       checkedAt: '2026-06-30T00:00:00.000Z'
@@ -1128,16 +1188,16 @@ describe('archive handlers', () => {
         snapshotUrl: string
         checkedAt: string
       }>
-    >((await list({} as never, cap.id)) as { ok: boolean; data: unknown })
+    >((await list(fakeEvent as never, cap.id)) as { ok: boolean; data: unknown })
     expect(refs).toHaveLength(1)
     expect(refs[0].snapshotUrl).toBe(snapshot.snapshotUrl)
     expect(refs[0].checkedAt).toBe('2026-06-30T00:00:00.000Z')
 
     const unpin = registered.get('wayback:unpin')!
-    const removed = (await unpin({} as never, pinned.data.id)) as { ok: boolean; data: boolean }
+    const removed = (await unpin(fakeEvent as never, pinned.data.id)) as { ok: boolean; data: boolean }
     expect(removed.ok).toBe(true)
     expect(
-      expectOk<unknown[]>((await list({} as never, cap.id)) as { ok: boolean; data: unknown })
+      expectOk<unknown[]>((await list(fakeEvent as never, cap.id)) as { ok: boolean; data: unknown })
     ).toHaveLength(0)
   })
 
@@ -1152,7 +1212,7 @@ describe('archive handlers', () => {
       format: 'mhtml'
     })
     const pin = registered.get('wayback:pin')!
-    const result = (await pin({} as never, {
+    const result = (await pin(fakeEvent as never, {
       captureId: cap.id,
       // snapshotUrl does not point at web.archive.org — must be rejected.
       snapshot: {
@@ -1168,7 +1228,7 @@ describe('archive handlers', () => {
 
     const list = registered.get('wayback:list')!
     expect(
-      expectOk<unknown[]>((await list({} as never, cap.id)) as { ok: boolean; data: unknown })
+      expectOk<unknown[]>((await list(fakeEvent as never, cap.id)) as { ok: boolean; data: unknown })
     ).toHaveLength(0)
   })
 })

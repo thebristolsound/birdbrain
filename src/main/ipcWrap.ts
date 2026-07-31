@@ -1,4 +1,6 @@
 import { ipcMain, type IpcMainInvokeEvent } from 'electron'
+import { join } from 'path'
+import { pathToFileURL } from 'url'
 import type {
   ContractedChannel,
   IpcEventChannel,
@@ -20,6 +22,30 @@ export function sendEvent<C extends IpcEventChannel>(
   payload: IpcEventContract[C]
 ): void {
   target.send(channel, payload)
+}
+
+// Every contracted channel is privileged (DB writes, file dialogs, API-key
+// access), so invocations are only accepted from the top frame of the app's own
+// renderer — never from a sub-frame or a <webview>. Defense-in-depth against a
+// future renderer-side compromise (issue #88).
+function trustedRendererUrl(): string {
+  const devUrl = process.env['ELECTRON_RENDERER_URL']
+  if (devUrl) return devUrl
+  return pathToFileURL(join(__dirname, '../renderer/index.html')).toString()
+}
+
+function isTrustedIpcSender(event: IpcMainInvokeEvent): boolean {
+  const frame = event.senderFrame
+  if (!frame || frame.parent !== null) return false
+  return frame.url.startsWith(trustedRendererUrl())
+}
+
+// Rejected senders throw rather than returning `{ ok: false }`: an untrusted
+// frame is never an expected failure the renderer should branch on.
+function assertTrustedIpcSender(event: IpcMainInvokeEvent): void {
+  if (!isTrustedIpcSender(event)) {
+    throw new Error('IPC invocation rejected: untrusted sender frame')
+  }
 }
 
 export type IpcResult<T = unknown> =
@@ -76,6 +102,7 @@ export function handle<C extends ContractedChannel>(
 ): void {
   const invoke = fn as (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown
   ipcMain.handle(channel, async (event, ...args) => {
+    assertTrustedIpcSender(event)
     try {
       const data = await invoke(event, ...args)
       return ipcResult(data)

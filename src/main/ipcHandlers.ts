@@ -830,12 +830,35 @@ export function registerIpcHandlers(deps: {
 
     const userDataPath = process.env.BIRDBRAIN_USER_DATA || app.getPath('userData')
     const dbPath = join(userDataPath, 'birdbrain.db')
-    const { closeDatabase, initDatabase } = await import('@main/services/db/core')
-    const { copyFileSync } = await import('fs')
+    const { closeDatabase, initDatabase, validateDatabaseFile } = await import(
+      '@main/services/db/core'
+    )
+    const { copyFileSync, existsSync } = await import('fs')
+
+    // Validate before closing the live connection — a rejected file must leave
+    // the running database untouched.
+    const check = validateDatabaseFile(filePaths[0])
+    if (!check.valid) {
+      throw new IpcFailure(`Not a valid Birdbrain database: ${check.reason}`, 'DB_RESTORE_INVALID')
+    }
 
     closeDatabase()
-    copyFileSync(filePaths[0], dbPath)
-    initDatabase(dbPath)
+    // Snapshot the outgoing database so a restore that turns out to be wrong is
+    // recoverable. Overwritten on each restore; the prior snapshot is the cost.
+    const snapshotPath = `${dbPath}.pre-restore`
+    if (existsSync(dbPath)) copyFileSync(dbPath, snapshotPath)
+
+    try {
+      copyFileSync(filePaths[0], dbPath)
+      initDatabase(dbPath)
+    } catch (err) {
+      // Put the old database back rather than leaving a half-copied file live.
+      if (existsSync(snapshotPath)) {
+        copyFileSync(snapshotPath, dbPath)
+        initDatabase(dbPath)
+      }
+      throw err
+    }
 
     return { restored: true }
   })

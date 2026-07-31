@@ -1,8 +1,51 @@
 import Database from 'better-sqlite3'
+import { closeSync, openSync, readSync } from 'fs'
 import { runMigrations } from '@main/services/db/migrations'
 
 let db: Database.Database
 export const LATEST_SCHEMA_VERSION = 27
+
+const SQLITE_MAGIC = Buffer.from('SQLite format 3\0', 'latin1')
+
+// Gate for db:restore — the chosen file replaces the live database wholesale,
+// so it must be a real SQLite file at a schema version this build can open. A
+// newer version would be migrated-forward data this binary cannot read; a
+// version of 0 is an empty/unmigrated file (issue #88).
+export function validateDatabaseFile(path: string): { valid: boolean; reason?: string } {
+  const header = Buffer.alloc(SQLITE_MAGIC.length)
+  let fd: number | undefined
+  try {
+    fd = openSync(path, 'r')
+    const bytesRead = readSync(fd, header, 0, header.length, 0)
+    if (bytesRead < header.length) return { valid: false, reason: 'File is too small' }
+  } catch {
+    return { valid: false, reason: 'File could not be read' }
+  } finally {
+    if (fd !== undefined) closeSync(fd)
+  }
+  if (!header.equals(SQLITE_MAGIC)) {
+    return { valid: false, reason: 'Not a SQLite database' }
+  }
+
+  try {
+    const candidate = new Database(path, { readonly: true, fileMustExist: true })
+    try {
+      const version = candidate.pragma('user_version', { simple: true }) as number
+      if (version < 1 || version > LATEST_SCHEMA_VERSION) {
+        return {
+          valid: false,
+          reason: `Unsupported schema version ${version} (expected 1-${LATEST_SCHEMA_VERSION})`
+        }
+      }
+      candidate.prepare('SELECT name FROM sqlite_master LIMIT 1').get()
+    } finally {
+      candidate.close()
+    }
+  } catch {
+    return { valid: false, reason: 'File is not a readable SQLite database' }
+  }
+  return { valid: true }
+}
 
 export function initDatabase(dbPath: string): Database.Database {
   db = new Database(dbPath)

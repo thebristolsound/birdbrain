@@ -7,6 +7,12 @@ import {
   type IpcInvokeContract
 } from '@shared/ipc'
 
+// Fail loudly if a regression ever disables context isolation — without it,
+// exposeInMainWorld would silently hand ipcRenderer to renderer-world code.
+if (!process.contextIsolated) {
+  throw new Error('contextIsolation must be enabled')
+}
+
 // Every invoke channel is registered through handle(), so every result carries
 // the { ok, data | error } envelope. A result without one means the channel was
 // registered raw — a wiring bug we surface rather than pass through.

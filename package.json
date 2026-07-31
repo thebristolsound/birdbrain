@@ -50,6 +50,7 @@
     "directories": {
       "output": "dist"
     },
+    "afterPack": "scripts/afterPack-fuses.mjs",
     "files": [
       "!website/**/*"
     ],
@@ -168,6 +169,7 @@
   },
   "devDependencies": {
     "@electron-toolkit/utils": "^4.0.0",
+    "@electron/fuses": "^2.1.3",
     "@eslint/js": "^9.39.4",
     "@playwright/test": "^1.61.1",
     "@tailwindcss/vite": "^4.3.2",

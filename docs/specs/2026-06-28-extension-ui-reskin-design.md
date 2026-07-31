@@ -1,7 +1,8 @@
 # Extension UI reskin — design
 
 **Date:** 2026-06-28
-**Status:** Draft (awaiting review)
+**Status:** Implemented — shipped in #169 (`41a753e`). This document is the design record; the
+"as built" notes mark where the implementation diverged from the original design.
 **Author:** brainstormed against the OpenRouter flat reskin (ADR-0003,
 `2026-06-28-openrouter-theme-reskin-design.md`) and the current extension source.
 
@@ -24,7 +25,7 @@ read (theme) over the existing status channel.
 - The content-script **selector highlight** (functional amber) is out of scope — it is a
   status/affordance colour, not branding.
 
-## Current state (what's being retired)
+## Starting state (what was retired)
 
 - `extension/src/popup/popup.css` — a self-contained Tailwind v4 `@theme` with **dark-only OLED
   tokens** (`--color-d-body: #000`, `--color-d-card: #111827`, …), indigo `#6366f1`/`#4f46e5`
@@ -40,8 +41,9 @@ read (theme) over the existing status channel.
 - `extension/src/utils/api.ts` — `StatusResponse` has no `theme` field.
 - `src/main/services/captureServer.ts` — `/api/status` does not expose the app theme.
 
-The app stores `theme: 'light' | 'dark'` in settings (`src/shared/types.ts:109`); the renderer
-toggles a `dark` class on `<html>` and persists via `settings.update`.
+The app stores `theme: 'dark' | 'light'` in settings (`BirdbrainSettings` in
+`src/shared/types.ts`); the renderer toggles a `dark` class on `<html>` and persists via
+`settings.update`.
 
 ## Design
 
@@ -49,20 +51,31 @@ toggles a `dark` class on `<html>` and persists via `settings.update`.
 
 The popup already calls `getStatus()` on mount. Surface the app theme over that same call.
 
-- **`src/main/services/captureServer.ts`** (`/api/status` handler, ~line 189): add
-  `theme: settings.theme` to the JSON response (`settings` is already read in the handler).
+- **`src/main/services/captureServer.ts`** (`/api/status` handler): add `theme: settings.theme` to
+  the JSON response (`settings` is already read in the handler).
 - **`extension/src/utils/api.ts`**: add `theme?: 'light' | 'dark'` to the `StatusResponse`
   interface.
 - **`extension/src/popup/popup.tsx`**: when status resolves, toggle the `dark` class on
   `document.documentElement` from `status.theme` and cache it to `localStorage('bb-theme')`.
-- **`extension/src/popup/popup.html`**: add a tiny inline `<head>` script that applies the cached
-  class *before first paint* — mirroring the app's own flash-prevention pattern:
-  ```html
-  <script>try { if (localStorage.getItem('bb-theme') !== 'light') document.documentElement.classList.add('dark') } catch (e) {} </script>
-  ```
-  **Unknown / disconnected → dark** (the popup's heritage; the error and loading states read well
-  in dark). A light-mode user sees at most one dark→light flip on the very first open, after which
-  `bb-theme` is cached.
+- A preloader applies the cached class *before first paint*, mirroring the app's own
+  flash-prevention pattern.
+
+**As built — the preloader is an external script, not an inline one.** The original design called
+for an inline `<head>` script in `popup.html`; MV3 forbids it. `extension/manifest.json` sets
+`script-src 'self'` for `extension_pages`, so inline script is blocked outright. The shipped shape:
+
+- `extension/theme-preinit.js` — a classic (non-module, render-blocking) script holding the
+  `bb-theme` read and the `classList.add('dark')`.
+- `extension/vite.config.ts` — the `copy-extension-assets` plugin copies it into `dist/` and
+  injects `<script src="./theme-preinit.js"></script>` before `</head>` at build time. It therefore
+  runs ahead of the popup bundle, which loads as a module from `<body>`. `popup.html` in source
+  carries no script tag of its own.
+
+**No cached preference → dark** (the popup's heritage; the error and loading states read well in
+dark). A light-mode user sees at most one dark→light flip on the very first open, after which
+`bb-theme` is cached. A *cached* preference then wins in every subsequent open, including when the
+app is closed and `getStatus()` fails — deliberately, so a light-mode user is not thrown a dark
+popup every time the desktop app is not running.
 
 ### 2. Popup token system (`popup.css`)
 
@@ -86,8 +99,10 @@ overrides under `html.dark { }` (the same mechanism `globals.css` uses).
 | `--color-border`           | `#e4e4e7`  | `#27272a`  |
 | `--color-border-strong`    | `#d4d4d8`  | `#3d3d42`  |
 
-- **Radius:** add `--radius: 0.5rem` for the app scale. Outcome in markup: cards `rounded-xl`
-  (12px), buttons `rounded-md` (6px).
+- **Radius:** add `--radius: 0.5rem` to record the app's 8px base. Note that, unlike `globals.css`,
+  the popup does not derive `--radius-md`/`--radius-xl` from it — `rounded-md`/`rounded-xl` resolve
+  from Tailwind v4's defaults, which land on the same values the app's derived scale produces.
+  Outcome in markup either way: cards `rounded-xl` (12px), buttons `rounded-md` (6px).
 - **Fonts:** `--font-display` and `--font-body` both → `"Inter Variable", ui-sans-serif,
   system-ui, sans-serif`. Drop the Jakarta/DM declarations.
 - **Status colours** (`red/amber/emerald`, and the `indigo-*` scale if still referenced for
@@ -173,23 +188,22 @@ and the content script has no theme channel):
 - **Status-shape test:** if a test asserts the exact `/api/status` body, update it for the new
   `theme` field.
 
-## Verification
-
-- `pnpm build:extension`; load unpacked → screenshot the popup in **both** themes (toggle the app
-  theme and reopen the popup) and trigger a capture to screenshot the toast.
-- `pnpm lint`, `pnpm test`, `pnpm build` (the last covers the `captureServer.ts` change).
-- User does final visual sign-off in both themes.
-
 ## Acceptance
 
-- Popup matches the app: flat zinc surfaces, `#5659f0`(light)/`#6467f2`(dark) accent, 8px radius /
-  6px buttons, Inter, no glow/shimmer/pulse — and **follows the app's light/dark setting**.
+- Popup matches the app: flat zinc surfaces, `#5659f0`(light)/`#6467f2`(dark) accent, 8px base
+  radius (12px cards, 6px buttons), Inter, no decorative glow/shimmer/pulse — and **follows the
+  app's light/dark setting**. The functional recording indicator (`pulse-dot` /
+  `status-recording`) is retained.
 - Injected toast reads as the same flat dark card; spinner uses the accent.
 - All popup text is Inter; no Jakarta/DM woff2 remains in the build; no external font requests.
 - `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm build:extension` all pass.
 
+Verification called for: `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm build:extension`; loading
+the unpacked extension to screenshot the popup in both themes and the toast on a live capture; and
+a visual sign-off in both themes.
+
 ## Delivery
 
-Per repo rule (tracked docs never bundle with `src`): this spec lands in its **own commit/PR**;
-the extension reskin lands separately. ADR-0003 already records the design direction — this is an
-application of it to the extension, not a new architectural decision, so no new ADR.
+Shipped in #169 (`41a753e`, "feat: extension reskin + TopBar case consolidation"). ADR-0003 already
+records the design direction — this is an application of it to the extension, not a new
+architectural decision, so no new ADR.

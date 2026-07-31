@@ -29,13 +29,3 @@ Author-time documentation for the project. All folders are tracked, including `p
 | `superpowers:brainstorming` | `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` | `docs/specs/YYYY-MM-DD-<topic>-design.md` |
 | `superpowers:writing-plans` | `docs/superpowers/plans/YYYY-MM-DD-<feature>.md`      | `docs/plans/YYYY-MM-DD-<feature>.md`      |
 | `speckit.*`                 | varies                                                | follow the canonical layout above         |
-
-When a skill says "save to `docs/superpowers/...`", treat that as overridden by this README. Always write to `docs/specs/` or `docs/plans/`.
-
-## Legacy `superpowers/` directory
-
-`docs/superpowers/` is the old default path written by the Superpowers skill before this convention was set. It is **frozen**:
-
-- Do not write new files there.
-- Existing files remain for git history reference. Canonical copies of any duplicated docs live under `website/content/docs/` and `specs/`.
-- When superseding a `superpowers/` doc, move the new version into `specs/` or `plans/` per the convention above.

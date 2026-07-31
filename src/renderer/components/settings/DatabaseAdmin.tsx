@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { DbStats } from './db/DbStats'
-import { DbTables } from './db/DbTables'
-import { DbUtilities } from './db/DbUtilities'
+import { DbStats } from '@renderer/components/settings/db/DbStats'
+import { DbTables } from '@renderer/components/settings/db/DbTables'
+import { DbUtilities } from '@renderer/components/settings/db/DbUtilities'
 
 type DbSubTab = 'stats' | 'tables' | 'utilities'
 

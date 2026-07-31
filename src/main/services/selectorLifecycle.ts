@@ -1,5 +1,6 @@
-import * as db from '@main/services/database'
-import { readCaptureFile } from '@main/services/storage'
+import * as captureRepo from '@main/services/db/captureRepo'
+import * as selectorRepo from '@main/services/db/selectorRepo'
+import { defaultCaptureStore } from '@main/services/captureStore'
 import type { Selector } from '@shared/types'
 import type {
   CreateSelectorParams,
@@ -8,6 +9,7 @@ import type {
   SelectorRematchedEvent,
   SelectorRematchedStatus
 } from '@shared/ipc'
+import { logger } from '@main/services/logger'
 
 // Exported so tests can drive the boundary case (>RETRO_MAX_CAPTURES) without
 // hardcoding the number.
@@ -27,9 +29,9 @@ export interface SelectorLifecycle {
 
 export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLifecycle {
   function loadCaptureText(caseId: string, captureId: string): string | null {
-    const buffer = readCaptureFile(caseId, captureId, 'txt')
+    const buffer = defaultCaptureStore.readArtifact(caseId, captureId, 'txt')
     if (buffer) return buffer.toString('utf-8')
-    return db.getCaptureTextContent(captureId)
+    return captureRepo.getCaptureTextContent(captureId)
   }
 
   function scheduleRetroactiveMatch(
@@ -38,7 +40,7 @@ export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLi
     options?: { unbounded?: boolean }
   ): void {
     if (selectors.length === 0) return
-    const allCaptures = db.listCaptures(caseId)
+    const allCaptures = captureRepo.listCaptures(caseId)
     // create / bulk-create cap recent captures to keep the first pass snappy on
     // high-volume cases. updateSelector with changed semantics passes
     // unbounded:true because leaving stale matches under the old pattern would
@@ -67,7 +69,7 @@ export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLi
 
         if (captureTexts.length > 0) {
           for (const sel of selectors) {
-            db.matchSelectorAgainstCaptures(sel.id, captureTexts)
+            selectorRepo.matchSelectorAgainstCaptures(sel.id, captureTexts)
           }
         }
 
@@ -77,7 +79,12 @@ export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLi
           emit('done')
         }
       } catch (err) {
-        console.error('selectorLifecycle: retroactive match failed', err)
+        logger.error(
+          'selectorLifecycle',
+          'selectorLifecycle.retroactive_match_failed',
+          undefined,
+          err
+        )
         emit('error')
       }
     }
@@ -87,12 +94,12 @@ export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLi
 
   return {
     createSelector(params) {
-      const selector = db.createSelector(params)
+      const selector = selectorRepo.createSelector(params)
       scheduleRetroactiveMatch([selector], params.caseId)
       return selector
     },
     bulkCreateSelectors(params) {
-      const created = db.bulkCreateSelectors(
+      const created = selectorRepo.bulkCreateSelectors(
         params.selectors.map((s) => ({
           caseId: params.caseId,
           pattern: s.pattern,
@@ -104,25 +111,25 @@ export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLi
       return created
     },
     updateSelector(params) {
-      const existing = db.getSelector(params.id)
+      const existing = selectorRepo.getSelector(params.id)
       if (!existing) return undefined
 
       const patternChanged = params.pattern !== undefined && params.pattern !== existing.pattern
       const isRegexChanged = params.isRegex !== undefined && params.isRegex !== existing.isRegex
       const matchSemanticsChanged = patternChanged || isRegexChanged
 
-      const updated = db.updateSelector(params)
+      const updated = selectorRepo.updateSelector(params)
       if (!updated) return undefined
 
       if (matchSemanticsChanged) {
-        db.clearSelectorMatches(updated.id)
+        selectorRepo.clearSelectorMatches(updated.id)
         scheduleRetroactiveMatch([updated], updated.caseId, { unbounded: true })
       }
 
       return updated
     },
     runActiveSelectorsForCapture(captureId, caseId, textContent) {
-      db.matchSelectorsForCapture(captureId, caseId, textContent)
+      selectorRepo.matchSelectorsForCapture(captureId, caseId, textContent)
     }
   }
 }

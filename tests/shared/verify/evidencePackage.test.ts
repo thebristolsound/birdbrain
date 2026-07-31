@@ -4,22 +4,19 @@ import { join, dirname } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
 import { createHash } from 'crypto'
-import {
-  initDatabase,
-  closeDatabase,
-  createCase
-} from '../../../src/main/services/database'
-import { initStorage, ensureCaseDir } from '../../../src/main/services/storage'
-import { appendManifestEntry, initManifest } from '../../../src/main/services/manifest'
-import { ingestMhtmlCapture, createCaptureLifecycle } from '../../../src/main/services/captureLifecycle'
-import { createSelectorLifecycle } from '../../../src/main/services/selectorLifecycle'
-import { generateReport } from '../../../src/main/services/export'
+import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { createCase } from '@main/services/db/caseRepo'
+import { initStorage, ensureCaseDir } from '@main/services/storage'
+import { appendManifestEntry, initManifest } from '@main/services/manifest'
+import { ingestMhtmlCapture, createCaptureLifecycle } from '@main/services/captureLifecycle'
+import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
+import { generateReport } from '@main/services/export'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
 import { EvidencePackageSchema } from '@shared/schemas'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
-import type { ExportOptions } from '../../../src/shared/types'
+import type { ExportOptions } from '@shared/types'
 
 // Parses a Birdbrain stored-ZIP (all entries STORE/method 0) into a name->bytes
 // map, mirroring the export test's reader.
@@ -57,6 +54,20 @@ function reasons(result: { checks: Array<{ reason?: string }> }): string[] {
 
 function hasReason(result: { checks: Array<{ reason?: string }> }, needle: string): boolean {
   return reasons(result).some((r) => r.includes(needle))
+}
+
+interface EvidenceJson {
+  captures: Array<{ id: string; timestampTokenPaths: string[] }>
+  artifacts: Array<{ path: string; sha256?: string; sizeBytes?: number }>
+}
+
+// Reads evidence.json from the package, hands the parsed object to `mutate`, and
+// writes it back — the read/mutate/write dance the tampering tests share.
+function mutateEvidenceJson(pkgDir: string, mutate: (evidence: EvidenceJson) => void): void {
+  const p = join(pkgDir, 'evidence.json')
+  const evidence: EvidenceJson = JSON.parse(readFileSync(p, 'utf-8'))
+  mutate(evidence)
+  writeFileSync(p, JSON.stringify(evidence, null, 2))
 }
 
 describe('verifyEvidencePackage', () => {
@@ -264,6 +275,89 @@ describe('verifyEvidencePackage', () => {
     const result = verifyEvidencePackage(pkgDir)
     expect(result.pass).toBe(false)
     expect(hasReason(result, 'path escapes package')).toBe(true)
+  })
+
+  it('FAILs the artifact sweep when an indexed artifact file is missing from the package', () => {
+    // Point evidence.json at an in-package artifact path that does not exist on
+    // disk. safeJoin resolves it (no traversal), so the sweep reaches the
+    // existsSync branch and reports the file as missing.
+    mutateEvidenceJson(pkgDir, (evidence) => {
+      evidence.artifacts.push({
+        path: 'pages/does-not-exist.mhtml',
+        sha256: 'a'.repeat(64),
+        sizeBytes: 42
+      })
+    })
+    const result = verifyEvidencePackage(pkgDir)
+    expect(result.pass).toBe(false)
+    expect(hasReason(result, 'pages/does-not-exist.mhtml: file missing')).toBe(true)
+  })
+
+  it('locates a dedup-renamed .tst via the evidence.json timestampTokenPaths index', () => {
+    // buildEvidenceZip names a shared token after the FIRST capture holding it,
+    // so a capture is not guaranteed timestamps/{ownId}.tst. Rename the file away
+    // from the own-id path and point the index at the new name: the verifier must
+    // still find + byte-bind it and PASS the structural timestamp check.
+    const ownRel = join('timestamps', `${captureId}.tst`)
+    const newRel = join('timestamps', 'shared-token.tst')
+    const bytes = readFileSync(join(pkgDir, ownRel))
+    writeFileSync(join(pkgDir, newRel), bytes)
+    rmSync(join(pkgDir, ownRel))
+
+    mutateEvidenceJson(pkgDir, (evidence) => {
+      const rec = evidence.captures.find((c) => c.id === captureId)
+      rec!.timestampTokenPaths = ['timestamps/shared-token.tst']
+      // Keep the artifact sweep consistent: the token file moved, so its recorded
+      // path must move with it (bytes and thus sha256 are unchanged).
+      const artifact = evidence.artifacts.find((a) => a.path === `timestamps/${captureId}.tst`)
+      expect(artifact).toBeDefined()
+      artifact!.path = 'timestamps/shared-token.tst'
+    })
+
+    const result = verifyEvidencePackage(pkgDir)
+    const ts = result.checks.find((c) => c.name === `capture ${captureId} timestamp`)
+    expect(ts?.status, JSON.stringify(result.checks, null, 2)).toBe('pass')
+    expect(result.pass).toBe(true)
+  })
+
+  it('locates a dedup-renamed .tst by scanning timestamps/ when the index omits it', () => {
+    // Neither the own-id path nor the untrusted index point at the token; the
+    // verifier falls back to scanning timestamps/ for bytes matching the signed
+    // token. This is the last resolution tier in locateTimestampFile.
+    const ownRel = join('timestamps', `${captureId}.tst`)
+    const newRel = join('timestamps', 'orphan-token.tst')
+    const bytes = readFileSync(join(pkgDir, ownRel))
+    writeFileSync(join(pkgDir, newRel), bytes)
+    rmSync(join(pkgDir, ownRel))
+
+    mutateEvidenceJson(pkgDir, (evidence) => {
+      const rec = evidence.captures.find((c) => c.id === captureId)
+      rec!.timestampTokenPaths = [] // index gives no help → force the disk scan
+      const artifact = evidence.artifacts.find((a) => a.path === `timestamps/${captureId}.tst`)
+      expect(artifact).toBeDefined()
+      artifact!.path = 'timestamps/orphan-token.tst'
+    })
+
+    const result = verifyEvidencePackage(pkgDir)
+    const ts = result.checks.find((c) => c.name === `capture ${captureId} timestamp`)
+    expect(ts?.status, JSON.stringify(result.checks, null, 2)).toBe('pass')
+    expect(result.pass).toBe(true)
+  })
+
+  it('FAILs with token-file-missing when no .tst can be located anywhere', () => {
+    // Remove the token file and every index pointer to it. The signed manifest
+    // still asserts a token, so there is nothing to byte-bind → FAIL.
+    rmSync(join(pkgDir, 'timestamps', `${captureId}.tst`))
+    mutateEvidenceJson(pkgDir, (evidence) => {
+      const rec = evidence.captures.find((c) => c.id === captureId)
+      rec!.timestampTokenPaths = []
+      evidence.artifacts = evidence.artifacts.filter(
+        (a) => a.path !== `timestamps/${captureId}.tst`
+      )
+    })
+    const result = verifyEvidencePackage(pkgDir)
+    expect(result.pass).toBe(false)
+    expect(hasReason(result, 'timestamp token file missing')).toBe(true)
   })
 
   it('PASSes a package whose capture was deleted (artifacts absent)', () => {

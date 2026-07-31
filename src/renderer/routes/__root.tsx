@@ -6,7 +6,7 @@ import {
   useMatchRoute,
   useNavigate
 } from '@tanstack/react-router'
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { TopBar } from '@renderer/components/layout/TopBar'
 import { Sidebar } from '@renderer/components/layout/Sidebar'
 import { MotionProvider } from '@renderer/lib/motion'
@@ -22,11 +22,17 @@ import { SelectorsOverview } from '@renderer/components/selectors/SelectorsOverv
 import { NotesOverview } from '@renderer/components/notes/NotesOverview'
 import { TagsOverview } from '@renderer/components/tags/TagsOverview'
 import { DataExplorer } from '@renderer/components/dashboard/cases/DataExplorer'
+import { InstallExtensionGuide } from '@renderer/components/extension/InstallExtensionGuide'
 import { SettingsView } from '@renderer/components/settings/SettingsView'
 import { useSessionRestore } from '@renderer/hooks/useSessionRestore'
 import { useCommandPalette } from '@renderer/hooks/useCommandPalette'
 import { CommandPalette } from '@renderer/components/layout/CommandPalette'
+import { Toaster } from 'sonner'
 import { useAppStore } from '@renderer/stores/appStore'
+import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
+import { subscribeToMainLog } from '@renderer/lib/mainLogBridge'
+import { ReportProblemDialog } from '@renderer/components/diagnostics/ReportProblemDialog'
+import { CrashRecoveryPrompt } from '@renderer/components/diagnostics/CrashRecoveryPrompt'
 
 const TanStackRouterDevtools = import.meta.env.DEV
   ? lazy(() =>
@@ -75,9 +81,28 @@ const rootRoute = createRootRoute({
   component: function RootLayout() {
     const { restoring } = useSessionRestore()
     useCommandPalette()
+    useEffect(() => subscribeToMainLog(), [])
     const matchRoute = useMatchRoute()
     const onboardingOverlayOpen = useAppStore((s) => s.onboardingOverlayOpen)
     const setOnboardingOverlayOpen = useAppStore((s) => s.setOnboardingOverlayOpen)
+
+    const [reportOpen, setReportOpen] = useState(false)
+    const [reportCorrelationId, setReportCorrelationId] = useState<string | undefined>(undefined)
+
+    // The single wiring point between every "Report this" trigger — the toast
+    // action in notify.ts/mainLogBridge.ts, the DiagnosticsPanel button, and
+    // the CommandPalette entry — and the one ReportProblemDialog instance
+    // mounted here. Each trigger just dispatches this event; only this
+    // listener owns open/correlationId state.
+    useEffect(() => {
+      function onReport(e: Event): void {
+        const detail = (e as CustomEvent<{ correlationId?: string }>).detail
+        setReportCorrelationId(detail?.correlationId)
+        setReportOpen(true)
+      }
+      window.addEventListener('birdbrain:report', onReport)
+      return () => window.removeEventListener('birdbrain:report', onReport)
+    }, [])
 
     const showSidebar = Boolean(matchRoute({ to: '/cases/$caseId', fuzzy: true }))
 
@@ -91,22 +116,54 @@ const rootRoute = createRootRoute({
 
     return (
       <MotionProvider>
-        <div
-          data-testid="app-ready"
-          className="flex h-screen flex-col bg-canvas text-text-secondary"
-        >
-          <TopBar />
-          <div className="flex flex-1 overflow-hidden">
-            {showSidebar && <Sidebar />}
-            <main className="flex-1 overflow-hidden bg-canvas">
-              <Outlet />
-            </main>
+        {/* Two nested boundaries, deliberately. The inner one around <Outlet />
+            keeps the chrome alive when a route blows up — the tester can still
+            navigate away. This outer one is the last resort: a render failure in
+            TopBar, Sidebar, CommandPalette, the onboarding overlay or the
+            diagnostic components is outside the inner boundary and would
+            otherwise blank the renderer with no react.render_error recorded. */}
+        <ErrorBoundary source="root">
+          <div
+            data-testid="app-ready"
+            className="flex h-screen flex-col bg-canvas text-text-secondary"
+          >
+            <TopBar />
+            <div className="flex flex-1 overflow-hidden">
+              {showSidebar && <Sidebar />}
+              <main className="flex-1 overflow-hidden bg-canvas">
+                <ErrorBoundary source="content">
+                  <Outlet />
+                </ErrorBoundary>
+              </main>
+            </div>
           </div>
-        </div>
-        <CommandPalette />
-        {onboardingOverlayOpen && (
-          <OnboardingWizard mode="overlay" onClose={() => setOnboardingOverlayOpen(false)} />
-        )}
+          <CommandPalette />
+          <CrashRecoveryPrompt />
+          <ReportProblemDialog
+            open={reportOpen}
+            onOpenChange={setReportOpen}
+            correlationId={reportCorrelationId}
+          />
+          {onboardingOverlayOpen && (
+            <OnboardingWizard mode="overlay" onClose={() => setOnboardingOverlayOpen(false)} />
+          )}
+        </ErrorBoundary>
+        {/* Every user-visible failure notice routes through notify.ts, which
+            renders here. Mounted once at the root so a toast raised from a
+            mutation, a query, or the main-process bridge survives navigation —
+            and kept OUTSIDE the boundary above so the toast describing a shell
+            crash can still render after that shell is gone. */}
+        <Toaster
+          position="bottom-right"
+          closeButton
+          toastOptions={{
+            classNames: {
+              toast: 'bg-surface border border-border text-text-primary',
+              description: 'text-text-muted',
+              actionButton: 'bg-accent text-white'
+            }
+          }}
+        />
         <Suspense>
           <ReactQueryDevtools buttonPosition="bottom-left" />
           <TanStackRouterDevtools position="bottom-right" />
@@ -168,6 +225,20 @@ const settingsRoute = createRoute({
     return (
       <div className="p-6">
         <SettingsView />
+      </div>
+    )
+  },
+  errorComponent: RouteErrorComponent
+})
+
+// Extension setup guide
+const extensionSetupRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/extension-setup',
+  component: function ExtensionSetupPage() {
+    return (
+      <div className="h-full overflow-y-auto">
+        <InstallExtensionGuide />
       </div>
     )
   },
@@ -254,6 +325,7 @@ const dataRoute = createRoute({
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   settingsRoute,
+  extensionSetupRoute,
   newCaseRoute,
   caseRoute.addChildren([
     caseIndexRoute,

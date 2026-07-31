@@ -1,5 +1,26 @@
 import { ipcMain, type IpcMainInvokeEvent } from 'electron'
-import type { IpcChannel } from '@shared/ipc'
+import type {
+  ContractedChannel,
+  IpcEventChannel,
+  IpcEventContract,
+  IpcInvokeContract
+} from '@shared/ipc'
+
+// Anything that can push a main→renderer event: a WebContents, or the sender
+// on an IpcMainInvokeEvent.
+interface EventTarget {
+  send(channel: string, ...args: unknown[]): void
+}
+
+// Pushes a main→renderer event whose payload is pinned by IpcEventContract.
+// Sending the wrong shape on a channel is a compile error.
+export function sendEvent<C extends IpcEventChannel>(
+  target: EventTarget,
+  channel: C,
+  payload: IpcEventContract[C]
+): void {
+  target.send(channel, payload)
+}
 
 export type IpcResult<T = unknown> =
   | { ok: true; data: T }
@@ -43,13 +64,20 @@ export function ipcError(err: unknown): IpcResult<never> {
 // IpcResult. Translates `IpcFailure` and known SQLite errors into structured
 // `{ ok: false }` responses; other errors are rethrown so Electron surfaces
 // them as rejected promises in the renderer.
-export function handle<T, A extends unknown[]>(
-  channel: IpcChannel,
-  fn: (event: IpcMainInvokeEvent, ...args: A) => T | Promise<T>
+//
+// The channel must have an IpcInvokeContract entry, and that entry pins the
+// handler's argument tuple and return type.
+export function handle<C extends ContractedChannel>(
+  channel: C,
+  fn: (
+    event: IpcMainInvokeEvent,
+    ...args: IpcInvokeContract[C]['args']
+  ) => IpcInvokeContract[C]['result'] | Promise<IpcInvokeContract[C]['result']>
 ): void {
+  const invoke = fn as (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown
   ipcMain.handle(channel, async (event, ...args) => {
     try {
-      const data = await fn(event, ...(args as A))
+      const data = await invoke(event, ...args)
       return ipcResult(data)
     } catch (err) {
       if (err instanceof IpcFailure) {

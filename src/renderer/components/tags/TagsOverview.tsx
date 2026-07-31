@@ -1,7 +1,7 @@
 import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { tagsQueryOptions, tagUsageCountsForCaseQueryOptions } from '@renderer/lib/queries'
-import { TagManager } from './TagManager'
+import { TagManager } from '@renderer/components/tags/TagManager'
 import { Button, Card } from '@renderer/components/ui'
 
 export function TagsOverview() {

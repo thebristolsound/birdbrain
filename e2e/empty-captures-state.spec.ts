@@ -23,7 +23,9 @@ async function dismissOnboardingAndCreateCase(page: import('@playwright/test').P
     if (m) window.location.hash = `/cases/${m[1]}/captures`
   })
   await page.waitForURL(/#\/cases\/.+\/captures/, { timeout: 10000 })
-  await page.waitForSelector('[data-testid="case-header-name-btn"]', { timeout: 10000 })
+  await expect(page.locator('[data-testid="topbar-case-name"]')).toContainText(name, {
+    timeout: 10000
+  })
 }
 
 test.describe('Empty Captures State', () => {
@@ -51,7 +53,7 @@ test.describe('Empty Captures State', () => {
     await expect(overlay).toBeVisible()
     await expect(overlay).toHaveAttribute('role', 'dialog')
     await expect(overlay).toHaveAttribute('aria-modal', 'true')
-    await expect(overlay.getByText('Connect Extension')).toBeVisible()
+    await expect(overlay.getByText('Install the Extension')).toBeVisible()
 
     // Escape key dismisses the overlay
     await page.keyboard.press('Escape')

@@ -3,10 +3,31 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import type { Note } from '@shared/types'
 import { useInlineNoteEditor } from '@renderer/components/captures/useInlineNoteEditor'
+import { EMPTY_NOTE_DOC, noteDocToText, plainTextToNoteDoc } from '@shared/noteDoc'
 
 const captureTitle = 'My capture'
 
+/** The serialized document the editor holds for a given piece of text. */
+function doc(text: string): string {
+  return JSON.stringify(text ? plainTextToNoteDoc(text) : EMPTY_NOTE_DOC)
+}
+
+/** A note as stored since schema v26: rich body plus its derived plain text. */
 function note(id: string, body: string, updatedAt: string): Note {
+  return {
+    id,
+    caseId: 'case-1',
+    captureId: 'cap-1',
+    title: 't',
+    body,
+    bodyDoc: doc(body),
+    createdAt: updatedAt,
+    updatedAt
+  }
+}
+
+/** A note written before rich text: plain body, no document. */
+function legacyNote(id: string, body: string, updatedAt: string): Note {
   return {
     id,
     caseId: 'case-1',
@@ -37,7 +58,19 @@ describe('useInlineNoteEditor', () => {
       useInlineNoteEditor({ notes, captureId: 'cap-1', captureTitle, onCreate, onUpdate })
     )
     expect(result.current.boundNoteId).toBe('b')
-    expect(result.current.value).toBe('newer')
+    expect(result.current.value).toBe(doc('newer'))
+  })
+
+  it('opens a legacy plain-text note clean, so autosave does not rewrite it', () => {
+    const notes = [legacyNote('a', 'written before rich text', '2026-02-01T00:00:00Z')]
+    const onCreate = vi.fn()
+    const onUpdate = vi.fn()
+    const { result } = renderHook(() =>
+      useInlineNoteEditor({ notes, captureId: 'cap-1', captureTitle, onCreate, onUpdate })
+    )
+
+    expect(noteDocToText(JSON.parse(result.current.value))).toBe('written before rich text')
+    expect(result.current.isDirty).toBe(false)
   })
 
   it('blank blur with zero notes is a no-op', async () => {
@@ -52,6 +85,21 @@ describe('useInlineNoteEditor', () => {
     expect(onCreate).not.toHaveBeenCalled()
   })
 
+  it('treats a document with only an empty paragraph as blank', async () => {
+    const onCreate = vi.fn()
+    const onUpdate = vi.fn()
+    const { result } = renderHook(() =>
+      useInlineNoteEditor({ notes: [], captureId: 'cap-1', captureTitle, onCreate, onUpdate })
+    )
+    // What the editor serializes after the user types and deletes again.
+    act(() => result.current.setValue(JSON.stringify(EMPTY_NOTE_DOC)))
+    await act(async () => {
+      await result.current.flush()
+    })
+    expect(onCreate).not.toHaveBeenCalled()
+    expect(result.current.isDirty).toBe(false)
+  })
+
   it('non-empty save with zero notes creates with auto-title = capture title', async () => {
     const created = note('new-note', 'hello', '2026-02-02T00:00:00Z')
     const onCreate = vi.fn().mockResolvedValue(created)
@@ -59,11 +107,11 @@ describe('useInlineNoteEditor', () => {
     const { result } = renderHook(() =>
       useInlineNoteEditor({ notes: [], captureId: 'cap-1', captureTitle, onCreate, onUpdate })
     )
-    act(() => result.current.setValue('hello'))
+    act(() => result.current.setValue(doc('hello')))
     await act(async () => {
       await result.current.flush()
     })
-    expect(onCreate).toHaveBeenCalledWith({ title: captureTitle, body: 'hello' })
+    expect(onCreate).toHaveBeenCalledWith({ title: captureTitle, bodyDoc: doc('hello') })
     expect(result.current.boundNoteId).toBe('new-note')
   })
 
@@ -81,7 +129,7 @@ describe('useInlineNoteEditor', () => {
       useInlineNoteEditor({ notes: [], captureId: 'cap-1', captureTitle, onCreate, onUpdate })
     )
 
-    act(() => result.current.setValue('hello'))
+    act(() => result.current.setValue(doc('hello')))
 
     const firstFlush = result.current.flush()
     const secondFlush = result.current.flush()
@@ -94,18 +142,19 @@ describe('useInlineNoteEditor', () => {
     expect(result.current.boundNoteId).toBe('new-note')
   })
 
-  it('saving an existing note with cleared body persists empty body', async () => {
+  it('saving an existing note with cleared body persists the empty document', async () => {
     const notes = [note('a', 'hi', '2026-02-01T00:00:00Z')]
     const onCreate = vi.fn()
     const onUpdate = vi.fn()
     const { result } = renderHook(() =>
       useInlineNoteEditor({ notes, captureId: 'cap-1', captureTitle, onCreate, onUpdate })
     )
-    act(() => result.current.setValue(''))
+    act(() => result.current.setValue(doc('')))
     await act(async () => {
       await result.current.flush()
     })
-    expect(onUpdate).toHaveBeenCalledWith({ id: 'a', body: '' })
+    // Emptying an existing note is an edit, not a signal to leave it alone.
+    expect(onUpdate).toHaveBeenCalledWith({ id: 'a', bodyDoc: doc('') })
   })
 
   it('debounce save fires after 1500ms of inactivity', async () => {
@@ -115,11 +164,11 @@ describe('useInlineNoteEditor', () => {
     const { result } = renderHook(() =>
       useInlineNoteEditor({ notes, captureId: 'cap-1', captureTitle, onCreate, onUpdate })
     )
-    act(() => result.current.setValue('typed'))
+    act(() => result.current.setValue(doc('typed')))
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1500)
     })
-    expect(onUpdate).toHaveBeenCalledWith({ id: 'a', body: 'typed' })
+    expect(onUpdate).toHaveBeenCalledWith({ id: 'a', bodyDoc: doc('typed') })
   })
 
   it('swallows debounced save rejection to avoid unhandled promise rejection', async () => {
@@ -129,11 +178,11 @@ describe('useInlineNoteEditor', () => {
     const { result } = renderHook(() =>
       useInlineNoteEditor({ notes, captureId: 'cap-1', captureTitle, onCreate, onUpdate })
     )
-    act(() => result.current.setValue('typed'))
+    act(() => result.current.setValue(doc('typed')))
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1500)
     })
-    expect(onUpdate).toHaveBeenCalledWith({ id: 'a', body: 'typed' })
+    expect(onUpdate).toHaveBeenCalledWith({ id: 'a', bodyDoc: doc('typed') })
   })
 
   it('Esc reverts to last saved value', () => {
@@ -143,10 +192,10 @@ describe('useInlineNoteEditor', () => {
     const { result } = renderHook(() =>
       useInlineNoteEditor({ notes, captureId: 'cap-1', captureTitle, onCreate, onUpdate })
     )
-    act(() => result.current.setValue('changed'))
-    expect(result.current.value).toBe('changed')
+    act(() => result.current.setValue(doc('changed')))
+    expect(result.current.value).toBe(doc('changed'))
     act(() => result.current.revert())
-    expect(result.current.value).toBe('original')
+    expect(result.current.value).toBe(doc('original'))
   })
 
   it('does not stomp local edits when external update lands without our save', () => {
@@ -158,9 +207,9 @@ describe('useInlineNoteEditor', () => {
         useInlineNoteEditor({ notes, captureId: 'cap-1', captureTitle, onCreate, onUpdate }),
       { initialProps: { notes: initial } }
     )
-    act(() => result.current.setValue('local typing'))
+    act(() => result.current.setValue(doc('local typing')))
     rerender({ notes: [note('a', 'server-updated', '2026-02-01T00:01:00Z')] })
-    expect(result.current.value).toBe('local typing')
+    expect(result.current.value).toBe(doc('local typing'))
   })
 
   it('syncs from server when local is clean and server bumps updatedAt', () => {
@@ -172,9 +221,9 @@ describe('useInlineNoteEditor', () => {
         useInlineNoteEditor({ notes, captureId: 'cap-1', captureTitle, onCreate, onUpdate }),
       { initialProps: { notes: initial } }
     )
-    expect(result.current.value).toBe('server')
+    expect(result.current.value).toBe(doc('server'))
     rerender({ notes: [note('a', 'server-updated', '2026-02-01T00:01:00Z')] })
-    expect(result.current.value).toBe('server-updated')
+    expect(result.current.value).toBe(doc('server-updated'))
   })
 
   it('keeps note dirty when update fails', async () => {
@@ -184,10 +233,10 @@ describe('useInlineNoteEditor', () => {
     const { result } = renderHook(() =>
       useInlineNoteEditor({ notes, captureId: 'cap-1', captureTitle, onCreate, onUpdate })
     )
-    act(() => result.current.setValue('changed'))
+    act(() => result.current.setValue(doc('changed')))
     await expect(result.current.flush()).rejects.toThrow('failed')
     expect(result.current.isDirty).toBe(true)
     act(() => result.current.revert())
-    expect(result.current.value).toBe('original')
+    expect(result.current.value).toBe(doc('original'))
   })
 })

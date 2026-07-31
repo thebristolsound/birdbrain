@@ -1,0 +1,16 @@
+# Allowlisted gitleaks findings, one fingerprint per line
+# (commit:path:rule:line). Add an entry only after confirming by hand that the
+# match is not a real credential.
+#
+# generic-api-key false positives in an old plan doc: a sentence there labels a
+# Tailwind utility-class list (the border-neutral / bg-neutral variants) with a
+# word the rule treats as a secret name. The value is CSS classes, not a secret.
+1bb3963d0e14615c596cedd8197b35f355760f01:docs/superpowers/plans/2026-03-18-captures-workspace-redesign.md:generic-api-key:496
+231407378302b4754fc678b6f4204235be716bef:docs/superpowers/plans/2026-03-18-captures-workspace-redesign.md:generic-api-key:496
+e110997ac02e43a5d988737180b5c137bcfddbd0:docs/superpowers/plans/2026-03-18-captures-workspace-redesign.md:generic-api-key:496
+0b3ce694524a4c28a65e38aef0c23f4e29274354:docs/superpowers/plans/2026-03-18-captures-workspace-redesign.md:generic-api-key:496
+30da1bf581814128fdaee92e7488349ef7b84660:docs/superpowers/plans/2026-03-18-captures-workspace-redesign.md:generic-api-key:496
+#
+# A prior version of this file quoted that same string in a comment, which
+# re-tripped the rule. Suppress the historical commit that introduced it.
+19b1b589587a6d158a15518b854f035e1de92ab9:.gitleaksignore:generic-api-key:6

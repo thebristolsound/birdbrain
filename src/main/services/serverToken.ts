@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { randomBytes } from 'crypto'
+import { logger } from '@main/services/logger'
 
 const TOKEN_FILENAME = 'server-token'
 const TOKEN_FORMAT = /^[0-9a-f]{64}$/
@@ -19,17 +20,17 @@ export function initServerToken(userDataPath: string): void {
       cachedToken = raw
       return
     }
-    console.warn('[serverToken] stored token failed format check, regenerating')
+    logger.warn('serverToken', 'serverToken.token_invalid')
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-      console.warn('[serverToken] failed to read token file, regenerating:', err)
+      logger.warn('serverToken', 'serverToken.token_read_failed', undefined, err)
     }
   }
   const fresh = generateToken()
   try {
     writeFileSync(tokenPath, fresh, { encoding: 'utf-8', mode: 0o600 })
   } catch (err) {
-    console.warn('[serverToken] failed to persist token, using in-memory value:', err)
+    logger.warn('serverToken', 'serverToken.token_persist_failed', undefined, err)
   }
   cachedToken = fresh
 }

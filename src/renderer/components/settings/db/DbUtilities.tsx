@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ConfirmDialog } from './ConfirmDialog'
+import { ConfirmDialog } from '@renderer/components/settings/db/ConfirmDialog'
 import type { OrphanReport } from '@shared/ipc'
 import { Button } from '@renderer/components/ui'
 
@@ -11,9 +11,7 @@ const EXPORT_TABLES = [
   'selectors',
   'selector_matches',
   'capture_favorites',
-  'notes',
-  'captures_fts',
-  'notes_fts'
+  'notes'
 ] as const
 
 function formatBytes(bytes: number): string {
@@ -73,7 +71,9 @@ export function DbUtilities() {
     try {
       const result = await window.birdbrain.db.rebuildFts()
       setResult('fts', {
-        message: `Rebuilt FTS indexes. ${result.rowsIndexed} rows indexed.`,
+        message:
+          `Rebuilt FTS indexes. ${result.rowsIndexed} rows indexed, ` +
+          `${result.textsHealed} text(s) healed from disk.`,
         type: 'success'
       })
     } catch (err) {

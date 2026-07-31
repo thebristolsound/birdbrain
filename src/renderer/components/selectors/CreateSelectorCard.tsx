@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { Plus, ChevronUp, ChevronDown, Search, FlaskConical, Crosshair } from 'lucide-react'
-import { testPatternAgainstText, type MatchResult } from './selectorUtils'
+import {
+  testPatternAgainstText,
+  type MatchResult
+} from '@renderer/components/selectors/selectorUtils'
 import { Card, Button, Label } from '@renderer/components/ui'
 
 interface TestResult {

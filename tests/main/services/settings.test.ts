@@ -9,8 +9,8 @@ import {
   updateSettings,
   resetSettings,
   getDefaultSettings
-} from '../../../src/main/services/settings'
-import { DEFAULT_TSA_URL } from '../../../src/shared/constants'
+} from '@main/services/settings'
+import { DEFAULT_TSA_URL } from '@shared/constants'
 
 describe('settings', () => {
   let tempDir: string
@@ -150,5 +150,31 @@ describe('settings', () => {
   it('persists overview as lastActiveSection', () => {
     updateSettings({ lastActiveSection: 'overview' })
     expect(getSettings().lastActiveSection).toBe('overview')
+  })
+
+  it('throws on a schema-invalid update rather than persisting garbage', () => {
+    expect(() =>
+      updateSettings({ captureScreenshots: 'yes' as unknown as boolean })
+    ).toThrow(/Invalid settings/)
+    // Nothing was written, so getSettings still yields defaults.
+    expect(getSettings().captureScreenshots).toBe(true)
+  })
+
+  it('defaults releaseChannel to stable and autoCheckForUpdates to true', () => {
+    const s = getSettings()
+    expect(s.releaseChannel).toBe('stable')
+    expect(s.autoCheckForUpdates).toBe(true)
+  })
+
+  it('persists releaseChannel and autoCheckForUpdates', () => {
+    updateSettings({ releaseChannel: 'beta', autoCheckForUpdates: false })
+    const s = getSettings()
+    expect(s.releaseChannel).toBe('beta')
+    expect(s.autoCheckForUpdates).toBe(false)
+  })
+
+  it('rejects an unknown releaseChannel and falls back to defaults', () => {
+    writeFileSync(settingsFile, JSON.stringify({ releaseChannel: 'nightly' }), 'utf-8')
+    expect(getSettings().releaseChannel).toBe('stable')
   })
 })

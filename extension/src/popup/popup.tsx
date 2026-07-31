@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
-import { getStatus, getCases, activateCase, startSession, stopSession } from '@extension/utils/api'
+import { getStatus, getCases, activateCase, stopSession } from '@extension/utils/api'
 import './popup.css'
 
 interface CaseInfo {
@@ -16,15 +16,24 @@ function openInApp(target: 'open' | 'settings') {
   chrome.tabs.create({ url: `birdbrain://${target}` })
 }
 
+function applyPopupTheme(theme: 'light' | 'dark'): void {
+  document.documentElement.classList.toggle('dark', theme === 'dark')
+  try {
+    localStorage.setItem('bb-theme', theme)
+  } catch {
+    //
+  }
+}
+
 // ---------- Header ----------
 
 function Header() {
   const handleClose = () => window.close()
 
   return (
-    <header className="flex items-center justify-between px-4 h-12 sticky top-0 z-10 bg-d-header border-b border-d-border">
+    <header className="flex items-center justify-between px-4 h-12 sticky top-0 z-10 bg-surface border-b border-border">
       <div className="flex items-center gap-2">
-        <div className="w-6 h-6 rounded-md bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+        <div className="w-6 h-6 rounded-md bg-accent flex items-center justify-center">
           <svg
             className="w-3 h-3 text-white"
             viewBox="0 0 24 24"
@@ -43,13 +52,14 @@ function Header() {
             <line x1="20" y1="12" x2="22" y2="12" />
           </svg>
         </div>
-        <span className="font-display font-extrabold text-sm tracking-tight text-white">
+        <span className="font-display font-extrabold text-sm tracking-tight text-text-primary">
           Birdbrain
         </span>
       </div>
       <button
         onClick={handleClose}
-        className="w-7 h-7 flex items-center justify-center rounded-md text-d-text-muted hover:text-red-400 hover:bg-red-500/10 transition-colors"
+        aria-label="Close popup"
+        className="w-7 h-7 flex items-center justify-center rounded-md text-text-muted hover:text-red-400 hover:bg-red-500/10 transition-colors"
       >
         <svg
           className="w-4 h-4"
@@ -80,13 +90,13 @@ function StatusCard({
   currentDomain: string
 }) {
   return (
-    <section className="animate-fade-up rounded-2xl p-4 bg-d-card border border-d-border dark-card-glow">
+    <section className="animate-fade-up rounded-xl p-4 bg-card border border-border">
       <div className="flex items-center justify-between mb-3">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-d-text-muted">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-text-muted">
           Capture Status
         </span>
         {sessionActive ? (
-          <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full recording-ring bg-red-500/15 border border-red-500/25">
+          <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-red-500/15 border border-red-500/25">
             <span className="w-1.5 h-1.5 rounded-full bg-red-400 status-recording" />
             <span className="text-[10px] font-bold text-red-400">Recording</span>
           </div>
@@ -98,7 +108,7 @@ function StatusCard({
         )}
       </div>
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-white/[0.04] border border-d-border text-d-text-muted">
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-surface border border-border text-text-muted">
           <svg
             className="w-5 h-5"
             viewBox="0 0 24 24"
@@ -114,10 +124,10 @@ function StatusCard({
           </svg>
         </div>
         <div className="min-w-0">
-          <h3 className="text-xs font-bold truncate text-white">
+          <h3 className="text-xs font-bold truncate text-text-primary">
             {currentDomain || 'No active tab'}
           </h3>
-          <p className="text-[10px] truncate text-d-text-muted">
+          <p className="text-[10px] truncate text-text-muted">
             {activeCase ? `Session: ${activeCase.name}` : 'No case selected'}
           </p>
         </div>
@@ -137,26 +147,26 @@ function StatsGrid({
 }) {
   return (
     <section className="animate-fade-up-delay-1 grid grid-cols-2 gap-3">
-      <div className="rounded-xl p-3 bg-d-card border border-d-border dark-card-glow">
-        <span className="text-[9px] font-bold uppercase block mb-1 text-d-text-muted">
+      <div className="rounded-xl p-3 bg-card border border-border">
+        <span className="text-[9px] font-bold uppercase block mb-1 text-text-muted">
           Captures
         </span>
         <div className="flex items-baseline gap-1">
-          <span className="text-lg font-display font-extrabold text-indigo-400 stat-glow">
+          <span className="text-lg font-display font-extrabold text-accent">
             {captureCount}
           </span>
-          <span className="text-[10px] text-d-text-muted">active</span>
+          <span className="text-[10px] text-text-muted">active</span>
         </div>
       </div>
-      <div className="rounded-xl p-3 bg-d-card border border-d-border dark-card-glow">
-        <span className="text-[9px] font-bold uppercase block mb-1 text-d-text-muted">
+      <div className="rounded-xl p-3 bg-card border border-border">
+        <span className="text-[9px] font-bold uppercase block mb-1 text-text-muted">
           Selectors
         </span>
         <div className="flex items-baseline gap-1">
-          <span className="text-lg font-display font-extrabold text-white stat-glow">
+          <span className="text-lg font-display font-extrabold text-text-primary">
             {selectorCount}
           </span>
-          <span className="text-[10px] text-d-text-muted">matching</span>
+          <span className="text-[10px] text-text-muted">matching</span>
         </div>
       </div>
     </section>
@@ -168,49 +178,30 @@ function StatsGrid({
 function Footer({
   sessionActive,
   activeCase,
-  onStartCapture,
   onStopCapture,
   onManualCapture,
   capturing
 }: {
   sessionActive: boolean
   activeCase: { id: string; name: string } | null
-  onStartCapture: () => void
   onStopCapture: () => void
   onManualCapture: () => void
   capturing: boolean
 }) {
   return (
-    <footer className="p-4 mt-auto bg-d-header border-t border-d-border">
+    <footer className="p-4 mt-auto bg-surface border-t border-border">
       <div className="flex gap-2 items-center">
-        {sessionActive ? (
+        {/* HOTFIX: Start Capture removed while auto-capture is disabled; Stop remains so an
+            already-recording session can still be ended */}
+        {sessionActive && (
           <button
             onClick={onStopCapture}
-            className="flex-1 h-10 flex items-center justify-center gap-2 rounded-xl font-display font-bold text-xs active:scale-[0.98] transition-all bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-600/25"
+            className="flex-1 h-10 flex items-center justify-center gap-2 rounded-md font-display font-bold text-xs active:scale-[0.98] transition-all bg-red-600 hover:bg-red-500 text-white"
           >
             <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
               <rect x="6" y="6" width="12" height="12" rx="1" />
             </svg>
             Stop Capture
-          </button>
-        ) : (
-          <button
-            onClick={activeCase ? onStartCapture : undefined}
-            disabled={!activeCase}
-            className="flex-1 h-10 flex items-center justify-center gap-2 rounded-xl font-display font-bold text-xs active:scale-[0.98] transition-all bg-indigo-600 hover:bg-indigo-500 text-white shadow-dark-btn btn-glow-pulse disabled:opacity-40 disabled:animate-none disabled:shadow-none"
-          >
-            <svg
-              className="w-3 h-3"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="12" cy="12" r="10" />
-            </svg>
-            Start Capture
           </button>
         )}
 
@@ -218,7 +209,7 @@ function Footer({
           <button
             onClick={onManualCapture}
             disabled={capturing}
-            className="w-10 h-10 flex items-center justify-center rounded-xl active:scale-[0.98] transition-colors bg-white/[0.04] border border-d-border text-d-text-secondary hover:bg-white/[0.08] hover:text-white disabled:opacity-40"
+            className="w-10 h-10 flex items-center justify-center rounded-md active:scale-[0.98] transition-colors bg-surface border border-border text-text-secondary hover:bg-elevated hover:text-text-primary disabled:opacity-40"
             title="Capture this page"
           >
             <svg
@@ -238,7 +229,7 @@ function Footer({
 
         <button
           onClick={() => openInApp('settings')}
-          className="w-10 h-10 flex items-center justify-center rounded-xl active:scale-[0.98] transition-colors bg-white/[0.04] border border-d-border text-d-text-secondary hover:bg-white/[0.08] hover:text-white"
+          className="w-10 h-10 flex items-center justify-center rounded-md active:scale-[0.98] transition-colors bg-surface border border-border text-text-secondary hover:bg-elevated hover:text-text-primary"
           title="Settings"
         >
           <svg
@@ -259,7 +250,7 @@ function Footer({
       <div className="mt-3 text-center">
         <button
           onClick={() => openInApp('open')}
-          className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 hover:text-indigo-300 transition-colors"
+          className="text-[10px] font-bold uppercase tracking-widest text-accent hover:text-accent-hover transition-colors"
         >
           Open Full Workspace
         </button>
@@ -281,16 +272,16 @@ function CaseSelector({
 }) {
   if (cases.length === 0) {
     return (
-      <section className="animate-fade-up rounded-2xl p-4 bg-d-card border border-d-border dark-card-glow text-center">
-        <p className="text-xs text-d-text-muted mb-1">No cases yet</p>
-        <p className="text-[10px] text-d-text-muted">Create one in the Birdbrain app.</p>
+      <section className="animate-fade-up rounded-xl p-4 bg-card border border-border text-center">
+        <p className="text-xs text-text-muted mb-1">No cases yet</p>
+        <p className="text-[10px] text-text-muted">Create one in the Birdbrain app.</p>
       </section>
     )
   }
 
   return (
     <section className="animate-fade-up">
-      <h4 className="text-[10px] font-bold uppercase tracking-wider text-d-text-muted mb-2">
+      <h4 className="text-[10px] font-bold uppercase tracking-wider text-text-muted mb-2">
         Active Case
       </h4>
       <select
@@ -298,7 +289,7 @@ function CaseSelector({
         onChange={(e) => {
           if (e.target.value) onSelect(e.target.value)
         }}
-        className="w-full rounded-xl px-3 py-2.5 text-xs font-medium bg-d-card border border-d-border text-white appearance-none cursor-pointer hover:bg-white/[0.04] transition-colors focus:outline-none focus:ring-1 focus:ring-indigo-500"
+        className="w-full rounded-xl px-3 py-2.5 text-xs font-medium bg-card border border-border text-text-primary appearance-none cursor-pointer hover:bg-elevated transition-colors focus:outline-none focus:ring-1 focus:ring-accent"
       >
         {!activeCase && (
           <option value="" disabled>
@@ -319,10 +310,10 @@ function CaseSelector({
 
 function DisconnectedView({ onRetry }: { onRetry: () => void }) {
   return (
-    <div className="flex flex-col w-[320px] font-body bg-d-body text-d-text">
+    <div className="flex flex-col w-[320px] font-body bg-canvas text-text-primary">
       <Header />
       <main className="p-4 flex-1 flex flex-col items-center justify-center py-12">
-        <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mb-4">
+        <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mb-4">
           <svg
             className="w-6 h-6 text-amber-500"
             viewBox="0 0 24 24"
@@ -337,13 +328,13 @@ function DisconnectedView({ onRetry }: { onRetry: () => void }) {
             <line x1="12" y1="17" x2="12.01" y2="17" />
           </svg>
         </div>
-        <h2 className="text-sm font-display font-bold text-white mb-1">Birdbrain Not Found</h2>
-        <p className="text-[11px] text-d-text-muted mb-6 text-center">
+        <h2 className="text-sm font-display font-bold text-text-primary mb-1">Birdbrain Not Found</h2>
+        <p className="text-[11px] text-text-muted mb-6 text-center">
           Make sure the Birdbrain desktop app is running.
         </p>
         <button
           onClick={onRetry}
-          className="h-9 px-6 rounded-xl font-display font-bold text-xs bg-indigo-600 hover:bg-indigo-500 text-white shadow-dark-btn btn-glow-pulse active:scale-[0.98] transition-all"
+          className="h-9 px-6 rounded-md font-display font-bold text-xs bg-accent hover:bg-accent-hover text-white active:scale-[0.98] transition-all"
         >
           Retry Connection
         </button>
@@ -383,6 +374,7 @@ function Popup(): React.JSX.Element {
     try {
       const status = await getStatus()
       setConnected(status.running)
+      if (status.theme) applyPopupTheme(status.theme)
       setSessionActive(status.sessionActive)
       setActiveCase(status.activeCase)
       setCaptureCount(status.captureCount)
@@ -409,12 +401,6 @@ function Popup(): React.JSX.Element {
     setActiveCase(result.case)
   }
 
-  async function handleStartCapture(): Promise<void> {
-    await startSession()
-    setSessionActive(true)
-    setCaptureCount(0)
-  }
-
   async function handleStopCapture(): Promise<void> {
     await stopSession()
     setSessionActive(false)
@@ -436,8 +422,8 @@ function Popup(): React.JSX.Element {
   // Loading
   if (loading) {
     return (
-      <div className="flex flex-col w-[320px] font-body bg-d-body text-d-text items-center justify-center py-16">
-        <div className="w-6 h-6 rounded-md bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/30 animate-pulse">
+      <div className="flex flex-col w-[320px] font-body bg-canvas text-text-primary items-center justify-center py-16">
+        <div className="w-6 h-6 rounded-md bg-accent flex items-center justify-center animate-pulse">
           <svg
             className="w-3 h-3 text-white"
             viewBox="0 0 24 24"
@@ -461,7 +447,7 @@ function Popup(): React.JSX.Element {
 
   // Connected
   return (
-    <div className="flex flex-col w-[320px] font-body bg-d-body text-d-text">
+    <div className="flex flex-col w-[320px] font-body bg-canvas text-text-primary">
       <Header />
       <main className="p-4 space-y-3.5">
         <CaseSelector cases={cases} activeCase={activeCase} onSelect={handleActivateCase} />
@@ -479,7 +465,6 @@ function Popup(): React.JSX.Element {
       <Footer
         sessionActive={sessionActive}
         activeCase={activeCase}
-        onStartCapture={handleStartCapture}
         onStopCapture={handleStopCapture}
         onManualCapture={handleManualCapture}
         capturing={capturing}

@@ -1,5 +1,5 @@
 import { extractIOC } from 'ioc-extractor'
-import type { ExtractedDatum } from '../dataExtractor'
+import type { ExtractedDatum } from '@main/services/dataExtractor'
 
 const FIELD_MAPPINGS: Array<{
   field: keyof ReturnType<typeof extractIOC>

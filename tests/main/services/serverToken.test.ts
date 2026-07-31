@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import {
@@ -7,17 +7,29 @@ import {
   getServerToken,
   resetServerTokenForTesting
 } from '@main/services/serverToken'
+import {
+  disposeLogger,
+  flushSync as flushLogger,
+  initLogger,
+  readRecentEntries
+} from '@main/services/logger'
 
 describe('serverToken', () => {
   let tempDir: string
+  let logDir: string
 
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-token-'))
+    logDir = mkdtempSync(join(tmpdir(), 'birdbrain-token-log-'))
     resetServerTokenForTesting()
+    initLogger(logDir, 'server-token-test-session')
   })
 
   afterEach(() => {
+    disposeLogger()
     rmSync(tempDir, { recursive: true, force: true })
+    rmSync(logDir, { recursive: true, force: true })
+    vi.restoreAllMocks()
   })
 
   it('generates a persisted 64-char hex token on first init', () => {
@@ -58,5 +70,34 @@ describe('serverToken', () => {
     // if init is skipped (tests, unusual startup orders).
     const token = getServerToken()
     expect(token).toMatch(/^[0-9a-f]{64}$/)
+  })
+
+  it('regenerates when the token path is unreadable for a non-ENOENT reason', () => {
+    // A directory where the token file should be: readFileSync throws EISDIR
+    // (not ENOENT), which is logged about rather than silently ignored.
+    mkdirSync(join(tempDir, 'server-token'))
+
+    initServerToken(tempDir)
+
+    expect(getServerToken()).toMatch(/^[0-9a-f]{64}$/)
+    flushLogger()
+    const entries = readRecentEntries(10)
+    expect(entries.some((e) => e.source === 'serverToken' && e.code === 'serverToken.token_read_failed')).toBe(true)
+  })
+
+  it('keeps an in-memory token when persistence fails', () => {
+    // A missing parent directory makes readFileSync ENOENT (no warn) but
+    // writeFileSync fail — the fresh token is kept in memory regardless.
+    const missingDir = join(tempDir, 'does', 'not', 'exist')
+
+    initServerToken(missingDir)
+
+    expect(getServerToken()).toMatch(/^[0-9a-f]{64}$/)
+    expect(existsSync(join(missingDir, 'server-token'))).toBe(false)
+    flushLogger()
+    const entries = readRecentEntries(10)
+    expect(
+      entries.some((e) => e.source === 'serverToken' && e.code === 'serverToken.token_persist_failed')
+    ).toBe(true)
   })
 })

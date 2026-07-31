@@ -2,17 +2,38 @@ import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { settingsQueryOptions, useSettingsMutations } from '@renderer/lib/queries'
 import type { BirdbrainSettings } from '@shared/types'
-import { AIConfig } from './AIConfig'
-import { CapturePreferences } from './CapturePreferences'
-import { StorageConfig } from './StorageConfig'
-import { AppearanceConfig } from './AppearanceConfig'
-import { OperatorConfig } from './OperatorConfig'
-import { About } from './About'
-import { Key, Camera, HardDrive, Palette, Info, UserCircle, Database } from 'lucide-react'
-import { DatabaseAdmin } from './DatabaseAdmin'
+import { AIConfig } from '@renderer/components/settings/AIConfig'
+import { CapturePreferences } from '@renderer/components/settings/CapturePreferences'
+import { StorageConfig } from '@renderer/components/settings/StorageConfig'
+import { AppearanceConfig } from '@renderer/components/settings/AppearanceConfig'
+import { OperatorConfig } from '@renderer/components/settings/OperatorConfig'
+import { UpdatesConfig } from '@renderer/components/settings/UpdatesConfig'
+import { About } from '@renderer/components/settings/About'
+import { DiagnosticsPanel } from '@renderer/components/settings/DiagnosticsPanel'
+import {
+  Key,
+  Camera,
+  HardDrive,
+  Palette,
+  Info,
+  UserCircle,
+  Database,
+  RefreshCw,
+  Activity
+} from 'lucide-react'
+import { DatabaseAdmin } from '@renderer/components/settings/DatabaseAdmin'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@renderer/components/ui'
 
-type SettingsTab = 'ai' | 'capture' | 'storage' | 'appearance' | 'operator' | 'database' | 'about'
+type SettingsTab =
+  | 'ai'
+  | 'capture'
+  | 'storage'
+  | 'appearance'
+  | 'operator'
+  | 'database'
+  | 'updates'
+  | 'diagnostics'
+  | 'about'
 
 const settingsTabs: { id: SettingsTab; label: string; icon: typeof Key }[] = [
   // { id: 'ai', label: 'AI', icon: Key }, // temporarily hidden until AI features are ready
@@ -21,6 +42,8 @@ const settingsTabs: { id: SettingsTab; label: string; icon: typeof Key }[] = [
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'operator', label: 'Operator', icon: UserCircle },
   { id: 'database', label: 'Database', icon: Database },
+  { id: 'updates', label: 'Updates', icon: RefreshCw },
+  { id: 'diagnostics', label: 'Diagnostics', icon: Activity },
   { id: 'about', label: 'About', icon: Info }
 ]
 
@@ -79,6 +102,12 @@ export function SettingsView() {
         </TabsContent>
         <TabsContent value="database" className="mt-0">
           <DatabaseAdmin />
+        </TabsContent>
+        <TabsContent value="updates" className="mt-0">
+          <UpdatesConfig settings={settings} onUpdate={handleUpdate} />
+        </TabsContent>
+        <TabsContent value="diagnostics" className="mt-0">
+          <DiagnosticsPanel />
         </TabsContent>
         <TabsContent value="about" className="mt-0">
           <About />

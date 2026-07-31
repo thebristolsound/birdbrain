@@ -125,10 +125,10 @@ test.describe('Forensics tab', () => {
 
     await page.getByTestId('capture-item').first().waitFor({ timeout: 10000 })
 
-    // MHTML path
+    // MHTML path. Forensics content now lives in the inspector's Chain of
+    // custody section, which is expanded by default — no tab to click.
     const mhtmlItem = page.getByTestId('capture-item').filter({ hasText: 'Forensics MHTML' })
     await mhtmlItem.click()
-    await page.getByRole('button', { name: 'Forensics', exact: true }).click()
 
     await expect(page.getByText(/^Hash chain$/i)).toBeVisible()
     await expect(page.getByText(/^Identity$/i)).toBeVisible()
@@ -138,24 +138,15 @@ test.describe('Forensics tab', () => {
     await expect(page.getByTestId('forensics-legacy-banner')).toHaveCount(0)
     await expect(page.getByTestId('forensics-chain-status-label')).toHaveText('Not verified')
     await expect(page.getByTestId('capture-details-provenance-label')).toHaveText('Not verified')
-    await expect(page.getByTestId('capture-viewer-breadcrumb-provenance')).toHaveAttribute(
-      'aria-label',
-      'Not verified'
-    )
 
     await page.getByTestId('forensics-reverify-btn').click()
     await expect(page.getByTestId('forensics-reverify-btn')).toBeEnabled({ timeout: 5000 })
     await expect(page.getByTestId('forensics-chain-status-label')).toHaveText('Verified')
     await expect(page.getByTestId('capture-details-provenance-label')).toHaveText('Verified')
-    await expect(page.getByTestId('capture-viewer-breadcrumb-provenance')).toHaveAttribute(
-      'aria-label',
-      'Verified'
-    )
 
     // Legacy path
     const legacyItem = page.getByTestId('capture-item').filter({ hasText: 'Legacy HTML' })
     await legacyItem.click()
-    await page.getByRole('button', { name: 'Forensics', exact: true }).click()
 
     await expect(page.getByTestId('forensics-legacy-banner')).toBeVisible()
     await expect(page.getByText(/^Hash chain$/i)).toHaveCount(0)

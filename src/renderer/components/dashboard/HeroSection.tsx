@@ -1,12 +1,13 @@
-import { PlusCircle, FolderOpen } from 'lucide-react'
+import { PlusCircle, FolderOpen, Archive } from 'lucide-react'
 import logoImg from '@renderer/assets/logo.png'
 
 interface HeroSectionProps {
   onNewInvestigation: () => void
   onOpenRecent: () => void
+  onImportCase: () => void
 }
 
-export function HeroSection({ onNewInvestigation, onOpenRecent }: HeroSectionProps) {
+export function HeroSection({ onNewInvestigation, onOpenRecent, onImportCase }: HeroSectionProps) {
   return (
     <section className="relative pt-16 pb-12 px-8">
       <div className="max-w-3xl mx-auto text-center">
@@ -19,8 +20,7 @@ export function HeroSection({ onNewInvestigation, onOpenRecent }: HeroSectionPro
         </h1>
 
         <p className="text-base text-text-muted max-w-lg mx-auto leading-relaxed mb-10">
-          Your comprehensive open-source intelligence platform. Capture, extract, and analyze web
-          intelligence with precision.
+          Capture web pages, organize evidence by case, and verify what changed over time.
         </p>
 
         <div className="flex items-center justify-center gap-4 mb-6">
@@ -38,6 +38,14 @@ export function HeroSection({ onNewInvestigation, onOpenRecent }: HeroSectionPro
           >
             <FolderOpen className="h-5 w-5 text-accent" />
             Open Recent Case
+          </button>
+          <button
+            data-testid="import-case-btn"
+            onClick={onImportCase}
+            className="flex items-center gap-3 px-6 py-4 border border-border-strong hover:border-accent hover:bg-accent-subtle text-text-primary font-display font-semibold text-sm rounded-2xl transition-[transform,border-color,background-color] active:scale-[0.98]"
+          >
+            <Archive className="h-5 w-5 text-accent" />
+            Import Case…
           </button>
         </div>
 

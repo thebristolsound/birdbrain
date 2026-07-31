@@ -29,6 +29,7 @@ import {
   extractedDataSubcategoriesQueryOptions,
   extractedDataItemsQueryOptions,
   extractedDataCountQueryOptions,
+  extractedDataSearchQueryOptions,
   annotationsQueryOptions,
   settingsQueryOptions,
   identityQueryOptions,
@@ -87,6 +88,7 @@ function installBirdbrainMock() {
       subcategories: fn(),
       items: fn(),
       count: fn(),
+      search: fn(),
       reprocess: fn()
     },
     annotations: { get: fn(), save: fn(), upsertPin: fn(), deletePin: fn(), delete: fn() },
@@ -109,7 +111,7 @@ describe('queryKeys', () => {
     expect(queryKeys.captures('c1')).toEqual(['captures', 'c1'])
     expect(queryKeys.captureContent('cap1', 'png')).toEqual(['captures', 'content', 'cap1', 'png'])
     expect(queryKeys.captureFavorites('c1')).toEqual(['captures', 'favorites', 'c1'])
-    expect(queryKeys.search('foo')).toEqual(['search', 'foo'])
+    expect(queryKeys.search('c1', 'foo')).toEqual(['search', 'c1', 'foo'])
     expect(queryKeys.tagsForCapture('cap1')).toEqual(['tags', 'capture', 'cap1'])
     expect(queryKeys.selectorMatchCounts('c1')).toEqual(['selectors', 'matchCounts', 'c1'])
     expect(queryKeys.selectorMatchingCaptures('c1', ['s1', 's2'])).toEqual([
@@ -126,6 +128,12 @@ describe('queryKeys', () => {
       'c1',
       'ioc',
       'email'
+    ])
+    expect(queryKeys.extractedDataSearch('c1', 'gmail')).toEqual([
+      'extractedData',
+      'search',
+      'c1',
+      'gmail'
     ])
     expect(queryKeys.annotations('cap1')).toEqual(['annotations', 'cap1'])
     expect(queryKeys.settings).toEqual(['settings'])
@@ -165,11 +173,12 @@ describe('queryOptions queryFns', () => {
     await captureFavoritesQueryOptions('c1').queryFn?.({} as never)
     expect(api.captures.listFavorites).toHaveBeenCalledWith('c1')
 
-    const searchOpts = searchQueryOptions('foo')
+    const searchOpts = searchQueryOptions('c1', 'foo')
     expect(searchOpts.enabled).toBe(true)
     await searchOpts.queryFn?.({} as never)
-    expect(api.search).toHaveBeenCalledWith('foo')
-    expect(searchQueryOptions('   ').enabled).toBe(false)
+    expect(api.search).toHaveBeenCalledWith('c1', 'foo')
+    expect(searchQueryOptions('c1', '   ').enabled).toBe(false)
+    expect(searchQueryOptions('', 'foo').enabled).toBe(false)
 
     await tagsQueryOptions.queryFn?.({} as never)
     expect(api.tags.list).toHaveBeenCalled()
@@ -207,6 +216,9 @@ describe('queryOptions queryFns', () => {
     expect(api.extractedData.count).toHaveBeenCalledWith('c1')
     expect(extractedDataSubcategoriesQueryOptions('c1', '').enabled).toBe(false)
     expect(extractedDataItemsQueryOptions('c1', 'ioc', '').enabled).toBe(false)
+    await extractedDataSearchQueryOptions('c1', 'gmail').queryFn?.({} as never)
+    expect(api.extractedData.search).toHaveBeenCalledWith('c1', 'gmail')
+    expect(extractedDataSearchQueryOptions('c1', '  ').enabled).toBe(false)
 
     await annotationsQueryOptions('cap1').queryFn?.({} as never)
     expect(api.annotations.get).toHaveBeenCalledWith('cap1')

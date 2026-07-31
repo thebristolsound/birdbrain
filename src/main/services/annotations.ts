@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
-import { getDb } from './database'
+// eslint-disable-next-line no-restricted-imports -- owns the annotations/annotation_pins aggregate's SQL; repo home resolved by 2026-07-11-capture-row-ownership plan
+import { getDb, type ImportCtx } from '@main/services/db/core'
 import type {
   AnnotationsBundle,
   AnnotationPin,
@@ -141,4 +142,61 @@ export function upsertPin(params: UpsertAnnotationPinParams): AnnotationPin {
 
 export function deletePin(pinId: string): void {
   getDb().prepare('DELETE FROM annotation_pins WHERE id = ?').run(pinId)
+}
+
+// --- Archive bulk ops (this service owns the annotations/annotation_pins SQL) ---
+
+export function collectAnnotationsForCase(caseId: string): Record<string, unknown>[] {
+  return getDb()
+    .prepare(
+      `SELECT a.* FROM annotations a
+       JOIN captures c ON c.id = a.capture_id
+       WHERE c.case_id = ?`
+    )
+    .all(caseId) as Record<string, unknown>[]
+}
+
+export function collectAnnotationPinsForCase(caseId: string): Record<string, unknown>[] {
+  return getDb()
+    .prepare(
+      `SELECT p.* FROM annotation_pins p
+       JOIN captures c ON c.id = p.capture_id
+       WHERE c.case_id = ?`
+    )
+    .all(caseId) as Record<string, unknown>[]
+}
+
+export function importAnnotationRows(rows: Record<string, unknown>[], ctx: ImportCtx): void {
+  const insert = getDb().prepare(
+    `INSERT INTO annotations (capture_id, schema_version, shapes_json, image_width, image_height, updated_at, updated_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  )
+  for (const a of rows) {
+    insert.run(
+      ctx.mapId(a.capture_id as string),
+      a.schema_version ?? null,
+      a.shapes_json ?? null,
+      a.image_width ?? null,
+      a.image_height ?? null,
+      a.updated_at ?? null,
+      a.updated_by ?? null
+    )
+  }
+}
+
+export function importAnnotationPinRows(rows: Record<string, unknown>[], ctx: ImportCtx): void {
+  const insert = getDb().prepare(
+    `INSERT INTO annotation_pins (id, capture_id, number, body, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  )
+  for (const p of rows) {
+    insert.run(
+      ctx.mapId(p.id as string),
+      ctx.mapId(p.capture_id as string),
+      p.number ?? null,
+      p.body ?? null,
+      p.created_at ?? null,
+      p.updated_at ?? null
+    )
+  }
 }

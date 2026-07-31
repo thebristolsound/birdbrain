@@ -4,20 +4,21 @@ import { join, dirname, resolve } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
 import { spawnSync } from 'child_process'
-import { initDatabase, closeDatabase, createCase } from '../../src/main/services/database'
-import { initStorage, ensureCaseDir } from '../../src/main/services/storage'
-import { appendManifestEntry, initManifest } from '../../src/main/services/manifest'
+import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { createCase } from '@main/services/db/caseRepo'
+import { initStorage, ensureCaseDir } from '@main/services/storage'
+import { appendManifestEntry, initManifest } from '@main/services/manifest'
 import {
   ingestMhtmlCapture,
   createCaptureLifecycle
-} from '../../src/main/services/captureLifecycle'
-import { createSelectorLifecycle } from '../../src/main/services/selectorLifecycle'
-import { generateReport } from '../../src/main/services/export'
+} from '@main/services/captureLifecycle'
+import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
+import { generateReport } from '@main/services/export'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { canonicalStringify } from '@shared/verify'
 import { buildSyntheticToken } from '../helpers/timestampFixtures'
-import type { ExportOptions } from '../../src/shared/types'
+import type { ExportOptions } from '@shared/types'
 
 // Integration test for the BUILT SEA binary (#122 §11). It is GATED on the
 // binary existing: `pnpm test` on a fresh checkout SKIPs these (the unit-level

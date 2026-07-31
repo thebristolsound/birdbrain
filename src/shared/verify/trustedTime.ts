@@ -1,5 +1,5 @@
 import type { TrustedTime } from '@shared/types'
-import { parseTimestampToken } from './timestampToken'
+import { parseTimestampToken } from '@shared/verify/timestampToken'
 
 // Trusted-time resolution rule (verify-core, #161). The SINGLE home for the
 // pure "resolve-from-manifest" logic: given the parsed manifest entries, decide

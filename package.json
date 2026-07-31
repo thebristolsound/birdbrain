@@ -1,6 +1,6 @@
 {
   "name": "birdbrain",
-  "version": "1.0.1-beta.10",
+  "version": "1.0.1-beta.17",
   "description": "Open source web investigation & capture tool",
   "main": "./out/main/index.js",
   "packageManager": "pnpm@10.28.2",
@@ -22,6 +22,8 @@
     "test": "cross-env ELECTRON_RUN_AS_NODE=1 electron ./node_modules/vitest/vitest.mjs run",
     "test:watch": "cross-env ELECTRON_RUN_AS_NODE=1 electron ./node_modules/vitest/vitest.mjs",
     "test:coverage": "cross-env ELECTRON_RUN_AS_NODE=1 electron ./node_modules/vitest/vitest.mjs run --coverage",
+    "coverage:report": "node scripts/coverage-report.mjs",
+    "coverage:all": "node scripts/coverage-all.mjs",
     "lint": "eslint . --ext .ts,.tsx",
     "format": "prettier --write \"src/**/*.{ts,tsx}\" \"extension/**/*.{ts,tsx}\"",
     "pretest:e2e": "pnpm build",
@@ -48,6 +50,16 @@
     "directories": {
       "output": "dist"
     },
+    "files": [
+      "!website/**/*"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "thebristolsound",
+        "repo": "birdbrain"
+      }
+    ],
     "asarUnpack": [
       "**/node_modules/sharp/**",
       "**/node_modules/@img/**"
@@ -68,7 +80,20 @@
     },
     "mac": {
       "target": [
-        "dmg"
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
       ]
     },
     "linux": {
@@ -82,81 +107,101 @@
     }
   },
   "pnpm": {
+    "supportedArchitectures": {
+      "os": [
+        "current"
+      ],
+      "cpu": [
+        "x64",
+        "arm64"
+      ]
+    },
     "onlyBuiltDependencies": [
       "better-sqlite3",
       "electron",
       "esbuild",
       "msw",
       "sharp"
-    ]
+    ],
+    "overrides": {
+      "tar": "^7.5.16"
+    }
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.2.8",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
-    "@hono/node-server": "^1.19.13",
+    "@ghostery/adblocker-electron": "^2.18.1",
+    "@hono/node-server": "^1.19.14",
     "@hono/zod-validator": "^0.4.3",
-    "@peculiar/asn1-cms": "^2.7.0",
-    "@peculiar/asn1-schema": "^2.7.0",
-    "@peculiar/asn1-tsp": "^2.7.0",
-    "@peculiar/asn1-x509": "^2.7.0",
-    "@tanstack/react-query": "^5.96.2",
-    "@tanstack/react-router": "^1.168.10",
-    "better-sqlite3": "^12.8.0",
+    "@peculiar/asn1-cms": "^2.8.0",
+    "@peculiar/asn1-schema": "^2.8.0",
+    "@peculiar/asn1-tsp": "^2.8.0",
+    "@peculiar/asn1-x509": "^2.8.0",
+    "@tanstack/react-query": "^5.101.2",
+    "@tanstack/react-router": "^1.170.17",
+    "@tiptap/core": "3.29.0",
+    "@tiptap/pm": "3.29.0",
+    "@tiptap/react": "3.29.0",
+    "@tiptap/starter-kit": "3.29.0",
+    "@tiptap/static-renderer": "3.29.0",
+    "better-sqlite3": "^12.11.1",
     "cheerio": "^1.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "hono": "^4.12.14",
+    "electron-updater": "^6.8.9",
+    "hono": "^4.12.27",
     "ioc-extractor": "^8.1.7",
-    "konva": "^10.2.5",
+    "konva": "^10.3.0",
     "lucide-react": "^0.577.0",
-    "motion": "^12.38.0",
-    "radix-ui": "^1.4.3",
-    "react-konva": "^19.2.3",
+    "motion": "^12.42.2",
+    "radix-ui": "^1.6.1",
+    "react-konva": "^19.2.5",
     "react-markdown": "^10.1.0",
     "sharp": "^0.34.5",
-    "tailwind-merge": "^3.5.0",
-    "tldts": "^7.0.28",
+    "sonner": "^2.0.7",
+    "tailwind-merge": "^3.6.0",
+    "tldts": "^7.4.6",
     "use-image": "^1.1.4",
-    "uuid": "^11.1.0",
-    "zod": "^3.24.1",
-    "zustand": "^5.0.12"
+    "uuid": "^14.0.1",
+    "zod": "^3.25.76",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@electron-toolkit/utils": "^4.0.0",
     "@eslint/js": "^9.39.4",
-    "@playwright/test": "^1.59.1",
-    "@tailwindcss/vite": "^4.2.2",
-    "@tanstack/react-query-devtools": "^5.96.2",
-    "@tanstack/router-devtools": "^1.166.11",
+    "@playwright/test": "^1.61.1",
+    "@tailwindcss/vite": "^4.3.2",
+    "@tanstack/react-query-devtools": "^5.101.2",
+    "@tanstack/router-devtools": "^1.167.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
     "@types/better-sqlite3": "^7.6.13",
-    "@types/chrome": "^0.1.39",
-    "@types/node": "^25.5.2",
-    "@types/react": "^19.2.14",
+    "@types/chrome": "^0.1.43",
+    "@types/node": "^25.9.4",
+    "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^4.7.0",
-    "@vitest/coverage-v8": "^3.2.4",
+    "@vitest/coverage-v8": "^3.2.6",
     "cross-env": "^10.1.0",
-    "electron": "^39.8.5",
+    "electron": "^39.8.10",
     "electron-builder": "^26.15.3",
     "electron-vite": "^3.1.0",
     "esbuild": "^0.28.1",
     "eslint": "^9.39.4",
     "eslint-config-prettier": "^10.1.8",
-    "happy-dom": "^20.8.9",
+    "happy-dom": "^20.10.6",
     "jsdom": "^29.1.1",
-    "node-gyp": "^12.1.0",
+    "node-gyp": "^12.4.0",
     "postject": "1.0.0-alpha.6",
-    "prettier": "^3.8.1",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
-    "shadcn": "^4.5.0",
-    "tailwindcss": "^4.2.2",
+    "prettier": "^3.9.4",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "shadcn": "^4.12.0",
+    "tailwindcss": "^4.3.2",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.58.0",
-    "vite": "^6.4.2",
-    "vitest": "^3.2.4"
+    "typescript-eslint": "^8.62.1",
+    "vite": "^6.4.3",
+    "vitest": "^3.2.6"
   }
 }

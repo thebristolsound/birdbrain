@@ -19,26 +19,25 @@ export function CaptureDetailsRail({ capture, caseId, forced, onExpand, onOpenEx
   const isFavorite = favorites.has(capture.id)
   const noteCount = notes.filter((n) => n.captureId === capture.id).length
 
-  const tooltipForced = forced ? 'Resize window to expand details' : undefined
+  // When the viewport forces the collapse there's no room for a docked panel,
+  // but custody/Wayback/tags/notes must stay reachable — onExpand then opens
+  // the details as an overlay instead of re-docking.
+  const expandTitle = forced ? 'Show details' : 'Expand details'
 
   return (
-    <div className="flex h-full w-10 flex-col items-center gap-1 py-2" title={tooltipForced}>
-      {!forced && (
-        <button
-          onClick={onExpand}
-          title="Expand details"
-          className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted hover:bg-elevated hover:text-text-secondary"
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </button>
-      )}
+    <div className="flex h-full w-10 flex-col items-center gap-1 py-2">
+      <button
+        onClick={onExpand}
+        title={expandTitle}
+        data-testid="capture-details-rail-expand"
+        className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted hover:bg-elevated hover:text-text-secondary"
+      >
+        <ChevronLeft className="h-4 w-4" />
+      </button>
       <button
         onClick={() => toggleFavorite(capture.id)}
         title={isFavorite ? 'Unfavorite' : 'Favorite'}
-        className={`flex h-7 w-7 items-center justify-center rounded-md hover:bg-elevated ${
-          forced ? 'cursor-default opacity-50' : ''
-        }`}
-        disabled={forced}
+        className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-elevated"
       >
         <Star
           className={`h-3.5 w-3.5 ${
@@ -49,20 +48,14 @@ export function CaptureDetailsRail({ capture, caseId, forced, onExpand, onOpenEx
       <button
         onClick={onOpenExternal}
         title="Open URL"
-        className={`flex h-7 w-7 items-center justify-center rounded-md text-text-muted hover:bg-elevated hover:text-text-secondary ${
-          forced ? 'cursor-default opacity-50' : ''
-        }`}
-        disabled={forced}
+        className="flex h-7 w-7 items-center justify-center rounded-md text-text-muted hover:bg-elevated hover:text-text-secondary"
       >
         <ExternalLink className="h-3.5 w-3.5" />
       </button>
       <button
-        onClick={forced ? undefined : onExpand}
-        title={forced ? tooltipForced : `${tags.length} tags`}
-        className={`relative flex h-7 w-7 items-center justify-center rounded-md text-text-muted hover:bg-elevated hover:text-text-secondary ${
-          forced ? 'cursor-default opacity-50' : ''
-        }`}
-        disabled={forced}
+        onClick={onExpand}
+        title={`${tags.length} tags`}
+        className="relative flex h-7 w-7 items-center justify-center rounded-md text-text-muted hover:bg-elevated hover:text-text-secondary"
       >
         <TagIcon className="h-3.5 w-3.5" />
         {tags.length > 0 && (
@@ -72,12 +65,9 @@ export function CaptureDetailsRail({ capture, caseId, forced, onExpand, onOpenEx
         )}
       </button>
       <button
-        onClick={forced ? undefined : onExpand}
-        title={forced ? tooltipForced : `${noteCount} notes`}
-        className={`relative flex h-7 w-7 items-center justify-center rounded-md text-text-muted hover:bg-elevated hover:text-text-secondary ${
-          forced ? 'cursor-default opacity-50' : ''
-        }`}
-        disabled={forced}
+        onClick={onExpand}
+        title={`${noteCount} notes`}
+        className="relative flex h-7 w-7 items-center justify-center rounded-md text-text-muted hover:bg-elevated hover:text-text-secondary"
       >
         <StickyNote className="h-3.5 w-3.5" />
         {noteCount > 0 && (

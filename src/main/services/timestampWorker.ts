@@ -1,6 +1,6 @@
 import { join } from 'path'
 import { app } from 'electron'
-import * as db from '@main/services/database'
+import * as captureRepo from '@main/services/db/captureRepo'
 import { appendManifestEntry, initManifest } from '@main/services/manifest'
 import { reconcileCaptureTrustedTime, reconcileAllMirrors } from '@main/services/trustedTime'
 import { requestTimestamp } from '@main/services/timestamp'
@@ -9,6 +9,8 @@ import { getSettings } from '@main/services/settings'
 import { getStorageRoot } from '@main/services/storage'
 import { getInstallationId } from '@main/services/installationId'
 import { DEFAULT_TSA_URL } from '@shared/constants'
+import { logger } from '@main/services/logger'
+import { ident } from '@main/services/logSafe'
 
 // Asynchronous RFC 3161 trusted-timestamping worker (#120). The capture path
 // never blocks on the TSA — captures are enqueued (mirror column 'pending') and
@@ -47,7 +49,7 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
   // entry, and flip the mirror to rfc3161. Returns false (capture stays pending)
   // on any failure so the retry loop can try again later.
   async function stampCapture(captureId: string): Promise<boolean> {
-    const capture = db.getCapture(captureId)
+    const capture = captureRepo.getCapture(captureId)
     if (!capture || capture.format !== 'mhtml') return false
 
     const settings = getSettings()
@@ -78,10 +80,15 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
         operatorName: settings.operatorName ?? '',
         toolVersion: getToolVersion()
       })
-      db.setCaptureTrustedTime(captureId, 'rfc3161')
+      captureRepo.setCaptureTrustedTime(captureId, 'rfc3161')
       return true
     } catch (err) {
-      console.error('timestampWorker: failed to stamp capture', captureId, err)
+      logger.error(
+        'timestampWorker',
+        'timestampWorker.stamp_failed',
+        { captureId: ident(captureId) },
+        err
+      )
       return false
     }
   }
@@ -89,7 +96,7 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
   async function processPending(): Promise<{ stamped: number; failed: number }> {
     let stamped = 0
     let failed = 0
-    for (const cap of db.listPendingTimestampCaptures()) {
+    for (const cap of captureRepo.listPendingTimestampCaptures()) {
       if (await stampCapture(cap.id)) stamped++
       else failed++
     }
@@ -99,7 +106,7 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
   // Marks a freshly-ingested capture as awaiting a timestamp and kicks off a
   // non-blocking attempt. Returns immediately — never on the capture's path.
   function enqueue(captureId: string): void {
-    db.setCaptureTrustedTime(captureId, 'pending')
+    captureRepo.setCaptureTrustedTime(captureId, 'pending')
     setImmediate(() => {
       void stampCapture(captureId)
     })

@@ -2,6 +2,30 @@
 
 Open-source web investigation and capture tool. An Electron desktop app and companion Chrome extension that capture web content into per-case archives with a hash-chained audit trail, then let an investigator search, tag, annotate, and export findings.
 
+## Assurance baseline
+
+Birdbrain has adopted a standards-based OSINT assurance baseline in
+[`ADR-0004`](docs/adr/0004-adopt-osint-assurance-baseline.md). The maintained source register,
+jurisdiction notes, architectural consequences, and decision gate live in
+[`website/content/docs/osint-investigation-standards.mdx`](website/content/docs/osint-investigation-standards.mdx).
+
+There is no universal "OSINT-compliant" product certification. Birdbrain must make narrow,
+versioned, independently testable claims across investigation methodology, acquisition,
+preservation, analysis, provenance, security, privacy, accessibility, and reporting.
+
+For every evidence-affecting change:
+
+- preserve immutable originals and model derivatives and assertions separately;
+- record complete provenance, observation context, omissions, errors, and limitations;
+- state exactly what verification proves and does not prove;
+- retain backward verification for historical Evidence Profile versions;
+- validate the affected method against known-answer data for the supported environment; and
+- document remaining operator, organizational, and jurisdiction-specific obligations.
+
+An evidence-affecting change includes acquisition, parsing, extraction, storage, hashing,
+signing, trusted time, manifests, verification, redaction, export, reporting, AI analysis, and
+software distribution when it can alter an evidentiary result or its interpretation.
+
 ## Language
 
 **Case**:
@@ -15,6 +39,13 @@ _Avoid_: page, snapshot, record.
 **Capture Lifecycle**:
 Operations that mutate an MHTML Capture beyond its database row — ingestion (parse, hash, store, schedule selector matching), deletion (manifest entry + DB row + on-disk files), verification, and case-wide re-extraction. The forensic-bearing path. Legacy HTML Captures (pre-migration v11) appear in deletion and verification but have no manifest entry and no ingest path; new Captures are MHTML-only.
 _Avoid_: capture service, capture manager.
+
+**Extracted Text**:
+The plain text pulled from a Capture at ingest. The authoritative copy is the `.txt` sidecar on
+disk (integrity-bound via `textSha256` in the Manifest); `capture_texts` holds the database copy
+for query paths, and `captures_fts` is a derived index over it, maintained by triggers — never
+written directly. Healing a suspect database copy (`rebuildFts`) re-reads the sidecars.
+_Avoid_: text content, FTS content.
 
 **Selector**:
 A user-defined text or regex pattern that the investigator wants to find across a Case's Captures.
@@ -50,11 +81,12 @@ _Avoid_: ingest server, capture API.
 - The **Capture Server** receives raw captures from the Chrome extension and hands them to the **Capture Lifecycle**
 - Creating or updating a **Selector** triggers the **Selector Lifecycle** to (re)compute **Persisted Matches** for the **Case**'s existing **Captures**, asynchronously
 - A **Foreground Match Preview** is computed in the renderer against the open **Capture**'s text and never touches **Persisted Matches**
+- A **Capture**'s **Extracted Text** lives in its `.txt` sidecar (authoritative) and is mirrored to the database for the **Selector Lifecycle** and search
 
 ## Example dialogue
 
 > **Dev:** "When the extension posts a capture, who writes the **Manifest** entry?"
-> **Domain expert:** "The **Capture Server** receives the request, but the **Manifest** write is part of the **Capture Lifecycle**'s ingest step — the server is just the transport."
+> **Domain expert:** "The **Capture Server** receives the request, but the **Manifest** write is part of the **Capture Lifecycle**'s ingest step — the server is only the transport."
 >
 > **Dev:** "And when the user creates a **Selector**, who runs it against existing **Captures**?"
 > **Domain expert:** "The **Selector Lifecycle**. It owns 'create + match retroactively' as one operation. Whether it was triggered from the IPC handler or the **Capture Server**'s `/api/selectors` endpoint shouldn't matter."

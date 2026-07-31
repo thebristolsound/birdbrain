@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi, beforeAll } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { IpcMainInvokeEvent } from 'electron'
@@ -13,6 +13,7 @@ const showSaveDialog = vi.fn()
 const showOpenDialog = vi.fn()
 const openExternal = vi.fn()
 const openPath = vi.fn()
+const showItemInFolder = vi.fn()
 
 let userDataPath = ''
 
@@ -20,7 +21,10 @@ vi.mock('electron', () => ({
   app: {
     isPackaged: false,
     getVersion: () => '1.2.3',
-    getPath: () => userDataPath
+    getPath: () => userDataPath,
+    // diagnostics.ts's collectEnv() calls this for the process list in a
+    // DiagnosticsSnapshot; the create-report handler builds one for real.
+    getAppMetrics: () => []
   },
   ipcMain: {
     handle: (channel: string, fn: (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown) => {
@@ -33,7 +37,8 @@ vi.mock('electron', () => ({
   },
   shell: {
     openExternal: (...args: unknown[]) => openExternal(...args),
-    openPath: (...args: unknown[]) => openPath(...args)
+    openPath: (...args: unknown[]) => openPath(...args),
+    showItemInFolder: (...args: unknown[]) => showItemInFolder(...args)
   },
   nativeImage: {
     createFromBuffer: () => ({
@@ -67,16 +72,50 @@ vi.mock('@main/services/export', () => ({
   getExportPreflight: (...a: unknown[]) => getExportPreflight(...a)
 }))
 
+const exportCaseArchive = vi.fn()
+const inspectCaseArchive = vi.fn()
+const importCaseArchive = vi.fn()
+vi.mock('@main/services/caseArchive', () => ({
+  exportCaseArchive: (...a: unknown[]) => exportCaseArchive(...a),
+  inspectCaseArchive: (...a: unknown[]) => inspectCaseArchive(...a),
+  importCaseArchive: (...a: unknown[]) => importCaseArchive(...a)
+}))
+
+const lookupSnapshots = vi.fn()
+vi.mock('@main/services/waybackMachine', async (importActual) => {
+  const actual = await importActual<typeof import('@main/services/waybackMachine')>()
+  return {
+    ...actual,
+    lookupSnapshots: (...a: unknown[]) => lookupSnapshots(...a)
+  }
+})
+
 // --- Real services ----------------------------------------------------------
 import { IPC_CHANNELS } from '@shared/ipc'
 import { registerIpcHandlers } from '@main/ipcHandlers'
-import * as db from '@main/services/database'
+import type { BugReportResult, Capture, Case, LogEntry, SessionRecord } from '@shared/types'
+import {
+  disposeLogger,
+  flushSync as flushLogger,
+  getLogDir,
+  getLogPath,
+  initLogger,
+  readRecentEntries
+} from '@main/services/logger'
+import { closeDatabase, initDatabase } from '@main/services/db/core'
+import * as caseRepo from '@main/services/db/caseRepo'
+import * as captureRepo from '@main/services/db/captureRepo'
+import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
+import { createCase } from '@main/services/db/caseRepo'
+import { insertCapture } from '@main/services/db/captureRepo'
 import * as storage from '@main/services/storage'
+import { defaultCaptureStore } from '@main/services/captureStore'
 import * as settings from '@main/services/settings'
 import { initInstallationId } from '@main/services/installationId'
 import { initServerToken } from '@main/services/serverToken'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
+import { createSessionService, type SessionService } from '@main/services/session'
 import { initManifest } from '@main/services/manifest'
 
 const fakeEvent = {} as IpcMainInvokeEvent
@@ -95,12 +134,27 @@ function expectOk<T = unknown>(res: { ok: boolean; data?: T; error?: string }): 
   return res.data as T
 }
 
+let sessionService: SessionService
 let dbPath = ''
 let caseId = ''
 let captureId = ''
+let recaptureService: {
+  enqueue: ReturnType<typeof vi.fn>
+  status: ReturnType<typeof vi.fn>
+  idle: ReturnType<typeof vi.fn>
+}
+let updaterService: {
+  start: ReturnType<typeof vi.fn>
+  getStatus: ReturnType<typeof vi.fn>
+  check: ReturnType<typeof vi.fn>
+  download: ReturnType<typeof vi.fn>
+  install: ReturnType<typeof vi.fn>
+  applySettingsChange: ReturnType<typeof vi.fn>
+  dispose: ReturnType<typeof vi.fn>
+}
 
-function seedCapture(overrides: Partial<db.InsertCaptureParams> = {}): db.Capture {
-  const cap = db.insertCapture({
+function seedCapture(overrides: Partial<captureRepo.InsertCaptureParams> = {}): Capture {
+  const cap = captureRepo.insertCapture({
     caseId,
     url: 'https://example.com',
     title: 'Example',
@@ -109,15 +163,12 @@ function seedCapture(overrides: Partial<db.InsertCaptureParams> = {}): db.Captur
     textContent: 'hello world content',
     ...overrides
   })
-  storage.saveCapture(
-    caseId,
-    cap.id,
-    '<html>hi</html>',
-    Buffer.from('png-bytes'),
-    'hello world content'
-  )
+  defaultCaptureStore.writeScreenshot(caseId, cap.id, Buffer.from('png-bytes'))
+  defaultCaptureStore.writeText(caseId, cap.id, 'hello world content')
+  // Legacy .html artifact: the store never writes html, so seed it directly.
+  writeFileSync(defaultCaptureStore.artifactPaths(caseId, cap.id, 'html').abs, '<html>hi</html>')
   // Pre-write a thumbnail so getThumbnail returns without invoking nativeImage.
-  writeFileSync(join(storage.getStorageRoot(), caseId, `${cap.id}_thumb.jpg`), Buffer.from('jpg'))
+  defaultCaptureStore.writeThumbnail(caseId, cap.id, Buffer.from('jpg'))
   return cap
 }
 
@@ -138,16 +189,47 @@ beforeEach(() => {
   dbPath = join(userDataPath, 'birdbrain.db')
 
   storage.initStorage(join(userDataPath, 'captures'))
-  db.initDatabase(dbPath)
+  initDatabase(dbPath)
   settings.initSettings(userDataPath)
   initInstallationId(userDataPath)
   initServerToken(userDataPath)
 
   const selectorLifecycle = createSelectorLifecycle({ emitRematched: vi.fn() })
   const captureLifecycle = createCaptureLifecycle({ selectorLifecycle })
-  registerIpcHandlers({ selectorLifecycle, captureLifecycle })
+  recaptureService = {
+    enqueue: vi.fn(() => ({ accepted: 1, rejected: [] })),
+    status: vi.fn(() => ({ pending: 0, activeUrl: null })),
+    idle: vi.fn()
+  }
+  updaterService = {
+    start: vi.fn(),
+    getStatus: vi.fn(() => ({
+      state: 'idle',
+      currentVersion: '1.2.3',
+      supportsAutoInstall: false,
+      installOnQuit: false
+    })),
+    check: vi.fn(async () => ({
+      state: 'up-to-date',
+      currentVersion: '1.2.3',
+      supportsAutoInstall: false,
+      installOnQuit: false
+    })),
+    download: vi.fn(async () => undefined),
+    install: vi.fn(),
+    applySettingsChange: vi.fn(),
+    dispose: vi.fn()
+  }
+  sessionService = createSessionService()
+  registerIpcHandlers({
+    selectorLifecycle,
+    captureLifecycle,
+    recaptureService,
+    updaterService,
+    sessionService
+  })
 
-  const created = db.createCase({ name: 'Test Case' })
+  const created = caseRepo.createCase({ name: 'Test Case' })
   caseId = created.id
   storage.ensureCaseDir(caseId)
   initManifest(join(storage.getStorageRoot(), caseId))
@@ -155,47 +237,48 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  db.closeDatabase()
+  closeDatabase()
   rmSync(userDataPath, { recursive: true, force: true })
   delete process.env.BIRDBRAIN_USER_DATA
 })
 
 describe('ipcHandlers — registration', () => {
-  it('registers a handler for every IPC channel referenced by handlers', () => {
-    // Spot-check a representative set across domains.
-    for (const ch of [
-      IPC_CHANNELS.CASES_LIST,
-      IPC_CHANNELS.CAPTURES_LIST,
-      IPC_CHANNELS.TAGS_LIST,
-      IPC_CHANNELS.SELECTORS_LIST,
-      IPC_CHANNELS.NOTES_LIST,
-      IPC_CHANNELS.SETTINGS_GET,
-      IPC_CHANNELS.DB_STATS,
-      IPC_CHANNELS.EXPORT_PREFLIGHT
-    ]) {
-      expect(registered.has(ch)).toBe(true)
-    }
+  // Every declared channel is an invoke channel or an `event:` push — the
+  // compile-time ChannelsAreExhaustive check in @shared/ipc enforces that split.
+  // Here we close the other half of the loop at runtime: every invoke channel
+  // has a handler, and no handler exists for a channel nobody declared.
+  const invokeChannels = Object.values(IPC_CHANNELS).filter((ch) => !ch.startsWith('event:'))
+
+  it('registers a handler for every declared invoke channel', () => {
+    const missing = invokeChannels.filter((ch) => !registered.has(ch))
+    expect(missing).toEqual([])
+  })
+
+  it('registers no handler for an undeclared channel', () => {
+    const declared = new Set<string>(invokeChannels)
+    const unexpected = [...registered.keys()].filter((ch) => !declared.has(ch))
+    expect(unexpected).toEqual([])
   })
 })
 
 describe('ipcHandlers — cases', () => {
   it('lists, gets, creates, updates and deletes cases', async () => {
-    const list = await invoke<db.Case[]>(IPC_CHANNELS.CASES_LIST)
+    const list = expectOk<Case[]>(await invoke(IPC_CHANNELS.CASES_LIST))
     expect(list.some((c) => c.id === caseId)).toBe(true)
 
-    const one = await invoke<db.Case>(IPC_CHANNELS.CASES_GET, caseId)
+    const one = expectOk<Case>(await invoke(IPC_CHANNELS.CASES_GET, caseId))
     expect(one.name).toBe('Test Case')
 
-    const created = expectOk<db.Case>(await invoke(IPC_CHANNELS.CASES_CREATE, { name: 'Another' }))
+    const created = expectOk<Case>(await invoke(IPC_CHANNELS.CASES_CREATE, { name: 'Another' }))
     expect(created.name).toBe('Another')
 
-    const updated = expectOk<db.Case>(
+    const updated = expectOk<Case>(
       await invoke(IPC_CHANNELS.CASES_UPDATE, { id: created.id, name: 'Renamed' })
     )
     expect(updated.name).toBe('Renamed')
 
     expectOk(await invoke(IPC_CHANNELS.CASES_DELETE, created.id))
-    const after = await invoke<db.Case[]>(IPC_CHANNELS.CASES_LIST)
+    const after = expectOk<Case[]>(await invoke(IPC_CHANNELS.CASES_LIST))
     expect(after.some((c) => c.id === created.id)).toBe(false)
   })
 
@@ -211,30 +294,83 @@ describe('ipcHandlers — cases', () => {
   })
 })
 
+describe('ipcHandlers — session', () => {
+  it('reports an empty snapshot before anything is activated', async () => {
+    expect(expectOk(await invoke(IPC_CHANNELS.SESSION_SNAPSHOT))).toEqual({
+      sessionActive: false,
+      activeCaseId: null,
+      captureCount: 0
+    })
+  })
+
+  it('activates a case and reflects it in the snapshot', async () => {
+    const snap = expectOk<{ activeCaseId: string | null }>(
+      await invoke(IPC_CHANNELS.SESSION_ACTIVATE_CASE, caseId)
+    )
+    expect(snap.activeCaseId).toBe(caseId)
+    expect(
+      expectOk<{ activeCaseId: string | null }>(await invoke(IPC_CHANNELS.SESSION_SNAPSHOT))
+        .activeCaseId
+    ).toBe(caseId)
+  })
+
+  it('rejects activating a case that does not exist', async () => {
+    const res = (await invoke(IPC_CHANNELS.SESSION_ACTIVATE_CASE, 'nope')) as {
+      ok: boolean
+      code?: string
+    }
+    expect(res.ok).toBe(false)
+    expect(res.code).toBe('NOT_FOUND')
+  })
+
+  it('refuses to start without an active case', async () => {
+    const res = (await invoke(IPC_CHANNELS.SESSION_START)) as { ok: boolean; code?: string }
+    expect(res.ok).toBe(false)
+    expect(res.code).toBe('NO_ACTIVE_CASE')
+  })
+
+  it('starts and stops a session', async () => {
+    expectOk(await invoke(IPC_CHANNELS.SESSION_ACTIVATE_CASE, caseId))
+
+    const started = expectOk<{ sessionActive: boolean }>(await invoke(IPC_CHANNELS.SESSION_START))
+    expect(started.sessionActive).toBe(true)
+
+    const stopped = expectOk<{ sessionActive: boolean }>(await invoke(IPC_CHANNELS.SESSION_STOP))
+    expect(stopped.sessionActive).toBe(false)
+  })
+
+  it('shares one service instance with the capture-server session state', async () => {
+    expectOk(await invoke(IPC_CHANNELS.SESSION_ACTIVATE_CASE, caseId))
+    expect(sessionService.snapshot().activeCaseId).toBe(caseId)
+  })
+})
+
 describe('ipcHandlers — captures', () => {
   it('lists and gets captures', async () => {
-    const list = await invoke<db.Capture[]>(IPC_CHANNELS.CAPTURES_LIST, caseId)
+    const list = expectOk<Capture[]>(await invoke(IPC_CHANNELS.CAPTURES_LIST, caseId))
     expect(list).toHaveLength(1)
-    const one = await invoke<db.Capture>(IPC_CHANNELS.CAPTURES_GET, captureId)
+    const one = expectOk<Capture>(await invoke(IPC_CHANNELS.CAPTURES_GET, captureId))
     expect(one.id).toBe(captureId)
   })
 
   it('returns capture content for html, png and txt', async () => {
-    const html = await invoke<string>(IPC_CHANNELS.CAPTURES_GET_CONTENT, captureId, 'html')
+    const html = expectOk<string>(
+      await invoke(IPC_CHANNELS.CAPTURES_GET_CONTENT, captureId, 'html')
+    )
     expect(html).toContain('<html>')
-    const png = await invoke<string>(IPC_CHANNELS.CAPTURES_GET_CONTENT, captureId, 'png')
+    const png = expectOk<string>(await invoke(IPC_CHANNELS.CAPTURES_GET_CONTENT, captureId, 'png'))
     expect(png).toBe(Buffer.from('png-bytes').toString('base64'))
-    const txt = await invoke<string>(IPC_CHANNELS.CAPTURES_GET_CONTENT, captureId, 'txt')
+    const txt = expectOk<string>(await invoke(IPC_CHANNELS.CAPTURES_GET_CONTENT, captureId, 'txt'))
     expect(txt).toContain('hello world')
-    const missing = await invoke(IPC_CHANNELS.CAPTURES_GET_CONTENT, 'nope', 'html')
+    const missing = expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_CONTENT, 'nope', 'html'))
     expect(missing).toBeNull()
   })
 
   it('returns a thumbnail and matching selectors', async () => {
-    const thumb = await invoke<string>(IPC_CHANNELS.CAPTURES_GET_THUMBNAIL, captureId)
+    const thumb = expectOk<string>(await invoke(IPC_CHANNELS.CAPTURES_GET_THUMBNAIL, captureId))
     expect(typeof thumb).toBe('string')
-    expect(await invoke(IPC_CHANNELS.CAPTURES_GET_THUMBNAIL, 'missing')).toBeNull()
-    const sel = await invoke(IPC_CHANNELS.CAPTURES_GET_MATCHING_SELECTORS, captureId)
+    expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_THUMBNAIL, 'missing'))).toBeNull()
+    const sel = expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_MATCHING_SELECTORS, captureId))
     expect(Array.isArray(sel)).toBe(true)
   })
 
@@ -248,7 +384,7 @@ describe('ipcHandlers — captures', () => {
   it('toggles, reads and lists favorites', async () => {
     expectOk(await invoke(IPC_CHANNELS.CAPTURES_TOGGLE_FAVORITE, captureId))
     expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_IS_FAVORITE, captureId))).toBe(true)
-    const favs = expectOk<db.Capture[]>(await invoke(IPC_CHANNELS.CAPTURES_LIST_FAVORITES, caseId))
+    const favs = expectOk<string[]>(await invoke(IPC_CHANNELS.CAPTURES_LIST_FAVORITES, caseId))
     expect(favs).toHaveLength(1)
   })
 
@@ -283,6 +419,27 @@ describe('ipcHandlers — captures', () => {
     showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: target })
     const saved = expectOk<string>(await invoke(IPC_CHANNELS.CAPTURES_DOWNLOAD, captureId))
     expect(saved).toBe(target)
+    expect(readFileSync(target, 'utf-8')).toBe('<html>hi</html>')
+  })
+
+  it('downloads the raw .mhtml artifact for mhtml-format captures', async () => {
+    const mhtmlBody = 'MIME-Version: 1.0\r\nContent-Type: multipart/related\r\n\r\nmhtml-bytes'
+    const cap = seedCapture({ format: 'mhtml' })
+    const mhtmlPaths = defaultCaptureStore.artifactPaths(caseId, cap.id, 'mhtml')
+    writeFileSync(mhtmlPaths.abs, mhtmlBody)
+
+    const target = join(userDataPath, 'out.mhtml')
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: target })
+    const saved = expectOk<string>(await invoke(IPC_CHANNELS.CAPTURES_DOWNLOAD, cap.id))
+    expect(saved).toBe(target)
+    expect(readFileSync(target, 'utf-8')).toBe(mhtmlBody)
+
+    const dialogArgs = showSaveDialog.mock.calls.at(-1)![0] as {
+      defaultPath: string
+      filters: Array<{ extensions: string[] }>
+    }
+    expect(dialogArgs.defaultPath.endsWith('.mhtml')).toBe(true)
+    expect(dialogArgs.filters[0].extensions).toContain('mhtml')
   })
 
   it('verifies a capture and deletes it', async () => {
@@ -292,13 +449,15 @@ describe('ipcHandlers — captures', () => {
     expect(verification.status).toBeDefined()
 
     expectOk(await invoke(IPC_CHANNELS.CAPTURES_DELETE, captureId))
-    expect(await invoke<db.Capture[]>(IPC_CHANNELS.CAPTURES_LIST, caseId)).toHaveLength(0)
+    expect(expectOk<Capture[]>(await invoke(IPC_CHANNELS.CAPTURES_LIST, caseId))).toHaveLength(0)
   })
 
   it('reports failure for the http/pipeline self-tests when the server is down', async () => {
-    const http = await invoke<{ success: boolean }>(IPC_CHANNELS.CAPTURES_TEST_HTTP)
+    const http = expectOk<{ success: boolean }>(await invoke(IPC_CHANNELS.CAPTURES_TEST_HTTP))
     expect(http.success).toBe(false)
-    const pipeline = await invoke<{ success: boolean }>(IPC_CHANNELS.CAPTURES_TEST_PIPELINE)
+    const pipeline = expectOk<{ success: boolean }>(
+      await invoke(IPC_CHANNELS.CAPTURES_TEST_PIPELINE)
+    )
     expect(pipeline.success).toBe(false)
   })
 })
@@ -310,15 +469,19 @@ describe('ipcHandlers — tags', () => {
     )
     expectOk(await invoke(IPC_CHANNELS.TAGS_UPDATE, { id: tag.id, name: 'urgent2', color: '#0f0' }))
 
-    const list = await invoke<{ id: string }[]>(IPC_CHANNELS.TAGS_LIST)
+    const list = expectOk<{ id: string }[]>(await invoke(IPC_CHANNELS.TAGS_LIST))
     expect(list.some((t) => t.id === tag.id)).toBe(true)
 
     expectOk(await invoke(IPC_CHANNELS.TAGS_ADD_TO_CAPTURE, { captureId, tagId: tag.id }))
-    const forCapture = await invoke<{ id: string }[]>(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, captureId)
+    const forCapture = expectOk<{ id: string }[]>(
+      await invoke(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, captureId)
+    )
     expect(forCapture.some((t) => t.id === tag.id)).toBe(true)
 
-    expect(await invoke<number>(IPC_CHANNELS.TAGS_COUNT_FOR_CASE, caseId)).toBeGreaterThan(0)
-    expect(await invoke(IPC_CHANNELS.TAGS_USAGE_COUNTS_FOR_CASE, caseId)).toBeDefined()
+    expect(
+      expectOk<number>(await invoke(IPC_CHANNELS.TAGS_COUNT_FOR_CASE, caseId))
+    ).toBeGreaterThan(0)
+    expect(expectOk(await invoke(IPC_CHANNELS.TAGS_USAGE_COUNTS_FOR_CASE, caseId))).toBeDefined()
 
     expectOk(await invoke(IPC_CHANNELS.TAGS_REMOVE_FROM_CAPTURE, { captureId, tagId: tag.id }))
     expectOk(await invoke(IPC_CHANNELS.TAGS_DELETE, tag.id))
@@ -345,13 +508,15 @@ describe('ipcHandlers — selectors', () => {
       await invoke(IPC_CHANNELS.SELECTORS_UPDATE, { id: sel.id, pattern: 'hello2', isRegex: false })
     )
 
-    const list = await invoke<{ id: string }[]>(IPC_CHANNELS.SELECTORS_LIST, caseId)
+    const list = expectOk<{ id: string }[]>(await invoke(IPC_CHANNELS.SELECTORS_LIST, caseId))
     expect(list.length).toBeGreaterThanOrEqual(2)
-    expect(await invoke(IPC_CHANNELS.SELECTORS_GET, sel.id)).toBeDefined()
-    expect(await invoke(IPC_CHANNELS.SELECTORS_LIST_ACTIVE)).toBeDefined()
-    expect(await invoke(IPC_CHANNELS.SELECTORS_MATCH_COUNTS, caseId)).toBeDefined()
-    expect(await invoke(IPC_CHANNELS.SELECTORS_COVERAGE, caseId)).toBeDefined()
-    expect(await invoke(IPC_CHANNELS.SELECTORS_MATCHING_CAPTURES, caseId, [sel.id])).toBeDefined()
+    expect(expectOk(await invoke(IPC_CHANNELS.SELECTORS_GET, sel.id))).toBeDefined()
+    expect(expectOk(await invoke(IPC_CHANNELS.SELECTORS_LIST_ACTIVE))).toBeDefined()
+    expect(expectOk(await invoke(IPC_CHANNELS.SELECTORS_MATCH_COUNTS, caseId))).toBeDefined()
+    expect(expectOk(await invoke(IPC_CHANNELS.SELECTORS_COVERAGE, caseId))).toBeDefined()
+    expect(
+      expectOk(await invoke(IPC_CHANNELS.SELECTORS_MATCHING_CAPTURES, caseId, [sel.id]))
+    ).toBeDefined()
 
     expectOk(await invoke(IPC_CHANNELS.SELECTORS_DELETE, sel.id))
   })
@@ -384,15 +549,17 @@ describe('ipcHandlers — notes', () => {
     )
     expectOk(await invoke(IPC_CHANNELS.NOTES_UPDATE, { id: note.id, content: 'updated finding' }))
 
-    expect(await invoke<{ id: string }[]>(IPC_CHANNELS.NOTES_LIST, caseId)).toHaveLength(1)
-    expect(await invoke(IPC_CHANNELS.NOTES_GET, note.id)).toBeDefined()
-    expect(await invoke<number>(IPC_CHANNELS.NOTES_COUNT, caseId)).toBe(1)
-    expect(await invoke(IPC_CHANNELS.NOTES_SEARCH, caseId, 'finding')).toBeDefined()
+    expect(expectOk<{ id: string }[]>(await invoke(IPC_CHANNELS.NOTES_LIST, caseId))).toHaveLength(
+      1
+    )
+    expect(expectOk(await invoke(IPC_CHANNELS.NOTES_GET, note.id))).toBeDefined()
+    expect(expectOk<number>(await invoke(IPC_CHANNELS.NOTES_COUNT, caseId))).toBe(1)
+    expect(expectOk(await invoke(IPC_CHANNELS.NOTES_SEARCH, caseId, 'finding'))).toBeDefined()
     // Malformed FTS query is swallowed and returns [].
-    expect(await invoke(IPC_CHANNELS.NOTES_SEARCH, caseId, '"unbalanced')).toEqual([])
+    expect(expectOk(await invoke(IPC_CHANNELS.NOTES_SEARCH, caseId, '"unbalanced'))).toEqual([])
 
     expectOk(await invoke(IPC_CHANNELS.NOTES_DELETE, note.id))
-    expect(await invoke<number>(IPC_CHANNELS.NOTES_COUNT, caseId)).toBe(0)
+    expect(expectOk<number>(await invoke(IPC_CHANNELS.NOTES_COUNT, caseId))).toBe(0)
   })
 })
 
@@ -406,9 +573,8 @@ describe('ipcHandlers — annotations', () => {
         imageHeight: 100
       })
     )
-    const bundle = await invoke<{ annotations: unknown; pins: unknown[] }>(
-      IPC_CHANNELS.ANNOTATIONS_GET,
-      captureId
+    const bundle = expectOk<{ annotations: unknown; pins: unknown[] }>(
+      await invoke(IPC_CHANNELS.ANNOTATIONS_GET, captureId)
     )
     expect(bundle.annotations).not.toBeNull()
     expect(Array.isArray(bundle.pins)).toBe(true)
@@ -424,42 +590,79 @@ describe('ipcHandlers — annotations', () => {
 
 describe('ipcHandlers — search', () => {
   it('searches captures and swallows malformed FTS queries', async () => {
-    expect(await invoke(IPC_CHANNELS.SEARCH, 'hello')).toBeDefined()
-    expect(await invoke(IPC_CHANNELS.SEARCH, '"unbalanced')).toEqual([])
+    expect(expectOk(await invoke(IPC_CHANNELS.SEARCH, 'case-1', 'hello'))).toBeDefined()
+    expect(expectOk(await invoke(IPC_CHANNELS.SEARCH, 'case-1', '"unbalanced'))).toEqual([])
   })
 })
 
 describe('ipcHandlers — settings', () => {
   it('gets, updates, resets and reports identity', async () => {
-    const s = await invoke<{ operatorName?: string }>(IPC_CHANNELS.SETTINGS_GET)
+    const s = expectOk<{ operatorName?: string }>(await invoke(IPC_CHANNELS.SETTINGS_GET))
     expect(s).toBeDefined()
 
-    const updated = await invoke<{ operatorName?: string }>(IPC_CHANNELS.SETTINGS_UPDATE, {
-      operatorName: 'Agent Smith'
-    })
+    const updated = expectOk<{ operatorName?: string }>(
+      await invoke(IPC_CHANNELS.SETTINGS_UPDATE, { operatorName: 'Agent Smith' })
+    )
     expect(updated.operatorName).toBe('Agent Smith')
 
-    const identity = await invoke<{ installationId: string; operatorName: string }>(
-      IPC_CHANNELS.SETTINGS_GET_IDENTITY
+    const identity = expectOk<{ installationId: string; operatorName: string }>(
+      await invoke(IPC_CHANNELS.SETTINGS_GET_IDENTITY)
     )
     expect(identity.installationId).toBeTruthy()
     expect(identity.operatorName).toBe('Agent Smith')
 
-    const reset = await invoke<{ operatorName?: string }>(IPC_CHANNELS.SETTINGS_RESET)
+    const reset = expectOk<{ operatorName?: string }>(await invoke(IPC_CHANNELS.SETTINGS_RESET))
     expect(reset).toBeDefined()
   })
 
   it('delegates openrouter key tests and model listing', async () => {
     testApiKey.mockResolvedValue(true)
     listModels.mockResolvedValue([{ id: 'gpt' }])
-    expect(await invoke(IPC_CHANNELS.SETTINGS_TEST_OPENROUTER, 'key')).toBe(true)
-    expect(await invoke(IPC_CHANNELS.SETTINGS_LIST_MODELS, 'key')).toEqual([{ id: 'gpt' }])
+    expect(expectOk(await invoke(IPC_CHANNELS.SETTINGS_TEST_OPENROUTER, 'key'))).toBe(true)
+    expect(expectOk(await invoke(IPC_CHANNELS.SETTINGS_LIST_MODELS, 'key'))).toEqual([
+      { id: 'gpt' }
+    ])
   })
 
   it('returns null when the storage-path picker is cancelled and a path otherwise', async () => {
-    expect(await invoke(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH)).toBeNull()
+    expect(expectOk(await invoke(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH))).toBeNull()
     showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: ['/data/x'] })
-    expect(await invoke(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH)).toBe('/data/x')
+    expect(expectOk(await invoke(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH))).toBe('/data/x')
+  })
+})
+
+describe('ipcHandlers — updates', () => {
+  it('reports status and runs a check via the updater service', async () => {
+    const status = expectOk(await invoke(IPC_CHANNELS.UPDATES_GET_STATUS))
+    expect(status).toEqual({
+      state: 'idle',
+      currentVersion: '1.2.3',
+      supportsAutoInstall: false,
+      installOnQuit: false
+    })
+    expect(updaterService.getStatus).toHaveBeenCalled()
+
+    const checked = expectOk(await invoke(IPC_CHANNELS.UPDATES_CHECK))
+    expect(checked).toEqual({
+      state: 'up-to-date',
+      currentVersion: '1.2.3',
+      supportsAutoInstall: false,
+      installOnQuit: false
+    })
+    expect(updaterService.check).toHaveBeenCalled()
+  })
+
+  it('delegates download and install to the updater service', async () => {
+    await invoke(IPC_CHANNELS.UPDATES_DOWNLOAD)
+    expect(updaterService.download).toHaveBeenCalled()
+
+    await invoke(IPC_CHANNELS.UPDATES_INSTALL)
+    expect(updaterService.install).toHaveBeenCalled()
+  })
+
+  it('reconfigures the updater when settings change', async () => {
+    await invoke(IPC_CHANNELS.SETTINGS_UPDATE, { releaseChannel: 'beta' })
+    expect(updaterService.applySettingsChange).toHaveBeenCalledWith({ releaseChannel: 'beta' })
   })
 })
 
@@ -471,15 +674,230 @@ describe('ipcHandlers — export', () => {
     )
     expect(pre.captureCount).toBe(1)
 
-    // Cancelled dialog → no report generated.
-    expectOk(await invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, { format: 'html' }))
+    // Cancelled dialog → no report generated, and the result reports canceled.
+    const canceled = expectOk<{ canceled: boolean; filePath?: string }>(
+      await invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, { format: 'html' })
+    )
+    expect(canceled).toEqual({ canceled: true })
     expect(generateReport).not.toHaveBeenCalled()
 
     const target = join(userDataPath, 'report.html')
     showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: target })
     generateReport.mockResolvedValue(undefined)
-    expectOk(await invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, { format: 'zip' }))
+    const done = expectOk<{ canceled: boolean; filePath?: string }>(
+      await invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, { format: 'zip' })
+    )
     expect(generateReport).toHaveBeenCalledTimes(1)
+    expect(done).toEqual({ canceled: false, filePath: target })
+  })
+
+  it('forwards onProgress to the renderer via event.sender.send', async () => {
+    const target = join(userDataPath, 'evidence.zip')
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: target })
+    generateReport.mockImplementationOnce(
+      async (
+        _caseId,
+        _options,
+        _lifecycle,
+        onProgress: (step: string, percent: number) => void
+      ) => {
+        onProgress('Verifying capture 1 of 2...', 30)
+      }
+    )
+
+    const send = vi.fn()
+    const fn = registered.get(IPC_CHANNELS.EXPORT_GENERATE)!
+    await fn({ sender: { send } } as unknown as IpcMainInvokeEvent, caseId, { format: 'zip' })
+
+    expect(send).toHaveBeenCalledWith(IPC_CHANNELS.EXPORT_PROGRESS, {
+      caseId,
+      step: 'Verifying capture 1 of 2...',
+      percent: 30
+    })
+  })
+
+  it('reveals and opens exported files via the shell', async () => {
+    const evidencePath = join(userDataPath, 'evidence.zip')
+    // Reveal/open is only permitted for a path this process authored, so run a
+    // real export first to register it (#C12).
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: evidencePath })
+    const done = expectOk(await invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, { format: 'zip' }))
+    expect(done).toEqual({ canceled: false, filePath: evidencePath })
+
+    writeFileSync(evidencePath, '')
+    openPath.mockResolvedValueOnce('')
+    expectOk(await invoke(IPC_CHANNELS.SHELL_SHOW_ITEM_IN_FOLDER, evidencePath))
+    expect(showItemInFolder).toHaveBeenCalledWith(evidencePath)
+
+    expectOk(await invoke(IPC_CHANNELS.SHELL_OPEN_PATH, evidencePath))
+    expect(openPath).toHaveBeenCalledWith(evidencePath)
+  })
+
+  it('refuses to reveal or open a path it did not author (#C12)', async () => {
+    const evil = join(userDataPath, 'evil.exe')
+    writeFileSync(evil, '')
+
+    const openRes = await invoke<{ ok: boolean; error?: string }>(
+      IPC_CHANNELS.SHELL_OPEN_PATH,
+      evil
+    )
+    expect(openRes.ok).toBe(false)
+    expect(openRes.error).toMatch(/not permitted/i)
+
+    const revealRes = await invoke<{ ok: boolean; error?: string }>(
+      IPC_CHANNELS.SHELL_SHOW_ITEM_IN_FOLDER,
+      evil
+    )
+    expect(revealRes.ok).toBe(false)
+    expect(revealRes.error).toMatch(/not permitted/i)
+
+    expect(openPath).not.toHaveBeenCalled()
+    expect(showItemInFolder).not.toHaveBeenCalled()
+  })
+
+  it('bounds the reveal/open allowlist with FIFO eviction (#C12)', async () => {
+    // Export well past the cap; the earliest paths must be evicted while the
+    // most recent stays openable, so the allowlist can't grow unbounded.
+    const paths = Array.from({ length: 70 }, (_, i) => join(userDataPath, `evd-${i}.zip`))
+    for (const p of paths) {
+      showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: p })
+      expectOk(await invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, { format: 'zip' }))
+    }
+
+    writeFileSync(paths[0], '')
+    const evicted = await invoke<{ ok: boolean; error?: string }>(
+      IPC_CHANNELS.SHELL_OPEN_PATH,
+      paths[0]
+    )
+    expect(evicted.ok).toBe(false)
+    expect(evicted.error).toMatch(/not permitted/i)
+
+    writeFileSync(paths[69], '')
+    openPath.mockResolvedValueOnce('')
+    expectOk(await invoke(IPC_CHANNELS.SHELL_OPEN_PATH, paths[69]))
+    expect(openPath).toHaveBeenCalledWith(paths[69])
+  })
+
+  it('re-exporting a path refreshes its FIFO recency so it is not stale-evicted (#C12)', async () => {
+    const target = join(userDataPath, 'repeat.zip')
+    const exportPath = async (p: string) => {
+      showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: p })
+      expectOk(await invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, { format: 'zip' }))
+    }
+
+    // Fill the allowlist to capacity with `target` as the oldest of 64 entries.
+    await exportPath(target)
+    for (let i = 0; i < 63; i++) await exportPath(join(userDataPath, `filler-${i}.zip`))
+
+    // Re-export the same target: it must move to the newest slot, not stay pinned
+    // at its stale position. One more unrelated export then evicts the true
+    // oldest (a filler) rather than the just-rewritten target.
+    await exportPath(target)
+    await exportPath(join(userDataPath, 'newcomer.zip'))
+
+    writeFileSync(target, '')
+    openPath.mockResolvedValueOnce('')
+    expectOk(await invoke(IPC_CHANNELS.SHELL_OPEN_PATH, target))
+    expect(openPath).toHaveBeenCalledWith(target)
+  })
+})
+
+describe('ipcHandlers — case archive', () => {
+  it('writes a file on the export happy path and reports canceled on dialog dismissal', async () => {
+    const canceled = expectOk<{ canceled: boolean; filePath?: string }>(
+      await invoke(IPC_CHANNELS.CASES_EXPORT_ARCHIVE, caseId)
+    )
+    expect(canceled).toEqual({ canceled: true })
+    expect(exportCaseArchive).not.toHaveBeenCalled()
+
+    const target = join(userDataPath, 'archive.birdbrain')
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: target })
+    exportCaseArchive.mockResolvedValue(undefined)
+    const done = expectOk<{ canceled: boolean; filePath?: string }>(
+      await invoke(IPC_CHANNELS.CASES_EXPORT_ARCHIVE, caseId)
+    )
+    expect(exportCaseArchive).toHaveBeenCalledWith(caseId, target, expect.any(Function))
+    expect(done).toEqual({ canceled: false, filePath: target })
+  })
+
+  it('fails with NOT_FOUND when exporting an unknown case', async () => {
+    const res = await invoke<{ ok: boolean; error?: string; code?: string }>(
+      IPC_CHANNELS.CASES_EXPORT_ARCHIVE,
+      'missing-case'
+    )
+    expect(res.ok).toBe(false)
+    expect(res.code).toBe('NOT_FOUND')
+    expect(showSaveDialog).not.toHaveBeenCalled()
+  })
+
+  it('forwards export progress to the renderer via event.sender.send', async () => {
+    const target = join(userDataPath, 'archive.birdbrain')
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: target })
+    exportCaseArchive.mockImplementationOnce(
+      async (_caseId, _outputPath, onProgress: (step: string, percent: number) => void) => {
+        onProgress('Collecting case data...', 10)
+      }
+    )
+
+    const send = vi.fn()
+    const fn = registered.get(IPC_CHANNELS.CASES_EXPORT_ARCHIVE)!
+    await fn({ sender: { send } } as unknown as IpcMainInvokeEvent, caseId)
+
+    expect(send).toHaveBeenCalledWith(IPC_CHANNELS.ARCHIVE_PROGRESS, {
+      caseId,
+      step: 'Collecting case data...',
+      percent: 10
+    })
+  })
+
+  it('returns null when the archive-inspect dialog is cancelled', async () => {
+    expect(expectOk(await invoke(IPC_CHANNELS.CASES_INSPECT_ARCHIVE))).toBeNull()
+    expect(inspectCaseArchive).not.toHaveBeenCalled()
+  })
+
+  it('inspects the chosen archive and returns its report', async () => {
+    const archivePath = join(userDataPath, 'archive.birdbrain')
+    showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [archivePath] })
+    const report = { archivePath, caseName: 'Test Case' }
+    inspectCaseArchive.mockReturnValue(report)
+
+    const result = expectOk(await invoke(IPC_CHANNELS.CASES_INSPECT_ARCHIVE))
+    expect(inspectCaseArchive).toHaveBeenCalledWith(archivePath)
+    expect(result).toBe(report)
+  })
+
+  it('imports an archive and returns the new case id', async () => {
+    const archivePath = join(userDataPath, 'archive.birdbrain')
+    importCaseArchive.mockResolvedValue({ newCaseId: 'new-case-id', report: {} })
+
+    const result = expectOk<{ newCaseId: string }>(
+      await invoke(IPC_CHANNELS.CASES_IMPORT_ARCHIVE, archivePath, false)
+    )
+    expect(result).toEqual({ newCaseId: 'new-case-id' })
+    expect(importCaseArchive).toHaveBeenCalledWith(
+      archivePath,
+      { overrideTamper: false },
+      expect.any(Function)
+    )
+  })
+
+  it('forwards import progress to the renderer via event.sender.send', async () => {
+    const archivePath = join(userDataPath, 'archive.birdbrain')
+    importCaseArchive.mockImplementationOnce(
+      async (_archivePath, _opts, onProgress: (step: string, percent: number) => void) => {
+        onProgress('Verifying archive...', 5)
+        return { newCaseId: 'new-case-id', report: {} }
+      }
+    )
+
+    const send = vi.fn()
+    const fn = registered.get(IPC_CHANNELS.CASES_IMPORT_ARCHIVE)!
+    await fn({ sender: { send } } as unknown as IpcMainInvokeEvent, archivePath, true)
+
+    expect(send).toHaveBeenCalledWith(IPC_CHANNELS.ARCHIVE_PROGRESS, {
+      step: 'Verifying archive...',
+      percent: 5
+    })
   })
 })
 
@@ -528,19 +946,37 @@ describe('ipcHandlers — AI analysis', () => {
 
 describe('ipcHandlers — extracted data', () => {
   it('lists categories, subcategories, items and counts, and reprocesses', async () => {
-    db.insertExtractedData(captureId, caseId, 'https://example.com', [
+    extractedDataRepo.insertExtractedData(captureId, caseId, 'https://example.com', [
       { category: 'ioc', subcategory: 'email', value: 'a@b.com' }
     ])
-    const categories = await invoke<unknown[]>(IPC_CHANNELS.EXTRACTED_DATA_CATEGORIES, caseId)
+    const categories = expectOk<unknown[]>(
+      await invoke(IPC_CHANNELS.EXTRACTED_DATA_CATEGORIES, caseId)
+    )
     expect(categories.length).toBeGreaterThan(0)
-    expect(await invoke(IPC_CHANNELS.EXTRACTED_DATA_SUBCATEGORIES, caseId, 'ioc')).toBeDefined()
-    expect(await invoke(IPC_CHANNELS.EXTRACTED_DATA_ITEMS, caseId, 'ioc', 'email')).toBeDefined()
-    expect(await invoke<number>(IPC_CHANNELS.EXTRACTED_DATA_COUNT, caseId)).toBeGreaterThan(0)
+    expect(
+      expectOk(await invoke(IPC_CHANNELS.EXTRACTED_DATA_SUBCATEGORIES, caseId, 'ioc'))
+    ).toBeDefined()
+    expect(
+      expectOk(await invoke(IPC_CHANNELS.EXTRACTED_DATA_ITEMS, caseId, 'ioc', 'email'))
+    ).toBeDefined()
+    expect(
+      expectOk<number>(await invoke(IPC_CHANNELS.EXTRACTED_DATA_COUNT, caseId))
+    ).toBeGreaterThan(0)
 
     const reprocessed = expectOk<{ processed: number }>(
       await invoke(IPC_CHANNELS.EXTRACTED_DATA_REPROCESS, caseId)
     )
     expect(reprocessed.processed).toBeGreaterThanOrEqual(0)
+  })
+
+  it('searches extracted data by substring', async () => {
+    extractedDataRepo.insertExtractedData(captureId, caseId, 'https://example.com', [
+      { category: 'ioc', subcategory: 'email', value: 'foo@gmail.com' }
+    ])
+    const results = expectOk<Array<{ value: string }>>(
+      await invoke(IPC_CHANNELS.EXTRACTED_DATA_SEARCH, caseId, 'gmail')
+    )
+    expect(results.map((r) => r.value)).toEqual(['foo@gmail.com'])
   })
 })
 
@@ -627,5 +1063,342 @@ describe('ipcHandlers — database admin', () => {
   it('reports not-restored when the restore dialog is cancelled', async () => {
     const res = expectOk<{ restored: boolean }>(await invoke(IPC_CHANNELS.DB_RESTORE))
     expect(res.restored).toBe(false)
+  })
+})
+
+describe('archive handlers', () => {
+  it('archive:lookup reads the capture URL and returns CDX results', async () => {
+    const c = createCase({ name: 'C' })
+    const cap = insertCapture({
+      caseId: c.id,
+      url: 'https://example.com/',
+      title: 'Example',
+      hash: 'h',
+      timestamp: '2020-01-15T12:00:00.000Z',
+      format: 'mhtml'
+    })
+    lookupSnapshots.mockResolvedValueOnce({
+      snapshots: [
+        {
+          timestamp: '2020-01-15T12:00:00.000Z',
+          snapshotUrl: 'https://web.archive.org/web/20200115120000/https://example.com/',
+          originalUrl: 'https://example.com/',
+          statusCode: 200
+        }
+      ],
+      closestIndex: 0,
+      checkedAt: '2026-06-30T00:00:00.000Z'
+    })
+    const handler = registered.get('wayback:lookup')!
+    const result = (await handler({} as never, cap.id)) as { ok: boolean; data: unknown }
+    expect(lookupSnapshots).toHaveBeenCalledWith('https://example.com/', '2020-01-15T12:00:00.000Z')
+    expect(result.ok).toBe(true)
+  })
+
+  it('archive:pin then archive:list round-trips a reference', async () => {
+    const c = createCase({ name: 'C' })
+    const cap = insertCapture({
+      caseId: c.id,
+      url: 'https://example.com/',
+      title: 'Example',
+      hash: 'h',
+      timestamp: '2020-01-15T12:00:00.000Z',
+      format: 'mhtml'
+    })
+    const snapshot = {
+      timestamp: '2020-01-15T12:00:00.000Z',
+      snapshotUrl: 'https://web.archive.org/web/20200115120000/https://example.com/',
+      originalUrl: 'https://example.com/',
+      statusCode: 200
+    }
+    const pin = registered.get('wayback:pin')!
+    const pinned = (await pin({} as never, {
+      captureId: cap.id,
+      snapshot,
+      checkedAt: '2026-06-30T00:00:00.000Z'
+    })) as {
+      ok: boolean
+      data: { id: string }
+    }
+    expect(pinned.ok).toBe(true)
+
+    const list = registered.get('wayback:list')!
+    const refs = expectOk<
+      Array<{
+        snapshotUrl: string
+        checkedAt: string
+      }>
+    >((await list({} as never, cap.id)) as { ok: boolean; data: unknown })
+    expect(refs).toHaveLength(1)
+    expect(refs[0].snapshotUrl).toBe(snapshot.snapshotUrl)
+    expect(refs[0].checkedAt).toBe('2026-06-30T00:00:00.000Z')
+
+    const unpin = registered.get('wayback:unpin')!
+    const removed = (await unpin({} as never, pinned.data.id)) as { ok: boolean; data: boolean }
+    expect(removed.ok).toBe(true)
+    expect(
+      expectOk<unknown[]>((await list({} as never, cap.id)) as { ok: boolean; data: unknown })
+    ).toHaveLength(0)
+  })
+
+  it('archive:pin rejects a snapshot with a forged snapshotUrl', async () => {
+    const c = createCase({ name: 'C' })
+    const cap = insertCapture({
+      caseId: c.id,
+      url: 'https://example.com/',
+      title: 'Example',
+      hash: 'h',
+      timestamp: '2020-01-15T12:00:00.000Z',
+      format: 'mhtml'
+    })
+    const pin = registered.get('wayback:pin')!
+    const result = (await pin({} as never, {
+      captureId: cap.id,
+      // snapshotUrl does not point at web.archive.org — must be rejected.
+      snapshot: {
+        timestamp: '2020-01-15T12:00:00.000Z',
+        snapshotUrl: 'https://evil.example/web/20200115120000/https://example.com/',
+        originalUrl: 'https://example.com/',
+        statusCode: 200
+      },
+      checkedAt: '2026-06-30T00:00:00.000Z'
+    })) as { ok: boolean; code?: string }
+    expect(result.ok).toBe(false)
+    expect(result.code).toBe('WAYBACK_INVALID_SNAPSHOT')
+
+    const list = registered.get('wayback:list')!
+    expect(
+      expectOk<unknown[]>((await list({} as never, cap.id)) as { ok: boolean; data: unknown })
+    ).toHaveLength(0)
+  })
+})
+
+describe('ipcHandlers — recapture', () => {
+  it('recapture:enqueue fans urls out to jobs', async () => {
+    await invoke(IPC_CHANNELS.RECAPTURE_ENQUEUE, {
+      urls: ['https://a.com/', 'https://b.com/'],
+      caseId: 'case-1',
+      supersedesCaptureId: 'cap-9'
+    })
+    expect(recaptureService.enqueue).toHaveBeenCalledWith([
+      { url: 'https://a.com/', caseId: 'case-1', supersedesCaptureId: 'cap-9' },
+      { url: 'https://b.com/', caseId: 'case-1', supersedesCaptureId: 'cap-9' }
+    ])
+  })
+
+  it('recapture:enqueue rejects malformed payloads without reaching the service', async () => {
+    for (const payload of [undefined, {}, { caseId: 'case-1' }, { urls: 'not-an-array' }]) {
+      const res = (await invoke(IPC_CHANNELS.RECAPTURE_ENQUEUE, payload)) as {
+        ok: boolean
+        code?: string
+      }
+      expect(res.ok).toBe(false)
+      expect(res.code).toBe('INVALID_RECAPTURE_PAYLOAD')
+    }
+    expect(recaptureService.enqueue).not.toHaveBeenCalled()
+  })
+
+  it('recapture:queueStatus reads the service status', async () => {
+    const status = expectOk(await invoke(IPC_CHANNELS.RECAPTURE_QUEUE_STATUS))
+    expect(status).toEqual({ pending: 0, activeUrl: null })
+    expect(recaptureService.status).toHaveBeenCalled()
+  })
+})
+
+describe('ipcHandlers — diagnostics logging', () => {
+  // The module-level logger singleton is inert (returns '' and does nothing)
+  // until initLogger runs, so this block owns its own init/dispose around the
+  // real logger rather than mocking it — the point of these tests is that the
+  // handler's re-validation actually reaches disk correctly.
+  beforeEach(() => {
+    initLogger(userDataPath, 'renderer-test-session')
+  })
+
+  afterEach(() => {
+    disposeLogger()
+  })
+
+  it('records a valid renderer entry under source "renderer" and returns its correlation id', async () => {
+    const id = expectOk<string>(
+      await invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, {
+        level: 'error',
+        code: 'query.failed',
+        context: { domain: 'cases' }
+      })
+    )
+    expect(id).toMatch(/^[0-9a-f]{16}$/)
+
+    flushLogger()
+    const [entry] = readRecentEntries(1)
+    expect(entry.source).toBe('renderer')
+    expect(entry.level).toBe('error')
+    expect(entry.code).toBe('query.failed')
+    expect(entry.context).toEqual({ domain: 'cases' })
+    expect(entry.id).toBe(id)
+  })
+
+  it('clamps an unrecognised level to info', async () => {
+    await invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, { level: 'debug', code: 'query.failed' })
+    flushLogger()
+    expect(readRecentEntries(1)[0].level).toBe('info')
+  })
+
+  it('drops the entry when the code is not a recognised LogCode', async () => {
+    const id = expectOk<string>(
+      await invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, { level: 'error', code: 'not.a.real.code' })
+    )
+    expect(id).toBe('')
+    flushLogger()
+    expect(readRecentEntries(1)).toEqual([])
+  })
+
+  it('drops the entry when the payload is missing entirely', async () => {
+    const id = expectOk<string>(await invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, undefined))
+    expect(id).toBe('')
+  })
+
+  it('re-validates context per-key, dropping a case name sent under caseId', async () => {
+    // 'OperationBlackbird' passes the generic ident() rule but fails caseId's
+    // uuid format — the exact leak this handler exists to close (see
+    // logSafe.test.ts for context()'s own dev/packaged behaviour). In this
+    // dev-mode test environment (electron.app.isPackaged is mocked false
+    // above), logSafe's context() throws on that rejection, and the handler
+    // must catch it and drop the WHOLE context rather than propagate the
+    // throw or silently coerce the value.
+    await invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, {
+      level: 'info',
+      code: 'query.failed',
+      context: { caseId: 'OperationBlackbird' }
+    })
+    flushLogger()
+    // The offending key is dropped, not coerced or passed through — the
+    // resulting context is empty rather than containing a case name.
+    expect(readRecentEntries(1)[0].context).toEqual({})
+  })
+
+  it('records a validated error name, never a raw string, for a recognised ERROR_NAMES member', async () => {
+    await invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, {
+      level: 'error',
+      code: 'query.failed',
+      error: 'TypeError'
+    })
+    flushLogger()
+    expect(readRecentEntries(1)[0].error).toEqual({ name: 'TypeError', code: null, stack: null })
+  })
+
+  it('maps an unrecognised error name to UnknownError rather than passing it through', async () => {
+    await invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, {
+      level: 'error',
+      code: 'query.failed',
+      error: 'CaseNameLookingError'
+    })
+    flushLogger()
+    expect(readRecentEntries(1)[0].error?.name).toBe('UnknownError')
+  })
+
+  it('omits the error field when no error is given', async () => {
+    await invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, { level: 'info', code: 'query.failed' })
+    flushLogger()
+    expect(readRecentEntries(1)[0].error).toBeUndefined()
+  })
+
+  it('diagnostics:recent reads back the tail of the durable log', async () => {
+    await invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, { level: 'info', code: 'query.failed' })
+    await invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, { level: 'info', code: 'mutation.failed' })
+    const entries = expectOk<LogEntry[]>(await invoke(IPC_CHANNELS.DIAGNOSTICS_RECENT, 50))
+    expect(entries).toHaveLength(2)
+  })
+
+  it('diagnostics:recent clamps an out-of-range or non-numeric limit to the default', async () => {
+    for (let i = 0; i < 3; i++) {
+      await invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, { level: 'info', code: 'query.failed' })
+    }
+    const viaNegativeLimit = expectOk<LogEntry[]>(await invoke(IPC_CHANNELS.DIAGNOSTICS_RECENT, -5))
+    expect(viaNegativeLimit).toHaveLength(3)
+    const viaStringLimit = expectOk<LogEntry[]>(
+      await invoke(IPC_CHANNELS.DIAGNOSTICS_RECENT, 'not-a-number')
+    )
+    expect(viaStringLimit).toHaveLength(3)
+  })
+
+  it('diagnostics:revealLog reveals the current log file via the shell', async () => {
+    await invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, { level: 'info', code: 'query.failed' })
+    expectOk(await invoke(IPC_CHANNELS.DIAGNOSTICS_REVEAL_LOG))
+    expect(showItemInFolder).toHaveBeenCalledWith(getLogPath())
+  })
+
+  it('diagnostics:lastSession reports null when no unclean session is on record', async () => {
+    const result = expectOk<SessionRecord | null>(
+      await invoke(IPC_CHANNELS.DIAGNOSTICS_LAST_SESSION)
+    )
+    expect(result).toBeNull()
+  })
+
+  it('diagnostics:lastSession surfaces an unclean prior session recorded in the log dir', async () => {
+    // The log dir is created lazily on first flush, not by initLogger itself —
+    // write and flush an entry first so it exists to hold sessions.json.
+    await invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, { level: 'info', code: 'query.failed' })
+    flushLogger()
+
+    const record = {
+      sessionId: 'aaaa1111-bbbb-2222-cccc-333344445555',
+      startedAt: '2026-01-01T00:00:00.000Z',
+      endedAt: null,
+      version: '1.0.0',
+      platform: 'win32',
+      installFormat: 'nsis',
+      cleanExit: false
+    }
+    writeFileSync(join(getLogDir(), 'sessions.json'), JSON.stringify([record]))
+
+    const result = expectOk<{ sessionId: string } | null>(
+      await invoke(IPC_CHANNELS.DIAGNOSTICS_LAST_SESSION)
+    )
+    expect(result?.sessionId).toBe(record.sessionId)
+  })
+})
+
+describe('ipcHandlers — diagnostics create report', () => {
+  // Reuses the real logger/db/installation-id services already initialised in
+  // the outer beforeEach, the same way the diagnostics-logging block above
+  // does — the point of this test is that the handler actually reaches disk.
+  beforeEach(() => {
+    initLogger(userDataPath, 'report-test-session')
+  })
+
+  afterEach(() => {
+    disposeLogger()
+  })
+
+  it('writes the bundle to the chosen path, reveals it, and returns that path', async () => {
+    const target = join(userDataPath, 'report.zip')
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: target })
+
+    const result = expectOk<BugReportResult | null>(
+      await invoke(IPC_CHANNELS.DIAGNOSTICS_CREATE_REPORT, {
+        whatYouDid: 'Captured a page',
+        whatYouExpected: 'It saves',
+        whatHappened: 'Nothing happened'
+      })
+    )
+
+    expect(result?.path).toBe(target)
+    expect(existsSync(target)).toBe(true)
+    expect(showItemInFolder).toHaveBeenCalledWith(target)
+  })
+
+  it('returns null and writes nothing when the save dialog is cancelled', async () => {
+    showSaveDialog.mockResolvedValueOnce({ canceled: true, filePath: undefined })
+
+    const result = expectOk<BugReportResult | null>(
+      await invoke(IPC_CHANNELS.DIAGNOSTICS_CREATE_REPORT, {
+        whatYouDid: 'x',
+        whatYouExpected: 'y',
+        whatHappened: 'z'
+      })
+    )
+
+    expect(result).toBeNull()
+    expect(showItemInFolder).not.toHaveBeenCalled()
   })
 })

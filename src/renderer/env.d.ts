@@ -19,10 +19,20 @@ import type {
   ExtractedDataCategory,
   ExtractedDataSubcategory,
   ExtractedDataItem,
+  ExtractedDataSearchResult,
   AnnotationsBundle,
   CaptureAnnotations,
   AnnotationPin,
-  OperatorIdentity
+  OperatorIdentity,
+  WaybackRef,
+  WaybackLookupResult,
+  ArchiveInspectReport,
+  UpdateStatus,
+  DiagnosticsSnapshot,
+  LogEntry,
+  SessionRecord,
+  BugReportInput,
+  BugReportResult
 } from '@shared/types'
 import type {
   CreateCaseParams,
@@ -47,7 +57,17 @@ import type {
   SaveAnnotationsParams,
   UpsertAnnotationPinParams,
   SelectorRematchedEvent,
-  DeepLinkTarget
+  DeepLinkTarget,
+  ExportProgressEvent,
+  ExportResult,
+  PinWaybackSnapshotParams,
+  ArchiveProgressEvent,
+  ArchiveExportResult,
+  RecaptureEnqueuePayload,
+  EnqueueResult,
+  RecaptureQueueStatus,
+  RendererLogPayload,
+  SessionStateEvent
 } from '@shared/ipc'
 
 interface BirdbrainAPI {
@@ -57,6 +77,9 @@ interface BirdbrainAPI {
     create(params: CreateCaseParams): Promise<Case>
     update(params: UpdateCaseParams): Promise<Case | undefined>
     delete(id: string): Promise<boolean>
+    exportArchive(caseId: string): Promise<ArchiveExportResult>
+    inspectArchive(): Promise<ArchiveInspectReport | null>
+    importArchive(archivePath: string, overrideTamper: boolean): Promise<{ newCaseId: string }>
   }
   captures: {
     list(caseId: string): Promise<Capture[]>
@@ -66,6 +89,8 @@ interface BirdbrainAPI {
     getThumbnail(captureId: string): Promise<string | null>
     getMatchingSelectors(captureId: string): Promise<Selector[]>
     download(captureId: string): Promise<string | null>
+    downloadPdf(captureId: string): Promise<string | null>
+    downloadScreenshot(captureId: string): Promise<string | null>
     openExternal(url: string): Promise<void>
     countsByCase(): Promise<Record<string, number>>
     toggleFavorite(captureId: string): Promise<boolean>
@@ -73,6 +98,10 @@ interface BirdbrainAPI {
     listFavorites(caseId: string): Promise<string[]>
     verify(captureId: string): Promise<HashVerification>
     getMhtmlUrl(captureId: string): Promise<string | null>
+  }
+  recapture: {
+    enqueue(payload: RecaptureEnqueuePayload): Promise<EnqueueResult>
+    queueStatus(): Promise<RecaptureQueueStatus>
   }
   tags: {
     list(): Promise<Tag[]>
@@ -107,6 +136,12 @@ interface BirdbrainAPI {
     count(caseId: string): Promise<number>
     search(caseId: string, query: string): Promise<Note[]>
   }
+  wayback: {
+    lookup(captureId: string): Promise<WaybackLookupResult>
+    list(captureId: string): Promise<WaybackRef[]>
+    pin(params: PinWaybackSnapshotParams): Promise<WaybackRef>
+    unpin(refId: string): Promise<boolean>
+  }
   annotations: {
     get(captureId: string): Promise<AnnotationsBundle>
     save(params: SaveAnnotationsParams): Promise<CaptureAnnotations>
@@ -118,7 +153,13 @@ interface BirdbrainAPI {
     getPath(): Promise<string>
     openFolder(): Promise<void>
   }
-  search(query: string): Promise<Capture[]>
+  session: {
+    snapshot(): Promise<SessionStateEvent>
+    activateCase(caseId: string): Promise<SessionStateEvent>
+    start(): Promise<SessionStateEvent>
+    stop(): Promise<SessionStateEvent>
+  }
+  search(caseId: string, query: string): Promise<Capture[]>
   settings: {
     get(): Promise<BirdbrainSettings>
     update(partial: Partial<BirdbrainSettings>): Promise<BirdbrainSettings>
@@ -130,7 +171,28 @@ interface BirdbrainAPI {
   }
   export: {
     preflight(caseId: string): Promise<ExportPreflight>
-    generateReport(caseId: string, options: ExportOptions): Promise<void>
+    generateReport(caseId: string, options: ExportOptions): Promise<ExportResult>
+  }
+  shell: {
+    showItemInFolder(path: string): Promise<void>
+    openPath(path: string): Promise<string>
+  }
+  app: {
+    getVersion(): Promise<string>
+  }
+  diagnostics: {
+    get(): Promise<DiagnosticsSnapshot>
+    log(payload: RendererLogPayload): Promise<string>
+    recentEntries(limit: number): Promise<LogEntry[]>
+    revealLog(): Promise<void>
+    lastSession(): Promise<SessionRecord | null>
+    createReport(input: BugReportInput): Promise<BugReportResult | null>
+  }
+  updates: {
+    getStatus(): Promise<UpdateStatus>
+    check(): Promise<UpdateStatus>
+    download(): Promise<void>
+    install(): Promise<void>
   }
   ai: {
     analyze(params: AnalyzeCaptureParams): Promise<{ content: string; tokenUsage: TokenUsage }>
@@ -144,7 +206,7 @@ interface BirdbrainAPI {
     updateRow(params: DbUpdateRowParams): Promise<boolean>
     deleteRow(params: DbRowIdentifier): Promise<boolean>
     vacuum(): Promise<{ freedBytes: number }>
-    rebuildFts(): Promise<{ rowsIndexed: number }>
+    rebuildFts(): Promise<{ rowsIndexed: number; textsHealed: number }>
     purgeArchived(): Promise<{ casesDeleted: number; capturesDeleted: number }>
     findOrphans(): Promise<OrphanReport>
     cleanOrphans(report: OrphanReport): Promise<{ dbRecordsRemoved: number; filesRemoved: number }>
@@ -152,6 +214,8 @@ interface BirdbrainAPI {
     restore(): Promise<{ restored: boolean }>
     exportTable(params: DbExportTableParams): Promise<{ path: string } | null>
   }
+  onExportProgress(callback: (event: ExportProgressEvent) => void): () => void
+  onArchiveProgress(callback: (event: ArchiveProgressEvent) => void): () => void
   onNewCapture(callback: (capture: Capture) => void): () => void
   onSessionStateChanged(
     callback: (state: {
@@ -162,8 +226,10 @@ interface BirdbrainAPI {
   ): () => void
   onExtensionConnection(callback: (data: { connected: boolean }) => void): () => void
   onCaptureActivity(callback: (event: CaptureEvent) => void): () => void
+  onLogEntry(callback: (entry: LogEntry) => void): () => void
   onSelectorRematched(callback: (event: SelectorRematchedEvent) => void): () => void
   onDeepLinkNavigate(callback: (target: DeepLinkTarget) => void): () => void
+  onUpdateStatus(callback: (status: UpdateStatus) => void): () => void
   testPipeline(): Promise<{ success: boolean; durationMs: number; error?: string }>
   testHttp(): Promise<{ success: boolean; durationMs: number; error?: string }>
   extractedData: {
@@ -171,6 +237,7 @@ interface BirdbrainAPI {
     subcategories(caseId: string, category: string): Promise<ExtractedDataSubcategory[]>
     items(caseId: string, category: string, subcategory: string): Promise<ExtractedDataItem[]>
     count(caseId: string): Promise<number>
+    search(caseId: string, query: string): Promise<ExtractedDataSearchResult[]>
     reprocess(caseId: string): Promise<{ processed: number }>
   }
 }

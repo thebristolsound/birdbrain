@@ -6,7 +6,8 @@ import {
   buildTrustedTimeIndexFromEntries
 } from '@shared/verify/trustedTime'
 import type { TrustedTimeResult } from '@shared/verify/trustedTime'
-import * as db from '@main/services/database'
+import * as caseRepo from '@main/services/db/caseRepo'
+import * as captureRepo from '@main/services/db/captureRepo'
 import { getStorageRoot } from '@main/services/storage'
 
 export type { TrustedTimeResult }
@@ -72,7 +73,7 @@ export function reconcileCaptureTrustedTime(capture: {
   hash: string
 }): TrustedTimeResult {
   const result = resolveTrustedTime(join(getStorageRoot(), capture.caseId), capture.hash)
-  db.setCaptureTrustedTime(capture.id, result.trustedTime)
+  captureRepo.setCaptureTrustedTime(capture.id, result.trustedTime)
   return result
 }
 
@@ -82,11 +83,11 @@ export function reconcileCaptureTrustedTime(capture: {
 // O(captures²)) before writing. Non-MHTML captures have no manifest entry and
 // are skipped.
 export function reconcileAllMirrors(): void {
-  for (const c of db.listCases()) {
+  for (const c of caseRepo.listCases()) {
     const index = buildTrustedTimeIndex(join(getStorageRoot(), c.id))
-    for (const cap of db.listCaptures(c.id)) {
+    for (const cap of captureRepo.listCaptures(c.id)) {
       if (cap.format !== 'mhtml') continue
-      db.setCaptureTrustedTime(cap.id, index.get(cap.hash)?.trustedTime ?? 'none')
+      captureRepo.setCaptureTrustedTime(cap.id, index.get(cap.hash)?.trustedTime ?? 'none')
     }
   }
 }

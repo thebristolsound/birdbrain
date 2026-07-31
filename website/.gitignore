@@ -1,0 +1,14 @@
+# deps
+/node_modules
+
+# fumadocs-mdx generated collections
+.source
+
+# build output
+/.next/
+/out/
+*.tsbuildinfo
+
+# next
+next-env.d.ts
+.env*.local

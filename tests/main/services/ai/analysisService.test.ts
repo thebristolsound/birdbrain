@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { initDatabase, closeDatabase, createCase, insertCapture } from '@main/services/database'
+import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { createCase } from '@main/services/db/caseRepo'
+import { insertCapture } from '@main/services/db/captureRepo'
 import { saveAnalysis, getAnalysis } from '@main/services/ai/analysisService'
 import type { CaptureAnalysis } from '@shared/types'
 

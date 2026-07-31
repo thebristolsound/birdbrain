@@ -1,4 +1,4 @@
-import { app, ipcMain, dialog, shell } from 'electron'
+import { app, dialog, shell } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
 import { DEFAULT_ANALYSIS_SYSTEM_PROMPT } from '@shared/constants'
 import type {
@@ -11,6 +11,7 @@ import type {
   UpdateSelectorParams,
   CreateNoteParams,
   UpdateNoteParams,
+  PinWaybackSnapshotParams,
   BulkCreateSelectorsParams,
   DbTableRowsParams,
   DbCreateRowParams,
@@ -20,62 +21,243 @@ import type {
   OrphanReport,
   AnalyzeCaptureParams,
   SaveAnnotationsParams,
-  UpsertAnnotationPinParams
+  UpsertAnnotationPinParams,
+  ExportResult,
+  ArchiveExportResult,
+  RecaptureEnqueuePayload,
+  SelfTestResult,
+  SessionStateEvent
 } from '@shared/ipc'
-import * as dbAdmin from '@main/services/dbAdmin'
+import * as dbAdmin from '@main/services/db/dbAdmin'
 import { existsSync } from 'fs'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import { pathToFileURL } from 'url'
-import * as db from '@main/services/database'
+import * as caseRepo from '@main/services/db/caseRepo'
+import * as captureRepo from '@main/services/db/captureRepo'
+import * as tagRepo from '@main/services/db/tagRepo'
+import * as selectorRepo from '@main/services/db/selectorRepo'
+import * as noteRepo from '@main/services/db/noteRepo'
+import * as waybackRefRepo from '@main/services/db/waybackRefRepo'
+import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
 import * as annotations from '@main/services/annotations'
-import * as storage from '@main/services/storage'
+import { defaultCaptureStore } from '@main/services/captureStore'
+import { renderCapturePdf } from '@main/services/pdfExport'
+import { getThumbnail } from '@main/services/thumbnails'
 import * as settings from '@main/services/settings'
 import * as openrouter from '@main/services/openrouter'
 import * as analysisService from '@main/services/ai/analysisService'
 import { generateReport, getExportPreflight } from '@main/services/export'
+import {
+  exportCaseArchive,
+  inspectCaseArchive,
+  importCaseArchive
+} from '@main/services/caseArchive'
 import { getExtensionPath, extensionPathExists } from '@main/services/extensionPath'
+import { lookupSnapshots, isPersistableSnapshot } from '@main/services/waybackMachine'
 import { buildCsv } from '@main/services/csvEscape'
 import { getInstallationId } from '@main/services/installationId'
-import { CAPTURE_SERVER_PORT, getSessionState } from '@main/services/captureServer'
+import { CAPTURE_SERVER_PORT } from '@main/services/captureServer'
 import { getServerToken } from '@main/services/serverToken'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
-import { handle, IpcFailure } from '@main/ipcWrap'
-import type { BirdbrainSettings, ExportOptions, CaptureAnalysis } from '@shared/types'
+import type { RecaptureService } from '@main/services/recapture'
+import type { UpdaterService } from '@main/services/updater'
+import type { SessionService } from '@main/services/session'
+import { handle, IpcFailure, sendEvent } from '@main/ipcWrap'
+import { diagnosticsService } from '@main/services/diagnostics'
+import { flushSync, getLogDir, getLogPath, logger, readRecentEntries } from '@main/services/logger'
+import { takeUncleanSession } from '@main/services/sessionLog'
+import { buildBugReport, bugReportFilename } from '@main/services/bugReport'
+import { ValidatedError, context, errorName, ident, isLogCode } from '@main/services/logSafe'
+import type { LogContext, LogValue } from '@main/services/logSafe'
+import type {
+  BirdbrainSettings,
+  ExportOptions,
+  CaptureAnalysis,
+  ArchiveInspectReport
+} from '@shared/types'
+
+// Self-test fetches must fail fast when the capture server is down. Without an
+// explicit timeout they inherit undici's 10s default, which on platforms whose
+// loopback drops (rather than refuses) SYNs to unbound ports — e.g. WSL2 — hangs
+// long enough to blow past test/UI deadlines.
+const SELF_TEST_TIMEOUT_MS = 2000
+
+// Reveal/open is limited to files THIS process authored (export outputs). A
+// renderer — even a compromised one — can't hand shell.openPath an arbitrary
+// binary, because only paths recorded here on a successful export are openable.
+// Bounded with FIFO eviction so the allowlist can't grow for the life of the
+// process; only recent exports stay openable.
+const MAX_REVEALABLE_PATHS = 64
+const revealablePaths = new Set<string>()
+
+function rememberRevealablePath(filePath: string): void {
+  const resolved = resolve(filePath)
+  // delete-then-add so re-exporting the same destination refreshes its recency.
+  // Set.add on an already-present value keeps its original insertion position,
+  // which would let a just-rewritten path be evicted by newer unrelated exports.
+  revealablePaths.delete(resolved)
+  revealablePaths.add(resolved)
+  if (revealablePaths.size > MAX_REVEALABLE_PATHS) {
+    revealablePaths.delete(revealablePaths.values().next().value as string)
+  }
+}
 
 export function registerIpcHandlers(deps: {
   selectorLifecycle: SelectorLifecycle
   captureLifecycle: CaptureLifecycle
+  recaptureService: RecaptureService
+  updaterService: UpdaterService
+  sessionService: SessionService
 }): void {
-  const { selectorLifecycle, captureLifecycle } = deps
+  const { selectorLifecycle, captureLifecycle, recaptureService, updaterService, sessionService } =
+    deps
   // Cases
-  ipcMain.handle(IPC_CHANNELS.CASES_LIST, () => db.listCases())
-  ipcMain.handle(IPC_CHANNELS.CASES_GET, (_, id: string) => db.getCase(id))
-  handle(IPC_CHANNELS.CASES_CREATE, (_, params: CreateCaseParams) => db.createCase(params))
-  handle(IPC_CHANNELS.CASES_UPDATE, (_, params: UpdateCaseParams) => db.updateCase(params))
-  handle(IPC_CHANNELS.CASES_DELETE, (_, id: string) => db.deleteCase(id))
+  handle(IPC_CHANNELS.CASES_LIST, () => caseRepo.listCases())
+  handle(IPC_CHANNELS.CASES_GET, (_, id: string) => caseRepo.getCase(id))
+  handle(IPC_CHANNELS.CASES_CREATE, (_, params: CreateCaseParams) => caseRepo.createCase(params))
+  handle(IPC_CHANNELS.CASES_UPDATE, (_, params: UpdateCaseParams) => caseRepo.updateCase(params))
+  handle(IPC_CHANNELS.CASES_DELETE, (_, id: string) => caseRepo.deleteCase(id))
+
+  handle(
+    IPC_CHANNELS.CASES_EXPORT_ARCHIVE,
+    async (event, caseId: string): Promise<ArchiveExportResult> => {
+      const caseData = caseRepo.getCase(caseId)
+      if (!caseData) throw new IpcFailure('Case not found', 'NOT_FOUND')
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        defaultPath: `${caseData.name.replace(/[^\w\- ]+/g, '_')}.birdbrain`,
+        filters: [{ name: 'Birdbrain Case Archive', extensions: ['birdbrain'] }]
+      })
+      if (canceled || !filePath) return { canceled: true }
+      await exportCaseArchive(caseId, filePath, (step, percent) =>
+        sendEvent(event.sender, IPC_CHANNELS.ARCHIVE_PROGRESS, {
+          caseId,
+          step,
+          percent
+        })
+      )
+      return { canceled: false, filePath }
+    }
+  )
+
+  handle(IPC_CHANNELS.CASES_INSPECT_ARCHIVE, async (): Promise<ArchiveInspectReport | null> => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      title: 'Import Case Archive',
+      filters: [{ name: 'Birdbrain Case Archive', extensions: ['birdbrain'] }],
+      properties: ['openFile']
+    })
+    if (canceled || filePaths.length === 0) return null
+    return inspectCaseArchive(filePaths[0])
+  })
+
+  handle(
+    IPC_CHANNELS.CASES_IMPORT_ARCHIVE,
+    async (event, archivePath: string, overrideTamper: boolean): Promise<{ newCaseId: string }> => {
+      const { newCaseId } = await importCaseArchive(
+        archivePath,
+        { overrideTamper },
+        (step, percent) =>
+          sendEvent(event.sender, IPC_CHANNELS.ARCHIVE_PROGRESS, {
+            step,
+            percent
+          })
+      )
+      return { newCaseId }
+    }
+  )
+
+  // Session. The extension drives sessions over HTTP; these are the renderer's
+  // equivalent, backed by the same service instance.
+  const sessionSnapshot = (): SessionStateEvent => {
+    const { sessionActive, activeCaseId, captureCount } = sessionService.snapshot()
+    return { sessionActive, activeCaseId, captureCount }
+  }
+
+  handle(IPC_CHANNELS.SESSION_SNAPSHOT, () => sessionSnapshot())
+
+  handle(IPC_CHANNELS.SESSION_ACTIVATE_CASE, (_, caseId: string) => {
+    if (!caseRepo.getCase(caseId)) throw new IpcFailure('Case not found', 'NOT_FOUND')
+    sessionService.activateCase(caseId)
+    return sessionSnapshot()
+  })
+
+  handle(IPC_CHANNELS.SESSION_START, () => {
+    if (!sessionService.snapshot().activeCaseId) {
+      throw new IpcFailure('No active case selected', 'NO_ACTIVE_CASE')
+    }
+    sessionService.start()
+    return sessionSnapshot()
+  })
+
+  handle(IPC_CHANNELS.SESSION_STOP, () => {
+    sessionService.stop()
+    return sessionSnapshot()
+  })
 
   // Captures
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_LIST, (_, caseId: string) => db.listCaptures(caseId))
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_GET, (_, id: string) => db.getCapture(id))
+  handle(IPC_CHANNELS.CAPTURES_LIST, (_, caseId: string) => captureRepo.listCaptures(caseId))
+  handle(IPC_CHANNELS.CAPTURES_GET, (_, id: string) => captureRepo.getCapture(id))
   handle(IPC_CHANNELS.CAPTURES_DELETE, (_, id: string) => captureLifecycle.delete(id))
 
-  handle(IPC_CHANNELS.CAPTURES_COUNTS_BY_CASE, () => db.getCaptureCountsByCase())
+  handle(IPC_CHANNELS.CAPTURES_COUNTS_BY_CASE, () => captureRepo.getCaptureCountsByCase())
 
   handle(IPC_CHANNELS.CAPTURES_DOWNLOAD, async (_, captureId: string): Promise<string | null> => {
-    const capture = db.getCapture(captureId)
+    const capture = captureRepo.getCapture(captureId)
     if (!capture) return null
+    // Modern captures store a raw .mhtml artifact; only legacy pre-v11 rows have .html.
+    const ext = capture.format === 'mhtml' ? 'mhtml' : 'html'
     const { canceled, filePath } = await dialog.showSaveDialog({
-      defaultPath: `${capture.title || 'capture'}.html`,
-      filters: [{ name: 'HTML', extensions: ['html'] }]
+      defaultPath: `${capture.title || 'capture'}.${ext}`,
+      filters:
+        ext === 'mhtml'
+          ? [{ name: 'MHTML Archive', extensions: ['mhtml'] }]
+          : [{ name: 'HTML', extensions: ['html'] }]
     })
     if (canceled || !filePath) return null
-    const buffer = storage.readCaptureFile(capture.caseId, captureId, 'html')
-    if (!buffer) throw new IpcFailure('HTML file not found')
+    const buffer = defaultCaptureStore.readArtifact(capture.caseId, captureId, ext)
+    if (!buffer) throw new IpcFailure(`Capture file (.${ext}) not found`)
     const { writeFileSync } = await import('fs')
     writeFileSync(filePath, buffer)
     return filePath
   })
+
+  handle(
+    IPC_CHANNELS.CAPTURES_DOWNLOAD_PDF,
+    async (_, captureId: string): Promise<string | null> => {
+      const capture = captureRepo.getCapture(captureId)
+      if (!capture) return null
+      const ext = capture.format === 'mhtml' ? 'mhtml' : 'html'
+      const artifact = defaultCaptureStore.artifactPaths(capture.caseId, captureId, ext)
+      if (!existsSync(artifact.abs)) throw new IpcFailure(`Capture file (.${ext}) not found`)
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        defaultPath: `${capture.title || 'capture'}.pdf`,
+        filters: [{ name: 'PDF Document', extensions: ['pdf'] }]
+      })
+      if (canceled || !filePath) return null
+      const pdf = await renderCapturePdf(capture, artifact.abs)
+      const { writeFileSync } = await import('fs')
+      writeFileSync(filePath, pdf)
+      return filePath
+    }
+  )
+
+  handle(
+    IPC_CHANNELS.CAPTURES_DOWNLOAD_SCREENSHOT,
+    async (_, captureId: string): Promise<string | null> => {
+      const capture = captureRepo.getCapture(captureId)
+      if (!capture) return null
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        defaultPath: `${capture.title || 'capture'}.png`,
+        filters: [{ name: 'PNG Image', extensions: ['png'] }]
+      })
+      if (canceled || !filePath) return null
+      const buffer = defaultCaptureStore.readArtifact(capture.caseId, captureId, 'png')
+      if (!buffer) throw new IpcFailure('Screenshot (.png) not found')
+      const { writeFileSync } = await import('fs')
+      writeFileSync(filePath, buffer)
+      return filePath
+    }
+  )
 
   handle(IPC_CHANNELS.CAPTURES_OPEN_EXTERNAL, async (_, url: string) => {
     let parsed: URL
@@ -93,23 +275,28 @@ export function registerIpcHandlers(deps: {
   })
 
   // Capture pipeline test
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_TEST_PIPELINE, async () => {
+  handle(IPC_CHANNELS.CAPTURES_TEST_PIPELINE, async () => {
     try {
       const res = await fetch(`http://127.0.0.1:${CAPTURE_SERVER_PORT}/api/captures/test`, {
         method: 'POST',
-        headers: { 'X-Birdbrain-Token': getServerToken() }
+        headers: { 'X-Birdbrain-Token': getServerToken() },
+        signal: AbortSignal.timeout(SELF_TEST_TIMEOUT_MS)
       })
-      return res.json()
+      // The capture server owns this response shape; res.json() is untyped, so
+      // the contract entry is what pins it.
+      return (await res.json()) as SelfTestResult
     } catch (err) {
       return { success: false, durationMs: 0, error: String(err) }
     }
   })
 
   // HTTP test (verifies Hono server is reachable)
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_TEST_HTTP, async () => {
+  handle(IPC_CHANNELS.CAPTURES_TEST_HTTP, async () => {
     const start = Date.now()
     try {
-      const res = await fetch(`http://127.0.0.1:${CAPTURE_SERVER_PORT}/api/status`)
+      const res = await fetch(`http://127.0.0.1:${CAPTURE_SERVER_PORT}/api/status`, {
+        signal: AbortSignal.timeout(SELF_TEST_TIMEOUT_MS)
+      })
       const ok = res.ok
       return {
         success: ok,
@@ -122,29 +309,29 @@ export function registerIpcHandlers(deps: {
   })
 
   // Tags
-  ipcMain.handle(IPC_CHANNELS.TAGS_LIST, () => db.listTags())
-  handle(IPC_CHANNELS.TAGS_CREATE, (_, params: CreateTagParams) => db.createTag(params))
-  handle(IPC_CHANNELS.TAGS_UPDATE, (_, params: UpdateTagParams) => db.updateTag(params))
-  handle(IPC_CHANNELS.TAGS_DELETE, (_, id: string) => db.deleteTag(id))
+  handle(IPC_CHANNELS.TAGS_LIST, () => tagRepo.listTags())
+  handle(IPC_CHANNELS.TAGS_CREATE, (_, params: CreateTagParams) => tagRepo.createTag(params))
+  handle(IPC_CHANNELS.TAGS_UPDATE, (_, params: UpdateTagParams) => tagRepo.updateTag(params))
+  handle(IPC_CHANNELS.TAGS_DELETE, (_, id: string) => tagRepo.deleteTag(id))
   handle(IPC_CHANNELS.TAGS_ADD_TO_CAPTURE, (_, params: CaptureTagParams) => {
-    db.addTagToCapture(params)
+    tagRepo.addTagToCapture(params)
   })
   handle(IPC_CHANNELS.TAGS_REMOVE_FROM_CAPTURE, (_, params: CaptureTagParams) => {
-    db.removeTagFromCapture(params)
+    tagRepo.removeTagFromCapture(params)
   })
-  ipcMain.handle(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, (_, captureId: string) =>
-    db.getTagsForCapture(captureId)
+  handle(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, (_, captureId: string) =>
+    tagRepo.getTagsForCapture(captureId)
   )
-  ipcMain.handle(IPC_CHANNELS.TAGS_COUNT_FOR_CASE, (_, caseId: string) =>
-    db.getTagCountForCase(caseId)
+  handle(IPC_CHANNELS.TAGS_COUNT_FOR_CASE, (_, caseId: string) =>
+    tagRepo.getTagCountForCase(caseId)
   )
-  ipcMain.handle(IPC_CHANNELS.TAGS_USAGE_COUNTS_FOR_CASE, (_, caseId: string) =>
-    db.getTagUsageCountsForCase(caseId)
+  handle(IPC_CHANNELS.TAGS_USAGE_COUNTS_FOR_CASE, (_, caseId: string) =>
+    tagRepo.getTagUsageCountsForCase(caseId)
   )
 
   // Selectors
-  ipcMain.handle(IPC_CHANNELS.SELECTORS_LIST, (_, caseId: string) => db.listSelectors(caseId))
-  ipcMain.handle(IPC_CHANNELS.SELECTORS_GET, (_, id: string) => db.getSelector(id))
+  handle(IPC_CHANNELS.SELECTORS_LIST, (_, caseId: string) => selectorRepo.listSelectors(caseId))
+  handle(IPC_CHANNELS.SELECTORS_GET, (_, id: string) => selectorRepo.getSelector(id))
   handle(IPC_CHANNELS.SELECTORS_CREATE, (_, params: CreateSelectorParams) =>
     selectorLifecycle.createSelector(params)
   )
@@ -154,26 +341,24 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.SELECTORS_UPDATE, (_, params: UpdateSelectorParams) =>
     selectorLifecycle.updateSelector(params)
   )
-  handle(IPC_CHANNELS.SELECTORS_DELETE, (_, id: string) => db.deleteSelector(id))
-  ipcMain.handle(IPC_CHANNELS.SELECTORS_LIST_ACTIVE, () => {
-    const { activeCaseId } = getSessionState()
-    return db.listActiveSelectors(activeCaseId ?? undefined)
+  handle(IPC_CHANNELS.SELECTORS_DELETE, (_, id: string) => selectorRepo.deleteSelector(id))
+  handle(IPC_CHANNELS.SELECTORS_LIST_ACTIVE, () => {
+    const { activeCaseId } = sessionService.snapshot()
+    return selectorRepo.listActiveSelectors(activeCaseId ?? undefined)
   })
-  ipcMain.handle(IPC_CHANNELS.SELECTORS_MATCH_COUNTS, (_, caseId: string) =>
-    db.getSelectorMatchCounts(caseId)
+  handle(IPC_CHANNELS.SELECTORS_MATCH_COUNTS, (_, caseId: string) =>
+    selectorRepo.getSelectorMatchCounts(caseId)
   )
-  ipcMain.handle(
-    IPC_CHANNELS.SELECTORS_MATCHING_CAPTURES,
-    (_, caseId: string, selectorIds: string[]) =>
-      db.getCapturesMatchingSelectors(caseId, selectorIds)
+  handle(IPC_CHANNELS.SELECTORS_MATCHING_CAPTURES, (_, caseId: string, selectorIds: string[]) =>
+    selectorRepo.getCapturesMatchingSelectors(caseId, selectorIds)
   )
-  ipcMain.handle(IPC_CHANNELS.SELECTORS_COVERAGE, (_, caseId: string) =>
-    db.getSelectorCoverage(caseId)
+  handle(IPC_CHANNELS.SELECTORS_COVERAGE, (_, caseId: string) =>
+    selectorRepo.getSelectorCoverage(caseId)
   )
   handle(IPC_CHANNELS.SELECTORS_EXPORT_MATCHES, async (_, caseId: string) => {
-    const caseRow = db.getCase(caseId)
+    const caseRow = caseRepo.getCase(caseId)
     if (!caseRow) return { exported: false }
-    const rows = db.getSelectorMatchesForExport(caseId)
+    const rows = selectorRepo.getSelectorMatchesForExport(caseId)
     const csv = buildCsv(
       [
         'Selector Pattern',
@@ -204,15 +389,15 @@ export function registerIpcHandlers(deps: {
   })
 
   // Notes
-  ipcMain.handle(IPC_CHANNELS.NOTES_LIST, (_, caseId: string) => db.listNotes(caseId))
-  ipcMain.handle(IPC_CHANNELS.NOTES_GET, (_, id: string) => db.getNote(id))
-  handle(IPC_CHANNELS.NOTES_CREATE, (_, params: CreateNoteParams) => db.createNote(params))
-  handle(IPC_CHANNELS.NOTES_UPDATE, (_, params: UpdateNoteParams) => db.updateNote(params))
-  handle(IPC_CHANNELS.NOTES_DELETE, (_, id: string) => db.deleteNote(id))
-  ipcMain.handle(IPC_CHANNELS.NOTES_COUNT, (_, caseId: string) => db.getNoteCount(caseId))
-  ipcMain.handle(IPC_CHANNELS.NOTES_SEARCH, (_, caseId: string, query: string) => {
+  handle(IPC_CHANNELS.NOTES_LIST, (_, caseId: string) => noteRepo.listNotes(caseId))
+  handle(IPC_CHANNELS.NOTES_GET, (_, id: string) => noteRepo.getNote(id))
+  handle(IPC_CHANNELS.NOTES_CREATE, (_, params: CreateNoteParams) => noteRepo.createNote(params))
+  handle(IPC_CHANNELS.NOTES_UPDATE, (_, params: UpdateNoteParams) => noteRepo.updateNote(params))
+  handle(IPC_CHANNELS.NOTES_DELETE, (_, id: string) => noteRepo.deleteNote(id))
+  handle(IPC_CHANNELS.NOTES_COUNT, (_, caseId: string) => noteRepo.getNoteCount(caseId))
+  handle(IPC_CHANNELS.NOTES_SEARCH, (_, caseId: string, query: string) => {
     try {
-      return db.searchNotes(caseId, query)
+      return noteRepo.searchNotes(caseId, query)
     } catch {
       // FTS5 can throw on malformed queries (e.g. unmatched quotes, reserved keywords).
       // Return empty results so the UI gracefully handles bad input.
@@ -220,8 +405,47 @@ export function registerIpcHandlers(deps: {
     }
   })
 
+  // Wayback Machine corroboration
+  handle(IPC_CHANNELS.WAYBACK_LOOKUP, async (_, captureId: string) => {
+    const capture = captureRepo.getCapture(captureId)
+    if (!capture) throw new IpcFailure('Capture not found', 'NOT_FOUND')
+    try {
+      return await lookupSnapshots(capture.url, capture.timestamp)
+    } catch (err) {
+      throw new IpcFailure(
+        err instanceof Error ? err.message : 'Wayback lookup failed',
+        'WAYBACK_LOOKUP_FAILED'
+      )
+    }
+  })
+
+  handle(IPC_CHANNELS.WAYBACK_LIST, (_, captureId: string) =>
+    waybackRefRepo.listWaybackRefs(captureId)
+  )
+
+  handle(IPC_CHANNELS.WAYBACK_PIN, async (_, params: PinWaybackSnapshotParams) => {
+    const capture = captureRepo.getCapture(params.captureId)
+    if (!capture) throw new IpcFailure('Capture not found', 'NOT_FOUND')
+    // The snapshot/checkedAt provenance arrives over IPC from the renderer.
+    // Reject malformed or internally-inconsistent input before persisting so a
+    // buggy renderer can't pin a forged reference. (No re-lookup: a pin must not
+    // disclose the URL to archive.org.)
+    if (!isPersistableSnapshot(params.snapshot, params.checkedAt)) {
+      throw new IpcFailure('Invalid Wayback snapshot', 'WAYBACK_INVALID_SNAPSHOT')
+    }
+    return waybackRefRepo.createWaybackRef({
+      captureId: params.captureId,
+      snapshot: params.snapshot,
+      checkedAt: params.checkedAt
+    })
+  })
+
+  handle(IPC_CHANNELS.WAYBACK_UNPIN, async (_, refId: string) =>
+    waybackRefRepo.deleteWaybackRef(refId)
+  )
+
   // Annotations
-  ipcMain.handle(IPC_CHANNELS.ANNOTATIONS_GET, (_, captureId: string) =>
+  handle(IPC_CHANNELS.ANNOTATIONS_GET, (_, captureId: string) =>
     annotations.getAnnotations(captureId)
   )
   handle(IPC_CHANNELS.ANNOTATIONS_SAVE, (_, params: SaveAnnotationsParams) =>
@@ -257,12 +481,12 @@ export function registerIpcHandlers(deps: {
   })
 
   // Captures - get content
-  ipcMain.handle(
+  handle(
     IPC_CHANNELS.CAPTURES_GET_CONTENT,
     (_, captureId: string, type: 'html' | 'png' | 'txt') => {
-      const capture = db.getCapture(captureId)
+      const capture = captureRepo.getCapture(captureId)
       if (!capture) return null
-      const buffer = storage.readCaptureFile(capture.caseId, captureId, type)
+      const buffer = defaultCaptureStore.readArtifact(capture.caseId, captureId, type)
       if (!buffer) return null
       if (type === 'png') return buffer.toString('base64')
       return buffer.toString('utf-8')
@@ -270,47 +494,67 @@ export function registerIpcHandlers(deps: {
   )
 
   // Captures - get thumbnail
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_GET_THUMBNAIL, (_, captureId: string) => {
+  handle(IPC_CHANNELS.CAPTURES_GET_THUMBNAIL, async (_, captureId: string) => {
     try {
-      const capture = db.getCapture(captureId)
+      const capture = captureRepo.getCapture(captureId)
       if (!capture) return null
-      const buffer = storage.getThumbnail(capture.caseId, captureId)
+      const buffer = await getThumbnail(capture.caseId, captureId)
       if (!buffer) return null
       return buffer.toString('base64')
     } catch (err) {
-      console.error('Error getting thumbnail:', err)
+      logger.error('ipc', 'ipc.handler_threw', { captureId: ident(captureId) }, err)
       return null
     }
   })
 
   // Captures - get matching selectors
-  ipcMain.handle(IPC_CHANNELS.CAPTURES_GET_MATCHING_SELECTORS, (_, captureId: string) => {
-    return db.getCaptureMatchingSelectors(captureId)
+  handle(IPC_CHANNELS.CAPTURES_GET_MATCHING_SELECTORS, (_, captureId: string) => {
+    return selectorRepo.getCaptureMatchingSelectors(captureId)
   })
 
   // Captures - favorites
   handle(IPC_CHANNELS.CAPTURES_TOGGLE_FAVORITE, (_, captureId: string) =>
-    db.toggleFavorite(captureId)
+    captureRepo.toggleFavorite(captureId)
   )
 
-  handle(IPC_CHANNELS.CAPTURES_IS_FAVORITE, (_, captureId: string) => db.isFavorite(captureId))
+  handle(IPC_CHANNELS.CAPTURES_IS_FAVORITE, (_, captureId: string) =>
+    captureRepo.isFavorite(captureId)
+  )
 
-  handle(IPC_CHANNELS.CAPTURES_LIST_FAVORITES, (_, caseId: string) => db.listFavorites(caseId))
+  handle(IPC_CHANNELS.CAPTURES_LIST_FAVORITES, (_, caseId: string) =>
+    captureRepo.listFavorites(caseId)
+  )
 
   handle(IPC_CHANNELS.CAPTURES_GET_MHTML_URL, (_, captureId: string): string | null => {
-    const capture = db.getCapture(captureId)
+    const capture = captureRepo.getCapture(captureId)
     if (!capture || !capture.mhtmlPath) return null
-    const abs = join(storage.getStorageRoot(), capture.mhtmlPath)
+    const abs = defaultCaptureStore.resolveAbsolute(capture.mhtmlPath)
     if (!existsSync(abs)) return null
     return pathToFileURL(abs).toString()
   })
 
   handle(IPC_CHANNELS.CAPTURES_VERIFY, (_, captureId: string) => captureLifecycle.verify(captureId))
 
+  // Recapture
+  handle(IPC_CHANNELS.RECAPTURE_ENQUEUE, (_, payload: RecaptureEnqueuePayload) => {
+    if (!payload || !Array.isArray(payload.urls) || typeof payload.caseId !== 'string') {
+      throw new IpcFailure('Invalid recapture payload', 'INVALID_RECAPTURE_PAYLOAD')
+    }
+    return recaptureService.enqueue(
+      payload.urls.map((url) => ({
+        url,
+        caseId: payload.caseId,
+        supersedesCaptureId: payload.supersedesCaptureId
+      }))
+    )
+  })
+
+  handle(IPC_CHANNELS.RECAPTURE_QUEUE_STATUS, () => recaptureService.status())
+
   // Search
-  ipcMain.handle(IPC_CHANNELS.SEARCH, (_, query: string) => {
+  handle(IPC_CHANNELS.SEARCH, (_, caseId: string, query: string) => {
     try {
-      return db.searchCaptures(query)
+      return captureRepo.searchCaptures(query, caseId)
     } catch {
       // FTS5 can throw on malformed queries (e.g. unmatched quotes, reserved keywords).
       // Return empty results so the UI gracefully handles bad input.
@@ -319,18 +563,24 @@ export function registerIpcHandlers(deps: {
   })
 
   // Settings
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_GET, () => settings.getSettings())
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_UPDATE, (_, partial: Partial<BirdbrainSettings>) =>
-    settings.updateSettings(partial)
-  )
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_RESET, () => settings.resetSettings())
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_TEST_OPENROUTER, (_, apiKey: string) =>
+  handle(IPC_CHANNELS.SETTINGS_GET, () => settings.getSettings())
+  handle(IPC_CHANNELS.SETTINGS_UPDATE, (_, partial: Partial<BirdbrainSettings>) => {
+    const updated = settings.updateSettings(partial)
+    // A channel switch or auto-check toggle must reconfigure the live updater.
+    updaterService.applySettingsChange(partial)
+    return updated
+  })
+  handle(IPC_CHANNELS.SETTINGS_RESET, () => {
+    const reset = settings.resetSettings()
+    // Reset reverts the channel + auto-check policy, so reconfigure the updater.
+    updaterService.applySettingsChange(reset)
+    return reset
+  })
+  handle(IPC_CHANNELS.SETTINGS_TEST_OPENROUTER, (_, apiKey: string) =>
     openrouter.testApiKey(apiKey)
   )
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_LIST_MODELS, (_, apiKey: string) =>
-    openrouter.listModels(apiKey)
-  )
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_GET_IDENTITY, () => {
+  handle(IPC_CHANNELS.SETTINGS_LIST_MODELS, (_, apiKey: string) => openrouter.listModels(apiKey))
+  handle(IPC_CHANNELS.SETTINGS_GET_IDENTITY, () => {
     const s = settings.getSettings()
     return {
       installationId: getInstallationId(),
@@ -339,7 +589,7 @@ export function registerIpcHandlers(deps: {
       operatorOrganization: s.operatorOrganization ?? ''
     }
   })
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH, async () => {
+  handle(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH, async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openDirectory'],
       title: 'Choose Storage Location'
@@ -351,17 +601,149 @@ export function registerIpcHandlers(deps: {
   // Export
   handle(IPC_CHANNELS.EXPORT_PREFLIGHT, (_, caseId: string) => getExportPreflight(caseId))
 
-  handle(IPC_CHANNELS.EXPORT_GENERATE, async (_, caseId: string, options: ExportOptions) => {
-    const isZip = options.format === 'zip'
-    const { canceled, filePath } = await dialog.showSaveDialog({
-      defaultPath: options.outputPath || (isZip ? 'evidence.zip' : 'report.html'),
-      filters: isZip
-        ? [{ name: 'Evidence Package', extensions: ['zip'] }]
-        : [{ name: 'HTML', extensions: ['html'] }]
-    })
-    if (canceled || !filePath) return
-    await generateReport(caseId, { ...options, outputPath: filePath }, captureLifecycle)
+  handle(
+    IPC_CHANNELS.EXPORT_GENERATE,
+    async (event, caseId: string, options: ExportOptions): Promise<ExportResult> => {
+      const isZip = options.format === 'zip'
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        defaultPath: options.outputPath || (isZip ? 'evidence.zip' : 'report.html'),
+        filters: isZip
+          ? [{ name: 'Evidence Package', extensions: ['zip'] }]
+          : [{ name: 'HTML', extensions: ['html'] }]
+      })
+      if (canceled || !filePath) return { canceled: true }
+      await generateReport(
+        caseId,
+        { ...options, outputPath: filePath },
+        captureLifecycle,
+        (step, percent) =>
+          sendEvent(event.sender, IPC_CHANNELS.EXPORT_PROGRESS, {
+            caseId,
+            step,
+            percent
+          })
+      )
+      // Permit reveal/open for this freshly-written export only.
+      rememberRevealablePath(filePath)
+      return { canceled: false, filePath }
+    }
+  )
+
+  // Shell — reveal/open a file the main process just wrote (export completion).
+  handle(IPC_CHANNELS.SHELL_SHOW_ITEM_IN_FOLDER, (_, path: string) => {
+    if (!path) throw new IpcFailure('Path is required', 'INVALID_PATH')
+    if (!revealablePaths.has(resolve(path)))
+      throw new IpcFailure('Path not permitted', 'FORBIDDEN_PATH')
+    if (!existsSync(path)) throw new IpcFailure('File not found', 'NOT_FOUND')
+    shell.showItemInFolder(path)
   })
+
+  handle(IPC_CHANNELS.SHELL_OPEN_PATH, async (_, path: string) => {
+    if (!path) throw new IpcFailure('Path is required', 'INVALID_PATH')
+    if (!revealablePaths.has(resolve(path)))
+      throw new IpcFailure('Path not permitted', 'FORBIDDEN_PATH')
+    if (!existsSync(path)) throw new IpcFailure('File not found', 'NOT_FOUND')
+    const openError = await shell.openPath(path)
+    if (openError) throw new IpcFailure(openError, 'OPEN_PATH_FAILED')
+  })
+
+  // App
+  handle(IPC_CHANNELS.APP_GET_VERSION, () => app.getVersion())
+
+  // Diagnostics: start the always-on event-loop sampler with handler
+  // registration (idempotent) so stall history predates opening the panel.
+  diagnosticsService.start()
+  handle(IPC_CHANNELS.DIAGNOSTICS_GET, () => diagnosticsService.snapshot())
+
+  // Renderer-side failures join the same durable log as main-process ones.
+  // Everything crossing this boundary is untrusted: the renderer holds page
+  // titles, case names and URLs, and a compile-time union does not survive an
+  // IPC hop. Re-validate every field against the same allowlists here, and
+  // drop anything unrecognised rather than coercing it into the log.
+  //
+  // `payload` is typed by the contract, but that type describes what a WELL-
+  // BEHAVED renderer sends — a compromised or buggy one can send anything, so
+  // every field below is still re-checked at runtime.
+  handle(IPC_CHANNELS.DIAGNOSTICS_LOG, (_e, payload) => {
+    const level = payload?.level === 'error' || payload?.level === 'warn' ? payload.level : 'info'
+    if (!isLogCode(payload?.code)) return ''
+
+    // context(), NOT a hand-rolled ident() loop. ident() is the generic
+    // identifier rule; the per-key CONTEXT_FORMATS table inside logSafe is the
+    // real gate. A renderer payload of { caseId: 'OperationBlackbird' } passes
+    // ident() but fails caseId's uuid format — and the renderer is precisely
+    // where case names live, so this is the boundary that most needs the
+    // stricter check. In a packaged build the offending value records as
+    // [invalid] and the rest of the entry survives.
+    let ctx: LogContext = {}
+    try {
+      ctx = context((payload.context ?? {}) as Record<string, LogValue>)
+    } catch {
+      // Development-mode rejection: drop the context, keep the entry. A bad
+      // renderer payload must not take down the IPC handler.
+    }
+
+    // Source is not taken from the payload at all. Every entry that arrives
+    // through this channel came from the renderer by definition, and the code
+    // already says which subsystem failed.
+    //
+    // The error is passed pre-structured, NOT as a bare string. logger routes
+    // its `err` argument through sanitizeError, which maps every non-Error
+    // value to UnknownError — so handing it the validated name would erase the
+    // very classification we just validated, and every renderer query,
+    // mutation and render failure would land on disk as UnknownError.
+    const name = errorName(payload.error)
+    return logger[level](
+      'renderer',
+      payload.code,
+      ctx,
+      name === undefined ? undefined : new ValidatedError({ name, code: null, stack: null })
+    )
+  })
+
+  // The Log tab needs what already happened, not just what happens next —
+  // see Task 12. Reads the tail of the current log file only; the rotated
+  // backup is for the bug-report bundle, not the live viewer.
+  //
+  // `limit` is typed `number` by the contract and still range-checked: the
+  // contract constrains the renderer's compile, not the value on the wire.
+  handle(IPC_CHANNELS.DIAGNOSTICS_RECENT, (_e, limit) => {
+    const max = typeof limit === 'number' && limit > 0 && limit <= 500 ? Math.floor(limit) : 200
+    return readRecentEntries(max)
+  })
+
+  handle(IPC_CHANNELS.DIAGNOSTICS_REVEAL_LOG, () => {
+    const path = getLogPath()
+    if (path) shell.showItemInFolder(path)
+  })
+
+  handle(IPC_CHANNELS.DIAGNOSTICS_LAST_SESSION, () => takeUncleanSession(getLogDir()))
+
+  // Zero network egress: the bundle is written only to a path the operator
+  // picks via a native save dialog, then revealed in their file manager.
+  // Nothing here ever leaves the machine.
+  handle(IPC_CHANNELS.DIAGNOSTICS_CREATE_REPORT, async (_e, input) => {
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: 'Save diagnostic report',
+      defaultPath: bugReportFilename(new Date()),
+      filters: [{ name: 'Zip archive', extensions: ['zip'] }]
+    })
+    if (canceled || !filePath) return null
+
+    // Load-bearing: without this, entries describing the very failure being
+    // reported may still be sitting in the logger's write buffer.
+    flushSync()
+    const { writeFileSync } = await import('fs')
+    writeFileSync(filePath, buildBugReport(input))
+    shell.showItemInFolder(filePath)
+    return { path: filePath }
+  })
+
+  // Updates (update delivery)
+  handle(IPC_CHANNELS.UPDATES_GET_STATUS, () => updaterService.getStatus())
+  handle(IPC_CHANNELS.UPDATES_CHECK, () => updaterService.check())
+  handle(IPC_CHANNELS.UPDATES_DOWNLOAD, () => updaterService.download())
+  handle(IPC_CHANNELS.UPDATES_INSTALL, () => updaterService.install())
 
   // AI Analysis
   handle(IPC_CHANNELS.AI_ANALYZE, async (_, params: AnalyzeCaptureParams) => {
@@ -448,7 +830,7 @@ export function registerIpcHandlers(deps: {
 
     const userDataPath = process.env.BIRDBRAIN_USER_DATA || app.getPath('userData')
     const dbPath = join(userDataPath, 'birdbrain.db')
-    const { closeDatabase, initDatabase } = await import('@main/services/database')
+    const { closeDatabase, initDatabase } = await import('@main/services/db/core')
     const { copyFileSync } = await import('fs')
 
     closeDatabase()
@@ -472,19 +854,22 @@ export function registerIpcHandlers(deps: {
   })
 
   // Extracted Data
-  ipcMain.handle(IPC_CHANNELS.EXTRACTED_DATA_CATEGORIES, (_, caseId: string) =>
-    db.getExtractedCategories(caseId)
+  handle(IPC_CHANNELS.EXTRACTED_DATA_CATEGORIES, (_, caseId: string) =>
+    extractedDataRepo.getExtractedCategories(caseId)
   )
-  ipcMain.handle(IPC_CHANNELS.EXTRACTED_DATA_SUBCATEGORIES, (_, caseId: string, category: string) =>
-    db.getExtractedSubcategories(caseId, category)
+  handle(IPC_CHANNELS.EXTRACTED_DATA_SUBCATEGORIES, (_, caseId: string, category: string) =>
+    extractedDataRepo.getExtractedSubcategories(caseId, category)
   )
-  ipcMain.handle(
+  handle(
     IPC_CHANNELS.EXTRACTED_DATA_ITEMS,
     (_, caseId: string, category: string, subcategory: string) =>
-      db.getExtractedItems(caseId, category, subcategory)
+      extractedDataRepo.getExtractedItems(caseId, category, subcategory)
   )
-  ipcMain.handle(IPC_CHANNELS.EXTRACTED_DATA_COUNT, (_, caseId: string) =>
-    db.getExtractedDataCountForCase(caseId)
+  handle(IPC_CHANNELS.EXTRACTED_DATA_COUNT, (_, caseId: string) =>
+    extractedDataRepo.getExtractedDataCountForCase(caseId)
+  )
+  handle(IPC_CHANNELS.EXTRACTED_DATA_SEARCH, (_, caseId: string, query: string) =>
+    extractedDataRepo.searchExtractedData(caseId, query)
   )
   handle(IPC_CHANNELS.EXTRACTED_DATA_REPROCESS, (_, caseId: string) =>
     captureLifecycle.reprocessCase(caseId)

@@ -1,18 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { initDatabase, closeDatabase, getDb, LATEST_SCHEMA_VERSION } from '@main/services/db/core'
+import { listCases, getCase, createCase, updateCase, deleteCase } from '@main/services/db/caseRepo'
 import {
-  initDatabase,
-  closeDatabase,
-  getDb,
-  listCases,
-  getCase,
-  createCase,
-  updateCase,
-  deleteCase,
   listCaptures,
   getCapture,
   insertCapture,
   deleteCapture,
   getCaptureCount,
+  searchCaptures,
+  setCaptureTrustedTime,
+  listPendingTimestampCaptures
+} from '@main/services/db/captureRepo'
+import {
   listTags,
   createTag,
   updateTag,
@@ -20,33 +19,36 @@ import {
   addTagToCapture,
   removeTagFromCapture,
   getTagsForCapture,
-  searchCaptures,
   getTagCountForCase,
-  getTagUsageCountsForCase,
+  getTagUsageCountsForCase
+} from '@main/services/db/tagRepo'
+import {
   getSelectorCoverage,
   createSelector,
   matchSelectorAgainstCaptures,
   listActiveSelectors,
   listSelectors,
   bulkCreateSelectors,
-  getSelectorMatchesForExport,
+  getSelectorMatchesForExport
+} from '@main/services/db/selectorRepo'
+import {
   createNote,
   getNote,
   listNotes,
   deleteNote,
   getNoteCount,
   updateNote,
-  searchNotes,
+  searchNotes
+} from '@main/services/db/noteRepo'
+import {
   insertExtractedData,
   getExtractedCategories,
   getExtractedSubcategories,
   getExtractedItems,
+  searchExtractedData,
   getExtractedDataCountForCase,
-  deleteExtractedDataForCapture,
-  setCaptureTrustedTime,
-  listPendingTimestampCaptures,
-  LATEST_SCHEMA_VERSION
-} from '@main/services/database'
+  deleteExtractedDataForCapture
+} from '@main/services/db/extractedDataRepo'
 
 describe('database', () => {
   beforeEach(() => {
@@ -223,6 +225,29 @@ describe('database', () => {
         timestamp: new Date().toISOString()
       })
       expect(getCapture(cap.id)!.format).toBe('html')
+    })
+
+    it('persists and reads back consentSuppression (round-trip)', () => {
+      const cap = insertCapture({
+        caseId,
+        url: 'https://example.com',
+        title: 'Example',
+        hash: 'd'.repeat(64),
+        timestamp: new Date().toISOString(),
+        consentSuppression: 'filter-list'
+      })
+      expect(getCapture(cap.id)!.consentSuppression).toBe('filter-list')
+    })
+
+    it('leaves consentSuppression undefined for captures without it', () => {
+      const cap = insertCapture({
+        caseId,
+        url: 'https://example.com',
+        title: 'Example',
+        hash: 'e'.repeat(64),
+        timestamp: new Date().toISOString()
+      })
+      expect(getCapture(cap.id)!.consentSuppression).toBeUndefined()
     })
   })
 
@@ -801,10 +826,17 @@ describe('database', () => {
   })
 
   describe('annotations schema (migration 17)', () => {
-    it('LATEST_SCHEMA_VERSION is 20', () => {
+    it('LATEST_SCHEMA_VERSION is 27', () => {
       // Bumped to 19 in #118 (screenshot_hash / text_hash sidecar columns);
-      // bumped to 20 in #123 (tls_cert_chain corroboration column).
-      expect(LATEST_SCHEMA_VERSION).toBe(20)
+      // bumped to 20 in #123 (tls_cert_chain corroboration column);
+      // bumped to 21 in #wayback (capture_archive_refs table);
+      // bumped to 22 (extracted_data_fts trigram search index);
+      // bumped to 23 in #recapture (method / supersedesCaptureId provenance columns);
+      // bumped to 24 (consent_suppression provenance column);
+      // bumped to 25 (capture_texts + external-content captures_fts);
+      // bumped to 26 (notes.body_doc — rich-text note bodies);
+      // bumped to 27 (notes.anchor_kind / anchor_json — anchored notes).
+      expect(LATEST_SCHEMA_VERSION).toBe(27)
     })
 
     it('creates annotations table with expected columns', () => {
@@ -1338,6 +1370,84 @@ describe('database', () => {
       ])
       deleteCapture(captureId)
       expect(getExtractedDataCountForCase(caseId)).toBe(0)
+    })
+
+    it('finds items by substring of value across categories', () => {
+      insertExtractedData(captureId, caseId, 'https://example.com', [
+        { category: 'Infrastructure', subcategory: 'Email Address', value: 'foo@gmail.com' },
+        { category: 'Infrastructure', subcategory: 'Email Address', value: 'bar@yahoo.com' },
+        { category: 'Tracking Code', subcategory: 'Google Analytics', value: 'gmail-ua-1' }
+      ])
+
+      const results = searchExtractedData(caseId, 'gmail')
+      const values = results.map((r) => r.value).sort()
+      expect(values).toEqual(['foo@gmail.com', 'gmail-ua-1'])
+      const email = results.find((r) => r.value === 'foo@gmail.com')!
+      expect(email.category).toBe('Infrastructure')
+      expect(email.subcategory).toBe('Email Address')
+      expect(email.pageCount).toBe(1)
+    })
+
+    it('finds items by substring of source url', () => {
+      insertExtractedData(captureId, caseId, 'https://tracker.example.net/page', [
+        { category: 'Infrastructure', subcategory: 'Email Address', value: 'foo@gmail.com' }
+      ])
+
+      const results = searchExtractedData(caseId, 'tracker.example')
+      expect(results.map((r) => r.value)).toContain('foo@gmail.com')
+    })
+
+    it('scopes search to the given case', () => {
+      const otherCase = createCase({ name: 'Other' })
+      const otherCap = insertCapture({
+        caseId: otherCase.id,
+        url: 'https://other.com',
+        title: 'Other',
+        hash: 'hash-other-search',
+        timestamp: new Date().toISOString()
+      })
+      insertExtractedData(captureId, caseId, 'https://example.com', [
+        { category: 'Infrastructure', subcategory: 'Email Address', value: 'shared@gmail.com' }
+      ])
+      insertExtractedData(otherCap.id, otherCase.id, 'https://other.com', [
+        { category: 'Infrastructure', subcategory: 'Email Address', value: 'shared@gmail.com' }
+      ])
+
+      expect(searchExtractedData(caseId, 'gmail')).toHaveLength(1)
+    })
+
+    it('falls back to LIKE for queries shorter than 3 characters', () => {
+      insertExtractedData(captureId, caseId, 'https://example.com', [
+        { category: 'Infrastructure', subcategory: 'Email Address', value: 'ab@x.com' }
+      ])
+      expect(searchExtractedData(caseId, 'ab').map((r) => r.value)).toEqual(['ab@x.com'])
+    })
+
+    it('returns [] for an empty query', () => {
+      insertExtractedData(captureId, caseId, 'https://example.com', [
+        { category: 'Infrastructure', subcategory: 'Email Address', value: 'foo@gmail.com' }
+      ])
+      expect(searchExtractedData(caseId, '   ')).toEqual([])
+    })
+
+    it('aggregates page count and source urls across captures', () => {
+      const cap2 = insertCapture({
+        caseId,
+        url: 'https://example.com/2',
+        title: 'Page 2',
+        hash: 'hash-2-search',
+        timestamp: new Date().toISOString()
+      })
+      insertExtractedData(captureId, caseId, 'https://a.com', [
+        { category: 'Infrastructure', subcategory: 'Email Address', value: 'dup@gmail.com' }
+      ])
+      insertExtractedData(cap2.id, caseId, 'https://b.com', [
+        { category: 'Infrastructure', subcategory: 'Email Address', value: 'dup@gmail.com' }
+      ])
+
+      const [result] = searchExtractedData(caseId, 'dup@gmail')
+      expect(result.pageCount).toBe(2)
+      expect(result.sourceUrls).toEqual(['https://a.com', 'https://b.com'])
     })
   })
 

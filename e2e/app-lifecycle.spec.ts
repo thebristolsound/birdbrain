@@ -12,7 +12,7 @@ test.describe('App Lifecycle', () => {
   test('onboarding wizard renders on first launch', async ({ page }) => {
     // With no cases, the app shows the OnboardingWizard
     await expect(page.locator('[data-testid="onboarding-wizard"]')).toBeVisible()
-    await expect(page.getByText('Connect Extension')).toBeVisible()
+    await expect(page.getByText('Install the Extension')).toBeVisible()
   })
 
   test('onboarding wizard skip button navigates to step 2', async ({ page }) => {

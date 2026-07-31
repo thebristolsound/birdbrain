@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from 'react'
 import type { Capture } from '@shared/types'
-import { useVerifyMutation } from './useVerifyMutation'
-import { getProvenanceColor } from './getProvenanceColor'
+import { useVerifyMutation } from '@renderer/components/captures/useVerifyMutation'
+import { getProvenanceColor } from '@renderer/components/captures/getProvenanceColor'
 
 interface Props {
   capture: Capture
@@ -20,20 +20,8 @@ export function ForensicsTab({ capture, caseId }: Props) {
     setHeadersOpen(false)
   }, [capture.id])
 
-  const reverifyButton = (
-    <button
-      type="button"
-      onClick={verify.verify}
-      disabled={verify.isPending}
-      className="rounded-md px-2 py-0.5 text-[11px] text-accent hover:bg-accent-subtle disabled:opacity-50"
-      data-testid="forensics-reverify-btn"
-    >
-      {verify.isPending ? 'Verifying…' : 'Re-verify'}
-    </button>
-  )
-
   return (
-    <div className="h-full overflow-y-auto">
+    <div>
       {capture.format === 'html' && (
         <div
           className="mx-5 mt-4 rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-500"
@@ -45,7 +33,7 @@ export function ForensicsTab({ capture, caseId }: Props) {
       )}
 
       {isMhtml && (
-        <Section title="Hash chain" action={reverifyButton}>
+        <Section title="Hash chain">
           <Row label="Hash (SHA-256)" value={capture.hash} />
           <Row label="Previous hash" value={capture.prevHash} />
           <Row label="Entry hash" value={capture.entryHash} />
@@ -65,7 +53,7 @@ export function ForensicsTab({ capture, caseId }: Props) {
         </Section>
       )}
 
-      <Section title="Identity" action={!isMhtml ? reverifyButton : undefined}>
+      <Section title="Identity">
         <Row label="URL" value={capture.url} />
         <Row label="Title" value={capture.title} />
         <Row label="Captured at" value={new Date(capture.timestamp).toLocaleString()} />

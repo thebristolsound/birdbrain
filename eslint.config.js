@@ -12,7 +12,10 @@ export default tseslint.config(
       'dist/',
       'extension/dist/',
       'node_modules/',
+      // Isolated Next.js/Fumadocs sub-project with its own toolchain — see website/.
+      'website/',
       '.worktrees/',
+      '.design-bundle/',
       '.claude/',
       '.agents/',
       '.codex/',
@@ -41,6 +44,25 @@ export default tseslint.config(
     files: ['e2e/**/*.ts'],
     rules: {
       'no-empty-pattern': 'off'
+    }
+  },
+  {
+    // Raw connection access is restricted to the aggregate repos in services/db/
+    files: ['src/main/**/*.ts'],
+    ignores: ['src/main/services/db/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@main/services/db/core',
+              importNames: ['getDb'],
+              message: 'Raw connection access is restricted to src/main/services/db/'
+            }
+          ]
+        }
+      ]
     }
   }
 )

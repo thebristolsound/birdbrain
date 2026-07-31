@@ -3,48 +3,28 @@ import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '@renderer/stores/appStore'
 import { capturesQueryOptions, captureContentQueryOptions } from '@renderer/lib/queries'
-import {
-  ChevronLeft,
-  ChevronRight,
-  ArrowLeft,
-  Image,
-  Globe,
-  Code,
-  FileText,
-  ShieldCheck,
-  Shield
-} from 'lucide-react'
+import { ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react'
 import { MhtmlViewer } from '@renderer/components/captures/MhtmlViewer'
-import { AnnotationEditor } from './annotation/AnnotationEditor'
-import { ForensicsTab } from './ForensicsTab'
-import { CapturesGettingStarted } from './CapturesGettingStarted'
+import { AnnotationEditor } from '@renderer/components/captures/annotation/AnnotationEditor'
+import { CapturesGettingStarted } from '@renderer/components/captures/CapturesGettingStarted'
 import { Button } from '@renderer/components/ui'
-import { getProvenanceColor } from './getProvenanceColor'
-import { ScreenshotZoomBar } from './ScreenshotZoomBar'
-import { BrowserChromeFrame } from './BrowserChromeFrame'
-import { AnnotationToolsTooltip } from './AnnotationToolsTooltip'
-import { AnnotationToolbar } from './annotation/AnnotationToolbar'
-import { useAnnotationEditor } from './annotation/useAnnotationEditor'
-import { useZoomPan } from './annotation/useZoomPan'
+import { CaptureViewerToolbar } from '@renderer/components/captures/CaptureViewerToolbar'
+import { CaptureDownloadMenu } from '@renderer/components/captures/CaptureDownloadMenu'
+import { BrowserChromeFrame } from '@renderer/components/captures/BrowserChromeFrame'
+import { AnnotationToolsTooltip } from '@renderer/components/captures/AnnotationToolsTooltip'
+import { useAnnotationEditor } from '@renderer/components/captures/annotation/useAnnotationEditor'
+import { useZoomPan } from '@renderer/components/captures/annotation/useZoomPan'
+import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
 
-type ViewTab = 'screenshot' | 'page' | 'source' | 'text' | 'forensics'
+type ViewTab = 'screenshot' | 'page' | 'source' | 'text'
 
-const TABS: ViewTab[] = ['screenshot', 'page', 'source', 'text', 'forensics']
-
-const TAB_ICONS: Record<ViewTab, typeof Image> = {
-  screenshot: Image,
-  page: Globe,
-  source: Code,
-  text: FileText,
-  forensics: ShieldCheck
-}
+const TABS: ViewTab[] = ['screenshot', 'page', 'source', 'text']
 
 const TAB_LABELS: Record<ViewTab, string> = {
   screenshot: 'Screenshot',
   page: 'Page',
   source: 'Source',
-  text: 'Text',
-  forensics: 'Forensics'
+  text: 'Text'
 }
 
 export function CaptureViewer() {
@@ -69,15 +49,10 @@ export function CaptureViewer() {
 
   // Only fetch content if we have a capture, content type, and it's not MHTML page view
   const shouldFetchContent =
-    selectedCaptureId &&
-    contentType &&
-    !(capture?.format === 'mhtml' && activeTab === 'page')
+    selectedCaptureId && contentType && !(capture?.format === 'mhtml' && activeTab === 'page')
 
   const { data: content } = useQuery({
-    ...captureContentQueryOptions(
-      selectedCaptureId || '',
-      contentType || 'html'
-    ),
+    ...captureContentQueryOptions(selectedCaptureId || '', contentType || 'html'),
     enabled: !!shouldFetchContent
   })
 
@@ -120,10 +95,15 @@ export function CaptureViewer() {
     hostname = capture.url
   }
 
+  const supersededOriginal = capture.supersedesCaptureId
+    ? captures.find((c) => c.id === capture.supersedesCaptureId)
+    : undefined
+  const recaptureOf = captures.find((c) => c.supersedesCaptureId === capture.id)
+
   return (
     <main className="flex flex-1 flex-col overflow-hidden bg-canvas">
-      {/* Slim breadcrumb */}
-      <div className="flex h-9 items-center gap-2 border-b border-border px-3">
+      {/* Merged viewer toolbar: breadcrumb + view switcher */}
+      <div className="flex h-11 items-center gap-2.5 border-b border-border px-3">
         <Button
           variant="ghost"
           size="icon-sm"
@@ -132,16 +112,88 @@ export function CaptureViewer() {
         >
           <ArrowLeft className="h-3.5 w-3.5" />
         </Button>
-        <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           <span className="truncate text-sm font-medium text-text-primary">
             {capture.title || hostname}
           </span>
+          {capture.method === 'background' && (
+            <span
+              data-testid="method-badge"
+              className="shrink-0 rounded-lg bg-surface px-2 py-0.5 text-[11px] text-text-muted"
+            >
+              Background
+            </span>
+          )}
+          {supersededOriginal && (
+            <button
+              data-testid="supersedes-link-original"
+              className="shrink-0 truncate text-xs text-accent underline underline-offset-2"
+              onClick={() => useAppStore.getState().setSelectedCaptureId(supersededOriginal.id)}
+            >
+              ← Recapture of {new Date(supersededOriginal.timestamp).toLocaleString()}
+            </button>
+          )}
+          {recaptureOf && (
+            <button
+              data-testid="supersedes-link-recapture"
+              className="shrink-0 truncate text-xs text-accent underline underline-offset-2"
+              onClick={() => useAppStore.getState().setSelectedCaptureId(recaptureOf.id)}
+            >
+              Recaptured {new Date(recaptureOf.timestamp).toLocaleString()} →
+            </button>
+          )}
         </div>
-        <Shield
-          data-testid="capture-viewer-breadcrumb-provenance"
-          className={`h-3.5 w-3.5 ${getProvenanceColor(capture.lastVerifiedStatus).text}`}
-          aria-label={getProvenanceColor(capture.lastVerifiedStatus).label}
-        />
+        <div
+          role="tablist"
+          className="flex shrink-0 items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5"
+        >
+          {TABS.map((tab) => {
+            const isActive = activeTab === tab
+            return (
+              <button
+                key={tab}
+                role="tab"
+                aria-selected={isActive}
+                tabIndex={isActive ? 0 : -1}
+                onClick={() => setActiveTab(tab)}
+                onKeyDown={(e) => {
+                  const currentIndex = TABS.indexOf(tab)
+                  let nextIndex = currentIndex
+                  if (e.key === 'ArrowLeft') {
+                    e.stopPropagation()
+                    nextIndex = currentIndex > 0 ? currentIndex - 1 : TABS.length - 1
+                  } else if (e.key === 'ArrowRight') {
+                    e.stopPropagation()
+                    nextIndex = currentIndex < TABS.length - 1 ? currentIndex + 1 : 0
+                  } else if (e.key === 'Home') {
+                    e.stopPropagation()
+                    nextIndex = 0
+                  } else if (e.key === 'End') {
+                    e.stopPropagation()
+                    nextIndex = TABS.length - 1
+                  } else {
+                    return
+                  }
+                  const nextTab = TABS[nextIndex]
+                  setActiveTab(nextTab)
+                  // Focus the new button after state update
+                  requestAnimationFrame(() => {
+                    const buttons = document.querySelectorAll('[role="tab"]')
+                    ;(buttons[nextIndex] as HTMLButtonElement)?.focus()
+                  })
+                }}
+                className={`rounded-md px-2.5 py-1 text-[11px] transition-colors ${
+                  isActive
+                    ? 'bg-card font-semibold text-text-primary shadow-sm'
+                    : 'font-medium text-text-muted hover:text-text-secondary'
+                }`}
+              >
+                {TAB_LABELS[tab]}
+              </button>
+            )
+          })}
+        </div>
+        <CaptureDownloadMenu capture={capture} />
         <Button
           variant="ghost"
           size="icon-sm"
@@ -165,82 +217,62 @@ export function CaptureViewer() {
         </Button>
       </div>
 
-      {/* Sub-tabs row */}
-      <div className="flex items-center gap-1 border-b border-border bg-surface px-3">
-        {TABS.map((tab) => {
-          const Icon = TAB_ICONS[tab]
-          const isActive = activeTab === tab
-          return (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`relative flex items-center gap-1.5 px-3 py-2.5 text-[11px] font-medium transition-colors ${
-                isActive ? 'text-accent' : 'text-text-muted hover:text-text-secondary'
-              }`}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {TAB_LABELS[tab]}
-              {isActive && (
-                <span className="absolute bottom-0 left-1/2 h-0.5 w-6 -translate-x-1/2 rounded-full bg-accent" />
-              )}
-            </button>
-          )
-        })}
-      </div>
-
       {/* Content area — keep existing content branches except analysis */}
       <div className="flex-1 overflow-hidden min-h-0">
-        {activeTab === 'screenshot' &&
-          (content ? (
-            <ScreenshotTabPanel
-              key={capture.id}
-              captureId={capture.id}
-              imageUrl={`data:image/png;base64,${content}`}
-              url={capture.url}
-            />
-          ) : (
-            <div className="flex flex-col items-center justify-center gap-1 p-8 text-center">
-              <p className="text-sm text-text-muted">No screenshot available</p>
-              <p className="text-xs text-text-faint">
-                Screenshot may not have been captured or exceeded the size limit.
-              </p>
+        <ErrorBoundary source="captureViewer">
+          {activeTab === 'screenshot' &&
+            (content ? (
+              <ScreenshotTabPanel
+                key={capture.id}
+                captureId={capture.id}
+                imageUrl={`data:image/png;base64,${content}`}
+                url={capture.url}
+              />
+            ) : (
+              <div className="flex flex-col items-center justify-center gap-1 p-8 text-center">
+                <p className="text-sm text-text-muted">No screenshot available</p>
+                <p className="text-xs text-text-faint">
+                  Screenshot may not have been captured or exceeded the size limit.
+                </p>
+              </div>
+            ))}
+          {activeTab === 'page' && capture.format === 'mhtml' ? (
+            <div className="h-full w-full overflow-hidden">
+              <MhtmlViewer captureId={capture.id} />
             </div>
-          ))}
-        {activeTab === 'page' && capture.format === 'mhtml' ? (
-          <div className="h-full w-full overflow-hidden">
-            <MhtmlViewer captureId={capture.id} />
-          </div>
-        ) : activeTab === 'page' ? (
-          content ? (
-            <iframe
-              sandbox=""
-              srcDoc={content}
-              className="h-full w-full border-0 bg-white"
-              title="Archived page"
-            />
-          ) : (
-            <div className="p-4 text-text-muted">No HTML available</div>
-          )
-        ) : null}
-        {activeTab === 'source' &&
-          (content ? (
-            <div className="h-full overflow-y-auto p-4">
-              <pre className="whitespace-pre-wrap break-all font-mono text-xs text-text-muted">
-                {content}
-              </pre>
-            </div>
-          ) : (
-            <div className="p-4 text-text-muted">No HTML available</div>
-          ))}
-        {activeTab === 'text' &&
-          (content ? (
-            <div className="h-full overflow-y-auto p-4">
-              <pre className="whitespace-pre-wrap font-mono text-sm text-text-muted">{content}</pre>
-            </div>
-          ) : (
-            <div className="p-4 text-text-muted">No text content available</div>
-          ))}
-        {activeTab === 'forensics' && <ForensicsTab capture={capture} caseId={caseId} />}
+          ) : activeTab === 'page' ? (
+            content ? (
+              <iframe
+                sandbox=""
+                srcDoc={content}
+                className="h-full w-full border-0 bg-white"
+                title="Archived page"
+              />
+            ) : (
+              <div className="p-4 text-text-muted">No HTML available</div>
+            )
+          ) : null}
+          {activeTab === 'source' &&
+            (content ? (
+              <div className="h-full overflow-y-auto p-4">
+                <pre className="whitespace-pre-wrap break-all font-mono text-xs text-text-muted">
+                  {content}
+                </pre>
+              </div>
+            ) : (
+              <div className="p-4 text-text-muted">No HTML available</div>
+            ))}
+          {activeTab === 'text' &&
+            (content ? (
+              <div className="h-full overflow-y-auto p-4">
+                <pre className="whitespace-pre-wrap font-mono text-sm text-text-muted">
+                  {content}
+                </pre>
+              </div>
+            ) : (
+              <div className="p-4 text-text-muted">No text content available</div>
+            ))}
+        </ErrorBoundary>
       </div>
     </main>
   )
@@ -286,11 +318,7 @@ function ScreenshotTabPanel({
   })
 
   const drawing = editor.tool !== 'select' && editor.tool !== 'hand'
-  const panMode = editor.tool === 'hand'
 
-  const setPanMode = (next: boolean) => {
-    editor.setTool(next ? 'hand' : 'select')
-  }
   const requestOverlayVisible = (next: boolean) => {
     if (drawing && !next) return
     setOverlayVisible(next)
@@ -310,35 +338,6 @@ function ScreenshotTabPanel({
 
   return (
     <div className="flex h-full w-full flex-col">
-      <ScreenshotZoomBar
-        scale={zoomPan.userScale}
-        zoomIn={zoomIn}
-        zoomOut={zoomOut}
-        fit={fit}
-        oneToOne={oneToOne}
-        panMode={panMode}
-        setPanMode={setPanMode}
-        overlayVisible={overlayVisible}
-        setOverlayVisible={requestOverlayVisible}
-        drawing={drawing}
-      />
-      <AnnotationToolbar
-        tool={editor.tool}
-        setTool={editor.setTool}
-        color={editor.color}
-        setColor={editor.setColor}
-        strokeWidth={editor.strokeWidth}
-        setStrokeWidth={editor.setStrokeWidth}
-        canUndo={editor.canUndo}
-        canRedo={editor.canRedo}
-        onUndo={editor.undo}
-        onRedo={editor.redo}
-        selectedId={editor.selectedId}
-        onDeleteSelected={() => {
-          if (!editor.selectedId) return
-          editor.removeShape(editor.selectedId)
-        }}
-      />
       <div className="flex-1 min-h-0 p-3">
         <BrowserChromeFrame url={url}>
           <div ref={containerRef} className="relative h-full w-full bg-canvas">
@@ -357,6 +356,30 @@ function ScreenshotTabPanel({
                 overlayVisible={overlayVisible}
               />
             )}
+            <CaptureViewerToolbar
+              tool={editor.tool}
+              setTool={editor.setTool}
+              color={editor.color}
+              setColor={editor.setColor}
+              strokeWidth={editor.strokeWidth}
+              setStrokeWidth={editor.setStrokeWidth}
+              scale={zoomPan.scale}
+              zoomIn={zoomIn}
+              zoomOut={zoomOut}
+              fit={fit}
+              oneToOne={oneToOne}
+              overlayVisible={overlayVisible}
+              setOverlayVisible={requestOverlayVisible}
+              canUndo={editor.canUndo}
+              canRedo={editor.canRedo}
+              onUndo={editor.undo}
+              onRedo={editor.redo}
+              selectedId={editor.selectedId}
+              onDeleteSelected={() => {
+                if (!editor.selectedId) return
+                editor.removeShape(editor.selectedId)
+              }}
+            />
           </div>
         </BrowserChromeFrame>
       </div>

@@ -29,10 +29,6 @@ export function ConnectionStatus() {
     )
   }
 
-  return (
-    <div className="flex items-center gap-1.5 rounded-full border border-border-strong bg-elevated px-2.5 py-1">
-      <span className="h-1.5 w-1.5 rounded-full bg-text-muted" />
-      <span className="text-[11px] font-medium text-text-muted">Waiting for extension</span>
-    </div>
-  )
+  // HOTFIX: "Waiting for extension" indicator removed while auto-capture is disabled
+  return null
 }

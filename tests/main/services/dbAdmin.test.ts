@@ -1,12 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import {
-  initDatabase,
-  closeDatabase,
-  createCase,
-  insertCapture,
-  updateCase,
-  listCases
-} from '@main/services/database'
+import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { createCase, updateCase, listCases } from '@main/services/db/caseRepo'
+import { insertCapture, getCaptureTextContent } from '@main/services/db/captureRepo'
 import {
   getDbStats,
   getTableRows,
@@ -20,7 +15,7 @@ import {
   purgeArchived,
   findOrphans,
   exportTableData
-} from '@main/services/dbAdmin'
+} from '@main/services/db/dbAdmin'
 
 describe('dbAdmin', () => {
   beforeEach(() => {
@@ -97,7 +92,11 @@ describe('dbAdmin', () => {
       expect(ALLOWED_TABLES).toContain('captures')
       expect(ALLOWED_TABLES).toContain('tags')
       expect(ALLOWED_TABLES).toContain('notes')
-      expect(ALLOWED_TABLES).toContain('captures_fts')
+    })
+
+    it('excludes derived FTS indexes from admin editing', () => {
+      expect(ALLOWED_TABLES).not.toContain('captures_fts')
+      expect(ALLOWED_TABLES).not.toContain('notes_fts')
     })
   })
 
@@ -108,13 +107,133 @@ describe('dbAdmin', () => {
     })
 
     it('throws for FTS tables', () => {
-      expect(() => createRow('captures_fts', { title: 'x' })).toThrow('FTS virtual tables')
+      expect(() => createRow('captures_fts', { title: 'x' })).toThrow('not allowed')
     })
 
     it('throws for invalid column names', () => {
       expect(() => createRow('tags', { id: 'x', name: 'x', evil: 'yes' })).toThrow(
         'does not exist'
       )
+    })
+  })
+
+  // notes.anchor_json is parsed on every note read, so a malformed value
+  // written through the admin escape hatch does not corrupt one row -- it
+  // takes out listNotes, getNote and searchNotes together.
+  describe('structured column values', () => {
+    const VALID_ANCHOR = JSON.stringify({ kind: 'capture', captureId: 'cap-1' })
+
+    function newCase(): string {
+      return createCase({ name: 'Admin', description: '' }).id
+    }
+
+    function noteRow(id: string, caseId: string): Record<string, unknown> {
+      return {
+        id,
+        case_id: caseId,
+        title: 'T',
+        body: '',
+        created_at: '2026-07-25T00:00:00Z',
+        updated_at: '2026-07-25T00:00:00Z'
+      }
+    }
+
+    it('rejects an unparseable anchor_json on create', () => {
+      expect(() =>
+        createRow('notes', { id: 'n-1', case_id: newCase(), anchor_json: '{oops' })
+      ).toThrow(/not valid JSON/)
+    })
+
+    it('rejects a structurally invalid anchor_json on create', () => {
+      expect(() =>
+        createRow('notes', {
+          id: 'n-2',
+          case_id: newCase(),
+          anchor_json: JSON.stringify({ kind: 'vibes', captureId: 'c' })
+        })
+      ).toThrow(/anchor kind/i)
+    })
+
+    it('rejects a malformed anchor_json on update', () => {
+      const caseId = newCase()
+      createRow('notes', { ...noteRow('n-3', caseId), anchor_json: VALID_ANCHOR })
+
+      expect(() => updateRow('notes', { id: 'n-3' }, { anchor_json: 'nonsense' })).toThrow(
+        /not valid JSON/
+      )
+    })
+
+    it('still allows a valid anchor, and allows clearing one to NULL', () => {
+      const caseId = newCase()
+      expect(() =>
+        createRow('notes', { ...noteRow('n-4', caseId), anchor_json: VALID_ANCHOR })
+      ).not.toThrow()
+      expect(updateRow('notes', { id: 'n-4' }, { anchor_json: null })).toBe(true)
+    })
+
+    it('leaves unstructured columns on other tables alone', () => {
+      expect(() => createRow('tags', { id: 't-1', name: '{not json' })).not.toThrow()
+    })
+
+    // anchor_kind is derived everywhere else so it cannot disagree with the
+    // payload. The admin surface must not be the one place that can.
+    function anchorRow(id: string): Record<string, unknown> {
+      return getTableRows({ table: 'notes', offset: 0, limit: 50 }).rows.find(
+        (r) => r.id === id
+      ) as Record<string, unknown>
+    }
+
+    it('derives anchor_kind from the payload rather than trusting the submitted one', () => {
+      const caseId = newCase()
+      createRow('notes', {
+        ...noteRow('n-5', caseId),
+        anchor_json: JSON.stringify({ kind: 'capture', captureId: 'cap-1' }),
+        anchor_kind: 'text'
+      })
+
+      expect(anchorRow('n-5').anchor_kind).toBe('capture')
+    })
+
+    it('clears anchor_kind when the payload is cleared', () => {
+      const caseId = newCase()
+      createRow('notes', { ...noteRow('n-6', caseId), anchor_json: VALID_ANCHOR })
+      expect(anchorRow('n-6').anchor_kind).toBe('capture')
+
+      updateRow('notes', { id: 'n-6' }, { anchor_json: null })
+
+      expect(anchorRow('n-6').anchor_kind).toBeNull()
+    })
+
+    it('re-derives anchor_kind when the payload changes kind', () => {
+      const caseId = newCase()
+      createRow('notes', { ...noteRow('n-7', caseId), anchor_json: VALID_ANCHOR })
+
+      updateRow(
+        'notes',
+        { id: 'n-7' },
+        {
+          anchor_json: JSON.stringify({
+            kind: 'text',
+            captureId: 'cap-1',
+            quote: 'q',
+            prefix: '',
+            suffix: '',
+            textOffset: 0
+          })
+        }
+      )
+
+      expect(anchorRow('n-7').anchor_kind).toBe('text')
+    })
+
+    it('refuses to set the derived anchor_kind on its own', () => {
+      const caseId = newCase()
+      createRow('notes', { ...noteRow('n-8', caseId), anchor_json: VALID_ANCHOR })
+
+      expect(() => updateRow('notes', { id: 'n-8' }, { anchor_kind: 'region' })).toThrow(
+        /derived from anchor_json/
+      )
+      expect(anchorRow('n-8').anchor_kind).toBe('capture')
     })
   })
 
@@ -154,7 +273,7 @@ describe('dbAdmin', () => {
     })
 
     it('throws for FTS tables', () => {
-      expect(() => deleteRow('captures_fts', { rowid: '1' })).toThrow('FTS virtual tables')
+      expect(() => deleteRow('captures_fts', { rowid: '1' })).toThrow('not allowed')
     })
   })
 
@@ -169,7 +288,7 @@ describe('dbAdmin', () => {
   describe('rebuildFts', () => {
     it('rebuilds FTS indexes and preserves capture text content', () => {
       const c = createCase({ name: 'Test' })
-      insertCapture({
+      const cap = insertCapture({
         caseId: c.id,
         url: 'https://example.com',
         title: 'Example',
@@ -177,10 +296,10 @@ describe('dbAdmin', () => {
         timestamp: new Date().toISOString(),
         textContent: 'hello world'
       })
-      const result = rebuildFts()
+      const result = rebuildFts({ readArtifact: () => null })
       expect(result.rowsIndexed).toBeGreaterThanOrEqual(1)
-      const rows = getTableRows({ table: 'captures_fts', offset: 0, limit: 10 })
-      expect(rows.rows[0]).toMatchObject({ content: 'hello world' })
+      // no sidecar on disk → the DB copy of the text survives the rebuild
+      expect(getCaptureTextContent(cap.id)).toBe('hello world')
     })
   })
 

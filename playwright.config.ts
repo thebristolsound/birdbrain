@@ -5,7 +5,11 @@ export default defineConfig({
   timeout: 30000,
   retries: process.env.CI ? 2 : 0,
   workers: 1,
-  reporter: 'list',
+  reporter: [
+    ['list'],
+    ['html', { outputFolder: 'playwright-report', open: 'never' }],
+    ['json', { outputFile: 'test-results/e2e-results.json' }]
+  ],
   use: {
     trace: 'on-first-retry'
   }

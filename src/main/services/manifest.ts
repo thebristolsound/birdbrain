@@ -14,7 +14,12 @@ import { MANIFEST_FILENAME, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import { canonicalStringify, verifyManifestChainText } from '@shared/verify'
 import type { ChainVerifyResult } from '@shared/verify'
 import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
-import type { TrustedTime } from '@shared/types'
+import type {
+  TrustedTime,
+  ArchiveVerificationResult,
+  CaptureMethod,
+  ConsentSuppression
+} from '@shared/types'
 import type { TlsCertChainResult } from '@main/services/tlsCertChain'
 
 export type { TrustedTime }
@@ -72,6 +77,14 @@ export type ManifestEntryInput =
       // bound to the captured transaction. OMITTED when not re-fetched so legacy /
       // cert-less entries' canonical bodies — and chain hashes — are unchanged.
       tls?: TlsCertChainResult
+      // Recapture provenance (#recapture); omitted from the manifest body when
+      // absent to preserve legacy canonical bodies.
+      method?: CaptureMethod
+      supersedesCaptureId?: string
+      // Consent-overlay suppression active in the rendering session. OMITTED
+      // when absent so pre-existing entries' canonical bodies — and chain
+      // hashes — are unchanged.
+      consentSuppression?: ConsentSuppression
       sizeBytes: number
       operatorId: string
       operatorName: string
@@ -115,6 +128,38 @@ export type ManifestEntryInput =
       toolVersion: string
       packageHash: string
       verificationResult: ExportVerificationResult
+    }
+  | {
+      // Signed audit record of a case-archive export (.birdbrain). packageHash
+      // uses the same recipe as the evidence export: sha256(canonicalStringify
+      // (sortedArtifacts)), never hashing the final zip (circular — this
+      // entry's manifest copy ships inside it).
+      type: 'archive-export'
+      caseId: string
+      timestamp: string
+      operatorId: string
+      operatorName: string
+      toolVersion: string
+      packageHash: string
+    }
+  | {
+      // Signed genesis-of-custody record appended when a case archive is
+      // imported. Continues the source chain (prevHash = source head).
+      // sourcePublicKeyPem is the key that signed every entry BEFORE this one
+      // (back to the previous import boundary) — verify-core switches keys at
+      // these entries.
+      type: 'import'
+      caseId: string
+      sourceCaseId: string
+      sourceInstallationId: string
+      sourcePublicKeyPem: string
+      packageHash: string
+      idMapSha256: string
+      verificationResult: ArchiveVerificationResult
+      timestamp: string
+      operatorId: string
+      operatorName: string
+      toolVersion: string
     }
 
 export interface ExportVerificationResult {
@@ -253,6 +298,13 @@ export interface CaptureEntryContext {
   // Corroboration-only TLS cert chain (#123); omitted from the manifest body
   // when absent to preserve legacy canonical bodies.
   tls?: TlsCertChainResult
+  // Recapture provenance (#recapture); omitted from the manifest body when
+  // absent to preserve legacy canonical bodies.
+  method?: CaptureMethod
+  supersedesCaptureId?: string
+  // Consent-overlay suppression provenance; omitted from the manifest body when
+  // absent to preserve legacy canonical bodies.
+  consentSuppression?: ConsentSuppression
   sizeBytes: number
   operatorId: string
   operatorName: string
@@ -281,6 +333,13 @@ export async function withCaptureEntry<T>(
       ...(ctx.textHash !== undefined ? { textHash: ctx.textHash } : {}),
       ...(ctx.headers !== undefined ? { headers: ctx.headers } : {}),
       ...(ctx.tls !== undefined ? { tls: ctx.tls } : {}),
+      ...(ctx.method !== undefined ? { method: ctx.method } : {}),
+      ...(ctx.supersedesCaptureId !== undefined
+        ? { supersedesCaptureId: ctx.supersedesCaptureId }
+        : {}),
+      ...(ctx.consentSuppression !== undefined
+        ? { consentSuppression: ctx.consentSuppression }
+        : {}),
       sizeBytes: ctx.sizeBytes,
       operatorId: ctx.operatorId,
       operatorName: ctx.operatorName,
@@ -306,7 +365,7 @@ export type { ChainVerifyResult }
 export function verifyManifestChain(caseDir: string): ChainVerifyResult {
   const path = join(caseDir, MANIFEST_FILENAME)
   if (!existsSync(path) || statSync(path).size === 0) {
-    return { valid: true, trustedTimes: new Map() }
+    return { valid: true, trustedTimes: new Map(), captureHashesByIndex: new Map() }
   }
   const raw = readFileSync(path, 'utf-8')
   return verifyManifestChainText(raw, { publicKeyPem: getPublicKeyPem() })

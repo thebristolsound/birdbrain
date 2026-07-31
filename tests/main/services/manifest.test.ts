@@ -13,9 +13,11 @@ import { MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import { ManifestEntrySchema } from '@shared/schemas'
 import { statSync } from 'fs'
 import { appendFileSync } from 'fs'
-import { initDatabase, closeDatabase, createCase, insertCapture } from '@main/services/database'
+import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { createCase } from '@main/services/db/caseRepo'
+import { insertCapture } from '@main/services/db/captureRepo'
 import { saveAnnotations } from '@main/services/annotations'
-import { signEntryHash, verifyEntrySignature } from '@main/services/signingKey'
+import { signEntryHash, verifyEntrySignature, getPublicKeyPem } from '@main/services/signingKey'
 
 describe('manifest init/getHead', () => {
   let tempDir: string
@@ -618,6 +620,29 @@ describe('withCaptureEntry', () => {
       rmSync(direct, { recursive: true, force: true })
     }
   })
+
+  it('omits method and supersedesCaptureId from the entry body when absent (grandfathering)', async () => {
+    await withCaptureEntry(tempDir, baseCtx, () => undefined)
+    const lines = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim().split('\n')
+    const entry = JSON.parse(lines[0])
+    expect('method' in entry).toBe(false)
+    expect('supersedesCaptureId' in entry).toBe(false)
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
+  })
+
+  it('anchors method and supersedesCaptureId in the entry body when present', async () => {
+    await withCaptureEntry(
+      tempDir,
+      { ...baseCtx, captureId: 'cap-2', method: 'background', supersedesCaptureId: 'cap-1' },
+      () => undefined
+    )
+    const lines = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim().split('\n')
+    const entry = JSON.parse(lines[0])
+    expect(entry.method).toBe('background')
+    expect(entry.supersedesCaptureId).toBe('cap-1')
+    expect(ManifestEntrySchema.safeParse(entry).success).toBe(true)
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
+  })
 })
 
 describe('manifest schema v2 + grandfathering', () => {
@@ -1146,5 +1171,53 @@ describe('manifest export audit entry (#124)', () => {
     const entry = readEntry(0)
     entry.surprise = 'nope'
     expect(ManifestEntrySchema.safeParse(entry).success).toBe(false)
+  })
+})
+
+describe('manifest archive-export and import entries', () => {
+  let tempDir: string
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-archive-entry-'))
+    initManifest(tempDir)
+  })
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  it('appends and verifies archive-export and import entries', () => {
+    initManifest(tempDir)
+    appendManifestEntry(tempDir, {
+      type: 'archive-export',
+      caseId: 'case-1',
+      timestamp: new Date().toISOString(),
+      operatorId: 'inst-1',
+      operatorName: 'Op',
+      toolVersion: '1.0.0',
+      packageHash: 'a'.repeat(64)
+    })
+    appendManifestEntry(tempDir, {
+      type: 'import',
+      caseId: 'case-2',
+      sourceCaseId: 'case-1',
+      sourceInstallationId: 'inst-0',
+      sourcePublicKeyPem: getPublicKeyPem(),
+      packageHash: 'b'.repeat(64),
+      idMapSha256: 'c'.repeat(64),
+      verificationResult: {
+        overallValid: true,
+        chainValid: true,
+        artifactCount: 3,
+        artifactFailureCount: 0,
+        captureCount: 1,
+        captureHashFailureCount: 0
+      },
+      timestamp: new Date().toISOString(),
+      operatorId: 'inst-1',
+      operatorName: 'Op',
+      toolVersion: '1.0.0'
+    })
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
   })
 })

@@ -6,6 +6,7 @@ import logoImg from '@renderer/assets/logo.png'
 import { useAppStore } from '@renderer/stores/appStore'
 import { useCasesMutations } from '@renderer/lib/queries'
 import { Button, Input, Label } from '@renderer/components/ui'
+import { InstallExtensionStepper } from '@renderer/components/extension/InstallExtensionStepper'
 
 interface OnboardingWizardProps {
   mode?: 'firstRun' | 'overlay'
@@ -19,8 +20,10 @@ export function OnboardingWizard({ mode = 'firstRun', onClose }: OnboardingWizar
   const isOverlay = mode === 'overlay'
 
   const [step, setStep] = useState(0)
+  const [installStep, setInstallStep] = useState(0)
   const [name, setName] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const isLastInstallStep = installStep === 2
 
   const handleContinue = () => {
     if (isOverlay) {
@@ -66,12 +69,14 @@ export function OnboardingWizard({ mode = 'firstRun', onClose }: OnboardingWizar
       aria-labelledby={isOverlay ? 'onboarding-overlay-title' : undefined}
       className={
         isOverlay
-          ? 'fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6'
+          ? 'fixed inset-0 z-50 flex overflow-y-auto bg-black/40 p-6'
           : 'flex h-full items-center justify-center bg-canvas'
       }
       onClick={isOverlay ? (e) => e.target === e.currentTarget && onClose?.() : undefined}
     >
-      <div className="relative flex w-full max-w-md flex-col items-center">
+      <div
+        className={`relative m-auto flex w-full flex-col items-center transition-[max-width] duration-300 ${step === 0 ? 'max-w-xl' : 'max-w-md'}`}
+      >
         {isOverlay && (
           <button
             data-testid="onboarding-overlay-close"
@@ -117,7 +122,7 @@ export function OnboardingWizard({ mode = 'firstRun', onClose }: OnboardingWizar
                       id={isOverlay ? 'onboarding-overlay-title' : undefined}
                       className="font-display text-lg font-bold text-text-primary"
                     >
-                      Connect Extension
+                      Install the Extension
                     </h2>
                     <p className="text-sm text-text-muted">
                       {isOverlay ? 'Onboarding' : 'Step 1 of 2'}
@@ -125,15 +130,16 @@ export function OnboardingWizard({ mode = 'firstRun', onClose }: OnboardingWizar
                   </div>
                 </div>
 
-                {/* Body */}
-                <p className="mb-6 text-sm leading-relaxed text-text-secondary">
-                  Birdbrain works with the Chrome extension to capture web content for your
-                  investigations. Install the extension to start capturing pages, screenshots, and
-                  MHTML archives directly from your browser.
-                </p>
+                {/* Interactive install walkthrough */}
+                <InstallExtensionStepper
+                  className="mb-6"
+                  step={installStep}
+                  onStepChange={setInstallStep}
+                  showNav={false}
+                />
 
                 {/* Connection status */}
-                <div className="mb-8 flex items-center gap-3 rounded-xl border border-border-strong bg-elevated px-4 py-3">
+                <div className="mb-6 flex items-center gap-3 rounded-xl border border-border-strong bg-elevated px-4 py-3">
                   {connectedToExtension ? (
                     <>
                       <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
@@ -156,15 +162,40 @@ export function OnboardingWizard({ mode = 'firstRun', onClose }: OnboardingWizar
                 </div>
 
                 {/* Footer */}
-                <div className="flex justify-end">
+                <div className="flex items-center justify-between">
                   <Button
+                    variant="ghost"
                     data-testid="onboarding-skip-btn"
                     onClick={handleContinue}
-                    className="rounded-xl px-6 py-2.5 gap-2 shadow-[var(--shadow-btn)]"
                   >
-                    {connectedToExtension ? 'Continue' : 'Skip for now'}
-                    <ArrowRight className="h-4 w-4" />
+                    Skip for now
                   </Button>
+                  <div className="flex items-center gap-2">
+                    {installStep > 0 && (
+                      <Button variant="ghost" onClick={() => setInstallStep(installStep - 1)}>
+                        Back
+                      </Button>
+                    )}
+                    {isLastInstallStep ? (
+                      <Button
+                        data-testid="onboarding-continue-btn"
+                        onClick={handleContinue}
+                        className="rounded-xl px-6 py-2.5 gap-2 shadow-[var(--shadow-btn)]"
+                      >
+                        Continue
+                        <ArrowRight className="h-4 w-4" />
+                      </Button>
+                    ) : (
+                      <Button
+                        data-testid="onboarding-next-btn"
+                        onClick={() => setInstallStep(installStep + 1)}
+                        className="rounded-xl px-6 py-2.5 gap-2 shadow-[var(--shadow-btn)]"
+                      >
+                        Next
+                        <ArrowRight className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </motion.div>
             ) : (

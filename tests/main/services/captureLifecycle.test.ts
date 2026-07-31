@@ -4,20 +4,21 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
-import {
-  initDatabase,
-  closeDatabase,
-  createCase,
-  getCapture,
-  insertCapture,
-  listCaptures
-} from '@main/services/database'
+import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { createCase } from '@main/services/db/caseRepo'
+import { getCapture, insertCapture, listCaptures } from '@main/services/db/captureRepo'
 import { initManifest, verifyManifestChain, appendManifestEntry } from '@main/services/manifest'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { initSettings, updateSettings } from '@main/services/settings'
+import {
+  disposeLogger,
+  flushSync as flushLogger,
+  initLogger,
+  readRecentEntries
+} from '@main/services/logger'
 
 // Keep ingest tests hermetic: the corroboration-only TLS re-fetch (#123) would
 // otherwise open a real socket to https://example.com on every ingest. Default
@@ -76,9 +77,11 @@ describe('createCaptureLifecycle.ingest', () => {
     // Minimal SelectorLifecycle stub — captureLifecycle only ever calls
     // runActiveSelectorsForCapture on it; other methods are unused here.
     selectorStub = { runActiveSelectorsForCapture: runActive } as unknown as SelectorLifecycle
+    initLogger(tempDir, 'capture-lifecycle-test-session')
   })
 
   afterEach(() => {
+    disposeLogger()
     closeDatabase()
     rmSync(tempDir, { recursive: true, force: true })
     vi.restoreAllMocks()
@@ -272,6 +275,21 @@ describe('createCaptureLifecycle.ingest', () => {
     expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
   })
 
+  it('records background method and supersedes link end-to-end', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const original = await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('original')))
+    const params = buildIngestParams(caseId, Buffer.from('recaptured'), {
+      method: 'background',
+      supersedesCaptureId: original.capture.id,
+      extensionVersion: undefined
+    })
+    const result = await lifecycle.ingest(params)
+    expect(result.capture.method).toBe('background')
+    expect(result.capture.supersedesCaptureId).toBe(original.capture.id)
+    expect(result.capture.extensionVersion).toBeUndefined()
+    expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+  })
+
   it('enqueues the ingested capture for trusted timestamping', async () => {
     const enqueueTimestamp = vi.fn()
     const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub, enqueueTimestamp })
@@ -308,7 +326,6 @@ describe('createCaptureLifecycle.ingest', () => {
     runActive.mockImplementation(() => {
       throw new Error('selector engine exploded')
     })
-    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
     const body = Buffer.from('mhtml-body')
 
@@ -317,10 +334,14 @@ describe('createCaptureLifecycle.ingest', () => {
 
     expect(result.capture.id).toBeTruthy()
     expect(getCapture(result.capture.id)?.id).toBe(result.capture.id)
-    expect(errSpy).toHaveBeenCalled()
-    expect(errSpy.mock.calls.some((c) => String(c[0]).includes('selector matching failed'))).toBe(
-      true
-    )
+    flushLogger()
+    const entries = readRecentEntries(10)
+    expect(
+      entries.some(
+        (e) =>
+          e.source === 'captureLifecycle' && e.code === 'captureLifecycle.selector_match_failed'
+      )
+    ).toBe(true)
   })
 
   it('rejects and leaves no DB row, manifest entry, or file on disk when the upload stream errors mid-read', async () => {
@@ -529,6 +550,39 @@ describe('createCaptureLifecycle.verify', () => {
     const result = await lifecycle.verify(capture.id)
     expect(result.status).toBe('tampered')
     expect(result.reason).toMatch(/text/i)
+  })
+
+  it('FAILS verify when the capture is truncated out of the manifest chain (#X-2)', async () => {
+    const { readFileSync, writeFileSync } = await import('fs')
+    const { MANIFEST_FILENAME } = await import('@shared/constants')
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+
+    const { capture: first } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('first-body'))
+    )
+    const { capture: second } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('second-body'))
+    )
+    expect((await lifecycle.verify(second.id)).status).toBe('verified')
+
+    // Truncate the manifest suffix so the second capture's entry (and anything
+    // after it) is gone. The remaining prefix is a shorter, still-internally-
+    // valid chain — the MHTML bytes on disk are untouched — but the second
+    // capture is no longer anchored.
+    const manifestPath = join(getStorageRoot(), caseId, MANIFEST_FILENAME)
+    const lines = readFileSync(manifestPath, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim())
+    const cut = lines.findIndex((l) => (JSON.parse(l) as { captureId?: string }).captureId === second.id)
+    writeFileSync(manifestPath, lines.slice(0, cut).join('\n') + '\n', 'utf-8')
+
+    // The surviving prefix still verifies the first capture...
+    expect((await lifecycle.verify(first.id)).status).toBe('verified')
+    // ...but the orphaned second capture must NOT report verified.
+    const result = await lifecycle.verify(second.id)
+    expect(result.status).toBe('chain-broken')
+    expect(result.chainValid).toBe(true)
+    expect(result.reason).toMatch(/anchor/i)
   })
 
   it('verifies a legacy capture with no recorded sidecar hashes (#118 grandfathering)', async () => {

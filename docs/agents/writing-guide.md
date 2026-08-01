@@ -23,7 +23,7 @@ This is the part that matters most, and it comes from the assurance baseline in 
 
 - **State what a mechanism proves, and what it does not.** A verified hash chain shows that nobody edited the manifest *without the installation's signing key*. It does not constrain the Operator, who holds that key and can mint an internally consistent chain — `SECURITY.md` says so outright. It does not show the page was genuine. And the RFC 3161 token anchors a capture's content hash, not the manifest head, so it dates the content rather than proving the chain around it is intact. Write both halves.
 - **No unqualified assurance words.** "Court-admissible", "tamper-proof", "forensically sound", "compliant", "verified" — none of these stand alone. Name the standard and its version, or describe the concrete property instead.
-- **Document limitations next to the capability, not in a footnote.** `SECURITY.md` pre-declares unsigned artifacts, the `unsafe-inline` CSP, and the safeStorage plaintext fallback. Follow that pattern.
+- **Document limitations next to the capability, not in a footnote.** `SECURITY.md` pre-declares unsigned artifacts, the `unsafe-inline` CSP, and the `safeStorage` plaintext fallback. Follow that pattern.
 - **Do not describe unshipped behaviour in the present tense.** A spec describes a design; reference docs describe what the code does today. If a page documents something behind a flag or unmerged, say so.
 - **Cite the source of a factual claim** — a file path, an ADR, a spec — when the reader would otherwise have to take your word for it.
 

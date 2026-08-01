@@ -17,6 +17,30 @@ by name, followed by an adversarial completeness/overbreadth challenge. The chal
 six paths both surveyors missed, overturned one exclusion on a factual error, and removed two
 inconsistent inclusions — those changes are already folded into the list below.
 
+## List format
+
+These lists are the seed for a machine-consumed file, so entries follow fixed rules. Anything
+seeded from this document should be checked against them.
+
+- **One repository-relative glob per entry.** No table row or bullet combines two paths; a rule
+  that needs two paths gets two entries. This is what makes the tables extractable by cell.
+- **Paths are repository-relative POSIX paths** with no leading `./` or `/`, so they compare
+  directly against `git diff --name-only` output. Matching is case-sensitive, and directory
+  separators are always `/`.
+- **A `**` segment crosses directory separators.** An entry ending in a `**` segment means that
+  directory and everything beneath it, recursively. An entry with no wildcard matches exactly one
+  file.
+- **Run the diff with rename detection off** (`git diff --name-only --no-renames`), so moving a
+  file out of an evidence path still trips the backstop on the old path.
+- **Only the include list feeds the matcher.** The exclusion list is a review record of paths
+  deliberately left out, not a subtraction pass applied on top. Blanket
+  exclusion-over-inclusion would be wrong here: `src/renderer/components/dashboard/**` is
+  excluded while `src/renderer/components/dashboard/cases/DataExplorer.tsx` and
+  `src/renderer/components/dashboard/cases/ImportCaseDialog.tsx` are included, and a blanket
+  override would silently drop them. If a future tool does consume both lists, **the more
+  specific pattern wins** — an exact path beats a directory glob, and among globs the one with
+  the longer literal prefix before its first wildcard beats the shorter.
+
 ## Proposed include list
 
 ### Acquisition (extension → capture server)
@@ -39,12 +63,21 @@ inconsistent inclusions — those changes are already folded into the list below
 
 ### Integrity core (hash, manifest, signing, trusted time, verification)
 
+Assurance boundary for this block, stated so the rationales do not overclaim: the manifest chain
+and the RFC 3161 token cover **different things**, and neither substitutes for the other. The
+timestamp request's message imprint is the capture's `contentHash` (`buildTimestampRequest` in
+`src/main/services/timestamp.ts`), so a granted token dates *the captured bytes* — it says nothing
+about whether the manifest chain around them is intact. The chain, conversely, covers manifest
+entries but is signed with the installation-local keypair generated and held by this install
+(`src/main/services/signingKey.ts`), so it detects edits made *without* that key and is not
+independent of the Operator who holds it.
+
 | Path | Why |
 |---|---|
 | `src/main/services/hash.ts` | SHA-256 hashing/verification primitives |
-| `src/main/services/manifest.ts` | Hash-chained, signed audit manifest append/verify |
-| `src/main/services/signingKey.ts` | Manifest signing keypair generation/storage/signing |
-| `src/main/services/timestamp.ts` | RFC 3161 TimeStampReq construction and TSA round-trip |
+| `src/main/services/manifest.ts` | Hash-chained, signed audit manifest append/verify. The chain detects edits made without the installation-local signing key; it is not an Operator-independent guarantee |
+| `src/main/services/signingKey.ts` | Manifest signing keypair generation/storage/signing — the key the chain's assurance is bounded by |
+| `src/main/services/timestamp.ts` | RFC 3161 `TimeStampReq` construction (message imprint = the capture's `contentHash`) and TSA round-trip. The token dates the content; it does not prove manifest-chain integrity |
 | `src/main/services/timestampWorker.ts` | Async timestamping worker writing manifest entries |
 | `src/main/services/trustedTime.ts` | Per-capture trusted-time status resolution |
 | `src/main/services/tsaTrust.ts` | Embedded TSA trust anchors shipped in evidence packages |
@@ -90,7 +123,8 @@ inconsistent inclusions — those changes are already folded into the list below
 | `src/main/services/certification.ts` | Export certification document |
 | `src/main/services/verifyRunbook.ts` | By-hand verification runbook shipped in packages |
 | `src/main/services/caseArchive.ts` | Archive export/import with id remapping |
-| `src/main/services/zip.ts`, `src/main/services/zipRead.ts` | Evidence container write/read |
+| `src/main/services/zip.ts` | Evidence container write |
+| `src/main/services/zipRead.ts` | Evidence container read |
 | `src/main/services/csvEscape.ts` | Escaping behind CSV exports of case data |
 | `src/renderer/components/export/**` | Export options directly shape the package |
 
@@ -116,7 +150,8 @@ inconsistent inclusions — those changes are already folded into the list below
 | `src/renderer/components/overview/overviewModel.ts` | The actual verified/tampered bucketing VerifyBar shows |
 | `src/renderer/components/dashboard/cases/ImportCaseDialog.tsx` | Archive verification display + `overrideTamper` flow |
 | `src/renderer/components/dashboard/cases/DataExplorer.tsx` | Extraction results display + reprocess trigger |
-| `src/renderer/components/settings/DatabaseAdmin.tsx`, `src/renderer/components/settings/db/**` | Direct DB administration over evidence tables |
+| `src/renderer/components/settings/DatabaseAdmin.tsx` | Direct DB administration over evidence tables |
+| `src/renderer/components/settings/db/**` | The DB administration views behind it (browse, row edit, utilities) |
 | `src/renderer/components/settings/OperatorConfig.tsx` | Operator identity embedded verbatim in export certification |
 
 ### Cross-process contracts and configuration
@@ -139,23 +174,58 @@ inconsistent inclusions — those changes are already folded into the list below
 | `package.json` | electron-builder `build` block, dependency pins/overrides |
 | `pnpm-lock.yaml` | The actual dependency pin compiled into shipped bundles (see judgment call 3) |
 | `.github/workflows/release.yml` | Builds/publishes installers, updater manifests, extension zip |
-| `electron.vite.config.ts`, `extension/vite.config.ts` | Compile the exact bytes the release workflow publishes |
-| `scripts/build-verifier.mjs`, `sea-config.json` | Build + SEA definition of the distributed verifier binary |
+| `electron.vite.config.ts` | Compiles the exact app bytes the release workflow publishes |
+| `extension/vite.config.ts` | Compiles the exact extension bytes the release workflow publishes |
+| `scripts/build-verifier.mjs` | Build of the distributed verifier binary |
+| `sea-config.json` | SEA definition of that verifier binary |
 | `src/main/services/updater.ts` | Update delivery |
 
 ## Notable exclusions
 
-- `src/main/ipcWrap.ts` — content-agnostic IPC envelope.
-- `src/main/services/logger.ts`, `logSafe.ts`, `sessionLog.ts`, `bugReport.ts`, `diagnostics.ts` — operational logging/telemetry; bug-report zip deliberately excludes captures and the DB. (`logSafe` redacts *logs*, not evidence — the definition's "redaction" is the annotation burn-in path.)
-- `src/main/services/thumbnails.ts` — derived UI previews, never exported or hash-covered.
-- `src/main/services/openrouter.ts` (root, not `ai/`) — API-key test + model catalog only; cannot alter analysis output.
-- `src/main/services/deepLink.ts`, `extensionPath.ts` — navigation/setup plumbing.
-- `src/renderer/lib/queries.ts` — high-churn typed passthrough; evidence parameters originate in included dialogs and are enforced in main (but see judgment call 2).
-- `src/renderer/components/captures/AddUrlsBox.tsx`, `useVerifyMutation.ts` — removed by the challenge pass as inconsistent with the exclusion standard applied to `queries.ts`/`CapturePreferences.tsx` (UI-side plumbing whose values are enforced in main).
-- Renderer chrome wholesale: `layout/`, `dashboard/` (rest), `tags/`, `search/`, `status/`, `ui/`, `hooks/`, `routes/`, `stores/`, `styles/`, `notes/` UI, `selectors/` UI, `CaptureViewer.tsx`, `CaptureList.tsx`, `CaptureDetailsPanel.tsx`.
-- `.github/workflows/ci.yml`, `security.yml`, `docs.yml` — no distributed artifacts.
-- `scripts/coverage-*.mjs`, `gen-linux-icons.mjs`, `rebuild-native.mjs` — dev tooling.
-- `extension/src/fonts/**`, `popup.css`/`popup.html` — popup cosmetics, never touch the captured page.
+A review record of paths deliberately left out, in the same one-glob-per-entry form as the include
+list — see "List format" for why this list is not applied as a subtraction pass over the includes.
+It is *notable* exclusions, not an exhaustive complement of the include list.
+
+| Path | Why |
+|---|---|
+| `src/main/ipcWrap.ts` | Content-agnostic IPC envelope |
+| `src/main/services/logger.ts` | Operational logging |
+| `src/main/services/logSafe.ts` | Redacts *logs*, not evidence — the definition's "redaction" is the annotation burn-in path |
+| `src/main/services/sessionLog.ts` | Operational logging |
+| `src/main/services/bugReport.ts` | Bug-report zip deliberately excludes captures and the DB |
+| `src/main/services/diagnostics.ts` | Operational telemetry |
+| `src/main/services/thumbnails.ts` | Derived UI previews, never exported or hash-covered |
+| `src/main/services/openrouter.ts` | API-key test + model catalog only; cannot alter analysis output. Distinct from the included `src/main/services/ai/openrouter.ts` chat client |
+| `src/main/services/deepLink.ts` | Navigation plumbing |
+| `src/main/services/extensionPath.ts` | Extension setup plumbing |
+| `src/renderer/lib/queries.ts` | High-churn typed passthrough; evidence parameters originate in included dialogs and are enforced in main (but see judgment call 2) |
+| `src/renderer/components/captures/AddUrlsBox.tsx` | Removed by the challenge pass as inconsistent with the standard applied to `src/renderer/lib/queries.ts` and `src/renderer/components/settings/CapturePreferences.tsx` — UI-side plumbing whose values are enforced in main |
+| `src/renderer/components/captures/useVerifyMutation.ts` | Same rationale as `src/renderer/components/captures/AddUrlsBox.tsx` above |
+| `src/renderer/components/captures/CaptureViewer.tsx` | Renderer chrome |
+| `src/renderer/components/captures/CaptureList.tsx` | Renderer chrome |
+| `src/renderer/components/captures/CaptureDetailsPanel.tsx` | Renderer chrome |
+| `src/renderer/components/settings/CapturePreferences.tsx` | Capture-preference UI; the values it writes are enforced in main |
+| `src/renderer/components/layout/**` | Renderer chrome |
+| `src/renderer/components/dashboard/**` | Renderer chrome, *except* the two files listed in the include list — see the precedence rule in "List format" |
+| `src/renderer/components/tags/**` | Renderer chrome |
+| `src/renderer/components/search/**` | Renderer chrome |
+| `src/renderer/components/status/**` | Renderer chrome |
+| `src/renderer/components/ui/**` | Shared UI primitives |
+| `src/renderer/components/notes/**` | Note-editing UI; the evidence binding lives in the included `src/shared/noteAnchor.ts` / `src/main/services/noteAnchorResolver.ts` |
+| `src/renderer/components/selectors/**` | Selector-management UI; matching lives in main |
+| `src/renderer/hooks/**` | Renderer chrome |
+| `src/renderer/routes/**` | Renderer chrome |
+| `src/renderer/stores/**` | UI-only state |
+| `src/renderer/styles/**` | Styling |
+| `.github/workflows/ci.yml` | No distributed artifacts |
+| `.github/workflows/security.yml` | No distributed artifacts |
+| `.github/workflows/docs.yml` | No distributed artifacts |
+| `scripts/coverage-*.mjs` | Dev tooling |
+| `scripts/gen-linux-icons.mjs` | Dev tooling |
+| `scripts/rebuild-native.mjs` | Dev tooling |
+| `extension/src/fonts/**` | Popup cosmetics, never touch the captured page |
+| `extension/src/popup/popup.css` | Popup cosmetics, never touch the captured page |
+| `extension/src/popup/popup.html` | Popup shell, never touches the captured page |
 
 ## Judgment calls needing confirmation in review
 
@@ -170,22 +240,28 @@ inconsistent inclusions — those changes are already folded into the list below
 3. **`pnpm-lock.yaml`.** Included by the same logic as `package.json` (the lockfile is the actual
    pin that determines shipped code), but it gates every dependency-bump PR. Current call:
    include; drop it if dep-bump noise proves unacceptable during the pilot.
-4. **`session.ts` / `serverToken.ts`.** Included on misattribution/spoofed-ingest rationales;
-   arguably workflow state and authn rather than evidence processing.
-5. **`csvEscape.ts`.** CSV exports are convenience exports, not signed packages; kept because they
-   are still disclosed case data.
-6. **Notes cluster (`noteAnchorResolver.ts`, `noteDoc.ts`, `noteAnchor.ts`).** Notes never enter
-   evidence packages; inclusion leans entirely on the "interpretation" clause (what evidence a
-   note points at, and note text in exported reports/archives).
-7. **Selector cluster (`selectorLifecycle.ts`, `safeRegex.ts`).** Originally excluded as
-   "matches never enter the evidence package" — the challenge pass found that factually wrong
-   (`caseArchive.ts` exports and re-imports `selectors` and `selectorMatches`). Included on that
-   basis; if selector matches are ruled non-evidentiary despite riding in archives, drop both.
-8. **Accepted glob false positives.** `db/**` sweeps in read-only `diagnosticsRepo.ts`;
-   `settings/db/**` sweeps in the generic `ConfirmDialog.tsx`. Accepted: a per-file list would
-   silently miss future files added to these directories.
-9. **`toast.ts` / `popup.tsx`.** One step removed from captured bytes (toast markup can be
-   captured; popup routes evidence to a case). A stricter list could drop `popup.tsx`.
-10. **Distribution block (`updater.ts`, build configs, `release.yml`, lockfile).** Included under
-    the definition's "software distribution" clause. If release PRs get their own review channel
-    instead, this whole section could move out of the backstop.
+4. **`src/main/services/session.ts` / `src/main/services/serverToken.ts`.** Included on
+   misattribution/spoofed-ingest rationales; arguably workflow state and authn rather than
+   evidence processing.
+5. **`src/main/services/csvEscape.ts`.** CSV exports are convenience exports, not signed packages;
+   kept because they are still disclosed case data.
+6. **Notes cluster (`src/main/services/noteAnchorResolver.ts`, `src/shared/noteDoc.ts`,
+   `src/shared/noteAnchor.ts`).** Notes never enter evidence packages; inclusion leans entirely on
+   the "interpretation" clause (what evidence a note points at, and note text in exported
+   reports/archives).
+7. **Selector cluster (`src/main/services/selectorLifecycle.ts`,
+   `src/main/services/safeRegex.ts`).** Originally excluded as "matches never enter the evidence
+   package" — the challenge pass found that factually wrong (`src/main/services/caseArchive.ts`
+   exports and re-imports `selectors` and `selectorMatches`). Included on that basis; if selector
+   matches are ruled non-evidentiary despite riding in archives, drop both.
+8. **Accepted glob false positives.** `src/main/services/db/**` sweeps in the read-only
+   `src/main/services/db/diagnosticsRepo.ts`; `src/renderer/components/settings/db/**` sweeps in
+   the generic `src/renderer/components/settings/db/ConfirmDialog.tsx`. Accepted: a per-file list
+   would silently miss future files added to these directories.
+9. **`extension/src/toast.ts` / `extension/src/popup/popup.tsx`.** One step removed from captured
+   bytes (toast markup can be captured; the popup routes evidence to a case). A stricter list
+   could drop `extension/src/popup/popup.tsx`.
+10. **Distribution block (`src/main/services/updater.ts`, the build configs,
+    `.github/workflows/release.yml`, `pnpm-lock.yaml`).** Included under the definition's
+    "software distribution" clause. If release PRs get their own review channel instead, this
+    whole section could move out of the backstop.

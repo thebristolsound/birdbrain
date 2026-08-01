@@ -13,6 +13,7 @@ Open source web investigation & capture tool. Electron desktop app with a compan
 - `pnpm test:watch` - Run tests in watch mode
 - `pnpm test:coverage` / `pnpm coverage:report` / `pnpm coverage:all` - Coverage run and reports
 - `pnpm lint` - ESLint (.ts, .tsx)
+- `pnpm typecheck` - Typecheck all three tsconfigs (main/preload/shared, renderer, extension)
 - `pnpm format` - Prettier format src/ and extension/
 - `pnpm rebuild:electron` - Rebuild native deps (better-sqlite3)
 - `pnpm test:e2e` - Run E2E tests (Playwright + Electron, runs `pnpm build` first)

@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm install)",
+      "Bash(pnpm rebuild:electron)",
+      "Bash(pnpm lint)",
+      "Bash(pnpm test:*)",
+      "Bash(pnpm test:coverage)",
+      "Bash(pnpm test:e2e)",
+      "Bash(pnpm build:*)",
+      "Bash(pnpm build:extension)",
+      "Bash(pnpm build:verifier)",
+      "Bash(npx tsc --noEmit -p tsconfig.node.json)",
+      "Bash(npx tsc --noEmit -p tsconfig.web.json)",
+      "Bash(npx tsc --noEmit -p extension/tsconfig.json)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git blame:*)",
+      "Bash(gh issue view:*)",
+      "Bash(gh issue list:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr diff:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh run view:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh label list:*)"
+    ]
+  }
+}

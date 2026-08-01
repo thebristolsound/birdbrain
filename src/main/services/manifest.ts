@@ -40,6 +40,8 @@ export function initManifest(caseDir: string): void {
 
 // Reads the last line to determine prevHash + next index.
 // O(N) on manifest size but only called once per append; manifests are small.
+// Deliberately STRICT, unlike readEntries(): a malformed tail line throws so a
+// corrupt manifest can never be read as empty and silently restart the chain.
 export function getManifestHead(caseDir: string): ManifestHead {
   const path = join(caseDir, MANIFEST_FILENAME)
   if (!existsSync(path) || statSync(path).size === 0) {
@@ -53,6 +55,106 @@ export function getManifestHead(caseDir: string): ManifestHead {
     entryHash: string
   }
   return { prevHash: last.entryHash, nextIndex: last.index + 1 }
+}
+
+export interface ManifestHeadRef {
+  index: number
+  entryHash: string
+}
+
+export interface ManifestSnapshot {
+  jsonl: Buffer
+  entries: Record<string, unknown>[]
+  head: ManifestHeadRef | null
+}
+
+// Lenient line parser for read-only consumers (the export snapshot,
+// trusted-time resolution): unparseable lines become {} — inert to every
+// consumer — instead of throwing. The append path must NOT use this;
+// getManifestHead is the strict dialect (see its comment).
+export function readEntries(jsonl: string): Record<string, unknown>[] {
+  return jsonl
+    .split('\n')
+    .filter((line) => line.trim().length > 0)
+    .map((line) => {
+      try {
+        return JSON.parse(line) as Record<string, unknown>
+      } catch {
+        return {}
+      }
+    })
+}
+
+// Head reference (last entry's index + entryHash) over leniently-read entries.
+// Null when the manifest is empty or its last line is unreadable — consumers
+// render that as an explicit gap rather than omitting the reference.
+export function head(entries: Record<string, unknown>[]): ManifestHeadRef | null {
+  const last = entries.at(-1) as { index?: number; entryHash?: string } | undefined
+  return typeof last?.index === 'number' && typeof last.entryHash === 'string'
+    ? { index: last.index, entryHash: last.entryHash }
+    : null
+}
+
+// One read of a case manifest, to be shared by every consumer of that read:
+// raw bytes (for bundling), lenient entries, and the head reference. Callers
+// that need more than one of these must take a single snapshot — reading twice
+// would let the timestamp worker append between the reads, so the consumers
+// could describe different manifest states.
+export function readManifestSnapshot(caseDir: string): ManifestSnapshot {
+  const path = join(caseDir, MANIFEST_FILENAME)
+  const jsonl = existsSync(path) ? readFileSync(path) : Buffer.alloc(0)
+  const entries = readEntries(jsonl.toString('utf-8'))
+  return { jsonl, entries, head: head(entries) }
+}
+
+// A file packaged into an export (evidence .zip or .birdbrain archive), as
+// recorded in the package's artifact index.
+export interface PackagedArtifact {
+  path: string
+  sha256: string
+  sizeBytes: number
+}
+
+// THE packageHash recipe — the single authoritative statement of it. Every
+// producer (evidence export, case-archive export) and checker (archive
+// inspect) calls this function; do not restate the recipe elsewhere.
+//
+// packageHash commits to every packaged file's content via the artifact list:
+// sort the artifacts by path (for determinism), then
+// sha256(canonicalStringify(sortedArtifacts)). It deliberately does NOT hash
+// the final zip: the hash feeds a signed manifest entry that ships inside that
+// very zip, so hashing the zip would be circular. The package's own index file
+// (evidence.json / package.json), which carries this hash, is likewise
+// excluded from the artifact list.
+export function packageHash(artifacts: PackagedArtifact[]): string {
+  const sorted = [...artifacts].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+  return createHash('sha256').update(Buffer.from(canonicalStringify(sorted), 'utf-8')).digest('hex')
+}
+
+export interface ArtifactAccumulator {
+  // Zip entries in add() order, ready for createStoredZip.
+  entries: Array<{ name: string; data: Buffer | string }>
+  // The artifact index packageHash() is computed over.
+  artifacts: PackagedArtifact[]
+  // Records a file into both lists and returns its sha256.
+  add: (name: string, value: Buffer | string) => string
+}
+
+// The shared packaging accumulator: every file added through it lands in the
+// zip AND in the artifact index, so the index cannot silently omit a packaged
+// file. Index files themselves are pushed onto `entries` directly (never
+// through add) — see packageHash() for why they stay out of the artifact list.
+export function createArtifactAccumulator(): ArtifactAccumulator {
+  const entries: Array<{ name: string; data: Buffer | string }> = []
+  const artifacts: PackagedArtifact[] = []
+  const add = (name: string, value: Buffer | string): string => {
+    const buf = Buffer.isBuffer(value) ? value : Buffer.from(value, 'utf-8')
+    const digest = createHash('sha256').update(buf).digest('hex')
+    entries.push({ name, data: buf })
+    artifacts.push({ path: name, sha256: digest, sizeBytes: buf.length })
+    return digest
+  }
+  return { entries, artifacts, add }
 }
 
 export type ManifestEntryInput =
@@ -116,10 +218,8 @@ export type ManifestEntryInput =
     }
   | {
       // Signed audit record of an evidence-package export (#124). `packageHash`
-      // is sha256(canonicalStringify(sortedArtifacts)) from evidence.json — it
-      // commits to every packaged file's content WITHOUT covering the final
-      // .zip (which would be circular, since this entry lives in the bundled
-      // manifest). `appendManifestEntry` adds index/prevHash/entryHash/signature.
+      // is computed by packageHash() above over evidence.json's artifact list.
+      // `appendManifestEntry` adds index/prevHash/entryHash/signature.
       type: 'export'
       caseId: string
       timestamp: string
@@ -130,10 +230,8 @@ export type ManifestEntryInput =
       verificationResult: ExportVerificationResult
     }
   | {
-      // Signed audit record of a case-archive export (.birdbrain). packageHash
-      // uses the same recipe as the evidence export: sha256(canonicalStringify
-      // (sortedArtifacts)), never hashing the final zip (circular — this
-      // entry's manifest copy ships inside it).
+      // Signed audit record of a case-archive export (.birdbrain). `packageHash`
+      // is computed by packageHash() above over package.json's artifact list.
       type: 'archive-export'
       caseId: string
       timestamp: string
@@ -350,6 +448,12 @@ export async function withCaptureEntry<T>(
 }
 
 export type { ChainVerifyResult }
+
+// Main-process consumers verifying manifest text that is NOT this case dir's
+// live file (e.g. archive inspect, against the archive's own bundled key) go
+// through this re-export, so chain verification is always reached via the
+// Manifest module. The algorithm itself lives in the shared verify-core.
+export { verifyManifestChainText }
 
 // Re-reads the manifest and verifies the hash chain — recomputed entryHashes,
 // linkage, v2+ signatures — against this installation's public key. Thin fs

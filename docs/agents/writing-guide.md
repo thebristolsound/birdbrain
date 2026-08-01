@@ -1,4 +1,4 @@
-# Writing Guide
+# Writing guide
 
 How to write documentation for Birdbrain — audience, claim discipline, tone, and the shape each kind of document takes.
 
@@ -21,7 +21,7 @@ Write in the register [`README.md`](../../README.md) already uses: plain, specif
 
 This is the part that matters most, and it comes from the assurance baseline in [`CONTEXT.md`](../../CONTEXT.md) and [ADR-0004](../adr/0004-adopt-osint-assurance-baseline.md).
 
-- **State what a mechanism proves, and what it does not.** A hash chain shows a manifest has not been altered since it was written. It does not show the page was genuine, or that the capture happened when the timestamp says. Write both halves.
+- **State what a mechanism proves, and what it does not.** A verified hash chain shows that nobody edited the manifest *without the installation's signing key*. It does not constrain the Operator, who holds that key and can mint an internally consistent chain — `SECURITY.md` says so outright. It does not show the page was genuine. And the RFC 3161 token anchors a capture's content hash, not the manifest head, so it dates the content rather than proving the chain around it is intact. Write both halves.
 - **No unqualified assurance words.** "Court-admissible", "tamper-proof", "forensically sound", "compliant", "verified" — none of these stand alone. Name the standard and its version, or describe the concrete property instead.
 - **Document limitations next to the capability, not in a footnote.** `SECURITY.md` pre-declares unsigned artifacts, the `unsafe-inline` CSP, and the safeStorage plaintext fallback. Follow that pattern.
 - **Do not describe unshipped behaviour in the present tense.** A spec describes a design; reference docs describe what the code does today. If a page documents something behind a flag or unmerged, say so.
@@ -47,9 +47,9 @@ The failure mode to avoid is copy that sounds authoritative and says nothing. Co
 - **Do not pad lists to look thorough.** Three real items beat five where two are filler.
 - **Prefer the concrete verb.** "Writes a manifest entry attributed to the Operator" over "handles provenance tracking".
 - **Say where data goes.** For anything touching capture, storage, export, or AI, name the destination — disk path, loopback port, or external host.
-- **Avoid "AI-powered" as a description.** Name the model, the provider, and what it is given. Birdbrain has real AI functionality; describe it literally.
+- **Avoid "AI-powered" as a description.** Name the provider, the model, and what gets sent. Birdbrain's analysis calls OpenRouter with an operator-chosen model and sends capture text; say that, not "AI-powered analysis".
 
-Style mechanics: sentence-case headings, ASCII punctuation, backticks for paths, commands, and identifiers, and code fences tagged with a language.
+Style mechanics: sentence-case headings, straight quotes and ASCII apostrophes, backticks for paths, commands, and identifiers, and code fences tagged with a language. Em dashes are house style — `README.md`, `SECURITY.md`, and `CLAUDE.md` all use them.
 
 ## Document types
 
@@ -74,7 +74,7 @@ Placement and naming come from [`docs/README.md`](../README.md). What each type 
 3. **Image paths are `public/`-relative** (`/assets/x.png`). Fumadocs applies `basePath` for you — never hardcode `/birdbrain/`.
 4. **A page absent from `meta.json` is silently dropped from the sidebar.** Adding a page means adding both.
 
-Build the site from inside `website/` (`pnpm build`) before merging a content change — it has its own lockfile and a root `pnpm install` does not touch it.
+Build the site from inside `website/` (`pnpm build`) before merging a change under `website/` — it has its own lockfile and a root `pnpm install` does not touch it. Files under `docs/` are not part of the site build and need no such check.
 
 ## Before merging
 

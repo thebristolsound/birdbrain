@@ -22,8 +22,12 @@ this file only adds the duties CLAUDE.md does not cover.
 ## Conventions that gate your diff
 
 - Code style: no semicolons, single quotes, no trailing commas, 100-char width, 2-space indent,
-  strict TypeScript. No `any` without an `// eslint-disable` and a reason. Prefer destructuring.
-  Prefer semantic theme tokens (`bg-canvas`, `text-text-primary`) over raw Tailwind colors.
+  strict TypeScript. Avoid `any`. Where it is genuinely unavoidable, suppress it with a
+  rule-scoped, line-scoped directive that names the violated rule and gives a reason:
+  `// eslint-disable-next-line @typescript-eslint/no-explicit-any -- <why it is unavoidable>`.
+  Never a bare or file-wide `/* eslint-disable */` — that silences unrelated rules for the rest
+  of the file. Prefer destructuring. Prefer semantic theme tokens (`bg-canvas`,
+  `text-text-primary`) over raw Tailwind colors.
 - IPC: all renderer↔main traffic goes through typed channels in `src/shared/ipc.ts`
   (`domain:action` naming), registered in `src/main/ipcHandlers.ts` via the `handle()` wrapper,
   exposed through the preload bridge. Never invent an ad-hoc channel.
@@ -55,10 +59,15 @@ Check two triggers: the issue carries the `evidence-affecting` label, OR your di
 list (`docs/specs/2026-07-31-evidence-affecting-paths-assessment.md`, until a maintained list
 supersedes it). If either fires:
 
-1. Add an **Evidence impact** section to the PR: what evidentiary result or interpretation
+1. Apply the `evidence-affecting` label to the **pull request** itself
+   (`gh pr edit <n> --add-label evidence-affecting`). Issue labels and PR labels are
+   independent: a path-list match never labels anything on its own, and a label on the linked
+   issue does not propagate to the PR. The reviewer's backstop reads the PR's labels, so an
+   unlabelled PR is a compliance failure even when the linked issue is labelled correctly.
+2. Add an **Evidence impact** section to the PR: what evidentiary result or interpretation
    could change, what verification proves and does not prove after your change, and whether
    backward verification of existing evidence packages is preserved.
-2. Extend a known-answer test covering the affected method — or justify its absence explicitly
+3. Extend a known-answer test covering the affected method — or justify its absence explicitly
    in that section. Silence is not an option; "no KAT needed because X" is.
 
 Evidence-affecting PRs are never merged without human review. Do not weaken that.

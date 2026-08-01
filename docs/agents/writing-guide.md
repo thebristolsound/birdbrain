@@ -67,7 +67,7 @@ Placement and naming come from [`docs/README.md`](../README.md). What each type 
 
 ## MDX constraints
 
-`website/content/docs/` is Fumadocs MDX. Four things break the build or route wrong, all documented in the "Documentation site" section of [`AGENTS.md`](../../AGENTS.md):
+`website/content/docs/` is Fumadocs MDX. Four things break the build or route wrong. The first three come from the "Documentation site" section of [`AGENTS.md`](../../AGENTS.md); the `meta.json` rule is in its "Documentation conventions" section.
 
 1. **Bare `{...}` in prose is a compile error.** MDX parses braces as a JSX expression. Wrap them in backticks.
 2. **Internal links need the `./name.mdx` form.** `createRelativeLink` only rewrites hrefs starting with `./` or `../`; a bare slug is emitted as-is and resolves wrong under `trailingSlash: true`.

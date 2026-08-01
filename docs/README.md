@@ -13,7 +13,7 @@ Author-time documentation for the project. All folders are tracked, including `p
 | `archive/`   | Superseded specs moved out of the active folders.                                                                          | Original filename preserved                                                  | yes                 |
 | `superpowers/` | Output from the superpowers agent skill — managed by tooling, do not hand-edit.                                          | Tool-managed                                                                 | yes (frozen)        |
 
-`plans/` has been tracked since July 2026. Plans remain author-time artifacts: they get checked off and go stale, and staleness is expected. Commit them in docs-only commits for history; bundling them into feature PRs creates noise, so keep them out of `src/**` PRs. Tracked durable docs (specs, ADRs, reference) **must be committed in their own PR** — never bundled with a `src/**` change.
+`plans/` has been tracked since July 2026. Plans remain author-time artifacts: they get checked off and go stale, and staleness is expected. Commit them in docs-only commits for history; bundling them into feature PRs creates noise, so keep them out of `src/**` PRs. Durable docs (specs, ADRs, reference) are different: they **may ship in the same PR as the code they describe**, and bundling a doc with the `src/**` change it documents is preferred — see the "Documentation conventions" section in `CLAUDE.md`.
 
 ## Conventions
 
@@ -21,6 +21,7 @@ Author-time documentation for the project. All folders are tracked, including `p
 - New implementation plan? Drop it in `plans/` with today's date as the prefix.
 - Superseding an existing doc? Move the old file to `archive/` (keep its original name) before adding the replacement.
 - Permanent technical reference (architecture, pipelines, protocols)? Goes in `website/content/docs/` without a date prefix, as `.mdx` with `title`/`description` frontmatter, plus an entry in `website/content/docs/meta.json`. See the "Documentation site" section in `CLAUDE.md` for the MDX constraints (braces, link form, image paths).
+- Writing any of the above? See [`agents/writing-guide.md`](agents/writing-guide.md) for audience, claim discipline, tone, and the shape each document type takes.
 
 ## Tool-specific path overrides
 

@@ -1,4 +1,7 @@
-// Stub types — real implementations come in later specs
+// Shared domain types. Imported by main, preload and renderer alike, so a
+// change here is a change to the contract between all three.
+
+import type { NoteAnchor } from '@shared/noteAnchor'
 
 export interface Case {
   id: string
@@ -130,7 +133,7 @@ export interface WaybackLookupResult {
 // A WaybackSnapshot the user has pinned to a capture (persisted corroboration
 // reference). Columns reserved for the future download-later phase
 // (contentPath/contentHash/manifestIndex) are intentionally omitted here.
-export interface ArchiveRef {
+export interface WaybackRef {
   id: string
   captureId: string
   snapshotTimestamp: string // ISO 8601
@@ -283,6 +286,195 @@ export interface DiagnosticsSnapshot {
   slowOps: DiagnosticsSlowOp[]
 }
 
+// Diagnostic logging. Entries are structural only — see logSafe.ts for the
+// boundary that keeps investigation data (URLs, case names, paths) out of
+// them. No `message` field: free-form prose (e.g. a case name typed into an
+// error string) has no path/URL shape a regex could catch, so the field that
+// would carry it is simply not part of the type. `name` and `code` are
+// allowlisted (see ERROR_NAMES below); `stack` is capped and relativized to
+// the app root.
+//
+// The four vocabularies live here rather than in logSafe.ts because all three
+// processes need them: the renderer types its own payloads against LogCode,
+// and `src/shared/**` may not import from `@main/*`. Only the vocabulary is
+// shared — the branding, validators and per-key formats stay in logSafe.ts,
+// which is main-only by design.
+export type LogLevel = 'error' | 'warn' | 'info'
+
+// Pinned set of main-process log sources, plus a plain 'renderer' member —
+// not a `renderer:*` prefix convention — so the forwarding bridge can filter
+// on a single equality check (`entry.source === 'renderer'`); the renderer's
+// own codes ('query.failed' etc.) already carry whatever differentiation is
+// needed for that side.
+export const LOG_SOURCES = [
+  'app',
+  'ipc',
+  'captureServer',
+  'captureLifecycle',
+  'backgroundRenderer',
+  'openrouter',
+  'serverToken',
+  'settings',
+  'thumbnails',
+  'selectorLifecycle',
+  'consentBlocker',
+  'timestampWorker',
+  'renderer'
+] as const
+export type LogSource = (typeof LOG_SOURCES)[number]
+
+// Pinned code vocabulary, then codes appended for real console.* call sites in
+// src/main (12 files, audited) that don't map onto any pinned code without
+// forcing a poor fit. Extending this union is the review gate for a new call
+// site.
+export const LOG_CODES = [
+  // --- pinned ---
+  'app.session_start',
+  'app.uncaught_exception',
+  'app.unhandled_rejection',
+  'app.render_process_gone',
+  'app.child_process_gone',
+  'app.storage_init_failed',
+  'capture.failed',
+  'capture.screenshot_dropped',
+  'capture.server_started',
+  'capture.extraction_failed',
+  'ipc.handler_threw',
+  'query.failed',
+  'mutation.failed',
+  'react.render_error',
+  // --- appended: real call sites with no pinned-code fit ---
+  'captureServer.selector_create_failed',
+  'captureLifecycle.tls_refetch_failed',
+  'captureLifecycle.selector_match_failed',
+  'captureLifecycle.reprocess_failed',
+  'backgroundRenderer.trim_failed',
+  'backgroundRenderer.consent_blocker_disable_failed',
+  'backgroundRenderer.consent_blocker_enable_failed',
+  'consentBlocker.filter_engine_failed',
+  'selectorLifecycle.retroactive_match_failed',
+  'serverToken.token_invalid',
+  'serverToken.token_read_failed',
+  'serverToken.token_persist_failed',
+  'settings.schema_invalid',
+  'thumbnails.generate_failed',
+  'openrouter.rate_limited',
+  'openrouter.request_failed',
+  'openrouter.retry',
+  'openrouter.retries_exhausted',
+  'timestampWorker.stamp_failed',
+  // Fallback for notify.error() with no explicit code. Its presence in a log
+  // is a signal to give that call site a real code.
+  'app.unclassified_error',
+  'app.startup_failed',
+  'app.bug_report_failed',
+  'app.installation_id'
+] as const
+export type LogCode = (typeof LOG_CODES)[number]
+
+// Pinned context key vocabulary. A LogEntry's `context` being
+// `Partial<Record<LogContextKey, ...>>` rather than `Record<string, ...>`
+// makes a computed or misspelled key a compile error at any call site that
+// writes an object literal; logSafe's `context()` is the runtime second net
+// for values built dynamically (spread, computed keys) that bypass that check.
+export const LOG_CONTEXT_KEYS = [
+  'captureId',
+  'caseId',
+  'noteId',
+  'selectorId',
+  'bytes',
+  'count',
+  'ms',
+  'port',
+  'format',
+  'reason',
+  'exitCode',
+  'processType',
+  'errorCode',
+  'status',
+  // session.start metadata — the only identifying fields a standalone
+  // birdbrain.log carries, so they must be permitted keys.
+  'installationId',
+  'version',
+  'platform',
+  'installFormat',
+  'packaged',
+  // Renderer-originated: the query-key domain segment, the ErrorBoundary that
+  // caught, and the IPC channel that threw. All three are static identifiers
+  // from the source, never user data — but they still pass through the
+  // per-key format check on the main side, because the renderer is not
+  // trusted.
+  'domain',
+  'boundary',
+  'channel',
+  'attempt'
+] as const
+export type LogContextKey = (typeof LOG_CONTEXT_KEYS)[number]
+
+// Known error class names seen in this codebase (built-ins, DOM/fetch
+// AbortError, better-sqlite3's SqliteError, and this app's own IpcFailure /
+// ManifestRollback). Not exhaustive — `err.name` is a writable, unvalidated
+// string, so anything outside this set records as 'UnknownError' rather than
+// being passed through.
+export const ERROR_NAMES = [
+  'Error',
+  'TypeError',
+  'RangeError',
+  'SyntaxError',
+  'URIError',
+  'ReferenceError',
+  'EvalError',
+  'AggregateError',
+  'DOMException',
+  'AbortError',
+  'SqliteError',
+  'IpcFailure',
+  'ManifestRollback'
+] as const
+
+export interface LoggedError {
+  name: string
+  code: string | null
+  stack: string | null
+}
+
+export interface LogEntry {
+  id: string
+  sessionId: string
+  timestamp: string
+  level: LogLevel
+  source: LogSource
+  code: LogCode
+  // Partial<Record<...>> so an arbitrary computed key is a COMPILE error.
+  context?: Partial<Record<LogContextKey, string | number | boolean | null>>
+  error?: LoggedError
+}
+
+// One record per app launch. cleanExit flips to true only in before-quit, so a
+// record left false is how a crash or power loss becomes visible next launch.
+export interface SessionRecord {
+  sessionId: string
+  startedAt: string
+  endedAt: string | null
+  version: string
+  platform: string
+  installFormat: string
+  cleanExit: boolean
+  // Set once the crash prompt has been shown, so it is offered exactly once.
+  acknowledged?: boolean
+}
+
+export interface BugReportInput {
+  whatYouDid: string
+  whatYouExpected: string
+  whatHappened: string
+  correlationId?: string
+}
+
+export interface BugReportResult {
+  path: string
+}
+
 export interface OpenRouterModel {
   id: string
   name: string
@@ -373,6 +565,11 @@ export interface Note {
   body: string
   /** Serialized ProseMirror JSON. Absent on notes written before rich text. */
   bodyDoc?: string
+  /**
+   * What the note points at. Parsed and validated in main on every write, so
+   * a stored anchor always fits one of the four kinds. Absent = unanchored.
+   */
+  anchor?: NoteAnchor
   sourceUrl?: string
   screenshotPath?: string
   createdAt: string

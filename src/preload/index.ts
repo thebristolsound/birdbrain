@@ -1,418 +1,241 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { IPC_CHANNELS } from '@shared/ipc'
-import type {
-  CreateCaseParams,
-  UpdateCaseParams,
-  CreateTagParams,
-  UpdateTagParams,
-  CaptureTagParams,
-  CreateSelectorParams,
-  UpdateSelectorParams,
-  CreateNoteParams,
-  UpdateNoteParams,
-  BulkCreateSelectorsParams,
-  DbTableRowsParams,
-  DbCreateRowParams,
-  DbUpdateRowParams,
-  DbRowIdentifier,
-  DbExportTableParams,
-  DbStats,
-  DbTableRowsResult,
-  OrphanReport,
-  AnalyzeCaptureParams,
-  SaveAnnotationsParams,
-  UpsertAnnotationPinParams,
-  SelectorRematchedEvent,
-  DeepLinkTarget,
-  ExportProgressEvent,
-  ExportResult,
-  PinArchiveSnapshotParams,
-  ArchiveProgressEvent,
-  ArchiveExportResult,
-  RecaptureEnqueuePayload,
-  EnqueueResult,
-  RecaptureQueueStatus
+import {
+  IPC_CHANNELS,
+  type ContractedChannel,
+  type IpcEventChannel,
+  type IpcEventContract,
+  type IpcInvokeContract
 } from '@shared/ipc'
-import type {
-  Case,
-  Capture,
-  Tag,
-  BirdbrainSettings,
-  OpenRouterModel,
-  ExportOptions,
-  ExportPreflight,
-  Selector,
-  ActiveCaseSelectors,
-  CaptureEvent,
-  Note,
-  CaptureAnalysis,
-  TokenUsage,
-  ExtractedDataCategory,
-  ExtractedDataSubcategory,
-  ExtractedDataItem,
-  ExtractedDataSearchResult,
-  AnnotationsBundle,
-  CaptureAnnotations,
-  AnnotationPin,
-  OperatorIdentity,
-  ArchiveRef,
-  WaybackLookupResult,
-  ArchiveInspectReport,
-  UpdateStatus,
-  DiagnosticsSnapshot
-} from '@shared/types'
 
-// Unwrap IpcResult from handlers that return structured results
+// Every invoke channel is registered through handle(), so every result carries
+// the { ok, data | error } envelope. A result without one means the channel was
+// registered raw — a wiring bug we surface rather than pass through.
 async function unwrapIpc<T>(promise: Promise<unknown>): Promise<T> {
   const result = await promise
-  if (result && typeof result === 'object' && 'ok' in result) {
-    if ((result as { ok: boolean }).ok) {
-      return (result as { ok: true; data: T }).data
-    }
-    const err = result as { ok: false; error: string; code?: string }
-    const error = new Error(err.error)
-    ;(error as unknown as { code?: string }).code = err.code
-    throw error
+  if (!result || typeof result !== 'object' || !('ok' in result)) {
+    throw new Error('IPC result is missing its envelope')
   }
-  return result as T
+  if ((result as { ok: boolean }).ok) {
+    return (result as { ok: true; data: T }).data
+  }
+  const err = result as { ok: false; error: string; code?: string }
+  const error = new Error(err.error)
+  ;(error as unknown as { code?: string }).code = err.code
+  throw error
+}
+
+// Builds a renderer-facing method for one invoke channel. Both the argument
+// tuple and the resolved type come from IpcInvokeContract, so a bridge method
+// has no hand-written signature that could drift from its handler.
+function bridge<C extends ContractedChannel>(
+  channel: C
+): (...args: IpcInvokeContract[C]['args']) => Promise<IpcInvokeContract[C]['result']> {
+  return (...args) => unwrapIpc(ipcRenderer.invoke(channel, ...args))
+}
+
+// Builds a renderer-facing subscribe method for one event channel. The callback
+// payload comes from IpcEventContract; the returned function detaches the
+// listener, matching the previous per-event helpers.
+function subscribe<C extends IpcEventChannel>(
+  channel: C
+): (callback: (payload: IpcEventContract[C]) => void) => () => void {
+  return (callback) => {
+    const handler = (_: unknown, payload: IpcEventContract[C]): void => callback(payload)
+    ipcRenderer.on(channel, handler)
+    return () => {
+      ipcRenderer.removeListener(channel, handler)
+    }
+  }
 }
 
 const birdbrain = {
   cases: {
-    list: (): Promise<Case[]> => ipcRenderer.invoke(IPC_CHANNELS.CASES_LIST),
-    get: (id: string): Promise<Case | undefined> => ipcRenderer.invoke(IPC_CHANNELS.CASES_GET, id),
-    create: (params: CreateCaseParams): Promise<Case> =>
-      unwrapIpc<Case>(ipcRenderer.invoke(IPC_CHANNELS.CASES_CREATE, params)),
-    update: (params: UpdateCaseParams): Promise<Case | undefined> =>
-      unwrapIpc<Case | undefined>(ipcRenderer.invoke(IPC_CHANNELS.CASES_UPDATE, params)),
-    delete: (id: string): Promise<boolean> =>
-      unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.CASES_DELETE, id)),
-    exportArchive: (caseId: string): Promise<ArchiveExportResult> =>
-      unwrapIpc<ArchiveExportResult>(ipcRenderer.invoke(IPC_CHANNELS.CASES_EXPORT_ARCHIVE, caseId)),
-    inspectArchive: (): Promise<ArchiveInspectReport | null> =>
-      unwrapIpc<ArchiveInspectReport | null>(
-        ipcRenderer.invoke(IPC_CHANNELS.CASES_INSPECT_ARCHIVE)
-      ),
-    importArchive: (archivePath: string, overrideTamper: boolean): Promise<{ newCaseId: string }> =>
-      unwrapIpc<{ newCaseId: string }>(
-        ipcRenderer.invoke(IPC_CHANNELS.CASES_IMPORT_ARCHIVE, archivePath, overrideTamper)
-      )
+    list: bridge(IPC_CHANNELS.CASES_LIST),
+    get: bridge(IPC_CHANNELS.CASES_GET),
+    create: bridge(IPC_CHANNELS.CASES_CREATE),
+    update: bridge(IPC_CHANNELS.CASES_UPDATE),
+    delete: bridge(IPC_CHANNELS.CASES_DELETE),
+    exportArchive: bridge(IPC_CHANNELS.CASES_EXPORT_ARCHIVE),
+    inspectArchive: bridge(IPC_CHANNELS.CASES_INSPECT_ARCHIVE),
+    importArchive: bridge(IPC_CHANNELS.CASES_IMPORT_ARCHIVE)
   },
   captures: {
-    list: (caseId: string): Promise<Capture[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_LIST, caseId),
-    get: (id: string): Promise<Capture | undefined> =>
-      ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_GET, id),
-    delete: (id: string): Promise<boolean> =>
-      unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_DELETE, id)),
-    getContent: (captureId: string, type: 'html' | 'png' | 'txt'): Promise<string | null> =>
-      ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_GET_CONTENT, captureId, type),
-    getThumbnail: (captureId: string): Promise<string | null> =>
-      ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_GET_THUMBNAIL, captureId),
-    getMatchingSelectors: (captureId: string): Promise<Selector[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_GET_MATCHING_SELECTORS, captureId),
-    download: (captureId: string): Promise<string | null> =>
-      unwrapIpc<string | null>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_DOWNLOAD, captureId)),
-    downloadPdf: (captureId: string): Promise<string | null> =>
-      unwrapIpc<string | null>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_DOWNLOAD_PDF, captureId)),
-    downloadScreenshot: (captureId: string): Promise<string | null> =>
-      unwrapIpc<string | null>(
-        ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_DOWNLOAD_SCREENSHOT, captureId)
-      ),
-    openExternal: (url: string): Promise<void> =>
-      unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_OPEN_EXTERNAL, url)),
-    countsByCase: (): Promise<Record<string, number>> =>
-      unwrapIpc<Record<string, number>>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_COUNTS_BY_CASE)),
-    toggleFavorite: (captureId: string): Promise<boolean> =>
-      unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_TOGGLE_FAVORITE, captureId)),
-    isFavorite: (captureId: string): Promise<boolean> =>
-      unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_IS_FAVORITE, captureId)),
-    listFavorites: (caseId: string): Promise<string[]> =>
-      unwrapIpc<string[]>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_LIST_FAVORITES, caseId)),
-    verify: (captureId: string): Promise<import('@shared/types').HashVerification> =>
-      unwrapIpc<import('@shared/types').HashVerification>(
-        ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_VERIFY, captureId)
-      ),
-    getMhtmlUrl: (captureId: string): Promise<string | null> =>
-      unwrapIpc<string | null>(ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_GET_MHTML_URL, captureId))
+    list: bridge(IPC_CHANNELS.CAPTURES_LIST),
+    get: bridge(IPC_CHANNELS.CAPTURES_GET),
+    delete: bridge(IPC_CHANNELS.CAPTURES_DELETE),
+    getContent: bridge(IPC_CHANNELS.CAPTURES_GET_CONTENT),
+    getThumbnail: bridge(IPC_CHANNELS.CAPTURES_GET_THUMBNAIL),
+    getMatchingSelectors: bridge(IPC_CHANNELS.CAPTURES_GET_MATCHING_SELECTORS),
+    download: bridge(IPC_CHANNELS.CAPTURES_DOWNLOAD),
+    downloadPdf: bridge(IPC_CHANNELS.CAPTURES_DOWNLOAD_PDF),
+    downloadScreenshot: bridge(IPC_CHANNELS.CAPTURES_DOWNLOAD_SCREENSHOT),
+    openExternal: bridge(IPC_CHANNELS.CAPTURES_OPEN_EXTERNAL),
+    countsByCase: bridge(IPC_CHANNELS.CAPTURES_COUNTS_BY_CASE),
+    toggleFavorite: bridge(IPC_CHANNELS.CAPTURES_TOGGLE_FAVORITE),
+    isFavorite: bridge(IPC_CHANNELS.CAPTURES_IS_FAVORITE),
+    listFavorites: bridge(IPC_CHANNELS.CAPTURES_LIST_FAVORITES),
+    verify: bridge(IPC_CHANNELS.CAPTURES_VERIFY),
+    getMhtmlUrl: bridge(IPC_CHANNELS.CAPTURES_GET_MHTML_URL)
   },
   recapture: {
-    enqueue: (payload: RecaptureEnqueuePayload): Promise<EnqueueResult> =>
-      unwrapIpc<EnqueueResult>(ipcRenderer.invoke(IPC_CHANNELS.RECAPTURE_ENQUEUE, payload)),
-    queueStatus: (): Promise<RecaptureQueueStatus> =>
-      unwrapIpc<RecaptureQueueStatus>(ipcRenderer.invoke(IPC_CHANNELS.RECAPTURE_QUEUE_STATUS))
+    enqueue: bridge(IPC_CHANNELS.RECAPTURE_ENQUEUE),
+    queueStatus: bridge(IPC_CHANNELS.RECAPTURE_QUEUE_STATUS)
   },
   tags: {
-    list: (): Promise<Tag[]> => ipcRenderer.invoke(IPC_CHANNELS.TAGS_LIST),
-    create: (params: CreateTagParams): Promise<Tag> =>
-      unwrapIpc<Tag>(ipcRenderer.invoke(IPC_CHANNELS.TAGS_CREATE, params)),
-    update: (params: UpdateTagParams): Promise<Tag | undefined> =>
-      unwrapIpc<Tag | undefined>(ipcRenderer.invoke(IPC_CHANNELS.TAGS_UPDATE, params)),
-    delete: (id: string): Promise<boolean> =>
-      unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.TAGS_DELETE, id)),
-    addToCapture: (params: CaptureTagParams): Promise<void> =>
-      unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.TAGS_ADD_TO_CAPTURE, params)),
-    removeFromCapture: (params: CaptureTagParams): Promise<void> =>
-      unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.TAGS_REMOVE_FROM_CAPTURE, params)),
-    getForCapture: (captureId: string): Promise<Tag[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, captureId),
-    countForCase: (caseId: string): Promise<number> =>
-      ipcRenderer.invoke(IPC_CHANNELS.TAGS_COUNT_FOR_CASE, caseId),
-    usageCountsForCase: (caseId: string): Promise<Record<string, number>> =>
-      ipcRenderer.invoke(IPC_CHANNELS.TAGS_USAGE_COUNTS_FOR_CASE, caseId)
+    list: bridge(IPC_CHANNELS.TAGS_LIST),
+    create: bridge(IPC_CHANNELS.TAGS_CREATE),
+    update: bridge(IPC_CHANNELS.TAGS_UPDATE),
+    delete: bridge(IPC_CHANNELS.TAGS_DELETE),
+    addToCapture: bridge(IPC_CHANNELS.TAGS_ADD_TO_CAPTURE),
+    removeFromCapture: bridge(IPC_CHANNELS.TAGS_REMOVE_FROM_CAPTURE),
+    getForCapture: bridge(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE),
+    countForCase: bridge(IPC_CHANNELS.TAGS_COUNT_FOR_CASE),
+    usageCountsForCase: bridge(IPC_CHANNELS.TAGS_USAGE_COUNTS_FOR_CASE)
   },
   selectors: {
-    list: (caseId: string): Promise<Selector[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_LIST, caseId),
-    get: (id: string): Promise<Selector | undefined> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_GET, id),
-    create: (params: CreateSelectorParams): Promise<Selector> =>
-      unwrapIpc<Selector>(ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_CREATE, params)),
-    update: (params: UpdateSelectorParams): Promise<Selector | undefined> =>
-      unwrapIpc<Selector | undefined>(ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_UPDATE, params)),
-    delete: (id: string): Promise<boolean> =>
-      unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_DELETE, id)),
-    listActive: (): Promise<ActiveCaseSelectors[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_LIST_ACTIVE),
-    matchCounts: (caseId: string): Promise<Record<string, number>> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_MATCH_COUNTS, caseId),
-    matchingCaptures: (caseId: string, selectorIds: string[]): Promise<string[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_MATCHING_CAPTURES, caseId, selectorIds),
-    coverage: (caseId: string): Promise<{ matched: number; total: number }> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_COVERAGE, caseId),
-    bulkCreate: (params: BulkCreateSelectorsParams): Promise<Selector[]> =>
-      unwrapIpc<Selector[]>(ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_BULK_CREATE, params)),
-    exportMatches: (caseId: string): Promise<{ exported: boolean; path?: string }> =>
-      unwrapIpc<{ exported: boolean; path?: string }>(
-        ipcRenderer.invoke(IPC_CHANNELS.SELECTORS_EXPORT_MATCHES, caseId)
-      )
+    list: bridge(IPC_CHANNELS.SELECTORS_LIST),
+    get: bridge(IPC_CHANNELS.SELECTORS_GET),
+    create: bridge(IPC_CHANNELS.SELECTORS_CREATE),
+    update: bridge(IPC_CHANNELS.SELECTORS_UPDATE),
+    delete: bridge(IPC_CHANNELS.SELECTORS_DELETE),
+    listActive: bridge(IPC_CHANNELS.SELECTORS_LIST_ACTIVE),
+    matchCounts: bridge(IPC_CHANNELS.SELECTORS_MATCH_COUNTS),
+    matchingCaptures: bridge(IPC_CHANNELS.SELECTORS_MATCHING_CAPTURES),
+    coverage: bridge(IPC_CHANNELS.SELECTORS_COVERAGE),
+    bulkCreate: bridge(IPC_CHANNELS.SELECTORS_BULK_CREATE),
+    exportMatches: bridge(IPC_CHANNELS.SELECTORS_EXPORT_MATCHES)
   },
   notes: {
-    list: (caseId: string): Promise<Note[]> => ipcRenderer.invoke(IPC_CHANNELS.NOTES_LIST, caseId),
-    get: (id: string): Promise<Note | undefined> => ipcRenderer.invoke(IPC_CHANNELS.NOTES_GET, id),
-    create: (params: CreateNoteParams): Promise<Note> =>
-      unwrapIpc<Note>(ipcRenderer.invoke(IPC_CHANNELS.NOTES_CREATE, params)),
-    update: (params: UpdateNoteParams): Promise<Note | undefined> =>
-      unwrapIpc<Note | undefined>(ipcRenderer.invoke(IPC_CHANNELS.NOTES_UPDATE, params)),
-    delete: (id: string): Promise<boolean> =>
-      unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.NOTES_DELETE, id)),
-    count: (caseId: string): Promise<number> =>
-      ipcRenderer.invoke(IPC_CHANNELS.NOTES_COUNT, caseId),
-    search: (caseId: string, query: string): Promise<Note[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.NOTES_SEARCH, caseId, query)
+    list: bridge(IPC_CHANNELS.NOTES_LIST),
+    get: bridge(IPC_CHANNELS.NOTES_GET),
+    create: bridge(IPC_CHANNELS.NOTES_CREATE),
+    update: bridge(IPC_CHANNELS.NOTES_UPDATE),
+    delete: bridge(IPC_CHANNELS.NOTES_DELETE),
+    count: bridge(IPC_CHANNELS.NOTES_COUNT),
+    search: bridge(IPC_CHANNELS.NOTES_SEARCH)
   },
   archive: {
-    lookup: (captureId: string): Promise<WaybackLookupResult> =>
-      unwrapIpc<WaybackLookupResult>(ipcRenderer.invoke(IPC_CHANNELS.ARCHIVE_LOOKUP, captureId)),
-    list: (captureId: string): Promise<ArchiveRef[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.ARCHIVE_LIST, captureId),
-    pin: (params: PinArchiveSnapshotParams): Promise<ArchiveRef> =>
-      unwrapIpc<ArchiveRef>(ipcRenderer.invoke(IPC_CHANNELS.ARCHIVE_PIN, params)),
-    unpin: (refId: string): Promise<boolean> =>
-      unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.ARCHIVE_UNPIN, refId))
+    lookup: bridge(IPC_CHANNELS.WAYBACK_LOOKUP),
+    list: bridge(IPC_CHANNELS.WAYBACK_LIST),
+    pin: bridge(IPC_CHANNELS.WAYBACK_PIN),
+    unpin: bridge(IPC_CHANNELS.WAYBACK_UNPIN)
   },
   annotations: {
-    get: (captureId: string): Promise<AnnotationsBundle> =>
-      ipcRenderer.invoke(IPC_CHANNELS.ANNOTATIONS_GET, captureId),
-    save: (params: SaveAnnotationsParams): Promise<CaptureAnnotations> =>
-      unwrapIpc<CaptureAnnotations>(ipcRenderer.invoke(IPC_CHANNELS.ANNOTATIONS_SAVE, params)),
-    delete: (captureId: string): Promise<void> =>
-      unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.ANNOTATIONS_DELETE, captureId)),
-    upsertPin: (params: UpsertAnnotationPinParams): Promise<AnnotationPin> =>
-      unwrapIpc<AnnotationPin>(ipcRenderer.invoke(IPC_CHANNELS.ANNOTATIONS_UPSERT_PIN, params)),
-    deletePin: (pinId: string): Promise<void> =>
-      unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.ANNOTATIONS_DELETE_PIN, pinId))
+    get: bridge(IPC_CHANNELS.ANNOTATIONS_GET),
+    save: bridge(IPC_CHANNELS.ANNOTATIONS_SAVE),
+    delete: bridge(IPC_CHANNELS.ANNOTATIONS_DELETE),
+    upsertPin: bridge(IPC_CHANNELS.ANNOTATIONS_UPSERT_PIN),
+    deletePin: bridge(IPC_CHANNELS.ANNOTATIONS_DELETE_PIN)
   },
 
   extension: {
-    getPath: (): Promise<string> =>
-      unwrapIpc<string>(ipcRenderer.invoke(IPC_CHANNELS.EXTENSION_PATH)),
-    openFolder: (): Promise<void> =>
-      unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.EXTENSION_OPEN_FOLDER))
+    getPath: bridge(IPC_CHANNELS.EXTENSION_PATH),
+    openFolder: bridge(IPC_CHANNELS.EXTENSION_OPEN_FOLDER)
   },
 
-  search: (caseId: string, query: string): Promise<Capture[]> =>
-    ipcRenderer.invoke(IPC_CHANNELS.SEARCH, caseId, query),
+  session: {
+    snapshot: bridge(IPC_CHANNELS.SESSION_SNAPSHOT),
+    activateCase: bridge(IPC_CHANNELS.SESSION_ACTIVATE_CASE),
+    start: bridge(IPC_CHANNELS.SESSION_START),
+    stop: bridge(IPC_CHANNELS.SESSION_STOP)
+  },
+
+  search: bridge(IPC_CHANNELS.SEARCH),
 
   settings: {
-    get: (): Promise<BirdbrainSettings> => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET),
-    update: (partial: Partial<BirdbrainSettings>): Promise<BirdbrainSettings> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_UPDATE, partial),
-    reset: (): Promise<BirdbrainSettings> => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_RESET),
-    testOpenRouter: (apiKey: string): Promise<boolean> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_TEST_OPENROUTER, apiKey),
-    listModels: (apiKey: string): Promise<OpenRouterModel[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_LIST_MODELS, apiKey),
-    getIdentity: (): Promise<OperatorIdentity> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET_IDENTITY),
-    chooseStoragePath: (): Promise<string | null> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH)
+    get: bridge(IPC_CHANNELS.SETTINGS_GET),
+    update: bridge(IPC_CHANNELS.SETTINGS_UPDATE),
+    reset: bridge(IPC_CHANNELS.SETTINGS_RESET),
+    testOpenRouter: bridge(IPC_CHANNELS.SETTINGS_TEST_OPENROUTER),
+    listModels: bridge(IPC_CHANNELS.SETTINGS_LIST_MODELS),
+    getIdentity: bridge(IPC_CHANNELS.SETTINGS_GET_IDENTITY),
+    chooseStoragePath: bridge(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH)
   },
 
   export: {
-    preflight: (caseId: string): Promise<ExportPreflight> =>
-      unwrapIpc<ExportPreflight>(ipcRenderer.invoke(IPC_CHANNELS.EXPORT_PREFLIGHT, caseId)),
-    generateReport: (caseId: string, options: ExportOptions): Promise<ExportResult> =>
-      unwrapIpc<ExportResult>(ipcRenderer.invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, options))
+    preflight: bridge(IPC_CHANNELS.EXPORT_PREFLIGHT),
+    generateReport: bridge(IPC_CHANNELS.EXPORT_GENERATE)
   },
 
   shell: {
-    showItemInFolder: (path: string): Promise<void> =>
-      unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.SHELL_SHOW_ITEM_IN_FOLDER, path)),
-    openPath: (path: string): Promise<string> =>
-      unwrapIpc<string>(ipcRenderer.invoke(IPC_CHANNELS.SHELL_OPEN_PATH, path))
+    showItemInFolder: bridge(IPC_CHANNELS.SHELL_SHOW_ITEM_IN_FOLDER),
+    openPath: bridge(IPC_CHANNELS.SHELL_OPEN_PATH)
   },
 
   app: {
-    getVersion: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.APP_GET_VERSION)
+    getVersion: bridge(IPC_CHANNELS.APP_GET_VERSION)
   },
 
   diagnostics: {
-    get: (): Promise<DiagnosticsSnapshot> => ipcRenderer.invoke(IPC_CHANNELS.DIAGNOSTICS_GET)
+    get: bridge(IPC_CHANNELS.DIAGNOSTICS_GET),
+    log: bridge(IPC_CHANNELS.DIAGNOSTICS_LOG),
+    recentEntries: bridge(IPC_CHANNELS.DIAGNOSTICS_RECENT),
+    revealLog: bridge(IPC_CHANNELS.DIAGNOSTICS_REVEAL_LOG),
+    lastSession: bridge(IPC_CHANNELS.DIAGNOSTICS_LAST_SESSION),
+    createReport: bridge(IPC_CHANNELS.DIAGNOSTICS_CREATE_REPORT)
   },
 
   updates: {
-    getStatus: (): Promise<UpdateStatus> =>
-      ipcRenderer.invoke(IPC_CHANNELS.UPDATES_GET_STATUS),
-    check: (): Promise<UpdateStatus> => ipcRenderer.invoke(IPC_CHANNELS.UPDATES_CHECK),
-    download: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.UPDATES_DOWNLOAD),
-    install: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.UPDATES_INSTALL)
+    getStatus: bridge(IPC_CHANNELS.UPDATES_GET_STATUS),
+    check: bridge(IPC_CHANNELS.UPDATES_CHECK),
+    download: bridge(IPC_CHANNELS.UPDATES_DOWNLOAD),
+    install: bridge(IPC_CHANNELS.UPDATES_INSTALL)
   },
 
   db: {
-    stats: (): Promise<DbStats> => unwrapIpc<DbStats>(ipcRenderer.invoke(IPC_CHANNELS.DB_STATS)),
-    tableRows: (params: DbTableRowsParams): Promise<DbTableRowsResult> =>
-      unwrapIpc<DbTableRowsResult>(ipcRenderer.invoke(IPC_CHANNELS.DB_TABLE_ROWS, params)),
-    createRow: (params: DbCreateRowParams): Promise<Record<string, unknown>> =>
-      unwrapIpc<Record<string, unknown>>(ipcRenderer.invoke(IPC_CHANNELS.DB_CREATE_ROW, params)),
-    updateRow: (params: DbUpdateRowParams): Promise<boolean> =>
-      unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.DB_UPDATE_ROW, params)),
-    deleteRow: (params: DbRowIdentifier): Promise<boolean> =>
-      unwrapIpc<boolean>(ipcRenderer.invoke(IPC_CHANNELS.DB_DELETE_ROW, params)),
-    vacuum: (): Promise<{ freedBytes: number }> =>
-      unwrapIpc<{ freedBytes: number }>(ipcRenderer.invoke(IPC_CHANNELS.DB_VACUUM)),
-    rebuildFts: (): Promise<{ rowsIndexed: number; textsHealed: number }> =>
-      unwrapIpc<{ rowsIndexed: number; textsHealed: number }>(
-        ipcRenderer.invoke(IPC_CHANNELS.DB_REBUILD_FTS)
-      ),
-    purgeArchived: (): Promise<{ casesDeleted: number; capturesDeleted: number }> =>
-      unwrapIpc<{ casesDeleted: number; capturesDeleted: number }>(
-        ipcRenderer.invoke(IPC_CHANNELS.DB_PURGE_ARCHIVED)
-      ),
-    findOrphans: (): Promise<OrphanReport> =>
-      unwrapIpc<OrphanReport>(ipcRenderer.invoke(IPC_CHANNELS.DB_FIND_ORPHANS)),
-    cleanOrphans: (
-      report: OrphanReport
-    ): Promise<{ dbRecordsRemoved: number; filesRemoved: number }> =>
-      unwrapIpc<{ dbRecordsRemoved: number; filesRemoved: number }>(
-        ipcRenderer.invoke(IPC_CHANNELS.DB_CLEAN_ORPHANS, report)
-      ),
-    backup: (): Promise<{ path: string } | null> =>
-      unwrapIpc<{ path: string } | null>(ipcRenderer.invoke(IPC_CHANNELS.DB_BACKUP)),
-    restore: (): Promise<{ restored: boolean }> =>
-      unwrapIpc<{ restored: boolean }>(ipcRenderer.invoke(IPC_CHANNELS.DB_RESTORE)),
-    exportTable: (params: DbExportTableParams): Promise<{ path: string } | null> =>
-      unwrapIpc<{ path: string } | null>(ipcRenderer.invoke(IPC_CHANNELS.DB_EXPORT_TABLE, params))
+    stats: bridge(IPC_CHANNELS.DB_STATS),
+    tableRows: bridge(IPC_CHANNELS.DB_TABLE_ROWS),
+    createRow: bridge(IPC_CHANNELS.DB_CREATE_ROW),
+    updateRow: bridge(IPC_CHANNELS.DB_UPDATE_ROW),
+    deleteRow: bridge(IPC_CHANNELS.DB_DELETE_ROW),
+    vacuum: bridge(IPC_CHANNELS.DB_VACUUM),
+    rebuildFts: bridge(IPC_CHANNELS.DB_REBUILD_FTS),
+    purgeArchived: bridge(IPC_CHANNELS.DB_PURGE_ARCHIVED),
+    findOrphans: bridge(IPC_CHANNELS.DB_FIND_ORPHANS),
+    cleanOrphans: bridge(IPC_CHANNELS.DB_CLEAN_ORPHANS),
+    backup: bridge(IPC_CHANNELS.DB_BACKUP),
+    restore: bridge(IPC_CHANNELS.DB_RESTORE),
+    exportTable: bridge(IPC_CHANNELS.DB_EXPORT_TABLE)
   },
 
   ai: {
-    analyze: (params: AnalyzeCaptureParams): Promise<{ content: string; tokenUsage: TokenUsage }> =>
-      unwrapIpc<{ content: string; tokenUsage: TokenUsage }>(
-        ipcRenderer.invoke(IPC_CHANNELS.AI_ANALYZE, params)
-      ),
-    saveAnalysis: (analysis: CaptureAnalysis): Promise<void> =>
-      unwrapIpc<void>(ipcRenderer.invoke(IPC_CHANNELS.AI_SAVE_ANALYSIS, analysis)),
-    getAnalysis: (captureId: string): Promise<CaptureAnalysis | null> =>
-      unwrapIpc<CaptureAnalysis | null>(
-        ipcRenderer.invoke(IPC_CHANNELS.AI_GET_ANALYSIS, { captureId })
-      )
+    analyze: bridge(IPC_CHANNELS.AI_ANALYZE),
+    saveAnalysis: bridge(IPC_CHANNELS.AI_SAVE_ANALYSIS),
+    getAnalysis: bridge(IPC_CHANNELS.AI_GET_ANALYSIS)
   },
 
   // Event listeners (main -> renderer)
-  onExportProgress: (callback: (event: ExportProgressEvent) => void) => {
-    const handler = (_: unknown, ev: ExportProgressEvent) => callback(ev)
-    ipcRenderer.on(IPC_CHANNELS.EXPORT_PROGRESS, handler)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.EXPORT_PROGRESS, handler)
-  },
+  onExportProgress: subscribe(IPC_CHANNELS.EXPORT_PROGRESS),
 
-  onArchiveProgress: (callback: (event: ArchiveProgressEvent) => void) => {
-    const handler = (_: unknown, ev: ArchiveProgressEvent) => callback(ev)
-    ipcRenderer.on(IPC_CHANNELS.ARCHIVE_PROGRESS, handler)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.ARCHIVE_PROGRESS, handler)
-  },
+  onArchiveProgress: subscribe(IPC_CHANNELS.ARCHIVE_PROGRESS),
 
-  onNewCapture: (callback: (capture: Capture) => void) => {
-    const handler = (_: unknown, capture: Capture) => callback(capture)
-    ipcRenderer.on(IPC_CHANNELS.NEW_CAPTURE, handler)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.NEW_CAPTURE, handler)
-  },
+  onNewCapture: subscribe(IPC_CHANNELS.NEW_CAPTURE),
 
-  onSessionStateChanged: (
-    callback: (state: {
-      sessionActive: boolean
-      activeCaseId: string | null
-      captureCount: number
-    }) => void
-  ) => {
-    const handler = (
-      _: unknown,
-      state: { sessionActive: boolean; activeCaseId: string | null; captureCount: number }
-    ) => callback(state)
-    ipcRenderer.on(IPC_CHANNELS.SESSION_STATE_CHANGED, handler)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.SESSION_STATE_CHANGED, handler)
-  },
+  onSessionStateChanged: subscribe(IPC_CHANNELS.SESSION_STATE_CHANGED),
 
-  onExtensionConnection: (callback: (data: { connected: boolean }) => void) => {
-    const handler = (_: unknown, data: { connected: boolean }) => callback(data)
-    ipcRenderer.on(IPC_CHANNELS.EXTENSION_CONNECTION, handler)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.EXTENSION_CONNECTION, handler)
-  },
+  onExtensionConnection: subscribe(IPC_CHANNELS.EXTENSION_CONNECTION),
 
-  onCaptureActivity: (callback: (event: CaptureEvent) => void) => {
-    const handler = (_: unknown, event: CaptureEvent) => callback(event)
-    ipcRenderer.on(IPC_CHANNELS.CAPTURE_ACTIVITY, handler)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.CAPTURE_ACTIVITY, handler)
-  },
+  onCaptureActivity: subscribe(IPC_CHANNELS.CAPTURE_ACTIVITY),
 
-  onSelectorRematched: (callback: (event: SelectorRematchedEvent) => void) => {
-    const handler = (_: unknown, event: SelectorRematchedEvent) => callback(event)
-    ipcRenderer.on(IPC_CHANNELS.SELECTOR_REMATCHED, handler)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.SELECTOR_REMATCHED, handler)
-  },
+  onLogEntry: subscribe(IPC_CHANNELS.LOG_ENTRY),
 
-  onDeepLinkNavigate: (callback: (target: DeepLinkTarget) => void) => {
-    const handler = (_: unknown, target: DeepLinkTarget) => callback(target)
-    ipcRenderer.on(IPC_CHANNELS.DEEP_LINK_NAVIGATE, handler)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.DEEP_LINK_NAVIGATE, handler)
-  },
+  onSelectorRematched: subscribe(IPC_CHANNELS.SELECTOR_REMATCHED),
 
-  onUpdateStatus: (callback: (status: UpdateStatus) => void) => {
-    const handler = (_: unknown, status: UpdateStatus) => callback(status)
-    ipcRenderer.on(IPC_CHANNELS.UPDATE_STATUS, handler)
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.UPDATE_STATUS, handler)
-  },
+  onDeepLinkNavigate: subscribe(IPC_CHANNELS.DEEP_LINK_NAVIGATE),
 
-  testPipeline: (): Promise<{ success: boolean; durationMs: number; error?: string }> =>
-    ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_TEST_PIPELINE),
+  onUpdateStatus: subscribe(IPC_CHANNELS.UPDATE_STATUS),
 
-  testHttp: (): Promise<{ success: boolean; durationMs: number; error?: string }> =>
-    ipcRenderer.invoke(IPC_CHANNELS.CAPTURES_TEST_HTTP),
+  testPipeline: bridge(IPC_CHANNELS.CAPTURES_TEST_PIPELINE),
+
+  testHttp: bridge(IPC_CHANNELS.CAPTURES_TEST_HTTP),
 
   extractedData: {
-    categories: (caseId: string): Promise<ExtractedDataCategory[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.EXTRACTED_DATA_CATEGORIES, caseId),
-    subcategories: (caseId: string, category: string): Promise<ExtractedDataSubcategory[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.EXTRACTED_DATA_SUBCATEGORIES, caseId, category),
-    items: (caseId: string, category: string, subcategory: string): Promise<ExtractedDataItem[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.EXTRACTED_DATA_ITEMS, caseId, category, subcategory),
-    count: (caseId: string): Promise<number> =>
-      ipcRenderer.invoke(IPC_CHANNELS.EXTRACTED_DATA_COUNT, caseId),
-    search: (caseId: string, query: string): Promise<ExtractedDataSearchResult[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.EXTRACTED_DATA_SEARCH, caseId, query),
-    reprocess: (caseId: string): Promise<{ processed: number }> =>
-      unwrapIpc<{ processed: number }>(
-        ipcRenderer.invoke(IPC_CHANNELS.EXTRACTED_DATA_REPROCESS, caseId)
-      )
+    categories: bridge(IPC_CHANNELS.EXTRACTED_DATA_CATEGORIES),
+    subcategories: bridge(IPC_CHANNELS.EXTRACTED_DATA_SUBCATEGORIES),
+    items: bridge(IPC_CHANNELS.EXTRACTED_DATA_ITEMS),
+    count: bridge(IPC_CHANNELS.EXTRACTED_DATA_COUNT),
+    search: bridge(IPC_CHANNELS.EXTRACTED_DATA_SEARCH),
+    reprocess: bridge(IPC_CHANNELS.EXTRACTED_DATA_REPROCESS)
   }
 }
 

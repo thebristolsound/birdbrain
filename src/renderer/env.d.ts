@@ -24,11 +24,15 @@ import type {
   CaptureAnnotations,
   AnnotationPin,
   OperatorIdentity,
-  ArchiveRef,
+  WaybackRef,
   WaybackLookupResult,
   ArchiveInspectReport,
   UpdateStatus,
-  DiagnosticsSnapshot
+  DiagnosticsSnapshot,
+  LogEntry,
+  SessionRecord,
+  BugReportInput,
+  BugReportResult
 } from '@shared/types'
 import type {
   CreateCaseParams,
@@ -56,12 +60,14 @@ import type {
   DeepLinkTarget,
   ExportProgressEvent,
   ExportResult,
-  PinArchiveSnapshotParams,
+  PinWaybackSnapshotParams,
   ArchiveProgressEvent,
   ArchiveExportResult,
   RecaptureEnqueuePayload,
   EnqueueResult,
-  RecaptureQueueStatus
+  RecaptureQueueStatus,
+  RendererLogPayload,
+  SessionStateEvent
 } from '@shared/ipc'
 
 interface BirdbrainAPI {
@@ -130,10 +136,10 @@ interface BirdbrainAPI {
     count(caseId: string): Promise<number>
     search(caseId: string, query: string): Promise<Note[]>
   }
-  archive: {
+  wayback: {
     lookup(captureId: string): Promise<WaybackLookupResult>
-    list(captureId: string): Promise<ArchiveRef[]>
-    pin(params: PinArchiveSnapshotParams): Promise<ArchiveRef>
+    list(captureId: string): Promise<WaybackRef[]>
+    pin(params: PinWaybackSnapshotParams): Promise<WaybackRef>
     unpin(refId: string): Promise<boolean>
   }
   annotations: {
@@ -146,6 +152,12 @@ interface BirdbrainAPI {
   extension: {
     getPath(): Promise<string>
     openFolder(): Promise<void>
+  }
+  session: {
+    snapshot(): Promise<SessionStateEvent>
+    activateCase(caseId: string): Promise<SessionStateEvent>
+    start(): Promise<SessionStateEvent>
+    stop(): Promise<SessionStateEvent>
   }
   search(caseId: string, query: string): Promise<Capture[]>
   settings: {
@@ -170,6 +182,11 @@ interface BirdbrainAPI {
   }
   diagnostics: {
     get(): Promise<DiagnosticsSnapshot>
+    log(payload: RendererLogPayload): Promise<string>
+    recentEntries(limit: number): Promise<LogEntry[]>
+    revealLog(): Promise<void>
+    lastSession(): Promise<SessionRecord | null>
+    createReport(input: BugReportInput): Promise<BugReportResult | null>
   }
   updates: {
     getStatus(): Promise<UpdateStatus>
@@ -209,6 +226,7 @@ interface BirdbrainAPI {
   ): () => void
   onExtensionConnection(callback: (data: { connected: boolean }) => void): () => void
   onCaptureActivity(callback: (event: CaptureEvent) => void): () => void
+  onLogEntry(callback: (entry: LogEntry) => void): () => void
   onSelectorRematched(callback: (event: SelectorRematchedEvent) => void): () => void
   onDeepLinkNavigate(callback: (target: DeepLinkTarget) => void): () => void
   onUpdateStatus(callback: (status: UpdateStatus) => void): () => void

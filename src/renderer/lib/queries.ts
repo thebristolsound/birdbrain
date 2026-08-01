@@ -11,12 +11,14 @@ import type {
   BulkCreateSelectorsParams,
   SaveAnnotationsParams,
   UpsertAnnotationPinParams,
-  PinArchiveSnapshotParams
+  PinWaybackSnapshotParams,
+  SessionStateEvent
 } from '@shared/ipc'
 import type { BirdbrainSettings } from '@shared/types'
 
 export const queryKeys = {
   cases: ['cases'] as const,
+  session: ['session'] as const,
   case: (id: string) => ['cases', id] as const,
   captures: (caseId: string) => ['captures', caseId] as const,
   captureContent: (captureId: string, type: 'html' | 'png' | 'txt') =>
@@ -51,8 +53,8 @@ export const queryKeys = {
   extractedDataSearch: (caseId: string, query: string) =>
     ['extractedData', 'search', caseId, query] as const,
   annotations: (captureId: string) => ['annotations', captureId] as const,
-  archiveLookup: (captureId: string) => ['archive', 'lookup', captureId] as const,
-  archivePins: (captureId: string) => ['archive', 'pins', captureId] as const,
+  waybackLookup: (captureId: string) => ['wayback', 'lookup', captureId] as const,
+  waybackPins: (captureId: string) => ['wayback', 'pins', captureId] as const,
   settings: ['settings'] as const,
   identity: ['identity'] as const,
   openRouterModels: ['openRouterModels'] as const,
@@ -72,12 +74,47 @@ export const caseQueryOptions = (id: string) =>
     queryFn: () => window.birdbrain.cases.get(id)
   })
 
+// --- Session ---
+// Session control moved from the localhost HTTP server to IPC (#228); the
+// server is extension-only now. Every mutation returns the new snapshot, so
+// the cache is set from the response rather than refetched.
+export const sessionQueryOptions = () =>
+  queryOptions({
+    queryKey: queryKeys.session,
+    queryFn: () => window.birdbrain.session.snapshot()
+  })
+
+export function useSessionMutations() {
+  const queryClient = useQueryClient()
+  const write = (snapshot: SessionStateEvent): void => {
+    queryClient.setQueryData(queryKeys.session, snapshot)
+  }
+
+  const activateCase = useMutation({
+    mutationFn: (caseId: string) => window.birdbrain.session.activateCase(caseId),
+    onSuccess: write
+  })
+
+  const start = useMutation({
+    mutationFn: () => window.birdbrain.session.start(),
+    onSuccess: write
+  })
+
+  const stop = useMutation({
+    mutationFn: () => window.birdbrain.session.stop(),
+    onSuccess: write
+  })
+
+  return { activateCase, start, stop }
+}
+
 export function useCasesMutations() {
   const queryClient = useQueryClient()
 
   const create = useMutation({
     mutationFn: (params: CreateCaseParams) => window.birdbrain.cases.create(params),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.cases })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.cases }),
+    meta: { action: 'create case' }
   })
 
   const update = useMutation({
@@ -85,22 +122,26 @@ export function useCasesMutations() {
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.cases })
       queryClient.invalidateQueries({ queryKey: queryKeys.case(vars.id) })
-    }
+    },
+    meta: { action: 'update case' }
   })
 
   const remove = useMutation({
     mutationFn: (id: string) => window.birdbrain.cases.delete(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.cases })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.cases }),
+    meta: { action: 'delete case' }
   })
 
   const exportArchive = useMutation({
-    mutationFn: (caseId: string) => window.birdbrain.cases.exportArchive(caseId)
+    mutationFn: (caseId: string) => window.birdbrain.cases.exportArchive(caseId),
+    meta: { action: 'export case archive' }
   })
 
   const importArchive = useMutation({
     mutationFn: (params: { archivePath: string; overrideTamper: boolean }) =>
       window.birdbrain.cases.importArchive(params.archivePath, params.overrideTamper),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.cases })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.cases }),
+    meta: { action: 'import case archive' }
   })
 
   return { create, update, remove, exportArchive, importArchive }
@@ -170,7 +211,8 @@ export function useCapturesMutations(caseId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.captures(caseId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.captureCounts })
-    }
+    },
+    meta: { action: 'delete capture' }
   })
 
   const toggleFavorite = useMutation({
@@ -178,7 +220,8 @@ export function useCapturesMutations(caseId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.captureFavorites(caseId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.captures(caseId) })
-    }
+    },
+    meta: { action: 'toggle favorite' }
   })
 
   return { remove, toggleFavorite }
@@ -191,7 +234,8 @@ export function useRecaptureMutations(caseId: string) {
         urls: params.urls,
         caseId,
         supersedesCaptureId: params.supersedesCaptureId
-      })
+      }),
+    meta: { action: 'queue recapture' }
   })
   // No cache invalidation here: completion arrives via the NEW_CAPTURE event,
   // which useServerStatus already folds into the captures cache.
@@ -236,12 +280,14 @@ export function useTagsMutations() {
 
   const create = useMutation({
     mutationFn: (params: CreateTagParams) => window.birdbrain.tags.create(params),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.tags })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.tags }),
+    meta: { action: 'create tag' }
   })
 
   const update = useMutation({
     mutationFn: (params: UpdateTagParams) => window.birdbrain.tags.update(params),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.tags })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.tags }),
+    meta: { action: 'update tag' }
   })
 
   const remove = useMutation({
@@ -249,7 +295,8 @@ export function useTagsMutations() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tags })
       invalidateTagCounts()
-    }
+    },
+    meta: { action: 'delete tag' }
   })
 
   const addToCapture = useMutation({
@@ -258,7 +305,8 @@ export function useTagsMutations() {
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tagsForCapture(vars.captureId) })
       invalidateTagCounts()
-    }
+    },
+    meta: { action: 'add tag to capture' }
   })
 
   const removeFromCapture = useMutation({
@@ -267,7 +315,8 @@ export function useTagsMutations() {
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tagsForCapture(vars.captureId) })
       invalidateTagCounts()
-    }
+    },
+    meta: { action: 'remove tag from capture' }
   })
 
   return { create, update, remove, addToCapture, removeFromCapture }
@@ -307,23 +356,27 @@ export function useSelectorsMutations(caseId: string) {
 
   const create = useMutation({
     mutationFn: (params: CreateSelectorParams) => window.birdbrain.selectors.create(params),
-    onSuccess: invalidateSelectorQueries
+    onSuccess: invalidateSelectorQueries,
+    meta: { action: 'create selector' }
   })
 
   const update = useMutation({
     mutationFn: (params: UpdateSelectorParams) => window.birdbrain.selectors.update(params),
-    onSuccess: invalidateSelectorQueries
+    onSuccess: invalidateSelectorQueries,
+    meta: { action: 'update selector' }
   })
 
   const remove = useMutation({
     mutationFn: (id: string) => window.birdbrain.selectors.delete(id),
-    onSuccess: invalidateSelectorQueries
+    onSuccess: invalidateSelectorQueries,
+    meta: { action: 'delete selector' }
   })
 
   const bulkCreate = useMutation({
     mutationFn: (params: BulkCreateSelectorsParams) =>
       window.birdbrain.selectors.bulkCreate(params),
-    onSuccess: invalidateSelectorQueries
+    onSuccess: invalidateSelectorQueries,
+    meta: { action: 'create selectors' }
   })
 
   return { create, update, remove, bulkCreate }
@@ -363,17 +416,20 @@ export function useNotesMutations(caseId: string) {
 
   const create = useMutation({
     mutationFn: (params: CreateNoteParams) => window.birdbrain.notes.create(params),
-    onSuccess: invalidateNoteQueries
+    onSuccess: invalidateNoteQueries,
+    meta: { action: 'create note' }
   })
 
   const update = useMutation({
     mutationFn: (params: UpdateNoteParams) => window.birdbrain.notes.update(params),
-    onSuccess: invalidateNoteQueries
+    onSuccess: invalidateNoteQueries,
+    meta: { action: 'save note' }
   })
 
   const remove = useMutation({
     mutationFn: (id: string) => window.birdbrain.notes.delete(id),
-    onSuccess: invalidateNoteQueries
+    onSuccess: invalidateNoteQueries,
+    meta: { action: 'delete note' }
   })
 
   return { create, update, remove }
@@ -432,7 +488,8 @@ export function useExtractedDataMutations(caseId: string) {
 
   const reprocess = useMutation({
     mutationFn: () => window.birdbrain.extractedData.reprocess(caseId),
-    onSuccess: invalidateExtractedData
+    onSuccess: invalidateExtractedData,
+    meta: { action: 'reprocess extracted data' }
   })
 
   return { reprocess }
@@ -454,58 +511,64 @@ export function useAnnotationsMutations(captureId: string) {
 
   const save = useMutation({
     mutationFn: (params: SaveAnnotationsParams) => window.birdbrain.annotations.save(params),
-    onSuccess: invalidate
+    onSuccess: invalidate,
+    meta: { action: 'save annotations' }
   })
   const upsertPin = useMutation({
     mutationFn: (params: UpsertAnnotationPinParams) =>
       window.birdbrain.annotations.upsertPin(params),
-    onSuccess: invalidate
+    onSuccess: invalidate,
+    meta: { action: 'save annotation pin' }
   })
   const deletePin = useMutation({
     mutationFn: (pinId: string) => window.birdbrain.annotations.deletePin(pinId),
-    onSuccess: invalidate
+    onSuccess: invalidate,
+    meta: { action: 'delete annotation pin' }
   })
   const deleteAll = useMutation({
     mutationFn: (id: string) => window.birdbrain.annotations.delete(id),
-    onSuccess: invalidate
+    onSuccess: invalidate,
+    meta: { action: 'delete annotations' }
   })
 
   return { save, upsertPin, deletePin, deleteAll }
 }
 
-// --- Archive (Wayback corroboration) ---
+// --- Wayback Machine corroboration ---
 
 // `enabled: false` — the lookup is user-initiated (it discloses the URL to
-// archive.org). The ArchiveTab triggers it with refetch() on button click.
-export const archiveLookupQueryOptions = (captureId: string) =>
+// archive.org). The WaybackTab triggers it with refetch() on button click.
+export const waybackLookupQueryOptions = (captureId: string) =>
   queryOptions({
-    queryKey: queryKeys.archiveLookup(captureId),
-    queryFn: () => window.birdbrain.archive.lookup(captureId),
+    queryKey: queryKeys.waybackLookup(captureId),
+    queryFn: () => window.birdbrain.wayback.lookup(captureId),
     enabled: false,
     staleTime: 5 * 60 * 1000
   })
 
-export const archivePinsQueryOptions = (captureId: string) =>
+export const waybackPinsQueryOptions = (captureId: string) =>
   queryOptions({
-    queryKey: queryKeys.archivePins(captureId),
-    queryFn: () => window.birdbrain.archive.list(captureId),
+    queryKey: queryKeys.waybackPins(captureId),
+    queryFn: () => window.birdbrain.wayback.list(captureId),
     enabled: !!captureId
   })
 
-export function useArchiveMutations(captureId: string) {
+export function useWaybackMutations(captureId: string) {
   const queryClient = useQueryClient()
   const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: queryKeys.archivePins(captureId) })
+    queryClient.invalidateQueries({ queryKey: queryKeys.waybackPins(captureId) })
   }
 
   const pin = useMutation({
-    mutationFn: (params: PinArchiveSnapshotParams) => window.birdbrain.archive.pin(params),
-    onSuccess: invalidate
+    mutationFn: (params: PinWaybackSnapshotParams) => window.birdbrain.wayback.pin(params),
+    onSuccess: invalidate,
+    meta: { action: 'pin wayback snapshot' }
   })
 
   const unpin = useMutation({
-    mutationFn: (refId: string) => window.birdbrain.archive.unpin(refId),
-    onSuccess: invalidate
+    mutationFn: (refId: string) => window.birdbrain.wayback.unpin(refId),
+    onSuccess: invalidate,
+    meta: { action: 'unpin wayback snapshot' }
   })
 
   return { pin, unpin }
@@ -528,7 +591,8 @@ export function useSettingsMutations() {
       if ('openRouterApiKey' in partial) {
         queryClient.invalidateQueries({ queryKey: queryKeys.openRouterModels })
       }
-    }
+    },
+    meta: { action: 'save settings' }
   })
 
   return { update }

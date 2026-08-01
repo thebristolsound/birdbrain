@@ -266,7 +266,7 @@ async function shootBothThemes(page: Page, name: string) {
 // ---------------------------------------------------------------------------
 
 test.describe('README screenshots', () => {
-  // Not a regression test — a screenshot generator for docs/assets/. Run with:
+  // Not a regression test — a screenshot generator for website/public/assets/. Run with:
   //   README_SHOTS=1 npx playwright test e2e/readme-screenshots.spec.ts
   test.skip(!process.env.README_SHOTS, 'set README_SHOTS=1 to regenerate README screenshots')
 

@@ -56,6 +56,7 @@ coverage/
 .agents
 .claude/*
 !.claude/settings.json
+.codex
 .cursor
 .zed
 .kilo
@@ -65,10 +66,9 @@ coverage/
 .kilocode
 .design-bundle
 
-# Local-only working notes. Implementation plans / checklists are author-time
-# artifacts and don't belong in version control. Specs, ADRs, agent
-# conventions, and reference docs under docs/ remain tracked.
-
+# Project MCP config stays local-only: its server points at the ignored
+# .vscode/workflows/ files, so tracking it would ship a broken config.
+.mcp.json
 
 # design-sync (build tooling + generated output; durable inputs under .design-sync/ ARE committed)
 .ds-sync/
@@ -77,3 +77,13 @@ ds-bundle/
 .design-sync/learnings/
 .design-sync/node_modules
 /node_modules
+
+# subagent-driven-development scratch
+.superpowers/
+
+# Third-party vendor documentation kept locally for research reference only
+# (competitor guides, PDFs). Not ours to redistribute, and this repo is heading
+# for public visibility — it must never enter history. See #265 (verify
+# redistribution rights and shipped-component provenance). Birdbrain's own
+# long-lived reference docs live in website/content/docs/, not here.
+docs/reference/

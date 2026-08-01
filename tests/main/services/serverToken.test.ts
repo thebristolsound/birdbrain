@@ -7,17 +7,28 @@ import {
   getServerToken,
   resetServerTokenForTesting
 } from '@main/services/serverToken'
+import {
+  disposeLogger,
+  flushSync as flushLogger,
+  initLogger,
+  readRecentEntries
+} from '@main/services/logger'
 
 describe('serverToken', () => {
   let tempDir: string
+  let logDir: string
 
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-token-'))
+    logDir = mkdtempSync(join(tmpdir(), 'birdbrain-token-log-'))
     resetServerTokenForTesting()
+    initLogger(logDir, 'server-token-test-session')
   })
 
   afterEach(() => {
+    disposeLogger()
     rmSync(tempDir, { recursive: true, force: true })
+    rmSync(logDir, { recursive: true, force: true })
     vi.restoreAllMocks()
   })
 
@@ -63,29 +74,30 @@ describe('serverToken', () => {
 
   it('regenerates when the token path is unreadable for a non-ENOENT reason', () => {
     // A directory where the token file should be: readFileSync throws EISDIR
-    // (not ENOENT), which is warned about rather than silently ignored.
+    // (not ENOENT), which is logged about rather than silently ignored.
     mkdirSync(join(tempDir, 'server-token'))
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     initServerToken(tempDir)
 
     expect(getServerToken()).toMatch(/^[0-9a-f]{64}$/)
-    expect(warnSpy).toHaveBeenCalled()
+    flushLogger()
+    const entries = readRecentEntries(10)
+    expect(entries.some((e) => e.source === 'serverToken' && e.code === 'serverToken.token_read_failed')).toBe(true)
   })
 
   it('keeps an in-memory token when persistence fails', () => {
     // A missing parent directory makes readFileSync ENOENT (no warn) but
     // writeFileSync fail — the fresh token is kept in memory regardless.
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const missingDir = join(tempDir, 'does', 'not', 'exist')
 
     initServerToken(missingDir)
 
     expect(getServerToken()).toMatch(/^[0-9a-f]{64}$/)
     expect(existsSync(join(missingDir, 'server-token'))).toBe(false)
-    expect(warnSpy).toHaveBeenCalledWith(
-      '[serverToken] failed to persist token, using in-memory value:',
-      expect.anything()
-    )
+    flushLogger()
+    const entries = readRecentEntries(10)
+    expect(
+      entries.some((e) => e.source === 'serverToken' && e.code === 'serverToken.token_persist_failed')
+    ).toBe(true)
   })
 })

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'motion/react'
-import { Search, Plus, Clock } from 'lucide-react'
+import { Search, Plus, Clock, MessageSquareWarning } from 'lucide-react'
 import { useAppStore } from '@renderer/stores/appStore'
 import { casesQueryOptions, captureCountsQueryOptions } from '@renderer/lib/queries'
 import { presets } from '@renderer/lib/motion'
@@ -162,6 +162,16 @@ export function CommandPalette() {
               >
                 <Plus className="h-4 w-4 shrink-0 text-text-faint" />
                 <span className="text-sm">Create new investigation</span>
+              </button>
+              <button
+                className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-text-secondary transition-colors hover:bg-elevated"
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent('birdbrain:report', { detail: {} }))
+                  setOpen(false)
+                }}
+              >
+                <MessageSquareWarning className="h-4 w-4 shrink-0 text-text-faint" />
+                <span className="text-sm">Report a problem</span>
               </button>
             </div>
           </motion.div>

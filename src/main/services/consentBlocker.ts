@@ -2,6 +2,7 @@ import { app } from 'electron'
 import { promises as fs } from 'fs'
 import { join } from 'path'
 import { ElectronBlocker } from '@ghostery/adblocker-electron'
+import { logger } from '@main/services/logger'
 
 // Consent/cookie-notice lists ONLY — deliberately NOT the ad/tracker lists.
 // Recaptures are evidence: stripping ads or trackers would alter what the page
@@ -45,7 +46,7 @@ export function getConsentBlocker(): Promise<ElectronBlocker | null> {
   blockerKey = key
   blockerPromise = ElectronBlocker.fromLists(fetch, lists, undefined, caching).catch(
     (err): null => {
-      console.error('consentBlocker: failed to build consent filter engine', err)
+      logger.error('consentBlocker', 'consentBlocker.filter_engine_failed', undefined, err)
       // Only clear if this is still the in-flight build for this key, so a
       // newer getConsentBlocker() call's promise isn't wiped by an older
       // rejection.

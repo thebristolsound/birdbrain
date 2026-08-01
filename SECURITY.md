@@ -15,7 +15,7 @@ This is a solo-maintained project; reports are handled on a best-effort basis, u
 
 ## Scope and threat model
 
-The forensic guarantees (hash chain, manifest signatures, RFC 3161 trusted timestamps) are specified in the [threat model](docs/reference/threat-model.md), including what they deliberately do **not** defend against. Read it before reporting a finding about capture integrity — several apparent gaps are documented design limits.
+The forensic guarantees (hash chain, manifest signatures, RFC 3161 trusted timestamps) are specified in the [threat model](website/content/docs/threat-model.mdx), including what they deliberately do **not** defend against. Read it before reporting a finding about capture integrity — several apparent gaps are documented design limits.
 
 Out of scope:
 

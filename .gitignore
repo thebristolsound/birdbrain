@@ -65,11 +65,6 @@ coverage/
 .kilocode
 .design-bundle
 
-# Local-only working notes. Implementation plans / checklists are author-time
-# artifacts and don't belong in version control. Specs, ADRs, agent
-# conventions, and reference docs under docs/ remain tracked.
-
-
 # design-sync (build tooling + generated output; durable inputs under .design-sync/ ARE committed)
 .ds-sync/
 ds-bundle/
@@ -80,3 +75,10 @@ ds-bundle/
 
 # subagent-driven-development scratch
 .superpowers/
+
+# Third-party vendor documentation kept locally for research reference only
+# (competitor guides, PDFs). Not ours to redistribute, and this repo is heading
+# for public visibility — it must never enter history. See #265 (verify
+# redistribution rights and shipped-component provenance). Birdbrain's own
+# long-lived reference docs live in website/content/docs/, not here.
+docs/reference/

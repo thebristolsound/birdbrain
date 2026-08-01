@@ -240,7 +240,7 @@ Content lives in `website/content/docs/` (`.mdx` + `meta.json`), images in `webs
 
 ### Issue tracker
 
-Issues live as GitHub Issues in `thebristolsound/birdbrain`, accessed via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+Issues live as GitHub Issues in `thebristolsound/birdbrain`, accessed via the `gh` CLI. External PRs are not a triage surface. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

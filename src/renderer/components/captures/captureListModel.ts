@@ -78,8 +78,9 @@ export function computeDisplayedCaptures(
   now = Date.now()
 ): Capture[] {
   const { sortBy, formatFilter, dateFilter, favoritesOnly } = filters
+  const filterIdSet = filteredCaptureIds ? new Set(filteredCaptureIds) : null
   return sortCaptures(
-    (filteredCaptureIds ? captures.filter((c) => filteredCaptureIds.includes(c.id)) : captures)
+    (filterIdSet ? captures.filter((c) => filterIdSet.has(c.id)) : captures)
       .filter((c) => {
         if (formatFilter !== 'all' && c.format !== formatFilter) return false
         if (favoritesOnly && !favorites.has(c.id)) return false

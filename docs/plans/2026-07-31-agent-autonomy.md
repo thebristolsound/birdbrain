@@ -86,8 +86,9 @@ deferred to a fresh effort once the pipeline is live, informed by real pilot dat
 ## Operational facts the pilot depends on
 
 - Agent worktrees self-provision correctly once PR #318 lands; no Electron repair step
-  belongs in any runbook. `.mise.toml` is trusted only under
-  `/home/matt/dev/personal/birdbrain`; clones elsewhere need their own `mise trust`.
+  belongs in any runbook. `mise trust` is granted per config-file path, so the pinned Node
+  only applies once the tracked `.mise.toml` is trusted — every fresh clone or worktree
+  location needs its own `mise trust` before the verify loop is reliable there.
 - Known pre-existing flake: `tests/main/ipcHandlers.test.ts` "reports failure for the
   http/pipeline self-tests when the server is down" fails ~1-in-3 full parallel runs and
   passes on rerun. The dispatch routine should retry exactly this test once before treating

@@ -52,6 +52,26 @@ Never claim something works without having run it. If a test fails, fix the code
 test only if it is demonstrably wrong, and say why in the PR. Report actual command output in
 the PR's verification section — not a summary of what you expected.
 
+To run a single test file, use `npx vitest run <path>` — `pnpm test -- <path>` does not
+filter and runs the full suite.
+
+## Responding to review
+
+- **Re-enumerate the review surface yourself before acting**: `gh pr view <n> --json reviews`
+  for review bodies (collapsed nitpicks live there) and
+  `gh api repos/<owner>/<repo>/pulls/<n>/comments` for inline threads. Never act on a
+  paraphrase of review feedback — including one from your dispatcher; verify ids and threads
+  first, then reply on the thread (or top-level when a body item has no thread).
+- **Answer every actionable item**: applied (with the commit ref) or not applied with the
+  reason. Applying is not the default — verify each finding against current code and the
+  issue's scope.
+- **When your reason to reject is a pre-existing defect the suggestion collides with, the
+  defect is the finding.** Fix it in-PR when it is within the issue's scope; otherwise name it
+  explicitly as a follow-up candidate in your reply. "Would not work as written" alone is not
+  a complete disposition. For changes to shared surfaces beyond the issue's scope, default to
+  proposing the follow-up; apply in-PR only when the human reviewer asks.
+- After any applied change: separate commit, full verify loop, trailer check, push.
+
 ## Evidence gate
 
 Check two triggers: the issue carries the `evidence-affecting` label, OR your diff
@@ -76,6 +96,13 @@ Evidence-affecting PRs are never merged without human review. Do not weaken that
 
 - One logical change per commit, `<type>(<scope>): <subject>` format. Stage files explicitly —
   never `git add .` or `git add -A`. Review `git diff --staged` before committing.
+- **Never `git stash`, for any purpose.** The stash stack is shared across every worktree and
+  a repo hook blocks `stash pop`/`stash drop`, so an entry you create cannot be cleaned up by
+  any agent session. To set work aside or inspect a partial state, make a temporary WIP commit
+  and `git reset --soft`/amend it away afterwards.
+- Interactive `git add -p` is unavailable. To stage part of a file, stage whole files and
+  split with a follow-up commit where possible; only when a true intra-file split is required,
+  build a patch by hand and `git apply --cached` it.
 - Never add `Co-authored-by: Claude` or any variant — and the tooling adds one by default, so
   this means actively removing it, not just declining to type it. After every commit, read
   `git log -1 --format=%B`; if a trailer appeared, `git commit --amend` it away before pushing.

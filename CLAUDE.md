@@ -9,7 +9,7 @@ Open source web investigation & capture tool. Electron desktop app with a compan
 - `pnpm build:extension` - Build the Chrome extension
 - `pnpm dev:extension` - Build Chrome extension in watch mode (background and popup bundles only; does not watch/rebuild the content script IIFE build)
 - `pnpm build:verifier` - Build the standalone verifier binary (`scripts/build-verifier.mjs`)
-- `pnpm test` - Run tests (vitest, via Electron runtime)
+- `pnpm test` - Run tests (vitest, via Electron runtime). Single file: `npx vitest run <path>` (`pnpm test -- <path>` does not filter)
 - `pnpm test:watch` - Run tests in watch mode
 - `pnpm test:coverage` / `pnpm coverage:report` / `pnpm coverage:all` - Coverage run and reports
 - `pnpm lint` - ESLint (.ts, .tsx)

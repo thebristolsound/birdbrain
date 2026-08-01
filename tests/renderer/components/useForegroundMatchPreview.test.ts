@@ -13,6 +13,16 @@ interface Candidate {
   url: string
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
 function candidate(id: string, title = `Title ${id}`, url = `https://example.com/${id}`): Candidate {
   return { id, title, url }
 }
@@ -242,6 +252,68 @@ describe('useForegroundMatchPreview', () => {
       'Failed to compute foreground match preview:',
       expect.any(Error)
     )
+  })
+
+  it('ignores a run that resolves after a newer run already committed', async () => {
+    const first = deferred<Candidate[]>()
+    setBirdbrain({
+      captures: {
+        list: vi
+          .fn<(caseId: string) => Promise<Candidate[]>>()
+          .mockReturnValueOnce(first.promise)
+          .mockResolvedValueOnce([candidate('c2', 'Second', 'https://example.com/c2')]),
+        getContent: vi.fn(async () => 'one needle')
+      }
+    })
+    const { result } = renderHook(() =>
+      useForegroundMatchPreview('case-1', { maxCaptures: 10, maxMatchesPerCapture: 50 })
+    )
+
+    act(() => {
+      void result.current.run('needle', false)
+    })
+    await act(async () => {
+      await result.current.run('needle', false)
+    })
+    expect(result.current.previews?.[0].captureUrl).toBe('https://example.com/c2')
+
+    // The stale first run resolves last — it must not clobber the newer result.
+    await act(async () => {
+      first.resolve([candidate('c1', 'First', 'https://example.com/c1')])
+      await first.promise
+    })
+    expect(result.current.previews?.[0].captureUrl).toBe('https://example.com/c2')
+    expect(result.current.loading).toBe(false)
+  })
+
+  it('reset() discards an in-flight run', async () => {
+    const pending = deferred<Candidate[]>()
+    setBirdbrain({
+      captures: {
+        list: vi.fn(() => pending.promise),
+        getContent: vi.fn(async () => 'one needle')
+      }
+    })
+    const { result } = renderHook(() =>
+      useForegroundMatchPreview('case-1', { maxCaptures: 10, maxMatchesPerCapture: 50 })
+    )
+
+    act(() => {
+      void result.current.run('needle', false)
+    })
+    expect(result.current.loading).toBe(true)
+
+    act(() => {
+      result.current.reset()
+    })
+    expect(result.current.loading).toBe(false)
+
+    await act(async () => {
+      pending.resolve([candidate('c1')])
+      await pending.promise
+    })
+    expect(result.current.previews).toBeNull()
+    expect(result.current.loading).toBe(false)
   })
 
   it('reset() returns previews to null', async () => {

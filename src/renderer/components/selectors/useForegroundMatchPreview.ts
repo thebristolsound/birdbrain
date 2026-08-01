@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Capture } from '@shared/types'
 import {
   testPatternAgainstText,
@@ -89,8 +89,19 @@ export function useForegroundMatchPreview(
 ) {
   const [previews, setPreviews] = useState<ForegroundMatchPreview[] | null>(null)
   const [loading, setLoading] = useState(false)
+  // Monotonic run id: a run only commits state if it is still the latest, so
+  // interleaved runs, reset() mid-flight, and unmount all discard stale results
+  // (the codebase's `cancelled` flag pattern, adapted to an event-driven hook).
+  const runIdRef = useRef(0)
+
+  useEffect(() => {
+    return () => {
+      runIdRef.current++
+    }
+  }, [])
 
   async function run(pattern: string, isRegex: boolean, selectorId?: string) {
+    const runId = ++runIdRef.current
     setLoading(true)
     try {
       const results = await previewForegroundMatches({
@@ -101,18 +112,22 @@ export function useForegroundMatchPreview(
         maxMatchesPerCapture,
         selectorId
       })
+      if (runId !== runIdRef.current) return
       setPreviews(results)
     } catch (err) {
+      if (runId !== runIdRef.current) return
       console.error('Failed to compute foreground match preview:', err)
       // null = "no preview available" — consumers may retry on the next trigger.
       setPreviews(null)
     } finally {
-      setLoading(false)
+      if (runId === runIdRef.current) setLoading(false)
     }
   }
 
   function reset() {
+    runIdRef.current++
     setPreviews(null)
+    setLoading(false)
   }
 
   return { previews, loading, run, reset }

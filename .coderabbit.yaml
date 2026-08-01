@@ -54,11 +54,13 @@ reviews:
     - "*.js"
     - "*.mjs"
     - "*.json"
-    # Root YAML: this file itself, chiefly. Without it, a change to the review
-    # config is the one change CodeRabbit never sees. pnpm-lock.yaml is excluded
-    # below.
+    # Root YAML. These filters are minimatch, where `*` does not match a leading
+    # dot, so the config file needs its own literal entry -- the glob alone would
+    # leave a change to the review config as the one change CodeRabbit never
+    # sees. pnpm-lock.yaml is excluded below.
     - "*.yaml"
     - "*.yml"
+    - ".coderabbit.yaml"
     - "LICENSE"
     # A change here weakens secret scanning or shifts the toolchain — worth a look.
     - ".gitleaksignore"

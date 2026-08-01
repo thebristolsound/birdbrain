@@ -37,14 +37,7 @@ jobs:
 
       - run: pnpm install
 
-      - name: Typecheck main + preload + shared
-        run: npx tsc --noEmit -p tsconfig.node.json
-
-      - name: Typecheck renderer
-        run: npx tsc --noEmit -p tsconfig.web.json
-
-      - name: Typecheck extension
-        run: npx tsc --noEmit -p extension/tsconfig.json
+      - run: pnpm typecheck
 
   test:
     runs-on: ubuntu-latest

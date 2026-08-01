@@ -25,6 +25,7 @@
     "coverage:report": "node scripts/coverage-report.mjs",
     "coverage:all": "node scripts/coverage-all.mjs",
     "lint": "eslint . --ext .ts,.tsx",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p extension/tsconfig.json",
     "format": "prettier --write \"src/**/*.{ts,tsx}\" \"extension/**/*.{ts,tsx}\"",
     "pretest:e2e": "pnpm build",
     "test:e2e": "npx playwright test",

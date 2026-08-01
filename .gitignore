@@ -56,6 +56,10 @@ coverage/
 .agents
 .claude/*
 !.claude/settings.json
+!.claude/agents/
+.claude/agents/*
+!.claude/agents/birdbrain-implementer.md
+!.claude/agents/birdbrain-reviewer.md
 .codex
 .cursor
 .zed

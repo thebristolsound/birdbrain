@@ -1,0 +1,5 @@
+# Pins Node for every shell and agent worktree in this repo (mise ignores .nvmrc by
+# default). Node 24 silently breaks Electron's postinstall — see the Node note in
+# CLAUDE.md "Commands". Keep in sync with .nvmrc and CI's node-version-file.
+[tools]
+node = "20"

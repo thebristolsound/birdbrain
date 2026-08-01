@@ -111,7 +111,7 @@
     "@fontsource-variable/inter": "^5.2.8",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "@ghostery/adblocker-electron": "^2.18.1",
-    "@hono/node-server": "^1.19.14",
+    "@hono/node-server": "^2.0.10",
     "@hono/zod-validator": "^0.4.3",
     "@peculiar/asn1-cms": "^2.8.0",
     "@peculiar/asn1-schema": "^2.8.0",

@@ -14,7 +14,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
-    "postinstall": "node scripts/rebuild-native.mjs",
+    "postinstall": "node scripts/ensure-electron.mjs && node scripts/rebuild-native.mjs",
     "rebuild:electron": "node scripts/rebuild-native.mjs",
     "build:extension": "vite build --config extension/vite.config.ts && cross-env BUILD_TARGET=content vite build --config extension/vite.config.ts",
     "dev:extension": "vite build --config extension/vite.config.ts --watch",
@@ -25,6 +25,7 @@
     "coverage:report": "node scripts/coverage-report.mjs",
     "coverage:all": "node scripts/coverage-all.mjs",
     "lint": "eslint . --ext .ts,.tsx",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p extension/tsconfig.json",
     "format": "prettier --write \"src/**/*.{ts,tsx}\" \"extension/**/*.{ts,tsx}\"",
     "pretest:e2e": "pnpm build",
     "test:e2e": "npx playwright test",
@@ -106,32 +107,11 @@
       "maintainer": "Matt Donovan <thebristolsound@users.noreply.github.com>"
     }
   },
-  "pnpm": {
-    "supportedArchitectures": {
-      "os": [
-        "current"
-      ],
-      "cpu": [
-        "x64",
-        "arm64"
-      ]
-    },
-    "onlyBuiltDependencies": [
-      "better-sqlite3",
-      "electron",
-      "esbuild",
-      "msw",
-      "sharp"
-    ],
-    "overrides": {
-      "tar": "^7.5.16"
-    }
-  },
   "dependencies": {
     "@fontsource-variable/inter": "^5.2.8",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "@ghostery/adblocker-electron": "^2.18.1",
-    "@hono/node-server": "^1.19.14",
+    "@hono/node-server": "^2.0.10",
     "@hono/zod-validator": "^0.4.3",
     "@peculiar/asn1-cms": "^2.8.0",
     "@peculiar/asn1-schema": "^2.8.0",

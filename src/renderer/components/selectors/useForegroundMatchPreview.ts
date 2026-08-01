@@ -54,8 +54,8 @@ export async function previewForegroundMatches(
 
   let candidates = await deps.listCaptures(caseId)
   if (selectorId) {
-    const matchingIds = await deps.listMatchingCaptureIds(caseId, [selectorId])
-    candidates = candidates.filter((c) => matchingIds.includes(c.id))
+    const matchingIds = new Set(await deps.listMatchingCaptureIds(caseId, [selectorId]))
+    candidates = candidates.filter((c) => matchingIds.has(c.id))
   }
 
   const results: ForegroundMatchPreview[] = []

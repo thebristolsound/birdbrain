@@ -4,6 +4,7 @@
       "Bash(pnpm install)",
       "Bash(pnpm rebuild:electron)",
       "Bash(pnpm lint)",
+      "Bash(pnpm typecheck)",
       "Bash(pnpm test:*)",
       "Bash(pnpm test:coverage)",
       "Bash(pnpm test:e2e)",

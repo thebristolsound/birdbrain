@@ -15,6 +15,8 @@ Open source web investigation & capture tool. Electron desktop app with a compan
 - `pnpm lint` - ESLint (.ts, .tsx)
 - `pnpm format` - Prettier format src/ and extension/
 - `pnpm rebuild:electron` - Rebuild native deps (better-sqlite3)
+
+Node version: `.nvmrc` pins Node 20 and CI honors it. Electron's postinstall silently fails to extract the binary under Node 24 (extract-zip's promise never settles), leaving `node_modules/electron/dist` broken with exit code 0 — if Electron is mysteriously missing, check `node --version` first.
 - `pnpm test:e2e` - Run E2E tests (Playwright + Electron, runs `pnpm build` first)
 - `pnpm test:e2e:debug` - Run E2E tests with Playwright inspector
 - `pnpm package` / `pnpm package:win` / `pnpm package:mac` / `pnpm package:linux` - Package for distribution
@@ -206,7 +208,7 @@ Long-lived reference docs moved out of `docs/reference/` into `website/content/d
 
 `website/` is the public docs site — Next.js 16 + Fumadocs UI/MDX, statically exported and published to GitHub Pages at <https://thebristolsound.github.io/birdbrain/> by `.github/workflows/docs.yml`.
 
-**It is a deliberately isolated sub-project.** It has its own `package.json`, `pnpm-lock.yaml`, and `node_modules`, and there is **no** `pnpm-workspace.yaml` — adding one would force migrating the root `pnpm.*` keys (`onlyBuiltDependencies`, `overrides`, `supportedArchitectures`) and risk the Electron/native build. Consequences:
+**It is a deliberately isolated sub-project.** It has its own `package.json`, `pnpm-lock.yaml`, `node_modules`, and `pnpm-workspace.yaml`. Since pnpm 10.28 stopped reading the `pnpm` field in `package.json`, the root `pnpm-workspace.yaml` is the settings home for `onlyBuiltDependencies`, `overrides`, and `supportedArchitectures` — it deliberately has **no** `packages` field (that keeps it a single-package workspace; never add one). `website/pnpm-workspace.yaml` is the isolation boundary: it makes `website/` its own workspace root so pnpm commands run inside it stop there instead of walking up, and it holds the site's own `allowBuilds` approvals. Consequences:
 
 - Run its commands from inside `website/`: `pnpm install`, `pnpm dev`, `pnpm build`, `pnpm types:check`. A root `pnpm install` does not touch it.
 - The root toolchain ignores it: `eslint.config.js` lists `website/`, `pnpm format` is scoped to `src/`+`extension/`, the root tsconfigs only include `src/**`, and `build.files` in the root `package.json` excludes `website/**/*` so it never ships inside the packaged app.

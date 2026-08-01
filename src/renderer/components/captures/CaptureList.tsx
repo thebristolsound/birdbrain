@@ -88,12 +88,10 @@ export function CaptureList({ caseId }: CaptureListProps) {
   useClickOutside(sortRef, () => setShowSortMenu(false))
   useClickOutside(filterRef, () => setShowFilterMenu(false))
 
-  const displayedCaptures = computeDisplayedCaptures({
-    captures,
-    filteredCaptureIds,
-    favorites,
-    filters
-  })
+  const displayedCaptures = useMemo(
+    () => computeDisplayedCaptures({ captures, filteredCaptureIds, favorites, filters }),
+    [captures, filteredCaptureIds, favorites, filters]
+  )
 
   if (isLoading) {
     return (

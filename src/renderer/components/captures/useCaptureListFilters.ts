@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   countActiveFilters,
   type CaptureListFilters,
@@ -13,7 +13,12 @@ export function useCaptureListFilters() {
   const [dateFilter, setDateFilter] = useState<DateFilter>('all')
   const [favoritesOnly, setFavoritesOnly] = useState(false)
 
-  const filters: CaptureListFilters = { sortBy, formatFilter, dateFilter, favoritesOnly }
+  // Memoized so consumers can use `filters` as a useMemo/useEffect dependency:
+  // a fresh object literal here would defeat any memo keyed on it.
+  const filters: CaptureListFilters = useMemo(
+    () => ({ sortBy, formatFilter, dateFilter, favoritesOnly }),
+    [sortBy, formatFilter, dateFilter, favoritesOnly]
+  )
   const activeFilterCount = countActiveFilters(filters)
 
   function clearAllFilters() {

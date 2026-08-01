@@ -13,3 +13,37 @@ The skills speak in terms of five canonical triage roles. This file maps those r
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
 
 Edit the right-hand column to match the vocabulary you use.
+
+## Repo-specific labels
+
+| Label                | Meaning                                                                                                                                                    |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `evidence-affecting` | This issue is an Evidence-Affecting Change (see `CONTEXT.md`). Applied at triage; triggers the evidence gate in [ADR-0005](../adr/0005-unattended-agents-on-the-evidence-path.md). |
+
+The `evidence-affecting` call is made by the human triaging the issue, not by the agent working
+it; the agent opening a PR for a labelled issue copies the label onto the PR. The label is the
+gate's primary trigger; the PR-diff path-list backstop
+(`docs/specs/2026-07-31-evidence-affecting-paths-assessment.md`, drafted in PR #315, until a
+maintained list supersedes it) exists to catch triage misses, not to replace the call.
+
+## The ready-for-agent bar
+
+`ready-for-agent` is a claim about the issue, not a hope about the agent. An issue earns the
+label only when all four hold:
+
+1. **Acceptance criteria.** Observable outcomes an agent can verify — not "improve" or
+   "clean up". If two reasonable readers could disagree about whether a PR closes the issue,
+   the criteria are not done.
+2. **Named verification path.** Which commands prove the change works (`pnpm lint`,
+   `pnpm typecheck`, `BIRDBRAIN_REQUIRE_OPENSSL=1 pnpm test`, `pnpm build`,
+   `pnpm build:extension`, an E2E run, a manual check the PR must describe — whatever
+   applies), stated in the issue.
+3. **Starting files.** The files or modules where the work begins. The agent may range wider,
+   but an issue whose starting point needs discovery is research, not a ready task.
+4. **Evidence-affecting call made.** Explicitly decided yes or no. If yes, the
+   `evidence-affecting` label is on the issue before the agent starts.
+
+An agent picking up a `ready-for-agent` issue checks this bar at intake. If any point fails —
+or turns out mid-work to have been wrong — the give-up path applies: comment the findings on
+the issue, relabel `needs-info` or `ready-for-human`, and vacate the slot. Pushing through a
+mis-specified issue is the failure mode this bar exists to prevent.

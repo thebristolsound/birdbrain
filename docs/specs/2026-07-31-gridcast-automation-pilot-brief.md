@@ -1,3 +1,5 @@
+# Gridcast Automation Pilot — Cross-Repo Notes
+
 Notes from the gridcast side of the automation pilot — stuff worth syncing on
 before we drift apart.
 
@@ -19,29 +21,33 @@ Two, genuinely — I'm copying these back into gridcast rather than the reverse.
 
 WHAT GRIDCAST SETTLED ON THAT'S WORTH COPYING
 
-CI hardening. Two things came up in review on gridcast that apply to birdbrain's
+CI hardening. Two things came up in review on gridcast that apply to Birdbrain's
 ci.yml and security.yml — neither currently has them:
 
-  permissions:
-    contents: read
+```yaml
+permissions:
+  contents: read
+```
 
 and on the checkout step:
 
-  - uses: actions/checkout@<sha>
-    with:
-      persist-credentials: false
+```yaml
+- uses: actions/checkout@<sha>
+  with:
+    persist-credentials: false
+```
 
 Without the first, the job inherits whatever the repo or org default is, which is
 usually broader than a verify job needs. Without the second, GITHUB_TOKEN gets
 written into .git/config and stays there while your pnpm lifecycle scripts run.
 docs.yml and release.yml already declare permissions, so it's just the two.
 
-Worth flagging for birdbrain specifically: your postinstall runs
+Worth flagging for Birdbrain specifically: your postinstall runs
 scripts/rebuild-native.mjs, so `pnpm install` executes local code as a matter of
 course. That's fine, it's your own script, but it does mean the checkout step's
 credential persistence matters more than it would in a repo with no postinstall.
 
-Permission rules in .claude/settings.json. The file doesn't exist in birdbrain yet
+Permission rules in .claude/settings.json. The file doesn't exist in Birdbrain yet
 — the .gitignore already un-ignores it, it just hasn't been created. What we
 learned writing gridcast's:
 
@@ -101,14 +107,14 @@ Machine-wide, already done, applies to both repos, don't re-implement per-repo:
   allowlist, deliberately — the real controls are worktree isolation, the git
   hook, and CI. Don't count the allowlist as a fourth.
 
-Per-repo, i.e. your call in birdbrain:
+Per-repo, i.e. your call in Birdbrain:
 - .claude/settings.json with that repo's own commands.
 - CI hardening above.
 
 
 ONE THING THAT NEEDS A DECISION, NOT A FIX
 
-birdbrain has 8 authored files under .claude/ — the osint-analyst agent, three
+Birdbrain has 8 authored files under .claude/ — the osint-analyst agent, three
 commands, the superdesign skill, and a workflow — that ".claude/*" currently keeps
 out of git entirely. No history, no backup. Worth deciding whether to un-ignore
 and commit them; right now they only exist on one disk. Not something I'd change

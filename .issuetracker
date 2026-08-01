@@ -9,7 +9,3 @@
 [issuetracker "Linear"]
   regex = "MOM-(\\d+)"
   url = "https://linear.app/momentaryarchitecture/issue/MOM-$1"
-
-[issuetracker "Sample Jira Multiproject Rule"]
-  regex = "(WIT|INNOVA)-(\\d+)"
-  url = "https://jira.yourcompany.com/browse/$1-$2"

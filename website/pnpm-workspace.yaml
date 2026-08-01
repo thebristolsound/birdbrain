@@ -1,0 +1,8 @@
+# Workspace boundary: this file makes website/ its own pnpm workspace root, so pnpm
+# commands run inside website/ stop here instead of walking up to the repo root's
+# pnpm-workspace.yaml. website/ is a deliberately isolated sub-project (own lockfile,
+# own node_modules) — see the "Documentation site" section in the repo CLAUDE.md.
+
+allowBuilds:
+  esbuild: true
+  sharp: true

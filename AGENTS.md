@@ -22,6 +22,8 @@ Open source web investigation & capture tool. Electron desktop app with a compan
 
 Docs site commands run from `website/` (separate lockfile — see "Documentation site"): `pnpm dev`, `pnpm build`, `pnpm types:check`.
 
+**Run everything on Node 20.** `.nvmrc` and `.mise.toml` pin it, and CI reads `.nvmrc` (`node-version-file`). `engines.node` is only a floor (`>=20.19.0`) — Node 24 satisfies it, so engines will not keep you off the broken version. `.mise.toml` exists because mise ignores `.nvmrc` by default, so shells and agent worktrees would otherwise land on whatever Node is newest. Under Node 24 Electron's postinstall silently fails to extract the binary (extract-zip's promise never settles): install exits 0 but leaves `node_modules/electron/dist` broken, which is what `scripts/ensure-electron.mjs` now backstops. If Electron is mysteriously missing, check `node --version` first.
+
 ## Architecture
 
 Electron + React 19 + TanStack Router + React Query + Chrome Extension + SQLite (better-sqlite3).
@@ -207,7 +209,9 @@ Long-lived reference docs moved out of `docs/reference/` into `website/content/d
 
 `website/` is the public docs site — Next.js 16 + Fumadocs UI/MDX, statically exported and published to GitHub Pages at <https://thebristolsound.github.io/birdbrain/> by `.github/workflows/docs.yml`.
 
-**It is a deliberately isolated sub-project.** It has its own `package.json`, `pnpm-lock.yaml`, and `node_modules`. The repo root does have a `pnpm-workspace.yaml`, but **only** to hold the pnpm settings that used to live in the `pnpm` field of `package.json` (`onlyBuiltDependencies`, `overrides`, `supportedArchitectures`) — pnpm 10.28 stopped reading them there. It deliberately has no `packages:` key, so nothing is registered as a workspace member and `website/` stays isolated. Do not add one. Consequences:
+**It is a deliberately isolated sub-project.** It has its own `package.json`, `pnpm-lock.yaml`, and `node_modules`. The repo root does have a `pnpm-workspace.yaml`, but **only** to hold the pnpm settings that used to live in the `pnpm` field of `package.json` (`onlyBuiltDependencies`, `overrides`, `supportedArchitectures`) — pnpm 10.28 stopped reading them there. It deliberately has no `packages:` key, so nothing is registered as a workspace member and `website/` stays isolated. Do not add one.
+
+`website/pnpm-workspace.yaml` enforces that isolation from the other side: it makes `website/` its own workspace root, so a `pnpm` command run inside `website/` stops there instead of walking up and inheriting the root's `overrides` and `onlyBuiltDependencies`. It also carries the site's own `allowBuilds` approvals (esbuild, sharp). Consequences:
 
 - Run its commands from inside `website/`: `pnpm install`, `pnpm dev`, `pnpm build`, `pnpm types:check`. A root `pnpm install` does not touch it.
 - The root toolchain ignores it: `eslint.config.js` lists `website/`, `pnpm format` is scoped to `src/`+`extension/`, the root tsconfigs only include `src/**`, and `build.files` in the root `package.json` excludes `website/**/*` so it never ships inside the packaged app.

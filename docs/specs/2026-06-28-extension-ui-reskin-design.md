@@ -4,7 +4,8 @@
 **Status:** Implemented — shipped in #169 (`41a753e`). This document is the design record; the
 "as built" notes mark where the implementation diverged from the original design.
 **Author:** brainstormed against the OpenRouter flat reskin (ADR-0003,
-`2026-06-28-openrouter-theme-reskin-design.md`) and the current extension source.
+`docs/adr/0003-adopt-openrouter-flat-theme.md`, design record at
+`docs/specs/2026-06-28-openrouter-theme-reskin-design.md`) and the current extension source.
 
 ## Goal
 
@@ -183,8 +184,8 @@ and the content script has no theme channel):
 
 - **Light-surface regressions:** `bg-white/[0.04]` tiles and `text-white` are invisible/wrong on a
   light card — caught by the token swap, but verify every popup element renders in **light** mode.
-- **First-open theme flash:** mitigated by the `bb-theme` cache + inline script; a single flip on
-  first-ever open for a light-mode user is acceptable.
+- **First-open theme flash:** mitigated by the `bb-theme` cache + external render-blocking script
+  (`theme-preinit.js`); a single flip on first-ever open for a light-mode user is acceptable.
 - **Status-shape test:** if a test asserts the exact `/api/status` body, update it for the new
   `theme` field.
 

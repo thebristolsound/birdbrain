@@ -54,6 +54,11 @@ reviews:
     - "*.js"
     - "*.mjs"
     - "*.json"
+    # Root YAML: this file itself, chiefly. Without it, a change to the review
+    # config is the one change CodeRabbit never sees. pnpm-lock.yaml is excluded
+    # below.
+    - "*.yaml"
+    - "*.yml"
     - "LICENSE"
     # A change here weakens secret scanning or shifts the toolchain — worth a look.
     - ".gitleaksignore"

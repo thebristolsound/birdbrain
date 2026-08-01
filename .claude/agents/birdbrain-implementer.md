@@ -76,7 +76,9 @@ Evidence-affecting PRs are never merged without human review. Do not weaken that
 
 - One logical change per commit, `<type>(<scope>): <subject>` format. Stage files explicitly —
   never `git add .` or `git add -A`. Review `git diff --staged` before committing.
-- Never add `Co-authored-by: Claude` or any variant.
+- Never add `Co-authored-by: Claude` or any variant — and the tooling adds one by default, so
+  this means actively removing it, not just declining to type it. After every commit, read
+  `git log -1 --format=%B`; if a trailer appeared, `git commit --amend` it away before pushing.
 - Push the branch and open a **draft** PR against `main`. The description covers: what changed,
   how it was verified (real output), the Evidence impact section when the gate fired, and ends
   with exactly this attribution line and nothing else:

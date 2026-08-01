@@ -61,16 +61,14 @@ pass above can still be non-compliant here. Check each one explicitly:
 - **Attribution line.** The PR body must end with exactly `Pull request description generated
   by Claude Code` and nothing after it. A missing, altered, or mid-body line is a finding.
 - **Auto-merge.** Confirm auto-merge is not enabled (`gh pr view <n> --json autoMergeRequest`).
+- **Commit trailers.** Read every commit message on the branch
+  (`git log origin/main..HEAD --format=%B`). A `Co-authored-by: Claude` trailer — any model
+  variant, any capitalization — on any commit is a blocking finding. The tooling appends one by
+  default, so its presence means the implementer did not strip it, not that it was typed by
+  hand. Older commits on `main` predate the rule; only the PR's own commits are in scope.
 
 Report any control that fails — and any you could not check — as a blocking finding. "I did not
 check" and "it passed" are different outcomes; never collapse them.
-
-Commit trailers are deliberately **not** a control here. `birdbrain-implementer.md` forbids a
-`Co-authored-by: Claude` trailer, but the repo's own history carries
-`Co-Authored-By: Claude <model> <noreply@anthropic.com>` on agent commits and the standing
-Claude Code configuration appends it automatically. Until that contradiction is resolved by a
-human, do not block on trailer presence or absence in either direction — note it as an
-informational observation at most.
 
 ## Reporting
 

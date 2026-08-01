@@ -254,3 +254,19 @@ Five canonical triage roles using their default label strings (`needs-triage`, `
 ### Domain docs
 
 Single-context layout: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+### Background jobs (project-local carve-out)
+
+Unattended/background agent jobs working a `ready-for-agent` issue in this repo are opted out
+of the global wait-for-confirmation rules: do not pause for mid-task approval and do not wait
+for the user to confirm completion. Instead, verify the work (`pnpm lint`, `pnpm typecheck`,
+`BIRDBRAIN_REQUIRE_OPENSSL=1 pnpm test`, `pnpm build`, plus `pnpm build:extension` when
+`extension/` changed), then finish by opening a **draft PR** with the standard attribution
+line. Interactive sessions are not covered by this carve-out, and it must not be copied to the
+global CLAUDE.md or other repos.
+
+The gates in `docs/adr/0005-unattended-agents-on-the-evidence-path.md` still apply in full:
+strict-serial WIP (max one open agent PR), human review on every agent PR through the pilot,
+evidence-affecting PRs never auto-merge, and the give-up path (comment findings on the issue, relabel
+`needs-info`/`ready-for-human`, vacate the slot) whenever the issue fails the ready-for-agent
+bar at intake or mid-work.

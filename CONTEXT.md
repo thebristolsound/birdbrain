@@ -74,6 +74,10 @@ _Avoid_: user, analyst.
 The Hono HTTP server in the main process (port 19845) that the Chrome extension posts captures to. The only entry point for the Capture Lifecycle's ingest path.
 _Avoid_: ingest server, capture API.
 
+**Evidence-Affecting Change**:
+A change to acquisition, parsing, extraction, storage, hashing, signing, trusted time, manifests, verification, redaction, export, reporting, AI analysis, or software distribution that can alter an evidentiary result or the interpretation of one. Carries the per-change obligations listed under "Assurance baseline" above.
+_Avoid_: risky change, core change, forensic change.
+
 ## Relationships
 
 - A **Case** owns many **Captures**, **Selectors**, and **Notes**

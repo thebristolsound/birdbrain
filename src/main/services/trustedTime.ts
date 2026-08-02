@@ -1,6 +1,4 @@
-import { existsSync, statSync, readFileSync } from 'fs'
 import { join } from 'path'
-import { MANIFEST_FILENAME } from '@shared/constants'
 import {
   resolveTrustedTimeFromEntries,
   buildTrustedTimeIndexFromEntries
@@ -8,32 +6,14 @@ import {
 import type { TrustedTimeResult } from '@shared/verify/trustedTime'
 import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
+import { readManifestSnapshot } from '@main/services/manifest'
 import { getStorageRoot } from '@main/services/storage'
 
 export type { TrustedTimeResult }
 
-// Reads and leniently parses a case manifest into entry records. The
-// resolution rule itself lives in verify-core (`@shared/verify/trustedTime`);
-/**
- * Parses manifest entries from the case's manifest file.
- *
- * @param caseDir - The case directory containing the manifest file
- * @returns An array of parsed manifest entries. Unparseable lines are silently skipped. Returns an empty array if the manifest file does not exist or is empty.
- */
-function readManifestEntries(caseDir: string): Record<string, unknown>[] {
-  const path = join(caseDir, MANIFEST_FILENAME)
-  if (!existsSync(path) || statSync(path).size === 0) return []
-  const out: Record<string, unknown>[] = []
-  for (const line of readFileSync(path, 'utf-8').split('\n')) {
-    if (line.trim().length === 0) continue
-    try {
-      out.push(JSON.parse(line) as Record<string, unknown>)
-    } catch {
-      // Skip unparseable lines (same lenience as the bulk index).
-    }
-  }
-  return out
-}
+// Manifest reading is owned by the Manifest module (readManifestSnapshot's
+// lenient dialect); the resolution rule itself lives in verify-core
+// (`@shared/verify/trustedTime`).
 
 // Resolves the per-capture trusted-time axis from the manifest alone (so the DB mirror remains rebuildable).
 /**
@@ -44,7 +24,7 @@ function readManifestEntries(caseDir: string): Record<string, unknown>[] {
  * @returns The trusted time result indicating the timestamp status
  */
 export function resolveTrustedTime(caseDir: string, contentHash: string): TrustedTimeResult {
-  return resolveTrustedTimeFromEntries(readManifestEntries(caseDir), contentHash)
+  return resolveTrustedTimeFromEntries(readManifestSnapshot(caseDir).entries, contentHash)
 }
 
 // Resolves the trusted-time axis for EVERY capture in a case in a single manifest
@@ -58,7 +38,7 @@ export function resolveTrustedTime(caseDir: string, contentHash: string): Truste
  * @returns A `Map` keyed by content hash, with `TrustedTimeResult` values. Content hashes absent from the map are implicitly `'none'`.
  */
 export function buildTrustedTimeIndex(caseDir: string): Map<string, TrustedTimeResult> {
-  return buildTrustedTimeIndexFromEntries(readManifestEntries(caseDir))
+  return buildTrustedTimeIndexFromEntries(readManifestSnapshot(caseDir).entries)
 }
 
 // Read-and-refresh for a single capture: resolves the authoritative trusted-time

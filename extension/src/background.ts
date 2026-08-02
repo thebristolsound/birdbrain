@@ -5,7 +5,7 @@ import {
   createSelector
 } from '@extension/utils/api'
 import { normalizeResponseHeaders } from '@extension/utils/headers'
-import { MAX_SCREENSHOT_SIZE } from '@shared/constants'
+import { MAX_SCREENSHOT_BITMAP_BYTES } from '@shared/constants'
 import { matchIgnoredUrl } from '@shared/urlPatterns'
 import type { ActiveSelectorsResult, SelectorMatchInfo } from '@shared/schemas'
 
@@ -64,7 +64,7 @@ async function captureFullPageScreenshot(tabId: number): Promise<Blob | undefine
   try {
     const response = await chrome.tabs.sendMessage(tabId, {
       type: 'CAPTURE_FULL_PAGE',
-      maxBytes: MAX_SCREENSHOT_SIZE
+      maxBytes: MAX_SCREENSHOT_BITMAP_BYTES
     })
     if (response?.screenshot) {
       const res = await fetch(response.screenshot)
@@ -87,7 +87,7 @@ async function captureScrollingPageScreenshot(tabId: number): Promise<Blob | und
   try {
     const response = await chrome.tabs.sendMessage(tabId, {
       type: 'CAPTURE_FULL_PAGE_SCROLLING',
-      maxBytes: MAX_SCREENSHOT_SIZE,
+      maxBytes: MAX_SCREENSHOT_BITMAP_BYTES,
       scrollTimeoutMs: 120_000
     })
     if (response?.screenshot) {

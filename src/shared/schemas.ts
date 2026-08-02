@@ -260,11 +260,8 @@ const ManifestTimestampEntrySchema = z
 
 // Signed audit record of an evidence-package export (#124). schemaVersion is
 // pinned >=2 so the entry MUST carry a signature, matching the timestamp entry.
-// `packageHash` commits to the export's content WITHOUT covering the final .zip
-// — that would be circular, since manifest.jsonl (which holds this entry) is
-// bundled inside the zip. It is sha256(canonicalStringify(sortedArtifacts)),
-// where sortedArtifacts is evidence.json's artifact list ordered by path; that
-// hashes every packaged file's content without depending on this entry.
+// `packageHash` is computed over evidence.json's artifact list by the recipe
+// owned by packageHash() in src/main/services/manifest.ts.
 // `verificationResult` is a fixed integer+boolean shape so it serializes
 // canonically and stays stable under hashing+signing.
 const ManifestExportVerificationResultSchema = z
@@ -307,10 +304,9 @@ export const ArchiveVerificationResultSchema = z
   })
   .strict()
 
-// Signed audit record of a case-archive export (.birdbrain). packageHash uses
-// the same recipe as the evidence export: sha256(canonicalStringify(sorted
-// artifacts)), never hashing the final zip (circular — this entry's manifest
-// copy ships inside it).
+// Signed audit record of a case-archive export (.birdbrain). `packageHash` is
+// computed over package.json's artifact list by the recipe owned by
+// packageHash() in src/main/services/manifest.ts.
 const ManifestArchiveExportEntrySchema = z
   .object({
     type: z.literal('archive-export'),

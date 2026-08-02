@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, writeFileSync } from 'fs'
 import { unlink } from 'fs/promises'
 import { createHash } from 'crypto'
 import { join } from 'path'
@@ -12,21 +12,25 @@ import { burnAnnotations } from '@main/services/burnAnnotations'
 import { getSettings } from '@main/services/settings'
 import { getInstallationId } from '@main/services/installationId'
 import { getPublicKeyPem } from '@main/services/signingKey'
-import { appendManifestEntry, initManifest } from '@main/services/manifest'
+import {
+  appendManifestEntry,
+  createArtifactAccumulator,
+  initManifest,
+  packageHash as computePackageHash,
+  readManifestSnapshot
+} from '@main/services/manifest'
 import { buildTrustedTimeIndex } from '@main/services/trustedTime'
-import type { ExportVerificationResult } from '@main/services/manifest'
+import type { ExportVerificationResult, ManifestSnapshot } from '@main/services/manifest'
 import { createStoredZip } from '@main/services/zip'
 import { getTsaTrustBundle } from '@main/services/tsaTrust'
 import {
   buildTrustedTimeIndexFromEntries,
-  canonicalStringify,
   extractTimestampTokenCertificatesPem
 } from '@shared/verify'
 import { buildCertification, resolveToolVersion } from '@main/services/certification'
 import { buildHtmlReport } from '@main/services/reportHtml'
 import type { PackagedArtifacts, ReportData } from '@main/services/reportHtml'
 import { VERIFY_RUNBOOK } from '@main/services/verifyRunbook'
-import { MANIFEST_FILENAME } from '@shared/constants'
 import type {
   Capture,
   ExportOptions,
@@ -38,13 +42,6 @@ import type {
 // The report renderer owns this shape. Aliasing rather than restating it keeps
 // the two from drifting apart, since every field here exists to be rendered.
 type ExportData = ReportData
-
-/** One read of the case manifest, shared by the report and the package. */
-interface ManifestSnapshot {
-  jsonl: Buffer
-  entries: Record<string, unknown>[]
-  head: { index: number; entryHash: string } | null
-}
 
 /** evidence.json keeps this as a list; a capture has at most one token path. */
 function packagedTimestampTokenPaths(byHash: Map<string, string>, capture: Capture): string[] {
@@ -58,12 +55,6 @@ interface ManifestTimestampEntry {
   type: 'timestamp'
   captureContentHash: string
   tsaToken?: string
-}
-
-interface EvidenceArtifact {
-  path: string
-  sha256: string
-  sizeBytes: number
 }
 
 export async function verifyCaptures(
@@ -203,7 +194,7 @@ export async function generateReport(
   // append between the two, so report.html could cite a head the bundled
   // manifest.jsonl does not end at — telling reviewers to reconcile a valid
   // package against a stale hash.
-  const manifest = readManifestSnapshot(caseId)
+  const manifest = readManifestSnapshot(join(getStorageRoot(), caseId))
   data.manifestHead = manifest.head
   data.packagedPaths = buildPackagedPaths(
     data,
@@ -275,15 +266,7 @@ function buildEvidenceZip(
   reportHtml: string,
   manifest: ManifestSnapshot
 ): EvidenceZipResult {
-  const entries: Array<{ name: string; data: Buffer | string }> = []
-  const artifacts: EvidenceArtifact[] = []
-  const add = (name: string, value: Buffer | string): string => {
-    const buf = Buffer.isBuffer(value) ? value : Buffer.from(value, 'utf-8')
-    const digest = sha256(buf)
-    entries.push({ name, data: buf })
-    artifacts.push({ path: name, sha256: digest, sizeBytes: buf.length })
-    return digest
-  }
+  const { entries, artifacts, add } = createArtifactAccumulator()
 
   const manifestJsonl = manifest.jsonl
   const timestampEntries = manifest.entries.filter(isTimestampEntry)
@@ -443,16 +426,10 @@ function buildEvidenceZip(
     data: JSON.stringify(evidence, null, 2)
   })
 
-  // packageHash commits to every packaged file's content via the artifact list,
-  // sorted by path for determinism. It deliberately does NOT hash the final
-  // .zip: this hash feeds the export manifest entry, which is bundled inside
-  // that very zip, so hashing the zip would be circular. evidence.json itself
-  // is excluded from `artifacts` (it is unshifted above, not run through `add`),
+  // Recipe owned by packageHash() in manifest.ts. evidence.json itself is
+  // excluded from `artifacts` (it is unshifted above, not run through `add`),
   // which is what keeps packageHash independent of the entry it informs.
-  const sortedArtifacts = [...artifacts].sort((a, b) =>
-    a.path < b.path ? -1 : a.path > b.path ? 1 : 0
-  )
-  const packageHash = sha256(Buffer.from(canonicalStringify(sortedArtifacts), 'utf-8'))
+  const packageHash = computePackageHash(artifacts)
 
   const captureCount = data.captures.length
   const verifiedCount = data.verifications.filter((v) => v.status === 'verified').length
@@ -469,40 +446,6 @@ function buildEvidenceZip(
   }
 
   return { zip: createStoredZip(entries), packageHash, verificationResult }
-}
-
-function readManifestEntries(manifestJsonl: string): Record<string, unknown>[] {
-  return manifestJsonl
-    .split('\n')
-    .filter((line) => line.trim().length > 0)
-    .map((line) => {
-      try {
-        return JSON.parse(line) as Record<string, unknown>
-      } catch {
-        return {}
-      }
-    })
-}
-
-/**
- * A single read of the case manifest, shared by the report and the package so
- * the two cannot describe different manifest states. `head` is null when the
- * manifest is absent or its last line is unreadable; the report renders that as
- * an explicit gap rather than omitting the reference.
- */
-function readManifestSnapshot(caseId: string): ManifestSnapshot {
-  const path = join(getStorageRoot(), caseId, MANIFEST_FILENAME)
-  const jsonl = existsSync(path) ? readFileSync(path) : Buffer.alloc(0)
-  const entries = readManifestEntries(jsonl.toString('utf-8'))
-  const last = entries.at(-1) as { index?: number; entryHash?: string } | undefined
-  return {
-    jsonl,
-    entries,
-    head:
-      typeof last?.index === 'number' && typeof last.entryHash === 'string'
-        ? { index: last.index, entryHash: last.entryHash }
-        : null
-  }
 }
 
 /**

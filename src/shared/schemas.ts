@@ -8,7 +8,6 @@ import { CAPTURE_METHODS, CONSENT_SUPPRESSIONS } from '@shared/types'
 import type {
   ActiveCaseSelectors,
   BirdbrainSettings,
-  CaptureSource,
   Selector,
   SelectorMatch
 } from '@shared/types'
@@ -38,6 +37,14 @@ const FormFileSchema = z.custom<FormFileLike>(
 )
 
 export const CaptureSourceSchema = z.enum(['auto', 'manual', 'selector'])
+
+// The sources the wire accepts, which is deliberately narrower than the domain
+// `CaptureSource` in @shared/types: 'recapture' is produced in-app by the
+// recapture service and never uploaded over this endpoint. Callers building a
+// request must use this type, not the domain one — the Zod parse below rejects
+// anything else with a 400, and typing the request against the wider union
+// would let that drift past `pnpm typecheck`.
+export type CaptureUploadSource = z.infer<typeof CaptureSourceSchema>
 
 // Response headers arrive as a JSON string in a multipart form field. They are
 // an untrusted, extension-supplied value that ends up in the signed manifest, so
@@ -144,7 +151,8 @@ export interface CaptureUploadResult {
   /** Absent when the capture was stored without a manifest entry. */
   manifestIndex?: number
   status: 'ok'
-  source: CaptureSource
+  /** Echoed back from the request, so it is the wire union, not the domain one. */
+  source: CaptureUploadSource
   screenshotStatus: ScreenshotStatus
   /** Why the screenshot was dropped; absent when none was. */
   screenshotWarning?: string

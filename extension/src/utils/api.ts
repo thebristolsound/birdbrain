@@ -7,10 +7,10 @@ import type {
   CaptureServerCase,
   CaptureServerStatus,
   CaptureUploadResult,
+  CaptureUploadSource,
   SelectorCreateResult,
   SelectorMatchInfo
 } from '@shared/schemas'
-import type { CaptureSource } from '@shared/types'
 
 const BASE_URL = 'http://127.0.0.1:19845'
 const STORAGE_KEY = 'birdbrainServerToken'
@@ -170,7 +170,7 @@ export async function stopSession(): Promise<{ status: string; sessionActive: bo
 }
 
 export async function sendMhtmlCapture(params: {
-  source: CaptureSource
+  source: CaptureUploadSource
   caseId?: string
   url: string
   title: string

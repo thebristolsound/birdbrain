@@ -16,7 +16,7 @@ import { getSettings } from '@main/services/settings'
 import { ingestMhtmlCapture } from '@main/services/captureLifecycle'
 import { getInstallationId } from '@main/services/installationId'
 import { getServerToken } from '@main/services/serverToken'
-import type { CaptureEvent, CaptureSource } from '@shared/types'
+import type { CaptureEvent } from '@shared/types'
 import {
   CaptureUploadSchema,
   SelectorCreateSchema,
@@ -26,6 +26,7 @@ import {
   type CaptureServerCase,
   type CaptureServerStatus,
   type CaptureUploadResult,
+  type CaptureUploadSource,
   type SelectorCreateResult
 } from '@shared/schemas'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
@@ -260,7 +261,8 @@ function createApp(deps: CaptureServerDeps): Hono {
     async (c) => {
       const startTime = Date.now()
       const input = c.req.valid('form')
-      const source: CaptureSource = input.source
+      // The wire union, not the domain one: 'recapture' never arrives here.
+      const source: CaptureUploadSource = input.source
       const url = input.url
       const title = input.title || url
       const timestamp = input.timestamp || new Date().toISOString()

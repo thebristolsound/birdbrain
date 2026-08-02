@@ -37,10 +37,12 @@ jobs:
 
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
 
+      # No `cache: pnpm` here: this job never installs, so the pnpm store is only
+      # present when the cache restore hits. On a lockfile-changing PR the key
+      # misses and setup-node's post-run save fails the job on the missing path.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
-          cache: pnpm
 
       # Advisory-only: the tree currently carries known high-severity advisories
       # (sharp < 0.35.0 libvips CVEs, fast-uri via electron-builder). Drop

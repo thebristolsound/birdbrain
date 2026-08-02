@@ -47,3 +47,18 @@ An agent picking up a `ready-for-agent` issue checks this bar at intake. If any 
 or turns out mid-work to have been wrong — the give-up path applies: comment the findings on
 the issue, relabel `needs-info` or `ready-for-human`, and vacate the slot. Pushing through a
 mis-specified issue is the failure mode this bar exists to prevent.
+
+### Amending an issue to the bar is re-validation, not transcription
+
+Lessons from pilot part one (#307), where stale claims survived an issue, its re-triage
+amendment, and a bot review round before a code trace disproved them:
+
+- **Re-derive every code claim from current code at labeling time.** A factual claim in the
+  issue ("six filters", "these two paths are identical", "only X is covered by tests") is
+  re-checked against the tree the day the label is applied, not carried over from the review
+  that spawned the issue. Cite file:line for anything the agent will rely on.
+- **Describe per-call-site deltas; never assert identity.** If the issue says two code paths
+  are the same, list what actually differs between them — pilot cycle 1 found an undocumented
+  delta behind an "identical" claim, and cycle 2 found a filter stage that did not exist.
+- **Every acceptance criterion must hold under each solution shape the issue permits.** If the
+  issue allows a pure function *or* a hook, no AC may be satisfiable by only one of them.

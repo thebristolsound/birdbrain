@@ -40,8 +40,10 @@ export function initManifest(caseDir: string): void {
 
 // Reads the last line to determine prevHash + next index.
 // O(N) on manifest size but only called once per append; manifests are small.
-// Deliberately STRICT, unlike readEntries(): a malformed tail line throws so a
-// corrupt manifest can never be read as empty and silently restart the chain.
+// Deliberately STRICT, unlike readEntries(): an unparseable or wrong-shaped
+// tail line throws, so a corrupt manifest can never be read as empty and
+// silently restart the chain, and appendManifestEntry can never extend the
+// chain from garbage head metadata.
 export function getManifestHead(caseDir: string): ManifestHead {
   const path = join(caseDir, MANIFEST_FILENAME)
   if (!existsSync(path) || statSync(path).size === 0) {
@@ -50,9 +52,19 @@ export function getManifestHead(caseDir: string): ManifestHead {
   const raw = readFileSync(path, 'utf-8')
   const lines = raw.split('\n').filter((l) => l.trim().length > 0)
   if (lines.length === 0) return { prevHash: '', nextIndex: 0 }
-  const last = JSON.parse(lines[lines.length - 1]) as {
-    index: number
-    entryHash: string
+  const parsed: unknown = JSON.parse(lines[lines.length - 1])
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error('Invalid manifest tail entry')
+  }
+  const last = parsed as { index?: unknown; entryHash?: unknown }
+  if (
+    typeof last.index !== 'number' ||
+    !Number.isSafeInteger(last.index) ||
+    last.index < 0 ||
+    typeof last.entryHash !== 'string' ||
+    last.entryHash.length === 0
+  ) {
+    throw new Error('Invalid manifest tail entry')
   }
   return { prevHash: last.entryHash, nextIndex: last.index + 1 }
 }

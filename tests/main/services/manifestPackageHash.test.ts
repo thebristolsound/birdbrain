@@ -1,7 +1,12 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { createHash } from 'crypto'
+import { mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import { MANIFEST_FILENAME } from '@shared/constants'
 import {
   createArtifactAccumulator,
+  getManifestHead,
   head,
   packageHash,
   readEntries
@@ -133,5 +138,55 @@ describe('readEntries / head (lenient reading dialect)', () => {
   it('head is null for an empty manifest or an unreadable last line', () => {
     expect(head([])).toBeNull()
     expect(head(readEntries('{"index":0,"entryHash":"h0"}\nnot json\n'))).toBeNull()
+  })
+})
+
+describe('getManifestHead (strict reading dialect)', () => {
+  let dir: string
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'birdbrain-manifest-head-'))
+  })
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  const write = (text: string): void => writeFileSync(join(dir, MANIFEST_FILENAME), text)
+
+  it('derives prevHash and nextIndex from a valid tail', () => {
+    write('{"index":0,"entryHash":"h0"}\n{"index":1,"entryHash":"h1"}\n')
+    expect(getManifestHead(dir)).toEqual({ prevHash: 'h1', nextIndex: 2 })
+  })
+
+  it('returns the empty head for a missing or empty manifest', () => {
+    expect(getManifestHead(dir)).toEqual({ prevHash: '', nextIndex: 0 })
+    write('')
+    expect(getManifestHead(dir)).toEqual({ prevHash: '', nextIndex: 0 })
+  })
+
+  it('throws on an unparseable tail line instead of restarting the chain', () => {
+    write('{"index":0,"entryHash":"h0"}\nnot json\n')
+    expect(() => getManifestHead(dir)).toThrow()
+  })
+
+  it('throws on a parseable tail that is not an object', () => {
+    for (const tail of ['null', '[]', '"text"', '42']) {
+      write(`{"index":0,"entryHash":"h0"}\n${tail}\n`)
+      expect(() => getManifestHead(dir)).toThrow('Invalid manifest tail entry')
+    }
+  })
+
+  it('throws on a wrong-shaped tail instead of deriving garbage head metadata', () => {
+    for (const tail of [
+      '{"index":"0","entryHash":"h0"}',
+      '{"index":-1,"entryHash":"h0"}',
+      '{"index":0.5,"entryHash":"h0"}',
+      '{"index":0,"entryHash":""}',
+      '{"index":0,"entryHash":7}',
+      '{"index":0}',
+      '{"entryHash":"h0"}'
+    ]) {
+      write(tail + '\n')
+      expect(() => getManifestHead(dir)).toThrow('Invalid manifest tail entry')
+    }
   })
 })

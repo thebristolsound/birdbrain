@@ -5,6 +5,13 @@ import {
   MANIFEST_SCHEMA_VERSION
 } from '@shared/constants'
 import { CAPTURE_METHODS, CONSENT_SUPPRESSIONS } from '@shared/types'
+import type {
+  ActiveCaseSelectors,
+  BirdbrainSettings,
+  CaptureSource,
+  Selector,
+  SelectorMatch
+} from '@shared/types'
 
 // Shared Zod schemas for Birdbrain's trust boundaries.
 //
@@ -88,6 +95,75 @@ export const CaptureUploadSchema = z.object({
 })
 
 export type CaptureUpload = z.infer<typeof CaptureUploadSchema>
+
+// --- Capture server: response DTOs ----------------------------------------
+
+// The other half of the extension wire contract: what the capture server sends
+// back. These are plain types, not Zod schemas — validation stays one-way (the
+// server validates the extension's requests; the extension trusts the server's
+// responses). Their job is to make a response change a compile error on both
+// sides instead of silent runtime drift: the route handlers below assert
+// against them with `satisfies`, and the extension imports the same types.
+// Optional fields mean "the server may omit this", not "the field is new".
+
+/** A case as advertised in GET /api/status — identity only. */
+export interface CaptureServerCaseRef {
+  id: string
+  name: string
+}
+
+/** A case as returned by GET /api/cases — identity plus its capture count. */
+export interface CaptureServerCase extends CaptureServerCaseRef {
+  captureCount: number
+}
+
+/** GET /api/status */
+export interface CaptureServerStatus {
+  running: boolean
+  /** Only sent to the extension (or an origin-less caller); never cross-origin. */
+  serverToken?: string
+  activeCase: CaptureServerCaseRef | null
+  sessionActive: boolean
+  captureCount: number
+  autoCaptureMode: BirdbrainSettings['autoCaptureMode']
+  /** Empty when the caller passed `?includeCases=0`. */
+  cases: CaptureServerCaseRef[]
+  ignoredUrlPatterns: string[]
+  captureScreenshots: boolean
+  dedupeWindowSeconds: number
+  theme: BirdbrainSettings['theme']
+}
+
+/** Whether a screenshot accompanied the capture, and whether it was kept. */
+export type ScreenshotStatus = 'saved' | 'dropped' | 'none'
+
+/** POST /api/captures — success body. */
+export interface CaptureUploadResult {
+  captureId: string
+  hash: string
+  /** Absent when the capture was stored without a manifest entry. */
+  manifestIndex?: number
+  status: 'ok'
+  source: CaptureSource
+  screenshotStatus: ScreenshotStatus
+  /** Why the screenshot was dropped; absent when none was. */
+  screenshotWarning?: string
+}
+
+/** GET /api/selectors/active — grouped by case, empty when no case is active. */
+export type ActiveSelectorsResult = ActiveCaseSelectors[]
+
+/** POST /api/selectors — success body. */
+export interface SelectorCreateResult {
+  selector: Selector
+  status: 'ok'
+}
+
+/**
+ * A selector hit reported by the content script and forwarded to the server on
+ * the `matchedSelectors` capture field. Same shape as the in-app SelectorMatch.
+ */
+export type SelectorMatchInfo = SelectorMatch
 
 // --- Capture server: POST /api/selectors ----------------------------------
 

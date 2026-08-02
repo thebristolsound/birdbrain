@@ -52,8 +52,9 @@ Never claim something works without having run it. If a test fails, fix the code
 test only if it is demonstrably wrong, and say why in the PR. Report actual command output in
 the PR's verification section — not a summary of what you expected.
 
-To run a single test file, use `npx vitest run <path>` — `pnpm test -- <path>` does not
-filter and runs the full suite.
+To run a single test file, use `pnpm test <path>` — no `--`. With the literal `--`
+(`pnpm test -- <path>`) the path is not taken as a filter and the full suite runs, and
+`npx vitest run <path>` drops the Electron runtime, which fails every native-module test.
 
 ## Responding to review
 

@@ -51,7 +51,7 @@ mis-specified issue is the failure mode this bar exists to prevent.
 ### Amending an issue to the bar is re-validation, not transcription
 
 Lessons from pilot part one (#307), where stale claims survived an issue, its re-triage
-amendment, and a bot review round before a code trace killed them:
+amendment, and a bot review round before a code trace disproved them:
 
 - **Re-derive every code claim from current code at labeling time.** A factual claim in the
   issue ("six filters", "these two paths are identical", "only X is covered by tests") is

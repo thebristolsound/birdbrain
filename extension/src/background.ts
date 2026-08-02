@@ -5,6 +5,8 @@ import {
   createSelector
 } from '@extension/utils/api'
 import { normalizeResponseHeaders } from '@extension/utils/headers'
+import { matchIgnoredUrl } from '@shared/urlPatterns'
+import type { ActiveSelectorsResult, SelectorMatchInfo } from '@shared/schemas'
 
 function captureMhtml(tabId: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
@@ -181,16 +183,7 @@ let sessionActive = false
 let captureCount = 0
 
 // Selector state
-let activeSelectors: Array<{
-  caseId: string
-  caseName: string
-  selectors: Array<{
-    id: string
-    pattern: string
-    isRegex: boolean
-    enabled: boolean
-  }>
-}> = []
+let activeSelectors: ActiveSelectorsResult = []
 // HOTFIX: auto-capture temporarily disabled
 // let autoCaptureMode: string = 'notify'
 let availableCases: Array<{ id: string; name: string }> = []
@@ -427,29 +420,12 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 
 // --- Capture orchestration ---
 
-function globToRegex(pattern: string): RegExp {
-  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&')
-  const withWildcards = escaped.replace(/\*/g, '.*').replace(/\?/g, '.')
-  return new RegExp(withWildcards, 'i')
-}
-
+// Same matcher the capture server runs, so a URL this side skips is exactly the
+// one the server would refuse. Regex literals use the platform RegExp here: the
+// service worker has no vm sandbox, and a runaway pattern stalls only the
+// extension, not the app.
 function isIgnoredByUser(url: string): boolean {
-  for (const pattern of userIgnoredPatterns) {
-    try {
-      if (pattern.startsWith('/') && pattern.lastIndexOf('/') > 0) {
-        const lastSlash = pattern.lastIndexOf('/')
-        const re = new RegExp(pattern.slice(1, lastSlash), pattern.slice(lastSlash + 1))
-        if (re.test(url)) return true
-      } else if (pattern.includes('*') || pattern.includes('?')) {
-        if (globToRegex(pattern).test(url)) return true
-      } else {
-        if (url.includes(pattern)) return true
-      }
-    } catch {
-      /* skip */
-    }
-  }
-  return false
+  return matchIgnoredUrl(url, userIgnoredPatterns) !== null
 }
 
 // HOTFIX: auto-capture temporarily disabled — shouldCapture/captureTab (session auto-capture)
@@ -636,15 +612,7 @@ async function checkSelectorsOnTab(tabId: number, url: string): Promise<void> {
     const matches = (await chrome.tabs.sendMessage(tabId, {
       type: 'CHECK_SELECTORS',
       selectors: activeSelectors
-    })) as Array<{
-      selectorId: string
-      caseId: string
-      caseName: string
-      pattern: string
-      matchText: string
-      context: string
-      index: number
-    }>
+    })) as SelectorMatchInfo[]
 
     if (!matches || matches.length === 0) return
 

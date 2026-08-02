@@ -17,6 +17,10 @@ by name, followed by an adversarial completeness/overbreadth challenge. The chal
 six paths both surveyors missed, overturned one exclusion on a factual error, and removed two
 inconsistent inclusions — those changes are already folded into the list below.
 
+Amendments since the survey: `src/shared/urlPatterns.ts` added to Acquisition (#227) — the
+ignored-URL matcher moved there out of the already-listed `src/main/services/captureServer.ts`,
+and the rename-detection-off rule only catches the move itself, not later edits to the new home.
+
 ## List format
 
 These lists are the seed for a machine-consumed file, so entries follow fixed rules. Anything
@@ -55,6 +59,7 @@ seeded from this document should be checked against them.
 | `extension/src/popup/popup.tsx` | Routes a capture to a case (chain-of-custody routing) |
 | `extension/manifest.json` | Acquisition permissions; ships in the release zip |
 | `src/main/services/captureServer.ts` | Ingest endpoint: upload validation, case routing, ingest-time selector matching |
+| `src/shared/urlPatterns.ts` | The ignored-URL matcher both sides run: it decides what never enters a case at all, and names the rule recorded as the reason for the absence |
 | `src/main/services/serverToken.ts` | Authenticates ingest; weakening admits spoofed captures into the evidence chain |
 | `src/main/services/session.ts` | Active-case state deciding which case a capture is filed under |
 | `src/main/services/recapture.ts` | Recapture queue re-acquiring URLs as new evidence |

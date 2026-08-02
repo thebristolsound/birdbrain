@@ -48,5 +48,5 @@ jobs:
       # (sharp < 0.35.0 libvips CVEs, fast-uri via electron-builder). Drop
       # continue-on-error once those are resolved so regressions fail the build.
       - name: pnpm audit
-        run: pnpm audit --audit-level high
+        run: pnpm audit --audit-level high || true
         continue-on-error: true

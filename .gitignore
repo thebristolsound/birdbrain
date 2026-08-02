@@ -60,6 +60,9 @@ coverage/
 .claude/agents/*
 !.claude/agents/birdbrain-implementer.md
 !.claude/agents/birdbrain-reviewer.md
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/dispatch/
 .codex
 .cursor
 .zed

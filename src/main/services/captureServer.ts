@@ -33,6 +33,7 @@ import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { createSessionService, type SessionService } from '@main/services/session'
 
 import { CAPTURE_SERVER_PORT, MAX_SCREENSHOT_SIZE } from '@shared/constants'
+import { matchIgnoredUrl } from '@shared/urlPatterns'
 import { safeRegexTest } from '@main/services/safeRegex'
 import { logger } from '@main/services/logger'
 import { tag } from '@main/services/logSafe'
@@ -78,30 +79,10 @@ export function setMainWindow(win: BrowserWindow): void {
   mainWindow = win
 }
 
-function globToRegex(pattern: string): RegExp {
-  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&')
-  const withWildcards = escaped.replace(/\*/g, '.*').replace(/\?/g, '.')
-  return new RegExp(withWildcards, 'i')
-}
-
+// Regex literals are evaluated in the vm sandbox: the patterns come from
+// settings, so a catastrophically backtracking one must not stall the server.
 function isUrlBlacklisted(url: string, patterns: string[]): string | null {
-  for (const pattern of patterns) {
-    try {
-      if (pattern.startsWith('/') && pattern.lastIndexOf('/') > 0) {
-        const lastSlash = pattern.lastIndexOf('/')
-        const regexBody = pattern.slice(1, lastSlash)
-        const flags = pattern.slice(lastSlash + 1)
-        if (safeRegexTest(regexBody, flags, url)) return pattern
-      } else if (pattern.includes('*') || pattern.includes('?')) {
-        if (globToRegex(pattern).test(url)) return pattern
-      } else {
-        if (url.includes(pattern)) return pattern
-      }
-    } catch {
-      // Invalid pattern, skip
-    }
-  }
-  return null
+  return matchIgnoredUrl(url, patterns, safeRegexTest)
 }
 
 function emitCaptureEvent(event: CaptureEvent): void {

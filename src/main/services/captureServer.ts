@@ -84,6 +84,8 @@ export function setMainWindow(win: BrowserWindow): void {
 
 // Regex literals are evaluated in the vm sandbox: the patterns come from
 // settings, so a catastrophically backtracking one must not stall the server.
+// Containment is fail-open — a pattern that exhausts the 200 ms budget yields
+// no match, so the capture is accepted rather than refused. See matchIgnoredUrl.
 function isUrlBlacklisted(url: string, patterns: string[]): string | null {
   return matchIgnoredUrl(url, patterns, safeRegexTest)
 }

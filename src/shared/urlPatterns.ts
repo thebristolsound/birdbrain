@@ -4,7 +4,8 @@
 // URL matches an ignored pattern, and the extension's background script skips
 // the capture before it is ever offered. The two must agree — a URL one side
 // considers ignored and the other does not is a hole in what the operator
-// believes was excluded from the case.
+// believes was excluded from the case. They do agree on every pattern both can
+// evaluate; see `matchIgnoredUrl` for the one input class where they do not.
 //
 // A pattern is read as exactly one of three forms, tried in this order:
 //   1. `/body/flags` — a regex literal (needs a closing slash past position 0)
@@ -39,9 +40,20 @@ export function globToRegex(pattern: string): RegExp {
  *
  * `regexTest` exists because only the main process can afford a sandboxed,
  * timeout-bounded regex evaluation (`safeRegexTest`, backed by node:vm); the
- * extension has no such primitive and uses the platform RegExp. Matching
- * semantics are identical either way — the seam only decides how a
- * catastrophically backtracking pattern is contained.
+ * extension has no such primitive and uses the platform RegExp. Pattern
+ * grammar is identical either way — same three forms in the same order, same
+ * glob escape set, same case sensitivity — and so is the answer, for every
+ * pattern both evaluators can decide.
+ *
+ * They do NOT agree on a pattern that backtracks past the main process's
+ * budget. `safeRegexTest` returns false when its 200 ms vm timeout expires, so
+ * the server reports such a URL as *not* ignored while the extension, which has
+ * no budget, eventually reports the match. That direction is fail-open on the
+ * server: an operator's ignore rule can admit a capture rather than refuse it,
+ * and the manual capture path is not pre-filtered extension-side, so the
+ * server's answer is the only enforcement there. Pinned as a known answer in
+ * `tests/shared/urlPatterns.test.ts`; closing it means changing what a timeout
+ * means, which is a behaviour change this module deliberately does not make.
  */
 export function matchIgnoredUrl(
   url: string,

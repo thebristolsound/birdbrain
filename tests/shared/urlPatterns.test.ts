@@ -11,11 +11,25 @@ import { safeRegexTest } from '@main/services/safeRegex'
 // (the platform RegExp) and once with the capture server's sandboxed
 // safeRegexTest — and the expected value is the matching pattern itself, not a
 // boolean.
+//
+// Running a row through both evaluators is only *evidence* of cross-seam
+// agreement for the rows that actually reach the injected evaluator, i.e. the
+// regex-literal ones; for a glob or substring row the two runs execute the same
+// code and agreeing proves nothing. Rows are tagged `usesRegexTest` and the tag
+// is asserted against reality below, so that distinction cannot rot silently.
+//
+// The evaluators do not agree on every input. See the 'evaluator divergence'
+// block at the bottom: it pins the one known input class where they differ.
 interface Row {
   name: string
   patterns: string[]
   url: string
   expected: string | null
+  /**
+   * True when the row reaches the regex-literal branch, so the injected
+   * evaluator — not shared code — decides it. Asserted, not documentation.
+   */
+  usesRegexTest?: boolean
 }
 
 const ROWS: Row[] = [
@@ -106,31 +120,36 @@ const ROWS: Row[] = [
     name: 'regex literal with the i flag',
     patterns: ['/.*\\.pdf$/i'],
     url: 'https://example.com/document.pdf',
-    expected: '/.*\\.pdf$/i'
+    expected: '/.*\\.pdf$/i',
+    usesRegexTest: true
   },
   {
     name: 'regex literal anchors are honoured',
     patterns: ['/.*\\.pdf$/i'],
     url: 'https://example.com/page.html',
-    expected: null
+    expected: null,
+    usesRegexTest: true
   },
   {
     name: 'regex literal without flags is case-sensitive',
     patterns: ['/\\.PDF$/'],
     url: 'https://example.com/document.pdf',
-    expected: null
+    expected: null,
+    usesRegexTest: true
   },
   {
     name: 'regex literal with the i flag is not',
     patterns: ['/\\.PDF$/i'],
     url: 'https://example.com/document.pdf',
-    expected: '/\\.PDF$/i'
+    expected: '/\\.PDF$/i',
+    usesRegexTest: true
   },
   {
     name: 'regex literal escaped slashes survive the body/flags split',
     patterns: ['/^https:\\/\\/example\\.com\\//'],
     url: 'https://example.com/page',
-    expected: '/^https:\\/\\/example\\.com\\//'
+    expected: '/^https:\\/\\/example\\.com\\//',
+    usesRegexTest: true
   },
 
   // --- which pattern matched, and pattern-level fault tolerance ---
@@ -150,13 +169,15 @@ const ROWS: Row[] = [
     name: 'an unparseable regex literal is skipped, not fatal',
     patterns: ['/[unclosed/', 'facebook.com'],
     url: 'https://www.facebook.com/some/page',
-    expected: 'facebook.com'
+    expected: 'facebook.com',
+    usesRegexTest: true
   },
   {
     name: 'an unparseable regex literal alone matches nothing',
     patterns: ['/[unclosed/'],
     url: 'https://www.facebook.com/some/page',
-    expected: null
+    expected: null,
+    usesRegexTest: true
   },
   {
     name: 'an empty pattern list matches nothing',
@@ -190,6 +211,61 @@ describe('matchIgnoredUrl', () => {
     expect(serverSide).toEqual(extensionSide)
     expect(extensionSide).toEqual(ROWS.map((row) => row.expected))
   })
+
+  // Guards the assertion above from becoming a tautology. Only the tagged rows
+  // put the two evaluators on different code; if a future edit drops the last
+  // regex-literal row, the equality assertion would still pass while proving
+  // nothing, and this test is what fails instead.
+  it('reaches the injected evaluator on exactly the rows tagged for it', () => {
+    for (const row of ROWS) {
+      let consulted = false
+      const spy: RegexTest = (source, flags, text) => {
+        consulted = true
+        return new RegExp(source, flags).test(text)
+      }
+      matchIgnoredUrl(row.url, row.patterns, spy)
+      expect(consulted, row.name).toBe(row.usesRegexTest === true)
+    }
+    expect(ROWS.filter((row) => row.usesRegexTest).length).toBeGreaterThan(0)
+  })
+})
+
+// The one input class where the two evaluators return DIFFERENT answers, pinned
+// here so it is a known answer rather than an unknown.
+//
+// safeRegexTest gives each pattern a 200 ms vm budget and returns false when the
+// budget expires (src/main/services/safeRegex.ts). A pattern that backtracks
+// past that budget therefore reads as "not ignored" on the capture server, while
+// the extension's platform RegExp has no budget and eventually reports the
+// match. The server's direction is fail-open: the operator wrote a rule that
+// matches, and the capture is accepted, hashed, manifest-chained and filed with
+// no `Blacklisted: <pattern>` skip record. On the manual/context-menu path the
+// extension does not pre-filter at all, so nothing else catches it.
+//
+// This is inherited behaviour, not introduced by the extraction — the server
+// timed out to `false` before it too. It is recorded, not fixed: making a
+// timeout fail-closed changes what the server does with an evidence-path rule
+// and belongs to its own change.
+describe('evaluator divergence (catastrophic backtracking)', () => {
+  // 26 a's puts the unsandboxed evaluation at roughly 1 s (about 6 s on the
+  // first, pre-tier-up run) against a 200 ms budget, so the sandbox loses by a
+  // wide margin on any plausible machine — a slower runner only widens it. The
+  // URL ends in 'aaab', which the pattern does match, so an evaluation allowed
+  // to finish answers "ignored". The generous per-test timeouts are for the
+  // unsandboxed side, which has to run the backtracking to completion.
+  const PATTERN = '/(a+)+b/'
+  const REGEX_BODY = '(a+)+b'
+  const TARGET_URL = `https://example.com/${'a'.repeat(26)}/x/aaab`
+
+  it('the underlying evaluators disagree: platform RegExp matches, safeRegexTest times out', () => {
+    expect(new RegExp(REGEX_BODY).test(TARGET_URL)).toBe(true)
+    expect(safeRegexTest(REGEX_BODY, '', TARGET_URL)).toBe(false)
+  }, 60_000)
+
+  it('so the extension reports the URL ignored and the capture server does not', () => {
+    expect(matchIgnoredUrl(TARGET_URL, [PATTERN])).toBe(PATTERN)
+    expect(matchIgnoredUrl(TARGET_URL, [PATTERN], safeRegexTest)).toBe(null)
+  }, 60_000)
 })
 
 describe('globToRegex', () => {

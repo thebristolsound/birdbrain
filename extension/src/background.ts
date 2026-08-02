@@ -419,10 +419,15 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 
 // --- Capture orchestration ---
 
-// Same matcher the capture server runs, so a URL this side skips is exactly the
-// one the server would refuse. Regex literals use the platform RegExp here: the
-// service worker has no vm sandbox, and a runaway pattern stalls only the
-// extension, not the app.
+// Same matcher the capture server runs, so a URL this side skips is the one the
+// server would refuse. Regex literals use the platform RegExp here: the service
+// worker has no vm sandbox, and a runaway pattern stalls only the extension,
+// not the app. The cost is that this side has no timeout where the server does,
+// so a pattern that exhausts the server's budget is skipped here and accepted
+// there — see matchIgnoredUrl.
+//
+// Only the auto-capture paths consult this (and they are HOTFIX-disabled).
+// Manual capture is not pre-filtered: the server's 403 is its sole enforcement.
 function isIgnoredByUser(url: string): boolean {
   return matchIgnoredUrl(url, userIgnoredPatterns) !== null
 }

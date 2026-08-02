@@ -32,7 +32,11 @@ import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { createSessionService, type SessionService } from '@main/services/session'
 
-import { CAPTURE_SERVER_PORT, MAX_SCREENSHOT_SIZE } from '@shared/constants'
+import {
+  CAPTURE_SERVER_PORT,
+  MANUAL_DEDUPE_WINDOW_MS,
+  MAX_SCREENSHOT_SIZE
+} from '@shared/constants'
 import { matchIgnoredUrl } from '@shared/urlPatterns'
 import { safeRegexTest } from '@main/services/safeRegex'
 import { logger } from '@main/services/logger'
@@ -55,7 +59,6 @@ function getToolVersion(): string {
 
 // Manual capture dedup: "caseId:url" -> timestamp of last accepted capture
 const manualDedup = new Map<string, number>()
-const MANUAL_DEDUPE_WINDOW_MS = 5_000
 
 const OPERATOR_NAME_REQUIRED_MSG =
   'Operator name required. Configure your name in Birdbrain settings before capturing.'

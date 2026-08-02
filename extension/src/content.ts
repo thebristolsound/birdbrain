@@ -8,6 +8,7 @@ import { showToast, updateToast } from './toast'
 // field — both are the shared wire contract, not content-script-local shapes.
 import type { SelectorMatchInfo } from '@shared/schemas'
 import type { ActiveCaseSelectors } from '@shared/types'
+import { MAX_SCREENSHOT_SIZE } from '@shared/constants'
 
 const HIGHLIGHT_CLASS = 'birdbrain-selector-highlight'
 // Randomize style container ID to prevent fingerprinting
@@ -298,12 +299,11 @@ function restoreStickyElements(entries: StickyEntry[]): void {
   }
 }
 
-const CAPTURE_MAX_BYTES = 100 * 1024 * 1024 // 100 MB raw bitmap budget
 const SCROLL_TIMEOUT_MS = 120 * 1000 // 120 seconds for scroll phase
 const SCROLL_PAUSE_MS = 500 // pause between scrolls for lazy-load
 const SCROLL_STALL_THRESHOLD = 3 // stop if scrollHeight unchanged this many times
 
-async function captureFullPage(maxBytes: number = CAPTURE_MAX_BYTES): Promise<string> {
+async function captureFullPage(maxBytes: number = MAX_SCREENSHOT_SIZE): Promise<string> {
   if (captureInProgress) {
     throw new Error('Capture already in progress')
   }
@@ -403,7 +403,7 @@ function blobToDataUrl(blob: Blob): Promise<string> {
 }
 
 async function captureFullPageScrolling(
-  maxBytes: number = CAPTURE_MAX_BYTES,
+  maxBytes: number = MAX_SCREENSHOT_SIZE,
   scrollTimeoutMs: number = SCROLL_TIMEOUT_MS
 ): Promise<string> {
   if (captureInProgress) {
@@ -459,7 +459,7 @@ async function captureFullPageScrolling(
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'CAPTURE_FULL_PAGE') {
-    const maxBytes: number = message.maxBytes || CAPTURE_MAX_BYTES
+    const maxBytes: number = message.maxBytes || MAX_SCREENSHOT_SIZE
     captureFullPage(maxBytes).then(
       (dataUrl) => sendResponse({ screenshot: dataUrl }),
       (err) => sendResponse({ error: String(err) })
@@ -468,7 +468,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message.type === 'CAPTURE_FULL_PAGE_SCROLLING') {
-    const maxBytes: number = message.maxBytes || CAPTURE_MAX_BYTES
+    const maxBytes: number = message.maxBytes || MAX_SCREENSHOT_SIZE
     const scrollTimeoutMs: number = message.scrollTimeoutMs || SCROLL_TIMEOUT_MS
     captureFullPageScrolling(maxBytes, scrollTimeoutMs).then(
       (dataUrl) => sendResponse({ screenshot: dataUrl }),

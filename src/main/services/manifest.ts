@@ -81,16 +81,21 @@ export interface ManifestSnapshot {
 }
 
 // Lenient line parser for read-only consumers (the export snapshot,
-// trusted-time resolution): unparseable lines become {} — inert to every
-// consumer — instead of throwing. The append path must NOT use this;
-// getManifestHead is the strict dialect (see its comment).
+// trusted-time resolution): unparseable and non-object lines (null, arrays,
+// scalars) become {} — inert to every consumer — instead of throwing or
+// leaking a value consumers would crash on (`entry.type` on null). The append
+// path must NOT use this; getManifestHead is the strict dialect (see its
+// comment).
 export function readEntries(jsonl: string): Record<string, unknown>[] {
   return jsonl
     .split('\n')
     .filter((line) => line.trim().length > 0)
     .map((line) => {
       try {
-        return JSON.parse(line) as Record<string, unknown>
+        const value: unknown = JSON.parse(line)
+        return value !== null && typeof value === 'object' && !Array.isArray(value)
+          ? (value as Record<string, unknown>)
+          : {}
       } catch {
         return {}
       }

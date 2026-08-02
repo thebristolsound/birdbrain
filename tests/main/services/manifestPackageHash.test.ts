@@ -130,6 +130,14 @@ describe('readEntries / head (lenient reading dialect)', () => {
     expect(readEntries('')).toEqual([])
   })
 
+  it('maps parseable non-object lines (null, arrays, scalars) to {}', () => {
+    expect(readEntries('null\n[]\n"text"\n42\ntrue\n')).toEqual([{}, {}, {}, {}, {}])
+  })
+
+  it('head treats a non-object tail line as unreadable', () => {
+    expect(head(readEntries('{"index":0,"entryHash":"h0"}\nnull\n'))).toBeNull()
+  })
+
   it('head returns the last entry index + entryHash', () => {
     const entries = readEntries('{"index":0,"entryHash":"h0"}\n{"index":1,"entryHash":"h1"}\n')
     expect(head(entries)).toEqual({ index: 1, entryHash: 'h1' })

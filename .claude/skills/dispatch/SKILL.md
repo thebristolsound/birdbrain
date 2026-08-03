@@ -32,7 +32,8 @@ reports v22, the hook did not run and everything below is unreliable.
   and report — do not substitute an inline reimplementation of their contracts.
 - **Relay review feedback by pointer, never by paraphrase.** When handing a PR to the
   implementer, give it the PR number and the instruction to re-enumerate the review surface
-  itself (`gh api .../pulls/<n>/reviews`, `.../pulls/<n>/comments`, `.../issues/<n>/comments`).
+  itself, with `--paginate` on each (`gh api --paginate .../pulls/<n>/reviews`,
+  `.../pulls/<n>/comments`, `.../issues/<n>/comments`; all default to 30 per page).
   Never summarize
   what reviewers said — a mislabeled paraphrase caused finding 9 of pilot part one.
 - **You never merge, never mark a PR ready for review, never push to main, never enable
@@ -45,7 +46,8 @@ The strict-serial slot is marked by the `agent-pr` label
 (`docs/agents/triage-labels.md`):
 
 ```
-gh api "repos/thebristolsound/birdbrain/issues?state=open&labels=agent-pr" --jq '[.[] | select(.pull_request) | .number]'
+gh api --paginate "repos/thebristolsound/birdbrain/issues?state=open&labels=agent-pr&per_page=100" \
+  --jq '[.[] | select(.pull_request) | .number]'
 ```
 
 - **More than one open `agent-pr`** → strict-serial violation. Take no other action; report
@@ -66,7 +68,10 @@ Fetch the PR's head commit time, reviews, review threads, and issue comments. Cl
   arrives as comments and review threads. Treat a human comment asking for changes exactly as
   a changes-requested review.) Dispatch `birdbrain-implementer` with the PR number, its linked
   issue, and the re-enumeration instruction; it applies or rejects-with-reason each item per
-  its contract, then pushes. Then run the reviewer pre-pass (section 4).
+  its contract, then pushes. It cannot post its replies — it returns them as text keyed to the
+  comment or thread ids they answer, and **you** post them with
+  `mcp__github__add_issue_comment` (or `add_reply_to_pull_request_comment` for an inline
+  thread). Then run the reviewer pre-pass (section 4).
 - **Closed without merge** → the slot is vacated. Verify give-up hygiene: the linked issue
   must carry a findings comment and a `needs-info`/`ready-for-human` relabel; report any gap.
   Then proceed to section 3 in this same cycle.
@@ -78,7 +83,8 @@ Eligibility (the frontier): open, labelled `ready-for-agent`, unassigned, and no
 blockers via native dependencies:
 
 ```
-gh api "repos/thebristolsound/birdbrain/issues?state=open&labels=ready-for-agent" --jq '[.[] | select(.pull_request|not) | {number, assignees: [.assignees[].login]}]'
+gh api --paginate "repos/thebristolsound/birdbrain/issues?state=open&labels=ready-for-agent&per_page=100" \
+  --jq '[.[] | select(.pull_request|not) | {number, assignees: [.assignees[].login]}]'
 gh api repos/thebristolsound/birdbrain/issues/<n>/dependencies/blocked_by   # skip if any returned issue is open
 ```
 
@@ -102,9 +108,13 @@ labels with `mcp__github__issue_write`, then confirm they landed
 gate fired. If the implementer's label determination looks wrong, say so in your report — do
 not silently substitute your own judgement for its stated reasoning.
 
-If the implementer takes the give-up path (no PR; issue commented and relabelled), report what
-it found and stop — the slot stays vacant until the next trigger. Do not dispatch a second
-issue in the same cycle after a give-up.
+**The give-up path needs you too.** The implementer cannot comment or relabel, so it returns
+its blockers as text and stops. You post them to the issue with
+`mcp__github__add_issue_comment` and swap `ready-for-agent` to `needs-info` (or
+`ready-for-human`) with `mcp__github__issue_write` — a give-up that leaves the issue unchanged
+is indistinguishable from an agent that silently vanished, which is the failure ADR-0005's
+give-up path exists to prevent. Then report what it found and stop: the slot stays vacant
+until the next trigger, and you do not dispatch a second issue in the same cycle.
 
 ## 4. Reviewer pre-pass — after every agent push
 

@@ -16,8 +16,12 @@ this file only adds the duties CLAUDE.md does not cover.
 - The issue should meet the ready-for-agent bar: acceptance criteria, a named verification
   path, starting files, and an explicit evidence-affecting call (the checklist is maintained in
   `docs/agents/triage-labels.md`; the four elements listed here are the bar). If it does not
-  and you cannot proceed safely, do not guess: comment your specific blockers on the issue,
-  swap its label from `ready-for-agent` to `needs-info` (or `ready-for-human`), and stop.
+  and you cannot proceed safely, do not guess: take the give-up path. You cannot write to
+  GitHub yourself (see "Opening the PR"), so return your specific blockers as your final
+  output, stating that the issue needs a blockers comment and its `ready-for-agent` label
+  swapped to `needs-info` (or `ready-for-human`). The dispatcher posts both. Do not stop
+  silently — an abandoned issue with no tracker breadcrumb is the failure this path exists
+  to prevent, and it is only prevented if you hand the text over.
 
 ## Conventions that gate your diff
 
@@ -63,9 +67,13 @@ To run a single test file, use `pnpm test <path>` — no `--`. With the literal 
   `gh api repos/<owner>/<repo>/pulls/<n>/reviews` for review bodies (collapsed nitpicks live
   there), `gh api repos/<owner>/<repo>/pulls/<n>/comments` for inline threads, and
   `gh api repos/<owner>/<repo>/issues/<n>/comments` for PR-level comments — the pre-pass is
-  posted there, not as a formal review. Never act on a
-  paraphrase of review feedback — including one from your dispatcher; verify ids and threads
-  first, then reply on the thread (or top-level when a body item has no thread).
+  posted there, not as a formal review. **Pass `--paginate` on all three**: these collections
+  default to 30 per page, and a silently truncated first page reads exactly like a PR with no
+  older feedback. Never act on a paraphrase of review feedback — including one from your
+  dispatcher; verify ids and threads first.
+- **You cannot post the reply yourself.** Return your per-item dispositions as text, keyed to
+  the comment or thread id they answer, and the dispatcher posts them. State the handoff
+  rather than claiming you replied.
 - **Answer every actionable item**: applied (with the commit ref) or not applied with the
   reason. Applying is not the default — verify each finding against current code and the
   issue's scope.
@@ -155,7 +163,8 @@ Evidence-affecting PRs are never merged without human review. Do not weaken that
 
 - Every agent PR gets human review before merge during the pilot — evidence-affecting or not.
 - Never push to main/master, never force-push, never merge. If you cannot finish mid-work,
-  take the same give-up path as at intake: comment exactly where you stopped, what you found,
-  and what blocks you on the GitHub issue, swap `ready-for-agent` to `needs-info` (or
-  `ready-for-human`), and stop — do not report partial work as done, and do not leave the
-  issue claimed-looking with no tracker breadcrumb.
+  take the same give-up path as at intake: return exactly where you stopped, what you found,
+  and what blocks you, stating that it needs posting to the issue and the `ready-for-agent`
+  label swapped to `needs-info` (or `ready-for-human`). The dispatcher performs both writes —
+  do not report partial work as done, and do not leave the issue claimed-looking with no
+  tracker breadcrumb.

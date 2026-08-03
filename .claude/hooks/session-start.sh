@@ -124,10 +124,17 @@ cd "$PROJECT_DIR"
 log "installing dependencies"
 pnpm install
 
-if [ -x node_modules/electron/dist/electron ]; then
-  log "electron binary present"
-else
-  log "WARNING: node_modules/electron/dist/electron missing — pnpm test will fail"
+# Fatal, unlike the gh failure above. A missing Electron binary is the silent-extract
+# failure this hook exists to catch, and it does not fail loudly on its own: `pnpm test`
+# runs vitest *through* Electron, so a broken runtime produces a confusing error rather
+# than an obviously-absent dependency. Reporting "ready" here would hand the session a
+# verify loop whose results cannot be trusted, which is worse than refusing to start.
+if [ ! -x node_modules/electron/dist/electron ]; then
+  log "FATAL: node_modules/electron/dist/electron is missing after install."
+  log "       pnpm test runs vitest through Electron, so its results would be meaningless."
+  log "       Check 'node --version' is 20.x, then re-run 'pnpm install'."
+  exit 1
 fi
+log "electron binary present"
 
 log "ready"

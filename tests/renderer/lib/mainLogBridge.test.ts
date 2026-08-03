@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { fakeBridge } from '../fakeBridge'
 
 const toastFns = { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() }
 vi.mock('sonner', () => ({ toast: toastFns }))
@@ -8,7 +9,7 @@ let listener: ((e: unknown) => void) | null = null
 beforeEach(() => {
   vi.clearAllMocks()
   listener = null
-  vi.stubGlobal('birdbrain', {
+  fakeBridge({
     onLogEntry: (cb: (e: unknown) => void) => {
       listener = cb
       return () => {}
@@ -76,7 +77,7 @@ describe('mainLogBridge', () => {
   it('replays only the current session, not failures from previous launches', async () => {
     const previous = { ...entry('error'), id: 'old', sessionId: 's0', code: 'capture.failed' }
     const current = { ...entry('error'), id: 'new', sessionId: 's1', code: 'ipc.handler_threw' }
-    vi.stubGlobal('birdbrain', {
+    fakeBridge({
       onLogEntry: (cb: (e: unknown) => void) => {
         listener = cb
         return () => {}

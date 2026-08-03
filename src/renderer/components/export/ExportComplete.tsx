@@ -3,6 +3,7 @@ import { motion } from 'motion/react'
 import type { TargetAndTransition, Transition } from 'motion/react'
 import { CheckCircle2, FolderOpen, ExternalLink } from 'lucide-react'
 import { Button } from '@renderer/components/ui'
+import { revealInFolder, openPath } from '@renderer/lib/api/system'
 
 interface ExportCompleteProps {
   filePath: string
@@ -24,7 +25,7 @@ export function ExportComplete({ filePath, onClose, celebrationProps }: ExportCo
   const reveal = async () => {
     setActionError('')
     try {
-      await window.birdbrain.shell.showItemInFolder(filePath)
+      await revealInFolder(filePath)
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err))
     }
@@ -33,7 +34,7 @@ export function ExportComplete({ filePath, onClose, celebrationProps }: ExportCo
   const open = async () => {
     setActionError('')
     try {
-      const result = await window.birdbrain.shell.openPath(filePath)
+      const result = await openPath(filePath)
       if (result) setActionError(result)
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err))

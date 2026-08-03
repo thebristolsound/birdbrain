@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { StickyNote, Pencil, Trash2, ExternalLink, X, Check } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { captureThumbnailQueryOptions, useNotesMutations } from '@renderer/lib/queries'
+import { openCaptureExternal } from '@renderer/lib/api/system'
 import type { Note } from '@shared/types'
 import { Button, Input } from '@renderer/components/ui'
 import { NoteBody } from '@renderer/components/notes/NoteBody'
@@ -108,7 +109,7 @@ export function NoteCard({ note, caseId }: NoteCardProps) {
 
   async function handleOpenUrl() {
     if (note.sourceUrl) {
-      await window.birdbrain.captures.openExternal(note.sourceUrl)
+      await openCaptureExternal(note.sourceUrl)
     }
   }
 

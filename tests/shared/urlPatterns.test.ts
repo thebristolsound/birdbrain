@@ -1,3 +1,4 @@
+import { runInNewContext } from 'node:vm'
 import { describe, expect, it } from 'vitest'
 import { globToRegex, matchIgnoredUrl, type RegexTest } from '@shared/urlPatterns'
 import { safeRegexTest } from '@main/services/safeRegex'
@@ -253,23 +254,71 @@ describe('matchIgnoredUrl', () => {
 // timeout fail-closed changes what the server does with an evidence-path rule
 // and belongs to its own change.
 describe('evaluator divergence (catastrophic backtracking)', () => {
-  // 26 a's puts the unsandboxed evaluation at roughly 1 s (about 6 s on the
-  // first, pre-tier-up run) against a 200 ms budget, so the sandbox loses by a
-  // wide margin on any plausible machine — a slower runner only widens it. The
-  // URL ends in 'aaab', which the pattern does match, so an evaluation allowed
-  // to finish answers "ignored". The generous per-test timeouts are for the
-  // unsandboxed side, which has to run the backtracking to completion.
   const PATTERN = '/(a+)+b/'
   const REGEX_BODY = '(a+)+b'
+  // The URL ends in 'aaab', which the pattern does match, so an evaluation
+  // allowed to finish answers "ignored".
   const TARGET_URL = `https://example.com/${'a'.repeat(26)}/x/aaab`
 
+  // Both sides really run the pattern — a stubbed evaluator would only prove
+  // that matchIgnoredUrl returns what it is told, not that the two production
+  // evaluators disagree. But backtracking is synchronous, so a bare
+  // `new RegExp(REGEX_BODY).test(TARGET_URL)` here is unbounded and the per-test
+  // timeout cannot interrupt it: an out-of-envelope machine would hang the
+  // Vitest worker rather than fail. So the unsandboxed side runs through the
+  // same node:vm primitive safeRegexTest uses, evaluating the identical
+  // expression in the identical engine, with a deadline far above the budget
+  // under test. vm timeouts do interrupt regex backtracking (that is what
+  // tests/main/services/safeRegex.test.ts pins at 200 ms), so a machine outside
+  // the envelope now fails loudly instead of stalling.
+  //
+  // This is the extension's evaluator in everything but the ceiling: the
+  // extension has no timeout at all, and what the assertion needs is the answer
+  // an evaluation gets when it is allowed to finish. The literal default
+  // `testWithRegExp` is covered by the regex-literal rows in the table above.
+  const PLATFORM_DEADLINE_MS = 30_000
+  let platformDeadlineFired = false
+  const boundedPlatformTest: RegexTest = (source, flags, text) => {
+    platformDeadlineFired = false
+    try {
+      return runInNewContext(
+        'new RegExp(pattern, flags).test(text)',
+        { pattern: source, flags, text },
+        { timeout: PLATFORM_DEADLINE_MS }
+      ) as boolean
+    } catch (err) {
+      platformDeadlineFired = true
+      throw err
+    }
+  }
+
+  // Measured on the container this was written on (Node 22, `pnpm test
+  // tests/shared/urlPatterns.test.ts`): the full evaluation takes ~3.8 s on the
+  // first run in a fresh process and ~0.5-0.6 s once V8 has tiered up the
+  // regexp, against the 200 ms budget. So the margin in the direction that
+  // matters — the sandbox must NOT finish — is only ~3x on warm code, not the
+  // order of magnitude the shape of the test suggests. A machine ~3x faster
+  // than this one finishes inside 200 ms, at which point the two evaluators
+  // genuinely agree on this input and these assertions are genuinely wrong
+  // there: the right response is a longer 'a' run, not a weaker assertion.
+  // (n=27 measured ~1.1 s warm / ~7.7 s cold, n=28 ~1.9 s / ~13.1 s — the cost
+  // doubles per character, which is why 26 is the operating point.)
+  // The 60 s per-test timeout is an outer bound the 30 s deadline stays under.
   it('the underlying evaluators disagree: platform RegExp matches, safeRegexTest times out', () => {
-    expect(new RegExp(REGEX_BODY).test(TARGET_URL)).toBe(true)
+    expect(boundedPlatformTest(REGEX_BODY, '', TARGET_URL)).toBe(true)
     expect(safeRegexTest(REGEX_BODY, '', TARGET_URL)).toBe(false)
   }, 60_000)
 
   it('so the extension reports the URL ignored and the capture server does not', () => {
-    expect(matchIgnoredUrl(TARGET_URL, [PATTERN])).toBe(PATTERN)
+    // matchIgnoredUrl swallows a throwing evaluator by design, so a deadline
+    // overrun would surface here as a bare `null` and read as a matcher bug.
+    // Assert the deadline first so the failure names the real cause.
+    const extensionSide = matchIgnoredUrl(TARGET_URL, [PATTERN], boundedPlatformTest)
+    expect(
+      platformDeadlineFired,
+      `platform evaluation did not finish within ${PLATFORM_DEADLINE_MS} ms`
+    ).toBe(false)
+    expect(extensionSide).toBe(PATTERN)
     expect(matchIgnoredUrl(TARGET_URL, [PATTERN], safeRegexTest)).toBe(null)
   }, 60_000)
 })

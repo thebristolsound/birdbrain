@@ -49,8 +49,13 @@ gh api "repos/$R/issues?state=open&labels=ready-for-agent" --jq '[.[].number]'
 gh api "repos/$R/issues/229/dependencies/blocked_by" --jq 'length'
 ```
 
-Two gotchas:
+Three gotchas:
 
+- **Every collection endpoint paginates at 30 by default — pass `--paginate`.** This is the
+  one most likely to bite, because it produces a wrong answer rather than an error: a
+  truncated first page of `.../pulls/<n>/comments` is indistinguishable from a PR with no
+  older feedback, and a truncated issue list is indistinguishable from a frontier whose
+  oldest eligible issue does not exist. Use `gh api --paginate "…&per_page=100"`.
 - **`gh api repos/{owner}/{repo}/pulls` (the list endpoint) returns `[]`.** Fetch a PR
   by number, or list via `repos/{owner}/{repo}/issues` — PRs appear there with a
   `pull_request` key.

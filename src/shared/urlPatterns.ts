@@ -49,11 +49,12 @@ export function globToRegex(pattern: string): RegExp {
  * budget. `safeRegexTest` returns false when its 200 ms vm timeout expires, so
  * the server reports such a URL as *not* ignored while the extension, which has
  * no budget, eventually reports the match. That direction is fail-open on the
- * server: an operator's ignore rule can admit a capture rather than refuse it,
- * and the manual capture path is not pre-filtered extension-side, so the
- * server's answer is the only enforcement there. Pinned as a known answer in
- * `tests/shared/urlPatterns.test.ts`; closing it means changing what a timeout
- * means, which is a behaviour change this module deliberately does not make.
+ * server: an operator's ignore rule can admit a capture rather than refuse it.
+ * Most extension routes pre-filter with this matcher and so never reach the
+ * server's answer; the popup's Capture button is the one live route that does
+ * not, and there the server's answer is the only enforcement. Pinned as a known
+ * answer in `tests/shared/urlPatterns.test.ts`; closing it means changing what
+ * a timeout means, which is a behaviour change this module does not make.
  */
 export function matchIgnoredUrl(
   url: string,

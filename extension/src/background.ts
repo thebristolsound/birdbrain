@@ -426,8 +426,12 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 // so a pattern that exhausts the server's budget is skipped here and accepted
 // there — see matchIgnoredUrl.
 //
-// Only the auto-capture paths consult this (and they are HOTFIX-disabled).
-// Manual capture is not pre-filtered: the server's 403 is its sole enforcement.
+// Two live routes pre-filter with this — the context-menu capture handler
+// above (immediately before manualCaptureTab) and checkSelectorsOnTab — plus
+// shouldCapture, which is inside the HOTFIX-disabled block below. The popup's
+// Capture button does not: its MANUAL_CAPTURE message goes straight to
+// manualCaptureTab, so on that one route the server's 403 is the sole
+// enforcement of an operator's ignore rule.
 function isIgnoredByUser(url: string): boolean {
   return matchIgnoredUrl(url, userIgnoredPatterns) !== null
 }

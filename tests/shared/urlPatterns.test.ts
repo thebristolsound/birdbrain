@@ -239,8 +239,14 @@ describe('matchIgnoredUrl', () => {
 // the extension's platform RegExp has no budget and eventually reports the
 // match. The server's direction is fail-open: the operator wrote a rule that
 // matches, and the capture is accepted, hashed, manifest-chained and filed with
-// no `Blacklisted: <pattern>` skip record. On the manual/context-menu path the
-// extension does not pre-filter at all, so nothing else catches it.
+// no `Blacklisted: <pattern>` skip record.
+//
+// What that costs depends on the route. The extension pre-filters with this
+// matcher on the context-menu capture handler and on checkSelectorsOnTab, so
+// those never reach the server's answer (they pay the backtracking in the
+// service worker instead). The popup's Capture button does not pre-filter — its
+// MANUAL_CAPTURE message goes straight to manualCaptureTab — so that is the one
+// live route where the fail-open answer decides what enters the case.
 //
 // This is inherited behaviour, not introduced by the extraction — the server
 // timed out to `false` before it too. It is recorded, not fixed: making a

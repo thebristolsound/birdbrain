@@ -16,8 +16,12 @@ this file only adds the duties CLAUDE.md does not cover.
 - The issue should meet the ready-for-agent bar: acceptance criteria, a named verification
   path, starting files, and an explicit evidence-affecting call (the checklist is maintained in
   `docs/agents/triage-labels.md`; the four elements listed here are the bar). If it does not
-  and you cannot proceed safely, do not guess: comment your specific blockers on the issue,
-  swap its label from `ready-for-agent` to `needs-info` (or `ready-for-human`), and stop.
+  and you cannot proceed safely, do not guess: take the give-up path. You cannot write to
+  GitHub yourself (see "Opening the PR"), so return your specific blockers as your final
+  output, stating that the issue needs a blockers comment and its `ready-for-agent` label
+  swapped to `needs-info` (or `ready-for-human`). The dispatcher posts both. Do not stop
+  silently — an abandoned issue with no tracker breadcrumb is the failure this path exists
+  to prevent, and it is only prevented if you hand the text over.
 
 ## Conventions that gate your diff
 
@@ -58,11 +62,18 @@ To run a single test file, use `pnpm test <path>` — no `--`. With the literal 
 
 ## Responding to review
 
-- **Re-enumerate the review surface yourself before acting**: `gh pr view <n> --json reviews`
-  for review bodies (collapsed nitpicks live there) and
-  `gh api repos/<owner>/<repo>/pulls/<n>/comments` for inline threads. Never act on a
-  paraphrase of review feedback — including one from your dispatcher; verify ids and threads
-  first, then reply on the thread (or top-level when a body item has no thread).
+- **Re-enumerate the review surface yourself before acting**, using `gh api` REST — the
+  porcelain `gh pr view --json` is GraphQL and 403s here (`docs/agents/github-access.md`):
+  `gh api repos/<owner>/<repo>/pulls/<n>/reviews` for review bodies (collapsed nitpicks live
+  there), `gh api repos/<owner>/<repo>/pulls/<n>/comments` for inline threads, and
+  `gh api repos/<owner>/<repo>/issues/<n>/comments` for PR-level comments — the pre-pass is
+  posted there, not as a formal review. **Pass `--paginate` on all three**: these collections
+  default to 30 per page, and a silently truncated first page reads exactly like a PR with no
+  older feedback. Never act on a paraphrase of review feedback — including one from your
+  dispatcher; verify ids and threads first.
+- **You cannot post the reply yourself.** Return your per-item dispositions as text, keyed to
+  the comment or thread id they answer, and the dispatcher posts them. State the handoff
+  rather than claiming you replied.
 - **Answer every actionable item**: applied (with the commit ref) or not applied with the
   reason. Applying is not the default — verify each finding against current code and the
   issue's scope.
@@ -87,15 +98,13 @@ Check two triggers: the issue carries the `evidence-affecting` label, OR your di
 list (`docs/specs/2026-07-31-evidence-affecting-paths-assessment.md`, until a maintained list
 supersedes it). If either fires:
 
-1. Apply the `evidence-affecting` label to the **pull request** itself — at creation, not
-   after: `gh pr create --draft --label agent-pr --label evidence-affecting ...`, so the PR
-   never exists in an unlabelled state and any body sentence about its labels is true by
-   construction (`gh pr edit --add-label` is repair, not the normal path — the pilot's
-   timeline audit showed post-open labelling made every present-tense label assertion false
-   at write time). Issue labels and PR labels are independent: a path-list match never labels
-   anything on its own, and a label on the linked issue does not propagate to the PR. The
-   reviewer's backstop reads the PR's labels, so an unlabelled PR is a compliance failure
-   even when the linked issue is labelled correctly.
+1. The **pull request** itself must carry the `evidence-affecting` label. In Claude Code on
+   the web you cannot apply it yourself — see "Opening the PR" under Finishing — so state in
+   your body that the gate fired and that the dispatcher must apply it, and never write a
+   present-tense claim that the label is present (rule 4). Issue labels and PR labels are
+   independent: a path-list match never labels anything on its own, and a label on the linked
+   issue does not propagate to the PR. The reviewer's backstop reads the PR's labels, so an
+   unlabelled PR is a compliance failure even when the linked issue is labelled correctly.
 2. Add an **Evidence impact** section to the PR: what evidentiary result or interpretation
    could change, what verification proves and does not prove after your change, and whether
    backward verification of existing evidence packages is preserved.
@@ -122,14 +131,27 @@ Evidence-affecting PRs are never merged without human review. Do not weaken that
 - Never add `Co-authored-by: Claude` or any variant — and the tooling adds one by default, so
   this means actively removing it, not just declining to type it. After every commit, read
   `git log -1 --format=%B`; if a trailer appeared, `git commit --amend` it away before pushing.
-- Push the branch and open a **draft** PR against `main` with its labels attached at
-  creation: `gh pr create --draft --label agent-pr` (plus `--label evidence-affecting` when
-  the gate fired). `agent-pr` marks the strict-serial dispatch slot the routine queries
-  (`docs/agents/triage-labels.md`); labelling at creation means the PR never exists
-  unlabelled and no timeline audit can catch the body ahead of the controls. Use
-  `gh pr edit <n> --add-label` only to repair a miss. The description covers: what changed,
-  how it was verified (real output), the Evidence impact section when the gate fired, and ends
-  with exactly this attribution line and nothing else:
+- **Opening the PR.** Push the branch, then hand off — in Claude Code on the web you cannot
+  open the PR or apply its labels yourself. `gh pr create` and `gh pr edit` are GraphQL-backed
+  and the session proxy serves only a pinned set of PR-review GraphQL operations, so both
+  return 403; writes need the GitHub MCP tools, which are not in your tool list. See
+  `docs/agents/github-access.md` for what does work (`gh api` REST for reads).
+
+  So: push the branch, write the complete PR body to a file, and return the branch name, PR
+  title, head sha, body path, and the labels you determined are required — `agent-pr` always
+  (it marks the strict-serial dispatch slot the routine queries, `docs/agents/triage-labels.md`)
+  plus `evidence-affecting` when the gate fired. The dispatcher opens the draft PR against
+  `main` and applies the labels.
+
+  Because you are not the actor who opens the PR or labels it, your body must not claim you
+  did either: name the handoff explicitly, per rule 4 of the evidence gate. If you ever run
+  somewhere `gh pr create` does work, note that `--label` still does not attach labels
+  atomically — `CreatePullRequestInput` has no `labelIds` field, so `gh` issues a second
+  `updatePullRequest` mutation and the PR does briefly exist unlabelled. Verify with
+  `gh api repos/{owner}/{repo}/issues/<n>/labels` after the fact rather than asserting it.
+
+  The description covers: what changed, how it was verified (real output), the Evidence impact
+  section when the gate fired, and ends with exactly this attribution line and nothing else:
 
   `Pull request description generated by Claude Code`
 
@@ -141,7 +163,8 @@ Evidence-affecting PRs are never merged without human review. Do not weaken that
 
 - Every agent PR gets human review before merge during the pilot — evidence-affecting or not.
 - Never push to main/master, never force-push, never merge. If you cannot finish mid-work,
-  take the same give-up path as at intake: comment exactly where you stopped, what you found,
-  and what blocks you on the GitHub issue, swap `ready-for-agent` to `needs-info` (or
-  `ready-for-human`), and stop — do not report partial work as done, and do not leave the
-  issue claimed-looking with no tracker breadcrumb.
+  take the same give-up path as at intake: return exactly where you stopped, what you found,
+  and what blocks you, stating that it needs posting to the issue and the `ready-for-agent`
+  label swapped to `needs-info` (or `ready-for-human`). The dispatcher performs both writes —
+  do not report partial work as done, and do not leave the issue claimed-looking with no
+  tracker breadcrumb.

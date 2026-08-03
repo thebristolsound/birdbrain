@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { fakeBridge } from '../fakeBridge'
 
 const toastFns = {
   error: vi.fn(),
@@ -12,7 +13,7 @@ const log = vi.fn().mockResolvedValue('cid-1')
 
 beforeEach(() => {
   vi.clearAllMocks()
-  vi.stubGlobal('birdbrain', { diagnostics: { log } })
+  fakeBridge({ diagnostics: { log } })
 })
 
 describe('notify', () => {

@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { Download, ChevronDown, FileText, Image, FileArchive } from 'lucide-react'
 import type { Capture } from '@shared/types'
+import {
+  downloadCapture,
+  downloadCapturePdf,
+  downloadCaptureScreenshot
+} from '@renderer/lib/api/system'
 
 interface Props {
   capture: Capture
@@ -54,7 +59,7 @@ export function CaptureDownloadMenu({ capture }: Props) {
     setError(null)
     setPdfExporting(true)
     try {
-      await window.birdbrain.captures.downloadPdf(capture.id)
+      await downloadCapturePdf(capture.id)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'PDF export failed')
     } finally {
@@ -99,7 +104,7 @@ export function CaptureDownloadMenu({ capture }: Props) {
           <button
             role="menuitem"
             data-testid="download-archive-btn"
-            onClick={() => run(() => window.birdbrain.captures.download(capture.id))}
+            onClick={() => run(() => downloadCapture(capture.id))}
             className={itemClass}
           >
             <FileArchive className="h-3.5 w-3.5 shrink-0 text-text-muted" />
@@ -120,7 +125,7 @@ export function CaptureDownloadMenu({ capture }: Props) {
             data-testid="download-screenshot-btn"
             disabled={!capture.screenshotPath}
             title={capture.screenshotPath ? undefined : 'No screenshot for this capture'}
-            onClick={() => run(() => window.birdbrain.captures.downloadScreenshot(capture.id))}
+            onClick={() => run(() => downloadCaptureScreenshot(capture.id))}
             className={itemClass}
           >
             <Image className="h-3.5 w-3.5 shrink-0 text-text-muted" />

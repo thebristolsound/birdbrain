@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest'
 import { fireEvent, render, screen, waitFor, cleanup } from '@testing-library/react'
 import { ReportProblemDialog } from '@renderer/components/diagnostics/ReportProblemDialog'
+import { fakeBridge } from '../renderer/fakeBridge'
 
 // vi.hoisted: vi.mock is lifted above every top-level const, so a plain
 // `const notifyError = vi.fn()` is still in its TDZ when the factory runs.
@@ -12,7 +13,7 @@ const createReport = vi.fn().mockResolvedValue({ path: 'C:/x/report.zip' })
 beforeEach(() => {
   vi.clearAllMocks()
   createReport.mockResolvedValue({ path: 'C:/x/report.zip' })
-  vi.stubGlobal('birdbrain', { diagnostics: { createReport } })
+  fakeBridge({ diagnostics: { createReport } })
 })
 
 afterEach(() => {

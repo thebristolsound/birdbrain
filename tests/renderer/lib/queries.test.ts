@@ -43,6 +43,7 @@ import {
   useAnnotationsMutations,
   useSettingsMutations
 } from '@renderer/lib/queries'
+import { fakeBridge } from '../fakeBridge'
 
 // Build a fully-stubbed window.birdbrain whose every method records calls and
 // resolves to a sentinel value, so queryFns/mutationFns can be exercised.
@@ -94,7 +95,7 @@ function installBirdbrainMock() {
     annotations: { get: fn(), save: fn(), upsertPin: fn(), deletePin: fn(), delete: fn() },
     settings: { get: fn(), update: fn(), getIdentity: fn(), listModels: fn() }
   }
-  ;(window as unknown as { birdbrain: typeof api }).birdbrain = api
+  fakeBridge(api)
   return api
 }
 

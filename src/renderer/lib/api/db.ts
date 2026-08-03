@@ -39,34 +39,69 @@ export function dbAdminMutationOptions(queryClient: QueryClient) {
   }
 
   return {
-    vacuum: { mutationFn: () => window.birdbrain.db.vacuum(), onSuccess: invalidateStats },
-    rebuildFts: { mutationFn: () => window.birdbrain.db.rebuildFts(), onSuccess: invalidateStats },
-    backup: { mutationFn: () => window.birdbrain.db.backup(), onSuccess: invalidateStats },
+    vacuum: {
+      mutationFn: () => window.birdbrain.db.vacuum(),
+      onSuccess: invalidateStats,
+      meta: { action: 'vacuum the database' }
+    },
+    rebuildFts: {
+      mutationFn: () => window.birdbrain.db.rebuildFts(),
+      onSuccess: invalidateStats,
+      meta: { action: 'rebuild the search index' }
+    },
+    // backup/exportTable resolve to null and restore to { restored: false }
+    // when the user cancels the native dialog, so the invalidation has to be
+    // guarded on the result — otherwise cancelling a restore fires an
+    // unfiltered, app-wide refetch.
+    backup: {
+      mutationFn: () => window.birdbrain.db.backup(),
+      onSuccess: (result: { path: string } | null) => {
+        if (result) invalidateStats()
+      },
+      meta: { action: 'back up the database' }
+    },
     exportTable: {
       mutationFn: (params: DbExportTableParams) => window.birdbrain.db.exportTable(params),
-      onSuccess: invalidateStats
+      onSuccess: (result: { path: string } | null) => {
+        if (result) invalidateStats()
+      },
+      meta: { action: 'export the table' }
     },
-    findOrphans: { mutationFn: () => window.birdbrain.db.findOrphans() },
+    findOrphans: {
+      mutationFn: () => window.birdbrain.db.findOrphans(),
+      meta: { action: 'find orphaned records' }
+    },
     purgeArchived: {
       mutationFn: () => window.birdbrain.db.purgeArchived(),
-      onSuccess: invalidateAll
+      onSuccess: invalidateAll,
+      meta: { action: 'purge archived records' }
     },
     cleanOrphans: {
       mutationFn: (report: OrphanReport) => window.birdbrain.db.cleanOrphans(report),
-      onSuccess: invalidateAll
+      onSuccess: invalidateAll,
+      meta: { action: 'clean up orphaned records' }
     },
-    restore: { mutationFn: () => window.birdbrain.db.restore(), onSuccess: invalidateAll },
+    restore: {
+      mutationFn: () => window.birdbrain.db.restore(),
+      onSuccess: (result: { restored: boolean }) => {
+        if (result.restored) invalidateAll()
+      },
+      meta: { action: 'restore the database' }
+    },
     createRow: {
       mutationFn: (params: DbCreateRowParams) => window.birdbrain.db.createRow(params),
-      onSuccess: invalidateStatsAndRows
+      onSuccess: invalidateStatsAndRows,
+      meta: { action: 'create the row' }
     },
     updateRow: {
       mutationFn: (params: DbUpdateRowParams) => window.birdbrain.db.updateRow(params),
-      onSuccess: invalidateStatsAndRows
+      onSuccess: invalidateStatsAndRows,
+      meta: { action: 'save the row' }
     },
     deleteRow: {
       mutationFn: (params: DbRowIdentifier) => window.birdbrain.db.deleteRow(params),
-      onSuccess: invalidateStatsAndRows
+      onSuccess: invalidateStatsAndRows,
+      meta: { action: 'delete the row' }
     }
   }
 }

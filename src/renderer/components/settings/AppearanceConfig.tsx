@@ -3,7 +3,7 @@ import { useTheme } from '@renderer/hooks/useTheme'
 import { REDUCE_MOTION_STORAGE_KEY as STORAGE_KEY } from '@renderer/hooks/useReduceMotion'
 import { Card, CardContent, Label } from '@renderer/components/ui'
 import { cn } from '@renderer/lib/utils'
-import { useSettingsMutations } from '@renderer/lib/queries'
+import { useSettingsMutations } from '@renderer/lib/api/settings'
 
 function readInitial(): boolean {
   return localStorage.getItem(STORAGE_KEY) === 'true'

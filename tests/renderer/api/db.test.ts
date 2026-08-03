@@ -178,3 +178,45 @@ describe('dbAdminMutationOptions', () => {
     expect(spy).toHaveBeenCalledWith()
   })
 })
+
+// The native dialogs resolve rather than reject when dismissed, so a cancelled
+// operation reaches onSuccess like a real one. Cancelling a restore in
+// particular used to fire an unfiltered invalidateQueries() — an app-wide
+// refetch for an operation that changed nothing.
+describe('dbAdminMutationOptions cancellation', () => {
+  it('backup does not invalidate when the save dialog is cancelled', async () => {
+    api.backup.mockResolvedValue(null)
+    const qc = new QueryClient()
+    const spy = vi.spyOn(qc, 'invalidateQueries')
+
+    const opts = dbAdminMutationOptions(qc).backup
+    const data = await opts.mutationFn()
+    opts.onSuccess?.(data, undefined as never, undefined, undefined as never)
+
+    expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('exportTable does not invalidate when the save dialog is cancelled', async () => {
+    api.exportTable.mockResolvedValue(null)
+    const qc = new QueryClient()
+    const spy = vi.spyOn(qc, 'invalidateQueries')
+
+    const opts = dbAdminMutationOptions(qc).exportTable
+    const data = await opts.mutationFn({ table: 'cases', format: 'csv' })
+    opts.onSuccess?.(data, undefined as never, undefined, undefined as never)
+
+    expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('restore does not invalidate when the open dialog is cancelled', async () => {
+    api.restore.mockResolvedValue({ restored: false })
+    const qc = new QueryClient()
+    const spy = vi.spyOn(qc, 'invalidateQueries')
+
+    const opts = dbAdminMutationOptions(qc).restore
+    const data = await opts.mutationFn()
+    opts.onSuccess?.(data, undefined as never, undefined, undefined as never)
+
+    expect(spy).not.toHaveBeenCalled()
+  })
+})

@@ -13,7 +13,10 @@ function formatBytes(bytes: number): string {
 export function DbStats() {
   const { data: stats, isFetching, error, refetch } = useQuery(dbStatsQueryOptions)
 
-  if (error) {
+  // Only when there is nothing to show: a failed background refetch keeps the
+  // last good stats, and replacing them with the error box would take away
+  // data the user is already reading.
+  if (error && !stats) {
     return (
       <div className="rounded-lg bg-red-900/20 p-4 text-sm text-red-400">
         {error instanceof Error ? error.message : 'Failed to load stats'}

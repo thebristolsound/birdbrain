@@ -61,4 +61,28 @@ describe('DbTables', () => {
     expect(await screen.findByText('page-one-row')).toBeDefined()
     expect(screen.queryByText('page-zero-row')).toBeNull()
   })
+
+  it('shows nothing from the previous table while a different table loads', async () => {
+    const casesPage = { rows: [{ id: '1', value: 'cases-row' }], total: 1, columns }
+
+    const tableRows = vi.fn()
+    tableRows.mockResolvedValueOnce(casesPage)
+    tableRows.mockReturnValueOnce(new Promise(() => {}))
+    fakeBridge({ db: { tableRows } })
+
+    renderTables()
+
+    expect(await screen.findByText('cases-row')).toBeDefined()
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'notes' } })
+
+    await waitFor(() =>
+      expect(tableRows).toHaveBeenNthCalledWith(2, { table: 'notes', offset: 0, limit: 50 })
+    )
+    // The held page stops at the table boundary: rows from the table you just
+    // left, rendered under the new table's headings, would be a misread rather
+    // than a stale read — the column set is different.
+    expect(screen.queryByText('cases-row')).toBeNull()
+    expect(screen.getByText('Loading...')).toBeDefined()
+  })
 })

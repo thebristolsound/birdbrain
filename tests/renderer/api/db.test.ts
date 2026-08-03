@@ -52,6 +52,23 @@ describe('dbStatsQueryOptions / dbTableRowsQueryOptions', () => {
     await opts.queryFn?.({} as never)
     expect(api.tableRows).toHaveBeenCalledWith({ table: 'cases', offset: 0, limit: 50 })
   })
+
+  // Paging holds the previous page on screen so the pager does not unmount
+  // under the cursor, but that placeholder has to stop at the table boundary:
+  // another table's rows under these headings is a misread, not a stale read.
+  it('holds the previous page only within the same table', () => {
+    const previous = { rows: [{ id: 'a' }], total: 100, columns: [] }
+    const { placeholderData } = dbTableRowsQueryOptions({ table: 'cases', offset: 50, limit: 50 })
+    if (typeof placeholderData !== 'function') throw new Error('expected a placeholder function')
+
+    const samePage = { queryKey: queryKeys.dbTableRows('cases', 0, 50) } as never
+    expect(placeholderData(previous, samePage)).toEqual(previous)
+
+    const otherTable = { queryKey: queryKeys.dbTableRows('notes', 0, 50) } as never
+    expect(placeholderData(previous, otherTable)).toBeUndefined()
+
+    expect(placeholderData(previous, undefined as never)).toBeUndefined()
+  })
 })
 
 describe('dbAdminMutationOptions', () => {

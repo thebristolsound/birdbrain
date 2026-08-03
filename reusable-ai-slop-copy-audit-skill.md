@@ -27,7 +27,7 @@ Default to maintained product and documentation prose:
 
 - User-facing strings in application and extension source files.
 - Root Markdown files such as `README.md`.
-- Current docs, including `docs/reference`, `docs/adr`, and repository-level contributor/product docs.
+- Current docs, including `website/content/docs`, `docs/adr`, and repository-level contributor/product docs.
 
 Exclude by default:
 
@@ -113,7 +113,7 @@ Validate the skill against this repository after creation:
   - `src/renderer/components/dashboard/DashboardFooter.tsx`
   - `src/renderer/components/layout/OnboardingWizard.tsx`
   - `src/renderer/components/extension/InstallExtensionGuide.tsx`
-  - `docs/reference/capture-pipeline.md`
+  - `website/content/docs/capture-pipeline.mdx`
 - Confirm it excludes:
   - `pnpm-lock.yaml`
   - test files and fixtures

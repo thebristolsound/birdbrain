@@ -5,7 +5,7 @@
 **Date:** 2026-07-25
 
 Birdbrain adopts the standards register in
-[`docs/reference/osint-investigation-standards.md`](../reference/osint-investigation-standards.md)
+[`website/content/docs/osint-investigation-standards.mdx`](../../website/content/docs/osint-investigation-standards.mdx)
 as the engineering baseline for evidence-affecting architecture, implementation, validation,
 release, and product-claim decisions.
 

@@ -19,6 +19,8 @@ Open source web investigation & capture tool. Electron desktop app with a compan
 - `pnpm test:e2e:debug` - Run E2E tests with Playwright inspector
 - `pnpm package` / `pnpm package:win` / `pnpm package:mac` / `pnpm package:linux` - Package for distribution
 
+Docs site commands run from `website/` (separate lockfile — see "Documentation site"): `pnpm dev`, `pnpm build`, `pnpm types:check`.
+
 ## Architecture
 
 Electron + React 19 + TanStack Router + React Query + Chrome Extension + SQLite (better-sqlite3).
@@ -188,15 +190,34 @@ All design docs, specs, and implementation plans live under `docs/` per the layo
 
 - **Specs / design briefs / spikes** → `docs/specs/YYYY-MM-DD-<slug>-design.md` (or `-spike.md`, `-brief.md`, `-assessment.md`) — **tracked**
 - **Implementation plans / checklists** → `docs/plans/YYYY-MM-DD-<slug>.md` — **tracked**
-- **Long-lived reference** → `docs/reference/<topic>.md` (no date prefix) — **tracked**
+- **Long-lived reference** → `website/content/docs/<topic>.mdx` (no date prefix) — **tracked**, and published to the docs site
 - **Architecture decisions** → `docs/adr/NNNN-<slug>.md` — **tracked**
 - **Superseded** → `docs/archive/` (preserve original filename) — **tracked**
+
+Long-lived reference docs moved out of `docs/reference/` into `website/content/docs/` when the docs site was set up — they are the site's content now. Adding one means adding an `.mdx` file with `title`/`description` frontmatter plus an entry in `website/content/docs/meta.json` (pages absent from `meta.json` are silently dropped from the sidebar). See "Documentation site" below for the MDX constraints.
 
 **`docs/plans/` is tracked (since July 2026).** Plans are still author-time working notes: they get checked off and go stale, and staleness is expected.
 
 **Docs may ship in the same PR as the code they describe.** There is no requirement to split specs, plans, ADRs, or reference docs onto their own PR or their own commit. Bundling a doc with the `src/**` change it documents is normal and preferred — a guide for a feature that has not merged yet is worth less on its own, and the split costs more than it returns.
 
 **Override for agentic tooling:** When a skill or agent specifies a different default path (e.g. Superpowers' `docs/superpowers/specs/` and `docs/superpowers/plans/`), treat the canonical paths above as the user-preference override. Write specs to `docs/specs/` and plans to `docs/plans/`. The legacy `docs/superpowers/` tree is frozen — do not add new files there.
+
+## Documentation site
+
+`website/` is the public docs site — Next.js 16 + Fumadocs UI/MDX, statically exported and published to GitHub Pages at <https://thebristolsound.github.io/birdbrain/> by `.github/workflows/docs.yml`.
+
+**It is a deliberately isolated sub-project.** It has its own `package.json`, `pnpm-lock.yaml`, and `node_modules`, and there is **no** `pnpm-workspace.yaml` — adding one would force migrating the root `pnpm.*` keys (`onlyBuiltDependencies`, `overrides`, `supportedArchitectures`) and risk the Electron/native build. Consequences:
+
+- Run its commands from inside `website/`: `pnpm install`, `pnpm dev`, `pnpm build`, `pnpm types:check`. A root `pnpm install` does not touch it.
+- The root toolchain ignores it: `eslint.config.js` lists `website/`, `pnpm format` is scoped to `src/`+`extension/`, the root tsconfigs only include `src/**`, and `build.files` in the root `package.json` excludes `website/**/*` so it never ships inside the packaged app.
+- `next.config.mjs` pins `turbopack.root` to `website/`, or Turbopack finds the root lockfile and infers the wrong workspace root.
+
+Content lives in `website/content/docs/` (`.mdx` + `meta.json`), images in `website/public/assets/`. Things worth knowing before editing content:
+
+- **Bare `{...}` in prose breaks the build.** MDX parses braces as JSX expressions, so `{source}` or `{a, b}` in body text is a compile error. Wrap them in backticks.
+- **Internal doc links need the `./name.mdx` form.** `createRelativeLink` only rewrites hrefs starting with `./` or `../`; a bare slug is emitted as-is and resolves wrong under `trailingSlash: true`.
+- **Image paths are `public/`-relative** (`/assets/x.png`). Fumadocs turns them into `next/image` imports, so `basePath` is applied for you — do not hardcode `/birdbrain/`.
+- Anything that builds a URL by hand does need the prefix; import `basePath` from `website/lib/base-path.mjs` (that is why the static search client passes `from`).
 
 ## Testing
 
@@ -219,7 +240,7 @@ All design docs, specs, and implementation plans live under `docs/` per the layo
 
 ### Issue tracker
 
-Issues live as GitHub Issues in `thebristolsound/birdbrain`, accessed via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+Issues live as GitHub Issues in `thebristolsound/birdbrain`, accessed via the `gh` CLI. External PRs are not a triage surface. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

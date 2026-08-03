@@ -5,6 +5,7 @@ import { act, renderHook } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fakeBridge } from '../../fakeBridge'
 import {
+  dbAdminMutationOptions,
   dbStatsQueryOptions,
   dbTableRowsQueryOptions,
   useDbAdminMutations
@@ -135,5 +136,72 @@ describe('useDbAdminMutations', () => {
 
     const [mutation] = client.getMutationCache().getAll()
     expect(failureMessage(mutation)).toBe("Couldn't vacuum the database.")
+  })
+})
+
+// --- Invalidation table ----------------------------------------------------
+// Asserted against the options factory rather than the hook: no mount, and the
+// blast radius of each command is the whole point of the assertion.
+
+type MutationName = keyof ReturnType<typeof dbAdminMutationOptions>
+
+async function runMutation(name: MutationName, variables?: unknown) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
+  })
+  const invalidate = vi.spyOn(client, 'invalidateQueries').mockResolvedValue()
+  const cache = client.getMutationCache()
+  // The 11 option objects take 11 different variable types, so the union
+  // defeats build()'s inference. Widening to build's own parameter type keeps
+  // the call honest — it still runs mutationFn and fires onSuccess only on
+  // success — while MutationName above pins the keys.
+  const options = dbAdminMutationOptions(client)[name] as Parameters<typeof cache.build>[1]
+  await cache.build(client, options).execute(variables as never)
+  return invalidate
+}
+
+// null means "called with no filter", i.e. every cached query.
+function invalidatedKeys(spy: Awaited<ReturnType<typeof runMutation>>) {
+  return spy.mock.calls.map((call) => (call[0] as { queryKey?: unknown })?.queryKey ?? null)
+}
+
+describe('dbAdminMutationOptions invalidation', () => {
+  it.each([
+    ['restore', undefined],
+    ['purgeArchived', undefined],
+    ['cleanOrphans', ORPHANS]
+  ] as const)('%s drops every cached query', async (name, variables) => {
+    const spy = await runMutation(name, variables)
+    // The point of the no-filter call: these rewrite rows the rest of the app
+    // has cached under keys this module has never heard of.
+    expect(invalidatedKeys(spy)).toEqual([null])
+  })
+
+  it.each([
+    ['createRow', { table: 'tags', data: { name: 'x' } }],
+    ['updateRow', { table: 'tags', pk: { id: '1' }, data: { name: 'y' } }],
+    ['deleteRow', { table: 'tags', pk: { id: '1' } }]
+  ] as const)('%s refreshes the browse pages and the stats panel', async (name, variables) => {
+    const keys = invalidatedKeys(await runMutation(name, variables))
+    expect(keys).toContainEqual(['dbStats'])
+    // The page-agnostic prefix, so an edit on page 3 does not leave page 1 stale.
+    expect(keys).toContainEqual(['dbTableRows'])
+  })
+
+  it.each([
+    ['vacuum', undefined],
+    ['backup', undefined],
+    ['exportTable', { table: 'cases', format: 'csv' }]
+  ] as const)('%s refreshes only the stats panel', async (name, variables) => {
+    expect(invalidatedKeys(await runMutation(name, variables))).toEqual([['dbStats']])
+  })
+
+  it.each([
+    ['rebuildFts', undefined],
+    ['findOrphans', undefined]
+  ] as const)('%s invalidates nothing', async (name, variables) => {
+    // Neither changes a row or a byte count: rebuildFts reindexes what is
+    // already cached correctly, and findOrphans is a read.
+    expect(invalidatedKeys(await runMutation(name, variables))).toEqual([])
   })
 })

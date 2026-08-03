@@ -87,13 +87,14 @@ export function DbTables() {
         }
         if (Object.keys(changedData).length === 0) {
           setEditModal({ open: false, mode: 'create' })
+          // Kept, unlike the refetches after a write: no mutation runs on this
+          // path, so nothing invalidates the page for it.
           void rowsQuery.refetch()
           return
         }
         await updateRow.mutateAsync({ table: selectedTable, pk, data: changedData })
       }
       setEditModal({ open: false, mode: 'create' })
-      void rowsQuery.refetch()
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Save failed')
     }
@@ -104,7 +105,6 @@ export function DbTables() {
     try {
       await deleteRow.mutateAsync({ table: selectedTable, pk: deleteConfirm.pk })
       setDeleteConfirm({ open: false, pk: {} })
-      void rowsQuery.refetch()
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Delete failed')
     }

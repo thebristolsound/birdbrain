@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { QueryClient } from '@tanstack/react-query'
+import type { DbTableRowsResult } from '@shared/ipc'
 import { fakeBridge } from '../fakeBridge'
 import { dbStatsQueryOptions, dbTableRowsQueryOptions, dbAdminMutationOptions } from '@renderer/lib/api/db'
 import { queryKeys } from '@renderer/lib/api/keys'
@@ -24,6 +25,8 @@ function installDbBridge() {
   fakeBridge({ db: api })
   return api
 }
+
+type DbTableRowsKey = ReturnType<typeof queryKeys.dbTableRows>
 
 let api: ReturnType<typeof installDbBridge>
 
@@ -62,13 +65,20 @@ describe('dbStatsQueryOptions / dbTableRowsQueryOptions', () => {
     const { placeholderData } = dbTableRowsQueryOptions({ table: 'cases', offset: 50, limit: 50 })
     if (typeof placeholderData !== 'function') throw new Error('expected a placeholder function')
 
-    const samePage = { queryKey: queryKeys.dbTableRows('cases', 0, 50) } as never
-    expect(placeholderData(previous, samePage)).toEqual(previous)
+    // Real Query instances built through the cache, so the argument is the
+    // object React Query actually hands the placeholder rather than a stub cast
+    // past the contract.
+    const qc = new QueryClient()
+    const previousQuery = (table: string) =>
+      qc
+        .getQueryCache()
+        .build<DbTableRowsResult, Error, DbTableRowsResult, DbTableRowsKey>(qc, {
+          queryKey: queryKeys.dbTableRows(table, 0, 50)
+        })
 
-    const otherTable = { queryKey: queryKeys.dbTableRows('notes', 0, 50) } as never
-    expect(placeholderData(previous, otherTable)).toBeUndefined()
-
-    expect(placeholderData(previous, undefined as never)).toBeUndefined()
+    expect(placeholderData(previous, previousQuery('cases'))).toEqual(previous)
+    expect(placeholderData(previous, previousQuery('notes'))).toBeUndefined()
+    expect(placeholderData(previous, undefined)).toBeUndefined()
   })
 })
 

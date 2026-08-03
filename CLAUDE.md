@@ -9,10 +9,11 @@ Open source web investigation & capture tool. Electron desktop app with a compan
 - `pnpm build:extension` - Build the Chrome extension
 - `pnpm dev:extension` - Build Chrome extension in watch mode (background and popup bundles only; does not watch/rebuild the content script IIFE build)
 - `pnpm build:verifier` - Build the standalone verifier binary (`scripts/build-verifier.mjs`)
-- `pnpm test` - Run tests (vitest, via Electron runtime)
+- `pnpm test` - Run tests (vitest, via Electron runtime). Single file: `pnpm test <path>` — no `--` (`pnpm test -- <path>` does not filter and runs the full suite)
 - `pnpm test:watch` - Run tests in watch mode
 - `pnpm test:coverage` / `pnpm coverage:report` / `pnpm coverage:all` - Coverage run and reports
 - `pnpm lint` - ESLint (.ts, .tsx)
+- `pnpm typecheck` - Typecheck all three tsconfigs (main/preload/shared, renderer, extension)
 - `pnpm format` - Prettier format src/ and extension/
 - `pnpm rebuild:electron` - Rebuild native deps (better-sqlite3)
 - `pnpm test:e2e` - Run E2E tests (Playwright + Electron, runs `pnpm build` first)
@@ -20,6 +21,8 @@ Open source web investigation & capture tool. Electron desktop app with a compan
 - `pnpm package` / `pnpm package:win` / `pnpm package:mac` / `pnpm package:linux` - Package for distribution
 
 Docs site commands run from `website/` (separate lockfile — see "Documentation site"): `pnpm dev`, `pnpm build`, `pnpm types:check`.
+
+**Run everything on Node 20.** `.nvmrc` and `.mise.toml` pin it, and CI reads `.nvmrc` (`node-version-file`). `engines.node` is only a floor (`>=20.19.0`) — Node 24 satisfies it, so engines will not keep you off the broken version. `.mise.toml` exists because mise ignores `.nvmrc` by default, so shells and agent worktrees would otherwise land on whatever Node is newest. Under Node 24 Electron's postinstall silently fails to extract the binary (extract-zip's promise never settles): install exits 0 but leaves `node_modules/electron/dist` broken, which is what `scripts/ensure-electron.mjs` now backstops. If Electron is mysteriously missing, check `node --version` first.
 
 ## Architecture
 
@@ -104,7 +107,8 @@ Root layout in `__root.tsx` renders TopBar, optional case Sidebar, main content 
 React Query (`@tanstack/react-query`) manages all server state. Configuration in `src/renderer/lib/`:
 
 - `queryClient.ts` - retry=false, staleTime=30s, refetchOnWindowFocus=false
-- `queries.ts` - Query key factory, typed query options, and domain-specific mutation hooks (useCasesMutations, useCapturesMutations, etc.) with automatic cache invalidation
+- `api/` - The query layer, one module per IPC domain: `keys.ts` holds the query key factory, and each domain module holds its typed query options and mutation hooks (useCasesMutations, useCapturesMutations, etc.) with automatic cache invalidation
+- `queries.ts` - A re-export barrel over `api/` while call sites migrate (#229); import from the domain module in new code. Deleted once the migration lands
 
 ### State management
 
@@ -206,7 +210,9 @@ Long-lived reference docs moved out of `docs/reference/` into `website/content/d
 
 `website/` is the public docs site — Next.js 16 + Fumadocs UI/MDX, statically exported and published to GitHub Pages at <https://thebristolsound.github.io/birdbrain/> by `.github/workflows/docs.yml`.
 
-**It is a deliberately isolated sub-project.** It has its own `package.json`, `pnpm-lock.yaml`, and `node_modules`, and there is **no** `pnpm-workspace.yaml` — adding one would force migrating the root `pnpm.*` keys (`onlyBuiltDependencies`, `overrides`, `supportedArchitectures`) and risk the Electron/native build. Consequences:
+**It is a deliberately isolated sub-project.** It has its own `package.json`, `pnpm-lock.yaml`, and `node_modules`. The repo root does have a `pnpm-workspace.yaml`, but **only** to hold the pnpm settings that used to live in the `pnpm` field of `package.json` (`onlyBuiltDependencies`, `overrides`, `supportedArchitectures`) — pnpm 10.28 stopped reading them there. It deliberately has no `packages:` key, so nothing is registered as a workspace member and `website/` stays isolated. Do not add one.
+
+`website/pnpm-workspace.yaml` enforces that isolation from the other side: it makes `website/` its own workspace root, so a `pnpm` command run inside `website/` stops there instead of walking up and inheriting the root's `overrides` and `onlyBuiltDependencies`. It also carries the site's own `allowBuilds` approvals (esbuild, sharp). Consequences:
 
 - Run its commands from inside `website/`: `pnpm install`, `pnpm dev`, `pnpm build`, `pnpm types:check`. A root `pnpm install` does not touch it.
 - The root toolchain ignores it: `eslint.config.js` lists `website/`, `pnpm format` is scoped to `src/`+`extension/`, the root tsconfigs only include `src/**`, and `build.files` in the root `package.json` excludes `website/**/*` so it never ships inside the packaged app.
@@ -249,3 +255,19 @@ Five canonical triage roles using their default label strings (`needs-triage`, `
 ### Domain docs
 
 Single-context layout: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+### Background jobs (project-local carve-out)
+
+Unattended/background agent jobs working a `ready-for-agent` issue in this repo are opted out
+of the global wait-for-confirmation rules: do not pause for mid-task approval and do not wait
+for the user to confirm completion. Instead, verify the work (`pnpm lint`, `pnpm typecheck`,
+`BIRDBRAIN_REQUIRE_OPENSSL=1 pnpm test`, `pnpm build`, plus `pnpm build:extension` when
+`extension/` changed), then finish by opening a **draft PR** with the standard attribution
+line. Interactive sessions are not covered by this carve-out, and it must not be copied to the
+global CLAUDE.md or other repos.
+
+The gates in `docs/adr/0005-unattended-agents-on-the-evidence-path.md` still apply in full:
+strict-serial WIP (max one open agent PR), human review on every agent PR through the pilot,
+evidence-affecting PRs never auto-merge, and the give-up path (comment findings on the issue, relabel
+`needs-info`/`ready-for-human`, vacate the slot) whenever the issue fails the ready-for-agent
+bar at intake or mid-work.

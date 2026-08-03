@@ -3,8 +3,6 @@ import type { QueryClient } from '@tanstack/react-query'
 import type { BirdbrainSettings } from '@shared/types'
 import { queryKeys } from '@renderer/lib/api/keys'
 
-// --- Settings ---
-
 export const settingsQueryOptions = queryOptions({
   queryKey: queryKeys.settings,
   queryFn: () => window.birdbrain.settings.get()
@@ -28,23 +26,13 @@ export function useSettingsMutations() {
   return { update: useMutation(settingsUpdateMutationOptions(queryClient)) }
 }
 
-// --- Identity ---
-
 export const identityQueryOptions = queryOptions({
   queryKey: queryKeys.identity,
   queryFn: () => window.birdbrain.settings.getIdentity()
 })
 
-// --- App version ---
-
-export const appVersionQueryOptions = queryOptions({
-  queryKey: queryKeys.appVersion,
-  queryFn: () => window.birdbrain.app.getVersion(),
-  staleTime: Infinity
-})
-
-// --- OpenRouter Models ---
-
+// The OpenRouter model catalogue is fetched through the settings namespace
+// (`settings:listModels`), which is why it lives here rather than in ai.ts.
 export const openRouterModelsQueryOptions = (apiKey: string) =>
   queryOptions({
     queryKey: queryKeys.openRouterModels,

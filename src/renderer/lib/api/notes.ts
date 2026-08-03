@@ -2,8 +2,6 @@ import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query
 import type { CreateNoteParams, UpdateNoteParams } from '@shared/ipc'
 import { queryKeys } from '@renderer/lib/api/keys'
 
-// --- Notes ---
-
 export const notesQueryOptions = (caseId: string) =>
   queryOptions({
     queryKey: queryKeys.notes(caseId),

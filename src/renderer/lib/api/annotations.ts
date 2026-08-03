@@ -2,8 +2,6 @@ import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query
 import type { SaveAnnotationsParams, UpsertAnnotationPinParams } from '@shared/ipc'
 import { queryKeys } from '@renderer/lib/api/keys'
 
-// --- Annotations ---
-
 export const annotationsQueryOptions = (captureId: string) =>
   queryOptions({
     queryKey: queryKeys.annotations(captureId),

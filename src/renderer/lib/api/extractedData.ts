@@ -1,8 +1,6 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@renderer/lib/api/keys'
 
-// --- Extracted Data ---
-
 export const extractedDataCategoriesQueryOptions = (caseId: string) =>
   queryOptions({
     queryKey: queryKeys.extractedDataCategories(caseId),

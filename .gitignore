@@ -56,6 +56,14 @@ coverage/
 .agents
 .claude/*
 !.claude/settings.json
+!.claude/agents/
+.claude/agents/*
+!.claude/agents/birdbrain-implementer.md
+!.claude/agents/birdbrain-reviewer.md
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/dispatch/
+.codex
 .cursor
 .zed
 .kilo
@@ -64,6 +72,10 @@ coverage/
 
 .kilocode
 .design-bundle
+
+# Project MCP config stays local-only: its server points at the ignored
+# .vscode/workflows/ files, so tracking it would ship a broken config.
+.mcp.json
 
 # design-sync (build tooling + generated output; durable inputs under .design-sync/ ARE committed)
 .ds-sync/

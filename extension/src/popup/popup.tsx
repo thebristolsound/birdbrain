@@ -1,13 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
 import { getStatus, getCases, activateCase, stopSession } from '@extension/utils/api'
+import type { CaptureServerCase } from '@shared/schemas'
 import './popup.css'
-
-interface CaseInfo {
-  id: string
-  name: string
-  captureCount: number
-}
 
 // Hand off to the desktop app via its registered birdbrain:// scheme. Opening a
 // tab lets Chrome surface the external-protocol prompt and launch/focus the app;
@@ -266,7 +261,7 @@ function CaseSelector({
   activeCase,
   onSelect
 }: {
-  cases: CaseInfo[]
+  cases: CaptureServerCase[]
   activeCase: { id: string; name: string } | null
   onSelect: (id: string) => void
 }) {
@@ -349,7 +344,7 @@ function Popup(): React.JSX.Element {
   const [connected, setConnected] = useState(false)
   const [sessionActive, setSessionActive] = useState(false)
   const [activeCase, setActiveCase] = useState<{ id: string; name: string } | null>(null)
-  const [cases, setCases] = useState<CaseInfo[]>([])
+  const [cases, setCases] = useState<CaptureServerCase[]>([])
   const [captureCount, setCaptureCount] = useState(0)
   const [activeSelectorCount, setActiveSelectorCount] = useState(0)
   const [currentDomain, setCurrentDomain] = useState('')

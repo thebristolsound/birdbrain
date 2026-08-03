@@ -56,10 +56,7 @@ describe('ExportMenu', () => {
       return vi.fn()
     })
     showItemInFolder = vi.fn().mockResolvedValue(undefined)
-    fakeBridge({
-      onArchiveProgress,
-      shell: { showItemInFolder }
-    })
+    fakeBridge({ onArchiveProgress, shell: { showItemInFolder } })
   })
 
   afterEach(() => {

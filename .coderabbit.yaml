@@ -1,0 +1,241 @@
+# CodeRabbit review configuration for Birdbrain.
+# Schema: https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
+# Reference: https://docs.coderabbit.ai/reference/configuration
+#
+# Ask CodeRabbit to echo back the resolved config on any PR with:
+#   @coderabbitai configuration
+
+language: en-US
+
+# Applied to every comment CodeRabbit writes. Hard limit: 250 characters.
+tone_instructions: >-
+  Be direct and concrete. Skip praise and restatement of what the diff does. Prettier
+  and ESLint enforce formatting here — never comment on style they already handle.
+  Prefer one specific, actionable comment over three general ones.
+
+reviews:
+  # chill = flag real problems, skip stylistic nitpicks. (quiet | chill | assertive)
+  profile: chill
+
+  # Solo-maintained repo: a blocking "changes requested" review would stall every PR.
+  request_changes_workflow: false
+
+  high_level_summary: true
+  review_status: true
+  review_details: true
+
+  # Playful output off.
+  poem: false
+  in_progress_fortune: false
+
+  # ---------------------------------------------------------------------------
+  # What gets reviewed at all.
+  #
+  # IMPORTANT: positive globs are RESTRICTIVE. Once any include pattern is listed,
+  # a file that matches none of them is skipped entirely. Adding a new top-level
+  # directory to this repo means adding it here, or it silently goes unreviewed.
+  # ---------------------------------------------------------------------------
+  path_filters:
+    # --- include: application, extension, tests ---
+    - "src/**"
+    - "extension/**"
+    - "tests/**"
+    - "e2e/**"
+    # --- include: author-time docs (specs, plans, ADRs, agent docs) ---
+    - "docs/**"
+    # --- include: the Fumadocs site (content + integration). Not covered by docs/**. ---
+    - "website/**"
+    # --- include: build/release tooling and CI ---
+    - "scripts/**"
+    - ".github/**"
+    # --- include: root-level config and prose ---
+    - "*.md"
+    - "*.ts"
+    - "*.js"
+    - "*.mjs"
+    - "*.json"
+    # Root YAML. These filters are minimatch, where `*` does not match a leading
+    # dot, so the config file needs its own literal entry -- the glob alone would
+    # leave a change to the review config as the one change CodeRabbit never
+    # sees. pnpm-lock.yaml is excluded below.
+    - "*.yaml"
+    - "*.yml"
+    - ".coderabbit.yaml"
+    - "LICENSE"
+    # A change here weakens secret scanning or shifts the toolchain — worth a look.
+    - ".gitleaksignore"
+    - ".gitignore"
+    - ".prettierrc"
+    - ".nvmrc"
+    # Not included, deliberately: .claude/** and .design-sync/** are local agent and
+    # design tooling, not shipped code.
+
+    # --- exclude: dependencies ---
+    - "!node_modules/**"
+    - "!**/node_modules/**"
+    # --- exclude: build output and test artifacts ---
+    - "!dist/**"
+    - "!out/**"
+    - "!coverage/**"
+    - "!test-results/**"
+    - "!playwright-report/**"
+    - "!website/.next/**"
+    - "!website/out/**"
+    # --- exclude: lockfiles. pnpm-lock.yaml is not a *.lock file, so both patterns
+    #     are needed; **/ also catches website/pnpm-lock.yaml (isolated sub-project). ---
+    - "!**/pnpm-lock.yaml"
+    - "!**/*.lock"
+    # --- exclude: binary and asset directories ---
+    - "!resources/**"
+    - "!website/public/assets/**"
+    - "!**/*.png"
+    - "!**/*.jpg"
+    - "!**/*.jpeg"
+    - "!**/*.gif"
+    - "!**/*.svg"
+    - "!**/*.ico"
+    - "!**/*.icns"
+    - "!**/*.mhtml"
+
+  # ---------------------------------------------------------------------------
+  # Area-specific review criteria. These supplement CodeRabbit's built-in review;
+  # they are not a replacement for it. Keep each block short and concrete.
+  # ---------------------------------------------------------------------------
+  path_instructions:
+    - path: "src/**"
+      instructions: |
+        - TypeScript is strict. Flag `any` without an eslint-disable and a stated reason,
+          and flag non-null assertions used in place of a real narrowing check.
+        - Every `await` needs a rejection path. Flag swallowed errors — a `catch` that
+          logs and continues where the caller needs to know the operation failed.
+        - IPC payloads crossing the preload bridge are untrusted input. Validate at the
+          handler in `src/main/ipcHandlers.ts` rather than deep in a service.
+        - Privacy: captured page content, capture URLs, operator name, and installationId
+          must not reach logs, error messages, or any outbound request. See `SECURITY.md`
+          for the loopback-bind and per-install-token model.
+        - New SQL belongs in a repo module under `src/main/services/db/`. Importing
+          `getDb` elsewhere under `src/main/` is lint-enforced — flag new exceptions.
+
+    - path: "src/main/services/db/migrations.ts"
+      instructions: |
+        - Migrations are append-only. A change that edits an existing `if (version < N)`
+          block rewrites history for already-migrated installs — flag it.
+        - A new block must run its DDL inside the transaction and end by setting
+          `user_version = N`.
+        - A new block also requires bumping `LATEST_SCHEMA_VERSION` in `core.ts`. Flag a
+          new migration that does not.
+
+    - path: "src/main/services/**"
+      instructions: |
+        - Evidence-affecting paths (hashing, manifest writes, signing, trusted time,
+          verification, redaction, export, reporting) must preserve the immutable original
+          and keep derivatives separate from assertions. See `CONTEXT.md`,
+          "Assurance baseline".
+        - Flag any wording in code, comments, or user-facing strings that overstates what
+          verification proves. Say what a check establishes and what it does not.
+        - Use the `CONTEXT.md` vocabulary: Case, Capture, Capture Lifecycle, Manifest,
+          Operator, Persisted Match. Flag the listed synonyms to avoid.
+
+    - path: "extension/**"
+      instructions: |
+        - The content script runs on pages we do not control. Flag selectors that assume a
+          specific class name, DOM depth, or element order, and any `querySelector` result
+          used without a null check.
+        - Flag assumptions that a page is single-frame, same-origin, static, or fully
+          loaded at injection time.
+        - Manifest V3: the background service worker is suspended without warning. Flag
+          module-scope mutable state expected to survive between events — it must go to
+          `chrome.storage`.
+        - Requests to the capture server must target `http://127.0.0.1:19845` and carry the
+          per-install token. Flag hardcoded alternatives or a dropped token.
+
+    - path: "tests/**"
+      instructions: |
+        - Assertions must describe behaviour a user or caller depends on, not restate the
+          implementation. Flag tests that would still pass if the function returned a
+          constant, and tests asserting on private internals.
+        - On a `fix(...)` PR, ask for a test that fails without the fix.
+        - Flag mocking so broad that the unit under test no longer runs.
+
+    - path: "e2e/**"
+      instructions: |
+        - Flag fixed timeouts used where a Playwright web-first assertion or `waitFor`
+          would be deterministic.
+        - Selectors should be role- or testid-based. Flag brittle text or CSS chains.
+
+    - path: "docs/**"
+      instructions: |
+        - Audience is investigators, activists, and researchers — plain language, and
+          honest about limits. Flag marketing register and hedged non-claims.
+        - Check factual claims against `README.md`, `SECURITY.md`, and the specs under
+          `docs/specs/`. Flag statements that contradict them or describe behaviour that
+          does not exist yet.
+        - Flag claims of legal admissibility, tamper-proofing, or standards compliance that
+          do not name the standard and version.
+        - Terminology follows the `CONTEXT.md` glossary, including its "_Avoid_" lists.
+        - Naming: `docs/specs/` and `docs/plans/` files take a `YYYY-MM-DD-` prefix;
+          `docs/adr/` takes `NNNN-`. See `docs/README.md`.
+
+    - path: "website/content/docs/**"
+      instructions: |
+        - Bare `{...}` in prose is an MDX compile error — braces must be inside backticks.
+        - Internal doc links must use the `./name.mdx` form. A bare slug is emitted as-is
+          and resolves wrong under `trailingSlash: true`.
+        - Image paths are `public/`-relative (`/assets/x.png`). Flag a hardcoded
+          `/birdbrain/` prefix — `basePath` is applied automatically.
+        - A new page needs a `title`/`description` frontmatter pair and an entry in
+          `website/content/docs/meta.json`, or it is silently dropped from the sidebar.
+
+    - path: "website/{source.config.ts,next.config.mjs,lib/**,components/**,app/**}"
+      instructions: |
+        - The site is statically exported (`output: 'export'`, `trailingSlash: true`).
+          Flag anything that assumes a server runtime: route handlers with dynamic
+          behaviour, `headers()`/`cookies()`, or unbounded `generateStaticParams`.
+        - Code that builds a URL by hand must import `basePath` from `lib/base-path.mjs`.
+        - Flag brittle assumptions about slug shape or the content tree that will break as
+          pages are added, and untyped access to Fumadocs page/meta objects.
+        - `website/` is an isolated sub-project with its own lockfile. Flag imports that
+          reach outside it or new dependencies added to the root `package.json`.
+
+  # ---------------------------------------------------------------------------
+  # When reviews run. Drafts included, and pausing disabled, so every pushed
+  # commit gets incremental feedback while a PR is still being built up.
+  # ---------------------------------------------------------------------------
+  auto_review:
+    enabled: true
+    drafts: true
+    auto_incremental_review: true
+    auto_pause_after_reviewed_commits: 0
+    base_branches:
+      - "main"
+    ignore_title_keywords:
+      - "WIP"
+      - "DO NOT MERGE"
+
+# No `reviews.tools` block: every linter integration defaults to enabled, so ESLint,
+# markdownlint, actionlint, yamllint, and gitleaks are already on.
+
+chat:
+  auto_reply: true
+  art: false
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    # Setting this array REPLACES the built-in defaults, so CLAUDE.md and AGENTS.md are
+    # re-listed here. `applyTo` scopes a guideline to the files it actually governs.
+    filePatterns:
+      - "**/CLAUDE.md"
+      - "**/AGENTS.md"
+      # Domain vocabulary and the OSINT assurance baseline.
+      - files: "CONTEXT.md"
+        applyTo: "src/**,docs/**,website/content/docs/**,*.md"
+      # Threat model, network egress, and the known-limitations list.
+      - files: "SECURITY.md"
+        applyTo: "src/main/**,src/preload/**,extension/**,.github/workflows/**"
+      # Where each kind of doc lives and how it is named.
+      - files: "docs/README.md"
+        applyTo: "docs/**,website/content/docs/**"
+      # Audience, tone, claim discipline, and per-doc-type structure.
+      - files: "docs/agents/writing-guide.md"
+        applyTo: "docs/**,website/content/docs/**,*.md"

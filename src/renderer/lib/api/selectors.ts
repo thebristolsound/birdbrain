@@ -1,12 +1,10 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
 import type {
+  BulkCreateSelectorsParams,
   CreateSelectorParams,
-  UpdateSelectorParams,
-  BulkCreateSelectorsParams
+  UpdateSelectorParams
 } from '@shared/ipc'
 import { queryKeys } from '@renderer/lib/api/keys'
-
-// --- Selectors ---
 
 export const selectorsQueryOptions = (caseId: string) =>
   queryOptions({

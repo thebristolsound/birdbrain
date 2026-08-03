@@ -2,8 +2,6 @@ import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query
 import type { CreateTagParams, UpdateTagParams } from '@shared/ipc'
 import { queryKeys } from '@renderer/lib/api/keys'
 
-// --- Tags ---
-
 export const tagsQueryOptions = queryOptions({
   queryKey: queryKeys.tags,
   queryFn: () => window.birdbrain.tags.list()

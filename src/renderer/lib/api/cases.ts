@@ -2,8 +2,6 @@ import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query
 import type { CreateCaseParams, UpdateCaseParams } from '@shared/ipc'
 import { queryKeys } from '@renderer/lib/api/keys'
 
-// --- Cases ---
-
 export const casesQueryOptions = queryOptions({
   queryKey: queryKeys.cases,
   queryFn: () => window.birdbrain.cases.list()

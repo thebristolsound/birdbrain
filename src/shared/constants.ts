@@ -4,8 +4,30 @@ export const CAPTURE_SERVER_BASE_URL = `http://127.0.0.1:${CAPTURE_SERVER_PORT}`
 // Hard cap on MHTML upload size (bytes). 200 MB matches UI guidance in settings.
 export const MAX_MHTML_SIZE = 200 * 1024 * 1024
 
-// Hard cap on screenshot upload size (bytes). Matches extension CAPTURE_MAX_BYTES.
+// Hard cap on screenshot upload size (bytes): the capture server drops a
+// screenshot whose *encoded PNG* exceeds this.
 export const MAX_SCREENSHOT_SIZE = 100 * 1024 * 1024
+
+// Budget the extension spends on a full-page screenshot before it stops adding
+// slices (bytes). Measured on the *raw RGBA bitmap*, which is a different
+// quantity from MAX_SCREENSHOT_SIZE above — a bitmap this large is ~25
+// megapixels and PNG-encodes to single-digit MB, so fitting this budget says
+// nothing about fitting the upload cap, and lowering the upload cap must not
+// silently shrink the captured area. Same value today, deliberately not the
+// same constant.
+export const MAX_SCREENSHOT_BITMAP_BYTES = 100 * 1024 * 1024
+
+// How long the capture server refuses a repeat manual capture of the same
+// case+URL. Short by design — it exists to swallow double-clicks, not to
+// deduplicate a session (that is dedupeWindowSeconds below).
+export const MANUAL_DEDUPE_WINDOW_MS = 5_000
+
+// Default session dedupe window (seconds) — how long the same URL is skipped
+// on the auto-capture paths. Settings seeds from it and the capture server
+// sends the configured value on /api/status; nothing applies it today, because
+// the extension's only consumer is inside the HOTFIX-disabled auto-capture
+// block (extension/src/background.ts).
+export const DEFAULT_DEDUPE_WINDOW_SECONDS = 60
 
 // Audit manifest filename, written alongside captures in each case directory.
 export const MANIFEST_FILENAME = 'manifest.jsonl'

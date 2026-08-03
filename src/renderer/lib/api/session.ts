@@ -2,7 +2,6 @@ import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query
 import type { SessionStateEvent } from '@shared/ipc'
 import { queryKeys } from '@renderer/lib/api/keys'
 
-// --- Session ---
 // Session control moved from the localhost HTTP server to IPC (#228); the
 // server is extension-only now. Every mutation returns the new snapshot, so
 // the cache is set from the response rather than refetched.

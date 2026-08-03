@@ -2,8 +2,6 @@ import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query
 import type { PinWaybackSnapshotParams } from '@shared/ipc'
 import { queryKeys } from '@renderer/lib/api/keys'
 
-// --- Wayback Machine corroboration ---
-
 // `enabled: false` — the lookup is user-initiated (it discloses the URL to
 // archive.org). The WaybackTab triggers it with refetch() on button click.
 export const waybackLookupQueryOptions = (captureId: string) =>

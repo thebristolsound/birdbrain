@@ -34,6 +34,7 @@ function deferred<T>() {
 }
 
 import { ExportMenu } from '@renderer/components/export/ExportMenu'
+import { fakeBridge } from '../renderer/fakeBridge'
 
 async function clickExportCaseFile() {
   fireEvent.click(screen.getByRole('button', { name: /Export/i }))
@@ -55,17 +56,7 @@ describe('ExportMenu', () => {
       return vi.fn()
     })
     showItemInFolder = vi.fn().mockResolvedValue(undefined)
-    ;(
-      window as unknown as {
-        birdbrain: {
-          onArchiveProgress: typeof onArchiveProgress
-          shell: { showItemInFolder: typeof showItemInFolder }
-        }
-      }
-    ).birdbrain = {
-      onArchiveProgress,
-      shell: { showItemInFolder }
-    }
+    fakeBridge({ onArchiveProgress, shell: { showItemInFolder } })
   })
 
   afterEach(() => {

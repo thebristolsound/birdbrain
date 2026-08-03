@@ -28,13 +28,10 @@ export const dbTableRowsQueryOptions = (params: DbTableRowsParams) =>
   })
 
 /**
- * Every write and maintenance command in the `db` namespace, as mutation
- * options. Split out from the hook so the invalidation table below is
- * assertable without mounting React.
+ * Creates React Query mutation options for database writes and maintenance operations.
  *
- * `meta.action` is not decoration: the global MutationCache handler in
- * queryClient.ts renders it as "Couldn't <action>.", so an omitted one degrades
- * a specific failure toast into a generic one.
+ * @param queryClient - The query client used to invalidate affected cached queries
+ * @returns Mutation configurations for database row, maintenance, backup, restore, and export operations
  */
 export function dbAdminMutationOptions(queryClient: QueryClient) {
   const invalidateStats = () => {
@@ -124,6 +121,11 @@ export function dbAdminMutationOptions(queryClient: QueryClient) {
   }
 }
 
+/**
+ * Provides mutation hooks for database administration operations.
+ *
+ * @returns Mutation hooks for creating, updating, and deleting rows, maintaining the database, managing backups, restoring data, and exporting tables
+ */
 export function useDbAdminMutations() {
   const options = dbAdminMutationOptions(useQueryClient())
 

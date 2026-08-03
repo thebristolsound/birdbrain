@@ -3,6 +3,12 @@ import { RefreshCw } from 'lucide-react'
 import { Button } from '@renderer/components/ui'
 import { dbStatsQueryOptions } from '@renderer/lib/api/db'
 
+/**
+ * Converts a byte count to a human-readable value using byte, kilobyte, megabyte, or gigabyte units.
+ *
+ * @param bytes - The number of bytes to format
+ * @returns The formatted byte value rounded to one decimal place
+ */
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB']
@@ -10,6 +16,11 @@ function formatBytes(bytes: number): string {
   return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`
 }
 
+/**
+ * Displays database statistics and provides a control to refresh them.
+ *
+ * @returns The database statistics view, a loading state, or an error message
+ */
 export function DbStats() {
   const { data: stats, error, isFetching, refetch } = useQuery(dbStatsQueryOptions)
 

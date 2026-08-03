@@ -19,6 +19,9 @@ const TABLES = [
 
 const PAGE_SIZE = 50
 
+/**
+ * Displays and manages paginated rows for the selected database table, including create, edit, and delete actions.
+ */
 export function DbTables() {
   const [selectedTable, setSelectedTable] = useState<string>('cases')
   const [page, setPage] = useState(0)

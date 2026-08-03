@@ -27,6 +27,9 @@ interface UtilityResult {
   type: 'success' | 'error'
 }
 
+/**
+ * Renders controls for database maintenance, backup, restore, orphan cleanup, and table export operations.
+ */
 export function DbUtilities() {
   const [loading, setLoading] = useState<string | null>(null)
   const [results, setResults] = useState<Record<string, UtilityResult>>({})

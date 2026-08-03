@@ -45,7 +45,11 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 so diff coverage can resolve a merge base with the base
+      # branch; a shallow clone has no common ancestor to diff against.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
 
@@ -65,9 +69,24 @@ jobs:
       - name: Verify openssl is available
         run: openssl version
 
-      - run: pnpm test
+      # Runs the suite under coverage so the thresholds in vitest.config.ts are
+      # actually evaluated. They were defined long before this and never ran in
+      # CI, because `pnpm test` omits --coverage and vitest only checks
+      # thresholds when coverage is enabled.
+      - run: pnpm test:coverage
         env:
           BIRDBRAIN_REQUIRE_OPENSSL: '1'
+
+      # Project-wide thresholds stop the tree backsliding but cannot ask whether
+      # new code arrived tested — a PR can add an untested module and still clear
+      # them. This scores only the lines the PR changed.
+      - name: Diff coverage
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch --no-tags origin "${BASE_REF}"
+          node scripts/diff-coverage.mjs --base "origin/${BASE_REF}"
+        env:
+          BASE_REF: ${{ github.base_ref }}
 
   build:
     runs-on: ubuntu-latest

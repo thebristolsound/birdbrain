@@ -63,6 +63,9 @@ coverage/
 !.claude/skills/
 .claude/skills/*
 !.claude/skills/dispatch/
+!.claude/hooks/
+.claude/hooks/*
+!.claude/hooks/session-start.sh
 .codex
 .cursor
 .zed

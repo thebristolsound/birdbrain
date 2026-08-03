@@ -79,9 +79,9 @@ describe('DbTables', () => {
     await waitFor(() =>
       expect(tableRows).toHaveBeenNthCalledWith(2, { table: 'notes', offset: 0, limit: 50 })
     )
-    // The held page stops at the table boundary: rows from the table you just
-    // left, rendered under the new table's headings, would be a misread rather
-    // than a stale read — the column set is different.
+    // The held page stops at the table boundary. Nothing marks a held frame as
+    // stale — rows, headings and the row count all come from the old table's
+    // result — while the selector above it already reads the new table.
     expect(screen.queryByText('cases-row')).toBeNull()
     expect(screen.getByText('Loading...')).toBeDefined()
   })

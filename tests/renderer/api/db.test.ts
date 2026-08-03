@@ -54,8 +54,9 @@ describe('dbStatsQueryOptions / dbTableRowsQueryOptions', () => {
   })
 
   // Paging holds the previous page on screen so the pager does not unmount
-  // under the cursor, but that placeholder has to stop at the table boundary:
-  // another table's rows under these headings is a misread, not a stale read.
+  // under the cursor, but that placeholder has to stop at the table boundary: a
+  // held frame is self-consistent and unmarked, so across a table switch it
+  // reads as the contents of whatever table the selector now shows.
   it('holds the previous page only within the same table', () => {
     const previous = { rows: [{ id: 'a' }], total: 100, columns: [] }
     const { placeholderData } = dbTableRowsQueryOptions({ table: 'cases', offset: 50, limit: 50 })

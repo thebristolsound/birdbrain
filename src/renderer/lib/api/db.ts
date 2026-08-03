@@ -21,9 +21,11 @@ export const dbTableRowsQueryOptions = (params: DbTableRowsParams) =>
     queryFn: () => window.birdbrain.db.tableRows(params),
     // Page switches move to a not-yet-cached key; without a placeholder, data
     // goes undefined and the table/pager disappear until the fetch resolves.
-    // Scoped to one table: the table name sits at index 2 of the key, and rows
-    // from the table you just left under the new table's headings would be a
-    // misread rather than a stale read — the column set differs.
+    // Scoped to one table: the table name sits at index 2 of the key. Rows,
+    // headings and the row count all come from this one result, so a frame held
+    // across a table switch is entirely the table you just left — internally
+    // consistent, unmarked as stale, and sitting under a selector that already
+    // reads the new table. That is a misread rather than a stale read.
     placeholderData: (previous, previousQuery) =>
       previousQuery?.queryKey[2] === params.table ? previous : undefined
   })

@@ -77,6 +77,16 @@ export default defineConfig({
           branches: 78
         },
         // React Query data layer — query keys + invalidation correctness.
+        // The per-domain modules carry the gate; queries.ts is a re-export
+        // barrel until the last PR of #229 deletes it, and its entry goes with
+        // it. Measured on the api aggregate: 92.94 lines/statements, 92.95
+        // functions, 100 branches.
+        'src/renderer/lib/api/*.ts': {
+          lines: 90,
+          statements: 90,
+          functions: 90,
+          branches: 90
+        },
         'src/renderer/lib/queries.ts': {
           lines: 90,
           statements: 90,

@@ -107,7 +107,8 @@ Root layout in `__root.tsx` renders TopBar, optional case Sidebar, main content 
 React Query (`@tanstack/react-query`) manages all server state. Configuration in `src/renderer/lib/`:
 
 - `queryClient.ts` - retry=false, staleTime=30s, refetchOnWindowFocus=false
-- `queries.ts` - Query key factory, typed query options, and domain-specific mutation hooks (useCasesMutations, useCapturesMutations, etc.) with automatic cache invalidation
+- `api/` - The query layer, one module per IPC domain: `keys.ts` holds the query key factory, and each domain module holds its typed query options and mutation hooks (useCasesMutations, useCapturesMutations, etc.) with automatic cache invalidation
+- `queries.ts` - A re-export barrel over `api/` while call sites migrate (#229); import from the domain module in new code. Deleted once the migration lands
 
 ### State management
 

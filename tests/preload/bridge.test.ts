@@ -42,6 +42,8 @@ import '../../src/preload/index'
 interface BridgeLeaf {
   /** Dotted path under `window.birdbrain`, e.g. `wayback.list`. */
   path: string
+  /** Last segment of the path — the method name the renderer calls. */
+  method: string
   channel: string
   kind: 'invoke' | 'event'
 }
@@ -65,9 +67,11 @@ function probeBridge(api: Record<string, unknown>): BridgeLeaf[] {
         // never escapes the probe.
         if (result instanceof Promise) result.catch(() => {})
         if (electronStub.invoked.length > invokedBefore) {
-          leaves.push({ path, channel: electronStub.invoked[invokedBefore], kind: 'invoke' })
+          const channel = electronStub.invoked[invokedBefore]
+          leaves.push({ path, method: key, channel, kind: 'invoke' })
         } else if (electronStub.listened.length > listenedBefore) {
-          leaves.push({ path, channel: electronStub.listened[listenedBefore], kind: 'event' })
+          const channel = electronStub.listened[listenedBefore]
+          leaves.push({ path, method: key, channel, kind: 'event' })
         } else {
           strays.push(path)
         }
@@ -97,6 +101,30 @@ const eventChannels = allChannels.filter((channel) => channel.startsWith('event:
 // endorsed — moving them is a renderer-wide rename, not this test's business.
 const ROOT_LEVEL_INVOKES = new Set(['testPipeline', 'testHttp'])
 
+// Method names that predate the action-segment convention, keyed by the channel
+// each one stands for. Keeping the channel as the key is the point: legitimising
+// a rename means editing a line that names the channel it diverges from, which
+// is reviewable, rather than silently renaming a key in the preload literal.
+const METHOD_NAME_EXCEPTIONS: Record<string, string> = {
+  'extension:path': 'getPath',
+  'search:query': 'search',
+  'export:generate': 'generateReport',
+  'diagnostics:recent': 'recentEntries',
+  // The only event channel with two colons, so `on` + PascalCase(action) does
+  // not produce a legal identifier for it.
+  'event:selector:rematched': 'onSelectorRematched'
+}
+
+// An invoke channel's action segment is its method name; an event channel's
+// subscriber is `on` + the PascalCased action.
+function expectedMethodName(channel: string, kind: 'invoke' | 'event'): string {
+  const exception = METHOD_NAME_EXCEPTIONS[channel]
+  if (exception !== undefined) return exception
+  const action = channel.slice(channel.indexOf(':') + 1)
+  if (kind === 'invoke') return action
+  return `on${action.charAt(0).toUpperCase()}${action.slice(1)}`
+}
+
 describe('preload bridge', () => {
   it('exposes the API as window.birdbrain', () => {
     expect(electronStub.exposedKey).toBe('birdbrain')
@@ -125,6 +153,21 @@ describe('preload bridge', () => {
       .filter((leaf) => !ROOT_LEVEL_INVOKES.has(leaf.path))
       .filter((leaf) => leaf.path.split('.')[0] !== leaf.channel.split(':')[0])
       .map((leaf) => `birdbrain.${leaf.path} -> ${leaf.channel}`)
+    expect(mismatches).toEqual([])
+  })
+
+  // The namespace rule above only checks the first path segment, so #333's
+  // defect class one level down -- renaming `notes.get` to `notes.fetch` while
+  // the channel stays `notes:get` -- would otherwise pass. The renderer breaks
+  // identically either way, so the method name is pinned to the channel too.
+  it('names each method after the action segment of its channel', () => {
+    const mismatches = leaves
+      .filter((leaf) => leaf.method !== expectedMethodName(leaf.channel, leaf.kind))
+      .map(
+        (leaf) =>
+          `birdbrain.${leaf.path} -> ${leaf.channel} ` +
+          `(expected ${expectedMethodName(leaf.channel, leaf.kind)})`
+      )
     expect(mismatches).toEqual([])
   })
 

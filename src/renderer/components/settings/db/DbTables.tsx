@@ -32,13 +32,14 @@ export function DbTables() {
   const { createRow, updateRow, deleteRow } = useDbAdminMutations()
 
   const data = rowsQuery.data ?? null
-  const error =
-    actionError ??
-    (rowsQuery.error
-      ? rowsQuery.error instanceof Error
-        ? rowsQuery.error.message
-        : 'Failed to load rows'
-      : null)
+  const readError = rowsQuery.error
+    ? rowsQuery.error instanceof Error
+      ? rowsQuery.error.message
+      : 'Failed to load rows'
+    : null
+  // A live read failure outranks a write failure: if the table cannot be listed
+  // at all, "Delete failed" names the wrong problem.
+  const error = readError ?? actionError
 
   // Modal state
   const [editModal, setEditModal] = useState<{
@@ -57,8 +58,13 @@ export function DbTables() {
 
   useEffect(() => {
     setPage(0)
-    setActionError(null)
   }, [selectedTable])
+
+  // A write failure accuses a specific row. Paging or switching tables takes
+  // that row off screen, so the banner goes with it.
+  useEffect(() => {
+    setActionError(null)
+  }, [selectedTable, page])
 
   function getPk(row: Record<string, unknown>): Record<string, string> {
     if (!data) return {}
@@ -229,6 +235,7 @@ export function DbTables() {
               <Button
                 variant="outline"
                 size="icon-sm"
+                aria-label="Previous page"
                 onClick={() => setPage((p) => Math.max(0, p - 1))}
                 disabled={page === 0}
               >
@@ -237,6 +244,7 @@ export function DbTables() {
               <Button
                 variant="outline"
                 size="icon-sm"
+                aria-label="Next page"
                 onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                 disabled={page >= totalPages - 1}
               >

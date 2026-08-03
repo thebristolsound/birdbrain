@@ -13,20 +13,23 @@ function formatBytes(bytes: number): string {
 export function DbStats() {
   const { data: stats, error, isFetching, refetch } = useQuery(dbStatsQueryOptions)
 
-  if (error) {
-    return (
-      <div className="rounded-lg bg-red-900/20 p-4 text-sm text-red-400">
-        {error instanceof Error ? error.message : 'Failed to load stats'}
-      </div>
-    )
-  }
+  const message = error ? (error instanceof Error ? error.message : 'Failed to load stats') : null
 
+  // Only a first load with nothing cached takes over the panel. A refresh that
+  // fails leaves the numbers it already had on screen, under a banner — they
+  // are still the last figures the database reported.
   if (!stats) {
+    if (message) {
+      return <div className="rounded-lg bg-red-900/20 p-4 text-sm text-red-400">{message}</div>
+    }
     return <div className="text-sm text-text-muted">Loading stats...</div>
   }
 
   return (
     <div className="space-y-4">
+      {message && (
+        <div className="rounded-lg bg-red-900/20 p-3 text-sm text-red-400">{message}</div>
+      )}
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-text-primary">Database Statistics</h3>
         <Button

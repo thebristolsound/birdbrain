@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createElement, type ReactNode } from 'react'
-import { act, renderHook } from '@testing-library/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { act, renderHook, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { fakeBridge } from '../../fakeBridge'
 import {
   dbAdminMutationOptions,
@@ -83,6 +83,48 @@ describe('db query options', () => {
     expect(rows.queryKey).toEqual(['dbTableRows', 'captures', 100, 50])
     await rows.queryFn?.({} as never)
     expect(db.tableRows).toHaveBeenCalledWith(params)
+  })
+
+  it('holds the current page on screen while the next page of the same table loads', async () => {
+    const { wrapper } = setup()
+    const page0 = { rows: [{ id: 'a' }], total: 100, columns: [] }
+    db.tableRows.mockResolvedValueOnce(page0)
+
+    const { result, rerender } = renderHook(
+      ({ offset }: { offset: number }) =>
+        useQuery(dbTableRowsQueryOptions({ table: 'cases', offset, limit: 50 })),
+      { wrapper, initialProps: { offset: 0 } }
+    )
+    await waitFor(() => expect(result.current.data).toEqual(page0))
+
+    // Page 2 never resolves, so what the component can render is entirely the
+    // placeholder. Without it the pager unmounts mid-click.
+    db.tableRows.mockReturnValueOnce(new Promise(() => {}))
+    rerender({ offset: 50 })
+
+    expect(result.current.data).toEqual(page0)
+    expect(result.current.isPending).toBe(false)
+  })
+
+  it('shows nothing from the previous table while a different table loads', async () => {
+    const { wrapper } = setup()
+    const casesPage = { rows: [{ id: 'a' }], total: 1, columns: [] }
+    db.tableRows.mockResolvedValueOnce(casesPage)
+
+    const { result, rerender } = renderHook(
+      ({ table }: { table: string }) =>
+        useQuery(dbTableRowsQueryOptions({ table, offset: 0, limit: 50 })),
+      { wrapper, initialProps: { table: 'cases' } }
+    )
+    await waitFor(() => expect(result.current.data).toEqual(casesPage))
+
+    db.tableRows.mockReturnValueOnce(new Promise(() => {}))
+    rerender({ table: 'notes' })
+
+    // Another table's rows under these headings would be a misread, not a
+    // stale read: the column set is different.
+    expect(result.current.data).toBeUndefined()
+    expect(result.current.isPending).toBe(true)
   })
 })
 
@@ -190,18 +232,39 @@ describe('dbAdminMutationOptions invalidation', () => {
 
   it.each([
     ['vacuum', undefined],
-    ['backup', undefined],
-    ['exportTable', { table: 'cases', format: 'csv' }]
+    ['backup', undefined]
   ] as const)('%s refreshes only the stats panel', async (name, variables) => {
     expect(invalidatedKeys(await runMutation(name, variables))).toEqual([['dbStats']])
   })
 
   it.each([
     ['rebuildFts', undefined],
-    ['findOrphans', undefined]
+    ['findOrphans', undefined],
+    ['exportTable', { table: 'cases', format: 'csv' }]
   ] as const)('%s invalidates nothing', async (name, variables) => {
-    // Neither changes a row or a byte count: rebuildFts reindexes what is
-    // already cached correctly, and findOrphans is a read.
+    // None of them changes a row or a byte count: rebuildFts reindexes what is
+    // already cached correctly, findOrphans is a read, and exportTable writes
+    // its file outside the database.
     expect(invalidatedKeys(await runMutation(name, variables))).toEqual([])
+  })
+
+  // Each of these three opens a file dialog before it touches anything and
+  // resolves — does not reject — when the operator dismisses it. Nothing
+  // happened, so nothing may be invalidated: an unconditional onSuccess turns
+  // pressing Escape into an app-wide refetch.
+  it('invalidates nothing when the backup dialog is dismissed', async () => {
+    db.backup.mockResolvedValue(null)
+    expect(invalidatedKeys(await runMutation('backup'))).toEqual([])
+  })
+
+  it('invalidates nothing when the restore dialog is dismissed', async () => {
+    db.restore.mockResolvedValue({ restored: false })
+    expect(invalidatedKeys(await runMutation('restore'))).toEqual([])
+  })
+
+  it('invalidates nothing when the export dialog is dismissed', async () => {
+    db.exportTable.mockResolvedValue(null)
+    const spy = await runMutation('exportTable', { table: 'cases', format: 'csv' })
+    expect(invalidatedKeys(spy)).toEqual([])
   })
 })

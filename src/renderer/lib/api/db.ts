@@ -5,6 +5,7 @@ import type {
   DbRowIdentifier,
   DbTableRowsParams,
   DbUpdateRowParams,
+  IpcInvokeContract,
   OrphanReport
 } from '@shared/ipc'
 import { queryKeys } from '@renderer/lib/api/keys'
@@ -17,7 +18,13 @@ export const dbStatsQueryOptions = queryOptions({
 export const dbTableRowsQueryOptions = (params: DbTableRowsParams) =>
   queryOptions({
     queryKey: queryKeys.dbTableRows(params.table, params.offset, params.limit),
-    queryFn: () => window.birdbrain.db.tableRows(params)
+    queryFn: () => window.birdbrain.db.tableRows(params),
+    // Paging holds the previous page on screen while the next one loads, so the
+    // pager itself does not unmount under the cursor. Scoped to one table: rows
+    // from the table you just left under the new table's headings is worse than
+    // a blank while it loads, and the column set changes anyway.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[1] === params.table ? previous : undefined
   })
 
 /**
@@ -53,17 +60,17 @@ export function dbAdminMutationOptions(queryClient: QueryClient) {
     createRow: {
       mutationFn: (params: DbCreateRowParams) => window.birdbrain.db.createRow(params),
       onSuccess: invalidateRows,
-      meta: { action: 'create the row' }
+      meta: { action: 'create row' }
     },
     updateRow: {
       mutationFn: (params: DbUpdateRowParams) => window.birdbrain.db.updateRow(params),
       onSuccess: invalidateRows,
-      meta: { action: 'save the row' }
+      meta: { action: 'save row' }
     },
     deleteRow: {
       mutationFn: (params: DbRowIdentifier) => window.birdbrain.db.deleteRow(params),
       onSuccess: invalidateRows,
-      meta: { action: 'delete the row' }
+      meta: { action: 'delete row' }
     },
     vacuum: {
       mutationFn: () => window.birdbrain.db.vacuum(),
@@ -88,19 +95,30 @@ export function dbAdminMutationOptions(queryClient: QueryClient) {
       onSuccess: invalidateEverything,
       meta: { action: 'clean up orphans' }
     },
+    // The three file-dialog commands below resolve rather than reject when the
+    // user dismisses the picker, and the handler opens the dialog before it
+    // touches anything, so a dismissal means nothing happened. Invalidating on
+    // the bare fact that the promise settled would refetch the app on Escape.
     backup: {
+      // Only the committed path checkpoints the WAL, which is what moves the
+      // file sizes in the stats panel.
       mutationFn: () => window.birdbrain.db.backup(),
-      onSuccess: invalidateStats,
+      onSuccess: (result: IpcInvokeContract['db:backup']['result']) => {
+        if (result) invalidateStats()
+      },
       meta: { action: 'back up the database' }
     },
     restore: {
       mutationFn: () => window.birdbrain.db.restore(),
-      onSuccess: invalidateEverything,
+      onSuccess: (result: IpcInvokeContract['db:restore']['result']) => {
+        if (result.restored) invalidateEverything()
+      },
       meta: { action: 'restore the database' }
     },
+    // No invalidation at all: exporting reads the table and writes a file
+    // outside the database. Nothing db.stats() reports can move.
     exportTable: {
       mutationFn: (params: DbExportTableParams) => window.birdbrain.db.exportTable(params),
-      onSuccess: invalidateStats,
       meta: { action: 'export the table' }
     }
   }

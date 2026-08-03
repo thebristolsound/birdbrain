@@ -86,7 +86,7 @@ describe('DbTables', () => {
     expect(screen.getByText('Loading...')).toBeDefined()
   })
 
-  it('shows a live read failure over a stale write failure', async () => {
+  it('shows a live read failure and a failed write at the same time', async () => {
     const page0 = { rows: [{ id: '1', value: 'only-row' }], total: 1, columns }
 
     const tableRows = vi.fn()
@@ -99,17 +99,23 @@ describe('DbTables', () => {
 
     expect(await screen.findByText('only-row')).toBeDefined()
 
-    fireEvent.click(screen.getByTitle('Delete'))
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete' }))
-    expect(await screen.findByText('FOREIGN KEY constraint failed')).toBeDefined()
-
-    // A failed refetch keeps the last good rows on screen, so the row the
-    // delete accused is still there to click. Both errors are live at once.
     await act(async () => {
       await client.invalidateQueries()
     })
 
     expect(await screen.findByText('database disk image is malformed')).toBeDefined()
-    expect(screen.queryByText('FOREIGN KEY constraint failed')).toBeNull()
+    // A failed refetch keeps the last good rows on screen, which is what leaves
+    // a row there to click while the table can no longer be read.
+    expect(screen.getByText('only-row')).toBeDefined()
+
+    fireEvent.click(screen.getByTitle('Delete'))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete' }))
+
+    // The banner is the only surface a row write has, so suppressing it behind
+    // the read error would make the failed delete produce no on-screen change
+    // at all. Both stay up.
+    expect(await screen.findByText('FOREIGN KEY constraint failed')).toBeDefined()
+    expect(screen.getByText('database disk image is malformed')).toBeDefined()
+    expect(screen.getByText('only-row')).toBeDefined()
   })
 })

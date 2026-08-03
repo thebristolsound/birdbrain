@@ -104,12 +104,13 @@ export function DbTables() {
     }
   }
 
-  // A live read failure outranks a write failure: a failed refetch keeps the
-  // last good rows on screen, so a row the user tried and failed to delete is
-  // still there to click. Leaving "Delete failed" in the banner would name the
-  // wrong problem while the table can no longer be read at all.
+  // Both are shown rather than one outranking the other. A failed refetch keeps
+  // the last good rows on screen, so both failures can be live at once: the read
+  // error explains why the rows are stale, and the write error is the only
+  // signal a row write emits — neither modal has an error surface of its own.
+  // Picking either as the winner silences the other.
   const readError = fetchError instanceof Error ? fetchError.message : null
-  const displayError = readError ?? error
+  const writeError = error !== readError ? error : null
   const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1
 
   return (
@@ -144,8 +145,12 @@ export function DbTables() {
         </Button>
       </div>
 
-      {displayError && (
-        <div className="rounded-lg bg-red-900/20 p-3 text-sm text-red-400">{displayError}</div>
+      {readError && (
+        <div className="rounded-lg bg-red-900/20 p-3 text-sm text-red-400">{readError}</div>
+      )}
+
+      {writeError && (
+        <div className="rounded-lg bg-red-900/20 p-3 text-sm text-red-400">{writeError}</div>
       )}
 
       {loading && !data && <div className="text-sm text-text-muted">Loading...</div>}

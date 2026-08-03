@@ -4,6 +4,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { useVerifyMutation } from '@renderer/components/captures/useVerifyMutation'
+import { fakeBridge } from '../renderer/fakeBridge'
 
 function withClient(client: QueryClient) {
   return function Wrapper({ children }: { children: ReactNode }) {
@@ -27,15 +28,9 @@ describe('useVerifyMutation', () => {
       verifiedAt: string
     }>()
 
-    ;(
-      window as unknown as {
-        birdbrain: { captures: { verify: ReturnType<typeof vi.fn> } }
-      }
-    ).birdbrain = {
-      captures: {
-        verify: vi.fn().mockImplementation(() => verifyResult.promise)
-      }
-    }
+    fakeBridge({
+      captures: { verify: vi.fn().mockImplementation(() => verifyResult.promise) }
+    })
 
     const client = new QueryClient({
       defaultOptions: {

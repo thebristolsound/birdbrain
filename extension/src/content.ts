@@ -3,31 +3,12 @@
 // Handles selector matching and inline highlighting
 
 import { showToast, updateToast } from './toast'
-
-interface SelectorInfo {
-  id: string
-  caseId: string
-  pattern: string
-  isRegex: boolean
-  enabled: boolean
-  label?: string
-}
-
-interface ActiveCaseSelectors {
-  caseId: string
-  caseName: string
-  selectors: SelectorInfo[]
-}
-
-interface SelectorMatchResult {
-  selectorId: string
-  caseId: string
-  caseName: string
-  pattern: string
-  matchText: string
-  context: string
-  index: number
-}
+// Selector groups arrive from the background script exactly as the capture
+// server sent them, and matches go back out on the capture's matchedSelectors
+// field — both are the shared wire contract, not content-script-local shapes.
+import type { SelectorMatchInfo } from '@shared/schemas'
+import type { ActiveCaseSelectors } from '@shared/types'
+import { MAX_SCREENSHOT_BITMAP_BYTES } from '@shared/constants'
 
 const HIGHLIGHT_CLASS = 'birdbrain-selector-highlight'
 // Randomize style container ID to prevent fingerprinting
@@ -106,8 +87,8 @@ function extractContext(text: string, index: number, matchLength: number): strin
 function matchSelectors(
   text: string,
   caseSelectorGroups: ActiveCaseSelectors[]
-): SelectorMatchResult[] {
-  const results: SelectorMatchResult[] = []
+): SelectorMatchInfo[] {
+  const results: SelectorMatchInfo[] = []
 
   for (const group of caseSelectorGroups) {
     for (const selector of group.selectors) {
@@ -157,13 +138,13 @@ function matchSelectors(
   return results
 }
 
-function highlightMatches(matches: SelectorMatchResult[]): void {
+function highlightMatches(matches: SelectorMatchInfo[]): void {
   if (matches.length === 0) return
 
   injectHighlightStyles()
 
   // Collect unique match strings with their metadata
-  const matchStrings = new Map<string, SelectorMatchResult[]>()
+  const matchStrings = new Map<string, SelectorMatchInfo[]>()
   for (const m of matches) {
     const key = m.matchText.toLowerCase()
     if (!matchStrings.has(key)) matchStrings.set(key, [])
@@ -318,12 +299,11 @@ function restoreStickyElements(entries: StickyEntry[]): void {
   }
 }
 
-const CAPTURE_MAX_BYTES = 100 * 1024 * 1024 // 100 MB raw bitmap budget
 const SCROLL_TIMEOUT_MS = 120 * 1000 // 120 seconds for scroll phase
 const SCROLL_PAUSE_MS = 500 // pause between scrolls for lazy-load
 const SCROLL_STALL_THRESHOLD = 3 // stop if scrollHeight unchanged this many times
 
-async function captureFullPage(maxBytes: number = CAPTURE_MAX_BYTES): Promise<string> {
+async function captureFullPage(maxBytes: number = MAX_SCREENSHOT_BITMAP_BYTES): Promise<string> {
   if (captureInProgress) {
     throw new Error('Capture already in progress')
   }
@@ -423,7 +403,7 @@ function blobToDataUrl(blob: Blob): Promise<string> {
 }
 
 async function captureFullPageScrolling(
-  maxBytes: number = CAPTURE_MAX_BYTES,
+  maxBytes: number = MAX_SCREENSHOT_BITMAP_BYTES,
   scrollTimeoutMs: number = SCROLL_TIMEOUT_MS
 ): Promise<string> {
   if (captureInProgress) {
@@ -479,7 +459,7 @@ async function captureFullPageScrolling(
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'CAPTURE_FULL_PAGE') {
-    const maxBytes: number = message.maxBytes || CAPTURE_MAX_BYTES
+    const maxBytes: number = message.maxBytes || MAX_SCREENSHOT_BITMAP_BYTES
     captureFullPage(maxBytes).then(
       (dataUrl) => sendResponse({ screenshot: dataUrl }),
       (err) => sendResponse({ error: String(err) })
@@ -488,7 +468,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message.type === 'CAPTURE_FULL_PAGE_SCROLLING') {
-    const maxBytes: number = message.maxBytes || CAPTURE_MAX_BYTES
+    const maxBytes: number = message.maxBytes || MAX_SCREENSHOT_BITMAP_BYTES
     const scrollTimeoutMs: number = message.scrollTimeoutMs || SCROLL_TIMEOUT_MS
     captureFullPageScrolling(maxBytes, scrollTimeoutMs).then(
       (dataUrl) => sendResponse({ screenshot: dataUrl }),

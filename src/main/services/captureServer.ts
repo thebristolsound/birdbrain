@@ -16,18 +16,29 @@ import { getSettings } from '@main/services/settings'
 import { ingestMhtmlCapture } from '@main/services/captureLifecycle'
 import { getInstallationId } from '@main/services/installationId'
 import { getServerToken } from '@main/services/serverToken'
-import type { CaptureEvent, CaptureSource } from '@shared/types'
+import type { CaptureEvent } from '@shared/types'
 import {
   CaptureUploadSchema,
   SelectorCreateSchema,
   formatCaptureUploadError,
-  formatSelectorCreateError
+  formatSelectorCreateError,
+  type ActiveSelectorsResult,
+  type CaptureServerCase,
+  type CaptureServerStatus,
+  type CaptureUploadResult,
+  type CaptureUploadSource,
+  type SelectorCreateResult
 } from '@shared/schemas'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { createSessionService, type SessionService } from '@main/services/session'
 
-import { CAPTURE_SERVER_PORT, MAX_SCREENSHOT_SIZE } from '@shared/constants'
+import {
+  CAPTURE_SERVER_PORT,
+  MANUAL_DEDUPE_WINDOW_MS,
+  MAX_SCREENSHOT_SIZE
+} from '@shared/constants'
+import { matchIgnoredUrl } from '@shared/urlPatterns'
 import { safeRegexTest } from '@main/services/safeRegex'
 import { logger } from '@main/services/logger'
 import { tag } from '@main/services/logSafe'
@@ -49,7 +60,6 @@ function getToolVersion(): string {
 
 // Manual capture dedup: "caseId:url" -> timestamp of last accepted capture
 const manualDedup = new Map<string, number>()
-const MANUAL_DEDUPE_WINDOW_MS = 5_000
 
 const OPERATOR_NAME_REQUIRED_MSG =
   'Operator name required. Configure your name in Birdbrain settings before capturing.'
@@ -73,30 +83,12 @@ export function setMainWindow(win: BrowserWindow): void {
   mainWindow = win
 }
 
-function globToRegex(pattern: string): RegExp {
-  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&')
-  const withWildcards = escaped.replace(/\*/g, '.*').replace(/\?/g, '.')
-  return new RegExp(withWildcards, 'i')
-}
-
+// Regex literals are evaluated in the vm sandbox: the patterns come from
+// settings, so a catastrophically backtracking one must not stall the server.
+// Containment is fail-open — a pattern that exhausts the 200 ms budget yields
+// no match, so the capture is accepted rather than refused. See matchIgnoredUrl.
 function isUrlBlacklisted(url: string, patterns: string[]): string | null {
-  for (const pattern of patterns) {
-    try {
-      if (pattern.startsWith('/') && pattern.lastIndexOf('/') > 0) {
-        const lastSlash = pattern.lastIndexOf('/')
-        const regexBody = pattern.slice(1, lastSlash)
-        const flags = pattern.slice(lastSlash + 1)
-        if (safeRegexTest(regexBody, flags, url)) return pattern
-      } else if (pattern.includes('*') || pattern.includes('?')) {
-        if (globToRegex(pattern).test(url)) return pattern
-      } else {
-        if (url.includes(pattern)) return pattern
-      }
-    } catch {
-      // Invalid pattern, skip
-    }
-  }
-  return null
+  return matchIgnoredUrl(url, patterns, safeRegexTest)
 }
 
 function emitCaptureEvent(event: CaptureEvent): void {
@@ -200,7 +192,7 @@ function createApp(deps: CaptureServerDeps): Hono {
     // before this runs, and file:// is still not trusted — such a page receives
     // no CORS grant and so cannot read the body.
     const includeToken = !origin || origin.startsWith('chrome-extension://')
-    return c.json({
+    const status: CaptureServerStatus = {
       running: true,
       ...(includeToken ? { serverToken: requiredToken } : {}),
       activeCase: activeCase ? { id: activeCase.id, name: activeCase.name } : null,
@@ -212,18 +204,22 @@ function createApp(deps: CaptureServerDeps): Hono {
       captureScreenshots: settings.captureScreenshots,
       dedupeWindowSeconds: settings.dedupeWindowSeconds,
       theme: settings.theme
-    })
+    }
+    return c.json(status)
   })
 
   // List cases
   app.get('/api/cases', (c) => {
     const cases = caseRepo.listCases()
     return c.json(
-      cases.map((cs) => ({
-        id: cs.id,
-        name: cs.name,
-        captureCount: captureRepo.getCaptureCount(cs.id)
-      }))
+      cases.map(
+        (cs) =>
+          ({
+            id: cs.id,
+            name: cs.name,
+            captureCount: captureRepo.getCaptureCount(cs.id)
+          }) satisfies CaptureServerCase
+      )
     )
   })
 
@@ -265,7 +261,8 @@ function createApp(deps: CaptureServerDeps): Hono {
     async (c) => {
       const startTime = Date.now()
       const input = c.req.valid('form')
-      const source: CaptureSource = input.source
+      // The wire union, not the domain one: 'recapture' never arrives here.
+      const source: CaptureUploadSource = input.source
       const url = input.url
       const title = input.title || url
       const timestamp = input.timestamp || new Date().toISOString()
@@ -403,7 +400,7 @@ function createApp(deps: CaptureServerDeps): Hono {
           source,
           screenshotStatus,
           screenshotWarning: screenshotDropReason
-        })
+        } satisfies CaptureUploadResult)
       } catch (err) {
         logger.error('captureServer', 'capture.failed', undefined, err)
         emitCaptureEvent({
@@ -422,9 +419,9 @@ function createApp(deps: CaptureServerDeps): Hono {
   app.get('/api/selectors/active', (c) => {
     const { activeCaseId } = sessionService.snapshot()
     if (!activeCaseId) {
-      return c.json([])
+      return c.json([] satisfies ActiveSelectorsResult)
     }
-    const activeSelectors = selectorRepo.listActiveSelectors(activeCaseId)
+    const activeSelectors: ActiveSelectorsResult = selectorRepo.listActiveSelectors(activeCaseId)
     return c.json(activeSelectors)
   })
 
@@ -463,7 +460,7 @@ function createApp(deps: CaptureServerDeps): Hono {
           label
         })
 
-        return c.json({ selector, status: 'ok' })
+        return c.json({ selector, status: 'ok' } satisfies SelectorCreateResult)
       } catch (err) {
         logger.error('captureServer', 'captureServer.selector_create_failed', undefined, err)
         return c.json({ error: 'Failed to create selector' }, 500)

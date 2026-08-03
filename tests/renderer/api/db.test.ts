@@ -111,18 +111,20 @@ describe('dbAdminMutationOptions', () => {
     expect(spy).toHaveBeenCalledTimes(1)
   })
 
-  it('exportTable invalidates only dbStats', async () => {
+  // The handler SELECTs the table and writes the file outside the database, so
+  // none of the figures db.stats() reports can move — not even on the committed
+  // path, which is why this needs no cancellation guard the way backup does.
+  it('exportTable invalidates nothing', async () => {
     api.exportTable.mockResolvedValue({ path: '/tmp/cases.csv' })
     const qc = new QueryClient()
     const spy = vi.spyOn(qc, 'invalidateQueries')
 
     const opts = dbAdminMutationOptions(qc).exportTable
-    const data = await opts.mutationFn({ table: 'cases', format: 'csv' })
-    opts.onSuccess?.(data, undefined as never, undefined, undefined as never)
+    await opts.mutationFn({ table: 'cases', format: 'csv' })
 
     expect(api.exportTable).toHaveBeenCalledWith({ table: 'cases', format: 'csv' })
-    expect(spy).toHaveBeenCalledWith({ queryKey: queryKeys.dbStats })
-    expect(spy).toHaveBeenCalledTimes(1)
+    expect('onSuccess' in opts).toBe(false)
+    expect(spy).not.toHaveBeenCalled()
   })
 
   it('createRow/updateRow/deleteRow invalidate dbStats and tableRows', async () => {
@@ -208,18 +210,6 @@ describe('dbAdminMutationOptions cancellation', () => {
 
     const opts = dbAdminMutationOptions(qc).backup
     const data = await opts.mutationFn()
-    opts.onSuccess?.(data, undefined as never, undefined, undefined as never)
-
-    expect(spy).not.toHaveBeenCalled()
-  })
-
-  it('exportTable does not invalidate when the save dialog is cancelled', async () => {
-    api.exportTable.mockResolvedValue(null)
-    const qc = new QueryClient()
-    const spy = vi.spyOn(qc, 'invalidateQueries')
-
-    const opts = dbAdminMutationOptions(qc).exportTable
-    const data = await opts.mutationFn({ table: 'cases', format: 'csv' })
     opts.onSuccess?.(data, undefined as never, undefined, undefined as never)
 
     expect(spy).not.toHaveBeenCalled()

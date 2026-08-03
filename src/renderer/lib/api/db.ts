@@ -53,10 +53,11 @@ export function dbAdminMutationOptions(queryClient: QueryClient) {
       onSuccess: invalidateStats,
       meta: { action: 'rebuild the search index' }
     },
-    // backup/exportTable resolve to null and restore to { restored: false }
-    // when the user cancels the native dialog, so the invalidation has to be
-    // guarded on the result — otherwise cancelling a restore fires an
-    // unfiltered, app-wide refetch.
+    // backup resolves to null and restore to { restored: false } when the user
+    // cancels the native dialog, so the invalidation has to be guarded on the
+    // result — otherwise cancelling a restore fires an unfiltered, app-wide
+    // refetch. Only the committed backup path checkpoints the WAL, which is
+    // what moves the file sizes in the stats panel.
     backup: {
       mutationFn: () => window.birdbrain.db.backup(),
       onSuccess: (result: { path: string } | null) => {
@@ -64,11 +65,11 @@ export function dbAdminMutationOptions(queryClient: QueryClient) {
       },
       meta: { action: 'back up the database' }
     },
+    // No invalidation at all: the handler SELECTs the table and writes a file
+    // outside the database. Nothing db.stats() reports — schema version, file
+    // and WAL sizes, row counts — can move.
     exportTable: {
       mutationFn: (params: DbExportTableParams) => window.birdbrain.db.exportTable(params),
-      onSuccess: (result: { path: string } | null) => {
-        if (result) invalidateStats()
-      },
       meta: { action: 'export the table' }
     },
     findOrphans: {

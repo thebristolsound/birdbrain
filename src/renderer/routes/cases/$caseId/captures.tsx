@@ -24,6 +24,7 @@ import {
 import { useAppStore } from '@renderer/stores/appStore'
 import { useViewportWidth } from '@renderer/hooks/useViewportWidth'
 import { useReduceMotion } from '@renderer/hooks/useReduceMotion'
+import { openCaptureExternal } from '@renderer/lib/api/system'
 
 const COLLAPSE_THRESHOLD = 1100
 
@@ -84,7 +85,7 @@ export function CapturesRoute() {
 
   async function handleOpenExternal() {
     if (!selectedCapture) return
-    await window.birdbrain.captures.openExternal(selectedCapture.url)
+    await openCaptureExternal(selectedCapture.url)
   }
 
   return (

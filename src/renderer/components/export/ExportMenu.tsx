@@ -11,6 +11,7 @@ import { AnimatePresence } from 'motion/react'
 import { Button } from '@renderer/components/ui'
 import { ExportDialog } from '@renderer/components/export/ExportDialog'
 import { useCasesMutations } from '@renderer/lib/queries'
+import { revealInFolder } from '@renderer/lib/api/system'
 
 interface ExportMenuProps {
   caseId: string
@@ -167,7 +168,7 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
               <button
                 type="button"
                 className="font-semibold underline underline-offset-2 hover:text-emerald-300"
-                onClick={() => window.birdbrain.shell.showItemInFolder(archiveResult.filePath)}
+                onClick={() => revealInFolder(archiveResult.filePath)}
               >
                 Show in folder
               </button>

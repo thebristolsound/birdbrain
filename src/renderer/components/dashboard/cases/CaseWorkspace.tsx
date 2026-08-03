@@ -1,7 +1,9 @@
 import { useEffect } from 'react'
 import { useParams, Outlet, useMatchRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { casesQueryOptions } from '@renderer/lib/queries'
+import { casesQueryOptions } from '@renderer/lib/api/cases'
+import { useSessionMutations } from '@renderer/lib/api/session'
+import { useSettingsMutations } from '@renderer/lib/api/settings'
 import { useSelectorFilters } from '@renderer/hooks/useSelectorFilters'
 import { useAppStore } from '@renderer/stores/appStore'
 import type { BirdbrainSettings } from '@shared/types'
@@ -11,6 +13,8 @@ export function CaseWorkspace() {
   const { caseId } = useParams({ from: '/cases/$caseId' })
   const matchRoute = useMatchRoute()
   const { data: cases = [], isLoading } = useQuery(casesQueryOptions)
+  const { activateCase } = useSessionMutations()
+  const { update } = useSettingsMutations()
 
   useSelectorFilters(caseId)
 
@@ -25,11 +29,9 @@ export function CaseWorkspace() {
   // Activate case in the session service + persist session state
   useEffect(() => {
     if (caseId) {
-      window.birdbrain.session
-        .activateCase(caseId)
-        .catch((err) => console.error('Failed to activate case:', err))
+      activateCase.mutate(caseId)
       // Persist last active case for session restore
-      window.birdbrain.settings.update({ lastActiveCaseId: caseId })
+      update.mutate({ lastActiveCaseId: caseId })
     }
   }, [caseId])
 
@@ -57,7 +59,7 @@ export function CaseWorkspace() {
               : isData
                 ? 'data'
                 : 'overview'
-    window.birdbrain.settings.update({ lastActiveSection: section })
+    update.mutate({ lastActiveSection: section })
   }, [isOverview, isCaptures, isSelectors, isNotes, isTags, isData])
 
   if (isLoading) {

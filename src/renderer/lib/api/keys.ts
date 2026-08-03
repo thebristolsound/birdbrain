@@ -40,5 +40,8 @@ export const queryKeys = {
   settings: ['settings'] as const,
   identity: ['identity'] as const,
   openRouterModels: ['openRouterModels'] as const,
-  appVersion: ['appVersion'] as const
+  appVersion: ['appVersion'] as const,
+  dbStats: ['db', 'stats'] as const,
+  dbTableRows: (table: string, offset: number, limit: number) =>
+    ['db', 'tableRows', table, offset, limit] as const
 }

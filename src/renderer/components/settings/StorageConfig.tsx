@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { BirdbrainSettings } from '@shared/types'
 import { Card, CardContent, Button, Label } from '@renderer/components/ui'
+import { chooseStoragePath } from '@renderer/lib/api/system'
 
 interface StorageConfigProps {
   settings: BirdbrainSettings
@@ -11,7 +12,7 @@ export function StorageConfig({ settings, onUpdate }: StorageConfigProps) {
   const [restartNeeded, setRestartNeeded] = useState(false)
 
   const handleBrowse = async () => {
-    const path = await window.birdbrain.settings.chooseStoragePath()
+    const path = await chooseStoragePath()
     if (path) {
       await onUpdate({ storagePath: path })
       setRestartNeeded(true)

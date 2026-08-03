@@ -213,6 +213,7 @@ export const QUERY_DOMAINS = [
   'captureCounts',
   'captures',
   'cases',
+  'db',
   'diagnostics',
   'extractedData',
   'identity',

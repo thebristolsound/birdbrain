@@ -87,16 +87,24 @@ Check two triggers: the issue carries the `evidence-affecting` label, OR your di
 list (`docs/specs/2026-07-31-evidence-affecting-paths-assessment.md`, until a maintained list
 supersedes it). If either fires:
 
-1. Apply the `evidence-affecting` label to the **pull request** itself
-   (`gh pr edit <n> --add-label evidence-affecting`). Issue labels and PR labels are
-   independent: a path-list match never labels anything on its own, and a label on the linked
-   issue does not propagate to the PR. The reviewer's backstop reads the PR's labels, so an
-   unlabelled PR is a compliance failure even when the linked issue is labelled correctly.
+1. Apply the `evidence-affecting` label to the **pull request** itself — at creation, not
+   after: `gh pr create --draft --label agent-pr --label evidence-affecting ...`, so the PR
+   never exists in an unlabelled state and any body sentence about its labels is true by
+   construction (`gh pr edit --add-label` is repair, not the normal path — the pilot's
+   timeline audit showed post-open labelling made every present-tense label assertion false
+   at write time). Issue labels and PR labels are independent: a path-list match never labels
+   anything on its own, and a label on the linked issue does not propagate to the PR. The
+   reviewer's backstop reads the PR's labels, so an unlabelled PR is a compliance failure
+   even when the linked issue is labelled correctly.
 2. Add an **Evidence impact** section to the PR: what evidentiary result or interpretation
    could change, what verification proves and does not prove after your change, and whether
    backward verification of existing evidence packages is preserved.
 3. Extend a known-answer test covering the affected method — or justify its absence explicitly
    in that section. Silence is not an option; "no KAT needed because X" is.
+4. Gate artifacts assert only actions **you** took and states you observed **after** taking
+   them. Never write a present-tense claim about a state another actor owns (a label the
+   dispatcher applies, a check CI will run) — state the action you performed, or name the
+   handoff explicitly so the reviewer knows whose control it is.
 
 Evidence-affecting PRs are never merged without human review. Do not weaken that.
 
@@ -114,9 +122,12 @@ Evidence-affecting PRs are never merged without human review. Do not weaken that
 - Never add `Co-authored-by: Claude` or any variant — and the tooling adds one by default, so
   this means actively removing it, not just declining to type it. After every commit, read
   `git log -1 --format=%B`; if a trailer appeared, `git commit --amend` it away before pushing.
-- Push the branch and open a **draft** PR against `main`, then label it `agent-pr`
-  (`gh pr edit <n> --add-label agent-pr`) — that label marks the strict-serial dispatch slot
-  the routine queries (`docs/agents/triage-labels.md`). The description covers: what changed,
+- Push the branch and open a **draft** PR against `main` with its labels attached at
+  creation: `gh pr create --draft --label agent-pr` (plus `--label evidence-affecting` when
+  the gate fired). `agent-pr` marks the strict-serial dispatch slot the routine queries
+  (`docs/agents/triage-labels.md`); labelling at creation means the PR never exists
+  unlabelled and no timeline audit can catch the body ahead of the controls. Use
+  `gh pr edit <n> --add-label` only to repair a miss. The description covers: what changed,
   how it was verified (real output), the Evidence impact section when the gate fired, and ends
   with exactly this attribution line and nothing else:
 

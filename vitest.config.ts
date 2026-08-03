@@ -17,7 +17,9 @@ export default defineConfig({
     include: ['tests/**/*.test.{ts,tsx}'],
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'html', 'json-summary'],
+      // 'json' emits coverage-final.json (per-statement hit counts), which
+      // scripts/diff-coverage.mjs needs to score only the lines a PR changed.
+      reporter: ['text', 'html', 'json-summary', 'json'],
       reportsDirectory: 'coverage',
       include: ['src/main/**/*.ts', 'src/shared/**/*.ts', 'src/renderer/**/*.{ts,tsx}'],
       exclude: [

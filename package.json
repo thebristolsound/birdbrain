@@ -23,6 +23,7 @@
     "test:watch": "cross-env ELECTRON_RUN_AS_NODE=1 electron ./node_modules/vitest/vitest.mjs",
     "test:coverage": "cross-env ELECTRON_RUN_AS_NODE=1 electron ./node_modules/vitest/vitest.mjs run --coverage",
     "coverage:report": "node scripts/coverage-report.mjs",
+    "coverage:diff": "node scripts/diff-coverage.mjs",
     "coverage:all": "node scripts/coverage-all.mjs",
     "lint": "eslint . --ext .ts,.tsx",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p extension/tsconfig.json",

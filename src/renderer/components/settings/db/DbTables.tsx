@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Pencil, Trash2, Plus, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@renderer/components/ui'
-import type { DbTableRowsResult } from '@shared/ipc'
+import { dbTableRowsQueryOptions, useDbAdminMutations } from '@renderer/lib/api/db'
 import { RowEditModal } from '@renderer/components/settings/db/RowEditModal'
 import { ConfirmDialog } from '@renderer/components/settings/db/ConfirmDialog'
 
@@ -20,10 +21,24 @@ const PAGE_SIZE = 50
 
 export function DbTables() {
   const [selectedTable, setSelectedTable] = useState<string>('cases')
-  const [data, setData] = useState<DbTableRowsResult | null>(null)
   const [page, setPage] = useState(0)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  // Write failures only. Read failures come off the query below, and the two
+  // share one banner because they occupy the same slot in the layout.
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  const rowsQuery = useQuery(
+    dbTableRowsQueryOptions({ table: selectedTable, offset: page * PAGE_SIZE, limit: PAGE_SIZE })
+  )
+  const { createRow, updateRow, deleteRow } = useDbAdminMutations()
+
+  const data = rowsQuery.data ?? null
+  const error =
+    actionError ??
+    (rowsQuery.error
+      ? rowsQuery.error instanceof Error
+        ? rowsQuery.error.message
+        : 'Failed to load rows'
+      : null)
 
   // Modal state
   const [editModal, setEditModal] = useState<{
@@ -40,30 +55,10 @@ export function DbTables() {
   const editableColumns = data?.columns.filter((c) => !c.pk) ?? []
   const canEditRows = editableColumns.length > 0
 
-  async function fetchRows() {
-    setLoading(true)
-    setError(null)
-    try {
-      const result = await window.birdbrain.db.tableRows({
-        table: selectedTable,
-        offset: page * PAGE_SIZE,
-        limit: PAGE_SIZE
-      })
-      setData(result)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load rows')
-    } finally {
-      setLoading(false)
-    }
-  }
-
   useEffect(() => {
     setPage(0)
+    setActionError(null)
   }, [selectedTable])
-
-  useEffect(() => {
-    fetchRows()
-  }, [selectedTable, page])
 
   function getPk(row: Record<string, unknown>): Record<string, string> {
     if (!data) return {}
@@ -76,9 +71,10 @@ export function DbTables() {
   }
 
   async function handleSave(rowData: Record<string, unknown>) {
+    setActionError(null)
     try {
       if (editModal.mode === 'create') {
-        await window.birdbrain.db.createRow({ table: selectedTable, data: rowData })
+        await createRow.mutateAsync({ table: selectedTable, data: rowData })
       } else {
         const pk = getPk(editModal.row!)
         const pkCols = data?.columns.filter((c) => c.pk).map((c) => c.name) ?? []
@@ -91,25 +87,26 @@ export function DbTables() {
         }
         if (Object.keys(changedData).length === 0) {
           setEditModal({ open: false, mode: 'create' })
-          fetchRows()
+          void rowsQuery.refetch()
           return
         }
-        await window.birdbrain.db.updateRow({ table: selectedTable, pk, data: changedData })
+        await updateRow.mutateAsync({ table: selectedTable, pk, data: changedData })
       }
       setEditModal({ open: false, mode: 'create' })
-      fetchRows()
+      void rowsQuery.refetch()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed')
+      setActionError(err instanceof Error ? err.message : 'Save failed')
     }
   }
 
   async function handleDelete() {
+    setActionError(null)
     try {
-      await window.birdbrain.db.deleteRow({ table: selectedTable, pk: deleteConfirm.pk })
+      await deleteRow.mutateAsync({ table: selectedTable, pk: deleteConfirm.pk })
       setDeleteConfirm({ open: false, pk: {} })
-      fetchRows()
+      void rowsQuery.refetch()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Delete failed')
+      setActionError(err instanceof Error ? err.message : 'Delete failed')
     }
   }
 
@@ -149,7 +146,7 @@ export function DbTables() {
 
       {error && <div className="rounded-lg bg-red-900/20 p-3 text-sm text-red-400">{error}</div>}
 
-      {loading && !data && <div className="text-sm text-text-muted">Loading...</div>}
+      {rowsQuery.isPending && <div className="text-sm text-text-muted">Loading...</div>}
 
       {data && (
         <>

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ConfirmDialog } from '@renderer/components/settings/db/ConfirmDialog'
 import type { OrphanReport } from '@shared/ipc'
 import { Button } from '@renderer/components/ui'
+import { useDbAdminMutations } from '@renderer/lib/api/db'
 
 const EXPORT_TABLES = [
   'cases',
@@ -44,6 +45,18 @@ export function DbUtilities() {
   const [exportTable, setExportTable] = useState('cases')
   const [exportFormat, setExportFormat] = useState<'csv' | 'json'>('csv')
 
+  // `exportTable` is already the selected-table state above, hence the alias.
+  const {
+    vacuum,
+    rebuildFts,
+    purgeArchived,
+    findOrphans,
+    cleanOrphans,
+    backup,
+    restore,
+    exportTable: exportTableMutation
+  } = useDbAdminMutations()
+
   function setResult(key: string, result: UtilityResult) {
     setResults((prev) => ({ ...prev, [key]: result }))
   }
@@ -51,7 +64,7 @@ export function DbUtilities() {
   async function handleVacuum() {
     setLoading('vacuum')
     try {
-      const result = await window.birdbrain.db.vacuum()
+      const result = await vacuum.mutateAsync()
       setResult('vacuum', {
         message: `Vacuum complete. Freed ${formatBytes(result.freedBytes)}.`,
         type: 'success'
@@ -69,7 +82,7 @@ export function DbUtilities() {
   async function handleRebuildFts() {
     setLoading('fts')
     try {
-      const result = await window.birdbrain.db.rebuildFts()
+      const result = await rebuildFts.mutateAsync()
       setResult('fts', {
         message:
           `Rebuilt FTS indexes. ${result.rowsIndexed} rows indexed, ` +
@@ -89,7 +102,7 @@ export function DbUtilities() {
   async function handlePurge() {
     setLoading('purge')
     try {
-      const result = await window.birdbrain.db.purgeArchived()
+      const result = await purgeArchived.mutateAsync()
       setResult('purge', {
         message: `Purged ${result.casesDeleted} case(s) and ${result.capturesDeleted} capture(s).`,
         type: 'success'
@@ -107,7 +120,7 @@ export function DbUtilities() {
   async function handleScanOrphans() {
     setLoading('orphans')
     try {
-      const report = await window.birdbrain.db.findOrphans()
+      const report = await findOrphans.mutateAsync()
       setOrphanReport(report)
       const total = report.dbOrphans.length + report.fileOrphans.length
       setResult('orphans', {
@@ -131,7 +144,7 @@ export function DbUtilities() {
     if (!orphanReport) return
     setLoading('orphans-clean')
     try {
-      const result = await window.birdbrain.db.cleanOrphans(orphanReport)
+      const result = await cleanOrphans.mutateAsync(orphanReport)
       setOrphanReport(null)
       setResult('orphans', {
         message: `Cleaned ${result.dbRecordsRemoved} DB record(s) and ${result.filesRemoved} file(s).`,
@@ -150,7 +163,7 @@ export function DbUtilities() {
   async function handleBackup() {
     setLoading('backup')
     try {
-      const result = await window.birdbrain.db.backup()
+      const result = await backup.mutateAsync()
       if (result) {
         setResult('backup', {
           message: `Backup saved to ${result.path}`,
@@ -172,7 +185,7 @@ export function DbUtilities() {
   async function handleRestore() {
     setLoading('restore')
     try {
-      const result = await window.birdbrain.db.restore()
+      const result = await restore.mutateAsync()
       if (result.restored) {
         setResult('restore', {
           message: 'Database restored. Please restart the app for full effect.',
@@ -194,7 +207,7 @@ export function DbUtilities() {
   async function handleExport() {
     setLoading('export')
     try {
-      const result = await window.birdbrain.db.exportTable({
+      const result = await exportTableMutation.mutateAsync({
         table: exportTable,
         format: exportFormat
       })

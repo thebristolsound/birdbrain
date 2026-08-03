@@ -40,5 +40,11 @@ export const queryKeys = {
   settings: ['settings'] as const,
   identity: ['identity'] as const,
   openRouterModels: ['openRouterModels'] as const,
-  appVersion: ['appVersion'] as const
+  appVersion: ['appVersion'] as const,
+  dbStats: ['dbStats'] as const,
+  // Paged browse of an arbitrary table. The `All` prefix is what a write
+  // invalidates against — a row edit cannot know which page the row is on.
+  dbTableRowsAll: ['dbTableRows'] as const,
+  dbTableRows: (table: string, offset: number, limit: number) =>
+    ['dbTableRows', table, offset, limit] as const
 }

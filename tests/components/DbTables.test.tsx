@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, cleanup, within, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { DbTables } from '@renderer/components/settings/db/DbTables'
@@ -19,7 +19,7 @@ function withClient(client: QueryClient) {
 
 function renderTables() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(<DbTables />, { wrapper: withClient(client) })
+  return { ...render(<DbTables />, { wrapper: withClient(client) }), client }
 }
 
 afterEach(() => {
@@ -84,5 +84,32 @@ describe('DbTables', () => {
     // than a stale read — the column set is different.
     expect(screen.queryByText('cases-row')).toBeNull()
     expect(screen.getByText('Loading...')).toBeDefined()
+  })
+
+  it('shows a live read failure over a stale write failure', async () => {
+    const page0 = { rows: [{ id: '1', value: 'only-row' }], total: 1, columns }
+
+    const tableRows = vi.fn()
+    tableRows.mockResolvedValueOnce(page0)
+    tableRows.mockRejectedValue(new Error('database disk image is malformed'))
+    const deleteRow = vi.fn().mockRejectedValue(new Error('FOREIGN KEY constraint failed'))
+    fakeBridge({ db: { tableRows, deleteRow } })
+
+    const { client } = renderTables()
+
+    expect(await screen.findByText('only-row')).toBeDefined()
+
+    fireEvent.click(screen.getByTitle('Delete'))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete' }))
+    expect(await screen.findByText('FOREIGN KEY constraint failed')).toBeDefined()
+
+    // A failed refetch keeps the last good rows on screen, so the row the
+    // delete accused is still there to click. Both errors are live at once.
+    await act(async () => {
+      await client.invalidateQueries()
+    })
+
+    expect(await screen.findByText('database disk image is malformed')).toBeDefined()
+    expect(screen.queryByText('FOREIGN KEY constraint failed')).toBeNull()
   })
 })

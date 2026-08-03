@@ -104,7 +104,12 @@ export function DbTables() {
     }
   }
 
-  const displayError = error ?? (fetchError instanceof Error ? fetchError.message : null)
+  // A live read failure outranks a write failure: a failed refetch keeps the
+  // last good rows on screen, so a row the user tried and failed to delete is
+  // still there to click. Leaving "Delete failed" in the banner would name the
+  // wrong problem while the table can no longer be read at all.
+  const readError = fetchError instanceof Error ? fetchError.message : null
+  const displayError = readError ?? error
   const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1
 
   return (

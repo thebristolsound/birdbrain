@@ -6,6 +6,7 @@ import type { ArchiveInspectReport } from '@shared/types'
 import {
   casesQueryOptions,
   captureCountsQueryOptions,
+  inspectCaseArchive,
   useCasesMutations
 } from '@renderer/lib/queries'
 import { ImportCaseDialog } from '@renderer/components/dashboard/cases/ImportCaseDialog'
@@ -58,7 +59,7 @@ export function Dashboard() {
   const handleImportCase = useCallback(async () => {
     setImportError('')
     try {
-      const report = await window.birdbrain.cases.inspectArchive()
+      const report = await inspectCaseArchive()
       if (report) setImportReport(report)
     } catch (err) {
       setImportError(err instanceof Error ? err.message : String(err))

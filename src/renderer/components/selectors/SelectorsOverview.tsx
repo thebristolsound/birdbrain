@@ -7,10 +7,10 @@ import { useAppStore } from '@renderer/stores/appStore'
 import {
   selectorsQueryOptions,
   selectorMatchCountsQueryOptions,
-  capturesQueryOptions,
-  queryKeys,
-  exportSelectorMatches
+  capturesQueryOptions
 } from '@renderer/lib/queries'
+import { queryKeys } from '@renderer/lib/api/keys'
+import { exportSelectorMatches } from '@renderer/lib/api/selectors'
 import { CreateSelectorCard } from '@renderer/components/selectors/CreateSelectorCard'
 import { SelectorTable } from '@renderer/components/selectors/SelectorTable'
 import { SelectorFilterFooter } from '@renderer/components/selectors/SelectorFilterFooter'

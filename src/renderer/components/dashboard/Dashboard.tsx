@@ -6,9 +6,9 @@ import type { ArchiveInspectReport } from '@shared/types'
 import {
   casesQueryOptions,
   captureCountsQueryOptions,
-  inspectCaseArchive,
   useCasesMutations
 } from '@renderer/lib/queries'
+import { inspectCaseArchive } from '@renderer/lib/api/cases'
 import { ImportCaseDialog } from '@renderer/components/dashboard/cases/ImportCaseDialog'
 import { HeroSection } from '@renderer/components/dashboard/HeroSection'
 import { RecentCases } from '@renderer/components/dashboard/RecentCases'

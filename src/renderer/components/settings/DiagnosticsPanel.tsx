@@ -13,6 +13,8 @@ import {
 } from '@renderer/components/ui'
 import { cn } from '@renderer/lib/utils'
 import { LogTab } from '@renderer/components/diagnostics/LogTab'
+import { openPath } from '@renderer/lib/api/system'
+import { diagnosticsQueryOptions } from '@renderer/lib/api/diagnostics'
 
 // Settings → Diagnostics. Live snapshot of app environment, main-process
 // responsiveness (event-loop stalls = the "pinwheel"), storage, and the
@@ -99,8 +101,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 export function DiagnosticsPanel() {
   const [copied, setCopied] = useState(false)
   const { data, refetch, isFetching } = useQuery({
-    queryKey: ['diagnostics'],
-    queryFn: () => window.birdbrain.diagnostics.get(),
+    ...diagnosticsQueryOptions,
     refetchInterval: POLL_MS
   })
 
@@ -275,7 +276,7 @@ export function DiagnosticsPanel() {
               </p>
               <button
                 type="button"
-                onClick={() => window.birdbrain.shell.openPath(snap.storage.storageRoot)}
+                onClick={() => openPath(snap.storage.storageRoot)}
                 className="mt-1 block max-w-full truncate font-mono text-xs text-accent hover:text-accent-hover"
                 title="Open storage folder"
               >

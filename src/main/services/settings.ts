@@ -2,7 +2,11 @@ import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import type { BirdbrainSettings } from '@shared/types'
 import { PartialBirdbrainSettingsSchema } from '@shared/schemas'
-import { DEFAULT_ANALYSIS_SYSTEM_PROMPT, DEFAULT_TSA_URL } from '@shared/constants'
+import {
+  DEFAULT_ANALYSIS_SYSTEM_PROMPT,
+  DEFAULT_DEDUPE_WINDOW_SECONDS,
+  DEFAULT_TSA_URL
+} from '@shared/constants'
 import { logger } from '@main/services/logger'
 
 // Encrypt/decrypt API keys at rest using Electron's OS credential store.
@@ -49,7 +53,7 @@ const DEFAULT_SETTINGS: BirdbrainSettings = {
   openRouterApiKey: null,
   defaultModel: 'anthropic/claude-sonnet-4',
   captureScreenshots: true,
-  dedupeWindowSeconds: 60,
+  dedupeWindowSeconds: DEFAULT_DEDUPE_WINDOW_SECONDS,
   ignoredUrlPatterns: [],
   storagePath: '',
   theme: 'light',

@@ -7,9 +7,10 @@ import { useAppStore } from '@renderer/stores/appStore'
 import {
   selectorsQueryOptions,
   selectorMatchCountsQueryOptions,
-  capturesQueryOptions,
-  queryKeys
+  capturesQueryOptions
 } from '@renderer/lib/queries'
+import { queryKeys } from '@renderer/lib/api/keys'
+import { exportSelectorMatches } from '@renderer/lib/api/selectors'
 import { CreateSelectorCard } from '@renderer/components/selectors/CreateSelectorCard'
 import { SelectorTable } from '@renderer/components/selectors/SelectorTable'
 import { SelectorFilterFooter } from '@renderer/components/selectors/SelectorFilterFooter'
@@ -46,7 +47,7 @@ export function SelectorsOverview() {
   async function handleExportMatches() {
     setExporting(true)
     try {
-      await window.birdbrain.selectors.exportMatches(caseId)
+      await exportSelectorMatches(caseId)
     } catch (err) {
       console.error('Export matches failed:', err)
     } finally {

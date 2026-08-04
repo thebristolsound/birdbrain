@@ -23,6 +23,7 @@ import { useAppStore } from '@renderer/stores/appStore'
 import { queryClient } from '@renderer/lib/queryClient'
 import { queryKeys } from '@renderer/lib/queries'
 import type { Capture } from '@shared/types'
+import { fakeBridge } from '../fakeBridge'
 
 // Registry of the callbacks the hook subscribes with, keyed by channel.
 type Handlers = {
@@ -40,14 +41,14 @@ function installBirdbrain(handlers: Handlers, unsubs: Record<string, ReturnType<
     unsubs[unsubKey] = unsubs[unsubKey] ?? vi.fn()
     return unsubs[unsubKey]
   }
-  ;(window as unknown as { birdbrain: unknown }).birdbrain = {
+  fakeBridge({
     onExtensionConnection: register('extension', 'extension'),
     onSessionStateChanged: register('session', 'session'),
     onCaptureActivity: register('capture', 'capture'),
     onNewCapture: register('newCapture', 'newCapture'),
     onSelectorRematched: register('selectorRematched', 'selectorRematched'),
     onDeepLinkNavigate: register('deepLink', 'deepLink')
-  }
+  })
 }
 
 function makeCapture(caseId: string, id: string): Capture {

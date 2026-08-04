@@ -4,10 +4,7 @@ import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { CapturesGettingStarted } from '@renderer/components/captures/CapturesGettingStarted'
 import { useAppStore } from '@renderer/stores/appStore'
 import { stubMatchMedia } from './matchMediaStub'
-
-interface BirdbrainStub {
-  extension: { openFolder: ReturnType<typeof vi.fn> }
-}
+import { fakeBridge } from '../renderer/fakeBridge'
 
 describe('CapturesGettingStarted', () => {
   let openFolder: ReturnType<typeof vi.fn>
@@ -15,9 +12,7 @@ describe('CapturesGettingStarted', () => {
   beforeEach(() => {
     stubMatchMedia()
     openFolder = vi.fn().mockResolvedValue(undefined)
-    ;(window as unknown as { birdbrain: BirdbrainStub }).birdbrain = {
-      extension: { openFolder }
-    }
+    fakeBridge({ extension: { openFolder } })
     useAppStore.setState({ onboardingOverlayOpen: false })
   })
 

@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import { Button } from '@renderer/components/ui'
+import { logDiagnosticEvent } from '@renderer/lib/api/diagnostics'
 
 // A closed union, not `string`. `source` is written to the durable log as the
 // `boundary` context value, and `source={capture.title}` would compile against
@@ -33,16 +34,14 @@ export class ErrorBoundary extends Component<Props, State> {
     // list of component names but is built from displayName, which several
     // components set from data (a case title, a capture name). The code plus
     // the boundary identifies the failure well enough to find it.
-    void window.birdbrain.diagnostics
-      .log({
-        level: 'error',
-        code: 'react.render_error',
-        context: { boundary: this.props.source },
-        error: error.name
-      })
-      .catch(() => {
-        /* best effort */
-      })
+    void logDiagnosticEvent({
+      level: 'error',
+      code: 'react.render_error',
+      context: { boundary: this.props.source },
+      error: error.name
+    }).catch(() => {
+      /* best effort */
+    })
     // The full detail still reaches a developer running with devtools open,
     // where it never touches disk.
     if (import.meta.env.DEV) console.error(error, info.componentStack)

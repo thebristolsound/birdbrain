@@ -6,6 +6,7 @@ import { useCompletionCelebration } from '@renderer/hooks/useCompletionCelebrati
 import { Button, Input, Label } from '@renderer/components/ui'
 import { ExportProgress } from '@renderer/components/export/ExportProgress'
 import { ExportComplete } from '@renderer/components/export/ExportComplete'
+import { exportPreflight, generateExportReport } from '@renderer/lib/api/export'
 
 interface ExportDialogProps {
   caseId: string
@@ -34,8 +35,7 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
 
   useEffect(() => {
     let alive = true
-    window.birdbrain.export
-      .preflight(caseId)
+    exportPreflight(caseId)
       .then((summary) => {
         if (alive) setPreflight(summary)
       })
@@ -70,7 +70,7 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
     setProgress({ step: 'Preparing export…', percent: 0 })
     setPhase('exporting')
     try {
-      const result = await window.birdbrain.export.generateReport(caseId, options)
+      const result = await generateExportReport(caseId, options)
       if (result.canceled) {
         setPhase('form')
         return

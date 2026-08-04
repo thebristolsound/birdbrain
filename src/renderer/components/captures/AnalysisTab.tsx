@@ -10,6 +10,14 @@ import { useNavigate } from '@tanstack/react-router'
 import type { CaptureAnalysis, BirdbrainSettings, TokenUsage } from '@shared/types'
 import { useOpenRouterModels } from '@renderer/hooks/useOpenRouterModels'
 import { presets } from '@renderer/lib/motion'
+import { settingsQueryOptions } from '@renderer/lib/api/settings'
+import { openCaptureExternal } from '@renderer/lib/api/system'
+import {
+  analyzeCapture,
+  captureAnalysisQueryOptions,
+  saveCaptureAnalysis
+} from '@renderer/lib/api/ai'
+import { queryKeys } from '@renderer/lib/api/keys'
 
 interface AnalysisTabProps {
   captureId: string
@@ -33,7 +41,7 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
 
   // Load settings once; selectedModel seeds from the stored default.
   useEffect(() => {
-    window.birdbrain.settings.get().then((s) => {
+    queryClient.fetchQuery(settingsQueryOptions).then((s) => {
       setSettings(s)
       setSelectedModel(s.defaultModel)
     })
@@ -42,11 +50,9 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
   const { models } = useOpenRouterModels(settings?.openRouterApiKey)
 
   // Load saved analysis
-  const { data: savedAnalysis, isLoading: isLoadingSaved } = useQuery({
-    queryKey: ['analysis', captureId],
-    queryFn: () => window.birdbrain.ai.getAnalysis(captureId),
-    enabled: !!captureId
-  })
+  const { data: savedAnalysis, isLoading: isLoadingSaved } = useQuery(
+    captureAnalysisQueryOptions(captureId)
+  )
 
   // Reset local analysis state when switching captures to avoid showing stale data
   useEffect(() => {
@@ -77,7 +83,7 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
   // Analyze mutation
   const analyzeMutation = useMutation({
     mutationFn: () =>
-      window.birdbrain.ai.analyze({
+      analyzeCapture({
         captureId,
         caseId,
         model: selectedModel
@@ -109,11 +115,11 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
         createdAt: savedAnalysis?.createdAt ?? now,
         updatedAt: now
       }
-      await window.birdbrain.ai.saveAnalysis(analysis)
+      await saveCaptureAnalysis(analysis)
     },
     onSuccess: () => {
       setHasUnsavedChanges(false)
-      queryClient.invalidateQueries({ queryKey: ['analysis', captureId] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.captureAnalysis(captureId) })
     }
   })
 
@@ -320,7 +326,7 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
                         rel="noreferrer noopener"
                         onClick={(e) => {
                           e.preventDefault()
-                          if (href) window.birdbrain.captures.openExternal(href)
+                          if (href) openCaptureExternal(href)
                         }}
                       >
                         {children}

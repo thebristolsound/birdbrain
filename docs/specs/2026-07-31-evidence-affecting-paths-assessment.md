@@ -17,6 +17,15 @@ by name, followed by an adversarial completeness/overbreadth challenge. The chal
 six paths both surveyors missed, overturned one exclusion on a factual error, and removed two
 inconsistent inclusions — those changes are already folded into the list below.
 
+Amendments since the survey: `src/shared/urlPatterns.ts` added to Acquisition (#227) — the
+ignored-URL matcher moved there out of the already-listed `src/main/services/captureServer.ts`,
+and the rename-detection-off rule only catches the move itself, not later edits to the new home.
+`src/renderer/lib/api/**` added to the exclusion list (#229) — the renderer query layer split out
+of `src/renderer/lib/queries.ts` into per-domain modules, so the reasoning recorded against that
+one file now applies to the directory. The call is unchanged (still excluded), and judgment call 2
+below is restated against the new path; `queries.ts` itself is a re-export barrel that the last PR
+of that sequence deletes.
+
 ## List format
 
 These lists are the seed for a machine-consumed file, so entries follow fixed rules. Anything
@@ -55,6 +64,7 @@ seeded from this document should be checked against them.
 | `extension/src/popup/popup.tsx` | Routes a capture to a case (chain-of-custody routing) |
 | `extension/manifest.json` | Acquisition permissions; ships in the release zip |
 | `src/main/services/captureServer.ts` | Ingest endpoint: upload validation, case routing, ingest-time selector matching |
+| `src/shared/urlPatterns.ts` | The ignored-URL matcher both sides run: it decides what never enters a case at all, and names the rule recorded as the reason for the absence |
 | `src/main/services/serverToken.ts` | Authenticates ingest; weakening admits spoofed captures into the evidence chain |
 | `src/main/services/session.ts` | Active-case state deciding which case a capture is filed under |
 | `src/main/services/recapture.ts` | Recapture queue re-acquiring URLs as new evidence |
@@ -198,7 +208,8 @@ It is *notable* exclusions, not an exhaustive complement of the include list.
 | `src/main/services/openrouter.ts` | API-key test + model catalog only; cannot alter analysis output. Distinct from the included `src/main/services/ai/openrouter.ts` chat client |
 | `src/main/services/deepLink.ts` | Navigation plumbing |
 | `src/main/services/extensionPath.ts` | Extension setup plumbing |
-| `src/renderer/lib/queries.ts` | High-churn typed passthrough; evidence parameters originate in included dialogs and are enforced in main (but see judgment call 2) |
+| `src/renderer/lib/api/**` | High-churn typed passthrough; evidence parameters originate in included dialogs and are enforced in main (but see judgment call 2) |
+| `src/renderer/lib/queries.ts` | Same rationale — the re-export barrel left behind by the split, deleted by the last PR of #229 |
 | `src/renderer/components/captures/AddUrlsBox.tsx` | Removed by the challenge pass as inconsistent with the standard applied to `src/renderer/lib/queries.ts` and `src/renderer/components/settings/CapturePreferences.tsx` — UI-side plumbing whose values are enforced in main |
 | `src/renderer/components/captures/useVerifyMutation.ts` | Same rationale as `src/renderer/components/captures/AddUrlsBox.tsx` above |
 | `src/renderer/components/captures/CaptureViewer.tsx` | Renderer chrome |
@@ -233,10 +244,11 @@ It is *notable* exclusions, not an exhaustive complement of the include list.
    channels, so the gate fires on many non-evidence PRs. The backstop cannot distinguish a
    payload-type change to an evidence channel from a new UI list query. Accept the noise, or
    split the files later.
-2. **`src/renderer/lib/queries.ts` excluded while `src/preload/index.ts` is included.** Both are
+2. **`src/renderer/lib/api/**` excluded while `src/preload/index.ts` is included.** Both are
    typed passthroughs. As excluded, a hostile change like hardcoding `overrideTamper: true` in the
-   import mutation would not trip the backstop. Including it gates most renderer PRs. Current
-   call: excluded — the label-at-triage trigger and human review are expected to catch that class.
+   import mutation (`src/renderer/lib/api/cases.ts`) would not trip the backstop. Including it
+   gates most renderer PRs. Current call: excluded — the label-at-triage trigger and human review
+   are expected to catch that class.
 3. **`pnpm-lock.yaml`.** Included by the same logic as `package.json` (the lockfile is the actual
    pin that determines shipped code), but it gates every dependency-bump PR. Current call:
    include; drop it if dep-bump noise proves unacceptable during the pilot.

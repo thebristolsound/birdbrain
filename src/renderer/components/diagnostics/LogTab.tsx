@@ -3,6 +3,7 @@ import { AlertCircle, AlertTriangle, FolderOpen, Info } from 'lucide-react'
 import { Button } from '@renderer/components/ui'
 import { cn } from '@renderer/lib/utils'
 import { labelForCode } from '@renderer/lib/notify'
+import { recentLogEntries, revealLogFile } from '@renderer/lib/api/diagnostics'
 import type { LogEntry, LogLevel } from '@shared/types'
 
 const MAX_ENTRIES = 200
@@ -36,8 +37,7 @@ export function LogTab() {
     // the failure they came to look at has already happened. Merge by id —
     // history and the live subscription overlap by design.
     let cancelled = false
-    void window.birdbrain.diagnostics
-      .recentEntries(MAX_ENTRIES)
+    void recentLogEntries(MAX_ENTRIES)
       .then((history) => {
         if (cancelled) return
         setEntries((prev) => {
@@ -85,7 +85,7 @@ export function LogTab() {
           variant="ghost"
           size="sm"
           className="gap-1.5"
-          onClick={() => window.birdbrain.diagnostics.revealLog()}
+          onClick={() => revealLogFile()}
         >
           <FolderOpen className="h-3.5 w-3.5" />
           Reveal log file

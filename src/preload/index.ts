@@ -114,7 +114,7 @@ const birdbrain = {
     count: bridge(IPC_CHANNELS.NOTES_COUNT),
     search: bridge(IPC_CHANNELS.NOTES_SEARCH)
   },
-  archive: {
+  wayback: {
     lookup: bridge(IPC_CHANNELS.WAYBACK_LOOKUP),
     list: bridge(IPC_CHANNELS.WAYBACK_LIST),
     pin: bridge(IPC_CHANNELS.WAYBACK_PIN),

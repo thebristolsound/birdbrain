@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { Puzzle, FolderPlus, ArrowRight, Check, X } from 'lucide-react'
 import logoImg from '@renderer/assets/logo.png'
 import { useAppStore } from '@renderer/stores/appStore'
-import { useCasesMutations } from '@renderer/lib/queries'
+import { useCasesMutations, useSettingsMutations } from '@renderer/lib/queries'
 import { Button, Input, Label } from '@renderer/components/ui'
 import { InstallExtensionStepper } from '@renderer/components/extension/InstallExtensionStepper'
 
@@ -17,6 +17,7 @@ export function OnboardingWizard({ mode = 'firstRun', onClose }: OnboardingWizar
   const navigate = useNavigate()
   const connectedToExtension = useAppStore((s) => s.connectedToExtension)
   const { create } = useCasesMutations()
+  const { update } = useSettingsMutations()
   const isOverlay = mode === 'overlay'
 
   const [step, setStep] = useState(0)
@@ -38,7 +39,7 @@ export function OnboardingWizard({ mode = 'firstRun', onClose }: OnboardingWizar
     setSubmitting(true)
     try {
       const newCase = await create.mutateAsync({ name: name.trim() })
-      await window.birdbrain.settings.update({ hasCompletedOnboarding: true })
+      await update.mutateAsync({ hasCompletedOnboarding: true })
       navigate({ to: '/cases/$caseId/captures', params: { caseId: newCase.id } })
     } catch {
       setSubmitting(false)

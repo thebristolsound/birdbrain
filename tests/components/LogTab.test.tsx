@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-library/react'
 import { LogTab } from '@renderer/components/diagnostics/LogTab'
 import type { LogEntry } from '@shared/types'
+import { fakeBridge } from '../renderer/fakeBridge'
 
 function entry(over: Partial<LogEntry> = {}): LogEntry {
   return {
@@ -19,7 +20,7 @@ let listener: ((e: LogEntry) => void) | null = null
 
 beforeEach(() => {
   listener = null
-  vi.stubGlobal('birdbrain', {
+  fakeBridge({
     onLogEntry: (cb: (e: LogEntry) => void) => {
       listener = cb
       return () => {

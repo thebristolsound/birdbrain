@@ -16,12 +16,14 @@ describe('export commands', () => {
     const generateReport = vi.fn(async () => ({ canceled: false, filePath: '/out.zip' }))
     fakeBridge({ export: { generateReport } })
 
+    // satisfies, not an assertion: the assertion would still accept a fixture
+    // that had drifted from the ExportOptions contract this test claims to pin.
     const options = {
       format: 'zip',
       include: { captures: true, screenshots: true, auditTrail: true, annotations: 'burned' },
       investigatorName: 'Investigator',
       outputPath: 'case_evidence.zip'
-    } as ExportOptions
+    } satisfies ExportOptions
 
     await expect(generateExportReport('case1', options)).resolves.toEqual({
       canceled: false,

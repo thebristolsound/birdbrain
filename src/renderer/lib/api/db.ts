@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient, queryOptions, keepPreviousData } from '@tanstack/react-query'
+import { useMutation, useQueryClient, queryOptions } from '@tanstack/react-query'
 import type { QueryClient } from '@tanstack/react-query'
 import type {
   DbTableRowsParams,
@@ -19,9 +19,15 @@ export const dbTableRowsQueryOptions = (params: DbTableRowsParams) =>
   queryOptions({
     queryKey: queryKeys.dbTableRows(params.table, params.offset, params.limit),
     queryFn: () => window.birdbrain.db.tableRows(params),
-    // Table/page switches move to a not-yet-cached key; without this, data
+    // Page switches move to a not-yet-cached key; without a placeholder, data
     // goes undefined and the table/pager disappear until the fetch resolves.
-    placeholderData: keepPreviousData
+    // Scoped to one table: the table name sits at index 2 of the key. Rows,
+    // headings and the row count all come from this one result, so a frame held
+    // across a table switch is entirely the table you just left — internally
+    // consistent, unmarked as stale, and sitting under a selector that already
+    // reads the new table. That is a misread rather than a stale read.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[2] === params.table ? previous : undefined
   })
 
 // restore/purgeArchived/cleanOrphans mutate rows across every table, so a
@@ -49,10 +55,11 @@ export function dbAdminMutationOptions(queryClient: QueryClient) {
       onSuccess: invalidateStats,
       meta: { action: 'rebuild the search index' }
     },
-    // backup/exportTable resolve to null and restore to { restored: false }
-    // when the user cancels the native dialog, so the invalidation has to be
-    // guarded on the result — otherwise cancelling a restore fires an
-    // unfiltered, app-wide refetch.
+    // backup resolves to null and restore to { restored: false } when the user
+    // cancels the native dialog, so the invalidation has to be guarded on the
+    // result — otherwise cancelling a restore fires an unfiltered, app-wide
+    // refetch. Only the committed backup path checkpoints the WAL, which is
+    // what moves the file sizes in the stats panel.
     backup: {
       mutationFn: () => window.birdbrain.db.backup(),
       onSuccess: (result: { path: string } | null) => {
@@ -60,11 +67,11 @@ export function dbAdminMutationOptions(queryClient: QueryClient) {
       },
       meta: { action: 'back up the database' }
     },
+    // No invalidation at all: the handler SELECTs the table and writes a file
+    // outside the database. Nothing db.stats() reports — schema version, file
+    // and WAL sizes, row counts — can move.
     exportTable: {
       mutationFn: (params: DbExportTableParams) => window.birdbrain.db.exportTable(params),
-      onSuccess: (result: { path: string } | null) => {
-        if (result) invalidateStats()
-      },
       meta: { action: 'export the table' }
     },
     findOrphans: {

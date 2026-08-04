@@ -114,6 +114,15 @@ describe('ExportDialog', () => {
     const [, options] = generateReport.mock.calls[0] as [string, ExportOptions]
     expect(options.format).toBe('zip')
     expect(options.outputPath).toBe('Case_One_evidence.zip')
+    // The include toggles decide what lands in the evidence package, so pin all
+    // four rather than only the two that name the file.
+    expect(options.include).toEqual({
+      captures: true,
+      screenshots: true,
+      auditTrail: true,
+      annotations: 'burned'
+    })
+    expect(options.investigatorName).toBe('Investigator')
   })
 
   it('renders the live step and percent from export progress events', async () => {

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useCasesMutations, useSettingsMutations } from '@renderer/lib/queries'
+import { createSelector } from '@renderer/lib/api/selectors'
 import { FolderPlus, ArrowLeft } from 'lucide-react'
 import { Card, Button, Input, Textarea, Label } from '@renderer/components/ui'
 
@@ -70,7 +71,7 @@ export function NewCaseWizard() {
       for (const presetId of selectedSelectors) {
         const preset = SELECTOR_PRESETS.find((p) => p.id === presetId)
         if (preset) {
-          await window.birdbrain.selectors.create({
+          await createSelector({
             caseId: newCase.id,
             pattern: preset.pattern,
             isRegex: preset.isRegex,

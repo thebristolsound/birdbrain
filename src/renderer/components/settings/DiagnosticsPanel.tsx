@@ -14,6 +14,7 @@ import {
 import { cn } from '@renderer/lib/utils'
 import { LogTab } from '@renderer/components/diagnostics/LogTab'
 import { openPath } from '@renderer/lib/api/system'
+import { diagnosticsQueryOptions } from '@renderer/lib/api/diagnostics'
 
 // Settings → Diagnostics. Live snapshot of app environment, main-process
 // responsiveness (event-loop stalls = the "pinwheel"), storage, and the
@@ -100,8 +101,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 export function DiagnosticsPanel() {
   const [copied, setCopied] = useState(false)
   const { data, refetch, isFetching } = useQuery({
-    queryKey: ['diagnostics'],
-    queryFn: () => window.birdbrain.diagnostics.get(),
+    ...diagnosticsQueryOptions,
     refetchInterval: POLL_MS
   })
 

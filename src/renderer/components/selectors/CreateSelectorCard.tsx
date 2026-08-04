@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Plus, ChevronUp, ChevronDown, Search, FlaskConical, Crosshair } from 'lucide-react'
 import { useForegroundMatchPreview } from '@renderer/components/selectors/useForegroundMatchPreview'
 import { Card, Button, Label } from '@renderer/components/ui'
+import { createSelector } from '@renderer/lib/api/selectors'
 
 interface CreateSelectorCardProps {
   isOpen: boolean
@@ -46,7 +47,7 @@ export function CreateSelectorCard({
 
     setCreating(true)
     try {
-      await window.birdbrain.selectors.create({
+      await createSelector({
         caseId,
         pattern: pattern.trim(),
         isRegex,

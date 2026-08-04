@@ -6,6 +6,11 @@ import { useAppStore } from '@renderer/stores/appStore'
 import { presets } from '@renderer/lib/motion'
 import type { CaptureEvent } from '@shared/types'
 import { Button } from '@renderer/components/ui'
+import {
+  recaptureQueueQueryOptions,
+  testCaptureHttp,
+  testCapturePipeline
+} from '@renderer/lib/api/recapture'
 
 function EventIcon({ type }: { type: CaptureEvent['type'] }) {
   switch (type) {
@@ -72,8 +77,7 @@ export function CaptureHealth() {
   const connectedToExtension = useAppStore((s) => s.connectedToExtension)
   // Queue status only renders inside the popover — don't poll while closed.
   const { data: queue } = useQuery({
-    queryKey: ['recaptureQueue'],
-    queryFn: () => window.birdbrain.recapture.queueStatus(),
+    ...recaptureQueueQueryOptions,
     refetchInterval: 2000,
     enabled: open
   })
@@ -82,7 +86,7 @@ export function CaptureHealth() {
     setTesting(true)
     setTestResult(null)
     try {
-      const result = await window.birdbrain.testPipeline()
+      const result = await testCapturePipeline()
       setTestResult(result)
     } catch (err) {
       setTestResult({ success: false, durationMs: 0, error: String(err) })
@@ -95,7 +99,7 @@ export function CaptureHealth() {
     setTesting(true)
     setTestResult(null)
     try {
-      const result = await window.birdbrain.testHttp()
+      const result = await testCaptureHttp()
       setTestResult(result)
     } catch (err) {
       setTestResult({ success: false, durationMs: 0, error: String(err) })

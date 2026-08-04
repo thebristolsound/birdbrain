@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import { Button } from '@renderer/components/ui'
+import { lastSession } from '@renderer/lib/api/diagnostics'
 import type { SessionRecord } from '@shared/types'
 
 // lastSession() is take-once server-side (see sessionLog.ts's takeUncleanSession):
@@ -11,8 +12,7 @@ export function CrashRecoveryPrompt() {
   const [dismissed, setDismissed] = useState(false)
 
   useEffect(() => {
-    void window.birdbrain.diagnostics
-      .lastSession()
+    void lastSession()
       .then(setSession)
       .catch(() => {
         // No prompt is a degraded start, not a broken one.

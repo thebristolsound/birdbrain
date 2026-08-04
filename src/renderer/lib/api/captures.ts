@@ -1,4 +1,5 @@
 import { queryOptions, useIsMutating, useMutation, useQueryClient } from '@tanstack/react-query'
+import type { Capture } from '@shared/types'
 import { queryKeys } from '@renderer/lib/api/keys'
 
 export const capturesQueryOptions = (caseId: string) =>
@@ -54,6 +55,20 @@ export const searchQueryOptions = (caseId: string, query: string) =>
     queryFn: () => window.birdbrain.search(caseId, query),
     enabled: !!caseId && query.trim().length > 0
   })
+
+// Uncached counterparts to the two query factories above, for the foreground
+// match preview: it walks every candidate capture's text on demand and would
+// otherwise park a case's worth of capture bodies in the cache.
+export function listCaptures(caseId: string): Promise<Capture[]> {
+  return window.birdbrain.captures.list(caseId)
+}
+
+export function getCaptureContent(
+  captureId: string,
+  type: 'html' | 'png' | 'txt'
+): Promise<string | null> {
+  return window.birdbrain.captures.getContent(captureId, type)
+}
 
 export function useCapturesMutations(caseId: string) {
   const queryClient = useQueryClient()

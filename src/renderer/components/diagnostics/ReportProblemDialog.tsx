@@ -11,6 +11,7 @@ import {
   Textarea
 } from '@renderer/components/ui'
 import { notify } from '@renderer/lib/notify'
+import { createBugReport } from '@renderer/lib/api/diagnostics'
 
 interface ReportProblemDialogProps {
   open: boolean
@@ -49,7 +50,7 @@ export function ReportProblemDialog({
   async function handleSubmit(): Promise<void> {
     setSubmitting(true)
     try {
-      const result = await window.birdbrain.diagnostics.createReport({
+      const result = await createBugReport({
         whatYouDid,
         whatYouExpected,
         whatHappened,

@@ -148,9 +148,14 @@ existing mutations:
 Genuinely new logic, separate commits:
 
 - **DB invalidation.** `restore` / `purgeArchived` / `cleanOrphans` invalidate all
-  queries (`queryClient.invalidateQueries()`); `vacuum` / `backup` / `exportTable`
-  invalidate `dbStats`; `createRow` / `updateRow` / `deleteRow` invalidate
-  `dbStats` + `dbTableRows`.
+  queries (`queryClient.invalidateQueries()`); `vacuum` / `backup` invalidate
+  `dbStats`; `createRow` / `updateRow` / `deleteRow` invalidate
+  `dbStats` + `dbTableRows`. Corrected after this design was written:
+  `exportTable` was listed against `dbStats` and in fact invalidates nothing —
+  it reads the table and writes a file outside the database, so no figure
+  `db.stats()` reports can move. Added rather than corrected, because the design
+  did not say either way: `backup` and `restore` invalidate only when the file
+  dialog was not dismissed.
 - **AnalysisTab restructure.** Nine hand-rolled loading/error flags collapse into
   the analyze/save mutations; raw query-key literals move to `keys.ts`; uuid and
   `createdAt` minting moves into the `mutationFn`.

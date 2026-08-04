@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { QueryClient } from '@tanstack/react-query'
+import type { DbTableRowsResult } from '@shared/ipc'
 import { fakeBridge } from '../fakeBridge'
 import { dbStatsQueryOptions, dbTableRowsQueryOptions, dbAdminMutationOptions } from '@renderer/lib/api/db'
 import { queryKeys } from '@renderer/lib/api/keys'
@@ -24,6 +25,8 @@ function installDbBridge() {
   fakeBridge({ db: api })
   return api
 }
+
+type DbTableRowsKey = ReturnType<typeof queryKeys.dbTableRows>
 
 let api: ReturnType<typeof installDbBridge>
 
@@ -51,6 +54,31 @@ describe('dbStatsQueryOptions / dbTableRowsQueryOptions', () => {
     expect(opts.queryKey).toEqual(['db', 'tableRows', 'cases', 0, 50])
     await opts.queryFn?.({} as never)
     expect(api.tableRows).toHaveBeenCalledWith({ table: 'cases', offset: 0, limit: 50 })
+  })
+
+  // Paging holds the previous page on screen so the pager does not unmount
+  // under the cursor, but that placeholder has to stop at the table boundary: a
+  // held frame is self-consistent and unmarked, so across a table switch it
+  // reads as the contents of whatever table the selector now shows.
+  it('holds the previous page only within the same table', () => {
+    const previous = { rows: [{ id: 'a' }], total: 100, columns: [] }
+    const { placeholderData } = dbTableRowsQueryOptions({ table: 'cases', offset: 50, limit: 50 })
+    if (typeof placeholderData !== 'function') throw new Error('expected a placeholder function')
+
+    // Real Query instances built through the cache, so the argument is the
+    // object React Query actually hands the placeholder rather than a stub cast
+    // past the contract.
+    const qc = new QueryClient()
+    const previousQuery = (table: string) =>
+      qc
+        .getQueryCache()
+        .build<DbTableRowsResult, Error, DbTableRowsResult, DbTableRowsKey>(qc, {
+          queryKey: queryKeys.dbTableRows(table, 0, 50)
+        })
+
+    expect(placeholderData(previous, previousQuery('cases'))).toEqual(previous)
+    expect(placeholderData(previous, previousQuery('notes'))).toBeUndefined()
+    expect(placeholderData(previous, undefined)).toBeUndefined()
   })
 })
 
@@ -94,18 +122,20 @@ describe('dbAdminMutationOptions', () => {
     expect(spy).toHaveBeenCalledTimes(1)
   })
 
-  it('exportTable invalidates only dbStats', async () => {
+  // The handler SELECTs the table and writes the file outside the database, so
+  // none of the figures db.stats() reports can move — not even on the committed
+  // path, which is why this needs no cancellation guard the way backup does.
+  it('exportTable invalidates nothing', async () => {
     api.exportTable.mockResolvedValue({ path: '/tmp/cases.csv' })
     const qc = new QueryClient()
     const spy = vi.spyOn(qc, 'invalidateQueries')
 
     const opts = dbAdminMutationOptions(qc).exportTable
-    const data = await opts.mutationFn({ table: 'cases', format: 'csv' })
-    opts.onSuccess?.(data, undefined as never, undefined, undefined as never)
+    await opts.mutationFn({ table: 'cases', format: 'csv' })
 
     expect(api.exportTable).toHaveBeenCalledWith({ table: 'cases', format: 'csv' })
-    expect(spy).toHaveBeenCalledWith({ queryKey: queryKeys.dbStats })
-    expect(spy).toHaveBeenCalledTimes(1)
+    expect('onSuccess' in opts).toBe(false)
+    expect(spy).not.toHaveBeenCalled()
   })
 
   it('createRow/updateRow/deleteRow invalidate dbStats and tableRows', async () => {
@@ -191,18 +221,6 @@ describe('dbAdminMutationOptions cancellation', () => {
 
     const opts = dbAdminMutationOptions(qc).backup
     const data = await opts.mutationFn()
-    opts.onSuccess?.(data, undefined as never, undefined, undefined as never)
-
-    expect(spy).not.toHaveBeenCalled()
-  })
-
-  it('exportTable does not invalidate when the save dialog is cancelled', async () => {
-    api.exportTable.mockResolvedValue(null)
-    const qc = new QueryClient()
-    const spy = vi.spyOn(qc, 'invalidateQueries')
-
-    const opts = dbAdminMutationOptions(qc).exportTable
-    const data = await opts.mutationFn({ table: 'cases', format: 'csv' })
     opts.onSuccess?.(data, undefined as never, undefined, undefined as never)
 
     expect(spy).not.toHaveBeenCalled()

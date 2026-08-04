@@ -41,6 +41,9 @@ export const queryKeys = {
   identity: ['identity'] as const,
   openRouterModels: ['openRouterModels'] as const,
   appVersion: ['appVersion'] as const,
+  captureAnalysis: (captureId: string) => ['analysis', captureId] as const,
+  recaptureQueue: ['recaptureQueue'] as const,
+  diagnostics: ['diagnostics'] as const,
   dbStats: ['db', 'stats'] as const,
   dbTableRows: (table: string, offset: number, limit: number) =>
     ['db', 'tableRows', table, offset, limit] as const

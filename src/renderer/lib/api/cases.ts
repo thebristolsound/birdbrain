@@ -1,6 +1,14 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { CreateCaseParams, UpdateCaseParams } from '@shared/ipc'
+import type { ArchiveInspectReport } from '@shared/types'
 import { queryKeys } from '@renderer/lib/api/keys'
+
+// Opens a file dialog and verifies the chosen archive without importing it;
+// null means the operator cancelled. Nothing is written, so there is nothing
+// to invalidate.
+export function inspectCaseArchive(): Promise<ArchiveInspectReport | null> {
+  return window.birdbrain.cases.inspectArchive()
+}
 
 export const casesQueryOptions = queryOptions({
   queryKey: queryKeys.cases,

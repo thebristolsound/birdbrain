@@ -8,7 +8,8 @@ import {
   selectorsQueryOptions,
   selectorMatchCountsQueryOptions,
   capturesQueryOptions,
-  queryKeys
+  queryKeys,
+  exportSelectorMatches
 } from '@renderer/lib/queries'
 import { CreateSelectorCard } from '@renderer/components/selectors/CreateSelectorCard'
 import { SelectorTable } from '@renderer/components/selectors/SelectorTable'
@@ -46,7 +47,7 @@ export function SelectorsOverview() {
   async function handleExportMatches() {
     setExporting(true)
     try {
-      await window.birdbrain.selectors.exportMatches(caseId)
+      await exportSelectorMatches(caseId)
     } catch (err) {
       console.error('Export matches failed:', err)
     } finally {

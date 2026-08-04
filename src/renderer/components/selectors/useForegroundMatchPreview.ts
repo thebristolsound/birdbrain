@@ -4,6 +4,8 @@ import {
   testPatternAgainstText,
   type MatchResult
 } from '@renderer/components/selectors/selectorUtils'
+import { getCaptureContent, listCaptures } from '@renderer/lib/api/captures'
+import { listMatchingCaptureIds } from '@renderer/lib/api/selectors'
 
 // The Foreground Match Preview (see CONTEXT.md): matches computed in the
 // renderer against capture text, in-memory. It never touches Persisted
@@ -35,20 +37,20 @@ export interface PreviewMatchesDeps {
   listMatchingCaptureIds: (caseId: string, selectorIds: string[]) => Promise<string[]>
 }
 
-// Built per call: window.birdbrain only exists in the renderer, and tests
-// inject their own deps.
-function birdbrainDeps(): PreviewMatchesDeps {
-  const { captures, selectors } = window.birdbrain
+// Built per call, and each wrapper still resolves the bridge inside its own
+// body — tests inject their own deps, and the ones that do not must be free to
+// install a bridge stub after this module loads.
+function bridgeDeps(): PreviewMatchesDeps {
   return {
-    listCaptures: (caseId) => captures.list(caseId),
-    getCaptureText: (captureId) => captures.getContent(captureId, 'txt'),
-    listMatchingCaptureIds: (caseId, selectorIds) => selectors.matchingCaptures(caseId, selectorIds)
+    listCaptures: (caseId) => listCaptures(caseId),
+    getCaptureText: (captureId) => getCaptureContent(captureId, 'txt'),
+    listMatchingCaptureIds: (caseId, selectorIds) => listMatchingCaptureIds(caseId, selectorIds)
   }
 }
 
 export async function previewForegroundMatches(
   params: PreviewMatchesParams,
-  deps: PreviewMatchesDeps = birdbrainDeps()
+  deps: PreviewMatchesDeps = bridgeDeps()
 ): Promise<ForegroundMatchPreview[]> {
   const { caseId, pattern, isRegex, maxCaptures, maxMatchesPerCapture, selectorId } = params
 

@@ -57,10 +57,18 @@ describe('CreateSelectorCard', () => {
     renderCard()
 
     fireEvent.click(screen.getByText('.*'))
-    fireEvent.change(screen.getByPlaceholderText('e.g. \\b\\d{3}-\\d{3}-\\d{4}\\b'), {
-      target: { value: '([' }
-    })
+    const input = screen.getByPlaceholderText('e.g. \\b\\d{3}-\\d{3}-\\d{4}\\b')
+    fireEvent.change(input, { target: { value: '([' } })
 
+    expect(screen.getByText(/Invalid regular expression/)).toBeDefined()
+    expect((screen.getByText('Create').closest('button') as HTMLButtonElement).disabled).toBe(true)
+
+    // Enter bypasses the disabled Create button and reaches handleCreate
+    // directly, so this is what pins the guard inside it rather than the
+    // button's disabled attribute.
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() => expect(screen.getByText(/Invalid regular expression/)).toBeDefined())
     expect(create).not.toHaveBeenCalled()
   })
 })

@@ -14,7 +14,7 @@ export const captureAnalysisQueryOptions = (captureId: string) =>
 // factories the design prescribes for rendered writes. AnalysisTab drives both
 // from its own useMutation with local onSuccess handlers, and moving that
 // wiring behind a factory is the AnalysisTab restructure — a behaviour change
-// that the design keeps out of the mechanical move (#229, PR 4).
+// that the design keeps out of the mechanical move. Tracked in #346.
 
 export function analyzeCapture(
   params: AnalyzeCaptureParams

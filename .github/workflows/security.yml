@@ -57,9 +57,10 @@ jobs:
         with:
           node-version-file: .nvmrc
 
-      # Advisory-only: the tree currently carries known high-severity advisories
-      # (sharp < 0.35.0 libvips CVEs, fast-uri via electron-builder). Drop
-      # continue-on-error once those are resolved so regressions fail the build.
-      - name: pnpm audit
-        run: pnpm audit --audit-level high || true
-        continue-on-error: true
+      # Enforcing. Audits both dependency trees (the app and the isolated website/
+      # sub-project) and fails on any high or critical advisory that is not covered
+      # by an unexpired entry in audit-exceptions.json — so a new advisory, or an
+      # accepted one whose expiry has passed, breaks the build. Reads the lockfiles,
+      # which is why this job still does not install.
+      - name: Dependency advisories
+        run: node scripts/audit-check.mjs

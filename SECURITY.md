@@ -43,6 +43,12 @@ The complete list of outbound connections Birdbrain can make:
 
 There is no telemetry, no account, and no other network activity. Captured evidence leaves the machine only when you export it. Note that items 2–4 disclose the captured or looked-up URL (or your interest in it) to a third party or to the target itself; if you investigate through a VPN or Tor, route the whole machine so these requests do not take your bare network path.
 
+## Dependency advisories and distribution
+
+Birdbrain is **not published to any npm registry**. The package is marked `private`, and a `prepublishOnly` hook refuses the command outright — `private` alone is silently skipped by `npm publish --dry-run`. Releases are desktop installers built by `.github/workflows/release.yml`.
+
+`.github/workflows/security.yml` audits both dependency trees on every push and pull request — the app and the isolated docs site in `website/`. Any **high** or **critical** advisory fails the build unless it carries an entry in [`audit-exceptions.json`](audit-exceptions.json), which records the advisory, the package and tree it affects, why it is accepted (which shipped or reachable path it does *not* have), and an expiry date after which the build fails again until the call is re-made. Run the same check locally with `pnpm audit:check`.
+
 ## Known limitations
 
 Pre-declared so they are not rediscovered as findings:

@@ -45,9 +45,12 @@ There is no telemetry, no account, and no other network activity. Captured evide
 
 ## Dependency advisories and distribution
 
-Birdbrain is **not published to any npm registry**. The package is marked `private`, and a `prepublishOnly` hook refuses the command outright — `private` alone is silently skipped by `npm publish --dry-run`. Releases are desktop installers built by `.github/workflows/release.yml`.
+Birdbrain is **not published to any npm registry**. Releases are desktop installers built by `.github/workflows/release.yml`. Two guards, with different reach:
 
-`.github/workflows/security.yml` audits both dependency trees on every push and pull request — the app and the isolated docs site in `website/`. Any **high** or **critical** advisory fails the build unless it carries an entry in [`audit-exceptions.json`](audit-exceptions.json), which records the advisory, the package and tree it affects, why it is accepted (which shipped or reachable path it does *not* have), and an expiry date after which the build fails again until the call is re-made. Run the same check locally with `pnpm audit:check`.
+- **`"private": true`** is the one that stops a real publish. npm raises `EPRIVATE` inside `libnpmpublish` before uploading anything. Note this is after the credential check, so an unauthenticated attempt fails on auth first.
+- **A `prepublishOnly` hook** (`scripts/no-registry-publish.mjs`) makes the guard visible in a rehearsal: `npm publish --dry-run` never reaches the `EPRIVATE` check and otherwise reports success. The hook is a lifecycle script, so `npm publish --ignore-scripts` skips it — that bypasses only the rehearsal, not `private` itself.
+
+`.github/workflows/security.yml` audits both dependency trees — the app and the isolated docs site in `website/` — on pushes to `main` and on pull requests targeting `main`. Any **high** or **critical** advisory fails the build unless it carries an entry in [`audit-exceptions.json`](audit-exceptions.json), which records the advisory, the package and tree it affects, why it is accepted (which shipped or reachable path it does *not* have), and an expiry date after which the build fails again until the call is re-made. Expiries are capped at 180 days and warn 21 days ahead. A failed audit (unreachable registry, for instance) fails the job rather than reading as a clean tree. Run the same check locally with `pnpm audit:check`.
 
 ## Known limitations
 

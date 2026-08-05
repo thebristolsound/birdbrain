@@ -27,8 +27,11 @@ overrides:
   postcss@<=8.5.17: ^8.5.23
   # GHSA-mwp4-54f8-5fhr (high) + two moderates. shadcn > ... > ip-address.
   ip-address@<=10.3.0: ^10.3.1
-  # GHSA-rgw5-rvv9-x895, GHSA-mh99-v99m-4gvg, GHSA-3jxr-9vmj-r5cp (high), one
-  # entry per major line still resolved in the tree.
+  # GHSA-rgw5-rvv9-x895, GHSA-mh99-v99m-4gvg, GHSA-3jxr-9vmj-r5cp (high). Three
+  # keys because upstream shipped three separate fix lines; each key is that
+  # line's vulnerable range verbatim. The last one deliberately spans 4.x and
+  # 5.0.x: the advisory's fixed version for 4.x users is 5.0.9, there being no
+  # 4.x patch release, so a 4.x requester is meant to cross the major.
   brace-expansion@<1.1.18: ^1.1.18
   brace-expansion@>=2.0.0 <2.1.4: ^2.1.4
   brace-expansion@>=4.0.0 <5.0.9: ^5.0.9

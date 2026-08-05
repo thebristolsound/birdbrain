@@ -8,6 +8,11 @@
 // for directory publishes before packing, dry run included, so failing here makes
 // the guard fire on both the real command and the rehearsal of it.
 //
+// Being a lifecycle script, this is skipped by `--ignore-scripts` (and by
+// `ignore-scripts=true` in a user's .npmrc). That costs the rehearsal, not the
+// protection: `private` is enforced inside libnpmpublish, which no flag here
+// disables.
+//
 // Birdbrain ships as a signed-by-nobody desktop installer from GitHub releases, not
 // as an npm package: the tarball would carry the whole working tree and a name that
 // is unclaimed on the public registry. If registry publication is ever approved,

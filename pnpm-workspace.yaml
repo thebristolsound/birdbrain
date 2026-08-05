@@ -13,8 +13,25 @@ onlyBuiltDependencies:
   - msw
   - sharp
 
+# Advisory remediation. Each entry below is pinned to the *vulnerable* range so
+# the override disappears on its own once the dependent bumps past it, rather
+# than silently holding an unrelated future version back. Advisories that cannot
+# be fixed this way are listed in audit-exceptions.json.
 overrides:
   tar: ^7.5.16
+  # GHSA-4cwx-7wf7-3272 (high) + four moderates. Ships: cheerio > undici.
+  undici@>=7.0.0 <7.29.0: ^7.29.0
+  # GHSA-v2hh-gcrm-f6hx, GHSA-7p8r-x3mc-p8w7 (high). electron-builder > ajv.
+  fast-uri@>=3.0.0 <3.1.5: ^3.1.5
+  # GHSA-r28c-9q8g-f849 (high) + GHSA-fxqj-rqcc-2cmp. shadcn > postcss.
+  postcss@<=8.5.17: ^8.5.23
+  # GHSA-mwp4-54f8-5fhr (high) + two moderates. shadcn > ... > ip-address.
+  ip-address@<=10.3.0: ^10.3.1
+  # GHSA-rgw5-rvv9-x895, GHSA-mh99-v99m-4gvg, GHSA-3jxr-9vmj-r5cp (high), one
+  # entry per major line still resolved in the tree.
+  brace-expansion@<1.1.18: ^1.1.18
+  brace-expansion@>=2.0.0 <2.1.4: ^2.1.4
+  brace-expansion@>=4.0.0 <5.0.9: ^5.0.9
 
 supportedArchitectures:
   os:

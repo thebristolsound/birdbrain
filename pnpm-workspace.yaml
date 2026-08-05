@@ -13,28 +13,23 @@ onlyBuiltDependencies:
   - msw
   - sharp
 
-# Advisory remediation. Each entry below is pinned to the *vulnerable* range so
-# the override disappears on its own once the dependent bumps past it, rather
-# than silently holding an unrelated future version back. Advisories that cannot
-# be fixed this way are listed in audit-exceptions.json.
 overrides:
   tar: ^7.5.16
-  # GHSA-4cwx-7wf7-3272 (high) + four moderates. Ships: cheerio > undici.
-  undici@>=7.0.0 <7.29.0: ^7.29.0
-  # GHSA-v2hh-gcrm-f6hx, GHSA-7p8r-x3mc-p8w7 (high). electron-builder > ajv.
-  fast-uri@>=3.0.0 <3.1.5: ^3.1.5
-  # GHSA-r28c-9q8g-f849 (high) + GHSA-fxqj-rqcc-2cmp. shadcn > postcss.
-  postcss@<=8.5.17: ^8.5.23
-  # GHSA-mwp4-54f8-5fhr (high) + two moderates. shadcn > ... > ip-address.
-  ip-address@<=10.3.0: ^10.3.1
-  # GHSA-rgw5-rvv9-x895, GHSA-mh99-v99m-4gvg, GHSA-3jxr-9vmj-r5cp (high). Three
-  # keys because upstream shipped three separate fix lines; each key is that
-  # line's vulnerable range verbatim. The last one deliberately spans 4.x and
-  # 5.0.x: the advisory's fixed version for 4.x users is 5.0.9, there being no
-  # 4.x patch release, so a 4.x requester is meant to cross the major.
-  brace-expansion@<1.1.18: ^1.1.18
-  brace-expansion@>=2.0.0 <2.1.4: ^2.1.4
-  brace-expansion@>=4.0.0 <5.0.9: ^5.0.9
+  # Transitive-only advisory fixes (none of these are direct dependencies; each
+  # is pulled in by a devDependency's own subtree). Pinned to the lowest patched
+  # version per advisory rather than "latest" to keep the bump minimal. See
+  # .github/workflows/security.yml for the audit step these clear and
+  # docs/specs/2026-08-05-dependency-advisory-baseline.md for the full disposition.
+  brace-expansion@1: ^1.1.18
+  brace-expansion@2: ^2.1.4
+  brace-expansion@5: ^5.0.9
+  fast-uri: ^3.1.5
+  postcss: ^8.5.23
+  ip-address: ^10.3.1
+  undici@6: ^6.28.0
+  undici@7: ^7.29.0
+  builder-util-runtime: ^9.7.0
+  app-builder-lib: ^26.15.0
 
 supportedArchitectures:
   os:

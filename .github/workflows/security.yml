@@ -58,9 +58,47 @@ jobs:
           node-version-file: .nvmrc
 
       # Enforcing. Audits both dependency trees (the app and the isolated website/
-      # sub-project) and fails on any high or critical advisory that is not covered
-      # by an unexpired entry in audit-exceptions.json — so a new advisory, or an
-      # accepted one whose expiry has passed, breaks the build. Reads the lockfiles,
-      # which is why this job still does not install.
+      # sub-project) and fails on any high or critical advisory that is neither
+      # cleared by an override in pnpm-workspace.yaml / website/pnpm-workspace.yaml
+      # nor covered by an unexpired entry in audit-exceptions.json — so a new
+      # advisory, or an accepted one whose expiry has passed, breaks the build.
+      # Reads the lockfiles, which is why this job still does not install.
+      #
+      # This replaces the two inline `pnpm audit` steps: an accepted finding lives
+      # in a data file with an expiry date rather than in an `--ignore` flag and a
+      # comment, so it gets re-decided instead of inherited. The overrides remain
+      # the first line of defence — an exception is only for what an override
+      # cannot fix. See docs/specs/2026-08-05-dependency-advisory-baseline.md for
+      # the per-advisory disposition behind them.
       - name: Dependency advisories
         run: node scripts/audit-check.mjs
+
+  publish-guard:
+    name: Registry publish guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      # Prevents accidental npm/pnpm registry publication (#267): package.json
+      # must stay marked private until publication is explicitly approved (at
+      # which point this job, not just the field, needs to change). This checks
+      # the manifest field directly rather than parsing `pnpm publish --dry-run`
+      # output: npm's own `--dry-run` was confirmed (see the baseline doc) to
+      # skip the private check entirely and still build a publishable tarball,
+      # so a dry-run-based check would have been a false sense of guard.
+      - name: Verify package.json is marked private
+        run: |
+          node -e "
+            const pkg = require('./package.json');
+            if (pkg.private !== true) {
+              console.error('package.json must carry \"private\": true until registry publication is explicitly approved (#267)');
+              process.exit(1);
+            }
+            console.log('OK: package.json is private — npm/pnpm publish is blocked by default');
+          "

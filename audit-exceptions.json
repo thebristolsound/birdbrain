@@ -5,68 +5,20 @@
     "Security workflow. Keep them narrow (one advisory, one package, one tree), give a",
     "reason that names the shipped or reachable path, and set an expiry so the call is",
     "re-made rather than inherited. Past the expiry date the build fails until the entry",
-    "is removed or renewed. Prefer upgrading: a version bump deletes the entry.",
-    "Expiries are capped at 180 days out and warn 21 days before, and are grouped by the",
-    "upgrade that would clear them so one re-decision covers a whole group rather than",
-    "every entry falling due on the same day.",
+    "is removed or renewed. Expiries are capped at 180 days out and warn 21 days before.",
+    "An override in pnpm-workspace.yaml (or website/pnpm-workspace.yaml) is always the",
+    "first choice — an exception is only for a finding no override can fix. Adding one",
+    "here when a version bump would do buys a re-decision date instead of a fix.",
     "Trees: \".\" is the Electron app, \"website\" is the isolated docs sub-project."
   ],
   "exceptions": [
-    {
-      "ghsa": "GHSA-7g7r-gx96-252g",
-      "package": "app-builder-lib",
-      "tree": ".",
-      "path": "electron-builder > app-builder-lib > electron-builder-squirrel-windows > app-builder-lib@25.1.8",
-      "reason": "Build-time devDependency, and the flagged copy is unreachable for the targets this project builds. electron-builder 26.15.3 pulls electron-builder-squirrel-windows 25.1.8, which carries its own app-builder-lib 25.1.8; that path is only entered for the squirrel-windows target, and package.json sets build.win.target to nsis. The AppImage LD_LIBRARY_PATH defect the advisory describes is fixed in 26.15.0, and our AppImage is produced by the top-level app-builder-lib 26.15.3 (pnpm-lock.yaml). Overriding the nested copy to 26.x cannot be verified without a full Windows packaging run, so this waits on electron-builder bumping its squirrel dependency.",
-      "expires": "2026-10-06"
-    },
-    {
-      "ghsa": "GHSA-p2f4-r6v6-j797",
-      "package": "builder-util-runtime",
-      "tree": ".",
-      "path": "electron-builder > app-builder-lib > electron-builder-squirrel-windows > app-builder-lib@25.1.8 > builder-util-runtime@9.2.10",
-      "reason": "Same unreachable squirrel-windows chain as GHSA-7g7r-gx96-252g. The advisory is about electron-updater leaking credential headers across a redirect; the shipped electron-updater 6.8.9 resolves builder-util-runtime 9.7.0, which is patched (pnpm-lock.yaml), and no vulnerable copy ships in the app.",
-      "expires": "2026-10-06"
-    },
     {
       "ghsa": "GHSA-f88m-g3jw-g9cj",
       "package": "sharp",
       "tree": "website",
       "path": "next > sharp@0.34.5",
-      "reason": "Docs-site build dependency only; nothing from website/ ships in the app or runs on a server. The libvips CVEs need untrusted image input, and next.config.mjs sets images.unoptimized with output: export, so Next never invokes sharp. Fixing means bumping next in the isolated website tree, which needs a site build to verify and is not covered by this repo's verify loop.",
+      "reason": "Docs-site build dependency only; nothing from website/ ships in the app or runs on a server. The libvips CVEs need untrusted image input, and next.config.mjs sets images.unoptimized with output: export, so Next never invokes sharp. Unlike the other website findings, an override does not clear this one: next declares sharp as an optional dependency at ^0.34.5, so the fix is bumping next itself in the isolated website tree, which needs a site build to verify and is not covered by this repo's verify loop.",
       "expires": "2026-11-03"
-    },
-    {
-      "ghsa": "GHSA-6g55-p6wh-862q",
-      "package": "postcss",
-      "tree": "website",
-      "path": "next > postcss@8.4.31",
-      "reason": "Docs-site build dependency only. The attack needs attacker-controlled CSS carrying a sourceMappingURL comment; the site's CSS is repo-authored (website/app + Tailwind). Next pins postcss to an exact version, so an override is a compatibility risk that belongs in a website-only change with a site build behind it.",
-      "expires": "2026-11-03"
-    },
-    {
-      "ghsa": "GHSA-r28c-9q8g-f849",
-      "package": "postcss",
-      "tree": "website",
-      "path": "next > postcss@8.4.31",
-      "reason": "Same dependency, path and reasoning as GHSA-6g55-p6wh-862q — a second sourceMappingURL traversal advisory against the same pinned postcss.",
-      "expires": "2026-11-03"
-    },
-    {
-      "ghsa": "GHSA-7p8r-x3mc-p8w7",
-      "package": "fast-uri",
-      "tree": "website",
-      "path": "serve > ajv > fast-uri@3.1.4",
-      "reason": "Reached only through serve, the local static preview (website `pnpm start`). It is not used by `next build`, not installed on the Pages runner path that publishes the site, and never processes third-party requests. Fixable by an override in website/pnpm-workspace.yaml, which requires regenerating the isolated website lockfile.",
-      "expires": "2026-12-01"
-    },
-    {
-      "ghsa": "GHSA-rgw5-rvv9-x895",
-      "package": "brace-expansion",
-      "tree": "website",
-      "path": "serve > serve-handler > minimatch > brace-expansion@1.1.17",
-      "reason": "Same local-preview-only path as GHSA-7p8r-x3mc-p8w7. The DoS needs an attacker-supplied glob; the patterns come from serve's own configuration. Fixable by the same website-lockfile change.",
-      "expires": "2026-12-01"
     }
   ]
 }

@@ -57,30 +57,21 @@ jobs:
         with:
           node-version-file: .nvmrc
 
-      # Enforcing: the accepted baseline (pnpm-workspace.yaml's `overrides`) is
-      # clean of high-severity findings as of 2026-08-05 (#267). A failure here
-      # means a dependency bump reintroduced a known-bad version — fix it or add
-      # a narrow, dated override; do not restore continue-on-error.
-      # See docs/specs/2026-08-05-dependency-advisory-baseline.md for the full
-      # per-advisory disposition.
-      - name: pnpm audit (root)
-        run: pnpm audit --audit-level high
-
-      # website/ is its own pnpm workspace (own lockfile) — see the
-      # "Documentation site" section of CLAUDE.md — so it gets its own audit
-      # rather than being covered by the root one above.
+      # Enforcing. Audits both dependency trees (the app and the isolated website/
+      # sub-project) and fails on any high or critical advisory that is neither
+      # cleared by an override in pnpm-workspace.yaml / website/pnpm-workspace.yaml
+      # nor covered by an unexpired entry in audit-exceptions.json — so a new
+      # advisory, or an accepted one whose expiry has passed, breaks the build.
+      # Reads the lockfiles, which is why this job still does not install.
       #
-      # --ignore GHSA-f88m-g3jw-g9cj: sharp < 0.35.0 libvips CVEs, reached only
-      # through next's *optional* image-optimization dependency. This site sets
-      # `images: { unoptimized: true }` under `output: 'export'`
-      # (website/next.config.mjs), so that code path never runs — see the
-      # baseline doc above for the full reachability argument. Proposed
-      # disposition, not self-certified. Revisit by 2026-11-01 or whenever
-      # `next` bumps its declared sharp range past `^0.34.5`, whichever is
-      # first, and drop this flag.
-      - name: pnpm audit (website)
-        working-directory: website
-        run: pnpm audit --audit-level high --ignore GHSA-f88m-g3jw-g9cj
+      # This replaces the two inline `pnpm audit` steps: an accepted finding lives
+      # in a data file with an expiry date rather than in an `--ignore` flag and a
+      # comment, so it gets re-decided instead of inherited. The overrides remain
+      # the first line of defence — an exception is only for what an override
+      # cannot fix. See docs/specs/2026-08-05-dependency-advisory-baseline.md for
+      # the per-advisory disposition behind them.
+      - name: Dependency advisories
+        run: node scripts/audit-check.mjs
 
   publish-guard:
     name: Registry publish guard

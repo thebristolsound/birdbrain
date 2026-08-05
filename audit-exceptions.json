@@ -1,0 +1,24 @@
+{
+  "_policy": [
+    "Accepted high/critical dependency advisories, checked by scripts/audit-check.mjs.",
+    "An entry is a maintainer decision, not a note: everything not listed here fails the",
+    "Security workflow. Keep them narrow (one advisory, one package, one tree), give a",
+    "reason that names the shipped or reachable path, and set an expiry so the call is",
+    "re-made rather than inherited. Past the expiry date the build fails until the entry",
+    "is removed or renewed. Expiries are capped at 180 days out and warn 21 days before.",
+    "An override in pnpm-workspace.yaml (or website/pnpm-workspace.yaml) is always the",
+    "first choice — an exception is only for a finding no override can fix. Adding one",
+    "here when a version bump would do buys a re-decision date instead of a fix.",
+    "Trees: \".\" is the Electron app, \"website\" is the isolated docs sub-project."
+  ],
+  "exceptions": [
+    {
+      "ghsa": "GHSA-f88m-g3jw-g9cj",
+      "package": "sharp",
+      "tree": "website",
+      "path": "next > sharp@0.34.5",
+      "reason": "Docs-site build dependency only; nothing from website/ ships in the app or runs on a server. The libvips CVEs need untrusted image input, and next.config.mjs sets images.unoptimized with output: export, so Next never invokes sharp. Unlike the other website findings, an override does not clear this one: next declares sharp as an optional dependency at ^0.34.5, so the fix is bumping next itself in the isolated website tree, which needs a site build to verify and is not covered by this repo's verify loop.",
+      "expires": "2026-11-03"
+    }
+  ]
+}

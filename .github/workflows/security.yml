@@ -57,9 +57,57 @@ jobs:
         with:
           node-version-file: .nvmrc
 
-      # Advisory-only: the tree currently carries known high-severity advisories
-      # (sharp < 0.35.0 libvips CVEs, fast-uri via electron-builder). Drop
-      # continue-on-error once those are resolved so regressions fail the build.
-      - name: pnpm audit
-        run: pnpm audit --audit-level high || true
-        continue-on-error: true
+      # Enforcing: the accepted baseline (pnpm-workspace.yaml's `overrides`) is
+      # clean of high-severity findings as of 2026-08-05 (#267). A failure here
+      # means a dependency bump reintroduced a known-bad version — fix it or add
+      # a narrow, dated override; do not restore continue-on-error.
+      # See docs/specs/2026-08-05-dependency-advisory-baseline.md for the full
+      # per-advisory disposition.
+      - name: pnpm audit (root)
+        run: pnpm audit --audit-level high
+
+      # website/ is its own pnpm workspace (own lockfile) — see the
+      # "Documentation site" section of CLAUDE.md — so it gets its own audit
+      # rather than being covered by the root one above.
+      #
+      # --ignore GHSA-f88m-g3jw-g9cj: sharp < 0.35.0 libvips CVEs, reached only
+      # through next's *optional* image-optimization dependency. This site sets
+      # `images: { unoptimized: true }` under `output: 'export'`
+      # (website/next.config.mjs), so that code path never runs — see the
+      # baseline doc above for the full reachability argument. Proposed
+      # disposition, not self-certified. Revisit by 2026-11-01 or whenever
+      # `next` bumps its declared sharp range past `^0.34.5`, whichever is
+      # first, and drop this flag.
+      - name: pnpm audit (website)
+        working-directory: website
+        run: pnpm audit --audit-level high --ignore GHSA-f88m-g3jw-g9cj
+
+  publish-guard:
+    name: Registry publish guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      # Prevents accidental npm/pnpm registry publication (#267): package.json
+      # must stay marked private until publication is explicitly approved (at
+      # which point this job, not just the field, needs to change). This checks
+      # the manifest field directly rather than parsing `pnpm publish --dry-run`
+      # output: npm's own `--dry-run` was confirmed (see the baseline doc) to
+      # skip the private check entirely and still build a publishable tarball,
+      # so a dry-run-based check would have been a false sense of guard.
+      - name: Verify package.json is marked private
+        run: |
+          node -e "
+            const pkg = require('./package.json');
+            if (pkg.private !== true) {
+              console.error('package.json must carry \"private\": true until registry publication is explicitly approved (#267)');
+              process.exit(1);
+            }
+            console.log('OK: package.json is private — npm/pnpm publish is blocked by default');
+          "

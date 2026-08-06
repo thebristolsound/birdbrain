@@ -11,12 +11,28 @@ import { presets } from '@renderer/lib/motion'
 import { settingsQueryOptions } from '@renderer/lib/api/settings'
 import { openCaptureExternal } from '@renderer/lib/api/system'
 import { captureAnalysisQueryOptions, useAiMutations } from '@renderer/lib/api/ai'
+import type { AnalysisRun } from '@renderer/lib/api/ai'
+import type { CaptureAnalysis } from '@shared/types'
 
 interface AnalysisTabProps {
   captureId: string
   caseId: string
   captureTitle: string
   onOpenNote: (prefillTitle: string, prefillBody: string) => void
+}
+
+// Every field the save writes, not just the content. A re-run under a different
+// model can return byte-identical text, and comparing content alone would call
+// that run saved while the row still credits the previous model.
+function runIsStored(run: AnalysisRun, stored: CaptureAnalysis | null | undefined): boolean {
+  return (
+    !!stored &&
+    run.content === stored.content &&
+    run.model === stored.model &&
+    run.tokenUsage.prompt === stored.tokenUsage.prompt &&
+    run.tokenUsage.completion === stored.tokenUsage.completion &&
+    run.tokenUsage.total === stored.tokenUsage.total
+  )
 }
 
 export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: AnalysisTabProps) {
@@ -53,20 +69,27 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
   // moment the write lands.
   const content = run?.content ?? savedAnalysis?.content ?? null
   const tokenUsage = run?.tokenUsage ?? savedAnalysis?.tokenUsage ?? null
-  const analysisTimestamp =
-    run?.analyzedAt ?? savedAnalysis?.updatedAt ?? savedAnalysis?.createdAt ?? null
-  const hasUnsavedChanges = !!run && run.content !== savedAnalysis?.content
+  const hasUnsavedChanges = !!run && !runIsStored(run, savedAnalysis)
+  // The run's own stamp is not persisted, so it can only stand in until the row
+  // exists. Once the run is stored, the footer has to read the row's timestamp
+  // or it shows the moment of analysis beside "✓ Saved" while the row — and
+  // anything reading it later — records the moment of the save.
+  const analysisTimestamp = hasUnsavedChanges
+    ? (run?.analyzedAt ?? null)
+    : (savedAnalysis?.updatedAt ?? savedAnalysis?.createdAt ?? null)
 
   const handleAnalyze = () => analyze.mutate({ captureId, caseId, model: selectedModel })
 
+  // Content, model and token usage all come off the same run, so the row cannot
+  // record one run's output against another run's model.
   const handleSave = () => {
-    if (!content || !tokenUsage) return
+    if (!run) return
     saveAnalysis.mutate({
       captureId,
       caseId,
-      content,
-      model: selectedModel,
-      tokenUsage,
+      content: run.content,
+      model: run.model,
+      tokenUsage: run.tokenUsage,
       existing: savedAnalysis
     })
   }

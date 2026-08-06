@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { QueryClient } from '@tanstack/react-query'
 import type { CaptureAnalysis } from '@shared/types'
 import { fakeBridge } from '../fakeBridge'
@@ -35,7 +35,14 @@ describe('captureAnalysisQueryOptions', () => {
 })
 
 describe('aiMutationOptions.analyze', () => {
-  it('passes analyze params straight through and stamps the run', async () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('passes analyze params straight through and stamps the run when it runs', async () => {
+    // Only Date is faked: the mutationFn awaits, and faking the timer queue
+    // would leave that await unresolved.
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-08-06T10:00:00.000Z') })
     const analyze = vi.fn(async () => ({ content: 'x', tokenUsage: analysis.tokenUsage }))
     fakeBridge({ ai: { analyze } })
 
@@ -46,13 +53,34 @@ describe('aiMutationOptions.analyze', () => {
     expect(run.content).toBe('x')
     expect(run.tokenUsage).toEqual(analysis.tokenUsage)
     // The run carries its own timestamp so the tab renders the moment the
-    // analysis landed rather than the moment some effect noticed it.
-    expect(Number.isNaN(Date.parse(run.analyzedAt))).toBe(false)
+    // analysis landed rather than the moment some effect noticed it. Pinned to
+    // the exact clock value: a hardcoded constant would satisfy "is a date".
+    expect(run.analyzedAt).toBe('2026-08-06T10:00:00.000Z')
+  })
+
+  it('carries the model that produced the run', async () => {
+    const analyze = vi.fn(async () => ({ content: 'x', tokenUsage: analysis.tokenUsage }))
+    fakeBridge({ ai: { analyze } })
+
+    const run = await aiMutationOptions(new QueryClient()).analyze.mutationFn({
+      captureId: 'c1',
+      caseId: 'case1',
+      model: 'model-a'
+    })
+
+    // The row credits a model for the findings, so the run has to remember
+    // which one it asked rather than leaving the save to re-read the picker.
+    expect(run.model).toBe('model-a')
   })
 })
 
 describe('aiMutationOptions.saveAnalysis', () => {
-  it('mints id and createdAt for a capture with no stored analysis', async () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('mints id and createdAt at save time for a capture with no stored analysis', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-08-06T10:20:00.000Z') })
     const saveAnalysis = vi.fn(async () => undefined)
     fakeBridge({ ai: { saveAnalysis } })
 
@@ -66,6 +94,9 @@ describe('aiMutationOptions.saveAnalysis', () => {
 
     expect(saveAnalysis).toHaveBeenCalledWith(saved)
     expect(saved.id).toMatch(/^[0-9a-f-]{36}$/)
+    // The row is stamped when it is written, not when the analysis ran: the
+    // run's own `analyzedAt` is display-only and reaches no column.
+    expect(saved.createdAt).toBe('2026-08-06T10:20:00.000Z')
     expect(saved.createdAt).toBe(saved.updatedAt)
     expect(saved).toMatchObject({
       captureId: 'c1',

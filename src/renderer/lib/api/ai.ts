@@ -13,12 +13,17 @@ export const captureAnalysisQueryOptions = (captureId: string) =>
   })
 
 /**
- * One completed analysis run: the model's output plus the moment it landed.
- * `analyzedAt` is minted in the mutationFn so the timestamp on screen is the
- * same one that gets written when the run is saved.
+ * One completed analysis run: the model's output, the model that produced it,
+ * and the moment it landed.
+ *
+ * `analyzedAt` is display-only. `CaptureAnalysis` has no field for it, and
+ * `saveAnalysis` stamps its own `createdAt`/`updatedAt` at write time, so the
+ * run's timestamp never reaches the row — the tab shows it only while the run
+ * is still unsaved.
  */
 export interface AnalysisRun {
   content: string
+  model: string
   tokenUsage: TokenUsage
   analyzedAt: string
 }
@@ -44,7 +49,15 @@ export function aiMutationOptions(queryClient: QueryClient) {
     analyze: {
       mutationFn: async (params: AnalyzeCaptureParams): Promise<AnalysisRun> => {
         const { content, tokenUsage } = await window.birdbrain.ai.analyze(params)
-        return { content, tokenUsage, analyzedAt: new Date().toISOString() }
+        // The model travels with the run because the picker can move between
+        // analysing and saving. The row records what produced the findings,
+        // not what happened to be selected when Save was pressed.
+        return {
+          content,
+          model: params.model,
+          tokenUsage,
+          analyzedAt: new Date().toISOString()
+        }
       },
       meta: { action: 'analyse the capture' }
     },

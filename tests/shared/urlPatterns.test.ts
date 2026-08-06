@@ -234,13 +234,13 @@ describe('matchIgnoredUrl', () => {
 // The one input class where the two evaluators return DIFFERENT answers, pinned
 // here so it is a known answer rather than an unknown.
 //
-// safeRegexTest gives each pattern a 200 ms vm budget and returns false when the
-// budget expires (src/main/services/safeRegex.ts). A pattern that backtracks
-// past that budget therefore reads as "not ignored" on the capture server, while
-// the extension's platform RegExp has no budget and eventually reports the
-// match. The server's direction is fail-open: the operator wrote a rule that
-// matches, and the capture is accepted, hashed, manifest-chained and filed with
-// no `Blacklisted: <pattern>` skip record.
+// safeRegexTest gives each pattern a vm budget (200 ms in production) and
+// returns false when the budget expires (src/main/services/safeRegex.ts). A
+// pattern that backtracks past that budget therefore reads as "not ignored" on
+// the capture server, while the extension's platform RegExp has no budget and
+// eventually reports the match. The server's direction is fail-open: the
+// operator wrote a rule that matches, and the capture is accepted, hashed,
+// manifest-chained and filed with no `Blacklisted: <pattern>` skip record.
 //
 // What that costs depends on the route. The extension pre-filters with this
 // matcher on the context-menu capture handler and on checkSelectorsOnTab, so
@@ -253,12 +253,23 @@ describe('matchIgnoredUrl', () => {
 // timed out to `false` before it too. It is recorded, not fixed: making a
 // timeout fail-closed changes what the server does with an evidence-path rule
 // and belongs to its own change.
-describe('evaluator divergence (catastrophic backtracking)', () => {
+describe('evaluator divergence (server fails open when its budget expires)', () => {
   const PATTERN = '/(a+)+b/'
   const REGEX_BODY = '(a+)+b'
   // The URL ends in 'aaab', which the pattern does match, so an evaluation
   // allowed to finish answers "ignored".
-  const TARGET_URL = `https://example.com/${'a'.repeat(26)}/x/aaab`
+  const TARGET_URL = `https://example.com/${'a'.repeat(23)}/x/aaab`
+
+  // The budget half of the known-answer triple (#330). safeRegexTest takes it as
+  // an argument precisely so this pin does not have to race the runner: the
+  // question the assertions ask is "what does the server answer when the budget
+  // expires", and that question is answered by a budget the evaluation cannot
+  // possibly meet, not by an input tuned to overrun 200 ms on one machine.
+  // Production is unaffected — 200 ms remains the default and is pinned by value
+  // in tests/main/services/safeRegex.test.ts.
+  const SERVER_BUDGET_MS = 1
+  const budgetedServerTest: RegexTest = (source, flags, text) =>
+    safeRegexTest(source, flags, text, SERVER_BUDGET_MS)
 
   // Both sides really run the pattern — a stubbed evaluator would only prove
   // that matchIgnoredUrl returns what it is told, not that the two production
@@ -292,21 +303,23 @@ describe('evaluator divergence (catastrophic backtracking)', () => {
     }
   }
 
-  // Measured on the container this was written on (Node 22, `pnpm test
-  // tests/shared/urlPatterns.test.ts`): the full evaluation takes ~3.8 s on the
-  // first run in a fresh process and ~0.5-0.6 s once V8 has tiered up the
-  // regexp, against the 200 ms budget. So the margin in the direction that
-  // matters — the sandbox must NOT finish — is only ~3x on warm code, not the
-  // order of magnitude the shape of the test suggests. A machine ~3x faster
-  // than this one finishes inside 200 ms, at which point the two evaluators
-  // genuinely agree on this input and these assertions are genuinely wrong
-  // there: the right response is a longer 'a' run, not a weaker assertion.
-  // (n=27 measured ~1.1 s warm / ~7.7 s cold, n=28 ~1.9 s / ~13.1 s — the cost
-  // doubles per character, which is why 26 is the operating point.)
+  // Neither assertion below is a close race. Measured on the container this was
+  // written on (Electron's Node 20 runtime, `pnpm test
+  // tests/shared/urlPatterns.test.ts`), the n=23 evaluation takes ~560 ms on the
+  // first run in a fresh process and ~100 ms once V8 has tiered up the regexp:
+  // ~100x the 1 ms budget the sandbox is given, and ~50x under the 30 s deadline
+  // the platform side is given. Both margins have to close by two orders of
+  // magnitude before either assertion changes answer, and neither depends on
+  // hardware the way a 200 ms budget did — the previous shape of this test ran
+  // n=26 against the production 200 ms and had only a ~3x margin warm, so a ~3x
+  // faster runner made the two evaluators agree and turned it red with no code
+  // change (#329, #330). The 'a' run is still exponential in n and still the
+  // reason the sandbox cannot finish; what changed is that the budget it cannot
+  // finish inside is now chosen by the test rather than by production.
   // The 60 s per-test timeout is an outer bound the 30 s deadline stays under.
-  it('the underlying evaluators disagree: platform RegExp matches, safeRegexTest times out', () => {
+  it('the underlying evaluators disagree: platform RegExp matches, the server fails open', () => {
     expect(boundedPlatformTest(REGEX_BODY, '', TARGET_URL)).toBe(true)
-    expect(safeRegexTest(REGEX_BODY, '', TARGET_URL)).toBe(false)
+    expect(safeRegexTest(REGEX_BODY, '', TARGET_URL, SERVER_BUDGET_MS)).toBe(false)
   }, 60_000)
 
   it('so the extension reports the URL ignored and the capture server does not', () => {
@@ -319,7 +332,7 @@ describe('evaluator divergence (catastrophic backtracking)', () => {
       `platform evaluation did not finish within ${PLATFORM_DEADLINE_MS} ms`
     ).toBe(false)
     expect(extensionSide).toBe(PATTERN)
-    expect(matchIgnoredUrl(TARGET_URL, [PATTERN], safeRegexTest)).toBe(null)
+    expect(matchIgnoredUrl(TARGET_URL, [PATTERN], budgetedServerTest)).toBe(null)
   }, 60_000)
 })
 

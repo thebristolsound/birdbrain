@@ -15,6 +15,7 @@ import { cn } from '@renderer/lib/utils'
 import { LogTab } from '@renderer/components/diagnostics/LogTab'
 import { openPath } from '@renderer/lib/api/system'
 import { diagnosticsQueryOptions } from '@renderer/lib/api/diagnostics'
+import { notify } from '@renderer/lib/notify'
 
 // Settings → Diagnostics. Live snapshot of app environment, main-process
 // responsiveness (event-loop stalls = the "pinwheel"), storage, and the
@@ -138,6 +139,26 @@ export function DiagnosticsPanel() {
 
   const snap: DiagnosticsSnapshot = data
   const schemaMismatch = snap.data.schemaVersion !== snap.data.latestSchemaVersion
+
+  // notify, not local state: the panel owns no error region, and it is the
+  // surface an operator is already on when diagnosing an environment fault.
+  // The reason may name the storage path and stays in the toast — the ban is on
+  // durable and exportable copies, not on screen. The button below already
+  // prints storageRoot verbatim, RendererLogPayload has no message field, and
+  // redactSnapshot rewrites the path in anything that leaves the app.
+  // The resolved-reason branch is defensive only: main turns a non-empty
+  // shell.openPath reason into an IpcFailure that preload rethrows, so this
+  // bridge rejects for both of openPath's signals. Kept because it mirrors
+  // ExportComplete and because lib/api/system still types this Promise<string>.
+  async function handleOpenStorageRoot() {
+    try {
+      const reason = await openPath(snap.storage.storageRoot)
+      if (reason) notify.error(`Couldn't open the storage folder — ${reason}`)
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err)
+      notify.error(`Couldn't open the storage folder — ${reason}`, { cause: err })
+    }
+  }
 
   return (
     <Card>
@@ -276,7 +297,7 @@ export function DiagnosticsPanel() {
               </p>
               <button
                 type="button"
-                onClick={() => openPath(snap.storage.storageRoot)}
+                onClick={() => void handleOpenStorageRoot()}
                 className="mt-1 block max-w-full truncate font-mono text-xs text-accent hover:text-accent-hover"
                 title="Open storage folder"
               >

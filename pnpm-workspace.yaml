@@ -15,6 +15,21 @@ onlyBuiltDependencies:
 
 overrides:
   tar: ^7.5.16
+  # Transitive-only advisory fixes (none of these are direct dependencies; each
+  # is pulled in by a devDependency's own subtree). Pinned to the lowest patched
+  # version per advisory rather than "latest" to keep the bump minimal. See
+  # .github/workflows/security.yml for the audit step these clear and
+  # docs/specs/2026-08-05-dependency-advisory-baseline.md for the full disposition.
+  brace-expansion@1: ^1.1.18
+  brace-expansion@2: ^2.1.4
+  brace-expansion@5: ^5.0.9
+  fast-uri: ^3.1.5
+  postcss: ^8.5.23
+  ip-address: ^10.3.1
+  undici@6: ^6.28.0
+  undici@7: ^7.29.0
+  builder-util-runtime: ^9.7.0
+  app-builder-lib: ^26.15.0
 
 supportedArchitectures:
   os:

@@ -137,6 +137,11 @@ describe('DiagnosticsPanel storage folder action', () => {
 
     await waitFor(() => expect(toastFns.error).toHaveBeenCalled())
     expect(toastFns.error.mock.calls[0][0]).toContain('EACCES: permission denied')
+    // The path is deliberately NOT withheld from the toast: the toast is
+    // ephemeral, the panel prints storageRoot verbatim as the button that was
+    // just clicked, and #350's third criterion scopes the ban to durable
+    // messages. Asserted so a future "sanitise this" edit turns red here.
+    expect(toastFns.error.mock.calls[0][0]).toContain(STORAGE_ROOT)
 
     // notify writes the code and the cause's constructor name, never prose —
     // the path the operator sees in the toast must not reach the log file.
@@ -156,6 +161,7 @@ describe('DiagnosticsPanel storage folder action', () => {
 
     await waitFor(() => expect(toastFns.error).toHaveBeenCalled())
     expect(toastFns.error.mock.calls[0][0]).toContain('Failed to open path')
+    expect(toastFns.error.mock.calls[0][0]).toContain(STORAGE_ROOT)
 
     await waitFor(() => expect(log).toHaveBeenCalled())
     const payload = JSON.stringify(log.mock.calls[0][0])

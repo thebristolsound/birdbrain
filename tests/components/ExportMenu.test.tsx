@@ -94,12 +94,18 @@ describe('ExportMenu', () => {
   })
 
   it('surfaces a failed reveal through the export error banner', async () => {
-    showItemInFolder.mockRejectedValue(new Error('no such directory'))
+    // Path-bearing on purpose: a real shell error names the path it failed on.
+    showItemInFolder.mockRejectedValue(new Error(`no such directory: ${ARCHIVE_PATH}`))
     await exportArchiveThen()
 
     fireEvent.click(screen.getByText('Show in folder'))
 
     const alert = await screen.findByRole('alert')
     expect(alert.textContent).toContain('no such directory')
+    // The banner is local component state, which #350's third criterion
+    // explicitly permits to show the path — same as ExportComplete's
+    // actionError, the reference implementation the issue names. Asserted so
+    // the decision is pinned rather than ambient.
+    expect(alert.textContent).toContain(ARCHIVE_PATH)
   })
 })

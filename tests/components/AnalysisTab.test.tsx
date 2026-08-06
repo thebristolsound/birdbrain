@@ -150,6 +150,45 @@ describe('AnalysisTab', () => {
     await waitFor(() => expect(getAnalysis).toHaveBeenCalledTimes(2))
   })
 
+  it('re-analyses over a stored row without re-minting its identity', async () => {
+    // A stand-in for the upsert in main: the read reflects the write, so the
+    // post-save refetch confirms the row rather than contradicting it.
+    let stored: typeof saved = saved
+    const getAnalysis = vi.fn(async () => stored)
+    const analyze = vi.fn(async () => ({
+      content: 'revised findings',
+      tokenUsage: { prompt: 6, completion: 7, total: 13 }
+    }))
+    const saveAnalysis = vi.fn(async (analysis: typeof saved) => {
+      stored = analysis
+    })
+    fakeBridge({
+      settings: { get: vi.fn(async () => settings), listModels: vi.fn(async () => []) },
+      ai: { getAnalysis, analyze, saveAnalysis }
+    })
+
+    renderTab()
+
+    fireEvent.click(await screen.findByText('Re-analyze'))
+
+    expect(await screen.findByText('revised findings')).toBeDefined()
+    expect(screen.getByText('⚡ Unsaved')).toBeDefined()
+
+    fireEvent.click(screen.getByText('Save Changes'))
+
+    await waitFor(() => expect(saveAnalysis).toHaveBeenCalledOnce())
+    // The row is upserted by captureId: a second identity or a rewritten
+    // createdAt would misdate when this capture was first analysed.
+    expect(saveAnalysis.mock.calls[0][0]).toMatchObject({
+      id: saved.id,
+      createdAt: saved.createdAt,
+      content: 'revised findings'
+    })
+    // The saved row is written through to the cache, so the tab settles on
+    // "saved" from the write rather than from a locally cleared flag.
+    expect(await screen.findByText('✓ Saved')).toBeDefined()
+  })
+
   it('offers a retry when the analysis call fails', async () => {
     fakeBridge({
       settings: { get: vi.fn(async () => settings), listModels: vi.fn(async () => []) },

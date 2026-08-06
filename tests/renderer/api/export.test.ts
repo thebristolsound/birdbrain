@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import type { ExportOptions } from '@shared/types'
+import type { ExportOptions, ExportPreflight } from '@shared/types'
 import { fakeBridge } from '../fakeBridge'
 import {
   exportPreflightQueryOptions,
@@ -9,14 +9,24 @@ import { queryKeys } from '@renderer/lib/api/keys'
 
 describe('exportPreflightQueryOptions', () => {
   it('reads the preflight summary for a case', async () => {
-    const preflight = vi.fn(async () => ({ captureCount: 3 }))
+    // The whole summary, not a one-field stand-in: the dialog renders the
+    // unstamped/pending/none counts, and a stub shaped unlike the real read
+    // lets this test pass over a query that no longer returns them.
+    const summary = {
+      captureCount: 3,
+      stampedCaptureCount: 1,
+      unstampedCaptureCount: 2,
+      pendingCaptureCount: 1,
+      noneCaptureCount: 1
+    } satisfies ExportPreflight
+    const preflight = vi.fn(async () => summary)
     fakeBridge({ export: { preflight } })
 
     const opts = exportPreflightQueryOptions('case1')
 
     expect(opts.queryKey).toEqual(queryKeys.exportPreflight('case1'))
     expect(opts.enabled).toBe(true)
-    await expect(opts.queryFn?.({} as never)).resolves.toEqual({ captureCount: 3 })
+    await expect(opts.queryFn?.({} as never)).resolves.toEqual(summary)
     expect(preflight).toHaveBeenCalledWith('case1')
   })
 

@@ -1,0 +1,105 @@
+// @vitest-environment jsdom
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import type { ReactNode } from 'react'
+import type { ArchiveExportResult } from '@shared/ipc'
+
+// Strips the animation-only props (they are not valid DOM attributes) and
+// forwards the rest — Button renders through motion.button, so dropping props
+// here would silently drop its onClick.
+vi.mock('motion/react', async () => {
+  const React = await import('react')
+  const motion = new Proxy(
+    {},
+    {
+      get: (_, tag: string) =>
+        React.forwardRef<HTMLElement, Record<string, unknown> & { children?: ReactNode }>(
+          ({ children, ...props }, ref) => {
+            const {
+              initial,
+              animate,
+              exit,
+              transition,
+              whileTap,
+              whileHover,
+              layout,
+              ...domProps
+            } = props
+            void initial
+            void animate
+            void exit
+            void transition
+            void whileTap
+            void whileHover
+            void layout
+            return React.createElement(tag, { ...domProps, ref }, children)
+          }
+        )
+    }
+  )
+  return { motion, AnimatePresence: ({ children }: { children: ReactNode }) => children }
+})
+
+import { ExportMenu } from '@renderer/components/export/ExportMenu'
+import { fakeBridge } from '../renderer/fakeBridge'
+
+const ARCHIVE_PATH = '/home/tester/Case_One.bbcase'
+
+function renderMenu() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  function Wrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  }
+  return render(<ExportMenu caseId="case-1" caseName="Case One" />, { wrapper: Wrapper })
+}
+
+// Drives the menu to the state where the "Show in folder" affordance exists:
+// it only appears on the success banner of a completed archive export.
+async function exportArchiveThen() {
+  renderMenu()
+  fireEvent.click(screen.getByRole('button', { name: 'Export' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: /export case file/i }))
+  expect(await screen.findByText('Archive saved')).toBeDefined()
+}
+
+describe('ExportMenu', () => {
+  let exportArchive: ReturnType<typeof vi.fn>
+  let showItemInFolder: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    exportArchive = vi.fn().mockResolvedValue({
+      canceled: false,
+      filePath: ARCHIVE_PATH
+    } satisfies ArchiveExportResult)
+    showItemInFolder = vi.fn().mockResolvedValue(undefined)
+    fakeBridge({
+      cases: { exportArchive },
+      shell: { showItemInFolder }
+    })
+  })
+
+  afterEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+  })
+
+  it('reveals the exported archive with no error banner on success', async () => {
+    await exportArchiveThen()
+
+    fireEvent.click(screen.getByText('Show in folder'))
+
+    await waitFor(() => expect(showItemInFolder).toHaveBeenCalledWith(ARCHIVE_PATH))
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('surfaces a failed reveal through the export error banner', async () => {
+    showItemInFolder.mockRejectedValue(new Error('no such directory'))
+    await exportArchiveThen()
+
+    fireEvent.click(screen.getByText('Show in folder'))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toContain('no such directory')
+  })
+})

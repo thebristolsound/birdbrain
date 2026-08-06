@@ -15,6 +15,7 @@ import { cn } from '@renderer/lib/utils'
 import { LogTab } from '@renderer/components/diagnostics/LogTab'
 import { openPath } from '@renderer/lib/api/system'
 import { diagnosticsQueryOptions } from '@renderer/lib/api/diagnostics'
+import { notify } from '@renderer/lib/notify'
 
 // Settings → Diagnostics. Live snapshot of app environment, main-process
 // responsiveness (event-loop stalls = the "pinwheel"), storage, and the
@@ -138,6 +139,25 @@ export function DiagnosticsPanel() {
 
   const snap: DiagnosticsSnapshot = data
   const schemaMismatch = snap.data.schemaVersion !== snap.data.latestSchemaVersion
+
+  // shell.openPath reports a refusal by *resolving* to a non-empty reason
+  // string; only a transport failure rejects. Both have to reach the operator,
+  // or the folder silently never opens. This panel has no error region of its
+  // own and is the surface an operator is already on when diagnosing that kind
+  // of environment fault, so the failure goes through notify: the toast is
+  // immediate and the durable entry lands in the Log tab one click away.
+  // The reason may embed the storage path; it stays in the toast, because
+  // RendererLogPayload has no message field and only the cause's constructor
+  // name is written (notify.ts:32).
+  async function handleOpenStorageRoot() {
+    try {
+      const reason = await openPath(snap.storage.storageRoot)
+      if (reason) notify.error(`Couldn't open the storage folder — ${reason}`)
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err)
+      notify.error(`Couldn't open the storage folder — ${reason}`, { cause: err })
+    }
+  }
 
   return (
     <Card>
@@ -276,7 +296,7 @@ export function DiagnosticsPanel() {
               </p>
               <button
                 type="button"
-                onClick={() => openPath(snap.storage.storageRoot)}
+                onClick={() => void handleOpenStorageRoot()}
                 className="mt-1 block max-w-full truncate font-mono text-xs text-accent hover:text-accent-hover"
                 title="Open storage folder"
               >

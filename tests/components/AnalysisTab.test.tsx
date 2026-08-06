@@ -150,6 +150,38 @@ describe('AnalysisTab', () => {
     await waitFor(() => expect(getAnalysis).toHaveBeenCalledTimes(2))
   })
 
+  it('analyses with the model the operator picked over the stored default', async () => {
+    const analyze = vi.fn(async () => ({
+      content: 'fresh findings',
+      tokenUsage: { prompt: 4, completion: 5, total: 9 }
+    }))
+    fakeBridge({
+      settings: {
+        get: vi.fn(async () => settings),
+        listModels: vi.fn(async () => [
+          { id: 'model-a', name: 'Model A' },
+          { id: 'model-b', name: 'Model B' }
+        ])
+      },
+      ai: { getAnalysis: vi.fn(async () => null), analyze }
+    })
+
+    renderTab()
+
+    // The model is recorded on the analysis row, so the pick has to reach the
+    // call rather than the stored default silently winning.
+    fireEvent.change(await screen.findByRole('combobox'), { target: { value: 'model-b' } })
+    fireEvent.click(screen.getByText('Analyze'))
+
+    await waitFor(() =>
+      expect(analyze).toHaveBeenCalledWith({
+        captureId: 'c1',
+        caseId: 'case-1',
+        model: 'model-b'
+      })
+    )
+  })
+
   it('re-analyses over a stored row without re-minting its identity', async () => {
     // A stand-in for the upsert in main: the read reflects the write, so the
     // post-save refetch confirms the row rather than contradicting it.

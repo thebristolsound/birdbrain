@@ -152,9 +152,14 @@ describe('DiagnosticsPanel storage folder action', () => {
     expect(payload).toContain('"error":"Error"')
   })
 
-  it('surfaces the failure openPath reports by resolving to a non-empty string', async () => {
-    // shell.openPath refuses by resolving, not rejecting — a catch alone leaves
-    // this path silent. The reason carries the path for the same reason as above.
+  it('surfaces a non-empty resolved openPath reason, the branch main normalises away', async () => {
+    // Defensive branch, and this fixture is a shape the live bridge cannot
+    // produce: main converts a non-empty shell.openPath reason into an
+    // IpcFailure, which preload rethrows, so openPath rejects for both of the
+    // signals it can carry. The branch is still reachable by type — lib/api's
+    // openPath is declared Promise<string> — and mirrors ExportComplete, so
+    // this pins it against the day either of those changes. The reason carries
+    // the path for the same reason as above.
     openPath.mockResolvedValue(`Failed to open path ${STORAGE_ROOT}`)
     renderPanel()
     await clickStorageRoot()

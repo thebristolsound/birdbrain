@@ -140,18 +140,16 @@ export function DiagnosticsPanel() {
   const snap: DiagnosticsSnapshot = data
   const schemaMismatch = snap.data.schemaVersion !== snap.data.latestSchemaVersion
 
-  // shell.openPath reports a refusal by *resolving* to a non-empty reason
-  // string; only a transport failure rejects. Both have to reach the operator,
-  // or the folder silently never opens. This panel has no error region of its
-  // own and is the surface an operator is already on when diagnosing that kind
-  // of environment fault, so the failure goes through notify: the toast is
-  // immediate and the durable entry lands in the Log tab one click away.
-  // The reason may embed the storage path, and it stays in the toast. The ban
-  // is on durable and exportable copies, not on screen: this panel already
-  // prints storageRoot verbatim as the button below, RendererLogPayload has no
-  // message field so only the cause's constructor name is written
-  // (notify.ts:32), and redactSnapshot replaces the path with ‹path› in
-  // anything that leaves the app (bugReport.ts:94).
+  // notify, not local state: the panel owns no error region, and it is the
+  // surface an operator is already on when diagnosing an environment fault.
+  // The reason may name the storage path and stays in the toast — the ban is on
+  // durable and exportable copies, not on screen. The button below already
+  // prints storageRoot verbatim, RendererLogPayload has no message field, and
+  // redactSnapshot rewrites the path in anything that leaves the app.
+  // The resolved-reason branch is defensive only: main turns a non-empty
+  // shell.openPath reason into an IpcFailure that preload rethrows, so this
+  // bridge rejects for both of openPath's signals. Kept because it mirrors
+  // ExportComplete and because lib/api/system still types this Promise<string>.
   async function handleOpenStorageRoot() {
     try {
       const reason = await openPath(snap.storage.storageRoot)

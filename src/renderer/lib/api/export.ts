@@ -1,18 +1,34 @@
+import { queryOptions, useMutation } from '@tanstack/react-query'
 import type { ExportResult } from '@shared/ipc'
-import type { ExportOptions, ExportPreflight } from '@shared/types'
+import type { ExportOptions } from '@shared/types'
+import { queryKeys } from '@renderer/lib/api/keys'
 
-// Both calls stay plain wrappers rather than becoming a query and a mutation.
-// ExportDialog drives the preflight from a mount effect and the generate from
-// its own phase machine, and rehoming either into the cache is a behaviour
-// change the design keeps out of the mechanical move. Tracked in #346.
+// The preflight is a plain read of case state — how many captures carry RFC
+// 3161 trusted time — rendered as a warning above the export button, so it
+// takes the cacheable-read shape rather than a one-shot command.
+export const exportPreflightQueryOptions = (caseId: string) =>
+  queryOptions({
+    queryKey: queryKeys.exportPreflight(caseId),
+    queryFn: () => window.birdbrain.export.preflight(caseId),
+    enabled: !!caseId
+  })
 
-export function exportPreflight(caseId: string): Promise<ExportPreflight> {
-  return window.birdbrain.export.preflight(caseId)
+export interface GenerateExportInput {
+  caseId: string
+  options: ExportOptions
 }
 
-export function generateExportReport(
-  caseId: string,
-  options: ExportOptions
-): Promise<ExportResult> {
-  return window.birdbrain.export.generateReport(caseId, options)
+// No invalidation, and so no QueryClient: generating a package writes a .zip
+// outside the database and appends one `export` entry to the on-disk case
+// manifest. Nothing a cached query reads moves — `manifestIndex` on a capture
+// row is written at ingest and is not touched here — so there is nothing to
+// refetch. Same reasoning as `exportTable` in db.ts.
+export const generateExportMutationOptions = {
+  mutationFn: ({ caseId, options }: GenerateExportInput): Promise<ExportResult> =>
+    window.birdbrain.export.generateReport(caseId, options),
+  meta: { action: 'export the case' }
+}
+
+export function useExportMutations() {
+  return { generate: useMutation(generateExportMutationOptions) }
 }

@@ -42,6 +42,7 @@ export const queryKeys = {
   openRouterModels: ['openRouterModels'] as const,
   appVersion: ['appVersion'] as const,
   captureAnalysis: (captureId: string) => ['analysis', captureId] as const,
+  exportPreflight: (caseId: string) => ['export', 'preflight', caseId] as const,
   recaptureQueue: ['recaptureQueue'] as const,
   diagnostics: ['diagnostics'] as const,
   dbStats: ['db', 'stats'] as const,

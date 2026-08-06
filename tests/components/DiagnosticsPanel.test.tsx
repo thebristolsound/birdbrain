@@ -128,7 +128,10 @@ describe('DiagnosticsPanel storage folder action', () => {
   })
 
   it('surfaces a rejected openPath and keeps the storage path out of the durable log', async () => {
-    openPath.mockRejectedValue(new Error('EACCES: permission denied'))
+    // The rejection embeds the storage path the way a real fs/shell error does.
+    // Without it the assertion below passes even if notify serialised the whole
+    // toast message, because a path-free message contains no path to find.
+    openPath.mockRejectedValue(new Error(`EACCES: permission denied, scandir '${STORAGE_ROOT}'`))
     renderPanel()
     await clickStorageRoot()
 
@@ -146,8 +149,8 @@ describe('DiagnosticsPanel storage folder action', () => {
 
   it('surfaces the failure openPath reports by resolving to a non-empty string', async () => {
     // shell.openPath refuses by resolving, not rejecting — a catch alone leaves
-    // this path silent.
-    openPath.mockResolvedValue('Failed to open path')
+    // this path silent. The reason carries the path for the same reason as above.
+    openPath.mockResolvedValue(`Failed to open path ${STORAGE_ROOT}`)
     renderPanel()
     await clickStorageRoot()
 
@@ -155,6 +158,8 @@ describe('DiagnosticsPanel storage folder action', () => {
     expect(toastFns.error.mock.calls[0][0]).toContain('Failed to open path')
 
     await waitFor(() => expect(log).toHaveBeenCalled())
-    expect(JSON.stringify(log.mock.calls[0][0])).not.toContain(STORAGE_ROOT)
+    const payload = JSON.stringify(log.mock.calls[0][0])
+    expect(payload).not.toContain(STORAGE_ROOT)
+    expect(payload).not.toContain('tester')
   })
 })

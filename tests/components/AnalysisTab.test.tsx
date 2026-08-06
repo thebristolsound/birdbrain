@@ -327,6 +327,40 @@ describe('AnalysisTab', () => {
     expect(screen.getByText(new Date('2026-08-06T10:20:00.000Z').toLocaleString())).toBeDefined()
   })
 
+  it('says so when the clipboard copy is refused', async () => {
+    fakeBridge({
+      settings: { get: vi.fn(async () => settings), listModels: vi.fn(async () => []) },
+      ai: { getAnalysis: vi.fn(async () => saved) }
+    })
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn(async () => Promise.reject(new Error('denied'))) },
+      configurable: true
+    })
+
+    renderTab()
+
+    fireEvent.click(await screen.findByText('Copy'))
+
+    // A rejected write with an unchanged button reads as "nothing happened".
+    expect(await screen.findByText('Copy failed')).toBeDefined()
+  })
+
+  it('confirms the copy when the clipboard accepts it', async () => {
+    const writeText = vi.fn(async () => undefined)
+    fakeBridge({
+      settings: { get: vi.fn(async () => settings), listModels: vi.fn(async () => []) },
+      ai: { getAnalysis: vi.fn(async () => saved) }
+    })
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+
+    renderTab()
+
+    fireEvent.click(await screen.findByText('Copy'))
+
+    expect(await screen.findByText('Copied!')).toBeDefined()
+    expect(writeText).toHaveBeenCalledWith(saved.content)
+  })
+
   it('offers a retry when the analysis call fails', async () => {
     fakeBridge({
       settings: { get: vi.fn(async () => settings), listModels: vi.fn(async () => []) },

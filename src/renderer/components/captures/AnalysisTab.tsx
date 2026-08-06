@@ -41,7 +41,7 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
   // The two pieces of state with no server counterpart: the operator's model
   // pick (null until they override the stored default) and the 2s copy flash.
   const [modelOverride, setModelOverride] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
 
   const { data: settings } = useQuery(settingsQueryOptions)
   const { data: savedAnalysis, isLoading: isLoadingSaved } = useQuery(
@@ -96,9 +96,17 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
 
   const handleCopyToClipboard = async () => {
     if (!content) return
-    await navigator.clipboard.writeText(content)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    // A denied clipboard permission rejects, and an unchanged button reads as
+    // "nothing happened" rather than as a failure. Only the label changes: the
+    // analysis text is what did not leave the app, so it must not leave through
+    // the failure path either.
+    try {
+      await navigator.clipboard.writeText(content)
+      setCopyState('copied')
+    } catch {
+      setCopyState('failed')
+    }
+    setTimeout(() => setCopyState('idle'), 2000)
   }
 
   const hasApiKey = !!settings?.openRouterApiKey
@@ -258,7 +266,13 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
                 title="Copy to clipboard"
               >
                 <Copy className="mr-1 h-3 w-3" />
-                <span className="text-[11px]">{copied ? 'Copied!' : 'Copy'}</span>
+                <span className="text-[11px]">
+                  {copyState === 'copied'
+                    ? 'Copied!'
+                    : copyState === 'failed'
+                      ? 'Copy failed'
+                      : 'Copy'}
+                </span>
               </Button>
 
               <Button

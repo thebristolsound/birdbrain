@@ -59,7 +59,7 @@ export function aiMutationOptions(queryClient: QueryClient) {
           analyzedAt: new Date().toISOString()
         }
       },
-      meta: { action: 'analyse the capture' }
+      meta: { action: 'analyze the capture' }
     },
     saveAnalysis: {
       mutationFn: async (input: SaveAnalysisInput): Promise<CaptureAnalysis> => {

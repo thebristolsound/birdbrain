@@ -146,9 +146,12 @@ export function DiagnosticsPanel() {
   // own and is the surface an operator is already on when diagnosing that kind
   // of environment fault, so the failure goes through notify: the toast is
   // immediate and the durable entry lands in the Log tab one click away.
-  // The reason may embed the storage path; it stays in the toast, because
-  // RendererLogPayload has no message field and only the cause's constructor
-  // name is written (notify.ts:32).
+  // The reason may embed the storage path, and it stays in the toast. The ban
+  // is on durable and exportable copies, not on screen: this panel already
+  // prints storageRoot verbatim as the button below, RendererLogPayload has no
+  // message field so only the cause's constructor name is written
+  // (notify.ts:32), and redactSnapshot replaces the path with ‹path› in
+  // anything that leaves the app (bugReport.ts:94).
   async function handleOpenStorageRoot() {
     try {
       const reason = await openPath(snap.storage.storageRoot)

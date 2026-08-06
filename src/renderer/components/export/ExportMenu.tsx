@@ -102,7 +102,10 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
 
   // Reveal is the only way back to the archive from this banner, so a failed
   // one has to say so — reusing the export banner rather than adding a second
-  // error surface, the same way ExportComplete reuses its actionError.
+  // error surface, the same way ExportComplete reuses its actionError. The
+  // message may name the archive path: this is local component state, never
+  // logged or serialised, which is the same latitude ExportComplete takes and
+  // the same latitude handleExportArchive above already takes on this banner.
   async function handleReveal(filePath: string) {
     setArchiveError('')
     try {

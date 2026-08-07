@@ -19,7 +19,11 @@ vi.mock('@tanstack/react-router', () => ({
 
 // The route's own handler is what is under test; the capture list, viewer and
 // note modal contribute nothing to it and each drag in their own data graph.
-// The details panel is reduced to the one control that invokes the handler.
+// The details panel and rail are each reduced to the one control that invokes
+// the handler. Their labels differ because the route can mount both at once —
+// the overlay panel renders *in addition to* the rail once forcedPanelOpen
+// flips — and a shared label would turn a future default change into a
+// "found multiple elements" failure rather than a failure about this handler.
 vi.mock('@renderer/components/captures/CaptureList', () => ({
   CaptureList: () => null
 }))
@@ -31,12 +35,12 @@ vi.mock('@renderer/components/notes/AddNoteModal', () => ({
 }))
 vi.mock('@renderer/components/captures/CaptureDetailsPanel', () => ({
   CaptureDetailsPanel: ({ onOpenExternal }: { onOpenExternal: () => void }) => (
-    <button onClick={onOpenExternal}>open externally</button>
+    <button onClick={onOpenExternal}>panel: open externally</button>
   )
 }))
 vi.mock('@renderer/components/captures/CaptureDetailsRail', () => ({
   CaptureDetailsRail: ({ onOpenExternal }: { onOpenExternal: () => void }) => (
-    <button onClick={onOpenExternal}>open externally</button>
+    <button onClick={onOpenExternal}>rail: open externally</button>
   )
 }))
 
@@ -57,7 +61,14 @@ const capture: Capture = {
   method: 'extension'
 }
 
+// jsdom's viewport is 1024px wide, under the route's 1100px collapse
+// threshold, so the rail is the variant that mounts here.
+const OPEN_CONTROL = 'rail: open externally'
+
 let openExternal: ReturnType<typeof vi.fn>
+// Held so the assertion can be on identity: the handler must pass the original
+// rejection through as `cause`, not a rewrapped stand-in.
+let cause: Error
 
 function renderRoute() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -69,8 +80,9 @@ function renderRoute() {
 
 beforeEach(() => {
   stubMatchMedia(false)
+  cause = new Error('EACCES')
   openExternal = vi.fn(async () => {
-    throw new Error('EACCES')
+    throw cause
   })
   fakeBridge({
     captures: { list: vi.fn(async () => [capture]), openExternal },
@@ -89,23 +101,23 @@ describe('CapturesRoute', () => {
   it("reports a failed shell launch when the capture's URL cannot be opened", async () => {
     renderRoute()
 
-    fireEvent.click(await screen.findByText('open externally'))
+    fireEvent.click(await screen.findByText(OPEN_CONTROL))
 
     await waitFor(() => expect(notifyError).toHaveBeenCalledOnce())
     expect(openExternal).toHaveBeenCalledWith('https://example.com/evidence')
     const [message, opts] = notifyError.mock.calls[0]
+    // Exact match, not a substring: the capture URL is the evidence trail, and
+    // a fixed literal with nothing interpolated into it is what keeps it out of
+    // the durable log. A message that grew the URL would fail here.
     expect(message).toBe("Couldn't open the link in your browser")
-    expect(opts.cause).toBeInstanceOf(Error)
-    // The capture URL is the evidence trail; it must not reach the durable log
-    // through the message.
-    expect(message).not.toContain('example.com')
+    expect(opts.cause).toBe(cause)
   })
 
   it('says nothing when the capture URL opens successfully', async () => {
     openExternal.mockResolvedValue(undefined)
     renderRoute()
 
-    fireEvent.click(await screen.findByText('open externally'))
+    fireEvent.click(await screen.findByText(OPEN_CONTROL))
 
     await waitFor(() => expect(openExternal).toHaveBeenCalledOnce())
     expect(notifyError).not.toHaveBeenCalled()

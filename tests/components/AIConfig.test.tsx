@@ -16,6 +16,9 @@ vi.mock('@renderer/lib/notify', () => ({
 import { AIConfig } from '@renderer/components/settings/AIConfig'
 import { fakeBridge } from '../renderer/fakeBridge'
 
+// Asserted, not annotated: AIConfig reads three of the ~20 fields on
+// BirdbrainSettings, and spelling out the other seventeen here would be noise
+// that says nothing about the behaviour under test.
 const settings = {
   openRouterApiKey: 'sk-test',
   defaultModel: 'model-a',
@@ -39,10 +42,14 @@ afterEach(() => {
 
 describe('AIConfig', () => {
   let openExternal: ReturnType<typeof vi.fn>
+  // Held so the assertion can be on identity: the handler must pass the
+  // original rejection through as `cause`, not a rewrapped stand-in.
+  let cause: Error
 
   beforeEach(() => {
+    cause = new Error('EACCES')
     openExternal = vi.fn(async () => {
-      throw new Error('EACCES')
+      throw cause
     })
     fakeBridge({
       settings: { listModels: vi.fn(async () => []) },
@@ -58,9 +65,11 @@ describe('AIConfig', () => {
     await waitFor(() => expect(notifyError).toHaveBeenCalledOnce())
     expect(openExternal).toHaveBeenCalledWith('https://openrouter.ai/keys')
     const [message, opts] = notifyError.mock.calls[0]
+    // Exact match, not a substring: the message is a fixed literal with the URL
+    // interpolated nowhere into it, which is what keeps URLs out of the durable
+    // log. A message that grew a URL would fail here.
     expect(message).toBe("Couldn't open the link in your browser")
-    expect(opts.cause).toBeInstanceOf(Error)
-    expect(message).not.toContain('openrouter.ai')
+    expect(opts.cause).toBe(cause)
   })
 
   it('says nothing when the link opens successfully', async () => {

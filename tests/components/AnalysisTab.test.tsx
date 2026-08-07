@@ -22,19 +22,42 @@ vi.mock('@renderer/lib/notify', () => ({
 // The one exception is the `a` override: routing AI-authored links through the
 // shell instead of in-app navigation IS behaviour under test, so a markdown
 // link is rendered through components.a rather than flattened to text.
-vi.mock('react-markdown', () => ({
-  default: ({
-    children,
-    components
-  }: {
-    children: string
-    components?: { a?: (props: { href?: string; children: ReactNode }) => ReactNode }
-  }) => {
-    const link = /\[([^\]]+)\]\(([^)]+)\)/.exec(children)
-    if (link && components?.a) return components.a({ href: link[2], children: link[1] })
-    return children
+vi.mock('react-markdown', async () => {
+  const React = await import('react')
+  return {
+    default: ({
+      children,
+      components
+    }: {
+      children: string
+      components?: { a?: (props: { href?: string; children: ReactNode }) => ReactNode }
+    }) => {
+      const anchor = components?.a
+      if (!anchor) return children
+      // Split on every link rather than returning the first one: a mock that
+      // kept only the link would discard the prose around it, and a later test
+      // asserting on both would fail on the missing prose with nothing
+      // pointing back at the mock as the cause.
+      const parts: ReactNode[] = []
+      const pattern = /\[([^\]]+)\]\(([^)]+)\)/g
+      let consumed = 0
+      for (let m = pattern.exec(children); m; m = pattern.exec(children)) {
+        if (m.index > consumed) parts.push(children.slice(consumed, m.index))
+        parts.push(
+          React.createElement(
+            React.Fragment,
+            { key: m.index },
+            anchor({ href: m[2], children: m[1] })
+          )
+        )
+        consumed = m.index + m[0].length
+      }
+      if (parts.length === 0) return children
+      if (consumed < children.length) parts.push(children.slice(consumed))
+      return parts
+    }
   }
-}))
+})
 
 // Strips the animation-only props (they are not valid DOM attributes) and
 // forwards everything else — Button renders through motion.button, so dropping
@@ -403,15 +426,18 @@ describe('AnalysisTab', () => {
   })
 
   it('reports a failed shell launch when a link in the analysis cannot be opened', async () => {
+    // Held so the assertion can be on identity: the handler must pass the
+    // original rejection through as `cause`, not a rewrapped stand-in.
+    const cause = new Error('EACCES')
     const openExternal = vi.fn(async () => {
-      throw new Error('EACCES')
+      throw cause
     })
     fakeBridge({
       settings: { get: vi.fn(async () => settings), listModels: vi.fn(async () => []) },
       ai: {
         getAnalysis: vi.fn(async () => ({
           ...saved,
-          content: 'see [the source](https://example.com/leak)'
+          content: 'see [the source](https://example.com/leak) before filing'
         }))
       },
       captures: { openExternal }
@@ -419,14 +445,19 @@ describe('AnalysisTab', () => {
 
     renderTab()
 
-    fireEvent.click(await screen.findByText('the source'))
+    const link = await screen.findByText('the source')
+    // Prose either side of the link survives the markdown mock, so a later
+    // test can assert on both without the mock quietly eating one of them.
+    expect(link.parentElement?.textContent).toBe('see the source before filing')
+
+    fireEvent.click(link)
 
     await waitFor(() => expect(notifyError).toHaveBeenCalledOnce())
     const [message, opts] = notifyError.mock.calls[0]
+    // Exact match, not a substring: the URL is the operator's evidence trail,
+    // and a fixed literal with nothing interpolated into it is what keeps it
+    // out of the durable log. A message that grew the URL would fail here.
     expect(message).toBe("Couldn't open the link in your browser")
-    expect(opts.cause).toBeInstanceOf(Error)
-    // The URL is the operator's evidence trail; it must not ride into the
-    // durable log via the message.
-    expect(message).not.toContain('example.com')
+    expect(opts.cause).toBe(cause)
   })
 })

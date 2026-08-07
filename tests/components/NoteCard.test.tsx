@@ -29,6 +29,9 @@ const note: Note = {
 }
 
 let openExternal: ReturnType<typeof vi.fn>
+// Held so the assertion can be on identity: the handler must pass the original
+// rejection through as `cause`, not a rewrapped stand-in.
+let cause: Error
 
 function renderCard() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -39,8 +42,9 @@ function renderCard() {
 }
 
 beforeEach(() => {
+  cause = new Error('EACCES')
   openExternal = vi.fn(async () => {
-    throw new Error('EACCES')
+    throw cause
   })
   fakeBridge({ captures: { openExternal } })
 })
@@ -59,11 +63,12 @@ describe('NoteCard', () => {
     await waitFor(() => expect(notifyError).toHaveBeenCalledOnce())
     expect(openExternal).toHaveBeenCalledWith('https://example.com/thread/42')
     const [message, opts] = notifyError.mock.calls[0]
+    // Exact match, not a substring: the note's source URL is operator-supplied
+    // content, and a fixed literal with nothing interpolated into it is what
+    // keeps it out of the durable log. A message that grew the URL would fail
+    // here.
     expect(message).toBe("Couldn't open the link in your browser")
-    expect(opts.cause).toBeInstanceOf(Error)
-    // The note's source URL is operator-supplied content; it must not reach
-    // the durable log through the message.
-    expect(message).not.toContain('example.com')
+    expect(opts.cause).toBe(cause)
   })
 
   it('says nothing when the source URL opens successfully', async () => {

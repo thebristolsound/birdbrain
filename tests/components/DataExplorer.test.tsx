@@ -22,6 +22,9 @@ import { fakeBridge } from '../renderer/fakeBridge'
 const SOURCE_URL = 'https://example.com/dump/1'
 
 let openExternal: ReturnType<typeof vi.fn>
+// Held so the assertion can be on identity: the handler must pass the original
+// rejection through as `cause`, not a rewrapped stand-in.
+let cause: Error
 
 function renderExplorer() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -40,8 +43,9 @@ async function openSourceUrl() {
 }
 
 beforeEach(() => {
+  cause = new Error('EACCES')
   openExternal = vi.fn(async () => {
-    throw new Error('EACCES')
+    throw cause
   })
   fakeBridge({
     extractedData: {
@@ -71,11 +75,12 @@ describe('DataExplorer', () => {
     await waitFor(() => expect(notifyError).toHaveBeenCalledOnce())
     expect(openExternal).toHaveBeenCalledWith(SOURCE_URL)
     const [message, opts] = notifyError.mock.calls[0]
+    // Exact match, not a substring: the source URL names a page under
+    // investigation, and a fixed literal with nothing interpolated into it is
+    // what keeps it out of the durable log. A message that grew the URL would
+    // fail here.
     expect(message).toBe("Couldn't open the link in your browser")
-    expect(opts.cause).toBeInstanceOf(Error)
-    // The source URL names a page under investigation; keep it out of the
-    // message so it cannot reach the durable log.
-    expect(message).not.toContain('example.com')
+    expect(opts.cause).toBe(cause)
   })
 
   it('says nothing when the source URL opens successfully', async () => {

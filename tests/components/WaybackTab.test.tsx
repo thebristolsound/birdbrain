@@ -120,8 +120,11 @@ describe('WaybackTab', () => {
   })
 
   it('reports a failed shell launch when a pinned snapshot cannot be opened', async () => {
+    // Held so the assertion can be on identity: the handler must pass the
+    // original rejection through as `cause`, not a rewrapped stand-in.
+    const cause = new Error('EACCES')
     const openExternal = vi.fn(async () => {
-      throw new Error('EACCES')
+      throw cause
     })
     wayback.list.mockResolvedValueOnce([
       {
@@ -143,10 +146,11 @@ describe('WaybackTab', () => {
 
     await waitFor(() => expect(notifyError).toHaveBeenCalledOnce())
     const [message, opts] = notifyError.mock.calls[0]
+    // Exact match, not a substring: the snapshot URL restates the capture's
+    // URL, and a fixed literal with nothing interpolated into it is what keeps
+    // it out of the durable log. A message that grew the URL would fail here.
     expect(message).toBe("Couldn't open the link in your browser")
-    expect(opts.cause).toBeInstanceOf(Error)
-    // The snapshot URL restates the capture's URL; keep it out of the message.
-    expect(message).not.toContain('archive.org')
+    expect(opts.cause).toBe(cause)
   })
 
   it('shows the loading indicator while a lookup is in flight', async () => {

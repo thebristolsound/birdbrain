@@ -1,0 +1,22 @@
+# Workspace boundary: this file makes website/ its own pnpm workspace root, so pnpm
+# commands run inside website/ stop here instead of walking up to the repo root's
+# pnpm-workspace.yaml. website/ is a deliberately isolated sub-project (own lockfile,
+# own node_modules) — see the "Documentation site" section in the repo CLAUDE.md.
+
+allowBuilds:
+  esbuild: true
+  sharp: true
+
+# Advisory fixes for transitive-only high-severity findings. sharp is left at
+# next's pinned ^0.34.5 (see docs/specs/2026-08-05-dependency-advisory-baseline.md
+# for why: next.js's optional sharp dependency is unreachable here — this site
+# builds with `images: { unoptimized: true }` under `output: 'export'`, so the
+# image-optimization code path that would invoke sharp never runs). The
+# outstanding GHSA-f88m-g3jw-g9cj finding is ignored explicitly in
+# .github/workflows/security.yml (pnpm's own auditConfig.ignoreCves does not
+# match advisories with no assigned CVE, only a GHSA id, so the CI flag is the
+# mechanism that actually takes effect — verified locally against pnpm 10.28.2).
+overrides:
+  brace-expansion: ^1.1.18
+  fast-uri: ^3.1.5
+  postcss: ^8.5.23

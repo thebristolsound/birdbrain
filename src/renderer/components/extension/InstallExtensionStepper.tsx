@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { ArrowLeft, ArrowRight, Check, FolderOpen } from 'lucide-react'
 import { Button } from '@renderer/components/ui'
 import { INSTALL_STEPS } from '@renderer/components/extension/installSteps'
+import { openExtensionFolder } from '@renderer/lib/api/system'
 
 interface InstallExtensionStepperProps {
   className?: string
@@ -32,7 +33,7 @@ export function InstallExtensionStepper({
   const handleOpenFolder = async () => {
     try {
       setOpenFolderError(null)
-      await window.birdbrain.extension.openFolder()
+      await openExtensionFolder()
     } catch (err) {
       console.error('Failed to open extension folder:', err)
       setOpenFolderError('Could not open the extension folder. Please try again.')

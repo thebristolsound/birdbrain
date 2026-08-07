@@ -8,7 +8,8 @@ import {
   captureCountsQueryOptions,
   useCasesMutations
 } from '@renderer/lib/queries'
-import { ImportCaseDialog } from '@renderer/components/cases/ImportCaseDialog'
+import { inspectCaseArchive } from '@renderer/lib/api/cases'
+import { ImportCaseDialog } from '@renderer/components/dashboard/cases/ImportCaseDialog'
 import { HeroSection } from '@renderer/components/dashboard/HeroSection'
 import { RecentCases } from '@renderer/components/dashboard/RecentCases'
 import { QuickStartGuide } from '@renderer/components/dashboard/QuickStartGuide'
@@ -58,7 +59,7 @@ export function Dashboard() {
   const handleImportCase = useCallback(async () => {
     setImportError('')
     try {
-      const report = await window.birdbrain.cases.inspectArchive()
+      const report = await inspectCaseArchive()
       if (report) setImportReport(report)
     } catch (err) {
       setImportError(err instanceof Error ? err.message : String(err))

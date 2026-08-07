@@ -15,16 +15,16 @@ vi.mock('@tanstack/react-router', () => ({
 vi.mock('@renderer/lib/queries', () => ({
   useCasesMutations: () => ({
     create: { mutateAsync: createMutateSpy }
+  }),
+  useSettingsMutations: () => ({
+    update: { mutate: vi.fn(), mutateAsync: settingsUpdateSpy }
   })
 }))
 
 vi.mock('@renderer/assets/logo.png', () => ({ default: 'logo.png' }))
 
 import { OnboardingWizard } from '@renderer/components/layout/OnboardingWizard'
-
-interface BirdbrainStub {
-  settings: { update: ReturnType<typeof vi.fn> }
-}
+import { fakeBridge } from '../renderer/fakeBridge'
 
 function withClient(client: QueryClient) {
   return function Wrapper({ children }: { children: ReactNode }) {
@@ -42,9 +42,7 @@ describe('OnboardingWizard overlay mode', () => {
     settingsUpdateSpy.mockClear()
     onClose = vi.fn()
     client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    ;(window as unknown as { birdbrain: BirdbrainStub }).birdbrain = {
-      settings: { update: settingsUpdateSpy }
-    }
+    fakeBridge({ settings: { update: settingsUpdateSpy } })
   })
 
   afterEach(() => {

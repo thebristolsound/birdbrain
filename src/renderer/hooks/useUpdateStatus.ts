@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { UpdateStatus } from '@shared/types'
+import {
+  checkForUpdate,
+  downloadUpdate,
+  getUpdateStatus,
+  installUpdate
+} from '@renderer/lib/api/updates'
 
 // Subscribes to update-delivery status. Fetches the current snapshot on mount,
 // then folds in every main→renderer transition. Hook-local by design: only the
@@ -12,8 +18,7 @@ export function useUpdateStatus() {
   useEffect(() => {
     mountedRef.current = true
     let active = true
-    window.birdbrain.updates
-      .getStatus()
+    getUpdateStatus()
       .then((s) => {
         if (active) setStatus(s)
       })
@@ -37,8 +42,7 @@ export function useUpdateStatus() {
   // while a manual check is in flight).
   const check = useCallback(
     () =>
-      window.birdbrain.updates
-        .check()
+      checkForUpdate()
         .then((s) => {
           if (mountedRef.current) setStatus(s)
         })
@@ -49,18 +53,12 @@ export function useUpdateStatus() {
   // Download/install progress and completion arrive via onUpdateStatus events;
   // these only kick the main process, so no local status update on resolve.
   const download = useCallback(
-    () =>
-      window.birdbrain.updates
-        .download()
-        .catch((err) => console.error('Failed to download update', err)),
+    () => downloadUpdate().catch((err) => console.error('Failed to download update', err)),
     []
   )
 
   const install = useCallback(
-    () =>
-      window.birdbrain.updates
-        .install()
-        .catch((err) => console.error('Failed to install update', err)),
+    () => installUpdate().catch((err) => console.error('Failed to install update', err)),
     []
   )
 

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync, rmSync } from 'fs'
+import { readFileSync, writeFileSync, mkdirSync, renameSync, rmSync } from 'fs'
 import { unlink } from 'fs/promises'
 import { createHash, randomUUID } from 'crypto'
 import { join } from 'path'
@@ -13,7 +13,7 @@ import * as captureRepo from '@main/services/db/captureRepo'
 import * as tagRepo from '@main/services/db/tagRepo'
 import * as selectorRepo from '@main/services/db/selectorRepo'
 import * as noteRepo from '@main/services/db/noteRepo'
-import * as archiveRefRepo from '@main/services/db/archiveRefRepo'
+import * as waybackRefRepo from '@main/services/db/waybackRefRepo'
 import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
 import {
   collectAnnotationsForCase,
@@ -30,10 +30,18 @@ import { CAPTURE_ARTIFACT_TYPES, defaultCaptureStore } from '@main/services/capt
 import { getSettings } from '@main/services/settings'
 import { getInstallationId } from '@main/services/installationId'
 import { getPublicKeyPem } from '@main/services/signingKey'
-import { appendManifestEntry, initManifest } from '@main/services/manifest'
+import {
+  appendManifestEntry,
+  createArtifactAccumulator,
+  initManifest,
+  packageHash as computePackageHash,
+  readManifestSnapshot,
+  verifyManifestChainText
+} from '@main/services/manifest'
+import type { PackagedArtifact } from '@main/services/manifest'
 import { createStoredZip } from '@main/services/zip'
 import { readStoredZip } from '@main/services/zipRead'
-import { canonicalStringify, verifyManifestChainText } from '@shared/verify'
+import { canonicalStringify } from '@shared/verify'
 import { resolveToolVersion } from '@main/services/certification'
 import { MANIFEST_FILENAME } from '@shared/constants'
 import type {
@@ -42,7 +50,12 @@ import type {
   CaseArchiveCounts
 } from '@shared/types'
 
-export const CASE_ARCHIVE_SCHEMA_VERSION = 1
+// 2 since anchored notes (schema v27): note rows now carry anchor_kind and
+// anchor_json. A pre-v27 Birdbrain has no columns for them and its import would
+// drop every anchor without saying so, which the `schemaVersion >` gate in
+// importCaseArchive turns into "update Birdbrain" instead. Bump this whenever
+// an archive gains data an older release would silently discard.
+export const CASE_ARCHIVE_SCHEMA_VERSION = 2
 
 export interface CaseArchiveData {
   case: Record<string, unknown>
@@ -60,14 +73,10 @@ export interface CaseArchiveData {
   captureArchiveRefs: Record<string, unknown>[]
 }
 
-interface CaseArchiveArtifact {
-  path: string
-  sha256: string
-  sizeBytes: number
-}
-
 interface CaseArchiveHeader {
-  schemaVersion: 1
+  // Not the current version as a literal: this type also describes archives
+  // being read, which may have been written by any earlier release.
+  schemaVersion: number
   generatedBy: 'Birdbrain'
   exportedAt: string
   toolVersion: string
@@ -80,7 +89,7 @@ interface CaseArchiveHeader {
   signingPublicKeyPem: string
   case: { id: string; name: string; description: string | null }
   counts: CaseArchiveCounts
-  artifacts: CaseArchiveArtifact[]
+  artifacts: PackagedArtifact[]
   packageHash: string
 }
 
@@ -102,7 +111,7 @@ export function collectCaseData(caseId: string): CaseArchiveData {
     annotationPins: collectAnnotationPinsForCase(caseId),
     captureAnalyses: collectCaptureAnalysesForCase(caseId),
     extractedData: extractedDataRepo.collectExtractedDataForCase(caseId),
-    captureArchiveRefs: archiveRefRepo.collectArchiveRefsForCase(caseId)
+    captureArchiveRefs: waybackRefRepo.collectWaybackRefsForCase(caseId)
   }
 }
 
@@ -110,20 +119,12 @@ function sha256(buf: Buffer): string {
   return createHash('sha256').update(buf).digest('hex')
 }
 
-// The tamper-check hash tying all artifacts together. Export and inspect MUST
-// compute it identically, so the recipe lives in one place: sort by path, then
-// sha256 of the canonical JSON. Never hashes the zip itself (circular).
-function computePackageHash(artifacts: CaseArchiveArtifact[]): string {
-  const sorted = [...artifacts].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
-  return sha256(Buffer.from(canonicalStringify(sorted), 'utf-8'))
-}
-
 // Builds and writes a self-contained .birdbrain case archive: a raw DB
 // snapshot (data.json), the case's live signed manifest, every on-disk
 // capture file, and a package.json header whose packageHash commits to all
-// of it. Mirrors the evidence-export pipeline in export.ts: same hashing
-// accumulator, same packageHash recipe, same operator-name gate, same
-// orphan-cleanup ordering on manifest-append failure.
+// of it. Mirrors the evidence-export pipeline in export.ts: same shared
+// accumulator + packageHash recipe (owned by manifest.ts), same operator-name
+// gate, same orphan-cleanup ordering on manifest-append failure.
 export async function exportCaseArchive(
   caseId: string,
   outputPath: string,
@@ -138,22 +139,12 @@ export async function exportCaseArchive(
 
   onProgress?.('Collecting case data...', 10)
   const data = collectCaseData(caseId)
+  const caseDir = join(getStorageRoot(), caseId)
 
-  const entries: Array<{ name: string; data: Buffer | string }> = []
-  const artifacts: CaseArchiveArtifact[] = []
-  const add = (name: string, value: Buffer | string): string => {
-    const buf = Buffer.isBuffer(value) ? value : Buffer.from(value, 'utf-8')
-    const digest = sha256(buf)
-    entries.push({ name, data: buf })
-    artifacts.push({ path: name, sha256: digest, sizeBytes: buf.length })
-    return digest
-  }
+  const { entries, artifacts, add } = createArtifactAccumulator()
 
   add('data.json', JSON.stringify(data, null, 2))
-
-  const manifestPath = join(getStorageRoot(), caseId, MANIFEST_FILENAME)
-  const manifestJsonl = existsSync(manifestPath) ? readFileSync(manifestPath) : Buffer.alloc(0)
-  add('manifest.jsonl', manifestJsonl)
+  add('manifest.jsonl', readManifestSnapshot(caseDir).jsonl)
 
   const captures = data.captures as Array<{ id: string }>
   const totalFileChecks = captures.length * CAPTURE_ARTIFACT_TYPES.length || 1
@@ -209,7 +200,6 @@ export async function exportCaseArchive(
   entries.unshift({ name: 'package.json', data: JSON.stringify(header, null, 2) })
 
   onProgress?.('Writing archive...', 90)
-  const caseDir = join(getStorageRoot(), caseId)
   // Any failure from here on can leave a partial/orphaned .birdbrain on disk:
   // the write itself, initManifest, or the signed append. Clean up on all of them.
   try {
@@ -525,6 +515,6 @@ function insertImportedRows(
   importAnnotationPinRows(data.annotationPins, ctx)
   importCaptureAnalysisRows(data.captureAnalyses, ctx)
   extractedDataRepo.importExtractedDataRows(data.extractedData, ctx)
-  archiveRefRepo.importArchiveRefRows(data.captureArchiveRefs, ctx)
+  waybackRefRepo.importWaybackRefRows(data.captureArchiveRefs, ctx)
   noteRepo.importNoteRows(data.notes, ctx)
 }

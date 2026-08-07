@@ -527,4 +527,30 @@ export function runMigrations(db: Database.Database): void {
       db.pragma('user_version = 25')
     })()
   }
+
+  if (version < 26) {
+    db.transaction(() => {
+      // Rich-text note bodies. `body` keeps its meaning — the plain text the
+      // notes_fts triggers index — and is derived in main from body_doc at
+      // write time. Nothing is backfilled: a legacy note has body_doc = NULL
+      // and is still a valid note, so notes_fts needs no rebuild.
+      db.exec(`ALTER TABLE notes ADD COLUMN body_doc TEXT`)
+      db.pragma('user_version = 26')
+    })()
+  }
+
+  if (version < 27) {
+    db.transaction(() => {
+      // Anchors. `anchor_json` is the payload; `anchor_kind` is derived from it
+      // in main and stored alongside so anchors can be counted and filtered
+      // without parsing every row. Both NULL means an unanchored note, which
+      // stays valid — nothing is backfilled.
+      db.exec(`
+        ALTER TABLE notes ADD COLUMN anchor_kind TEXT;
+        ALTER TABLE notes ADD COLUMN anchor_json TEXT;
+        CREATE INDEX IF NOT EXISTS idx_notes_anchor_kind ON notes(anchor_kind);
+      `)
+      db.pragma('user_version = 27')
+    })()
+  }
 }

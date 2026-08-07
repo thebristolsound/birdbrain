@@ -1,0 +1,11 @@
+# Integration with Issue Tracker
+#
+# (note that '\' need to be escaped).
+
+[issuetracker "Github"]
+  regex = "#(\\d+)"
+  url = "https://github.com/thebristolsound/repository/issues/$1"
+
+[issuetracker "Linear"]
+  regex = "MOM-(\\d+)"
+  url = "https://linear.app/momentaryarchitecture/issue/MOM-$1"

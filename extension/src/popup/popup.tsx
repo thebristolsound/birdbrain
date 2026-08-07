@@ -1,13 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
-import { getStatus, getCases, activateCase, startSession, stopSession } from '@extension/utils/api'
+import { getStatus, getCases, activateCase, stopSession } from '@extension/utils/api'
+import type { CaptureServerCase } from '@shared/schemas'
 import './popup.css'
-
-interface CaseInfo {
-  id: string
-  name: string
-  captureCount: number
-}
 
 // Hand off to the desktop app via its registered birdbrain:// scheme. Opening a
 // tab lets Chrome surface the external-protocol prompt and launch/focus the app;
@@ -178,14 +173,12 @@ function StatsGrid({
 function Footer({
   sessionActive,
   activeCase,
-  onStartCapture,
   onStopCapture,
   onManualCapture,
   capturing
 }: {
   sessionActive: boolean
   activeCase: { id: string; name: string } | null
-  onStartCapture: () => void
   onStopCapture: () => void
   onManualCapture: () => void
   capturing: boolean
@@ -193,7 +186,9 @@ function Footer({
   return (
     <footer className="p-4 mt-auto bg-surface border-t border-border">
       <div className="flex gap-2 items-center">
-        {sessionActive ? (
+        {/* HOTFIX: Start Capture removed while auto-capture is disabled; Stop remains so an
+            already-recording session can still be ended */}
+        {sessionActive && (
           <button
             onClick={onStopCapture}
             className="flex-1 h-10 flex items-center justify-center gap-2 rounded-md font-display font-bold text-xs active:scale-[0.98] transition-all bg-red-600 hover:bg-red-500 text-white"
@@ -202,25 +197,6 @@ function Footer({
               <rect x="6" y="6" width="12" height="12" rx="1" />
             </svg>
             Stop Capture
-          </button>
-        ) : (
-          <button
-            onClick={activeCase ? onStartCapture : undefined}
-            disabled={!activeCase}
-            className="flex-1 h-10 flex items-center justify-center gap-2 rounded-md font-display font-bold text-xs active:scale-[0.98] transition-all bg-accent hover:bg-accent-hover text-white disabled:opacity-40"
-          >
-            <svg
-              className="w-3 h-3"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="12" cy="12" r="10" />
-            </svg>
-            Start Capture
           </button>
         )}
 
@@ -285,7 +261,7 @@ function CaseSelector({
   activeCase,
   onSelect
 }: {
-  cases: CaseInfo[]
+  cases: CaptureServerCase[]
   activeCase: { id: string; name: string } | null
   onSelect: (id: string) => void
 }) {
@@ -368,7 +344,7 @@ function Popup(): React.JSX.Element {
   const [connected, setConnected] = useState(false)
   const [sessionActive, setSessionActive] = useState(false)
   const [activeCase, setActiveCase] = useState<{ id: string; name: string } | null>(null)
-  const [cases, setCases] = useState<CaseInfo[]>([])
+  const [cases, setCases] = useState<CaptureServerCase[]>([])
   const [captureCount, setCaptureCount] = useState(0)
   const [activeSelectorCount, setActiveSelectorCount] = useState(0)
   const [currentDomain, setCurrentDomain] = useState('')
@@ -418,12 +394,6 @@ function Popup(): React.JSX.Element {
   async function handleActivateCase(id: string): Promise<void> {
     const result = await activateCase(id)
     setActiveCase(result.case)
-  }
-
-  async function handleStartCapture(): Promise<void> {
-    await startSession()
-    setSessionActive(true)
-    setCaptureCount(0)
   }
 
   async function handleStopCapture(): Promise<void> {
@@ -490,7 +460,6 @@ function Popup(): React.JSX.Element {
       <Footer
         sessionActive={sessionActive}
         activeCase={activeCase}
-        onStartCapture={handleStartCapture}
         onStopCapture={handleStopCapture}
         onManualCapture={handleManualCapture}
         capturing={capturing}

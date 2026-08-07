@@ -5,6 +5,12 @@ import {
   MANIFEST_SCHEMA_VERSION
 } from '@shared/constants'
 import { CAPTURE_METHODS, CONSENT_SUPPRESSIONS } from '@shared/types'
+import type {
+  ActiveCaseSelectors,
+  BirdbrainSettings,
+  Selector,
+  SelectorMatch
+} from '@shared/types'
 
 // Shared Zod schemas for Birdbrain's trust boundaries.
 //
@@ -31,6 +37,14 @@ const FormFileSchema = z.custom<FormFileLike>(
 )
 
 export const CaptureSourceSchema = z.enum(['auto', 'manual', 'selector'])
+
+// The sources the wire accepts, which is deliberately narrower than the domain
+// `CaptureSource` in @shared/types: 'recapture' is produced in-app by the
+// recapture service and never uploaded over this endpoint. Callers building a
+// request must use this type, not the domain one — the Zod parse below rejects
+// anything else with a 400, and typing the request against the wider union
+// would let that drift past `pnpm typecheck`.
+export type CaptureUploadSource = z.infer<typeof CaptureSourceSchema>
 
 // Response headers arrive as a JSON string in a multipart form field. They are
 // an untrusted, extension-supplied value that ends up in the signed manifest, so
@@ -88,6 +102,76 @@ export const CaptureUploadSchema = z.object({
 })
 
 export type CaptureUpload = z.infer<typeof CaptureUploadSchema>
+
+// --- Capture server: response DTOs ----------------------------------------
+
+// The other half of the extension wire contract: what the capture server sends
+// back. These are plain types, not Zod schemas — validation stays one-way (the
+// server validates the extension's requests; the extension trusts the server's
+// responses). Their job is to make a response change a compile error on both
+// sides instead of silent runtime drift: the route handlers below assert
+// against them with `satisfies`, and the extension imports the same types.
+// Optional fields mean "the server may omit this", not "the field is new".
+
+/** A case as advertised in GET /api/status — identity only. */
+export interface CaptureServerCaseRef {
+  id: string
+  name: string
+}
+
+/** A case as returned by GET /api/cases — identity plus its capture count. */
+export interface CaptureServerCase extends CaptureServerCaseRef {
+  captureCount: number
+}
+
+/** GET /api/status */
+export interface CaptureServerStatus {
+  running: boolean
+  /** Only sent to the extension (or an origin-less caller); never cross-origin. */
+  serverToken?: string
+  activeCase: CaptureServerCaseRef | null
+  sessionActive: boolean
+  captureCount: number
+  autoCaptureMode: BirdbrainSettings['autoCaptureMode']
+  /** Empty when the caller passed `?includeCases=0`. */
+  cases: CaptureServerCaseRef[]
+  ignoredUrlPatterns: string[]
+  captureScreenshots: boolean
+  dedupeWindowSeconds: number
+  theme: BirdbrainSettings['theme']
+}
+
+/** Whether a screenshot accompanied the capture, and whether it was kept. */
+export type ScreenshotStatus = 'saved' | 'dropped' | 'none'
+
+/** POST /api/captures — success body. */
+export interface CaptureUploadResult {
+  captureId: string
+  hash: string
+  /** Absent when the capture was stored without a manifest entry. */
+  manifestIndex?: number
+  status: 'ok'
+  /** Echoed back from the request, so it is the wire union, not the domain one. */
+  source: CaptureUploadSource
+  screenshotStatus: ScreenshotStatus
+  /** Why the screenshot was dropped; absent when none was. */
+  screenshotWarning?: string
+}
+
+/** GET /api/selectors/active — grouped by case, empty when no case is active. */
+export type ActiveSelectorsResult = ActiveCaseSelectors[]
+
+/** POST /api/selectors — success body. */
+export interface SelectorCreateResult {
+  selector: Selector
+  status: 'ok'
+}
+
+/**
+ * A selector hit reported by the content script and forwarded to the server on
+ * the `matchedSelectors` capture field. Same shape as the in-app SelectorMatch.
+ */
+export type SelectorMatchInfo = SelectorMatch
 
 // --- Capture server: POST /api/selectors ----------------------------------
 
@@ -260,11 +344,8 @@ const ManifestTimestampEntrySchema = z
 
 // Signed audit record of an evidence-package export (#124). schemaVersion is
 // pinned >=2 so the entry MUST carry a signature, matching the timestamp entry.
-// `packageHash` commits to the export's content WITHOUT covering the final .zip
-// — that would be circular, since manifest.jsonl (which holds this entry) is
-// bundled inside the zip. It is sha256(canonicalStringify(sortedArtifacts)),
-// where sortedArtifacts is evidence.json's artifact list ordered by path; that
-// hashes every packaged file's content without depending on this entry.
+// `packageHash` is computed over evidence.json's artifact list by the recipe
+// owned by packageHash() in src/main/services/manifest.ts.
 // `verificationResult` is a fixed integer+boolean shape so it serializes
 // canonically and stays stable under hashing+signing.
 const ManifestExportVerificationResultSchema = z
@@ -307,10 +388,9 @@ export const ArchiveVerificationResultSchema = z
   })
   .strict()
 
-// Signed audit record of a case-archive export (.birdbrain). packageHash uses
-// the same recipe as the evidence export: sha256(canonicalStringify(sorted
-// artifacts)), never hashing the final zip (circular — this entry's manifest
-// copy ships inside it).
+// Signed audit record of a case-archive export (.birdbrain). `packageHash` is
+// computed over package.json's artifact list by the recipe owned by
+// packageHash() in src/main/services/manifest.ts.
 const ManifestArchiveExportEntrySchema = z
   .object({
     type: z.literal('archive-export'),

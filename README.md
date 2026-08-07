@@ -22,7 +22,7 @@
 Birdbrain is an open-source desktop app with a companion Chromium extension for capturing, organizing, and verifying web evidence. Captures include MHTML, a full-page screenshot, and extracted text, sent to the desktop app over `127.0.0.1` and stored locally in per-case archives. There is no cloud account or telemetry; captures stay on your machine unless you export them.
 
 <p align="center">
-  <img src="docs/assets/screenshot-case.png" alt="Birdbrain case workspace" width="100%" />
+  <img src="website/public/assets/screenshot-case.png" alt="Birdbrain case workspace" width="100%" />
 </p>
 
 ## Why Birdbrain exists
@@ -51,29 +51,28 @@ Birdbrain extracts indicators from each capture: IoCs (IPs, domains, hashes, CVE
 
 ### Verify + Export
 
-Every capture is fingerprinted with SHA-256, timestamped, and chained to the previous capture in a per-case manifest. Verify the chain in-app, or export a self-contained HTML report with the manifest included. Reports are readable in any browser and verifiable without Birdbrain installed.
-
-<!-- Screenshots section: drop assets into docs/assets/ and uncomment, including the heading. One shot per feature claim:
+Every capture is fingerprinted with SHA-256, timestamped, and chained to the previous capture in a per-case manifest. Verify the chain in-app, or export a self-contained HTML report with the manifest included. Reports are readable in any browser and verifiable without Birdbrain installed. See the [threat model](website/content/docs/threat-model.mdx) for what these controls do — and do not — defend against.
 
 ## Screenshots
 
 <p align="center">
-  <img src="docs/assets/screenshot-annotate.png" alt="Annotating a capture screenshot" width="100%" />
+  <img src="website/public/assets/screenshot-annotate.png" alt="Annotating a capture screenshot" width="100%" />
   <em>Annotation editor — shapes and pinned comments, burned into exports</em>
 </p>
 <p align="center">
-  <img src="docs/assets/screenshot-recon.png" alt="Indicator column navigator" width="100%" />
+  <img src="website/public/assets/screenshot-recon.png" alt="Indicator column navigator" width="100%" />
   <em>Recon — pivot from indicator category to the pages it appeared on</em>
 </p>
 <p align="center">
-  <img src="docs/assets/screenshot-verify.png" alt="Manifest chain verification" width="100%" />
+  <img src="website/public/assets/screenshot-verify.png" alt="Manifest chain verification" width="100%" />
   <em>Verify — per-case hash chain checked in-app</em>
 </p>
 <p align="center">
-  <img src="docs/assets/screenshot-export.png" alt="Exported HTML report" width="100%" />
+  <img src="website/public/assets/screenshot-export.png" alt="Exported HTML report" width="100%" />
   <em>Export — self-contained HTML report, verifiable without Birdbrain</em>
 </p>
--->
+
+More screens — onboarding, dashboard, selectors, notes, tags, command palette, settings, and the extension setup guide — in the [screenshot tour](website/content/docs/screenshots.mdx).
 
 ## Use cases
 
@@ -118,7 +117,7 @@ Birdbrain is beta software. Current limits:
 
 ## Contributing
 
-Open an [issue](https://github.com/thebristolsound/birdbrain/issues) for bug reports and feature requests. For non-trivial PRs, open an issue first to discuss the approach.
+Open an [issue](https://github.com/thebristolsound/birdbrain/issues) for bug reports and feature requests. For non-trivial PRs, open an issue first to discuss the approach. To report a security issue, see [SECURITY.md](SECURITY.md).
 
 ## Acknowledgements
 

@@ -55,7 +55,8 @@ vi.mock('motion/react', async () => {
   }
 })
 
-import { ImportCaseDialog } from '@renderer/components/cases/ImportCaseDialog'
+import { ImportCaseDialog } from '@renderer/components/dashboard/cases/ImportCaseDialog'
+import { fakeBridge } from '../renderer/fakeBridge'
 
 function makeReport(overrides: Partial<ArchiveInspectReport> = {}): ArchiveInspectReport {
   return {
@@ -112,9 +113,7 @@ describe('ImportCaseDialog', () => {
       progressCb = cb
       return vi.fn()
     })
-    ;(window as unknown as { birdbrain: { onArchiveProgress: typeof onArchiveProgress } }).birdbrain = {
-      onArchiveProgress
-    }
+    fakeBridge({ onArchiveProgress })
   })
 
   afterEach(() => {

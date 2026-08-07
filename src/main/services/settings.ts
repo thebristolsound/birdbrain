@@ -2,7 +2,12 @@ import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import type { BirdbrainSettings } from '@shared/types'
 import { PartialBirdbrainSettingsSchema } from '@shared/schemas'
-import { DEFAULT_ANALYSIS_SYSTEM_PROMPT, DEFAULT_TSA_URL } from '@shared/constants'
+import {
+  DEFAULT_ANALYSIS_SYSTEM_PROMPT,
+  DEFAULT_DEDUPE_WINDOW_SECONDS,
+  DEFAULT_TSA_URL
+} from '@shared/constants'
+import { logger } from '@main/services/logger'
 
 // Encrypt/decrypt API keys at rest using Electron's OS credential store.
 // Falls back to plaintext when safeStorage is unavailable (e.g. tests, headless Linux).
@@ -48,7 +53,7 @@ const DEFAULT_SETTINGS: BirdbrainSettings = {
   openRouterApiKey: null,
   defaultModel: 'anthropic/claude-sonnet-4',
   captureScreenshots: true,
-  dedupeWindowSeconds: 60,
+  dedupeWindowSeconds: DEFAULT_DEDUPE_WINDOW_SECONDS,
   ignoredUrlPatterns: [],
   storagePath: '',
   theme: 'light',
@@ -105,10 +110,7 @@ export function getSettings(): BirdbrainSettings {
     const saved: unknown = JSON.parse(raw)
     const parsed = PartialBirdbrainSettingsSchema.safeParse(saved)
     if (!parsed.success) {
-      console.warn(
-        '[settings] stored file failed schema validation, falling back to defaults:',
-        parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')
-      )
+      logger.warn('settings', 'settings.schema_invalid')
       return { ...DEFAULT_SETTINGS }
     }
     const merged = { ...DEFAULT_SETTINGS, ...parsed.data }

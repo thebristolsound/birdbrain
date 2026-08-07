@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Pencil, Trash2, Plus, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@renderer/components/ui'
-import type { DbTableRowsResult } from '@shared/ipc'
+import { dbTableRowsQueryOptions, useDbAdminMutations } from '@renderer/lib/api/db'
 import { RowEditModal } from '@renderer/components/settings/db/RowEditModal'
 import { ConfirmDialog } from '@renderer/components/settings/db/ConfirmDialog'
 
@@ -20,9 +21,7 @@ const PAGE_SIZE = 50
 
 export function DbTables() {
   const [selectedTable, setSelectedTable] = useState<string>('cases')
-  const [data, setData] = useState<DbTableRowsResult | null>(null)
   const [page, setPage] = useState(0)
-  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   // Modal state
@@ -37,32 +36,24 @@ export function DbTables() {
     pk: Record<string, string>
   }>({ open: false, pk: {} })
 
+  const {
+    data,
+    isLoading: loading,
+    error: fetchError
+  } = useQuery(
+    dbTableRowsQueryOptions({ table: selectedTable, offset: page * PAGE_SIZE, limit: PAGE_SIZE })
+  )
+  const { createRow, updateRow, deleteRow } = useDbAdminMutations()
+
   const editableColumns = data?.columns.filter((c) => !c.pk) ?? []
   const canEditRows = editableColumns.length > 0
-
-  async function fetchRows() {
-    setLoading(true)
-    setError(null)
-    try {
-      const result = await window.birdbrain.db.tableRows({
-        table: selectedTable,
-        offset: page * PAGE_SIZE,
-        limit: PAGE_SIZE
-      })
-      setData(result)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load rows')
-    } finally {
-      setLoading(false)
-    }
-  }
 
   useEffect(() => {
     setPage(0)
   }, [selectedTable])
 
   useEffect(() => {
-    fetchRows()
+    setError(null)
   }, [selectedTable, page])
 
   function getPk(row: Record<string, unknown>): Record<string, string> {
@@ -78,7 +69,7 @@ export function DbTables() {
   async function handleSave(rowData: Record<string, unknown>) {
     try {
       if (editModal.mode === 'create') {
-        await window.birdbrain.db.createRow({ table: selectedTable, data: rowData })
+        await createRow.mutateAsync({ table: selectedTable, data: rowData })
       } else {
         const pk = getPk(editModal.row!)
         const pkCols = data?.columns.filter((c) => c.pk).map((c) => c.name) ?? []
@@ -91,13 +82,13 @@ export function DbTables() {
         }
         if (Object.keys(changedData).length === 0) {
           setEditModal({ open: false, mode: 'create' })
-          fetchRows()
+          setError(null)
           return
         }
-        await window.birdbrain.db.updateRow({ table: selectedTable, pk, data: changedData })
+        await updateRow.mutateAsync({ table: selectedTable, pk, data: changedData })
       }
       setEditModal({ open: false, mode: 'create' })
-      fetchRows()
+      setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed')
     }
@@ -105,14 +96,21 @@ export function DbTables() {
 
   async function handleDelete() {
     try {
-      await window.birdbrain.db.deleteRow({ table: selectedTable, pk: deleteConfirm.pk })
+      await deleteRow.mutateAsync({ table: selectedTable, pk: deleteConfirm.pk })
       setDeleteConfirm({ open: false, pk: {} })
-      fetchRows()
+      setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Delete failed')
     }
   }
 
+  // Both are shown rather than one outranking the other. A failed refetch keeps
+  // the last good rows on screen, so both failures can be live at once: the read
+  // error explains why the rows are stale, and the write error is the only
+  // signal a row write emits — neither modal has an error surface of its own.
+  // Picking either as the winner silences the other.
+  const readError = fetchError instanceof Error ? fetchError.message : null
+  const writeError = error !== readError ? error : null
   const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1
 
   return (
@@ -147,7 +145,13 @@ export function DbTables() {
         </Button>
       </div>
 
-      {error && <div className="rounded-lg bg-red-900/20 p-3 text-sm text-red-400">{error}</div>}
+      {readError && (
+        <div className="rounded-lg bg-red-900/20 p-3 text-sm text-red-400">{readError}</div>
+      )}
+
+      {writeError && (
+        <div className="rounded-lg bg-red-900/20 p-3 text-sm text-red-400">{writeError}</div>
+      )}
 
       {loading && !data && <div className="text-sm text-text-muted">Loading...</div>}
 

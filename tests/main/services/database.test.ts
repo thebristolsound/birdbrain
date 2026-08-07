@@ -826,15 +826,17 @@ describe('database', () => {
   })
 
   describe('annotations schema (migration 17)', () => {
-    it('LATEST_SCHEMA_VERSION is 25', () => {
+    it('LATEST_SCHEMA_VERSION is 27', () => {
       // Bumped to 19 in #118 (screenshot_hash / text_hash sidecar columns);
       // bumped to 20 in #123 (tls_cert_chain corroboration column);
       // bumped to 21 in #wayback (capture_archive_refs table);
       // bumped to 22 (extracted_data_fts trigram search index);
       // bumped to 23 in #recapture (method / supersedesCaptureId provenance columns);
       // bumped to 24 (consent_suppression provenance column);
-      // bumped to 25 (capture_texts + external-content captures_fts).
-      expect(LATEST_SCHEMA_VERSION).toBe(25)
+      // bumped to 25 (capture_texts + external-content captures_fts);
+      // bumped to 26 (notes.body_doc — rich-text note bodies);
+      // bumped to 27 (notes.anchor_kind / anchor_json — anchored notes).
+      expect(LATEST_SCHEMA_VERSION).toBe(27)
     })
 
     it('creates annotations table with expected columns', () => {

@@ -4,6 +4,7 @@ import { renderHook, act, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement, type ReactNode } from 'react'
 import { useSearch } from '@renderer/hooks/useSearch'
+import { fakeBridge } from '../fakeBridge'
 
 function withClient(client: QueryClient) {
   return function Wrapper({ children }: { children: ReactNode }) {
@@ -26,10 +27,7 @@ describe('useSearch', () => {
     notesSearchMock = vi.fn(async (caseId: string, q: string) => [
       { id: 'n1', caseId, title: q, body: 'note body' }
     ])
-    ;(window as unknown as { birdbrain: unknown }).birdbrain = {
-      search: searchMock,
-      notes: { search: notesSearchMock }
-    }
+    fakeBridge({ search: searchMock, notes: { search: notesSearchMock } })
   })
 
   afterEach(() => {

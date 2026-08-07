@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { safeRegexTest } from '@main/services/safeRegex'
+import { DEFAULT_REGEX_TIMEOUT_MS, safeRegexTest } from '@main/services/safeRegex'
 
 describe('safeRegexTest', () => {
   it('returns true for a simple matching pattern', () => {
@@ -37,4 +37,29 @@ describe('safeRegexTest', () => {
     const text = 'a'.repeat(32)
     expect(safeRegexTest(pattern, '', text)).toBe(false)
   })
+
+  // The production budget, pinned as a value rather than as a race: every call
+  // site omits the argument, so this constant is the one that decides whether an
+  // ignore rule is enforced or fails open. Changing it changes evidence-path
+  // behaviour and should have to change this line too.
+  it('defaults to a 200 ms budget', () => {
+    expect(DEFAULT_REGEX_TIMEOUT_MS).toBe(200)
+  })
+
+  // The injectable budget (#330). Same pattern, same text, two budgets, two
+  // answers — which is what proves the argument reaches the vm timeout, and that
+  // the false is budget expiry rather than a non-match.
+  //
+  // Neither direction is a close race. The evaluation costs ~100 ms warm and
+  // ~560 ms cold on the container this was written on (Electron's Node 20 runtime
+  // via `pnpm test`), so the sandbox would have to get ~100x faster before it
+  // finished inside the 1 ms budget, and ~50x slower before it missed the 30 s
+  // one. Elapsed time is never asserted.
+  const BACKTRACKING_PATTERN = '(a+)+b'
+  const MATCHING_TEXT = `${'a'.repeat(23)}X/aaab`
+
+  it('honours an explicit budget: expiry answers false, room to finish answers true', () => {
+    expect(safeRegexTest(BACKTRACKING_PATTERN, '', MATCHING_TEXT, 1)).toBe(false)
+    expect(safeRegexTest(BACKTRACKING_PATTERN, '', MATCHING_TEXT, 30_000)).toBe(true)
+  }, 60_000)
 })

@@ -5,6 +5,9 @@ import {
   createSelector
 } from '@extension/utils/api'
 import { normalizeResponseHeaders } from '@extension/utils/headers'
+import { MAX_SCREENSHOT_BITMAP_BYTES } from '@shared/constants'
+import { matchIgnoredUrl } from '@shared/urlPatterns'
+import type { ActiveSelectorsResult, SelectorMatchInfo } from '@shared/schemas'
 
 function captureMhtml(tabId: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
@@ -57,13 +60,11 @@ async function captureScreenshot(tabId: number): Promise<Blob | undefined> {
   }
 }
 
-const CAPTURE_MAX_BYTES = 100 * 1024 * 1024 // 100 MB
-
 async function captureFullPageScreenshot(tabId: number): Promise<Blob | undefined> {
   try {
     const response = await chrome.tabs.sendMessage(tabId, {
       type: 'CAPTURE_FULL_PAGE',
-      maxBytes: CAPTURE_MAX_BYTES
+      maxBytes: MAX_SCREENSHOT_BITMAP_BYTES
     })
     if (response?.screenshot) {
       const res = await fetch(response.screenshot)
@@ -86,7 +87,7 @@ async function captureScrollingPageScreenshot(tabId: number): Promise<Blob | und
   try {
     const response = await chrome.tabs.sendMessage(tabId, {
       type: 'CAPTURE_FULL_PAGE_SCROLLING',
-      maxBytes: CAPTURE_MAX_BYTES,
+      maxBytes: MAX_SCREENSHOT_BITMAP_BYTES,
       scrollTimeoutMs: 120_000
     })
     if (response?.screenshot) {
@@ -120,7 +121,8 @@ const DEFAULT_IGNORE = [
 
 // Deduplication: url -> timestamp of last capture
 const dedupeMap = new Map<string, number>()
-let dedupeWindowMs = 60_000
+// HOTFIX: auto-capture temporarily disabled — dedupe window only used by auto paths
+// let dedupeWindowMs = 60_000
 const CONTEXT_MENU_PARENT_ID = 'birdbrain-parent'
 const CONTEXT_MENU_FULL_PAGE_ID = 'birdbrain-capture-full-page'
 const CONTEXT_MENU_SCROLLING_ID = 'birdbrain-capture-scrolling'
@@ -180,17 +182,9 @@ let sessionActive = false
 let captureCount = 0
 
 // Selector state
-let activeSelectors: Array<{
-  caseId: string
-  caseName: string
-  selectors: Array<{
-    id: string
-    pattern: string
-    isRegex: boolean
-    enabled: boolean
-  }>
-}> = []
-let autoCaptureMode: string = 'notify'
+let activeSelectors: ActiveSelectorsResult = []
+// HOTFIX: auto-capture temporarily disabled
+// let autoCaptureMode: string = 'notify'
 let availableCases: Array<{ id: string; name: string }> = []
 let activeCaseId: string | null = null
 let userIgnoredPatterns: string[] = []
@@ -206,12 +200,13 @@ async function checkStatus(): Promise<void> {
     connected = status.running
     sessionActive = status.sessionActive
     captureCount = status.captureCount
-    autoCaptureMode = status.autoCaptureMode || 'notify'
+    // HOTFIX: auto-capture temporarily disabled
+    // autoCaptureMode = status.autoCaptureMode || 'notify'
     availableCases = status.cases || []
     activeCaseId = status.activeCase?.id || null
     userIgnoredPatterns = status.ignoredUrlPatterns || []
     captureScreenshotsEnabled = status.captureScreenshots !== false
-    dedupeWindowMs = (status.dedupeWindowSeconds ?? 60) * 1000
+    // dedupeWindowMs = (status.dedupeWindowSeconds ?? 60) * 1000
 
     if (connected && !wasConnected) {
       updateIcon('connected')
@@ -424,31 +419,27 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 
 // --- Capture orchestration ---
 
-function globToRegex(pattern: string): RegExp {
-  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&')
-  const withWildcards = escaped.replace(/\*/g, '.*').replace(/\?/g, '.')
-  return new RegExp(withWildcards, 'i')
-}
-
+// Same matcher the capture server runs, so a URL this side skips is the one the
+// server would refuse. Regex literals use the platform RegExp here: the service
+// worker has no vm sandbox, and a runaway pattern stalls only the extension,
+// not the app. The cost is that this side has no timeout where the server does,
+// so a pattern that exhausts the server's budget is skipped here and accepted
+// there — see matchIgnoredUrl.
+//
+// Two live routes pre-filter with this — the context-menu capture handler
+// above (immediately before manualCaptureTab) and checkSelectorsOnTab — plus
+// shouldCapture, which is inside the HOTFIX-disabled block below. The popup's
+// Capture button does not: its MANUAL_CAPTURE message goes straight to
+// manualCaptureTab, so on that one route the server's 403 is the sole
+// enforcement of an operator's ignore rule.
 function isIgnoredByUser(url: string): boolean {
-  for (const pattern of userIgnoredPatterns) {
-    try {
-      if (pattern.startsWith('/') && pattern.lastIndexOf('/') > 0) {
-        const lastSlash = pattern.lastIndexOf('/')
-        const re = new RegExp(pattern.slice(1, lastSlash), pattern.slice(lastSlash + 1))
-        if (re.test(url)) return true
-      } else if (pattern.includes('*') || pattern.includes('?')) {
-        if (globToRegex(pattern).test(url)) return true
-      } else {
-        if (url.includes(pattern)) return true
-      }
-    } catch {
-      /* skip */
-    }
-  }
-  return false
+  return matchIgnoredUrl(url, userIgnoredPatterns) !== null
 }
 
+// HOTFIX: auto-capture temporarily disabled — shouldCapture/captureTab (session auto-capture)
+// and shouldSelectorCapture/handleSelectorCapture (selector auto-capture) are commented out.
+// Manual capture (popup camera button + context menu) is unaffected.
+/*
 function shouldCapture(url: string): boolean {
   if (!sessionActive || !connected) return false
   if (DEFAULT_IGNORE.some((pattern) => pattern.test(url))) return false
@@ -511,6 +502,7 @@ async function captureTab(tabId: number, url: string): Promise<void> {
       .catch(() => {})
   }
 }
+*/
 
 async function manualCaptureTab(
   tabId: number,
@@ -586,6 +578,7 @@ async function manualCaptureTab(
   }
 }
 
+/*
 async function handleSelectorCapture(tabId: number, url: string, caseId: string): Promise<void> {
   if (!shouldSelectorCapture(caseId, url)) return
   try {
@@ -616,6 +609,7 @@ async function handleSelectorCapture(tabId: number, url: string, caseId: string)
     console.error('Selector capture failed:', err)
   }
 }
+*/
 
 async function checkSelectorsOnTab(tabId: number, url: string): Promise<void> {
   if (activeSelectors.length === 0) return
@@ -626,18 +620,16 @@ async function checkSelectorsOnTab(tabId: number, url: string): Promise<void> {
     const matches = (await chrome.tabs.sendMessage(tabId, {
       type: 'CHECK_SELECTORS',
       selectors: activeSelectors
-    })) as Array<{
-      selectorId: string
-      caseId: string
-      caseName: string
-      pattern: string
-      matchText: string
-      context: string
-      index: number
-    }>
+    })) as SelectorMatchInfo[]
 
     if (!matches || matches.length === 0) return
 
+    // Update badge to show match count
+    chrome.action.setBadgeText({ text: String(matches.length) })
+    chrome.action.setBadgeBackgroundColor({ color: '#3b82f6' })
+
+    // HOTFIX: auto-capture temporarily disabled — selector matches only update the badge
+    /*
     // Group matches by case
     const caseMatches = new Map<string, typeof matches>()
     for (const m of matches) {
@@ -645,16 +637,13 @@ async function checkSelectorsOnTab(tabId: number, url: string): Promise<void> {
       caseMatches.get(m.caseId)!.push(m)
     }
 
-    // Update badge to show match count
-    chrome.action.setBadgeText({ text: String(matches.length) })
-    chrome.action.setBadgeBackgroundColor({ color: '#3b82f6' })
-
     if (autoCaptureMode === 'auto') {
       // Auto-capture for each matching case
       for (const [caseId] of caseMatches) {
         handleSelectorCapture(tabId, url, caseId)
       }
     }
+    */
   } catch {
     // Content script may not be ready
   }
@@ -663,10 +652,13 @@ async function checkSelectorsOnTab(tabId: number, url: string): Promise<void> {
 // Listen for page load completions
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete' && tab.url) {
+    // HOTFIX: auto-capture temporarily disabled
+    /*
     // Existing session capture
     if (shouldCapture(tab.url)) {
       captureTab(tabId, tab.url)
     }
+    */
 
     // Selector matching (independent of session capture)
     if (sessionActive && activeSelectors.length > 0) {

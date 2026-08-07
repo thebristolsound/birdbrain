@@ -10,35 +10,18 @@ import { useFavorites } from '@renderer/hooks/useFavorites'
 import { CaptureItem } from '@renderer/components/captures/CaptureItem'
 import { CaptureListEmptyState } from '@renderer/components/captures/CaptureListEmptyState'
 import { CaptureMenu } from '@renderer/components/captures/CaptureMenu'
-import type { Capture, Selector } from '@shared/types'
+import {
+  computeDisplayedCaptures,
+  SORT_OPTIONS,
+  FORMAT_OPTIONS,
+  DATE_OPTIONS
+} from '@renderer/components/captures/captureListModel'
+import { useCaptureListFilters } from '@renderer/components/captures/useCaptureListFilters'
+import type { Selector } from '@shared/types'
 
 interface CaptureListProps {
   caseId: string
 }
-
-type SortOption = 'newest' | 'oldest' | 'title-az' | 'url-az'
-type FormatFilter = 'all' | 'html' | 'mhtml'
-type DateFilter = 'all' | 'today' | '7days' | '30days'
-
-const SORT_OPTIONS: { value: SortOption; label: string }[] = [
-  { value: 'newest', label: 'Newest first' },
-  { value: 'oldest', label: 'Oldest first' },
-  { value: 'title-az', label: 'Title A–Z' },
-  { value: 'url-az', label: 'URL A–Z' }
-]
-
-const FORMAT_OPTIONS: { value: FormatFilter; label: string }[] = [
-  { value: 'all', label: 'All formats' },
-  { value: 'html', label: 'HTML' },
-  { value: 'mhtml', label: 'MHTML' }
-]
-
-const DATE_OPTIONS: { value: DateFilter; label: string }[] = [
-  { value: 'all', label: 'All time' },
-  { value: 'today', label: 'Today' },
-  { value: '7days', label: 'Last 7 days' },
-  { value: '30days', label: 'Last 30 days' }
-]
 
 function useClickOutside(ref: React.RefObject<HTMLElement | null>, onClose: () => void) {
   useEffect(() => {
@@ -50,24 +33,6 @@ function useClickOutside(ref: React.RefObject<HTMLElement | null>, onClose: () =
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [ref, onClose])
-}
-
-function sortCaptures(captures: Capture[], sort: SortOption): Capture[] {
-  const sorted = [...captures]
-  switch (sort) {
-    case 'newest':
-      return sorted.sort(
-        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-      )
-    case 'oldest':
-      return sorted.sort(
-        (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-      )
-    case 'title-az':
-      return sorted.sort((a, b) => (a.title || '').localeCompare(b.title || ''))
-    case 'url-az':
-      return sorted.sort((a, b) => a.url.localeCompare(b.url))
-  }
 }
 
 export function CaptureList({ caseId }: CaptureListProps) {
@@ -98,10 +63,19 @@ export function CaptureList({ caseId }: CaptureListProps) {
   }, [captures, matchingSelectorsResults])
 
   // Sort & filter state
-  const [sortBy, setSortBy] = useState<SortOption>('newest')
-  const [formatFilter, setFormatFilter] = useState<FormatFilter>('all')
-  const [dateFilter, setDateFilter] = useState<DateFilter>('all')
-  const [favoritesOnly, setFavoritesOnly] = useState(false)
+  const {
+    filters,
+    activeFilterCount,
+    clearAllFilters,
+    sortBy,
+    setSortBy,
+    formatFilter,
+    setFormatFilter,
+    dateFilter,
+    setDateFilter,
+    favoritesOnly,
+    setFavoritesOnly
+  } = useCaptureListFilters()
   const [showSortMenu, setShowSortMenu] = useState(false)
   const [showFilterMenu, setShowFilterMenu] = useState(false)
 
@@ -114,33 +88,10 @@ export function CaptureList({ caseId }: CaptureListProps) {
   useClickOutside(sortRef, () => setShowSortMenu(false))
   useClickOutside(filterRef, () => setShowFilterMenu(false))
 
-  const activeFilterCount =
-    (formatFilter !== 'all' ? 1 : 0) + (dateFilter !== 'all' ? 1 : 0) + (favoritesOnly ? 1 : 0)
-
-  const displayedCaptures = sortCaptures(
-    (filteredCaptureIds ? captures.filter((c) => filteredCaptureIds.includes(c.id)) : captures)
-      .filter((c) => {
-        if (formatFilter !== 'all' && c.format !== formatFilter) return false
-        if (favoritesOnly && !favorites.has(c.id)) return false
-        return true
-      })
-      .filter((c) => {
-        if (dateFilter === 'all') return true
-        const cutoffs = {
-          today: 24 * 60 * 60 * 1000,
-          '7days': 7 * 24 * 60 * 60 * 1000,
-          '30days': 30 * 24 * 60 * 60 * 1000
-        }
-        return new Date(c.timestamp).getTime() >= Date.now() - cutoffs[dateFilter]
-      }),
-    sortBy
+  const displayedCaptures = useMemo(
+    () => computeDisplayedCaptures({ captures, filteredCaptureIds, favorites, filters }),
+    [captures, filteredCaptureIds, favorites, filters]
   )
-
-  function clearAllFilters() {
-    setFormatFilter('all')
-    setDateFilter('all')
-    setFavoritesOnly(false)
-  }
 
   if (isLoading) {
     return (

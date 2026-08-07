@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import type { ExportOptions, ExportPreflight } from '@shared/types'
+import { useQuery } from '@tanstack/react-query'
+import type { ExportOptions } from '@shared/types'
 import { presets } from '@renderer/lib/motion'
 import { useCompletionCelebration } from '@renderer/hooks/useCompletionCelebration'
 import { Button, Input, Label } from '@renderer/components/ui'
 import { ExportProgress } from '@renderer/components/export/ExportProgress'
 import { ExportComplete } from '@renderer/components/export/ExportComplete'
+import { exportPreflightQueryOptions, useExportMutations } from '@renderer/lib/api/export'
 
 interface ExportDialogProps {
   caseId: string
@@ -24,28 +26,28 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
     auditTrail: true,
     annotations: 'burned'
   })
-  const [phase, setPhase] = useState<Phase>('form')
   const [progress, setProgress] = useState({ step: 'Preparing export…', percent: 0 })
-  const [filePath, setFilePath] = useState('')
-  const [exportError, setExportError] = useState('')
-  const [preflight, setPreflight] = useState<ExportPreflight | null>(null)
 
   const { celebrate, celebrationProps } = useCompletionCelebration({ style: 'ripple' })
 
-  useEffect(() => {
-    let alive = true
-    window.birdbrain.export
-      .preflight(caseId)
-      .then((summary) => {
-        if (alive) setPreflight(summary)
-      })
-      .catch(() => {
-        if (alive) setPreflight(null)
-      })
-    return () => {
-      alive = false
-    }
-  }, [caseId])
+  // A failed preflight leaves `data` undefined, which reads the same as "no
+  // warning to show" — the same silent fallback the mount effect had, minus
+  // the alive flag, since an unmounted query cannot write to state.
+  const { data: preflight } = useQuery(exportPreflightQueryOptions(caseId))
+
+  const { generate } = useExportMutations()
+
+  // The phase is a reading of the mutation, not a machine kept alongside it. A
+  // canceled save dialog resolves rather than throws, so it lands as a success
+  // that must not be read as a written package.
+  const result = generate.data
+  const phase: Phase = generate.isPending
+    ? 'exporting'
+    : result && !result.canceled
+      ? 'complete'
+      : 'form'
+  const filePath = result?.filePath ?? ''
+  const exportError = generate.error ? `Error: ${generate.error.message}` : ''
 
   useEffect(() => {
     const unsubscribe = window.birdbrain.onExportProgress((event) => {
@@ -54,7 +56,7 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
     return unsubscribe
   }, [caseId])
 
-  const handleExport = async () => {
+  const handleExport = () => {
     const ext = 'zip'
     const safeName = caseName.replace(/[^a-zA-Z0-9-_]/g, '_')
     const outputPath = `${safeName}_evidence.${ext}`
@@ -66,23 +68,15 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
       outputPath
     }
 
-    setExportError('')
     setProgress({ step: 'Preparing export…', percent: 0 })
-    setPhase('exporting')
-    try {
-      const result = await window.birdbrain.export.generateReport(caseId, options)
-      if (result.canceled) {
-        setPhase('form')
-        return
+    generate.mutate(
+      { caseId, options },
+      {
+        onSuccess: (exported) => {
+          if (!exported.canceled) celebrate()
+        }
       }
-      setFilePath(result.filePath ?? '')
-      setPhase('complete')
-      celebrate()
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      setExportError(`Error: ${message}`)
-      setPhase('form')
-    }
+    )
   }
 
   const toggleInclude = (key: keyof typeof include) => {

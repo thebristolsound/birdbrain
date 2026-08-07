@@ -10,10 +10,30 @@ vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => navigateSpy
 }))
 
+const notifyError = vi.hoisted(() => vi.fn())
+
+vi.mock('@renderer/lib/notify', () => ({
+  notify: { error: notifyError, warn: vi.fn(), success: vi.fn(), info: vi.fn() }
+}))
+
 // The markdown renderer and the motion wrappers carry none of the behaviour
 // under test, and both bring their own async machinery into jsdom.
+//
+// The one exception is the `a` override: routing AI-authored links through the
+// shell instead of in-app navigation IS behaviour under test, so a markdown
+// link is rendered through components.a rather than flattened to text.
 vi.mock('react-markdown', () => ({
-  default: ({ children }: { children: string }) => children
+  default: ({
+    children,
+    components
+  }: {
+    children: string
+    components?: { a?: (props: { href?: string; children: ReactNode }) => ReactNode }
+  }) => {
+    const link = /\[([^\]]+)\]\(([^)]+)\)/.exec(children)
+    if (link && components?.a) return components.a({ href: link[2], children: link[1] })
+    return children
+  }
 }))
 
 // Strips the animation-only props (they are not valid DOM attributes) and
@@ -21,32 +41,35 @@ vi.mock('react-markdown', () => ({
 // props here would silently drop its onClick.
 vi.mock('motion/react', async () => {
   const React = await import('react')
+  // Memoised per tag: a fresh forwardRef on every property access is a new
+  // component type each render, so React unmounts and remounts the whole
+  // subtree. That detaches any node a test is already holding, and the click
+  // then lands on an element no longer in the tree.
+  const cache = new Map<string, unknown>()
   const motion = new Proxy(
     {},
     {
-      get: (_, tag: string) =>
-        React.forwardRef<HTMLElement, Record<string, unknown> & { children?: ReactNode }>(
-          ({ children, ...props }, ref) => {
-            const {
-              initial,
-              animate,
-              exit,
-              transition,
-              whileTap,
-              whileHover,
-              layout,
-              ...domProps
-            } = props
-            void initial
-            void animate
-            void exit
-            void transition
-            void whileTap
-            void whileHover
-            void layout
-            return React.createElement(tag, { ...domProps, ref }, children)
-          }
-        )
+      get: (_, tag: string) => {
+        const cached = cache.get(tag)
+        if (cached) return cached
+        const component = React.forwardRef<
+          HTMLElement,
+          Record<string, unknown> & { children?: ReactNode }
+        >(({ children, ...props }, ref) => {
+          const { initial, animate, exit, transition, whileTap, whileHover, layout, ...domProps } =
+            props
+          void initial
+          void animate
+          void exit
+          void transition
+          void whileTap
+          void whileHover
+          void layout
+          return React.createElement(tag, { ...domProps, ref }, children)
+        })
+        cache.set(tag, component)
+        return component
+      }
     }
   )
   return { motion, AnimatePresence: ({ children }: { children: ReactNode }) => children }
@@ -84,6 +107,7 @@ afterEach(() => {
   vi.useRealTimers()
   vi.restoreAllMocks()
   navigateSpy.mockReset()
+  notifyError.mockReset()
 })
 
 describe('AnalysisTab', () => {
@@ -376,5 +400,33 @@ describe('AnalysisTab', () => {
 
     expect(await screen.findByText('model unavailable')).toBeDefined()
     expect(screen.getByText('Retry')).toBeDefined()
+  })
+
+  it('reports a failed shell launch when a link in the analysis cannot be opened', async () => {
+    const openExternal = vi.fn(async () => {
+      throw new Error('EACCES')
+    })
+    fakeBridge({
+      settings: { get: vi.fn(async () => settings), listModels: vi.fn(async () => []) },
+      ai: {
+        getAnalysis: vi.fn(async () => ({
+          ...saved,
+          content: 'see [the source](https://example.com/leak)'
+        }))
+      },
+      captures: { openExternal }
+    })
+
+    renderTab()
+
+    fireEvent.click(await screen.findByText('the source'))
+
+    await waitFor(() => expect(notifyError).toHaveBeenCalledOnce())
+    const [message, opts] = notifyError.mock.calls[0]
+    expect(message).toBe("Couldn't open the link in your browser")
+    expect(opts.cause).toBeInstanceOf(Error)
+    // The URL is the operator's evidence trail; it must not ride into the
+    // durable log via the message.
+    expect(message).not.toContain('example.com')
   })
 })

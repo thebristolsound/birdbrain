@@ -7,6 +7,14 @@ import { WaybackTab } from '@renderer/components/captures/WaybackTab'
 import type { Capture } from '@shared/types'
 import { fakeBridge } from '../renderer/fakeBridge'
 
+// Hoisted: the mock factory runs while WaybackTab's import graph is still
+// loading, which is before a plain top-level const would be initialised.
+const notifyError = vi.hoisted(() => vi.fn())
+
+vi.mock('@renderer/lib/notify', () => ({
+  notify: { error: notifyError, warn: vi.fn(), success: vi.fn(), info: vi.fn() }
+}))
+
 const capture: Capture = {
   id: 'cap1',
   caseId: 'case1',
@@ -59,6 +67,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  notifyError.mockReset()
 })
 
 describe('WaybackTab', () => {
@@ -108,6 +117,36 @@ describe('WaybackTab', () => {
     ])
     renderTab()
     expect(await screen.findByText('Pinned')).toBeDefined()
+  })
+
+  it('reports a failed shell launch when a pinned snapshot cannot be opened', async () => {
+    const openExternal = vi.fn(async () => {
+      throw new Error('EACCES')
+    })
+    wayback.list.mockResolvedValueOnce([
+      {
+        id: 'ref1',
+        captureId: 'cap1',
+        snapshotTimestamp: '2020-01-14T00:00:00.000Z',
+        snapshotUrl: 'https://web.archive.org/web/20200114000000/https://example.com/',
+        originalUrl: 'https://example.com/',
+        checkedAt: '2026-06-30T00:00:00.000Z',
+        pinnedAt: '2026-06-30T00:01:00.000Z',
+        statusCode: 200
+      }
+    ])
+    fakeBridge({ wayback, captures: { openExternal } })
+
+    renderTab()
+
+    fireEvent.click(await screen.findByLabelText('Open snapshot'))
+
+    await waitFor(() => expect(notifyError).toHaveBeenCalledOnce())
+    const [message, opts] = notifyError.mock.calls[0]
+    expect(message).toBe("Couldn't open the link in your browser")
+    expect(opts.cause).toBeInstanceOf(Error)
+    // The snapshot URL restates the capture's URL; keep it out of the message.
+    expect(message).not.toContain('archive.org')
   })
 
   it('shows the loading indicator while a lookup is in flight', async () => {

@@ -7,6 +7,7 @@ import {
   useWaybackMutations
 } from '@renderer/lib/queries'
 import { openCaptureExternal } from '@renderer/lib/api/system'
+import { notify } from '@renderer/lib/notify'
 
 interface Props {
   capture: Capture
@@ -24,7 +25,11 @@ export function WaybackTab({ capture }: Props) {
   const result = lookup.data
   const pinnedUrls = new Set((pins.data ?? []).map((r) => r.snapshotUrl))
 
-  const open = (url: string) => void openCaptureExternal(url)
+  const open = (url: string): void => {
+    openCaptureExternal(url).catch((cause) => {
+      notify.error("Couldn't open the link in your browser", { cause })
+    })
+  }
 
   return (
     <div className="h-full overflow-y-auto p-5 text-sm">

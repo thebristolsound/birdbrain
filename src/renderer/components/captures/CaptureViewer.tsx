@@ -9,10 +9,12 @@ import { AnnotationEditor } from '@renderer/components/captures/annotation/Annot
 import { CapturesGettingStarted } from '@renderer/components/captures/CapturesGettingStarted'
 import { Button } from '@renderer/components/ui'
 import { CaptureViewerToolbar } from '@renderer/components/captures/CaptureViewerToolbar'
+import { CaptureDownloadMenu } from '@renderer/components/captures/CaptureDownloadMenu'
 import { BrowserChromeFrame } from '@renderer/components/captures/BrowserChromeFrame'
 import { AnnotationToolsTooltip } from '@renderer/components/captures/AnnotationToolsTooltip'
 import { useAnnotationEditor } from '@renderer/components/captures/annotation/useAnnotationEditor'
 import { useZoomPan } from '@renderer/components/captures/annotation/useZoomPan'
+import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
 
 type ViewTab = 'screenshot' | 'page' | 'source' | 'text'
 
@@ -191,6 +193,7 @@ export function CaptureViewer() {
             )
           })}
         </div>
+        <CaptureDownloadMenu capture={capture} />
         <Button
           variant="ghost"
           size="icon-sm"
@@ -216,56 +219,60 @@ export function CaptureViewer() {
 
       {/* Content area — keep existing content branches except analysis */}
       <div className="flex-1 overflow-hidden min-h-0">
-        {activeTab === 'screenshot' &&
-          (content ? (
-            <ScreenshotTabPanel
-              key={capture.id}
-              captureId={capture.id}
-              imageUrl={`data:image/png;base64,${content}`}
-              url={capture.url}
-            />
-          ) : (
-            <div className="flex flex-col items-center justify-center gap-1 p-8 text-center">
-              <p className="text-sm text-text-muted">No screenshot available</p>
-              <p className="text-xs text-text-faint">
-                Screenshot may not have been captured or exceeded the size limit.
-              </p>
+        <ErrorBoundary source="captureViewer">
+          {activeTab === 'screenshot' &&
+            (content ? (
+              <ScreenshotTabPanel
+                key={capture.id}
+                captureId={capture.id}
+                imageUrl={`data:image/png;base64,${content}`}
+                url={capture.url}
+              />
+            ) : (
+              <div className="flex flex-col items-center justify-center gap-1 p-8 text-center">
+                <p className="text-sm text-text-muted">No screenshot available</p>
+                <p className="text-xs text-text-faint">
+                  Screenshot may not have been captured or exceeded the size limit.
+                </p>
+              </div>
+            ))}
+          {activeTab === 'page' && capture.format === 'mhtml' ? (
+            <div className="h-full w-full overflow-hidden">
+              <MhtmlViewer captureId={capture.id} />
             </div>
-          ))}
-        {activeTab === 'page' && capture.format === 'mhtml' ? (
-          <div className="h-full w-full overflow-hidden">
-            <MhtmlViewer captureId={capture.id} />
-          </div>
-        ) : activeTab === 'page' ? (
-          content ? (
-            <iframe
-              sandbox=""
-              srcDoc={content}
-              className="h-full w-full border-0 bg-white"
-              title="Archived page"
-            />
-          ) : (
-            <div className="p-4 text-text-muted">No HTML available</div>
-          )
-        ) : null}
-        {activeTab === 'source' &&
-          (content ? (
-            <div className="h-full overflow-y-auto p-4">
-              <pre className="whitespace-pre-wrap break-all font-mono text-xs text-text-muted">
-                {content}
-              </pre>
-            </div>
-          ) : (
-            <div className="p-4 text-text-muted">No HTML available</div>
-          ))}
-        {activeTab === 'text' &&
-          (content ? (
-            <div className="h-full overflow-y-auto p-4">
-              <pre className="whitespace-pre-wrap font-mono text-sm text-text-muted">{content}</pre>
-            </div>
-          ) : (
-            <div className="p-4 text-text-muted">No text content available</div>
-          ))}
+          ) : activeTab === 'page' ? (
+            content ? (
+              <iframe
+                sandbox=""
+                srcDoc={content}
+                className="h-full w-full border-0 bg-white"
+                title="Archived page"
+              />
+            ) : (
+              <div className="p-4 text-text-muted">No HTML available</div>
+            )
+          ) : null}
+          {activeTab === 'source' &&
+            (content ? (
+              <div className="h-full overflow-y-auto p-4">
+                <pre className="whitespace-pre-wrap break-all font-mono text-xs text-text-muted">
+                  {content}
+                </pre>
+              </div>
+            ) : (
+              <div className="p-4 text-text-muted">No HTML available</div>
+            ))}
+          {activeTab === 'text' &&
+            (content ? (
+              <div className="h-full overflow-y-auto p-4">
+                <pre className="whitespace-pre-wrap font-mono text-sm text-text-muted">
+                  {content}
+                </pre>
+              </div>
+            ) : (
+              <div className="p-4 text-text-muted">No text content available</div>
+            ))}
+        </ErrorBoundary>
       </div>
     </main>
   )

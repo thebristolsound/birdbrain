@@ -1,0 +1,39 @@
+---
+title: 'Overview'
+description: 'Birdbrain is a local-first desktop app for capturing, organizing, and verifying web evidence. Start here.'
+---
+
+Birdbrain is an open-source desktop app with a companion Chromium extension for capturing,
+organizing, and verifying web evidence. Captures include MHTML, a full-page screenshot, and
+extracted page text, sent to the desktop app over `127.0.0.1` and stored locally in per-case
+archives. There is no cloud account and no telemetry; captures stay on your machine unless you
+export them.
+
+Every capture is fingerprinted with SHA-256, timestamped, and chained to the previous capture in
+a per-case manifest. You can verify the chain in the app, or export a self-contained HTML report
+that is readable in any browser and verifiable without Birdbrain installed.
+
+## Where to start
+
+- **New to Birdbrain?** The [tester guide](./tester-guide.mdx) walks through installing the app and the
+  extension and taking your first capture. The [screenshot tour](./screenshots.mdx) shows every screen.
+- **Reviewing the security posture?** Start with the
+  [architecture whitepaper](./birdbrain-architecture-whitepaper.mdx) for trust boundaries and the
+  limits of the evidence claims, then the [threat model](./threat-model.mdx) for what the
+  chain-of-custody controls do and do not defend against.
+- **Working on the code?** The [implementation whitepaper](./birdbrain-technical-whitepaper.mdx) maps
+  mechanisms to files, and the [capture pipeline](./capture-pipeline.mdx) reference covers the ingestion
+  path end to end.
+- **Adopting or contributing?** The
+  [contributor and adoption whitepaper](./birdbrain-contributor-adoption-whitepaper.mdx) covers product
+  fit, onboarding, and governance. The
+  [privacy-focused adoption guide](./birdbrain-privacy-adoption-whitepaper.mdx) is written for
+  activists, independent researchers, and small groups.
+
+## Assurance baseline
+
+Birdbrain measures itself against a standards register covering acquisition, preservation,
+analysis, provenance, security, privacy, accessibility, and reporting — documented in
+[OSINT investigation standards](./osint-investigation-standards.mdx). There is no universal
+"OSINT-compliant" certification, so the project makes narrow, versioned, independently testable
+claims instead.

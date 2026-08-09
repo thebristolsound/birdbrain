@@ -1,5 +1,6 @@
 import { getSettings } from '@main/services/settings'
 import { OpenRouterResponseSchema } from '@shared/schemas'
+import { logger } from '@main/services/logger'
 
 interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
@@ -46,18 +47,13 @@ export async function sendPrompt(
 
       if (res.status === 429) {
         const backoff = INITIAL_BACKOFF_MS * Math.pow(2, attempt)
-        console.warn(
-          `[OpenRouter] Rate limited (429), retrying in ${backoff}ms (attempt ${attempt + 1}/${MAX_RETRIES})`
-        )
+        logger.warn('openrouter', 'openrouter.rate_limited', { attempt: attempt + 1, ms: backoff })
         await new Promise((resolve) => setTimeout(resolve, backoff))
         continue
       }
 
       if (!res.ok) {
-        const body = await res.text().catch(() => '')
-        console.error(
-          `[OpenRouter] API error: ${res.status} ${res.statusText} — ${body.slice(0, 300)}`
-        )
+        logger.error('openrouter', 'openrouter.request_failed', { status: res.status })
         throw new Error(`OpenRouter API error: ${res.status} ${res.statusText}`)
       }
 
@@ -84,15 +80,23 @@ export async function sendPrompt(
       lastError = err as Error
       if (attempt < MAX_RETRIES - 1) {
         const backoff = INITIAL_BACKOFF_MS * Math.pow(2, attempt)
-        console.warn(
-          `[OpenRouter] Error: ${lastError.message}, retrying in ${backoff}ms (attempt ${attempt + 1}/${MAX_RETRIES})`
+        logger.warn(
+          'openrouter',
+          'openrouter.retry',
+          { attempt: attempt + 1, ms: backoff },
+          lastError
         )
         await new Promise((resolve) => setTimeout(resolve, backoff))
       }
     }
   }
 
-  console.error(`[OpenRouter] Failed after ${MAX_RETRIES} retries: ${lastError?.message}`)
+  logger.error(
+    'openrouter',
+    'openrouter.retries_exhausted',
+    { count: MAX_RETRIES },
+    lastError ?? undefined
+  )
   throw lastError || new Error('Failed after retries')
 }
 

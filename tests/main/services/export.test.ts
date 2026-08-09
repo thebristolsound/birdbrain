@@ -7,7 +7,7 @@ import { createHash } from 'crypto'
 import sharp from 'sharp'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
-import { insertCapture } from '@main/services/db/captureRepo'
+import { insertCapture, setCaptureTrustedTime } from '@main/services/db/captureRepo'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import * as manifest from '@main/services/manifest'
@@ -19,17 +19,11 @@ import {
 } from '@main/services/manifest'
 import { canonicalStringify } from '@shared/verify'
 import { ingestMhtmlCapture } from '@main/services/captureLifecycle'
-import {
-  createCaptureLifecycle,
-  type CaptureLifecycle
-} from '@main/services/captureLifecycle'
+import { createCaptureLifecycle, type CaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
-import {
-  verifyCaptures,
-  generateReport,
-  getExportPreflight
-} from '@main/services/export'
-import { saveAnnotations } from '@main/services/annotations'
+import { verifyCaptures, generateReport, getExportPreflight } from '@main/services/export'
+import { saveAnnotations, upsertPin, deletePin } from '@main/services/annotations'
+import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 import { initSettings, updateSettings } from '@main/services/settings'
 import {
   getInstallationId,
@@ -181,8 +175,8 @@ describe('export', () => {
     expect(content).toContain('Test User')
     expect(content).toContain('example.com')
     expect(content).toContain('Birdbrain')
-    expect(content).toContain('Audit Trail')
-    expect(content).toContain('verify-verified')
+    expect(content).toContain('Exhibit index and verification results')
+    expect(content).toContain('Verified')
   })
 
   it('generates a self-contained evidence ZIP with manifest, report, keys, and captures', async () => {
@@ -523,11 +517,11 @@ describe('export', () => {
     await generateReport(caseId, options, captureLifecycle)
     const content = readFileSync(outputPath, 'utf-8')
 
-    // The audit trail has a dedicated Trusted Time column; a freshly-captured
-    // (un-stamped) capture is integrity-verified AND trusted-time Pending.
-    expect(content).toContain('Trusted Time')
-    expect(content).toContain('verify-verified')
-    expect(content).toContain('Pending')
+    // Integrity and trusted time are orthogonal: a freshly-captured (un-stamped)
+    // capture is integrity-Verified AND on a local clock with a token pending.
+    expect(content).toContain('Trusted time')
+    expect(content).toContain('Verified')
+    expect(content).toContain('Local clock — token pending')
   })
 
   it('reports un-stamped captures in preflight and the HTML summary without blocking export', async () => {
@@ -555,8 +549,10 @@ describe('export', () => {
     )
 
     const content = readFileSync(outputPath, 'utf-8')
-    expect(content).toContain('Trusted time warning')
-    expect(content).toContain('Export was not blocked')
+    expect(content).toMatch(/\d+ captures? without trusted time/)
+    // Whitespace-tolerant: the sentence wraps across source lines in the
+    // template literal, so the emitted HTML carries a newline mid-phrase.
+    expect(content).toMatch(/export\s+was\s+not\s+blocked/i)
   })
 
   it('does not record overallValid:true when auditTrail is excluded (no verifications)', async () => {
@@ -631,7 +627,10 @@ describe('export', () => {
     await generateReport(caseId, options, captureLifecycle)
     const content = readFileSync(outputPath, 'utf-8')
     expect(content).toContain('Export Test Case')
-    expect(content).not.toContain('Audit Trail')
+    // With no verification run, the report must decline to make an integrity
+    // finding rather than silently reproducing a stale one.
+    expect(content).toContain('No verification was run for this export.')
+    expect(content).toContain('Not verified in this export')
   })
 
   it('escapes HTML in report output', async () => {
@@ -711,6 +710,484 @@ describe('export', () => {
     expect(pixelAt(80, 80)).toEqual([255, 255, 255])
   })
 
+  // --- report.html must never cite a file the package does not contain ---
+
+  it('reports a missing page archive as absent even when no verification runs', async () => {
+    const { capture } = await ingest(caseId, '<html>gone</html>', 'https://example.com/gone', 'G')
+    // Delete the stored archive after ingest, then export without an audit trail
+    // so no verification result exists to infer absence from.
+    rmSync(defaultCaptureStore.artifactPaths(caseId, capture.id, 'mhtml').abs)
+
+    const outputPath = join(tempDir, 'missing-archive.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const entries = readStoredZipEntries(outputPath)
+    const html = entries.get('report.html')!.toString('utf-8')
+
+    expect(entries.has(`pages/${capture.id}.mhtml`)).toBe(false)
+    expect(html).not.toContain(`pages/${capture.id}.mhtml`)
+    expect(html).toContain('Stored page archive not available')
+  })
+
+  it('cites no screenshot path when screenshots are excluded from the package', async () => {
+    const { capture } = await ingest(caseId, '<html>s</html>', 'https://example.com/s', 'S')
+    ensureCaseDir(caseId)
+    const png = await sharp({
+      create: { width: 10, height: 10, channels: 4, background: { r: 1, g: 1, b: 1, alpha: 1 } }
+    })
+      .png()
+      .toBuffer()
+    writeFileSync(defaultCaptureStore.artifactPaths(caseId, capture.id, 'png').abs, png)
+
+    const outputPath = join(tempDir, 'no-screenshots.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const entries = readStoredZipEntries(outputPath)
+    const html = entries.get('report.html')!.toString('utf-8')
+
+    expect([...entries.keys()].some((k) => k.startsWith('screenshots/'))).toBe(false)
+    // The methodology section still explains content-addressing in prose; what
+    // must not appear is a citation of a specific screenshot file.
+    expect(html).not.toMatch(/screenshots\/[0-9a-f]{64}\.png/)
+  })
+
+  it('names the shared timestamp token path for captures with a duplicate content hash', async () => {
+    const payload = '<html>dupe</html>'
+    const a = await ingest(caseId, payload, 'https://example.com/a', 'A')
+    const b = await ingest(caseId, payload, 'https://example.com/b', 'B')
+    expect(a.capture.hash).toBe(b.capture.hash)
+
+    const token = readFileSync(join(process.cwd(), 'tests/fixtures/timestamp/digicert-token.der'))
+    appendManifestEntry(join(tempDir, 'captures', caseId), {
+      type: 'timestamp',
+      caseId,
+      captureContentHash: a.capture.hash,
+      timestamp: '2026-04-05T12:01:00.000Z',
+      tsaToken: token.toString('base64'),
+      operatorId: 'op',
+      operatorName: 'Test Operator',
+      toolVersion: '0.1.0'
+    })
+
+    const outputPath = join(tempDir, 'dupe-token.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const entries = readStoredZipEntries(outputPath)
+    const html = entries.get('report.html')!.toString('utf-8')
+    const tokenPaths = [...entries.keys()].filter((k) => k.startsWith('timestamps/'))
+
+    // One token file is packaged for the shared hash; both exhibits must cite it
+    // rather than each naming a file after its own capture id.
+    expect(tokenPaths).toHaveLength(1)
+    for (const cited of html.match(/timestamps\/[\w-]+\.tst/g) ?? []) {
+      expect(tokenPaths).toContain(cited)
+    }
+  })
+
+  it('does not describe companion files for a standalone HTML export', async () => {
+    await ingest(caseId, '<html>standalone</html>')
+    const outputPath = join(tempDir, 'standalone.html')
+    await generateReport(
+      caseId,
+      {
+        format: 'html',
+        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const html = readFileSync(outputPath, 'utf-8')
+    expect(html).toContain('This is a standalone report, not an evidence package')
+    expect(html).toContain('These steps require the evidence package')
+    expect(html).not.toContain('Companion files in this evidence package')
+    // The verification steps still name pages/ generically — deliberately, so a
+    // reader knows what to request. What must not appear is a per-exhibit
+    // citation of a file this export did not write.
+    expect(html).not.toMatch(/pages\/[0-9a-f-]{36}\.mhtml/)
+    expect(html).not.toMatch(/timestamps\/[0-9a-f-]{36}\.tst/)
+  })
+
+  it('discloses burned annotations when shapes exist but no pins do', async () => {
+    const c = createCase({ name: 'Shapes only' })
+    ensureCaseDir(c.id)
+    const white = await sharp({
+      create: {
+        width: 50,
+        height: 50,
+        channels: 4,
+        background: { r: 255, g: 255, b: 255, alpha: 1 }
+      }
+    })
+      .png()
+      .toBuffer()
+    const cap = insertCapture({
+      caseId: c.id,
+      url: 'https://example.com',
+      title: 'X',
+      hash: 'h',
+      screenshotHash: createHash('sha256').update(white).digest('hex'),
+      timestamp: new Date().toISOString()
+    })
+    writeFileSync(defaultCaptureStore.artifactPaths(c.id, cap.id, 'png').abs, white)
+
+    // A redaction burns pixels without producing any pin — the case where
+    // inferring "annotated" from pins.length silently omits the disclosure.
+    saveAnnotations({
+      captureId: cap.id,
+      shapes: [{ kind: 'redact', id: 'r', x: 10, y: 10, w: 20, h: 20, mode: 'solid' }],
+      imageWidth: 50,
+      imageHeight: 50
+    })
+
+    const outputPath = join(tempDir, 'shapes-only.html')
+    await generateReport(
+      c.id,
+      {
+        format: 'html',
+        include: { captures: true, screenshots: true, auditTrail: false, annotations: 'burned' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const html = readFileSync(outputPath, 'utf-8')
+    expect(html).toContain('annotations burned in for legibility')
+    // The digest belongs to the unannotated original, not to the pixels shown,
+    // and the caption must say so rather than inviting a false mismatch.
+    expect(html).toContain('unannotated original SHA-256')
+    expect(html).toContain('that mismatch is expected rather than evidence of alteration')
+  })
+
+  it('escapes an unparseable capture timestamp instead of emitting it as markup', async () => {
+    const c = createCase({ name: 'Bad clock' })
+    insertCapture({
+      caseId: c.id,
+      url: 'https://example.com',
+      title: 'X',
+      hash: 'h',
+      timestamp: '<img src=x onerror=alert(1)>'
+    })
+
+    const outputPath = join(tempDir, 'bad-timestamp.html')
+    await generateReport(
+      c.id,
+      {
+        format: 'html',
+        include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const html = readFileSync(outputPath, 'utf-8')
+    expect(html).not.toContain('<img src=x')
+    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;')
+  })
+
+  // --- the report must not assert more than the export established ---
+
+  it('does not have the operator attest to a verification run that did not happen', async () => {
+    await ingest(caseId, '<html>unverified</html>')
+    const outputPath = join(tempDir, 'no-verify.html')
+    await generateReport(
+      caseId,
+      {
+        format: 'html',
+        include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const html = readFileSync(outputPath, 'utf-8')
+    // The signature block is the statement an operator signs; it must not claim
+    // digests were recomputed when nothing recomputed them.
+    expect(html).not.toMatch(/those produced by the tool at the verification run/)
+    expect(html).toMatch(/No verification was run for this\s+export/)
+    expect(html).toContain('I make no statement about')
+  })
+
+  it('qualifies the attestation statement rather than claiming it for every capture', async () => {
+    await ingest(caseId, '<html>scope</html>')
+    const outputPath = join(tempDir, 'scope.html')
+    await generateReport(
+      caseId,
+      {
+        format: 'html',
+        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const html = readFileSync(outputPath, 'utf-8')
+    expect(html).toContain('whose exhibit records a verified result')
+    expect(html).toMatch(/never for the package as a whole/)
+    // The unconditional form claimed every capture rehashed, contradicting any
+    // exhibit recorded as altered, absent or unverified.
+    expect(html).not.toMatch(/That the stored bytes of each capture recompute/)
+  })
+
+  it('takes trusted time from the manifest, not the capture row mirror', async () => {
+    const { capture } = await ingest(caseId, '<html>mirror</html>')
+    // Corrupt the rebuildable mirror so it claims trusted time the manifest
+    // cannot support. The exhibit must follow the manifest.
+    setCaptureTrustedTime(capture.id, 'rfc3161')
+
+    const outputPath = join(tempDir, 'stale-mirror.html')
+    await generateReport(
+      caseId,
+      {
+        format: 'html',
+        include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const html = readFileSync(outputPath, 'utf-8')
+    // A v2+ capture with no timestamp entry is 'pending' by the manifest, so
+    // that is what the exhibit must state — not the mirror's 'rfc3161'.
+    expect(html).toContain('Local clock — token pending')
+    expect(html).not.toContain('RFC 3161 token retained')
+  })
+
+  it('labels an exhibit image with the digest of the bytes it reproduces', async () => {
+    const c = createCase({ name: 'Sidecar drift' })
+    ensureCaseDir(c.id)
+    const png = await sharp({
+      create: { width: 20, height: 20, channels: 4, background: { r: 9, g: 9, b: 9, alpha: 1 } }
+    })
+      .png()
+      .toBuffer()
+    // Record a digest that does not match the bytes on disk, as happens when the
+    // sidecar changes after ingest.
+    const cap = insertCapture({
+      caseId: c.id,
+      url: 'https://example.com',
+      title: 'X',
+      hash: 'h',
+      screenshotHash: 'f'.repeat(64),
+      timestamp: new Date().toISOString()
+    })
+    writeFileSync(defaultCaptureStore.artifactPaths(c.id, cap.id, 'png').abs, png)
+
+    const outputPath = join(tempDir, 'sidecar-drift.html')
+    await generateReport(
+      c.id,
+      {
+        format: 'html',
+        include: { captures: true, screenshots: true, auditTrail: false, annotations: 'none' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const html = readFileSync(outputPath, 'utf-8')
+    const actual = createHash('sha256').update(png).digest('hex')
+    expect(html).toContain(`image SHA-256 ${actual}`)
+    expect(html).toContain('no longer matches the digest recorded for it')
+    expect(html).toContain('f'.repeat(64))
+  })
+
+  it('claims RFC 3161 trusted time only when the token is in the package', async () => {
+    const { capture } = await ingest(caseId, '<html>tt</html>')
+    // A synthetic token whose messageImprint matches the capture hash, so
+    // trusted-time resolution actually yields rfc3161 rather than pending.
+    const token = buildSyntheticToken({
+      contentHash: capture.hash,
+      genTime: new Date('2026-04-05T12:01:00.000Z'),
+      tsaDnsName: 'tsa.example.com'
+    })
+    appendManifestEntry(join(tempDir, 'captures', caseId), {
+      type: 'timestamp',
+      caseId,
+      captureContentHash: capture.hash,
+      timestamp: '2026-04-05T12:01:00.000Z',
+      tsaToken: token.toString('base64'),
+      operatorId: 'op',
+      operatorName: 'Test Operator',
+      toolVersion: '0.1.0'
+    })
+
+    const outputPath = join(tempDir, 'tt-consistency.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        // auditTrail off, so the claim comes from the manifest fallback rather
+        // than from a verification result — the path that read a stale mirror.
+        include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const entries = readStoredZipEntries(outputPath)
+    const html = entries.get('report.html')!.toString('utf-8')
+    const packagedTokens = [...entries.keys()].filter((k) => k.startsWith('timestamps/'))
+
+    // The trusted-time index and the token paths come from one manifest
+    // snapshot, so a claimed token is always a packaged token.
+    expect(packagedTokens).toHaveLength(1)
+    expect(html).toContain('RFC 3161 token retained')
+    expect(html).toContain(packagedTokens[0])
+  })
+
+  it('numbers legend entries with the pin numbers burned into the image', async () => {
+    const c = createCase({ name: 'Pins' })
+    ensureCaseDir(c.id)
+    const white = await sharp({
+      create: {
+        width: 60,
+        height: 60,
+        channels: 4,
+        background: { r: 255, g: 255, b: 255, alpha: 1 }
+      }
+    })
+      .png()
+      .toBuffer()
+    const cap = insertCapture({
+      caseId: c.id,
+      url: 'https://example.com',
+      title: 'X',
+      hash: 'h',
+      timestamp: new Date().toISOString()
+    })
+    writeFileSync(defaultCaptureStore.artifactPaths(c.id, cap.id, 'png').abs, white)
+    saveAnnotations({
+      captureId: cap.id,
+      shapes: [{ kind: 'redact', id: 'r', x: 5, y: 5, w: 10, h: 10, mode: 'solid' }],
+      imageWidth: 60,
+      imageHeight: 60
+    })
+    // Pins are numbered MAX(number)+1 and deletion does not renumber, so after
+    // removing the first two the survivors are 3 and 4. A legend that lets the
+    // browser count from 1 would then disagree with the burned image.
+    const p1 = upsertPin({ captureId: cap.id, body: 'One' })
+    const p2 = upsertPin({ captureId: cap.id, body: 'Two' })
+    upsertPin({ captureId: cap.id, body: 'Third pin, first surviving entry.' })
+    upsertPin({ captureId: cap.id, body: 'Fourth pin.' })
+    deletePin(p1.id)
+    deletePin(p2.id)
+
+    const outputPath = join(tempDir, 'pins.html')
+    await generateReport(
+      c.id,
+      {
+        format: 'html',
+        include: { captures: true, screenshots: true, auditTrail: false, annotations: 'burned' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const html = readFileSync(outputPath, 'utf-8')
+    expect(html).toContain('<li value="3">')
+    expect(html).toContain('<li value="4">')
+  })
+
+  it('does not make package claims on the cover of a standalone export', async () => {
+    await ingest(caseId, '<html>cover</html>')
+    const outputPath = join(tempDir, 'cover-standalone.html')
+    await generateReport(
+      caseId,
+      {
+        format: 'html',
+        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const html = readFileSync(outputPath, 'utf-8')
+    expect(html).toContain('Captures described')
+    expect(html).not.toContain('Captures in package')
+    // No archive is emitted, so the cover must not tally archives as present.
+    expect(html).not.toContain('Page archive present')
+    expect(html).toContain('not enclosed with it')
+  })
+
+  it('does not attest cover tallies to a verification run that did not happen', async () => {
+    await ingest(caseId, '<html>tally</html>')
+    const outputPath = join(tempDir, 'cover-noverify.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const html = readStoredZipEntries(outputPath).get('report.html')!.toString('utf-8')
+    expect(html).not.toContain('The integrity count is produced by the verification run')
+    expect(html).toMatch(/No verification was run for this export/)
+    expect(html).toContain('the figure is not a finding of failure')
+  })
+
+  it('requires an independently obtained trust anchor for a non-default TSA', async () => {
+    updateSettings({ tsaUrl: 'https://tsa.example.org/timestamp' })
+    await ingest(caseId, '<html>tsa</html>')
+    const outputPath = join(tempDir, 'custom-tsa.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const html = readStoredZipEntries(outputPath).get('report.html')!.toString('utf-8')
+    expect(html).toContain('No trust anchor is bundled for the configured authority')
+    expect(html).toContain('trust anchor you obtain independently')
+    // Must not tell a reviewer that chaining to the bundled file proves anything.
+    expect(html).not.toContain('which carries the authority’s trust anchor')
+  })
+
   // --- Operator identity gating and report rendering ---
 
   it('generateReport throws when operator name is blank', async () => {
@@ -773,7 +1250,7 @@ describe('export', () => {
     expect(content).toContain('Detective')
     expect(content).toContain('Metro PD')
     // installationId is a UUID — verify its label is present
-    expect(content).toContain('Installation ID')
+    expect(content).toContain('Installation identifier')
   })
 
   it('reports granular per-item progress through the verify and screenshot stages', async () => {

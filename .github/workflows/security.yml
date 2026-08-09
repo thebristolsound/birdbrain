@@ -1,0 +1,104 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    name: Secret scan (full history)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          # Nothing here pushes; keep the token out of .git/config.
+          persist-credentials: false
+
+      # The release tag is not immutable, so the version alone does not pin the
+      # binary — verify the tarball against the sha256 recorded from the release's
+      # checksums file before executing anything from it.
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          curl -sSfL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum --check
+          tar -xzf gitleaks.tar.gz gitleaks
+          ./gitleaks version
+
+      # Scans every commit on every ref, not just the pushed branch, so a secret
+      # committed to any historical branch fails the build. Known false positives
+      # are allowlisted by fingerprint in .gitleaksignore.
+      - name: Scan git history
+        run: ./gitleaks git --log-opts="--all" --redact --no-banner --verbose
+
+  dependencies:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+      # No `cache: pnpm` here: this job never installs, so the pnpm store is only
+      # present when the cache restore hits. On a lockfile-changing PR the key
+      # misses and setup-node's post-run save fails the job on the missing path.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      # Enforcing. Audits both dependency trees (the app and the isolated website/
+      # sub-project) and fails on any high or critical advisory that is neither
+      # cleared by an override in pnpm-workspace.yaml / website/pnpm-workspace.yaml
+      # nor covered by an unexpired entry in audit-exceptions.json — so a new
+      # advisory, or an accepted one whose expiry has passed, breaks the build.
+      # Reads the lockfiles, which is why this job still does not install.
+      #
+      # This replaces the two inline `pnpm audit` steps: an accepted finding lives
+      # in a data file with an expiry date rather than in an `--ignore` flag and a
+      # comment, so it gets re-decided instead of inherited. The overrides remain
+      # the first line of defence — an exception is only for what an override
+      # cannot fix. See docs/specs/2026-08-05-dependency-advisory-baseline.md for
+      # the per-advisory disposition behind them.
+      - name: Dependency advisories
+        run: node scripts/audit-check.mjs
+
+  publish-guard:
+    name: Registry publish guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      # Prevents accidental npm/pnpm registry publication (#267): package.json
+      # must stay marked private until publication is explicitly approved (at
+      # which point this job, not just the field, needs to change). This checks
+      # the manifest field directly rather than parsing `pnpm publish --dry-run`
+      # output: npm's own `--dry-run` was confirmed (see the baseline doc) to
+      # skip the private check entirely and still build a publishable tarball,
+      # so a dry-run-based check would have been a false sense of guard.
+      - name: Verify package.json is marked private
+        run: |
+          node -e "
+            const pkg = require('./package.json');
+            if (pkg.private !== true) {
+              console.error('package.json must carry \"private\": true until registry publication is explicitly approved (#267)');
+              process.exit(1);
+            }
+            console.log('OK: package.json is private — npm/pnpm publish is blocked by default');
+          "

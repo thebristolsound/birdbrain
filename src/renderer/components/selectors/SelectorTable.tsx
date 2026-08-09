@@ -3,6 +3,7 @@ import { Search, ArrowUpDown } from 'lucide-react'
 import type { Selector } from '@shared/types'
 import { SelectorTableRow } from '@renderer/components/selectors/SelectorTableRow'
 import { Card, Button } from '@renderer/components/ui'
+import { deleteSelector, updateSelector } from '@renderer/lib/api/selectors'
 
 interface SelectorTableProps {
   selectors: Selector[]
@@ -59,12 +60,12 @@ export function SelectorTable({ selectors, matchCounts, onRefresh, caseId }: Sel
   }
 
   async function handleToggleEnabled(sel: Selector) {
-    await window.birdbrain.selectors.update({ id: sel.id, enabled: !sel.enabled })
+    await updateSelector({ id: sel.id, enabled: !sel.enabled })
     onRefresh()
   }
 
   async function handleDelete(id: string) {
-    await window.birdbrain.selectors.delete(id)
+    await deleteSelector(id)
     onRefresh()
   }
 

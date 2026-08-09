@@ -1,3 +1,17 @@
+// The wire contract lives in the shared source tree, next to the Zod schemas
+// that validate the requests these responses answer. Type-only imports: the
+// extension trusts the server and adds no runtime validation, so nothing from
+// @shared is bundled.
+import type {
+  ActiveSelectorsResult,
+  CaptureServerCase,
+  CaptureServerStatus,
+  CaptureUploadResult,
+  CaptureUploadSource,
+  SelectorCreateResult,
+  SelectorMatchInfo
+} from '@shared/schemas'
+
 const BASE_URL = 'http://127.0.0.1:19845'
 const STORAGE_KEY = 'birdbrainServerToken'
 
@@ -13,62 +27,6 @@ export class ApiError extends Error {
     this.status = status
     this.detail = detail
   }
-}
-
-interface StatusResponse {
-  running: boolean
-  serverToken?: string
-  activeCase: { id: string; name: string } | null
-  sessionActive: boolean
-  captureCount: number
-  autoCaptureMode?: string
-  cases?: Array<{ id: string; name: string }>
-  ignoredUrlPatterns?: string[]
-  captureScreenshots?: boolean
-  dedupeWindowSeconds?: number
-  theme?: 'light' | 'dark'
-}
-
-interface CaseInfo {
-  id: string
-  name: string
-  captureCount: number
-}
-
-interface CaptureResult {
-  captureId: string
-  hash: string
-  status: string
-  source: string
-  manifestIndex?: number
-  screenshotStatus?: 'saved' | 'dropped' | 'none'
-  screenshotWarning?: string
-}
-
-interface SelectorInfo {
-  id: string
-  caseId: string
-  pattern: string
-  isRegex: boolean
-  enabled: boolean
-  label?: string
-  createdAt: string
-}
-
-interface ActiveCaseSelectors {
-  caseId: string
-  caseName: string
-  selectors: SelectorInfo[]
-}
-
-interface SelectorMatchInfo {
-  selectorId: string
-  caseId: string
-  caseName: string
-  pattern: string
-  matchText: string
-  context: string
-  index: number
 }
 
 function hasChromeStorage(): boolean {
@@ -121,10 +79,10 @@ async function throwIfNotOk(res: Response): Promise<void> {
   throw new ApiError(res.status, res.statusText, detail)
 }
 
-async function fetchStatus(): Promise<StatusResponse> {
+async function fetchStatus(): Promise<CaptureServerStatus> {
   const res = await fetch(`${BASE_URL}/api/status`)
   await throwIfNotOk(res)
-  const data = (await res.json()) as StatusResponse
+  const data = (await res.json()) as CaptureServerStatus
   if (data.serverToken) {
     await setServerToken(data.serverToken)
   }
@@ -189,11 +147,11 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json() as Promise<T>
 }
 
-export async function getStatus(): Promise<StatusResponse> {
+export async function getStatus(): Promise<CaptureServerStatus> {
   return fetchStatus()
 }
 
-export async function getCases(): Promise<CaseInfo[]> {
+export async function getCases(): Promise<CaptureServerCase[]> {
   return request('/api/cases')
 }
 
@@ -212,7 +170,7 @@ export async function stopSession(): Promise<{ status: string; sessionActive: bo
 }
 
 export async function sendMhtmlCapture(params: {
-  source: 'auto' | 'manual' | 'selector'
+  source: CaptureUploadSource
   caseId?: string
   url: string
   title: string
@@ -226,7 +184,7 @@ export async function sendMhtmlCapture(params: {
   httpStatus?: number
   headers?: Record<string, string>
   matchedSelectors?: SelectorMatchInfo[]
-}): Promise<CaptureResult> {
+}): Promise<CaptureUploadResult> {
   const form = new FormData()
   form.append('source', params.source)
   if (params.caseId) form.append('caseId', params.caseId)
@@ -249,7 +207,7 @@ export async function sendMhtmlCapture(params: {
   }
   form.append('mhtml', params.mhtml, 'capture.mhtml')
 
-  return request<CaptureResult>('/api/captures', {
+  return request<CaptureUploadResult>('/api/captures', {
     method: 'POST',
     body: form
   })
@@ -263,20 +221,15 @@ export async function testCapturePipeline(): Promise<{
   return request('/api/captures/test', { method: 'POST' })
 }
 
-export async function getActiveSelectors(): Promise<ActiveCaseSelectors[]> {
+export async function getActiveSelectors(): Promise<ActiveSelectorsResult> {
   return request('/api/selectors/active')
-}
-
-interface CreateSelectorResult {
-  selector: SelectorInfo
-  status: string
 }
 
 export async function createSelector(params: {
   caseId: string
   pattern: string
   label?: string
-}): Promise<CreateSelectorResult> {
+}): Promise<SelectorCreateResult> {
   return request('/api/selectors', {
     method: 'POST',
     body: JSON.stringify(params)

@@ -31,10 +31,10 @@ import {
 } from '@main/services/db/selectorRepo'
 import { createNote, collectNotesForCase, importNoteRows } from '@main/services/db/noteRepo'
 import {
-  createArchiveRef,
-  collectArchiveRefsForCase,
-  importArchiveRefRows
-} from '@main/services/db/archiveRefRepo'
+  createWaybackRef,
+  collectWaybackRefsForCase,
+  importWaybackRefRows
+} from '@main/services/db/waybackRefRepo'
 import {
   insertExtractedData,
   collectExtractedDataForCase,
@@ -116,12 +116,21 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
     const sel = createSelector({ caseId: c.id, pattern: 'alpha', isRegex: false })
     matchSelectorAgainstCaptures(sel.id, [{ captureId: cap1.id, text: 'alpha text' }])
 
-    createNote({ caseId: c.id, captureId: cap1.id, title: 'N', body: 'note body' })
+    // Rich body, so the deep column comparison below covers body_doc too.
+    createNote({
+      caseId: c.id,
+      captureId: cap1.id,
+      title: 'N',
+      bodyDoc: JSON.stringify({
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'note body' }] }]
+      })
+    })
 
     insertExtractedData(cap1.id, c.id, 'https://a.example', [
       { category: 'contact', subcategory: 'email', value: 'a@example.com' }
     ])
-    createArchiveRef({
+    createWaybackRef({
       captureId: cap1.id,
       checkedAt: '2026-01-06T00:00:00Z',
       snapshot: {
@@ -199,7 +208,7 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
       annotationPins: collectAnnotationPinsForCase(c.id),
       captureAnalyses: collectCaptureAnalysesForCase(c.id),
       extractedData: collectExtractedDataForCase(c.id),
-      captureArchiveRefs: collectArchiveRefsForCase(c.id)
+      captureArchiveRefs: collectWaybackRefsForCase(c.id)
     }
     closeDatabase()
     initDatabase(':memory:')
@@ -216,7 +225,7 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
       importAnnotationPinRows(src.annotationPins, ctx)
       importCaptureAnalysisRows(src.captureAnalyses, ctx)
       importExtractedDataRows(src.extractedData, ctx)
-      importArchiveRefRows(src.captureArchiveRefs, ctx)
+      importWaybackRefRows(src.captureArchiveRefs, ctx)
       importNoteRows(src.notes, ctx)
     })
 
@@ -302,7 +311,7 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
         }))
         .sort(byId)
     )
-    expect(collectArchiveRefsForCase(NEW_CASE)).toEqual(
+    expect(collectWaybackRefsForCase(NEW_CASE)).toEqual(
       src.captureArchiveRefs.map((r) => ({
         ...r,
         id: mapId(r.id as string),

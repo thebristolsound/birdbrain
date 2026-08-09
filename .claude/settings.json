@@ -1,0 +1,44 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(pnpm install)",
+      "Bash(pnpm rebuild:electron)",
+      "Bash(pnpm lint)",
+      "Bash(pnpm test)",
+      "Bash(pnpm test:coverage)",
+      "Bash(pnpm test:e2e)",
+      "Bash(pnpm build:*)",
+      "Bash(pnpm build:extension)",
+      "Bash(pnpm build:verifier)",
+      "Bash(npx tsc --noEmit -p tsconfig.node.json)",
+      "Bash(npx tsc --noEmit -p tsconfig.web.json)",
+      "Bash(npx tsc --noEmit -p extension/tsconfig.json)",
+      "Bash(git status:*)",
+      "Bash(git diff)",
+      "Bash(git diff --stat)",
+      "Bash(git diff --cached)",
+      "Bash(git diff --name-only)",
+      "Bash(git log --oneline)",
+      "Bash(git log --oneline -20)",
+      "Bash(git log -5)",
+      "Bash(git show)",
+      "Bash(git show --stat)",
+      "Bash(git show HEAD)",
+      "Bash(git blame:*)",
+      "Bash(gh api repos/thebristolsound/birdbrain/:*)",
+      "Bash(gh api /user:*)"
+    ]
+  }
+}

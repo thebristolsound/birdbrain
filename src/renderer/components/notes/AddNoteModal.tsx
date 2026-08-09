@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
 import { X } from 'lucide-react'
 import { useNotesMutations } from '@renderer/lib/queries'
+import { NoteEditor } from '@renderer/components/notes/NoteEditor'
+import { useNoteEditor } from '@renderer/components/notes/useNoteEditor'
+import { EMPTY_NOTE_DOC, plainTextToNoteDoc } from '@shared/noteDoc'
 import {
   Dialog,
   DialogContent,
@@ -8,8 +11,7 @@ import {
   DialogTitle,
   DialogFooter,
   Button,
-  Input,
-  Textarea
+  Input
 } from '@renderer/components/ui'
 
 interface AddNoteModalProps {
@@ -35,22 +37,27 @@ export function AddNoteModal({
 }: AddNoteModalProps) {
   const { create } = useNotesMutations(caseId)
   const [title, setTitle] = useState('')
-  const [body, setBody] = useState('')
+  const [bodyDoc, setBodyDoc] = useState<string | null>(null)
+  const editor = useNoteEditor({ onChange: setBodyDoc, testId: 'add-note-body' })
+  const hasBody = editor ? !editor.isEmpty : false
 
   useEffect(() => {
-    if (open) {
-      setTitle(prefillTitle ?? captureTitle)
-      setBody(prefillBody ?? '')
-    }
-  }, [open, captureTitle, prefillTitle, prefillBody])
+    if (!open || !editor) return
+    setTitle(prefillTitle ?? captureTitle)
+    // Prefilled text (a selected passage, say) arrives as plain text; lift it
+    // into document form so the investigator can format from there.
+    const doc = prefillBody ? plainTextToNoteDoc(prefillBody) : EMPTY_NOTE_DOC
+    editor.commands.setContent(doc)
+    setBodyDoc(JSON.stringify(doc))
+  }, [open, editor, captureTitle, prefillTitle, prefillBody])
 
   async function handleSave() {
-    if (!title.trim() && !body.trim()) return
+    if (!title.trim() && !hasBody) return
     await create.mutateAsync({
       caseId,
       captureId,
       title: title.trim(),
-      body: body.trim(),
+      bodyDoc: bodyDoc ?? JSON.stringify(EMPTY_NOTE_DOC),
       sourceUrl: captureUrl
     })
     onClose()
@@ -74,15 +81,9 @@ export function AddNoteModal({
           placeholder="Title"
           className="mb-2 border-border bg-canvas font-semibold"
         />
-        <Textarea
-          data-testid="add-note-body"
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          placeholder="What did you observe?"
-          rows={5}
-          autoFocus
-          className="mb-3 border-border bg-canvas text-text-secondary"
-        />
+        <div className="mb-3">
+          <NoteEditor editor={editor} minHeightClass="min-h-32" />
+        </div>
         <div className="mb-3 truncate text-[11px] text-text-muted">Linked to: {captureUrl}</div>
         <DialogFooter>
           <Button variant="ghost" size="sm" onClick={onClose}>
@@ -92,7 +93,7 @@ export function AddNoteModal({
             data-testid="add-note-submit"
             size="sm"
             onClick={handleSave}
-            disabled={(!title.trim() && !body.trim()) || create.isPending}
+            disabled={(!title.trim() && !hasBody) || create.isPending}
           >
             {create.isPending ? 'Saving...' : 'Save note'}
           </Button>

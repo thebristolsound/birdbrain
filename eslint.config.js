@@ -12,6 +12,8 @@ export default tseslint.config(
       'dist/',
       'extension/dist/',
       'node_modules/',
+      // Isolated Next.js/Fumadocs sub-project with its own toolchain — see website/.
+      'website/',
       '.worktrees/',
       '.design-bundle/',
       '.claude/',
@@ -35,7 +37,12 @@ export default tseslint.config(
   {
     files: ['scripts/**/*.mjs'],
     languageOptions: {
-      globals: { console: 'readonly', process: 'readonly' }
+      globals: {
+        console: 'readonly',
+        process: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly'
+      }
     }
   },
   {

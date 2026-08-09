@@ -13,6 +13,8 @@ import {
   extractedDataSearchQueryOptions,
   useExtractedDataMutations
 } from '@renderer/lib/queries'
+import { openCaptureExternal } from '@renderer/lib/api/system'
+import { notify } from '@renderer/lib/notify'
 
 export function DataExplorer() {
   const { caseId } = useParams({ from: '/cases/$caseId/data' })
@@ -58,8 +60,9 @@ export function DataExplorer() {
   }
 
   function handleSourceUrlClick(url: string) {
-    // Swallow: openExternal rejects on non-http schemes and user-cancelled dialogs; neither is actionable here.
-    window.birdbrain.captures.openExternal(url).catch(() => {})
+    openCaptureExternal(url).catch((cause) => {
+      notify.error("Couldn't open the link in your browser", { cause })
+    })
   }
 
   if (loadingCategories) {

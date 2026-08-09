@@ -2,8 +2,13 @@ import { useState } from 'react'
 import { StickyNote, Pencil, Trash2, ExternalLink, X, Check } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { captureThumbnailQueryOptions, useNotesMutations } from '@renderer/lib/queries'
+import { openCaptureExternal } from '@renderer/lib/api/system'
+import { notify } from '@renderer/lib/notify'
 import type { Note } from '@shared/types'
-import { Button, Input, Textarea } from '@renderer/components/ui'
+import { Button, Input } from '@renderer/components/ui'
+import { NoteBody } from '@renderer/components/notes/NoteBody'
+import { NoteEditor } from '@renderer/components/notes/NoteEditor'
+import { useNoteEditor } from '@renderer/components/notes/useNoteEditor'
 
 function formatRelative(ts: string): string {
   const diff = Date.now() - new Date(ts).getTime()
@@ -20,6 +25,67 @@ interface NoteCardProps {
   caseId: string
 }
 
+interface NoteCardEditorProps {
+  note: Note
+  isPending: boolean
+  onSave: (values: { title: string; bodyDoc: string }) => void
+  onCancel: () => void
+}
+
+/**
+ * Mounted only while editing. Keeping the editor out of the read-only card
+ * means a case with two hundred notes does not mount two hundred ProseMirror
+ * views to display them.
+ */
+function NoteCardEditor({ note, isPending, onSave, onCancel }: NoteCardEditorProps) {
+  const [title, setTitle] = useState(note.title)
+  const [bodyDoc, setBodyDoc] = useState<string | null>(note.bodyDoc ?? null)
+  const editor = useNoteEditor({
+    bodyDoc: note.bodyDoc,
+    plainText: note.body,
+    onChange: setBodyDoc,
+    testId: 'note-body-input'
+  })
+
+  function handleSubmit() {
+    // A legacy note the user opened but did not retype still has no bodyDoc in
+    // state; serialize what the editor lifted its plain text into.
+    const doc = bodyDoc ?? (editor ? JSON.stringify(editor.getJSON()) : null)
+    if (doc === null) return
+    onSave({ title, bodyDoc: doc })
+  }
+
+  return (
+    <div className="space-y-2">
+      <Input
+        data-testid="note-title-input"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        placeholder="Title"
+        className="border-border bg-canvas font-semibold"
+      />
+      <NoteEditor editor={editor} placeholder="Note body" />
+      <div className="flex items-center justify-end gap-2">
+        <Button variant="ghost" size="xs" onClick={onCancel} className="gap-1" type="button">
+          <X className="h-3.5 w-3.5" />
+          Cancel
+        </Button>
+        <Button
+          data-testid="note-save"
+          size="xs"
+          type="button"
+          onClick={handleSubmit}
+          disabled={isPending}
+          className="gap-1"
+        >
+          <Check className="h-3.5 w-3.5" />
+          Save
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 export function NoteCard({ note, caseId }: NoteCardProps) {
   const { update, remove } = useNotesMutations(caseId)
   const [isEditing, setIsEditing] = useState(false)
@@ -29,10 +95,8 @@ export function NoteCard({ note, caseId }: NoteCardProps) {
   })
   const [confirmDelete, setConfirmDelete] = useState(false)
 
-  async function handleSave(formData: FormData) {
-    const title = formData.get('title') as string
-    const body = formData.get('body') as string
-    await update.mutateAsync({ id: note.id, title, body })
+  async function handleSave(values: { title: string; bodyDoc: string }) {
+    await update.mutateAsync({ id: note.id, ...values })
     setIsEditing(false)
   }
 
@@ -45,8 +109,11 @@ export function NoteCard({ note, caseId }: NoteCardProps) {
   }
 
   async function handleOpenUrl() {
-    if (note.sourceUrl) {
-      await window.birdbrain.captures.openExternal(note.sourceUrl)
+    if (!note.sourceUrl) return
+    try {
+      await openCaptureExternal(note.sourceUrl)
+    } catch (cause) {
+      notify.error("Couldn't open the link in your browser", { cause })
     }
   }
 
@@ -75,47 +142,13 @@ export function NoteCard({ note, caseId }: NoteCardProps) {
 
       <div className="min-w-0 flex-1">
         {isEditing ? (
-          <form
+          <NoteCardEditor
             key={`edit-${note.id}`}
-            onSubmit={(e) => {
-              e.preventDefault()
-              const formData = new FormData(e.currentTarget)
-              handleSave(formData)
-            }}
-            className="space-y-2"
-          >
-            <Input
-              data-testid="note-title-input"
-              name="title"
-              defaultValue={note.title}
-              placeholder="Title"
-              className="border-border bg-canvas font-semibold"
-            />
-            <Textarea
-              data-testid="note-body-input"
-              name="body"
-              defaultValue={note.body}
-              placeholder="Note body"
-              rows={4}
-              className="border-border bg-canvas text-text-secondary"
-            />
-            <div className="flex items-center justify-end gap-2">
-              <Button variant="ghost" size="xs" onClick={handleCancel} className="gap-1" type="button">
-                <X className="h-3.5 w-3.5" />
-                Cancel
-              </Button>
-              <Button
-                data-testid="note-save"
-                size="xs"
-                type="submit"
-                disabled={update.isPending}
-                className="gap-1"
-              >
-                <Check className="h-3.5 w-3.5" />
-                Save
-              </Button>
-            </div>
-          </form>
+            note={note}
+            isPending={update.isPending}
+            onSave={handleSave}
+            onCancel={handleCancel}
+          />
         ) : (
           <>
             <div className="flex items-start gap-2">
@@ -176,9 +209,7 @@ export function NoteCard({ note, caseId }: NoteCardProps) {
               )}
             </div>
 
-            {note.body && (
-              <p className="mt-2 whitespace-pre-wrap text-sm text-text-secondary">{note.body}</p>
-            )}
+            <NoteBody note={note} className="mt-2" />
           </>
         )}
       </div>

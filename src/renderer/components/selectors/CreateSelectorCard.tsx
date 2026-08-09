@@ -1,16 +1,8 @@
 import { useState } from 'react'
 import { Plus, ChevronUp, ChevronDown, Search, FlaskConical, Crosshair } from 'lucide-react'
-import {
-  testPatternAgainstText,
-  type MatchResult
-} from '@renderer/components/selectors/selectorUtils'
+import { useForegroundMatchPreview } from '@renderer/components/selectors/useForegroundMatchPreview'
 import { Card, Button, Label } from '@renderer/components/ui'
-
-interface TestResult {
-  captureTitle: string
-  captureUrl: string
-  matches: MatchResult[]
-}
+import { createSelector } from '@renderer/lib/api/selectors'
 
 interface CreateSelectorCardProps {
   isOpen: boolean
@@ -30,8 +22,12 @@ export function CreateSelectorCard({
   const [label, setLabel] = useState('')
   const [regexError, setRegexError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
-  const [testing, setTesting] = useState(false)
-  const [testResults, setTestResults] = useState<TestResult[] | null>(null)
+  const {
+    previews: testResults,
+    loading: testing,
+    run: runPreview,
+    reset: resetPreview
+  } = useForegroundMatchPreview(caseId, { maxCaptures: 10, maxMatchesPerCapture: 50 })
 
   function validateRegex(value: string): boolean {
     if (!isRegex) return true
@@ -51,7 +47,7 @@ export function CreateSelectorCard({
 
     setCreating(true)
     try {
-      await window.birdbrain.selectors.create({
+      await createSelector({
         caseId,
         pattern: pattern.trim(),
         isRegex,
@@ -61,7 +57,7 @@ export function CreateSelectorCard({
       setLabel('')
       setIsRegex(false)
       setRegexError(null)
-      setTestResults(null)
+      resetPreview()
       onCreated()
     } catch (err) {
       console.error('Failed to create selector:', err)
@@ -70,39 +66,10 @@ export function CreateSelectorCard({
     }
   }
 
-  async function handleTest() {
+  function handleTest() {
     if (!pattern.trim()) return
     if (isRegex && !validateRegex(pattern)) return
-
-    setTesting(true)
-    try {
-      const captures = await window.birdbrain.captures.list(caseId)
-      const results: TestResult[] = []
-      const toTest = captures.slice(0, 10)
-
-      for (const capture of toTest) {
-        try {
-          const text = await window.birdbrain.captures.getContent(capture.id, 'txt')
-          if (!text) continue
-          const matches = testPatternAgainstText(pattern, isRegex, text)
-          if (matches.length > 0) {
-            results.push({
-              captureTitle: capture.title || capture.url,
-              captureUrl: capture.url,
-              matches
-            })
-          }
-        } catch {
-          // skip captures that fail to load
-        }
-      }
-
-      setTestResults(results)
-    } catch (err) {
-      console.error('Failed to test pattern:', err)
-    } finally {
-      setTesting(false)
-    }
+    void runPreview(pattern, isRegex)
   }
 
   const totalMatches = testResults?.reduce((sum, r) => sum + r.matches.length, 0) ?? 0

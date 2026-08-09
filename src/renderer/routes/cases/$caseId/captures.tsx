@@ -24,6 +24,8 @@ import {
 import { useAppStore } from '@renderer/stores/appStore'
 import { useViewportWidth } from '@renderer/hooks/useViewportWidth'
 import { useReduceMotion } from '@renderer/hooks/useReduceMotion'
+import { openCaptureExternal } from '@renderer/lib/api/system'
+import { notify } from '@renderer/lib/notify'
 
 const COLLAPSE_THRESHOLD = 1100
 
@@ -82,14 +84,13 @@ export function CapturesRoute() {
     }
   }
 
-  async function handleDownload() {
-    if (!selectedCaptureId) return
-    await window.birdbrain.captures.download(selectedCaptureId)
-  }
-
   async function handleOpenExternal() {
     if (!selectedCapture) return
-    await window.birdbrain.captures.openExternal(selectedCapture.url)
+    try {
+      await openCaptureExternal(selectedCapture.url)
+    } catch (cause) {
+      notify.error("Couldn't open the link in your browser", { cause })
+    }
   }
 
   return (
@@ -124,7 +125,6 @@ export function CapturesRoute() {
               capture={selectedCapture}
               caseId={caseId}
               onCollapse={toggleUserPref}
-              onDownload={handleDownload}
               onOpenExternal={handleOpenExternal}
               onDelete={() => setShowDeleteConfirm(true)}
               onOpenAddNote={() => setShowAddNote(true)}
@@ -143,7 +143,6 @@ export function CapturesRoute() {
             capture={selectedCapture}
             caseId={caseId}
             onCollapse={() => setForcedPanelOpen(false)}
-            onDownload={handleDownload}
             onOpenExternal={handleOpenExternal}
             onDelete={() => setShowDeleteConfirm(true)}
             onOpenAddNote={() => setShowAddNote(true)}

@@ -4,7 +4,6 @@ import { motion } from 'motion/react'
 import {
   Star,
   ExternalLink,
-  Download,
   Trash2,
   Globe,
   Calendar,
@@ -22,8 +21,9 @@ import type { Capture } from '@shared/types'
 import {
   notesQueryOptions,
   useNotesMutations,
-  archiveLookupQueryOptions,
-  useRecaptureMutations
+  waybackLookupQueryOptions,
+  useRecaptureMutations,
+  useVerifyCapture
 } from '@renderer/lib/queries'
 import { useAppStore } from '@renderer/stores/appStore'
 import { useFavorites } from '@renderer/hooks/useFavorites'
@@ -35,16 +35,16 @@ import { TagBadge } from '@renderer/components/tags/TagBadge'
 import { TagEditorPopover } from '@renderer/components/captures/TagEditorPopover'
 import { useCaptureTagEditor } from '@renderer/components/captures/useCaptureTagEditor'
 import { useInlineNoteEditor } from '@renderer/components/captures/useInlineNoteEditor'
-import { useVerifyMutation } from '@renderer/components/captures/useVerifyMutation'
+import { NoteEditor } from '@renderer/components/notes/NoteEditor'
+import { useNoteEditor } from '@renderer/components/notes/useNoteEditor'
 import { getProvenanceColor } from '@renderer/components/captures/getProvenanceColor'
 import { ForensicsTab } from '@renderer/components/captures/ForensicsTab'
-import { ArchiveTab } from '@renderer/components/captures/ArchiveTab'
+import { WaybackTab } from '@renderer/components/captures/WaybackTab'
 
 interface Props {
   capture: Capture
   caseId: string
   onCollapse: () => void
-  onDownload: () => void
   onOpenExternal: () => void
   onDelete: () => void
   onOpenAddNote: () => void
@@ -66,7 +66,6 @@ export function CaptureDetailsPanel({
   capture,
   caseId,
   onCollapse,
-  onDownload,
   onOpenExternal,
   onDelete,
   onOpenAddNote
@@ -77,10 +76,10 @@ export function CaptureDetailsPanel({
   const { create: createNote, update: updateNote } = useNotesMutations(caseId)
   const { favorites, toggleFavorite } = useFavorites(caseId)
   const { tags } = useCaptureTagEditor(capture.id)
-  const verify = useVerifyMutation(capture.id, caseId)
+  const verify = useVerifyCapture(capture.id, caseId)
   const { enqueue } = useRecaptureMutations(caseId)
   // enabled:false — reads whatever the last explicit "Look up" cached, never fetches.
-  const lookup = useQuery(archiveLookupQueryOptions(capture.id))
+  const lookup = useQuery(waybackLookupQueryOptions(capture.id))
 
   const [tagPopoverOpen, setTagPopoverOpen] = useState(false)
   const tagAnchorRef = useRef<HTMLButtonElement>(null)
@@ -140,19 +139,34 @@ export function CaptureDetailsPanel({
     notes: captureNotes,
     captureId: capture.id,
     captureTitle: capture.title || '',
-    onCreate: async ({ title, body }) => {
+    onCreate: async ({ title, bodyDoc }) => {
       return createNote.mutateAsync({
         caseId,
         captureId: capture.id,
         title,
-        body,
+        bodyDoc,
         sourceUrl: capture.url
       })
     },
-    onUpdate: async ({ id, body }) => {
-      return updateNote.mutateAsync({ id, body })
+    onUpdate: async ({ id, bodyDoc }) => {
+      return updateNote.mutateAsync({ id, bodyDoc })
     }
   })
+
+  const noteEditor = useNoteEditor({ onChange: inline.setValue, testId: 'inline-note-editor' })
+
+  // Push the hook's document into the editor when it changes from outside —
+  // a different capture selected, or Esc reverting. The equality guard keeps
+  // the user's own keystrokes from bouncing back and resetting the cursor.
+  useEffect(() => {
+    if (!noteEditor) return
+    if (JSON.stringify(noteEditor.getJSON()) === inline.value) return
+    try {
+      noteEditor.commands.setContent(JSON.parse(inline.value), { emitUpdate: false })
+    } catch {
+      noteEditor.commands.clearContent()
+    }
+  }, [noteEditor, inline.value])
 
   const isFavorite = favorites.has(capture.id)
   const provenance = getProvenanceColor(capture.lastVerifiedStatus)
@@ -244,15 +258,6 @@ export function CaptureDetailsPanel({
             </span>
           </span>
           <div className="ml-auto flex items-center gap-0.5">
-            <button
-              onClick={onDownload}
-              title={`Download capture file (.${capture.format === 'mhtml' ? 'mhtml' : 'html'})`}
-              data-testid="capture-details-download-btn"
-              className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium text-accent hover:bg-accent-subtle"
-            >
-              <Download className="h-3.5 w-3.5" />
-              Download
-            </button>
             <div className="relative">
               <button
                 ref={menuAnchorRef}
@@ -448,7 +453,7 @@ export function CaptureDetailsPanel({
         </button>
         {waybackOpen && (
           <div data-testid="wayback-section-body" className="border-t border-border">
-            <ArchiveTab capture={capture} />
+            <WaybackTab capture={capture} />
           </div>
         )}
       </section>
@@ -508,26 +513,23 @@ export function CaptureDetailsPanel({
             <Plus className="h-3.5 w-3.5" />
           </button>
         </div>
-        <textarea
-          data-testid="inline-note-textarea"
-          value={inline.value}
-          onChange={(e) => inline.setValue(e.target.value)}
+        <NoteEditor
+          editor={noteEditor}
+          placeholder="Add a quick note…"
+          minHeightClass="min-h-20"
           onBlur={() => void inline.flush()}
           onKeyDown={(e) => {
             if (e.key === 'Escape') {
               e.preventDefault()
               inline.revert()
-              ;(e.target as HTMLTextAreaElement).blur()
+              noteEditor?.commands.blur()
             }
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
               e.preventDefault()
               void inline.flush()
-              ;(e.target as HTMLTextAreaElement).blur()
+              noteEditor?.commands.blur()
             }
           }}
-          placeholder="Add a quick note…"
-          rows={4}
-          className="w-full resize-none rounded-md border border-border bg-canvas p-2 text-xs text-text-primary placeholder:text-text-faint focus:outline-none focus:ring-1 focus:ring-accent"
         />
         {inline.savedAt && (
           <p className="mt-1.5 flex items-center gap-1 text-[10px] text-text-faint">

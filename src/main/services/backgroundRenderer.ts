@@ -9,6 +9,7 @@ import { randomUUID } from 'crypto'
 import { getConsentBlocker } from '@main/services/consentBlocker'
 import type { RenderPage, RenderedPage } from '@main/services/recapture'
 import type { ConsentSuppression } from '@shared/types'
+import { logger } from '@main/services/logger'
 
 const VIEWPORT = { width: 1280, height: 900 }
 const NETWORK_IDLE_MS = 1200
@@ -361,7 +362,7 @@ export async function trimTrailingBackground(png: Buffer): Promise<Buffer> {
       .png()
       .toBuffer()
   } catch (err) {
-    console.error('backgroundRenderer: trailing-whitespace trim failed', err)
+    logger.error('backgroundRenderer', 'backgroundRenderer.trim_failed', undefined, err)
     return png
   }
 }
@@ -427,7 +428,12 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
       // that throw if a later job's session enables them while still registered.
       if (blocker?.isBlockingEnabled(session)) blocker.disableBlockingInSession(session)
     } catch (err) {
-      console.error('backgroundRenderer: disabling consent blocker failed', err)
+      logger.error(
+        'backgroundRenderer',
+        'backgroundRenderer.consent_blocker_disable_failed',
+        undefined,
+        err
+      )
     }
     try {
       networkTracker?.dispose()
@@ -476,7 +482,12 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
         blocker.enableBlockingInSession(session)
         consentSuppression = 'filter-list'
       } catch (err) {
-        console.error('backgroundRenderer: enabling consent blocker failed', err)
+        logger.error(
+          'backgroundRenderer',
+          'backgroundRenderer.consent_blocker_enable_failed',
+          undefined,
+          err
+        )
       }
     }
 

@@ -13,6 +13,12 @@ import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { initSettings, updateSettings } from '@main/services/settings'
+import {
+  disposeLogger,
+  flushSync as flushLogger,
+  initLogger,
+  readRecentEntries
+} from '@main/services/logger'
 
 // Keep ingest tests hermetic: the corroboration-only TLS re-fetch (#123) would
 // otherwise open a real socket to https://example.com on every ingest. Default
@@ -71,9 +77,11 @@ describe('createCaptureLifecycle.ingest', () => {
     // Minimal SelectorLifecycle stub — captureLifecycle only ever calls
     // runActiveSelectorsForCapture on it; other methods are unused here.
     selectorStub = { runActiveSelectorsForCapture: runActive } as unknown as SelectorLifecycle
+    initLogger(tempDir, 'capture-lifecycle-test-session')
   })
 
   afterEach(() => {
+    disposeLogger()
     closeDatabase()
     rmSync(tempDir, { recursive: true, force: true })
     vi.restoreAllMocks()
@@ -318,7 +326,6 @@ describe('createCaptureLifecycle.ingest', () => {
     runActive.mockImplementation(() => {
       throw new Error('selector engine exploded')
     })
-    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
     const body = Buffer.from('mhtml-body')
 
@@ -327,10 +334,14 @@ describe('createCaptureLifecycle.ingest', () => {
 
     expect(result.capture.id).toBeTruthy()
     expect(getCapture(result.capture.id)?.id).toBe(result.capture.id)
-    expect(errSpy).toHaveBeenCalled()
-    expect(errSpy.mock.calls.some((c) => String(c[0]).includes('selector matching failed'))).toBe(
-      true
-    )
+    flushLogger()
+    const entries = readRecentEntries(10)
+    expect(
+      entries.some(
+        (e) =>
+          e.source === 'captureLifecycle' && e.code === 'captureLifecycle.selector_match_failed'
+      )
+    ).toBe(true)
   })
 
   it('rejects and leaves no DB row, manifest entry, or file on disk when the upload stream errors mid-read', async () => {

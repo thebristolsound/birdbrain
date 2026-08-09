@@ -1,18 +1,9 @@
-import { Fragment, useState } from 'react'
+import { Fragment } from 'react'
 import { FlaskConical, Trash2, Globe } from 'lucide-react'
 import type { Selector } from '@shared/types'
 import { useAppStore } from '@renderer/stores/appStore'
-import {
-  highlightRegexSyntax,
-  testPatternAgainstText,
-  type MatchResult
-} from '@renderer/components/selectors/selectorUtils'
-
-interface MatchPreview {
-  captureTitle: string
-  captureUrl: string
-  matches: MatchResult[]
-}
+import { highlightRegexSyntax } from '@renderer/components/selectors/selectorUtils'
+import { useForegroundMatchPreview } from '@renderer/components/selectors/useForegroundMatchPreview'
 
 interface SelectorTableRowProps {
   selector: Selector
@@ -36,44 +27,17 @@ export function SelectorTableRow({
   const activeSelectorFilters = useAppStore((s) => s.activeSelectorFilters)
   const addSelectorFilter = useAppStore((s) => s.addSelectorFilter)
   const removeSelectorFilter = useAppStore((s) => s.removeSelectorFilter)
-  const [previews, setPreviews] = useState<MatchPreview[] | null>(null)
-  const [loadingPreviews, setLoadingPreviews] = useState(false)
+  const {
+    previews,
+    loading: loadingPreviews,
+    run: runPreview
+  } = useForegroundMatchPreview(caseId, { maxCaptures: 3, maxMatchesPerCapture: 5 })
 
   const isFilterActive = activeSelectorFilters.includes(selector.id)
 
-  async function handleToggleExpand() {
-    if (!isExpanded && !previews) {
-      setLoadingPreviews(true)
-      try {
-        const captureIds = await window.birdbrain.selectors.matchingCaptures(caseId, [selector.id])
-        const captures = await window.birdbrain.captures.list(caseId)
-        const matching = captures.filter((c) => captureIds.includes(c.id)).slice(0, 3)
-        const results: MatchPreview[] = []
-
-        for (const capture of matching) {
-          try {
-            const text = await window.birdbrain.captures.getContent(capture.id, 'txt')
-            if (!text) continue
-            const matches = testPatternAgainstText(selector.pattern, selector.isRegex, text, 5)
-            if (matches.length > 0) {
-              results.push({
-                captureTitle: capture.title || capture.url,
-                captureUrl: capture.url,
-                matches
-              })
-            }
-          } catch {
-            // skip
-          }
-        }
-
-        setPreviews(results)
-      } catch (err) {
-        console.error('Failed to load previews:', err)
-        setPreviews([])
-      } finally {
-        setLoadingPreviews(false)
-      }
+  function handleToggleExpand() {
+    if (!isExpanded && !previews && !loadingPreviews) {
+      void runPreview(selector.pattern, selector.isRegex, selector.id)
     }
     onToggleExpand()
   }

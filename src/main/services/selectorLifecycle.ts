@@ -9,6 +9,7 @@ import type {
   SelectorRematchedEvent,
   SelectorRematchedStatus
 } from '@shared/ipc'
+import { logger } from '@main/services/logger'
 
 // Exported so tests can drive the boundary case (>RETRO_MAX_CAPTURES) without
 // hardcoding the number.
@@ -78,7 +79,12 @@ export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLi
           emit('done')
         }
       } catch (err) {
-        console.error('selectorLifecycle: retroactive match failed', err)
+        logger.error(
+          'selectorLifecycle',
+          'selectorLifecycle.retroactive_match_failed',
+          undefined,
+          err
+        )
         emit('error')
       }
     }

@@ -1,46 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { captureThumbnailQueryOptions } from '@renderer/lib/api/captures'
 
 export function useCaptureThumbnail(captureId: string | null) {
-  const [thumbnail, setThumbnail] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+  const { data, isLoading } = useQuery(captureThumbnailQueryOptions(captureId ?? ''))
 
-  useEffect(() => {
-    if (!captureId) {
-      setThumbnail(null)
-      setLoading(false)
-      return
-    }
+  const thumbnail = captureId && data ? `data:image/jpeg;base64,${data}` : null
 
-    let cancelled = false
-    setThumbnail(null)
-    setLoading(true)
-
-    window.birdbrain.captures
-      .getThumbnail(captureId)
-      .then((data) => {
-        if (!cancelled) {
-          if (data) {
-            setThumbnail(`data:image/jpeg;base64,${data}`)
-          } else {
-            setThumbnail(null)
-          }
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          console.error('Failed to load thumbnail:', err)
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false)
-        }
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [captureId])
-
-  return { thumbnail, loading }
+  return { thumbnail, loading: !!captureId && isLoading }
 }

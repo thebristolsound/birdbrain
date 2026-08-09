@@ -1,7 +1,44 @@
 // Typed IPC channel definitions
 // Every IPC call between renderer and main process goes through these channels
 
-import type { AnnotationShape, WaybackSnapshot } from '@shared/types'
+import type {
+  ActiveCaseSelectors,
+  AnnotationPin,
+  AnnotationShape,
+  AnnotationsBundle,
+  ArchiveInspectReport,
+  WaybackRef,
+  BirdbrainSettings,
+  BugReportInput,
+  BugReportResult,
+  Capture,
+  CaptureAnalysis,
+  CaptureAnnotations,
+  CaptureEvent,
+  Case,
+  DiagnosticsSnapshot,
+  ExportOptions,
+  ExportPreflight,
+  ExtractedDataCategory,
+  ExtractedDataItem,
+  ExtractedDataSearchResult,
+  ExtractedDataSubcategory,
+  HashVerification,
+  LogCode,
+  LogContextKey,
+  LogEntry,
+  LogLevel,
+  Note,
+  OpenRouterModel,
+  OperatorIdentity,
+  Selector,
+  SessionRecord,
+  Tag,
+  TokenUsage,
+  UpdateStatus,
+  WaybackLookupResult,
+  WaybackSnapshot
+} from '@shared/types'
 
 export const IPC_CHANNELS = {
   // Cases
@@ -22,6 +59,8 @@ export const IPC_CHANNELS = {
   CAPTURES_GET_THUMBNAIL: 'captures:getThumbnail',
   CAPTURES_GET_MATCHING_SELECTORS: 'captures:getMatchingSelectors',
   CAPTURES_DOWNLOAD: 'captures:download',
+  CAPTURES_DOWNLOAD_PDF: 'captures:downloadPdf',
+  CAPTURES_DOWNLOAD_SCREENSHOT: 'captures:downloadScreenshot',
   CAPTURES_OPEN_EXTERNAL: 'captures:openExternal',
   CAPTURES_COUNTS_BY_CASE: 'captures:countsByCase',
   CAPTURES_TOGGLE_FAVORITE: 'captures:toggleFavorite',
@@ -44,6 +83,12 @@ export const IPC_CHANNELS = {
   TAGS_GET_FOR_CAPTURE: 'tags:getForCapture',
   TAGS_COUNT_FOR_CASE: 'tags:countForCase',
   TAGS_USAGE_COUNTS_FOR_CASE: 'tags:usageCountsForCase',
+
+  // Session (renderer-side session control; the extension drives HTTP)
+  SESSION_SNAPSHOT: 'session:snapshot',
+  SESSION_ACTIVATE_CASE: 'session:activateCase',
+  SESSION_START: 'session:start',
+  SESSION_STOP: 'session:stop',
 
   // Search
   SEARCH: 'search:query',
@@ -83,11 +128,11 @@ export const IPC_CHANNELS = {
   NOTES_COUNT: 'notes:count',
   NOTES_SEARCH: 'notes:search',
 
-  // Archive (Wayback corroboration)
-  ARCHIVE_LOOKUP: 'archive:lookup',
-  ARCHIVE_LIST: 'archive:list',
-  ARCHIVE_PIN: 'archive:pin',
-  ARCHIVE_UNPIN: 'archive:unpin',
+  // Wayback Machine corroboration
+  WAYBACK_LOOKUP: 'wayback:lookup',
+  WAYBACK_LIST: 'wayback:list',
+  WAYBACK_PIN: 'wayback:pin',
+  WAYBACK_UNPIN: 'wayback:unpin',
 
   // Extracted Data
   EXTRACTED_DATA_CATEGORIES: 'extractedData:categories',
@@ -114,6 +159,15 @@ export const IPC_CHANNELS = {
 
   // App
   APP_GET_VERSION: 'app:getVersion',
+
+  // Diagnostics
+  DIAGNOSTICS_GET: 'diagnostics:get',
+  DIAGNOSTICS_LOG: 'diagnostics:log',
+  DIAGNOSTICS_RECENT: 'diagnostics:recent',
+  DIAGNOSTICS_REVEAL_LOG: 'diagnostics:revealLog',
+  DIAGNOSTICS_LAST_SESSION: 'diagnostics:lastSession',
+  DIAGNOSTICS_CREATE_REPORT: 'diagnostics:createReport',
+  LOG_ENTRY: 'event:logEntry',
 
   // Updates (update delivery)
   UPDATES_GET_STATUS: 'updates:getStatus',
@@ -191,6 +245,18 @@ export interface ArchiveExportResult {
   filePath?: string
 }
 
+// Session snapshot pushed whenever capture session state changes.
+export interface SessionStateEvent {
+  sessionActive: boolean
+  activeCaseId: string | null
+  captureCount: number
+}
+
+// Extension reachability, pushed when the companion extension connects or drops.
+export interface ExtensionConnectionEvent {
+  connected: boolean
+}
+
 export type SelectorRematchedStatus = 'done' | 'error'
 
 export interface SelectorRematchedEvent {
@@ -247,22 +313,38 @@ export interface UpdateSelectorParams {
   label?: string
 }
 
+/**
+ * `body` and `bodyDoc` are alternatives, not a pair. Pass `bodyDoc` and main
+ * derives `body` from it; pass `body` alone and the note is plain text. A
+ * renderer-computed `body` is never stored alongside a `bodyDoc`, so the two
+ * columns cannot drift apart.
+ */
 export interface CreateNoteParams {
   caseId: string
   captureId?: string
   title?: string
   body?: string
+  bodyDoc?: string
+  /** Serialized anchor payload. Validated in main; omit for an unanchored note. */
+  anchor?: string
   sourceUrl?: string
   screenshotPath?: string
 }
 
+/**
+ * `anchor` is three-valued on update: omitted leaves the stored anchor alone,
+ * a string replaces it, and `null` clears it. Absent and cleared must be
+ * distinguishable, or a title-only edit would silently unanchor the note.
+ */
 export interface UpdateNoteParams {
   id: string
   title?: string
   body?: string
+  bodyDoc?: string
+  anchor?: string | null
 }
 
-export interface PinArchiveSnapshotParams {
+export interface PinWaybackSnapshotParams {
   captureId: string
   snapshot: WaybackSnapshot
   checkedAt: string
@@ -372,3 +454,229 @@ export interface RecaptureEnqueuePayload {
   caseId: string
   supersedesCaptureId?: string
 }
+
+// Result of the capture-pipeline and HTTP self-tests. `error` carries the
+// failure reason when `success` is false.
+export interface SelfTestResult {
+  success: boolean
+  durationMs: number
+  error?: string
+}
+
+// The renderer's half of the logging contract. Codes and context keys are the
+// same unions the main process enforces, so a mistake is a compile error in
+// the renderer and a dropped entry in main — never a leak. There is no
+// free-form text field, and `error` is a bare allowlisted class name: the
+// renderer holds page titles, case names and URLs, so nothing that could carry
+// them is given a place to sit.
+export interface RendererLogPayload {
+  level: LogLevel
+  code: LogCode
+  context?: Partial<Record<LogContextKey, string | number | boolean | null>>
+  error?: string
+}
+
+// --- Invoke contract --------------------------------------------------------
+//
+// One entry per invoke channel: the argument tuple the renderer sends and the
+// value the handler resolves to (before the { ok, data } envelope is applied).
+// This is the single source of truth — `handle()` constrains a handler's
+// signature by its channel, so a handler that drifts from its entry is a
+// compile error rather than a runtime surprise.
+//
+// All invoke channels live in this map; `handle()` is keyed by ContractedChannel, so missing entries are
+// compile errors.
+export interface IpcInvokeContract {
+  'cases:list': { args: []; result: Case[] }
+  'cases:get': { args: [id: string]; result: Case | undefined }
+  'cases:create': { args: [params: CreateCaseParams]; result: Case }
+  'cases:update': { args: [params: UpdateCaseParams]; result: Case | undefined }
+  'cases:delete': { args: [id: string]; result: boolean }
+  'cases:exportArchive': { args: [caseId: string]; result: ArchiveExportResult }
+  'cases:inspectArchive': { args: []; result: ArchiveInspectReport | null }
+  'cases:importArchive': {
+    args: [archivePath: string, overrideTamper: boolean]
+    result: { newCaseId: string }
+  }
+
+  'captures:list': { args: [caseId: string]; result: Capture[] }
+  'captures:get': { args: [id: string]; result: Capture | undefined }
+  'captures:delete': { args: [id: string]; result: boolean }
+  'captures:getContent': {
+    args: [captureId: string, type: 'html' | 'png' | 'txt']
+    result: string | null
+  }
+  'captures:getThumbnail': { args: [captureId: string]; result: string | null }
+  'captures:getMatchingSelectors': { args: [captureId: string]; result: Selector[] }
+  'captures:download': { args: [captureId: string]; result: string | null }
+  'captures:downloadPdf': { args: [captureId: string]; result: string | null }
+  'captures:downloadScreenshot': { args: [captureId: string]; result: string | null }
+  'captures:openExternal': { args: [url: string]; result: void }
+  'captures:countsByCase': { args: []; result: Record<string, number> }
+  'captures:toggleFavorite': { args: [captureId: string]; result: boolean }
+  'captures:isFavorite': { args: [captureId: string]; result: boolean }
+  'captures:listFavorites': { args: [caseId: string]; result: string[] }
+  'captures:verify': { args: [captureId: string]; result: HashVerification }
+  'captures:getMhtmlUrl': { args: [captureId: string]; result: string | null }
+  'captures:testPipeline': { args: []; result: SelfTestResult }
+  'captures:testHttp': { args: []; result: SelfTestResult }
+
+  'recapture:enqueue': { args: [payload: RecaptureEnqueuePayload]; result: EnqueueResult }
+  'recapture:queueStatus': { args: []; result: RecaptureQueueStatus }
+
+  'tags:list': { args: []; result: Tag[] }
+  'tags:create': { args: [params: CreateTagParams]; result: Tag }
+  'tags:update': { args: [params: UpdateTagParams]; result: Tag | undefined }
+  'tags:delete': { args: [id: string]; result: boolean }
+  'tags:addToCapture': { args: [params: CaptureTagParams]; result: void }
+  'tags:removeFromCapture': { args: [params: CaptureTagParams]; result: void }
+  'tags:getForCapture': { args: [captureId: string]; result: Tag[] }
+  'tags:countForCase': { args: [caseId: string]; result: number }
+  'tags:usageCountsForCase': { args: [caseId: string]; result: Record<string, number> }
+
+  'selectors:list': { args: [caseId: string]; result: Selector[] }
+  'selectors:get': { args: [id: string]; result: Selector | undefined }
+  'selectors:create': { args: [params: CreateSelectorParams]; result: Selector }
+  'selectors:update': { args: [params: UpdateSelectorParams]; result: Selector | undefined }
+  'selectors:delete': { args: [id: string]; result: boolean }
+  'selectors:listActive': { args: []; result: ActiveCaseSelectors[] }
+  'selectors:matchCounts': { args: [caseId: string]; result: Record<string, number> }
+  'selectors:matchingCaptures': {
+    args: [caseId: string, selectorIds: string[]]
+    result: string[]
+  }
+  'selectors:coverage': { args: [caseId: string]; result: { matched: number; total: number } }
+  'selectors:bulkCreate': { args: [params: BulkCreateSelectorsParams]; result: Selector[] }
+  'selectors:exportMatches': {
+    args: [caseId: string]
+    result: { exported: boolean; path?: string }
+  }
+
+  'notes:list': { args: [caseId: string]; result: Note[] }
+  'notes:get': { args: [id: string]; result: Note | undefined }
+  'notes:create': { args: [params: CreateNoteParams]; result: Note }
+  'notes:update': { args: [params: UpdateNoteParams]; result: Note | undefined }
+  'notes:delete': { args: [id: string]; result: boolean }
+  'notes:count': { args: [caseId: string]; result: number }
+  'notes:search': { args: [caseId: string, query: string]; result: Note[] }
+
+  'session:snapshot': { args: []; result: SessionStateEvent }
+  'session:activateCase': { args: [caseId: string]; result: SessionStateEvent }
+  'session:start': { args: []; result: SessionStateEvent }
+  'session:stop': { args: []; result: SessionStateEvent }
+
+  'search:query': { args: [caseId: string, query: string]; result: Capture[] }
+
+  'settings:get': { args: []; result: BirdbrainSettings }
+  'settings:update': { args: [partial: Partial<BirdbrainSettings>]; result: BirdbrainSettings }
+  'settings:reset': { args: []; result: BirdbrainSettings }
+  'settings:testOpenRouter': { args: [apiKey: string]; result: boolean }
+  'settings:listModels': { args: [apiKey: string]; result: OpenRouterModel[] }
+  'settings:getIdentity': { args: []; result: OperatorIdentity }
+  'settings:chooseStoragePath': { args: []; result: string | null }
+
+  'export:preflight': { args: [caseId: string]; result: ExportPreflight }
+  'export:generate': { args: [caseId: string, options: ExportOptions]; result: ExportResult }
+
+  'wayback:lookup': { args: [captureId: string]; result: WaybackLookupResult }
+  'wayback:list': { args: [captureId: string]; result: WaybackRef[] }
+  'wayback:pin': { args: [params: PinWaybackSnapshotParams]; result: WaybackRef }
+  'wayback:unpin': { args: [refId: string]; result: boolean }
+
+  'annotations:get': { args: [captureId: string]; result: AnnotationsBundle }
+  'annotations:save': { args: [params: SaveAnnotationsParams]; result: CaptureAnnotations }
+  'annotations:delete': { args: [captureId: string]; result: void }
+  'annotations:upsertPin': { args: [params: UpsertAnnotationPinParams]; result: AnnotationPin }
+  'annotations:deletePin': { args: [pinId: string]; result: void }
+
+  'extractedData:categories': { args: [caseId: string]; result: ExtractedDataCategory[] }
+  'extractedData:subcategories': {
+    args: [caseId: string, category: string]
+    result: ExtractedDataSubcategory[]
+  }
+  'extractedData:items': {
+    args: [caseId: string, category: string, subcategory: string]
+    result: ExtractedDataItem[]
+  }
+  'extractedData:count': { args: [caseId: string]; result: number }
+  'extractedData:search': {
+    args: [caseId: string, query: string]
+    result: ExtractedDataSearchResult[]
+  }
+  'extractedData:reprocess': { args: [caseId: string]; result: { processed: number } }
+
+  'db:stats': { args: []; result: DbStats }
+  'db:tableRows': { args: [params: DbTableRowsParams]; result: DbTableRowsResult }
+  'db:createRow': { args: [params: DbCreateRowParams]; result: Record<string, unknown> }
+  'db:updateRow': { args: [params: DbUpdateRowParams]; result: boolean }
+  'db:deleteRow': { args: [params: DbRowIdentifier]; result: boolean }
+  'db:vacuum': { args: []; result: { freedBytes: number } }
+  'db:rebuildFts': { args: []; result: { rowsIndexed: number; textsHealed: number } }
+  'db:purgeArchived': { args: []; result: { casesDeleted: number; capturesDeleted: number } }
+  'db:findOrphans': { args: []; result: OrphanReport }
+  'db:cleanOrphans': {
+    args: [report: OrphanReport]
+    result: { dbRecordsRemoved: number; filesRemoved: number }
+  }
+  'db:backup': { args: []; result: { path: string } | null }
+  'db:restore': { args: []; result: { restored: boolean } }
+  'db:exportTable': { args: [params: DbExportTableParams]; result: { path: string } | null }
+
+  'ai:analyze': {
+    args: [params: AnalyzeCaptureParams]
+    result: { content: string; tokenUsage: TokenUsage }
+  }
+  'ai:saveAnalysis': { args: [analysis: CaptureAnalysis]; result: void }
+  'ai:getAnalysis': { args: [params: { captureId: string }]; result: CaptureAnalysis | null }
+
+  'shell:showItemInFolder': { args: [path: string]; result: void }
+  'shell:openPath': { args: [path: string]; result: void }
+
+  'extension:path': { args: []; result: string }
+  'extension:openFolder': { args: []; result: void }
+
+  'app:getVersion': { args: []; result: string }
+  'diagnostics:get': { args: []; result: DiagnosticsSnapshot }
+  'diagnostics:log': { args: [payload: RendererLogPayload]; result: string }
+  'diagnostics:recent': { args: [limit: number]; result: LogEntry[] }
+  'diagnostics:revealLog': { args: []; result: void }
+  'diagnostics:lastSession': { args: []; result: SessionRecord | null }
+  'diagnostics:createReport': {
+    args: [input: BugReportInput]
+    result: BugReportResult | null
+  }
+
+  'updates:getStatus': { args: []; result: UpdateStatus }
+  'updates:check': { args: []; result: UpdateStatus }
+  'updates:download': { args: []; result: void }
+  'updates:install': { args: []; result: void }
+}
+
+export type ContractedChannel = keyof IpcInvokeContract
+
+// Every declared channel is either an invoke channel with a contract entry or a
+// main→renderer event. A new IPC_CHANNELS entry that is neither makes this type
+// non-empty, and the assignment below fails to compile.
+type UndeclaredChannel = Exclude<IpcChannel, ContractedChannel | IpcEventChannel>
+type AssertNever<T extends never> = T
+export type ChannelsAreExhaustive = AssertNever<UndeclaredChannel>
+
+// --- Event contract ---------------------------------------------------------
+//
+// Main → renderer pushes, kept separate from the invoke map: these carry a
+// single payload and have no reply. The preload subscribe helpers derive their
+// callback types from here.
+export interface IpcEventContract {
+  'event:exportProgress': ExportProgressEvent
+  'event:archiveProgress': ArchiveProgressEvent
+  'event:newCapture': Capture
+  'event:sessionStateChanged': SessionStateEvent
+  'event:extensionConnection': ExtensionConnectionEvent
+  'event:captureActivity': CaptureEvent
+  'event:selector:rematched': SelectorRematchedEvent
+  'event:deepLinkNavigate': DeepLinkTarget
+  'event:updateStatus': UpdateStatus
+  'event:logEntry': LogEntry
+}
+
+export type IpcEventChannel = keyof IpcEventContract

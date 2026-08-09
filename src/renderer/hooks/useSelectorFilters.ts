@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useAppStore } from '@renderer/stores/appStore'
+import { listMatchingCaptureIds } from '@renderer/lib/api/selectors'
 
 export function useSelectorFilters(caseId: string | null) {
   const activeSelectorFilters = useAppStore((s) => s.activeSelectorFilters)
@@ -12,8 +13,7 @@ export function useSelectorFilters(caseId: string | null) {
 
     let cancelled = false
 
-    window.birdbrain.selectors
-      .matchingCaptures(caseId, activeSelectorFilters)
+    listMatchingCaptureIds(caseId, activeSelectorFilters)
       .then((ids) => {
         if (!cancelled) useAppStore.getState().setFilteredCaptureIds(ids)
       })

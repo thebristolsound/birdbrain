@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react'
 import type { ExportOptions, ExportPreflight } from '@shared/types'
 import type { ExportProgressEvent, ExportResult } from '@shared/ipc'
@@ -46,17 +47,20 @@ vi.mock('@renderer/hooks/useCompletionCelebration', () => ({
 }))
 
 import { ExportDialog } from '@renderer/components/export/ExportDialog'
+import { fakeBridge } from '../renderer/fakeBridge'
 
-interface BirdbrainStub {
-  export: {
-    preflight: ReturnType<typeof vi.fn>
-    generateReport: ReturnType<typeof vi.fn>
-  }
-  shell: {
-    showItemInFolder: ReturnType<typeof vi.fn>
-    openPath: ReturnType<typeof vi.fn>
-  }
-  onExportProgress: ReturnType<typeof vi.fn>
+// The preflight read and the generate write are a query and a mutation now, so
+// the dialog needs a client. retry:false keeps a failed export from being
+// retried behind the assertions.
+function renderDialog(onClose = vi.fn()) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
+  })
+  return render(
+    <QueryClientProvider client={client}>
+      <ExportDialog caseId="case-1" caseName="Case One" onClose={onClose} />
+    </QueryClientProvider>
+  )
 }
 
 function deferred<T>() {
@@ -96,11 +100,11 @@ describe('ExportDialog', () => {
       progressCb = cb
       return vi.fn()
     })
-    ;(window as unknown as { birdbrain: BirdbrainStub }).birdbrain = {
+    fakeBridge({
       export: { preflight, generateReport },
       shell: { showItemInFolder, openPath },
       onExportProgress
-    }
+    })
   })
 
   afterEach(() => {
@@ -108,7 +112,7 @@ describe('ExportDialog', () => {
   })
 
   it('shows the un-stamped capture warning before export', async () => {
-    render(<ExportDialog caseId="case-1" caseName="Case One" onClose={vi.fn()} />)
+    renderDialog()
 
     expect(
       await screen.findByText(/2 captures will export without RFC 3161 trusted time/)
@@ -117,7 +121,7 @@ describe('ExportDialog', () => {
   })
 
   it('exports a ZIP evidence package by default', async () => {
-    render(<ExportDialog caseId="case-1" caseName="Case One" onClose={vi.fn()} />)
+    renderDialog()
 
     fireEvent.click(screen.getByText('Export'))
 
@@ -125,12 +129,21 @@ describe('ExportDialog', () => {
     const [, options] = generateReport.mock.calls[0] as [string, ExportOptions]
     expect(options.format).toBe('zip')
     expect(options.outputPath).toBe('Case_One_evidence.zip')
+    // The include toggles decide what lands in the evidence package, so pin all
+    // four rather than only the two that name the file.
+    expect(options.include).toEqual({
+      captures: true,
+      screenshots: true,
+      auditTrail: true,
+      annotations: 'burned'
+    })
+    expect(options.investigatorName).toBe('Investigator')
   })
 
   it('renders the live step and percent from export progress events', async () => {
     const gate = deferred<ExportResult>()
     generateReport.mockReturnValue(gate.promise)
-    render(<ExportDialog caseId="case-1" caseName="Case One" onClose={vi.fn()} />)
+    renderDialog()
 
     fireEvent.click(screen.getByText('Export'))
     await waitFor(() => expect(onExportProgress).toHaveBeenCalled())
@@ -148,7 +161,7 @@ describe('ExportDialog', () => {
   it('ignores progress events for other cases', async () => {
     const gate = deferred<ExportResult>()
     generateReport.mockReturnValue(gate.promise)
-    render(<ExportDialog caseId="case-1" caseName="Case One" onClose={vi.fn()} />)
+    renderDialog()
 
     fireEvent.click(screen.getByText('Export'))
     await waitFor(() => expect(onExportProgress).toHaveBeenCalled())
@@ -162,7 +175,7 @@ describe('ExportDialog', () => {
   })
 
   it('shows the completion screen with file actions on success', async () => {
-    render(<ExportDialog caseId="case-1" caseName="Case One" onClose={vi.fn()} />)
+    renderDialog()
 
     fireEvent.click(screen.getByText('Export'))
 
@@ -178,7 +191,7 @@ describe('ExportDialog', () => {
 
   it('returns to the form when the save dialog is canceled (no false success)', async () => {
     generateReport.mockResolvedValue({ canceled: true } satisfies ExportResult)
-    render(<ExportDialog caseId="case-1" caseName="Case One" onClose={vi.fn()} />)
+    renderDialog()
 
     fireEvent.click(screen.getByText('Export'))
 
@@ -189,7 +202,7 @@ describe('ExportDialog', () => {
 
   it('surfaces an error and offers retry', async () => {
     generateReport.mockRejectedValueOnce(new Error('disk full'))
-    render(<ExportDialog caseId="case-1" caseName="Case One" onClose={vi.fn()} />)
+    renderDialog()
 
     fireEvent.click(screen.getByText('Export'))
 

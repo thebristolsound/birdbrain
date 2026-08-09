@@ -1,8 +1,9 @@
 {
   "name": "birdbrain",
-  "version": "1.0.1-beta.15",
+  "version": "1.0.1-beta.17",
   "description": "Open source web investigation & capture tool",
   "main": "./out/main/index.js",
+  "private": true,
   "packageManager": "pnpm@10.28.2",
   "author": "Matt Donovan",
   "license": "MIT",
@@ -14,7 +15,8 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
-    "postinstall": "node scripts/rebuild-native.mjs",
+    "postinstall": "node scripts/ensure-electron.mjs && node scripts/rebuild-native.mjs",
+    "prepublishOnly": "node scripts/no-registry-publish.mjs",
     "rebuild:electron": "node scripts/rebuild-native.mjs",
     "build:extension": "vite build --config extension/vite.config.ts && cross-env BUILD_TARGET=content vite build --config extension/vite.config.ts",
     "dev:extension": "vite build --config extension/vite.config.ts --watch",
@@ -23,8 +25,11 @@
     "test:watch": "cross-env ELECTRON_RUN_AS_NODE=1 electron ./node_modules/vitest/vitest.mjs",
     "test:coverage": "cross-env ELECTRON_RUN_AS_NODE=1 electron ./node_modules/vitest/vitest.mjs run --coverage",
     "coverage:report": "node scripts/coverage-report.mjs",
+    "coverage:diff": "node scripts/diff-coverage.mjs",
     "coverage:all": "node scripts/coverage-all.mjs",
     "lint": "eslint . --ext .ts,.tsx",
+    "audit:check": "node scripts/audit-check.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p extension/tsconfig.json",
     "format": "prettier --write \"src/**/*.{ts,tsx}\" \"extension/**/*.{ts,tsx}\"",
     "pretest:e2e": "pnpm build",
     "test:e2e": "npx playwright test",
@@ -50,6 +55,9 @@
     "directories": {
       "output": "dist"
     },
+    "files": [
+      "!website/**/*"
+    ],
     "publish": [
       {
         "provider": "github",
@@ -77,8 +85,20 @@
     },
     "mac": {
       "target": [
-        "dmg",
-        "zip"
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
       ]
     },
     "linux": {
@@ -91,23 +111,11 @@
       "maintainer": "Matt Donovan <thebristolsound@users.noreply.github.com>"
     }
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "better-sqlite3",
-      "electron",
-      "esbuild",
-      "msw",
-      "sharp"
-    ],
-    "overrides": {
-      "tar": "^7.5.16"
-    }
-  },
   "dependencies": {
     "@fontsource-variable/inter": "^5.2.8",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "@ghostery/adblocker-electron": "^2.18.1",
-    "@hono/node-server": "^1.19.14",
+    "@hono/node-server": "^2.0.12",
     "@hono/zod-validator": "^0.4.3",
     "@peculiar/asn1-cms": "^2.8.0",
     "@peculiar/asn1-schema": "^2.8.0",
@@ -115,12 +123,17 @@
     "@peculiar/asn1-x509": "^2.8.0",
     "@tanstack/react-query": "^5.101.2",
     "@tanstack/react-router": "^1.170.17",
+    "@tiptap/core": "3.29.0",
+    "@tiptap/pm": "3.29.0",
+    "@tiptap/react": "3.29.0",
+    "@tiptap/starter-kit": "3.29.0",
+    "@tiptap/static-renderer": "3.29.0",
     "better-sqlite3": "^12.11.1",
     "cheerio": "^1.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "electron-updater": "^6.8.9",
-    "hono": "^4.12.27",
+    "hono": "^4.12.34",
     "ioc-extractor": "^8.1.7",
     "konva": "^10.3.0",
     "lucide-react": "^0.577.0",
@@ -128,7 +141,8 @@
     "radix-ui": "^1.6.1",
     "react-konva": "^19.2.5",
     "react-markdown": "^10.1.0",
-    "sharp": "^0.34.5",
+    "sharp": "^0.35.3",
+    "sonner": "^2.0.7",
     "tailwind-merge": "^3.6.0",
     "tldts": "^7.4.6",
     "use-image": "^1.1.4",

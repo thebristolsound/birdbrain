@@ -1,0 +1,375 @@
+---
+title: 'OSINT investigation standards'
+description: 'The external standards that Birdbrain’s acquisition, preservation, analysis, export, security, privacy, and accessibility processes are measured against.'
+---
+
+**Status:** Engineering reference
+
+**Last reviewed:** 2026-07-25
+
+**Scope:** Birdbrain's acquisition, preservation, analysis, export, security, privacy,
+accessibility, and release processes
+
+## Executive position
+
+There is no single "OSINT compliant" product standard or certification. A defensible
+investigation system is built from several independent assurance layers:
+
+1. lawful and ethical investigative methodology;
+2. validated online acquisition and digital-evidence handling;
+3. immutable originals, explicit derivatives, provenance, and chain of custody;
+4. interoperable archival and evidence packages;
+5. independently verifiable cryptography and trusted time;
+6. secure, privacy-preserving, accessible software;
+7. governed use of automated and AI-derived analysis; and
+8. a jurisdiction- and engagement-specific admissibility process.
+
+Birdbrain should publish narrow, versioned conformance claims for each layer. It should not
+claim that the application itself makes evidence admissible, proves a statement true, supplies
+legal authority to collect, or makes an investigator competent.
+
+This document is an engineering baseline, not legal advice. ISO standards usually require
+purchase of the full text; an ISO abstract is enough to identify scope, but not enough to claim
+conformance.
+
+## Standards hierarchy
+
+The tiers below describe how Birdbrain should use a source. "Project baseline" means Birdbrain
+chooses to treat it as normative for product decisions; it does not mean the source is law in
+every deployment.
+
+### Tier 1: project baseline
+
+| Domain                    | Source of truth                                                                                                                                                                                                                                                                                                                                                                                                                      | External status                                                                               | Birdbrain obligation                                                                                                                                                                                                                                                                                |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Investigation methodology | [OHCHR/UC Berkeley, Berkeley Protocol on Digital Open Source Investigations (2022)](https://searchlibrary.ohchr.org/record/30334?ln=en)                                                                                                                                                                                                                                                                                              | Authoritative UN/academic practical protocol; soft-law guidance                               | Support method planning, source evaluation, corroboration, documentation, preservation, investigator/source safety, and ethical review. Distinguish open-source information from evidence.                                                                                                          |
+| Analytic tradecraft       | [ODNI ICD 203, Analytic Standards](https://www.dni.gov/files/documents/ICD/ICD-203.pdf) and the UK [PHIA Common Analytical Standards](https://www.gov.uk/government/publications/phia-common-analytical-standards/phia-common-analytical-standards) and [uncertainty guidance](https://www.gov.uk/government/publications/explaining-uncertainty-in-uk-intelligence-assessment/explaining-uncertainty-in-uk-intelligence-assessment) | Official government analytic standards                                                        | Distinguish sourced facts, assumptions, and judgments; evaluate source quality; express probability and confidence consistently; consider alternatives and contrary evidence; and expose the reasoning chain for review.                                                                            |
+| Digital-evidence handling | [ISO/IEC 27037:2012](https://www.iso.org/standard/44381.html)                                                                                                                                                                                                                                                                                                                                                                        | Current international guideline for identification, collection, acquisition, and preservation | Make every evidence lifecycle operation attributable, documented, integrity-protected, and reviewable. Preserve originals and record every subsequent operation.                                                                                                                                    |
+| Evidence analysis         | [ISO/IEC 27042:2015](https://www.iso.org/standard/44406.html) and [ISO/IEC 27043:2015](https://www.iso.org/standard/44407.html)                                                                                                                                                                                                                                                                                                      | International guidance for digital-evidence analysis and incident investigation               | Make analysis valid, reproducible, repeatable where possible, and open to independent scrutiny. Record interpretation methods, results, uncertainty, and the incident-investigation process without conflating them with acquisition.                                                               |
+| Online acquisition        | [SWGDE 21-F-001-1.1, Best Practices for Acquiring Online Content](https://www.swgde.org/documents/published-complete-listing/21-f-001-best-practices-for-acquiring-online-content/)                                                                                                                                                                                                                                                  | Consensus forensic best practice, not law or certification                                    | Make acquisition auditable, repeatable, and as reproducible as volatile web content allows. Record acquisition context, limitations, contamination risks, and errors. Preserve native content plus visual context; screenshots alone are insufficient.                                              |
+| Method assurance          | [ISO/IEC 27041:2015](https://www.iso.org/standard/44405.html), [SWGDE 18-Q-001-2.1](https://www.swgde.org/documents/published-complete-listing/18-q-001-minimum-requirements-for-testing-tools-used-in-digital-and-multimedia-forensics/), and [NIST CFTT methodology](https://www.nist.gov/itl/csd/secure-systems-and-applications/computer-forensics-tool-testing-program-cftt/cftt-general-0)                                     | International guidance plus public forensic-tool testing methods                              | Define fitness-for-purpose requirements before implementation. Validate each evidence-affecting feature before case use, after material updates, and against known datasets. Publish failures and limits, not only pass results.                                                                    |
+| Reporting                 | [SWGDE 18-Q-002, Requirements for Report Writing in Digital and Multimedia Forensics](https://www.swgde.org/documents/published-complete-listing/18-q-002-swgde-requirements-for-report-writing-in-digital-and-multimedia-forensics/)                                                                                                                                                                                                | Consensus forensic reporting requirements                                                     | Generate reviewable reports that identify the request, items examined, methods, results, conclusions, disposition, tool versions, limitations, and responsible examiner. Keep the report traceable to exact evidence objects and analysis events.                                                   |
+| Hashing and signatures    | [NIST FIPS 180-4, Secure Hash Standard](https://csrc.nist.gov/pubs/fips/180-4/final) and [FIPS 186-5, Digital Signature Standard](https://csrc.nist.gov/pubs/fips/186-5/final)                                                                                                                                                                                                                                                       | US federal standards with broad technical use                                                 | Use approved modern algorithms, explicit algorithm/key identifiers, cryptographic agility, protected private keys, and deterministic verification. A hash proves byte equality, not authorship or truth.                                                                                            |
+| Canonical signed data     | [RFC 8785, JSON Canonicalization Scheme](https://www.rfc-editor.org/rfc/rfc8785.html) and its [verified errata](https://www.rfc-editor.org/errata/rfc8785)                                                                                                                                                                                                                                                                           | Informational RFC, not IETF Standards Track                                                   | Use exact RFC 8785 behavior or publish a separately named, versioned canonicalization specification. Maintain cross-implementation test vectors. Never describe a divergent serializer as JCS-conformant.                                                                                           |
+| Trusted time              | [RFC 3161](https://www.rfc-editor.org/info/rfc3161/) as updated by RFC 5816, profiled by [ETSI EN 319 422](https://www.etsi.org/deliver/etsi_en/319400_319499/319422/01.01.01_60/en_319422v010101p.pdf)                                                                                                                                                                                                                              | IETF standards-track protocol plus European profile                                           | Preserve the original token, imprint, policy OID, TSA certificate chain, validation material, and verification result. Keep content integrity and time attestation as separate claims.                                                                                                              |
+| Secure development        | [NIST SP 800-218 SSDF 1.1](https://csrc.nist.gov/pubs/sp/800/218/final)                                                                                                                                                                                                                                                                                                                                                              | Voluntary US government secure-development framework                                          | Maintain security requirements, threat models, protected source/build environments, dependency controls, security testing, vulnerability disclosure, patch policy, and release evidence.                                                                                                            |
+| Electron hardening        | [Electron security checklist](https://www.electronjs.org/docs/latest/tutorial/security)                                                                                                                                                                                                                                                                                                                                              | Official framework guidance                                                                   | Treat all captured content as hostile. Enforce sandboxing and context isolation, disable Node integration for untrusted content, restrict navigation/windows/permissions, validate IPC senders and payloads, apply restrictive CSP, and never pass untrusted URLs directly to `shell.openExternal`. |
+| Application verification  | [OWASP ASVS 5.0.0](https://owasp.org/www-project-application-security-verification-standard/)                                                                                                                                                                                                                                                                                                                                        | Open community verification standard                                                          | Use version-qualified ASVS requirements for the loopback HTTP API, renderer, authentication, input handling, files, cryptography, and logging. ASVS alone does not cover the complete Electron threat model.                                                                                        |
+| Privacy engineering       | [NIST Privacy Framework 1.0](https://www.nist.gov/privacy-framework/privacy-framework), [GDPR](https://eur-lex.europa.eu/eli/reg/2016/679/oj), and [EDPB Guidelines 4/2019 on Article 25](https://www.edpb.europa.eu/documents/guideline/guidelines-42019-on-article-25-data-protection-by-design-and-by-default_en)                                                                                                                 | Voluntary risk framework plus EU law and regulator guidance where applicable                  | Implement purpose limitation, minimization, retention, security, data-subject workflows, and protection by design/default. Public availability does not remove personal-data obligations. Run a DPIA before processing likely to create high risk.                                                  |
+| Safe disclosure           | [ISO/IEC 27038:2014, digital redaction](https://www.iso.org/standard/44382.html)                                                                                                                                                                                                                                                                                                                                                     | Current international specification, reconfirmed in 2025                                      | Preserve the immutable original. Create redacted copies as explicitly derived artifacts, validate that redaction is irreversible, and record the operation and operator. A visual overlay is not redaction.                                                                                         |
+| Accessibility             | [WCAG 2.2](https://www.w3.org/TR/WCAG22/) Level AA and [WCAG2ICT](https://www.w3.org/WAI/standards-guidelines/wcag/non-web-ict/)                                                                                                                                                                                                                                                                                                     | W3C Recommendation; WCAG2ICT is informative guidance for non-web software                     | Make WCAG 2.2 AA the product target, apply WCAG2ICT to Electron, and test complete workflows with keyboard and assistive technology. Do not infer conformance from automated tests alone.                                                                                                           |
+| Software quality          | [ISO/IEC 25010:2023](https://www.iso.org/standard/78176.html)                                                                                                                                                                                                                                                                                                                                                                        | International product-quality model                                                           | Use its quality characteristics to define measurable acceptance criteria for functional suitability, reliability, security, compatibility, usability, maintainability, flexibility, and safety.                                                                                                     |
+| AI risk management        | [NIST AI RMF 1.0](https://www.nist.gov/publications/artificial-intelligence-risk-management-framework-ai-rmf-10) and [NIST AI 600-1 GenAI Profile](https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.600-1.pdf)                                                                                                                                                                                                                           | Voluntary, rights-preserving risk frameworks; both are guidance                               | Treat model output as a derived assertion, never as captured evidence. Govern, map, measure, and manage each use; preserve lineage and require meaningful human review before a finding is exported.                                                                                                |
+
+### Tier 2: interoperability and assurance profiles
+
+These become normative only when Birdbrain adopts the profile or makes a conformance claim.
+
+| Profile                                                                                                                                                                                                                  | Purpose                                                                                                                      | Recommended use                                                                                                                                                                                            |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [ISO 28500:2017 WARC](https://www.iso.org/standard/68004.html)                                                                                                                                                           | Stores payloads, HTTP/DNS/FTP control information, requests, responses, metadata, transformations, and integrity information | Add transaction-level WARC capture alongside MHTML, screenshots, and extracted text. MHTML preserves a browser view but is not a substitute for an archival HTTP record.                                   |
+| [WACZ 1.1.1](https://specs.webrecorder.net/wacz/1.1.1/)                                                                                                                                                                  | Packages WARC content, indexes, page lists, contextual metadata, digests, and optional signatures                            | Offer portable replay/export. Treat WACZ as a stable community standard, not an ISO standard.                                                                                                              |
+| [RFC 8493 BagIt](https://www.rfc-editor.org/info/rfc8493/)                                                                                                                                                               | Reliable storage and transfer envelope with payload and tag manifests                                                        | Consider as the outer evidence-transfer package or map the Birdbrain ZIP profile to its completeness and fixity concepts. It is an Informational RFC.                                                      |
+| [PREMIS 3.0](https://www.loc.gov/standards/premis/)                                                                                                                                                                      | Preservation metadata for long-term usability of digital objects                                                             | Map captures, files, fixity checks, migrations, exports, agents, rights, and preservation events.                                                                                                          |
+| [W3C PROV-DM](https://www.w3.org/TR/prov-dm/)                                                                                                                                                                            | Cross-system provenance model for entities, activities, agents, and derivations                                              | Provide an export mapping for capture, annotation, redaction, analysis, recapture, verification, and reporting events.                                                                                     |
+| [CASE/UCO 1.0](https://caseontology.org/resources/case_design_document.html)                                                                                                                                             | Machine-readable cyber-investigation information and action provenance                                                       | Provide an investigation interchange adapter. Keep Birdbrain's internal domain model independent; CASE is a community ontology, not a legal evidence standard.                                             |
+| [C2PA 2.4](https://spec.c2pa.org/specifications/specifications/2.4/index.html)                                                                                                                                           | Cryptographically bound media provenance assertions                                                                          | Preserve and validate incoming Content Credentials and use them for derived media where appropriate. C2PA provenance does not establish that depicted content is true.                                     |
+| [STIX 2.1](https://docs.oasis-open.org/cti/stix/v2.1/os/) and [TAXII 2.1](https://docs.oasis-open.org/cti/taxii/v2.1/taxii-v2.1.html)                                                                                    | Cyber-threat intelligence objects and exchange                                                                               | Use adapters for indicators and CTI. Do not use STIX as the general evidence or case model.                                                                                                                |
+| [SLSA 1.2](https://slsa.dev/spec/v1.2/)                                                                                                                                                                                  | Source/build provenance and increasing supply-chain assurance                                                                | Target signed hosted-build provenance, then hardened isolated builds. Verify provenance rather than merely publishing it.                                                                                  |
+| [SPDX specifications](https://spdx.dev/use/specifications/) (with SPDX 2.2.1 standardized as ISO/IEC 5962:2021) or [CycloneDX / ECMA-424](https://ecma-international.org/publications-and-standards/standards/ecma-424/) | Software bill of materials                                                                                                   | Select an exact profile/version, publish an SBOM for every release, bind it to the release digest, and retain it with vulnerability-scan results. Do not imply that every SPDX release is the ISO edition. |
+| [The Update Framework 1.0](https://theupdateframework.github.io/specification/latest/)                                                                                                                                   | Defends software updates against rollback, freeze, mix-and-match, repository, and key-compromise attacks                     | Use TUF-equivalent role separation, expiry, rollback protection, and key rotation for application updates. Pin the exact specification patch level in the release policy.                                  |
+| [ISO 19005-4:2020 PDF/A-4](https://www.iso.org/standard/71832.html) and [ISO 14289-2:2024 PDF/UA-2](https://www.iso.org/standard/82278.html)                                                                             | Long-term preservation and accessibility of PDF outputs                                                                      | Select and test explicit PDF export profiles. Do not label a PDF compliant without a conforming generator and an independent validator.                                                                    |
+
+### Tier 3: jurisdiction- and customer-specific requirements
+
+These are deployment profiles, not universal Birdbrain product claims.
+
+#### United States federal proceedings
+
+[Federal Rule of Evidence 901](https://www.uscourts.gov/sites/default/files/document/federal-rules-of-evidence.pdf)
+requires evidence sufficient to support a finding that an item is what its proponent claims;
+Rule 901(b)(9) addresses evidence describing a process or system and showing that it produces
+an accurate result. Rules 902(13) and 902(14) provide certification routes for accurate
+electronic processes and digitally identified copies. The official
+[2017 Committee Notes](https://www.uscourts.gov/sites/default/files/supreme-court-package_0.pdf)
+use retrieval of a webpage as a Rule 902(13) example and identify hash comparison as a common
+Rule 902(14) process, but also make clear that authentication does not resolve hearsay,
+relevance, authorship, truth, attribution, reliability, confrontation, or other objections. Rules
+902(13) and 902(14) require a qualified person's certification using the Rule 902(11) or
+902(12) procedures and reasonable advance notice to the adverse party. Rules 1001 through 1003
+separately govern originals and duplicates. Check the
+[official current-rules page](https://www.uscourts.gov/forms-rules/current-rules-practice-procedure/federal-rules-evidence)
+for amendments and maintain separate state-law profiles.
+
+Birdbrain should generate a human-signable certification template containing the tool and
+version, operator, acquisition method, inputs, outputs, hashes, validation steps, known
+limitations, and verification instructions. The software must not automatically sign a person's
+factual attestation or describe its generated certificate as self-authenticating by itself. A
+qualified person and the rule's notice procedure remain case responsibilities.
+
+#### England and Wales criminal justice
+
+The [Forensic Science Regulator statutory Code of Practice, version 2](https://www.gov.uk/government/publications/forensic-science-activities-statutory-code-of-practice-version-2/forensic-science-activities-statutory-code-of-practice-version-2-accessible)
+applies to covered forensic science activities in the criminal justice system in England and
+Wales, but sections 70.5.1(j) and 85.5.1 expressly exclude data recovery through Internet
+Intelligence, OSINT, SIGINT, COMMINT, and GEOINT. Birdbrain should therefore use the Code as a
+voluntary quality-engineering benchmark, not claim that OSINT capture is within its statutory
+scope. For in-scope digital forensics, the Code requires tools that affect results to be
+validated within the method, adopted validation to be verified for the intended use, limitations
+to be understood, competence to be established, and validation records to be available. The
+Regulator's
+[method-validation guidance FSR-G-218](https://www.gov.uk/government/publications/method-validation-in-digital-forensics)
+defines validation as demonstrating fitness for the specific intended purpose.
+
+Adopt the Code's validation controls voluntarily for high-assurance workflows. Do not claim Code
+compliance or accreditation for Birdbrain itself. For activities that are in scope, compliance
+attaches to covered activities and forensic units; [ISO/IEC 17025:2017](https://www.iso.org/standard/66912.html)
+accreditation assesses competent and impartial laboratory operation, not a downloadable app.
+[Section 4 of the Forensic Science Regulator Act 2021](https://www.legislation.gov.uk/ukpga/2021/14/section/4)
+also makes clear that Code noncompliance does not by itself create liability or make evidence
+inadmissible, although a court may take it into account.
+
+#### European Union
+
+The [GDPR](https://eur-lex.europa.eu/eli/reg/2016/679/2016-05-04/eng) applies when its material
+and territorial scope are met. Public availability is not a general exemption. An investigation
+needs a documented lawful basis, purpose, minimization and retention rules, security measures,
+processor/transfer controls, and a DPIA when processing is likely to create high risk. Special
+category data, criminal-offence data, indirect collection notices, and journalistic exemptions
+require separate analysis under Articles 9, 10, 14, and 85 and applicable Member State law.
+Birdbrain should support these decisions but cannot choose the user's lawful basis.
+Sending capture content to OpenRouter adds a separate processor, confidentiality, retention,
+international-transfer, and data-minimization decision; local-first storage does not remove that
+external disclosure.
+
+Under consolidated [eIDAS Articles 41 and 42](https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX%3A02014R0910-20241018),
+an ordinary electronic timestamp cannot be denied legal effect solely because it is electronic
+or non-qualified, while a qualified electronic timestamp receives a presumption of the accuracy
+of its date/time and the integrity of the linked data. An RFC 3161 token is not automatically
+qualified. The current EU standards reference is
+[Commission Implementing Regulation (EU) 2025/1929](https://eur-lex.europa.eu/eli/reg_impl/2025/1929/oj/eng/pdf).
+A qualified workflow must use a qualified provider and specific service listed in the official
+[EU/EEA Trusted List Browser](https://eidas.ec.europa.eu/efda/trust-services/browse/eidas/tls),
+record the service's qualified status at issuance, and preserve the validation material.
+
+The [EU AI Act](https://eur-lex.europa.eu/eli/reg/2024/1689/oj) has phased application,
+generally applying from 2 August 2026, with some provisions earlier or later. Before enabling an
+AI workflow in the EU, determine Birdbrain's and the deployer's roles, the actual intended use,
+whether a prohibited or high-risk category is involved, and which transparency duties apply.
+Generic capture analysis should not be assumed exempt or high-risk without that use-specific
+assessment.
+
+#### Accessibility procurement
+
+For US federal procurement, the [Revised Section 508 Standards](https://www.access-board.gov/ict/)
+apply to covered federal ICT and incorporate WCAG 2.0 Level A and AA. Birdbrain should retain
+WCAG 2.2 AA as its stricter development target while documenting the exact 508 test baseline.
+
+For covered European procurement and public-sector use, assess
+[EN 301 549 V3.2.1](https://www.etsi.org/deliver/etsi_en/301500_301599/301549/03.02.01_60/en_301549v030201p.pdf).
+Do not claim conformance to the draft V4.1.0 until it is finalized and the applicable legal
+references are updated.
+
+## Architectural consequences
+
+### 1. Evidence and analysis are different object classes
+
+- A captured original is immutable and content-addressed.
+- Screenshots, extracted text, OCR, annotations, redactions, translations, summaries, reports,
+  and AI output are derived objects.
+- Every derivative records its source object(s), operation, tool/version, parameters, operator
+  or automated agent, start/end time, output hash, and success/error state.
+- Corrections create a new object or event; they never rewrite an original or historical event.
+- Claims and findings cite the exact source object and location, record confidence and
+  corroboration, and can represent contradiction or uncertainty.
+
+### 2. Acquisition records the observation context
+
+For each attempt, successful or not, record at least:
+
+- requested URL, redirect sequence, final URL, and capture trigger;
+- UTC time plus the displayed local offset, clock source, and trusted-time state;
+- operator or pseudonymous operator identifier and case authorization reference;
+- Birdbrain, extension, browser, operating system, and capture-component versions;
+- user agent, viewport, locale, timezone, network/profile region, and authenticated-session mode;
+- HTTP status and available request/response headers, DNS/TLS facts, and referenced resources;
+- artifact sizes, formats, hashes, truncation/omission flags, and capture errors; and
+- cache/service-worker behavior and other known conditions that could change displayed content.
+
+Never persist session secrets, authorization headers, or cookies merely to make the metadata
+complete. Record the mode and a secret-free identifier instead.
+
+### 3. Capture is multi-representation
+
+The target evidence profile should preserve:
+
+1. transaction-level content and protocol metadata in WARC;
+2. browser-state representation in MHTML where available;
+3. visual context in a screenshot or, when necessary, a screen recording;
+4. extracted text and structured metadata as derivatives; and
+5. an explicit inventory of resources that failed, were blocked, were lazy-loaded, were
+   cross-origin, or could not be represented.
+
+No representation is authoritative for every question. The UI and report must expose conflicts
+between what the network returned, what the browser rendered, and what extraction produced.
+
+### 4. The evidence package is a versioned public protocol
+
+- Publish `Birdbrain Evidence Profile vN`, JSON Schemas, media types, canonicalization rules,
+  path rules, stable identifiers, test vectors, and compatibility policy.
+- Include all payload and metadata hashes, manifest chain, signatures, timestamps, public keys,
+  certificate chains, verification policy, and a plain-language inventory.
+- Give every verification result a machine-readable status and reason. "Unverified" is not
+  "tampered."
+- Maintain a standalone verifier and test the profile with at least one implementation path that
+  is not the capture/export code path.
+- Map exports to WACZ/BagIt, PREMIS/PROV, and CASE rather than forcing those standards into the
+  transactional internal schema.
+
+### 5. Cryptography includes policy and lifecycle
+
+- Store algorithm, parameters, key identifier, public key or certificate, signature format, and
+  profile version with every signed object.
+- Define key generation, protection, backup, rotation, compromise, revocation, and retirement.
+- Preserve the material needed for later verification, including TSA chains and status evidence.
+- Support timestamp renewal or preservation events before algorithms or credentials become weak.
+- Clearly distinguish: content hash, manifest-chain integrity, signer identity, trusted time, and
+  source attribution. Success in one axis must not be displayed as success in another.
+
+### 6. Validation is release-specific
+
+Maintain a public validation corpus covering static, dynamic, authenticated, localized,
+infinite-scroll, iframe, service-worker, streaming, deleted, redirected, erroring, oversized,
+malicious, and partially captured pages. For each release:
+
+- state requirements and expected results before testing;
+- test every evidence-affecting path and all supported operating systems/browser versions;
+- compare artifacts against known truth or an independent acquisition method;
+- exercise tampering, truncation, reordering, deletion, key, timestamp, import, and export cases;
+- publish the test environment, results, deviations, false positives/negatives, and limitations;
+- rerun impacted validation after dependency, browser, extension, crypto, or packaging changes.
+
+Passing ordinary unit and end-to-end tests is necessary but is not forensic method validation.
+
+### 7. Hostile-content security is an evidence requirement
+
+A capture can be intentionally crafted to attack the investigator. Render originals in a
+sandboxed, offline replay context with scripting and live navigation disabled by default.
+Separate evidence parsing from privileged Electron processes, validate every IPC and archive
+boundary, constrain file paths and decompression, cap resource use, and make any live-network
+request visible and deliberate. Security failures can expose sources and can also contaminate
+evidence.
+
+### 8. Privacy and human-rights safeguards are product behavior
+
+- Collect the minimum case metadata needed for a declared purpose.
+- Provide case retention, legal-hold, deletion, encrypted backup, and secure export controls.
+- Keep audit facts useful for custody while minimizing identities and secrets in logs.
+- Maintain immutable originals privately and create controlled disclosure derivatives.
+- Warn before exports or AI requests transfer personal or sensitive data to another party.
+- Record processor, model provider, region, retention setting, and user authorization for each
+  external disclosure.
+- Support source-risk and harm assessments, not just evidentiary relevance.
+
+Local-first operation reduces exposure; it does not by itself provide encryption, authorization,
+lawful processing, safe retention, or safe publication.
+
+### 9. AI output cannot silently become evidence
+
+- Send AI only the data the user explicitly selects and disclose the destination before transfer.
+- Record provider, model identifier, model-reported version where available, system prompt,
+  user prompt, parameters, input object hashes, time, output, and safety/error state.
+- Label output as machine-generated analysis and retain the exact response separately from human
+  edits.
+- Require a named human review event before an AI assertion becomes a report finding.
+- Link every factual assertion back to captured sources; unsupported assertions remain visibly
+  unsupported.
+- Test hallucination, prompt injection from captured pages, bias, privacy leakage, content
+  poisoning, non-determinism, and provider/model change.
+- Never allow captured page text to issue tool instructions or alter evidence, case state, or
+  verification status.
+
+### 10. Releases are attestable artifacts
+
+Every release should have:
+
+- a signed digest and platform code signature;
+- an SBOM, dependency and license inventory, and vulnerability disposition;
+- SLSA provenance bound to the source revision and build inputs;
+- reproducible-build results where feasible;
+- signed update metadata with expiry, rollback protection, and key-rotation procedures;
+- the evidence-profile version and forensic validation report;
+- security, privacy, accessibility, and AI-control test reports; and
+- a vulnerability disclosure policy, support window, and security update process.
+
+## Required assurance documents
+
+Birdbrain should maintain these versioned artifacts in addition to source code:
+
+1. **Standards register:** source, version, legal status, owner, review date, applicability,
+   controls, implementation evidence, deviations, and supersession status.
+2. **Evidence profile:** normative schemas and semantics for originals, derivatives, events,
+   packages, signing, timestamping, and verification.
+3. **Method specification and SOP:** intended uses, excluded uses, prerequisites, operator
+   steps, expected outputs, quality controls, and known limitations.
+4. **Validation plan and report:** requirements, reference datasets, environments, test cases,
+   results, anomalies, acceptance decision, approver, and affected versions.
+5. **Conformance statement:** exact standards/profile versions, conforming features, exceptions,
+   evidence links, and claim wording.
+6. **Threat and privacy models:** evidence-integrity threats, hostile-content threats, source
+   safety, personal-data flows, retention, external transfers, and mitigations.
+7. **AI system record:** intended use, prohibited uses, data flow, model/provider inventory,
+   evaluation results, human oversight, incident process, and change history.
+8. **Jurisdiction profiles:** legal authority and admissibility checklist maintained with
+   qualified counsel and practitioners for each target workflow.
+
+## Architecture decision gate
+
+No evidence-affecting ADR is complete until it answers:
+
+1. Which standard, investigation need, and threat require the decision?
+2. What claim will Birdbrain make, and what does it explicitly not prove?
+3. Which original, derivative, activity, agent, and custody events are created?
+4. Can a skeptical third party verify the result without trusting the Birdbrain UI?
+5. What information can be lost, altered, omitted, or disclosed, and how is that surfaced?
+6. What privacy, human-rights, accessibility, and operator-safety impacts result?
+7. Which export/interchange mappings change, and how is backward compatibility handled?
+8. What known-truth validation demonstrates fitness for purpose, on which exact versions?
+9. What operational procedure or user competence is still required outside the software?
+10. Which jurisdiction-specific review or claim restriction applies?
+
+## Prohibited claims without additional evidence
+
+Do not use these claims generically:
+
+- **"Court-admissible" or "court-ready":** admissibility is jurisdictional, procedural, and
+  fact-specific.
+- **"Forensically sound" or "forensic-grade":** name the method, profile, validation report,
+  supported versions, and limits instead.
+- **"Tamper-proof":** describe which modifications verification detects and which trusted actors
+  or endpoints remain capable of compromise.
+- **"Authentic" or "true":** a valid hash/signature can establish integrity and origin under a
+  stated trust policy, not the truth of captured claims or identity of a page author.
+- **"Qualified timestamp":** reserve this for a timestamp meeting the applicable eIDAS
+  requirements from a qualified service whose status has been verified.
+- **"GDPR compliant," "Section 508 compliant," "AI Act compliant," or "FSR compliant":**
+  publish a scoped conformance assessment tied to a product version, deployment, role, and use.
+
+## Maintenance and known caveats
+
+- Review this register at least quarterly and before every evidence-profile release.
+- Pin exact versions in conformance documents. Living sources such as Electron guidance, TUF,
+  trusted lists, and regulator guidance change without a new Birdbrain release.
+- ISO/IEC 27037:2012 and ISO/IEC 27041:2015 remain published but are in review cycles; monitor
+  replacements before asserting current conformance.
+- FIPS 180-4 remains current, but NIST has decided to revise it; keep the cryptographic profile
+  versioned and algorithm-agile rather than embedding one edition forever.
+- NIST Privacy Framework 1.0 remains the stable baseline while 1.1 is in draft. NIST AI RMF 1.0
+  is also under revision as of this review.
+- SWGDE requires citations to include document version/status and warns readers to check for
+  revised, deprecated, or sunsetted documents.
+- CASE/UCO, WACZ, C2PA, SLSA, OWASP, and PREMIS are valuable consensus or community
+  specifications but do not create legal admissibility or organizational accreditation.
+- A product can enable a compliant workflow. The investigator and organization remain
+  responsible for legal authority, competence, SOPs, disclosure, testimony, and case-specific
+  decisions.

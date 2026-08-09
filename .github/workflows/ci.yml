@@ -2,19 +2,28 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [main]
   pull_request:
-    branches: [master]
+    branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      # persist-credentials: false on every job except test: no job here pushes, so
+      # the token has no reason to sit in .git/config where pnpm lifecycle scripts
+      # and test/build code running after checkout could read it. The test job is
+      # the one exemption — see the comment on its checkout.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -26,34 +35,38 @@ jobs:
   typecheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
 
       - run: pnpm install
 
-      - name: Typecheck main + preload + shared
-        run: npx tsc --noEmit -p tsconfig.node.json
-
-      - name: Typecheck renderer
-        run: npx tsc --noEmit -p tsconfig.web.json
-
-      - name: Typecheck extension
-        run: npx tsc --noEmit -p extension/tsconfig.json
+      - run: pnpm typecheck
 
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      # fetch-depth: 0 so diff coverage can resolve a merge base with the base
+      # branch; a shallow clone has no common ancestor to diff against.
+      #
+      # Deliberately NOT persist-credentials: false here, unlike every other
+      # checkout in this file: the Diff coverage step runs `git fetch` after
+      # checkout, and while this repo is private that fetch only works with the
+      # persisted (read-only on fork PRs) token in .git/config.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -69,18 +82,35 @@ jobs:
       - name: Verify openssl is available
         run: openssl version
 
-      - run: pnpm test
+      # Runs the suite under coverage so the thresholds in vitest.config.ts are
+      # actually evaluated. They were defined long before this and never ran in
+      # CI, because `pnpm test` omits --coverage and vitest only checks
+      # thresholds when coverage is enabled.
+      - run: pnpm test:coverage
         env:
           BIRDBRAIN_REQUIRE_OPENSSL: '1'
+
+      # Project-wide thresholds stop the tree backsliding but cannot ask whether
+      # new code arrived tested — a PR can add an untested module and still clear
+      # them. This scores only the lines the PR changed.
+      - name: Diff coverage
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch --no-tags origin "${BASE_REF}"
+          node scripts/diff-coverage.mjs --base "origin/${BASE_REF}"
+        env:
+          BASE_REF: ${{ github.base_ref }}
 
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -96,11 +126,13 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
           cache: pnpm

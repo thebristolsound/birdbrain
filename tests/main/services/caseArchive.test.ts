@@ -30,7 +30,8 @@ import { createStoredZip } from '@main/services/zip'
 import {
   exportCaseArchive,
   inspectCaseArchive,
-  importCaseArchive
+  importCaseArchive,
+  CASE_ARCHIVE_SCHEMA_VERSION
 } from '@main/services/caseArchive'
 import { canonicalStringify } from '@shared/verify'
 
@@ -202,7 +203,7 @@ describe('caseArchive export', () => {
     const entries = readStoredZip(readFileSync(out))
 
     const header = JSON.parse(entries.get('package.json')!.toString('utf-8'))
-    expect(header.schemaVersion).toBe(1)
+    expect(header.schemaVersion).toBe(CASE_ARCHIVE_SCHEMA_VERSION)
     expect(header.generatedBy).toBe('Birdbrain')
     expect(header.signingPublicKeyPem).toContain('BEGIN PUBLIC KEY')
     expect(header.case).toMatchObject({
@@ -378,7 +379,7 @@ describe('caseArchive inspect', () => {
     expect(report.verification.captureHashFailureCount).toBe(0)
     expect(report.caseName).toBe('Test Case')
     expect(report.caseDescription).toBe('A case for archive inspection')
-    expect(report.schemaVersion).toBe(1)
+    expect(report.schemaVersion).toBe(CASE_ARCHIVE_SCHEMA_VERSION)
     expect(report.sourceOperatorName).toBe('Test Operator')
     expect(typeof report.sourceInstallationId).toBe('string')
     expect(typeof report.exportedAt).toBe('string')

@@ -28,7 +28,8 @@ const contentConfig = defineConfig({
   },
   resolve: {
     alias: {
-      '@extension': resolve(__dirname, 'src')
+      '@extension': resolve(__dirname, 'src'),
+      '@shared': resolve(__dirname, '../src/shared')
     }
   }
 })
@@ -81,7 +82,8 @@ const mainConfig = defineConfig({
   },
   resolve: {
     alias: {
-      '@extension': resolve(__dirname, 'src')
+      '@extension': resolve(__dirname, 'src'),
+      '@shared': resolve(__dirname, '../src/shared')
     }
   }
 })

@@ -12,7 +12,7 @@ import { join } from 'path'
 import { createHash } from 'crypto'
 import { MANIFEST_FILENAME, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import { canonicalStringify, verifyManifestChainText } from '@shared/verify'
-import type { ChainVerifyResult } from '@shared/verify'
+import type { ChainVerifyResult, CaptureChainEntry } from '@shared/verify'
 import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
 import type {
   TrustedTime,
@@ -145,7 +145,9 @@ export interface PackagedArtifact {
 // excluded from the artifact list.
 export function packageHash(artifacts: PackagedArtifact[]): string {
   const sorted = [...artifacts].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
-  return createHash('sha256').update(Buffer.from(canonicalStringify(sorted), 'utf-8')).digest('hex')
+  return createHash('sha256')
+    .update(Buffer.from(canonicalStringify(sorted), 'utf-8'))
+    .digest('hex')
 }
 
 export interface ArtifactAccumulator {
@@ -464,7 +466,7 @@ export async function withCaptureEntry<T>(
   )
 }
 
-export type { ChainVerifyResult }
+export type { ChainVerifyResult, CaptureChainEntry }
 
 // Main-process consumers verifying manifest text that is NOT this case dir's
 // live file (e.g. archive inspect, against the archive's own bundled key) go
@@ -486,7 +488,12 @@ export { verifyManifestChainText }
 export function verifyManifestChain(caseDir: string): ChainVerifyResult {
   const path = join(caseDir, MANIFEST_FILENAME)
   if (!existsSync(path) || statSync(path).size === 0) {
-    return { valid: true, trustedTimes: new Map(), captureHashesByIndex: new Map() }
+    return {
+      valid: true,
+      trustedTimes: new Map(),
+      captureHashesByIndex: new Map(),
+      captureEntriesByIndex: new Map()
+    }
   }
   const raw = readFileSync(path, 'utf-8')
   return verifyManifestChainText(raw, { publicKeyPem: getPublicKeyPem() })

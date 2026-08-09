@@ -19,4 +19,5 @@ allowBuilds:
 overrides:
   brace-expansion: ^1.1.18
   fast-uri: ^3.1.5
+  nanoid: ^3.3.18
   postcss: ^8.5.23

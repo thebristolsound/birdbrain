@@ -25,6 +25,7 @@ import { useAppStore } from '@renderer/stores/appStore'
 import { useViewportWidth } from '@renderer/hooks/useViewportWidth'
 import { useReduceMotion } from '@renderer/hooks/useReduceMotion'
 import { openCaptureExternal } from '@renderer/lib/api/system'
+import { notify } from '@renderer/lib/notify'
 
 const COLLAPSE_THRESHOLD = 1100
 
@@ -85,7 +86,11 @@ export function CapturesRoute() {
 
   async function handleOpenExternal() {
     if (!selectedCapture) return
-    await openCaptureExternal(selectedCapture.url)
+    try {
+      await openCaptureExternal(selectedCapture.url)
+    } catch (cause) {
+      notify.error("Couldn't open the link in your browser", { cause })
+    }
   }
 
   return (

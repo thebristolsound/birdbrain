@@ -3,6 +3,7 @@ import { StickyNote, Pencil, Trash2, ExternalLink, X, Check } from 'lucide-react
 import { useQuery } from '@tanstack/react-query'
 import { captureThumbnailQueryOptions, useNotesMutations } from '@renderer/lib/queries'
 import { openCaptureExternal } from '@renderer/lib/api/system'
+import { notify } from '@renderer/lib/notify'
 import type { Note } from '@shared/types'
 import { Button, Input } from '@renderer/components/ui'
 import { NoteBody } from '@renderer/components/notes/NoteBody'
@@ -108,8 +109,11 @@ export function NoteCard({ note, caseId }: NoteCardProps) {
   }
 
   async function handleOpenUrl() {
-    if (note.sourceUrl) {
+    if (!note.sourceUrl) return
+    try {
       await openCaptureExternal(note.sourceUrl)
+    } catch (cause) {
+      notify.error("Couldn't open the link in your browser", { cause })
     }
   }
 

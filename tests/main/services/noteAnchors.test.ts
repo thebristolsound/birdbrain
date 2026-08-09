@@ -14,9 +14,11 @@ import {
   updateNote,
   getNote,
   listNotes,
-  importNoteRows
+  importNoteRows,
+  AnchorCaseMismatchError
 } from '@main/services/db/noteRepo'
 import { insertCapture, deleteCapture } from '@main/services/db/captureRepo'
+import { createSelector } from '@main/services/db/selectorRepo'
 
 const TEXT_ANCHOR = {
   kind: 'text',
@@ -304,6 +306,172 @@ describe('anchored notes', () => {
         finding: 'selectorMatch',
         captureId: 'cap-1-remapped',
         selectorId: 'sel-1-remapped'
+      })
+    })
+  })
+
+  // #234: a note belongs to exactly one case. An anchor whose target EXISTS in
+  // a different case is rejected at write time; a target that does not exist
+  // at all is untouched by this rule (that is resolveTextAnchor's documented
+  // capture-missing gap, not a case violation).
+  describe('same-case enforcement', () => {
+    function captureInCase(otherCaseId: string) {
+      return insertCapture({
+        caseId: otherCaseId,
+        url: 'https://example.com',
+        title: 'Elsewhere',
+        hash: 'abc123',
+        timestamp: new Date().toISOString()
+      })
+    }
+
+    it('allows an anchor targeting a capture in the same case as the note', () => {
+      const capture = captureInCase(caseId)
+
+      const note = createNote({
+        caseId,
+        anchor: JSON.stringify({ ...TEXT_ANCHOR, captureId: capture.id })
+      })
+
+      expect(note.anchor).toMatchObject({ captureId: capture.id })
+    })
+
+    it('allows an anchor targeting a captureId that does not exist at all', () => {
+      // Not a case violation -- the design's capture-missing gap, which this
+      // feature deliberately preserves. Structural (TEXT_ANCHOR's captureId
+      // 'cap-1') rather than a UUID collision.
+      const note = createNote({ caseId, anchor: JSON.stringify(TEXT_ANCHOR) })
+
+      expect(note.anchor).toMatchObject({ captureId: 'cap-1' })
+    })
+
+    it('rejects on create an anchor targeting a capture in a different case', () => {
+      const otherCaseId = createCase({ name: 'Other', description: '' }).id
+      const capture = captureInCase(otherCaseId)
+
+      expect(() =>
+        createNote({ caseId, anchor: JSON.stringify({ ...TEXT_ANCHOR, captureId: capture.id }) })
+      ).toThrow(AnchorCaseMismatchError)
+      expect(listNotes(caseId)).toHaveLength(0)
+    })
+
+    it('rejects on update a NEW anchor targeting a capture in a different case', () => {
+      const otherCaseId = createCase({ name: 'Other', description: '' }).id
+      const capture = captureInCase(otherCaseId)
+      const note = createNote({ caseId, title: 'T' })
+
+      expect(() =>
+        updateNote({
+          id: note.id,
+          anchor: JSON.stringify({ ...TEXT_ANCHOR, captureId: capture.id })
+        })
+      ).toThrow(AnchorCaseMismatchError)
+      expect(getNote(note.id)!.anchor).toBeUndefined()
+    })
+
+    it('rejects a cross-case selectorMatch anchor by the selectorId, not just the captureId', () => {
+      const capture = captureInCase(caseId) // capture is IN case, selector is not
+      const otherCaseId = createCase({ name: 'Other', description: '' }).id
+      const selector = createSelector({ caseId: otherCaseId, pattern: 'x' })
+
+      expect(() =>
+        createNote({
+          caseId,
+          anchor: JSON.stringify({
+            kind: 'finding',
+            finding: 'selectorMatch',
+            captureId: capture.id,
+            selectorId: selector.id
+          })
+        })
+      ).toThrow(AnchorCaseMismatchError)
+    })
+
+    // AC#8: a row that already violates the rule (written before #234, or via
+    // direct SQL below standing in for that) is not destroyed by an unrelated
+    // read or write. Re-validating an anchor the caller did not touch would
+    // turn a title fix into a rejection of data this PR does not migrate.
+    it('does not re-validate an untouched anchor on an unrelated update', () => {
+      const otherCaseId = createCase({ name: 'Other', description: '' }).id
+      const capture = captureInCase(otherCaseId)
+      const now = new Date().toISOString()
+      const violatingId = 'pre-234-violation'
+      // Bypass createNote: this row predates the case-membership rule.
+      getDb()
+        .prepare(
+          `INSERT INTO notes (id, case_id, title, body, anchor_kind, anchor_json, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          violatingId,
+          caseId,
+          'Legacy',
+          '',
+          'text',
+          JSON.stringify({ ...TEXT_ANCHOR, captureId: capture.id }),
+          now,
+          now
+        )
+
+      // A read must not choke on it either.
+      expect(getNote(violatingId)!.anchor).toMatchObject({ captureId: capture.id })
+
+      const updated = updateNote({ id: violatingId, title: 'Legacy (edited)' })
+
+      expect(updated!.title).toBe('Legacy (edited)')
+      expect(updated!.anchor).toMatchObject({ captureId: capture.id })
+    })
+
+    describe('archive import', () => {
+      it('accepts an anchor whose REMAPPED captureId lands in the same case', () => {
+        // The capture this note anchors is already present locally under
+        // caseId -- as it would be by the time importNoteRows runs, since
+        // captures import before notes in caseArchive.ts's insertImportedRows.
+        const capture = captureInCase(caseId)
+
+        importNoteRows(
+          [
+            {
+              id: 'imported-ok',
+              title: 'Anchored',
+              body: 'x',
+              created_at: 'x',
+              updated_at: 'x',
+              anchor_json: JSON.stringify({ ...TEXT_ANCHOR, captureId: 'source-cap-id' })
+            }
+          ],
+          {
+            newCaseId: caseId,
+            mapId: (id: string) => (id === 'source-cap-id' ? capture.id : id)
+          } as Parameters<typeof importNoteRows>[1]
+        )
+
+        expect(getNote('imported-ok')!.anchor).toMatchObject({ captureId: capture.id })
+      })
+
+      it('rejects an anchor whose REMAPPED captureId lands in a different case', () => {
+        const otherCaseId = createCase({ name: 'Other', description: '' }).id
+        const capture = captureInCase(otherCaseId)
+
+        expect(() =>
+          importNoteRows(
+            [
+              {
+                id: 'imported-bad',
+                title: 'Anchored',
+                body: 'x',
+                created_at: 'x',
+                updated_at: 'x',
+                anchor_json: JSON.stringify({ ...TEXT_ANCHOR, captureId: 'source-cap-id' })
+              }
+            ],
+            {
+              newCaseId: caseId,
+              mapId: (id: string) => (id === 'source-cap-id' ? capture.id : id)
+            } as Parameters<typeof importNoteRows>[1]
+          )
+        ).toThrow(AnchorCaseMismatchError)
+        expect(listNotes(caseId).map((n) => n.id)).not.toContain('imported-bad')
       })
     })
   })

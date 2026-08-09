@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
 import { createCase, updateCase, listCases } from '@main/services/db/caseRepo'
 import { insertCapture, getCaptureTextContent } from '@main/services/db/captureRepo'
+import { AnchorCaseMismatchError } from '@main/services/db/noteRepo'
 import {
   getDbStats,
   getTableRows,
@@ -111,9 +112,7 @@ describe('dbAdmin', () => {
     })
 
     it('throws for invalid column names', () => {
-      expect(() => createRow('tags', { id: 'x', name: 'x', evil: 'yes' })).toThrow(
-        'does not exist'
-      )
+      expect(() => createRow('tags', { id: 'x', name: 'x', evil: 'yes' })).toThrow('does not exist')
     })
   })
 
@@ -234,6 +233,69 @@ describe('dbAdmin', () => {
         /derived from anchor_json/
       )
       expect(anchorRow('n-8').anchor_kind).toBe('capture')
+    })
+
+    // #234: Database Admin is a genuine fourth write path for notes.anchor_json
+    // (alongside createNote/updateNote/importNoteRows) and easy to forget --
+    // it must not be the one place a cross-case anchor slips through.
+    describe('case-membership (#234)', () => {
+      function captureInCase(caseIdForCapture: string) {
+        return insertCapture({
+          caseId: caseIdForCapture,
+          url: 'https://example.com',
+          title: 'Elsewhere',
+          hash: 'abc123',
+          timestamp: new Date().toISOString()
+        })
+      }
+
+      it('rejects a cross-case anchor_json on create', () => {
+        const caseId = newCase()
+        const otherCaseId = newCase()
+        const capture = captureInCase(otherCaseId)
+
+        expect(() =>
+          createRow('notes', {
+            ...noteRow('n-9', caseId),
+            anchor_json: JSON.stringify({ kind: 'capture', captureId: capture.id })
+          })
+        ).toThrow(AnchorCaseMismatchError)
+      })
+
+      it('allows a same-case anchor_json on create', () => {
+        const caseId = newCase()
+        const capture = captureInCase(caseId)
+
+        expect(() =>
+          createRow('notes', {
+            ...noteRow('n-10', caseId),
+            anchor_json: JSON.stringify({ kind: 'capture', captureId: capture.id })
+          })
+        ).not.toThrow()
+      })
+
+      it('rejects a cross-case anchor_json on update, resolving the row’s case from its pk when case_id is not in the payload', () => {
+        const caseId = newCase()
+        const otherCaseId = newCase()
+        const capture = captureInCase(otherCaseId)
+        createRow('notes', noteRow('n-11', caseId))
+
+        expect(() =>
+          updateRow(
+            'notes',
+            { id: 'n-11' },
+            { anchor_json: JSON.stringify({ kind: 'capture', captureId: capture.id }) }
+          )
+        ).toThrow(AnchorCaseMismatchError)
+      })
+
+      it('allows an anchor targeting a captureId that does not exist at all', () => {
+        const caseId = newCase()
+
+        expect(() =>
+          createRow('notes', { ...noteRow('n-12', caseId), anchor_json: VALID_ANCHOR })
+        ).not.toThrow()
+      })
     })
   })
 

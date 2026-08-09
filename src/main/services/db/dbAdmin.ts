@@ -9,6 +9,7 @@ import {
 } from '@main/services/captureStore'
 import { buildCsv } from '@main/services/csvEscape'
 import { parseNoteAnchor } from '@shared/noteAnchor'
+import { assertAnchorInCase } from '@main/services/db/noteRepo'
 import type { DbStats, DbTableRowsParams, DbTableRowsResult, OrphanReport } from '@shared/ipc'
 
 export const ALLOWED_TABLES = [
@@ -73,8 +74,19 @@ function assertValidColumns(table: string, data: Record<string, unknown>): void 
  *
  * So the hatch may clear an anchor, but it may not invent one this codebase
  * cannot read back, nor set the derived column by hand.
+ *
+ * It also may not create a cross-case anchor (#234): `assertAnchorInCase` is
+ * the same check `createNote`/`updateNote`/`importNoteRows` run, so the admin
+ * hatch — a genuine fourth write path, easy to forget — cannot be the one
+ * place a structurally valid but cross-case anchor slips through.
+ * `fallbackCaseId` is the row's CURRENT `case_id`, supplied by the caller for
+ * an update whose payload does not itself touch that column.
  */
-function validatedRow(table: string, data: Record<string, unknown>): Record<string, unknown> {
+function validatedRow(
+  table: string,
+  data: Record<string, unknown>,
+  fallbackCaseId?: string
+): Record<string, unknown> {
   if (table !== 'notes') return data
 
   const writesJson = 'anchor_json' in data
@@ -93,6 +105,12 @@ function validatedRow(table: string, data: Record<string, unknown>): Record<stri
     throw new Error('notes.anchor_json must be a string or NULL')
   }
   const parsed = parseNoteAnchor(value)
+  const caseId = (data.case_id as string | undefined) ?? fallbackCaseId
+  // A create/update whose row we cannot resolve a case_id for skips this
+  // check rather than blocking: for a create with no case_id the NOT NULL
+  // column constraint below fails the write anyway, and there is nothing
+  // this check adds ahead of that.
+  if (caseId) assertAnchorInCase(parsed, caseId)
   return { ...data, anchor_json: JSON.stringify(parsed), anchor_kind: parsed.kind }
 }
 
@@ -180,16 +198,29 @@ export function updateRow(
   assertAllowedTable(table)
   assertValidColumns(table, pk)
   assertValidColumns(table, data)
-  const row = validatedRow(table, data)
-  const dataKeys = Object.keys(row)
-  if (dataKeys.length === 0) return false
 
   const db = getDb()
-  const setClauses = dataKeys.map((k) => `"${k}" = ?`).join(', ')
   const whereClauses = Object.keys(pk)
     .map((k) => `"${k}" = ?`)
     .join(' AND ')
-  const values = [...Object.values(row), ...Object.values(pk)]
+  const pkValues = Object.values(pk)
+
+  // An anchor edit that doesn't also touch case_id needs the row's CURRENT
+  // case to validate against — look it up before writing.
+  let fallbackCaseId: string | undefined
+  if (table === 'notes' && 'anchor_json' in data && !('case_id' in data)) {
+    const existing = db
+      .prepare(`SELECT case_id FROM "${table}" WHERE ${whereClauses}`)
+      .get(...pkValues) as { case_id?: string } | undefined
+    fallbackCaseId = existing?.case_id
+  }
+
+  const row = validatedRow(table, data, fallbackCaseId)
+  const dataKeys = Object.keys(row)
+  if (dataKeys.length === 0) return false
+
+  const setClauses = dataKeys.map((k) => `"${k}" = ?`).join(', ')
+  const values = [...Object.values(row), ...pkValues]
 
   const result = db
     .prepare(`UPDATE "${table}" SET ${setClauses} WHERE ${whereClauses}`)

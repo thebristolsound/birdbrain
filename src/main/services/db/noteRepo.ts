@@ -3,7 +3,59 @@ import type { Note } from '@shared/types'
 import type { CreateNoteParams, UpdateNoteParams } from '@shared/ipc'
 import { getDb, type ImportCtx } from '@main/services/db/core'
 import { noteDocToText, parseNoteDoc } from '@shared/noteDoc'
-import { parseNoteAnchor, remapAnchorIds, type NoteAnchorKind } from '@shared/noteAnchor'
+import {
+  parseNoteAnchor,
+  remapAnchorIds,
+  type NoteAnchor,
+  type NoteAnchorKind
+} from '@shared/noteAnchor'
+
+// Thrown when an anchor's embedded ids resolve to a row that exists, but in a
+// different case (#234). A distinct class from parseNoteAnchor's structural
+// errors so a caller at the IPC boundary can translate it into a specific
+// IpcFailure rather than a generic rejected promise.
+export class AnchorCaseMismatchError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'AnchorCaseMismatchError'
+  }
+}
+
+/**
+ * A note belongs to exactly one case (#234, design doc open question 1,
+ * answered): every id an anchor embeds must name a row in the note's own
+ * case. `collectCaseData` packages only the note's own case, so a cross-case
+ * anchor has always exported dangling; enforcing here makes the data match
+ * the assumption export has silently made all along.
+ *
+ * Only an EXISTING target in the wrong case is rejected. A target that does
+ * not exist at all is not this function's concern: a note surviving its
+ * anchored capture's deletion is `resolveTextAnchor`'s documented
+ * `capture-missing` outcome, a state this feature deliberately preserves, not
+ * a violation of the case rule. Rejecting on non-existence would also make
+ * ordering load-bearing in the archive importer in exactly the way #234
+ * warns against.
+ */
+export function assertAnchorInCase(anchor: NoteAnchor, caseId: string): void {
+  const capture = getDb()
+    .prepare('SELECT case_id FROM captures WHERE id = ?')
+    .get(anchor.captureId) as { case_id: string } | undefined
+  if (capture && capture.case_id !== caseId) {
+    throw new AnchorCaseMismatchError(
+      `Anchor references capture ${anchor.captureId}, which belongs to a different case`
+    )
+  }
+  if (anchor.kind === 'finding' && anchor.finding === 'selectorMatch') {
+    const selector = getDb()
+      .prepare('SELECT case_id FROM selectors WHERE id = ?')
+      .get(anchor.selectorId) as { case_id: string } | undefined
+    if (selector && selector.case_id !== caseId) {
+      throw new AnchorCaseMismatchError(
+        `Anchor references selector ${anchor.selectorId}, which belongs to a different case`
+      )
+    }
+  }
+}
 
 /**
  * Resolve the two anchor columns from a serialized payload.
@@ -17,17 +69,29 @@ import { parseNoteAnchor, remapAnchorIds, type NoteAnchorKind } from '@shared/no
  * payload, not an absent one, and is rejected rather than quietly unanchoring
  * the note — a falsy guard here would let a renderer clear an anchor by sending
  * a broken one, which is the coercion this module exists to prevent.
+ *
+ * `checkCase` defaults to on. The one caller that turns it off is `updateNote`
+ * re-serializing an anchor the caller did NOT touch: re-validating case
+ * membership there would let an unrelated edit (e.g. a title fix) start
+ * rejecting a note whose anchor already violated the rule before #234 existed
+ * — exactly the "not destroyed by ... a read [or an unrelated write]"
+ * guarantee the rule's own acceptance criteria require.
  */
 function resolveAnchor(
   anchor: string | null | undefined,
-  mapId?: (id: string) => string
+  caseId: string,
+  opts: { mapId?: (id: string) => string; checkCase?: boolean } = {}
 ): {
   kind: NoteAnchorKind | null
   json: string | null
 } {
   if (anchor === undefined || anchor === null) return { kind: null, json: null }
   const parsed = parseNoteAnchor(anchor)
-  const remapped = mapId ? remapAnchorIds(parsed, mapId) : parsed
+  const remapped = opts.mapId ? remapAnchorIds(parsed, opts.mapId) : parsed
+  // Case membership is checked against the REMAPPED ids: an archive import's
+  // mapId already moved captureId/selectorId onto their local-DB identities
+  // by this point, so validating the pre-remap ids would check the wrong row.
+  if (opts.checkCase !== false) assertAnchorInCase(remapped, caseId)
   return { kind: remapped.kind, json: JSON.stringify(remapped) }
 }
 
@@ -60,8 +124,7 @@ export function listNotes(caseId: string): Note[] {
 
 export function getNote(id: string): Note | undefined {
   const row = getDb().prepare('SELECT * FROM notes WHERE id = ?').get(id) as
-    | Record<string, unknown>
-    | undefined
+    Record<string, unknown> | undefined
   return row ? rowToNote(row) : undefined
 }
 
@@ -69,7 +132,7 @@ export function createNote(params: CreateNoteParams): Note {
   const id = uuid()
   const now = new Date().toISOString()
   const { body, bodyDoc } = resolveBody(params)
-  const anchor = resolveAnchor(params.anchor)
+  const anchor = resolveAnchor(params.anchor, params.caseId)
   getDb()
     .prepare(
       `INSERT INTO notes (id, case_id, capture_id, title, body, body_doc, anchor_kind, anchor_json, source_url, screenshot_path, created_at, updated_at)
@@ -107,8 +170,10 @@ export function updateNote(params: UpdateNoteParams): Note | undefined {
   // keeps the two paths on one code path.
   const anchor =
     params.anchor !== undefined
-      ? resolveAnchor(params.anchor)
-      : resolveAnchor(existing.anchor ? JSON.stringify(existing.anchor) : null)
+      ? resolveAnchor(params.anchor, existing.caseId)
+      : resolveAnchor(existing.anchor ? JSON.stringify(existing.anchor) : null, existing.caseId, {
+          checkCase: false
+        })
   getDb()
     .prepare(
       `UPDATE notes SET title = ?, body = ?, body_doc = ?, anchor_kind = ?, anchor_json = ?, updated_at = ?
@@ -204,7 +269,9 @@ export function importNoteRows(rows: Record<string, unknown>[], ctx: ImportCtx):
     // Ids embedded in the anchor go through the same remap as the capture_id
     // column below — an anchor left pointing at a pre-import id would cite
     // whatever already holds that id in this installation.
-    const anchor = resolveAnchor((n.anchor_json as string) ?? null, ctx.mapId)
+    const anchor = resolveAnchor((n.anchor_json as string) ?? null, ctx.newCaseId, {
+      mapId: ctx.mapId
+    })
     insert.run(
       ctx.mapId(n.id as string),
       ctx.newCaseId,

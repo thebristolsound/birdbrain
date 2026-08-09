@@ -561,6 +561,37 @@ describe('ipcHandlers — notes', () => {
     expectOk(await invoke(IPC_CHANNELS.NOTES_DELETE, note.id))
     expect(expectOk<number>(await invoke(IPC_CHANNELS.NOTES_COUNT, caseId))).toBe(0)
   })
+
+  // #234: a cross-case anchor is rejected as a structured IpcFailure (not a
+  // rejected promise), so the renderer can branch on it. Exercised at the IPC
+  // boundary specifically because that translation (AnchorCaseMismatchError ->
+  // IpcFailure) lives in ipcHandlers.ts, not in noteRepo itself.
+  it('reports a cross-case anchor as a structured failure, on both create and update', async () => {
+    const otherCase = createCase({ name: 'Elsewhere', description: '' })
+    const otherCapture = insertCapture({
+      caseId: otherCase.id,
+      url: 'https://example.com',
+      title: 'Elsewhere',
+      hash: 'abc123',
+      timestamp: new Date().toISOString()
+    })
+    const anchor = JSON.stringify({ kind: 'capture', captureId: otherCapture.id })
+
+    const createRes = await invoke<{ ok: boolean; error?: string; code?: string }>(
+      IPC_CHANNELS.NOTES_CREATE,
+      { caseId, anchor }
+    )
+    expect(createRes.ok).toBe(false)
+    expect(createRes.code).toBe('ANCHOR_CASE_MISMATCH')
+
+    const note = expectOk<{ id: string }>(await invoke(IPC_CHANNELS.NOTES_CREATE, { caseId }))
+    const updateRes = await invoke<{ ok: boolean; error?: string; code?: string }>(
+      IPC_CHANNELS.NOTES_UPDATE,
+      { id: note.id, anchor }
+    )
+    expect(updateRes.ok).toBe(false)
+    expect(updateRes.code).toBe('ANCHOR_CASE_MISMATCH')
+  })
 })
 
 describe('ipcHandlers — annotations', () => {

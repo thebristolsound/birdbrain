@@ -133,10 +133,11 @@ reviewers; ten fixed, two deferred to #234.
 - **Database Admin validates `notes.anchor_json` and derives `anchor_kind`.**
   `notes` is in `ALLOWED_TABLES` and previously validated column names only.
 
-Two review findings were **not** fixed in slice 1, both P1, both tracked as
-#234: binding text verification to the manifest digest rather than the
-`captures.text_hash` mirror (`verifyCapture` trusts the same mirror, so both
-call sites must move together), and the anchor-target case validation above.
+Two review findings were **not** fixed in slice 1, both P1, both tracked
+as `#234`: binding text verification to the manifest digest rather than
+the `captures.text_hash` mirror (`verifyCapture` trusts the same mirror,
+so both call sites must move together), and the anchor-target case
+validation above.
 **Both landed in #234**, along with the smaller, related dangling-`selectorId`
 outcome (a `resolveSelectorMatchAnchor` alongside the existing
 `capture-missing`). See the design doc's "Text anchors and resolution" section

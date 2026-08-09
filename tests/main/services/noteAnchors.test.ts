@@ -422,6 +422,38 @@ describe('anchored notes', () => {
       expect(updated!.anchor).toMatchObject({ captureId: capture.id })
     })
 
+    // AC#8, structural half: a row whose anchor_json predates #232's field
+    // validation (e.g. a 'text' anchor with no `quote`) parses fine as JSON but
+    // fails parseNoteAnchor. An unrelated title edit must not round-trip that
+    // anchor through resolveAnchor/parseNoteAnchor and throw on it.
+    it('does not re-parse a structurally invalid legacy anchor on an unrelated update', () => {
+      const capture = captureInCase(caseId)
+      const now = new Date().toISOString()
+      const invalidId = 'pre-232-structural-violation'
+      // Bypass createNote: parseNoteAnchor would reject this ('text' requires
+      // `quote`), so only a pre-validation write or raw SQL can produce it.
+      getDb()
+        .prepare(
+          `INSERT INTO notes (id, case_id, title, body, anchor_kind, anchor_json, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          invalidId,
+          caseId,
+          'Legacy',
+          '',
+          'text',
+          JSON.stringify({ kind: 'text', captureId: capture.id }),
+          now,
+          now
+        )
+
+      const updated = updateNote({ id: invalidId, title: 'Legacy (edited)' })
+
+      expect(updated!.title).toBe('Legacy (edited)')
+      expect(updated!.anchor).toMatchObject({ captureId: capture.id })
+    })
+
     describe('archive import', () => {
       it('accepts an anchor whose REMAPPED captureId lands in the same case', () => {
         // The capture this note anchors is already present locally under

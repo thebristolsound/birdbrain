@@ -70,17 +70,16 @@ export function assertAnchorInCase(anchor: NoteAnchor, caseId: string): void {
  * the note — a falsy guard here would let a renderer clear an anchor by sending
  * a broken one, which is the coercion this module exists to prevent.
  *
- * `checkCase` defaults to on. The one caller that turns it off is `updateNote`
- * re-serializing an anchor the caller did NOT touch: re-validating case
- * membership there would let an unrelated edit (e.g. a title fix) start
- * rejecting a note whose anchor already violated the rule before #234 existed
- * — exactly the "not destroyed by ... a read [or an unrelated write]"
- * guarantee the rule's own acceptance criteria require.
+ * Always validates case membership. `updateNote`'s untouched-anchor branch
+ * does not call this at all — it passes the existing, already-parsed anchor
+ * straight through — precisely so an unrelated edit (e.g. a title fix) cannot
+ * turn into a rejection of a note whose anchor already violated the rule
+ * before #234 existed. See its own comment for why.
  */
 function resolveAnchor(
   anchor: string | null | undefined,
   caseId: string,
-  opts: { mapId?: (id: string) => string; checkCase?: boolean } = {}
+  opts: { mapId?: (id: string) => string } = {}
 ): {
   kind: NoteAnchorKind | null
   json: string | null
@@ -91,7 +90,7 @@ function resolveAnchor(
   // Case membership is checked against the REMAPPED ids: an archive import's
   // mapId already moved captureId/selectorId onto their local-DB identities
   // by this point, so validating the pre-remap ids would check the wrong row.
-  if (opts.checkCase !== false) assertAnchorInCase(remapped, caseId)
+  assertAnchorInCase(remapped, caseId)
   return { kind: remapped.kind, json: JSON.stringify(remapped) }
 }
 
@@ -166,14 +165,17 @@ export function updateNote(params: UpdateNoteParams): Note | undefined {
     ? resolveBody(params)
     : { body: existing.body, bodyDoc: existing.bodyDoc ?? null }
   // An absent `anchor` leaves the stored one in place; an explicit null clears
-  // it. Re-serializing the existing anchor rather than reading the raw column
-  // keeps the two paths on one code path.
+  // it. The untouched branch passes the already-parsed anchor straight
+  // through rather than re-serializing and re-validating it with
+  // resolveAnchor/parseNoteAnchor: a row written before #232's structural
+  // validation (or #234's case rule) existed must survive an unrelated title
+  // edit, not fail it because the caller happened to touch the same note.
   const anchor =
     params.anchor !== undefined
       ? resolveAnchor(params.anchor, existing.caseId)
-      : resolveAnchor(existing.anchor ? JSON.stringify(existing.anchor) : null, existing.caseId, {
-          checkCase: false
-        })
+      : existing.anchor
+        ? { kind: existing.anchor.kind, json: JSON.stringify(existing.anchor) }
+        : { kind: null, json: null }
   getDb()
     .prepare(
       `UPDATE notes SET title = ?, body = ?, body_doc = ?, anchor_kind = ?, anchor_json = ?, updated_at = ?

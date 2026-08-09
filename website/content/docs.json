@@ -1,0 +1,52 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Birdbrain",
+  "description": "Open source web investigation and capture tool — a local-first desktop app for capturing, organizing, and verifying web evidence.",
+  "colors": {
+    "primary": "#5659f0",
+    "light": "#6467f2",
+    "dark": "#4f52e0"
+  },
+  "favicon": "/favicon.png",
+  "navigation": {
+    "groups": [
+      {
+        "group": "Get started",
+        "pages": ["docs/index", "docs/tester-guide", "docs/screenshots"]
+      },
+      {
+        "group": "Architecture",
+        "pages": [
+          "docs/birdbrain-architecture-whitepaper",
+          "docs/birdbrain-technical-whitepaper",
+          "docs/capture-pipeline"
+        ]
+      },
+      {
+        "group": "Assurance",
+        "pages": ["docs/threat-model", "docs/osint-investigation-standards"]
+      },
+      {
+        "group": "Adopting",
+        "pages": [
+          "docs/birdbrain-contributor-adoption-whitepaper",
+          "docs/birdbrain-privacy-adoption-whitepaper"
+        ]
+      }
+    ]
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "GitHub",
+        "href": "https://github.com/thebristolsound/birdbrain"
+      }
+    ]
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/thebristolsound/birdbrain"
+    }
+  }
+}

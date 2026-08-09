@@ -225,6 +225,39 @@ Content lives in `website/content/docs/` (`.mdx` + `meta.json`), images in `webs
 - **Image paths are `public/`-relative** (`/assets/x.png`). Fumadocs turns them into `next/image` imports, so `basePath` is applied for you — do not hardcode `/birdbrain/`.
 - Anything that builds a URL by hand does need the prefix; import `basePath` from `website/lib/base-path.mjs` (that is why the static search client passes `from`).
 
+### Mintlify mirror (evaluation)
+
+A Mintlify deployment (`birdbrain`) renders the same MDX as a second, read-only mirror while
+the platform is being evaluated. GitHub Pages remains the published site — Mintlify is not
+wired into CI and nothing in the root toolchain depends on it.
+
+`website/content/docs.json` is its config. Note the placement: it is a **sibling** of
+`content/docs/`, not inside it. `defineDocs({ dir: 'content/docs' })` globs JSON files under
+that directory into the Fumadocs meta collection, so a `docs.json` placed *in* `content/docs/`
+risks being parsed as a meta node and breaking `pnpm build`. Keep it one level up.
+
+**The deployment's git source must be configured by hand in the Mintlify dashboard — the repo
+cannot set it.** Two fields matter:
+
+- **Deploy branch: `main`.** The default branch was renamed from `master`, and a stale `master`
+  still exists on origin. It predates `website/`, so a deployment left pointing at it sees a
+  repo with no docs in it at all.
+- **Content directory: `website/content`.** This is what makes `docs.json` discoverable given
+  the placement above, and it is why every entry in `navigation.groups[].pages` carries a
+  `docs/` prefix — those paths are relative to the content directory, not to `docs.json`.
+
+Two known gaps in the mirror, both inherent to serving one content tree through two renderers:
+
+- **Cross-page links render dead on Mintlify.** The 23 internal links use the `./name.mdx`
+  form that Fumadocs' `createRelativeLink` requires; Mintlify wants extensionless
+  root-relative paths. No single syntax satisfies both — fixing one breaks the other.
+- **Screenshots 404 on Mintlify.** `screenshots.mdx` references `/assets/*.png`, served by
+  Next from `website/public/assets/`. Mintlify resolves assets from its own content root and
+  has no `public/` convention, so the images fall outside what it can see.
+
+Adding a page means updating **both** `content/docs/meta.json` and `docs.json` — a page missing
+from either is silently dropped from that site's sidebar.
+
 ## Testing
 
 - **Unit tests** (`tests/`) - Vitest running via Electron runtime (`ELECTRON_RUN_AS_NODE=1`). Config in `vitest.config.ts` (node environment, globals enabled). Covers database, services, store, types.

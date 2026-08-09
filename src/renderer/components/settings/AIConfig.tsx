@@ -6,6 +6,7 @@ import { Check, Eye, EyeOff, Loader2, X } from 'lucide-react'
 import { useOpenRouterModels } from '@renderer/hooks/useOpenRouterModels'
 import { presets } from '@renderer/lib/motion'
 import { openCaptureExternal, testOpenRouterKey } from '@renderer/lib/api/system'
+import { notify } from '@renderer/lib/notify'
 
 export interface AIConfigProps {
   settings: BirdbrainSettings
@@ -139,7 +140,11 @@ export function AIConfig({ settings, onUpdate }: AIConfigProps) {
           <p className="mt-2 text-[11px] text-text-muted">
             Get your API key from{' '}
             <button
-              onClick={() => openCaptureExternal('https://openrouter.ai/keys')}
+              onClick={() => {
+                openCaptureExternal('https://openrouter.ai/keys').catch((cause) => {
+                  notify.error("Couldn't open the link in your browser", { cause })
+                })
+              }}
               className="text-accent hover:underline"
             >
               openrouter.ai/keys

@@ -7,6 +7,14 @@ import { WaybackTab } from '@renderer/components/captures/WaybackTab'
 import type { Capture } from '@shared/types'
 import { fakeBridge } from '../renderer/fakeBridge'
 
+// Hoisted: the mock factory runs while WaybackTab's import graph is still
+// loading, which is before a plain top-level const would be initialised.
+const notifyError = vi.hoisted(() => vi.fn())
+
+vi.mock('@renderer/lib/notify', () => ({
+  notify: { error: notifyError, warn: vi.fn(), success: vi.fn(), info: vi.fn() }
+}))
+
 const capture: Capture = {
   id: 'cap1',
   caseId: 'case1',
@@ -59,6 +67,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  notifyError.mockReset()
 })
 
 describe('WaybackTab', () => {
@@ -108,6 +117,40 @@ describe('WaybackTab', () => {
     ])
     renderTab()
     expect(await screen.findByText('Pinned')).toBeDefined()
+  })
+
+  it('reports a failed shell launch when a pinned snapshot cannot be opened', async () => {
+    // Held so the assertion can be on identity: the handler must pass the
+    // original rejection through as `cause`, not a rewrapped stand-in.
+    const cause = new Error('EACCES')
+    const openExternal = vi.fn(async () => {
+      throw cause
+    })
+    wayback.list.mockResolvedValueOnce([
+      {
+        id: 'ref1',
+        captureId: 'cap1',
+        snapshotTimestamp: '2020-01-14T00:00:00.000Z',
+        snapshotUrl: 'https://web.archive.org/web/20200114000000/https://example.com/',
+        originalUrl: 'https://example.com/',
+        checkedAt: '2026-06-30T00:00:00.000Z',
+        pinnedAt: '2026-06-30T00:01:00.000Z',
+        statusCode: 200
+      }
+    ])
+    fakeBridge({ wayback, captures: { openExternal } })
+
+    renderTab()
+
+    fireEvent.click(await screen.findByLabelText('Open snapshot'))
+
+    await waitFor(() => expect(notifyError).toHaveBeenCalledOnce())
+    const [message, opts] = notifyError.mock.calls[0]
+    // Exact match, not a substring: the snapshot URL restates the capture's
+    // URL, and a fixed literal with nothing interpolated into it is what keeps
+    // it out of the durable log. A message that grew the URL would fail here.
+    expect(message).toBe("Couldn't open the link in your browser")
+    expect(opts.cause).toBe(cause)
   })
 
   it('shows the loading indicator while a lookup is in flight', async () => {

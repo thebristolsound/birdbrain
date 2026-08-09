@@ -10,6 +10,7 @@ import { useOpenRouterModels } from '@renderer/hooks/useOpenRouterModels'
 import { presets } from '@renderer/lib/motion'
 import { settingsQueryOptions } from '@renderer/lib/api/settings'
 import { openCaptureExternal } from '@renderer/lib/api/system'
+import { notify } from '@renderer/lib/notify'
 import { captureAnalysisQueryOptions, useAiMutations } from '@renderer/lib/api/ai'
 import type { AnalysisRun } from '@renderer/lib/api/ai'
 import type { CaptureAnalysis } from '@shared/types'
@@ -309,7 +310,10 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
                         rel="noreferrer noopener"
                         onClick={(e) => {
                           e.preventDefault()
-                          if (href) openCaptureExternal(href)
+                          if (href)
+                            openCaptureExternal(href).catch((cause) => {
+                              notify.error("Couldn't open the link in your browser", { cause })
+                            })
                         }}
                       >
                         {children}

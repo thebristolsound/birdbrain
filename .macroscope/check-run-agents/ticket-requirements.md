@@ -119,7 +119,7 @@ If uncertain after investigation, lean toward reporting — missing a real misma
 
 ## Reporting Findings
 
-When you confirm a mismatch (EXPLICIT, LOCATABLE, UNFULFILLED), post an inline PR review comment at the specific file and line using `github_pr_review`.
+When you confirm a mismatch (EXPLICIT, LOCATABLE, UNFULFILLED), post a PR review comment using `github_pr_review`. If the target line is part of the PR diff, post the comment inline at that file and line. If the target line is not part of the diff (unchanged code found outside the diff), post a top-level review comment instead, since GitHub does not allow inline comments on lines outside the diff.
 
 **Comment format:**
 

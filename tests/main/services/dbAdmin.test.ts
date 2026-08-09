@@ -315,10 +315,7 @@ describe('dbAdmin', () => {
           AnchorCaseMismatchError
         )
         // The rejected move must not have partially landed.
-        const row = getTableRows({ table: 'notes', offset: 0, limit: 50 }).rows.find(
-          (r) => r.id === 'n-13'
-        ) as Record<string, unknown>
-        expect(row.case_id).toBe(caseId)
+        expect(anchorRow('n-13').case_id).toBe(caseId)
       })
 
       it('allows a case_id-only move for a note with no anchor', () => {
@@ -327,10 +324,18 @@ describe('dbAdmin', () => {
         createRow('notes', noteRow('n-14', caseId))
 
         expect(updateRow('notes', { id: 'n-14' }, { case_id: otherCaseId })).toBe(true)
-        const row = getTableRows({ table: 'notes', offset: 0, limit: 50 }).rows.find(
-          (r) => r.id === 'n-14'
-        ) as Record<string, unknown>
-        expect(row.case_id).toBe(otherCaseId)
+        expect(anchorRow('n-14').case_id).toBe(otherCaseId)
+      })
+
+      it('allows a case move whose stored anchor already belongs to the destination case', () => {
+        const caseId = newCase()
+        const capture = captureInCase(caseId)
+        createRow('notes', {
+          ...noteRow('n-15', caseId),
+          anchor_json: JSON.stringify({ kind: 'capture', captureId: capture.id })
+        })
+
+        expect(updateRow('notes', { id: 'n-15' }, { case_id: caseId })).toBe(true)
       })
     })
   })

@@ -80,7 +80,11 @@ function assertValidColumns(table: string, data: Record<string, unknown>): void 
  * hatch — a genuine fourth write path, easy to forget — cannot be the one
  * place a structurally valid but cross-case anchor slips through.
  * `fallbackCaseId` is the row's CURRENT `case_id`, supplied by the caller for
- * an update whose payload does not itself touch that column.
+ * an update whose payload does not itself touch that column. The inverse — a
+ * payload that moves `case_id` without touching `anchor_json` — is not this
+ * function's job to catch, because it never sees the row's stored anchor;
+ * `updateRow` validates that case ahead of calling in, against the existing
+ * `anchor_json`.
  */
 function validatedRow(
   table: string,

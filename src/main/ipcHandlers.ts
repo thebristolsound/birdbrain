@@ -804,13 +804,25 @@ export function registerIpcHandlers(deps: {
 
   handle(IPC_CHANNELS.DB_TABLE_ROWS, (_, params: DbTableRowsParams) => dbAdmin.getTableRows(params))
 
-  handle(IPC_CHANNELS.DB_CREATE_ROW, (_, params: DbCreateRowParams) =>
-    dbAdmin.createRow(params.table, params.data)
-  )
+  // Database Admin is a genuine fourth write path for notes.anchor_json
+  // (#234), so a cross-case anchor rejected here needs the same structured
+  // IpcFailure translation as notes:create/notes:update rather than a raw
+  // rejected promise.
+  handle(IPC_CHANNELS.DB_CREATE_ROW, (_, params: DbCreateRowParams) => {
+    try {
+      return dbAdmin.createRow(params.table, params.data)
+    } catch (err) {
+      rethrowAnchorCaseMismatch(err)
+    }
+  })
 
-  handle(IPC_CHANNELS.DB_UPDATE_ROW, (_, params: DbUpdateRowParams) =>
-    dbAdmin.updateRow(params.table, params.pk, params.data)
-  )
+  handle(IPC_CHANNELS.DB_UPDATE_ROW, (_, params: DbUpdateRowParams) => {
+    try {
+      return dbAdmin.updateRow(params.table, params.pk, params.data)
+    } catch (err) {
+      rethrowAnchorCaseMismatch(err)
+    }
+  })
 
   handle(IPC_CHANNELS.DB_DELETE_ROW, (_, params: DbRowIdentifier) =>
     dbAdmin.deleteRow(params.table, params.pk)

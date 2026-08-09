@@ -234,10 +234,17 @@ wired into CI and nothing in the root toolchain depends on it.
 `website/content/docs.json` is its config. Note the placement: it is a **sibling** of
 `content/docs/`, not inside it. `defineDocs({ dir: 'content/docs' })` globs JSON files under
 that directory into the Fumadocs meta collection, so a `docs.json` placed *in* `content/docs/`
-risks being parsed as a meta node and breaking `pnpm build`. Keep it one level up. The
-deployment's git source is therefore configured with `contentDirectory: website/content`, which
-is why every entry in `navigation.groups[].pages` carries a `docs/` prefix — those paths are
-relative to the content directory, not to `docs.json`.
+risks being parsed as a meta node and breaking `pnpm build`. Keep it one level up.
+
+**The deployment's git source must be configured by hand in the Mintlify dashboard — the repo
+cannot set it.** Two fields matter:
+
+- **Deploy branch: `main`.** The default branch was renamed from `master`, and a stale `master`
+  still exists on origin. It predates `website/`, so a deployment left pointing at it sees a
+  repo with no docs in it at all.
+- **Content directory: `website/content`.** This is what makes `docs.json` discoverable given
+  the placement above, and it is why every entry in `navigation.groups[].pages` carries a
+  `docs/` prefix — those paths are relative to the content directory, not to `docs.json`.
 
 Two known gaps in the mirror, both inherent to serving one content tree through two renderers:
 

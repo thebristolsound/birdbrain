@@ -337,6 +337,40 @@ describe('dbAdmin', () => {
 
         expect(updateRow('notes', { id: 'n-15' }, { case_id: caseId })).toBe(true)
       })
+
+      // A `pk` that does not uniquely identify a row lets the case/anchor
+      // validation above check only the first row `.get(...)` happens to
+      // return, while the `UPDATE ... WHERE` it guards writes every matching
+      // row -- a note in a case the validation never looked at could receive
+      // the same, unvalidated anchor. `{ anchor_kind: 'capture' }` matches
+      // both notes below even though only one shares the incoming anchor's
+      // case.
+      it('rejects a non-unique pk predicate rather than validating one row and writing many', () => {
+        const caseA = newCase()
+        const caseB = newCase()
+        const captureA = captureInCase(caseA)
+        const captureB = captureInCase(caseB)
+        createRow('notes', {
+          ...noteRow('n-20', caseA),
+          anchor_json: JSON.stringify({ kind: 'capture', captureId: captureA.id })
+        })
+        createRow('notes', {
+          ...noteRow('n-21', caseB),
+          anchor_json: JSON.stringify({ kind: 'capture', captureId: captureB.id })
+        })
+
+        expect(() =>
+          updateRow(
+            'notes',
+            { anchor_kind: 'capture' },
+            { anchor_json: JSON.stringify({ kind: 'capture', captureId: captureA.id }) }
+          )
+        ).toThrow(/primary key/)
+
+        // The rejected multi-row write must not have partially landed:
+        // n-21 (case B) must not have picked up an anchor into case A.
+        expect(anchorRow('n-21').anchor_json).toContain(captureB.id)
+      })
     })
   })
 
@@ -359,6 +393,22 @@ describe('dbAdmin', () => {
       const result = updateRow('tags', { id: 'tag-1' }, {})
       expect(result).toBe(false)
     })
+
+    // `pk` is caller-supplied and only checked for valid column names --
+    // nothing else guarantees it names the table's actual primary key.
+    // `color` has no uniqueness constraint, unlike `name`.
+    it('rejects a pk that names a valid but non-unique column instead of the primary key', () => {
+      createRow('tags', { id: 'tag-1', name: 'Alpha', color: 'shared' })
+      createRow('tags', { id: 'tag-2', name: 'Beta', color: 'shared' })
+
+      expect(() => updateRow('tags', { color: 'shared' }, { color: 'changed' })).toThrow(
+        /primary key/
+      )
+
+      // Neither row must have been touched by the rejected write.
+      const rows = getTableRows({ table: 'tags', offset: 0, limit: 10 })
+      expect(rows.rows.map((r) => r.color).sort()).toEqual(['shared', 'shared'])
+    })
   })
 
   describe('deleteRow', () => {
@@ -377,6 +427,16 @@ describe('dbAdmin', () => {
 
     it('throws for FTS tables', () => {
       expect(() => deleteRow('captures_fts', { rowid: '1' })).toThrow('not allowed')
+    })
+
+    it('rejects a pk that names a valid but non-unique column instead of the primary key', () => {
+      createRow('tags', { id: 'tag-1', name: 'Alpha', color: 'shared' })
+      createRow('tags', { id: 'tag-2', name: 'Beta', color: 'shared' })
+
+      expect(() => deleteRow('tags', { color: 'shared' })).toThrow(/primary key/)
+
+      const rows = getTableRows({ table: 'tags', offset: 0, limit: 10 })
+      expect(rows.rows).toHaveLength(2)
     })
   })
 

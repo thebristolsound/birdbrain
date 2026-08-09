@@ -59,6 +59,36 @@ function assertValidColumns(table: string, data: Record<string, unknown>): void 
 }
 
 /**
+ * `pk` is taken verbatim from the IPC caller as `Record<string, string>` —
+ * `assertValidColumns` only confirms its keys name real columns, not that
+ * together they identify exactly one row. `updateRow`'s case/anchor
+ * validation (below) checks a single looked-up row via `.get(...)`, but the
+ * `UPDATE ... WHERE` it guards writes every row the predicate matches; a
+ * non-PK predicate (e.g. `{ case_id: 'A' }`) would validate one arbitrary
+ * row while writing to all of them, including rows the validation never
+ * saw. Requiring `pk`'s keys to be exactly the table's declared PRIMARY KEY
+ * column(s) is what makes "the row `pk` names" and "the rows the WHERE
+ * clause matches" the same set, for both `updateRow` and `deleteRow`.
+ */
+function assertPkIdentifiesUniqueRow(table: string, pk: Record<string, string>): void {
+  const pkColumnNames = getTableColumns(table)
+    .filter((c) => c.pk)
+    .map((c) => c.name)
+    .sort()
+  const suppliedNames = Object.keys(pk).sort()
+  const isExactMatch =
+    pkColumnNames.length > 0 &&
+    pkColumnNames.length === suppliedNames.length &&
+    pkColumnNames.every((name, i) => name === suppliedNames[i])
+  if (!isExactMatch) {
+    throw new Error(
+      `pk for table "${table}" must supply exactly its primary key column(s) ` +
+        `(${pkColumnNames.join(', ')}) to identify a single row`
+    )
+  }
+}
+
+/**
  * Validate an admin write and derive whatever the app derives from it.
  *
  * Returns the row to actually write, which may differ from the one submitted.
@@ -202,6 +232,7 @@ export function updateRow(
   assertAllowedTable(table)
   assertValidColumns(table, pk)
   assertValidColumns(table, data)
+  assertPkIdentifiesUniqueRow(table, pk)
 
   const db = getDb()
   const whereClauses = Object.keys(pk)
@@ -250,6 +281,7 @@ export function updateRow(
 export function deleteRow(table: string, pk: Record<string, string>): boolean {
   assertAllowedTable(table)
   assertValidColumns(table, pk)
+  assertPkIdentifiesUniqueRow(table, pk)
 
   const db = getDb()
   const whereClauses = Object.keys(pk)

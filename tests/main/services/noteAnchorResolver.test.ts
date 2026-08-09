@@ -59,8 +59,10 @@ describe('resolveTextAnchor', () => {
   // and returns its index -- the value `target()` needs. A caller that wants
   // an entry with NO textHash field (the manifest-side equivalent of a
   // pre-#118 capture) omits `textHash` from `over`.
+  const CONTENT_HASH = 'a'.repeat(64)
+
   function seedManifestEntry(
-    over: { caseId?: string; captureId?: string; textHash?: string } = {}
+    over: { caseId?: string; captureId?: string; textHash?: string; contentHash?: string } = {}
   ): number {
     const caseId = over.caseId ?? 'case-1'
     const captureId = over.captureId ?? 'cap-1'
@@ -73,7 +75,7 @@ describe('resolveTextAnchor', () => {
       caseId,
       url: 'https://example.com',
       timestamp: '2026-01-01T00:00:00.000Z',
-      contentHash: 'a'.repeat(64),
+      contentHash: over.contentHash ?? CONTENT_HASH,
       ...(over.textHash !== undefined ? { textHash: over.textHash } : {}),
       sizeBytes: 100,
       operatorId: 'op-1',
@@ -83,8 +85,10 @@ describe('resolveTextAnchor', () => {
     return result.index
   }
 
-  function target(over: Partial<{ id: string; caseId: string; manifestIndex?: number }> = {}) {
-    return { id: 'cap-1', caseId: 'case-1', manifestIndex: 0, ...over }
+  function target(
+    over: Partial<{ id: string; caseId: string; contentHash: string; manifestIndex?: number }> = {}
+  ) {
+    return { id: 'cap-1', caseId: 'case-1', contentHash: CONTENT_HASH, manifestIndex: 0, ...over }
   }
 
   it('resolves a passage in an intact sidecar', () => {
@@ -250,6 +254,32 @@ describe('resolveTextAnchor', () => {
 
       expect(result).toEqual({ status: 'integrity-failed', reason: 'chain-invalid' })
     })
+
+    // A verified chain entry is not, by itself, a binding to THIS capture: an
+    // index that resolves is necessary but not sufficient. If `manifestIndex`
+    // were reassigned to another capture's own valid entry (a coordinated
+    // DB/manifestIndex edit), and the sidecar swapped to match that entry's
+    // recorded text, a resolver that trusted the index alone would report
+    // `hash-verified` for evidence that was never this capture's.
+    it('reports chain-invalid when manifestIndex resolves to a DIFFERENT capture entry', () => {
+      seedManifestEntry({ captureId: 'cap-1', contentHash: 'a'.repeat(64), textHash: sha256(PAGE) })
+      const otherIndex = seedManifestEntry({
+        captureId: 'cap-2',
+        contentHash: 'b'.repeat(64),
+        textHash: sha256(PAGE)
+      })
+      store.writeText('case-1', 'cap-1', PAGE)
+
+      // cap-1's own hash is 'a'.repeat(64); manifestIndex has been swapped to
+      // cap-2's entry, whose contentHash is 'b'.repeat(64).
+      const result = resolveTextAnchor(
+        target({ contentHash: 'a'.repeat(64), manifestIndex: otherIndex }),
+        anchor(),
+        store
+      )
+
+      expect(result).toEqual({ status: 'integrity-failed', reason: 'chain-invalid' })
+    })
   })
 
   // #234: the defect being closed. `captures.text_hash` is a DB mirror
@@ -278,6 +308,7 @@ describe('resolveTextAnchor', () => {
       const manifestIndex = seedManifestEntry({
         caseId,
         captureId: cap.id,
+        contentHash: cap.hash,
         textHash: sha256(original)
       })
       store.writeText(caseId, cap.id, original)
@@ -294,7 +325,7 @@ describe('resolveTextAnchor', () => {
       expect(getCaptureTextContent(cap.id)).toBe(original)
 
       const result = resolveTextAnchor(
-        { id: cap.id, caseId, manifestIndex },
+        { id: cap.id, caseId, contentHash: cap.hash, manifestIndex },
         anchor({ captureId: cap.id }),
         store
       )

@@ -25,6 +25,18 @@ export interface AnchorTarget {
   id: string
   caseId: string
   /**
+   * This capture's own stored content hash (`captures.hash`). Used only to
+   * confirm the manifest entry named by `manifestIndex` actually belongs to
+   * THIS capture, not merely to some entry the verified chain happens to
+   * contain: an index alone is not a binding, because a coordinated edit to
+   * `manifestIndex` and the `.txt` sidecar together could point resolution at
+   * a different capture's verified entry and inherit its `hash-verified`
+   * claim. `computeVerification` (captureLifecycle.ts) performs the same
+   * contentHash confirmation before trusting a chain index for the same
+   * reason.
+   */
+  contentHash: string
+  /**
    * This capture's index into the case's manifest.jsonl — the `capture` entry
    * resolution reads its digest from (#234). Absent for a capture that
    * predates the manifest chain entirely (a pre-v11 'html'-format capture):
@@ -108,6 +120,15 @@ export function resolveTextAnchor(
   // verified chain no longer has it, the DB and the manifest have drifted —
   // report it rather than silently falling back to "no digest to offer".
   if (typeof target.manifestIndex === 'number' && !entry) {
+    return { status: 'integrity-failed', reason: 'chain-invalid' }
+  }
+  // The index alone is not a binding: confirm the entry actually belongs to
+  // THIS capture before trusting anything it says, the same check
+  // `computeVerification` runs against `captureHashesByIndex` before
+  // comparing a stored hash. Without it, a `manifestIndex` swapped onto
+  // another capture's valid entry (paired with a matching sidecar swap) would
+  // read as `hash-verified` for the wrong capture.
+  if (entry && entry.contentHash !== target.contentHash) {
     return { status: 'integrity-failed', reason: 'chain-invalid' }
   }
 

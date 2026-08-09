@@ -296,6 +296,42 @@ describe('dbAdmin', () => {
           createRow('notes', { ...noteRow('n-12', caseId), anchor_json: VALID_ANCHOR })
         ).not.toThrow()
       })
+
+      // A payload that moves case_id without resupplying anchor_json still
+      // carries the row's stored anchor with it -- validatedRow only checks
+      // when the payload itself writes anchor_json, so this is the path that
+      // would otherwise create a cross-case anchor through a write, not just
+      // preserve one that predates the rule.
+      it('rejects a case_id-only move that would orphan the anchor into another case', () => {
+        const caseId = newCase()
+        const otherCaseId = newCase()
+        const capture = captureInCase(caseId)
+        createRow('notes', {
+          ...noteRow('n-13', caseId),
+          anchor_json: JSON.stringify({ kind: 'capture', captureId: capture.id })
+        })
+
+        expect(() => updateRow('notes', { id: 'n-13' }, { case_id: otherCaseId })).toThrow(
+          AnchorCaseMismatchError
+        )
+        // The rejected move must not have partially landed.
+        const row = getTableRows({ table: 'notes', offset: 0, limit: 50 }).rows.find(
+          (r) => r.id === 'n-13'
+        ) as Record<string, unknown>
+        expect(row.case_id).toBe(caseId)
+      })
+
+      it('allows a case_id-only move for a note with no anchor', () => {
+        const caseId = newCase()
+        const otherCaseId = newCase()
+        createRow('notes', noteRow('n-14', caseId))
+
+        expect(updateRow('notes', { id: 'n-14' }, { case_id: otherCaseId })).toBe(true)
+        const row = getTableRows({ table: 'notes', offset: 0, limit: 50 }).rows.find(
+          (r) => r.id === 'n-14'
+        ) as Record<string, unknown>
+        expect(row.case_id).toBe(otherCaseId)
+      })
     })
   })
 

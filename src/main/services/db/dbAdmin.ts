@@ -215,6 +215,21 @@ export function updateRow(
     fallbackCaseId = existing?.case_id
   }
 
+  // The inverse of the fallback above: a move that doesn't touch anchor_json
+  // still carries the row's existing anchor with it. `validatedRow` only
+  // checks when the payload itself writes anchor_json, so this is the one
+  // place that guards a case_id-only move against landing a cross-case
+  // anchor (#234) — validate the STORED anchor against the DESTINATION case
+  // before the write proceeds.
+  if (table === 'notes' && 'case_id' in data && !('anchor_json' in data)) {
+    const existing = db
+      .prepare(`SELECT anchor_json FROM "${table}" WHERE ${whereClauses}`)
+      .get(...pkValues) as { anchor_json?: string | null } | undefined
+    if (existing?.anchor_json) {
+      assertAnchorInCase(parseNoteAnchor(existing.anchor_json), data.case_id as string)
+    }
+  }
+
   const row = validatedRow(table, data, fallbackCaseId)
   const dataKeys = Object.keys(row)
   if (dataKeys.length === 0) return false

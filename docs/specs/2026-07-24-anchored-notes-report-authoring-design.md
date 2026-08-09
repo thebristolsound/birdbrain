@@ -65,6 +65,8 @@ An unresolved anchor is never silently downgraded to a capture-level anchor and 
 
 Resolution is deterministic and runs in the main process against stored bytes. It never re-fetches anything.
 
+**The trust boundary (#234): the signed manifest, not the `captures` DB mirror.** A capture's `screenshotHash`/`textHash` live in two places — the v2+ manifest capture entry (signed, chain-verified) and `captures.screenshot_hash`/`captures.text_hash` (a convenience mirror added in schema v19 so verify can re-bind sidecars without re-reading the manifest, per `migrations.ts:369`). The mirror carries no integrity of its own: it is a cache written at the same ingest step as the sidecar file, so a caller who can edit one can edit the other, and the two would still agree with each other while disagreeing with the untouched manifest. Both `resolveTextAnchor` (`src/main/services/noteAnchorResolver.ts`) and the app's own verify button (`verifySidecars` in `src/main/services/captureLifecycle.ts`) read the expected digest from the manifest capture entry, keyed by the capture's manifest index — never from the mirror. `basis: 'hash-verified'` therefore means "matches the signed manifest," not "matches a database column." A capture whose manifest entry is missing, or whose chain does not verify, resolves as a distinct `integrity-failed`/`chain-invalid` outcome rather than being folded into `unattested` (which remains a true statement about a capture the manifest never hashed at all — no entry, or an entry with no `textHash` field).
+
 ### Brief
 
 A brief is an ordered list of typed blocks. Block kinds:
@@ -206,6 +208,6 @@ Tiptap is assessed and recommended but **not installed** — `package.json` cont
 
 ## Open questions
 
-1. Does a note belong to exactly one case, or can it reference captures across cases? Current schema says one case; anchoring to a `finding` may want otherwise.
+1. ~~Does a note belong to exactly one case, or can it reference captures across cases?~~ **Answered by #234 (2026-08-09): exactly one case.** An anchor's embedded ids — `captureId`, and `selectorId` for a `selectorMatch` finding — must name a row in the note's own case; `createNote`, `updateNote`, `importNoteRows`, and Database Admin's `createRow`/`updateRow` all reject a target that EXISTS in a different case. A target that does not exist at all is untouched by this rule (see "Text anchors and resolution" below for why): `collectCaseData` packages only the note's own case, so a cross-case anchor has always exported dangling, and enforcing at write makes the data match what export has assumed all along. This is the harder-to-reverse direction — rejected data cannot be recovered — taken knowingly; existing rows already violating the rule (written before #234) are left as-is, not swept by a migration or by a read.
 2. When a capture is superseded by a recapture, do notes anchored to the original follow, stay, or fork? Recapture already links siblings (`supersedesCaptureId`), so the information exists.
 3. Should a brief be exportable standalone, or only as part of an evidence package? The standalone HTML path exists in code but is not user-reachable.

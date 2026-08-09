@@ -90,11 +90,14 @@ code, and both were deliberately left unencoded in slice 1.
    is easy to forget and is a genuine fourth path: it already validates anchor
    *structure* (added in #232) but would happily accept a structurally valid
    cross-case `captureId`. `collectCaseData` packages only the
-   note's own case, so a cross-case anchor would export dangling. **Not yet
-   implemented** — tracked as item 2 of #234. Two cautions recorded at decision
-   time: rejecting at write time is not reversible, and a naive existence check
-   at import may fail spuriously depending on whether notes are inserted before
-   captures. Verify import ordering first.
+   note's own case, so a cross-case anchor would export dangling. **Implemented
+   in #234.** The two cautions recorded at decision time both held: rejecting
+   at write time is not reversible (existing violating rows are left as-is,
+   not migrated), and the existence check runs against ids ALREADY remapped by
+   `remapAnchorIds`, which is why it does not fail on import ordering —
+   `insertImportedRows` (`caseArchive.ts`) already inserts captures and
+   selectors before notes, so by the time a note's anchor is validated, a
+   same-archive target it references is already present under the new case id.
 3. *(Phase 3 only)* Standalone brief export.
 
 ## Suggested slicing
@@ -130,10 +133,14 @@ reviewers; ten fixed, two deferred to #234.
 - **Database Admin validates `notes.anchor_json` and derives `anchor_kind`.**
   `notes` is in `ALLOWED_TABLES` and previously validated column names only.
 
-Two review findings are **not** fixed, both P1, both in #234: binding text
-verification to the manifest digest rather than the `captures.text_hash` mirror
-(`verifyCapture` trusts the same mirror, so both call sites must move together),
-and the anchor-target case validation above.
+Two review findings were **not** fixed in slice 1, both P1, both tracked as
+#234: binding text verification to the manifest digest rather than the
+`captures.text_hash` mirror (`verifyCapture` trusts the same mirror, so both
+call sites must move together), and the anchor-target case validation above.
+**Both landed in #234**, along with the smaller, related dangling-`selectorId`
+outcome (a `resolveSelectorMatchAnchor` alongside the existing
+`capture-missing`). See the design doc's "Text anchors and resolution" section
+for the trust-boundary statement and open question 1's answer.
 
 ## The rule that matters most
 

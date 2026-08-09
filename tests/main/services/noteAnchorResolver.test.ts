@@ -280,6 +280,34 @@ describe('resolveTextAnchor', () => {
 
       expect(result).toEqual({ status: 'integrity-failed', reason: 'chain-invalid' })
     })
+
+    // A legacy pre-chain capture (no manifestIndex) has no entry to bind to
+    // either way, so chain validity is irrelevant to ITS resolution — an
+    // unrelated corrupted entry belonging to some OTHER capture in the same
+    // case's manifest must not fail it. Without the ordering fix, chain
+    // verification runs before the manifestIndex check and wrongly reports
+    // chain-invalid here instead of falling through to the unattested path.
+    it('resolves a legacy no-manifestIndex capture as unattested even when the case manifest has an unrelated corrupted entry', () => {
+      seedManifestEntry({ captureId: 'cap-2', textHash: sha256(PAGE) })
+      const manifestPath = join(store.caseDir('case-1'), 'manifest.jsonl')
+      const lines = readFileSync(manifestPath, 'utf-8')
+        .split('\n')
+        .filter((l) => l.trim())
+      const entry = JSON.parse(lines[0]) as Record<string, unknown>
+      entry.url = 'https://tampered.example.com'
+      writeFileSync(manifestPath, JSON.stringify(entry) + '\n', 'utf-8')
+
+      store.writeText('case-1', 'cap-1', PAGE)
+
+      const result = resolveTextAnchor(target({ manifestIndex: undefined }), anchor(), store)
+
+      expect(result).toEqual({
+        status: 'resolved',
+        via: 'offset',
+        offset: PAGE.indexOf('transferred'),
+        basis: 'unattested'
+      })
+    })
   })
 
   // #234: the defect being closed. `captures.text_hash` is a DB mirror

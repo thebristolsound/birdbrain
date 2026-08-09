@@ -17,7 +17,7 @@
  */
 import { createHash } from 'crypto'
 import type { CaptureStore } from '@main/services/captureStore'
-import { verifyManifestChain } from '@main/services/manifest'
+import { verifyManifestChain, type CaptureChainEntry } from '@main/services/manifest'
 import { matchTextAnchor, type TextAnchor } from '@shared/noteAnchor'
 
 /** The parts of a capture text-anchor resolution needs. Kept narrow so tests need no row. */
@@ -106,30 +106,35 @@ export function resolveTextAnchor(
 ): NoteAnchorResolution {
   if (!target) return { status: 'capture-missing' }
 
-  // Bind to the signed manifest, not the DB mirror (#234). A chain that does
-  // not verify means nothing in this case's manifest can be trusted, so no
-  // digest read from it — or its absence — is meaningful.
-  const chain = verifyManifestChain(store.caseDir(target.caseId))
-  if (!chain.valid) return { status: 'integrity-failed', reason: 'chain-invalid' }
+  // A legacy pre-chain capture (no manifestIndex) never had an entry to bind
+  // to, so chain validity is irrelevant to its resolution — it must not be
+  // gated behind a chain check that exists only to protect entries it does
+  // not have. Only fetch and verify the chain when this capture actually
+  // names an entry in it.
+  let entry: CaptureChainEntry | undefined
+  if (typeof target.manifestIndex === 'number') {
+    // Bind to the signed manifest, not the DB mirror (#234). A chain that
+    // does not verify means nothing in this case's manifest can be trusted,
+    // so no digest read from it — or its absence — is meaningful.
+    const chain = verifyManifestChain(store.caseDir(target.caseId))
+    if (!chain.valid) return { status: 'integrity-failed', reason: 'chain-invalid' }
 
-  const entry =
-    typeof target.manifestIndex === 'number'
-      ? chain.captureEntriesByIndex.get(target.manifestIndex)
-      : undefined
-  // A defined manifestIndex names an entry ingest actually wrote. If a
-  // verified chain no longer has it, the DB and the manifest have drifted —
-  // report it rather than silently falling back to "no digest to offer".
-  if (typeof target.manifestIndex === 'number' && !entry) {
-    return { status: 'integrity-failed', reason: 'chain-invalid' }
-  }
-  // The index alone is not a binding: confirm the entry actually belongs to
-  // THIS capture before trusting anything it says, the same check
-  // `computeVerification` runs against `captureHashesByIndex` before
-  // comparing a stored hash. Without it, a `manifestIndex` swapped onto
-  // another capture's valid entry (paired with a matching sidecar swap) would
-  // read as `hash-verified` for the wrong capture.
-  if (entry && entry.contentHash !== target.contentHash) {
-    return { status: 'integrity-failed', reason: 'chain-invalid' }
+    entry = chain.captureEntriesByIndex.get(target.manifestIndex)
+    // A defined manifestIndex names an entry ingest actually wrote. If a
+    // verified chain no longer has it, the DB and the manifest have drifted
+    // — report it rather than silently falling back to "no digest to offer".
+    if (!entry) {
+      return { status: 'integrity-failed', reason: 'chain-invalid' }
+    }
+    // The index alone is not a binding: confirm the entry actually belongs to
+    // THIS capture before trusting anything it says, the same check
+    // `computeVerification` runs against `captureHashesByIndex` before
+    // comparing a stored hash. Without it, a `manifestIndex` swapped onto
+    // another capture's valid entry (paired with a matching sidecar swap)
+    // would read as `hash-verified` for the wrong capture.
+    if (entry.contentHash !== target.contentHash) {
+      return { status: 'integrity-failed', reason: 'chain-invalid' }
+    }
   }
 
   const buf = store.readArtifact(target.caseId, target.id, 'txt')

@@ -3,8 +3,9 @@ import { mkdtempSync, rmSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
+import { createHash } from 'crypto'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
-import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
 import { getCapture, insertCapture, listCaptures } from '@main/services/db/captureRepo'
 import { initManifest, verifyManifestChain, appendManifestEntry } from '@main/services/manifest'
@@ -552,6 +553,58 @@ describe('createCaptureLifecycle.verify', () => {
     expect(result.reason).toMatch(/text/i)
   })
 
+  // #234: the defect being closed. Before this fix, verifySidecars trusted
+  // captures.text_hash / captures.screenshot_hash -- a DB mirror an attacker
+  // (or a bug) can edit right alongside the sidecar file. Editing BOTH
+  // together, so they agree with each other, must still be caught because the
+  // SIGNED manifest entry -- which neither edit touches -- still holds the
+  // original digest. Proven non-vacuous below by reintroducing the defect.
+  it('FAILS verify when the .txt sidecar AND its DB mirror are edited together (#234)', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('mhtml-body'), { textContent: 'original text' })
+    )
+    expect((await lifecycle.verify(capture.id)).status).toBe('verified')
+
+    const tampered = 'tampered text, and the mirror now agrees'
+    const { writeFileSync } = await import('fs')
+    const txtPath = join(getStorageRoot(), caseId, `${capture.id}.txt`)
+    writeFileSync(txtPath, tampered, 'utf-8')
+    // The mirror is edited to MATCH the tampered sidecar -- exactly the
+    // scenario migrations.ts:369 says the manifest, not this column, must
+    // arbitrate.
+    const matchingHash = createHash('sha256').update(tampered).digest('hex')
+    getDb().prepare('UPDATE captures SET text_hash = ? WHERE id = ?').run(matchingHash, capture.id)
+    expect(getCapture(capture.id)?.textHash).toBe(matchingHash) // fixture check: mirror really did move
+
+    const result = await lifecycle.verify(capture.id)
+    expect(result.status).toBe('tampered')
+    expect(result.reason).toMatch(/text/i)
+  })
+
+  it('FAILS verify when the .png sidecar AND its DB mirror are edited together (#234)', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('mhtml-body'), {
+        screenshot: Buffer.from('original-screenshot')
+      })
+    )
+    expect((await lifecycle.verify(capture.id)).status).toBe('verified')
+
+    const tamperedBytes = Buffer.from('tampered-bytes, mirror now agrees too')
+    const { writeFileSync } = await import('fs')
+    writeFileSync(join(getStorageRoot(), capture.screenshotPath!), tamperedBytes)
+    const matchingHash = createHash('sha256').update(tamperedBytes).digest('hex')
+    getDb()
+      .prepare('UPDATE captures SET screenshot_hash = ? WHERE id = ?')
+      .run(matchingHash, capture.id)
+    expect(getCapture(capture.id)?.screenshotHash).toBe(matchingHash)
+
+    const result = await lifecycle.verify(capture.id)
+    expect(result.status).toBe('tampered')
+    expect(result.reason).toMatch(/screenshot/i)
+  })
+
   it('FAILS verify when the capture is truncated out of the manifest chain (#X-2)', async () => {
     const { readFileSync, writeFileSync } = await import('fs')
     const { MANIFEST_FILENAME } = await import('@shared/constants')
@@ -573,7 +626,9 @@ describe('createCaptureLifecycle.verify', () => {
     const lines = readFileSync(manifestPath, 'utf-8')
       .split('\n')
       .filter((l) => l.trim())
-    const cut = lines.findIndex((l) => (JSON.parse(l) as { captureId?: string }).captureId === second.id)
+    const cut = lines.findIndex(
+      (l) => (JSON.parse(l) as { captureId?: string }).captureId === second.id
+    )
     writeFileSync(manifestPath, lines.slice(0, cut).join('\n') + '\n', 'utf-8')
 
     // The surviving prefix still verifies the first capture...

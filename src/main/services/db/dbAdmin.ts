@@ -9,6 +9,7 @@ import {
 } from '@main/services/captureStore'
 import { buildCsv } from '@main/services/csvEscape'
 import { parseNoteAnchor } from '@shared/noteAnchor'
+import { assertAnchorInCase } from '@main/services/db/noteRepo'
 import type { DbStats, DbTableRowsParams, DbTableRowsResult, OrphanReport } from '@shared/ipc'
 
 export const ALLOWED_TABLES = [
@@ -58,6 +59,36 @@ function assertValidColumns(table: string, data: Record<string, unknown>): void 
 }
 
 /**
+ * `pk` is taken verbatim from the IPC caller as `Record<string, string>` —
+ * `assertValidColumns` only confirms its keys name real columns, not that
+ * together they identify exactly one row. `updateRow`'s case/anchor
+ * validation (below) checks a single looked-up row via `.get(...)`, but the
+ * `UPDATE ... WHERE` it guards writes every row the predicate matches; a
+ * non-PK predicate (e.g. `{ case_id: 'A' }`) would validate one arbitrary
+ * row while writing to all of them, including rows the validation never
+ * saw. Requiring `pk`'s keys to be exactly the table's declared PRIMARY KEY
+ * column(s) is what makes "the row `pk` names" and "the rows the WHERE
+ * clause matches" the same set, for both `updateRow` and `deleteRow`.
+ */
+function assertPkIdentifiesUniqueRow(table: string, pk: Record<string, string>): void {
+  const pkColumnNames = getTableColumns(table)
+    .filter((c) => c.pk)
+    .map((c) => c.name)
+    .sort()
+  const suppliedNames = Object.keys(pk).sort()
+  const isExactMatch =
+    pkColumnNames.length > 0 &&
+    pkColumnNames.length === suppliedNames.length &&
+    pkColumnNames.every((name, i) => name === suppliedNames[i])
+  if (!isExactMatch) {
+    throw new Error(
+      `pk for table "${table}" must supply exactly its primary key column(s) ` +
+        `(${pkColumnNames.join(', ')}) to identify a single row`
+    )
+  }
+}
+
+/**
  * Validate an admin write and derive whatever the app derives from it.
  *
  * Returns the row to actually write, which may differ from the one submitted.
@@ -73,8 +104,23 @@ function assertValidColumns(table: string, data: Record<string, unknown>): void 
  *
  * So the hatch may clear an anchor, but it may not invent one this codebase
  * cannot read back, nor set the derived column by hand.
+ *
+ * It also may not create a cross-case anchor (#234): `assertAnchorInCase` is
+ * the same check `createNote`/`updateNote`/`importNoteRows` run, so the admin
+ * hatch — a genuine fourth write path, easy to forget — cannot be the one
+ * place a structurally valid but cross-case anchor slips through.
+ * `fallbackCaseId` is the row's CURRENT `case_id`, supplied by the caller for
+ * an update whose payload does not itself touch that column. The inverse — a
+ * payload that moves `case_id` without touching `anchor_json` — is not this
+ * function's job to catch, because it never sees the row's stored anchor;
+ * `updateRow` validates that case ahead of calling in, against the existing
+ * `anchor_json`.
  */
-function validatedRow(table: string, data: Record<string, unknown>): Record<string, unknown> {
+function validatedRow(
+  table: string,
+  data: Record<string, unknown>,
+  fallbackCaseId?: string
+): Record<string, unknown> {
   if (table !== 'notes') return data
 
   const writesJson = 'anchor_json' in data
@@ -93,6 +139,12 @@ function validatedRow(table: string, data: Record<string, unknown>): Record<stri
     throw new Error('notes.anchor_json must be a string or NULL')
   }
   const parsed = parseNoteAnchor(value)
+  const caseId = (data.case_id as string | undefined) ?? fallbackCaseId
+  // A create/update whose row we cannot resolve a case_id for skips this
+  // check rather than blocking: for a create with no case_id the NOT NULL
+  // column constraint below fails the write anyway, and there is nothing
+  // this check adds ahead of that.
+  if (caseId) assertAnchorInCase(parsed, caseId)
   return { ...data, anchor_json: JSON.stringify(parsed), anchor_kind: parsed.kind }
 }
 
@@ -180,16 +232,45 @@ export function updateRow(
   assertAllowedTable(table)
   assertValidColumns(table, pk)
   assertValidColumns(table, data)
-  const row = validatedRow(table, data)
-  const dataKeys = Object.keys(row)
-  if (dataKeys.length === 0) return false
+  assertPkIdentifiesUniqueRow(table, pk)
 
   const db = getDb()
-  const setClauses = dataKeys.map((k) => `"${k}" = ?`).join(', ')
   const whereClauses = Object.keys(pk)
     .map((k) => `"${k}" = ?`)
     .join(' AND ')
-  const values = [...Object.values(row), ...Object.values(pk)]
+  const pkValues = Object.values(pk)
+
+  // An anchor edit that doesn't also touch case_id needs the row's CURRENT
+  // case to validate against — look it up before writing.
+  let fallbackCaseId: string | undefined
+  if (table === 'notes' && 'anchor_json' in data && !('case_id' in data)) {
+    const existing = db
+      .prepare(`SELECT case_id FROM "${table}" WHERE ${whereClauses}`)
+      .get(...pkValues) as { case_id?: string } | undefined
+    fallbackCaseId = existing?.case_id
+  }
+
+  // The inverse of the fallback above: a move that doesn't touch anchor_json
+  // still carries the row's existing anchor with it. `validatedRow` only
+  // checks when the payload itself writes anchor_json, so this is the one
+  // place that guards a case_id-only move against landing a cross-case
+  // anchor (#234) — validate the STORED anchor against the DESTINATION case
+  // before the write proceeds.
+  if (table === 'notes' && 'case_id' in data && !('anchor_json' in data)) {
+    const existing = db
+      .prepare(`SELECT anchor_json FROM "${table}" WHERE ${whereClauses}`)
+      .get(...pkValues) as { anchor_json?: string | null } | undefined
+    if (existing?.anchor_json) {
+      assertAnchorInCase(parseNoteAnchor(existing.anchor_json), data.case_id as string)
+    }
+  }
+
+  const row = validatedRow(table, data, fallbackCaseId)
+  const dataKeys = Object.keys(row)
+  if (dataKeys.length === 0) return false
+
+  const setClauses = dataKeys.map((k) => `"${k}" = ?`).join(', ')
+  const values = [...Object.values(row), ...pkValues]
 
   const result = db
     .prepare(`UPDATE "${table}" SET ${setClauses} WHERE ${whereClauses}`)
@@ -200,6 +281,7 @@ export function updateRow(
 export function deleteRow(table: string, pk: Record<string, string>): boolean {
   assertAllowedTable(table)
   assertValidColumns(table, pk)
+  assertPkIdentifiesUniqueRow(table, pk)
 
   const db = getDb()
   const whereClauses = Object.keys(pk)

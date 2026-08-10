@@ -391,8 +391,29 @@ export function registerIpcHandlers(deps: {
   // Notes
   handle(IPC_CHANNELS.NOTES_LIST, (_, caseId: string) => noteRepo.listNotes(caseId))
   handle(IPC_CHANNELS.NOTES_GET, (_, id: string) => noteRepo.getNote(id))
-  handle(IPC_CHANNELS.NOTES_CREATE, (_, params: CreateNoteParams) => noteRepo.createNote(params))
-  handle(IPC_CHANNELS.NOTES_UPDATE, (_, params: UpdateNoteParams) => noteRepo.updateNote(params))
+  // A cross-case anchor (#234) is the one note-write failure mode that needs a
+  // structured IpcFailure rather than a rejected promise, so the renderer can
+  // branch on it explicitly instead of treating it as an unexpected error.
+  function rethrowAnchorCaseMismatch(err: unknown): never {
+    if (err instanceof noteRepo.AnchorCaseMismatchError) {
+      throw new IpcFailure(err.message, 'ANCHOR_CASE_MISMATCH')
+    }
+    throw err
+  }
+  handle(IPC_CHANNELS.NOTES_CREATE, (_, params: CreateNoteParams) => {
+    try {
+      return noteRepo.createNote(params)
+    } catch (err) {
+      rethrowAnchorCaseMismatch(err)
+    }
+  })
+  handle(IPC_CHANNELS.NOTES_UPDATE, (_, params: UpdateNoteParams) => {
+    try {
+      return noteRepo.updateNote(params)
+    } catch (err) {
+      rethrowAnchorCaseMismatch(err)
+    }
+  })
   handle(IPC_CHANNELS.NOTES_DELETE, (_, id: string) => noteRepo.deleteNote(id))
   handle(IPC_CHANNELS.NOTES_COUNT, (_, caseId: string) => noteRepo.getNoteCount(caseId))
   handle(IPC_CHANNELS.NOTES_SEARCH, (_, caseId: string, query: string) => {
@@ -783,13 +804,25 @@ export function registerIpcHandlers(deps: {
 
   handle(IPC_CHANNELS.DB_TABLE_ROWS, (_, params: DbTableRowsParams) => dbAdmin.getTableRows(params))
 
-  handle(IPC_CHANNELS.DB_CREATE_ROW, (_, params: DbCreateRowParams) =>
-    dbAdmin.createRow(params.table, params.data)
-  )
+  // Database Admin is a genuine fourth write path for notes.anchor_json
+  // (#234), so a cross-case anchor rejected here needs the same structured
+  // IpcFailure translation as notes:create/notes:update rather than a raw
+  // rejected promise.
+  handle(IPC_CHANNELS.DB_CREATE_ROW, (_, params: DbCreateRowParams) => {
+    try {
+      return dbAdmin.createRow(params.table, params.data)
+    } catch (err) {
+      rethrowAnchorCaseMismatch(err)
+    }
+  })
 
-  handle(IPC_CHANNELS.DB_UPDATE_ROW, (_, params: DbUpdateRowParams) =>
-    dbAdmin.updateRow(params.table, params.pk, params.data)
-  )
+  handle(IPC_CHANNELS.DB_UPDATE_ROW, (_, params: DbUpdateRowParams) => {
+    try {
+      return dbAdmin.updateRow(params.table, params.pk, params.data)
+    } catch (err) {
+      rethrowAnchorCaseMismatch(err)
+    }
+  })
 
   handle(IPC_CHANNELS.DB_DELETE_ROW, (_, params: DbRowIdentifier) =>
     dbAdmin.deleteRow(params.table, params.pk)

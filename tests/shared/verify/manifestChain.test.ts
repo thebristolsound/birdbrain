@@ -14,7 +14,7 @@ import { MANIFEST_FILENAME } from '@shared/constants'
 // divergence between the app path and the core (the drift the extraction
 // exists to prevent) fails loudly.
 
-function makeCaptureEntry(n: number) {
+function makeCaptureEntry(n: number, over: { screenshotHash?: string; textHash?: string } = {}) {
   return {
     type: 'capture' as const,
     captureId: `cap-${n}`,
@@ -25,7 +25,8 @@ function makeCaptureEntry(n: number) {
     sizeBytes: 1000 + n,
     operatorId: 'op-1',
     operatorName: 'Casey Operator',
-    toolVersion: '0.4.0'
+    toolVersion: '0.4.0',
+    ...over
   }
 }
 
@@ -38,7 +39,10 @@ describe('verifyManifestChain (app) vs verifyManifestChainText (core)', () => {
     manifestPath = join(caseDir, MANIFEST_FILENAME)
     initManifest(caseDir)
     appendManifestEntry(caseDir, makeCaptureEntry(0))
-    appendManifestEntry(caseDir, makeCaptureEntry(1))
+    appendManifestEntry(
+      caseDir,
+      makeCaptureEntry(1, { screenshotHash: 'b'.repeat(64), textHash: 'c'.repeat(64) })
+    )
     appendManifestEntry(caseDir, {
       type: 'deletion',
       captureId: 'cap-0',
@@ -102,7 +106,8 @@ describe('verifyManifestChain (app) vs verifyManifestChainText (core)', () => {
       brokenAt: 1,
       reason: 'Entry hash mismatch',
       trustedTimes: new Map(),
-      captureHashesByIndex: new Map()
+      captureHashesByIndex: new Map(),
+      captureEntriesByIndex: new Map()
     })
     expect(core).toEqual(app)
   })
@@ -121,7 +126,8 @@ describe('verifyManifestChain (app) vs verifyManifestChainText (core)', () => {
       brokenAt: 2,
       reason: 'Invalid signature',
       trustedTimes: new Map(),
-      captureHashesByIndex: new Map()
+      captureHashesByIndex: new Map(),
+      captureEntriesByIndex: new Map()
     })
     expect(core).toEqual(app)
   })
@@ -140,7 +146,8 @@ describe('verifyManifestChain (app) vs verifyManifestChainText (core)', () => {
       brokenAt: 3,
       reason: 'Chain link broken',
       trustedTimes: new Map(),
-      captureHashesByIndex: new Map()
+      captureHashesByIndex: new Map(),
+      captureEntriesByIndex: new Map()
     })
     expect(core).toEqual(app)
   })
@@ -150,12 +157,14 @@ describe('verifyManifestChain (app) vs verifyManifestChainText (core)', () => {
     expect(verifyManifestChain(caseDir)).toEqual({
       valid: true,
       trustedTimes: new Map(),
-      captureHashesByIndex: new Map()
+      captureHashesByIndex: new Map(),
+      captureEntriesByIndex: new Map()
     })
     expect(verifyManifestChainText('', { publicKeyPem: getPublicKeyPem() })).toEqual({
       valid: true,
       trustedTimes: new Map(),
-      captureHashesByIndex: new Map()
+      captureHashesByIndex: new Map(),
+      captureEntriesByIndex: new Map()
     })
   })
 
@@ -169,11 +178,28 @@ describe('verifyManifestChain (app) vs verifyManifestChainText (core)', () => {
     expect(core.captureHashesByIndex.has(3)).toBe(false)
   })
 
+  // #234: sidecar binding (verifySidecars, resolveTextAnchor) reads the
+  // screenshot/text digests from HERE, not from the captures DB mirror.
+  it('exposes the full capture entry -- including screenshot/text digests -- keyed by manifest index', () => {
+    const core = coreResult()
+    expect(core.valid).toBe(true)
+    expect(core.captureEntriesByIndex.get(0)).toEqual({ contentHash: 'a'.repeat(64) })
+    expect(core.captureEntriesByIndex.get(1)).toEqual({
+      contentHash: 'a'.repeat(64),
+      screenshotHash: 'b'.repeat(64),
+      textHash: 'c'.repeat(64)
+    })
+    expect(core.captureEntriesByIndex.has(2)).toBe(false)
+    expect(core.captureEntriesByIndex.has(3)).toBe(false)
+  })
+
   // #X-1: a signature-free v1 entry that FOLLOWS a signed v2 entry is a
   // downgrade forgery — its hash links recompute without any private key, so
   // without the guard the tampered chain would re-verify as valid.
   it('rejects a v1 entry that follows a v2 entry (schema downgrade)', () => {
-    const lines = readFileSync(manifestPath, 'utf-8').split('\n').filter((l) => l.trim())
+    const lines = readFileSync(manifestPath, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim())
     const entry = JSON.parse(lines[1]) as Record<string, unknown>
     // Forge a legitimate-looking v1 entry: drop the signature, downgrade the
     // version, and recompute the entryHash over the canonical body (excluding

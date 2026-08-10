@@ -1,0 +1,55 @@
+name: Feature request
+description: Suggest a capability or improvement
+labels:
+  - needs-triage
+body:
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Before you request
+      options:
+        - label: I searched existing issues and this has not been requested yet
+          required: true
+        - label: >-
+            This fits Birdbrain's posture — local-first, no accounts, no telemetry, no cloud
+            dependency (see CONTRIBUTING.md, "Supported scope")
+          required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do that Birdbrain currently makes hard or impossible?
+      placeholder: >-
+        When reviewing a case with hundreds of captures, I cannot tell which ones I have
+        already examined.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What you would like to happen. A rough sketch is fine.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Capture / extension
+        - Organize / search / selectors
+        - Notes / annotation
+        - Verify / export / reporting
+        - Recon / extracted data
+        - AI analysis
+        - Settings / app shell
+        - Not sure
+    validations:
+      required: false
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you use today, or other approaches you rejected.
+    validations:
+      required: false

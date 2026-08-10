@@ -39,21 +39,51 @@ reports v22, the hook did not run and everything below is unreliable.
 - **You never merge, never mark a PR ready for review, never push to main, never enable
   auto-merge.** Human review is the back gate for every agent PR; evidence-affecting PRs never
   auto-merge under any future policy.
+- **One writer per branch (ADR-0006).** During a cycle only the implementer pushes to the
+  working branch — you never do. The implementer fetches before pushing and pushes only if the
+  push fast-forwards the remote head it last saw; force-push is never used. A remote head that
+  moved unexpectedly is a collision: stop and report it, do not merge or overwrite. This is
+  the rule that covers the case the slot labels cannot see — two agents on one branch (#357).
 
 ## 1. Slot check
 
-The strict-serial slot is marked by the `agent-pr` label
-(`docs/agents/triage-labels.md`):
+The strict-serial slot has **two markers**, checked together (ADR-0006,
+`docs/agents/triage-labels.md`): an open PR labelled `agent-pr`, and an open issue labelled
+`agent-wip` — the claim for a cycle whose PR does not exist yet:
 
 ```
 gh api --paginate "repos/thebristolsound/birdbrain/issues?state=open&labels=agent-pr&per_page=100" \
   --jq '[.[] | select(.pull_request) | .number]'
+gh api --paginate "repos/thebristolsound/birdbrain/issues?state=open&labels=agent-wip&per_page=100" \
+  --jq '[.[] | select(.pull_request|not) | .number]'
 ```
 
-- **More than one open `agent-pr`** → strict-serial violation. Take no other action; report
+- **More than one open `agent-pr` PR** → strict-serial violation. Take no other action; report
   the PR numbers and stop. A human untangles it.
-- **Exactly one** → classify it (section 2).
-- **None** → the slot is free; dispatch (section 3).
+- **Exactly one open `agent-pr` PR** → the PR is the slot. If an `agent-wip` claim is also
+  open, its release step was missed: remove the label with a note, then classify the PR
+  (section 2).
+- **No PR, one `agent-wip` claim** → read the claim comment's `created_at`. 4 hours old or
+  younger: a cycle is in flight — report "slot claimed by #N, cycle in progress" and stop.
+  Older than 4 hours with no agent PR: the claim is stale — remove the label, comment that a
+  stale claim was cleared, and proceed to dispatch (section 3).
+- **No PR, no claim** → the slot is free. Before dispatching, run the **departed-slot hygiene
+  check** — closed PRs never appear in the open-PR query above, so this branch is the only
+  entry point ADR-0007's rule 4 and the give-up check have. Fetch the most recently created
+  closed `agent-pr` PR:
+
+  ```shell
+  gh api "repos/thebristolsound/birdbrain/issues?state=closed&labels=agent-pr&per_page=1&sort=created&direction=desc" \
+    --jq '[.[] | select(.pull_request) | .number]'
+  ```
+
+  If it merged and its final pre-pass verdict was `request changes`, verify an override
+  record per ADR-0007 exists (first line containing `Override record`, posted after that
+  verdict and at or before the merge, each finding dispositioned). If it closed without
+  merging, verify give-up hygiene: the linked issue carries a findings comment and a
+  `needs-info`/`ready-for-human` relabel. Report any gap in the end-of-cycle report —
+  report-only, and it re-fires every free-slot cycle until the record appears. Then dispatch
+  (section 3).
 
 ## 2. Occupied slot — classify and act
 
@@ -68,14 +98,16 @@ Fetch the PR's head commit time, reviews, review threads, and issue comments. Cl
   arrives as comments and review threads. Treat a human comment asking for changes exactly as
   a changes-requested review.) Dispatch `birdbrain-implementer` with the PR number, its linked
   issue, and the re-enumeration instruction; it applies or rejects-with-reason each item per
-  its contract, then pushes. It cannot post its replies — it returns them as text keyed to the
-  comment or thread ids they answer, and **you** post them with
-  `mcp__github__add_issue_comment` (or `add_reply_to_pull_request_comment` for an inline
-  thread). Then run the reviewer pre-pass (section 4).
-- **Closed without merge** → the slot is vacated. Verify give-up hygiene: the linked issue
-  must carry a findings comment and a `needs-info`/`ready-for-human` relabel; report any gap.
-  Then proceed to section 3 in this same cycle.
-- **Merged** → slot free; proceed to section 3.
+  its contract, then pushes. It **must not** post its replies — the REST comment endpoints do
+  technically work from a subagent, and the part-two ledger (finding 2) recorded exactly that
+  happening — it returns them as text keyed to the comment or thread ids they answer, and
+  **you** post them with `mcp__github__add_issue_comment` (or
+  `add_reply_to_pull_request_comment` for an inline thread). Your read of that text before
+  posting is the editorial pass; a subagent that posts directly has bypassed it, which is a
+  reportable contract violation even when the content was fine. Then run the reviewer
+  pre-pass (section 4).
+(Closed and merged PRs never reach this section — an open-PR query cannot return them; their
+hygiene checks run from section 1's free-slot branch.)
 
 ## 3. Free slot — dispatch the oldest eligible issue
 
@@ -91,7 +123,29 @@ gh api repos/thebristolsound/birdbrain/issues/<n>/dependencies/blocked_by   # sk
 Pick the **lowest issue number** among eligible issues. If none are eligible, report "frontier
 empty" and stop.
 
-Dispatch `birdbrain-implementer` with that issue number and worktree isolation. The
+**Claim the slot before spawning anything** (ADR-0006). In this order:
+
+0. Check the chosen issue's recent comments for an existing claim the label query missed —
+   a crash between comment and label leaves exactly this: a claim comment with no withdrawal
+   after it and no open agent PR. 4 hours old or younger → the slot is claimed; report
+   "slot claimed by #N, cycle in progress" and stop. Older → note it as stale and continue.
+1. Post a claim comment on the chosen issue with `mcp__github__add_issue_comment` — e.g.
+   "Dispatch slot claimed for this issue; a cycle is starting." **The comment is the claim**
+   (ADR-0006): its server-assigned `created_at` is the claim's timestamp and its comment `id`
+   the final tie-break.
+2. Apply the `agent-wip` label with `mcp__github__issue_write`. The label is the claim's
+   discoverable index, not the claim itself.
+3. Re-read both marker sets (the section 1 queries) **and the claim comments on every claimed
+   issue** — settling orders comments, so a competitor's unlabelled claim still ranks. An open
+   `agent-pr` PR always beats any claim. Between competing claims, the earliest claim comment
+   wins; a same-second tie breaks to the lower comment `id`. If you lost: post a one-line
+   withdrawal comment and stop the cycle. Remove your `agent-wip` label **only if your claim
+   is on a different issue from the winner's** — when both claims sit on the same issue (the
+   usual race: two dispatchers picking the same lowest eligible issue), the label is now the
+   winner's marker; leave it in place.
+
+Only after the claim settles in your favour, dispatch `birdbrain-implementer` with that issue
+number and worktree isolation. The
 implementer owns everything downstream of intake: the ready-for-agent bar check, the
 implementation, the verify loop, and the evidence gate (label determination, Evidence impact
 section, known-answer test).
@@ -102,7 +156,10 @@ PR or apply a label (`docs/agents/github-access.md`). It pushes its branch and r
 title, head sha, a path to the PR body it wrote, and the labels it determined are required.
 You open the **draft** PR against `main` with `mcp__github__create_pull_request` and apply the
 labels with `mcp__github__issue_write`, then confirm they landed
-(`gh api repos/thebristolsound/birdbrain/issues/<n>/labels --jq '[.[].name]'`).
+(`gh api repos/thebristolsound/birdbrain/issues/<n>/labels --jq '[.[].name]'`). **Then release
+the claim**: remove `agent-wip` from the issue — the `agent-pr` label on the PR is the slot
+marker from here on. A claim that outlives its PR-open is the leftover state section 1 has to
+clean up.
 
 `agent-pr` goes on every agent PR; add `evidence-affecting` when the implementer reports the
 gate fired. If the implementer's label determination looks wrong, say so in your report — do
@@ -110,8 +167,10 @@ not silently substitute your own judgement for its stated reasoning.
 
 **The give-up path needs you too.** The implementer cannot comment or relabel, so it returns
 its blockers as text and stops. You post them to the issue with
-`mcp__github__add_issue_comment` and swap `ready-for-agent` to `needs-info` (or
-`ready-for-human`) with `mcp__github__issue_write` — a give-up that leaves the issue unchanged
+`mcp__github__add_issue_comment`, swap `ready-for-agent` to `needs-info` (or
+`ready-for-human`), and remove `agent-wip` — all with `mcp__github__issue_write`. A give-up
+that leaves the claim in place stalls dispatch for 4 hours for nothing, and one that leaves
+the issue otherwise unchanged
 is indistinguishable from an agent that silently vanished, which is the failure ADR-0005's
 give-up path exists to prevent. Then report what it found and stop: the slot stays vacant
 until the next trigger, and you do not dispatch a second issue in the same cycle.

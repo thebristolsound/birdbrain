@@ -6,6 +6,17 @@ import { verifyEntrySignature } from '@shared/verify/signature'
 import { buildTrustedTimeIndexFromEntries } from '@shared/verify/trustedTime'
 import type { TrustedTimeResult } from '@shared/verify/trustedTime'
 
+// The digests a verified `capture` entry carries, keyed by manifest index
+// (#234). This is what a hash-verified claim rests on: `screenshotHash` /
+// `textHash` are read from HERE, never from the `captures` DB mirror, which
+// is a cache maintained for convenience and carries no chain integrity of its
+// own (migrations.ts:369 — "the manifest remains the authority").
+export interface CaptureChainEntry {
+  contentHash: string
+  screenshotHash?: string
+  textHash?: string
+}
+
 export interface ChainVerifyResult {
   valid: boolean
   brokenAt?: number
@@ -19,6 +30,11 @@ export interface ChainVerifyResult {
   // (a valid chain can be truncated), not merely that the chain verifies. Empty
   // when the chain is broken and for an empty manifest.
   captureHashesByIndex: Map<number, string>
+  // Full capture-entry digests keyed by manifest index (#234) — the superset
+  // of captureHashesByIndex a caller needs to bind sidecar artifacts (the
+  // screenshot, the extracted-text) to the signed manifest instead of the DB
+  // mirror. Empty under the same conditions as captureHashesByIndex.
+  captureEntriesByIndex: Map<number, CaptureChainEntry>
 }
 
 // Verifies a manifest hash chain from its JSONL text: recomputes each
@@ -46,7 +62,8 @@ export function verifyManifestChainText(
     brokenAt,
     reason,
     trustedTimes: new Map(),
-    captureHashesByIndex: new Map()
+    captureHashesByIndex: new Map(),
+    captureEntriesByIndex: new Map()
   })
 
   // Pass 1: parse + schema-validate every line, collecting the parsed
@@ -142,12 +159,21 @@ export function verifyManifestChainText(
   // Integrity-verified. Resolve the per-capture trusted-time axis from the
   // verified entries (#161) — the single source of truth shared with the app.
   const captureHashesByIndex = new Map<number, string>()
+  const captureEntriesByIndex = new Map<number, CaptureChainEntry>()
   for (const entry of verifiedEntries) {
-    if (entry.type === 'capture') captureHashesByIndex.set(entry.index, entry.contentHash)
+    if (entry.type === 'capture') {
+      captureHashesByIndex.set(entry.index, entry.contentHash)
+      captureEntriesByIndex.set(entry.index, {
+        contentHash: entry.contentHash,
+        screenshotHash: entry.screenshotHash,
+        textHash: entry.textHash
+      })
+    }
   }
   return {
     valid: true,
     trustedTimes: buildTrustedTimeIndexFromEntries(verifiedEntries),
-    captureHashesByIndex
+    captureHashesByIndex,
+    captureEntriesByIndex
   }
 }

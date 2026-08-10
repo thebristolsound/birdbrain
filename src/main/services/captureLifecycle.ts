@@ -15,6 +15,7 @@ import {
   withDeletionEntry,
   ManifestRollback
 } from '@main/services/manifest'
+import type { CaptureChainEntry } from '@main/services/manifest'
 import { reconcileCaptureTrustedTime } from '@main/services/trustedTime'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { getSettings } from '@main/services/settings'
@@ -90,11 +91,11 @@ export async function ingestMhtmlCapture(
   store: CaptureStore = defaultCaptureStore
 ): Promise<IngestResult> {
   const captureId = randomUUID()
-  const { rel: mhtmlPath, hash, sizeBytes } = await store.writeMhtmlStream(
-    params.caseId,
-    captureId,
-    params.stream
-  )
+  const {
+    rel: mhtmlPath,
+    hash,
+    sizeBytes
+  } = await store.writeMhtmlStream(params.caseId, captureId, params.stream)
 
   const caseDir = store.caseDir(params.caseId)
 
@@ -306,13 +307,21 @@ async function computeVerification(
     }
   }
 
-  // The MHTML bytes + chain are intact. Now bind the sidecar artifacts (#118):
-  // when a screenshot/text hash was recorded at ingest, re-read the on-disk
-  // sidecar and recompute. A mismatch is tampering of an evidence artifact even
-  // though the primary MHTML survived, so it FAILS with an artifact-specific
-  // reason. Absent recorded hashes (legacy/no-screenshot) are simply skipped —
-  // grandfathering is preserved.
-  const sidecarFailure = await verifySidecars(capture, store)
+  // The MHTML bytes + chain are intact. Now bind the sidecar artifacts (#118)
+  // to the SIGNED manifest entry, not the `captures` DB mirror (#234): the
+  // mirror is a cache re-derived from the same ingest write, so an attacker
+  // (or a bug) that edits a sidecar file and its mirror row together would
+  // fool a check that trusted the mirror. `entry` is guaranteed present here
+  // when manifestIndex is a number — the anchoring check above already
+  // confirmed this index resolves in the verified chain. A capture with no
+  // manifestIndex predates the chain (legacy) and has no entry to bind to;
+  // verifySidecars treats that the same as an entry with no recorded hash —
+  // grandfathered, not checked.
+  const entry: CaptureChainEntry | undefined =
+    typeof capture.manifestIndex === 'number'
+      ? chain.captureEntriesByIndex.get(capture.manifestIndex)
+      : undefined
+  const sidecarFailure = await verifySidecars(capture, store, entry)
   if (sidecarFailure) {
     return {
       ...base,
@@ -333,33 +342,37 @@ async function computeVerification(
   }
 }
 
-// Recomputes the screenshot/text sidecar digests against the hashes recorded at
-// ingest. Returns a human-readable reason on the first mismatch (or unreadable
-// sidecar whose hash was recorded), or undefined when everything binds. Captures
-// with no recorded hash for an artifact are not checked.
+// Recomputes the screenshot/text sidecar digests against the hashes recorded
+// in the SIGNED manifest capture entry (#234) — never `captures.screenshot_hash`
+// / `captures.text_hash`, which are an unauthoritative DB mirror (see the
+// caller). Returns a human-readable reason on the first mismatch (or
+// unreadable sidecar whose hash was recorded), or undefined when everything
+// binds. An entry with no recorded hash for an artifact is not checked for
+// that artifact — same grandfathering the mirror-based check had.
 async function verifySidecars(
   capture: NonNullable<ReturnType<typeof captureRepo.getCapture>>,
-  store: CaptureStore
+  store: CaptureStore,
+  entry: CaptureChainEntry | undefined
 ): Promise<string | undefined> {
-  if (capture.screenshotHash) {
+  if (entry?.screenshotHash) {
     const buf = store.readArtifact(capture.caseId, capture.id, 'png')
     if (!buf) {
-      return 'Screenshot missing: expected ' + capture.screenshotHash.slice(0, 12) + '...'
+      return 'Screenshot missing: expected ' + entry.screenshotHash.slice(0, 12) + '...'
     }
     const computed = createHash('sha256').update(buf).digest('hex')
-    if (computed !== capture.screenshotHash) {
-      return 'Screenshot hash mismatch: expected ' + capture.screenshotHash + ', got ' + computed
+    if (computed !== entry.screenshotHash) {
+      return 'Screenshot hash mismatch: expected ' + entry.screenshotHash + ', got ' + computed
     }
   }
 
-  if (capture.textHash) {
+  if (entry?.textHash) {
     const buf = store.readArtifact(capture.caseId, capture.id, 'txt')
     if (!buf) {
-      return 'Extracted text missing: expected ' + capture.textHash.slice(0, 12) + '...'
+      return 'Extracted text missing: expected ' + entry.textHash.slice(0, 12) + '...'
     }
     const computed = createHash('sha256').update(buf).digest('hex')
-    if (computed !== capture.textHash) {
-      return 'Extracted text hash mismatch: expected ' + capture.textHash + ', got ' + computed
+    if (computed !== entry.textHash) {
+      return 'Extracted text hash mismatch: expected ' + entry.textHash + ', got ' + computed
     }
   }
 

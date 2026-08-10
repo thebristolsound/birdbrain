@@ -33,6 +33,6 @@ speech).
   project, use [GitHub's report abuse](https://github.com/contact/report-abuse)
   process, which is handled by GitHub rather than by this project.
 
-Reports are kept confidential to the extent GitHub's tooling allows; no report will
-be shared with the person reported without the reporter's consent, except where
+Reports are kept confidential to the extent reasonably possible; no report will be
+shared with the person reported without the reporter's consent, except where
 required to act on it.

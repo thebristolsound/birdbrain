@@ -125,8 +125,8 @@ intent. This passes ADR-0005's rule, which targets `Co-authored-by` trailers, bu
 `git log` cannot distinguish agent work from human work on an agent PR.
 
 **5. A merged PR shipped a known-misleading error onto an evidence surface.**
-#357 added failure reporting to two buttons that are refused unconditionally by
-the reveal allowlist, so both now display "Path not permitted" where they
+PR #357 added failure reporting to two buttons that are refused unconditionally
+by the reveal allowlist, so both now display "Path not permitted" where they
 previously failed silently. Disclosed before merge and filed as #362 and #363.
 Worth recording not as a process failure — the disclosure worked — but because it
 is the shape of mistake the pipeline is most likely to repeat: making a failure
@@ -147,16 +147,48 @@ visible before establishing that the underlying operation can ever succeed.
 
 ## Verification of this ledger
 
-Every figure derives from the GitHub API, not from session recollection:
+Every figure derives from the GitHub API, not from session recollection. The
+procedure below is the whole method; following it should reproduce the table and
+the 0-of-5 result exactly.
 
-```
-gh api --paginate "repos/thebristolsound/birdbrain/issues?state=all&labels=agent-pr&per_page=100"
-gh api --paginate "repos/thebristolsound/birdbrain/issues/<n>/comments?per_page=100"
-gh api --paginate "repos/thebristolsound/birdbrain/pulls/<n>/reviews?per_page=100"
+```shell
+R=thebristolsound/birdbrain
+
+# 1. Cohort
+gh api --paginate "repos/$R/issues?state=all&labels=agent-pr&per_page=100"
+
+# 2. Per PR in the cohort
+gh api          "repos/$R/pulls/<n>"                          # merged, commits, changed_files
+gh api --paginate "repos/$R/issues/<n>/comments?per_page=100"   # pre-pass comments live here
+gh api --paginate "repos/$R/pulls/<n>/reviews?per_page=100"     # formal review states
+gh api --paginate "repos/$R/pulls/<n>/comments?per_page=100"    # diff review comments
+gh api          "repos/$R/issues/<n>/labels"                  # evidence-affecting
 ```
 
-Pre-pass rounds were counted by matching `Reviewer pre-pass` in comment bodies and
-extracting the verdict. Note that two header formats are in use — `` (`ed0150c`) ``
-and `(93b9350)` — and a regex written for one silently undercounts the other;
-#364's verdicts were missed on the first pass for exactly that reason. Anyone
-re-deriving these numbers should match on the verdict text, not the sha format.
+**Cohort and ordering.** Part two is every `agent-pr` PR whose `created_at` is
+later than #308's `closed_at` of `2026-08-02T22:04:34Z`. Order the table by PR
+number ascending; "the last five" means the five highest PR numbers, which for
+this cohort is also the five most recently created.
+
+**What counts as a round.** One round is one comment on the *issue* timeline
+(`/issues/<n>/comments`) whose body contains the string `Reviewer pre-pass`.
+Rounds are ordered by `created_at`. Nothing else counts: not CodeRabbit reviews,
+not diff review comments, not implementer replies, not the dispatcher's notes.
+`/pulls/<n>/comments` is fetched above only to confirm no pre-pass was posted as
+a diff comment by mistake — in this cohort, none was.
+
+**Reply exclusions.** Take only top-level issue comments. A reply that quotes a
+pre-pass in its body would otherwise double-count; filter to comments whose
+*first line* matches `Reviewer pre-pass`.
+
+**Verdict selection.** Within each pre-pass comment, take the first
+case-insensitive match of `request changes` or `approve for human review` and
+ignore the rest of the body — later occurrences are quotations of prior rounds.
+Match on that verdict text, **not** on the sha in the header: two header formats
+are in use, `` (`ed0150c`) `` and `(93b9350)`, and a regex written for one
+silently undercounts the other. The verdicts for PR #364 were missed on the first
+pass for exactly that reason.
+
+**Bar arithmetic.** "Mergeable" is `.merged == true`. "≤1 review round" is a
+round count of 0 or 1 under the definition above. The bar asks for 4 of the last
+5 to satisfy both.

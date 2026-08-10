@@ -1,0 +1,82 @@
+name: Bug report
+description: Something is broken or behaves unexpectedly
+labels:
+  - needs-triage
+body:
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Before you report
+      options:
+        - label: I searched existing issues and this has not been reported yet
+          required: true
+        - label: >-
+            This is not an exploitable security vulnerability (those go through private
+            vulnerability reporting — see SECURITY.md)
+          required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: >-
+        What went wrong. Do not paste captured evidence, live investigation URLs, or other
+        sensitive case material — use neutral example pages where possible.
+      placeholder: Capturing a page with the extension shows a success toast, but no capture appears in the case.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Create a case and start a session
+        2. Open https://example.com in Chrome
+        3. Click the extension's Capture button
+        4. Switch to the Captures tab in the app
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      placeholder: The capture appears in the case's capture list.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Birdbrain version
+      description: Shown in Settings → About, or in the installer filename.
+      placeholder: 1.0.1-beta.17
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux (AppImage)
+        - Linux (deb)
+        - Other / built from source
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and version
+      description: If the extension is involved — Chrome, Edge, or Brave, with its version.
+      placeholder: Chrome 139
+    validations:
+      required: false
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Logs and diagnostics
+      description: >-
+        Error text, screenshots, or a diagnostic bundle. Settings → Diagnostics → "Report a
+        problem" builds a redacted bundle that excludes your captures and case database —
+        attach the resulting file here. Review anything you paste for sensitive material first.
+    validations:
+      required: false

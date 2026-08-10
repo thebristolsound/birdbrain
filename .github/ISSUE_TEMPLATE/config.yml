@@ -1,0 +1,7 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/thebristolsound/birdbrain/security/advisories/new
+    about: >-
+      Do not report exploitable vulnerabilities in public issues. Use GitHub private
+      vulnerability reporting — see SECURITY.md for scope and the threat model.

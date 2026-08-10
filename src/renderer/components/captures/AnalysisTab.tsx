@@ -1,23 +1,19 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { v4 as uuid } from 'uuid'
+import { useQuery } from '@tanstack/react-query'
 import Markdown from 'react-markdown'
 import type { ExtraProps } from 'react-markdown'
 import { Button } from '@renderer/components/ui'
 import { Loader2, Save, RefreshCw, StickyNote, Settings, Sparkles, Copy } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
-import type { CaptureAnalysis, BirdbrainSettings, TokenUsage } from '@shared/types'
 import { useOpenRouterModels } from '@renderer/hooks/useOpenRouterModels'
 import { presets } from '@renderer/lib/motion'
 import { settingsQueryOptions } from '@renderer/lib/api/settings'
 import { openCaptureExternal } from '@renderer/lib/api/system'
-import {
-  analyzeCapture,
-  captureAnalysisQueryOptions,
-  saveCaptureAnalysis
-} from '@renderer/lib/api/ai'
-import { queryKeys } from '@renderer/lib/api/keys'
+import { notify } from '@renderer/lib/notify'
+import { captureAnalysisQueryOptions, useAiMutations } from '@renderer/lib/api/ai'
+import type { AnalysisRun } from '@renderer/lib/api/ai'
+import type { CaptureAnalysis } from '@shared/types'
 
 interface AnalysisTabProps {
   captureId: string
@@ -26,113 +22,95 @@ interface AnalysisTabProps {
   onOpenNote: (prefillTitle: string, prefillBody: string) => void
 }
 
+// Every field the save writes, not just the content. A re-run under a different
+// model can return byte-identical text, and comparing content alone would call
+// that run saved while the row still credits the previous model.
+function runIsStored(run: AnalysisRun, stored: CaptureAnalysis | null | undefined): boolean {
+  return (
+    !!stored &&
+    run.content === stored.content &&
+    run.model === stored.model &&
+    run.tokenUsage.prompt === stored.tokenUsage.prompt &&
+    run.tokenUsage.completion === stored.tokenUsage.completion &&
+    run.tokenUsage.total === stored.tokenUsage.total
+  )
+}
+
 export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: AnalysisTabProps) {
-  const queryClient = useQueryClient()
   const navigate = useNavigate()
 
-  const [settings, setSettings] = useState<BirdbrainSettings | null>(null)
-  const [selectedModel, setSelectedModel] = useState('')
-  const [liveContent, setLiveContent] = useState<string | null>(null)
-  const [liveTokenUsage, setLiveTokenUsage] = useState<TokenUsage | null>(null)
-  const [analysisTimestamp, setAnalysisTimestamp] = useState<string | null>(null)
-  const [analyzeError, setAnalyzeError] = useState<string | null>(null)
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
-  const [copied, setCopied] = useState(false)
+  // The two pieces of state with no server counterpart: the operator's model
+  // pick (null until they override the stored default) and the 2s copy flash.
+  const [modelOverride, setModelOverride] = useState<string | null>(null)
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
 
-  // Load settings once; selectedModel seeds from the stored default.
-  useEffect(() => {
-    queryClient.fetchQuery(settingsQueryOptions).then((s) => {
-      setSettings(s)
-      setSelectedModel(s.defaultModel)
-    })
-  }, [])
-
-  const { models } = useOpenRouterModels(settings?.openRouterApiKey)
-
-  // Load saved analysis
+  const { data: settings } = useQuery(settingsQueryOptions)
   const { data: savedAnalysis, isLoading: isLoadingSaved } = useQuery(
     captureAnalysisQueryOptions(captureId)
   )
+  const { models } = useOpenRouterModels(settings?.openRouterApiKey)
+  const { analyze, saveAnalysis } = useAiMutations()
 
-  // Reset local analysis state when switching captures to avoid showing stale data
-  useEffect(() => {
-    setLiveContent(null)
-    setLiveTokenUsage(null)
-    setAnalysisTimestamp(null)
-    setAnalyzeError(null)
-    setHasUnsavedChanges(false)
-  }, [captureId])
+  const selectedModel = modelOverride ?? settings?.defaultModel ?? ''
 
-  // When saved analysis loads, populate the live state or clear it if none exists
-  useEffect(() => {
-    if (savedAnalysis) {
-      setLiveContent(savedAnalysis.content)
-      setLiveTokenUsage(savedAnalysis.tokenUsage)
-      setAnalysisTimestamp(savedAnalysis.updatedAt || savedAnalysis.createdAt)
-      setHasUnsavedChanges(false)
-      setAnalyzeError(null)
-    } else {
-      setLiveContent(null)
-      setLiveTokenUsage(null)
-      setAnalysisTimestamp(null)
-      setAnalyzeError(null)
-      setHasUnsavedChanges(false)
-    }
-  }, [savedAnalysis])
+  // The tab stays mounted while the capture selection moves, so a run has to
+  // be scoped to the capture it was started for or the previous capture's
+  // analysis renders under the new one. Comparing the mutation's own variables
+  // does that in the same render — a reset effect would clear the stale result
+  // only after a frame that had already shown it against the wrong capture.
+  const runIsForThisCapture = analyze.variables?.captureId === captureId
+  const run = runIsForThisCapture ? analyze.data : undefined
+  const isAnalyzing = analyze.isPending && runIsForThisCapture
+  const analyzeError = runIsForThisCapture ? (analyze.error?.message ?? null) : null
+  const isSaving = saveAnalysis.isPending && saveAnalysis.variables?.captureId === captureId
 
-  // Analyze mutation
-  const analyzeMutation = useMutation({
-    mutationFn: () =>
-      analyzeCapture({
-        captureId,
-        caseId,
-        model: selectedModel
-      }),
-    onSuccess: (result) => {
-      setLiveContent(result.content)
-      setLiveTokenUsage(result.tokenUsage)
-      setAnalysisTimestamp(new Date().toISOString())
-      setHasUnsavedChanges(true)
-      setAnalyzeError(null)
-    },
-    onError: (err: Error) => {
-      setAnalyzeError(err.message)
-    }
-  })
+  // A fresh run wins over the stored row; otherwise the stored row is what the
+  // capture has. "Unsaved" is then a fact about the two rather than a flag:
+  // the save writes through to the cache, so the row and the run agree the
+  // moment the write lands.
+  const content = run?.content ?? savedAnalysis?.content ?? null
+  const tokenUsage = run?.tokenUsage ?? savedAnalysis?.tokenUsage ?? null
+  const hasUnsavedChanges = !!run && !runIsStored(run, savedAnalysis)
+  // The run's own stamp is not persisted, so it can only stand in until the row
+  // exists. Once the run is stored, the footer has to read the row's timestamp
+  // or it shows the moment of analysis beside "✓ Saved" while the row — and
+  // anything reading it later — records the moment of the save.
+  const analysisTimestamp = hasUnsavedChanges
+    ? (run?.analyzedAt ?? null)
+    : (savedAnalysis?.updatedAt ?? savedAnalysis?.createdAt ?? null)
 
-  // Save mutation — saveAnalysis is upsert-by-captureId in the main process
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      if (!liveContent || !liveTokenUsage) return
-      const now = new Date().toISOString()
-      const analysis: CaptureAnalysis = {
-        id: savedAnalysis?.id ?? uuid(),
-        captureId,
-        caseId,
-        content: liveContent,
-        model: selectedModel,
-        tokenUsage: liveTokenUsage,
-        createdAt: savedAnalysis?.createdAt ?? now,
-        updatedAt: now
-      }
-      await saveCaptureAnalysis(analysis)
-    },
-    onSuccess: () => {
-      setHasUnsavedChanges(false)
-      queryClient.invalidateQueries({ queryKey: queryKeys.captureAnalysis(captureId) })
-    }
-  })
+  const handleAnalyze = () => analyze.mutate({ captureId, caseId, model: selectedModel })
+
+  // Content, model and token usage all come off the same run, so the row cannot
+  // record one run's output against another run's model.
+  const handleSave = () => {
+    if (!run) return
+    saveAnalysis.mutate({
+      captureId,
+      caseId,
+      content: run.content,
+      model: run.model,
+      tokenUsage: run.tokenUsage,
+      existing: savedAnalysis
+    })
+  }
 
   const handleCopyToClipboard = async () => {
-    if (!liveContent) return
-    await navigator.clipboard.writeText(liveContent)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    if (!content) return
+    // A denied clipboard permission rejects, and an unchanged button reads as
+    // "nothing happened" rather than as a failure. Only the label changes: the
+    // analysis text is what did not leave the app, so it must not leave through
+    // the failure path either.
+    try {
+      await navigator.clipboard.writeText(content)
+      setCopyState('copied')
+    } catch {
+      setCopyState('failed')
+    }
+    setTimeout(() => setCopyState('idle'), 2000)
   }
 
   const hasApiKey = !!settings?.openRouterApiKey
-  const isAnalyzing = analyzeMutation.isPending
-  const isSaving = saveMutation.isPending
 
   // --- No API key state ---
   if (settings && !hasApiKey) {
@@ -162,7 +140,7 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
   }
 
   // --- Ready state (no analysis yet) ---
-  if (!liveContent && !isAnalyzing && !analyzeError) {
+  if (!content && !isAnalyzing && !analyzeError) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
         <Sparkles className="h-10 w-10 text-accent/50" />
@@ -176,7 +154,7 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
         {models.length > 0 && (
           <select
             value={selectedModel}
-            onChange={(e) => setSelectedModel(e.target.value)}
+            onChange={(e) => setModelOverride(e.target.value)}
             className="w-64 rounded-md border border-border bg-surface px-3 py-1.5 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
           >
             {models.map((m) => (
@@ -186,7 +164,7 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
             ))}
           </select>
         )}
-        <Button size="sm" onClick={() => analyzeMutation.mutate()} disabled={isAnalyzing}>
+        <Button size="sm" onClick={handleAnalyze} disabled={isAnalyzing}>
           <Sparkles className="mr-1.5 h-3.5 w-3.5" />
           Analyze
         </Button>
@@ -195,14 +173,14 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
   }
 
   // --- Error state ---
-  if (analyzeError && !liveContent) {
+  if (analyzeError && !content) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
         <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3">
           <h3 className="text-sm font-semibold text-red-400">Analysis Failed</h3>
           <p className="mt-1 max-w-sm text-xs text-red-400/80">{analyzeError}</p>
         </div>
-        <Button size="sm" onClick={() => analyzeMutation.mutate()}>
+        <Button size="sm" onClick={handleAnalyze}>
           Retry
         </Button>
       </div>
@@ -239,7 +217,7 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
               {models.length > 0 ? (
                 <select
                   value={selectedModel}
-                  onChange={(e) => setSelectedModel(e.target.value)}
+                  onChange={(e) => setModelOverride(e.target.value)}
                   className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
                 >
                   {models.map((m) => (
@@ -257,7 +235,7 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => analyzeMutation.mutate()}
+                onClick={handleAnalyze}
                 disabled={isAnalyzing}
                 title="Re-analyze"
               >
@@ -268,7 +246,7 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => saveMutation.mutate()}
+                onClick={handleSave}
                 disabled={isSaving || !hasUnsavedChanges}
                 title={savedAnalysis && hasUnsavedChanges ? 'Save changes' : 'Save'}
               >
@@ -289,22 +267,28 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
                 title="Copy to clipboard"
               >
                 <Copy className="mr-1 h-3 w-3" />
-                <span className="text-[11px]">{copied ? 'Copied!' : 'Copy'}</span>
+                <span className="text-[11px]">
+                  {copyState === 'copied'
+                    ? 'Copied!'
+                    : copyState === 'failed'
+                      ? 'Copy failed'
+                      : 'Copy'}
+                </span>
               </Button>
 
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => onOpenNote(`AI Analysis — ${captureTitle}`, liveContent ?? '')}
+                onClick={() => onOpenNote(`AI Analysis — ${captureTitle}`, content ?? '')}
                 title="Copy to note"
               >
                 <StickyNote className="mr-1 h-3 w-3" />
                 <span className="text-[11px]">Note</span>
               </Button>
 
-              {liveTokenUsage && (
+              {tokenUsage && (
                 <span className="text-[10px] text-text-faint">
-                  {liveTokenUsage.total.toLocaleString()} tokens
+                  {tokenUsage.total.toLocaleString()} tokens
                 </span>
               )}
             </div>
@@ -326,7 +310,10 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
                         rel="noreferrer noopener"
                         onClick={(e) => {
                           e.preventDefault()
-                          if (href) openCaptureExternal(href)
+                          if (href)
+                            openCaptureExternal(href).catch((cause) => {
+                              notify.error("Couldn't open the link in your browser", { cause })
+                            })
                         }}
                       >
                         {children}
@@ -334,7 +321,7 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
                     )
                   }}
                 >
-                  {liveContent ?? ''}
+                  {content ?? ''}
                 </Markdown>
               </div>
             </div>

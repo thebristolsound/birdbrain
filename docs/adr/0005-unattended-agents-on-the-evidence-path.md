@@ -60,7 +60,10 @@ exists. **Evidence-affecting PRs never auto-merge, regardless of that future dec
 ### Flow control and the give-up path
 
 - **Strict serial:** at most one open agent PR at a time; the dispatch routine exits without
-  dispatching while one is open.
+  dispatching while one is open. *Amended by [ADR-0006](0006-claim-the-dispatch-slot-at-dispatch-time.md):
+  the slot is claimed at dispatch time, before the PR exists.* The record a human merge must
+  leave when the final automated verdict is unresolved is set by
+  [ADR-0007](0007-merging-over-an-unresolved-verdict-requires-a-recorded-override.md).
 - **Give-up path:** an agent that finds an issue mis-specified — at intake or mid-work —
   comments its findings on the issue, relabels it `needs-info` or `ready-for-human`, and
   vacates the slot. Giving up is a success mode; pushing through a bad specification is not.

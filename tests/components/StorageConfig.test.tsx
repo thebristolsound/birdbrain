@@ -1,0 +1,130 @@
+// @vitest-environment jsdom
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import type { ReactNode } from 'react'
+import type { BirdbrainSettings } from '@shared/types'
+
+// Strips the animation-only props (they are not valid DOM attributes) and
+// forwards the rest — Button renders through motion.button, so dropping props
+// here would silently drop its onClick.
+vi.mock('motion/react', async () => {
+  const React = await import('react')
+  const motion = new Proxy(
+    {},
+    {
+      get: (_, tag: string) =>
+        React.forwardRef<HTMLElement, Record<string, unknown> & { children?: ReactNode }>(
+          ({ children, ...props }, ref) => {
+            const {
+              initial,
+              animate,
+              exit,
+              transition,
+              whileTap,
+              whileHover,
+              layout,
+              ...domProps
+            } = props
+            void initial
+            void animate
+            void exit
+            void transition
+            void whileTap
+            void whileHover
+            void layout
+            return React.createElement(tag, { ...domProps, ref }, children)
+          }
+        )
+    }
+  )
+  return { motion, AnimatePresence: ({ children }: { children: ReactNode }) => children }
+})
+
+import { StorageConfig } from '@renderer/components/settings/StorageConfig'
+import { fakeBridge } from '../renderer/fakeBridge'
+
+const RESTART_NOTICE = /restart required/i
+const FAILURE = /couldn't update the storage location/i
+
+// StorageConfig reads only storagePath; a non-empty value makes Reset render.
+const settings = { storagePath: '/home/tester/Birdbrain' } as BirdbrainSettings
+
+let chooseStoragePath: ReturnType<typeof vi.fn>
+let onUpdate: ReturnType<typeof vi.fn>
+
+beforeEach(() => {
+  chooseStoragePath = vi.fn(async () => '/home/tester/NewRoot')
+  onUpdate = vi.fn(async () => {})
+  fakeBridge({ settings: { chooseStoragePath } })
+})
+
+afterEach(() => {
+  cleanup()
+})
+
+function renderConfig() {
+  return render(<StorageConfig settings={settings} onUpdate={onUpdate} />)
+}
+
+describe('StorageConfig failure surfacing', () => {
+  it('surfaces a rejected persist from Browse and withholds the restart notice', async () => {
+    onUpdate.mockRejectedValue(new Error('EACCES: permission denied'))
+    renderConfig()
+
+    fireEvent.click(screen.getByText('Browse...'))
+
+    expect(await screen.findByText(FAILURE)).toBeTruthy()
+    expect(onUpdate).toHaveBeenCalledWith({ storagePath: '/home/tester/NewRoot' })
+    // The write never persisted, so a restart notice would advertise a change
+    // that did not happen.
+    expect(screen.queryByText(RESTART_NOTICE)).toBeNull()
+  })
+
+  it('surfaces a rejected persist from Reset and withholds the restart notice', async () => {
+    onUpdate.mockRejectedValue(new Error('disk I/O error'))
+    renderConfig()
+
+    fireEvent.click(screen.getByText('Reset'))
+
+    expect(await screen.findByText(FAILURE)).toBeTruthy()
+    expect(onUpdate).toHaveBeenCalledWith({ storagePath: '' })
+    expect(screen.queryByText(RESTART_NOTICE)).toBeNull()
+  })
+
+  it('surfaces a rejected folder dialog without attempting a write', async () => {
+    chooseStoragePath.mockRejectedValue(new Error('dialog host gone'))
+    renderConfig()
+
+    fireEvent.click(screen.getByText('Browse...'))
+
+    expect(await screen.findByText(FAILURE)).toBeTruthy()
+    expect(onUpdate).not.toHaveBeenCalled()
+    expect(screen.queryByText(RESTART_NOTICE)).toBeNull()
+  })
+
+  it('stays silent when the folder dialog is cancelled', async () => {
+    // null is the dialog's cancel signal, not an error — no message, no write.
+    chooseStoragePath.mockResolvedValue(null)
+    renderConfig()
+
+    fireEvent.click(screen.getByText('Browse...'))
+
+    await waitFor(() => expect(chooseStoragePath).toHaveBeenCalledOnce())
+    expect(onUpdate).not.toHaveBeenCalled()
+    expect(screen.queryByText(FAILURE)).toBeNull()
+    expect(screen.queryByText(RESTART_NOTICE)).toBeNull()
+  })
+
+  it('shows the restart notice after a successful save and clears a prior failure', async () => {
+    onUpdate.mockRejectedValueOnce(new Error('EACCES: permission denied'))
+    renderConfig()
+
+    fireEvent.click(screen.getByText('Browse...'))
+    expect(await screen.findByText(FAILURE)).toBeTruthy()
+
+    fireEvent.click(screen.getByText('Browse...'))
+
+    expect(await screen.findByText(RESTART_NOTICE)).toBeTruthy()
+    expect(screen.queryByText(FAILURE)).toBeNull()
+  })
+})

@@ -46,8 +46,32 @@ import { fakeBridge } from '../renderer/fakeBridge'
 const RESTART_NOTICE = /restart required/i
 const FAILURE = /couldn't update the storage location/i
 
-// StorageConfig reads only storagePath; a non-empty value makes Reset render.
-const settings = { storagePath: '/home/tester/Birdbrain' } as BirdbrainSettings
+// StorageConfig reads only storagePath (non-empty so Reset renders), but the
+// fixture is complete and checked with `satisfies` rather than cast, so a new
+// required field on BirdbrainSettings fails here instead of hiding.
+const settings = {
+  openRouterApiKey: null,
+  defaultModel: 'model-a',
+  captureScreenshots: true,
+  dedupeWindowSeconds: 5,
+  ignoredUrlPatterns: [],
+  storagePath: '/home/tester/Birdbrain',
+  theme: 'light',
+  reduceMotion: false,
+  operatorName: '',
+  operatorRole: '',
+  operatorOrganization: '',
+  tsaUrl: 'http://tsa.example.test',
+  autoCaptureMode: 'notify',
+  lastActiveCaseId: null,
+  lastActiveSection: 'overview',
+  hasCompletedOnboarding: true,
+  analysisSystemPrompt: '',
+  detailsPanelCollapsed: false,
+  tooltipsSeen: {},
+  releaseChannel: 'stable',
+  autoCheckForUpdates: false
+} satisfies BirdbrainSettings
 
 let chooseStoragePath: ReturnType<typeof vi.fn>
 let onUpdate: ReturnType<typeof vi.fn>

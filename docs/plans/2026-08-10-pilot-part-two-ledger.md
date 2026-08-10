@@ -56,8 +56,17 @@ Read left to right in the order the pre-passes were posted.
 
 **The last five** — #356, #357, #360, #364, #369:
 
-- Mergeable: **5 of 5.**
+- Merged: **5 of 5.**
 - At ≤1 pre-pass round: **0 of 5.** Rounds were 2, 2, 2, 2, 4.
+
+**"Merged" is a proxy for the bar's "mergeable", not the same field.** The API
+exposes both: `merged` is a settled historical fact, `mergeable` is a live
+computation against the current base branch that is `null` while GitHub is still
+working it out and is meaningless once a PR is closed. For a retrospective cohort
+of merged PRs, `mergeable` cannot be recovered — there is no observation time left
+to read it at. The proxy is sound in the safe direction: everything that merged
+was necessarily mergeable at the moment it merged. It would be unsound for a
+cohort containing open or closed-unmerged PRs; this one contains neither.
 
 **The bar is not met on this reading.** It requires 4 of 5; the result is 0 of 5.
 
@@ -154,8 +163,9 @@ the 0-of-5 result exactly.
 ```shell
 R=thebristolsound/birdbrain
 
-# 1. Cohort
-gh api --paginate "repos/$R/issues?state=all&labels=agent-pr&per_page=100"
+# 1. Cohort — note the pull_request filter; see below
+gh api --paginate "repos/$R/issues?state=all&labels=agent-pr&per_page=100" \
+  --jq '.[] | select(.pull_request != null) | .number'
 
 # 2. Per PR in the cohort
 gh api          "repos/$R/pulls/<n>"                          # merged, commits, changed_files
@@ -165,10 +175,18 @@ gh api --paginate "repos/$R/pulls/<n>/comments?per_page=100"    # diff review co
 gh api          "repos/$R/issues/<n>/labels"                  # evidence-affecting
 ```
 
-**Cohort and ordering.** Part two is every `agent-pr` PR whose `created_at` is
-later than #308's `closed_at` of `2026-08-02T22:04:34Z`. Order the table by PR
-number ascending; "the last five" means the five highest PR numbers, which for
-this cohort is also the five most recently created.
+**Cohort and ordering.** Part two is every `agent-pr` **pull request** whose
+`created_at` is later than #308's `closed_at` of `2026-08-02T22:04:34Z`.
+
+`/issues` returns issues *and* pull requests — GitHub models every PR as an issue,
+and they share one numbering space. Discard anything whose `pull_request` field is
+absent **before** applying the date filter or counting, or a labelled issue is
+counted as a cycle. The label is currently PR-only in this repo, so the filter is
+a no-op today; it is written down because nothing enforces that, and a single
+mislabelled issue would inflate the denominator with no visible symptom.
+
+Order the table by PR number ascending; "the last five" means the five highest PR
+numbers, which for this cohort is also the five most recently created.
 
 **What counts as a round.** One round is one comment on the *issue* timeline
 (`/issues/<n>/comments`) whose body contains the string `Reviewer pre-pass`.
@@ -189,6 +207,6 @@ are in use, `` (`ed0150c`) `` and `(93b9350)`, and a regex written for one
 silently undercounts the other. The verdicts for PR #364 were missed on the first
 pass for exactly that reason.
 
-**Bar arithmetic.** "Mergeable" is `.merged == true`. "≤1 review round" is a
-round count of 0 or 1 under the definition above. The bar asks for 4 of the last
-5 to satisfy both.
+**Bar arithmetic.** The bar's "mergeable" is read as `.merged == true`, for the
+reason given under the measurement above. "≤1 review round" is a round count of 0
+or 1 under the definition above. The bar asks for 4 of the last 5 to satisfy both.

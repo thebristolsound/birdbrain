@@ -37,18 +37,34 @@ define it, checked together:
 
 The slot is busy if either set is non-empty. The claim protocol, in order:
 
-1. **Comment first.** Post a claim comment on the chosen issue. Its GitHub `created_at` is the
-   claim's timestamp — server-assigned, totally ordered, not forgeable by a racing session.
-2. **Then label.** Apply `agent-wip` to the issue.
-3. **Then re-read and settle.** List open `agent-pr` PRs and open `agent-wip` issues again.
-   An open PR always wins over any claim. Between competing claims, the earliest claim
-   comment wins; ties (same second) break to the lower issue number. A loser removes its
-   label, posts a withdrawal comment, and exits the cycle.
+1. **Comment first.** Post a claim comment on the chosen issue. **The comment is the claim.**
+   Its GitHub `created_at` is the claim's timestamp and its comment `id` the final tie-break —
+   both server-assigned, totally ordered, not forgeable by a racing session.
+2. **Then label.** Apply `agent-wip` to the issue. The label is the claim's discoverable
+   index, not the claim itself — which is what makes a crash between steps 1 and 2
+   recoverable (below) rather than a hole.
+3. **Then re-read and settle.** List open `agent-pr` PRs and open `agent-wip` issues again,
+   and read the claim comments on every claimed issue — settling orders *comments*, so a
+   competitor's unlabelled claim still ranks. An open PR always wins over any claim. Between
+   competing claims, the earliest claim comment wins; ties (same second) break to the lower
+   comment `id`. A loser posts a withdrawal comment and exits the cycle. It removes the
+   `agent-wip` label **only when its claim sits on a different issue from the winner's**:
+   racing dispatchers normally pick the same lowest eligible issue, and there the single
+   label is the winner's marker — a loser stripping it would reopen the slot under the
+   winner.
 
 **Release points.** The claim converts or dies, never lingers: remove `agent-wip` when the
 draft PR opens (the `agent-pr` label takes over), or when the give-up path relabels the issue.
 A claim older than **4 hours** with no open agent PR is stale; any later cycle may clear it
 with a comment and proceed.
+
+**Crash between comment and label.** Every claim step runs before an implementer is spawned,
+so a dispatcher that dies inside that window leaves an orphan claim comment and no running
+work. The orphan is not invisible: a competitor settling on the same issue reads it at step 3,
+and a later cycle choosing that issue checks its recent comments for an unwithdrawn claim
+before posting its own — treating a fresh one exactly like a labelled claim and a stale one as
+clearable. Only a claim comment on an issue that has since left the frontier escapes both
+paths; it blocks nothing and ages out as timeline noise.
 
 **One writer per branch.** The #357 case is inside a single cycle, where no label helps, so it
 gets a discipline rule instead: during a cycle only the implementer pushes to the working
@@ -57,8 +73,10 @@ push fast-forwards the remote head it last saw; force-push is never used. A remo
 moved unexpectedly is a collision: stop and report, do not merge or overwrite it.
 
 This is advisory locking — GitHub offers no compare-and-swap, so two sessions can still race
-steps 1–2. The protocol makes the race *converge* (step 3 settles every interleaving to one
-winner, using timestamps neither party controls) rather than pretending to prevent it.
+steps 1–2. The protocol makes the race *converge* rather than pretending to prevent it: step 3
+settles every interleaving between parties that reach it to one winner, using identifiers
+(`created_at`, comment `id`) neither party controls; a party that crashes mid-protocol is
+covered by the staleness rule instead of the settle.
 
 ## Consequences
 

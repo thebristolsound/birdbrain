@@ -20,7 +20,7 @@ Edit the right-hand column to match the vocabulary you use.
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `evidence-affecting` | This issue is an Evidence-Affecting Change (see `CONTEXT.md`). Applied at triage; triggers the evidence gate in [ADR-0005](../adr/0005-unattended-agents-on-the-evidence-path.md). |
 | `agent-pr`           | PR-only label marking the strict-serial dispatch slot. Applied by the implementer to every agent-opened PR; the dispatch routine (`.claude/skills/dispatch/SKILL.md`) treats any open PR carrying it as the occupied slot. |
-| `agent-wip`          | Issue-only label claiming the dispatch slot for a cycle whose PR does not exist yet ([ADR-0006](../adr/0006-claim-the-dispatch-slot-at-dispatch-time.md)). Applied by the dispatch routine before it spawns an implementer; removed when the draft PR opens or the give-up path runs. A claim ≥4 hours old with no open agent PR is stale and may be cleared. |
+| `agent-wip`          | Issue-only label claiming the dispatch slot for a cycle whose PR does not exist yet ([ADR-0006](../adr/0006-claim-the-dispatch-slot-at-dispatch-time.md)). Applied by the dispatch routine before it spawns an implementer; removed when the draft PR opens or the give-up path runs. A claim older than 4 hours with no open agent PR is stale and may be cleared. |
 
 The `evidence-affecting` call is made by the human triaging the issue, not by the agent working
 it; the agent opening a PR for a labelled issue copies the label onto the PR. The label is the

@@ -63,11 +63,27 @@ gh api --paginate "repos/thebristolsound/birdbrain/issues?state=open&labels=agen
 - **Exactly one open `agent-pr` PR** → the PR is the slot. If an `agent-wip` claim is also
   open, its release step was missed: remove the label with a note, then classify the PR
   (section 2).
-- **No PR, one `agent-wip` claim** → read the claim comment's `created_at`. Younger than
-  4 hours: a cycle is in flight — report "slot claimed by #N, cycle in progress" and stop.
-  4 hours or older with no agent PR: the claim is stale — remove the label, comment that a
+- **No PR, one `agent-wip` claim** → read the claim comment's `created_at`. 4 hours old or
+  younger: a cycle is in flight — report "slot claimed by #N, cycle in progress" and stop.
+  Older than 4 hours with no agent PR: the claim is stale — remove the label, comment that a
   stale claim was cleared, and proceed to dispatch (section 3).
-- **No PR, no claim** → the slot is free; dispatch (section 3).
+- **No PR, no claim** → the slot is free. Before dispatching, run the **departed-slot hygiene
+  check** — closed PRs never appear in the open-PR query above, so this branch is the only
+  entry point ADR-0007's rule 4 and the give-up check have. Fetch the most recently created
+  closed `agent-pr` PR:
+
+  ```shell
+  gh api "repos/thebristolsound/birdbrain/issues?state=closed&labels=agent-pr&per_page=1&sort=created&direction=desc" \
+    --jq '[.[] | select(.pull_request) | .number]'
+  ```
+
+  If it merged and its final pre-pass verdict was `request changes`, verify an override
+  record per ADR-0007 exists (first line containing `Override record`, posted after that
+  verdict and at or before the merge, each finding dispositioned). If it closed without
+  merging, verify give-up hygiene: the linked issue carries a findings comment and a
+  `needs-info`/`ready-for-human` relabel. Report any gap in the end-of-cycle report —
+  report-only, and it re-fires every free-slot cycle until the record appears. Then dispatch
+  (section 3).
 
 ## 2. Occupied slot — classify and act
 
@@ -90,13 +106,8 @@ Fetch the PR's head commit time, reviews, review threads, and issue comments. Cl
   posting is the editorial pass; a subagent that posts directly has bypassed it, which is a
   reportable contract violation even when the content was fine. Then run the reviewer
   pre-pass (section 4).
-- **Closed without merge** → the slot is vacated. Verify give-up hygiene: the linked issue
-  must carry a findings comment and a `needs-info`/`ready-for-human` relabel; report any gap.
-  Then proceed to section 3 in this same cycle.
-- **Merged** → slot free. Verify override hygiene first (ADR-0007): if the PR's final pre-pass
-  verdict was `request changes`, an override comment must exist at or before the merge,
-  dispositioning each outstanding finding as disputed-with-reason or deferred-to-a-linked-
-  issue. Report any gap — report only; the merge stands. Then proceed to section 3.
+(Closed and merged PRs never reach this section — an open-PR query cannot return them; their
+hygiene checks run from section 1's free-slot branch.)
 
 ## 3. Free slot — dispatch the oldest eligible issue
 
@@ -114,14 +125,24 @@ empty" and stop.
 
 **Claim the slot before spawning anything** (ADR-0006). In this order:
 
+0. Check the chosen issue's recent comments for an existing claim the label query missed —
+   a crash between comment and label leaves exactly this: a claim comment with no withdrawal
+   after it and no open agent PR. 4 hours old or younger → the slot is claimed; report
+   "slot claimed by #N, cycle in progress" and stop. Older → note it as stale and continue.
 1. Post a claim comment on the chosen issue with `mcp__github__add_issue_comment` — e.g.
-   "Dispatch slot claimed for this issue; a cycle is starting." Its server-assigned
-   `created_at` is the claim's timestamp and the tie-break authority.
-2. Apply the `agent-wip` label with `mcp__github__issue_write`.
-3. Re-read both marker sets (the section 1 queries). An open `agent-pr` PR always beats any
-   claim. Between competing claims, the earliest claim comment wins; a same-second tie breaks
-   to the lower issue number. If you lost: remove your `agent-wip` label, post a one-line
-   withdrawal comment, and stop the cycle.
+   "Dispatch slot claimed for this issue; a cycle is starting." **The comment is the claim**
+   (ADR-0006): its server-assigned `created_at` is the claim's timestamp and its comment `id`
+   the final tie-break.
+2. Apply the `agent-wip` label with `mcp__github__issue_write`. The label is the claim's
+   discoverable index, not the claim itself.
+3. Re-read both marker sets (the section 1 queries) **and the claim comments on every claimed
+   issue** — settling orders comments, so a competitor's unlabelled claim still ranks. An open
+   `agent-pr` PR always beats any claim. Between competing claims, the earliest claim comment
+   wins; a same-second tie breaks to the lower comment `id`. If you lost: post a one-line
+   withdrawal comment and stop the cycle. Remove your `agent-wip` label **only if your claim
+   is on a different issue from the winner's** — when both claims sit on the same issue (the
+   usual race: two dispatchers picking the same lowest eligible issue), the label is now the
+   winner's marker; leave it in place.
 
 Only after the claim settles in your favour, dispatch `birdbrain-implementer` with that issue
 number and worktree isolation. The

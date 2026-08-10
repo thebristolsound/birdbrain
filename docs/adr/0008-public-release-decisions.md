@@ -38,8 +38,9 @@ the no-reply address.
 
 **Outcome.** Remediate. The addresses are the maintainer's personal contact points
 and publishing them permanently is a concrete, avoidable harm; a pre-publication
-rewrite is the only moment this can ever be fixed, because after cutover the
-history is irrevocably disclosed.
+rewrite is the only reliable opportunity to prevent public disclosure — after
+cutover, removal depends on GitHub's sensitive-data removal process and cannot
+reach clones, forks, or caches already made.
 
 **Revisit trigger.** If the rewrite cannot be completed and verified inside the
 pre-cutover freeze window (#270's runbook), the fallback is to *postpone cutover*,
@@ -101,15 +102,18 @@ repository in that state?
 - *Source-only*: no artifacts until signing and notarization exist.
 
 **Outcome.** Accept, pre-release label only. Intended audience: investigators,
-researchers, and technically comfortable users who either build from source or
-knowingly accept OS trust warnings. Warning posture: the limitation stays stated
-in `SECURITY.md`, the README, and every release note, and every release is marked
-**pre-release** on GitHub so the releases page itself signals non-production
-status. No release is promoted to a full release while artifacts are unsigned.
+activists, and researchers. Birdbrain remains beta software; users either build
+from source or knowingly accept OS trust warnings. Warning posture: the
+limitation stays stated in `SECURITY.md`, the README, and every release note,
+and every release is marked **pre-release** on GitHub so the releases page
+itself signals non-production status. No release is promoted to a full release
+while artifacts are unsigned.
 
-**Revisit trigger.** Acquisition of a code-signing certificate and macOS
-notarization capability; at that point signed releases may be promoted to full
-releases and this restriction is lifted.
+**Revisit trigger.** A release process that signs every artifact and notarizes
+macOS builds, with both verified on the release's actual output — acquiring a
+certificate or notarization capability alone does not qualify. Only after that
+verification may releases be promoted to full releases and this restriction be
+lifted.
 
 ## Decision 4 — Contribution posture and inbound licensing: inbound = outbound MIT
 
@@ -164,7 +168,7 @@ redacted version as a reference for other projects.
 
 ## What this unblocks
 
-#262 closes on this record. That unblocks #268 (contributor intake, Decision 4)
+Closing #262 on this record unblocks #268 (contributor intake, Decision 4)
 immediately, and gives #269 (history findings) and #270 (cutover runbook) the
 decision inputs they were waiting on. The cutover itself (#271) still requires
-#263, #264, #265, #269, and #270 to close first.
+issues #263, #264, #265, #269, and #270 to close first.

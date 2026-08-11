@@ -12,15 +12,39 @@ exactly one cycle of the state machine below, then reports and stops. Repo:
 
 ## GitHub access — read this before running any command
 
-In Claude Code on the web, **only `gh api` REST works**. Every `gh` porcelain command
-(`gh pr`, `gh issue`, `gh label`) is GraphQL-backed and returns 403, because the session proxy
-serves only a pinned set of PR-review GraphQL operations. Writes — opening PRs, applying
-labels, posting comments — go through the GitHub MCP tools. Full map, including the endpoints
-that are 403 for the `GH_TOKEN` identity (check-runs, commit statuses) and the ones that
-return `[]` (the `pulls` list endpoint), is in `docs/agents/github-access.md`.
+**The write path depends on where this session runs.** Decide once, at the top of the cycle,
+and do not assume: a session that guesses wrong hits a dead end at its first write, which is
+what happened on 2026-08-10.
 
-`.claude/hooks/session-start.sh` installs `gh` and pins Node 20; if `gh` is missing or `node`
-reports v22, the hook did not run and everything below is unreliable.
+```
+gh issue list --repo thebristolsound/birdbrain --limit 1 >/dev/null 2>&1 \
+  && echo "LOCAL — gh porcelain works, use gh for reads and writes" \
+  || echo "WEB — gh api REST for reads, GitHub MCP tools for writes"
+```
+
+- **Local (WSL/desktop)** — the machine's own `gh` token carries full `repo` scope with no
+  proxy in front of it, so everything works: porcelain (`gh pr create`, `gh issue edit`,
+  `gh label`) and `gh api` writes alike. There is **no GitHub MCP server configured locally**,
+  so the `mcp__github__*` tools named below simply will not exist. Use `gh`.
+- **Claude Code on the web** — **only `gh api` REST works**. Every porcelain command
+  (`gh pr`, `gh issue`, `gh label`) is GraphQL-backed and returns 403, because the session
+  proxy serves only a pinned set of PR-review GraphQL operations. Writes — opening PRs,
+  applying labels, posting comments — go through the GitHub MCP tools.
+
+Full map, including the endpoints that are 403 for the `GH_TOKEN` identity (check-runs, commit
+statuses) and the ones that return `[]` (the `pulls` list endpoint), is in
+`docs/agents/github-access.md`. Below, **"the write path"** means whichever of the two the
+probe selected.
+
+`.claude/hooks/session-start.sh` installs `gh` and pins Node 20, but **only on the web** — it
+exits immediately unless `CLAUDE_CODE_REMOTE=true`, by design. So:
+
+- **On the web**, if `gh` is missing or `node` reports v22, the hook did not run and everything
+  below is unreliable.
+- **Locally**, nothing pins Node for a non-interactive shell: `.mise.toml` pins 20 but mise
+  does not auto-activate, so `node -v` commonly reports 24, which silently breaks Electron.
+  Check it, and if it is not 20.x, instruct the implementer to prefix every verification
+  command with `mise exec --` (`mise exec -- pnpm lint`, and so on).
 
 ## Session rules
 
@@ -101,11 +125,12 @@ Fetch the PR's head commit time, reviews, review threads, and issue comments. Cl
   its contract, then pushes. It **must not** post its replies — the REST comment endpoints do
   technically work from a subagent, and the part-two ledger (finding 2) recorded exactly that
   happening — it returns them as text keyed to the comment or thread ids they answer, and
-  **you** post them with `mcp__github__add_issue_comment` (or
-  `add_reply_to_pull_request_comment` for an inline thread). Your read of that text before
-  posting is the editorial pass; a subagent that posts directly has bypassed it, which is a
-  reportable contract violation even when the content was fine. Then run the reviewer
-  pre-pass (section 4).
+  **you** post them via the write path (locally `gh api .../issues/<n>/comments -X POST
+  --input <file>`, or `.../pulls/<n>/comments/<id>/replies` for an inline thread; on the web
+  `mcp__github__add_issue_comment` or `add_reply_to_pull_request_comment`). Your read of that
+  text before posting is the editorial pass; a subagent that posts directly has bypassed it,
+  which is a reportable contract violation even when the content was fine. Then run the
+  reviewer pre-pass (section 4).
 (Closed and merged PRs never reach this section — an open-PR query cannot return them; their
 hygiene checks run from section 1's free-slot branch.)
 
@@ -123,18 +148,39 @@ gh api repos/thebristolsound/birdbrain/issues/<n>/dependencies/blocked_by   # sk
 Pick the **lowest issue number** among eligible issues. If none are eligible, report "frontier
 empty" and stop.
 
+**Then check the candidate is not already done — before claiming.** A `ready-for-agent` label
+on an issue whose work already merged is indistinguishable from real work, and costs a full
+cycle: on 2026-08-10 the routine dispatched #268, whose PR #375 had merged two hours earlier.
+Two causes compound. A merging PR only auto-closes its issue when the body says `Closes #N` —
+`Implements #N` leaves the issue open with its label intact; and a label removed after a merge
+can be re-added later, as #268's was.
+
+```
+gh api --paginate "repos/thebristolsound/birdbrain/issues/<n>/timeline?per_page=100" \
+  --jq '[.[] | select(.event=="cross-referenced") | .source.issue.number]'
+```
+
+For each cross-referencing number, check whether it is a merged PR
+(`gh api repos/thebristolsound/birdbrain/pulls/<x> --jq '{merged,merged_at}'`; a 404 means it
+is an issue, not a PR). If one merged, **do not claim and do not dispatch**: verify the
+acceptance criteria against the files on `main` yourself, then take the issue off the frontier
+the same way as the give-up path below — post a comment saying what merged and what you
+checked, remove `ready-for-agent`, and apply `ready-for-human` so a human closes it. Report it
+as a misdispatch, naming who re-added the label and when, since a repeat means something
+upstream is putting it back.
+
 **Claim the slot before spawning anything** (ADR-0006). In this order:
 
 0. Check the chosen issue's recent comments for an existing claim the label query missed —
    a crash between comment and label leaves exactly this: a claim comment with no withdrawal
    after it and no open agent PR. 4 hours old or younger → the slot is claimed; report
    "slot claimed by #N, cycle in progress" and stop. Older → note it as stale and continue.
-1. Post a claim comment on the chosen issue with `mcp__github__add_issue_comment` — e.g.
-   "Dispatch slot claimed for this issue; a cycle is starting." **The comment is the claim**
-   (ADR-0006): its server-assigned `created_at` is the claim's timestamp and its comment `id`
-   the final tie-break.
-2. Apply the `agent-wip` label with `mcp__github__issue_write`. The label is the claim's
-   discoverable index, not the claim itself.
+1. Post a claim comment on the chosen issue via the write path — e.g. "Dispatch slot claimed
+   for this issue; a cycle is starting." **The comment is the claim** (ADR-0006): its
+   server-assigned `created_at` is the claim's timestamp and its comment `id` the final
+   tie-break.
+2. Apply the `agent-wip` label via the write path. The label is the claim's discoverable
+   index, not the claim itself.
 3. Re-read both marker sets (the section 1 queries) **and the claim comments on every claimed
    issue** — settling orders comments, so a competitor's unlabelled claim still ranks. An open
    `agent-pr` PR always beats any claim. Between competing claims, the earliest claim comment
@@ -150,12 +196,19 @@ implementer owns everything downstream of intake: the ready-for-agent bar check,
 implementation, the verify loop, and the evidence gate (label determination, Evidence impact
 section, known-answer test).
 
-**You open the PR, not the implementer.** A subagent's tool list has no GitHub MCP tools, and
-`gh pr create`/`gh pr edit` are GraphQL-backed and 403 here — so the implementer cannot open a
-PR or apply a label (`docs/agents/github-access.md`). It pushes its branch and returns the PR
-title, head sha, a path to the PR body it wrote, and the labels it determined are required.
-You open the **draft** PR against `main` with `mcp__github__create_pull_request` and apply the
-labels with `mcp__github__issue_write`, then confirm they landed
+**You open the PR, not the implementer.** This is a control, not merely a capability limit:
+PR opening and labelling stay with the dispatcher so one place owns what enters the slot. (On
+the web it is also a hard limit — a subagent's tool list has no GitHub MCP tools and
+`gh pr create` is 403 there; see `docs/agents/github-access.md`.) The implementer pushes its
+branch and returns the PR title, head sha, a path to the PR body it wrote, and the labels it
+determined are required. **You** open the **draft** PR against `main` and apply the labels via
+the write path:
+
+- Locally: `gh pr create --draft --base main --head <branch> --title <title> --body-file
+  <path>`, then `gh issue edit <n> --add-label agent-pr`.
+- On the web: `mcp__github__create_pull_request`, then `mcp__github__issue_write`.
+
+Either way, confirm they landed
 (`gh api repos/thebristolsound/birdbrain/issues/<n>/labels --jq '[.[].name]'`). **Then release
 the claim**: remove `agent-wip` from the issue — the `agent-pr` label on the PR is the slot
 marker from here on. A claim that outlives its PR-open is the leftover state section 1 has to
@@ -166,13 +219,17 @@ gate fired. If the implementer's label determination looks wrong, say so in your
 not silently substitute your own judgement for its stated reasoning.
 
 **The give-up path needs you too.** The implementer cannot comment or relabel, so it returns
-its blockers as text and stops. You post them to the issue with
-`mcp__github__add_issue_comment`, swap `ready-for-agent` to `needs-info` (or
-`ready-for-human`), and remove `agent-wip` — all with `mcp__github__issue_write`. A give-up
-that leaves the claim in place stalls dispatch for 4 hours for nothing, and one that leaves
-the issue otherwise unchanged
-is indistinguishable from an agent that silently vanished, which is the failure ADR-0005's
-give-up path exists to prevent. Then report what it found and stop: the slot stays vacant
+its blockers as text and stops. Via the write path, you post them to the issue, swap
+`ready-for-agent` to `needs-info` (or `ready-for-human`), and remove `agent-wip`:
+
+- Locally: `gh issue comment <n> --body-file <path>`, then `gh issue edit <n>` with
+  `--remove-label ready-for-agent --remove-label agent-wip --add-label ready-for-human`.
+- On the web: `mcp__github__add_issue_comment` and `mcp__github__issue_write`.
+
+A give-up that leaves the claim in place stalls dispatch for 4 hours for nothing, and one that
+leaves the issue otherwise unchanged is indistinguishable from an agent that silently
+vanished, which is the failure ADR-0005's give-up path exists to prevent. Then report what it
+found and stop: the slot stays vacant
 until the next trigger, and you do not dispatch a second issue in the same cycle.
 
 ## 4. Reviewer pre-pass — after every agent push
@@ -180,8 +237,8 @@ until the next trigger, and you do not dispatch a second issue in the same cycle
 Run `birdbrain-reviewer` on the PR after you open it and after every feedback-response push.
 Skip only if the current head commit already has a pre-pass comment.
 
-Post the reviewer's report as a **PR comment** (self-reviews are impossible on own-account
-PRs, so a formal review is not an option), formatted:
+Post the reviewer's report as a **PR comment** via the write path (self-reviews are impossible
+on own-account PRs, so a formal review is not an option), formatted:
 
 ```
 **Reviewer pre-pass (<head-sha>): <verdict>**

@@ -63,9 +63,10 @@ Three gotchas:
   (`Resource not accessible by integration`). Read CI state through the GitHub MCP
   tools instead, which use a different token.
 
-**Writing** — use the GitHub MCP tools, not `gh`. Opening a PR, applying labels, and
-posting comments all go through `mcp__github__create_pull_request`,
-`mcp__github__issue_write`, and `mcp__github__add_issue_comment`.
+**Writing** — *on the web*, use the GitHub MCP tools, not `gh`. Opening a PR, applying
+labels, and posting comments all go through `mcp__github__create_pull_request`,
+`mcp__github__issue_write`, and `mcp__github__add_issue_comment`. This rule is
+environment-specific and inverts locally — see "Local machines" below before applying it.
 
 **The diff** — read it from git, which is not proxied the same way:
 
@@ -99,3 +100,22 @@ attach labels atomically even where it does work — `CreatePullRequestInput` ha
 None of this applies outside Claude Code on the web. The session-start hook exits
 immediately unless `CLAUDE_CODE_REMOTE=true`, and a local `gh` install talks to GitHub
 directly with no proxy in between, so the porcelain commands work normally.
+
+**The inverse also holds: locally there are no GitHub MCP tools.** The `mcp__github__*`
+tools are provisioned by the web sandbox, not by any config in this repo or in
+`~/.claude.json`, so a local session that follows a "writes go through MCP" instruction
+finds the tools missing. Use `gh` for both reads and writes locally — the local token
+carries full `repo` scope, so `gh pr create`, `gh issue comment`, and
+`gh issue edit --add-label` all work, and there is nothing MCP would add.
+
+A routine that can run in either place must therefore **probe rather than assume**:
+
+```bash
+gh issue list --repo thebristolsound/birdbrain --limit 1 >/dev/null 2>&1 \
+  && echo "LOCAL — gh for reads and writes" \
+  || echo "WEB — gh api REST for reads, GitHub MCP for writes"
+```
+
+The dispatch skill (`.claude/skills/dispatch/SKILL.md`) does this at the top of every
+cycle. It was added after a 2026-08-10 local run stated the web rule unconditionally and
+dead-ended at its first write.

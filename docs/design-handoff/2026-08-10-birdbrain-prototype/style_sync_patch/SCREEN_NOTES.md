@@ -1,5 +1,9 @@
 # Screen notes
 
+**NOTE: These notes are superseded.** The primitive patch described in
+`DESIGN_SYSTEM_PATCH.md` was rejected in favor of the later standardization
+documented in the bundle's top-level `README.md` and `SESSION_HISTORY.md`.
+
 Per-screen residue after the primitive patch lands. Repo paths are the ones the
 prototype was rebuilt from.
 

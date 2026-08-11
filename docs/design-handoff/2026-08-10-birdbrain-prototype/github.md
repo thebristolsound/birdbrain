@@ -27,7 +27,7 @@ tree: 37dbf57cd7a0
 - Audited Dashboard and Captures against upstream — match confirmed; user declined pulling ProvenanceBadge / ForensicsTab / AnalysisTab (Captures stays as-is per the standing revert note)
 
 ### 2026-08-07T16:26:30Z
-- Produced `design_handoff_style_sync/` — the prototype's styling pass expressed as an apply-ready patch for `globals.css` and `components/ui/*`
+- Produced `style_sync_patch/` — the prototype's styling pass expressed as an apply-ready patch for `globals.css` and `components/ui/*`
 - Measured the delta against upstream primitives: radius scale (4/6/8/12/16, `--radius-2xl` 12px→16px), control sizes standardized to 32/28px, `Button` `sm` text 14px→12px, status-surface tokens, recessed inputs, new `SectionLabel` + `CardPanel`
 - No repo writes: patch is delivered as documentation for a developer to apply
 
@@ -37,6 +37,7 @@ tree: 37dbf57cd7a0
 - Copied logo + extension icon assets from the repo
 
 ## Screen map
+
 | Screen | Repo files |
 |---|---|
 | App shell / TopBar / Sidebar | src/renderer/routes/__root.tsx, src/renderer/components/layout/TopBar.tsx, src/renderer/components/layout/Sidebar.tsx, src/renderer/styles/globals.css |

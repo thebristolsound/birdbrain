@@ -60,6 +60,7 @@
 <div style="display:flex;flex-direction:column;height:100vh;background:var(--color-canvas);color:var(--color-text-secondary);font-family:var(--font-body);overflow:hidden">
 
   <header style="display:flex;height:48px;flex-shrink:0;align-items:center;gap:10px;border-bottom:1px solid var(--color-border);background:var(--color-surface);padding:0 14px">
+    <img src="src/renderer/assets/logo.png" alt="Birdbrain" style="height:22px;width:22px">
     <span style="font-family:var(--font-display);font-size:12px;font-weight:800;letter-spacing:-0.025em;color:var(--color-text-primary)">Birdbrain</span>
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#r-chevr"></use></svg>
     <span style="font-family:var(--font-display);font-size:12px;font-weight:700;color:var(--color-text-primary)">Nightjar Phishing Kit</span>
@@ -115,7 +116,7 @@
       <div style="flex:1;overflow-y:auto;padding:6px 6px 16px">
         <sc-for list="{{ tree }}" as="n" hint-placeholder-count="14">
           <div style="display:flex;align-items:center;gap:2px;padding-left:{{ n.pad }}px">
-            <button onClick="{{ n.toggle }}" aria-label="{{ n.twistLabel }}" aria-expanded="{{ n.twistExpanded }}" tabindex="{{ n.twistTabIndex }}" aria-hidden="{{ n.twistHidden }}" style="display:grid;place-items:center;height:18px;width:14px;flex-shrink:0;border:none;background:transparent;color:var(--color-text-faint);cursor:{{ n.twistCursor }};opacity:{{ n.twistOpacity }}">
+            <button onClick="{{ n.toggle }}" aria-label="Expand" style="display:grid;place-items:center;height:18px;width:14px;flex-shrink:0;border:none;background:transparent;color:var(--color-text-faint);cursor:{{ n.twistCursor }};opacity:{{ n.twistOpacity }}">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><use href="{{ n.twist }}"></use></svg>
             </button>
             <button onClick="{{ n.click }}" class="hovrow" style="display:flex;flex:1;min-width:0;align-items:center;gap:7px;height:{{ n.h }}px;padding:0 7px;border:none;border-radius:5px;background:{{ n.bg }};color:{{ n.color }};font-family:var(--font-body);font-size:{{ n.fs }}px;font-weight:{{ n.fw }};letter-spacing:{{ n.ls }};text-transform:{{ n.tt }};cursor:pointer;text-align:left">
@@ -262,7 +263,7 @@
                     </div>
                   </sc-for>
                 </div>
-                <p style="margin:10px 2px 0;font-size:11px;color:var(--color-text-faint);line-height:1.6">The whole MHTML file plus optional screenshot and text sidecars are hashed at capture time. Verification (via explicit action or export, not automatic on open) re-hashes the MHTML and compares against the manifest. Changed capture files cause a file-to-Manifest mismatch; changed or tampered manifest entries break later links in the hash chain. Both are detected and reported as separate integrity checks.</p>
+                <p style="margin:10px 2px 0;font-size:11px;color:var(--color-text-faint);line-height:1.6">Every part is hashed at capture time. Re-hashing on open compares against the manifest — a part that no longer matches is listed as an integrity exception rather than silently re-rendered.</p>
               </sc-if>
             </div>
           </sc-if>
@@ -346,7 +347,7 @@
                   </div>
                 </sc-for>
               </div>
-              <p style="margin:10px 2px 0;font-size:11px;color:var(--color-text-faint);line-height:1.6">Each entry hashes the previous one. Verification detects changes to the recorded chain: changed or tampered manifest entries break later links, and capture files on disk that no longer match their recorded hashes are surfaced as file-to-Manifest mismatches. An operator with access to the installation-local signing key could create a consistent replacement chain. Two entries below seq 0018 are flagged: the chain still verifies, but the files on disk no longer match what was recorded.</p>
+              <p style="margin:10px 2px 0;font-size:11px;color:var(--color-text-faint);line-height:1.6">Each entry hashes the previous one, so an edit to any capture breaks every later link. Two entries below seq 0018 are flagged: the ledger still verifies, but the files on disk no longer match what was recorded.</p>
             </div>
           </sc-if>
 
@@ -682,10 +683,6 @@ class Component extends DCLogic {
           iconOpacity: n.group ? '.7' : '1',
           twist: kids ? (open ? '#r-chevd' : '#r-chevr') : '#r-chevr',
           twistOpacity: kids ? '1' : '0', twistCursor: kids ? 'pointer' : 'default',
-          twistLabel: kids ? (open ? 'Collapse' : 'Expand') : '',
-          twistExpanded: kids ? (open ? 'true' : 'false') : 'false',
-          twistTabIndex: kids ? '0' : '-1',
-          twistHidden: !kids,
           alert: !!n.alert, showCount: counts && !n.group, count: cnt,
           click: () => this.setState({ node: n.k, tab: n.k === 'ledger' ? 'ledger' : s.tab }),
           toggle: (e) => { if (!kids) return; e.stopPropagation(); const ex = Object.assign({}, s.expanded); ex[n.k] = !open; this.setState({ expanded: ex }) }

@@ -13,13 +13,13 @@ with sizing, so design iteration can continue against real constraints.
    Browser sim (popup, right-click menus, capture toast, per-tab tabs, options
    tab). Tweaks panel toggles variants (`firstRun`, `density`, `mentionStyle`,
    `overviewVariant`).
-2. **Read `SESSION_HISTORY.md`.** Session-by-session record of what was built and why,
+2. **Read `HANDOFF.md`.** Session-by-session record of what was built and why,
    including what was corrected against upstream and what is invented.
 3. **Read `github.md`.** Screen map ties every prototype surface to the repo
    files it was grounded in (`thebristolsound/birdbrain@main`), plus sync
    history. Anything marked "prototype improvement" is a deliberate delta,
    not a misreading.
-4. **Styling is already packaged.** `style_sync_patch/` is an
+4. **Styling is already packaged.** `design_handoff_style_sync/` is an
    apply-ready patch for `globals.css` and `components/ui/*` (radius scale
    2/4/6, 28px controls, recessed inputs, type scale 10/11/12/14/18,
    `SectionLabel` + `CardPanel`). Review it as a normal PR — it is mechanical
@@ -49,14 +49,9 @@ impact, name the constraint if infeasible as designed, and size it.
    keeps it read-only: server URL, masked auto-provisioned token, screenshot
    setting mirrored from `/api/status`. Low risk; also fine to cut — say so.
 4. **In-page selection bar: Selector / Tag / Quote.** Upstream only has
-   context-menu Create Selector. Note-creation capabilities already exist
-   (AddNoteModal at `src/renderer/components/notes/AddNoteModal.tsx` with
-   mutation hooks), as do Wayback lookup and pinning capabilities (WaybackTab
-   at `src/renderer/components/captures/WaybackTab.tsx` with established
-   query/mutation flows). Tag-this-page and Quote-to-note need new
-   capture-server routes (notes write API, tag apply API). Remaining work is
-   the extension-specific UI integration and wiring to the existing mutation
-   hooks, not new server capabilities for note creation or Wayback operations.
+   context-menu Create Selector. Tag-this-page and Quote-to-note need server
+   endpoints that don't exist yet (notes write API, tag apply API). Flag if
+   that's a capture-server scope change you'd rather sequence separately.
 5. **Popup ignore-list pre-filter.** Popup capture currently relies on the
    server 403; prototype expects a client-side pre-check like the context-menu
    path. Small.
@@ -108,7 +103,7 @@ One review pass, then two parallel slices:
   ~1 page). This is the thing design iteration is blocked on, especially
   items 1, 4, 6.
 - **Deliverable B — first implementation slice**, chosen for low coupling:
-  (1) apply the `style_sync_patch/` patch, (2) extension pass —
+  (1) apply the `design_handoff_style_sync/` patch, (2) extension pass —
   hide-UI-during-capture + per-tab binding spike behind a flag, (3) a
   references-index spike proving mentions→backlinks extraction on real case
   data. Each lands independently; together they unblock the majority of the

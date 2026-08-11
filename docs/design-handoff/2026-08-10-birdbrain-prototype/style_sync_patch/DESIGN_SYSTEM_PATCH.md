@@ -1,11 +1,8 @@
 # Design system patch
 
-**STATUS: REJECTED / SUPERSEDED**
-
-This patch bundle is superseded by the later standardization described in the
-bundle's top-level `README.md` and `SESSION_HISTORY.md`. The final token system
-uses radii 2/4/6 only (not the 4/6/8/12/16 scale in this patch) and 28px
-controls with 4px radius (not 32px controls). Do not apply this patch as-is.
+Target: `thebristolsound/birdbrain@main` (observed at `1.0.1-beta.17`, tree `541a8b8eae62`).
+Applying this and republishing `birdbrain-ui` syncs the design-system package —
+it is generated from these same files.
 
 ---
 

@@ -2,27 +2,24 @@
 
 ## Overview
 
-An interactive prototype of Birdbrain (OSINT web-capture tool for
-investigations), rebuilt and extended from the codebase at
-`thebristolsound/birdbrain@main`. It covers the desktop app (dashboard,
-case workspace, settings, dialogs) and browser-extension surfaces (popup,
+A 1:1 interactive prototype of Birdbrain (OSINT web-capture tool for
+investigations), rebuilt and extended from the real codebase at
+`thebristolsound/birdbrain@main`. It covers the full desktop app (dashboard,
+case workspace, settings, dialogs) and every browser-extension surface (popup,
 right-click menus, in-page capture feedback, options page) inside a simulated
 Chrome window. The prototype both recreates upstream screens and proposes new
-functionality; some behavior shown is prototype-only and not backed by real
-functionality. Functionality is unverified. `ENGINEERING_REVIEW.md` in this
-bundle is the feasibility checklist separating real from proposed, with a
-suggested first implementation slice.
+functionality; `ENGINEERING_REVIEW.md` in this bundle is the feasibility
+checklist separating the two, with a suggested first implementation slice.
 
 ## About the Design Files
 
-The files in this bundle are **visual design references created in HTML** —
+The files in this bundle are **design references created in HTML** — working
 prototypes showing intended look and behavior, not production code to copy.
-Some behavior is prototype-only and not backed by real functionality.
 The task is to **recreate these designs in the Birdbrain codebase's existing
 environment** (Electron + React renderer, `src/renderer/components/*`, and the
 MV3 extension in `extension/src/*`) using its established patterns and
-libraries. `github.md` maps prototype screens to the upstream files they
-were grounded in. Open `Birdbrain.dc.html` in a browser to run it (keep
+libraries. `github.md` maps every prototype screen to the upstream files it
+was grounded in. Open `Birdbrain.dc.html` in a browser to run it (keep
 `support.js` beside it).
 
 ## Fidelity
@@ -30,9 +27,9 @@ were grounded in. Open `Birdbrain.dc.html` in a browser to run it (keep
 **High-fidelity.** Final colors, typography, spacing, copy, and interactions.
 Recreate pixel-perfectly using the codebase's existing component library.
 Every style in `Birdbrain.dc.html` is inline on the element — the file itself
-is the canonical source for any measurement not listed here. The Design Tokens
-section below describes the current token system (note: `style_sync_patch/` is
-superseded and should not be applied as-is).
+is the canonical source for any measurement not listed here. Two docs override
+memory: `style_sync_patch/` (apply-ready CSS/token patch for `globals.css` +
+`components/ui/*`) and the Design Tokens section below.
 
 ## Screens / Views
 

@@ -1140,11 +1140,6 @@
   }
 
   // src/cdn.ts
-  // NOTE: This prototype currently loads React 18.3.1 UMD builds and Babel 7.29.0 from
-  // unpkg.com at runtime and requires network access. React 18.3.1 UMD builds are used
-  // intentionally as a prototype-only shim because the project's actual React version
-  // (19.2.7) has no UMD build. Vendoring these assets locally would make the prototype
-  // work fully offline (documented as a known follow-up, not implemented here).
   var REACT_URL = "https://unpkg.com/react@18.3.1/umd/react.production.min.js";
   var REACT_SRI = "sha384-DGyLxAyjq0f9SPpVevD6IgztCFlnMF6oW/XQGmfe+IsZ8TqEiDrcHkMLKI6fiB/Z";
   var REACT_DOM_URL = "https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js";

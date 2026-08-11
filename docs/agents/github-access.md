@@ -104,18 +104,41 @@ directly with no proxy in between, so the porcelain commands work normally.
 **The inverse also holds: locally there are no GitHub MCP tools.** The `mcp__github__*`
 tools are provisioned by the web sandbox, not by any config in this repo or in
 `~/.claude.json`, so a local session that follows a "writes go through MCP" instruction
-finds the tools missing. Use `gh` for both reads and writes locally — the local token
-carries full `repo` scope, so `gh pr create`, `gh issue comment`, and
-`gh issue edit --add-label` all work, and there is nothing MCP would add.
-
-A routine that can run in either place must therefore **probe rather than assume**:
+finds the tools missing. So locally `gh` is the only write mechanism there is — but only
+to the extent the **authenticated identity is actually authorized**. A working local `gh`
+does not by itself imply a token with `repo` scope: PR creation, issue comments, and label
+updates are each separately permissioned, and a read-only or finely-scoped token will list
+issues happily and then fail the first write. Check the identity and its scopes rather than
+inferring them:
 
 ```bash
-gh issue list --repo thebristolsound/birdbrain --limit 1 >/dev/null 2>&1 \
-  && echo "LOCAL — gh for reads and writes" \
-  || echo "WEB — gh api REST for reads, GitHub MCP for writes"
+gh auth status   # reports the active account and the token's scopes
 ```
 
-The dispatch skill (`.claude/skills/dispatch/SKILL.md`) does this at the top of every
+`repo` scope on an account with write access to the repository covers everything the
+dispatch routine does. Anything less, and the routine must stop and report rather than
+half-complete a cycle — there is no MCP fallback locally.
+
+A routine that can run in either place must therefore **probe rather than assume**. The
+probe has **three** outcomes, not two: a non-zero exit means "not the local case", which is
+not the same as "web". A local network outage, an expired token, or a mistyped repository
+all exit non-zero, and treating those as web sends the routine to MCP tools that do not
+exist there:
+
+```bash
+err="$(gh issue list --repo thebristolsound/birdbrain --limit 1 2>&1 >/dev/null)"
+case $?:$err in
+  0:*)                                  echo "LOCAL — gh for reads and writes" ;;
+  *:*"not enabled for this session"*)   echo "WEB — gh api REST for reads, GitHub MCP for writes" ;;
+  *)                                    echo "INDETERMINATE — stop and report: $err" ;;
+esac
+```
+
+Only the pinned-GraphQL 403 documented above identifies a web session; everything else is
+indeterminate. `CLAUDE_CODE_REMOTE=true` corroborates the web case (it is what the
+session-start hook keys off) but is not a substitute for the probe — it says where the
+session runs, not whether GitHub is reachable from it.
+
+The dispatch skill (`.claude/skills/dispatch/SKILL.md`) runs this at the top of every
 cycle. It was added after a 2026-08-10 local run stated the web rule unconditionally and
 dead-ended at its first write.

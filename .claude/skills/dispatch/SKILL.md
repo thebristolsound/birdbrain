@@ -17,24 +17,36 @@ and do not assume: a session that guesses wrong hits a dead end at its first wri
 what happened on 2026-08-10.
 
 ```
-gh issue list --repo thebristolsound/birdbrain --limit 1 >/dev/null 2>&1 \
-  && echo "LOCAL — gh porcelain works, use gh for reads and writes" \
-  || echo "WEB — gh api REST for reads, GitHub MCP tools for writes"
+err="$(gh issue list --repo thebristolsound/birdbrain --limit 1 2>&1 >/dev/null)"
+case $?:$err in
+  0:*)                                echo "LOCAL — use gh for reads and writes" ;;
+  *:*"not enabled for this session"*) echo "WEB — gh api REST reads, GitHub MCP writes" ;;
+  *)                                  echo "INDETERMINATE — stop and report: $err" ;;
+esac
 ```
 
-- **Local (WSL/desktop)** — the machine's own `gh` token carries full `repo` scope with no
-  proxy in front of it, so everything works: porcelain (`gh pr create`, `gh issue edit`,
-  `gh label`) and `gh api` writes alike. There is **no GitHub MCP server configured locally**,
-  so the `mcp__github__*` tools named below simply will not exist. Use `gh`.
+- **Local (WSL/desktop)** — `gh` talks to GitHub with no proxy in front of it, so everything
+  works: porcelain (`gh pr create`, `gh issue edit`, `gh label`) and `gh api` writes alike.
+  There is **no GitHub MCP server configured locally**, so the `mcp__github__*` tools named
+  below simply will not exist. Use `gh` — subject to authorization, below.
 - **Claude Code on the web** — **only `gh api` REST works**. Every porcelain command
   (`gh pr`, `gh issue`, `gh label`) is GraphQL-backed and returns 403, because the session
   proxy serves only a pinned set of PR-review GraphQL operations. Writes — opening PRs,
   applying labels, posting comments — go through the GitHub MCP tools.
+- **Indeterminate** — a non-zero exit that is *not* the pinned-GraphQL 403 (network failure,
+  expired token, wrong repo) says nothing about which environment this is. Do not guess:
+  report it and stop. Guessing "web" here sends the cycle to MCP tools that may not exist.
+
+**Locally, a working `gh` is not proof of write access.** The probe only lists issues;
+opening a PR, commenting, and labelling are separately permissioned. Confirm with
+`gh auth status` that the active account has `repo` scope before the first write — and if it
+does not, stop and report rather than half-completing a cycle. There is no MCP fallback
+locally.
 
 Full map, including the endpoints that are 403 for the `GH_TOKEN` identity (check-runs, commit
 statuses) and the ones that return `[]` (the `pulls` list endpoint), is in
-`docs/agents/github-access.md`. Below, **"the write path"** means whichever of the two the
-probe selected.
+`docs/agents/github-access.md`. Below, **"the write path"** means whichever of the two
+mechanisms the probe selected; on `INDETERMINATE` there is no write path and the cycle stops.
 
 `.claude/hooks/session-start.sh` installs `gh` and pins Node 20, but **only on the web** — it
 exits immediately unless `CLAUDE_CODE_REMOTE=true`, by design. So:

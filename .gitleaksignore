@@ -14,3 +14,23 @@ e110997ac02e43a5d988737180b5c137bcfddbd0:docs/superpowers/plans/2026-03-18-captu
 # A prior version of this file quoted that same string in a comment, which
 # re-tripped the rule. Suppress the historical commit that introduced it.
 19b1b589587a6d158a15518b854f035e1de92ab9:.gitleaksignore:generic-api-key:6
+#
+# generic-api-key false positives in the checked-in design-handoff prototype:
+# the demo "signals" fixture data includes a fake session-token string (an
+# nj_-prefixed hex value) alongside a fake bitcoin address. Mock content, not
+# a credential.
+8cfca5b66727ad124917257a639d0ccdf453a036:docs/design-handoff/2026-08-10-birdbrain-prototype/style_sync_patch/prototypes/Case Reviewer.dc.html:generic-api-key:434
+8cfca5b66727ad124917257a639d0ccdf453a036:docs/design-handoff/2026-08-10-birdbrain-prototype/Case Reviewer.dc.html:generic-api-key:434
+8cfca5b66727ad124917257a639d0ccdf453a036:docs/design-handoff/2026-08-10-birdbrain-prototype/Birdbrain.dc.html:generic-api-key:5620
+#
+# The same fixture line re-tripped once more when the bundle was restored to
+# its as-received state after an automated review tool edited it.
+2edc1b790edcd5e8ae79e43738c33f85ff4c0187:docs/design-handoff/2026-08-10-birdbrain-prototype/Case Reviewer.dc.html:generic-api-key:434
+#
+# The same mock fixture data appears in an earlier commit that used a different
+# path prefix (design_handoff_birdbrain_prototype/ with underscores rather than
+# docs/design-handoff/...). Same content, not a real credential.
+7be984ea6955fc030a167d5de61064b83d1613bd:design_handoff_birdbrain_prototype/Case Reviewer.dc.html:generic-api-key:434
+7be984ea6955fc030a167d5de61064b83d1613bd:design_handoff_birdbrain_prototype/style_sync_patch/prototypes/Case Reviewer.dc.html:generic-api-key:434
+7be984ea6955fc030a167d5de61064b83d1613bd:design_handoff_birdbrain_prototype/style_sync_patch/prototypes/Birdbrain.dc.html:generic-api-key:5727
+7be984ea6955fc030a167d5de61064b83d1613bd:design_handoff_birdbrain_prototype/Birdbrain.dc.html:generic-api-key:5727

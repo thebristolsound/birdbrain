@@ -20,6 +20,8 @@ export default tseslint.config(
       '.agents/',
       '.codex/',
       'Python/',
+      // Checked-in prototype artifacts, not app code — see docs/design-handoff/.
+      'docs/**/*.js',
       'tests/**/*.js',
       'tests/**/*.d.ts',
       'extension/src/**/*.js',

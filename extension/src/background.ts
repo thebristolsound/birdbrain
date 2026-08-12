@@ -620,7 +620,15 @@ async function manualCaptureTab(
     // checkSelectorsOnTab bails while a capture is still collecting frames, so
     // a concurrent capture never has marks re-injected under its snapshot.
     if (activeSelectors.length > 0) {
-      checkSelectorsOnTab(tabId, url)
+      // Re-read the URL rather than reusing the capture-time one: the tab may
+      // have navigated during the capture, and the ignore-pattern checks must
+      // run against the page that is there now
+      chrome.tabs
+        .get(tabId)
+        .then((tab) => {
+          if (tab.url) checkSelectorsOnTab(tabId, tab.url)
+        })
+        .catch(() => {})
     }
   }
 }

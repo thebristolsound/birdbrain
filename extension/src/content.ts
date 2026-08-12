@@ -2,7 +2,7 @@
 // Extracts page data when asked by the background script
 // Handles selector matching and inline highlighting
 
-import { showToast, updateToast } from './toast'
+import { showToast, updateToast, removeToastImmediately } from './toast'
 // Selector groups arrive from the background script exactly as the capture
 // server sent them, and matches go back out on the capture's matchedSelectors
 // field — both are the shared wire contract, not content-script-local shapes.
@@ -485,6 +485,17 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message.type === 'UPDATE_CAPTURE_TOAST') {
     updateToast({ status: message.status, message: message.message })
+    sendResponse({ ok: true })
+    return
+  }
+
+  // Capture hygiene (#379): strip every injected Birdbrain node — toast host,
+  // highlight <mark> wrappers, highlight <style> elements — before the background
+  // takes any frame, so neither pageCapture.saveAsMHTML nor the screenshot passes
+  // can see extension UI. Any future in-page UI must be torn down here too.
+  if (message.type === 'PREPARE_FOR_CAPTURE') {
+    removeToastImmediately()
+    removeHighlights()
     sendResponse({ ok: true })
     return
   }

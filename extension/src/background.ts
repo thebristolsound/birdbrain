@@ -514,7 +514,12 @@ async function manualCaptureTab(
   if (pendingManualCaptures.has(key)) return
   pendingManualCaptures.add(key)
   try {
-    chrome.tabs.sendMessage(tabId, { type: 'SHOW_CAPTURE_TOAST' }).catch(() => {})
+    // Capture hygiene (#379): strip injected extension UI (toast, selector
+    // highlights) before any frame or DOM snapshot is taken — otherwise the
+    // toast is baked into the screenshots and every injected node is serialised
+    // into the MHTML. The toast is deferred until both frames are captured.
+    // A failure means no content script is present, so nothing was injected.
+    await chrome.tabs.sendMessage(tabId, { type: 'PREPARE_FOR_CAPTURE' }).catch(() => {})
 
     const [mhtmlBlob, tab, textContent, screenshot] = await Promise.all([
       captureMhtml(tabId),
@@ -526,6 +531,9 @@ async function manualCaptureTab(
           : captureFullPageScreenshot(tabId)
         : Promise.resolve(undefined)
     ])
+
+    // Frames are taken — safe to show the toast while the upload runs
+    chrome.tabs.sendMessage(tabId, { type: 'SHOW_CAPTURE_TOAST' }).catch(() => {})
 
     const result = await sendMhtmlCapture({
       source: 'manual',
@@ -553,11 +561,6 @@ async function manualCaptureTab(
         message: toastMessage
       })
       .catch(() => {})
-
-    // Re-evaluate selector highlights after capture
-    if (activeSelectors.length > 0) {
-      checkSelectorsOnTab(tabId, url)
-    }
   } catch (err) {
     console.error('[Birdbrain] Manual capture failed:', err)
     let message = 'Capture failed'
@@ -575,6 +578,11 @@ async function manualCaptureTab(
       .catch(() => {})
   } finally {
     pendingManualCaptures.delete(key)
+    // Restore the selector highlights PREPARE_FOR_CAPTURE stripped — on the
+    // error path too, so a failed capture does not leave the page unhighlighted
+    if (activeSelectors.length > 0) {
+      checkSelectorsOnTab(tabId, url)
+    }
   }
 }
 

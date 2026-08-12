@@ -61,6 +61,8 @@ third-party content.
   sky dot `#0ea5e9` (map only). Long duplicate names middle-truncate.
   Node ceiling: 20 — notes always survive, busiest entities (by edge degree)
   fill the rest; footer reads "showing N of M nodes" when capped.
+  The map surface is a shaded inset (5% text-primary tint + faint 14px dot
+  grid) so nodes and edges read on both themes.
 
 ### Captures
 - **Purpose:** evidence list + viewer + details rail (3 columns).
@@ -71,15 +73,28 @@ third-party content.
 - **Multiselect:** checkbox fades in on row hover, persists once any row is
   checked. Click selects (details follow); ⌘-click toggles; shift-click
   extends from anchor; ⌘A selects the current filter; Escape clears.
-  Selection survives filter changes. A **floating action bar** rises
-  (`bbrise`) bottom-center of the viewport whenever the multi-set is
-  non-empty: select-all checkbox + "N selected", labeled actions Export /
-  Tag / Pin / Recapture / Delete, divider, X to clear (Esc). Elevated
-  surface on `--shadow-overlay`, 28px buttons. No in-column batch bar, no
+  Selection survives filter changes. An **inline selection bar** slides down
+  (`bbselbar`) at the top of the list column whenever the multi-set is
+  non-empty: select-all checkbox + "N selected", icon-only actions (Export /
+  Tag / Pin / Recapture / Delete, tooltipped), divider, X to clear (Esc).
+  Accent-subtle surface, border-bottom, 26px buttons. Selected rows show a
+  2px accent rail at their left edge. (Replaces the earlier floating
+  bottom-center toolbar — it collided with the annotator toolbar.) No
   "⌘click to multi-select" hint — the hover checkbox is the affordance.
 - **Rows:** compact rows show clock icon + short relative time ("2h"); hover
   reveals the full timestamp. Titles 12px. Thumbnails: Birdbrain-logo
   silhouette masked over a tinted gradient (44×32 in Notes).
+- **Screenshot pins (annotator):** the pin tool (map-pin icon in the
+  annotator toolbar) turns the cursor to a crosshair; clicking the
+  screenshot drops a numbered teardrop marker (accent fill, white ring) and
+  opens a note popover (textarea + Cancel / Add pin). Saved pins open a
+  read popover (note, "Pin N · author · age", delete); popovers flip above
+  the marker below 55% canvas height so they never collide with the
+  toolbar. Markers counter-scale against zoom (constant screen size) and
+  hide with the annotation overlay (eye toggle). A **pin legend** sits
+  top-right of the canvas: scannable rows (number chip + one-line note);
+  clicking a row expands it inline (full note + meta) and halos its marker
+  on the canvas. Coordinates are stored as percentages of the image.
 - **Wayback:** right-side slide-out panel, 436px — archive.org header,
   snapshot filter, date range, presets, calendar, snapshot list, pagination.
   Viewer splits into your capture vs. archive snapshot (each pane min
@@ -107,6 +122,15 @@ third-party content.
   (`mentionStyle` tweak). Autocomplete popup follows the caret, flips above
   it near the bottom edge, Escape suppresses without mutating the note,
   selection index clamps to list length. List snippets mask token syntax.
+  Rendered mention chips are **clickable**: capture/note mentions open the
+  referenced item; selector mentions jump to Signals with that selector's
+  rule open for editing (fuzzy label/pattern match); tag mentions open
+  Signals. Tooltips advertise the action.
+- **Multiselect:** same pattern as Captures — ⌘/shift-click, accent rail
+  on selected rows, inline selection bar at the top of the list column
+  (select-all + count, Export / Tag / Delete, clear). Export opens the
+  export dialog preset to a notes-focused bundle (notes + manifest +
+  custody).
 - **Selection → selector:** selecting editor text raises a Selector / Tag
   action bar → typed confirm popover (kind detection, watch, backfill) →
   toast. Selectors created here carry `origin: 'note'`. No Quote action in
@@ -115,6 +139,15 @@ third-party content.
   `@` / `#` sigils.
 
 ### Signals
+- **Add-selector input:** focusing it expands a **match-mode drawer**
+  downward (`bbselbar`, 150ms): two radio cards — "Aa Exact text — matches
+  the text exactly as typed" and ".* Regular expression — wildcards &
+  classes". Cards pick via mousedown (input keeps focus); the chip on the
+  input row mirrors the current mode (Aa / .*); wrapping a pattern in /…/
+  still forces regex on commit.
+- **Coverage strips:** empty cells use a 9% text-primary tint (not a
+  surface token) so they stay legible on light backgrounds; matched cells
+  are accent (selectors) or the tag color.
 - Auto-capture card with a collapsible **"Never auto-capture"** section:
   case-level exclusion chips (domain or `/regex/`, monospace, removable,
   Enter-to-add inline input) + a "Stack on global / Override global"
@@ -193,9 +226,10 @@ Simulated Chrome with three tabs.
 
 ## Interactions & Behavior
 
-- Overlays (menus, popovers, palette) animate in ~120ms ease-out with a
-  slight rise (`bbrise`: translateY 4px→0 + fade). Toasts slide from the
-  bottom-right corner.
+- Full motion system in `MOTION.md` — screen transitions, first-visit
+  stagger, overlay/drawer entrances, toast overshoot + progress bar,
+  metric count-up, theme crossfade, and its three kill switches
+  (prefers-reduced-motion, Settings toggle, `motion` tweak).
 - Hover states throughout: rows tint to the hover surface token; buttons
   darken one step. No glow shadows anywhere.
 - Column drag handles show a col-resize cursor; collapse toggles animate
@@ -214,7 +248,10 @@ State the prototype maintains (names are suggestions, semantics are the spec):
   sets the same value the app uses.
 - `tour {phase, step, installOpen}` + "tour done" flag — onboarding
   walkthrough; persist completion per user.
-- `multiIds` + anchor — capture multiselect; survives filter/navigation.
+- `multiIds` + anchor — capture AND note multiselect (kind-scoped);
+  survives filter/navigation.
+- `pins` (per capture in production; global in the prototype), `pinDraft`,
+  `pinOpen`, `pinLegendOpen` — screenshot pin annotations + legend expansion.
 - `mapHover`, `mapFocus`, `mapTypesOff` — backlink-map preview/focus/filters.
 - Mention editor: query, caret position, `mAbove` (flip), `mSquelch`
   (Escape suppression).
@@ -255,17 +292,20 @@ Full machine-readable set in `style_sync_patch/`. Summary:
 ## Screenshots
 
 `screenshots/` — one per major screen, captured from the running prototype
-(named 01–12: dashboard, case overview, captures, Wayback compare, notes,
+(01–12: dashboard, case overview, captures, Wayback compare, notes,
 signals exclusions, data, settings, extension popup, options page, tour
-welcome, case-tour mark). Reference only — the running HTML is the source of
-truth; a fallback font was used in capture, so trust the prototype for type
-rendering.
+welcome, case-tour mark; 13–14: captures selection bar, signals match-mode
+drawer). All 14 recaptured 2026-08-12 at 6226×2330 (2× retina, full desktop
+viewport; pins + legend visible in 03). Reference only — the running HTML
+is the source of truth; a fallback font was used in capture, so trust the
+prototype for type rendering.
 
 ## Files
 
 - `Birdbrain.dc.html` — the full prototype (run in a browser with
   `support.js` alongside). Inline styles are the canonical pixel values.
 - `Case Reviewer.dc.html` — design-authority reference for the visual system.
+- `MOTION.md` — animation & polish spec (durations, easing, kill switches).
 - `ENGINEERING_REVIEW.md` — feasibility checklist + suggested first slice.
 - `IMPLEMENTATION_GUIDE.md` — recommended build/rollout order for Claude
   Code. **Start here.**

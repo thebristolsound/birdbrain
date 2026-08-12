@@ -64,7 +64,10 @@ impact, name the constraint if infeasible as designed, and size it.
    (3×8 lattice, edge routing, type filters, hover preview). Feasible as pure
    render over the references index? Any node-count ceiling to enforce?
 8. **Notes editor.** Autocomplete popup (flip-above-caret, escape squelch),
-   chip rendering of tokens, snippet masking. Editor-framework question:
+   chip rendering of tokens, snippet masking, and clickable chips (capture/
+   note chips navigate; selector chips deep-link to Signals with the rule
+   open for editing — needs a label→selector resolver). Editor-framework
+   question:
    does the current notes editor support inline decorations, or is this a
    rewrite?
 9. **Selectors `origin: 'note'`.** Selection→selector from notes tags
@@ -75,8 +78,9 @@ impact, name the constraint if infeasible as designed, and size it.
 
 ### App — larger UI reworks
 
-11. **Captures screen.** Multiselect (⌘/shift, select-all, floating
-    bottom-center action bar), resizable/collapsible columns, Source tab
+11. **Captures screen.** Multiselect (⌘/shift, select-all, inline selection
+    bar at the top of the list column — same pattern reused on Notes),
+    resizable/collapsible columns, Source tab
     removed, relative-time dates. Mostly view-layer; confirm batch
     export/tag/delete endpoints exist.
 12. **Wayback slide-out + side-by-side compare + pinning.** Needs CDX API
@@ -97,6 +101,17 @@ impact, name the constraint if infeasible as designed, and size it.
     extension-chapter replay from the old Setup Guide entry points (the
     standalone guide screen is removed). Pure view-layer plus one persisted
     "tour done" flag and a seeded demo case fixture.
+17. **Screenshot pin annotations (Captures viewer).** Net-new. Pins are
+    stored per capture as percentage coordinates + note + author + created
+    ts; rendered as an overlay on the screenshot (markers counter-scale
+    against zoom), with a scannable legend panel top-right (rows expand
+    inline, halo the marker). Needs an annotations table keyed to capture
+    id and a decision on whether pins ship in exports (flattened onto the
+    PNG, sidecar JSON, or both) — evidence-integrity question: the original
+    artifact must stay untouched.
+18. **Signals add-selector match-mode drawer.** Pure view-layer: focusing
+    the add input expands two radio cards (exact text / regex); `/…/`
+    still forces regex on commit. Small.
 
 ## Suggested next deliverable
 

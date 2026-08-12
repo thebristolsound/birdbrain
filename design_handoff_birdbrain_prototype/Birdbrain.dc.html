@@ -23,6 +23,43 @@
     .sb:hover .sb-tip{opacity:1;}
     .hovrow:hover{background:var(--color-elevated);}
     .hovbrd:hover{border-color:var(--color-border-strong);}
+    :root{--mo:1;--ease:cubic-bezier(.16,.84,.32,1);--bb-lift:0 6px 18px rgba(0,0,0,.12);}
+    html.dark{--bb-lift:0 8px 22px rgba(0,0,0,.4);}
+    @media (prefers-reduced-motion:reduce){html{--mo:0}}
+    html.bb-nomo *{animation:none!important;transition:none!important}
+    html.bb-theming,html.bb-theming *{transition:background-color .2s var(--ease),color .2s var(--ease),border-color .2s var(--ease),fill .2s,stroke .2s!important}
+    @keyframes bbscr{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+    .scr{animation:bbscr calc(var(--mo)*150ms) var(--ease) both}
+    .stag>*{animation:bbrise calc(var(--mo)*200ms) var(--ease) backwards}
+    .stag>*:nth-child(2){animation-delay:calc(var(--mo)*25ms)}.stag>*:nth-child(3){animation-delay:calc(var(--mo)*50ms)}.stag>*:nth-child(4){animation-delay:calc(var(--mo)*75ms)}.stag>*:nth-child(5){animation-delay:calc(var(--mo)*100ms)}.stag>*:nth-child(6){animation-delay:calc(var(--mo)*125ms)}.stag>*:nth-child(7){animation-delay:calc(var(--mo)*150ms)}.stag>*:nth-child(8){animation-delay:calc(var(--mo)*175ms)}.stag>*:nth-child(9){animation-delay:calc(var(--mo)*200ms)}.stag>*:nth-child(10){animation-delay:calc(var(--mo)*225ms)}.stag>*:nth-child(11){animation-delay:calc(var(--mo)*250ms)}.stag>*:nth-child(n+12){animation-delay:calc(var(--mo)*275ms)}
+    @keyframes bbpop{from{opacity:0;transform:scaleY(.92)}}
+    .pop{animation:bbpop calc(var(--mo)*130ms) var(--ease);transform-origin:top center}
+    @keyframes bbfade{from{opacity:0}}
+    @keyframes bbnode{from{opacity:0;transform:translate(-50%,-50%) scale(.8)}}
+    @keyframes bbdrawer{from{width:0;min-width:0;opacity:.3}}
+    @keyframes bbtool{from{opacity:0;transform:translate(-50%,10px)}}
+    @keyframes bbselbar{from{opacity:0;transform:translateY(-4px)}}
+    @keyframes bbpindrop{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+    .selin{transition:border-color .18s var(--ease),background-color .18s var(--ease)}
+    .selin:focus-within{border-color:var(--color-accent)!important;border-style:solid!important;background:var(--color-accent-subtle)!important}
+    input[type=range]::-webkit-slider-thumb{transition:transform .12s var(--ease)}
+    input[type=range]:active::-webkit-slider-thumb{transform:scale(1.2)}
+    @keyframes bbtoast{0%{opacity:0;transform:translateY(8px) scale(.97)}70%{opacity:1;transform:translateY(-2px)}100%{opacity:1;transform:none}}
+    @keyframes bbtbar{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+    .toast{animation:bbtoast calc(var(--mo)*240ms) var(--ease)}
+    @keyframes bbfloat2{50%{transform:translateY(-4px)}}
+    .lift{transition:transform .15s var(--ease),box-shadow .15s var(--ease),border-color .15s,background .15s}
+    .lift:hover{transform:translateY(-2px);box-shadow:var(--bb-lift)}
+    .liftrow::after{content:'';position:absolute;inset:0;border-radius:inherit;background:var(--color-text-primary);opacity:0;transition:opacity .12s var(--ease);pointer-events:none}
+    .liftrow:hover::after{opacity:.045}
+    button:active{filter:brightness(.93)}
+    .sb button:active{transform:scale(.92)}
+    :focus-visible{outline:2px solid color-mix(in srgb,var(--color-accent) 65%,transparent);outline-offset:1px}
+    *::-webkit-scrollbar{width:10px;height:10px}
+    *::-webkit-scrollbar-track{background:transparent}
+    *::-webkit-scrollbar-corner{background:transparent}
+    *::-webkit-scrollbar-thumb{background:var(--color-border-strong);border-radius:8px;border:3px solid transparent;background-clip:padding-box}
+    *::-webkit-scrollbar-thumb:hover{background-color:var(--color-text-faint)}
     @keyframes bbpulse{0%,100%{opacity:1}50%{opacity:.45}}
     @keyframes bbping{0%{transform:scale(1);opacity:.75}100%{transform:scale(2.2);opacity:0}}
     @keyframes bbfloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
@@ -155,7 +192,7 @@
       </button>
       <sc-if value="{{ inCase }}" hint-placeholder-val="{{ true }}">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#i-chevr"></use></svg>
-        <button onClick="{{ openPalette }}" title="Switch investigation (Ctrl+K)" class="hovrow" style="display:flex;min-width:0;align-items:center;gap:6px;border-radius:6px;padding:4px 6px;border:none;background:transparent;cursor:pointer">
+        <button onClick="{{ openPalette }}" title="Switch investigation (Ctrl+K)" data-tour="caseswitcher" class="hovrow" style="display:flex;min-width:0;align-items:center;gap:6px;border-radius:6px;padding:4px 6px;border:none;background:transparent;cursor:pointer">
           <span style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-display);font-size:12px;font-weight:700;color:var(--color-text-primary)">{{ activeCaseName }}</span>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#i-chevud"></use></svg>
         </button>
@@ -174,7 +211,7 @@
               </sc-if>
             </div>
             <sc-if value="{{ searchHasText }}" hint-placeholder-val="{{ false }}">
-              <div style="position:absolute;left:0;right:0;top:100%;z-index:50;margin-top:4px;max-height:256px;overflow-y:auto;border-radius:4px;border:1px solid var(--color-border-strong);background:var(--color-elevated);box-shadow:var(--shadow-overlay)">
+              <div class="pop" style="position:absolute;left:0;right:0;top:100%;z-index:50;margin-top:4px;max-height:256px;overflow-y:auto;border-radius:4px;border:1px solid var(--color-border-strong);background:var(--color-elevated);box-shadow:var(--shadow-overlay)">
                 <sc-for list="{{ searchResults }}" as="r" hint-placeholder-count="0">
                   <button onClick="{{ r.open }}" class="hovrow" style="display:block;width:100%;padding:8px 12px;text-align:left;border:none;background:transparent;cursor:pointer">
                     <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--color-text-primary)">{{ r.title }}</div>
@@ -202,7 +239,7 @@
             <span>12</span>
           </button>
           <sc-if value="{{ healthOpen }}" hint-placeholder-val="{{ false }}">
-            <div style="position:absolute;right:0;top:100%;z-index:50;margin-top:8px;width:384px;border-radius:6px;border:1px solid var(--color-border);background:var(--color-surface);box-shadow:var(--shadow-overlay)">
+            <div class="pop" style="position:absolute;right:0;top:100%;z-index:50;margin-top:8px;width:384px;border-radius:6px;border:1px solid var(--color-border);background:var(--color-surface);box-shadow:var(--shadow-overlay)">
               <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--color-border);padding:8px 12px">
                 <span style="font-size:12px;font-weight:500;color:var(--color-text-secondary)">Capture Pipeline</span>
                 <button class="hovrow" style="height:28px;padding:0 8px;border-radius:6px;border:none;background:transparent;color:var(--color-text-muted);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font-body)">Clear</button>
@@ -238,7 +275,7 @@
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevd"></use></svg>
             </button>
             <sc-if value="{{ exportOpen }}" hint-placeholder-val="{{ false }}">
-              <div role="menu" style="position:absolute;right:0;top:100%;z-index:50;margin-top:4px;width:224px;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);padding:4px 0;box-shadow:var(--shadow-overlay)">
+              <div role="menu" class="pop" style="position:absolute;right:0;top:100%;z-index:50;margin-top:4px;width:224px;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);padding:4px 0;box-shadow:var(--shadow-overlay)">
                 <button role="menuitem" onClick="{{ closeMenus }}" class="hovrow" style="display:flex;width:100%;align-items:center;gap:8px;padding:8px 12px;text-align:left;font-size:12px;color:var(--color-text-secondary);border:none;background:transparent;cursor:pointer;font-family:var(--font-body)">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#i-filetext"></use></svg>
                   Export evidence report
@@ -272,7 +309,7 @@
         <div style="display:flex;flex:1;flex-direction:column;align-items:center;gap:4px;padding:8px 0">
           <sc-for list="{{ sidebarItems }}" as="it" hint-placeholder-count="7">
             <div class="sb" style="position:relative">
-              <button onClick="{{ it.go }}" aria-label="{{ it.label }}" style="position:relative;display:flex;height:40px;width:40px;align-items:center;justify-content:center;border-radius:4px;border:none;cursor:pointer;transition:background-color .15s,color .15s;background:{{ it.bg }};color:{{ it.color }}">
+              <button onClick="{{ it.go }}" aria-label="{{ it.label }}" data-tour="nav-{{ it.route }}" style="position:relative;display:flex;height:40px;width:40px;align-items:center;justify-content:center;border-radius:4px;border:none;cursor:pointer;transition:background-color .15s,color .15s;background:{{ it.bg }};color:{{ it.color }}">
                 <sc-if value="{{ it.active }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;left:0;top:50%;height:20px;width:2px;transform:translateY(-50%);border-radius:0 2px 2px 0;background:var(--color-accent)"></span></sc-if>
                 <sc-if value="{{ it.icon }}" hint-placeholder-val="{{ false }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="{{ it.icon }}"></use></svg></sc-if>
               </button>
@@ -287,7 +324,7 @@
     <main style="display:flex;flex-direction:column;flex:1;min-width:0;overflow:hidden;background:var(--color-canvas)">
       <!-- ============ DASHBOARD ============ -->
       <sc-if value="{{ vDash }}" hint-placeholder-val="{{ true }}">
-        <div style="height:100%;overflow-y:auto" data-screen-label="Dashboard">
+        <div style="height:100%;overflow-y:auto" class="scr" data-screen-label="Dashboard">
           <section style="position:relative;padding:64px 32px 48px">
             <div style="max-width:768px;margin:0 auto;text-align:center">
               <div style="display:flex;justify-content:center;margin-bottom:32px"><img src="src/renderer/assets/logo.png" alt="Birdbrain" style="width:64px;height:64px"></div>
@@ -325,9 +362,9 @@
                 <h2 style="font-family:var(--font-display);font-weight:700;font-size:18px;letter-spacing:-0.025em;color:var(--color-text-primary);margin:0">Recent Cases</h2>
                 <span style="border-radius:9999px;border:1px solid var(--color-border-strong);background:var(--color-surface);padding:2px 8px;font-size:10px;font-weight:500;font-variant-numeric:tabular-nums;color:var(--color-text-muted)">3 cases</span>
               </div>
-              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:20px">
+              <div class="{{ stag }}" style="display:grid;grid-template-columns:repeat(4,1fr);gap:20px">
                 <sc-for list="{{ caseCards }}" as="c" hint-placeholder-count="3">
-                  <div onClick="{{ c.open }}" onContextMenu="{{ c.ctx }}" class="grp hovbrd" data-comment-anchor="case-card-{{ c.id }}" style="position:relative;background:var(--color-card);border:1px solid var(--color-border);border-radius:6px;padding:20px;cursor:pointer">
+                  <div onClick="{{ c.open }}" onContextMenu="{{ c.ctx }}" class="grp hovbrd lift" data-comment-anchor="case-card-{{ c.id }}" style="position:relative;background:var(--color-card);border:1px solid var(--color-border);border-radius:6px;padding:20px;cursor:pointer">
                     <div style="display:flex;justify-content:space-between;margin-bottom:16px">
                       <div style="width:40px;height:40px;border-radius:6px;background:{{ c.iconBg }};border:1px solid {{ c.iconBorder }};display:flex;align-items:center;justify-content:center">
                         <sc-if value="{{ c.icon }}" hint-placeholder-val="{{ false }}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="{{ c.iconColor }}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="{{ c.icon }}"></use></svg></sc-if>
@@ -352,7 +389,7 @@
                     </div>
                   </div>
                 </sc-for>
-                <div onClick="{{ goNewCase }}" class="grp" style="cursor:pointer;border-radius:6px;border:2px dashed var(--color-border);background:transparent;padding:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;min-height:260px;transition:border-color .15s,background .15s" style-hover="border-color:var(--color-accent);background:var(--color-accent-subtle)">
+                <div onClick="{{ goNewCase }}" class="grp lift" style="cursor:pointer;border-radius:6px;border:2px dashed var(--color-border);background:transparent;padding:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;min-height:260px;transition:border-color .15s,background .15s" style-hover="border-color:var(--color-accent);background:var(--color-accent-subtle)">
                   <div style="margin-bottom:16px;display:flex;height:48px;width:48px;align-items:center;justify-content:center;border-radius:6px;border:1px solid color-mix(in srgb,var(--color-accent) 20%,transparent);background:var(--color-accent-subtle)">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-plus"></use></svg>
                   </div>
@@ -564,7 +601,7 @@
         </div>
       </sc-if>
       <sc-if value="{{ vOverview }}" hint-placeholder-val="{{ false }}">
-        <div style="flex:1;overflow-y:auto;padding:var(--d-pad,18px)" data-screen-label="Case Overview">
+        <div style="flex:1;overflow-y:auto;padding:var(--d-pad,18px)" class="scr" data-screen-label="Case Overview">
           <div style="display:flex;flex-direction:column;gap:var(--d-gap,12px)">
             <div style="display:flex;align-items:flex-start;gap:var(--d-gap,12px)">
               <div style="min-width:0;flex:1">
@@ -584,7 +621,7 @@
                 <span style="font-size:10px;font-variant-numeric:tabular-nums;color:var(--color-text-faint)">{{ ovOpened }}</span>
               </div>
             </div>
-            <div style="display:flex;gap:var(--d-gap,12px)">
+            <div class="{{ stag }}" style="display:flex;gap:var(--d-gap,12px)">
               <sc-for list="{{ metrics }}" as="m" hint-placeholder-count="5">
                 <div style="display:flex;flex:1;flex-direction:column;gap:10px;border-radius:var(--d-r,6px);background:var(--color-card);border:1px solid var(--color-border);padding:var(--d-cardsm,13px)">
                   <div style="display:flex;align-items:center;gap:6px">
@@ -600,7 +637,46 @@
             </div>
             <div style="display:flex;align-items:stretch;gap:var(--d-gap,12px)">
               <div style="display:flex;min-width:0;flex:1.55;flex-direction:column;gap:var(--d-gap,12px)">
-                <div style="display:flex;flex-shrink:0;flex-direction:column;box-sizing:border-box;border-radius:var(--d-r,6px);background:var(--color-card);border:1px solid var(--color-border);padding:var(--d-card,16px)">
+                
+                <div style="display:flex;min-height:0;flex:1;flex-direction:column;border-radius:var(--d-r,6px);background:var(--color-card);border:1px solid var(--color-border);padding:var(--d-card,16px)">
+                  <div data-tour="linkmap" style="margin-bottom:10px;display:flex;align-items:center;gap:8px">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-link"></use></svg>
+                    <span style="font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-faint)">Link map</span>
+                    <span style="font-size:10px;font-variant-numeric:tabular-nums;color:var(--color-text-faint)">{{ mapCount }}</span>
+                    <span style="flex:1"></span>
+                    <sc-if value="{{ mapFocused }}" hint-placeholder-val="{{ false }}">
+                      <button onClick="{{ mapClear }}" style="display:inline-flex;align-items:center;gap:4px;border:none;background:transparent;padding:0;font-family:var(--font-display);font-size:11px;font-weight:600;color:var(--color-accent);cursor:pointer">Clear focus</button>
+                    </sc-if>
+                    <button onClick="{{ goNotes }}" style="display:inline-flex;align-items:center;gap:4px;font-family:var(--font-display);font-size:11px;font-weight:600;color:var(--color-text-muted);border:none;background:transparent;cursor:pointer" style-hover="color:var(--color-text-secondary)">
+                      All notes
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevr"></use></svg>
+                    </button>
+                  </div>
+                  <div style="position:relative;min-height:220px;flex:1;overflow:hidden;border-radius:4px;border:1px solid var(--color-border);background:color-mix(in srgb,var(--color-text-primary) 5%,var(--color-canvas));background-image:radial-gradient(color-mix(in srgb,var(--color-text-primary) 10%,transparent) 1px,transparent 1px);background-size:14px 14px">
+                    <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" style="animation:{{ mapFadeAnim }};position:absolute;inset:0;pointer-events:none">
+                      <sc-for list="{{ mapEdges }}" as="ed" hint-placeholder-count="8">
+                        <path d="{{ ed.d }}" fill="none" vector-effect="non-scaling-stroke" stroke="{{ ed.stroke }}" stroke-width="{{ ed.w }}" stroke-dasharray="{{ ed.dash }}" opacity="{{ ed.op }}"></path>
+                      </sc-for>
+                    </svg>
+                    <sc-for list="{{ mapNodes }}" as="nd" hint-placeholder-count="10">
+                      <button onClick="{{ nd.pick }}" onDoubleClick="{{ nd.open }}" onMouseEnter="{{ nd.over }}" onMouseLeave="{{ nd.leave }}" title="{{ nd.full }}" style="animation:{{ nd.anim }};pointer-events:{{ nd.pe }};position:absolute;left:{{ nd.left }};top:{{ nd.top }};transform:translate(-50%,-50%);display:flex;max-width:118px;align-items:center;gap:6px;border-radius:9999px;border:1px solid {{ nd.bd }};background:{{ nd.bg }};padding:4px 10px 4px 8px;cursor:pointer;font-family:var(--font-body);opacity:{{ nd.op }};transition:opacity .15s,background .15s,border-color .15s;box-shadow:var(--shadow-card)">
+                        <span style="height:6px;width:6px;flex-shrink:0;border-radius:9999px;background:{{ nd.dot }}"></span>
+                        <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:{{ nd.fs }};font-weight:{{ nd.fw }};color:var(--color-text-primary)">{{ nd.label }}</span>
+                      </button>
+                    </sc-for>
+                    <div style="position:absolute;left:10px;bottom:9px;display:flex;align-items:center;gap:8px;font-size:10px;color:var(--color-text-faint)">
+                      <sc-for list="{{ mapLegend }}" as="lg" hint-placeholder-count="4">
+                        <button onClick="{{ lg.toggle }}" title="{{ lg.title }}" style="display:inline-flex;align-items:center;gap:4px;border:none;background:transparent;padding:0;font-family:var(--font-body);font-size:10px;color:var(--color-text-faint);cursor:pointer;opacity:{{ lg.op }};text-decoration:{{ lg.deco }}">
+                          <span style="height:6px;width:6px;border-radius:9999px;background:{{ lg.color }}"></span>{{ lg.label }}</button>
+                      </sc-for>
+                      <span>click to focus · double-click to open</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div style="display:flex;min-width:0;flex:1;flex-direction:column;gap:var(--d-gap,12px)">
+                <sc-if value="{{ showBanner }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex;flex-shrink:0;flex-direction:column;box-sizing:border-box;border-radius:var(--d-r,6px);background:var(--color-card);border:1px solid var(--color-border);padding:var(--d-card,16px)">
                   <div style="margin-bottom:12px;display:flex;align-items:center;gap:8px">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-note"></use></svg>
                     <span style="font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-faint)">Quick notes</span>
@@ -622,46 +698,7 @@
                       </div>
                     </sc-for>
                   </div>
-                </div>
-                <div style="display:flex;min-height:0;flex:1;flex-direction:column;border-radius:var(--d-r,6px);background:var(--color-card);border:1px solid var(--color-border);padding:var(--d-card,16px)">
-                  <div data-tour="linkmap" style="margin-bottom:10px;display:flex;align-items:center;gap:8px">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-link"></use></svg>
-                    <span style="font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-faint)">Link map</span>
-                    <span style="font-size:10px;font-variant-numeric:tabular-nums;color:var(--color-text-faint)">{{ mapCount }}</span>
-                    <span style="flex:1"></span>
-                    <sc-if value="{{ mapFocused }}" hint-placeholder-val="{{ false }}">
-                      <button onClick="{{ mapClear }}" style="display:inline-flex;align-items:center;gap:4px;border:none;background:transparent;padding:0;font-family:var(--font-display);font-size:11px;font-weight:600;color:var(--color-accent);cursor:pointer">Clear focus</button>
-                    </sc-if>
-                    <button onClick="{{ goNotes }}" style="display:inline-flex;align-items:center;gap:4px;font-family:var(--font-display);font-size:11px;font-weight:600;color:var(--color-text-muted);border:none;background:transparent;cursor:pointer" style-hover="color:var(--color-text-secondary)">
-                      All notes
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevr"></use></svg>
-                    </button>
-                  </div>
-                  <div style="position:relative;min-height:220px;flex:1;overflow:hidden;border-radius:4px;border:1px solid var(--color-border);background:var(--color-canvas)">
-                    <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;inset:0;pointer-events:none">
-                      <sc-for list="{{ mapEdges }}" as="ed" hint-placeholder-count="8">
-                        <path d="{{ ed.d }}" fill="none" vector-effect="non-scaling-stroke" stroke="{{ ed.stroke }}" stroke-width="{{ ed.w }}" stroke-dasharray="{{ ed.dash }}" opacity="{{ ed.op }}"></path>
-                      </sc-for>
-                    </svg>
-                    <sc-for list="{{ mapNodes }}" as="nd" hint-placeholder-count="10">
-                      <button onClick="{{ nd.pick }}" onDoubleClick="{{ nd.open }}" onMouseEnter="{{ nd.over }}" onMouseLeave="{{ nd.leave }}" title="{{ nd.full }}" style="pointer-events:{{ nd.pe }};position:absolute;left:{{ nd.left }};top:{{ nd.top }};transform:translate(-50%,-50%);display:flex;max-width:118px;align-items:center;gap:6px;border-radius:9999px;border:1px solid {{ nd.bd }};background:{{ nd.bg }};padding:4px 10px 4px 8px;cursor:pointer;font-family:var(--font-body);opacity:{{ nd.op }};transition:opacity .15s,background .15s,border-color .15s;box-shadow:var(--shadow-card)">
-                        <span style="height:6px;width:6px;flex-shrink:0;border-radius:9999px;background:{{ nd.dot }}"></span>
-                        <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:{{ nd.fs }};font-weight:{{ nd.fw }};color:var(--color-text-primary)">{{ nd.label }}</span>
-                      </button>
-                    </sc-for>
-                    <div style="position:absolute;left:10px;bottom:9px;display:flex;align-items:center;gap:8px;font-size:10px;color:var(--color-text-faint)">
-                      <sc-for list="{{ mapLegend }}" as="lg" hint-placeholder-count="4">
-                        <button onClick="{{ lg.toggle }}" title="{{ lg.title }}" style="display:inline-flex;align-items:center;gap:4px;border:none;background:transparent;padding:0;font-family:var(--font-body);font-size:10px;color:var(--color-text-faint);cursor:pointer;opacity:{{ lg.op }};text-decoration:{{ lg.deco }}">
-                          <span style="height:6px;width:6px;border-radius:9999px;background:{{ lg.color }}"></span>{{ lg.label }}</button>
-                      </sc-for>
-                      <span>click to focus · double-click to open</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div style="display:flex;min-width:0;flex:1;flex-direction:column;gap:var(--d-gap,12px)">
-                <sc-if value="{{ showBanner }}" hint-placeholder-val="{{ true }}">
-                  <div style="position:relative;overflow:hidden;border-radius:var(--d-r,6px);background:var(--color-card);border:1px solid var(--color-border);padding:var(--d-card,16px)">
+                </div><div style="position:relative;overflow:hidden;border-radius:var(--d-r,6px);background:var(--color-card);border:1px solid var(--color-border);padding:var(--d-card,16px)">
                     <div style="position:relative">
                       <div style="margin-bottom:10px;display:flex;align-items:center;gap:7px">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#i-sparkles"></use></svg>
@@ -776,29 +813,7 @@
                 </sc-for>
               </div>
                 </div>
-                <div style="border-radius:var(--d-r,6px);background:var(--color-card);border:1px solid var(--color-border);padding:var(--d-card,16px)">
-                  <div style="margin-bottom:12px;display:flex;align-items:center;gap:7px">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-globe"></use></svg>
-                    <span style="font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-faint)">Top sources</span>
-                    <span style="flex:1"></span>
-                    <button onClick="{{ goCaptures }}" style="display:inline-flex;align-items:center;gap:4px;font-family:var(--font-display);font-size:11px;font-weight:600;color:var(--color-text-muted);border:none;background:transparent;cursor:pointer" style-hover="color:var(--color-text-secondary)">
-                      All sources
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevr"></use></svg>
-                    </button>
-                  </div>
-                  <div style="display:flex;flex-direction:column;gap:10px">
-                    <sc-for list="{{ sourceRows }}" as="src" hint-placeholder-count="6">
-                      <div style="display:flex;align-items:center;gap:10px">
-                        <span style="height:7px;width:7px;flex-shrink:0;border-radius:9999px;background:{{ src.tone }}"></span>
-                        <span style="width:144px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--color-text-secondary)">{{ src.host }}</span>
-                        <div style="height:6px;flex:1;overflow:hidden;border-radius:2px;background:var(--color-elevated)">
-                          <div style="height:100%;border-radius:2px;background:{{ src.tone }};opacity:.75;width:{{ src.w }}"></div>
-                        </div>
-                        <span style="width:20px;flex-shrink:0;text-align:right;font-size:12px;font-variant-numeric:tabular-nums;color:var(--color-text-muted)">{{ src.count }}</span>
-                      </div>
-                    </sc-for>
-                  </div>
-                </div>
+                
                 <div style="border-radius:var(--d-r,6px);background:var(--color-card);border:1px solid var(--color-border);padding:var(--d-card,16px)">
                   <div style="margin-bottom:12px;display:flex;align-items:center;gap:7px">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-activity"></use></svg>
@@ -878,7 +893,29 @@
                   </div>
                 </div>
               </sc-if>
-              </div>
+              <div style="border-radius:var(--d-r,6px);background:var(--color-card);border:1px solid var(--color-border);padding:var(--d-card,16px)">
+                  <div style="margin-bottom:12px;display:flex;align-items:center;gap:7px">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-globe"></use></svg>
+                    <span style="font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-faint)">Top sources</span>
+                    <span style="flex:1"></span>
+                    <button onClick="{{ goCaptures }}" style="display:inline-flex;align-items:center;gap:4px;font-family:var(--font-display);font-size:11px;font-weight:600;color:var(--color-text-muted);border:none;background:transparent;cursor:pointer" style-hover="color:var(--color-text-secondary)">
+                      All sources
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevr"></use></svg>
+                    </button>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:10px">
+                    <sc-for list="{{ sourceRows }}" as="src" hint-placeholder-count="6">
+                      <div style="display:flex;align-items:center;gap:10px">
+                        <span style="height:7px;width:7px;flex-shrink:0;border-radius:9999px;background:{{ src.tone }}"></span>
+                        <span style="width:144px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--color-text-secondary)">{{ src.host }}</span>
+                        <div style="height:6px;flex:1;overflow:hidden;border-radius:2px;background:var(--color-elevated)">
+                          <div style="height:100%;border-radius:2px;background:{{ src.tone }};opacity:.75;width:{{ src.w }}"></div>
+                        </div>
+                        <span style="width:20px;flex-shrink:0;text-align:right;font-size:12px;font-variant-numeric:tabular-nums;color:var(--color-text-muted)">{{ src.count }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div></div>
             </div>
             
           </div>
@@ -886,7 +923,7 @@
       </sc-if>
       <!--VIEW-OVERVIEW2-->
       <sc-if value="{{ vCaptures }}" hint-placeholder-val="{{ false }}">
-        <div style="position:relative;display:flex;height:100%;flex:1;overflow:hidden" data-screen-label="Captures">
+        <div style="position:relative;display:flex;height:100%;flex:1;overflow:hidden" class="scr" data-screen-label="Captures">
           <!-- capture list -->
           <sc-if value="{{ showCapList }}" hint-placeholder-val="{{ true }}">
           <div style="position:relative;display:flex;flex-shrink:0;flex-direction:column;border-right:1px solid var(--color-border);width:{{ capListWidth }}">
@@ -906,7 +943,7 @@
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-plus"></use></svg>
                     </button>
                     <sc-if value="{{ capMenuOpen }}" hint-placeholder-val="{{ false }}">
-                      <div role="menu" style="position:absolute;right:0;top:100%;z-index:50;margin-top:4px;width:224px;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);padding:4px 0 0;box-shadow:var(--shadow-overlay)">
+                      <div role="menu" class="pop" style="position:absolute;right:0;top:100%;z-index:50;margin-top:4px;width:224px;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);padding:4px 0 0;box-shadow:var(--shadow-overlay)">
                         <button role="menuitem" onClick="{{ closeMenus }}" class="hovrow" style="display:flex;width:100%;align-items:center;gap:8px;padding:8px 12px;text-align:left;font-size:12px;color:var(--color-text-secondary);border:none;background:transparent;cursor:pointer;font-family:var(--font-body)">
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#i-clipboard"></use></svg>
                           Paste URLs to capture…
@@ -927,7 +964,7 @@
                         {{ sortLabel }}
                       </button>
                       <sc-if value="{{ sortOpen }}" hint-placeholder-val="{{ false }}">
-                        <div style="position:absolute;left:0;top:100%;z-index:50;margin-top:4px;width:160px;border-radius:6px;border:1px solid var(--color-border);background:var(--color-card);padding:4px 0;box-shadow:var(--shadow-overlay)">
+                        <div class="pop" style="position:absolute;left:0;top:100%;z-index:50;margin-top:4px;width:160px;border-radius:6px;border:1px solid var(--color-border);background:var(--color-card);padding:4px 0;box-shadow:var(--shadow-overlay)">
                           <sc-for list="{{ sortOpts }}" as="o" hint-placeholder-count="4">
                             <button onClick="{{ o.pick }}" class="hovrow" style="display:flex;width:100%;align-items:center;gap:8px;padding:6px 12px;text-align:left;font-size:11px;border:none;background:transparent;cursor:pointer;font-family:var(--font-body);color:{{ o.color }}">
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;opacity:{{ o.checkOpacity }}"><use href="#i-check"></use></svg>
@@ -946,7 +983,7 @@
                         </sc-if>
                       </button>
                       <sc-if value="{{ filterOpen }}" hint-placeholder-val="{{ false }}">
-                        <div style="position:absolute;left:0;top:100%;z-index:50;margin-top:4px;width:192px;border-radius:6px;border:1px solid var(--color-border);background:var(--color-card);padding:4px 0;box-shadow:var(--shadow-overlay)">
+                        <div class="pop" style="position:absolute;left:0;top:100%;z-index:50;margin-top:4px;width:192px;border-radius:6px;border:1px solid var(--color-border);background:var(--color-card);padding:4px 0;box-shadow:var(--shadow-overlay)">
                           <div style="padding:4px 12px;font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-faint)">Format</div>
                           <sc-for list="{{ fmtOpts }}" as="o" hint-placeholder-count="3">
                             <button onClick="{{ o.pick }}" class="hovrow" style="display:flex;width:100%;align-items:center;gap:8px;padding:6px 12px;text-align:left;font-size:11px;border:none;background:transparent;cursor:pointer;font-family:var(--font-body);color:{{ o.color }}">
@@ -988,11 +1025,41 @@
                     </div>
                   </div>
               </div>
+              <sc-if value="{{ capSelMode }}" hint-placeholder-val="{{ false }}">
+                <div role="toolbar" aria-label="Selection actions" style="animation:bbselbar calc(var(--mo)*150ms) var(--ease) backwards;display:flex;flex-shrink:0;align-items:center;gap:2px;border-bottom:1px solid var(--color-border);background:var(--color-accent-subtle);padding:5px 8px">
+                  <button onClick="{{ capToggleAll }}" title="{{ capAllLabel }}" class="hovrow" style="display:flex;align-items:center;gap:7px;height:26px;padding:0 8px;border-radius:4px;border:none;background:transparent;cursor:pointer;font-family:var(--font-body);min-width:0">
+                    <span aria-hidden="true" style="display:grid;place-items:center;height:14px;width:14px;flex-shrink:0;border-radius:2px;border:1px solid {{ capAllBd }};background:{{ capAllBg }}">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="opacity:{{ capAllTick }}"><use href="#i-check"></use></svg>
+                    </span>
+                    <span style="font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--color-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ capSelLabel }}</span>
+                  </button>
+                  <span style="flex:1"></span>
+                  <button onClick="{{ capExportSel }}" title="Export selection" class="hovrow" style="display:grid;place-items:center;height:26px;width:26px;flex-shrink:0;border-radius:4px;border:none;background:transparent;color:var(--color-text-secondary);cursor:pointer;padding:0">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-dl"></use></svg>
+                  </button>
+                  <button onClick="{{ capTagSel }}" title="Tag selection" class="hovrow" style="display:grid;place-items:center;height:26px;width:26px;flex-shrink:0;border-radius:4px;border:none;background:transparent;color:var(--color-text-secondary);cursor:pointer;padding:0">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-tag"></use></svg>
+                  </button>
+                  <button onClick="{{ capPinSel }}" title="Pin selection" class="hovrow" style="display:grid;place-items:center;height:26px;width:26px;flex-shrink:0;border-radius:4px;border:none;background:transparent;color:var(--color-text-secondary);cursor:pointer;padding:0">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-pin"></use></svg>
+                  </button>
+                  <button onClick="{{ capRecaptureSel }}" title="Recapture selection" class="hovrow" style="display:grid;place-items:center;height:26px;width:26px;flex-shrink:0;border-radius:4px;border:none;background:transparent;color:var(--color-text-secondary);cursor:pointer;padding:0">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-refccw"></use></svg>
+                  </button>
+                  <button onClick="{{ capDeleteSel }}" title="Delete selection" class="hovrow" style="display:grid;place-items:center;height:26px;width:26px;flex-shrink:0;border-radius:4px;border:none;background:transparent;color:#f87171;cursor:pointer;padding:0">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"></use></svg>
+                  </button>
+                  <span aria-hidden="true" style="height:16px;width:1px;flex-shrink:0;background:var(--color-border-strong);margin:0 3px"></span>
+                  <button onClick="{{ capClearSel }}" title="Clear selection (Esc)" class="hovrow" style="display:grid;place-items:center;height:26px;width:26px;flex-shrink:0;border-radius:4px;border:none;background:transparent;color:var(--color-text-muted);cursor:pointer;padding:0">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-x"></use></svg>
+                  </button>
+                </div>
+              </sc-if>
               <div style="position:relative;display:flex;min-height:0;flex:1;flex-direction:column">
-              <div style="display:flex;flex:1;flex-direction:column;gap:var(--d-listgap,4px);overflow-y:auto;padding:var(--d-listgap,4px) 8px 18px">
+              <div class="{{ stag }}" style="display:flex;flex:1;flex-direction:column;gap:var(--d-listgap,4px);overflow-y:auto;padding:var(--d-listgap,4px) 8px 18px">
                 <sc-if value="{{ capListEmpty }}" hint-placeholder-val="{{ false }}">
                   <div style="display:flex;flex:1;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:32px 20px;text-align:center">
-                    <div style="display:flex;height:36px;width:36px;align-items:center;justify-content:center;border-radius:6px;border:1px solid var(--color-border);background:var(--color-canvas)">
+                    <div style="display:flex;height:36px;width:36px;align-items:center;justify-content:center;border-radius:6px;border:1px solid var(--color-border);background:var(--color-canvas);animation:bbfloat2 4.5s ease-in-out infinite">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-camera"></use></svg>
                     </div>
                     <div style="font-size:12px;font-weight:600;color:var(--color-text-secondary)">{{ capEmptyTitle }}</div>
@@ -1004,7 +1071,7 @@
                 </sc-if>
                 <sc-if value="{{ vDetailed }}" hint-placeholder-val="{{ true }}">
                 <sc-for list="{{ capItems }}" as="ci" hint-placeholder-count="8">
-                  <div role="button" tabindex="0" onClick="{{ ci.click }}" onContextMenu="{{ ci.ctx }}" data-comment-anchor="capture-{{ ci.id }}" class="grp" style="position:relative;display:flex;gap:10px;width:100%;border-radius:4px;padding:var(--d-itemy,10px) var(--d-itemx,12px);text-align:left;cursor:pointer;transition:background-color .09s cubic-bezier(.2,.8,.3,1),border-color .09s cubic-bezier(.2,.8,.3,1);border:{{ ci.border }};background:{{ ci.bg }};box-sizing:border-box">
+                  <div role="button" tabindex="0" onClick="{{ ci.click }}" onContextMenu="{{ ci.ctx }}" data-comment-anchor="capture-{{ ci.id }}" class="grp liftrow" style="position:relative;display:flex;gap:10px;width:100%;border-radius:4px;padding:var(--d-itemy,10px) var(--d-itemx,12px);text-align:left;cursor:pointer;transition:background-color .09s cubic-bezier(.2,.8,.3,1),border-color .09s cubic-bezier(.2,.8,.3,1);border:{{ ci.border }};background:{{ ci.bg }};box-sizing:border-box">
                     <span aria-hidden="true" style="position:absolute;left:0;top:6px;bottom:6px;width:2px;border-radius:0 2px 2px 0;background:{{ ci.railColor }}"></span>
                     <div style="position:relative;height:36px;width:56px;flex-shrink:0;overflow:hidden;border-radius:2px;border:1px solid var(--color-border-strong)">
                       <div style="position:relative;height:100%;width:100%;box-sizing:border-box;background:linear-gradient(to bottom right,{{ ci.from }},{{ ci.to }})"><div aria-hidden="true" style="position:absolute;inset:0;display:grid;place-items:center"><img src="src/renderer/assets/logo.png" alt="" style="height:20px;width:20px;opacity:.28;filter:grayscale(1) brightness(1.9)"></div></div>
@@ -1037,7 +1104,7 @@
                 </sc-if>
                 <sc-if value="{{ vList }}" hint-placeholder-val="{{ false }}">
                 <sc-for list="{{ capItems }}" as="ci" hint-placeholder-count="8">
-                  <div role="button" tabindex="0" onClick="{{ ci.click }}" onContextMenu="{{ ci.ctx }}" data-comment-anchor="capture-{{ ci.id }}" class="grp" style="position:relative;display:flex;align-items:center;gap:8px;width:100%;border-radius:4px;padding:5px 10px;text-align:left;cursor:pointer;transition:background-color .09s cubic-bezier(.2,.8,.3,1);border:{{ ci.border }};background:{{ ci.bg }};box-sizing:border-box">
+                  <div role="button" tabindex="0" onClick="{{ ci.click }}" onContextMenu="{{ ci.ctx }}" data-comment-anchor="capture-{{ ci.id }}" class="grp liftrow" style="position:relative;display:flex;align-items:center;gap:8px;width:100%;border-radius:4px;padding:5px 10px;text-align:left;cursor:pointer;transition:background-color .09s cubic-bezier(.2,.8,.3,1);border:{{ ci.border }};background:{{ ci.bg }};box-sizing:border-box">
                     <span aria-hidden="true" style="position:absolute;left:0;top:3px;bottom:3px;width:2px;border-radius:0 2px 2px 0;background:{{ ci.railColor }}"></span>
                     <span title="{{ ci.provTitle }}" style="height:6px;width:6px;flex-shrink:0;border-radius:9999px;background:{{ ci.provColor }}"></span>
                     <span title="{{ ci.title }}" style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:500;color:var(--color-text-primary)">{{ ci.title }}</span>
@@ -1055,42 +1122,6 @@
               </div>
                 <div aria-hidden="true" style="pointer-events:none;position:absolute;left:0;right:0;bottom:0;height:36px;background:linear-gradient(to bottom,transparent,var(--color-surface))"></div>
               </div>
-              <sc-if value="{{ capSelMode }}" hint-placeholder-val="{{ false }}">
-                <div role="toolbar" aria-label="Selection actions" style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:2px;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-elevated);box-shadow:var(--shadow-overlay);padding:5px;animation:bbrise .12s ease-out">
-                  <button onClick="{{ capToggleAll }}" title="{{ capAllLabel }}" class="hovrow" style="display:flex;align-items:center;gap:8px;height:28px;padding:0 10px;border-radius:4px;border:none;background:transparent;cursor:pointer;font-family:var(--font-body)">
-                    <span aria-hidden="true" style="display:grid;place-items:center;height:14px;width:14px;flex-shrink:0;border-radius:2px;border:1px solid {{ capAllBd }};background:{{ capAllBg }}">
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="opacity:{{ capAllTick }}"><use href="#i-check"></use></svg>
-                    </span>
-                    <span style="font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--color-text-primary);white-space:nowrap">{{ capSelLabel }}</span>
-                  </button>
-                  <span aria-hidden="true" style="height:16px;width:1px;flex-shrink:0;background:var(--color-border-strong);margin:0 4px"></span>
-                  <button onClick="{{ capExportSel }}" class="hovrow" style="display:flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:4px;border:none;background:transparent;color:var(--color-text-secondary);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font-body);white-space:nowrap">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-dl"></use></svg>
-                    Export
-                  </button>
-                  <button onClick="{{ capTagSel }}" class="hovrow" style="display:flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:4px;border:none;background:transparent;color:var(--color-text-secondary);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font-body);white-space:nowrap">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-tag"></use></svg>
-                    Tag
-                  </button>
-                  <button onClick="{{ capPinSel }}" class="hovrow" style="display:flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:4px;border:none;background:transparent;color:var(--color-text-secondary);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font-body);white-space:nowrap">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-pin"></use></svg>
-                    Pin
-                  </button>
-                  <button onClick="{{ capRecaptureSel }}" class="hovrow" style="display:flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:4px;border:none;background:transparent;color:var(--color-text-secondary);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font-body);white-space:nowrap">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-refccw"></use></svg>
-                    Recapture
-                  </button>
-                  <span aria-hidden="true" style="height:16px;width:1px;flex-shrink:0;background:var(--color-border-strong);margin:0 4px"></span>
-                  <button onClick="{{ capDeleteSel }}" class="hovrow" style="display:flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:4px;border:none;background:transparent;color:#f87171;font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font-body);white-space:nowrap">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"></use></svg>
-                    Delete
-                  </button>
-                  <span aria-hidden="true" style="height:16px;width:1px;flex-shrink:0;background:var(--color-border-strong);margin:0 4px"></span>
-                  <button onClick="{{ capClearSel }}" title="Clear selection (Esc)" class="hovrow" style="display:grid;place-items:center;height:28px;width:28px;flex-shrink:0;border-radius:4px;border:none;background:transparent;color:var(--color-text-muted);cursor:pointer;padding:0">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-x"></use></svg>
-                  </button>
-                </div>
-              </sc-if>
               <div style="display:flex;align-items:center;gap:8px;border-top:1px solid var(--color-border);padding:10px 12px;font-size:11px;color:var(--color-text-faint)"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Showing {{ capCount }} of {{ capTotal }} captures</span></div>
             </aside>
           </div>
@@ -1112,7 +1143,19 @@
             </div>
           </sc-if>
           <!-- viewer -->
-          <div style="display:flex;flex:1;min-width:0;overflow:hidden">
+          <div style="position:relative;display:flex;flex:1;min-width:0;overflow:hidden">
+            <sc-if value="{{ capListEmpty }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;inset:0;z-index:30;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:var(--color-canvas);padding:32px;text-align:center">
+                <div style="display:flex;height:44px;width:44px;align-items:center;justify-content:center;border-radius:9999px;border:1px solid var(--color-border);background:var(--color-surface)">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-camera"></use></svg>
+                </div>
+                <h4 style="margin:0;font-family:var(--font-display);font-size:12px;font-weight:600;color:var(--color-text-primary)">{{ capEmptyTitle }}</h4>
+                <p style="margin:0;max-width:340px;font-size:12px;line-height:1.6;color:var(--color-text-muted);text-wrap:pretty">{{ capEmptyBody }}</p>
+                <sc-if value="{{ capEmptyNarrowed }}" hint-placeholder-val="{{ false }}">
+                  <button onClick="{{ clearFilters }}" class="hovrow" style="margin-top:2px;height:28px;padding:0 11px;border-radius:4px;border:1px solid var(--color-border-strong);background:transparent;font-size:11px;color:var(--color-text-secondary);cursor:pointer;font-family:var(--font-body)">Clear filters</button>
+                </sc-if>
+              </div>
+            </sc-if>
             <main style="display:flex;flex:1;flex-direction:column;overflow:hidden;background:var(--color-canvas)">
               <div style="display:flex;height:44px;align-items:center;gap:10px;border-bottom:1px solid var(--color-border);padding:0 12px;flex-shrink:0">
                 <button title="Back" class="hovrow" style="display:flex;align-items:center;justify-content:center;height:28px;width:28px;border-radius:6px;border:none;background:transparent;color:var(--color-text-muted);cursor:pointer;flex-shrink:0">
@@ -1136,7 +1179,7 @@
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevd"></use></svg>
                   </button>
                   <sc-if value="{{ dlOpen }}" hint-placeholder-val="{{ false }}">
-                    <div role="menu" style="position:absolute;right:0;top:100%;z-index:50;margin-top:4px;width:208px;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);padding:4px 0;box-shadow:var(--shadow-overlay)">
+                    <div role="menu" class="pop" style="position:absolute;right:0;top:100%;z-index:50;margin-top:4px;width:208px;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);padding:4px 0;box-shadow:var(--shadow-overlay)">
                       <button role="menuitem" onClick="{{ closeMenus }}" class="hovrow" style="display:flex;width:100%;align-items:center;gap:8px;padding:8px 12px;text-align:left;font-size:12px;color:var(--color-text-secondary);border:none;background:transparent;cursor:pointer;font-family:var(--font-body)">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#i-archive"></use></svg>
                         MHTML archive
@@ -1167,9 +1210,76 @@
                       <div style="display:flex;height:100%;width:100%;flex-direction:column;overflow:hidden;border-radius:6px;border:1px solid var(--color-border);background:var(--color-surface);box-sizing:border-box">
                         <div style="position:relative;flex:1;min-height:0;overflow:hidden;background:var(--color-canvas)">
                           <div style="position:absolute;inset:0;overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:24px">
-                            <div style="width:min(880px,88%);flex-shrink:0;transform:scale({{ zoomScale }});transform-origin:top center;border:1px solid var(--color-border);background:#fff;box-shadow:var(--shadow-overlay)">
-                              <img src="./pasted-1786076566546-0-msifvf7w-wjzq.png" alt="Captured screenshot" style="display:block;width:100%;height:auto"></div>
+                            <div onClick="{{ shotClick }}" style="position:relative;width:min(880px,88%);flex-shrink:0;transform:scale({{ zoomScale }});transform-origin:top center;border:1px solid var(--color-border);background:#fff;box-shadow:var(--shadow-overlay);cursor:{{ shotCursor }}">
+                              <img src="./pasted-1786076566546-0-msifvf7w-wjzq.png" alt="Captured screenshot" style="display:block;width:100%;height:auto">
+                              <sc-if value="{{ pinsVisible }}" hint-placeholder-val="{{ false }}">
+                                <sc-for list="{{ pinItems }}" as="pn" hint-placeholder-count="0">
+                                  <button onClick="{{ pn.click }}" title="{{ pn.note }}" aria-label="Pin {{ pn.n }}" style="position:absolute;left:{{ pn.x }};top:{{ pn.y }};transform:scale({{ pinScale }}) translate(-50%,-100%);transform-origin:0 0;z-index:5;border:none;background:transparent;padding:0 0 5px;cursor:pointer;line-height:0">
+                                    <span style="display:block;animation:bbpindrop calc(var(--mo)*200ms) var(--ease) backwards">
+                                    <span style="display:grid;place-items:center;height:22px;width:22px;transform:rotate(-45deg);border-radius:50% 50% 50% 0;background:var(--color-accent);border:1.5px solid rgba(255,255,255,.92);box-shadow:0 1px 4px rgba(0,0,0,.28),{{ pn.ring }};box-sizing:border-box">
+                                      <span style="transform:rotate(45deg);font-family:var(--font-display);font-size:9px;font-weight:700;color:#fff">{{ pn.n }}</span>
+                                    </span>
+                                    </span>
+                                  </button>
+                                </sc-for>
+                                <sc-if value="{{ pinDraftOn }}" hint-placeholder-val="{{ false }}">
+                                  <span aria-hidden="true" style="position:absolute;left:{{ pinPopX }};top:{{ pinPopY }};transform:scale({{ pinScale }}) translate(-50%,-100%);transform-origin:0 0;z-index:5;display:block;padding:0 0 5px;line-height:0;pointer-events:none">
+                                    <span style="display:block;animation:bbpindrop calc(var(--mo)*200ms) var(--ease) backwards">
+                                    <span style="display:grid;place-items:center;height:22px;width:22px;transform:rotate(-45deg);border-radius:50% 50% 50% 0;background:var(--color-accent);border:1.5px solid rgba(255,255,255,.92);box-shadow:0 1px 4px rgba(0,0,0,.28);box-sizing:border-box">
+                                      <span style="transform:rotate(45deg);font-family:var(--font-display);font-size:9px;font-weight:700;color:#fff">{{ pinDraftN }}</span>
+                                    </span>
+                                    </span>
+                                  </span>
+                                </sc-if>
+                                <sc-if value="{{ pinPopOpen }}" hint-placeholder-val="{{ false }}">
+                                  <div onClick="{{ pinPopClick }}" style="position:absolute;left:{{ pinPopX }};top:{{ pinPopY }};transform:{{ pinPopTf }};transform-origin:0 0;z-index:25;width:224px;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);box-shadow:var(--shadow-overlay);padding:10px;cursor:default;text-align:left">
+                                    <div style="animation:bbrise calc(var(--mo)*160ms) var(--ease) backwards">
+                                    <sc-if value="{{ pinIsDraft }}" hint-placeholder-val="{{ false }}">
+                                      <textarea rows="2" autoFocus="{{ true }}" value="{{ pinText }}" onChange="{{ onPinText }}" placeholder="What does this pin mark?" style="width:100%;resize:none;border-radius:4px;border:1px solid var(--color-border-strong);background:var(--color-canvas);padding:6px 8px;font-size:11px;line-height:1.5;color:var(--color-text-primary);outline:none;box-sizing:border-box;font-family:var(--font-body)"></textarea>
+                                      <div style="margin-top:8px;display:flex;justify-content:flex-end;gap:6px">
+                                        <button onClick="{{ cancelPin }}" class="hovrow" style="height:24px;padding:0 8px;border-radius:4px;border:none;background:transparent;font-size:11px;color:var(--color-text-muted);cursor:pointer;font-family:var(--font-body)">Cancel</button>
+                                        <button onClick="{{ savePin }}" style="height:24px;padding:0 10px;border-radius:4px;border:none;background:var(--color-accent);font-size:11px;font-weight:600;color:#fff;cursor:pointer;font-family:var(--font-display)" style-hover="background:var(--color-accent-hover)">Add pin</button>
+                                      </div>
+                                    </sc-if>
+                                    <sc-if value="{{ pinIsSaved }}" hint-placeholder-val="{{ false }}">
+                                      <div style="font-size:11px;line-height:1.55;color:var(--color-text-primary)">{{ openPinNote }}</div>
+                                      <div style="margin-top:8px;display:flex;align-items:center;gap:6px">
+                                        <span style="font-size:10px;color:var(--color-text-faint)">{{ openPinMeta }}</span>
+                                        <span style="flex:1"></span>
+                                        <button onClick="{{ deletePin }}" title="Delete pin" class="hovrow" style="display:grid;place-items:center;height:22px;width:22px;border-radius:4px;border:none;background:transparent;color:#f87171;cursor:pointer;padding:0">
+                                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"></use></svg>
+                                        </button>
+                                      </div>
+                                    </sc-if>
+                                    </div>
+                                  </div>
+                                </sc-if>
+                              </sc-if>
+                            </div>
                           </div>
+                          <sc-if value="{{ pinLegendOn }}" hint-placeholder-val="{{ false }}">
+                            <div style="position:absolute;right:12px;top:12px;z-index:24;display:flex;width:212px;max-height:56%;flex-direction:column;overflow:hidden;border-radius:6px;border:1px solid var(--color-border);background:color-mix(in srgb,var(--color-card) 94%,transparent);backdrop-filter:blur(6px);box-shadow:var(--shadow-card);animation:bbrise calc(var(--mo)*160ms) var(--ease) backwards">
+                              <div style="display:flex;flex-shrink:0;align-items:center;gap:6px;border-bottom:1px solid var(--color-border);padding:6px 10px">
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-mappin"></use></svg>
+                                <span style="font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-faint)">Pins</span>
+                                <span style="font-size:10px;font-variant-numeric:tabular-nums;color:var(--color-text-faint)">{{ pinLegendCount }}</span>
+                              </div>
+                              <div style="min-height:0;overflow-y:auto;padding:4px">
+                                <sc-for list="{{ pinLegendRows }}" as="pr" hint-placeholder-count="2">
+                                  <button onClick="{{ pr.toggle }}" class="hovrow" style="display:flex;width:100%;align-items:flex-start;gap:8px;border-radius:4px;border:none;background:{{ pr.bg }};padding:6px 8px;text-align:left;cursor:pointer;font-family:var(--font-body)">
+                                    <span aria-hidden="true" style="display:grid;flex-shrink:0;place-items:center;height:15px;width:15px;margin-top:1px;border-radius:9999px;background:var(--color-accent);font-family:var(--font-display);font-size:9px;font-weight:700;color:#fff">{{ pr.n }}</span>
+                                    <span style="display:flex;min-width:0;flex:1;flex-direction:column;gap:2px">
+                                      <span style="min-width:0;font-size:11px;line-height:1.45;color:var(--color-text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:{{ pr.ws }}">{{ pr.note }}</span>
+                                      <sc-if value="{{ pr.open }}" hint-placeholder-val="{{ false }}">
+                                        <span style="font-size:10px;color:var(--color-text-faint)">{{ pr.meta }}</span>
+                                      </sc-if>
+                                    </span>
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:3px;transform:rotate({{ pr.chev }});transition:transform .15s"><use href="#i-chevd"></use></svg>
+                                  </button>
+                                </sc-for>
+                              </div>
+                            </div>
+                          </sc-if>
                           <div style="pointer-events:none;position:absolute;left:0;right:0;bottom:20px;z-index:20;display:flex;flex-direction:column;align-items:center;gap:8px;padding:0 12px">
                             <sc-if value="{{ stylePanelOpen }}" hint-placeholder-val="{{ false }}">
                               <div style="pointer-events:auto;display:flex;max-width:100%;flex-wrap:wrap;align-items:center;justify-content:center;gap:12px;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);padding:8px 12px;box-shadow:var(--shadow-overlay)">
@@ -1294,7 +1404,7 @@
                       <p style="margin:20px 0 0;font-size:11px;color:var(--color-text-faint)">Select any text in this capture — Birdbrain reads the type and offers a selector, tag, or quote.</p>
                     </div>
                     <sc-if value="{{ selBarApp }}" hint-placeholder-val="{{ false }}">
-                      <div data-selui="1" style="position:absolute;z-index:60;left:{{ selX }}px;top:{{ selY }}px;display:flex;height:28px;align-items:center;overflow:hidden;white-space:nowrap;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);box-shadow:var(--shadow-overlay);animation:bbrise .12s ease-out">
+                      <div data-selui="1" class="pop" style="position:absolute;z-index:60;left:{{ selX }}px;top:{{ selY }}px;display:flex;height:28px;align-items:center;overflow:hidden;white-space:nowrap;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);box-shadow:var(--shadow-overlay);animation:bbrise .12s ease-out">
                         <button onClick="{{ openSelConfirm }}" class="hovrow" style="display:flex;height:100%;align-items:center;gap:6px;border:none;background:transparent;padding:0 11px;font-family:var(--font-body);font-size:12px;font-weight:600;color:var(--color-accent);cursor:pointer">
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-crosshair"></use></svg>
                           <span>Selector</span>
@@ -1310,7 +1420,7 @@
                       </div>
                     </sc-if>
                     <sc-if value="{{ selConfirmApp }}" hint-placeholder-val="{{ false }}">
-                      <div data-selui="1" style="position:absolute;z-index:61;left:{{ selX }}px;top:{{ selY }}px;width:296px;overflow:hidden;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);box-shadow:var(--shadow-overlay);animation:bbrise .12s ease-out">
+                      <div data-selui="1" class="pop" style="position:absolute;z-index:61;left:{{ selX }}px;top:{{ selY }}px;width:296px;overflow:hidden;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);box-shadow:var(--shadow-overlay);animation:bbrise .12s ease-out">
                         <div style="display:flex;align-items:center;gap:8px;padding:11px 12px 7px">
                           <span style="flex-shrink:0;border-radius:9999px;border:1px solid color-mix(in srgb,var(--color-accent) 30%,transparent);background:var(--color-accent-subtle);padding:1px 7px;font-family:var(--font-mono);font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--color-accent)">{{ selKind }}</span>
                           <span style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-mono);font-size:12px;color:var(--color-text-primary)">{{ selValue }}</span>
@@ -1339,7 +1449,7 @@
                       </div>
                     </sc-if>
                     <sc-if value="{{ selToastApp }}" hint-placeholder-val="{{ false }}">
-                      <div style="position:absolute;left:24px;bottom:20px;z-index:70;display:flex;height:36px;align-items:center;gap:10px;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);padding:0 8px 0 12px;box-shadow:var(--shadow-overlay);animation:bbrise .16s ease-out">
+                      <div class="toast" style="position:absolute;left:24px;bottom:20px;z-index:70;overflow:hidden;display:flex;height:36px;align-items:center;gap:10px;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);padding:0 8px 0 12px;box-shadow:var(--shadow-overlay);animation:bbrise .16s ease-out">
                         <span style="display:inline-flex;height:16px;width:16px;align-items:center;justify-content:center;border-radius:9999px;background:rgba(16,185,129,.12);color:#34d399">
                           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><use href="#i-check"></use></svg>
                         </span>
@@ -1349,7 +1459,7 @@
                           <sc-if value="{{ selToastIcon }}" hint-placeholder-val="{{ false }}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="{{ selToastIcon }}"></use></svg></sc-if>
                           <span>{{ selToastValue }}</span>
                         </span>
-                        <span style="font-size:11px;color:var(--color-text-faint)">{{ selToastMeta }}</span>
+                        <span style="font-size:11px;color:var(--color-text-faint)">{{ selToastMeta }}</span><span aria-hidden="true" style="position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--color-accent);opacity:.55;transform-origin:left;animation:bbtbar calc(var(--mo)*6s) linear forwards"></span>
                         <button onClick="{{ dismissSelToast }}" aria-label="Dismiss" class="hovrow" style="display:flex;height:20px;width:20px;align-items:center;justify-content:center;border-radius:4px;border:none;background:transparent;color:var(--color-text-faint);cursor:pointer">
                           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-x"></use></svg>
                         </button>
@@ -1437,7 +1547,7 @@
           </div>
           <!-- details panel -->
           <sc-if value="{{ wbPanelOpen }}" hint-placeholder-val="{{ false }}">
-            <aside style="display:flex;width:436px;min-width:436px;flex-shrink:0;flex-direction:column;overflow:hidden;border-left:1px solid var(--color-border);background:var(--color-surface);animation:bbslide .16s ease-out">
+            <aside style="display:flex;width:436px;min-width:436px;flex-shrink:0;flex-direction:column;overflow:hidden;border-left:1px solid var(--color-border);background:var(--color-surface);animation:bbfade calc(var(--mo)*150ms) var(--ease)">
               <div style="display:flex;flex-shrink:0;align-items:center;gap:8px;border-bottom:1px solid var(--color-border);padding:12px 14px">
                 <span style="display:flex;align-items:center;gap:6px;flex-shrink:0;border-radius:9999px;border:1px solid rgba(245,158,11,.28);background:rgba(245,158,11,.1);padding:2px 9px;font-family:var(--font-display);font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#f59e0b">
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><use href="#i-archive"></use></svg>
@@ -1472,7 +1582,7 @@
                   </button>
                 </div>
                 <sc-if value="{{ wbCalOpen }}" hint-placeholder-val="{{ false }}">
-                  <div style="position:absolute;left:14px;top:calc(100% - 4px);z-index:60;width:272px;border-radius:11px;border:1px solid var(--color-border-strong);background:var(--color-card);padding:12px;box-shadow:var(--shadow-overlay);animation:bbrise .12s ease-out">
+                  <div class="pop" style="position:absolute;left:14px;top:calc(100% - 4px);z-index:60;width:272px;border-radius:11px;border:1px solid var(--color-border-strong);background:var(--color-card);padding:12px;box-shadow:var(--shadow-overlay);animation:bbrise .12s ease-out">
                     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
                       <button onClick="{{ wbPrevMonth }}" aria-label="Previous month" class="hovrow" style="display:grid;height:24px;width:24px;place-items:center;border-radius:6px;border:none;background:transparent;color:var(--color-text-muted);cursor:pointer">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevl"></use></svg>
@@ -1542,7 +1652,7 @@
             </aside>
           </sc-if>
           <sc-if value="{{ detPanelOpen }}" hint-placeholder-val="{{ true }}">
-            <aside style="position:relative;flex-shrink:0;overflow:hidden;border-left:1px solid var(--color-border);background:var(--color-surface);width:{{ detWidth }};{{ detExtraStyle }}">
+            <aside style="animation:bbfade calc(var(--mo)*150ms) var(--ease);position:relative;flex-shrink:0;overflow:hidden;border-left:1px solid var(--color-border);background:var(--color-surface);width:{{ detWidth }};{{ detExtraStyle }}">
               <div onMouseDown="{{ startResizeDet }}" title="Drag to resize" style="position:absolute;left:-3px;top:0;bottom:0;z-index:30;width:7px;cursor:col-resize;background:transparent" style-hover="background:color-mix(in srgb,var(--color-accent) 40%,transparent)"></div>
               <div style="display:flex;height:100%;flex-direction:column;overflow-y:auto">
                 <section style="border-bottom:1px solid var(--color-border);padding:16px 20px">
@@ -1558,7 +1668,7 @@
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-moreh"></use></svg>
                         </button>
                         <sc-if value="{{ detMenuOpen }}" hint-placeholder-val="{{ false }}">
-                          <div role="menu" style="position:absolute;right:0;top:100%;z-index:50;margin-top:4px;width:224px;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);padding:4px 0;box-shadow:var(--shadow-overlay)">
+                          <div role="menu" class="pop" style="position:absolute;right:0;top:100%;z-index:50;margin-top:4px;width:224px;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);padding:4px 0;box-shadow:var(--shadow-overlay)">
                             <button role="menuitem" onClick="{{ toggleFavSel }}" class="hovrow" style="display:flex;width:100%;align-items:center;gap:8px;padding:8px 12px;text-align:left;font-size:12px;color:var(--color-text-secondary);border:none;background:transparent;cursor:pointer;font-family:var(--font-body)">
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="{{ starSelFill }}" stroke="{{ starSelColor }}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#i-star"></use></svg>
                               {{ favSelLabel }}
@@ -1604,7 +1714,7 @@
                         Add
                       </button>
                       <sc-if value="{{ tagPopOpen }}" hint-placeholder-val="{{ false }}">
-                        <div style="position:absolute;right:0;top:100%;z-index:50;margin-top:4px;width:256px;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);padding:4px 0;box-shadow:var(--shadow-overlay)">
+                        <div class="pop" style="position:absolute;right:0;top:100%;z-index:50;margin-top:4px;width:256px;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);padding:4px 0;box-shadow:var(--shadow-overlay)">
                           <div style="max-height:160px;overflow-y:auto;padding:4px 0">
                             <sc-for list="{{ availTags }}" as="at" hint-placeholder-count="3">
                               <button class="hovrow" style="display:flex;width:100%;align-items:center;gap:8px;padding:6px 12px;text-align:left;font-size:12px;color:var(--color-text-secondary);border:none;background:transparent;cursor:pointer;font-family:var(--font-body)">
@@ -1663,7 +1773,7 @@
             </aside>
           </sc-if>
           <sc-if value="{{ detCollapsed }}" hint-placeholder-val="{{ false }}">
-            <aside style="width:40px;flex-shrink:0;overflow:hidden;border-left:1px solid var(--color-border);background:var(--color-surface)">
+            <aside style="animation:bbdrawer calc(var(--mo)*150ms) var(--ease);width:40px;flex-shrink:0;overflow:hidden;border-left:1px solid var(--color-border);background:var(--color-surface)">
               <div style="display:flex;height:100%;width:40px;flex-direction:column;align-items:center;gap:4px;padding:8px 0">
                 <button onClick="{{ toggleDetails }}" title="Expand details" class="hovrow" style="display:flex;height:28px;width:28px;align-items:center;justify-content:center;border-radius:6px;border:none;background:transparent;color:var(--color-text-muted);cursor:pointer">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevl"></use></svg>
@@ -1689,7 +1799,7 @@
       </sc-if>
       <!--VIEW-CAPTURES2-->
       <sc-if value="{{ vSignals }}" hint-placeholder-val="{{ false }}">
-        <div style="display:flex;height:100%;flex-direction:column;overflow:hidden" data-screen-label="Signals">
+        <div style="display:flex;height:100%;flex-direction:column;overflow:hidden" class="scr" data-screen-label="Signals">
           <div style="display:flex;flex:1;min-height:0">
             <div style="flex:1;min-width:0;overflow-y:auto;padding:var(--d-pad,18px)">
               <div style="display:flex;flex-direction:column;gap:var(--d-gap,12px)">
@@ -1744,7 +1854,7 @@
                     <span style="font-size:10px;color:var(--color-text-faint)">coverage · 24 most recent captures →</span>
                   </div>
                   <sc-if value="{{ bulkOpen }}" hint-placeholder-val="{{ false }}">
-                    <div style="margin-bottom:8px;border-radius:6px;border:1px dashed var(--color-border-strong);background:var(--color-surface);padding:12px">
+                    <div class="pop" style="margin-bottom:8px;border-radius:6px;border:1px dashed var(--color-border-strong);background:var(--color-surface);padding:12px">
                       <textarea rows="4" placeholder="One pattern per line — wrap in /…/ for regex. Paste straight from a spreadsheet or IoC feed." style="width:100%;resize:vertical;border-radius:4px;border:1px solid var(--color-border);background:var(--color-canvas);padding:8px 10px;font-family:var(--font-mono);font-size:11px;color:var(--color-text-primary);outline:none;box-sizing:border-box"></textarea>
                       <div style="margin-top:8px;display:flex;align-items:center;justify-content:space-between;gap:8px">
                         <span style="font-size:10px;color:var(--color-text-faint)">Duplicates are skipped · matching runs immediately after import</span>
@@ -1755,18 +1865,38 @@
                       </div>
                     </div>
                   </sc-if>
-                  <div style="display:flex;align-items:center;gap:12px;border-radius:4px;border:1px dashed var(--color-border-strong);background:var(--color-surface);padding:7px 10px;margin-bottom:6px">
+                  <div class="selin" style="display:flex;flex-direction:column;border-radius:4px;border:1px dashed var(--color-border-strong);background:var(--color-surface);padding:7px 10px;margin-bottom:6px">
+                    <div style="display:flex;align-items:center;gap:12px">
                     <span style="display:flex;width:30px;flex-shrink:0;justify-content:center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-plus"></use></svg></span>
-                    <input ref="{{ selInputRef }}" value="{{ newSelText }}" onChange="{{ onNewSelInput }}" onKeyDown="{{ onNewSelKey }}" placeholder="{{ newSelPlaceholder }}" aria-label="Add selector" style="min-width:0;flex:1;background:transparent;border:none;font-family:var(--font-mono);font-size:12px;color:var(--color-text-primary);outline:none">
-                    <button onClick="{{ toggleNewSelRegex }}" title="{{ newSelRegexTitle }}" style="flex-shrink:0;border-radius:4px;padding:2px 8px;font-family:var(--font-mono);font-size:10px;font-weight:600;cursor:pointer;border:1px solid {{ newSelRegexBorder }};background:{{ newSelRegexBg }};color:{{ newSelRegexColor }}">.*</button>
+                    <input ref="{{ selInputRef }}" value="{{ newSelText }}" onChange="{{ onNewSelInput }}" onKeyDown="{{ onNewSelKey }}" onFocus="{{ onSelFocus }}" onBlur="{{ onSelBlur }}" placeholder="{{ newSelPlaceholder }}" aria-label="Add selector" style="min-width:0;flex:1;background:transparent;border:none;font-family:var(--font-mono);font-size:12px;color:var(--color-text-primary);outline:none">
+                    <button onClick="{{ toggleNewSelRegex }}" title="{{ newSelRegexTitle }}" style="flex-shrink:0;border-radius:4px;padding:2px 8px;font-family:var(--font-mono);font-size:10px;font-weight:600;cursor:pointer;border:1px solid {{ newSelRegexBorder }};background:{{ newSelRegexBg }};color:{{ newSelRegexColor }}">{{ newSelModeChip }}</button>
                     <kbd style="flex-shrink:0;border-radius:4px;border:1px solid var(--color-border-strong);background:var(--color-surface);padding:2px 6px;font-family:var(--font-mono);font-size:10px;color:var(--color-text-faint)">Enter ↵</kbd>
+                    </div>
+                    <sc-if value="{{ selDrawerOpen }}" hint-placeholder-val="{{ false }}">
+                      <div role="radiogroup" aria-label="Match mode" style="display:flex;gap:6px;margin-top:8px;border-top:1px dashed var(--color-border);padding-top:8px;animation:bbselbar calc(var(--mo)*150ms) var(--ease) backwards">
+                        <button role="radio" aria-checked="{{ selExactOn }}" onMouseDown="{{ pickSelExact }}" style="display:flex;flex:1;min-width:0;align-items:center;gap:8px;border-radius:4px;padding:6px 10px;text-align:left;cursor:pointer;border:1px solid {{ selExactBd }};background:{{ selExactBg }};transition:border-color .15s,background .15s">
+                          <span style="flex-shrink:0;border-radius:4px;border:1px solid var(--color-border-strong);background:var(--color-card);padding:1px 6px;font-family:var(--font-mono);font-size:10px;font-weight:600;color:{{ selExactFg }}">Aa</span>
+                          <span style="display:flex;min-width:0;flex-direction:column;gap:1px">
+                            <span style="font-size:11px;font-weight:600;color:var(--color-text-primary)">Exact text</span>
+                            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;color:var(--color-text-faint)">matches the text exactly as typed</span>
+                          </span>
+                        </button>
+                        <button role="radio" aria-checked="{{ selRegexOn }}" onMouseDown="{{ pickSelRegex }}" style="display:flex;flex:1;min-width:0;align-items:center;gap:8px;border-radius:4px;padding:6px 10px;text-align:left;cursor:pointer;border:1px solid {{ selRegexBd }};background:{{ selRegexBg }};transition:border-color .15s,background .15s">
+                          <span style="flex-shrink:0;border-radius:4px;border:1px solid var(--color-border-strong);background:var(--color-card);padding:1px 6px;font-family:var(--font-mono);font-size:10px;font-weight:600;color:{{ selRegexFg }}">.*</span>
+                          <span style="display:flex;min-width:0;flex-direction:column;gap:1px">
+                            <span style="font-size:11px;font-weight:600;color:var(--color-text-primary)">Regular expression</span>
+                            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;color:var(--color-text-faint)">wildcards &amp; classes — e.g. bc1[a-z0-9]{20,}</span>
+                          </span>
+                        </button>
+                      </div>
+                    </sc-if>
                   </div>
                   <sc-if value="{{ sigSelEmpty }}" hint-placeholder-val="{{ false }}">
                     <div style="padding:10px 2px;font-size:11px;color:var(--color-text-faint)">No selectors yet — type a pattern above to add the first.</div>
                   </sc-if>
                   <div style="display:flex;flex-direction:column;gap:2px;max-height:320px;overflow-y:auto">
                     <sc-for list="{{ sigSelRows }}" as="r" hint-placeholder-count="5">
-                      <div ref="{{ r.rowRef }}" role="button" tabindex="0" onClick="{{ r.pick }}" onKeyDown="{{ r.key }}" onDoubleClick="{{ r.startEdit }}" onContextMenu="{{ r.ctx }}" class="grp" style="display:flex;align-items:center;gap:12px;border-radius:4px;padding:8px 10px;cursor:pointer;transition:background-color .15s;outline:none;border:{{ r.rowBorder }};background:{{ r.rowBg }}" style-focus="border:1px solid var(--color-accent);background:var(--color-accent-subtle)">
+                      <div ref="{{ r.rowRef }}" role="button" tabindex="0" onClick="{{ r.pick }}" onKeyDown="{{ r.key }}" onDoubleClick="{{ r.startEdit }}" onContextMenu="{{ r.ctx }}" class="grp" style="animation:bbrise calc(var(--mo)*150ms) var(--ease) backwards;display:flex;align-items:center;gap:12px;border-radius:4px;padding:8px 10px;cursor:pointer;transition:background-color .15s;outline:none;border:{{ r.rowBorder }};background:{{ r.rowBg }}" style-focus="border:1px solid var(--color-accent);background:var(--color-accent-subtle)">
                         <button role="switch" aria-checked="{{ r.enabled }}" onClick="{{ r.toggle }}" style="position:relative;display:inline-flex;height:16px;width:30px;flex-shrink:0;align-items:center;border-radius:9999px;border:none;cursor:pointer;transition:background .15s;background:{{ r.swBg }}">
                           <span style="display:inline-block;height:12px;width:12px;border-radius:9999px;background:#fff;transition:transform .15s;transform:translateX({{ r.swKnob }})"></span>
                         </button>
@@ -1804,7 +1934,7 @@
                     <span style="flex:1"></span>
                     <span style="font-size:10px;color:var(--color-text-faint)">coverage · 24 most recent captures →</span>
                   </div>
-                  <div style="display:flex;align-items:center;gap:12px;border-radius:4px;border:1px dashed var(--color-border-strong);background:var(--color-surface);padding:7px 10px;margin-bottom:6px">
+                  <div class="selin" style="display:flex;align-items:center;gap:12px;border-radius:4px;border:1px dashed var(--color-border-strong);background:var(--color-surface);padding:7px 10px;margin-bottom:6px">
                     <span style="display:flex;width:30px;flex-shrink:0;justify-content:center"><span style="height:9px;width:9px;border-radius:9999px;background:{{ newTagColor }}"></span></span>
                     <input ref="{{ tagInputRef }}" value="{{ newTagText }}" onChange="{{ onNewTagInput }}" onKeyDown="{{ onNewTagKey }}" placeholder="Add tag — Enter to save and keep typing" aria-label="Add tag" style="min-width:0;flex:1;background:transparent;border:none;font-size:12px;color:var(--color-text-primary);outline:none;font-family:var(--font-body)">
                     <kbd style="flex-shrink:0;border-radius:4px;border:1px solid var(--color-border-strong);background:var(--color-surface);padding:2px 6px;font-family:var(--font-mono);font-size:10px;color:var(--color-text-faint)">Enter ↵</kbd>
@@ -1814,7 +1944,7 @@
                   </sc-if>
                   <div style="display:flex;flex-direction:column;gap:2px;max-height:260px;overflow-y:auto">
                     <sc-for list="{{ sigTagRows }}" as="r" hint-placeholder-count="5">
-                      <div ref="{{ r.rowRef }}" role="button" tabindex="0" onClick="{{ r.pick }}" onKeyDown="{{ r.key }}" onDoubleClick="{{ r.startEdit }}" onContextMenu="{{ r.ctx }}" class="grp" style="display:flex;align-items:center;gap:12px;border-radius:4px;padding:8px 10px;cursor:pointer;transition:background-color .15s;outline:none;border:{{ r.rowBorder }};background:{{ r.rowBg }}" style-focus="border:1px solid var(--color-accent);background:var(--color-accent-subtle)">
+                      <div ref="{{ r.rowRef }}" role="button" tabindex="0" onClick="{{ r.pick }}" onKeyDown="{{ r.key }}" onDoubleClick="{{ r.startEdit }}" onContextMenu="{{ r.ctx }}" class="grp" style="animation:bbrise calc(var(--mo)*150ms) var(--ease) backwards;display:flex;align-items:center;gap:12px;border-radius:4px;padding:8px 10px;cursor:pointer;transition:background-color .15s;outline:none;border:{{ r.rowBorder }};background:{{ r.rowBg }}" style-focus="border:1px solid var(--color-accent);background:var(--color-accent-subtle)">
                         <span style="display:flex;width:30px;flex-shrink:0;justify-content:center"><span style="height:9px;width:9px;border-radius:9999px;background:{{ r.color }}"></span></span>
                         <sc-if value="{{ r.editing }}" hint-placeholder-val="{{ false }}">
                           <input ref="{{ r.editRef }}" value="{{ r.editText }}" onChange="{{ r.onEditInput }}" onKeyDown="{{ r.onEditKey }}" onBlur="{{ r.commitEdit }}" aria-label="Edit tag name" style="min-width:0;flex:1;border-radius:4px;border:1px solid var(--color-accent);background:var(--color-canvas);padding:4px 8px;font-size:12px;color:var(--color-text-primary);outline:none;font-family:var(--font-body)">
@@ -1922,8 +2052,8 @@
         </div>
       </sc-if>
       <sc-if value="{{ vSelectors }}" hint-placeholder-val="{{ false }}">
-        <div style="flex:1;overflow-y:auto;padding:var(--d-pad,18px) 0" data-screen-label="Selectors">
-          <div style="max-width:1024px;margin:0 auto;display:flex;flex-direction:column;gap:var(--d-gap,12px);padding:0 24px 48px">
+        <div style="flex:1;overflow-y:auto;padding:var(--d-pad,18px) 0" class="scr" data-screen-label="Selectors">
+          <div class="{{ stag }}" style="max-width:1024px;margin:0 auto;display:flex;flex-direction:column;gap:var(--d-gap,12px);padding:0 24px 48px">
             <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px">
               <button class="hovrow" style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border-radius:4px;border:1px solid var(--color-border-strong);background:transparent;color:var(--color-text-primary);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font-body)">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-listplus"></use></svg>
@@ -2070,8 +2200,8 @@
         </div>
       </sc-if>
       <sc-if value="{{ vNotes }}" hint-placeholder-val="{{ false }}">
-        <div style="display:flex;height:100%;flex:1;overflow:hidden" data-screen-label="Notes">
-          <aside style="display:flex;width:308px;flex-shrink:0;flex-direction:column;border-right:1px solid var(--color-border);background:var(--color-surface)">
+        <div style="display:flex;height:100%;flex:1;overflow:hidden" class="scr" data-screen-label="Notes">
+          <aside style="display:flex;width:{{ capListWidth }};flex-shrink:0;flex-direction:column;border-right:1px solid var(--color-border);background:var(--color-surface)">
             <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--color-border);padding:8px">
               <div style="position:relative;flex:1">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none;position:absolute;left:10px;top:50%;transform:translateY(-50%)"><use href="#i-search"></use></svg>
@@ -2088,7 +2218,7 @@
                   {{ nSortLabel }}
                 </button>
                 <sc-if value="{{ noteSortOpen }}" hint-placeholder-val="{{ false }}">
-                  <div style="position:absolute;left:0;top:100%;z-index:50;margin-top:4px;width:160px;border-radius:6px;border:1px solid var(--color-border);background:var(--color-card);padding:4px 0;box-shadow:var(--shadow-overlay)">
+                  <div class="pop" style="position:absolute;left:0;top:100%;z-index:50;margin-top:4px;width:160px;border-radius:6px;border:1px solid var(--color-border);background:var(--color-card);padding:4px 0;box-shadow:var(--shadow-overlay)">
                     <sc-for list="{{ nSortOpts }}" as="o" hint-placeholder-count="3">
                       <button onClick="{{ o.pick }}" class="hovrow" style="display:flex;width:100%;align-items:center;gap:8px;padding:6px 12px;text-align:left;font-size:11px;border:none;background:transparent;cursor:pointer;font-family:var(--font-body);color:{{ o.color }}">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;opacity:{{ o.checkOpacity }}"><use href="#i-check"></use></svg>
@@ -2107,7 +2237,7 @@
                   </sc-if>
                 </button>
                 <sc-if value="{{ noteFilterOpen }}" hint-placeholder-val="{{ false }}">
-                  <div style="position:absolute;left:0;top:100%;z-index:50;margin-top:4px;width:192px;border-radius:6px;border:1px solid var(--color-border);background:var(--color-card);padding:4px 0;box-shadow:var(--shadow-overlay)">
+                  <div class="pop" style="position:absolute;left:0;top:100%;z-index:50;margin-top:4px;width:192px;border-radius:6px;border:1px solid var(--color-border);background:var(--color-card);padding:4px 0;box-shadow:var(--shadow-overlay)">
                     <div style="padding:4px 12px;font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-faint)">Tag</div>
                     <sc-for list="{{ nTagOpts }}" as="o" hint-placeholder-count="3">
                       <button onClick="{{ o.pick }}" class="hovrow" style="display:flex;width:100%;align-items:center;gap:8px;padding:6px 12px;text-align:left;font-size:11px;border:none;background:transparent;cursor:pointer;font-family:var(--font-body);color:{{ o.color }}">
@@ -2136,10 +2266,34 @@
                 </button>
               </div>
             </div>
-            <div style="display:flex;flex:1;flex-direction:column;gap:var(--d-listgap,4px);overflow-y:auto;padding:var(--d-listgap,4px) 8px">
+            <sc-if value="{{ noteSelMode }}" hint-placeholder-val="{{ false }}">
+              <div role="toolbar" aria-label="Selection actions" style="animation:bbselbar calc(var(--mo)*150ms) var(--ease) backwards;display:flex;flex-shrink:0;align-items:center;gap:2px;border-bottom:1px solid var(--color-border);background:var(--color-accent-subtle);padding:5px 8px">
+                <button onClick="{{ noteToggleAll }}" title="{{ noteAllLabel }}" class="hovrow" style="display:flex;align-items:center;gap:7px;height:26px;padding:0 8px;border-radius:4px;border:none;background:transparent;cursor:pointer;font-family:var(--font-body);min-width:0">
+                  <span aria-hidden="true" style="display:grid;place-items:center;height:14px;width:14px;flex-shrink:0;border-radius:2px;border:1px solid {{ noteAllBd }};background:{{ noteAllBg }}">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="opacity:{{ noteAllTick }}"><use href="#i-check"></use></svg>
+                  </span>
+                  <span style="font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--color-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ noteSelLabel }}</span>
+                </button>
+                <span style="flex:1"></span>
+                <button onClick="{{ noteExportSel }}" title="Export selection" class="hovrow" style="display:grid;place-items:center;height:26px;width:26px;flex-shrink:0;border-radius:4px;border:none;background:transparent;color:var(--color-text-secondary);cursor:pointer;padding:0">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-dl"></use></svg>
+                </button>
+                <button onClick="{{ noteTagSel }}" title="Tag selection" class="hovrow" style="display:grid;place-items:center;height:26px;width:26px;flex-shrink:0;border-radius:4px;border:none;background:transparent;color:var(--color-text-secondary);cursor:pointer;padding:0">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-tag"></use></svg>
+                </button>
+                <button onClick="{{ noteDeleteSel }}" title="Delete selection" class="hovrow" style="display:grid;place-items:center;height:26px;width:26px;flex-shrink:0;border-radius:4px;border:none;background:transparent;color:#f87171;cursor:pointer;padding:0">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"></use></svg>
+                </button>
+                <span aria-hidden="true" style="height:16px;width:1px;flex-shrink:0;background:var(--color-border-strong);margin:0 3px"></span>
+                <button onClick="{{ noteClearSel }}" title="Clear selection (Esc)" class="hovrow" style="display:grid;place-items:center;height:26px;width:26px;flex-shrink:0;border-radius:4px;border:none;background:transparent;color:var(--color-text-muted);cursor:pointer;padding:0">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-x"></use></svg>
+                </button>
+              </div>
+            </sc-if>
+            <div class="{{ stag }}" style="display:flex;flex:1;flex-direction:column;gap:var(--d-listgap,4px);overflow-y:auto;padding:var(--d-listgap,4px) 8px">
               <sc-if value="{{ noteListEmpty }}" hint-placeholder-val="{{ false }}">
                 <div style="display:flex;flex:1;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:32px 20px;text-align:center">
-                  <div style="display:flex;height:36px;width:36px;align-items:center;justify-content:center;border-radius:6px;border:1px solid var(--color-border);background:var(--color-canvas)">
+                  <div style="display:flex;height:36px;width:36px;align-items:center;justify-content:center;border-radius:6px;border:1px solid var(--color-border);background:var(--color-canvas);animation:bbfloat2 4.5s ease-in-out infinite">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><use href="#i-note"></use></svg>
                   </div>
                   <div style="font-size:12px;font-weight:600;color:var(--color-text-secondary)">{{ noteEmptyTitle }}</div>
@@ -2151,7 +2305,8 @@
               </sc-if>
               <sc-if value="{{ nvDetailed }}" hint-placeholder-val="{{ true }}">
               <sc-for list="{{ noteListItems }}" as="nl" hint-placeholder-count="3">
-                <div role="button" tabindex="0" onClick="{{ nl.pick }}" onContextMenu="{{ nl.ctx }}" style="display:flex;gap:9px;border-radius:6px;padding:9px var(--d-itemx,12px);cursor:pointer;transition:background-color .15s;border:{{ nl.border }};background:{{ nl.bg }};box-sizing:border-box">
+                <div role="button" tabindex="0" onClick="{{ nl.pick }}" onContextMenu="{{ nl.ctx }}" style="position:relative;display:flex;gap:9px;border-radius:6px;padding:9px var(--d-itemx,12px);cursor:pointer;transition:background-color .15s;border:{{ nl.border }};background:{{ nl.bg }};box-sizing:border-box">
+                  <span aria-hidden="true" style="position:absolute;left:0;top:6px;bottom:6px;width:2px;border-radius:0 2px 2px 0;background:{{ nl.rail }}"></span>
                   <div style="position:relative;height:32px;width:44px;flex-shrink:0;overflow:hidden;border-radius:2px;border:1px solid var(--color-border-strong);background:var(--color-elevated)">
                     <sc-if value="{{ nl.hasThumb }}" hint-placeholder-val="{{ true }}">
                       <div style="position:relative;height:100%;width:100%;box-sizing:border-box;background:linear-gradient(to bottom right,{{ nl.from }},{{ nl.to }})"><div aria-hidden="true" style="position:absolute;inset:0;display:grid;place-items:center"><img src="src/renderer/assets/logo.png" alt="" style="height:18px;width:18px;opacity:.28;filter:grayscale(1) brightness(1.9)"></div></div>
@@ -2175,7 +2330,8 @@
               </sc-if>
               <sc-if value="{{ nvList }}" hint-placeholder-val="{{ false }}">
               <sc-for list="{{ noteListItems }}" as="nl" hint-placeholder-count="3">
-                <div role="button" tabindex="0" onClick="{{ nl.pick }}" onContextMenu="{{ nl.ctx }}" style="display:flex;align-items:center;gap:8px;border-radius:4px;padding:5px 10px;cursor:pointer;transition:background-color .09s cubic-bezier(.2,.8,.3,1);border:{{ nl.border }};background:{{ nl.bg }};box-sizing:border-box">
+                <div role="button" tabindex="0" onClick="{{ nl.pick }}" onContextMenu="{{ nl.ctx }}" style="position:relative;display:flex;align-items:center;gap:8px;border-radius:4px;padding:5px 10px;cursor:pointer;transition:background-color .09s cubic-bezier(.2,.8,.3,1);border:{{ nl.border }};background:{{ nl.bg }};box-sizing:border-box">
+                  <span aria-hidden="true" style="position:absolute;left:0;top:3px;bottom:3px;width:2px;border-radius:0 2px 2px 0;background:{{ nl.rail }}"></span>
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#i-note"></use></svg>
                   <span title="{{ nl.title }}" style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:500;color:var(--color-text-primary)">{{ nl.title }}</span>
                   <span style="flex-shrink:0;text-align:right;font-size:11px;color:var(--color-text-faint)">{{ nl.ago }}</span>
@@ -2236,7 +2392,7 @@
             <div style="position:relative;display:flex;flex:1;min-height:0">
               <div ref="{{ noteSelRef }}" onMouseUp="{{ onNoteSelUp }}" style="position:relative;flex:1;min-width:0;overflow-y:auto;transition:padding .18s ease;padding:24px {{ noteGutter }} 24px 28px">
                 <sc-if value="{{ selBarNote }}" hint-placeholder-val="{{ false }}">
-                  <div data-selui="1" style="position:absolute;z-index:60;left:{{ selX }}px;top:{{ selY }}px;display:flex;height:28px;align-items:center;overflow:hidden;white-space:nowrap;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);box-shadow:var(--shadow-overlay);animation:bbrise .12s ease-out">
+                  <div data-selui="1" class="pop" style="position:absolute;z-index:60;left:{{ selX }}px;top:{{ selY }}px;display:flex;height:28px;align-items:center;overflow:hidden;white-space:nowrap;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);box-shadow:var(--shadow-overlay);animation:bbrise .12s ease-out">
                     <button onClick="{{ openSelConfirm }}" class="hovrow" style="display:flex;height:100%;align-items:center;gap:6px;border:none;background:transparent;padding:0 11px;font-family:var(--font-body);font-size:12px;font-weight:600;color:var(--color-accent);cursor:pointer">
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-crosshair"></use></svg>
                       <span>Selector</span>
@@ -2248,7 +2404,7 @@
                   </div>
                 </sc-if>
                 <sc-if value="{{ selConfirmNote }}" hint-placeholder-val="{{ false }}">
-                  <div data-selui="1" style="position:absolute;z-index:61;left:{{ selX }}px;top:{{ selY }}px;width:296px;overflow:hidden;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);box-shadow:var(--shadow-overlay);animation:bbrise .12s ease-out">
+                  <div data-selui="1" class="pop" style="position:absolute;z-index:61;left:{{ selX }}px;top:{{ selY }}px;width:296px;overflow:hidden;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);box-shadow:var(--shadow-overlay);animation:bbrise .12s ease-out">
                     <div style="display:flex;align-items:center;gap:8px;padding:11px 12px 7px">
                       <span style="flex-shrink:0;border-radius:9999px;border:1px solid color-mix(in srgb,var(--color-accent) 30%,transparent);background:var(--color-accent-subtle);padding:1px 7px;font-family:var(--font-mono);font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--color-accent)">{{ selKind }}</span>
                       <span style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-mono);font-size:12px;color:var(--color-text-primary)">{{ selValue }}</span>
@@ -2277,7 +2433,7 @@
                   </div>
                 </sc-if>
                 <sc-if value="{{ selToastNote }}" hint-placeholder-val="{{ false }}">
-                  <div style="position:absolute;left:28px;bottom:20px;z-index:70;display:flex;height:36px;align-items:center;gap:10px;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);padding:0 8px 0 12px;box-shadow:var(--shadow-overlay);animation:bbrise .16s ease-out">
+                  <div class="toast" style="position:absolute;left:28px;bottom:20px;z-index:70;overflow:hidden;display:flex;height:36px;align-items:center;gap:10px;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);padding:0 8px 0 12px;box-shadow:var(--shadow-overlay);animation:bbrise .16s ease-out">
                     <span style="display:inline-flex;height:16px;width:16px;align-items:center;justify-content:center;border-radius:9999px;background:rgba(16,185,129,.12);color:#34d399">
                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><use href="#i-check"></use></svg>
                     </span>
@@ -2287,7 +2443,7 @@
                       <sc-if value="{{ selToastIcon }}" hint-placeholder-val="{{ false }}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="{{ selToastIcon }}"></use></svg></sc-if>
                       <span>{{ selToastValue }}</span>
                     </span>
-                    <span style="font-size:11px;color:var(--color-text-faint)">{{ selToastMeta }}</span>
+                    <span style="font-size:11px;color:var(--color-text-faint)">{{ selToastMeta }}</span><span aria-hidden="true" style="position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--color-accent);opacity:.55;transform-origin:left;animation:bbtbar calc(var(--mo)*6s) linear forwards"></span>
                     <button onClick="{{ dismissSelToast }}" aria-label="Dismiss" class="hovrow" style="display:flex;height:20px;width:20px;align-items:center;justify-content:center;border-radius:4px;border:none;background:transparent;color:var(--color-text-faint);cursor:pointer">
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-x"></use></svg>
                     </button>
@@ -2295,12 +2451,12 @@
                 </sc-if>
                 <div ref="{{ noteBodyRef }}" data-tour="noteeditor" contenteditable="true" spellcheck="false" role="textbox" aria-label="Note body" aria-multiline="true" onKeyDown="{{ onBodyKey }}" onFocus="{{ onBodyFocus }}" onBlur="{{ onBodyBlur }}" style="position:relative;max-width:720px;min-height:280px;outline:none;caret-color:transparent;font-size:14px;line-height:1.9;color:var(--color-text-secondary);text-wrap:pretty">
                   <sc-for list="{{ noteSegs }}" as="ns" hint-placeholder-count="4">
-                    <span title="{{ ns.title }}" style="border-radius:{{ ns.r }};padding:{{ ns.pad }};background:{{ ns.bg }};color:{{ ns.fg }};box-shadow:{{ ns.ring }};font-family:{{ ns.font }};font-size:{{ ns.fs }};font-weight:{{ ns.fw }};text-decoration:{{ ns.deco }};text-underline-offset:3px;white-space:{{ ns.ws }};cursor:{{ ns.cursor }}">{{ ns.t }}</span>
+                    <span title="{{ ns.title }}" onClick="{{ ns.click }}" style="border-radius:{{ ns.r }};padding:{{ ns.pad }};background:{{ ns.bg }};color:{{ ns.fg }};box-shadow:{{ ns.ring }};font-family:{{ ns.font }};font-size:{{ ns.fs }};font-weight:{{ ns.fw }};text-decoration:{{ ns.deco }};text-underline-offset:3px;white-space:{{ ns.ws }};cursor:{{ ns.cursor }}">{{ ns.t }}</span>
                   </sc-for>
                   <span style="position:relative;display:inline-block;vertical-align:baseline">
                     <span ref="{{ caretRef }}" aria-hidden="true" style="display:inline-block;width:1.5px;height:15px;vertical-align:-2px;background:{{ caretBg }};animation:bbblink 1.1s step-end infinite"></span>
                     <sc-if value="{{ mentionOpen }}" hint-placeholder-val="{{ false }}">
-                      <div contenteditable="false" style="position:absolute;left:0;top:{{ mTop }};bottom:{{ mBottom }};z-index:60;width:320px;overflow:hidden;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);box-shadow:var(--shadow-overlay);animation:bbrise .1s ease-out;text-align:left">
+                      <div contenteditable="false" class="pop" style="position:absolute;left:0;top:{{ mTop }};bottom:{{ mBottom }};z-index:60;width:320px;overflow:hidden;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);box-shadow:var(--shadow-overlay);animation:bbrise .1s ease-out;text-align:left">
                         <div style="display:flex;align-items:center;gap:7px;border-bottom:1px solid var(--color-border);background:var(--color-surface);padding:6px 11px">
                           <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--color-accent)">{{ mSigil }}</span>
                           <span style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-mono);font-size:11px;color:var(--color-text-muted)">{{ mQueryLabel }}</span>
@@ -2343,10 +2499,12 @@
                     </button>
                   </div>
                   <div style="min-height:0;flex:1;overflow-y:auto;padding:11px 13px 14px">
-                    <div style="display:flex;align-items:center;gap:7px">
+                    <button onClick="{{ toggleSug }}" style="display:flex;width:100%;align-items:center;gap:7px;border:none;background:transparent;padding:0;cursor:pointer;font-family:var(--font-body)">
                       <span style="font-family:var(--font-display);font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--color-text-muted)">Suggested</span>
                       <span style="font-size:10px;font-variant-numeric:tabular-nums;color:var(--color-text-faint)">{{ sugCount }}</span>
-                    </div>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:auto;transform:{{ sugChev }}"><path d="M6 9l6 6 6-6"></path></svg>
+                    </button>
+                    <sc-if value="{{ sugOpen }}" hint-placeholder-val="{{ true }}">
                     <sc-if value="{{ sugEmpty }}" hint-placeholder-val="{{ false }}">
                       <div style="margin-top:7px;border-radius:6px;border:1px dashed color-mix(in srgb,var(--color-border-strong) 70%,transparent);padding:9px 10px;font-size:11px;line-height:1.5;color:var(--color-text-faint)">Every entity in this note is already tracked.</div>
                     </sc-if>
@@ -2369,11 +2527,14 @@
                         </div>
                       </sc-for>
                     </div>
-                    <div style="margin-top:16px;display:flex;align-items:center;gap:7px">
+                    </sc-if>
+                    <button onClick="{{ toggleOut }}" style="margin-top:16px;display:flex;width:100%;align-items:center;gap:7px;border:none;background:transparent;padding:0;cursor:pointer;font-family:var(--font-body)">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(-45deg)"><use href="#i-arrr"></use></svg>
                       <span style="font-family:var(--font-display);font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--color-text-muted)">Links out</span>
                       <span style="font-size:10px;font-variant-numeric:tabular-nums;color:var(--color-text-faint)">{{ outCount }}</span>
-                    </div>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:auto;transform:{{ outChev }}"><path d="M6 9l6 6 6-6"></path></svg>
+                    </button>
+                    <sc-if value="{{ outOpen }}" hint-placeholder-val="{{ true }}">
                     <sc-if value="{{ outEmpty }}" hint-placeholder-val="{{ false }}">
                       <div style="margin-top:7px;font-size:11px;line-height:1.5;color:var(--color-text-faint)">This note doesn't link to anything yet.</div>
                     </sc-if>
@@ -2386,11 +2547,14 @@
                         </button>
                       </sc-for>
                     </div>
-                    <div style="margin-top:16px;display:flex;align-items:center;gap:7px">
+                    </sc-if>
+                    <button onClick="{{ toggleIn }}" style="margin-top:16px;display:flex;width:100%;align-items:center;gap:7px;border:none;background:transparent;padding:0;cursor:pointer;font-family:var(--font-body)">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(135deg)"><use href="#i-arrr"></use></svg>
                       <span style="font-family:var(--font-display);font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--color-text-muted)">Linked mentions</span>
                       <span style="font-size:10px;font-variant-numeric:tabular-nums;color:var(--color-text-faint)">{{ inCount }}</span>
-                    </div>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:auto;transform:{{ inChev }}"><path d="M6 9l6 6 6-6"></path></svg>
+                    </button>
+                    <sc-if value="{{ inOpen }}" hint-placeholder-val="{{ true }}">
                     <sc-if value="{{ inEmpty }}" hint-placeholder-val="{{ false }}">
                       <div style="margin-top:7px;font-size:11px;line-height:1.5;color:var(--color-text-faint)">Nothing links here yet.</div>
                     </sc-if>
@@ -2402,6 +2566,7 @@
                         </button>
                       </sc-for>
                     </div>
+                    </sc-if>
                   </div>
                   <div style="flex-shrink:0;border-top:1px solid color-mix(in srgb,var(--color-border) 70%,transparent);padding:8px 13px;font-size:10px;line-height:1.5;color:var(--color-text-faint)">Same grammar as the editor — <span style="font-family:var(--font-mono)">@</span> links captures and notes, <span style="font-family:var(--font-mono)">#</span> selectors and tags.</div>
                 </aside>
@@ -2415,8 +2580,8 @@
         </div>
       </sc-if>
       <sc-if value="{{ vTags }}" hint-placeholder-val="{{ false }}">
-        <div style="flex:1;overflow-y:auto" data-screen-label="Tags">
-          <div style="max-width:1024px;margin:0 auto;display:flex;flex-direction:column;gap:var(--d-gap,12px);padding:var(--d-pad,18px) 24px 48px">
+        <div style="flex:1;overflow-y:auto" class="scr" data-screen-label="Tags">
+          <div class="{{ stag }}" style="max-width:1024px;margin:0 auto;display:flex;flex-direction:column;gap:var(--d-gap,12px);padding:var(--d-pad,18px) 24px 48px">
             <div style="background:var(--color-card);border:1px solid var(--color-border);border-radius:6px;padding:var(--d-card,16px)">
               <h2 style="margin:0 0 12px;font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-faint)">Manage Tags</h2>
               <div style="margin-bottom:16px;display:flex;align-items:center;gap:8px">
@@ -2426,7 +2591,7 @@
                     <span style="height:16px;width:16px;border-radius:9999px;border:2px solid var(--color-card);background:{{ tagCurColor }};box-shadow:0 0 0 1px var(--color-border-strong)"></span>
                   </button>
                   <sc-if value="{{ tagPickerOpen }}" hint-placeholder-val="{{ false }}">
-                    <div style="position:absolute;right:0;top:100%;z-index:50;margin-top:6px;display:flex;align-items:center;gap:6px;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);padding:8px 10px;box-shadow:var(--shadow-overlay)">
+                    <div class="pop" style="position:absolute;right:0;top:100%;z-index:50;margin-top:6px;display:flex;align-items:center;gap:6px;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);padding:8px 10px;box-shadow:var(--shadow-overlay)">
                       <span style="font-size:11px;font-weight:600;color:var(--color-text-muted);margin-right:2px">Color</span>
                       <sc-for list="{{ tagSwatches }}" as="sw" hint-placeholder-count="8">
                         <button onClick="{{ sw.pick }}" aria-label="Tag color {{ sw.c }}" style="height:20px;width:20px;border-radius:9999px;border:1px solid var(--color-border);cursor:pointer;background:{{ sw.c }};box-shadow:{{ sw.ring }}"></button>
@@ -2492,7 +2657,7 @@
         </div>
       </sc-if>
       <sc-if value="{{ vData }}" hint-placeholder-val="{{ false }}">
-        <div style="display:flex;height:100%;flex-direction:column;min-height:0" data-screen-label="Data">
+        <div style="display:flex;height:100%;flex-direction:column;min-height:0" class="scr" data-screen-label="Data">
           <div style="display:flex;flex:1;min-height:0">
 
             <aside style="display:flex;flex-direction:column;width:276px;flex-shrink:0;border-right:1px solid var(--color-border);background:var(--color-surface);min-height:0">
@@ -2772,7 +2937,7 @@
       <!--VIEW-TAGS-->
       <!--VIEW-DATA-->
       <sc-if value="{{ vSettings }}" hint-placeholder-val="{{ false }}">
-        <div style="height:100%;padding:var(--d-pad,18px);box-sizing:border-box" data-screen-label="Settings">
+        <div style="height:100%;padding:var(--d-pad,18px);box-sizing:border-box" class="scr" data-screen-label="Settings">
           <div style="display:flex;height:100%">
             <nav style="width:176px;flex-shrink:0;border-right:1px solid var(--color-border);padding:8px">
               <div style="display:flex;flex-direction:column;gap:4px">
@@ -2992,7 +3157,7 @@
         </div>
       </sc-if>
       <sc-if value="{{ vBrowser }}" hint-placeholder-val="{{ false }}">
-        <div style="display:flex;height:100%;flex-direction:column;overflow:hidden;background:var(--color-canvas)" data-screen-label="Chrome Extension">
+        <div style="display:flex;height:100%;flex-direction:column;overflow:hidden;background:var(--color-canvas)" class="scr" data-screen-label="Chrome Extension">
           <div style="display:flex;flex-shrink:0;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--color-border);background:var(--color-surface);padding:7px 16px">
             <div style="display:flex;align-items:center;gap:8px;min-width:0">
               <span style="font-family:var(--font-display);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-faint)">Chrome extension</span>
@@ -3123,7 +3288,7 @@
                 </div>
                 </sc-if>
                     <sc-if value="{{ selBarExt }}" hint-placeholder-val="{{ false }}">
-                      <div data-selui="1" style="position:absolute;z-index:60;left:{{ selX }}px;top:{{ selY }}px;display:flex;height:28px;align-items:center;overflow:hidden;white-space:nowrap;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);box-shadow:var(--shadow-overlay);animation:bbrise .12s ease-out">
+                      <div data-selui="1" class="pop" style="position:absolute;z-index:60;left:{{ selX }}px;top:{{ selY }}px;display:flex;height:28px;align-items:center;overflow:hidden;white-space:nowrap;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);box-shadow:var(--shadow-overlay);animation:bbrise .12s ease-out">
                         <button onClick="{{ openSelConfirm }}" class="hovrow" style="display:flex;height:100%;align-items:center;gap:6px;border:none;background:transparent;padding:0 11px;font-family:var(--font-body);font-size:12px;font-weight:600;color:var(--color-accent);cursor:pointer">
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-crosshair"></use></svg>
                           <span>Selector</span>
@@ -3139,7 +3304,7 @@
                       </div>
                     </sc-if>
                     <sc-if value="{{ selConfirmExt }}" hint-placeholder-val="{{ false }}">
-                      <div data-selui="1" style="position:absolute;z-index:61;left:{{ selX }}px;top:{{ selY }}px;width:296px;overflow:hidden;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);box-shadow:var(--shadow-overlay);animation:bbrise .12s ease-out">
+                      <div data-selui="1" class="pop" style="position:absolute;z-index:61;left:{{ selX }}px;top:{{ selY }}px;width:296px;overflow:hidden;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);box-shadow:var(--shadow-overlay);animation:bbrise .12s ease-out">
                         <div style="display:flex;align-items:center;gap:8px;padding:11px 12px 7px">
                           <span style="flex-shrink:0;border-radius:9999px;border:1px solid color-mix(in srgb,var(--color-accent) 30%,transparent);background:var(--color-accent-subtle);padding:1px 7px;font-family:var(--font-mono);font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--color-accent)">{{ selKind }}</span>
                           <span style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-mono);font-size:12px;color:var(--color-text-primary)">{{ selValue }}</span>
@@ -3168,7 +3333,7 @@
                       </div>
                     </sc-if>
                     <sc-if value="{{ selToastExt }}" hint-placeholder-val="{{ false }}">
-                      <div style="position:absolute;left:24px;bottom:20px;z-index:70;display:flex;height:36px;align-items:center;gap:10px;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);padding:0 8px 0 12px;box-shadow:var(--shadow-overlay);animation:bbrise .16s ease-out">
+                      <div class="toast" style="position:absolute;left:24px;bottom:20px;z-index:70;overflow:hidden;display:flex;height:36px;align-items:center;gap:10px;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);padding:0 8px 0 12px;box-shadow:var(--shadow-overlay);animation:bbrise .16s ease-out">
                         <span style="display:inline-flex;height:16px;width:16px;align-items:center;justify-content:center;border-radius:9999px;background:rgba(16,185,129,.12);color:#34d399">
                           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><use href="#i-check"></use></svg>
                         </span>
@@ -3178,7 +3343,7 @@
                           <sc-if value="{{ selToastIcon }}" hint-placeholder-val="{{ false }}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="{{ selToastIcon }}"></use></svg></sc-if>
                           <span>{{ selToastValue }}</span>
                         </span>
-                        <span style="font-size:11px;color:var(--color-text-faint)">{{ selToastMeta }}</span>
+                        <span style="font-size:11px;color:var(--color-text-faint)">{{ selToastMeta }}</span><span aria-hidden="true" style="position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--color-accent);opacity:.55;transform-origin:left;animation:bbtbar calc(var(--mo)*6s) linear forwards"></span>
                         <button onClick="{{ dismissSelToast }}" aria-label="Dismiss" class="hovrow" style="display:flex;height:20px;width:20px;align-items:center;justify-content:center;border-radius:4px;border:none;background:transparent;color:var(--color-text-faint);cursor:pointer">
                           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-x"></use></svg>
                         </button>
@@ -3229,7 +3394,7 @@
                   </div>
                 </sc-if>
                 <sc-if value="{{ showCapCard }}" hint-placeholder-val="{{ false }}">
-                  <div style="position:absolute;right:16px;bottom:16px;z-index:81;width:296px;overflow:hidden;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);box-shadow:var(--shadow-overlay);animation:bbrise .16s ease-out">
+                  <div class="toast" style="position:absolute;right:16px;bottom:16px;z-index:81;width:296px;overflow:hidden;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);box-shadow:var(--shadow-overlay);animation:bbrise .16s ease-out">
                     <div style="display:flex;align-items:center;gap:8px;padding:10px 12px 0">
                       <span style="display:inline-flex;height:16px;width:16px;flex-shrink:0;align-items:center;justify-content:center;border-radius:9999px;background:rgba(16,185,129,.14);color:#34d399">
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><use href="#i-check"></use></svg>
@@ -3274,7 +3439,7 @@
                             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#i-chevd"></use></svg>
                           </button>
                           <sc-if value="{{ tabCaseMenuOpen }}" hint-placeholder-val="{{ false }}">
-                            <div role="menu" style="position:absolute;left:0;top:100%;z-index:40;margin-top:4px;width:228px;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);padding:4px 0;box-shadow:var(--shadow-overlay)">
+                            <div role="menu" class="pop" style="position:absolute;left:0;top:100%;z-index:40;margin-top:4px;width:228px;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);padding:4px 0;box-shadow:var(--shadow-overlay)">
                               <div style="padding:5px 12px 4px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-faint)">Set active case</div>
                               <sc-for list="{{ tabCaseOptions }}" as="tc" hint-placeholder-count="3">
                                 <button role="menuitem" onClick="{{ tc.pick }}" class="hovrow" style="display:flex;width:100%;align-items:center;gap:8px;border:none;background:transparent;padding:6px 12px;text-align:left;cursor:pointer;font-family:var(--font-body)">
@@ -3360,51 +3525,68 @@
         </div>
       </sc-if>
       <sc-if value="{{ vNewCase }}" hint-placeholder-val="{{ false }}">
-        <div style="height:100%;overflow-y:auto" data-screen-label="New Case Wizard">
-          <div style="max-width:672px;margin:0 auto;padding:var(--d-pad,18px) 20px">
-            <div style="margin-bottom:24px;display:flex;align-items:center;justify-content:center;gap:8px">
-              <div style="height:8px;width:32px;border-radius:9999px;background:var(--color-accent)"></div>
-              <div style="height:8px;width:8px;border-radius:9999px;background:var(--color-elevated)"></div>
-              <div style="height:8px;width:8px;border-radius:9999px;background:var(--color-elevated)"></div>
+        <div style="height:100%;overflow-y:auto" class="scr" data-screen-label="New Case Wizard">
+          <div style="max-width:480px;margin:0 auto;padding:64px 20px 48px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:28px">
+              <h2 style="margin:0;flex:1;font-family:var(--font-display);font-size:18px;font-weight:700;letter-spacing:-0.025em;color:var(--color-text-primary)">New Investigation</h2>
+              <sc-for list="{{ ncSteps }}" as="st" hint-placeholder-count="3">
+                <button onClick="{{ st.jump }}" aria-label="{{ st.label }}" style="height:6px;padding:0;border:none;border-radius:9999px;transition:width .25s var(--ease),background .2s var(--ease);cursor:{{ st.cursor }};width:{{ st.w }};background:{{ st.bg }}"></button>
+              </sc-for>
             </div>
-            <div style="background:var(--color-card);border:1px solid var(--color-border);border-radius:6px;padding:var(--d-card,16px)">
-              <div style="margin-bottom:16px;display:flex;align-items:center;gap:12px">
-                <div style="display:flex;height:28px;width:28px;align-items:center;justify-content:center;border-radius:4px;background:var(--color-accent-subtle)">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-folderp"></use></svg>
-                </div>
-                <div>
-                  <h2 style="margin:0;font-family:var(--font-display);font-size:18px;font-weight:700;color:var(--color-text-primary)">New Investigation</h2>
-                  <p style="margin:0;font-size:12px;color:var(--color-text-muted)">Set up your case details</p>
-                </div>
+            <sc-if value="{{ ncS1 }}" hint-placeholder-val="{{ true }}">
+              <div style="animation:bbslide calc(var(--mo)*180ms) var(--ease)">
+                <input type="text" ref="{{ ncNameRef }}" value="{{ ncName }}" onChange="{{ onNcName }}" onKeyDown="{{ onNcKey }}" placeholder="Name the investigation…" style="width:100%;border:none;border-bottom:1px solid var(--color-border-strong);background:transparent;padding:4px 0 10px;font-family:var(--font-display);font-size:20px;font-weight:600;letter-spacing:-0.02em;color:var(--color-text-primary);outline:none;box-sizing:border-box;transition:border-color .18s var(--ease)" style-focus="border-bottom-color:var(--color-accent)">
+                <sc-if value="{{ ncDescClosed }}" hint-placeholder-val="{{ true }}">
+                  <button onClick="{{ ncOpenDesc }}" style="margin-top:14px;border:none;background:transparent;padding:0;font-family:var(--font-body);font-size:12px;color:var(--color-text-faint);cursor:pointer;transition:color .15s" style-hover="color:var(--color-text-secondary)">+ Add description</button>
+                </sc-if>
+                <sc-if value="{{ ncDescOpen }}" hint-placeholder-val="{{ false }}">
+                  <textarea rows="2" ref="{{ ncFocusRef }}" value="{{ ncDesc }}" onChange="{{ onNcDesc }}" placeholder="Optional — scope, subjects, the tip that opened this case" class="pop" style="margin-top:14px;width:100%;resize:none;border:none;background:transparent;padding:0;font-size:12px;line-height:1.6;color:var(--color-text-secondary);outline:none;box-sizing:border-box;font-family:var(--font-body)"></textarea>
+                </sc-if>
               </div>
-              <div style="margin-bottom:16px">
-                <label style="display:block;font-size:12px;font-weight:500;color:var(--color-text-secondary);margin-bottom:4px">Investigation Name</label>
-                <input type="text" placeholder="e.g. Phishing Campaign Analysis" style="width:100%;border-radius:4px;border:1px solid var(--color-border-strong);background:var(--color-canvas);padding:6px 10px;font-size:12px;color:var(--color-text-primary);outline:none;box-sizing:border-box;font-family:var(--font-body)">
-              </div>
-              <div style="margin-bottom:24px">
-                <label style="display:block;font-size:12px;font-weight:500;color:var(--color-text-secondary);margin-bottom:4px">Description</label>
-                <textarea rows="3" placeholder="Brief description of this investigation..." style="width:100%;resize:none;border-radius:4px;border:1px solid var(--color-border-strong);background:var(--color-canvas);padding:6px 10px;font-size:12px;color:var(--color-text-primary);outline:none;box-sizing:border-box;font-family:var(--font-body)"></textarea>
-              </div>
-              <div style="margin-bottom:32px">
-                <label style="display:block;font-size:12px;font-weight:500;color:var(--color-text-secondary);margin-bottom:8px">Initial Selectors</label>
+            </sc-if>
+            <sc-if value="{{ ncS2 }}" hint-placeholder-val="{{ false }}">
+              <div style="animation:bbslide calc(var(--mo)*180ms) var(--ease)">
+                <p style="margin:0 0 14px;font-size:12px;color:var(--color-text-muted)">Watch every capture for:</p>
                 <div style="display:flex;flex-wrap:wrap;gap:8px">
                   <sc-for list="{{ selectorPresets }}" as="sp" hint-placeholder-count="6">
-                    <button onClick="{{ sp.toggle }}" style="border-radius:4px;padding:4px 10px;font-size:12px;cursor:pointer;transition:all .15s;border:1px solid {{ sp.border }};background:{{ sp.bg }};color:{{ sp.color }};font-family:var(--font-body)">{{ sp.label }}</button>
+                    <button onClick="{{ sp.toggle }}" style="border-radius:4px;padding:6px 12px;font-size:12px;cursor:pointer;transition:all .15s;border:1px solid {{ sp.border }};background:{{ sp.bg }};color:{{ sp.color }};font-family:var(--font-body)">{{ sp.label }}</button>
                   </sc-for>
                 </div>
+                <div style="display:flex;align-items:center;gap:10px;margin-top:22px">
+                  <button role="switch" aria-checked="{{ ncAuto }}" onClick="{{ ncToggleAuto }}" style="position:relative;display:inline-flex;height:20px;width:36px;flex-shrink:0;align-items:center;border-radius:9999px;border:none;cursor:pointer;transition:background .15s;background:{{ ncAutoBg }}">
+                    <span style="display:inline-block;height:14px;width:14px;border-radius:9999px;background:#fff;transition:transform .15s;transform:translateX({{ ncAutoKnob }})"></span>
+                  </button>
+                  <span style="font-size:12px;color:var(--color-text-secondary)">Auto-capture pages that match</span>
+                </div>
               </div>
-              <div style="display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--color-border);padding-top:16px">
-                <button onClick="{{ goHome }}" class="hovrow" style="display:inline-flex;align-items:center;gap:8px;height:28px;padding:0 12px;border-radius:4px;border:none;background:transparent;color:var(--color-text-muted);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font-body)">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-arrl"></use></svg>
-                  Cancel
-                </button>
-                <button style="height:28px;padding:0 16px;border-radius:4px;border:none;background:var(--color-accent);color:#fff;font-size:12px;font-weight:500;cursor:pointer;opacity:.5;font-family:var(--font-body)">Create Case</button>
+            </sc-if>
+            <sc-if value="{{ ncS3 }}" hint-placeholder-val="{{ false }}">
+              <div style="animation:bbslide calc(var(--mo)*180ms) var(--ease)">
+                <div style="font-family:var(--font-display);font-size:20px;font-weight:600;letter-spacing:-0.02em;color:var(--color-text-primary)">{{ ncNameShown }}</div>
+                <sc-if value="{{ ncHasDesc }}" hint-placeholder-val="{{ false }}">
+                  <p style="margin:8px 0 0;font-size:12px;line-height:1.6;color:var(--color-text-muted)">{{ ncDesc }}</p>
+                </sc-if>
+                <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:16px">
+                  <sc-for list="{{ ncSelLabels }}" as="sl" hint-placeholder-count="2">
+                    <span style="border-radius:4px;border:1px solid color-mix(in srgb,var(--color-accent) 25%,transparent);background:var(--color-accent-subtle);padding:2px 9px;font-size:11px;color:var(--color-text-primary)">{{ sl.label }}</span>
+                  </sc-for>
+                  <span style="font-size:11px;color:var(--color-text-faint)">{{ ncAutoSummary }}</span>
+                </div>
               </div>
+            </sc-if>
+            <div style="display:flex;align-items:center;margin-top:36px">
+              <button onClick="{{ ncBackAction }}" class="hovrow" style="height:30px;padding:0 12px;border-radius:4px;border:none;background:transparent;color:var(--color-text-muted);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font-body)">{{ ncBackLabel }}</button>
+              <span style="flex:1"></span>
+              <button onClick="{{ ncNext }}" style="display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 14px;border-radius:4px;border:none;background:var(--color-accent);color:#fff;font-size:12px;font-weight:600;font-family:var(--font-body);transition:opacity .15s,filter .1s;cursor:{{ ncNextCursor }};opacity:{{ ncNextOpacity }}" style-active="filter:brightness(.93)">
+                <sc-if value="{{ ncCreating }}" hint-placeholder-val="{{ false }}">
+                  <span style="height:12px;width:12px;flex-shrink:0;border-radius:9999px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;animation:bbspin .6s linear infinite;box-sizing:border-box"></span>
+                </sc-if>
+                {{ ncNextLabel }}
+              </button>
             </div>
           </div>
         </div>
-      </sc-if>
-    </main>
+      </sc-if></main>
   </div>
 </div>
 <!-- ============ DELETE DIALOG ============ -->
@@ -3427,7 +3609,7 @@
 <sc-if value="{{ tourOn }}" hint-placeholder-val="{{ false }}">
   <div style="position:fixed;inset:0;z-index:70;background:rgba(6,6,10,{{ tourDim }});pointer-events:none"></div>
   <sc-if value="{{ tourMarkOn }}" hint-placeholder-val="{{ false }}">
-    <div style="position:fixed;z-index:71;pointer-events:none;border-radius:8px;border:1px solid color-mix(in srgb,var(--color-accent) 55%,var(--color-border));box-shadow:0 0 0 4px color-mix(in srgb,var(--color-accent) 12%,transparent);top:{{ tourRingTop }}px;left:{{ tourRingLeft }}px;width:{{ tourRingW }}px;height:{{ tourRingH }}px"></div>
+    <div style="position:fixed;z-index:71;pointer-events:none;border-radius:8px;border:1px solid color-mix(in srgb,var(--color-accent) 55%,var(--color-border));box-shadow:0 0 0 4px color-mix(in srgb,var(--color-accent) 12%,transparent),0 0 0 100vmax rgba(6,6,10,.38);top:{{ tourRingTop }}px;left:{{ tourRingLeft }}px;width:{{ tourRingW }}px;height:{{ tourRingH }}px"></div>
     <div style="position:fixed;z-index:72;display:grid;place-items:center;height:18px;width:18px;border-radius:9999px;background:var(--color-accent);color:#fff;font-size:10px;font-weight:700;font-variant-numeric:tabular-nums;pointer-events:none;top:{{ tourBadgeTop }}px;left:{{ tourBadgeLeft }}px">{{ tourNum }}</div>
     <div style="position:fixed;z-index:73;width:296px;top:{{ tourTipTop }}px;left:{{ tourTipLeft }}px;transform:{{ tourTipShift }}">
       <sc-if value="{{ tourArrowUp }}" hint-placeholder-val="{{ true }}"><div style="width:10px;height:10px;background:var(--color-elevated);border-left:1px solid var(--color-border-strong);border-top:1px solid var(--color-border-strong);transform:rotate(45deg);margin:0 0 -5px {{ tourArrowML }}px"></div></sc-if>
@@ -3452,10 +3634,10 @@
             </div>
           </sc-if>
         </sc-if>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px">
+        <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;margin-top:10px">
           <span style="display:inline-flex;align-items:baseline;gap:4px;font-size:11px;font-variant-numeric:tabular-nums;color:var(--color-text-faint);white-space:nowrap;flex-shrink:0">{{ tourCount }} · <button onClick="{{ tourSkip }}" style="border:none;background:transparent;padding:0;font-family:var(--font-body);font-size:11px;color:var(--color-text-faint);text-decoration:underline;cursor:pointer">skip</button></span>
           <sc-if value="{{ tourFinal }}" hint-placeholder-val="{{ false }}">
-            <span style="display:flex;gap:6px;flex-shrink:0">
+            <span style="display:flex;gap:6px;flex-shrink:0;margin-left:auto">
               <button onClick="{{ tourDeleteDemo }}" style="height:24px;padding:0 10px;border-radius:4px;border:1px solid var(--color-border-strong);background:transparent;color:var(--color-text-secondary);font-size:11px;font-weight:500;cursor:pointer;font-family:var(--font-body);white-space:nowrap">Delete demo case</button>
               <button onClick="{{ tourNext }}" style="height:24px;padding:0 10px;border-radius:4px;border:none;background:var(--color-accent);color:#fff;font-size:11px;font-weight:500;cursor:pointer;font-family:var(--font-body);white-space:nowrap">Keep exploring</button>
             </span>
@@ -3466,6 +3648,25 @@
         </div>
       </div>
       <sc-if value="{{ tourArrowDown }}" hint-placeholder-val="{{ false }}"><div style="width:10px;height:10px;background:var(--color-elevated);border-right:1px solid var(--color-border-strong);border-bottom:1px solid var(--color-border-strong);transform:rotate(45deg);margin:-5px 0 0 {{ tourArrowML }}px"></div></sc-if>
+    </div>
+  </sc-if>
+  <sc-if value="{{ tourScreenOn }}" hint-placeholder-val="{{ false }}">
+    <sc-if value="{{ tourNavOn }}" hint-placeholder-val="{{ false }}">
+      <div style="position:fixed;z-index:71;pointer-events:none;border-radius:8px;border:1px solid color-mix(in srgb,var(--color-accent) 55%,var(--color-border));box-shadow:0 0 0 4px color-mix(in srgb,var(--color-accent) 12%,transparent),0 0 18px 2px color-mix(in srgb,var(--color-accent) 30%,transparent),0 0 0 100vmax rgba(6,6,10,.45);top:{{ tourNavTop }}px;left:{{ tourNavLeft }}px;width:{{ tourNavW }}px;height:{{ tourNavH }}px"></div>
+    </sc-if>
+    <div style="position:fixed;z-index:73;width:400px;top:{{ tourScreenTop }}px;left:{{ tourScreenLeft }}px">
+      <sc-if value="{{ tourNavOn }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;left:-6px;top:{{ tourScreenNotchTop }}px;width:10px;height:10px;transform:rotate(45deg);background:var(--color-elevated);border-left:1px solid var(--color-border-strong);border-bottom:1px solid var(--color-border-strong);z-index:1"></div>
+      </sc-if>
+      <div style="border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-elevated);box-shadow:0 16px 40px rgba(0,0,0,.5);padding:20px">
+        <div style="font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--color-accent);margin-bottom:8px">{{ tourScreenCount }}</div>
+        <div style="font-family:var(--font-display);font-size:16px;font-weight:800;letter-spacing:-.025em;color:var(--color-text-primary);margin-bottom:6px">{{ tourScreenName }}</div>
+        <div style="font-size:12px;line-height:1.6;color:var(--color-text-muted);margin-bottom:16px">{{ tourScreenBody }}</div>
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <button onClick="{{ tourSkip }}" style="border:none;background:transparent;padding:0;font-family:var(--font-body);font-size:11px;color:var(--color-text-faint);text-decoration:underline;cursor:pointer">skip tour</button>
+          <button onClick="{{ tourNext }}" style="height:28px;padding:0 12px;border-radius:4px;border:none;background:var(--color-accent);color:#fff;font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font-body);white-space:nowrap;flex-shrink:0">Show me →</button>
+        </div>
+      </div>
     </div>
   </sc-if>
   <sc-if value="{{ tourWelcome }}" hint-placeholder-val="{{ false }}">
@@ -3613,8 +3814,8 @@
 </sc-if>
 <!-- ============ COMMAND PALETTE ============ -->
 <sc-if value="{{ paletteOpen }}" hint-placeholder-val="{{ false }}">
-  <div onClick="{{ closePalette }}" style="position:fixed;inset:0;z-index:50;display:flex;justify-content:center;background:rgba(0,0,0,.5);padding-top:20vh">
-    <div onClick="{{ stopProp }}" style="height:fit-content;width:100%;max-width:512px;border-radius:6px;background:var(--color-elevated);border:1px solid var(--color-border);box-shadow:var(--shadow-overlay)">
+  <div onClick="{{ closePalette }}" style="animation:bbfade calc(var(--mo)*140ms) var(--ease);position:fixed;inset:0;z-index:50;display:flex;justify-content:center;background:rgba(0,0,0,.5);padding-top:20vh">
+    <div onClick="{{ stopProp }}" class="pop" style="height:fit-content;width:100%;max-width:512px;border-radius:6px;background:var(--color-elevated);border:1px solid var(--color-border);box-shadow:var(--shadow-overlay)">
       <div style="display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--color-border);padding:12px 16px">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#i-search"></use></svg>
         <input type="text" value="{{ paletteQuery }}" onChange="{{ onPaletteInput }}" placeholder="Switch investigation..." data-palette-input="1" style="min-width:0;flex:1;background:transparent;border:none;font-size:14px;color:var(--color-text-primary);outline:none;font-family:var(--font-body)">
@@ -3712,7 +3913,7 @@
   </div>
 </sc-if>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;extensionConnected&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Simulation&quot;},&quot;sinceLastVisit&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Simulation&quot;},&quot;firstRun&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Simulation&quot;},&quot;tourOnLaunch&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Simulation&quot;},&quot;overviewVariant&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;consolidated&quot;,&quot;classic&quot;],&quot;default&quot;:&quot;consolidated&quot;,&quot;tsType&quot;:&quot;\&quot;consolidated\&quot; | \&quot;classic\&quot;&quot;,&quot;section&quot;:&quot;Exploration&quot;},&quot;density&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;compact&quot;,&quot;default&quot;,&quot;comfortable&quot;],&quot;default&quot;:&quot;compact&quot;,&quot;tsType&quot;:&quot;'compact' | 'default' | 'comfortable'&quot;,&quot;section&quot;:&quot;Layout&quot;},&quot;mentionStyle&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;chip&quot;,&quot;underline&quot;,&quot;bracket&quot;],&quot;default&quot;:&quot;chip&quot;,&quot;tsType&quot;:&quot;'chip' | 'underline' | 'bracket'&quot;,&quot;section&quot;:&quot;Notes&quot;}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;extensionConnected&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Simulation&quot;},&quot;sinceLastVisit&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Simulation&quot;},&quot;firstRun&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Simulation&quot;},&quot;tourOnLaunch&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Simulation&quot;},&quot;motion&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Simulation&quot;},&quot;overviewVariant&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;consolidated&quot;,&quot;classic&quot;],&quot;default&quot;:&quot;consolidated&quot;,&quot;tsType&quot;:&quot;\&quot;consolidated\&quot; | \&quot;classic\&quot;&quot;,&quot;section&quot;:&quot;Exploration&quot;},&quot;density&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;compact&quot;,&quot;default&quot;,&quot;comfortable&quot;],&quot;default&quot;:&quot;compact&quot;,&quot;tsType&quot;:&quot;'compact' | 'default' | 'comfortable'&quot;,&quot;section&quot;:&quot;Layout&quot;},&quot;mentionStyle&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;chip&quot;,&quot;underline&quot;,&quot;bracket&quot;],&quot;default&quot;:&quot;chip&quot;,&quot;tsType&quot;:&quot;'chip' | 'underline' | 'bracket'&quot;,&quot;section&quot;:&quot;Notes&quot;}}">
 class Component extends DCLogic {
   constructor(props) {
     super(props)
@@ -3732,8 +3933,14 @@ class Component extends DCLogic {
       tagPickerOpen: false, tagColor: '#f59e0b',
       settingsTab: 'capture', dataCat: 'IoCs', dataSub: 'Domains',
       tool: 'select', color: '#ef4444', strokeW: 3, zoom: 64, overlayVisible: true, styleOpen: false,
+      pins: [
+        { id: 'p1', x: 78.5, y: 63, note: 'Support email uses lookalike domain meridian-trust-secure.com', color: '#ef4444', meta: 'you · 2h ago' },
+        { id: 'p2', x: 30, y: 47, note: 'Sign-in form posts to off-domain endpoint', color: '#3b82f6', meta: 'you · 2h ago' }
+      ],
+      pinDraft: null, pinOpen: null, pinText: '',
       deleteDialog: false, detailsCollapsed: false, capDetailsMenu: false, panelForced: false, forcedPanelOpen: false,
       autoCapture: false, reduceMotion: false, extStep: 0, editingSel: null, presetSel: { email: true },
+      ncStep: 0, ncName: '', ncDesc: '', ncAuto: true, ncCreating: false,
       acExclOpen: false, acExclMode: 'stack', acExcl: ['*.bank.com', 'mail.google.com', '/\\.gov(\\.|\\/|$)/'], acExclInput: '',
       capView: 'detailed',
       extState: 'idle', popupOpen: true, casePickerOpen: false, extToast: null, capStep: 0, extCapTags: { phishing: true }, bctx: null, capMode: 'full',
@@ -4092,9 +4299,14 @@ class Component extends DCLogic {
       ]
     }
     return [
-      { target: 'viewertabs', route: 'captures', title: 'Four views of every capture', body: 'Screenshot, full page, extracted text, and archive.org snapshots — one tab each.', kbd: 'Ctrl K', kbdNote: 'jumps anywhere, anytime' },
+      { screen: 'Captures', route: 'captures', target: 'nav-captures', body: 'The evidence locker. Every page you log lands in the list on the left; the viewer on the right shows exactly what was saved, pixel for pixel.' },
+      { target: 'viewertabs', route: 'captures', title: 'Four views of every capture', body: 'Screenshot, full page, extracted text, and archive.org snapshots — one tab each.' },
+      { target: 'caseswitcher', route: 'captures', title: 'You\u2019re inside a case', body: 'Everything you see is scoped to this investigation. Click the name to switch cases or start a new one.', kbd: 'Ctrl K', kbdNote: 'opens the switcher anywhere' },
+      { screen: 'Signals', route: 'signals', target: 'nav-signals', body: 'The watchlist. Define selectors — emails, wallets, IPs — and Birdbrain flags every capture that matches, past and future.' },
       { target: 'selectors', route: 'signals', title: 'Selectors watch for patterns', body: 'Emails, wallets, panel IPs — matches are highlighted across every capture, and auto-capture can log pages that hit.' },
+      { screen: 'Notes', route: 'notes', target: 'nav-notes', body: 'Your case narrative. Write up findings here and link them straight to the evidence they came from.' },
       { target: 'noteeditor', route: 'notes', title: 'Notes link to evidence', body: 'Type @ to mention a capture or selector, # for a tag. Mentions become live links in both directions.', kbd: '@ #', kbdNote: 'work in any note' },
+      { screen: 'Overview', route: 'overview', target: 'nav-overview', body: 'The case at a glance — stats, recent activity, and a map of how everything you\u2019ve gathered connects.' },
       { target: 'linkmap', route: 'overview', title: 'The link map ties it together', body: 'Notes, captures, selectors, and tags, connected by their mentions. Click any node to jump to it.' },
       { target: 'export', route: 'overview', title: 'Court-ready exports', body: 'Every artifact is hashed on capture and sealed in a signed manifest — export the whole case or just a selection, cover sheet included.', final: true }
     ]
@@ -4136,10 +4348,35 @@ class Component extends DCLogic {
       replayTour: () => this.startTour('intro'),
       paletteReplayTour: () => { this.setState({ paletteOpen: false }); this.startTour('intro') }
     }
-    if (!t) return Object.assign(base, { tourOn: false, tourWelcome: false, tourMarkOn: false })
+    if (!t) return Object.assign(base, { tourOn: false, tourWelcome: false, tourMarkOn: false, tourScreenOn: false })
     const steps = this.tourSteps(t.phase)
     const def = steps[t.step]
-    const marks = steps.filter(function (d) { return !d.welcome })
+    if (def.screen) {
+      const screens = steps.filter(function (d) { return d.screen })
+      const nr = s.tourRect
+      const nvw = window.innerWidth, nvh = window.innerHeight
+      const cardW = 400, cardH = 190
+      let cTop, cLeft, notchTop = 0
+      if (nr) {
+        cLeft = nr.left + nr.width + 18
+        cTop = Math.min(Math.max(nr.top + nr.height / 2 - 56, 12), nvh - cardH - 12)
+        notchTop = nr.top + nr.height / 2 - cTop - 5
+      } else {
+        cLeft = (nvw - cardW) / 2
+        cTop = (nvh - cardH) / 2
+      }
+      return Object.assign(base, {
+        tourOn: true, tourDim: nr ? '0' : '.45', tourWelcome: false, tourMarkOn: false,
+        tourScreenOn: true, tourNavOn: !!nr,
+        tourNavTop: nr ? nr.top - 5 : 0, tourNavLeft: nr ? nr.left - 5 : 0,
+        tourNavW: nr ? nr.width + 10 : 0, tourNavH: nr ? nr.height + 10 : 0,
+        tourScreenTop: cTop, tourScreenLeft: cLeft, tourScreenNotchTop: notchTop,
+        tourScreenCount: 'Screen ' + (screens.indexOf(def) + 1) + ' of ' + screens.length,
+        tourScreenName: def.screen, tourScreenBody: def.body,
+        tourNext: () => this.tourNext(), tourSkip: () => this.tourSkip()
+      })
+    }
+    const marks = steps.filter(function (d) { return d.target && !d.screen })
     const num = def.welcome ? 0 : marks.indexOf(def) + 1
     const r = s.tourRect
     const vw = window.innerWidth, vh = window.innerHeight
@@ -4147,7 +4384,8 @@ class Component extends DCLogic {
     const tipLeft = r ? Math.min(Math.max(r.left - 8, 12), vw - 312) : 0
     return Object.assign(base, {
       tourOn: true,
-      tourDim: def.welcome ? '.5' : '.38',
+      tourDim: def.welcome ? '.5' : (r ? '0' : '.38'),
+      tourScreenOn: false,
       tourWelcome: !!def.welcome,
       tourMarkOn: !!(def.target && r),
       tourRingTop: r ? r.top - 4 : 0, tourRingLeft: r ? r.left - 4 : 0,
@@ -4176,9 +4414,38 @@ class Component extends DCLogic {
       }
     })
   }
+  syncMotion() {
+    document.documentElement.classList.toggle('bb-nomo', !!this.state.reduceMotion || (this.props.motion ?? true) === false)
+  }
+  themeFade() {
+    const h = document.documentElement
+    if (h.classList.contains('bb-nomo')) return
+    h.classList.add('bb-theming')
+    clearTimeout(this._thT)
+    this._thT = setTimeout(() => h.classList.remove('bb-theming'), 240)
+  }
+  ovCountVal(v) { return String(Math.round(v * (this._ovProg == null ? 1 : this._ovProg))) }
+  startOvCount() {
+    if (this._ovCounted) return
+    this._ovCounted = true
+    if (document.documentElement.classList.contains('bb-nomo') || matchMedia('(prefers-reduced-motion: reduce)').matches) { this._ovProg = 1; return }
+    this._ovProg = 0
+    const t0 = performance.now()
+    const step = (tm) => {
+      const p = Math.min(1, (tm - t0) / 700)
+      this._ovProg = 1 - Math.pow(1 - p, 3)
+      this.forceUpdate()
+      if (p < 1) this._rafC = requestAnimationFrame(step)
+    }
+    this._rafC = requestAnimationFrame(step)
+  }
   renderVals() {
     const s = this.state
     const self = this
+    this.syncMotion()
+    if (!this._seen) this._seen = {}
+    const stagCls = this._seen[s.route] ? '' : 'stag'
+    if (!this._seen[s.route]) { clearTimeout(this._stagT); const _r = s.route; this._stagT = setTimeout(() => { this._seen[_r] = 1 }, 900) }
     const extConnected = this.props.extensionConnected ?? true
     const firstRun = this.props.firstRun ?? false
     const actRows = s.route === 'dashboard' && !firstRun ? this.dashActivityRows() : []
@@ -4199,7 +4466,7 @@ class Component extends DCLogic {
     const sidebarItems = (consolidatedNav ? navDefs.filter(function (d) { return d.id !== 'selectors' && d.id !== 'tags' }) : navDefs).map(function (d) {
       const active = d.route === s.route || (d.id === 'home' && s.route === 'dashboard')
       return {
-        icon: d.icon, label: d.label, active: active,
+        icon: d.icon, label: d.label, active: active, route: d.route,
         bg: active ? 'var(--color-accent-subtle)' : 'transparent',
         color: active ? 'var(--color-accent)' : 'var(--color-text-muted)',
         go: function () { self.go(d.route) }
@@ -4236,6 +4503,7 @@ class Component extends DCLogic {
       vSelectors: s.route === 'selectors', vNotes: s.route === 'notes', vTags: s.route === 'tags',
       vData: s.route === 'data', vNewCase: s.route === 'newcase',
       vSignals: s.route === 'signals', vBrowser: s.route === 'browser',
+      stag: stagCls,
       goBrowser: () => this.setState({ route: 'browser', openMenu: null }),
       browserBtnBg: s.route === 'browser' ? 'var(--color-accent-subtle)' : 'transparent',
       browserBtnColor: s.route === 'browser' ? 'var(--color-accent)' : 'var(--color-text-muted)',
@@ -4293,6 +4561,7 @@ class Component extends DCLogic {
       goExt: () => this.startTour('ext'),
       goBack: () => this.go(inCase ? s.route : (this._prevRoute || 'dashboard')),
       toggleTheme: () => {
+        this.themeFade()
         const next = s.theme === 'dark' ? 'light' : 'dark'
         document.documentElement.classList.toggle('dark', next === 'dark')
         this.setState({ theme: next })
@@ -4312,7 +4581,7 @@ class Component extends DCLogic {
       onPaletteInput: (e) => this.setState({ paletteQuery: e.target.value }),
       paletteNewCase: () => this.go('newcase'),
       ...this.overviewVals(), ...this.capturesVals(), ...this.selectorsVals(),
-      ...this.notesVals(), ...this.tagsVals(), ...this.dataVals(), ...this.settingsVals(), ...this.extVals(), ...this.signalsVals()
+      ...this.notesVals(), ...this.tagsVals(), ...this.dataVals(), ...this.settingsVals(), ...this.extVals(), ...this.signalsVals(), ...this.newCaseVals()
     }
   }
   overviewVals() {
@@ -4344,13 +4613,14 @@ class Component extends DCLogic {
         open: function () { self.setState({ selCap: c.id }); self.go('captures') }
       }
     })
+    if (this.state.route === 'overview') this.startOvCount()
     const metrics = [
       { key: 'captures', label: 'Captures', icon: '#i-camera', value: 8, delta: showBanner ? '+3' : '' },
       { key: 'sources', label: 'Sources', icon: '#i-globe', value: 7, delta: showBanner ? '+2' : '' },
       { key: 'selectors', label: 'Selectors', icon: '#i-target', value: 5, delta: showBanner ? '+1' : '' },
       { key: 'tags', label: 'Tags', icon: '#i-tags', value: 4, delta: '' },
       { key: 'notes', label: 'Notes', icon: '#i-filetext', value: 3, delta: showBanner ? '+1' : '' }
-    ].map(function (m) { m.hasDelta = !!m.delta; return m })
+    ].map((m) => { m.hasDelta = !!m.delta; m.value = this.ovCountVal(m.value); return m })
     const sinceItems = [
       { n: '+3', label: 'new captures', icon: '#i-camera', tone: 'var(--color-text-secondary)', bg: 'var(--color-surface)' },
       { n: '+2', label: 'new sources', icon: '#i-globe', tone: 'var(--color-text-secondary)', bg: 'var(--color-surface)' },
@@ -4464,6 +4734,10 @@ class Component extends DCLogic {
       return { c: c, ring: c === s.color ? '0 0 0 1px var(--color-card),0 0 0 3px var(--color-accent)' : 'none', pick: function () { self.setState({ color: c }) } }
     })
     const drawing = ['rect', 'arrow', 'highlight', 'redact', 'pin'].indexOf(s.tool) >= 0
+    const pins = s.pins || []
+    const pinDraft = s.pinDraft
+    const openPin = pins.find((p) => p.id === s.pinOpen)
+    const pinPop = pinDraft || openPin
     const idx = list.findIndex((c) => c.id === cap.id)
     const capTags = this.tags.slice(0, 2).map((t) => ({ id: t.id, name: t.name, color: t.color, ctx: (e) => this.openCtx('tag', t.id, t.name, e) }))
     return {
@@ -4539,6 +4813,47 @@ class Component extends DCLogic {
       overlayVisible: s.overlayVisible, eyeIcon: s.overlayVisible ? '#i-eye' : '#i-eyeoff',
       eyeDisabled: drawing, eyeOpacity: drawing ? '.5' : '1',
       toggleOverlay: () => { if (!drawing) this.setState({ overlayVisible: !s.overlayVisible }) },
+      // pins
+      shotCursor: s.tool === 'pin' ? 'crosshair' : 'default',
+      shotClick: (e) => {
+        if (s.tool !== 'pin') { if (s.pinOpen || s.pinDraft) this.setState({ pinOpen: null, pinDraft: null }); return }
+        const r = e.currentTarget.getBoundingClientRect()
+        const px = Math.round(((e.clientX - r.left) / r.width) * 1000) / 10
+        const py = Math.round(((e.clientY - r.top) / r.height) * 1000) / 10
+        this.setState({ pinDraft: { x: px, y: py }, pinOpen: null, pinText: '' })
+      },
+      pinsVisible: s.overlayVisible,
+      pinLegendOn: s.overlayVisible && pins.length > 0,
+      pinLegendCount: String(pins.length),
+      pinLegendRows: pins.map((p, i) => ({
+        n: String(i + 1), note: p.note, meta: 'Pin ' + (i + 1) + ' · ' + p.meta,
+        open: s.pinLegendOpen === p.id,
+        ws: s.pinLegendOpen === p.id ? 'normal' : 'nowrap',
+        chev: s.pinLegendOpen === p.id ? '180deg' : '0deg',
+        bg: s.pinLegendOpen === p.id ? 'var(--color-surface)' : 'transparent',
+        toggle: () => this.setState({ pinLegendOpen: s.pinLegendOpen === p.id ? null : p.id })
+      })),
+      pinScale: (100 / s.zoom).toFixed(3),
+      pinItems: pins.map((p, i) => ({
+        id: p.id, n: String(i + 1), x: p.x + '%', y: p.y + '%', color: p.color, note: p.note,
+        ring: (s.pinOpen === p.id || s.pinLegendOpen === p.id) ? '0 0 0 3px color-mix(in srgb,var(--color-accent) 35%,transparent)' : '0 0 0 0 transparent',
+        click: (ev) => { ev.stopPropagation(); this.setState({ pinOpen: s.pinOpen === p.id ? null : p.id, pinDraft: null }) }
+      })),
+      pinDraftOn: !!pinDraft, pinDraftN: String(pins.length + 1),
+      pinPopOpen: !!pinPop, pinPopX: (pinPop ? pinPop.x : 0) + '%', pinPopY: (pinPop ? pinPop.y : 0) + '%',
+      pinPopTf: pinPop && pinPop.y > 55 ? 'scale(' + (100 / s.zoom).toFixed(3) + ') translate(-50%,calc(-100% - 34px))' : 'scale(' + (100 / s.zoom).toFixed(3) + ') translate(-50%,12px)',
+      pinIsDraft: !!pinDraft, pinIsSaved: !pinDraft && !!openPin,
+      pinText: s.pinText, onPinText: (e) => this.setState({ pinText: e.target.value }),
+      pinPopClick: (ev) => ev.stopPropagation(),
+      cancelPin: (ev) => { ev.stopPropagation(); this.setState({ pinDraft: null, pinText: '' }) },
+      savePin: (ev) => {
+        ev.stopPropagation()
+        const np = { id: 'p' + Date.now(), x: pinDraft.x, y: pinDraft.y, note: s.pinText.trim() || 'Pinned for review', color: 'var(--color-accent)', meta: 'you · just now' }
+        this.setState({ pins: pins.concat([np]), pinDraft: null, pinText: '', pinOpen: null })
+      },
+      openPinNote: openPin ? openPin.note : '',
+      openPinMeta: openPin ? 'Pin ' + (pins.indexOf(openPin) + 1) + ' · ' + openPin.meta : '',
+      deletePin: (ev) => { ev.stopPropagation(); this.setState({ pins: pins.filter((p) => p.id !== s.pinOpen), pinOpen: null }) },
       // details panel
       provText: p.text, provBg: p.bg, provLabel: p.label,
       detCollapsed: s.detailsCollapsed || s.panelForced,
@@ -4656,6 +4971,31 @@ class Component extends DCLogic {
       return sigil === '@' ? '[[' + short + ']]' : '#[' + short + ']'
     })
   }
+  openMention(kind, label) {
+    if (kind === 'sel') {
+      const norm = (t) => (t || '').toLowerCase()
+      const sel = this.selectors.find((x) => norm(x.label) === norm(label) || norm(x.pattern) === norm(label)) ||
+        this.selectors.find((x) => (x.pattern && norm(label).indexOf(norm(x.pattern)) >= 0) || (x.label && norm(label).indexOf(norm(x.label)) >= 0) || (label && norm(x.pattern).indexOf(norm(label)) >= 0))
+      this.go('signals')
+      if (sel) { this.focusEdit = true; this.setState({ selSignal: sel.id, editSig: sel.id, editText: sel.pattern }) }
+      return
+    }
+    if (kind === 'tag') {
+      const t = this.tags.find((x) => x.name === label.replace(/^#/, ''))
+      this.go('signals')
+      if (t) this.setState({ selSignal: t.id })
+      return
+    }
+    if (kind === 'capture') {
+      const c = this.captures.find((x) => x.title === label)
+      this.go('captures')
+      if (c) this.setState({ selCap: c.id })
+      return
+    }
+    const n = this.notes.find((x) => x.title === label)
+    this.go('notes')
+    if (n) this.setState({ selNote: n.id })
+  }
   parseNoteBody(body) {
     const self = this
     const v = this.props.mentionStyle ?? 'chip'
@@ -4671,7 +5011,8 @@ class Component extends DCLogic {
       const text = v === 'bracket'
         ? (m[1] === '@' ? '[[' + short + ']]' : '#[' + short + ']')
         : m[1] + short
-      out.push(Object.assign({ t: text, title: kind + ' · ' + label, ws: 'nowrap' }, st))
+      const hint = kind === 'sel' ? ' — click to edit the rule' : kind === 'capture' ? ' — click to open' : kind === 'note' ? ' — click to open' : ' — click to view'
+      out.push(Object.assign({ t: text, title: kind + ' · ' + label + hint, ws: 'nowrap', click: (function (k, l) { return function (ev) { ev.preventDefault(); ev.stopPropagation(); self.openMention(k, l) } })(kind, label) }, st))
       last = m.index + m[0].length
     }
     if (last < body.length) out.push(Object.assign({ t: body.slice(last) }, plain))
@@ -4896,7 +5237,8 @@ class Component extends DCLogic {
     const lit = (key) => !hi || hi === key || edges.some((e) => (e.a === hi && e.b === key) || (e.b === hi && e.a === key))
     const backlinks = edges.filter((e) => e.kind === 'backlink').length
     return {
-      mapNodes: nodes.map((n) => {
+      mapFadeAnim: (this._seen && this._seen['overview']) ? 'none' : 'bbfade calc(var(--mo)*420ms) var(--ease) 120ms backwards',
+      mapNodes: nodes.map((n, i) => {
         const hidden = !!off[n.type]
         const on = !hidden && lit(n.key)
         const isNote = n.kind === 'note'
@@ -4904,6 +5246,7 @@ class Component extends DCLogic {
         return {
           label: short, full: n.label, meta: n.meta || 'note', icon: n.icon || '#i-note',
           left: n.x + '%', top: n.y + '%',
+          anim: (this._seen && this._seen['overview']) ? 'none' : 'bbnode calc(var(--mo)*240ms) var(--ease) ' + (120 + i * 24) + 'ms backwards',
           op: hidden ? '.12' : (on ? '1' : '.22'),
           pe: hidden ? 'none' : 'auto',
           isNote: isNote, isEntity: !isNote,
@@ -5012,8 +5355,13 @@ class Component extends DCLogic {
       }
     })
     rows.forEach(function (r) { r.ctx = function (ev) { self.openCtx('suggestion', cur.id + '|' + r.value, r.value, ev, { add: r.add, skip: r.skip }) } })
+    const sec = s.noteSecClosed || {}
+    const secToggle = (k) => () => this.setState({ noteSecClosed: Object.assign({}, sec, (function () { const o = {}; o[k] = !sec[k]; return o })()) })
     return {
       railOpen: s.noteRailOpen !== false, railClosed: s.noteRailOpen === false,
+      sugOpen: !sec.sug, toggleSug: secToggle('sug'), sugChev: sec.sug ? 'rotate(-90deg)' : 'none',
+      outOpen: !sec.out, toggleOut: secToggle('out'), outChev: sec.out ? 'rotate(-90deg)' : 'none',
+      inOpen: !sec.in, toggleIn: secToggle('in'), inChev: sec.in ? 'rotate(-90deg)' : 'none',
       toggleRail: () => this.setState({ noteRailOpen: s.noteRailOpen === false }),
       railBadge: String(rows.length + graph.out.length + graph.in.length),
       sugRows: rows, sugCount: String(rows.length), sugEmpty: rows.length === 0,
@@ -5053,10 +5401,17 @@ class Component extends DCLogic {
         source: cap ? self.hostOf(cap.url) : 'No linked capture',
         bg: sel ? 'var(--color-accent-subtle)' : 'transparent',
         border: sel ? '1px solid color-mix(in srgb,var(--color-accent) 35%,transparent)' : '1px solid transparent',
-        pick: function () { self.setState({ selNote: n.id }) },
+        rail: self.isMulti('note', n.id) ? 'var(--color-accent)' : 'transparent',
+        pick: function (e) {
+          if (e && e.shiftKey) { self.rowSelect('note', noteIds, n.id, e, function () { self.setState({ selNote: n.id }) }); return }
+          if (e && (e.metaKey || e.ctrlKey)) { self.toggleMulti('note', n.id); self.setState({ _anchor_note: n.id }); return }
+          self.setState({ selNote: n.id, _anchor_note: n.id })
+        },
         ctx: function (e) { self.openCtx('note', n.id, n.title, e) }
       }
     })
+    const noteIds = list.map(function (n) { return n.id })
+    const nNoteSel = this.multiIds('note').filter(function (id) { return noteIds.indexOf(id) >= 0 }).length
 
     const nSortOpts = [['newest', 'Newest first'], ['oldest', 'Oldest first'], ['title-az', 'Title A\u2013Z']].map(function (o) {
       const on = s.noteSort === o[0]
@@ -5078,6 +5433,22 @@ class Component extends DCLogic {
     return {
       noteGutter: s.noteRailOpen === false ? '48px' : '324px',
       noteListItems: items,
+      noteSelMode: nNoteSel > 0,
+      noteSelLabel: nNoteSel + ' selected',
+      noteAllLabel: this.allSelected('note', noteIds) ? 'Clear all' : 'Select all',
+      noteAllBd: this.allSelected('note', noteIds) ? 'var(--color-accent)' : 'var(--color-border-strong)',
+      noteAllBg: this.allSelected('note', noteIds) ? 'var(--color-accent)' : 'transparent',
+      noteAllTick: this.allSelected('note', noteIds) ? '1' : '0',
+      noteToggleAll: () => this.toggleSelectAll('note', noteIds),
+      noteClearSel: () => this.clearMulti('note'),
+      noteExportSel: () => this.setState({ exportDlg: true, openMenu: null, expScope: 'case', expInc: { artifacts: false, manifest: true, ledger: false, text: false, notes: true, hits: false, index: false, custody: true } }),
+      noteTagSel: () => this.fireToast('Tag applied', nNoteSel + ' notes'),
+      noteDeleteSel: () => {
+        const del = this.multiIds('note')
+        this.notes = this.notes.filter((n) => del.indexOf(n.id) < 0)
+        this.clearMulti('note')
+        this.setState({ selNote: del.indexOf(s.selNote) >= 0 ? (this.notes[0] || {}).id : s.selNote })
+      },
       nvDetailed: (s.noteView || 'detailed') === 'detailed', nvList: s.noteView === 'list',
       nDetBg: (s.noteView || 'detailed') === 'detailed' ? 'var(--color-card)' : 'transparent',
       nDetColor: (s.noteView || 'detailed') === 'detailed' ? 'var(--color-text-primary)' : 'var(--color-text-faint)',
@@ -5206,8 +5577,8 @@ class Component extends DCLogic {
       themeDarkBorder: s.theme === 'dark' ? '2px solid var(--color-accent)' : '2px solid var(--color-border-strong)',
       themeDarkBg: s.theme === 'dark' ? 'var(--color-accent-subtle)' : 'var(--color-card)',
       themeDarkColor: s.theme === 'dark' ? 'var(--color-accent)' : 'var(--color-text-muted)',
-      setLight: () => { document.documentElement.classList.remove('dark'); this.setState({ theme: 'light' }) },
-      setDark: () => { document.documentElement.classList.add('dark'); this.setState({ theme: 'dark' }) },
+      setLight: () => { this.themeFade(); document.documentElement.classList.remove('dark'); this.setState({ theme: 'light' }) },
+      setDark: () => { this.themeFade(); document.documentElement.classList.add('dark'); this.setState({ theme: 'dark' }) },
       reduceMotion: s.reduceMotion,
       rmBg: s.reduceMotion ? 'var(--color-accent)' : 'var(--color-text-faint)',
       rmKnob: s.reduceMotion ? '18px' : '2px',
@@ -5326,7 +5697,7 @@ class Component extends DCLogic {
         rowBorder: on ? '1px solid color-mix(in srgb,var(--color-accent) 35%,transparent)' : '1px solid transparent',
         nameOpacity: g.kind === 'selector' && !g.enabled ? '.4' : '1',
         cells: capIds.slice(0, 24).map(function (id, i) {
-          return { bg: g.ids.indexOf(id) >= 0 ? (g.kind === 'tag' ? g.color : 'var(--color-accent)') : 'var(--color-elevated)', title: self.captures[i].title }
+          return { bg: g.ids.indexOf(id) >= 0 ? (g.kind === 'tag' ? g.color : 'var(--color-accent)') : 'color-mix(in srgb,var(--color-text-primary) 9%,transparent)', title: self.captures[i].title }
         }),
         toggle: function (e) { e.stopPropagation(); if (g.ref) { g.ref.enabled = !g.ref.enabled; self.forceUpdate() } },
         remove: function (e) {
@@ -5358,6 +5729,19 @@ class Component extends DCLogic {
       newSelRegexColor: s.newSelRegex ? 'var(--color-accent)' : 'var(--color-text-muted)',
       newSelRegexTitle: s.newSelRegex ? 'Regex mode on — click for exact text (or just wrap the pattern in /…/)' : 'Exact text mode — click for regex (or just wrap the pattern in /…/)',
       toggleNewSelRegex: () => this.setState({ newSelRegex: !s.newSelRegex }),
+      newSelModeChip: s.newSelRegex ? '.*' : 'Aa',
+      selDrawerOpen: !!s.selDrawerOpen,
+      onSelFocus: () => this.setState({ selDrawerOpen: true }),
+      onSelBlur: () => this.setState({ selDrawerOpen: false }),
+      selExactOn: !s.newSelRegex, selRegexOn: !!s.newSelRegex,
+      selExactBd: !s.newSelRegex ? 'color-mix(in srgb,var(--color-accent) 45%,transparent)' : 'var(--color-border)',
+      selExactBg: !s.newSelRegex ? 'var(--color-accent-subtle)' : 'transparent',
+      selExactFg: !s.newSelRegex ? 'var(--color-accent)' : 'var(--color-text-muted)',
+      selRegexBd: s.newSelRegex ? 'color-mix(in srgb,var(--color-accent) 45%,transparent)' : 'var(--color-border)',
+      selRegexBg: s.newSelRegex ? 'var(--color-accent-subtle)' : 'transparent',
+      selRegexFg: s.newSelRegex ? 'var(--color-accent)' : 'var(--color-text-muted)',
+      pickSelExact: (e) => { e.preventDefault(); this.setState({ newSelRegex: false }) },
+      pickSelRegex: (e) => { e.preventDefault(); this.setState({ newSelRegex: true }) },
       selInputRef: (el) => { this.selInputEl = el },
       tagInputRef: (el) => { this.tagInputEl = el },
       onNewSelInput: (e) => this.setState({ newSelText: e.target.value }),
@@ -5426,6 +5810,66 @@ class Component extends DCLogic {
       }
     })
     return { extSteps: steps, selectorPresets: presets }
+  }
+  newCaseVals() {
+    const self = this
+    const s = this.state
+    const step = s.ncStep || 0
+    const name = s.ncName || ''
+    const canNext = (step !== 0 || name.trim().length > 0) && !s.ncCreating
+    const labels = { email: 'Email Addresses', crypto: 'Crypto Addresses', ip: 'IP Addresses', domain: 'Domain Names', phone: 'Phone Numbers', username: 'Usernames' }
+    const picked = Object.keys(s.presetSel).filter(function (k) { return s.presetSel[k] && labels[k] })
+    const stepDefs = [['Details', 'Name the case and set its scope'], ['Signals', 'Choose what this case watches for'], ['Review', 'Confirm details and create the case']]
+    const next = () => {
+      if (!canNext) return
+      if (step < 2) { this.setState({ ncStep: step + 1 }); return }
+      this.setState({ ncCreating: true })
+      setTimeout(() => {
+        const nm = name.trim() || 'Untitled investigation'
+        this.setState({ ncCreating: false, ncStep: 0, ncName: '', ncDesc: '', ncDescOpen: false })
+        this.go('dashboard')
+        this.fireToast('Investigation created', '\u201C' + nm + '\u201D is ready \u2014 ' + (picked.length === 1 ? '1 selector' : picked.length + ' selectors') + ' armed.')
+      }, 700)
+    }
+    return {
+      ncS1: step === 0, ncS2: step === 1, ncS3: step === 2,
+      ncStepSub: stepDefs[step][1],
+      ncCaseId: 'CASE BB-2026-041',
+      ncSteps: stepDefs.map(function (d, i) {
+        return {
+          label: d[0],
+          w: i === step ? '22px' : '6px',
+          bg: i === step ? 'var(--color-accent)' : (i < step ? 'color-mix(in srgb,var(--color-accent) 45%,transparent)' : 'var(--color-elevated)'),
+          cursor: i < step ? 'pointer' : 'default',
+          jump: function () { if (i < step) self.setState({ ncStep: i }) }
+        }
+      }),
+      ncName: name, ncDesc: s.ncDesc || '',
+      onNcName: (e) => this.setState({ ncName: e.target.value }),
+      onNcDesc: (e) => this.setState({ ncDesc: e.target.value }),
+      onNcKey: (e) => { if (e.key === 'Enter') { e.preventDefault(); next() } },
+      ncNameRef: (el) => { if (el && !el.dataset.foc) { el.dataset.foc = '1'; el.focus() } },
+      ncFocusRef: (el) => { if (el && !el.dataset.foc) { el.dataset.foc = '1'; el.focus() } },
+      ncDescOpen: !!s.ncDescOpen,
+      ncDescClosed: !s.ncDescOpen,
+      ncOpenDesc: () => this.setState({ ncDescOpen: true }),
+      ncHasDesc: !!(s.ncDesc || '').trim(),
+      ncSelLabels: picked.map(function (k) { return { label: labels[k] } }),
+      ncAuto: s.ncAuto !== false,
+      ncToggleAuto: () => this.setState({ ncAuto: s.ncAuto === false }),
+      ncAutoBg: s.ncAuto !== false ? 'var(--color-accent)' : 'var(--color-text-faint)',
+      ncAutoKnob: s.ncAuto !== false ? '18px' : '2px',
+      ncAutoSummary: (picked.length === 0 ? 'no selectors yet' : '') + (s.ncAuto !== false ? (picked.length === 0 ? ' · ' : '') + 'auto-capture on' : (picked.length === 0 ? ' · ' : '') + 'auto-capture off'),
+      ncNameShown: name.trim() || 'Untitled investigation',
+      ncBackLabel: step === 0 ? 'Cancel' : 'Back',
+      ncBackAction: step === 0 ? () => this.go('dashboard') : () => this.setState({ ncStep: step - 1 }),
+      ncNext: next,
+      ncNextLabel: step < 2 ? 'Continue' : 'Create investigation',
+      ncNextOpacity: canNext || s.ncCreating ? 1 : .45,
+      ncNextCursor: canNext ? 'pointer' : 'default',
+      ncCreating: !!s.ncCreating,
+      ncStepCount: (step + 1) + ' / 3'
+    }
   }
   wbInit() {
     if (this.wbSnaps) return

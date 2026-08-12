@@ -6,6 +6,7 @@
 // screenshot passes render.
 import { describe, it, expect, beforeAll, vi } from 'vitest'
 import { showToast, updateToast } from '../../extension/src/toast'
+import { removeInjectedBirdbrainUi } from '../../extension/src/captureHygiene'
 import type { ActiveCaseSelectors } from '@shared/types'
 import type { SelectorMatchInfo } from '@shared/schemas'
 
@@ -111,6 +112,17 @@ describe('PREPARE_FOR_CAPTURE (#379)', () => {
 
     const responses = dispatch({ type: 'PREPARE_FOR_CAPTURE' })
     expect(responses).toContainEqual({ ok: true })
+    expect(document.documentElement.outerHTML).toBe(baseline)
+  })
+
+  it('supports direct cleanup when an orphaned content script cannot receive messages', () => {
+    setPageHtml(PAGE_HTML)
+    const baseline = document.documentElement.outerHTML
+    dispatch({ type: 'CHECK_SELECTORS', selectors: SELECTOR_GROUPS })
+    showToast({ status: 'capturing' })
+
+    removeInjectedBirdbrainUi()
+
     expect(document.documentElement.outerHTML).toBe(baseline)
   })
 })

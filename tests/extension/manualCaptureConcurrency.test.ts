@@ -17,7 +17,7 @@ vi.mock('@extension/utils/api', () => ({
   createSelector: vi.fn()
 }))
 
-import { getStatus, getActiveSelectors, sendMhtmlCapture } from '@extension/utils/api'
+import { getStatus, getActiveSelectors, sendMhtmlCapture, createSelector } from '@extension/utils/api'
 
 type SendResponse = (response?: unknown) => void
 type Listener = (message: unknown, sender: unknown, sendResponse: SendResponse) => unknown
@@ -26,7 +26,10 @@ const EXTENSION_ID = 'birdbrain-test'
 const TAB = { id: 1, url: 'https://example.test/page', title: 'Example', active: true, windowId: 1 }
 
 const runtimeListeners: Listener[] = []
+let contextMenuListener: ((info: { menuItemId: string; selectionText?: string }, tab: typeof TAB) => Promise<void>) | undefined
 const sentMessages: Array<{ tabId: number; type: string }> = []
+let rejectPrepare = false
+let fallbackCleanupCount = 0
 // One pending saveAsMHTML callback per in-flight capture, in start order —
 // resolving one lets that capture finish while the other stays mid-frame
 const mhtmlCallbacks: Array<(blob: Blob) => void> = []
@@ -93,6 +96,7 @@ beforeAll(async () => {
   vi.mocked(getStatus).mockResolvedValue(STATUS)
   vi.mocked(getActiveSelectors).mockResolvedValue(SELECTOR_GROUPS)
   vi.mocked(sendMhtmlCapture).mockResolvedValue(UPLOAD_RESULT)
+  vi.mocked(createSelector).mockResolvedValue({ id: 'sel-created' })
 
   vi.stubGlobal('chrome', {
     runtime: {
@@ -119,7 +123,9 @@ beforeAll(async () => {
       },
       sendMessage: (tabId: number, message: { type: string }) => {
         sentMessages.push({ tabId, type: message.type })
-        if (message.type === 'PREPARE_FOR_CAPTURE') return Promise.resolve({ ok: true })
+        if (message.type === 'PREPARE_FOR_CAPTURE') {
+          return rejectPrepare ? Promise.reject(new Error('Receiving end does not exist')) : Promise.resolve({ ok: true })
+        }
         if (message.type === 'CHECK_SELECTORS') return Promise.resolve([])
         return Promise.resolve(undefined)
       }
@@ -130,7 +136,10 @@ beforeAll(async () => {
       }
     },
     scripting: {
-      executeScript: () => Promise.resolve([{ result: 'page text' }])
+      executeScript: (details: { target: { tabId: number }; func: () => unknown }) => {
+        if (details.func.name === 'removeInjectedBirdbrainUi') fallbackCleanupCount++
+        return Promise.resolve([{ result: 'page text' }])
+      }
     },
     action: {
       setIcon: () => Promise.resolve(),
@@ -140,7 +149,16 @@ beforeAll(async () => {
     contextMenus: {
       create: () => {},
       update: () => Promise.resolve(),
-      onClicked: { addListener: () => {} }
+      onClicked: {
+        addListener: (
+          listener: (
+            info: { menuItemId: string; selectionText?: string },
+            tab: typeof TAB
+          ) => Promise<void>
+        ) => {
+          contextMenuListener = listener
+        }
+      }
     },
     alarms: {
       get: (_name: string, callback: (alarm?: unknown) => void) => callback(undefined),
@@ -169,6 +187,16 @@ describe('concurrent manual captures on one tab (#379)', () => {
     expect(sentOfType('PREPARE_FOR_CAPTURE')).toBe(2)
     expect(mhtmlCallbacks.length).toBe(2)
 
+    // Creating a selector is another in-page toast route. It must remain
+    // suppressed while either capture is collecting evidence.
+    await contextMenuListener?.(
+      { menuItemId: 'birdbrain-create-selector', selectionText: 'evil@example.com' },
+      TAB
+    )
+    expect(vi.mocked(createSelector)).toHaveBeenCalledTimes(1)
+    expect(sentOfType('SHOW_CAPTURE_TOAST')).toBe(0)
+    expect(sentOfType('UPDATE_CAPTURE_TOAST')).toBe(0)
+
     // Capture 1 finishes while capture 2 is still collecting frames: nothing
     // may be injected into the page — no highlight restore, no toast
     mhtmlCallbacks[0](new Blob(['mhtml-1']))
@@ -185,5 +213,19 @@ describe('concurrent manual captures on one tab (#379)', () => {
     expect(sentOfType('UPDATE_CAPTURE_TOAST')).toBe(1)
     expect(sentOfType('CHECK_SELECTORS')).toBe(1)
     expect(vi.mocked(sendMhtmlCapture)).toHaveBeenCalledTimes(2)
+  })
+
+  it('falls back to direct DOM cleanup when an orphaned content script cannot be messaged', async () => {
+    rejectPrepare = true
+    dispatch({ type: 'MANUAL_CAPTURE', tabId: TAB.id, caseId: 'case-a' })
+    await flush()
+
+    expect(fallbackCleanupCount).toBe(1)
+    expect(mhtmlCallbacks.length).toBe(3)
+
+    mhtmlCallbacks[2](new Blob(['mhtml-3']))
+    await flush()
+    expect(vi.mocked(sendMhtmlCapture)).toHaveBeenCalledTimes(3)
+    rejectPrepare = false
   })
 })

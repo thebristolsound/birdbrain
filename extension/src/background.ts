@@ -5,6 +5,7 @@ import {
   createSelector
 } from '@extension/utils/api'
 import { normalizeResponseHeaders } from '@extension/utils/headers'
+import { removeInjectedBirdbrainUi } from '@extension/captureHygiene'
 import { MAX_SCREENSHOT_BITMAP_BYTES } from '@shared/constants'
 import { matchIgnoredUrl } from '@shared/urlPatterns'
 import type { ActiveSelectorsResult, SelectorMatchInfo } from '@shared/schemas'
@@ -139,6 +140,26 @@ const pendingManualCaptures = new Set<string>()
 // checkSelectorsOnTab bails and capture toasts are skipped — or a concurrent
 // capture's MHTML/screenshots would pick the injected nodes up.
 const captureInFlightByTab = new Map<number, number>()
+
+function sendToastWhenCaptureIdle(tabId: number, message: Record<string, unknown>): void {
+  if ((captureInFlightByTab.get(tabId) ?? 0) > 0) return
+  chrome.tabs.sendMessage(tabId, message).catch(() => {})
+}
+
+async function prepareTabForCapture(tabId: number): Promise<void> {
+  try {
+    await chrome.tabs.sendMessage(tabId, { type: 'PREPARE_FOR_CAPTURE' })
+  } catch {
+    // An extension reload can orphan an old content script: its DOM remains but
+    // the new service worker cannot message it. Execute the same cleanup from
+    // the current extension before collecting evidence; if this also fails,
+    // abort rather than capture DOM whose cleanliness cannot be established.
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: removeInjectedBirdbrainUi
+    })
+  }
+}
 
 // --- Response header capture (#119) ---
 // Cache the latest main_frame response headers per tab so the capture paths can
@@ -340,22 +361,16 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       // Invalid URL, skip label
     }
 
-    // Show "creating" toast
-    chrome.tabs
-      .sendMessage(tab.id, {
-        type: 'SHOW_CAPTURE_TOAST',
-        status: 'capturing',
-        message: 'Creating selector...'
-      })
-      .catch(() => {})
-
-    chrome.tabs
-      .sendMessage(tab.id, {
-        type: 'UPDATE_CAPTURE_TOAST',
-        status: 'capturing',
-        message: 'Creating selector...'
-      })
-      .catch(() => {})
+    sendToastWhenCaptureIdle(tab.id, {
+      type: 'SHOW_CAPTURE_TOAST',
+      status: 'capturing',
+      message: 'Creating selector...'
+    })
+    sendToastWhenCaptureIdle(tab.id, {
+      type: 'UPDATE_CAPTURE_TOAST',
+      status: 'capturing',
+      message: 'Creating selector...'
+    })
     try {
       await createSelector({
         caseId: activeCaseId,
@@ -363,13 +378,11 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
         label
       })
 
-      chrome.tabs
-        .sendMessage(tab.id, {
-          type: 'UPDATE_CAPTURE_TOAST',
-          status: 'success',
-          message: 'Selector created'
-        })
-        .catch(() => {})
+      sendToastWhenCaptureIdle(tab.id, {
+        type: 'UPDATE_CAPTURE_TOAST',
+        status: 'success',
+        message: 'Selector created'
+      })
 
       // Re-fetch selectors and rehighlight current page
       try {
@@ -392,13 +405,11 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
         message = "Can't reach Birdbrain — is it running?"
       }
 
-      chrome.tabs
-        .sendMessage(tab.id, {
-          type: 'UPDATE_CAPTURE_TOAST',
-          status: 'error',
-          message
-        })
-        .catch(() => {})
+      sendToastWhenCaptureIdle(tab.id, {
+        type: 'UPDATE_CAPTURE_TOAST',
+        status: 'error',
+        message
+      })
     }
     return
   }
@@ -525,11 +536,7 @@ async function manualCaptureTab(
     // highlights) before any frame or DOM snapshot is taken — otherwise the
     // toast is baked into the screenshots and every injected node is serialised
     // into the MHTML. The toast is deferred until both frames are captured.
-    // A swallowed failure usually means no content script is present, so
-    // nothing was injected. Known gap: an orphaned content script from before
-    // an extension reload keeps its UI in the DOM but cannot be messaged —
-    // the same limitation CLEAR_HIGHLIGHTS has.
-    await chrome.tabs.sendMessage(tabId, { type: 'PREPARE_FOR_CAPTURE' }).catch(() => {})
+    await prepareTabForCapture(tabId)
 
     const [mhtmlBlob, tab, textContent, screenshot] = await Promise.all([
       captureMhtml(tabId),

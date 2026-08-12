@@ -210,3 +210,136 @@ pass for exactly that reason.
 **Bar arithmetic.** The bar's "mergeable" is read as `.merged == true`, for the
 reason given under the measurement above. "≤1 review round" is a round count of 0
 or 1 under the definition above. The bar asks for 4 of the last 5 to satisfy both.
+
+## 2026-08-12 refresh
+
+Re-run of the procedure above against the live API. The cohort has grown from
+fourteen PRs to eighteen: #370, #372 and #375 landed on 2026-08-10 and #407 opened
+on 2026-08-12 and is still open. Rows #329–#369 reproduce the original table
+exactly, including the round counts and verdict order.
+
+| PR | Subject | Evidence-affecting | Merged | Rounds | Verdicts |
+| --- | --- | --- | --- | --- | --- |
+| #329 | extension wire contract (#227) | yes | yes | 2 | REQ, REQ |
+| #332 | split `queries.ts` into per-domain modules | – | yes | 2 | REQ, APP |
+| #334 | fake bridge util + retrofit eight stubs | – | yes | **1** | APP |
+| #335 | expose wayback bridge namespace (#333) | yes | yes | 2 | REQ, APP |
+| #343 | port residual db-domain behaviours from #339 | yes | yes | 3 | REQ, REQ, REQ |
+| #345 | route remaining non-event call sites (#229) | yes | yes | **1** | APP |
+| #352 | harden CI and release supply chain (#266) | yes | yes | 2 | REQ, APP |
+| #354 | registry publication guard (#267) | yes | yes | 2 | REQ, REQ |
+| #355 | registry guard + advisory gate (#267, duplicate) | yes | yes | 2 | REQ, REQ |
+| #356 | deterministic `safeRegexTest` pin (#330) | yes | yes | 2 | REQ, APP |
+| #357 | shell-open failure handling (#350) | yes | yes | 2 | REQ, REQ |
+| #360 | AnalysisTab + ExportDialog restructure (#346) | yes | yes | 2 | REQ, REQ |
+| #364 | six `openCaptureExternal` handlers (#349) | yes | yes | 2 | REQ, APP |
+| #369 | manifest-bound sidecar verification (#234) | yes | yes | 4 | REQ, APP, REQ, APP |
+| #370 | this ledger + ADR-0006 + ADR-0007 | – | yes | **0** | *(none)* |
+| #372 | StorageConfig failure surfacing (#351) | – | yes | 2 | APP, REQ |
+| #375 | contributor intake guidance (#268) | – | yes | **1** | REQ |
+| #407 | strip injected UI before capture (#379) | yes | **no — open** | 4 | APP, APP, REQ, REQ |
+
+### Measurement against the bar
+
+**The last five** — #369, #370, #372, #375, #407:
+
+| PR | Merged | Rounds | ≤1 round | Satisfies bar |
+| --- | --- | --- | --- | --- |
+| #369 | yes | 4 | no | no |
+| #370 | yes | 0 | yes | **yes** |
+| #372 | yes | 2 | no | no |
+| #375 | yes | 1 | yes | **yes** |
+| #407 | no (open) | 4 | no | no |
+
+- Merged: **4 of 5.**
+- At ≤1 pre-pass round: **2 of 5.**
+- Both: **2 of 5.** The bar asks for 4 of 5. **Not met.**
+
+Across all eighteen: 17 of 18 merged, and **4 of 18** (#334, #345, #370, #375)
+cleared in ≤1 round.
+
+The result is insensitive to the two judgement calls available here. Excluding the
+open #407 and reading "the last five" as the five most recent *merged* PRs (#364,
+#369, #370, #372, #375) also gives 2 of 5. Counting #407 as satisfying "mergeable"
+on its live `mergeable: true` / `mergeable_state: clean` — legitimate for an open
+PR, unlike the retrospective rows — still fails it on rounds. Either way, 2 of 5.
+
+### What the three new merged rows change
+
+**#370 merged with zero pre-pass rounds.** No `Reviewer pre-pass` comment exists on
+it anywhere: not on the issue timeline, not as a diff comment, not as a review body.
+Its only automated review is CodeRabbit's, which the counting rule excludes. Under
+the bar's arithmetic a 0-round PR *satisfies* "≤1 review round" — so a PR the
+reviewer never looked at scores identically to one it approved first try. One of
+the two passes in the last five is of this kind. **The round count cannot
+distinguish "reviewed once and approved" from "never reviewed",** and #310 should
+not read 2 of 5 as "two clean first passes".
+
+**#375's pre-pass was posted after the merge.** Merged `22:28:03Z`; the pre-pass —
+`request changes` — went up at `22:32:41Z`, 4m38s later. It counts as one round by
+the literal rule, and that round is the second of the two passes in the last five.
+It was not a gate on anything.
+
+**#372 merged 2m22s after a `request changes` pre-pass** (pre-pass `15:16:11Z`,
+merged `15:18:33Z`), and its verdicts run APP then REQ — approved, then a further
+push drew a rejection, then merge.
+
+Taken with the original finding, the divergence between "merged" and "the automated
+reviewer was satisfied" has widened: **8 of the 17 merged PRs** merged against a
+final `request changes` (#329, #343, #354, #355, #357, #360, #372, #375), and #370
+merged with no verdict at all. That is **9 of 17 — 53%** of merged agent PRs
+carrying no satisfied automated verdict at merge time.
+
+**Still zero `APPROVED` formal reviews** across the cohort. Every review on the last
+five is `COMMENTED`. Human rounds remain unmeasurable from the API.
+
+### Two procedural notes for the next re-run
+
+**The first-line filter is now load-bearing.** #407 carries an issue comment whose
+first line is `Response to reviewer pre-pass e16134b (comment 5268915000)…`. A
+substring match on the body — or on the first line without anchoring — counts it as
+a round and reports #407 at 5. Anchor the match to the start of the first line after
+stripping leading Markdown emphasis (`**`).
+
+**Diff comments now mention pre-passes.** The original note that no pre-pass was
+posted as a diff comment still holds — #370 (2) and #407 (1) have diff comments
+containing the string, but all three are *replies* discussing a pre-pass, not
+pre-passes. The check is no longer a no-op and must be read, not just run.
+
+**Header shas can be malformed.** Alongside the two formats already recorded
+(`` (`ed0150c`) `` and `(93b9350)`), #369's second round reads
+`(4581951 6dd092f5ba12beb0a147db97f5ec52017)` — two tokens and a space where a sha
+belongs. Further reason to match on the verdict text and never on the header.
+
+### The zero-round question, and why it needs a human annotation
+
+The refresh raises a fourth thing to settle alongside "What #310 must decide":
+**does a PR with zero pre-pass rounds pass the bar, or fall outside it?** As the
+arithmetic is written it passes, and that reading supplies one of the two current
+passes (#370).
+
+The maintainer's rule (2026-08-12): **it depends on whether the merge was a human
+fast-track** — some merges in this cohort were pushed through deliberately for
+importance or time-sensitivity, ahead of the routine. A PR the routine cleared in
+one round is evidence the routine works; a PR a human fast-tracked past the routine
+is not, whatever its round count.
+
+**That distinction is not derivable from the API.** All 17 merges report
+`merged_by: thebristolsound`, because agents and human act under the same account —
+the same root cause that makes human review rounds uncountable. Nothing in the PR
+record marks a fast-track. Any future re-run of this procedure will hit the same
+wall, so the flag has to be supplied by hand and recorded here.
+
+**Fast-track annotation — to be filled in by the maintainer:**
+
+| PR | Rounds | Merged | Human fast-track? |
+| --- | --- | --- | --- |
+| #369 | 4 | yes | *unrecorded* |
+| #370 | 0 | yes | *unrecorded* |
+| #372 | 2 | yes | *unrecorded* |
+| #375 | 1 | yes | *unrecorded* |
+
+Only #370 and #375 change the arithmetic — they are the two current passes. If
+either was fast-tracked, the last five drop to 1 of 5; if both were, to 0 of 5.
+The bar fails under all three readings; what changes is whether the two passes are
+evidence of the routine working at all.

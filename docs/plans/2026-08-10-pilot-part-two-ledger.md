@@ -330,8 +330,11 @@ is not, whatever its round count.
 **That distinction is not derivable from the API.** All 17 merges report
 `merged_by: thebristolsound`, because agents and human act under the same account —
 the same root cause that makes human review rounds uncountable. Nothing in the PR
-record marks a fast-track. Any future re-run of this procedure will hit the same
-wall, so the flag has to be supplied by hand and recorded here.
+record marks a fast-track, and `merged_by` cannot separate the two.
+
+*Superseded below:* the hand annotations turned out to be reproducible by a rule over
+data the procedure already collects — see "The bar as restated". `merged_by` is still
+useless for it; the verdict-at-merge-time is not.
 
 **Fast-track annotation — supplied by the maintainer, 2026-08-12:**
 
@@ -379,5 +382,50 @@ plus #370 with no verdict — are that override. **A bar of the form "N of the l
 merged with ≤1 review round" reduces, in this pipeline, to "≤1 review round",** and
 on that alone the last five score 0 of 5, or 2 of 5 before the fast-track annotation.
 
-Recorded here rather than acted on: whether to restate the bar in terms that exclude
-fast-tracked merges is #310's call, not this ledger's.
+### The bar as restated: fast-tracked merges are excluded
+
+Maintainer decision, 2026-08-12: **fast-tracked merges are excluded from the bar.**
+They leave the sample entirely — they are not counted as failures, because a PR the
+human pushed through ahead of the routine is not an observation of the routine either
+way. "The last five" therefore means the five most recent *non-fast-tracked* cycles.
+
+**Fast-track is mechanically derivable after all.** Define it as *merged without a
+satisfied automated verdict* — the final pre-pass said `request changes`, or no
+pre-pass existed at merge time. That rule reproduces all four of the maintainer's
+hand annotations exactly: it flags #370 (no verdict), #372 (final REQ) and #375
+(pre-pass posted after the merge) and clears #369 (final APP, merged 4h27m later).
+It needs nothing beyond the API calls already in the procedure, which retires the
+"has to be supplied by hand" problem noted above.
+
+Applying it to the cohort, **nine of the seventeen merges are excluded** — #329,
+#343, #354, #355, #357, #360, #370, #372, #375. One caveat on the word: #357's
+override was an argued, disclosed deferral rather than time pressure, so "fast-track"
+stretches to cover it. It is excluded regardless, because the exclusion is about
+merging past an unsatisfied verdict, not about the motive.
+
+Eligible cycles, in order: #332, #334, #335, #345, #352, #356, #364, #369, and the
+still-open #407.
+
+**The last five completed eligible cycles** — #345, #352, #356, #364, #369:
+
+| PR | Merged | Rounds | ≤1 round | Satisfies bar |
+| --- | --- | --- | --- | --- |
+| #345 | yes | 1 | yes | **yes** |
+| #352 | yes | 2 | no | no |
+| #356 | yes | 2 | no | no |
+| #364 | yes | 2 | no | no |
+| #369 | yes | 4 | no | no |
+
+**1 of 5. The bar asks for 4 of 5. Not met.**
+
+#407 is eligible but in flight — no outcome yet, so counting it either way is wrong.
+Recorded for the next re-run: if it is included in the window as not-yet-merged, the
+result is 0 of 5; it currently stands at 4 rounds, so it cannot become a pass.
+
+Every reading now on record fails: 2 of 5 literal, 0 of 5 annotated, 1 of 5 under the
+restated bar. The exclusion rule does not rescue the number — it changes which five
+PRs are looked at, and the ceiling stays at one pass in five. What it does buy is a
+bar that measures the routine rather than the maintainer's merge button.
+
+The verdict itself remains #310's. This ledger records the restatement and the
+arithmetic under it; it does not close the question.

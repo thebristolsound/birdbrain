@@ -5,6 +5,7 @@ import {
   createSelector
 } from '@extension/utils/api'
 import { normalizeResponseHeaders } from '@extension/utils/headers'
+import { removeInjectedBirdbrainUi } from '@extension/captureHygiene'
 import { MAX_SCREENSHOT_BITMAP_BYTES } from '@shared/constants'
 import { matchIgnoredUrl } from '@shared/urlPatterns'
 import type { ActiveSelectorsResult, SelectorMatchInfo } from '@shared/schemas'
@@ -133,6 +134,39 @@ const selectorDedupeMap = new Map<string, number>()
 
 // Manual capture in-flight guard: tabId:caseId -> true while capture is in progress
 const pendingManualCaptures = new Set<string>()
+
+// Capture hygiene (#379): count of manual captures currently collecting frames
+// per tab, across cases. While non-zero nothing may inject UI into that tab —
+// checkSelectorsOnTab bails and capture toasts are skipped — or a concurrent
+// capture's MHTML/screenshots would pick the injected nodes up.
+const captureInFlightByTab = new Map<number, number>()
+
+function finishFrameCollection(tabId: number): number {
+  const remaining = (captureInFlightByTab.get(tabId) ?? 1) - 1
+  if (remaining > 0) captureInFlightByTab.set(tabId, remaining)
+  else captureInFlightByTab.delete(tabId)
+  return remaining
+}
+
+function sendToastWhenCaptureIdle(tabId: number, message: Record<string, unknown>): void {
+  if ((captureInFlightByTab.get(tabId) ?? 0) > 0) return
+  chrome.tabs.sendMessage(tabId, message).catch(() => {})
+}
+
+async function prepareTabForCapture(tabId: number): Promise<void> {
+  try {
+    await chrome.tabs.sendMessage(tabId, { type: 'PREPARE_FOR_CAPTURE' })
+  } catch {
+    // An extension reload can orphan an old content script: its DOM remains but
+    // the new service worker cannot message it. Execute the same cleanup from
+    // the current extension before collecting evidence; if this also fails,
+    // abort rather than capture DOM whose cleanliness cannot be established.
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: removeInjectedBirdbrainUi
+    })
+  }
+}
 
 // --- Response header capture (#119) ---
 // Cache the latest main_frame response headers per tab so the capture paths can
@@ -334,22 +368,16 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       // Invalid URL, skip label
     }
 
-    // Show "creating" toast
-    chrome.tabs
-      .sendMessage(tab.id, {
-        type: 'SHOW_CAPTURE_TOAST',
-        status: 'capturing',
-        message: 'Creating selector...'
-      })
-      .catch(() => {})
-
-    chrome.tabs
-      .sendMessage(tab.id, {
-        type: 'UPDATE_CAPTURE_TOAST',
-        status: 'capturing',
-        message: 'Creating selector...'
-      })
-      .catch(() => {})
+    sendToastWhenCaptureIdle(tab.id, {
+      type: 'SHOW_CAPTURE_TOAST',
+      status: 'capturing',
+      message: 'Creating selector...'
+    })
+    sendToastWhenCaptureIdle(tab.id, {
+      type: 'UPDATE_CAPTURE_TOAST',
+      status: 'capturing',
+      message: 'Creating selector...'
+    })
     try {
       await createSelector({
         caseId: activeCaseId,
@@ -357,13 +385,11 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
         label
       })
 
-      chrome.tabs
-        .sendMessage(tab.id, {
-          type: 'UPDATE_CAPTURE_TOAST',
-          status: 'success',
-          message: 'Selector created'
-        })
-        .catch(() => {})
+      sendToastWhenCaptureIdle(tab.id, {
+        type: 'UPDATE_CAPTURE_TOAST',
+        status: 'success',
+        message: 'Selector created'
+      })
 
       // Re-fetch selectors and rehighlight current page
       try {
@@ -386,13 +412,11 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
         message = "Can't reach Birdbrain — is it running?"
       }
 
-      chrome.tabs
-        .sendMessage(tab.id, {
-          type: 'UPDATE_CAPTURE_TOAST',
-          status: 'error',
-          message
-        })
-        .catch(() => {})
+      sendToastWhenCaptureIdle(tab.id, {
+        type: 'UPDATE_CAPTURE_TOAST',
+        status: 'error',
+        message
+      })
     }
     return
   }
@@ -513,8 +537,15 @@ async function manualCaptureTab(
   const key = `${tabId}:${caseId}`
   if (pendingManualCaptures.has(key)) return
   pendingManualCaptures.add(key)
+  captureInFlightByTab.set(tabId, (captureInFlightByTab.get(tabId) ?? 0) + 1)
+  let framesCollected = false
+  let toastShown = false
   try {
-    chrome.tabs.sendMessage(tabId, { type: 'SHOW_CAPTURE_TOAST' }).catch(() => {})
+    // Capture hygiene (#379): strip injected extension UI (toast, selector
+    // highlights) before any frame or DOM snapshot is taken — otherwise the
+    // toast is baked into the screenshots and every injected node is serialised
+    // into the MHTML. The toast is deferred until both frames are captured.
+    await prepareTabForCapture(tabId)
 
     const [mhtmlBlob, tab, textContent, screenshot] = await Promise.all([
       captureMhtml(tabId),
@@ -526,6 +557,14 @@ async function manualCaptureTab(
           : captureFullPageScreenshot(tabId)
         : Promise.resolve(undefined)
     ])
+    framesCollected = true
+    const remainingFrameCollections = finishFrameCollection(tabId)
+
+    // The last capture to finish collecting frames owns the upload toast.
+    if (remainingFrameCollections === 0) {
+      toastShown = true
+      chrome.tabs.sendMessage(tabId, { type: 'SHOW_CAPTURE_TOAST' }).catch(() => {})
+    }
 
     const result = await sendMhtmlCapture({
       source: 'manual',
@@ -546,17 +585,14 @@ async function manualCaptureTab(
     const toastStatus = result.screenshotStatus === 'dropped' ? 'degraded' : 'success'
     const toastMessage =
       result.screenshotStatus === 'dropped' ? 'Captured (screenshot too large)' : undefined
-    chrome.tabs
-      .sendMessage(tabId, {
-        type: 'UPDATE_CAPTURE_TOAST',
-        status: toastStatus,
-        message: toastMessage
-      })
-      .catch(() => {})
-
-    // Re-evaluate selector highlights after capture
-    if (activeSelectors.length > 0) {
-      checkSelectorsOnTab(tabId, url)
+    if (toastShown) {
+      chrome.tabs
+        .sendMessage(tabId, {
+          type: 'UPDATE_CAPTURE_TOAST',
+          status: toastStatus,
+          message: toastMessage
+        })
+        .catch(() => {})
     }
   } catch (err) {
     console.error('[Birdbrain] Manual capture failed:', err)
@@ -570,11 +606,22 @@ async function manualCaptureTab(
     } else if (err instanceof TypeError) {
       message = "Can't reach Birdbrain - is it running?"
     }
-    chrome.tabs
-      .sendMessage(tabId, { type: 'UPDATE_CAPTURE_TOAST', status: 'error', message })
-      .catch(() => {})
+    if ((captureInFlightByTab.get(tabId) ?? 0) === 1 || toastShown) {
+      chrome.tabs
+        .sendMessage(tabId, { type: 'UPDATE_CAPTURE_TOAST', status: 'error', message })
+        .catch(() => {})
+    }
   } finally {
     pendingManualCaptures.delete(key)
+    if (!framesCollected) finishFrameCollection(tabId)
+    // Restore the selector highlights PREPARE_FOR_CAPTURE stripped — on the
+    // error path too, so a failed capture does not leave the page unhighlighted.
+    // The last capture in flight on the tab does the restoring:
+    // checkSelectorsOnTab bails while a capture is still collecting frames, so
+    // a concurrent capture never has marks re-injected under its snapshot.
+    if (activeSelectors.length > 0) {
+      checkSelectorsOnTab(tabId, url)
+    }
   }
 }
 
@@ -613,6 +660,11 @@ async function handleSelectorCapture(tabId: number, url: string, caseId: string)
 
 async function checkSelectorsOnTab(tabId: number, url: string): Promise<void> {
   if (activeSelectors.length === 0) return
+  // Capture hygiene (#379): never inject highlights while a capture is
+  // collecting frames on this tab — onUpdated, checkStatus's case-change
+  // re-scan and a finished concurrent capture's restore all route through
+  // here. The last capture's finally re-runs this once its count hits zero.
+  if ((captureInFlightByTab.get(tabId) ?? 0) > 0) return
   if (DEFAULT_IGNORE.some((pattern) => pattern.test(url))) return
   if (isIgnoredByUser(url)) return
 

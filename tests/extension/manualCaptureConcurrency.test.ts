@@ -36,6 +36,9 @@ const executeScriptCalls: Array<{ target: { tabId: number }; func: () => unknown
 // resolving one lets that capture finish while the other stays mid-frame
 const mhtmlCallbacks: Array<(blob: Blob) => void> = []
 const uploadResolvers: Array<(result: CaptureUploadResult) => void> = []
+// Simulates a mid-capture navigation: tabs.get reports this URL once set, so
+// the finally-path re-read sees the navigated page, not the capture-time one
+const tabUrlOverride = new Map<number, string>()
 
 function sentOfType(type: string): number {
   return sentMessages.filter((m) => m.type === type).length
@@ -124,7 +127,9 @@ beforeAll(async () => {
       onUpdated: { addListener: () => {} },
       query: (_query: unknown, callback: (tabs: unknown[]) => void) => callback([]),
       get: (tabId: number, callback?: (tab: typeof TAB) => void) => {
-        const tab = tabId === TAB2.id ? TAB2 : TAB
+        const base = tabId === TAB2.id ? TAB2 : TAB
+        const override = tabUrlOverride.get(tabId)
+        const tab = override ? { ...base, url: override } : base
         if (callback) {
           callback(tab)
           return undefined
@@ -250,9 +255,12 @@ describe('concurrent manual captures on one tab (#379)', () => {
   })
 
   it('gates per tab: an in-flight capture on one tab does not suppress another tab', async () => {
-    // Counts to TAB accumulate across the tests above; assert on deltas
+    // Counts to TAB accumulate across the tests above; assert on deltas.
+    // Callback/resolver indices are baseline-relative for the same reason.
     const baselineShow = sentOfTypeTo('SHOW_CAPTURE_TOAST', TAB.id)
     const baselineCheck = sentOfTypeTo('CHECK_SELECTORS', TAB.id)
+    const cbBase = mhtmlCallbacks.length
+    const upBase = uploadResolvers.length
 
     // A capture on tab 1 starts and stays mid-frame throughout
     dispatch({ type: 'MANUAL_CAPTURE', tabId: TAB.id, caseId: 'case-a' })
@@ -260,16 +268,19 @@ describe('concurrent manual captures on one tab (#379)', () => {
     // A capture on tab 2 starts and finishes while tab 1 is still collecting
     dispatch({ type: 'MANUAL_CAPTURE', tabId: TAB2.id, caseId: 'case-a' })
     await flush()
-    expect(mhtmlCallbacks.length).toBe(5)
+    expect(mhtmlCallbacks.length).toBe(cbBase + 2)
 
-    mhtmlCallbacks[4](new Blob(['mhtml-tab2']))
+    // Tab 2 dispatched second, so its frame callback is second past baseline
+    mhtmlCallbacks[cbBase + 1](new Blob(['mhtml-tab2']))
     await flush()
     // Tab 2's frames are done and it is the only capture on that tab — a
     // global in-flight count would wrongly suppress this toast until tab 1
     // finished, which is exactly the regression this case pins down
     expect(sentOfTypeTo('SHOW_CAPTURE_TOAST', TAB2.id)).toBe(1)
 
-    uploadResolvers[3](UPLOAD_RESULT)
+    // Tab 2 reaches upload first, so its resolver is first past baseline
+    expect(uploadResolvers.length).toBe(upBase + 1)
+    uploadResolvers[upBase](UPLOAD_RESULT)
     await flush()
     expect(sentOfTypeTo('UPDATE_CAPTURE_TOAST', TAB2.id)).toBe(1)
     expect(sentOfTypeTo('CHECK_SELECTORS', TAB2.id)).toBe(1)
@@ -278,11 +289,39 @@ describe('concurrent manual captures on one tab (#379)', () => {
     expect(sentOfTypeTo('CHECK_SELECTORS', TAB.id)).toBe(baselineCheck)
 
     // Tab 1 finishes normally with its own toast and highlight restore
-    mhtmlCallbacks[3](new Blob(['mhtml-tab1']))
+    mhtmlCallbacks[cbBase](new Blob(['mhtml-tab1']))
     await flush()
     expect(sentOfTypeTo('SHOW_CAPTURE_TOAST', TAB.id)).toBe(baselineShow + 1)
-    uploadResolvers[4](UPLOAD_RESULT)
+    expect(uploadResolvers.length).toBe(upBase + 2)
+    uploadResolvers[upBase + 1](UPLOAD_RESULT)
     await flush()
     expect(sentOfTypeTo('CHECK_SELECTORS', TAB.id)).toBe(baselineCheck + 1)
+  })
+
+  it('skips highlight restore when the tab navigated to an ignored URL mid-capture', async () => {
+    const baselineCheck = sentOfTypeTo('CHECK_SELECTORS', TAB2.id)
+    const baselineUpdate = sentOfTypeTo('UPDATE_CAPTURE_TOAST', TAB2.id)
+    const cbBase = mhtmlCallbacks.length
+    const upBase = uploadResolvers.length
+
+    dispatch({ type: 'MANUAL_CAPTURE', tabId: TAB2.id, caseId: 'case-a' })
+    await flush()
+    expect(mhtmlCallbacks.length).toBe(cbBase + 1)
+
+    // The tab navigates to an ignored URL while the capture is mid-frame: the
+    // restore path must re-read the URL and run the ignore checks against it,
+    // not against the capture-time URL (#379 post-merge review round)
+    tabUrlOverride.set(TAB2.id, 'chrome://newtab/')
+    mhtmlCallbacks[cbBase](new Blob(['mhtml-navigated']))
+    await flush()
+    expect(uploadResolvers.length).toBe(upBase + 1)
+    uploadResolvers[upBase](UPLOAD_RESULT)
+    await flush()
+
+    // The capture itself completed with its toast...
+    expect(sentOfTypeTo('UPDATE_CAPTURE_TOAST', TAB2.id)).toBe(baselineUpdate + 1)
+    // ...but no highlights were re-injected into the ignored page
+    expect(sentOfTypeTo('CHECK_SELECTORS', TAB2.id)).toBe(baselineCheck)
+    tabUrlOverride.delete(TAB2.id)
   })
 })

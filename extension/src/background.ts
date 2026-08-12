@@ -141,6 +141,13 @@ const pendingManualCaptures = new Set<string>()
 // capture's MHTML/screenshots would pick the injected nodes up.
 const captureInFlightByTab = new Map<number, number>()
 
+function finishFrameCollection(tabId: number): number {
+  const remaining = (captureInFlightByTab.get(tabId) ?? 1) - 1
+  if (remaining > 0) captureInFlightByTab.set(tabId, remaining)
+  else captureInFlightByTab.delete(tabId)
+  return remaining
+}
+
 function sendToastWhenCaptureIdle(tabId: number, message: Record<string, unknown>): void {
   if ((captureInFlightByTab.get(tabId) ?? 0) > 0) return
   chrome.tabs.sendMessage(tabId, message).catch(() => {})
@@ -531,6 +538,8 @@ async function manualCaptureTab(
   if (pendingManualCaptures.has(key)) return
   pendingManualCaptures.add(key)
   captureInFlightByTab.set(tabId, (captureInFlightByTab.get(tabId) ?? 0) + 1)
+  let framesCollected = false
+  let toastShown = false
   try {
     // Capture hygiene (#379): strip injected extension UI (toast, selector
     // highlights) before any frame or DOM snapshot is taken — otherwise the
@@ -548,10 +557,12 @@ async function manualCaptureTab(
           : captureFullPageScreenshot(tabId)
         : Promise.resolve(undefined)
     ])
+    framesCollected = true
+    const remainingFrameCollections = finishFrameCollection(tabId)
 
-    // Frames are taken — safe to show the toast while the upload runs, unless
-    // another capture on this tab is still collecting frames
-    if ((captureInFlightByTab.get(tabId) ?? 0) === 1) {
+    // The last capture to finish collecting frames owns the upload toast.
+    if (remainingFrameCollections === 0) {
+      toastShown = true
       chrome.tabs.sendMessage(tabId, { type: 'SHOW_CAPTURE_TOAST' }).catch(() => {})
     }
 
@@ -574,7 +585,7 @@ async function manualCaptureTab(
     const toastStatus = result.screenshotStatus === 'dropped' ? 'degraded' : 'success'
     const toastMessage =
       result.screenshotStatus === 'dropped' ? 'Captured (screenshot too large)' : undefined
-    if ((captureInFlightByTab.get(tabId) ?? 0) === 1) {
+    if (toastShown) {
       chrome.tabs
         .sendMessage(tabId, {
           type: 'UPDATE_CAPTURE_TOAST',
@@ -595,16 +606,14 @@ async function manualCaptureTab(
     } else if (err instanceof TypeError) {
       message = "Can't reach Birdbrain - is it running?"
     }
-    if ((captureInFlightByTab.get(tabId) ?? 0) === 1) {
+    if ((captureInFlightByTab.get(tabId) ?? 0) === 1 || toastShown) {
       chrome.tabs
         .sendMessage(tabId, { type: 'UPDATE_CAPTURE_TOAST', status: 'error', message })
         .catch(() => {})
     }
   } finally {
     pendingManualCaptures.delete(key)
-    const remaining = (captureInFlightByTab.get(tabId) ?? 1) - 1
-    if (remaining > 0) captureInFlightByTab.set(tabId, remaining)
-    else captureInFlightByTab.delete(tabId)
+    if (!framesCollected) finishFrameCollection(tabId)
     // Restore the selector highlights PREPARE_FOR_CAPTURE stripped — on the
     // error path too, so a failed capture does not leave the page unhighlighted.
     // The last capture in flight on the tab does the restoring:

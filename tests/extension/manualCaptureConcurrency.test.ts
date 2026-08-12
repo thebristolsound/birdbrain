@@ -33,6 +33,7 @@ let fallbackCleanupCount = 0
 // One pending saveAsMHTML callback per in-flight capture, in start order —
 // resolving one lets that capture finish while the other stays mid-frame
 const mhtmlCallbacks: Array<(blob: Blob) => void> = []
+const uploadResolvers: Array<(result: CaptureUploadResult) => void> = []
 
 function sentOfType(type: string): number {
   return sentMessages.filter((m) => m.type === type).length
@@ -95,7 +96,9 @@ const UPLOAD_RESULT: CaptureUploadResult = {
 beforeAll(async () => {
   vi.mocked(getStatus).mockResolvedValue(STATUS)
   vi.mocked(getActiveSelectors).mockResolvedValue(SELECTOR_GROUPS)
-  vi.mocked(sendMhtmlCapture).mockResolvedValue(UPLOAD_RESULT)
+  vi.mocked(sendMhtmlCapture).mockImplementation(
+    () => new Promise((resolve) => uploadResolvers.push(resolve))
+  )
   vi.mocked(createSelector).mockResolvedValue({ id: 'sel-created' })
 
   vi.stubGlobal('chrome', {
@@ -197,7 +200,7 @@ describe('concurrent manual captures on one tab (#379)', () => {
     expect(sentOfType('SHOW_CAPTURE_TOAST')).toBe(0)
     expect(sentOfType('UPDATE_CAPTURE_TOAST')).toBe(0)
 
-    // Capture 1 finishes while capture 2 is still collecting frames: nothing
+    // Capture 1 finishes frames while capture 2 is still collecting: nothing
     // may be injected into the page — no highlight restore, no toast
     mhtmlCallbacks[0](new Blob(['mhtml-1']))
     await flush()
@@ -205,13 +208,19 @@ describe('concurrent manual captures on one tab (#379)', () => {
     expect(sentOfType('SHOW_CAPTURE_TOAST')).toBe(0)
     expect(sentOfType('UPDATE_CAPTURE_TOAST')).toBe(0)
 
-    // Capture 2 finishes: it is the last one in flight, so it shows its toast
-    // and restores the selector highlights exactly once
+    // Capture 2 finishes frames while both uploads remain pending. Frame
+    // suppression ends now, and the last frame collector owns the toast.
     mhtmlCallbacks[1](new Blob(['mhtml-2']))
     await flush()
     expect(sentOfType('SHOW_CAPTURE_TOAST')).toBe(1)
+    expect(sentOfType('UPDATE_CAPTURE_TOAST')).toBe(0)
+    expect(sentOfType('CHECK_SELECTORS')).toBe(0)
+
+    uploadResolvers[0](UPLOAD_RESULT)
+    uploadResolvers[1](UPLOAD_RESULT)
+    await flush()
     expect(sentOfType('UPDATE_CAPTURE_TOAST')).toBe(1)
-    expect(sentOfType('CHECK_SELECTORS')).toBe(1)
+    expect(sentOfType('CHECK_SELECTORS')).toBe(2)
     expect(vi.mocked(sendMhtmlCapture)).toHaveBeenCalledTimes(2)
   })
 
@@ -224,6 +233,8 @@ describe('concurrent manual captures on one tab (#379)', () => {
     expect(mhtmlCallbacks.length).toBe(3)
 
     mhtmlCallbacks[2](new Blob(['mhtml-3']))
+    await flush()
+    uploadResolvers[2](UPLOAD_RESULT)
     await flush()
     expect(vi.mocked(sendMhtmlCapture)).toHaveBeenCalledTimes(3)
     rejectPrepare = false

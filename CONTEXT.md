@@ -79,7 +79,7 @@ _Avoid_: text content, FTS content.
 
 **Manifest**:
 The hash-chained, operator-attributed audit log written to each Case directory that records every Capture ingestion and per-Capture deletion. Existence and chain integrity are part of the forensic value of an export.
-_Avoid_: audit log, journal.
+_Avoid_: audit log, journal, ledger.
 
 **Manifest Entry**:
 One signed line of the Manifest, of type `capture`, `deletion`, `timestamp`, `export`, `archive-export`, or `import`.
@@ -145,7 +145,11 @@ _Avoid_: live match, instant match.
 
 **Note**:
 Rich-text commentary owned by a Case, optionally anchored to a Capture or to specific text within one.
-_Avoid_: comment, annotation, memo.
+_Avoid_: comment, annotation, memo, analyst notes.
+
+**Favorite**:
+An Operator's per-Capture bookmark, used to filter the capture list. Purely organisational; carries no evidentiary meaning.
+_Avoid_: pin, star.
 
 **Annotation**:
 A geometric shape drawn over a Capture's screenshot — rectangle, arrow, highlight, redaction, or pin.
@@ -158,6 +162,14 @@ _Avoid_: callout, marker.
 **Redaction**:
 An Annotation that obscures a region. Burned into the reproduced image in `report.html` only — the stored original and the content-addressed copy inside the Evidence Package stay unannotated.
 _Avoid_: blackout, mask, censor.
+
+**Mention**:
+An inline token in a Note's body referencing a Capture, Selector, Tag, or another Note — written with the `@`/`#` grammar and stored as a typed node in the Note document.
+_Avoid_: link, embed, entity token.
+
+**Backlink**:
+The reverse edge derived from a Mention: the set of Notes whose bodies mention a given Capture, Selector, Tag, or Note. Computed from the references index, never authored directly.
+_Avoid_: incoming link, reverse reference.
 
 **Extracted Datum**:
 One category/subcategory/value triple pulled automatically from a Capture's text — an address, hash, CVE, or tracking code. Investigation subject matter, not an integrity construct.
@@ -172,6 +184,10 @@ _Avoid_: summary, AI note.
 **Evidence Package**:
 The exported bundle — `manifest.jsonl`, `evidence.json`, `report.html`, `certification.html`, `VERIFY.md`, and the selected artifacts.
 _Avoid_: export, bundle, ZIP.
+
+**Working Copy**:
+A clearly-labelled non-evidentiary export for the Operator's own use — selected artifacts and notes without Certification. Not an Evidence Package; an Evidence Package always includes its Certification and full Manifest.
+_Avoid_: draft export, partial package.
 
 **Certification**:
 The operator statement in an Evidence Package naming the tool, hash algorithm, process, TSA identity, and per-Capture Trusted Time counts.
@@ -245,5 +261,9 @@ _Avoid_: risky change, core change, forensic change.
 - "archive" is overloaded three ways: a **Case Archive** (`.birdbrain` file), a Case's `archived` boolean (hidden from the dashboard), and archive.org. Keep **Case Archive** for the file, say "archived Case" for the flag, and always say "Wayback" for archive.org.
 
 - "hash" spans integrity and subject matter: **Entry Hash**, **Content Hash**, and **Package Hash** are integrity constructs, while the MD5/SHA-1/SHA-256 values under **Extracted Datum** are findings pulled out of page text. Qualify every use.
+
+- "pin" spans three unrelated actions: a **Pin** is a numbered Annotation with body text; a **Wayback Ref** is "pinned" corroboration; and bookmarking a Capture in the list is a **Favorite** — never "pinning". Any capture-list action labelled "pin" is a Favorite.
+
+- "Signals" is the user-facing name of the selectors screen only. The domain and code term is **Selector** everywhere (Selector Lifecycle, Persisted Match, routes, repos); "Signals" never appears in schemas, code identifiers, or domain discussion.
 
 - "source" is used for four unrelated things: `CaptureSource` (`auto`/`manual`/`selector`/`recapture`), a Note's `sourceUrl`, the extraction pipeline's `extractionSource`, and the overview's Sources block. Say "capture trigger" for `CaptureSource` and reserve "source" for the origin a Capture came from.

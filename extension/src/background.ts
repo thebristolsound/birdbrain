@@ -134,6 +134,12 @@ const selectorDedupeMap = new Map<string, number>()
 // Manual capture in-flight guard: tabId:caseId -> true while capture is in progress
 const pendingManualCaptures = new Set<string>()
 
+// Capture hygiene (#379): count of manual captures currently collecting frames
+// per tab, across cases. While non-zero nothing may inject UI into that tab —
+// checkSelectorsOnTab bails and capture toasts are skipped — or a concurrent
+// capture's MHTML/screenshots would pick the injected nodes up.
+const captureInFlightByTab = new Map<number, number>()
+
 // --- Response header capture (#119) ---
 // Cache the latest main_frame response headers per tab so the capture paths can
 // attach them. Keyed by tabId; we store the URL alongside the headers and only
@@ -513,12 +519,16 @@ async function manualCaptureTab(
   const key = `${tabId}:${caseId}`
   if (pendingManualCaptures.has(key)) return
   pendingManualCaptures.add(key)
+  captureInFlightByTab.set(tabId, (captureInFlightByTab.get(tabId) ?? 0) + 1)
   try {
     // Capture hygiene (#379): strip injected extension UI (toast, selector
     // highlights) before any frame or DOM snapshot is taken — otherwise the
     // toast is baked into the screenshots and every injected node is serialised
     // into the MHTML. The toast is deferred until both frames are captured.
-    // A failure means no content script is present, so nothing was injected.
+    // A swallowed failure usually means no content script is present, so
+    // nothing was injected. Known gap: an orphaned content script from before
+    // an extension reload keeps its UI in the DOM but cannot be messaged —
+    // the same limitation CLEAR_HIGHLIGHTS has.
     await chrome.tabs.sendMessage(tabId, { type: 'PREPARE_FOR_CAPTURE' }).catch(() => {})
 
     const [mhtmlBlob, tab, textContent, screenshot] = await Promise.all([
@@ -532,8 +542,11 @@ async function manualCaptureTab(
         : Promise.resolve(undefined)
     ])
 
-    // Frames are taken — safe to show the toast while the upload runs
-    chrome.tabs.sendMessage(tabId, { type: 'SHOW_CAPTURE_TOAST' }).catch(() => {})
+    // Frames are taken — safe to show the toast while the upload runs, unless
+    // another capture on this tab is still collecting frames
+    if ((captureInFlightByTab.get(tabId) ?? 0) === 1) {
+      chrome.tabs.sendMessage(tabId, { type: 'SHOW_CAPTURE_TOAST' }).catch(() => {})
+    }
 
     const result = await sendMhtmlCapture({
       source: 'manual',
@@ -554,13 +567,15 @@ async function manualCaptureTab(
     const toastStatus = result.screenshotStatus === 'dropped' ? 'degraded' : 'success'
     const toastMessage =
       result.screenshotStatus === 'dropped' ? 'Captured (screenshot too large)' : undefined
-    chrome.tabs
-      .sendMessage(tabId, {
-        type: 'UPDATE_CAPTURE_TOAST',
-        status: toastStatus,
-        message: toastMessage
-      })
-      .catch(() => {})
+    if ((captureInFlightByTab.get(tabId) ?? 0) === 1) {
+      chrome.tabs
+        .sendMessage(tabId, {
+          type: 'UPDATE_CAPTURE_TOAST',
+          status: toastStatus,
+          message: toastMessage
+        })
+        .catch(() => {})
+    }
   } catch (err) {
     console.error('[Birdbrain] Manual capture failed:', err)
     let message = 'Capture failed'
@@ -573,13 +588,21 @@ async function manualCaptureTab(
     } else if (err instanceof TypeError) {
       message = "Can't reach Birdbrain - is it running?"
     }
-    chrome.tabs
-      .sendMessage(tabId, { type: 'UPDATE_CAPTURE_TOAST', status: 'error', message })
-      .catch(() => {})
+    if ((captureInFlightByTab.get(tabId) ?? 0) === 1) {
+      chrome.tabs
+        .sendMessage(tabId, { type: 'UPDATE_CAPTURE_TOAST', status: 'error', message })
+        .catch(() => {})
+    }
   } finally {
     pendingManualCaptures.delete(key)
+    const remaining = (captureInFlightByTab.get(tabId) ?? 1) - 1
+    if (remaining > 0) captureInFlightByTab.set(tabId, remaining)
+    else captureInFlightByTab.delete(tabId)
     // Restore the selector highlights PREPARE_FOR_CAPTURE stripped — on the
-    // error path too, so a failed capture does not leave the page unhighlighted
+    // error path too, so a failed capture does not leave the page unhighlighted.
+    // The last capture in flight on the tab does the restoring:
+    // checkSelectorsOnTab bails while a capture is still collecting frames, so
+    // a concurrent capture never has marks re-injected under its snapshot.
     if (activeSelectors.length > 0) {
       checkSelectorsOnTab(tabId, url)
     }
@@ -621,6 +644,11 @@ async function handleSelectorCapture(tabId: number, url: string, caseId: string)
 
 async function checkSelectorsOnTab(tabId: number, url: string): Promise<void> {
   if (activeSelectors.length === 0) return
+  // Capture hygiene (#379): never inject highlights while a capture is
+  // collecting frames on this tab — onUpdated, checkStatus's case-change
+  // re-scan and a finished concurrent capture's restore all route through
+  // here. The last capture's finally re-runs this once its count hits zero.
+  if ((captureInFlightByTab.get(tabId) ?? 0) > 0) return
   if (DEFAULT_IGNORE.some((pattern) => pattern.test(url))) return
   if (isIgnoredByUser(url)) return
 

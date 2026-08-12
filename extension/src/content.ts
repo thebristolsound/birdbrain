@@ -491,8 +491,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   // Capture hygiene (#379): strip every injected Birdbrain node — toast host,
   // highlight <mark> wrappers, highlight <style> elements — before the background
-  // takes any frame, so neither pageCapture.saveAsMHTML nor the screenshot passes
-  // can see extension UI. Any future in-page UI must be torn down here too.
+  // takes any frame. This removes what is injected at this moment; keeping the
+  // page clean while frames are collected is the background's job (it gates
+  // re-highlighting and toasts per tab). Any future in-page UI must be torn
+  // down here too.
   if (message.type === 'PREPARE_FOR_CAPTURE') {
     removeToastImmediately()
     removeHighlights()

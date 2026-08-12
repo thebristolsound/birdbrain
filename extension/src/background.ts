@@ -622,13 +622,14 @@ async function manualCaptureTab(
     if (activeSelectors.length > 0) {
       // Re-read the URL rather than reusing the capture-time one: the tab may
       // have navigated during the capture, and the ignore-pattern checks must
-      // run against the page that is there now
-      chrome.tabs
-        .get(tabId)
-        .then((tab) => {
-          if (tab.url) checkSelectorsOnTab(tabId, tab.url)
-        })
-        .catch(() => {})
+      // run against the page that is there now. Awaited so restoration stays
+      // inside the capture lifecycle instead of a detached promise chain.
+      try {
+        const tab = await chrome.tabs.get(tabId)
+        if (tab.url) await checkSelectorsOnTab(tabId, tab.url)
+      } catch {
+        // The tab may have closed during the capture — nothing left to restore
+      }
     }
   }
 }

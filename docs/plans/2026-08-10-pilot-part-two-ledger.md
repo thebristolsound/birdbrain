@@ -255,6 +255,9 @@ exactly, including the round counts and verdict order.
 - At ≤1 pre-pass round: **2 of 5.**
 - Both: **2 of 5.** The bar asks for 4 of 5. **Not met.**
 
+That is the literal reading. Both of those two passes were later confirmed as human
+fast-tracks, which takes it to **0 of 5** — see "The zero-round question" below.
+
 Across all eighteen: 17 of 18 merged, and **4 of 18** (#334, #345, #370, #375)
 cleared in ≤1 round.
 
@@ -330,16 +333,51 @@ the same root cause that makes human review rounds uncountable. Nothing in the P
 record marks a fast-track. Any future re-run of this procedure will hit the same
 wall, so the flag has to be supplied by hand and recorded here.
 
-**Fast-track annotation — to be filled in by the maintainer:**
+**Fast-track annotation — supplied by the maintainer, 2026-08-12:**
 
 | PR | Rounds | Merged | Human fast-track? |
 | --- | --- | --- | --- |
-| #369 | 4 | yes | *unrecorded* |
-| #370 | 0 | yes | *unrecorded* |
-| #372 | 2 | yes | *unrecorded* |
-| #375 | 1 | yes | *unrecorded* |
+| #369 | 4 | yes | no — final verdict was APP, merged 4h27m later |
+| #370 | 0 | yes | **yes** |
+| #372 | 2 | yes | **yes** |
+| #375 | 1 | yes | **yes** |
 
-Only #370 and #375 change the arithmetic — they are the two current passes. If
-either was fast-tracked, the last five drop to 1 of 5; if both were, to 0 of 5.
-The bar fails under all three readings; what changes is whether the two passes are
-evidence of the routine working at all.
+Maintainer's statement: every merge in the cohort was performed by hand, and every
+one of the anomalies above — #370 merging with no pre-pass, #375's pre-pass landing
+after the merge, #372 merging 2m22s after a `request changes` — was a deliberate
+human decision, not a process failure.
+
+**The last five, annotated: 0 of 5.** Both apparent passes were fast-tracks. #370
+never ran the routine's review at all and #375 merged before its review arrived, so
+neither is evidence about the routine's first-pass quality in either direction. The
+remaining three fail on rounds. Restated:
+
+| PR | Merged | Rounds | ≤1 round | Fast-track | Evidence of routine clearing the bar |
+| --- | --- | --- | --- | --- | --- |
+| #369 | yes | 4 | no | no | no |
+| #370 | yes | 0 | yes | yes | **no — routine never ran** |
+| #372 | yes | 2 | no | yes | no |
+| #375 | yes | 1 | yes | yes | **no — merged before review** |
+| #407 | no (open) | 4 | no | – | no |
+
+### The merge signal carries no information
+
+This is the substantive consequence and it supersedes the framing in "What #310 must
+decide" item 2.
+
+Merging is an exclusively human act in this pipeline — the routine cannot merge, and
+17 of 17 merges were the maintainer's. So `merged == true` measures the maintainer's
+willingness to ship, not the agent's output quality. It reads 17 of 17 by
+construction, and it read 14 of 14 in the original ledger for the same reason. It
+cannot fail, so it cannot discriminate, and half the bar rests on it.
+
+The confirmation that the anomalies were deliberate removes the last reading under
+which the merge signal might have carried something: they are not gaps in the process
+where a bad PR slipped through, they are the maintainer overriding the process on
+purpose. Nine of the seventeen merges — the eight against a final `request changes`
+plus #370 with no verdict — are that override. **A bar of the form "N of the last M
+merged with ≤1 review round" reduces, in this pipeline, to "≤1 review round",** and
+on that alone the last five score 0 of 5, or 2 of 5 before the fast-track annotation.
+
+Recorded here rather than acted on: whether to restate the bar in terms that exclude
+fast-tracked merges is #310's call, not this ledger's.

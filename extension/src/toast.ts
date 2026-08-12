@@ -147,6 +147,17 @@ export function updateToast(options: ToastOptions): void {
   }
 }
 
+// Capture hygiene (#379): the animated removeToast leaves the host in the DOM
+// for its 200ms fade, long enough to be serialised into an MHTML snapshot or
+// screenshot taken right after — capture paths need the host gone synchronously.
+export function removeToastImmediately(): void {
+  if (removeTimeout) {
+    clearTimeout(removeTimeout)
+    removeTimeout = null
+  }
+  document.getElementById(TOAST_ID)?.remove()
+}
+
 export function removeToast(): void {
   removeTimeout = null
   const host = document.getElementById(TOAST_ID)

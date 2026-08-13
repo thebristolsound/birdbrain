@@ -32,7 +32,9 @@ function seedLegacyDb(dbPath: string): void {
       screenshot_path TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE VIRTUAL TABLE captures_fts USING fts5(title, url, content);
   `)
-  raw.prepare(`INSERT INTO cases VALUES ('case1','C','','custom','2026-01-01','2026-01-01',0)`).run()
+  raw
+    .prepare(`INSERT INTO cases VALUES ('case1','C','','custom','2026-01-01','2026-01-01',0)`)
+    .run()
   raw
     .prepare(
       `INSERT INTO captures (id, case_id, url, title, hash) VALUES ('cap1','case1','https://a.example','Alpha','deadbeef')`
@@ -81,9 +83,9 @@ describe('pre-migration snapshots', () => {
       // The point of the snapshot: the database as it was, not as the failed
       // migration left it.
       expect(restored.pragma('user_version', { simple: true })).toBe(24)
-      expect(
-        restored.prepare(`SELECT title FROM captures WHERE id = 'cap1'`).get()
-      ).toEqual({ title: 'Alpha' })
+      expect(restored.prepare(`SELECT title FROM captures WHERE id = 'cap1'`).get()).toEqual({
+        title: 'Alpha'
+      })
       expect(
         restored
           .prepare(
@@ -181,7 +183,11 @@ describe('pre-migration snapshots', () => {
     const snapshots = listSnapshots(dbPath)
     expect(snapshots).toHaveLength(SNAPSHOT_RETENTION)
     // Newest first, and the two oldest days are the ones that went.
-    expect(snapshots.map((s) => s.createdAt.slice(0, 10))).toEqual(['2026-01-05', '2026-01-04', '2026-01-03'])
+    expect(snapshots.map((s) => s.createdAt.slice(0, 10))).toEqual([
+      '2026-01-05',
+      '2026-01-04',
+      '2026-01-03'
+    ])
   })
 
   it('sorts by creation time, not by the version segment of the filename', async () => {

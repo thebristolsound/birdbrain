@@ -101,10 +101,26 @@ When a new version needs to upgrade the case database, Birdbrain copies the
 database first — into a `db-snapshots` folder next to it in your user data
 directory — and only then applies the upgrade. If that copy cannot be made, the
 upgrade does not run at all: you get an error saying so, and your data is left
-exactly as it was. The last few snapshots are kept, and you can put one back from
-**Settings → Database → Utilities → Pre-Migration Snapshots**. Restoring a
-snapshot returns the database to the state it was in before that upgrade, so
-anything recorded since is lost — export first if that matters.
+exactly as it was. The last few snapshots are kept — at least one for every
+schema version Birdbrain has snapshotted, so a repeatedly failing upgrade cannot
+push the original out — and you can put one back from **Settings → Database →
+Utilities → Pre-Migration Snapshots**.
+
+Restoring a snapshot brings back the records that copy holds. Two things it does
+not do, both worth knowing before you click it:
+
+- **It does not take you back to the old schema.** Birdbrain re-opens the
+  restored copy and applies the same upgrade to it again, so you end up on the
+  current schema holding the older records. That is what you want when an upgrade
+  died half-way through, but it is not a downgrade.
+- **It only replaces the database.** Capture files, screenshots and MHTML stay on
+  disk. Anything recorded after the snapshot disappears from the app while its
+  files remain, unreferenced.
+
+Anything recorded since the snapshot is lost from the app, so export first if it
+matters. The database being replaced is not deleted: it is kept next to it as
+`birdbrain.db.pre-restore` (one generation, replaced by the next restore), which
+is what we would ask you for if a restore turns out to have been a mistake.
 
 ## Known limitations
 

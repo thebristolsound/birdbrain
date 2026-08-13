@@ -436,8 +436,9 @@ if (!gotSingleInstanceLock) {
       // is the difference between "wait for a fix" and "restore from a backup".
       if (err instanceof PreMigrationSnapshotError) {
         dialog.showErrorBox(
-          'Birdbrain could not back up your database',
-          'The database upgrade was NOT started and your data has not been changed. ' +
+          'Birdbrain could not snapshot your database',
+          'The database upgrade was NOT started, so none of your cases, captures or notes ' +
+            'have been changed. ' +
             'Birdbrain takes a snapshot before upgrading its database, and this time it could not — ' +
             'usually a full disk or a read-only data folder. Free some space and start Birdbrain again. ' +
             'A diagnostic log has been saved in the logs folder of your Birdbrain data directory.'

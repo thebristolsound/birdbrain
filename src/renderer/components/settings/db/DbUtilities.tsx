@@ -207,11 +207,15 @@ export function DbUtilities() {
   }
 
   async function handleRestoreSnapshot(fileName: string) {
-    setLoading('snapshots')
+    // Keyed by file so only the row being restored says so. The result still
+    // belongs to the card, which is why setResult keeps the plain key.
+    setLoading(`snapshots:${fileName}`)
     try {
       await restoreSnapshot.mutateAsync(fileName)
       setResult('snapshots', {
-        message: `Restored ${fileName}. Please restart the app for full effect.`,
+        message:
+          `Restored ${fileName}. The database was re-opened and brought back up to the ` +
+          'current schema. Please restart the app for full effect.',
         type: 'success'
       })
     } catch (err) {
@@ -388,7 +392,7 @@ export function DbUtilities() {
       <UtilCard
         id="snapshots"
         title="Pre-Migration Snapshots"
-        description="Copies taken automatically before Birdbrain upgrades the database schema. Restoring one returns the database to the state it was in before that upgrade."
+        description="Copies taken automatically before Birdbrain upgrades the database schema. Restoring one brings back the records that copy holds — the schema itself is then upgraded again, so this recovers contents, not the old schema."
       >
         <div className="w-full space-y-2">
           {snapshots.length === 0 && (
@@ -416,14 +420,21 @@ export function DbUtilities() {
                     open: true,
                     key: 'restore-snapshot',
                     title: 'Restore Snapshot',
-                    message: `This will replace your current database with the snapshot taken before the upgrade to schema v${snapshot.toVersion}. Everything recorded since then will be lost.`,
+                    message:
+                      `This will replace your current database with the copy taken before the ` +
+                      `upgrade to schema v${snapshot.toVersion}. Everything recorded since then ` +
+                      `disappears from the app; capture files stay on disk, no longer referenced ` +
+                      `by anything. Birdbrain re-applies the schema upgrade to the restored copy ` +
+                      `as it re-opens it, so you end up on the current schema holding the older ` +
+                      `records — not back on schema v${snapshot.fromVersion}. The database being ` +
+                      `replaced is kept beside it as birdbrain.db.pre-restore.`,
                     action: () => handleRestoreSnapshot(snapshot.fileName)
                   })
                 }
                 disabled={loading !== null}
                 className="shrink-0 rounded-lg border border-red-800 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/20 disabled:opacity-50"
               >
-                {loading === 'snapshots' ? 'Restoring...' : 'Restore'}
+                {loading === `snapshots:${snapshot.fileName}` ? 'Restoring...' : 'Restore'}
               </button>
             </div>
           ))}

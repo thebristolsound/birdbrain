@@ -321,9 +321,9 @@ async function captureFullPage(maxBytes: number = MAX_SCREENSHOT_BITMAP_BYTES): 
     throw new Error('OffscreenCanvas is not available in this context')
   }
 
-  // The background suppresses before the capture starts; this is the same
-  // protocol applied at the last instant before a frame is taken, so the
-  // guarantee does not depend on nothing having been injected in between (#386).
+  // Suppress before the page is measured: sticky-element collection and
+  // scrollHeight must see the page as it will be photographed. Each slice
+  // re-suppresses immediately before its own frame below (#386).
   suppressCaptureUiOrThrow()
 
   captureInProgress = true
@@ -362,6 +362,14 @@ async function captureFullPage(maxBytes: number = MAX_SCREENSHOT_BITMAP_BYTES): 
 
       window.scrollTo(0, yOffset)
       await new Promise((r) => setTimeout(r, 150))
+
+      // Per frame, not once per capture: slices are separated by a scroll and a
+      // 150ms settle, and the page is unattended in between — a toast queued
+      // for another capture, or highlights restored as one finishes, would
+      // otherwise land in this slice. Throwing here abandons the whole
+      // screenshot rather than stitching in a frame of a page that could not be
+      // proven clean (#386).
+      suppressCaptureUiOrThrow()
 
       try {
         const response = await chrome.runtime.sendMessage({ type: 'REQUEST_VIEWPORT_CAPTURE' })
@@ -425,9 +433,11 @@ async function captureFullPageScrolling(
     throw new Error('Capture already in progress')
   }
 
-  // Suppress before the scroll phase as well as before the frames: the scroll
-  // phase runs for up to two minutes and the page must be clean throughout it,
-  // not only at the moment captureFullPage starts stitching (#386).
+  // Suppress at the entry of the scroll phase too: it can run for two minutes
+  // and injected UI would be laid out and lazy-load-scrolled with the page.
+  // This is not what keeps the frames clean — no frame is taken during the
+  // scroll phase, and captureFullPage re-suppresses before each of its own
+  // slices (#386).
   suppressCaptureUiOrThrow()
 
   captureInProgress = true

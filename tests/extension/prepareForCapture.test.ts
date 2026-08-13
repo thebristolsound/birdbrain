@@ -229,6 +229,31 @@ describe('screenshot paths suppress before any frame (#386)', () => {
     }
   })
 
+  it('re-strips UI injected between slices, not only before the first frame', async () => {
+    const baseline = injectAllExtensionUi()
+    const framesSeen: string[] = []
+    // A toast arriving mid-capture is the live case: the background holds
+    // toasts for a tab that is collecting frames, but an orphaned content
+    // script or a concurrent capture's restore can still inject between slices
+    sendMessageMock.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'REQUEST_VIEWPORT_CAPTURE') {
+        framesSeen.push(document.documentElement.outerHTML)
+        showToast({ status: 'capturing' })
+        expect(document.getElementById('birdbrain-capture-toast')).not.toBeNull()
+      }
+      return {}
+    })
+
+    await dispatchAsync({ type: 'CAPTURE_FULL_PAGE' })
+
+    // More than one slice, or the injection never gets a later frame to reach
+    expect(framesSeen.length).toBeGreaterThan(1)
+    for (const dom of framesSeen) {
+      expect(dom).not.toContain('birdbrain-capture-toast')
+      expect(dom).toBe(baseline)
+    }
+  })
+
   it('takes no scrolling-capture frame while extension UI is on the page', async () => {
     injectAllExtensionUi()
     const framesSeen = recordDomAtEachFrame()

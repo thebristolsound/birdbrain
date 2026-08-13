@@ -1,5 +1,13 @@
 import Database from 'better-sqlite3'
-import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs'
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  statSync
+} from 'node:fs'
 import { dirname, join } from 'node:path'
 import { logger } from '@main/services/logger'
 import type { DbSnapshot } from '@shared/ipc'
@@ -18,6 +26,16 @@ export const SNAPSHOT_DIR_NAME = 'db-snapshots'
 // Small fixed retention. Enough to survive a run of bad upgrades, bounded so a
 // large case database cannot quietly multiply itself on a tester's disk.
 export const SNAPSHOT_RETENTION = 3
+
+// Where the live database is moved aside to during a restore. One generation
+// only, overwritten by the next restore: it is a support-recoverable artifact,
+// not a second undo history.
+const PRE_RESTORE_SUFFIX = '.pre-restore'
+
+// The staging name a snapshot is written to before it takes its final,
+// listable name. Deliberately not `.db`-terminated, so SNAPSHOT_FILE_RE cannot
+// match it and a file interrupted mid-write is never offered for restore.
+const PARTIAL_SUFFIX = '.partial'
 
 // `<from>` is the schema the snapshot holds and `<to>` the one the app was
 // about to write, so the name alone says which upgrade it belongs to. The
@@ -54,7 +72,16 @@ function snapshotFileName(fromVersion: number, toVersion: number, date: Date): s
   return `pre-migration-v${fromVersion}-to-v${toVersion}-${stampFor(date)}.db`
 }
 
-function describe(dir: string, fileName: string): DbSnapshot | null {
+/**
+ * A snapshot as the main process sees it: the renderer-facing shape plus where
+ * the file actually is. `path` stops at this module's callers — `listSnapshots`
+ * is what crosses IPC, and it does not carry it.
+ */
+export interface StoredSnapshot extends DbSnapshot {
+  path: string
+}
+
+function describe(dir: string, fileName: string): StoredSnapshot | null {
   const match = SNAPSHOT_FILE_RE.exec(fileName)
   if (!match) return null
   const [, fromVersion, toVersion, stamp] = match
@@ -77,17 +104,18 @@ function describe(dir: string, fileName: string): DbSnapshot | null {
 }
 
 /**
- * Every snapshot in the database's snapshot directory, newest first.
+ * Every snapshot in the database's snapshot directory, newest first, with its
+ * location on disk. Main-process only — see `listSnapshots` for the IPC shape.
  *
  * Files that do not match the naming pattern are ignored rather than listed:
  * this is the only thing standing between an arbitrary filename and the
  * restore path, so the listing doubles as the allowlist `resolveSnapshot`
  * validates against.
  */
-export function listSnapshots(dbPath: string): DbSnapshot[] {
+export function listStoredSnapshots(dbPath: string): StoredSnapshot[] {
   const dir = snapshotDirFor(dbPath)
   if (!existsSync(dir)) return []
-  const snapshots: DbSnapshot[] = []
+  const snapshots: StoredSnapshot[] = []
   for (const fileName of readdirSync(dir)) {
     const snapshot = describe(dir, fileName)
     if (snapshot) snapshots.push(snapshot)
@@ -97,27 +125,98 @@ export function listSnapshots(dbPath: string): DbSnapshot[] {
   return snapshots.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 }
 
-export function resolveSnapshot(dbPath: string, fileName: string): DbSnapshot | null {
-  return listSnapshots(dbPath).find((snapshot) => snapshot.fileName === fileName) ?? null
+/**
+ * The snapshot listing as the renderer sees it: metadata and the filename that
+ * `db:restoreSnapshot` takes, and nothing else.
+ *
+ * The fields are copied out one by one rather than spread-minus-`path`, so a
+ * later main-process-only field on `StoredSnapshot` cannot reach the renderer
+ * by default. The renderer has no use for an absolute path, and handing one
+ * over discloses the profile location to whatever is running in that window.
+ */
+export function listSnapshots(dbPath: string): DbSnapshot[] {
+  return listStoredSnapshots(dbPath).map(
+    ({ fileName, fromVersion, toVersion, createdAt, sizeBytes }) => ({
+      fileName,
+      fromVersion,
+      toVersion,
+      createdAt,
+      sizeBytes
+    })
+  )
+}
+
+export function resolveSnapshot(dbPath: string, fileName: string): StoredSnapshot | null {
+  return listStoredSnapshots(dbPath).find((snapshot) => snapshot.fileName === fileName) ?? null
 }
 
 /**
- * Delete all but the newest `keep` snapshots. Returns how many were removed.
+ * Delete snapshots beyond the retention limit. Returns how many were removed.
+ *
+ * Not a plain newest-`keep` cut. Each migration block commits its own
+ * `user_version` bump, so an upgrade that dies part-way leaves the database at
+ * an intermediate version, and the next launch snapshots *that*. Under a
+ * chronological cut, three such launches evict the only copy of the
+ * pre-upgrade state and leave three copies of the half-migrated one — the
+ * crash-looping upgrade erodes its own recovery. So the slots are dealt round
+ * robin across the distinct `fromVersion` groups (newest group first, newest
+ * member first within a group): every schema version present keeps a copy
+ * before any version keeps a second, and the total is still `keep`.
  */
 export function pruneSnapshots(dbPath: string, keep: number = SNAPSHOT_RETENTION): number {
-  const stale = listSnapshots(dbPath).slice(Math.max(0, keep))
+  const snapshots = listStoredSnapshots(dbPath)
+  const kept = selectRetained(snapshots, Math.max(0, keep))
   let removed = 0
-  for (const snapshot of stale) {
+  for (const snapshot of snapshots) {
+    if (kept.has(snapshot.path)) continue
     rmSync(snapshot.path, { force: true })
     removed++
   }
   return removed
 }
 
+function selectRetained(snapshots: StoredSnapshot[], keep: number): Set<string> {
+  const groups: StoredSnapshot[][] = []
+  const byVersion = new Map<number, StoredSnapshot[]>()
+  for (const snapshot of snapshots) {
+    let group = byVersion.get(snapshot.fromVersion)
+    if (!group) {
+      group = []
+      byVersion.set(snapshot.fromVersion, group)
+      groups.push(group)
+    }
+    group.push(snapshot)
+  }
+
+  const kept = new Set<string>()
+  for (let round = 0; kept.size < keep; round++) {
+    let dealt = false
+    for (const group of groups) {
+      if (round >= group.length) continue
+      kept.add(group[round].path)
+      dealt = true
+      if (kept.size >= keep) break
+    }
+    if (!dealt) break
+  }
+  return kept
+}
+
 // The snapshot is only worth taking if it can be opened and reports the schema
 // it was copied from. Deliberately not `integrity_check`: that is a full scan
 // of every page, and paying it on the startup path would scale with case size.
+//
+// What it does prove: SQLite reads the header and the schema on open, so a
+// file truncated by a crash, a full disk or a bad write fails here rather than
+// being treated as a database (verified against 0.5x, 0.9x and 0.99x
+// truncations of a real database, all of which throw SQLITE_CORRUPT on open).
+// What it does not prove: page-level integrity deeper in the file.
 function assertReadable(path: string, fromVersion: number): void {
+  // Opening a WAL-mode file read-only creates -wal/-shm beside it and leaves
+  // them behind on close. Only the ones this probe brings into existence are
+  // removed again, so verifying a snapshot never deletes state it did not
+  // create and the snapshot directory holds nothing but snapshots.
+  const ours = ['-wal', '-shm'].filter((suffix) => !existsSync(`${path}${suffix}`))
   const probe = new Database(path, { readonly: true, fileMustExist: true })
   try {
     const version = probe.pragma('user_version', { simple: true }) as number
@@ -126,6 +225,7 @@ function assertReadable(path: string, fromVersion: number): void {
     }
   } finally {
     probe.close()
+    for (const suffix of ours) rmSync(`${path}${suffix}`, { force: true })
   }
 }
 
@@ -145,18 +245,24 @@ export async function createPreMigrationSnapshot(
   const dir = snapshotDirFor(dbPath)
   const fileName = snapshotFileName(fromVersion, toVersion, new Date())
   const target = join(dir, fileName)
+  // Written under a name the listing cannot match, then renamed once it has
+  // been read back. Deleting a bad file in the `catch` only covers throws we
+  // are alive to see; a crash, power loss or ENOSPC mid-backup would otherwise
+  // leave a truncated file already carrying a restorable name. Same directory,
+  // so the rename is a same-filesystem move and therefore atomic.
+  const partial = `${target}${PARTIAL_SUFFIX}`
 
   try {
     mkdirSync(dir, { recursive: true })
-    await db.backup(target)
-    assertReadable(target, fromVersion)
+    await db.backup(partial)
+    assertReadable(partial, fromVersion)
+    renameSync(partial, target)
   } catch (err) {
-    // A half-written file is worse than no file: it would be offered in the
-    // restore list as if it were recoverable. Its own failure must not replace
-    // the error that actually stopped the snapshot — `force` only swallows
-    // ENOENT, and the interesting failures here (unwritable or non-directory
-    // snapshot path) are neither.
+    // Its own failure must not replace the error that actually stopped the
+    // snapshot — `force` only swallows ENOENT, and the interesting failures
+    // here (unwritable or non-directory snapshot path) are neither.
     try {
+      rmSync(partial, { force: true })
       rmSync(target, { force: true })
     } catch {
       // Nothing to add: the throw below carries the real cause.
@@ -187,18 +293,65 @@ export async function createPreMigrationSnapshot(
 }
 
 /**
- * Overwrite the live database file with a snapshot.
+ * Replace the live database file with a snapshot.
  *
  * The caller owns the connection lifecycle: the database MUST already be
  * closed, and must be re-opened afterwards.
+ *
+ * Ordered so that the destructive step is the last one and the state it
+ * destroys is kept:
+ *
+ * 1. the snapshot is opened and checked before anything is touched, because a
+ *    snapshot that is not a database would otherwise overwrite a working one
+ *    and leave the app with neither;
+ * 2. the copy lands on a staging name in the target directory and is renamed
+ *    into place, so `dbPath` is never a half-written file;
+ * 3. the database being replaced is moved aside, not deleted, together with
+ *    its -wal/-shm — a restore is a misclick away and this is evidence.
  */
 export function restoreSnapshotFile(dbPath: string, fileName: string): void {
   const snapshot = resolveSnapshot(dbPath, fileName)
   if (!snapshot) throw new Error(`Snapshot "${fileName}" was not found`)
-  // A clean close removes -wal/-shm, but a crash leaves them behind, and a
-  // stale WAL replayed on top of the restored file is data from the database
-  // that was just replaced.
-  rmSync(`${dbPath}-wal`, { force: true })
-  rmSync(`${dbPath}-shm`, { force: true })
-  copyFileSync(snapshot.path, dbPath)
+  assertReadable(snapshot.path, snapshot.fromVersion)
+
+  const staged = `${dbPath}${PARTIAL_SUFFIX}`
+  const aside = `${dbPath}${PRE_RESTORE_SUFFIX}`
+  try {
+    copyFileSync(snapshot.path, staged)
+  } catch (err) {
+    rmSync(staged, { force: true })
+    throw err
+  }
+
+  // One generation only. The previous set goes before the current one takes
+  // its place, or the two would interleave.
+  for (const suffix of ['', '-wal', '-shm']) rmSync(`${aside}${suffix}`, { force: true })
+
+  const moved: Array<[from: string, to: string]> = []
+  try {
+    // A clean close removes -wal/-shm, but a crash leaves them behind, and a
+    // stale WAL replayed on top of the restored file is data from the database
+    // that was just replaced. They move with it rather than being deleted:
+    // separated from their database they are unreadable.
+    for (const suffix of ['', '-wal', '-shm']) {
+      const from = `${dbPath}${suffix}`
+      if (!existsSync(from)) continue
+      renameSync(from, `${aside}${suffix}`)
+      moved.push([from, `${aside}${suffix}`])
+    }
+    renameSync(staged, dbPath)
+  } catch (err) {
+    // Put the live database back. Without this, a failure between the move and
+    // the rename leaves no file at `dbPath` at all, and the re-open would
+    // create an empty database and migrate it — an empty case list reads as
+    // "the evidence is gone" rather than as a failed restore.
+    try {
+      for (const [from, to] of moved.reverse()) renameSync(to, from)
+      rmSync(staged, { force: true })
+    } catch {
+      // Swallowed on purpose: the throw below carries the failure that started
+      // this, and that is the one the operator needs to see.
+    }
+    throw err
+  }
 }

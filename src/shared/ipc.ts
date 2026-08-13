@@ -416,10 +416,14 @@ export interface DbExportTableParams {
  * A pre-migration database snapshot on disk (#413). `fromVersion` is the
  * schema the snapshot holds; `toVersion` is the schema the app was about to
  * migrate it to, so a tester can tell which upgrade a snapshot belongs to.
+ *
+ * No `path`: `fileName` is the only handle the renderer needs (and the only
+ * one `db:restoreSnapshot` accepts), and the absolute path would disclose the
+ * profile location to the window. The main process keeps it on `StoredSnapshot`
+ * in `db/dbSnapshots.ts`.
  */
 export interface DbSnapshot {
   fileName: string
-  path: string
   fromVersion: number
   toVersion: number
   createdAt: string

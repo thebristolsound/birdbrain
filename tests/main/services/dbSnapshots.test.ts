@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, rmSync, truncateSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import Database from 'better-sqlite3'
@@ -7,6 +7,7 @@ import { initDatabase, closeDatabase, getDb, LATEST_SCHEMA_VERSION } from '@main
 import {
   createPreMigrationSnapshot,
   listSnapshots,
+  listStoredSnapshots,
   pruneSnapshots,
   resolveSnapshot,
   restoreSnapshotFile,
@@ -70,14 +71,21 @@ describe('pre-migration snapshots', () => {
     expect(snapshots[0].fromVersion).toBe(24)
     expect(snapshots[0].toVersion).toBe(LATEST_SCHEMA_VERSION)
     expect(snapshots[0].sizeBytes).toBeGreaterThan(0)
-    expect(snapshots[0].path).toBe(join(dir, SNAPSHOT_DIR_NAME, snapshots[0].fileName))
+    // The path is main-process only: it is on the stored shape and not on the
+    // one the renderer is handed.
+    expect(snapshots[0]).not.toHaveProperty('path')
+    expect(listStoredSnapshots(dbPath)[0].path).toBe(
+      join(dir, SNAPSHOT_DIR_NAME, snapshots[0].fileName)
+    )
+    // And nothing else is left in the directory — no staging file, no sidecars.
+    expect(readdirSync(snapshotDirFor(dbPath))).toEqual([snapshots[0].fileName])
   })
 
   it('leaves a snapshot that still holds the pre-migration schema and rows', async () => {
     seedLegacyDb(dbPath)
     await initDatabase(dbPath)
 
-    const [snapshot] = listSnapshots(dbPath)
+    const [snapshot] = listStoredSnapshots(dbPath)
     const restored = new Database(snapshot.path, { readonly: true })
     try {
       // The point of the snapshot: the database as it was, not as the failed
@@ -190,6 +198,33 @@ describe('pre-migration snapshots', () => {
     ])
   })
 
+  it('keeps a copy of every schema version it has snapshotted, not just the newest files', async () => {
+    seedLegacyDb(dbPath)
+    const conn = new Database(dbPath)
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      // The #286 crash-loop: the upgrade dies after committing part of itself,
+      // so every launch after the first snapshots the half-migrated v26 file.
+      vi.setSystemTime(new Date(Date.UTC(2026, 0, 1)))
+      await createPreMigrationSnapshot(conn, dbPath, 24, LATEST_SCHEMA_VERSION)
+      conn.pragma('user_version = 26')
+      for (let i = 0; i < SNAPSHOT_RETENTION; i++) {
+        vi.setSystemTime(new Date(Date.UTC(2026, 0, 2 + i)))
+        await createPreMigrationSnapshot(conn, dbPath, 26, LATEST_SCHEMA_VERSION)
+      }
+    } finally {
+      conn.close()
+      vi.useRealTimers()
+    }
+
+    const snapshots = listSnapshots(dbPath)
+    expect(snapshots).toHaveLength(SNAPSHOT_RETENTION)
+    // The v24 file is the only copy of the state before the upgrade started —
+    // a purely chronological cut would have evicted it for a third v26 copy.
+    expect(snapshots.map((s) => s.fromVersion).sort((a, b) => a - b)).toEqual([24, 26, 26])
+    expect(snapshots.find((s) => s.fromVersion === 24)?.createdAt.slice(0, 10)).toBe('2026-01-01')
+  })
+
   it('sorts by creation time, not by the version segment of the filename', async () => {
     seedLegacyDb(dbPath)
     const conn = new Database(dbPath)
@@ -243,6 +278,55 @@ describe('pre-migration snapshots', () => {
     } finally {
       raw.close()
     }
+  })
+
+  it('keeps the database it replaced, so a mistaken restore is not the end of it', async () => {
+    seedLegacyDb(dbPath)
+    await initDatabase(dbPath)
+    getDb()
+      .prepare(
+        `INSERT INTO captures (id, case_id, url, title, hash, timestamp, created_at)
+         VALUES ('cap2','case1','https://b.example','Beta','feed','2026-02-01','2026-02-01')`
+      )
+      .run()
+    const [snapshot] = listSnapshots(dbPath)
+    closeDatabase()
+
+    restoreSnapshotFile(dbPath, snapshot.fileName)
+
+    // Not an in-app undo — but the capture recorded after the snapshot is
+    // still on disk and still readable, rather than overwritten.
+    const aside = new Database(`${dbPath}.pre-restore`, { readonly: true })
+    try {
+      expect(aside.pragma('user_version', { simple: true })).toBe(LATEST_SCHEMA_VERSION)
+      expect(aside.prepare(`SELECT title FROM captures WHERE id = 'cap2'`).get()).toEqual({
+        title: 'Beta'
+      })
+    } finally {
+      aside.close()
+    }
+  })
+
+  it('refuses to restore a snapshot that is not a readable database', async () => {
+    seedLegacyDb(dbPath)
+    await initDatabase(dbPath)
+    const [snapshot] = listStoredSnapshots(dbPath)
+    closeDatabase()
+    // What a crash, a full disk or a bad sector during the copy leaves behind:
+    // a file with a perfectly valid snapshot name that is not a database.
+    truncateSync(snapshot.path, 24576)
+
+    expect(() => restoreSnapshotFile(dbPath, snapshot.fileName)).toThrow()
+
+    // The live database is untouched — the check runs before anything moves.
+    const raw = new Database(dbPath, { readonly: true })
+    try {
+      expect(raw.pragma('user_version', { simple: true })).toBe(LATEST_SCHEMA_VERSION)
+    } finally {
+      raw.close()
+    }
+    expect(existsSync(`${dbPath}.pre-restore`)).toBe(false)
+    expect(existsSync(`${dbPath}.partial`)).toBe(false)
   })
 
   it('refuses to restore a filename that is not a snapshot in the directory', async () => {

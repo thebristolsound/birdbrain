@@ -2,7 +2,13 @@
 // Extracts page data when asked by the background script
 // Handles selector matching and inline highlighting
 
-import { showToast, updateToast, removeToastImmediately } from './toast'
+import { showToast, updateToast } from './toast'
+import {
+  CaptureUiSuppressionError,
+  registerCaptureUiTeardown,
+  suppressCaptureUi,
+  suppressCaptureUiOrThrow
+} from './captureSuppression'
 // Selector groups arrive from the background script exactly as the capture
 // server sent them, and matches go back out on the capture's matchedSelectors
 // field — both are the shared wire contract, not content-script-local shapes.
@@ -252,6 +258,10 @@ function removeHighlights(): void {
   removeHighlightStyles()
 }
 
+// Selector highlights are in-page UI: they tear down on the capture-suppression
+// boundary (#386) like every other injected node.
+registerCaptureUiTeardown(removeHighlights)
+
 let captureInProgress = false
 
 type StickyEntry = { el: HTMLElement; origValue: string; origPriority: string }
@@ -311,6 +321,11 @@ async function captureFullPage(maxBytes: number = MAX_SCREENSHOT_BITMAP_BYTES): 
     throw new Error('OffscreenCanvas is not available in this context')
   }
 
+  // Suppress before the page is measured: sticky-element collection and
+  // scrollHeight must see the page as it will be photographed. Each slice
+  // re-suppresses immediately before its own frame below (#386).
+  suppressCaptureUiOrThrow()
+
   captureInProgress = true
   const savedScrollX = window.scrollX
   const savedScrollY = window.scrollY
@@ -347,6 +362,14 @@ async function captureFullPage(maxBytes: number = MAX_SCREENSHOT_BITMAP_BYTES): 
 
       window.scrollTo(0, yOffset)
       await new Promise((r) => setTimeout(r, 150))
+
+      // Per frame, not once per capture: slices are separated by a scroll and a
+      // 150ms settle, and the page is unattended in between — a toast queued
+      // for another capture, or highlights restored as one finishes, would
+      // otherwise land in this slice. Throwing here abandons the whole
+      // screenshot rather than stitching in a frame of a page that could not be
+      // proven clean (#386).
+      suppressCaptureUiOrThrow()
 
       try {
         const response = await chrome.runtime.sendMessage({ type: 'REQUEST_VIEWPORT_CAPTURE' })
@@ -410,6 +433,13 @@ async function captureFullPageScrolling(
     throw new Error('Capture already in progress')
   }
 
+  // Suppress at the entry of the scroll phase too: it can run for two minutes
+  // and injected UI would be laid out and lazy-load-scrolled with the page.
+  // This is not what keeps the frames clean — no frame is taken during the
+  // scroll phase, and captureFullPage re-suppresses before each of its own
+  // slices (#386).
+  suppressCaptureUiOrThrow()
+
   captureInProgress = true
   const savedScrollX = window.scrollX
   const savedScrollY = window.scrollY
@@ -457,12 +487,20 @@ async function captureFullPageScrolling(
 
 // --- Message handlers ---
 
+// A screenshot path that could not clear injected UI must not degrade into a
+// fallback frame of the same page: the background reads suppressionFailed and
+// abandons the screenshot instead of retrying (#386).
+function captureFailureResponse(err: unknown): { error: string; suppressionFailed?: true } {
+  const error = String(err)
+  return err instanceof CaptureUiSuppressionError ? { error, suppressionFailed: true } : { error }
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'CAPTURE_FULL_PAGE') {
     const maxBytes: number = message.maxBytes || MAX_SCREENSHOT_BITMAP_BYTES
     captureFullPage(maxBytes).then(
       (dataUrl) => sendResponse({ screenshot: dataUrl }),
-      (err) => sendResponse({ error: String(err) })
+      (err) => sendResponse(captureFailureResponse(err))
     )
     return true // keep channel open for async response
   }
@@ -472,7 +510,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     const scrollTimeoutMs: number = message.scrollTimeoutMs || SCROLL_TIMEOUT_MS
     captureFullPageScrolling(maxBytes, scrollTimeoutMs).then(
       (dataUrl) => sendResponse({ screenshot: dataUrl }),
-      (err) => sendResponse({ error: String(err) })
+      (err) => sendResponse(captureFailureResponse(err))
     )
     return true // keep channel open for async response
   }
@@ -489,16 +527,17 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return
   }
 
-  // Capture hygiene (#379): strip every injected Birdbrain node — toast host,
-  // highlight <mark> wrappers, highlight <style> elements — before the background
-  // takes any frame. This removes what is injected at this moment; keeping the
-  // page clean while frames are collected is the background's job (it gates
-  // re-highlighting and toasts per tab). Any future in-page UI must be torn
-  // down here too.
+  // Capture hygiene (#379, #386): strip every injected Birdbrain node — toast
+  // host, highlight <mark> wrappers, highlight <style> elements — before the
+  // background takes any frame. This removes what is injected at this moment;
+  // keeping the page clean while frames are collected is the background's job
+  // (it gates re-highlighting and toasts per tab). Any future in-page UI is
+  // covered by registering its teardown with the suppression protocol.
   if (message.type === 'PREPARE_FOR_CAPTURE') {
-    removeToastImmediately()
-    removeHighlights()
-    sendResponse({ ok: true })
+    const failures = suppressCaptureUi()
+    // ok:false is not an error the operator sees — it tells the background this
+    // page is not provably clean, so it strips directly and aborts if that fails
+    sendResponse(failures.length > 0 ? { ok: false, failures: failures.map(String) } : { ok: true })
     return
   }
 

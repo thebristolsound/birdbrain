@@ -155,9 +155,10 @@ html.dark {
    gaps only — radius is not a density concern, which is why --d-r is declared
    once on :root and left to inherit: neither step below redeclares it. Styles
    that need a density-aware metric read var(--d-*) (e.g. p-[var(--d-pad)]).
-   :root carries the default step; the Settings control that writes
-   data-density onto <html> lands separately, so until then only the :root step
-   is reachable in-app. */
+   :root carries the default step and is what renders when data-density is
+   absent; Settings → Appearance writes data-density onto <html> (theme-init.js
+   applies the stored value before first paint), and a fresh install starts on
+   the compact step — see DEFAULT_UI_DENSITY in src/shared/types.ts. */
 :root {
   --d-r: var(--radius);
   --d-pad: 18px;

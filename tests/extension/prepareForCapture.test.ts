@@ -14,6 +14,7 @@ type SendResponse = (response?: unknown) => void
 type Listener = (message: unknown, sender: unknown, sendResponse: SendResponse) => unknown
 
 const listeners: Listener[] = []
+const sendMessageMock = vi.fn()
 
 function dispatch(message: unknown): unknown[] {
   const responses: unknown[] = []
@@ -21,6 +22,15 @@ function dispatch(message: unknown): unknown[] {
     listener(message, {}, (r) => responses.push(r))
   }
   return responses
+}
+
+// Screenshot messages answer asynchronously; resolve on the first sendResponse
+function dispatchAsync(message: unknown): Promise<unknown> {
+  return new Promise((resolve) => {
+    for (const listener of listeners) {
+      listener(message, {}, resolve)
+    }
+  })
 }
 
 // The span is a page-owned decoy sharing the extension's id prefix: cleanup is
@@ -57,16 +67,40 @@ function setPageHtml(html: string): void {
   })
 }
 
+// Minimal stand-ins for the browser APIs the screenshot path needs: jsdom has
+// no OffscreenCanvas, no scrolling and no layout, so the stitching step is given
+// just enough to run with zero collected slices.
+function stubScreenshotEnvironment(): void {
+  vi.stubGlobal(
+    'OffscreenCanvas',
+    class {
+      getContext(): { drawImage: () => void } {
+        return { drawImage: () => {} }
+      }
+      convertToBlob(): Promise<Blob> {
+        return Promise.resolve(new Blob(['png'], { type: 'image/png' }))
+      }
+    }
+  )
+  window.scrollTo = () => {}
+  window.scrollBy = () => {}
+  Object.defineProperty(document.documentElement, 'scrollHeight', {
+    configurable: true,
+    get: () => 2000
+  })
+}
+
 beforeAll(async () => {
   vi.stubGlobal('chrome', {
     runtime: {
       onMessage: { addListener: (fn: Listener) => listeners.push(fn) },
-      sendMessage: vi.fn()
+      sendMessage: sendMessageMock
     }
   })
   if (typeof globalThis.requestAnimationFrame === 'undefined') {
     vi.stubGlobal('requestAnimationFrame', () => 0)
   }
+  stubScreenshotEnvironment()
   // Side-effecting import: registers the content script's onMessage listener
   await import('../../extension/src/content')
 })
@@ -120,6 +154,26 @@ describe('PREPARE_FOR_CAPTURE (#379)', () => {
     expect(document.documentElement.outerHTML).toBe(baseline)
   })
 
+  it('reports which teardown failed instead of claiming a clean page', () => {
+    setPageHtml(PAGE_HTML)
+    const host = document.createElement('div')
+    host.id = 'birdbrain-capture-toast'
+    document.body.appendChild(host)
+    // Simulate a teardown that cannot complete: the node refuses to be removed
+    const remove = vi.spyOn(host, 'remove').mockImplementation(() => {
+      throw new Error('detached host')
+    })
+
+    const [response] = dispatch({ type: 'PREPARE_FOR_CAPTURE' }) as [
+      { ok: boolean; failures?: string[] }
+    ]
+    expect(response.ok).toBe(false)
+    expect(response.failures?.[0]).toContain('detached host')
+
+    remove.mockRestore()
+    host.remove()
+  })
+
   it('supports direct cleanup when an orphaned content script cannot receive messages', () => {
     setPageHtml(PAGE_HTML)
     const baseline = document.documentElement.outerHTML
@@ -131,5 +185,81 @@ describe('PREPARE_FOR_CAPTURE (#379)', () => {
     // The page-owned prefix-colliding decoy survives the fallback cleanup too
     expect(document.getElementById('birdbrain-styles-page')).not.toBeNull()
     expect(document.documentElement.outerHTML).toBe(baseline)
+  })
+})
+
+// Known-answer test for #386: the DOM at the instant a frame is requested is
+// the pre-injection page, on every screenshot path — the background having
+// suppressed earlier is not what the guarantee rests on.
+describe('screenshot paths suppress before any frame (#386)', () => {
+  /** Injects the toast and live highlights, returning the pre-injection DOM */
+  function injectAllExtensionUi(): string {
+    setPageHtml(PAGE_HTML)
+    const baseline = document.documentElement.outerHTML
+    dispatch({ type: 'CHECK_SELECTORS', selectors: SELECTOR_GROUPS })
+    showToast({ status: 'capturing' })
+    expect(document.getElementById('birdbrain-capture-toast')).not.toBeNull()
+    expect(document.querySelectorAll('mark.birdbrain-selector-highlight').length).toBeGreaterThan(0)
+    return baseline
+  }
+
+  function recordDomAtEachFrame(): string[] {
+    const framesSeen: string[] = []
+    sendMessageMock.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'REQUEST_VIEWPORT_CAPTURE') {
+        framesSeen.push(document.documentElement.outerHTML)
+      }
+      return {}
+    })
+    return framesSeen
+  }
+
+  it('takes no full-page frame while extension UI is on the page', async () => {
+    const baseline = injectAllExtensionUi()
+    const framesSeen = recordDomAtEachFrame()
+
+    await dispatchAsync({ type: 'CAPTURE_FULL_PAGE' })
+
+    expect(framesSeen.length).toBeGreaterThan(0)
+    for (const dom of framesSeen) {
+      expect(dom).not.toContain('birdbrain-capture-toast')
+      expect(dom).not.toContain('birdbrain-selector-highlight')
+      expect(dom).not.toContain('data-birdbrain-highlight')
+      expect(dom).toBe(baseline)
+    }
+  })
+
+  it('takes no scrolling-capture frame while extension UI is on the page', async () => {
+    injectAllExtensionUi()
+    const framesSeen = recordDomAtEachFrame()
+
+    await dispatchAsync({ type: 'CAPTURE_FULL_PAGE_SCROLLING', scrollTimeoutMs: 1 })
+
+    expect(framesSeen.length).toBeGreaterThan(0)
+    for (const dom of framesSeen) {
+      expect(dom).not.toContain('birdbrain-capture-toast')
+      expect(dom).not.toContain('birdbrain-selector-highlight')
+      expect(dom).not.toContain('data-birdbrain-highlight')
+    }
+  })
+
+  it('aborts the frame rather than capturing a page it cannot clear', async () => {
+    injectAllExtensionUi()
+    const toastHost = document.getElementById('birdbrain-capture-toast')!
+    const remove = vi.spyOn(toastHost, 'remove').mockImplementation(() => {
+      throw new Error('detached host')
+    })
+    const framesSeen = recordDomAtEachFrame()
+
+    const response = (await dispatchAsync({ type: 'CAPTURE_FULL_PAGE' })) as {
+      error?: string
+      suppressionFailed?: boolean
+    }
+
+    expect(framesSeen).toEqual([])
+    expect(response.suppressionFailed).toBe(true)
+    expect(response.error).toContain('detached host')
+
+    remove.mockRestore()
   })
 })

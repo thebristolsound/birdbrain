@@ -104,19 +104,19 @@ export function SelectorTable({ selectors, matchCounts, onRefresh, caseId }: Sel
       {/* Table */}
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-border bg-surface text-left text-[11px] uppercase tracking-wider text-text-muted">
-            <th className="w-16 px-4 py-2 font-medium">On</th>
-            <th className="px-4 py-2 font-medium">Pattern</th>
-            <th className="w-20 px-4 py-2 font-medium">Type</th>
-            <th className="px-4 py-2 font-medium">Label</th>
+          <tr className="h-[var(--d-head)] border-b border-border bg-surface text-left text-[11px] uppercase tracking-wider text-text-muted">
+            <th className="w-16 px-[var(--d-rowpad)] font-medium">On</th>
+            <th className="px-[var(--d-rowpad)] font-medium">Pattern</th>
+            <th className="w-20 px-[var(--d-rowpad)] font-medium">Type</th>
+            <th className="px-[var(--d-rowpad)] font-medium">Label</th>
             <th
-              className="w-24 cursor-pointer px-4 py-2 font-medium hover:text-text-secondary"
+              className="w-24 cursor-pointer px-[var(--d-rowpad)] font-medium hover:text-text-secondary"
               onClick={() => handleSort('matches')}
             >
               Matches {sortBy === 'matches' && (sortDir === 'desc' ? '↓' : '↑')}
             </th>
-            <th className="w-20 px-4 py-2 font-medium">Filter</th>
-            <th className="w-24 px-4 py-2 font-medium">Actions</th>
+            <th className="w-20 px-[var(--d-rowpad)] font-medium">Filter</th>
+            <th className="w-24 px-[var(--d-rowpad)] font-medium">Actions</th>
           </tr>
         </thead>
         <tbody>

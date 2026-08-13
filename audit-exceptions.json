@@ -13,6 +13,14 @@
   ],
   "exceptions": [
     {
+      "ghsa": "GHSA-jmr9-qjv8-65gv",
+      "package": "extract-zip",
+      "tree": ".",
+      "path": ".>electron>extract-zip",
+      "reason": "Transitive dependency via electron devDependency only (install-time archive extraction during local/CI setup). GHSA-jmr9-qjv8-65gv currently reports no patched version for extract-zip, so there is no safe override or version bump available in this tree yet.",
+      "expires": "2026-10-15"
+    },
+    {
       "ghsa": "GHSA-f88m-g3jw-g9cj",
       "package": "sharp",
       "tree": "website",

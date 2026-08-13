@@ -45,6 +45,20 @@
 
   --color-teal-500: #14b8a6;
 
+  /* Status surfaces — a tinted triple (10% fill / 20% line / full-strength
+     foreground), never a solid fill. Replaces ad-hoc rgba() literals. */
+  --color-success-surface: rgba(16,185,129,0.10);
+  --color-success-line: rgba(16,185,129,0.20);
+  --color-success-fg: #10b981;
+
+  --color-danger-surface: rgba(239,68,68,0.10);
+  --color-danger-line: rgba(239,68,68,0.20);
+  --color-danger-fg: #ef4444;
+
+  --color-warning-surface: rgba(245,158,11,0.10);
+  --color-warning-line: rgba(245,158,11,0.20);
+  --color-warning-fg: #f59e0b;
+
   --color-slate-100: #f1f5f9;
   --color-slate-200: #e2e8f0;
   --color-slate-300: #cbd5e1;
@@ -73,13 +87,20 @@
   --color-input: var(--color-border-strong);
   --color-ring: var(--color-accent);
 
-  /* Radius system */
-  --radius: 0.5rem;
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  /* Radius system — the scale is 2 / 4 / 6 and nothing else. xl and 2xl alias
+     down to the 6px ceiling so every existing rounded-xl/rounded-2xl call site
+     collapses with the token instead of a sweep. rounded-full stays legal only
+     for status pills and dots. */
+  --radius: 0.375rem;
+  --radius-sm: 2px;
+  --radius-md: 4px;
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: 0.75rem;
+  --radius-xl: var(--radius);
+  --radius-2xl: var(--radius);
+
+  /* Tracking */
+  --tracking-display: -0.025em;
+  --tracking-label: 0.06em;
 
   /* Fonts */
   --font-display: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
@@ -102,6 +123,10 @@ html.dark {
   --color-accent-subtle: rgba(100,103,242,0.16);
   --color-border: #27272a;
   --color-border-strong: #3d3d42;
+  /* Status foregrounds lift one step for contrast against the dark canvas */
+  --color-success-fg: #34d399;
+  --color-danger-fg: #f87171;
+  --color-warning-fg: #fbbf24;
 }
 
 /* === Shadow tokens (not in @theme — Tailwind doesn't generate shadow utilities from it) === */
@@ -120,6 +145,57 @@ html.dark {
   --shadow-btn: none;
 }
 
+/* === Density steps ===
+   Three steps driven from the root element. They scale padding, row heights and
+   gaps only — radius is not a density concern, which is why --d-r is pinned to
+   the radius ceiling and repeated identically in every step. Styles that need a
+   density-aware metric read var(--d-*) (e.g. p-[var(--d-pad)]).
+   :root carries the default step; the Settings control that writes
+   data-density onto <html> lands separately. */
+:root {
+  --d-r: var(--radius);
+  --d-pad: 18px;
+  --d-gap: 12px;
+  --d-card: 16px;
+  --d-cardsm: 13px;
+  --d-metric: 18px;
+  --d-row: 30px;
+  --d-rowpad: 14px;
+  --d-head: 28px;
+  --d-itemy: 9px;
+  --d-itemx: 11px;
+  --d-tree: 24px;
+  --d-listgap: 3px;
+}
+html[data-density='compact'] {
+  --d-pad: 12px;
+  --d-gap: 8px;
+  --d-card: 12px;
+  --d-cardsm: 10px;
+  --d-metric: 16px;
+  --d-row: 26px;
+  --d-rowpad: 10px;
+  --d-head: 24px;
+  --d-itemy: 7px;
+  --d-itemx: 9px;
+  --d-tree: 22px;
+  --d-listgap: 2px;
+}
+html[data-density='comfortable'] {
+  --d-pad: 24px;
+  --d-gap: 16px;
+  --d-card: 20px;
+  --d-cardsm: 16px;
+  --d-metric: 22px;
+  --d-row: 36px;
+  --d-rowpad: 18px;
+  --d-head: 32px;
+  --d-itemy: 12px;
+  --d-itemx: 14px;
+  --d-tree: 28px;
+  --d-listgap: 5px;
+}
+
 /* === Suppress transitions during theme swap === */
 html.no-transitions,
 html.no-transitions * {
@@ -131,6 +207,23 @@ html.no-transitions * {
 body {
   @apply bg-canvas text-text-secondary;
   font-family: var(--font-body);
+}
+
+/* === Section label ===
+   The eyebrow treatment every panel head uses. <SectionLabel> is the TSX
+   surface; this class is for the places where only a DOM node is available. */
+.section-label {
+  font-family: var(--font-display);
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--color-text-faint);
+  line-height: 1;
+}
+.section-label-strong {
+  font-size: 0.6875rem;
+  color: var(--color-text-secondary);
 }
 
 /* === Scrollbar === */

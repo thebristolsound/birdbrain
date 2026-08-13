@@ -118,7 +118,7 @@ export function NewCaseWizard() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Phishing Campaign Analysis"
-            className="rounded-xl px-4 py-2.5 placeholder:text-text-muted"
+            className="rounded-xl px-4 py-2.5 text-sm placeholder:text-text-muted"
             autoFocus
           />
         </div>
@@ -132,7 +132,7 @@ export function NewCaseWizard() {
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Brief description of this investigation..."
             rows={3}
-            className="resize-none rounded-xl px-4 py-2.5 placeholder:text-text-muted"
+            className="resize-none rounded-xl px-4 py-2.5 text-sm placeholder:text-text-muted"
           />
         </div>
 

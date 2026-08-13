@@ -33,10 +33,30 @@ CardHeader.displayName = 'CardHeader'
 
 const CardTitle = forwardRef<HTMLHeadingElement, HTMLAttributes<HTMLHeadingElement>>(
   ({ className, ...props }, ref) => (
-    <h3 className={cn('text-lg font-semibold text-text-primary', className)} ref={ref} {...props} />
+    <h3
+      className={cn(
+        'font-display text-xs font-semibold tracking-display text-text-primary',
+        className
+      )}
+      ref={ref}
+      {...props}
+    />
   )
 )
 CardTitle.displayName = 'CardTitle'
+
+// The recessed inner surface inside a Card — the inversion of Card itself:
+// stronger border on the dimmer surface, so it reads as sunk into its parent.
+const CardPanel = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
+  ({ className, ...props }, ref) => (
+    <div
+      className={cn('rounded-lg border border-border-strong bg-surface p-3', className)}
+      ref={ref}
+      {...props}
+    />
+  )
+)
+CardPanel.displayName = 'CardPanel'
 
 const CardDescription = forwardRef<HTMLParagraphElement, HTMLAttributes<HTMLParagraphElement>>(
   ({ className, ...props }, ref) => (
@@ -57,4 +77,4 @@ const CardFooter = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
 )
 CardFooter.displayName = 'CardFooter'
 
-export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
+export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, CardPanel }

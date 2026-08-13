@@ -216,19 +216,26 @@ body {
 
 /* === Section label ===
    The eyebrow treatment every panel head uses. <SectionLabel> is the TSX
-   surface; this class is for the places where only a DOM node is available. */
-.section-label {
-  font-family: var(--font-display);
-  font-size: 0.625rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
-  color: var(--color-text-faint);
-  line-height: 1;
-}
-.section-label-strong {
-  font-size: 0.6875rem;
-  color: var(--color-text-secondary);
+   surface; this class is for the places where only a DOM node is available.
+   Layered so a utility can still override it — unlayered, these would beat
+   every Tailwind utility regardless of specificity, and `section-label
+   text-accent` would silently render faint.
+   `.section-label-strong` is a modifier: it overrides only size and colour, so
+   it does nothing on its own and must be used alongside `.section-label`. */
+@layer components {
+  .section-label {
+    font-family: var(--font-display);
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+    color: var(--color-text-faint);
+    line-height: 1;
+  }
+  .section-label-strong {
+    font-size: 0.6875rem;
+    color: var(--color-text-secondary);
+  }
 }
 
 /* === Scrollbar === */

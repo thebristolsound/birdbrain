@@ -195,6 +195,8 @@ const birdbrain = {
     cleanOrphans: bridge(IPC_CHANNELS.DB_CLEAN_ORPHANS),
     backup: bridge(IPC_CHANNELS.DB_BACKUP),
     restore: bridge(IPC_CHANNELS.DB_RESTORE),
+    snapshots: bridge(IPC_CHANNELS.DB_SNAPSHOTS),
+    restoreSnapshot: bridge(IPC_CHANNELS.DB_RESTORE_SNAPSHOT),
     exportTable: bridge(IPC_CHANNELS.DB_EXPORT_TABLE)
   },
 

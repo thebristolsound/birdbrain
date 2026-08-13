@@ -34,9 +34,9 @@ function makeCapture(caseId: string) {
   })
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'bb-archive-'))
-  initDatabase(join(dir, 'test.db'))
+  await initDatabase(join(dir, 'test.db'))
 })
 
 afterEach(() => {

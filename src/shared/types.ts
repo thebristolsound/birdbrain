@@ -334,6 +334,7 @@ export const LOG_SOURCES = [
   'selectorLifecycle',
   'consentBlocker',
   'timestampWorker',
+  'db',
   'renderer'
 ] as const
 export type LogSource = (typeof LOG_SOURCES)[number]
@@ -378,6 +379,11 @@ export const LOG_CODES = [
   'openrouter.retry',
   'openrouter.retries_exhausted',
   'timestampWorker.stamp_failed',
+  // Pre-migration snapshots (#413). The creation entry is the only durable
+  // record that an upgrade was recoverable; the prune entry is the only place
+  // a snapshot directory that has stopped bounding itself shows up.
+  'db.snapshot_created',
+  'db.snapshot_prune_failed',
   // Fallback for notify.error() with no explicit code. Its presence in a log
   // is a signal to give that call site a real code.
   'app.unclassified_error',
@@ -444,7 +450,8 @@ export const ERROR_NAMES = [
   'AbortError',
   'SqliteError',
   'IpcFailure',
-  'ManifestRollback'
+  'ManifestRollback',
+  'PreMigrationSnapshotError'
 ] as const
 
 export interface LoggedError {

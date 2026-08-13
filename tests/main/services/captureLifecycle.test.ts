@@ -67,10 +67,10 @@ describe('createCaptureLifecycle.ingest', () => {
   let selectorStub: SelectorLifecycle
   let runActive: ReturnType<typeof vi.fn>
 
-  beforeEach(() => {
+  beforeEach(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-lifecycle-'))
     initStorage(join(tempDir, 'captures'))
-    initDatabase(':memory:')
+    await initDatabase(':memory:')
     caseId = createCase({ name: 'Lifecycle' }).id
     ensureCaseDir(caseId)
     initManifest(join(tempDir, 'captures', caseId))
@@ -376,10 +376,10 @@ describe('createCaptureLifecycle.delete', () => {
   let caseId: string
   let selectorStub: SelectorLifecycle
 
-  beforeEach(() => {
+  beforeEach(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-lifecycle-del-'))
     initStorage(join(tempDir, 'captures'))
-    initDatabase(':memory:')
+    await initDatabase(':memory:')
     initSettings(tempDir)
     updateSettings({ operatorName: 'Test Operator' })
     resetInstallationId()
@@ -441,10 +441,10 @@ describe('createCaptureLifecycle.verify', () => {
   let caseId: string
   let selectorStub: SelectorLifecycle
 
-  beforeEach(() => {
+  beforeEach(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-lifecycle-verify-'))
     initStorage(join(tempDir, 'captures'))
-    initDatabase(':memory:')
+    await initDatabase(':memory:')
     caseId = createCase({ name: 'Verify' }).id
     ensureCaseDir(caseId)
     initManifest(join(tempDir, 'captures', caseId))

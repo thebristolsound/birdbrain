@@ -52,6 +52,8 @@ import type {
   DbUpdateRowParams,
   DbRowIdentifier,
   DbExportTableParams,
+  DbSnapshot,
+  DbRestoreSnapshotParams,
   OrphanReport,
   AnalyzeCaptureParams,
   SaveAnnotationsParams,
@@ -212,6 +214,8 @@ interface BirdbrainAPI {
     cleanOrphans(report: OrphanReport): Promise<{ dbRecordsRemoved: number; filesRemoved: number }>
     backup(): Promise<{ path: string } | null>
     restore(): Promise<{ restored: boolean }>
+    snapshots(): Promise<DbSnapshot[]>
+    restoreSnapshot(params: DbRestoreSnapshotParams): Promise<{ restored: boolean }>
     exportTable(params: DbExportTableParams): Promise<{ path: string } | null>
   }
   onExportProgress(callback: (event: ExportProgressEvent) => void): () => void

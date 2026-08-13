@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, shell } from 'electron'
 import { join, resolve } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { PreMigrationSnapshotError } from '@main/services/db/dbSnapshots'
 import { initStorage } from '@main/services/storage'
 import {
   startCaptureServer,
@@ -298,7 +299,9 @@ if (!gotSingleInstanceLock) {
         packaged: app.isPackaged
       })
 
-      initDatabase(join(userDataPath, 'birdbrain.db'))
+      // Awaited: initDatabase takes the pre-migration snapshot (#413) before it
+      // migrates, and the snapshot is an async online backup.
+      await initDatabase(join(userDataPath, 'birdbrain.db'))
       initSettings(userDataPath)
       initInstallationId(userDataPath)
       // Splitting this into a second entry is the cost of initialising the
@@ -428,10 +431,23 @@ if (!gotSingleInstanceLock) {
       // holding the single-instance lock with nothing on screen.
       logger.error('app', 'app.startup_failed', undefined, err)
       flushSync()
-      dialog.showErrorBox(
-        'Birdbrain could not start',
-        'A diagnostic log has been saved. You can attach it to a bug report — see the logs folder in your Birdbrain data directory.'
-      )
+      // A refused migration is the one startup failure where the state of the
+      // user's data is knowable and reassuring: nothing was written. Saying so
+      // is the difference between "wait for a fix" and "restore from a backup".
+      if (err instanceof PreMigrationSnapshotError) {
+        dialog.showErrorBox(
+          'Birdbrain could not back up your database',
+          'The database upgrade was NOT started and your data has not been changed. ' +
+            'Birdbrain takes a snapshot before upgrading its database, and this time it could not — ' +
+            'usually a full disk or a read-only data folder. Free some space and start Birdbrain again. ' +
+            'A diagnostic log has been saved in the logs folder of your Birdbrain data directory.'
+        )
+      } else {
+        dialog.showErrorBox(
+          'Birdbrain could not start',
+          'A diagnostic log has been saved. You can attach it to a bug report — see the logs folder in your Birdbrain data directory.'
+        )
+      }
       // Same reasoning as the uncaughtException handler above: exit, not quit,
       // so before-quit does not clear the lock on a startup crash.
       app.exit(1)

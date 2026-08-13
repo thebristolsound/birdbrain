@@ -46,6 +46,7 @@ export const queryKeys = {
   recaptureQueue: ['recaptureQueue'] as const,
   diagnostics: ['diagnostics'] as const,
   dbStats: ['db', 'stats'] as const,
+  dbSnapshots: ['db', 'snapshots'] as const,
   dbTableRows: (table: string, offset: number, limit: number) =>
     ['db', 'tableRows', table, offset, limit] as const
 }

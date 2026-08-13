@@ -102,7 +102,9 @@ import {
   initLogger,
   readRecentEntries
 } from '@main/services/logger'
-import { closeDatabase, initDatabase } from '@main/services/db/core'
+import Database from 'better-sqlite3'
+import { closeDatabase, initDatabase, LATEST_SCHEMA_VERSION } from '@main/services/db/core'
+import { createPreMigrationSnapshot } from '@main/services/db/dbSnapshots'
 import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
 import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
@@ -178,7 +180,7 @@ beforeAll(() => {
   showOpenDialog.mockResolvedValue({ canceled: true, filePaths: [] })
 })
 
-beforeEach(() => {
+beforeEach(async () => {
   registered.clear()
   vi.clearAllMocks()
   showSaveDialog.mockResolvedValue({ canceled: true, filePath: undefined })
@@ -189,7 +191,7 @@ beforeEach(() => {
   dbPath = join(userDataPath, 'birdbrain.db')
 
   storage.initStorage(join(userDataPath, 'captures'))
-  initDatabase(dbPath)
+  await initDatabase(dbPath)
   settings.initSettings(userDataPath)
   initInstallationId(userDataPath)
   initServerToken(userDataPath)
@@ -1152,6 +1154,40 @@ describe('ipcHandlers — database admin', () => {
   it('reports not-restored when the restore dialog is cancelled', async () => {
     const res = expectOk<{ restored: boolean }>(await invoke(IPC_CHANNELS.DB_RESTORE))
     expect(res.restored).toBe(false)
+  })
+
+  it('lists pre-migration snapshots and restores one over the live database', async () => {
+    expect(expectOk<unknown[]>(await invoke(IPC_CHANNELS.DB_SNAPSHOTS))).toEqual([])
+
+    const conn = new Database(dbPath)
+    try {
+      await createPreMigrationSnapshot(conn, dbPath, LATEST_SCHEMA_VERSION, LATEST_SCHEMA_VERSION)
+    } finally {
+      conn.close()
+    }
+
+    const listed = expectOk<Array<{ fileName: string; fromVersion: number }>>(
+      await invoke(IPC_CHANNELS.DB_SNAPSHOTS)
+    )
+    expect(listed).toHaveLength(1)
+    expect(listed[0].fromVersion).toBe(LATEST_SCHEMA_VERSION)
+
+    const restored = expectOk<{ restored: boolean }>(
+      await invoke(IPC_CHANNELS.DB_RESTORE_SNAPSHOT, { fileName: listed[0].fileName })
+    )
+    expect(restored.restored).toBe(true)
+    // The database is open again on the other side of the restore.
+    expectOk(await invoke(IPC_CHANNELS.DB_STATS))
+  })
+
+  it('rejects a snapshot restore for a filename that is not a snapshot', async () => {
+    const res = await invoke<{ ok: boolean; code?: string }>(IPC_CHANNELS.DB_RESTORE_SNAPSHOT, {
+      fileName: '../birdbrain.db'
+    })
+    expect(res.ok).toBe(false)
+    expect(res.code).toBe('NOT_FOUND')
+    // The rejection happens before the connection is closed.
+    expectOk(await invoke(IPC_CHANNELS.DB_STATS))
   })
 })
 

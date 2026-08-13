@@ -37,8 +37,8 @@ const DOC_TEXT = 'Registrant listed as Acme Holdings in the WHOIS record.'
 describe('rich-text notes', () => {
   let caseId: string
 
-  beforeEach(() => {
-    initDatabase(':memory:')
+  beforeEach(async () => {
+    await initDatabase(':memory:')
     caseId = createCase({ name: 'Notes Case', description: '' }).id
   })
 

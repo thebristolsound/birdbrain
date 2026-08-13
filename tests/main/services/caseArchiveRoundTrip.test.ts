@@ -68,8 +68,8 @@ const byId = (a: Row, b: Row) => String(a.id).localeCompare(String(b.id))
 describe('case archive round-trip fidelity (repo bulk ops)', () => {
   afterEach(() => closeDatabase())
 
-  it('every table survives field-for-field modulo intended transforms', () => {
-    initDatabase(':memory:')
+  it('every table survives field-for-field modulo intended transforms', async () => {
+    await initDatabase(':memory:')
     const c = createCase({ name: 'Source', description: 'src', type: 'custom' })
 
     // Two captures with full provenance: cap2 supersedes cap1, non-default
@@ -211,7 +211,7 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
       captureArchiveRefs: collectWaybackRefsForCase(c.id)
     }
     closeDatabase()
-    initDatabase(':memory:')
+    await initDatabase(':memory:')
 
     withTransaction(() => {
       importCaseRow(src.case, ctx)
@@ -322,8 +322,8 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
     expect(collectCaseRow(NEW_CASE)).toEqual({ ...src.case, id: NEW_CASE })
   })
 
-  it('old-epoch archive rows (missing method/supersedes/consent columns) import with DDL defaults', () => {
-    initDatabase(':memory:')
+  it('old-epoch archive rows (missing method/supersedes/consent columns) import with DDL defaults', async () => {
+    await initDatabase(':memory:')
     createCase({ name: 'Target', description: '', type: 'custom' })
     // A pre-v23 archive row: none of the provenance columns exist as keys.
     const oldEpochRow: Row = {

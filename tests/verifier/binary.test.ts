@@ -63,7 +63,7 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
   beforeAll(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'bb-binverify-'))
     initStorage(join(tempDir, 'captures'))
-    initDatabase(':memory:')
+    await initDatabase(':memory:')
     resetInstallationId()
     initInstallationId(tempDir)
     initSettings(tempDir)

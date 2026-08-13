@@ -18,6 +18,7 @@ import type {
   DbUpdateRowParams,
   DbRowIdentifier,
   DbExportTableParams,
+  DbRestoreSnapshotParams,
   OrphanReport,
   AnalyzeCaptureParams,
   SaveAnnotationsParams,
@@ -29,6 +30,7 @@ import type {
   SessionStateEvent
 } from '@shared/ipc'
 import * as dbAdmin from '@main/services/db/dbAdmin'
+import * as dbSnapshots from '@main/services/db/dbSnapshots'
 import { existsSync } from 'fs'
 import { join, resolve } from 'path'
 import { pathToFileURL } from 'url'
@@ -868,7 +870,36 @@ export function registerIpcHandlers(deps: {
 
     closeDatabase()
     copyFileSync(filePaths[0], dbPath)
-    initDatabase(dbPath)
+    await initDatabase(dbPath)
+
+    return { restored: true }
+  })
+
+  handle(IPC_CHANNELS.DB_SNAPSHOTS, () => {
+    const userDataPath = process.env.BIRDBRAIN_USER_DATA || app.getPath('userData')
+    return dbSnapshots.listSnapshots(join(userDataPath, 'birdbrain.db'))
+  })
+
+  handle(IPC_CHANNELS.DB_RESTORE_SNAPSHOT, async (_, params: DbRestoreSnapshotParams) => {
+    const userDataPath = process.env.BIRDBRAIN_USER_DATA || app.getPath('userData')
+    const dbPath = join(userDataPath, 'birdbrain.db')
+    const { closeDatabase, initDatabase } = await import('@main/services/db/core')
+
+    // Resolve before closing: an unknown filename is the likely failure, and
+    // it costs nothing to hit it while the database is still open.
+    if (!dbSnapshots.resolveSnapshot(dbPath, params.fileName)) {
+      throw new IpcFailure(`Snapshot "${params.fileName}" was not found`, 'NOT_FOUND')
+    }
+
+    closeDatabase()
+    try {
+      dbSnapshots.restoreSnapshotFile(dbPath, params.fileName)
+    } finally {
+      // Re-open either way — a half-done restore must not leave the running app
+      // without a database. A snapshot older than the current schema migrates
+      // forward here, taking a fresh pre-migration snapshot of itself first.
+      await initDatabase(dbPath)
+    }
 
     return { restored: true }
   })

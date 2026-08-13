@@ -163,6 +163,20 @@ export interface CaptureTag {
 // service — see docs/specs/2026-07-07-update-delivery-release-channels-design.md.
 export type ReleaseChannel = 'stable' | 'beta'
 
+// UI density step (#385). Selects the root density custom properties defined in
+// src/renderer/styles/globals.css: 'default' is the :root step, the other two
+// are selected by `data-density` on <html>. Padding, row heights and gaps only —
+// radius does not scale with density.
+export const UI_DENSITIES = ['compact', 'default', 'comfortable'] as const
+export type UiDensity = (typeof UI_DENSITIES)[number]
+
+// First-run density. Compact is the design default and the pixel-match
+// reference for the 2026-08 design handoff, so a fresh install starts there
+// rather than on the ':root' step. Keep in sync with the fallback in
+// src/renderer/public/theme-init.js, which cannot import from here (classic
+// script, no bundler).
+export const DEFAULT_UI_DENSITY: UiDensity = 'compact'
+
 export interface BirdbrainSettings {
   openRouterApiKey: string | null
   defaultModel: string
@@ -172,6 +186,7 @@ export interface BirdbrainSettings {
   storagePath: string
   theme: 'dark' | 'light'
   reduceMotion: boolean
+  density: UiDensity
   operatorName: string
   operatorRole: string
   operatorOrganization: string

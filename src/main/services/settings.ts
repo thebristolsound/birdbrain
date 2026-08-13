@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import type { BirdbrainSettings } from '@shared/types'
+import { DEFAULT_UI_DENSITY, type BirdbrainSettings } from '@shared/types'
 import { PartialBirdbrainSettingsSchema } from '@shared/schemas'
 import {
   DEFAULT_ANALYSIS_SYSTEM_PROMPT,
@@ -58,6 +58,7 @@ const DEFAULT_SETTINGS: BirdbrainSettings = {
   storagePath: '',
   theme: 'light',
   reduceMotion: false,
+  density: DEFAULT_UI_DENSITY,
   operatorName: '',
   operatorRole: '',
   operatorOrganization: '',

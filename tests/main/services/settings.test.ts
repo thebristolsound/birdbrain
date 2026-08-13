@@ -11,6 +11,7 @@ import {
   getDefaultSettings
 } from '@main/services/settings'
 import { DEFAULT_TSA_URL } from '@shared/constants'
+import { DEFAULT_UI_DENSITY, UI_DENSITIES, type UiDensity } from '@shared/types'
 
 describe('settings', () => {
   let tempDir: string
@@ -176,5 +177,51 @@ describe('settings', () => {
   it('rejects an unknown releaseChannel and falls back to defaults', () => {
     writeFileSync(settingsFile, JSON.stringify({ releaseChannel: 'nightly' }), 'utf-8')
     expect(getSettings().releaseChannel).toBe('stable')
+  })
+
+  it('defaults density to compact', () => {
+    expect(getSettings().density).toBe(DEFAULT_UI_DENSITY)
+    expect(getDefaultSettings().density).toBe('compact')
+  })
+
+  it('persists every density step', () => {
+    for (const step of UI_DENSITIES) {
+      updateSettings({ density: step })
+      expect(getSettings().density).toBe(step)
+    }
+  })
+
+  it('rejects an unknown density on update rather than persisting it', () => {
+    updateSettings({ density: 'comfortable' })
+    expect(() => updateSettings({ density: 'cosy' as UiDensity })).toThrow(/Invalid settings/)
+    expect(getSettings().density).toBe('comfortable')
+  })
+
+  // Pins the loader's existing all-or-nothing behaviour now that a cosmetic
+  // key can trigger it: one unrecognised enum discards every other stored
+  // value, exactly as theme/releaseChannel/autoCaptureMode already do.
+  it('discards the whole file when the stored density is unrecognised', () => {
+    writeFileSync(
+      settingsFile,
+      JSON.stringify({ density: 'cosy', operatorName: 'Det. Smith' }),
+      'utf-8'
+    )
+    const settings = getSettings()
+    expect(settings.density).toBe('compact')
+    expect(settings.operatorName).toBe('')
+  })
+
+  it('reads a settings file written before density existed', () => {
+    // Upgrade path: the key is absent, so the merge over defaults supplies it
+    // and the rest of the file survives untouched.
+    writeFileSync(
+      settingsFile,
+      JSON.stringify({ theme: 'dark', operatorName: 'Det. Smith' }),
+      'utf-8'
+    )
+    const settings = getSettings()
+    expect(settings.density).toBe('compact')
+    expect(settings.theme).toBe('dark')
+    expect(settings.operatorName).toBe('Det. Smith')
   })
 })

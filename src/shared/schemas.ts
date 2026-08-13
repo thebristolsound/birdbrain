@@ -4,7 +4,12 @@ import {
   DEFAULT_TSA_URL,
   MANIFEST_SCHEMA_VERSION
 } from '@shared/constants'
-import { CAPTURE_METHODS, CONSENT_SUPPRESSIONS } from '@shared/types'
+import {
+  CAPTURE_METHODS,
+  CONSENT_SUPPRESSIONS,
+  DEFAULT_UI_DENSITY,
+  UI_DENSITIES
+} from '@shared/types'
 import type {
   ActiveCaseSelectors,
   BirdbrainSettings,
@@ -516,6 +521,7 @@ export const BirdbrainSettingsSchema = z.object({
   storagePath: z.string(),
   theme: z.enum(['dark', 'light']),
   reduceMotion: z.boolean(),
+  density: z.enum(UI_DENSITIES).optional().default(DEFAULT_UI_DENSITY),
   operatorName: z.string(),
   operatorRole: z.string().default(''),
   operatorOrganization: z.string().default(''),

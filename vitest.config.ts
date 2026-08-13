@@ -8,7 +8,8 @@ export default defineConfig({
     alias: {
       '@main': resolve(__dirname, 'src/main'),
       '@shared': resolve(__dirname, 'src/shared'),
-      '@renderer': resolve(__dirname, 'src/renderer')
+      '@renderer': resolve(__dirname, 'src/renderer'),
+      '@extension': resolve(__dirname, 'extension/src')
     }
   },
   test: {
@@ -103,7 +104,8 @@ export default defineConfig({
           alias: {
             '@main': resolve(__dirname, 'src/main'),
             '@shared': resolve(__dirname, 'src/shared'),
-            '@renderer': resolve(__dirname, 'src/renderer')
+            '@renderer': resolve(__dirname, 'src/renderer'),
+            '@extension': resolve(__dirname, 'extension/src')
           }
         },
         test: {
@@ -120,7 +122,8 @@ export default defineConfig({
           alias: {
             '@main': resolve(__dirname, 'src/main'),
             '@shared': resolve(__dirname, 'src/shared'),
-            '@renderer': resolve(__dirname, 'src/renderer')
+            '@renderer': resolve(__dirname, 'src/renderer'),
+            '@extension': resolve(__dirname, 'extension/src')
           }
         },
         test: {

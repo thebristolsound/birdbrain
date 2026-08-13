@@ -6,7 +6,7 @@ import {
 } from '@extension/utils/api'
 import { normalizeResponseHeaders } from '@extension/utils/headers'
 import { removeInjectedBirdbrainUi } from '@extension/captureHygiene'
-import { createCaptureSuppression } from '@extension/captureSuppression'
+import { CaptureUiSuppressionError, createCaptureSuppression } from '@extension/captureSuppression'
 import { MAX_SCREENSHOT_BITMAP_BYTES } from '@shared/constants'
 import { matchIgnoredUrl } from '@shared/urlPatterns'
 import type { ActiveSelectorsResult, SelectorMatchInfo } from '@shared/schemas'
@@ -48,21 +48,38 @@ async function getPlainTextFromTab(tabId: number): Promise<string> {
   }
 }
 
+// A screenshot path that reports it could not clear the page aborts the whole
+// capture rather than just the screenshot: the MHTML collected in the same
+// bracket is a snapshot of that same uncleaned page, and shipping it as an
+// ordinary screenshot-less capture would store evidence that cannot be shown
+// clean while telling the operator nothing (#386).
+function pageNotCleanError(detail: unknown): CaptureUiSuppressionError {
+  return new CaptureUiSuppressionError([detail ?? 'teardown failed'])
+}
+
 async function captureScreenshot(tabId: number): Promise<Blob | undefined> {
+  let windowId: number
   try {
     const tab = await chrome.tabs.get(tabId)
     if (!tab.active || tab.windowId === chrome.windows.WINDOW_ID_NONE) {
       return undefined
     }
-    // The viewport path is reached directly and as the fallback of the two
-    // full-page paths, so it re-runs suppression immediately before its frame
-    // (#386). A failure here drops the screenshot rather than shipping one that
-    // may contain extension UI.
-    await prepareTabForCapture(tabId)
-    const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' })
+    windowId = tab.windowId
+  } catch {
+    return undefined
+  }
+  // The viewport path is reached directly and as the fallback of the two
+  // full-page paths, so it re-runs suppression immediately before its frame
+  // (#386). Deliberately outside the catch below: a page that cannot be
+  // cleared aborts the capture rather than dropping only the screenshot,
+  // because the MHTML collected alongside it carries the same injected nodes.
+  await prepareTabForCapture(tabId)
+  try {
+    const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: 'png' })
     const res = await fetch(dataUrl)
     return await res.blob()
-  } catch {
+  } catch (err) {
+    console.warn('[Birdbrain] Viewport screenshot failed:', String(err))
     return undefined
   }
 }
@@ -77,12 +94,7 @@ async function captureFullPageScreenshot(tabId: number): Promise<Blob | undefine
       const res = await fetch(response.screenshot)
       return await res.blob()
     }
-    if (response?.suppressionFailed) {
-      // The page could not be cleared of extension UI; a fallback frame of the
-      // same page would carry it, so drop the screenshot entirely (#386).
-      console.warn('[Birdbrain] Full-page capture aborted, page not clean:', response.error)
-      return undefined
-    }
+    if (response?.suppressionFailed) throw pageNotCleanError(response.error)
     if (response?.error) {
       console.warn(
         '[Birdbrain] Full-page capture failed, falling back to viewport:',
@@ -91,6 +103,7 @@ async function captureFullPageScreenshot(tabId: number): Promise<Blob | undefine
     }
     return captureScreenshot(tabId)
   } catch (err) {
+    if (err instanceof CaptureUiSuppressionError) throw err
     console.warn('[Birdbrain] Full-page capture threw, falling back to viewport:', String(err))
     return captureScreenshot(tabId)
   }
@@ -107,10 +120,7 @@ async function captureScrollingPageScreenshot(tabId: number): Promise<Blob | und
       const res = await fetch(response.screenshot)
       return await res.blob()
     }
-    if (response?.suppressionFailed) {
-      console.warn('[Birdbrain] Scrolling capture aborted, page not clean:', response.error)
-      return undefined
-    }
+    if (response?.suppressionFailed) throw pageNotCleanError(response.error)
     if (response?.error) {
       console.warn(
         '[Birdbrain] Scrolling capture failed, falling back to full-page:',
@@ -120,6 +130,7 @@ async function captureScrollingPageScreenshot(tabId: number): Promise<Blob | und
     // Fallback to non-scrolling full-page capture
     return captureFullPageScreenshot(tabId)
   } catch (err) {
+    if (err instanceof CaptureUiSuppressionError) throw err
     console.warn('[Birdbrain] Scrolling capture threw, falling back to full-page:', String(err))
     return captureFullPageScreenshot(tabId)
   }
@@ -158,11 +169,44 @@ const pendingManualCaptures = new Set<string>()
 // up. Restore runs when the capture settles, including on the failure path.
 const captureSuppression = createCaptureSuppression({
   suppress: prepareTabForCapture,
-  restore: restoreSelectorHighlights
+  restore: async (tabId) => {
+    await restoreSelectorHighlights(tabId)
+    // A capture that settled while another was mid-frame had its toast held
+    // back; the tab may be idle now that this one has released its slot.
+    flushHeldToast(tabId)
+  }
 })
 
+// Progress toasts are dropped while the tab is collecting frames: showing one
+// would inject it into another capture's frames, and by the time the tab is
+// idle it no longer describes anything.
 function sendToastWhenCaptureIdle(tabId: number, message: Record<string, unknown>): void {
   if (captureSuppression.isCollectingFrames(tabId)) return
+  chrome.tabs.sendMessage(tabId, message).catch(() => {})
+}
+
+// How a capture ended is the operator's only signal that it succeeded or
+// failed, so it is held rather than dropped and delivered once the tab goes
+// idle. One held message per tab, latest wins: the toast is a single element
+// that each message overwrites anyway.
+const heldToastByTab = new Map<number, Record<string, unknown>>()
+
+function sendCaptureOutcomeToast(tabId: number, message: Record<string, unknown>): void {
+  if (captureSuppression.isCollectingFrames(tabId)) {
+    heldToastByTab.set(tabId, message)
+    return
+  }
+  // Anything already held belongs to a capture that settled earlier and is
+  // left for the flush below, so a failure is not overwritten by a later
+  // capture's success.
+  chrome.tabs.sendMessage(tabId, message).catch(() => {})
+}
+
+function flushHeldToast(tabId: number): void {
+  if (captureSuppression.isCollectingFrames(tabId)) return
+  const message = heldToastByTab.get(tabId)
+  if (!message) return
+  heldToastByTab.delete(tabId)
   chrome.tabs.sendMessage(tabId, message).catch(() => {})
 }
 
@@ -235,6 +279,7 @@ chrome.webRequest.onBeforeRequest.addListener(
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   responseHeadersByTab.delete(tabId)
+  heldToastByTab.delete(tabId)
 })
 
 // Returns the cached headers for a tab only when they belong to the URL being
@@ -615,7 +660,7 @@ async function manualCaptureTab(
       const toastMessage =
         result.screenshotStatus === 'dropped' ? 'Captured (screenshot too large)' : undefined
       if (lastOnTab) {
-        sendToastWhenCaptureIdle(tabId, {
+        sendCaptureOutcomeToast(tabId, {
           type: 'UPDATE_CAPTURE_TOAST',
           status: toastStatus,
           message: toastMessage
@@ -625,7 +670,9 @@ async function manualCaptureTab(
   } catch (err) {
     console.error('[Birdbrain] Manual capture failed:', err)
     let message = 'Capture failed'
-    if (err && typeof err === 'object' && 'status' in err) {
+    if (err instanceof CaptureUiSuppressionError) {
+      message = 'Capture aborted: Birdbrain UI could not be removed from the page'
+    } else if (err && typeof err === 'object' && 'status' in err) {
       const apiErr = err as { status: number; detail: string }
       if (apiErr.status === 400) message = 'Capture rejected: ' + apiErr.detail
       else if (apiErr.status === 403) message = 'URL is blacklisted'
@@ -636,8 +683,9 @@ async function manualCaptureTab(
     }
     // Reported outside the boundary, so this capture no longer counts as
     // collecting: the toast is shown only when the tab has no capture left
-    // mid-frame that it would appear inside.
-    sendToastWhenCaptureIdle(tabId, { type: 'UPDATE_CAPTURE_TOAST', status: 'error', message })
+    // mid-frame that it would appear inside — and held until that one settles
+    // otherwise, so a failure is never silent.
+    sendCaptureOutcomeToast(tabId, { type: 'UPDATE_CAPTURE_TOAST', status: 'error', message })
   } finally {
     pendingManualCaptures.delete(key)
   }

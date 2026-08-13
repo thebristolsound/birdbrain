@@ -29,13 +29,14 @@ const TAB2 = { id: 2, url: 'https://example.test/other', title: 'Other', active:
 
 const runtimeListeners: Listener[] = []
 let contextMenuListener: ((info: { menuItemId: string; selectionText?: string }, tab: typeof TAB) => Promise<void>) | undefined
-const sentMessages: Array<{ tabId: number; type: string }> = []
+const sentMessages: Array<{ tabId: number; type: string; status?: string }> = []
 let rejectPrepare = false
 const executeScriptCalls: Array<{ target: { tabId: number }; func: () => unknown }> = []
 // One pending saveAsMHTML callback per in-flight capture, in start order —
 // resolving one lets that capture finish while the other stays mid-frame
 const mhtmlCallbacks: Array<(blob: Blob) => void> = []
 const uploadResolvers: Array<(result: CaptureUploadResult) => void> = []
+const uploadRejecters: Array<(err: unknown) => void> = []
 // Simulates a mid-capture navigation: tabs.get reports this URL once set, so
 // the finally-path re-read sees the navigated page, not the capture-time one
 const tabUrlOverride = new Map<number, string>()
@@ -106,7 +107,11 @@ beforeAll(async () => {
   vi.mocked(getStatus).mockResolvedValue(STATUS)
   vi.mocked(getActiveSelectors).mockResolvedValue(SELECTOR_GROUPS)
   vi.mocked(sendMhtmlCapture).mockImplementation(
-    () => new Promise((resolve) => uploadResolvers.push(resolve))
+    () =>
+      new Promise((resolve, reject) => {
+        uploadResolvers.push(resolve)
+        uploadRejecters.push(reject)
+      })
   )
   vi.mocked(createSelector).mockResolvedValue({ id: 'sel-created' })
 
@@ -136,8 +141,8 @@ beforeAll(async () => {
         }
         return Promise.resolve(tab)
       },
-      sendMessage: (tabId: number, message: { type: string }) => {
-        sentMessages.push({ tabId, type: message.type })
+      sendMessage: (tabId: number, message: { type: string; status?: string }) => {
+        sentMessages.push({ tabId, type: message.type, status: message.status })
         if (message.type === 'PREPARE_FOR_CAPTURE') {
           return rejectPrepare ? Promise.reject(new Error('Receiving end does not exist')) : Promise.resolve({ ok: true })
         }
@@ -296,6 +301,38 @@ describe('concurrent manual captures on one tab (#379)', () => {
     uploadResolvers[upBase + 1](UPLOAD_RESULT)
     await flush()
     expect(sentOfTypeTo('CHECK_SELECTORS', TAB.id)).toBe(baselineCheck + 1)
+  })
+
+  it("holds a failed capture's error toast until the tab is idle instead of dropping it", async () => {
+    const cbBase = mhtmlCallbacks.length
+    const upBase = uploadResolvers.length
+    const errorToasts = (): number =>
+      sentMessages.filter(
+        (m) => m.tabId === TAB.id && m.type === 'UPDATE_CAPTURE_TOAST' && m.status === 'error'
+      ).length
+    const baselineErrors = errorToasts()
+
+    dispatch({ type: 'MANUAL_CAPTURE', tabId: TAB.id, caseId: 'case-a' })
+    await flush()
+    dispatch({ type: 'MANUAL_CAPTURE', tabId: TAB.id, caseId: 'case-b' })
+    await flush()
+    expect(mhtmlCallbacks.length).toBe(cbBase + 2)
+
+    // Capture A finishes frames and then fails its upload while capture B is
+    // still collecting: the error toast cannot be shown now — it would be
+    // injected into B's frames — but it must not be lost either
+    mhtmlCallbacks[cbBase](new Blob(['mhtml-a']))
+    await flush()
+    uploadRejecters[upBase](new Error('server exploded'))
+    await flush()
+    expect(errorToasts()).toBe(baselineErrors)
+
+    // B finishes: the tab goes idle and A's failure finally reaches the operator
+    mhtmlCallbacks[cbBase + 1](new Blob(['mhtml-b']))
+    await flush()
+    uploadResolvers[upBase + 1](UPLOAD_RESULT)
+    await flush()
+    expect(errorToasts()).toBe(baselineErrors + 1)
   })
 
   it('skips highlight restore when the tab navigated to an ignored URL mid-capture', async () => {

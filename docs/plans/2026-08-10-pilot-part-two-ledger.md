@@ -263,7 +263,7 @@ cleared in ≤1 round.
 
 The result is insensitive to the two judgement calls available here. Excluding the
 open #407 and reading "the last five" as the five most recent *merged* PRs (#364,
-#369, #370, #372, #375) also gives 2 of 5. Counting #407 as satisfying "mergeable"
+\#369, #370, #372, #375) also gives 2 of 5. Counting #407 as satisfying "mergeable"
 on its live `mergeable: true` / `mergeable_state: clean` — legitimate for an open
 PR, unlike the retrospective rows — still fails it on rounds. Either way, 2 of 5.
 
@@ -288,8 +288,8 @@ merged `15:18:33Z`), and its verdicts run APP then REQ — approved, then a furt
 push drew a rejection, then merge.
 
 Taken with the original finding, the divergence between "merged" and "the automated
-reviewer was satisfied" has widened: **8 of the 17 merged PRs** merged against a
-final `request changes` (#329, #343, #354, #355, #357, #360, #372, #375), and #370
+reviewer was satisfied" has widened: **7 of the 17 merged PRs** merged against a
+final `request changes` (#329, #343, #354, #355, #357, #360, #372), and #370
 merged with no verdict at all. That is **9 of 17 — 53%** of merged agent PRs
 carrying no satisfied automated verdict at merge time.
 
@@ -390,15 +390,16 @@ human pushed through ahead of the routine is not an observation of the routine e
 way. "The last five" therefore means the five most recent *non-fast-tracked* cycles.
 
 **Fast-track is mechanically derivable after all.** Define it as *merged without a
-satisfied automated verdict* — the final pre-pass said `request changes`, or no
-pre-pass existed at merge time. That rule reproduces all four of the maintainer's
-hand annotations exactly: it flags #370 (no verdict), #372 (final REQ) and #375
-(pre-pass posted after the merge) and clears #369 (final APP, merged 4h27m later).
-It needs nothing beyond the API calls already in the procedure, which retires the
-"has to be supplied by hand" problem noted above.
+satisfied automated verdict* — the latest pre-pass posted at or before the merge time
+said `request changes`, or no eligible pre-pass existed at merge time. Ignore all
+post-merge pre-passes. That rule reproduces all four of the maintainer's hand
+annotations exactly: it flags #370 (no verdict), #372 (final REQ) and #375 (pre-pass
+posted after the merge) and clears #369 (final APP, merged 4h27m later). It needs
+nothing beyond the API calls already in the procedure, which retires the "has to be
+supplied by hand" problem noted above.
 
-Applying it to the cohort, **nine of the seventeen merges are excluded** — #329,
-#343, #354, #355, #357, #360, #370, #372, #375. One caveat on the word: #357's
+Applying it to the cohort, **nine of the seventeen merges are excluded** — \#329,
+\#343, #354, #355, #357, #360, #370, #372, #375. One caveat on the word: #357's
 override was an argued, disclosed deferral rather than time pressure, so "fast-track"
 stretches to cover it. It is excluded regardless, because the exclusion is about
 merging past an unsatisfied verdict, not about the motive.
@@ -418,7 +419,7 @@ still-open #407.
 
 **1 of 5. The bar asks for 4 of 5. Not met.**
 
-#407 is eligible but in flight — no outcome yet, so counting it either way is wrong.
+\#407 is eligible but in flight — no outcome yet, so counting it either way is wrong.
 Recorded for the next re-run: if it is included in the window as not-yet-merged, the
 result is 0 of 5; it currently stands at 4 rounds, so it cannot become a pass.
 

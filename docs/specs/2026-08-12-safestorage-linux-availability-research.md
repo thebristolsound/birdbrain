@@ -3,29 +3,30 @@
 Date: 2026-08-12
 Tracks: #287 (`wayfinder:research`, under map #284). Feeds: #289 (grilling — what Birdbrain
 should *do* when safeStorage is unavailable).
-Electron version pinned: **39.8.10** (`package.json` declares `^39.8.10`; installed tree is
-39.8.10).
+Electron version pinned: **42.5.1** (`package.json` declares `^42.5.1`; `pnpm-lock.yaml` resolves
+to 42.5.1), which bundles Chromium **148.0.7778.271** — Chromium citations below are pinned to
+that tag rather than a moving branch.
 
 Research only. This establishes what is available where; it does not propose a response.
 
 ## Answer in one paragraph
 
-On a stock Ubuntu desktop session, `safeStorage` **is** available to both the `.deb` and the
-AppImage: Ubuntu's `XDG_CURRENT_DESKTOP` resolves to the GNOME family, Chromium selects the
-`gnome_libsecret` backend, and gnome-keyring is present on a default install. It is **not**
-available in a headless, SSH or minimal-install context: the desktop environment is
-unrecognised, the backend resolves to `basic_text`, and because Birdbrain never calls
-`safeStorage.setUsePlainTextEncryption()`, `isEncryptionAvailable()` returns `false`. Both key
-paths then write plaintext. The availability signal is honest — Birdbrain cannot end up writing
-something that *looks* encrypted but is protected only by a hardcoded password — but it is
-silent, and it is decided once per process.
+On a stock Ubuntu desktop session, source evidence indicates `safeStorage` **is expected to be
+available** to both the `.deb` and the AppImage: Ubuntu's `XDG_CURRENT_DESKTOP` resolves to the
+GNOME family, Chromium selects the `gnome_libsecret` backend, and gnome-keyring is present on a
+default install. Source evidence indicates it **is expected not to be available** in a headless,
+SSH or minimal-install context: the desktop environment is unrecognised, the backend resolves to
+`basic_text`, and because Birdbrain never calls `safeStorage.setUsePlainTextEncryption()`,
+`isEncryptionAvailable()` returns `false`. Both key paths then write plaintext. The availability
+signal is honest — Birdbrain cannot end up writing something that *looks* encrypted but is
+protected only by a hardcoded password — but it is silent, and it is decided once per process.
 
 ## How availability is decided
 
 Two gates, in order.
 
 **1. Electron's gate** —
-[`shell/browser/api/electron_api_safe_storage.cc` @ v39.8.10](https://github.com/electron/electron/blob/v39.8.10/shell/browser/api/electron_api_safe_storage.cc):
+[`shell/browser/api/electron_api_safe_storage.cc` @ v42.5.1](https://github.com/electron/electron/blob/v42.5.1/shell/browser/api/electron_api_safe_storage.cc):
 
 ```cpp
 bool IsEncryptionAvailable() {
@@ -52,7 +53,7 @@ The `is_ready()` term is not a live risk for us: both call sites are initialised
 `src/main/index.ts:310`, under the `.whenReady()` at `src/main/index.ts:266`.
 
 **2. Chromium's gate** —
-[`components/os_crypt/sync/os_crypt_linux.cc`](https://github.com/chromium/chromium/blob/main/components/os_crypt/sync/os_crypt_linux.cc):
+[`components/os_crypt/sync/os_crypt_linux.cc`](https://github.com/chromium/chromium/blob/148.0.7778.271/components/os_crypt/sync/os_crypt_linux.cc):
 
 ```cpp
 bool OSCryptImpl::IsEncryptionAvailable() {
@@ -72,7 +73,7 @@ bool OSCryptImpl::IsEncryptionAvailable() {
   `IsEncryptionAvailable()` already returned true. Electron's own docs warn that items "will be
   unprotected as they are encrypted via hardcoded plaintext password" and that you detect this
   via `getSelectedStorageBackend() === 'basic_text'`
-  ([safe-storage.md @ v39.8.10](https://github.com/electron/electron/blob/v39.8.10/docs/api/safe-storage.md));
+  ([safe-storage.md @ v42.5.1](https://github.com/electron/electron/blob/v42.5.1/docs/api/safe-storage.md));
   that warning applies to apps that opt in with `setUsePlainTextEncryption(true)`. We have not,
   so it does not describe our builds.
 - **`try_v11_ = false` is sticky for the life of the process.** Availability is computed once
@@ -83,7 +84,7 @@ bool OSCryptImpl::IsEncryptionAvailable() {
 
 From the typings shipped in the pinned tree
 (`node_modules/electron/electron.d.ts`, `SafeStorage.getSelectedStorageBackend`) and confirmed
-by [`key_storage_linux.cc`](https://github.com/chromium/chromium/blob/main/components/os_crypt/sync/key_storage_linux.cc):
+by [`key_storage_linux.cc`](https://github.com/chromium/chromium/blob/148.0.7778.271/components/os_crypt/sync/key_storage_linux.cc):
 
 | Backend | Selected when |
 | --- | --- |
@@ -141,8 +142,9 @@ machine that also has a graphical session does not join that session bus, and an
 passwordless-login setup can leave the keyring locked. Both surface identically to us: init
 fails, `IsEncryptionAvailable()` is false.
 
-The practical shape for a tester: run Birdbrain from the desktop, encryption works; run the same
-build from `ssh -X` or a bare VM console, it silently does not.
+The expected practical shape for a tester based on source analysis: run Birdbrain from the
+desktop, encryption is expected to work; run the same build from `ssh -X` or a bare VM console,
+source evidence indicates it will silently not work.
 
 ## Can we query which backend was chosen?
 
@@ -179,23 +181,26 @@ Both wrap paths swallow their exception (`catch { /* encryption not available */
 `signingKey.ts:28-30`, `settings.ts:31-33`) and fall through to returning the plaintext. Nothing
 is logged on either path, and nothing is surfaced to the renderer.
 
-## What happens today, end to end, on a headless Linux tester's machine
+## Expected behavior on a headless Linux tester's machine (source-derived)
+
+Source evidence indicates the following behavior is expected:
 
 1. `initSettings` / `initSigningKey` run inside `whenReady`.
-2. `isEncryptionAvailable()` → `false` (no desktop env → `basic_text` → no v11 key).
-3. First run: a fresh keypair is generated and the **private key is written to
-   `userData/signing-key.pem` in the clear**, with no `enc:` prefix, no warning, no log line.
-   An OpenRouter key entered later is written to `settings.json` in the clear the same way.
-4. Every later run on that machine reads the plaintext back happily —
+2. `isEncryptionAvailable()` is expected to return `false` (no desktop env → `basic_text` → no v11 key).
+3. First run: a fresh keypair is generated and source evidence indicates the **private key is
+   expected to be written to `userData/signing-key.pem` in the clear**, with no `enc:` prefix, no
+   warning, no log line. An OpenRouter key entered later is expected to be written to
+   `settings.json` in the clear the same way.
+4. Every later run on that machine is expected to read the plaintext back happily —
    `unwrapPrivateKey` returns early for anything not prefixed `enc:` (`signingKey.ts:35`).
-5. The state is invisible: no diagnostics field, no settings indicator, no log entry
-   distinguishes it from a machine where encryption worked.
+5. The state is expected to be invisible: no diagnostics field, no settings indicator, no log
+   entry distinguishes it from a machine where encryption worked.
 
 The mirror-image case is a machine that *had* a keyring and loses it (keyring uninstalled, or the
 app launched over SSH after being set up on the desktop): the stored blob is `enc:`-prefixed,
-step 2 is false, `unwrapPrivateKey` returns `null`, and startup throws the
-refuse-to-rotate error at `signingKey.ts:60-65`. The same event is a hard failure in one
-direction and a silent downgrade in the other.
+step 2 is false, `unwrapPrivateKey` returns `null`, and source evidence indicates startup is
+expected to throw the refuse-to-rotate error at `signingKey.ts:60-65`. Under these conditions the
+same event is expected to be a hard failure in one direction and a silent downgrade in the other.
 
 ## Open / not verified
 
@@ -211,6 +216,6 @@ direction and a silent downgrade in the other.
   mediation of the Secret Service is a separate question.
 - **Whether Electron's official builds define `USE_LIBSECRET`** is inferred from the fact that
   `gnome_libsecret` is a documented return value of `getSelectedStorageBackend()`, not read off a
-  build config for 39.8.10.
+  build config for 42.5.1.
 - **Other desktops we do not test** (Wayland-only sessions, Sway, i3) will land in `basic_text`
   by the detection table, but I did not enumerate what `XDG_CURRENT_DESKTOP` those set.

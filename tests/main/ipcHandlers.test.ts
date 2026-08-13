@@ -1171,13 +1171,25 @@ describe('ipcHandlers — database admin', () => {
     )
     expect(listed).toHaveLength(1)
     expect(listed[0].fromVersion).toBe(LATEST_SCHEMA_VERSION)
+    // The listing carries no filesystem path across the boundary.
+    expect(listed[0]).not.toHaveProperty('path')
+
+    // Written after the snapshot was taken, so a restore that actually puts the
+    // file back must lose it. Without this every assertion here would hold for
+    // a restore that copied nothing.
+    const afterSnapshot = expectOk<{ id: string }>(
+      await invoke(IPC_CHANNELS.CASES_CREATE, { name: 'Recorded after the snapshot' })
+    )
 
     const restored = expectOk<{ restored: boolean }>(
       await invoke(IPC_CHANNELS.DB_RESTORE_SNAPSHOT, { fileName: listed[0].fileName })
     )
     expect(restored.restored).toBe(true)
+    expect(expectOk(await invoke(IPC_CHANNELS.CASES_GET, afterSnapshot.id))).toBeUndefined()
     // The database is open again on the other side of the restore.
     expectOk(await invoke(IPC_CHANNELS.DB_STATS))
+    // And the database the restore replaced is still on disk.
+    expect(existsSync(`${dbPath}.pre-restore`)).toBe(true)
   })
 
   it('rejects a snapshot restore for a filename that is not a snapshot', async () => {

@@ -384,6 +384,11 @@ export const LOG_CODES = [
   // a snapshot directory that has stopped bounding itself shows up.
   'db.snapshot_created',
   'db.snapshot_prune_failed',
+  // A restore that failed and the re-open that follows it are logged
+  // separately: the second can happen without the first, and only the log
+  // keeps the first once the renderer has been told about the second.
+  'db.snapshot_restore_failed',
+  'db.reopen_failed',
   // Fallback for notify.error() with no explicit code. Its presence in a log
   // is a signal to give that call site a real code.
   'app.unclassified_error',

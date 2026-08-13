@@ -892,14 +892,34 @@ export function registerIpcHandlers(deps: {
     }
 
     closeDatabase()
+    let restoreErr: unknown = null
     try {
       dbSnapshots.restoreSnapshotFile(dbPath, params.fileName)
-    } finally {
+    } catch (err) {
+      // Held, not thrown: the re-open below has to happen either way, and if
+      // that fails too its error would replace this one — leaving the operator
+      // with the consequence and none of the cause.
+      restoreErr = err
+      logger.error('db', 'db.snapshot_restore_failed', undefined, err)
+    }
+
+    try {
       // Re-open either way — a half-done restore must not leave the running app
       // without a database. A snapshot older than the current schema migrates
       // forward here, taking a fresh pre-migration snapshot of itself first.
       await initDatabase(dbPath)
+    } catch (err) {
+      // A failed re-open leaves `db` unset in core.ts, so every later IPC call
+      // in this session fails with "Database not initialized". Say that, rather
+      // than reporting it as a problem with the restore.
+      logger.error('db', 'db.reopen_failed', undefined, err)
+      throw new IpcFailure(
+        'The database could not be re-opened after the restore. Restart Birdbrain.',
+        'DB_REOPEN_FAILED'
+      )
     }
+
+    if (restoreErr) throw restoreErr
 
     return { restored: true }
   })

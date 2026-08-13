@@ -17,7 +17,9 @@ const buttonVariants = cva(
       },
       // One control metric: 28px / 4px radius / 0 11px / 12px. Every size
       // except lg aliases to it, so untouched call sites converge without a
-      // sweep. lg exists solely for the dashboard hero CTA (36px, flat).
+      // sweep. lg is the only step off that metric (36px, flat), reserved for
+      // the dashboard hero CTA — which still renders raw <button> elements, so
+      // lg has no call site until HeroSection is swept.
       size: {
         xs: 'h-7 px-[11px] text-xs',
         sm: 'h-7 px-[11px] text-xs',

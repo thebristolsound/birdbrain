@@ -29,7 +29,7 @@ async function openAppearanceTab(page: Page): Promise<void> {
     window.location.hash = '/settings'
   })
   await page.getByRole('tab', { name: 'Appearance' }).click()
-  await page.waitForSelector('[data-testid="density-compact"]', { timeout: 10000 })
+  await expect(page.getByTestId('density-compact')).toBeVisible()
 }
 
 test.describe('UI density', () => {
@@ -62,13 +62,19 @@ test.describe('UI density', () => {
     expect(await rootVar(page, '--d-r')).toBe(densityRadiusBefore)
   })
 
+  // A reload, not a relaunch: the fixture mints a fresh user-data-dir per test,
+  // so a second launch against the same profile is not expressible here. This
+  // covers the pre-paint path and the settings-file round trip; the restart case
+  // is covered by proxy.
   test('the chosen step survives a reload and reaches the settings file', async ({ page }) => {
     await openAppearanceTab(page)
     await page.click('[data-testid="density-comfortable"]')
     await expect.poll(() => storedDensity(page)).toBe('comfortable')
 
     await page.reload()
-    await page.waitForSelector('[data-testid="app-ready"]', { timeout: 15000 })
+    // Same boot budget the launch fixture allows: a renderer reload remounts the
+    // whole app, which overruns the 5s expect default on a cold CI worker.
+    await expect(page.getByTestId('app-ready')).toBeVisible({ timeout: 15000 })
 
     // Applied before first paint by theme-init.js, so it holds on a route that
     // never mounts the Settings screen.

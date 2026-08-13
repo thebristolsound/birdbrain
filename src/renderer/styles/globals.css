@@ -45,19 +45,23 @@
 
   --color-teal-500: #14b8a6;
 
-  /* Status surfaces — a tinted triple (10% fill / 20% line / full-strength
-     foreground), never a solid fill. Replaces ad-hoc rgba() literals. */
+  /* Status surfaces — a tinted triple (10% fill / 20% line / foreground), never
+     a solid fill. Replaces ad-hoc rgba() literals. Light darkens the foreground
+     two-to-three palette steps off the tint hue for the same reason the accent
+     is darkened above: measured against the 10% tint over --color-canvas the
+     full-strength hues land at 2.23 / 3.18 / 1.92:1, well under WCAG AA's 4.5:1
+     for the 10-12px text these carry. Dark lifts them back (see below). */
   --color-success-surface: rgba(16,185,129,0.10);
   --color-success-line: rgba(16,185,129,0.20);
-  --color-success-fg: #10b981;
+  --color-success-fg: #047857;
 
   --color-danger-surface: rgba(239,68,68,0.10);
   --color-danger-line: rgba(239,68,68,0.20);
-  --color-danger-fg: #ef4444;
+  --color-danger-fg: #b91c1c;
 
   --color-warning-surface: rgba(245,158,11,0.10);
   --color-warning-line: rgba(245,158,11,0.20);
-  --color-warning-fg: #f59e0b;
+  --color-warning-fg: #92400e;
 
   --color-slate-100: #f1f5f9;
   --color-slate-200: #e2e8f0;
@@ -123,7 +127,8 @@ html.dark {
   --color-accent-subtle: rgba(100,103,242,0.16);
   --color-border: #27272a;
   --color-border-strong: #3d3d42;
-  /* Status foregrounds lift one step for contrast against the dark canvas */
+  /* Status foregrounds lift back to the bright hues — against the dark canvas
+     those clear AA comfortably (9.17 / 6.64 / 10.41:1 on the tinted surface) */
   --color-success-fg: #34d399;
   --color-danger-fg: #f87171;
   --color-warning-fg: #fbbf24;

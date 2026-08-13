@@ -54,6 +54,19 @@ describe('SelectorTable', () => {
     expect(remove).toHaveBeenCalledWith('s1')
   })
 
+  it('expands a match-preview row under the selector it belongs to', async () => {
+    fakeBridge({
+      captures: { list: vi.fn(async () => []) },
+      selectors: { matchingCaptures: vi.fn(async () => []) }
+    })
+    renderTable()
+
+    fireEvent.click(screen.getByTitle('Test matches'))
+
+    const panel = await screen.findByText('No match previews available.')
+    expect(panel.closest('td')?.getAttribute('colspan')).toBe('7')
+  })
+
   it('filters the listed selectors without touching the bridge', () => {
     fakeBridge()
     renderTable()

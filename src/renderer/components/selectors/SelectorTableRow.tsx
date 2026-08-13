@@ -53,13 +53,17 @@ export function SelectorTableRow({
 
   return (
     <Fragment>
+      {/* --d-row is a minimum, not a clamp: it sets the single-line height at
+          each density, and the cells keep a small py so content that outgrows
+          it (a wrapped pattern, the regex chip at compact) still clears the
+          row borders instead of rendering flush against them. */}
       <tr
-        className={`border-b border-border transition-colors hover:bg-surface ${
+        className={`h-[var(--d-row)] border-b border-border transition-colors hover:bg-surface ${
           !selector.enabled ? 'opacity-35' : ''
         }`}
       >
         {/* On toggle */}
-        <td className="px-4 py-2.5">
+        <td className="px-[var(--d-rowpad)] py-1">
           <button
             type="button"
             role="switch"
@@ -81,7 +85,7 @@ export function SelectorTableRow({
         </td>
 
         {/* Pattern */}
-        <td className="px-4 py-2.5">
+        <td className="px-[var(--d-rowpad)] py-1">
           {selector.isRegex ? (
             <span className="inline-block rounded-lg border border-border bg-canvas px-2 py-1 font-mono text-xs">
               {highlightRegexSyntax(selector.pattern)}
@@ -92,7 +96,7 @@ export function SelectorTableRow({
         </td>
 
         {/* Type badge */}
-        <td className="px-4 py-2.5">
+        <td className="px-[var(--d-rowpad)] py-1">
           {selector.isRegex ? (
             <span className="rounded-md border border-accent/20 bg-accent-subtle px-1.5 py-0.5 text-[10px] font-mono font-medium text-accent">
               regex
@@ -105,10 +109,12 @@ export function SelectorTableRow({
         </td>
 
         {/* Label */}
-        <td className="px-4 py-2.5 text-xs text-text-muted">{selector.label || '\u2014'}</td>
+        <td className="px-[var(--d-rowpad)] py-1 text-xs text-text-muted">
+          {selector.label || '\u2014'}
+        </td>
 
         {/* Match count */}
-        <td className="px-4 py-2.5">
+        <td className="px-[var(--d-rowpad)] py-1">
           <span
             className={`rounded-full px-2 py-0.5 text-xs font-medium ${
               matchCount > 0
@@ -121,7 +127,7 @@ export function SelectorTableRow({
         </td>
 
         {/* Filter */}
-        <td className="px-4 py-2.5">
+        <td className="px-[var(--d-rowpad)] py-1">
           <button
             onClick={handleFilterToggle}
             className={`rounded-full px-2.5 py-0.5 text-[10px] font-medium transition-colors ${
@@ -135,7 +141,7 @@ export function SelectorTableRow({
         </td>
 
         {/* Actions */}
-        <td className="px-4 py-2.5">
+        <td className="px-[var(--d-rowpad)] py-1">
           <div className="flex items-center gap-1">
             <button
               onClick={(e) => {
@@ -164,7 +170,7 @@ export function SelectorTableRow({
       {/* Expanded match preview */}
       {isExpanded && (
         <tr>
-          <td colSpan={7} className="bg-surface px-4 py-3">
+          <td colSpan={7} className="bg-surface px-[var(--d-rowpad)] py-3">
             <div className="expand-panel">
               {loadingPreviews ? (
                 <p className="text-xs text-text-muted">Loading previews...</p>

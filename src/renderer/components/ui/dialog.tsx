@@ -72,7 +72,7 @@ DialogHeader.displayName = 'DialogHeader'
 
 const DialogTitle = forwardRef<HTMLHeadingElement, ComponentPropsWithoutRef<'h3'>>(
   ({ className, ...props }, ref) => (
-    <h3 className={cn('text-lg font-semibold text-text-primary', className)} ref={ref} {...props} />
+    <h3 className={cn('text-sm font-semibold text-text-primary', className)} ref={ref} {...props} />
   )
 )
 DialogTitle.displayName = 'DialogTitle'

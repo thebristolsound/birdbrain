@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
-import { Badge, CardPanel, SectionLabel } from '@renderer/components/ui'
+import { Badge, CardPanel, CardTitle, SectionLabel } from '@renderer/components/ui'
 
 describe('design-system primitives', () => {
   afterEach(() => {
@@ -60,6 +60,25 @@ describe('design-system primitives', () => {
       expect(el.className).toContain('border-border-strong')
       expect(el.className).toContain('bg-surface')
       expect(el.className).toContain('rounded-lg')
+    })
+  })
+
+  describe('CardTitle', () => {
+    it('renders a level-3 heading at the 12px display step', () => {
+      render(<CardTitle>Chain of custody</CardTitle>)
+      const el = screen.getByRole('heading', { level: 3 })
+      expect(el.textContent).toBe('Chain of custody')
+      expect(el.className).toContain('text-xs')
+      expect(el.className).toContain('tracking-display')
+    })
+
+    // The documented escape hatch for a head that needs to stay larger — it
+    // only works if the merge drops the default rather than emitting both.
+    it('lets a call site override the size instead of stacking both', () => {
+      render(<CardTitle className="text-sm">Hash chain</CardTitle>)
+      const el = screen.getByRole('heading', { level: 3 })
+      expect(el.className).toContain('text-sm')
+      expect(el.className).not.toContain('text-xs')
     })
   })
 })

@@ -64,7 +64,7 @@ export function CaseWorkspace() {
 
   if (isLoading) {
     return (
-      <div className="flex h-full flex-col gap-4 p-6">
+      <div className="flex h-full flex-col gap-[var(--d-gap)] p-[var(--d-pad)]">
         <Skeleton className="h-10 w-64" />
         <Skeleton className="h-32 w-full rounded-2xl" />
         <Skeleton className="h-64 w-full rounded-2xl" />
@@ -81,7 +81,7 @@ export function CaseWorkspace() {
           <Outlet />
         </div>
       ) : (
-        <div className="flex-1 overflow-auto p-6">
+        <div className="flex-1 overflow-auto p-[var(--d-pad)]">
           <Outlet />
         </div>
       )}

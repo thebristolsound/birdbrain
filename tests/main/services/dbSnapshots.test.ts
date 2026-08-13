@@ -280,6 +280,22 @@ describe('pre-migration snapshots', () => {
     }
   })
 
+  it('re-migrates a restored older snapshot instead of leaving it on the old schema', async () => {
+    seedLegacyDb(dbPath)
+    await initDatabase(dbPath)
+    const [snapshot] = listSnapshots(dbPath)
+    closeDatabase()
+    restoreSnapshotFile(dbPath, snapshot.fileName)
+
+    await initDatabase(dbPath)
+
+    // What the Settings copy and the tester guide now say: the records come
+    // back, the schema does not. The restored v24 file is upgraded again on the
+    // way in — and snapshotted again before that, because it is a real upgrade.
+    expect(getDb().pragma('user_version', { simple: true })).toBe(LATEST_SCHEMA_VERSION)
+    expect(listSnapshots(dbPath).map((s) => s.fromVersion)).toEqual([24, 24])
+  })
+
   it('keeps the database it replaced, so a mistaken restore is not the end of it', async () => {
     seedLegacyDb(dbPath)
     await initDatabase(dbPath)

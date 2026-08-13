@@ -1,20 +1,21 @@
 #!/bin/bash
 #
-# SessionStart hook for Claude Code on the web.
+# SessionStart hook.
 #
-# Brings a fresh remote container up to the state the agent contracts already assume:
-# Node 20 on PATH, the `gh` CLI installed, and dependencies installed so `pnpm test`
-# and `pnpm lint` run without per-session improvisation.
+# Remote (Claude Code on the web, CLAUDE_CODE_REMOTE=true): brings a fresh container up
+# to the state the agent contracts already assume — Node 20 on PATH, the `gh` CLI
+# installed, and dependencies installed so `pnpm test` and `pnpm lint` run without
+# per-session improvisation.
+#
+# Local: only pins Node. A mise-activated interactive shell bakes its *resolved* tool
+# dirs (e.g. installs/node/lts/bin — the global default) into PATH ahead of the shims,
+# and Claude Code's non-interactive tool shells inherit that PATH without ever re-running
+# mise's prompt hook. The repo's .mise.toml pin therefore silently loses to whatever Node
+# the launching shell had active. Prepending the pinned Node here makes the pin win.
 #
 # Idempotent and non-interactive: safe to re-run, never prompts.
-#
-# Local machines are untouched — this only runs when CLAUDE_CODE_REMOTE=true.
 
 set -euo pipefail
-
-if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
-  exit 0
-fi
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 
@@ -27,6 +28,22 @@ persist_env() {
     echo "$1" >> "$CLAUDE_ENV_FILE"
   fi
 }
+
+if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
+  # Never fatal: a missing/broken mise must not block local sessions from starting.
+  MISE_BIN="$(command -v mise || true)"
+  [ -x "${MISE_BIN:-}" ] || MISE_BIN="$HOME/.local/bin/mise"
+  if [ -x "$MISE_BIN" ] \
+    && NODE_DIR="$(cd "$PROJECT_DIR" && "$MISE_BIN" where node 2>/dev/null)" \
+    && [ -x "$NODE_DIR/bin/node" ]; then
+    export PATH="$NODE_DIR/bin:$PATH"
+    persist_env "export PATH=\"$NODE_DIR/bin:\$PATH\""
+    log "node pinned to $("$NODE_DIR/bin/node" --version) via mise"
+  else
+    log "WARNING: could not resolve the pinned Node via mise; 'node --version' may be wrong for this repo (see CLAUDE.md Node note)"
+  fi
+  exit 0
+fi
 
 # ---------------------------------------------------------------------------
 # 1. Node 20

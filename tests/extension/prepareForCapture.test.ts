@@ -23,8 +23,11 @@ function dispatch(message: unknown): unknown[] {
   return responses
 }
 
+// The span is a page-owned decoy sharing the extension's id prefix: cleanup is
+// constrained to the div shadow style host, so it must survive every path
 const PAGE_HTML =
-  '<main><p>Report abuse to evil@example.com immediately.</p><p>Unrelated text.</p></main>'
+  '<main><p>Report abuse to evil@example.com immediately.</p><p>Unrelated text.</p>' +
+  '<span id="birdbrain-styles-page">Page-owned decoy</span></main>'
 
 const SELECTOR_GROUPS: ActiveCaseSelectors[] = [
   {
@@ -91,8 +94,10 @@ describe('PREPARE_FOR_CAPTURE (#379)', () => {
     expect(document.getElementById('birdbrain-capture-toast')).toBeNull()
     expect(document.querySelectorAll('mark.birdbrain-selector-highlight').length).toBe(0)
     expect(document.querySelectorAll('style[data-birdbrain-highlight]').length).toBe(0)
-    // The randomized style container host carries a birdbrain- id prefix
-    expect(document.querySelectorAll('[id^="birdbrain-"]').length).toBe(0)
+    // The randomized style container host carries a birdbrain- id prefix; only
+    // the page-owned decoy may survive cleanup
+    const remaining = Array.from(document.querySelectorAll('[id^="birdbrain-"]'), (n) => n.id)
+    expect(remaining).toEqual(['birdbrain-styles-page'])
     // Known answer: what saveAsMHTML would serialise is the original page
     expect(document.documentElement.outerHTML).toBe(baseline)
   })
@@ -123,6 +128,8 @@ describe('PREPARE_FOR_CAPTURE (#379)', () => {
 
     removeInjectedBirdbrainUi()
 
+    // The page-owned prefix-colliding decoy survives the fallback cleanup too
+    expect(document.getElementById('birdbrain-styles-page')).not.toBeNull()
     expect(document.documentElement.outerHTML).toBe(baseline)
   })
 })

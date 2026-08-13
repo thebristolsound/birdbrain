@@ -8,6 +8,10 @@ export function removeInjectedBirdbrainUi(): void {
     parent?.normalize()
   })
   document
-    .querySelectorAll('style[data-birdbrain-highlight="true"], [id^="birdbrain-styles-"]')
+    // The birdbrain-styles-* node is the div shadow style host content.ts
+    // creates. Constraining to div narrows accidental collisions with
+    // page-owned elements; it is not an ownership proof — a page-owned div
+    // reusing the extension's id prefix would still be removed
+    .querySelectorAll('style[data-birdbrain-highlight="true"], div[id^="birdbrain-styles-"]')
     .forEach((node) => node.remove())
 }

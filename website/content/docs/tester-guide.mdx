@@ -97,6 +97,15 @@ If the extension changed in the release notes, also re-load it: `chrome://extens
 → click the reload icon on the Birdbrain card (or **Load unpacked** again if the
 folder moved).
 
+When a new version needs to upgrade the case database, Birdbrain copies the
+database first — into a `db-snapshots` folder next to it in your user data
+directory — and only then applies the upgrade. If that copy cannot be made, the
+upgrade does not run at all: you get an error saying so, and your data is left
+exactly as it was. The last few snapshots are kept, and you can put one back from
+**Settings → Database → Utilities → Pre-Migration Snapshots**. Restoring a
+snapshot returns the database to the state it was in before that upgrade, so
+anything recorded since is lost — export first if that matters.
+
 ## Known limitations
 
 - **Unsigned builds** — SmartScreen warnings on Windows are expected.

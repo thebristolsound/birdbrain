@@ -1,0 +1,156 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      # persist-credentials: false on every job except test: no job here pushes, so
+      # the token has no reason to sit in .git/config where pnpm lifecycle scripts
+      # and test/build code running after checkout could read it. The test job is
+      # the one exemption — see the comment on its checkout.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install
+
+      - run: pnpm lint
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install
+
+      - run: pnpm typecheck
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth: 0 so diff coverage can resolve a merge base with the base
+      # branch; a shallow clone has no common ancestor to diff against.
+      #
+      # Deliberately NOT persist-credentials: false here, unlike every other
+      # checkout in this file: the Diff coverage step runs `git fetch` after
+      # checkout, and while this repo is private that fetch only works with the
+      # persisted (read-only on fork PRs) token in .git/config.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install native build dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential python3
+
+      - run: pnpm install
+
+      # The canonical RFC 3161 proof (G2) shells out to `openssl ts -verify`.
+      # Fail loudly here if openssl is missing so the keystone test can never
+      # turn green-but-skipped; BIRDBRAIN_REQUIRE_OPENSSL=1 enforces the same in-test.
+      - name: Verify openssl is available
+        run: openssl version
+
+      # Runs the suite under coverage so the thresholds in vitest.config.ts are
+      # actually evaluated. They were defined long before this and never ran in
+      # CI, because `pnpm test` omits --coverage and vitest only checks
+      # thresholds when coverage is enabled.
+      - run: pnpm test:coverage
+        env:
+          BIRDBRAIN_REQUIRE_OPENSSL: '1'
+
+      # Project-wide thresholds stop the tree backsliding but cannot ask whether
+      # new code arrived tested — a PR can add an untested module and still clear
+      # them. This scores only the lines the PR changed.
+      - name: Diff coverage
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch --no-tags origin "${BASE_REF}"
+          node scripts/diff-coverage.mjs --base "origin/${BASE_REF}"
+        env:
+          BASE_REF: ${{ github.base_ref }}
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install
+
+      - name: Build Electron app
+        run: pnpm build
+
+      - name: Build Chrome extension
+        run: pnpm build:extension
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential python3 \
+            libgtk-3-0 libnotify-dev libnss3 libxss1 \
+            libasound2t64 libxtst6 xauth libgbm1 libsecret-1-0
+
+      - run: pnpm install
+
+      - name: Install Playwright
+        run: npx playwright install --with-deps
+
+      - name: Build app
+        run: pnpm build
+
+      - name: Run E2E tests
+        run: xvfb-run --auto-servernum npx playwright test

@@ -30,7 +30,7 @@ importers:
         version: 5.2.8
       '@ghostery/adblocker-electron':
         specifier: ^2.18.1
-        version: 2.18.1(electron@42.4.0)
+        version: 2.18.1(electron@42.5.1)
       '@hono/node-server':
         specifier: ^2.0.12
         version: 2.0.12(hono@4.12.34)
@@ -136,7 +136,7 @@ importers:
     devDependencies:
       '@electron-toolkit/utils':
         specifier: ^4.0.0
-        version: 4.0.0(electron@42.4.0)
+        version: 4.0.0(electron@42.5.1)
       '@eslint/js':
         specifier: ^9.39.4
         version: 9.39.4
@@ -186,8 +186,8 @@ importers:
         specifier: ^10.1.0
         version: 10.1.0
       electron:
-        specifier: ^42.4.0
-        version: 42.4.0
+        specifier: ^42.5.1
+        version: 42.5.1
       electron-builder:
         specifier: ^26.15.3
         version: 26.15.3(electron-builder-squirrel-windows@25.1.8)
@@ -3397,8 +3397,8 @@ packages:
       '@swc/core':
         optional: true
 
-  electron@42.4.0:
-    resolution: {integrity: sha512-OXXqh9LD9KxXPv2Fe25EfU9N9AvWTuV6V81sfhQaNvTAXCd9ONA+Q4OWvMe+CmYD6xIwjFxGGtG/ZphDYYC5OQ==}
+  electron@42.5.1:
+    resolution: {integrity: sha512-2VFNJcHHbrhIpGsJHdkLoi/nWPZPxN3GHVPe+9At3Oz3/TJRwpr+7JL97ddBDbKyLmHGx3GfI2jvzcEQL28uFw==}
     engines: {node: '>= 22.12.0'}
     hasBin: true
 
@@ -6260,9 +6260,9 @@ snapshots:
 
   '@electron-internal/extract-zip@1.0.5': {}
 
-  '@electron-toolkit/utils@4.0.0(electron@42.4.0)':
+  '@electron-toolkit/utils@4.0.0(electron@42.5.1)':
     dependencies:
-      electron: 42.4.0
+      electron: 42.5.1
 
   '@electron/asar@3.4.1':
     dependencies:
@@ -6583,16 +6583,16 @@ snapshots:
     dependencies:
       '@ghostery/adblocker-extended-selectors': 2.18.1
 
-  '@ghostery/adblocker-electron-preload@2.18.1(electron@42.4.0)':
+  '@ghostery/adblocker-electron-preload@2.18.1(electron@42.5.1)':
     dependencies:
       '@ghostery/adblocker-content': 2.18.1
-      electron: 42.4.0
+      electron: 42.5.1
 
-  '@ghostery/adblocker-electron@2.18.1(electron@42.4.0)':
+  '@ghostery/adblocker-electron@2.18.1(electron@42.5.1)':
     dependencies:
       '@ghostery/adblocker': 2.18.1
-      '@ghostery/adblocker-electron-preload': 2.18.1(electron@42.4.0)
-      electron: 42.4.0
+      '@ghostery/adblocker-electron-preload': 2.18.1(electron@42.5.1)
+      electron: 42.5.1
       tldts-experimental: 7.4.6
 
   '@ghostery/adblocker-extended-selectors@2.18.1': {}
@@ -8175,7 +8175,7 @@ snapshots:
     dependencies:
       '@types/http-cache-semantics': 4.2.0
       '@types/keyv': 3.1.4
-      '@types/node': 25.9.4
+      '@types/node': 25.9.5
       '@types/responselike': 1.0.3
 
   '@types/chai@5.2.3':
@@ -8208,7 +8208,7 @@ snapshots:
 
   '@types/fs-extra@9.0.13':
     dependencies:
-      '@types/node': 25.9.4
+      '@types/node': 25.9.5
 
   '@types/har-format@1.2.16': {}
 
@@ -8222,7 +8222,7 @@ snapshots:
 
   '@types/keyv@3.1.4':
     dependencies:
-      '@types/node': 25.9.4
+      '@types/node': 25.9.5
 
   '@types/mdast@4.0.4':
     dependencies:
@@ -8241,7 +8241,6 @@ snapshots:
   '@types/node@25.9.5':
     dependencies:
       undici-types: 7.24.6
-    optional: true
 
   '@types/react-dom@19.2.3(@types/react@19.2.17)':
     dependencies:
@@ -8261,7 +8260,7 @@ snapshots:
 
   '@types/responselike@1.0.3':
     dependencies:
-      '@types/node': 25.9.4
+      '@types/node': 25.9.5
 
   '@types/set-cookie-parser@2.4.10':
     dependencies:
@@ -8285,7 +8284,7 @@ snapshots:
 
   '@types/ws@8.18.1':
     dependencies:
-      '@types/node': 25.9.4
+      '@types/node': 25.9.5
 
   '@typescript-eslint/eslint-plugin@8.62.1(@typescript-eslint/parser@8.62.1(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3)':
     dependencies:
@@ -8718,7 +8717,7 @@ snapshots:
 
   buffer-image-size@0.6.4:
     dependencies:
-      '@types/node': 25.9.4
+      '@types/node': 25.9.5
 
   buffer@5.7.1:
     dependencies:
@@ -9224,7 +9223,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  electron@42.4.0:
+  electron@42.5.1:
     dependencies:
       '@electron-internal/extract-zip': 1.0.5
       '@electron/get': 5.1.0
@@ -9754,7 +9753,7 @@ snapshots:
       es6-error: 4.1.1
       matcher: 3.0.0
       roarr: 2.15.4
-      semver: 7.7.4
+      semver: 7.8.5
       serialize-error: 7.0.1
     optional: true
 
@@ -10642,11 +10641,11 @@ snapshots:
 
   node-abi@4.33.0:
     dependencies:
-      semver: 7.7.4
+      semver: 7.8.5
 
   node-api-version@0.2.1:
     dependencies:
-      semver: 7.7.4
+      semver: 7.8.5
 
   node-gyp@12.4.0:
     dependencies:

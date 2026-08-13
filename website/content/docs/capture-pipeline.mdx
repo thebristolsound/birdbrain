@@ -250,6 +250,18 @@ chrome.tabs.captureVisibleTab({ format: 'png' })
 
 The result is a data URI that gets stripped of its `data:image/png;base64,` prefix before being sent to the server. Screenshot capture can fail silently (e.g., on restricted pages like `chrome://` URLs), in which case the capture proceeds without a screenshot.
 
+### Capture-UI Suppression
+
+Birdbrain injects UI into the page it captures -- the progress toast (`extension/src/toast.ts`) and selector highlights (`extension/src/content.ts`). Both would otherwise be rendered into screenshot frames and serialised into the archived MHTML, putting tool chrome inside evidence.
+
+The suppression protocol (`extension/src/captureSuppression.ts`) is one suppress/restore boundary around every capture:
+
+- Each piece of in-page UI registers a teardown (`registerCaptureUiTeardown`). One `suppressCaptureUi()` call removes all of it; new in-page UI registers there rather than being added to each capture path.
+- The background wraps a capture in `withSuppression()`: it strips the UI before any frame or DOM snapshot is taken, refuses to inject UI (toasts, re-highlighting) into the tab while any capture on it is still collecting frames, and restores the highlights when the capture settles -- including when it fails, so a failed capture never leaves the page stripped.
+- Each screenshot path -- viewport, full-page, scrolling, and the fallbacks between them -- re-runs suppression immediately before its own frames. A path that cannot clear the page abandons the screenshot instead of falling back to another frame of the same page.
+
+What this establishes and what it does not: a screenshot or MHTML produced by these paths is of a page from which Birdbrain's own injected nodes had been removed at the moment the frame was taken. It is not a statement about page content the site itself renders, about anything injected by other extensions, or about the page's state before or after the capture window.
+
 ### Parallel Extraction (Manual Capture)
 
 For manual captures, freeze-dry and screenshot run in parallel via `Promise.all` (`extension/src/background.ts`, line 221):

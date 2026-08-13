@@ -6,7 +6,13 @@
 //   Page side    — a teardown registry every piece of injected in-page UI signs
 //                  up with, so a single call strips all of it before a frame is
 //                  taken. New in-page UI registers here instead of adding
-//                  another removal call to the capture paths.
+//                  another removal call to the capture paths — and must also be
+//                  added to removeInjectedBirdbrainUi() in captureHygiene.ts,
+//                  which is the background's fallback strip for a tab whose
+//                  content script is orphaned or cannot clear itself. That
+//                  function is serialised into the page by executeScript, so it
+//                  cannot reach this registry; the two are separate on purpose
+//                  and have to be kept in step by hand.
 //   Orchestration — createCaptureSuppression(), the bracket the background wraps
 //                  every capture in: suppress before frames, hold suppression
 //                  for as long as any capture on the tab is collecting frames,
@@ -76,7 +82,8 @@ export interface FrameCollector {
   /**
    * Runs the frame-collecting step inside the suppression window and reports
    * whether this capture was the last one collecting frames on the tab — only
-   * that one may put UI back on the page.
+   * that one may put UI back on the page. Callable once per capture; a second
+   * call throws rather than releasing another capture's slot.
    */
   collectFrames: <T>(collect: () => Promise<T>) => Promise<{ frames: T; lastOnTab: boolean }>
 }
@@ -118,6 +125,7 @@ export function createCaptureSuppression(effects: CaptureSuppressionEffects): Ca
   ): Promise<T> {
     enter(tabId)
     let collecting = true
+    let collectStarted = false
     const endCollection = (): number => {
       collecting = false
       return leave(tabId)
@@ -127,6 +135,13 @@ export function createCaptureSuppression(effects: CaptureSuppressionEffects): Ca
       await effects.suppress(tabId)
       return await body({
         collectFrames: async (collect) => {
+          // One capture holds one slot, so only one collectFrames call may
+          // release it. A second release would drop a concurrent capture's
+          // slot, reporting the tab idle while that capture is still mid-frame
+          // — the one state this protocol exists to prevent. Fail loudly rather
+          // than hand back a stale lastOnTab.
+          if (collectStarted) throw new Error('collectFrames called twice for one capture')
+          collectStarted = true
           const frames = await collect()
           return { frames, lastOnTab: endCollection() === 0 }
         }

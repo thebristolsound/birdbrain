@@ -21,8 +21,14 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+interface Deferred<T> {
+  promise: Promise<T>
+  resolve: (value: T) => void
+  reject: (err: unknown) => void
+}
+
 /** A deferred whose resolution the test drives, standing in for frame collection. */
-function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void; reject: (err: unknown) => void } {
+function deferred<T>(): Deferred<T> {
   let resolve!: (value: T) => void
   let reject!: (err: unknown) => void
   const promise = new Promise<T>((res, rej) => {
@@ -159,6 +165,33 @@ describe('capture suppression boundary', () => {
     expect(lastFlags).toEqual([false, true])
     expect(suppression.isCollectingFrames(1)).toBe(false)
     expect(restored).toEqual([1, 1])
+  })
+
+  it('refuses a second frame collection rather than releasing another capture', async () => {
+    const suppression = createCaptureSuppression({
+      suppress: async () => {},
+      restore: async () => {}
+    })
+    const held = deferred<string>()
+
+    // Capture B stays mid-frame throughout
+    const captureB = suppression.withSuppression(1, async ({ collectFrames }) => {
+      await collectFrames(() => held.promise)
+    })
+
+    // A mis-bracketed capture collecting twice would otherwise decrement B's
+    // slot, reporting the tab idle while B is still collecting frames
+    await expect(
+      suppression.withSuppression(1, async ({ collectFrames }) => {
+        await collectFrames(async () => 'a')
+        await collectFrames(async () => 'b')
+      })
+    ).rejects.toThrow(/collectFrames called twice/)
+
+    expect(suppression.isCollectingFrames(1)).toBe(true)
+    held.resolve('png')
+    await captureB
+    expect(suppression.isCollectingFrames(1)).toBe(false)
   })
 
   it('gates per tab, so a capture on one tab does not suppress another', async () => {

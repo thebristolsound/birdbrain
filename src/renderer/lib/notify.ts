@@ -149,8 +149,6 @@ const CODE_LABELS: Record<LogCode, string> = {
   'db.snapshot_created': 'Saved a database snapshot before upgrading',
   'db.snapshot_prune_failed': "Couldn't remove an old database snapshot",
   'db.snapshot_restore_failed': "Couldn't restore the database snapshot",
-  'db.snapshot_restore_left_no_database':
-    "Couldn't restore the database snapshot, and the database file is no longer readable",
   'db.reopen_failed': "Couldn't re-open the database — restart Birdbrain"
 }
 

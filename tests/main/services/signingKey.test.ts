@@ -106,6 +106,27 @@ describe('signingKey: unprotected-key acknowledgement gate (#414)', () => {
     )
     expect(logEvent).toHaveBeenCalledWith('signingKey.generation_declined')
   })
+
+  // TOCTOU: isEncryptionAvailable() reporting true at the gate does not
+  // guarantee wrapPrivateKey's own (separate) safeStorage call succeeds a
+  // moment later — e.g. a keyring that locks between the two calls. Tests
+  // always run with the real safeStorage unavailable, so overriding just the
+  // gate check reproduces exactly that disagreement without mocking Electron.
+  it('still asks for acknowledgement when wrapping falls back to plaintext despite the gate reporting encryption available', () => {
+    const confirmUnprotectedKey = vi.fn(() => true)
+    initSigningKey(dir, { confirmUnprotectedKey, isEncryptionAvailable: () => true })
+    expect(confirmUnprotectedKey).toHaveBeenCalledTimes(1)
+    expect(isSigningKeyProtected()).toBe('plaintext')
+  })
+
+  it('refuses and writes nothing when that TOCTOU acknowledgement is declined', () => {
+    const confirmUnprotectedKey = vi.fn(() => false)
+    expect(() =>
+      initSigningKey(dir, { confirmUnprotectedKey, isEncryptionAvailable: () => true })
+    ).toThrow(SigningKeyUnacknowledgedError)
+    expect(existsSync(join(dir, 'signing-key.pem'))).toBe(false)
+    expect(existsSync(join(dir, 'signing-public-key.pem'))).toBe(false)
+  })
 })
 
 describe('signingKey: sign / verify', () => {

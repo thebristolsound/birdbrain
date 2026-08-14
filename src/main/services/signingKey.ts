@@ -130,9 +130,34 @@ export interface InitSigningKeyDeps {
   logEvent?: (
     code: 'signingKey.unprotected_key_acknowledged' | 'signingKey.generation_declined'
   ) => void
+  // Overrides the gate's pre-generation availability check. Test seam for the
+  // TOCTOU case below: production has no way to make isEncryptionAvailable()
+  // and wrapPrivateKey()'s own safeStorage call disagree, since tests always
+  // run with safeStorage unavailable — this lets a test report "available" at
+  // the gate while the real wrap still falls back to plaintext.
+  isEncryptionAvailable?: () => boolean
 }
 
 const noopLogEvent: NonNullable<InitSigningKeyDeps['logEvent']> = () => {}
+
+// Confirms with the operator (or throws) before a plaintext key is persisted.
+// Shared by both acknowledgement points in initSigningKey below: the normal
+// pre-generation gate, and the TOCTOU fallback when wrapping degrades to
+// plaintext despite the gate reporting encryption as available.
+function requireAcknowledgementOrThrow(
+  confirmUnprotectedKey: () => boolean,
+  logEvent: NonNullable<InitSigningKeyDeps['logEvent']>
+): void {
+  if (confirmUnprotectedKey()) return
+  logEvent('signingKey.generation_declined')
+  throw new SigningKeyUnacknowledgedError(
+    'Signing key generation was not acknowledged. Birdbrain could not find an OS credential ' +
+      'store on this machine, so the installation signing key would be written unprotected at ' +
+      'rest, and generation was refused pending operator acknowledgement. Restart Birdbrain and ' +
+      'acknowledge the warning to continue, or make a credential store available (e.g. install ' +
+      'and unlock gnome-keyring on Linux) and restart.'
+  )
+}
 
 // Load the installation signing keypair, generating + persisting it on first
 // run. The public key is stored in plaintext so it can feed `openssl`
@@ -140,6 +165,7 @@ const noopLogEvent: NonNullable<InitSigningKeyDeps['logEvent']> = () => {}
 export function initSigningKey(userDataPath: string, deps: InitSigningKeyDeps = {}): void {
   const confirmUnprotectedKey = deps.confirmUnprotectedKey ?? requestUnprotectedKeyAcknowledgement
   const logEvent = deps.logEvent ?? noopLogEvent
+  const checkEncryptionAvailable = deps.isEncryptionAvailable ?? isEncryptionAvailable
   const privPath = join(userDataPath, PRIVATE_KEY_FILENAME)
   const pubPath = join(userDataPath, PUBLIC_KEY_FILENAME)
 
@@ -167,15 +193,10 @@ export function initSigningKey(userDataPath: string, deps: InitSigningKeyDeps = 
   // First run (or a wiped userData dir): about to generate a fresh key. If it
   // cannot be protected at rest, block on operator acknowledgement before
   // writing anything — see #289/#414. No acknowledgement, no key.
-  if (!isEncryptionAvailable() && !confirmUnprotectedKey()) {
-    logEvent('signingKey.generation_declined')
-    throw new SigningKeyUnacknowledgedError(
-      'Signing key generation was not acknowledged. Birdbrain could not find an OS credential ' +
-        'store on this machine, so the installation signing key would be written unprotected at ' +
-        'rest, and generation was refused pending operator acknowledgement. Restart Birdbrain and ' +
-        'acknowledge the warning to continue, or make a credential store available (e.g. install ' +
-        'and unlock gnome-keyring on Linux) and restart.'
-    )
+  let acknowledged = false
+  if (!checkEncryptionAvailable()) {
+    requireAcknowledgementOrThrow(confirmUnprotectedKey, logEvent)
+    acknowledged = true
   }
 
   const { privateKey, publicKey } = generateKeyPairSync('rsa', {
@@ -183,10 +204,21 @@ export function initSigningKey(userDataPath: string, deps: InitSigningKeyDeps = 
     publicKeyEncoding: { type: 'spki', format: 'pem' },
     privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
   })
+  const wrapped = wrapPrivateKey(privateKey)
+  const nowProtected = wrapped.startsWith('enc:')
+
+  // TOCTOU: the gate above can report encryption as available while
+  // wrapPrivateKey's own (separate) safeStorage call still falls back to
+  // plaintext moments later — e.g. a keyring that locks between the two
+  // calls. The operator was never asked in that case; ask now, before
+  // touching module state or disk, so a decline leaves both unchanged.
+  if (!nowProtected && !acknowledged) {
+    requireAcknowledgementOrThrow(confirmUnprotectedKey, logEvent)
+  }
+
   privateKeyPem = privateKey
   publicKeyPem = publicKey
-  const wrapped = wrapPrivateKey(privateKey)
-  signingKeyProtected = wrapped.startsWith('enc:') ? 'protected' : 'plaintext'
+  signingKeyProtected = nowProtected ? 'protected' : 'plaintext'
   if (signingKeyProtected === 'plaintext') {
     logEvent('signingKey.unprotected_key_acknowledged')
   }

@@ -294,10 +294,10 @@ describe('manifest verifyManifestChain', () => {
 describe('manifest x annotations forensic invariants', () => {
   let tempDir: string
 
-  beforeEach(() => {
+  beforeEach(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-forensic-'))
     initManifest(tempDir)
-    initDatabase(':memory:')
+    await initDatabase(':memory:')
   })
 
   afterEach(() => {

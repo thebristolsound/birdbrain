@@ -15,6 +15,11 @@ export const dbStatsQueryOptions = queryOptions({
   queryFn: () => window.birdbrain.db.stats()
 })
 
+export const dbSnapshotsQueryOptions = queryOptions({
+  queryKey: queryKeys.dbSnapshots,
+  queryFn: () => window.birdbrain.db.snapshots()
+})
+
 export const dbTableRowsQueryOptions = (params: DbTableRowsParams) =>
   queryOptions({
     queryKey: queryKeys.dbTableRows(params.table, params.offset, params.limit),
@@ -95,6 +100,19 @@ export function dbAdminMutationOptions(queryClient: QueryClient) {
       },
       meta: { action: 'restore the database' }
     },
+    // A snapshot restore replaces every table, and re-opening the database can
+    // migrate the restored file forward — which writes a new snapshot. Both the
+    // app-wide caches and the snapshot list are stale afterwards.
+    //
+    // onSettled, not onSuccess: a restore reports failure from several points,
+    // including after the file has been replaced and re-opened. Leaving the
+    // caches alone on failure keeps the pre-restore case list on screen over a
+    // database that may no longer hold it.
+    restoreSnapshot: {
+      mutationFn: (fileName: string) => window.birdbrain.db.restoreSnapshot({ fileName }),
+      onSettled: invalidateAll,
+      meta: { action: 'restore the database snapshot' }
+    },
     createRow: {
       mutationFn: (params: DbCreateRowParams) => window.birdbrain.db.createRow(params),
       onSuccess: invalidateStatsAndRows,
@@ -124,6 +142,7 @@ export function useDbAdminMutations() {
     cleanOrphans: useMutation(opts.cleanOrphans),
     backup: useMutation(opts.backup),
     restore: useMutation(opts.restore),
+    restoreSnapshot: useMutation(opts.restoreSnapshot),
     exportTable: useMutation(opts.exportTable),
     createRow: useMutation(opts.createRow),
     updateRow: useMutation(opts.updateRow),

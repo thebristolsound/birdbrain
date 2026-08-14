@@ -1,8 +1,10 @@
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { ConfirmDialog } from '@renderer/components/settings/db/ConfirmDialog'
 import type { OrphanReport } from '@shared/ipc'
 import { Button } from '@renderer/components/ui'
-import { useDbAdminMutations } from '@renderer/lib/api/db'
+import { dbSnapshotsQueryOptions, useDbAdminMutations } from '@renderer/lib/api/db'
+import { formatRelativeTime } from '@renderer/lib/formatRelativeTime'
 
 const EXPORT_TABLES = [
   'cases',
@@ -36,8 +38,10 @@ export function DbUtilities() {
     cleanOrphans,
     backup,
     restore,
+    restoreSnapshot,
     exportTable: exportTableMutation
   } = useDbAdminMutations()
+  const { data: snapshots = [] } = useQuery(dbSnapshotsQueryOptions)
   const [loading, setLoading] = useState<string | null>(null)
   const [results, setResults] = useState<Record<string, UtilityResult>>({})
   const [confirm, setConfirm] = useState<{
@@ -195,6 +199,28 @@ export function DbUtilities() {
     } catch (err) {
       setResult('restore', {
         message: err instanceof Error ? err.message : 'Restore failed',
+        type: 'error'
+      })
+    } finally {
+      setLoading(null)
+    }
+  }
+
+  async function handleRestoreSnapshot(fileName: string) {
+    // Keyed by file so only the row being restored says so. The result still
+    // belongs to the card, which is why setResult keeps the plain key.
+    setLoading(`snapshots:${fileName}`)
+    try {
+      await restoreSnapshot.mutateAsync(fileName)
+      setResult('snapshots', {
+        message:
+          `Restored ${fileName}. The database was re-opened and brought back up to the ` +
+          'current schema. Please restart the app for full effect.',
+        type: 'success'
+      })
+    } catch (err) {
+      setResult('snapshots', {
+        message: err instanceof Error ? err.message : 'Snapshot restore failed',
         type: 'error'
       })
     } finally {
@@ -364,6 +390,59 @@ export function DbUtilities() {
       </UtilCard>
 
       <UtilCard
+        id="snapshots"
+        title="Pre-Migration Snapshots"
+        description="Copies taken automatically before Birdbrain upgrades the database schema. Restoring one brings back the records that copy holds — the schema itself is then upgraded again, so this recovers contents, not the old schema."
+      >
+        <div className="w-full space-y-2">
+          {snapshots.length === 0 && (
+            <p className="text-xs text-text-muted">
+              No snapshots yet — one is written the next time an upgrade changes the schema.
+            </p>
+          )}
+          {snapshots.map((snapshot) => (
+            <div
+              key={snapshot.fileName}
+              className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2"
+            >
+              <div className="min-w-0">
+                <div className="truncate text-xs text-text-primary">
+                  Schema v{snapshot.fromVersion} → v{snapshot.toVersion}
+                </div>
+                <div className="truncate text-xs text-text-muted">
+                  {formatRelativeTime(snapshot.createdAt)} · {formatBytes(snapshot.sizeBytes)} ·{' '}
+                  {snapshot.fileName}
+                </div>
+              </div>
+              <button
+                onClick={() =>
+                  setConfirm({
+                    open: true,
+                    key: 'restore-snapshot',
+                    title: 'Restore Snapshot',
+                    message:
+                      `This will replace your current database with the copy taken before the ` +
+                      `upgrade to schema v${snapshot.toVersion}. Everything recorded since then ` +
+                      `disappears from the app; capture files stay on disk, no longer referenced ` +
+                      `by anything. Birdbrain re-applies the schema upgrade to the restored copy ` +
+                      `as it re-opens it, so you end up on the current schema holding the older ` +
+                      `records — not back on schema v${snapshot.fromVersion}. The database being ` +
+                      `replaced is kept beside it as birdbrain.db.pre-restore — one generation ` +
+                      `only, which the next restore replaces.`,
+                    action: () => handleRestoreSnapshot(snapshot.fileName)
+                  })
+                }
+                disabled={loading !== null}
+                className="shrink-0 rounded-lg border border-red-800 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/20 disabled:opacity-50"
+              >
+                {loading === `snapshots:${snapshot.fileName}` ? 'Restoring...' : 'Restore'}
+              </button>
+            </div>
+          ))}
+        </div>
+      </UtilCard>
+
+      <UtilCard
         id="export"
         title="Export Table"
         description="Export a table's contents to CSV or JSON."
@@ -396,7 +475,7 @@ export function DbUtilities() {
         open={confirm.open}
         title={confirm.title}
         message={confirm.message}
-        confirmLabel={confirm.key === 'restore' ? 'Restore' : 'Delete'}
+        confirmLabel={confirm.key.startsWith('restore') ? 'Restore' : 'Delete'}
         onConfirm={async () => {
           setConfirm((c) => ({ ...c, open: false }))
           await confirm.action()

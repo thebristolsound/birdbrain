@@ -103,10 +103,10 @@ describe('caseArchive export', () => {
   let caseId: string
   let mhtmlCaptureId: string
 
-  beforeEach(() => {
+  beforeEach(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'bb-case-archive-'))
     initStorage(join(tempDir, 'captures'))
-    initDatabase(':memory:')
+    await initDatabase(':memory:')
     resetInstallationId()
     initInstallationId(tempDir)
     resetSigningKey()
@@ -304,7 +304,7 @@ describe('caseArchive inspect', () => {
   beforeEach(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'bb-case-archive-inspect-'))
     initStorage(join(tempDir, 'captures'))
-    initDatabase(':memory:')
+    await initDatabase(':memory:')
     resetInstallationId()
     initInstallationId(tempDir)
     resetSigningKey()
@@ -482,7 +482,7 @@ describe('caseArchive import', () => {
   beforeEach(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'bb-case-archive-import-'))
     initStorage(join(tempDir, 'captures'))
-    initDatabase(':memory:')
+    await initDatabase(':memory:')
     resetInstallationId()
     initInstallationId(tempDir)
     resetSigningKey()

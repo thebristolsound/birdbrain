@@ -145,7 +145,11 @@ const CODE_LABELS: Record<LogCode, string> = {
   'openrouter.request_failed': 'AI request failed',
   'openrouter.retry': 'Retrying the AI request',
   'openrouter.retries_exhausted': 'AI request failed after several retries',
-  'timestampWorker.stamp_failed': "Couldn't get a trusted timestamp for this capture"
+  'timestampWorker.stamp_failed': "Couldn't get a trusted timestamp for this capture",
+  'db.snapshot_created': 'Saved a database snapshot before upgrading',
+  'db.snapshot_prune_failed': "Couldn't remove an old database snapshot",
+  'db.snapshot_restore_failed': "Couldn't restore the database snapshot",
+  'db.reopen_failed': "Couldn't re-open the database — restart Birdbrain"
 }
 
 export function labelForCode(code: LogCode): string {

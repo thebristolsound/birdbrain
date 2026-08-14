@@ -6,8 +6,8 @@ import { insertCapture, getCapture } from '@main/services/db/captureRepo'
 describe('recapture schema (migration v23)', () => {
   let caseId: string
 
-  beforeEach(() => {
-    initDatabase(':memory:')
+  beforeEach(async () => {
+    await initDatabase(':memory:')
     caseId = createCase({ name: 'Recapture Schema' }).id
   })
 

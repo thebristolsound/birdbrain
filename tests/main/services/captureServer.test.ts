@@ -42,7 +42,7 @@ describe('captureServer', () => {
   beforeEach(async () => {
     const port = nextPort++
     tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-server-test-'))
-    initDatabase(':memory:')
+    await initDatabase(':memory:')
     initStorage(join(tempDir, 'captures'))
     initSettings(tempDir)
     // Default operator name set so existing tests pass; operator-gating tests override as needed

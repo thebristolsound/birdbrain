@@ -18,6 +18,7 @@ import type {
   DbUpdateRowParams,
   DbRowIdentifier,
   DbExportTableParams,
+  DbRestoreSnapshotParams,
   OrphanReport,
   AnalyzeCaptureParams,
   SaveAnnotationsParams,
@@ -29,6 +30,7 @@ import type {
   SessionStateEvent
 } from '@shared/ipc'
 import * as dbAdmin from '@main/services/db/dbAdmin'
+import * as dbSnapshots from '@main/services/db/dbSnapshots'
 import { existsSync } from 'fs'
 import { join, resolve } from 'path'
 import { pathToFileURL } from 'url'
@@ -868,7 +870,74 @@ export function registerIpcHandlers(deps: {
 
     closeDatabase()
     copyFileSync(filePaths[0], dbPath)
-    initDatabase(dbPath)
+    await initDatabase(dbPath)
+
+    return { restored: true }
+  })
+
+  handle(IPC_CHANNELS.DB_SNAPSHOTS, () => {
+    const userDataPath = process.env.BIRDBRAIN_USER_DATA || app.getPath('userData')
+    return dbSnapshots.listSnapshots(join(userDataPath, 'birdbrain.db'))
+  })
+
+  handle(IPC_CHANNELS.DB_RESTORE_SNAPSHOT, async (_, params: DbRestoreSnapshotParams) => {
+    const userDataPath = process.env.BIRDBRAIN_USER_DATA || app.getPath('userData')
+    const dbPath = join(userDataPath, 'birdbrain.db')
+    const { closeDatabase, initDatabase } = await import('@main/services/db/core')
+
+    // Resolve before closing: an unknown filename is the likely failure, and
+    // it costs nothing to hit it while the database is still open.
+    if (!dbSnapshots.resolveSnapshot(dbPath, params.fileName)) {
+      throw new IpcFailure(`Snapshot "${params.fileName}" was not found`, 'NOT_FOUND')
+    }
+
+    closeDatabase()
+    let restoreErr: unknown = null
+    try {
+      dbSnapshots.restoreSnapshotFile(dbPath, params.fileName)
+    } catch (err) {
+      // Held, not thrown: the re-open below has to happen either way, and if
+      // that fails too its error would replace this one — leaving the operator
+      // with the consequence and none of the cause.
+      restoreErr = err
+      logger.error('db', 'db.snapshot_restore_failed', undefined, err)
+    }
+
+    if (restoreErr instanceof dbSnapshots.RestoreRollbackError) {
+      // The one failure that must not be followed by a re-open: there is no
+      // file at `dbPath`, so opening it would create an empty database and
+      // migrate it. The operator's data is in the .pre-restore file this
+      // message names, and a fresh empty database would hide that.
+      throw new IpcFailure(restoreErr.message, 'DB_RESTORE_ROLLBACK_FAILED')
+    }
+
+    try {
+      // Re-open either way — a half-done restore must not leave the running app
+      // without a database. A snapshot older than the current schema migrates
+      // forward here, taking a fresh pre-migration snapshot of itself first.
+      await initDatabase(dbPath)
+    } catch (err) {
+      // A failed re-open leaves `db` unset in core.ts, so every later IPC call
+      // in this session fails with "Database not initialized". Say that, rather
+      // than reporting it as a problem with the restore.
+      logger.error('db', 'db.reopen_failed', undefined, err)
+      throw new IpcFailure(
+        'The database could not be re-opened after the restore. Restart Birdbrain.',
+        'DB_REOPEN_FAILED'
+      )
+    }
+
+    // Reported as a fixed message rather than the underlying one: the failures
+    // here come from copyFileSync/renameSync and carry absolute paths, and
+    // `handle()` passes anything that is not an IpcFailure straight through to
+    // the renderer. The cause is in the log line above, where it is useful and
+    // stays in the main process.
+    if (restoreErr) {
+      throw new IpcFailure(
+        'The snapshot could not be restored. See the log for details.',
+        'DB_RESTORE_FAILED'
+      )
+    }
 
     return { restored: true }
   })

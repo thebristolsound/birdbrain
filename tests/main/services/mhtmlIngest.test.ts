@@ -24,10 +24,10 @@ describe('ingestMhtmlCapture', () => {
   let tempDir: string
   let caseId: string
 
-  beforeEach(() => {
+  beforeEach(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-ingest-pipeline-'))
     initStorage(join(tempDir, 'captures'))
-    initDatabase(':memory:')
+    await initDatabase(':memory:')
     caseId = createCase({ name: 'Pipeline' }).id
     ensureCaseDir(caseId)
     initManifest(join(tempDir, 'captures', caseId))
@@ -306,10 +306,10 @@ describe('verifyCapture', () => {
   let tempDir: string
   let caseId: string
 
-  beforeEach(() => {
+  beforeEach(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-verify-'))
     initStorage(join(tempDir, 'captures'))
-    initDatabase(':memory:')
+    await initDatabase(':memory:')
     caseId = createCase({ name: 'V' }).id
     ensureCaseDir(caseId)
     initManifest(join(tempDir, 'captures', caseId))
@@ -386,10 +386,10 @@ describe('deletion manifest entry', () => {
   let caseId: string
   let caseDir: string
 
-  beforeEach(() => {
+  beforeEach(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-del-'))
     initStorage(join(tempDir, 'captures'))
-    initDatabase(':memory:')
+    await initDatabase(':memory:')
     caseId = createCase({ name: 'D' }).id
     caseDir = join(tempDir, 'captures', caseId)
     ensureCaseDir(caseId)

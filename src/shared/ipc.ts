@@ -208,6 +208,8 @@ export const IPC_CHANNELS = {
   DB_CLEAN_ORPHANS: 'db:cleanOrphans',
   DB_BACKUP: 'db:backup',
   DB_RESTORE: 'db:restore',
+  DB_SNAPSHOTS: 'db:snapshots',
+  DB_RESTORE_SNAPSHOT: 'db:restoreSnapshot',
   DB_EXPORT_TABLE: 'db:exportTable'
 } as const
 
@@ -408,6 +410,28 @@ export interface DbUpdateRowParams {
 export interface DbExportTableParams {
   table: string
   format: 'csv' | 'json'
+}
+
+/**
+ * A pre-migration database snapshot on disk (#413). `fromVersion` is the
+ * schema the snapshot holds; `toVersion` is the schema the app was about to
+ * migrate it to, so a tester can tell which upgrade a snapshot belongs to.
+ *
+ * No `path`: `fileName` is the only handle the renderer needs (and the only
+ * one `db:restoreSnapshot` accepts), and the absolute path would disclose the
+ * profile location to the window. The main process keeps it on `StoredSnapshot`
+ * in `db/dbSnapshots.ts`.
+ */
+export interface DbSnapshot {
+  fileName: string
+  fromVersion: number
+  toVersion: number
+  createdAt: string
+  sizeBytes: number
+}
+
+export interface DbRestoreSnapshotParams {
+  fileName: string
 }
 
 export interface OrphanReport {
@@ -620,6 +644,11 @@ export interface IpcInvokeContract {
   }
   'db:backup': { args: []; result: { path: string } | null }
   'db:restore': { args: []; result: { restored: boolean } }
+  'db:snapshots': { args: []; result: DbSnapshot[] }
+  'db:restoreSnapshot': {
+    args: [params: DbRestoreSnapshotParams]
+    result: { restored: boolean }
+  }
   'db:exportTable': { args: [params: DbExportTableParams]; result: { path: string } | null }
 
   'ai:analyze': {

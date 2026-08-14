@@ -58,15 +58,15 @@ describe('migration v25: capture_texts', () => {
     rmSync(dir, { recursive: true, force: true })
   })
 
-  it('copies existing FTS content into capture_texts and preserves search', () => {
-    initDatabase(dbPath)
+  it('copies existing FTS content into capture_texts and preserves search', async () => {
+    await initDatabase(dbPath)
     expect(getCaptureTextContent('cap1')).toBe('needle text body')
     const hits = searchCaptures('needle')
     expect(hits.map((c) => c.id)).toEqual(['cap1'])
   })
 
-  it('gives legacy captures without an FTS row an empty capture_texts row', () => {
-    initDatabase(dbPath)
+  it('gives legacy captures without an FTS row an empty capture_texts row', async () => {
+    await initDatabase(dbPath)
     // getCaptureTextContent keeps its pre-v25 contract: empty text reads as null
     expect(getCaptureTextContent('cap2')).toBeNull()
     const row = getDb()

@@ -1,15 +1,58 @@
 import Database from 'better-sqlite3'
 import { runMigrations } from '@main/services/db/migrations'
+import { createPreMigrationSnapshot } from '@main/services/db/dbSnapshots'
 
-let db: Database.Database
+let db: Database.Database | null = null
 export const LATEST_SCHEMA_VERSION = 27
 
-export function initDatabase(dbPath: string): Database.Database {
-  db = new Database(dbPath)
-  db.pragma('journal_mode = WAL')
-  db.pragma('foreign_keys = ON')
-  db.pragma('busy_timeout = 5000')
-  runMigrations(db)
+/**
+ * Snapshot the database if — and only if — migrations are about to change it.
+ *
+ * Async because better-sqlite3's `db.backup()` is; that is what makes
+ * `initDatabase` async in turn. Any throw here reaches the caller and stops
+ * `runMigrations` from being reached at all, which is the fail-closed half of
+ * #413: an unrecoverable upgrade must not start.
+ */
+async function snapshotBeforeMigrations(conn: Database.Database, dbPath: string): Promise<void> {
+  const version = conn.pragma('user_version', { simple: true }) as number
+  // Already current (or ahead, on a downgrade): no migration will run, so
+  // there is nothing to snapshot.
+  if (version >= LATEST_SCHEMA_VERSION) return
+  // An in-memory database has no file to copy and nothing that outlives the
+  // process to restore.
+  if (dbPath === ':memory:') return
+  // A first launch creates the file and runs every migration block against an
+  // empty schema. Snapshotting that costs a retention slot to preserve nothing.
+  if (version === 0 && isEmptySchema(conn)) return
+
+  await createPreMigrationSnapshot(conn, dbPath, version, LATEST_SCHEMA_VERSION)
+}
+
+function isEmptySchema(conn: Database.Database): boolean {
+  const row = conn
+    .prepare(
+      "SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+    )
+    .get() as { count: number }
+  return row.count === 0
+}
+
+export async function initDatabase(dbPath: string): Promise<Database.Database> {
+  const conn = new Database(dbPath)
+  conn.pragma('journal_mode = WAL')
+  conn.pragma('foreign_keys = ON')
+  conn.pragma('busy_timeout = 5000')
+  try {
+    await snapshotBeforeMigrations(conn, dbPath)
+    runMigrations(conn)
+  } catch (err) {
+    // The module-level handle stays unset on failure, so `getDb()` throws
+    // "Database not initialized" rather than handing out a connection to a
+    // database this process refused to migrate.
+    conn.close()
+    throw err
+  }
+  db = conn
   return db
 }
 
@@ -21,6 +64,11 @@ export function getDb(): Database.Database {
 export function closeDatabase(): void {
   if (db) {
     db.close()
+    // Cleared, not just closed. A handle left behind after a close is handed
+    // out by getDb() as a live connection and fails deep inside a statement;
+    // it also makes "no database is open" indistinguishable from "one is",
+    // which is what the fail-closed path in initDatabase depends on.
+    db = null
   }
 }
 

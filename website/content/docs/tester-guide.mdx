@@ -97,6 +97,33 @@ If the extension changed in the release notes, also re-load it: `chrome://extens
 → click the reload icon on the Birdbrain card (or **Load unpacked** again if the
 folder moved).
 
+When a new version needs to upgrade the case database, Birdbrain copies the
+database first — into a `db-snapshots` folder next to it in your user data
+directory — and only then applies the upgrade. If that copy cannot be made, the
+upgrade does not run at all: you get an error saying so, and your data is left
+exactly as it was. Three snapshots are kept, spread across the schema versions
+present rather than taken newest-first, so a run of failed upgrades does not
+immediately fill the folder with copies of the same half-migrated state. Older
+ones are pruned, so a snapshot you want to keep should be copied out of that
+folder. You can put one back from **Settings → Database → Utilities →
+Pre-Migration Snapshots**.
+
+Restoring a snapshot brings back the records that copy holds. Two things it does
+not do, both worth knowing before you click it:
+
+- **It does not take you back to the old schema.** Birdbrain re-opens the
+  restored copy and applies the same upgrade to it again, so you end up on the
+  current schema holding the older records. That is what you want when an upgrade
+  died half-way through, but it is not a downgrade.
+- **It only replaces the database.** Capture files, screenshots and MHTML stay on
+  disk. Anything recorded after the snapshot disappears from the app while its
+  files remain, unreferenced.
+
+Anything recorded since the snapshot is lost from the app, so export first if it
+matters. The database being replaced is not deleted: it is kept next to it as
+`birdbrain.db.pre-restore` (one generation, replaced by the next restore), which
+is what we would ask you for if a restore turns out to have been a mistake.
+
 ## Known limitations
 
 - **Unsigned builds** — SmartScreen warnings on Windows are expected.

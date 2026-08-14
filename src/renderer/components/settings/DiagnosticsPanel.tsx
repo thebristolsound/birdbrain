@@ -255,7 +255,7 @@ export function DiagnosticsPanel() {
                 <p className="mt-2 text-xs text-text-muted">
                   No OS credential store (Keychain, DPAPI, or a Linux Secret Service) was available
                   when this installation's signing key was generated, so it was written to disk
-                  unprotected. This was acknowledged at first run.
+                  unprotected.
                 </p>
               )}
             </Section>

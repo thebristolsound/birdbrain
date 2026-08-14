@@ -4,8 +4,9 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  renameSync,
+  readdirSync,
   rmSync,
+  statSync,
   truncateSync,
   writeFileSync
 } from 'fs'
@@ -113,7 +114,6 @@ import {
 } from '@main/services/logger'
 import Database from 'better-sqlite3'
 import { closeDatabase, initDatabase, LATEST_SCHEMA_VERSION } from '@main/services/db/core'
-import * as dbSnapshots from '@main/services/db/dbSnapshots'
 import { createPreMigrationSnapshot } from '@main/services/db/dbSnapshots'
 import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
@@ -1225,8 +1225,12 @@ describe('ipcHandlers — database admin', () => {
     expect(expectOk(await invoke(IPC_CHANNELS.CASES_GET, afterSnapshot.id))).toBeUndefined()
     // The database is open again on the other side of the restore.
     expectOk(await invoke(IPC_CHANNELS.DB_STATS))
-    // And the database the restore replaced is still on disk.
-    expect(existsSync(`${dbPath}.pre-restore`)).toBe(true)
+    // And the database it replaced is gone rather than kept under another
+    // name: the restore is irreversible, as the confirm dialog says. Only
+    // dotted suffixes are checked — `-wal`/`-shm` belong to the connection
+    // that was just re-opened, while anything at `birdbrain.db.<something>`
+    // would be a second copy of the database.
+    expect(readdirSync(userDataPath).filter((f) => f.startsWith('birdbrain.db.'))).toEqual([])
   })
 
   it('restores a database file chosen from the open dialog', async () => {
@@ -1266,15 +1270,15 @@ describe('ipcHandlers — database admin', () => {
 
     expect(res.ok).toBe(false)
     expect(res.code).toBe('DB_RESTORE_FAILED')
-    // A fixed message: the underlying copyFileSync/renameSync errors name
-    // absolute paths, and `handle()` passes anything that is not an IpcFailure
-    // straight through to the renderer.
+    // A fixed message: the underlying copyFileSync/rmSync errors name absolute
+    // paths, and `handle()` passes anything that is not an IpcFailure straight
+    // through to the renderer.
     expect(res.error).not.toContain(userDataPath)
     // The database is back — the restore stopped before it moved anything.
     expectOk(await invoke(IPC_CHANNELS.DB_STATS))
   })
 
-  it('does not re-open the database when the restore could not put it back', async () => {
+  it('does not migrate a truncated database forward when the restore failed', async () => {
     const conn = new Database(dbPath)
     try {
       await createPreMigrationSnapshot(conn, dbPath, LATEST_SCHEMA_VERSION, LATEST_SCHEMA_VERSION)
@@ -1282,79 +1286,31 @@ describe('ipcHandlers — database admin', () => {
       conn.close()
     }
     const listed = expectOk<Array<{ fileName: string }>>(await invoke(IPC_CHANNELS.DB_SNAPSHOTS))
-    const restoreSpy = vi
-      .spyOn(dbSnapshots, 'restoreSnapshotFile')
-      .mockImplementationOnce((path: string) => {
-        rmSync(path, { force: true })
-        throw new dbSnapshots.RestoreRollbackError(
-          'The restore failed and the database could not be put back. It is beside it as ' +
-            '"birdbrain.db.pre-restore" — rename it back before restarting Birdbrain.'
-        )
-      })
+    // A snapshot the restore will reject, so the handler reaches its failure
+    // path with `restoreErr` set.
+    truncateSync(join(userDataPath, 'db-snapshots', listed[0].fileName), 24576)
+
+    // And the state the guard exists for: the file the restore was writing
+    // over is no longer a database. Produced directly here, because the staged
+    // copy means the restore itself can no longer leave one behind — the guard
+    // is what stops that from being the only thing standing between a failed
+    // restore and a migrated empty database.
+    closeDatabase()
+    truncateSync(dbPath, 0)
 
     const res = await invoke<{ ok: boolean; error?: string; code?: string }>(
       IPC_CHANNELS.DB_RESTORE_SNAPSHOT,
       { fileName: listed[0].fileName }
     )
-    restoreSpy.mockRestore()
 
     expect(res.ok).toBe(false)
-    expect(res.code).toBe('DB_RESTORE_ROLLBACK_FAILED')
-    expect(res.error).toContain('birdbrain.db.pre-restore')
-    // The point of the branch: re-opening a missing file would have created an
-    // empty database and migrated it, and an empty case list reads as lost
-    // evidence rather than as a failed restore.
-    expect(existsSync(dbPath)).toBe(false)
-  })
-
-  it('does not spend the aside database when Restore is clicked again after a rollback failure', async () => {
-    const conn = new Database(dbPath)
-    try {
-      await createPreMigrationSnapshot(conn, dbPath, LATEST_SCHEMA_VERSION, LATEST_SCHEMA_VERSION)
-    } finally {
-      conn.close()
-    }
-    const listed = expectOk<Array<{ fileName: string }>>(await invoke(IPC_CHANNELS.DB_SNAPSHOTS))
-    // Not in the snapshot, so only the live database holds it — which makes it
-    // the thing a second restore must not be able to destroy.
-    const beforeFailure = expectOk<{ id: string }>(
-      await invoke(IPC_CHANNELS.CASES_CREATE, { name: 'Recorded before the failed restore' })
-    )
-
-    // The end state a failed rollback leaves: nothing at `dbPath`, the live
-    // database beside it as `.pre-restore`.
-    const aside = `${dbPath}.pre-restore`
-    const restoreSpy = vi
-      .spyOn(dbSnapshots, 'restoreSnapshotFile')
-      .mockImplementationOnce((path: string) => {
-        renameSync(path, `${path}.pre-restore`)
-        throw new dbSnapshots.RestoreRollbackError('injected rollback failure')
-      })
-    const failed = await invoke<{ ok: boolean; code?: string }>(IPC_CHANNELS.DB_RESTORE_SNAPSHOT, {
-      fileName: listed[0].fileName
-    })
-    restoreSpy.mockRestore()
-    expect(failed.code).toBe('DB_RESTORE_ROLLBACK_FAILED')
-    expect(existsSync(dbPath)).toBe(false)
-
-    // The card still lists the snapshot and the button is live again, so
-    // clicking Restore a second time is a click away — and it succeeds, which
-    // is why the aside copy has to survive it.
-    expect(
-      expectOk<Array<{ fileName: string }>>(await invoke(IPC_CHANNELS.DB_SNAPSHOTS))
-    ).toHaveLength(1)
-    const again = expectOk<{ restored: boolean }>(
-      await invoke(IPC_CHANNELS.DB_RESTORE_SNAPSHOT, { fileName: listed[0].fileName })
-    )
-    expect(again.restored).toBe(true)
-
-    expect(existsSync(aside)).toBe(true)
-    const kept = new Database(aside, { readonly: true })
-    try {
-      expect(kept.prepare('SELECT id FROM cases WHERE id = ?').get(beforeFailure.id)).toBeTruthy()
-    } finally {
-      kept.close()
-    }
+    expect(res.code).toBe('DB_RESTORE_FAILED')
+    expect(res.error).not.toContain(userDataPath)
+    // The whole point: nothing migrated the empty file forward. A fresh schema
+    // written here would leave the operator with a healthy-looking, empty
+    // database and only a "could not be restored" message to explain it (#428).
+    expect(statSync(dbPath).size).toBe(0)
+    await expect(invoke(IPC_CHANNELS.DB_STATS)).rejects.toThrow('Database not initialized')
   })
 
   it('reports a re-open failure as such when the restored snapshot cannot be migrated', async () => {

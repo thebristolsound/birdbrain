@@ -197,4 +197,42 @@ describe('getManifestHead (strict reading dialect)', () => {
       expect(() => getManifestHead(dir)).toThrow('Invalid manifest tail entry')
     }
   })
+
+  // The head is read from the tail, not the whole file — every append calls
+  // this, so a whole-file read made a case O(N^2) in its own capture count.
+  // These cover the boundaries that a tail read introduces and a whole-file
+  // read never had.
+  it('reads the head of a large multi-entry manifest', () => {
+    const entries = Array.from(
+      { length: 20_000 },
+      (_, i) => `{"index":${i},"entryHash":"${'h'.repeat(64)}${i}","pad":"${'x'.repeat(400)}"}`
+    )
+    write(entries.join('\n') + '\n')
+    expect(getManifestHead(dir)).toEqual({
+      prevHash: 'h'.repeat(64) + '19999',
+      nextIndex: 20_000
+    })
+  })
+
+  it('reads a final entry larger than one tail read', () => {
+    // Forces the widening loop: the last line alone exceeds the 64 KB window.
+    const fat = 'y'.repeat(200 * 1024)
+    write(`{"index":0,"entryHash":"h0"}\n{"index":1,"entryHash":"h1","pad":"${fat}"}\n`)
+    expect(getManifestHead(dir)).toEqual({ prevHash: 'h1', nextIndex: 2 })
+  })
+
+  it('skips blank and whitespace-only trailing lines', () => {
+    write('{"index":0,"entryHash":"h0"}\n{"index":1,"entryHash":"h1"}\n\n   \n\n')
+    expect(getManifestHead(dir)).toEqual({ prevHash: 'h1', nextIndex: 2 })
+  })
+
+  it('reads a final entry with no trailing newline', () => {
+    write('{"index":0,"entryHash":"h0"}\n{"index":1,"entryHash":"h1"}')
+    expect(getManifestHead(dir)).toEqual({ prevHash: 'h1', nextIndex: 2 })
+  })
+
+  it('returns the empty head for a manifest of only blank lines', () => {
+    write('\n  \n\n')
+    expect(getManifestHead(dir)).toEqual({ prevHash: '', nextIndex: 0 })
+  })
 })

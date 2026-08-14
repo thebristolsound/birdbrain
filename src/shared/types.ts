@@ -456,8 +456,7 @@ export const ERROR_NAMES = [
   'SqliteError',
   'IpcFailure',
   'ManifestRollback',
-  'PreMigrationSnapshotError',
-  'RestoreRollbackError'
+  'PreMigrationSnapshotError'
 ] as const
 
 export interface LoggedError {

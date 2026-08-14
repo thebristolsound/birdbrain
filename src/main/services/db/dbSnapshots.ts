@@ -8,7 +8,7 @@ import {
   rmSync,
   statSync
 } from 'node:fs'
-import { basename, dirname, join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { logger } from '@main/services/logger'
 import type { DbSnapshot } from '@shared/ipc'
 
@@ -27,44 +27,14 @@ export const SNAPSHOT_DIR_NAME = 'db-snapshots'
 // large case database cannot quietly multiply itself on a tester's disk.
 export const SNAPSHOT_RETENTION = 3
 
-// Where the live database is moved aside to during a restore. One generation
-// only, overwritten by the next restore: it is a support-recoverable artifact,
-// not a second undo history.
-const PRE_RESTORE_SUFFIX = '.pre-restore'
-
 // The staging name a snapshot is written to before it takes its final,
 // listable name. Deliberately not `.db`-terminated, so SNAPSHOT_FILE_RE cannot
 // match it and a file interrupted mid-write is never offered for restore.
 const PARTIAL_SUFFIX = '.partial'
 
-// Where the previous `.pre-restore` generation waits while a restore runs. It
-// is deleted once a new generation has taken that name, and renamed back if the
-// restore rolls back far enough to leave the name free. Where it does not — the
-// rollback could not get the live database out of `.pre-restore` — the earlier
-// generation stays here rather than being renamed over the live one, and the
-// next restore sweeps it.
-const SUPERSEDED_SUFFIX = '.superseded'
-
-// A SQLite database is the file plus whatever WAL sidecars exist beside it.
-// Every move in this module walks all three, in this order: the database
-// first, so a move that only gets part-way has moved the file itself.
-const DB_FILE_SUFFIXES = ['', '-wal', '-shm'] as const
-
-type DbFileSuffix = (typeof DB_FILE_SUFFIXES)[number]
-
-// Undoing those moves walks a different order, and deliberately not the
-// reverse of the one above:
-//
-// - the -wal goes back before the database, because a database put back
-//   without the WAL it had loses whatever the WAL had not yet checkpointed and
-//   reports nothing, while a database left aside is caught by the
-//   RestoreRollbackError below and named to the operator;
-// - the -shm goes back last, because it is the memory-mapped one and so the
-//   likeliest of the three to be held open — and the only one that is
-//   disposable, since SQLite rebuilds it from the WAL. Restoring it first (as
-//   a plain LIFO undo does) lets a lock on the file that matters least stop
-//   the database itself from coming back at all.
-const ROLLBACK_SUFFIXES = ['-wal', '', '-shm'] as const
+// A SQLite database on disk is the file plus whatever WAL sidecars sit beside
+// it. They belong to the file they were written for and to no other.
+const DB_SIDECAR_SUFFIXES = ['-wal', '-shm'] as const
 
 // `<from>` is the schema the snapshot holds and `<to>` the one the app was
 // about to write, so the name alone says which upgrade it belongs to. The
@@ -82,31 +52,6 @@ export class PreMigrationSnapshotError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
     super(message, options)
     this.name = 'PreMigrationSnapshotError'
-  }
-}
-
-/**
- * Thrown when a restore failed and left no file where the database belongs,
- * while a database sits beside it — either because this restore moved it there
- * and the rollback could not move it back, or because an earlier failed restore
- * did and this one had no database of its own to replace.
- *
- * Distinct from a generic restore failure because the caller must not re-open
- * the database on this path: opening a missing file creates an empty one and
- * migrates it, and an empty case list reads as "the evidence is gone" rather
- * than as a failed restore. The message names the file that holds the data,
- * which is `.pre-restore` unless the rollback could not get it back to that
- * name either, in which case it is `.pre-restore.superseded`.
- *
- * What it does not say: that the named file is the state the operator had
- * before this restore. It is the newest generation still on disk under those
- * two names, which is that state whenever the rollback was the only thing that
- * failed.
- */
-export class RestoreRollbackError extends Error {
-  constructor(message: string, options?: { cause?: unknown }) {
-    super(message, options)
-    this.name = 'RestoreRollbackError'
   }
 }
 
@@ -381,183 +326,40 @@ export async function createPreMigrationSnapshot(
 }
 
 /**
- * Replace the live database file with a snapshot.
+ * Replace the live database file with a snapshot. Destructive and not
+ * reversible: the database at `dbPath` is overwritten, and no copy of it is
+ * kept anywhere. The retained snapshots are the safety net, and Settings →
+ * Database → Utilities → Backup Database is how an operator keeps the current
+ * state before restoring over it. The confirm dialog and the tester guide both
+ * say so in as many words.
+ *
+ * Earlier rounds of #413 kept the replaced database under a `.pre-restore`
+ * name with a rollback that tried to undo a part-done swap. Five review rounds
+ * found five distinct silent-data-loss paths in that machinery, each in a
+ * state the previous round's fix created; it was never in the ticket, and a
+ * reversibility promise that is wrong about *which* generation it kept is
+ * worse than no promise. Hence two writes and no state to get wrong.
  *
  * The caller owns the connection lifecycle: the database MUST already be
  * closed, and must be re-opened afterwards.
- *
- * Ordered so that the destructive step is the last one and the state it
- * destroys is kept:
- *
- * 1. the snapshot is opened and checked before anything is touched, because a
- *    snapshot that is not a database would otherwise overwrite a working one
- *    and leave the app with neither;
- * 2. the copy lands on a staging name in the target directory and is renamed
- *    into place, so `dbPath` is never a half-written file;
- * 3. the database being replaced is moved aside, not deleted, together with
- *    its -wal/-shm — a restore is a misclick away and this is evidence;
- * 4. the `.pre-restore` generation this one replaces is moved aside as well,
- *    and dropped only once the restore has committed *and* has moved a live
- *    database in to take its place — so neither a restore that rolls back nor
- *    one run with no database at `dbPath` spends the operator's earlier copy.
- *
- * The limit of (4): `.pre-restore` holds one generation, and where both this
- * restore and its own rollback fail, the generation kept there is the newer of
- * the two — the database this restore moved aside. The earlier one is left
- * under `.superseded` and the next restore deletes it. It is not renamed back
- * over a `.pre-restore` the rollback could not empty, because the file under
- * that name is the live database.
- *
- * Throws `RestoreRollbackError` — and nothing else — when the call leaves no
- * file at `dbPath` and a database beside it under `.pre-restore` or
- * `.pre-restore.superseded`, whichever step failed. The caller must not re-open
- * on that path; see the class comment.
  */
 export function restoreSnapshotFile(dbPath: string, fileName: string): void {
-  const aside = `${dbPath}${PRE_RESTORE_SUFFIX}`
-  try {
-    swapSnapshotIntoPlace(dbPath, aside, fileName)
-  } catch (err) {
-    // Which step failed does not change what the caller may do next; one thing
-    // does. If there is no file where the database belongs and there is one
-    // beside it — put there by this restore, by its rollback, or by an earlier
-    // failed one — re-opening would create an empty database and migrate it,
-    // and the operator would be looking at an empty case list with their data
-    // still on disk under another name. Say which name, by name only: the
-    // message reaches the renderer, and an absolute path would disclose the
-    // profile location with it.
-    //
-    // Newest first. `.superseded` is only where the database ends up when the
-    // rollback could not bring it back to `.pre-restore` either, but a name the
-    // operator is never shown is the same as no database at all.
-    const holding = [aside, `${aside}${SUPERSEDED_SUFFIX}`].find(existsSync)
-    if (!existsSync(dbPath) && holding) {
-      throw new RestoreRollbackError(
-        `The restore failed and there is no database where Birdbrain keeps it. The database ` +
-          `is beside it as "${basename(holding)}" — rename it back before restarting Birdbrain.`,
-        { cause: err }
-      )
-    }
-    throw err
-  }
-}
-
-// The swap itself. Split from the exported function above so that every way
-// out of it — a snapshot that will not open, a copy that cannot be written, a
-// rename that fails, a rollback that fails after it — passes the same test for
-// whether a database is left where the caller expects one.
-function swapSnapshotIntoPlace(dbPath: string, aside: string, fileName: string): void {
+  // The enumerated listing is the allowlist — `resolveSnapshot` only matches
+  // files it found in the snapshot directory, so an arbitrary path from the
+  // renderer never reaches `copyFileSync`.
   const snapshot = resolveSnapshot(dbPath, fileName)
   if (!snapshot) throw new Error(`Snapshot "${fileName}" was not found`)
+
+  // Before anything is written. A snapshot that is not a database would
+  // otherwise overwrite a working one and leave the app with neither.
   assertReadable(snapshot.path, snapshot.fromVersion)
 
-  const staged = `${dbPath}${PARTIAL_SUFFIX}`
-  try {
-    copyFileSync(snapshot.path, staged)
-  } catch (err) {
-    rmSync(staged, { force: true })
-    throw err
-  }
-
-  const superseded: DbFileSuffix[] = []
-  const moved: DbFileSuffix[] = []
-  try {
-    // One generation only, but the previous one is moved rather than deleted:
-    // deleting it here would spend it even on a restore that fails and rolls
-    // back cleanly. Leftovers from a restore that died between the move and
-    // the drop go first, or two generations would interleave.
-    for (const suffix of DB_FILE_SUFFIXES) {
-      const from = `${aside}${suffix}`
-      rmSync(`${from}${SUPERSEDED_SUFFIX}`, { force: true })
-      if (!existsSync(from)) continue
-      renameSync(from, `${from}${SUPERSEDED_SUFFIX}`)
-      superseded.push(suffix)
-    }
-
-    // A clean close removes -wal/-shm, but a crash leaves them behind, and a
-    // stale WAL replayed on top of the restored file is data from the database
-    // that was just replaced. They move with it rather than being deleted:
-    // separated from their database they are unreadable.
-    for (const suffix of DB_FILE_SUFFIXES) {
-      const from = `${dbPath}${suffix}`
-      if (!existsSync(from)) continue
-      renameSync(from, `${aside}${suffix}`)
-      moved.push(suffix)
-    }
-    renameSync(staged, dbPath)
-  } catch (err) {
-    // Put the live database back. Without this, a failure between the move and
-    // the rename leaves no file at `dbPath` at all, and the re-open would
-    // create an empty database and migrate it — an empty case list reads as
-    // "the evidence is gone" rather than as a failed restore.
-    //
-    // Three separate attempts, not one: the two undos are independent, and a
-    // sidecar that cannot be moved must not also cost the operator the earlier
-    // generation that the second one is putting back. Each is swallowed on
-    // purpose — the throw below carries the failure that started this, and
-    // that is the one the operator needs to see.
-    try {
-      for (const suffix of ROLLBACK_SUFFIXES) {
-        if (moved.includes(suffix)) renameSync(`${aside}${suffix}`, `${dbPath}${suffix}`)
-      }
-    } catch {
-      // See above.
-    }
-
-    // Independent, but not unconditional: the earlier generation only goes back
-    // to `.pre-restore` while nothing is under that name. If the undo above
-    // could not take the database back out of it, that file *is* the live
-    // database — the one the caller is about to be told to rename back — and
-    // renaming onto it unlinks it. Guarded per file for the same reason the
-    // commit below is, and gated on the database file as well: the -shm is the
-    // last one the undo tries, so its failure is the only one that leaves a
-    // free `.pre-restore` beside an occupied `.pre-restore-shm`, and pairing an
-    // earlier generation's database with a live -shm costs nothing because
-    // SQLite rebuilds it.
-    if (!existsSync(aside)) {
-      try {
-        for (const suffix of ROLLBACK_SUFFIXES) {
-          const to = `${aside}${suffix}`
-          if (!superseded.includes(suffix) || existsSync(to)) continue
-          renameSync(`${to}${SUPERSEDED_SUFFIX}`, to)
-        }
-      } catch {
-        // See above.
-      }
-    }
-    try {
-      rmSync(staged, { force: true })
-    } catch {
-      // See above.
-    }
-    throw err
-  }
-
-  // Committed. Only now is the generation this restore replaced let go — one
-  // generation, as the Settings copy and the tester guide both say.
-  //
-  // "Replaced" is load-bearing: `moved` carries '' exactly when a live
-  // database was moved into `.pre-restore` a moment ago. Without one — the
-  // state a failed rollback leaves behind, and Restore is the button that just
-  // failed — this restore put no new generation in that file's place, and
-  // dropping the old one would leave the operator with nothing but the
-  // snapshot while the restore reported success. It goes back instead, unless
-  // a sidecar of this database has already claimed the name — only a sidecar
-  // can, since the database file itself is only under that name when this
-  // restore put it there. The one that cannot go back stays under
-  // `.superseded` until the next restore sweeps it: disk, not data, because
-  // the database it belongs to is back under `.pre-restore`.
-  //
-  // A failure here costs disk, not data, so it is logged rather than thrown:
-  // the restore the operator asked for has already succeeded.
-  const replacedLiveDatabase = moved.includes('')
-  try {
-    for (const suffix of superseded) {
-      const held = `${aside}${suffix}${SUPERSEDED_SUFFIX}`
-      if (replacedLiveDatabase) rmSync(held, { force: true })
-      else if (!existsSync(`${aside}${suffix}`)) renameSync(held, `${aside}${suffix}`)
-    }
-  } catch (err) {
-    logger.warn('db', 'db.snapshot_prune_failed', undefined, err)
-  }
+  // The sidecars go first, and not because they are tidy: a -wal left beside
+  // the restored file belongs to the database that was just replaced, and
+  // SQLite would replay it over the snapshot on the next open. Deleting them
+  // before the copy also puts the only step that can fail without touching the
+  // database first — a sidecar that cannot be removed stops the restore with
+  // the live database still intact and readable.
+  for (const suffix of DB_SIDECAR_SUFFIXES) rmSync(`${dbPath}${suffix}`, { force: true })
+  copyFileSync(snapshot.path, dbPath)
 }

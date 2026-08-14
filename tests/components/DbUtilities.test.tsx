@@ -67,7 +67,7 @@ describe('DbUtilities — pre-migration snapshots', () => {
     expect(screen.getByText(new RegExp(`2.0 MB · ${snapshot.fileName}`))).toBeDefined()
   })
 
-  it('warns that the schema moves forward and the kept copy is one generation', async () => {
+  it('warns that the restore cannot be undone and points at Backup Database', async () => {
     fakeBridge({ db: { snapshots: vi.fn().mockResolvedValue([snapshot]) } })
 
     renderUtilities()
@@ -75,13 +75,14 @@ describe('DbUtilities — pre-migration snapshots', () => {
     fireEvent.click(restoreButtonFor(snapshot.fileName))
 
     const dialog = screen.getByRole('dialog')
-    // The two things the operator cannot get back if the text omits them: the
-    // restore is not a downgrade, and the database it replaces is kept for
-    // exactly one generation.
+    // The three things the operator cannot get back if the text omits them:
+    // the restore is irreversible, no copy of the current database is kept,
+    // and there is a control that would have taken one.
+    expect(within(dialog).getByText(/It cannot be undone/)).toBeDefined()
+    expect(within(dialog).getByText(/does not keep a copy of it/)).toBeDefined()
+    expect(within(dialog).getByText(/use Backup Database above first/)).toBeDefined()
+    // And it is still not a downgrade.
     expect(within(dialog).getByText(/not back on schema v26/)).toBeDefined()
-    expect(
-      within(dialog).getByText(/one generation only, which the next restore replaces/)
-    ).toBeDefined()
   })
 
   it('restores the snapshot whose row was clicked and reports the re-migration', async () => {

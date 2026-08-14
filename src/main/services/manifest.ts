@@ -1,9 +1,11 @@
 import {
   existsSync,
   closeSync,
+  fstatSync,
   openSync,
   statSync,
   readFileSync,
+  readSync,
   writeSync,
   fsyncSync,
   truncateSync
@@ -38,8 +40,60 @@ export function initManifest(caseDir: string): void {
   }
 }
 
+// How many bytes of manifest tail to pull per read. Entries run a few hundred
+// bytes, so the first read finds the last line; the loop only widens for a
+// pathologically long final line.
+const TAIL_READ_BYTES = 64 * 1024
+
+// Scans an accumulated manifest tail backwards for the last non-empty line.
+// Returns undefined when more bytes could still change the answer — either
+// every line seen so far was blank, or the candidate reaches offset 0 and may
+// be the fragment of a longer line still sitting earlier in the file.
+//
+// Searching for 0x0A at the byte level is safe regardless of encoding: a
+// newline byte never occurs inside a multi-byte UTF-8 sequence, so only whole
+// lines are ever decoded.
+function lastLineInTail(tail: Buffer, atFileStart: boolean): string | undefined {
+  let end = tail.length
+  while (end > 0) {
+    const nl = tail.lastIndexOf(0x0a, end - 1)
+    const start = nl + 1
+    const line = tail.subarray(start, end).toString('utf-8')
+    if (line.trim().length > 0) {
+      return start === 0 && !atFileStart ? undefined : line
+    }
+    if (nl < 0) break
+    end = nl
+  }
+  return undefined
+}
+
+// Reads the manifest's last non-empty line without loading the whole file.
+// Null when the file holds no non-empty line.
+function readLastManifestLine(path: string): string | null {
+  const fd = openSync(path, 'r')
+  try {
+    let end = fstatSync(fd).size
+    let tail = Buffer.alloc(0)
+    while (end > 0) {
+      const start = Math.max(0, end - TAIL_READ_BYTES)
+      const chunk = Buffer.alloc(end - start)
+      const bytesRead = readSync(fd, chunk, 0, chunk.length, start)
+      tail = Buffer.concat([chunk.subarray(0, bytesRead), tail])
+      end = start
+      const line = lastLineInTail(tail, end === 0)
+      if (line !== undefined) return line
+    }
+    return null
+  } finally {
+    closeSync(fd)
+  }
+}
+
 // Reads the last line to determine prevHash + next index.
-// O(N) on manifest size but only called once per append; manifests are small.
+// Reads from the tail rather than the whole file: this runs on every append, so
+// a whole-file read made each capture O(N) in manifest size — O(N^2) over the
+// life of a case.
 // Deliberately STRICT, unlike readEntries(): an unparseable or wrong-shaped
 // tail line throws, so a corrupt manifest can never be read as empty and
 // silently restart the chain, and appendManifestEntry can never extend the
@@ -49,10 +103,9 @@ export function getManifestHead(caseDir: string): ManifestHead {
   if (!existsSync(path) || statSync(path).size === 0) {
     return { prevHash: '', nextIndex: 0 }
   }
-  const raw = readFileSync(path, 'utf-8')
-  const lines = raw.split('\n').filter((l) => l.trim().length > 0)
-  if (lines.length === 0) return { prevHash: '', nextIndex: 0 }
-  const parsed: unknown = JSON.parse(lines[lines.length - 1])
+  const lastLine = readLastManifestLine(path)
+  if (lastLine === null) return { prevHash: '', nextIndex: 0 }
+  const parsed: unknown = JSON.parse(lastLine)
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     throw new Error('Invalid manifest tail entry')
   }

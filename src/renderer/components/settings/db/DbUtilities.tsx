@@ -427,7 +427,8 @@ export function DbUtilities() {
                       `by anything. Birdbrain re-applies the schema upgrade to the restored copy ` +
                       `as it re-opens it, so you end up on the current schema holding the older ` +
                       `records — not back on schema v${snapshot.fromVersion}. The database being ` +
-                      `replaced is kept beside it as birdbrain.db.pre-restore.`,
+                      `replaced is kept beside it as birdbrain.db.pre-restore — one generation ` +
+                      `only, which the next restore replaces.`,
                     action: () => handleRestoreSnapshot(snapshot.fileName)
                   })
                 }

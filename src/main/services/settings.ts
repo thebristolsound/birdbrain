@@ -183,6 +183,10 @@ export function getOpenRouterKeyProtectionState(): KeyProtectionState {
     if (!stored || typeof stored !== 'string') return 'not-set'
     return stored.startsWith('enc:') ? 'protected' : 'plaintext'
   } catch {
+    // A corrupted settings.json is otherwise indistinguishable from "no key
+    // was ever saved" — log it so the failure is actionable instead of
+    // silently reading as an unremarkable not-set in Diagnostics.
+    logger.warn('settings', 'settings.key_protection_state_unreadable')
     return 'not-set'
   }
 }

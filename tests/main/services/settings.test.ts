@@ -1,8 +1,14 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, rmSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { writeFileSync } from 'fs'
+
+const { loggerWarn } = vi.hoisted(() => ({ loggerWarn: vi.fn() }))
+vi.mock('@main/services/logger', () => ({
+  logger: { warn: loggerWarn, error: vi.fn(), info: vi.fn() }
+}))
+
 import {
   setSettingsPath,
   getSettings,
@@ -22,6 +28,7 @@ describe('settings', () => {
     tempDir = mkdtempSync(join(tmpdir(), 'bb-settings-'))
     settingsFile = join(tempDir, 'settings.json')
     setSettingsPath(settingsFile)
+    loggerWarn.mockClear()
   })
 
   afterEach(() => {
@@ -244,6 +251,19 @@ describe('settings', () => {
   it('reports not-set for a corrupted settings file rather than throwing', () => {
     writeFileSync(settingsFile, '{invalid json', 'utf-8')
     expect(getOpenRouterKeyProtectionState()).toBe('not-set')
+  })
+
+  it('logs a warning for a corrupted settings file, distinct from key-never-saved', () => {
+    // Both report 'not-set', but only the corrupted-file case is an actionable
+    // failure — assert the log signal that tells the two apart.
+    writeFileSync(settingsFile, '{invalid json', 'utf-8')
+    getOpenRouterKeyProtectionState()
+    expect(loggerWarn).toHaveBeenCalledWith('settings', 'settings.key_protection_state_unreadable')
+  })
+
+  it('does not log a warning when no key has ever been saved', () => {
+    getOpenRouterKeyProtectionState()
+    expect(loggerWarn).not.toHaveBeenCalled()
   })
 
   it('reads a settings file written before density existed', () => {

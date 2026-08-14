@@ -411,7 +411,13 @@ export const LOG_CODES = [
   // The at-rest key-protection gate (#414): recorded either way so the log
   // carries the same signal the Settings/Diagnostics indicator shows live.
   'signingKey.unprotected_key_acknowledged',
-  'signingKey.generation_declined'
+  'signingKey.generation_declined',
+  // getOpenRouterKeyProtectionState (#414 review) reading settings.json to
+  // report protection state, distinct from settings.schema_invalid above:
+  // this fires only when the file can't even be parsed as JSON, so the
+  // Diagnostics "not-set" it falls back to is otherwise indistinguishable
+  // from a key that was genuinely never saved.
+  'settings.key_protection_state_unreadable'
 ] as const
 export type LogCode = (typeof LOG_CODES)[number]
 

@@ -429,7 +429,10 @@ export function DbUtilities() {
                       `files stay on disk, no longer referenced by anything. Birdbrain re-applies ` +
                       `the schema upgrade to the restored copy as it re-opens it, so you end up ` +
                       `on the current schema holding the older records — not back on schema ` +
-                      `v${snapshot.fromVersion}.`,
+                      `v${snapshot.fromVersion}. If the restore fails, treat the result as ` +
+                      `unknown: a restore error does not prove the previous database is still ` +
+                      `intact, and case data can be left inconsistent — check the case before ` +
+                      `carrying on, or restore a backup.`,
                     action: () => handleRestoreSnapshot(snapshot.fileName)
                   })
                 }

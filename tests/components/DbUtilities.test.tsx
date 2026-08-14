@@ -83,6 +83,11 @@ describe('DbUtilities — pre-migration snapshots', () => {
     expect(within(dialog).getByText(/use Backup Database above first/)).toBeDefined()
     // And it is still not a downgrade.
     expect(within(dialog).getByText(/not back on schema v26/)).toBeDefined()
+    // A failed restore is its own outcome, and the dialog must not let the
+    // operator read "it cannot be undone" as "if it fails, nothing happened".
+    expect(
+      within(dialog).getByText(/does not prove the previous database is still intact/)
+    ).toBeDefined()
   })
 
   it('restores the snapshot whose row was clicked and reports the re-migration', async () => {

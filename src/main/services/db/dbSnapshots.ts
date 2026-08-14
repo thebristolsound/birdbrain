@@ -1,8 +1,11 @@
 import Database from 'better-sqlite3'
 import {
+  closeSync,
   copyFileSync,
   existsSync,
+  fsyncSync,
   mkdirSync,
+  openSync,
   readdirSync,
   renameSync,
   rmSync,
@@ -31,6 +34,11 @@ export const SNAPSHOT_RETENTION = 3
 // listable name. Deliberately not `.db`-terminated, so SNAPSHOT_FILE_RE cannot
 // match it and a file interrupted mid-write is never offered for restore.
 const PARTIAL_SUFFIX = '.partial'
+
+// The staging name a restore copies the snapshot to before it is renamed over
+// the live database. Beside the database rather than in the snapshot
+// directory, so the rename is a same-filesystem move.
+const RESTORE_PARTIAL_SUFFIX = `.restore${PARTIAL_SUFFIX}`
 
 // A SQLite database on disk is the file plus whatever WAL sidecars sit beside
 // it. They belong to the file they were written for and to no other.
@@ -249,7 +257,7 @@ function assertReadable(path: string, fromVersion: number): void {
   // open and the close leaves the probe's own -wal/-shm behind, and beside a
   // final-named snapshot those match neither SNAPSHOT_FILE_RE nor
   // `sweepPartials`, so nothing removes them.
-  const ours = ['-wal', '-shm'].filter((suffix) => !existsSync(`${path}${suffix}`))
+  const ours = DB_SIDECAR_SUFFIXES.filter((suffix) => !existsSync(`${path}${suffix}`))
   const probe = new Database(path, { readonly: true, fileMustExist: true })
   try {
     const version = probe.pragma('user_version', { simple: true }) as number
@@ -259,6 +267,54 @@ function assertReadable(path: string, fromVersion: number): void {
   } finally {
     probe.close()
     for (const suffix of ours) rmSync(`${path}${suffix}`, { force: true })
+  }
+}
+
+/**
+ * Whether `dbPath` still holds something SQLite will open as an existing
+ * database with a schema in it.
+ *
+ * The question a failed restore raises: is the file that is there now still a
+ * database, or a truncated remnant? It matters because a zero-length file is
+ * not an error to SQLite — it opens as a brand new, empty database, and
+ * migrating that forward produces a healthy-looking empty schema over the
+ * operator's data (#428). So the emptiness has to be caught before anything
+ * migrates the file.
+ *
+ * Deliberately cheap and deliberately not `integrity_check`: it reads the
+ * header and `sqlite_master`, which is what a truncated or non-database file
+ * fails, and says nothing about page-level integrity deeper in the file.
+ */
+export function isIntactDatabase(dbPath: string): boolean {
+  let sizeBytes: number
+  try {
+    sizeBytes = statSync(dbPath).size
+  } catch {
+    // Missing or unreadable — either way there is nothing to migrate.
+    return false
+  }
+  if (sizeBytes === 0) return false
+
+  // Same bookkeeping as `assertReadable`: only the sidecars this probe brings
+  // into existence are removed again.
+  const ours = DB_SIDECAR_SUFFIXES.filter((suffix) => !existsSync(`${dbPath}${suffix}`))
+  let probe: Database.Database | null = null
+  try {
+    probe = new Database(dbPath, { readonly: true, fileMustExist: true })
+    const { tables } = probe.prepare(`SELECT count(*) AS tables FROM sqlite_master`).get() as {
+      tables: number
+    }
+    return tables > 0
+  } catch {
+    return false
+  } finally {
+    try {
+      probe?.close()
+      for (const suffix of ours) rmSync(`${dbPath}${suffix}`, { force: true })
+    } catch {
+      // A probe that cannot be tidied up says nothing about the file itself,
+      // and this function answers a question, so it must not throw.
+    }
   }
 }
 
@@ -338,7 +394,15 @@ export async function createPreMigrationSnapshot(
  * found five distinct silent-data-loss paths in that machinery, each in a
  * state the previous round's fix created; it was never in the ticket, and a
  * reversibility promise that is wrong about *which* generation it kept is
- * worse than no promise. Hence two writes and no state to get wrong.
+ * worse than no promise. Hence one staged copy, one rename, and no state to
+ * get wrong.
+ *
+ * Irreversible is not the same as unrecoverable, though: the replacement is
+ * staged and renamed into place, so a restore that fails leaves `dbPath`
+ * holding the database it held before rather than a piece of the snapshot.
+ * That is a property of this function, not a promise the caller can lean on —
+ * anything about to migrate `dbPath` after a failure should check
+ * `isIntactDatabase` first.
  *
  * The caller owns the connection lifecycle: the database MUST already be
  * closed, and must be re-opened afterwards.
@@ -354,12 +418,48 @@ export function restoreSnapshotFile(dbPath: string, fileName: string): void {
   // otherwise overwrite a working one and leave the app with neither.
   assertReadable(snapshot.path, snapshot.fromVersion)
 
-  // The sidecars go first, and not because they are tidy: a -wal left beside
-  // the restored file belongs to the database that was just replaced, and
-  // SQLite would replay it over the snapshot on the next open. Deleting them
-  // before the copy also puts the only step that can fail without touching the
-  // database first — a sidecar that cannot be removed stops the restore with
-  // the live database still intact and readable.
-  for (const suffix of DB_SIDECAR_SUFFIXES) rmSync(`${dbPath}${suffix}`, { force: true })
-  copyFileSync(snapshot.path, dbPath)
+  // Staged beside the database rather than copied straight onto it.
+  // `copyFileSync` truncates its destination before the first page lands, so
+  // writing directly to `dbPath` means a copy that dies part-way leaves a
+  // truncated `birdbrain.db` and no other generation of it — at worst a
+  // zero-length file, which SQLite opens as a brand new empty database rather
+  // than refusing. The staging file is in the same directory as `dbPath`, so
+  // the rename below is a same-filesystem move and therefore atomic: `dbPath`
+  // ends up holding either the database it held before or the whole snapshot,
+  // never a piece of one.
+  const partial = `${dbPath}${RESTORE_PARTIAL_SUFFIX}`
+
+  try {
+    copyFileSync(snapshot.path, partial)
+    // Flushed before the rename rather than left to the page cache. The rename
+    // is atomic against a crash in this process either way; this is what makes
+    // it atomic against the machine losing power, where a rename that reaches
+    // the disk ahead of the pages it points at would leave `dbPath` naming a
+    // file that is only partly written.
+    const fd = openSync(partial, 'r+')
+    try {
+      fsyncSync(fd)
+    } finally {
+      closeSync(fd)
+    }
+    // The sidecars go before the rename, and not because they are tidy: a -wal
+    // left beside the restored file belongs to the database that was just
+    // replaced, and SQLite would replay it over the snapshot on the next open.
+    // Removing them after the staging copy also keeps every step that can fail
+    // on the far side of the live database — a sidecar that cannot be removed
+    // stops the restore with the previous database and its WAL both intact.
+    for (const suffix of DB_SIDECAR_SUFFIXES) rmSync(`${dbPath}${suffix}`, { force: true })
+    renameSync(partial, dbPath)
+  } catch (err) {
+    // The staging file is the whole snapshot again on disk, so leaving it
+    // behind doubles the database's footprint for no benefit. Its own removal
+    // must not replace the error that stopped the restore: `force` only
+    // swallows ENOENT, and the interesting failures here are not that.
+    try {
+      rmSync(partial, { force: true })
+    } catch {
+      // Nothing to add: the rethrow below carries the real cause.
+    }
+    throw err
+  }
 }

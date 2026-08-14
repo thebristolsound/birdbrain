@@ -388,6 +388,11 @@ export const LOG_CODES = [
   // separately: the second can happen without the first, and only the log
   // keeps the first once the renderer has been told about the second.
   'db.snapshot_restore_failed',
+  // A failed restore that also left nothing openable at the database path.
+  // Distinct because it is the one case where the app deliberately does not
+  // re-open: migrating a truncated file forward would build a fresh, empty
+  // schema over the operator's data (#428).
+  'db.snapshot_restore_left_no_database',
   'db.reopen_failed',
   // Fallback for notify.error() with no explicit code. Its presence in a log
   // is a signal to give that call site a real code.

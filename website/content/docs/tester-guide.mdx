@@ -115,6 +115,11 @@ take a copy first with **Settings → Database → Utilities → Backup Database
 which writes the database wherever you choose, and export anything recorded
 since the snapshot that matters.
 
+**A failed restore is not a guarantee either.** If the restore fails, treat the
+result as unknown: a restore error does not prove the previous database is still
+intact, and case data can be left inconsistent — check the case before carrying
+on, or restore a backup.
+
 Two more things a restore does not do, both worth knowing before you click it:
 
 - **It does not take you back to the old schema.** Birdbrain re-opens the

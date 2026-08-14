@@ -6,6 +6,7 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   truncateSync,
   writeFileSync
 } from 'fs'
@@ -1275,6 +1276,41 @@ describe('ipcHandlers — database admin', () => {
     expect(res.error).not.toContain(userDataPath)
     // The database is back — the restore stopped before it moved anything.
     expectOk(await invoke(IPC_CHANNELS.DB_STATS))
+  })
+
+  it('does not migrate a truncated database forward when the restore failed', async () => {
+    const conn = new Database(dbPath)
+    try {
+      await createPreMigrationSnapshot(conn, dbPath, LATEST_SCHEMA_VERSION, LATEST_SCHEMA_VERSION)
+    } finally {
+      conn.close()
+    }
+    const listed = expectOk<Array<{ fileName: string }>>(await invoke(IPC_CHANNELS.DB_SNAPSHOTS))
+    // A snapshot the restore will reject, so the handler reaches its failure
+    // path with `restoreErr` set.
+    truncateSync(join(userDataPath, 'db-snapshots', listed[0].fileName), 24576)
+
+    // And the state the guard exists for: the file the restore was writing
+    // over is no longer a database. Produced directly here, because the staged
+    // copy means the restore itself can no longer leave one behind — the guard
+    // is what stops that from being the only thing standing between a failed
+    // restore and a migrated empty database.
+    closeDatabase()
+    truncateSync(dbPath, 0)
+
+    const res = await invoke<{ ok: boolean; error?: string; code?: string }>(
+      IPC_CHANNELS.DB_RESTORE_SNAPSHOT,
+      { fileName: listed[0].fileName }
+    )
+
+    expect(res.ok).toBe(false)
+    expect(res.code).toBe('DB_RESTORE_FAILED')
+    expect(res.error).not.toContain(userDataPath)
+    // The whole point: nothing migrated the empty file forward. A fresh schema
+    // written here would leave the operator with a healthy-looking, empty
+    // database and only a "could not be restored" message to explain it (#428).
+    expect(statSync(dbPath).size).toBe(0)
+    await expect(invoke(IPC_CHANNELS.DB_STATS)).rejects.toThrow('Database not initialized')
   })
 
   it('reports a re-open failure as such when the restored snapshot cannot be migrated', async () => {

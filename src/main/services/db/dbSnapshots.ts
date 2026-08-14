@@ -8,7 +8,7 @@ import {
   rmSync,
   statSync
 } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { logger } from '@main/services/logger'
 import type { DbSnapshot } from '@shared/ipc'
 
@@ -37,6 +37,16 @@ const PRE_RESTORE_SUFFIX = '.pre-restore'
 // match it and a file interrupted mid-write is never offered for restore.
 const PARTIAL_SUFFIX = '.partial'
 
+// Where the previous `.pre-restore` generation waits while a restore runs. It
+// is deleted once the new generation is in place and renamed back if the
+// restore rolls back, so a restore that fails takes nothing with it.
+const SUPERSEDED_SUFFIX = '.superseded'
+
+// A SQLite database is the file plus whatever WAL sidecars exist beside it.
+// Every move in this module walks all three, in this order: the database
+// first, so a rollback that only gets part-way still has the file itself.
+const DB_FILE_SUFFIXES = ['', '-wal', '-shm'] as const
+
 // `<from>` is the schema the snapshot holds and `<to>` the one the app was
 // about to write, so the name alone says which upgrade it belongs to. The
 // stamp is an ISO instant with `:` and `.` swapped for `-` (both are illegal or
@@ -53,6 +63,22 @@ export class PreMigrationSnapshotError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
     super(message, options)
     this.name = 'PreMigrationSnapshotError'
+  }
+}
+
+/**
+ * Thrown when a restore failed *and* the live database could not be put back,
+ * so there is no file where the database belongs.
+ *
+ * Distinct from a generic restore failure because the caller must not re-open
+ * the database on this path: opening a missing file creates an empty one and
+ * migrates it, and an empty case list reads as "the evidence is gone" rather
+ * than as a failed restore. The message names the file that holds the data.
+ */
+export class RestoreRollbackError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options)
+    this.name = 'RestoreRollbackError'
   }
 }
 
@@ -151,7 +177,8 @@ export function resolveSnapshot(dbPath: string, fileName: string): StoredSnapsho
 }
 
 /**
- * Delete snapshots beyond the retention limit. Returns how many were removed.
+ * Delete snapshots beyond the retention limit, and any staging file left by an
+ * interrupted snapshot. Returns how many files were removed.
  *
  * Not a plain newest-`keep` cut. Each migration block commits its own
  * `user_version` bump, so an upgrade that dies part-way leaves the database at
@@ -161,7 +188,10 @@ export function resolveSnapshot(dbPath: string, fileName: string): StoredSnapsho
  * crash-looping upgrade erodes its own recovery. So the slots are dealt round
  * robin across the distinct `fromVersion` groups (newest group first, newest
  * member first within a group): every schema version present keeps a copy
- * before any version keeps a second, and the total is still `keep`.
+ * before any version keeps a second, and the total is still `keep`. Note the
+ * order: with more distinct versions than `keep`, the oldest groups get
+ * nothing, so this bounds the directory rather than guaranteeing a copy of
+ * every version ever snapshotted.
  */
 export function pruneSnapshots(dbPath: string, keep: number = SNAPSHOT_RETENTION): number {
   const snapshots = listStoredSnapshots(dbPath)
@@ -170,6 +200,33 @@ export function pruneSnapshots(dbPath: string, keep: number = SNAPSHOT_RETENTION
   for (const snapshot of snapshots) {
     if (kept.has(snapshot.path)) continue
     rmSync(snapshot.path, { force: true })
+    removed++
+  }
+  return removed + sweepPartials(dbPath)
+}
+
+/**
+ * Delete staging files left behind by an interrupted snapshot.
+ *
+ * Retention only bounds what `listStoredSnapshots` can see, and a `.partial`
+ * is deliberately unmatchable by SNAPSHOT_FILE_RE. So the crash, power loss or
+ * ENOSPC mid-`db.backup()` that PARTIAL_SUFFIX exists for leaves a full-size
+ * copy of the database under a unique name that nothing ever counts or
+ * removes. Only the caller's own writes reach this directory, and pruning runs
+ * after the current snapshot has been renamed into place, so nothing swept
+ * here is still being written.
+ */
+function sweepPartials(dbPath: string): number {
+  const dir = snapshotDirFor(dbPath)
+  if (!existsSync(dir)) return 0
+  let removed = 0
+  for (const fileName of readdirSync(dir)) {
+    // -wal/-shm are what an interrupted read-back probe leaves beside the
+    // staging file; they belong to it, not to anything listable.
+    const base = fileName.replace(/(-wal|-shm)$/, '')
+    if (!base.endsWith(PARTIAL_SUFFIX)) continue
+    if (!SNAPSHOT_FILE_RE.test(base.slice(0, -PARTIAL_SUFFIX.length))) continue
+    rmSync(join(dir, fileName), { force: true })
     removed++
   }
   return removed
@@ -307,7 +364,14 @@ export async function createPreMigrationSnapshot(
  * 2. the copy lands on a staging name in the target directory and is renamed
  *    into place, so `dbPath` is never a half-written file;
  * 3. the database being replaced is moved aside, not deleted, together with
- *    its -wal/-shm — a restore is a misclick away and this is evidence.
+ *    its -wal/-shm — a restore is a misclick away and this is evidence;
+ * 4. the `.pre-restore` generation this one replaces is moved aside as well
+ *    and only dropped once the restore has committed, so a restore that fails
+ *    and rolls back has not spent the operator's earlier safety copy.
+ *
+ * Throws `RestoreRollbackError` — and nothing else — when the rollback itself
+ * failed and there is no file at `dbPath`. The caller must not re-open on that
+ * path; see the class comment.
  */
 export function restoreSnapshotFile(dbPath: string, fileName: string): void {
   const snapshot = resolveSnapshot(dbPath, fileName)
@@ -323,17 +387,27 @@ export function restoreSnapshotFile(dbPath: string, fileName: string): void {
     throw err
   }
 
-  // One generation only. The previous set goes before the current one takes
-  // its place, or the two would interleave.
-  for (const suffix of ['', '-wal', '-shm']) rmSync(`${aside}${suffix}`, { force: true })
-
+  const superseded: Array<[from: string, to: string]> = []
   const moved: Array<[from: string, to: string]> = []
   try {
+    // One generation only, but the previous one is moved rather than deleted:
+    // deleting it here would spend it even on a restore that fails and rolls
+    // back cleanly. Leftovers from a restore that died between the move and
+    // the drop go first, or two generations would interleave.
+    for (const suffix of DB_FILE_SUFFIXES) {
+      const from = `${aside}${suffix}`
+      const to = `${from}${SUPERSEDED_SUFFIX}`
+      rmSync(to, { force: true })
+      if (!existsSync(from)) continue
+      renameSync(from, to)
+      superseded.push([from, to])
+    }
+
     // A clean close removes -wal/-shm, but a crash leaves them behind, and a
     // stale WAL replayed on top of the restored file is data from the database
     // that was just replaced. They move with it rather than being deleted:
     // separated from their database they are unreadable.
-    for (const suffix of ['', '-wal', '-shm']) {
+    for (const suffix of DB_FILE_SUFFIXES) {
       const from = `${dbPath}${suffix}`
       if (!existsSync(from)) continue
       renameSync(from, `${aside}${suffix}`)
@@ -347,11 +421,34 @@ export function restoreSnapshotFile(dbPath: string, fileName: string): void {
     // "the evidence is gone" rather than as a failed restore.
     try {
       for (const [from, to] of moved.reverse()) renameSync(to, from)
+      for (const [from, to] of superseded.reverse()) renameSync(to, from)
       rmSync(staged, { force: true })
     } catch {
       // Swallowed on purpose: the throw below carries the failure that started
       // this, and that is the one the operator needs to see.
     }
+
+    // Unless the rollback failed to put the database back, which is the one
+    // outcome the caller cannot treat as an ordinary failure. Say where the
+    // file went, by name only: the message reaches the renderer, and an
+    // absolute path would disclose the profile location with it.
+    if (moved.some(([from]) => from === dbPath) && !existsSync(dbPath)) {
+      throw new RestoreRollbackError(
+        `The restore failed and the database could not be put back. It is beside it as ` +
+          `"${basename(aside)}" — rename it back before restarting Birdbrain.`,
+        { cause: err }
+      )
+    }
     throw err
+  }
+
+  // Committed. Only now is the generation this restore replaced let go — one
+  // generation, as the Settings copy and the tester guide both say. A failure
+  // here costs disk, not data, so it is logged rather than thrown: the restore
+  // the operator asked for has already succeeded.
+  try {
+    for (const [, to] of superseded) rmSync(to, { force: true })
+  } catch (err) {
+    logger.warn('db', 'db.snapshot_prune_failed', undefined, err)
   }
 }

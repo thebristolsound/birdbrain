@@ -216,6 +216,15 @@ describe('settings', () => {
     expect(getOpenRouterKeyProtectionState()).toBe('not-set')
   })
 
+  it('reports not-set when the settings file exists but predates the key', () => {
+    // Distinct from the "never saved" case above: the file exists (so the
+    // early not-set return is skipped) but has no openRouterApiKey field at
+    // all — an upgrade path, same as the density/theme "written before X
+    // existed" cases elsewhere in this file.
+    writeFileSync(settingsFile, JSON.stringify({ theme: 'dark' }), 'utf-8')
+    expect(getOpenRouterKeyProtectionState()).toBe('not-set')
+  })
+
   it('reports plaintext when safeStorage is unavailable (tests, headless Linux)', () => {
     // Same environment as the signing key: ELECTRON_RUN_AS_NODE has no
     // encryption backend, so encryptApiKey falls through to the raw value.

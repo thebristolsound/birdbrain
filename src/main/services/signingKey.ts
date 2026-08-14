@@ -53,18 +53,18 @@ export class SigningKeyUnacknowledgedError extends Error {
   }
 }
 
+// Electron's docs describe this as a plain synchronous getter, not a call
+// that can throw — unlike encryptString/decryptString below, which do carry
+// their own try/catch because they touch the OS credential store for real.
 function isEncryptionAvailable(): boolean {
-  try {
-    return _safeStorage?.isEncryptionAvailable() ?? false
-  } catch {
-    return false
-  }
+  return _safeStorage?.isEncryptionAvailable() ?? false
 }
 
 function wrapPrivateKey(pem: string): string {
-  if (!isEncryptionAvailable()) return pem
   try {
-    return 'enc:' + _safeStorage!.encryptString(pem).toString('base64')
+    if (_safeStorage?.isEncryptionAvailable()) {
+      return 'enc:' + _safeStorage.encryptString(pem).toString('base64')
+    }
   } catch {
     /* encryption not available */
   }
@@ -83,6 +83,30 @@ function unwrapPrivateKey(stored: string): string | null {
   return null
 }
 
+// Module scope, not inlined into the function below, so this is exercised
+// (and type-checked as a value) every time signingKey.ts loads — including
+// under vitest, where _dialog is always null and the function body that
+// actually shows it never runs. Keeping the text out of that dead branch
+// keeps it covered by the diff-coverage gate instead of invisible to it.
+const UNPROTECTED_KEY_DIALOG_OPTIONS = {
+  type: 'warning' as const,
+  buttons: ['Continue unprotected', 'Quit Birdbrain'],
+  defaultId: 1,
+  cancelId: 1,
+  noLink: true,
+  title: 'Signing key cannot be protected at rest',
+  message: "This installation's signing key will not be encrypted at rest.",
+  detail:
+    'Birdbrain could not find an OS credential store (Keychain, DPAPI, or a Linux Secret ' +
+    'Service such as gnome-keyring) on this machine. The private key that signs every capture ' +
+    'manifest entry will be written to disk in the clear instead of wrapped by it — anyone with ' +
+    'file access to this machine can read it and forge signed entries.\n\n' +
+    'This is expected on headless or keyring-less Linux installs (e.g. over SSH). If that is not ' +
+    'intended, install and unlock a Secret Service provider and restart Birdbrain.\n\n' +
+    'Continue only if you accept the signing key will not be protected at rest on this ' +
+    'installation. This state is shown afterward in Settings → Diagnostics.'
+}
+
 // Blocks — a native modal, no parent window, since this runs before the main
 // window exists — until the operator explicitly accepts that this
 // installation's signing key will be written unprotected at rest. Decided
@@ -93,25 +117,7 @@ function unwrapPrivateKey(stored: string): string | null {
 // of relying on this default.
 function requestUnprotectedKeyAcknowledgement(): boolean {
   if (!_dialog) return false
-  const response = _dialog.showMessageBoxSync({
-    type: 'warning',
-    buttons: ['Continue unprotected', 'Quit Birdbrain'],
-    defaultId: 1,
-    cancelId: 1,
-    noLink: true,
-    title: 'Signing key cannot be protected at rest',
-    message: "This installation's signing key will not be encrypted at rest.",
-    detail:
-      'Birdbrain could not find an OS credential store (Keychain, DPAPI, or a Linux Secret ' +
-      'Service such as gnome-keyring) on this machine. The private key that signs every capture ' +
-      'manifest entry will be written to disk in the clear instead of wrapped by it — anyone with ' +
-      'file access to this machine can read it and forge signed entries.\n\n' +
-      'This is expected on headless or keyring-less Linux installs (e.g. over SSH). If that is not ' +
-      'intended, install and unlock a Secret Service provider and restart Birdbrain.\n\n' +
-      'Continue only if you accept the signing key will not be protected at rest on this ' +
-      'installation. This state is shown afterward in Settings → Diagnostics.'
-  })
-  return response === 0
+  return _dialog.showMessageBoxSync(UNPROTECTED_KEY_DIALOG_OPTIONS) === 0
 }
 
 export interface InitSigningKeyDeps {

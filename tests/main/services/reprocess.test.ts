@@ -25,10 +25,10 @@ describe('captureLifecycle.reprocessCase', () => {
   let tempDir: string
   let captureLifecycle: CaptureLifecycle
 
-  beforeEach(() => {
+  beforeEach(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-reprocess-'))
     initStorage(tempDir)
-    initDatabase(':memory:')
+    await initDatabase(':memory:')
     const selectorLifecycle = createSelectorLifecycle({ emitRematched: () => {} })
     captureLifecycle = createCaptureLifecycle({ selectorLifecycle })
   })

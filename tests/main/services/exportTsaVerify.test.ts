@@ -76,10 +76,10 @@ describe('exported evidence bundle verifies under openssl ts -verify', () => {
   let caseId: string
   let captureLifecycle: CaptureLifecycle
 
-  beforeEach(() => {
+  beforeEach(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'bb-export-tsverify-'))
     initStorage(join(tempDir, 'captures'))
-    initDatabase(':memory:')
+    await initDatabase(':memory:')
     resetInstallationId()
     initInstallationId(tempDir)
     initSettings(tempDir)

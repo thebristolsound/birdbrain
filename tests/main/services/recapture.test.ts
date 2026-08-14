@@ -50,10 +50,10 @@ describe('recapture service', () => {
     runActiveSelectorsForCapture: vi.fn()
   } as unknown as SelectorLifecycle
 
-  beforeEach(() => {
+  beforeEach(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-recapture-'))
     initStorage(join(tempDir, 'captures'))
-    initDatabase(':memory:')
+    await initDatabase(':memory:')
     initSettings(tempDir)
     resetInstallationId()
     initInstallationId(tempDir)

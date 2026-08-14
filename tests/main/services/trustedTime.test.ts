@@ -173,10 +173,10 @@ describe('resolveTrustedTime', () => {
 describe('reconcileCaptureTrustedTime / reconcileAllMirrors (DB mirror reconciliation)', () => {
   let tempDir: string
 
-  beforeEach(() => {
+  beforeEach(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-tt-reconcile-'))
     initStorage(join(tempDir, 'captures'))
-    initDatabase(':memory:')
+    await initDatabase(':memory:')
   })
 
   afterEach(() => {

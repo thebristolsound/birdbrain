@@ -50,7 +50,18 @@ pnpm lint
 pnpm typecheck
 BIRDBRAIN_REQUIRE_OPENSSL=1 pnpm test
 pnpm build            # plus pnpm build:extension if you touched extension/
+pnpm test:coverage    # thresholds only evaluate with --coverage; pnpm test omits it
+pnpm coverage:diff    # gate: 90% of the lines this PR changed
 ```
+
+**The last two are not optional, and they are the ones the first four cannot stand in for.**
+CI's job named `test` runs the suite *and then* `scripts/diff-coverage.mjs`
+(`.github/workflows/ci.yml`), which fails the PR when under 90% of the changed lines are
+covered — a threshold `pnpm test` never evaluates, because it does not pass `--coverage`. A
+loop of the first four commands is green on a PR that CI rejects, and the failure surfaces as
+"the test job failed" long after you have reported success. This happened on PR #423: 1879
+tests passing, 72.62% diff coverage, red. Renderer components are the usual shortfall — a new
+`.tsx` with no test contributes its whole line count to the denominator.
 
 Never claim something works without having run it. If a test fails, fix the code; modify the
 test only if it is demonstrably wrong, and say why in the PR. Report actual command output in

@@ -39,10 +39,10 @@ describe('selectorLifecycle', () => {
   let events: SelectorRematchedEvent[]
   let lifecycle: ReturnType<typeof createSelectorLifecycle>
 
-  beforeEach(() => {
+  beforeEach(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-selector-lifecycle-'))
     initStorage(tempDir)
-    initDatabase(':memory:')
+    await initDatabase(':memory:')
     events = []
     lifecycle = createSelectorLifecycle({
       emitRematched: (e) => events.push(e)

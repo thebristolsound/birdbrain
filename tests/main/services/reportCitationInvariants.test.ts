@@ -110,10 +110,10 @@ describe('report citation invariants', () => {
   let caseId: string
   let captureLifecycle: CaptureLifecycle
 
-  beforeEach(() => {
+  beforeEach(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'bb-invariant-'))
     initStorage(join(tempDir, 'captures'))
-    initDatabase(':memory:')
+    await initDatabase(':memory:')
     resetInstallationId()
     initInstallationId(tempDir)
     initSettings(tempDir)

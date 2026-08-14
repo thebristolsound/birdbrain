@@ -58,10 +58,10 @@ describe('timestampWorker', () => {
     )
   }
 
-  beforeEach(() => {
+  beforeEach(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-tsworker-'))
     initStorage(join(tempDir, 'captures'))
-    initDatabase(':memory:')
+    await initDatabase(':memory:')
     initSettings(tempDir)
     updateSettings({ tsaUrl: 'http://tsa.example.com', operatorName: 'Op' })
     initInstallationId(tempDir)

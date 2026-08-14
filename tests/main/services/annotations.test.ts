@@ -12,8 +12,8 @@ import {
 import type { AnnotationShape } from '@shared/types'
 
 describe('annotations service', () => {
-  beforeEach(() => {
-    initDatabase(':memory:')
+  beforeEach(async () => {
+    await initDatabase(':memory:')
   })
   afterEach(() => {
     closeDatabase()

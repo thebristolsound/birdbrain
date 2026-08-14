@@ -20,6 +20,8 @@ function installDbBridge() {
     cleanOrphans: fn(),
     backup: fn(),
     restore: fn(),
+    snapshots: fn(),
+    restoreSnapshot: fn(),
     exportTable: fn()
   }
   fakeBridge({ db: api })
@@ -180,6 +182,27 @@ describe('dbAdminMutationOptions', () => {
     const data = await opts.mutationFn()
     opts.onSuccess?.(data, undefined as never, undefined, undefined as never)
 
+    expect(spy).toHaveBeenCalledWith()
+  })
+
+  it('restoreSnapshot invalidates every query, including when the restore failed', async () => {
+    api.restoreSnapshot.mockResolvedValue({ restored: true })
+    const qc = new QueryClient()
+    const spy = vi.spyOn(qc, 'invalidateQueries')
+
+    const opts = dbAdminMutationOptions(qc).restoreSnapshot
+    const data = await opts.mutationFn('pre-migration-v26-to-v27-2026-08-01T09-00-00-000Z.db')
+    opts.onSettled?.(data, null, '', undefined as never)
+
+    expect(spy).toHaveBeenCalledWith()
+
+    // A restore reports failure from several points, some of them after the
+    // file has been replaced and re-opened. Invalidating only on success would
+    // leave the pre-restore case list on screen over a database that may no
+    // longer hold it.
+    spy.mockClear()
+    expect(opts.onSuccess).toBeUndefined()
+    opts.onSettled?.(undefined, new Error('restore failed'), '', undefined as never)
     expect(spy).toHaveBeenCalledWith()
   })
 

@@ -51,8 +51,8 @@ import {
 } from '@main/services/db/extractedDataRepo'
 
 describe('database', () => {
-  beforeEach(() => {
-    initDatabase(':memory:')
+  beforeEach(async () => {
+    await initDatabase(':memory:')
   })
 
   afterEach(() => {

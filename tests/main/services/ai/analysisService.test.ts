@@ -21,8 +21,8 @@ function makeAnalysis(
 }
 
 describe('ai/analysisService', () => {
-  beforeEach(() => {
-    initDatabase(':memory:')
+  beforeEach(async () => {
+    await initDatabase(':memory:')
   })
 
   afterEach(() => {

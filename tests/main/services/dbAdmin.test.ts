@@ -19,8 +19,8 @@ import {
 } from '@main/services/db/dbAdmin'
 
 describe('dbAdmin', () => {
-  beforeEach(() => {
-    initDatabase(':memory:')
+  beforeEach(async () => {
+    await initDatabase(':memory:')
   })
 
   afterEach(() => {

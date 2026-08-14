@@ -41,8 +41,8 @@ const FINDING_ANCHOR = {
 describe('anchored notes', () => {
   let caseId: string
 
-  beforeEach(() => {
-    initDatabase(':memory:')
+  beforeEach(async () => {
+    await initDatabase(':memory:')
     caseId = createCase({ name: 'Anchors', description: '' }).id
   })
 

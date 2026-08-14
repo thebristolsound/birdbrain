@@ -101,10 +101,12 @@ When a new version needs to upgrade the case database, Birdbrain copies the
 database first — into a `db-snapshots` folder next to it in your user data
 directory — and only then applies the upgrade. If that copy cannot be made, the
 upgrade does not run at all: you get an error saying so, and your data is left
-exactly as it was. The last few snapshots are kept — at least one for every
-schema version Birdbrain has snapshotted, so a repeatedly failing upgrade cannot
-push the original out — and you can put one back from **Settings → Database →
-Utilities → Pre-Migration Snapshots**.
+exactly as it was. Three snapshots are kept, spread across the schema versions
+present rather than taken newest-first, so a run of failed upgrades does not
+immediately fill the folder with copies of the same half-migrated state. Older
+ones are pruned, so a snapshot you want to keep should be copied out of that
+folder. You can put one back from **Settings → Database → Utilities →
+Pre-Migration Snapshots**.
 
 Restoring a snapshot brings back the records that copy holds. Two things it does
 not do, both worth knowing before you click it:

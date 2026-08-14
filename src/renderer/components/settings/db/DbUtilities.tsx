@@ -422,17 +422,13 @@ export function DbUtilities() {
                     title: 'Restore Snapshot',
                     message:
                       `This will replace your current database with the copy taken before the ` +
-                      `upgrade to schema v${snapshot.toVersion}. It cannot be undone: the current ` +
-                      `database is overwritten, and Birdbrain does not keep a copy of it. If you ` +
-                      `might want it back, cancel and use Backup Database above first. ` +
-                      `Everything recorded since the snapshot disappears from the app; capture ` +
-                      `files stay on disk, no longer referenced by anything. Birdbrain re-applies ` +
-                      `the schema upgrade to the restored copy as it re-opens it, so you end up ` +
-                      `on the current schema holding the older records — not back on schema ` +
-                      `v${snapshot.fromVersion}. If the restore fails, treat the result as ` +
-                      `unknown: a restore error does not prove the previous database is still ` +
-                      `intact, and case data can be left inconsistent — check the case before ` +
-                      `carrying on, or restore a backup.`,
+                      `upgrade to schema v${snapshot.toVersion}. Everything recorded since then ` +
+                      `disappears from the app; capture files stay on disk, no longer referenced ` +
+                      `by anything. Birdbrain re-applies the schema upgrade to the restored copy ` +
+                      `as it re-opens it, so you end up on the current schema holding the older ` +
+                      `records — not back on schema v${snapshot.fromVersion}. The database being ` +
+                      `replaced is kept beside it as birdbrain.db.pre-restore — one generation ` +
+                      `only, which the next restore replaces.`,
                     action: () => handleRestoreSnapshot(snapshot.fileName)
                   })
                 }

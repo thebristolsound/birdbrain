@@ -106,8 +106,8 @@ export function dbAdminMutationOptions(queryClient: QueryClient) {
     //
     // onSettled, not onSuccess: a restore reports failure from several points,
     // including after the file has been replaced and re-opened. Leaving the
-    // caches alone on failure keeps the case list from before the restore on
-    // screen over a database that may no longer hold it.
+    // caches alone on failure keeps the pre-restore case list on screen over a
+    // database that may no longer hold it.
     restoreSnapshot: {
       mutationFn: (fileName: string) => window.birdbrain.db.restoreSnapshot({ fileName }),
       onSettled: invalidateAll,

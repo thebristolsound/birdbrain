@@ -371,7 +371,7 @@ describe('pre-migration snapshots', () => {
     expect(listSnapshots(dbPath).map((s) => s.fromVersion)).toEqual([24, 24])
   })
 
-  it('keeps no copy of the database it replaced', async () => {
+  it('keeps the database it replaced, so a mistaken restore is not the end of it', async () => {
     seedLegacyDb(dbPath)
     await initDatabase(dbPath)
     getDb()
@@ -385,11 +385,17 @@ describe('pre-migration snapshots', () => {
 
     restoreSnapshotFile(dbPath, snapshot.fileName)
 
-    // The restore is irreversible and the confirm dialog says so. Nothing is
-    // left beside the database under another name: earlier rounds of #413 kept
-    // one, and the promise that came with it was wrong in five different
-    // states. The retained snapshots are the safety net instead.
-    expect(readdirSync(dir).sort()).toEqual(['birdbrain.db', 'db-snapshots'])
+    // Not an in-app undo — but the capture recorded after the snapshot is
+    // still on disk and still readable, rather than overwritten.
+    const aside = new Database(`${dbPath}.pre-restore`, { readonly: true })
+    try {
+      expect(aside.pragma('user_version', { simple: true })).toBe(LATEST_SCHEMA_VERSION)
+      expect(aside.prepare(`SELECT title FROM captures WHERE id = 'cap2'`).get()).toEqual({
+        title: 'Beta'
+      })
+    } finally {
+      aside.close()
+    }
   })
 
   it('refuses to restore a snapshot that is not a readable database', async () => {
@@ -403,14 +409,15 @@ describe('pre-migration snapshots', () => {
 
     expect(() => restoreSnapshotFile(dbPath, snapshot.fileName)).toThrow()
 
-    // The live database is untouched — the check runs before anything is
-    // written, which is the only reason an unreadable snapshot is survivable.
+    // The live database is untouched — the check runs before anything moves.
     const raw = new Database(dbPath, { readonly: true })
     try {
       expect(raw.pragma('user_version', { simple: true })).toBe(LATEST_SCHEMA_VERSION)
     } finally {
       raw.close()
     }
+    expect(existsSync(`${dbPath}.pre-restore`)).toBe(false)
+    expect(existsSync(`${dbPath}.partial`)).toBe(false)
   })
 
   it('refuses to restore a filename that is not a snapshot in the directory', async () => {

@@ -903,6 +903,14 @@ export function registerIpcHandlers(deps: {
       logger.error('db', 'db.snapshot_restore_failed', undefined, err)
     }
 
+    if (restoreErr instanceof dbSnapshots.RestoreRollbackError) {
+      // The one failure that must not be followed by a re-open: there is no
+      // file at `dbPath`, so opening it would create an empty database and
+      // migrate it. The operator's data is in the .pre-restore file this
+      // message names, and a fresh empty database would hide that.
+      throw new IpcFailure(restoreErr.message, 'DB_RESTORE_ROLLBACK_FAILED')
+    }
+
     try {
       // Re-open either way — a half-done restore must not leave the running app
       // without a database. A snapshot older than the current schema migrates
@@ -919,7 +927,17 @@ export function registerIpcHandlers(deps: {
       )
     }
 
-    if (restoreErr) throw restoreErr
+    // Reported as a fixed message rather than the underlying one: the failures
+    // here come from copyFileSync/renameSync and carry absolute paths, and
+    // `handle()` passes anything that is not an IpcFailure straight through to
+    // the renderer. The cause is in the log line above, where it is useful and
+    // stays in the main process.
+    if (restoreErr) {
+      throw new IpcFailure(
+        'The snapshot could not be restored. See the log for details.',
+        'DB_RESTORE_FAILED'
+      )
+    }
 
     return { restored: true }
   })

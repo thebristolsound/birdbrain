@@ -184,6 +184,56 @@ evidence about how the pipeline fails, not about whether this instance is patche
 The general form — **a verify loop that is a strict subset of CI produces confident
 false negatives** — should be checked against any future gate CI adds.
 
+**7. The review stages are unordered with respect to each other, and the expensive one
+runs first.** Recorded 2026-08-14 from PR #423's six rounds, timeline reconstructed from the
+API.
+
+The routine's stages — CI, CodeRabbit, and the reviewer pre-pass — all fire off the same push
+and none waits for another. Three consequences, each observed:
+
+- **The pre-pass returned verdicts on commits CI had already rejected, twice.** CI failed on
+  `dffa233` at 23:30:52; the pre-pass posted at 23:34:49. CI failed on `6118c58` at 00:00:15;
+  the pre-pass posted at 00:08:53. Each pass costs 10–25 minutes and re-runs the whole test
+  suite. Nothing in the routine read the check, so the actual failure — the diff-coverage gate
+  of finding 6 — went unnoticed for hours while three rounds argued about code. Two of six
+  pre-passes were avoidable.
+- **A pre-pass reviewed a stale head.** CodeRabbit reviewed `c7fdc56` at 03:52:26, a `main`
+  merge landed at 03:53:18 (`55ebe53`), and the pre-pass posted at 04:02:43 still naming
+  `c7fdc56` — nine minutes after that sha stopped being head. The verdict is filed against a
+  superseded commit, and the reviewer's `git log origin/main..HEAD` completion controls were
+  computed against a different HEAD than the one they were reported for. Benign only because
+  the merge ran main-into-branch. ADR-0007's hygiene check keys off the *final* pre-pass
+  verdict, which is ambiguous when its sha is not head.
+- **CodeRabbit re-reviews bursts of inline replies.** Six inline replies posted at 23:57:33–38 produced
+  seven CodeRabbit reviews in the next 34 seconds, reacting to the replies rather than to code;
+  some became findings the following round had to disposition. The same PR tripped CodeRabbit's
+  "Review rate limited".
+
+The fix is an ordering, now written into `.claude/skills/dispatch/SKILL.md` §4: wait for CI,
+send a failed check to a cheap mechanical fix round with no pre-pass, run the pre-pass only on
+green, pin the sha at the start and re-check it before posting, and batch inline replies after
+the report. None of this makes the reviewer better; it stops the routine spending its expensive
+pre-pass on trees that are about to change.
+
+**8. Pre-pass latency rises as a change accretes, and that curve is a signal.** Push to
+pre-pass across #423's rounds: 12, 14, 21, 21, 31 minutes. The reviewer re-runs the full
+six-command loop each time and `dbSnapshots.ts` grew 503 → 563 lines over the same span. The
+only thing that reversed the curve was round six deleting the construct. Read alongside finding
+6's convergence problem: a review loop whose per-round cost is climbing while its defect count
+holds steady is not converging, and the routine had no way to notice that until a human did.
+
+**9. CodeRabbit had learned things the pipeline's own agents did not know.** An export of its
+learnings for this repo shows 36 entries carrying 657 uses, with three accounting for 79%. The
+most-used — 208 uses — is *"a pre-existing defect is in scope when a pull request adds or
+changes documentation or comments that overclaim the behavior of that defect"*, which is the
+exact class #423 produced a finding of in **all five** of its review rounds; the reviewer was
+catching it by instinct, not by rule. The second, at 201 uses, restates issue **#337** — that
+`tests/` is typechecked by nothing — which the review system has routed around 201 times rather
+than the gap being closed. Both are now in `.claude/agents/birdbrain-reviewer.md` and
+`CLAUDE.md` respectively. The general lesson is not about CodeRabbit: **a third-party reviewer
+accumulating repo knowledge that never reaches the first-party agents is a pipeline defect**,
+and nothing in the routine was reading it.
+
 ## What #310 must decide
 
 1. **What a review round is.** Without that, the bar cannot be evaluated. On

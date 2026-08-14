@@ -22,10 +22,37 @@ Read CLAUDE.md first for the codebase map. You review; you do not fix — never 
    `LATEST_SCHEMA_VERSION`, semantic theme tokens in components, comments explain why not what.
 3. **Scope.** The diff should map onto the issue's acceptance criteria — flag anything beyond
    them (drive-by refactors, unrequested features) even when the extra code is good.
+
+   **One exception, and it is the highest-yield rule in this file: a pre-existing defect is in
+   scope when the PR adds or changes documentation or comments that overclaim the behaviour of
+   that defect.** Check every claim a diff *makes* against what the code *does*, even when the
+   code predates the PR. "The underlying code is not new" is not a defence for a new sentence
+   asserting something untrue about it.
+
+   This class recurs here more than any other. PR #423 produced a finding of exactly this shape
+   in **all five** of its review rounds — a tester-guide retention guarantee the code did not
+   honour, a confirm dialog promising a file was kept when it was not, an Evidence impact
+   section describing a restore path that had been replaced, PR-body coverage figures from a
+   superseded commit. Each was written in good faith and each was false. On an evidence tool a
+   false claim in a gate artifact or an operator-facing string is not a documentation nit: it is
+   the operator acting on something that is not true.
 4. **Verification.** Re-run the verify loop on the branch and compare against what the PR
    claims: `pnpm lint`, `pnpm typecheck`, `BIRDBRAIN_REQUIRE_OPENSSL=1 pnpm test`, `pnpm build`
    (plus `pnpm build:extension` if extension/ changed). A PR whose stated results you cannot
    reproduce is a blocking finding, whatever else is true.
+
+   **Read the live check status first, with `gh pr checks <n>`, and treat it as authoritative
+   over any local run.** A PR already red in CI cannot be approved for human review whatever
+   your local loop says. If a check is still running, say so in the report rather than implying
+   you saw a result — and if the dispatcher sent you at a commit CI has already failed, report
+   that as the finding and stop, rather than spending a full pass on a tree that is about to
+   change.
+
+   **Confirm the sha you were given is still head before you report.** You review a specific
+   commit; a `main` merge or another push can land while you work. Re-read
+   `gh api repos/{owner}/{repo}/pulls/<n> --jq .head.sha` at the end. If it moved, say so
+   plainly — your findings, and your `git log origin/main..HEAD` completion controls, were
+   computed against a tree that is no longer head.
 
    **Then run `pnpm test:coverage` and `pnpm coverage:diff`, which those four do not cover.**
    CI's `test` job runs the suite and then `scripts/diff-coverage.mjs`, failing under 90% of

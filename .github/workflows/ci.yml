@@ -142,7 +142,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential python3 \
             libgtk-3-0 libnotify-dev libnss3 libxss1 \
-            libasound2t64 libxtst6 xauth libgbm1 libsecret-1-0
+            libasound2t64 libxtst6 xauth libgbm1 libsecret-1-0 \
+            dbus-x11 gnome-keyring
 
       - run: pnpm install
 
@@ -151,6 +152,26 @@ jobs:
 
       - name: Build app
         run: pnpm build
+
+      # initSigningKey() runs in whenReady(), before createWindow() (#414). With no
+      # OS credential store it falls back to a blocking dialog.showMessageBoxSync()
+      # acknowledgement prompt that nothing on a headless runner can click, wedging
+      # startup before the first window ever opens — every e2e test then times out
+      # identically on electronApplication.firstWindow(). A real (if freshly minted)
+      # login keyring makes safeStorage.isEncryptionAvailable() report true so the
+      # gate takes its normal non-blocking path, same as a real Linux desktop.
+      # gnome-keyring-daemon --unlock only unlocks keyrings that already exist;
+      # --login is the mode that creates the default "login" keyring on first use,
+      # same as pam_gnome_keyring does at a real login. XDG_CURRENT_DESKTOP=GNOME
+      # is what makes Chromium's os_crypt backend probe the libsecret store at all
+      # instead of silently defaulting to "unavailable" on an undetected desktop.
+      - name: Start D-Bus session and unlock a keyring
+        run: |
+          eval "$(dbus-launch --sh-syntax)"
+          eval "$(printf '\n' | gnome-keyring-daemon --login --components=secrets,pkcs11,ssh)"
+          echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS" >> "$GITHUB_ENV"
+          echo "GNOME_KEYRING_CONTROL=$GNOME_KEYRING_CONTROL" >> "$GITHUB_ENV"
+          echo "XDG_CURRENT_DESKTOP=GNOME" >> "$GITHUB_ENV"
 
       - name: Run E2E tests
         run: xvfb-run --auto-servernum npx playwright test

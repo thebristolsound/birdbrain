@@ -235,7 +235,7 @@ jobs:
           PROBE
           # Same reason for the redirect: a file cannot be held open by a stray child.
           status=0
-          timeout 120 xvfb-run --auto-servernum npx electron "$RUNNER_TEMP/safe-storage-probe.js" \
+          timeout 120 xvfb-run --auto-servernum npx electron --no-sandbox "$RUNNER_TEMP/safe-storage-probe.js" \
             > "$RUNNER_TEMP/safe-storage-probe.log" 2>&1 || status=$?
           cat "$RUNNER_TEMP/safe-storage-probe.log"
           exit "$status"

@@ -33,7 +33,7 @@ export const test = base.extend<ElectronFixtures>({
     // same code path electron-builder uses in production (asar / asarUnpack / preload).
     // --user-data-dir gives each test a fresh Chromium profile (localStorage, IndexedDB).
     const app = await _electron.launch({
-      args: ['.', `--user-data-dir=${tempDir}`],
+      args: ['.', `--user-data-dir=${tempDir}`, '--no-sandbox'],
       cwd: join(__dirname, '../..'),
       env: {
         ...process.env,

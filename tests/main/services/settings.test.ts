@@ -1,14 +1,21 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, rmSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { writeFileSync } from 'fs'
+
+const { loggerWarn } = vi.hoisted(() => ({ loggerWarn: vi.fn() }))
+vi.mock('@main/services/logger', () => ({
+  logger: { warn: loggerWarn, error: vi.fn(), info: vi.fn() }
+}))
+
 import {
   setSettingsPath,
   getSettings,
   updateSettings,
   resetSettings,
-  getDefaultSettings
+  getDefaultSettings,
+  getOpenRouterKeyProtectionState
 } from '@main/services/settings'
 import { DEFAULT_TSA_URL } from '@shared/constants'
 import { DEFAULT_UI_DENSITY, UI_DENSITIES, type UiDensity } from '@shared/types'
@@ -21,6 +28,7 @@ describe('settings', () => {
     tempDir = mkdtempSync(join(tmpdir(), 'bb-settings-'))
     settingsFile = join(tempDir, 'settings.json')
     setSettingsPath(settingsFile)
+    loggerWarn.mockClear()
   })
 
   afterEach(() => {
@@ -209,6 +217,53 @@ describe('settings', () => {
     const settings = getSettings()
     expect(settings.density).toBe('compact')
     expect(settings.operatorName).toBe('')
+  })
+
+  it('reports not-set when no OpenRouter key has ever been saved', () => {
+    expect(getOpenRouterKeyProtectionState()).toBe('not-set')
+  })
+
+  it('reports not-set when the settings file exists but predates the key', () => {
+    // Distinct from the "never saved" case above: the file exists (so the
+    // early not-set return is skipped) but has no openRouterApiKey field at
+    // all — an upgrade path, same as the density/theme "written before X
+    // existed" cases elsewhere in this file.
+    writeFileSync(settingsFile, JSON.stringify({ theme: 'dark' }), 'utf-8')
+    expect(getOpenRouterKeyProtectionState()).toBe('not-set')
+  })
+
+  it('reports plaintext when safeStorage is unavailable (tests, headless Linux)', () => {
+    // Same environment as the signing key: ELECTRON_RUN_AS_NODE has no
+    // encryption backend, so encryptApiKey falls through to the raw value.
+    updateSettings({ openRouterApiKey: 'sk-test-123' })
+    expect(getOpenRouterKeyProtectionState()).toBe('plaintext')
+  })
+
+  it('reports protected when the stored value carries the enc: prefix', () => {
+    writeFileSync(
+      settingsFile,
+      JSON.stringify({ openRouterApiKey: 'enc:' + Buffer.from('opaque').toString('base64') }),
+      'utf-8'
+    )
+    expect(getOpenRouterKeyProtectionState()).toBe('protected')
+  })
+
+  it('reports not-set for a corrupted settings file rather than throwing', () => {
+    writeFileSync(settingsFile, '{invalid json', 'utf-8')
+    expect(getOpenRouterKeyProtectionState()).toBe('not-set')
+  })
+
+  it('logs a warning for a corrupted settings file, distinct from key-never-saved', () => {
+    // Both report 'not-set', but only the corrupted-file case is an actionable
+    // failure — assert the log signal that tells the two apart.
+    writeFileSync(settingsFile, '{invalid json', 'utf-8')
+    getOpenRouterKeyProtectionState()
+    expect(loggerWarn).toHaveBeenCalledWith('settings', 'settings.key_protection_state_unreadable')
+  })
+
+  it('does not log a warning when no key has ever been saved', () => {
+    getOpenRouterKeyProtectionState()
+    expect(loggerWarn).not.toHaveBeenCalled()
   })
 
   it('reads a settings file written before density existed', () => {

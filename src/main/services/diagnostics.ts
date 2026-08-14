@@ -3,6 +3,8 @@ import { readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { getDbDiagnostics } from '@main/services/db/diagnosticsRepo'
 import { getStorageRoot } from '@main/services/storage'
+import { isSigningKeyProtected } from '@main/services/signingKey'
+import { getOpenRouterKeyProtectionState } from '@main/services/settings'
 import type {
   DiagnosticsSlowOp,
   DiagnosticsSnapshot,
@@ -37,6 +39,7 @@ export interface DiagnosticsEnv {
   uptimeSeconds: number
   storage: DiagnosticsSnapshot['storage']
   data: DiagnosticsSnapshot['data']
+  keyProtection: DiagnosticsSnapshot['keyProtection']
 }
 
 export interface DiagnosticsServiceDeps {
@@ -115,7 +118,8 @@ export function createDiagnosticsService(deps: DiagnosticsServiceDeps = {}): Dia
         },
         storage: env.storage,
         data: env.data,
-        slowOps: [...slowOps].reverse()
+        slowOps: [...slowOps].reverse(),
+        keyProtection: env.keyProtection
       }
     }
   }
@@ -199,6 +203,10 @@ function collectEnv(): DiagnosticsEnv {
       notes: db.notes,
       selectors: db.selectors,
       extractedData: db.extractedData
+    },
+    keyProtection: {
+      signingKey: isSigningKeyProtected(),
+      openRouterKey: getOpenRouterKeyProtectionState()
     }
   }
 }

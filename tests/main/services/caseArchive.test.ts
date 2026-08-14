@@ -110,7 +110,7 @@ describe('caseArchive export', () => {
     resetInstallationId()
     initInstallationId(tempDir)
     resetSigningKey()
-    initSigningKey(tempDir)
+    initSigningKey(tempDir, { confirmUnprotectedKey: () => true })
     initSettings(tempDir)
     updateSettings({ operatorName: 'Test Operator', operatorRole: '', operatorOrganization: '' })
 
@@ -308,7 +308,7 @@ describe('caseArchive inspect', () => {
     resetInstallationId()
     initInstallationId(tempDir)
     resetSigningKey()
-    initSigningKey(tempDir)
+    initSigningKey(tempDir, { confirmUnprotectedKey: () => true })
     initSettings(tempDir)
     updateSettings({ operatorName: 'Test Operator', operatorRole: '', operatorOrganization: '' })
 
@@ -486,7 +486,7 @@ describe('caseArchive import', () => {
     resetInstallationId()
     initInstallationId(tempDir)
     resetSigningKey()
-    initSigningKey(tempDir)
+    initSigningKey(tempDir, { confirmUnprotectedKey: () => true })
     initSettings(tempDir)
     updateSettings({ operatorName: 'Test Operator', operatorRole: '', operatorOrganization: '' })
 

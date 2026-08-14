@@ -151,7 +151,11 @@ const CODE_LABELS: Record<LogCode, string> = {
   'db.snapshot_restore_failed': "Couldn't restore the database snapshot",
   'db.snapshot_restore_left_no_database':
     "Couldn't restore the database snapshot, and the database file is no longer readable",
-  'db.reopen_failed': "Couldn't re-open the database — restart Birdbrain"
+  'db.reopen_failed': "Couldn't re-open the database — restart Birdbrain",
+  'signingKey.unprotected_key_acknowledged':
+    "This installation's signing key is not protected at rest — see Settings → Diagnostics",
+  'signingKey.generation_declined': 'Birdbrain quit — the signing key warning was not acknowledged',
+  'settings.key_protection_state_unreadable': "Couldn't read saved key-protection state"
 }
 
 export function labelForCode(code: LogCode): string {

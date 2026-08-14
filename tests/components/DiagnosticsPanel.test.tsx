@@ -86,7 +86,8 @@ const snapshot: DiagnosticsSnapshot = {
     selectors: 0,
     extractedData: 0
   },
-  slowOps: []
+  slowOps: [],
+  keyProtection: { signingKey: 'protected', openRouterKey: 'not-set' }
 }
 
 let log: ReturnType<typeof vi.fn>
@@ -117,6 +118,27 @@ describe('DiagnosticsPanel storage folder action', () => {
 
   afterEach(() => {
     cleanup()
+  })
+
+  it('shows the signing key as protected from the snapshot', async () => {
+    renderPanel()
+    expect(await screen.findByText('Protected')).toBeDefined()
+  })
+
+  it('flags an unprotected signing key and explains why', async () => {
+    fakeBridge({
+      diagnostics: {
+        get: vi.fn().mockResolvedValue({
+          ...snapshot,
+          keyProtection: { signingKey: 'plaintext', openRouterKey: 'not-set' }
+        }),
+        log
+      },
+      shell: { openPath }
+    })
+    renderPanel()
+    expect(await screen.findByText('Unprotected')).toBeDefined()
+    expect(await screen.findByText(/was written to disk unprotected/)).toBeDefined()
   })
 
   it('opens the storage folder without complaining when the shell accepts it', async () => {

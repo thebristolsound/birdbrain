@@ -194,12 +194,18 @@ describe('dbAdminMutationOptions', () => {
     const data = await opts.mutationFn('pre-migration-v26-to-v27-2026-08-01T09-00-00-000Z.db')
     opts.onSettled?.(data, null, '', undefined as never)
 
+    // The wrapping is the only thing this mutationFn adds over a direct bridge
+    // call, and the handler reads `params.fileName` — a bare string or a wrong
+    // key fails at runtime, not here, unless it is asserted.
+    expect(api.restoreSnapshot).toHaveBeenCalledWith({
+      fileName: 'pre-migration-v26-to-v27-2026-08-01T09-00-00-000Z.db'
+    })
     expect(spy).toHaveBeenCalledWith()
 
     // A restore reports failure from several points, some of them after the
     // file has been replaced and re-opened. Invalidating only on success would
-    // leave the pre-restore case list on screen over a database that may no
-    // longer hold it.
+    // leave the case list from before the restore on screen over a database
+    // that may no longer hold it.
     spy.mockClear()
     expect(opts.onSuccess).toBeUndefined()
     opts.onSettled?.(undefined, new Error('restore failed'), '', undefined as never)

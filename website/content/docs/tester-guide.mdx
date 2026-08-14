@@ -108,8 +108,19 @@ ones are pruned, so a snapshot you want to keep should be copied out of that
 folder. You can put one back from **Settings → Database → Utilities →
 Pre-Migration Snapshots**.
 
-Restoring a snapshot brings back the records that copy holds. Two things it does
-not do, both worth knowing before you click it:
+**Restoring a snapshot cannot be undone.** Your current database is overwritten
+by the copy, and Birdbrain does not keep it anywhere — there is no undo button
+and no aside file to rename back. If you might want the current state again,
+take a copy first with **Settings → Database → Utilities → Backup Database**,
+which writes the database wherever you choose, and export anything recorded
+since the snapshot that matters.
+
+**A failed restore is not a guarantee either.** If the restore fails, treat the
+result as unknown: a restore error does not prove the previous database is still
+intact, and case data can be left inconsistent — check the case before carrying
+on, or restore a backup.
+
+Two more things a restore does not do, both worth knowing before you click it:
 
 - **It does not take you back to the old schema.** Birdbrain re-opens the
   restored copy and applies the same upgrade to it again, so you end up on the
@@ -118,11 +129,6 @@ not do, both worth knowing before you click it:
 - **It only replaces the database.** Capture files, screenshots and MHTML stay on
   disk. Anything recorded after the snapshot disappears from the app while its
   files remain, unreferenced.
-
-Anything recorded since the snapshot is lost from the app, so export first if it
-matters. The database being replaced is not deleted: it is kept next to it as
-`birdbrain.db.pre-restore` (one generation, replaced by the next restore), which
-is what we would ask you for if a restore turns out to have been a mistake.
 
 ## Known limitations
 

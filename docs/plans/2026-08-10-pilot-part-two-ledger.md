@@ -204,16 +204,16 @@ and none waits for another. Three consequences, each observed:
   computed against a different HEAD than the one they were reported for. Benign only because
   the merge ran main-into-branch. ADR-0007's hygiene check keys off the *final* pre-pass
   verdict, which is ambiguous when its sha is not head.
-- **CodeRabbit re-reviews reply storms.** Six inline replies posted at 23:57:33–38 produced
+- **CodeRabbit re-reviews bursts of inline replies.** Six inline replies posted at 23:57:33–38 produced
   seven CodeRabbit reviews in the next 34 seconds, reacting to the replies rather than to code;
   some became findings the following round had to disposition. The same PR tripped CodeRabbit's
   "Review rate limited".
 
 The fix is an ordering, now written into `.claude/skills/dispatch/SKILL.md` §4: wait for CI,
-send a red check to a cheap mechanical fix round with no pre-pass, run the pre-pass only on
+send a failed check to a cheap mechanical fix round with no pre-pass, run the pre-pass only on
 green, pin the sha at the start and re-check it before posting, and batch inline replies after
-the report. None of this makes the reviewer better; it stops the routine spending its best
-instrument on trees that are about to change.
+the report. None of this makes the reviewer better; it stops the routine spending its expensive
+pre-pass on trees that are about to change.
 
 **8. Pre-pass latency rises as a change accretes, and that curve is a signal.** Push to
 pre-pass across #423's rounds: 12, 14, 21, 21, 31 minutes. The reviewer re-runs the full

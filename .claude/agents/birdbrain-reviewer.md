@@ -41,6 +41,19 @@ Read CLAUDE.md first for the codebase map. You review; you do not fix — never 
    (plus `pnpm build:extension` if extension/ changed). A PR whose stated results you cannot
    reproduce is a blocking finding, whatever else is true.
 
+   **Read the live check status first, with `gh pr checks <n>`, and treat it as authoritative
+   over any local run.** A PR already red in CI cannot be approved for human review whatever
+   your local loop says. If a check is still running, say so in the report rather than implying
+   you saw a result — and if the dispatcher sent you at a commit CI has already failed, report
+   that as the finding and stop, rather than spending a full pass on a tree that is about to
+   change.
+
+   **Confirm the sha you were given is still head before you report.** You review a specific
+   commit; a `main` merge or another push can land while you work. Re-read
+   `gh api repos/{owner}/{repo}/pulls/<n> --jq .head.sha` at the end. If it moved, say so
+   plainly — your findings, and your `git log origin/main..HEAD` completion controls, were
+   computed against a tree that is no longer head.
+
    **Then run `pnpm test:coverage` and `pnpm coverage:diff`, which those four do not cover.**
    CI's `test` job runs the suite and then `scripts/diff-coverage.mjs`, failing under 90% of
    changed lines covered; `pnpm test` never evaluates that threshold because it omits

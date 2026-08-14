@@ -244,10 +244,59 @@ vanished, which is the failure ADR-0005's give-up path exists to prevent. Then r
 found and stop: the slot stays vacant
 until the next trigger, and you do not dispatch a second issue in the same cycle.
 
-## 4. Reviewer pre-pass — after every agent push
+## 4. Reviewer pre-pass — after every agent push, and after CI reports
 
 Run `birdbrain-reviewer` on the PR after you open it and after every feedback-response push.
 Skip only if the current head commit already has a pre-pass comment.
+
+### Wait for CI first — the pre-pass is the expensive instrument
+
+**Do not start the pre-pass while CI is still running on the head commit.** Poll
+`gh pr checks <n>` until every check has a conclusion, then branch:
+
+- **CI red** → do **not** run the pre-pass. Hand the failure straight to
+  `birdbrain-implementer` as a cheap, mechanical fix round: the PR number, the failing job, and
+  the instruction to read `gh run view --job <id> --log-failed` itself. Re-poll after its push.
+  A red check means the diff is about to change, so an adversarial pass over it is spent on a
+  tree that will not survive.
+- **CI green** → run the pre-pass.
+
+This ordering is not a micro-optimisation. On PR #423 it went wrong twice in one night: CI
+failed on `dffa233` at 23:30:52 and the pre-pass posted a verdict at 23:34:49; CI failed on
+`6118c58` at 00:00:15 and the pre-pass posted at 00:08:53. Both times the reviewer ran the full
+loop — including the whole test suite — and returned findings on a commit CI had already
+rejected, while the actual failure (a diff-coverage gate, see `CLAUDE.md`) went unnoticed for
+hours because nothing in the routine read the check. Two of that PR's six pre-passes were
+avoidable.
+
+### Pin the sha, and re-check it before posting
+
+Capture the head sha **before** spawning the reviewer, pass that sha to it explicitly, and
+**re-read head immediately before posting the report.** If it moved, discard the verdict and
+re-run against the new head; do not post a verdict naming a sha that is no longer head.
+
+Also on #423: CodeRabbit reviewed `c7fdc56` at 03:52:26, a `main` merge landed at 03:53:18
+(`55ebe53`), and the pre-pass posted at 04:02:43 still naming `c7fdc56` — nine minutes after
+that sha stopped being head. It had reviewed a tree that no longer existed, and its completion
+controls (`git log origin/main..HEAD`) were computed against a different HEAD than the one it
+named. Harmless there because the merge was main-into-branch, but nothing guaranteed that, and
+ADR-0007's hygiene check keys off the *final* pre-pass verdict — which is ambiguous when the
+sha it names is not head.
+
+### Do not re-trigger CodeRabbit with a reply storm
+
+Post the implementer's inline replies **after** the pre-pass report, in one batch, and expect
+CodeRabbit to react to them. On #423 six inline replies at 23:57:33–38 produced seven
+CodeRabbit reviews in the following 34 seconds — reacting to the replies, not to code — and
+some became findings the next round had to disposition. That PR also tripped CodeRabbit's
+"Review rate limited". Batching costs nothing and keeps the next round's surface honest.
+
+### Watch the latency curve
+
+Push-to-pre-pass on #423 ran 12 → 14 → 21 → 21 → 31 minutes, because the reviewer re-runs the
+full six-command loop each round and the diff kept growing. A rising curve is a signal, not
+just a cost: it means the change is accreting rather than converging. Read it alongside the
+convergence check below.
 
 Post the reviewer's report as a **PR comment** via the write path (self-reviews are impossible
 on own-account PRs, so a formal review is not an option), formatted:

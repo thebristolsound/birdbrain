@@ -1,5 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import Database from 'better-sqlite3'
@@ -147,6 +155,39 @@ describe('snapshot restore failure paths', () => {
     // One generation: the database this restore replaced, not the one before it.
     expect(markerOf(aside)).toBe('live')
     expect(readdirSync(dir).filter((f) => f.endsWith('.superseded'))).toEqual([])
+  })
+
+  it('puts the database back even when a sidecar cannot be', () => {
+    // A crash leaves -wal/-shm beside the database, and the -shm is the
+    // memory-mapped one — the likeliest of the three to be held open by an
+    // indexer or scanner. Here the swap fails and so does the rollback's own
+    // -shm rename.
+    writeDb(aside, 'older', 27)
+    writeFileSync(`${dbPath}-wal`, 'wal')
+    writeFileSync(`${dbPath}-shm`, 'shm')
+    fsHooks.failOn = (op, target) =>
+      op === 'renameSync' && (target === staged || target === `${aside}-shm`)
+
+    // An ordinary restore failure, not the rollback failure: a lock on the
+    // file that matters least must not decide whether the database comes back.
+    expect(() => restoreSnapshotFile(dbPath, snapshotName)).toThrow(
+      'injected renameSync failure'
+    )
+
+    // Read before anything opens a database: opening one creates -wal/-shm
+    // beside it, which would mask where the rollback left them.
+    // The -shm is stranded, which costs nothing — SQLite rebuilds it from the
+    // WAL on the next open — while the two that matter are back.
+    expect(existsSync(`${dbPath}-shm`)).toBe(false)
+    expect(existsSync(`${aside}-shm`)).toBe(true)
+    expect(readFileSync(`${dbPath}-wal`, 'utf8')).toBe('wal')
+    expect(existsSync(staged)).toBe(false)
+    expect(readdirSync(dir).filter((f) => f.endsWith('.superseded'))).toEqual([])
+
+    expect(markerOf(dbPath)).toBe('live')
+    // The earlier generation came back too: it is undone separately, so the
+    // sidecar that could not be moved does not cost the operator that copy.
+    expect(markerOf(aside)).toBe('older')
   })
 
   it('keeps the earlier generation when there is no live database to replace', () => {

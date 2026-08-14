@@ -44,8 +44,24 @@ const SUPERSEDED_SUFFIX = '.superseded'
 
 // A SQLite database is the file plus whatever WAL sidecars exist beside it.
 // Every move in this module walks all three, in this order: the database
-// first, so a rollback that only gets part-way still has the file itself.
+// first, so a move that only gets part-way has moved the file itself.
 const DB_FILE_SUFFIXES = ['', '-wal', '-shm'] as const
+
+type DbFileSuffix = (typeof DB_FILE_SUFFIXES)[number]
+
+// Undoing those moves walks a different order, and deliberately not the
+// reverse of the one above:
+//
+// - the -wal goes back before the database, because a database put back
+//   without the WAL it had loses whatever the WAL had not yet checkpointed and
+//   reports nothing, while a database left aside is caught by the
+//   RestoreRollbackError below and named to the operator;
+// - the -shm goes back last, because it is the memory-mapped one and so the
+//   likeliest of the three to be held open — and the only one that is
+//   disposable, since SQLite rebuilds it from the WAL. Restoring it first (as
+//   a plain LIFO undo does) lets a lock on the file that matters least stop
+//   the database itself from coming back at all.
+const ROLLBACK_SUFFIXES = ['-wal', '', '-shm'] as const
 
 // `<from>` is the schema the snapshot holds and `<to>` the one the app was
 // about to write, so the name alone says which upgrade it belongs to. The
@@ -388,8 +404,8 @@ export function restoreSnapshotFile(dbPath: string, fileName: string): void {
     throw err
   }
 
-  const superseded: Array<[from: string, to: string]> = []
-  const moved: Array<[from: string, to: string]> = []
+  const superseded: DbFileSuffix[] = []
+  const moved: DbFileSuffix[] = []
   try {
     // One generation only, but the previous one is moved rather than deleted:
     // deleting it here would spend it even on a restore that fails and rolls
@@ -397,11 +413,10 @@ export function restoreSnapshotFile(dbPath: string, fileName: string): void {
     // the drop go first, or two generations would interleave.
     for (const suffix of DB_FILE_SUFFIXES) {
       const from = `${aside}${suffix}`
-      const to = `${from}${SUPERSEDED_SUFFIX}`
-      rmSync(to, { force: true })
+      rmSync(`${from}${SUPERSEDED_SUFFIX}`, { force: true })
       if (!existsSync(from)) continue
-      renameSync(from, to)
-      superseded.push([from, to])
+      renameSync(from, `${from}${SUPERSEDED_SUFFIX}`)
+      superseded.push(suffix)
     }
 
     // A clean close removes -wal/-shm, but a crash leaves them behind, and a
@@ -412,7 +427,7 @@ export function restoreSnapshotFile(dbPath: string, fileName: string): void {
       const from = `${dbPath}${suffix}`
       if (!existsSync(from)) continue
       renameSync(from, `${aside}${suffix}`)
-      moved.push([from, `${aside}${suffix}`])
+      moved.push(suffix)
     }
     renameSync(staged, dbPath)
   } catch (err) {
@@ -420,20 +435,39 @@ export function restoreSnapshotFile(dbPath: string, fileName: string): void {
     // the rename leaves no file at `dbPath` at all, and the re-open would
     // create an empty database and migrate it — an empty case list reads as
     // "the evidence is gone" rather than as a failed restore.
+    //
+    // Three separate attempts, not one: the two undos are independent, and a
+    // sidecar that cannot be moved must not also cost the operator the earlier
+    // generation that the second loop is putting back. Each is swallowed on
+    // purpose — the throw below carries the failure that started this, and
+    // that is the one the operator needs to see.
     try {
-      for (const [from, to] of moved.reverse()) renameSync(to, from)
-      for (const [from, to] of superseded.reverse()) renameSync(to, from)
+      for (const suffix of ROLLBACK_SUFFIXES) {
+        if (moved.includes(suffix)) renameSync(`${aside}${suffix}`, `${dbPath}${suffix}`)
+      }
+    } catch {
+      // See above.
+    }
+    try {
+      for (const suffix of ROLLBACK_SUFFIXES) {
+        if (superseded.includes(suffix)) {
+          renameSync(`${aside}${suffix}${SUPERSEDED_SUFFIX}`, `${aside}${suffix}`)
+        }
+      }
+    } catch {
+      // See above.
+    }
+    try {
       rmSync(staged, { force: true })
     } catch {
-      // Swallowed on purpose: the throw below carries the failure that started
-      // this, and that is the one the operator needs to see.
+      // See above.
     }
 
     // Unless the rollback failed to put the database back, which is the one
     // outcome the caller cannot treat as an ordinary failure. Say where the
     // file went, by name only: the message reaches the renderer, and an
     // absolute path would disclose the profile location with it.
-    if (moved.some(([from]) => from === dbPath) && !existsSync(dbPath)) {
+    if (moved.includes('') && !existsSync(dbPath)) {
       throw new RestoreRollbackError(
         `The restore failed and the database could not be put back. It is beside it as ` +
           `"${basename(aside)}" — rename it back before restarting Birdbrain.`,
@@ -446,7 +480,7 @@ export function restoreSnapshotFile(dbPath: string, fileName: string): void {
   // Committed. Only now is the generation this restore replaced let go — one
   // generation, as the Settings copy and the tester guide both say.
   //
-  // "Replaced" is load-bearing: `moved` carries `dbPath` exactly when a live
+  // "Replaced" is load-bearing: `moved` carries '' exactly when a live
   // database was moved into `.pre-restore` a moment ago. Without one — the
   // state a failed rollback leaves behind, and Restore is the button that just
   // failed — this restore put no new generation in that file's place, and
@@ -456,11 +490,12 @@ export function restoreSnapshotFile(dbPath: string, fileName: string): void {
   //
   // A failure here costs disk, not data, so it is logged rather than thrown:
   // the restore the operator asked for has already succeeded.
-  const replacedLiveDatabase = moved.some(([from]) => from === dbPath)
+  const replacedLiveDatabase = moved.includes('')
   try {
-    for (const [from, to] of superseded) {
-      if (replacedLiveDatabase) rmSync(to, { force: true })
-      else if (!existsSync(from)) renameSync(to, from)
+    for (const suffix of superseded) {
+      const held = `${aside}${suffix}${SUPERSEDED_SUFFIX}`
+      if (replacedLiveDatabase) rmSync(held, { force: true })
+      else if (!existsSync(`${aside}${suffix}`)) renameSync(held, `${aside}${suffix}`)
     }
   } catch (err) {
     logger.warn('db', 'db.snapshot_prune_failed', undefined, err)

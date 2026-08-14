@@ -1,5 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi, beforeAll } from 'vitest'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  truncateSync,
+  writeFileSync
+} from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { IpcMainInvokeEvent } from 'electron'
@@ -104,6 +112,7 @@ import {
 } from '@main/services/logger'
 import Database from 'better-sqlite3'
 import { closeDatabase, initDatabase, LATEST_SCHEMA_VERSION } from '@main/services/db/core'
+import * as dbSnapshots from '@main/services/db/dbSnapshots'
 import { createPreMigrationSnapshot } from '@main/services/db/dbSnapshots'
 import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
@@ -1068,6 +1077,33 @@ describe('ipcHandlers — database admin', () => {
     ).toBe(true)
   })
 
+  // Database Admin lets an operator write any row into any table, so the
+  // constraint errors it can provoke have to come back as `{ ok: false }` with
+  // a code the renderer can branch on, not as a rejected invoke.
+  it('reports a foreign-key violation as a structured failure, not a rejection', async () => {
+    const res = await invoke<{ ok: boolean; error?: string; code?: string }>(
+      IPC_CHANNELS.DB_CREATE_ROW,
+      { table: 'capture_tags', data: { capture_id: 'no-such-capture', tag_id: 'no-such-tag' } }
+    )
+
+    expect(res.ok).toBe(false)
+    expect(res.code).toBe('SQLITE_CONSTRAINT_FOREIGNKEY')
+    expect(res.error).toBe('Referenced record does not exist')
+  })
+
+  it('passes a constraint failure it has no wording for through with its code', async () => {
+    const res = await invoke<{ ok: boolean; error?: string; code?: string }>(
+      IPC_CHANNELS.DB_CREATE_ROW,
+      { table: 'captures', data: { id: 'orphan-capture', url: 'https://example.com' } }
+    )
+
+    // No case_id at all: not one of the three cases with a written message, so
+    // SQLite's own wording is what reaches the renderer rather than nothing.
+    expect(res.ok).toBe(false)
+    expect(res.code).toBe('SQLITE_CONSTRAINT_NOTNULL')
+    expect(res.error).toContain('NOT NULL')
+  })
+
   // #234: Database Admin is a genuine fourth note-write path, so a cross-case
   // anchor rejected there needs the same structured IpcFailure translation as
   // notes:create/notes:update rather than surfacing as a raw rejected promise.
@@ -1190,6 +1226,111 @@ describe('ipcHandlers — database admin', () => {
     expectOk(await invoke(IPC_CHANNELS.DB_STATS))
     // And the database the restore replaced is still on disk.
     expect(existsSync(`${dbPath}.pre-restore`)).toBe(true)
+  })
+
+  it('restores a database file chosen from the open dialog', async () => {
+    const backupPath = join(userDataPath, 'chosen-backup.db')
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: backupPath })
+    expectOk(await invoke(IPC_CHANNELS.DB_BACKUP))
+    const afterBackup = expectOk<{ id: string }>(
+      await invoke(IPC_CHANNELS.CASES_CREATE, { name: 'Recorded after the backup' })
+    )
+
+    showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [backupPath] })
+    const res = expectOk<{ restored: boolean }>(await invoke(IPC_CHANNELS.DB_RESTORE))
+
+    expect(res.restored).toBe(true)
+    // Re-opened on the other side, and holding the backup rather than the
+    // database that was running when it was chosen.
+    expectOk(await invoke(IPC_CHANNELS.DB_STATS))
+    expect(expectOk(await invoke(IPC_CHANNELS.CASES_GET, afterBackup.id))).toBeUndefined()
+  })
+
+  it('reports a failed snapshot restore without the filesystem error behind it', async () => {
+    const conn = new Database(dbPath)
+    try {
+      await createPreMigrationSnapshot(conn, dbPath, LATEST_SCHEMA_VERSION, LATEST_SCHEMA_VERSION)
+    } finally {
+      conn.close()
+    }
+    const listed = expectOk<Array<{ fileName: string }>>(await invoke(IPC_CHANNELS.DB_SNAPSHOTS))
+    // Truncated after the handler's own resolve would have passed: the restore
+    // itself rejects it, which is the failure path this exercises.
+    truncateSync(join(userDataPath, 'db-snapshots', listed[0].fileName), 24576)
+
+    const res = await invoke<{ ok: boolean; error?: string; code?: string }>(
+      IPC_CHANNELS.DB_RESTORE_SNAPSHOT,
+      { fileName: listed[0].fileName }
+    )
+
+    expect(res.ok).toBe(false)
+    expect(res.code).toBe('DB_RESTORE_FAILED')
+    // A fixed message: the underlying copyFileSync/renameSync errors name
+    // absolute paths, and `handle()` passes anything that is not an IpcFailure
+    // straight through to the renderer.
+    expect(res.error).not.toContain(userDataPath)
+    // The database is back — the restore stopped before it moved anything.
+    expectOk(await invoke(IPC_CHANNELS.DB_STATS))
+  })
+
+  it('does not re-open the database when the restore could not put it back', async () => {
+    const conn = new Database(dbPath)
+    try {
+      await createPreMigrationSnapshot(conn, dbPath, LATEST_SCHEMA_VERSION, LATEST_SCHEMA_VERSION)
+    } finally {
+      conn.close()
+    }
+    const listed = expectOk<Array<{ fileName: string }>>(await invoke(IPC_CHANNELS.DB_SNAPSHOTS))
+    const restoreSpy = vi
+      .spyOn(dbSnapshots, 'restoreSnapshotFile')
+      .mockImplementationOnce((path: string) => {
+        rmSync(path, { force: true })
+        throw new dbSnapshots.RestoreRollbackError(
+          'The restore failed and the database could not be put back. It is beside it as ' +
+            '"birdbrain.db.pre-restore" — rename it back before restarting Birdbrain.'
+        )
+      })
+
+    const res = await invoke<{ ok: boolean; error?: string; code?: string }>(
+      IPC_CHANNELS.DB_RESTORE_SNAPSHOT,
+      { fileName: listed[0].fileName }
+    )
+    restoreSpy.mockRestore()
+
+    expect(res.ok).toBe(false)
+    expect(res.code).toBe('DB_RESTORE_ROLLBACK_FAILED')
+    expect(res.error).toContain('birdbrain.db.pre-restore')
+    // The point of the branch: re-opening a missing file would have created an
+    // empty database and migrated it, and an empty case list reads as lost
+    // evidence rather than as a failed restore.
+    expect(existsSync(dbPath)).toBe(false)
+  })
+
+  it('reports a re-open failure as such when the restored snapshot cannot be migrated', async () => {
+    // A snapshot that restores cleanly and then cannot be brought forward: it
+    // reports schema v26, so the v27 block runs against it, and it has no
+    // notes table for that block to alter.
+    const fileName = 'pre-migration-v26-to-v27-2026-01-01T00-00-00-000Z.db'
+    const snapshotDir = join(userDataPath, 'db-snapshots')
+    mkdirSync(snapshotDir, { recursive: true })
+    const broken = new Database(join(snapshotDir, fileName))
+    try {
+      broken.exec(`CREATE TABLE cases (id TEXT PRIMARY KEY)`)
+      broken.pragma('user_version = 26')
+    } finally {
+      broken.close()
+    }
+
+    const res = await invoke<{ ok: boolean; error?: string; code?: string }>(
+      IPC_CHANNELS.DB_RESTORE_SNAPSHOT,
+      { fileName }
+    )
+
+    expect(res.ok).toBe(false)
+    expect(res.code).toBe('DB_REOPEN_FAILED')
+    // Named as a re-open failure, not a restore failure: the restore worked,
+    // and every later call in this session fails until the app is restarted.
+    await expect(invoke(IPC_CHANNELS.DB_STATS)).rejects.toThrow('Database not initialized')
   })
 
   it('rejects a snapshot restore for a filename that is not a snapshot', async () => {

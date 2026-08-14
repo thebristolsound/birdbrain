@@ -1,5 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { existsSync, mkdtempSync, readdirSync, rmSync, truncateSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  truncateSync,
+  writeFileSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import Database from 'better-sqlite3'
@@ -223,6 +232,72 @@ describe('pre-migration snapshots', () => {
     // a purely chronological cut would have evicted it for a third v26 copy.
     expect(snapshots.map((s) => s.fromVersion).sort((a, b) => a - b)).toEqual([24, 26, 26])
     expect(snapshots.find((s) => s.fromVersion === 24)?.createdAt.slice(0, 10)).toBe('2026-01-01')
+  })
+
+  it('sweeps staging files an interrupted snapshot left behind', async () => {
+    seedLegacyDb(dbPath)
+    await initDatabase(dbPath)
+    const snapshotDir = snapshotDirFor(dbPath)
+    // What a crash or a power loss mid-backup leaves: a full-size copy of the
+    // database under a name the listing is built not to match, plus whatever
+    // sidecars the read-back probe had opened. Nothing counts them against
+    // retention, so without a sweep they accumulate one per failed launch.
+    const orphan = 'pre-migration-v24-to-v27-2026-01-01T00-00-00-000Z.db.partial'
+    writeFileSync(join(snapshotDir, orphan), 'half a database')
+    writeFileSync(join(snapshotDir, `${orphan}-wal`), 'half a wal')
+    writeFileSync(join(snapshotDir, 'notes.partial'), 'not ours')
+
+    const removed = pruneSnapshots(dbPath)
+
+    expect(removed).toBe(2)
+    expect(existsSync(join(snapshotDir, orphan))).toBe(false)
+    expect(existsSync(join(snapshotDir, `${orphan}-wal`))).toBe(false)
+    // Only files the snapshot writer could have produced. Anything else in
+    // that directory is not this module's to delete.
+    expect(existsSync(join(snapshotDir, 'notes.partial'))).toBe(true)
+  })
+
+  it('ignores a listed entry that cannot be read', async () => {
+    seedLegacyDb(dbPath)
+    await initDatabase(dbPath)
+    // A snapshot name that resolves to nothing — the readdir/stat race, and
+    // what a half-copied profile directory leaves behind. Listing it would put
+    // an unrestorable entry in front of the operator.
+    symlinkSync(
+      join(dir, 'gone.db'),
+      join(snapshotDirFor(dbPath), 'pre-migration-v1-to-v2-2026-01-01T00-00-00-000Z.db')
+    )
+
+    expect(listSnapshots(dbPath)).toHaveLength(1)
+  })
+
+  it('keeps the snapshot it just took when pruning the older ones fails', async () => {
+    seedLegacyDb(dbPath)
+    const conn = new Database(dbPath)
+    const snapshotDir = snapshotDirFor(dbPath)
+    mkdirSync(snapshotDir, { recursive: true })
+    // A directory wearing a snapshot's name: it lists like a snapshot and is
+    // the oldest, so retention picks it first — and deleting it fails.
+    mkdirSync(join(snapshotDir, 'pre-migration-v24-to-v27-2026-01-01T00-00-00-000Z.db'))
+
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      for (let i = 0; i < SNAPSHOT_RETENTION; i++) {
+        vi.setSystemTime(new Date(Date.UTC(2026, 0, 2 + i)))
+        await createPreMigrationSnapshot(conn, dbPath, 24, LATEST_SCHEMA_VERSION)
+      }
+    } finally {
+      conn.close()
+      vi.useRealTimers()
+    }
+
+    // Pruning is housekeeping. The snapshot this migration depends on has
+    // already been written and read back, so a failure tidying up behind it
+    // must not fail the snapshot — or, through it, block the upgrade. The
+    // undeletable entry is still listed, which is what says prune reached it.
+    const snapshots = listSnapshots(dbPath)
+    expect(snapshots).toHaveLength(SNAPSHOT_RETENTION + 1)
+    expect(snapshots.at(-1)?.createdAt.slice(0, 10)).toBe('2026-01-01')
   })
 
   it('sorts by creation time, not by the version segment of the filename', async () => {

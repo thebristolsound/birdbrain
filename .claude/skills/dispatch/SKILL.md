@@ -267,6 +267,30 @@ where `<verdict>` is `approve for human review` or `request changes`.
   changes, stop there: report "pre-pass unresolved after one fix round — needs human
   attention" and leave both pre-pass comments in place. Never loop further unattended.
 
+### The convergence check — before authorising any further round
+
+When a human authorises rounds past the first, watch what the rounds are *doing*, not just
+whether they end. **If two consecutive fix rounds each resolve the reported finding and the
+next pre-pass finds a new defect in the same function or construct, stop patching and put the
+design in question to the maintainer.** Say plainly that the rounds are not converging, name
+the construct, and offer removing or simplifying it alongside the next patch.
+
+This is not a hypothetical guard. PR #423 ran six rounds against one function: round two's fix
+created round three's blocking data-loss path, round three's new error class created the state
+round three then had to flag, round four's `try` split created round four's, and round five's
+exhaustive nineteen-cell state enumeration — a good-faith attempt to fix the whole space at
+once — still shipped a sixth, because its axes could not see a file present at entry or an
+interrupted process. What finally worked was round six deleting the construct. A bug-per-round
+rate that stays at 100% means the thing has more reachable states than review can hold, and
+another round of review is the wrong instrument.
+
+Two questions worth asking out loud when the check fires, because they were the answer on #423:
+
+- **Is the construct even in the ticket?** Machinery added mid-review to satisfy an earlier
+  finding is not scope the issue asked for, and it has no acceptance criteria holding it down.
+- **What is the smallest version that meets the stated requirement?** Deleting a guarantee and
+  saying so honestly is often safer than a guarantee the code keeps failing to keep.
+
 ## 5. End-of-cycle report
 
 Finish every invocation with a short report: slot state found, action taken (dispatched #N /

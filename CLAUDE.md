@@ -263,6 +263,10 @@ from either is silently dropped from that site's sidebar.
 - **Unit tests** (`tests/`) - Vitest running via Electron runtime (`ELECTRON_RUN_AS_NODE=1`). Config in `vitest.config.ts` (node environment, globals enabled). Covers database, services, store, types.
 - **E2E tests** (`e2e/`) - Playwright with Electron. Config in `playwright.config.ts` (30s timeout, 1 worker, trace on-first-retry). Requires `pnpm build` first (handled by `pretest:e2e` script).
 
+**`tests/` is typechecked by nothing.** All three tsconfigs include only `src/` (or, for the extension, its own `src/`), the root `tsconfig.json` has `"files": []`, and `eslint.config.js` sets no `parserOptions.project`, so linting is not type-aware either. A test can call a function with the wrong argument types, assert a property that does not exist, or drift from a renamed API, and both `pnpm typecheck` and `pnpm lint` stay green — only a runtime failure catches it, and only if that line executes. This is why #333 hid for so long: renderer tests hand-rolled `window.birdbrain` stubs that agreed with the renderer and disagreed with the real bridge. Tracked as #337. Until it is fixed, a type-level assertion placed in `tests/` is inert — reach for a runtime probe instead.
+
+**`tests/components/**/*.test.tsx` run in the jsdom Vitest project**, not the Electron node one; the node project's `tests/**/*.test.ts` include glob does not match `.test.tsx`. A `// @vitest-environment jsdom` directive in a component test is therefore valid and may be kept for clarity — it is not an invalid override of the Electron environment.
+
 ## Code style
 
 - No semicolons
@@ -280,6 +284,8 @@ from either is silently dropped from that site's sidebar.
 ### Issue tracker
 
 Issues live as GitHub Issues in `thebristolsound/birdbrain`, accessed via the `gh` CLI. External PRs are not a triage surface. See `docs/agents/issue-tracker.md`.
+
+Two `gh` traps that produce wrong numbers rather than errors. **`gh api --jq` rejects `-r`**, and **`gh issue comment` has no `-q`** — in both cases the command fails, and a pipeline that ends in `| tail -1` or `&& echo ok` swallows the failure and reports success. Never derive a count through a pipe whose exit status you have not checked. Separately, **the label-filtered issue search (`issues?labels=…`) reads GitHub's search index and lags a direct label read by seconds** — verified twice on 2026-08-14 — so never treat it as authoritative for a decision; read `issues/<n>/labels` for that.
 
 ### Triage labels
 

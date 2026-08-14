@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   truncateSync,
   writeFileSync
@@ -1304,6 +1305,56 @@ describe('ipcHandlers — database admin', () => {
     // empty database and migrated it, and an empty case list reads as lost
     // evidence rather than as a failed restore.
     expect(existsSync(dbPath)).toBe(false)
+  })
+
+  it('does not spend the aside database when Restore is clicked again after a rollback failure', async () => {
+    const conn = new Database(dbPath)
+    try {
+      await createPreMigrationSnapshot(conn, dbPath, LATEST_SCHEMA_VERSION, LATEST_SCHEMA_VERSION)
+    } finally {
+      conn.close()
+    }
+    const listed = expectOk<Array<{ fileName: string }>>(await invoke(IPC_CHANNELS.DB_SNAPSHOTS))
+    // Not in the snapshot, so only the live database holds it — which makes it
+    // the thing a second restore must not be able to destroy.
+    const beforeFailure = expectOk<{ id: string }>(
+      await invoke(IPC_CHANNELS.CASES_CREATE, { name: 'Recorded before the failed restore' })
+    )
+
+    // The end state a failed rollback leaves: nothing at `dbPath`, the live
+    // database beside it as `.pre-restore`.
+    const aside = `${dbPath}.pre-restore`
+    const restoreSpy = vi
+      .spyOn(dbSnapshots, 'restoreSnapshotFile')
+      .mockImplementationOnce((path: string) => {
+        renameSync(path, `${path}.pre-restore`)
+        throw new dbSnapshots.RestoreRollbackError('injected rollback failure')
+      })
+    const failed = await invoke<{ ok: boolean; code?: string }>(IPC_CHANNELS.DB_RESTORE_SNAPSHOT, {
+      fileName: listed[0].fileName
+    })
+    restoreSpy.mockRestore()
+    expect(failed.code).toBe('DB_RESTORE_ROLLBACK_FAILED')
+    expect(existsSync(dbPath)).toBe(false)
+
+    // The card still lists the snapshot and the button is live again, so
+    // clicking Restore a second time is a click away — and it succeeds, which
+    // is why the aside copy has to survive it.
+    expect(
+      expectOk<Array<{ fileName: string }>>(await invoke(IPC_CHANNELS.DB_SNAPSHOTS))
+    ).toHaveLength(1)
+    const again = expectOk<{ restored: boolean }>(
+      await invoke(IPC_CHANNELS.DB_RESTORE_SNAPSHOT, { fileName: listed[0].fileName })
+    )
+    expect(again.restored).toBe(true)
+
+    expect(existsSync(aside)).toBe(true)
+    const kept = new Database(aside, { readonly: true })
+    try {
+      expect(kept.prepare('SELECT id FROM cases WHERE id = ?').get(beforeFailure.id)).toBeTruthy()
+    } finally {
+      kept.close()
+    }
   })
 
   it('reports a re-open failure as such when the restored snapshot cannot be migrated', async () => {

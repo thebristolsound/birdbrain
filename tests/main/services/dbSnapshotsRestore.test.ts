@@ -149,6 +149,23 @@ describe('snapshot restore failure paths', () => {
     expect(readdirSync(dir).filter((f) => f.endsWith('.superseded'))).toEqual([])
   })
 
+  it('keeps the earlier generation when there is no live database to replace', () => {
+    // The state a failed rollback leaves behind: no file where the database
+    // belongs, the operator's database beside it as `.pre-restore`. Restore is
+    // the button that just failed, so clicking it again is the likely next
+    // move — and this restore replaces nothing, so it has no new generation to
+    // put in that file's place. Dropping it here would leave the operator with
+    // only the snapshot.
+    rmSync(dbPath, { force: true })
+    writeDb(aside, 'live', 27)
+
+    restoreSnapshotFile(dbPath, snapshotName)
+
+    expect(markerOf(dbPath)).toBe('snapshot')
+    expect(markerOf(aside)).toBe('live')
+    expect(readdirSync(dir).filter((f) => f.endsWith('.superseded'))).toEqual([])
+  })
+
   it('still reports success when the superseded generation cannot be deleted', () => {
     writeDb(aside, 'older', 27)
     // Only the deletion that follows a committed restore: the same suffix is

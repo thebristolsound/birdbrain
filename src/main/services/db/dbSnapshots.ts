@@ -365,9 +365,10 @@ export async function createPreMigrationSnapshot(
  *    into place, so `dbPath` is never a half-written file;
  * 3. the database being replaced is moved aside, not deleted, together with
  *    its -wal/-shm — a restore is a misclick away and this is evidence;
- * 4. the `.pre-restore` generation this one replaces is moved aside as well
- *    and only dropped once the restore has committed, so a restore that fails
- *    and rolls back has not spent the operator's earlier safety copy.
+ * 4. the `.pre-restore` generation this one replaces is moved aside as well,
+ *    and dropped only once the restore has committed *and* has moved a live
+ *    database in to take its place — so neither a restore that rolls back nor
+ *    one run with no database at `dbPath` spends the operator's earlier copy.
  *
  * Throws `RestoreRollbackError` — and nothing else — when the rollback itself
  * failed and there is no file at `dbPath`. The caller must not re-open on that
@@ -443,11 +444,24 @@ export function restoreSnapshotFile(dbPath: string, fileName: string): void {
   }
 
   // Committed. Only now is the generation this restore replaced let go — one
-  // generation, as the Settings copy and the tester guide both say. A failure
-  // here costs disk, not data, so it is logged rather than thrown: the restore
-  // the operator asked for has already succeeded.
+  // generation, as the Settings copy and the tester guide both say.
+  //
+  // "Replaced" is load-bearing: `moved` carries `dbPath` exactly when a live
+  // database was moved into `.pre-restore` a moment ago. Without one — the
+  // state a failed rollback leaves behind, and Restore is the button that just
+  // failed — this restore put no new generation in that file's place, and
+  // dropping the old one would leave the operator with nothing but the
+  // snapshot while the restore reported success. It goes back instead, unless
+  // a sidecar of this database has already claimed the name.
+  //
+  // A failure here costs disk, not data, so it is logged rather than thrown:
+  // the restore the operator asked for has already succeeded.
+  const replacedLiveDatabase = moved.some(([from]) => from === dbPath)
   try {
-    for (const [, to] of superseded) rmSync(to, { force: true })
+    for (const [from, to] of superseded) {
+      if (replacedLiveDatabase) rmSync(to, { force: true })
+      else if (!existsSync(from)) renameSync(to, from)
+    }
   } catch (err) {
     logger.warn('db', 'db.snapshot_prune_failed', undefined, err)
   }

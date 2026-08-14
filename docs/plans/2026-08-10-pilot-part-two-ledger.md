@@ -141,6 +141,49 @@ Worth recording not as a process failure — the disclosure worked — but becau
 is the shape of mistake the pipeline is most likely to repeat: making a failure
 visible before establishing that the underlying operation can ever succeed.
 
+**6. The verify loop the routine mandates is not a superset of CI, so an agent can
+report a green build on a PR that CI rejects.** Recorded 2026-08-13 from PR #423
+(issue #413), the first cycle run after the #284 grilling.
+
+The loop written into `.claude/agents/birdbrain-implementer.md`, the reviewer's
+reproduction step, and this repo's background-jobs carve-out was `pnpm lint`,
+`pnpm typecheck`, `BIRDBRAIN_REQUIRE_OPENSSL=1 pnpm test`, `pnpm build`. CI's job
+*named* `test` runs the suite and then `node scripts/diff-coverage.mjs`
+(`.github/workflows/ci.yml`), which fails the PR under 90% of changed lines
+covered — a threshold `pnpm test` never evaluates, because it does not pass
+`--coverage`.
+
+On #423 every unit test passed in CI exactly as reported (1879), and the job still
+failed: `244/336 changed lines covered (72.62%)`. Both the implementer and the
+reviewer ran the mandated loop, twice each, and both were green and both were
+honest. The gap is structural, not a lapse — no amount of care at the loop as
+written would have caught it.
+
+Three things make this worse than a missing command:
+
+- **The failure is misattributed by its own name.** A red job called `test` on a PR
+  whose tests all pass reads as flaky infrastructure, and the true cause is one
+  line deep in the log after the suite output.
+- **It surfaces after the agent has claimed success**, so the false claim is
+  already in the PR body and in the end-of-cycle report before anyone sees the red.
+- **Renderer components are the systematic shortfall.** A new `.tsx` with no test
+  contributes its entire line count to the denominator; on #423 a single component
+  at 0 of 65 lines was 65 of the 92 uncovered lines, and covering it alone would
+  have cleared the gate.
+
+One redeeming detail, worth keeping: the uncovered main-process lines
+(`dbSnapshots.ts:348-356`, `ipcHandlers.ts:915-920`) were exactly the rollback and
+re-open failure paths the reviewer independently flagged as defects. The gate and
+the adversarial review converged on the same lines from different directions. A
+coverage gate on an evidence path is not bookkeeping — untested error paths are
+where this codebase loses data.
+
+Fixed the same day by adding `pnpm test:coverage` and `pnpm coverage:diff` to all
+three places the loop is written down. The finding stands regardless: it is
+evidence about how the pipeline fails, not about whether this instance is patched.
+The general form — **a verify loop that is a strict subset of CI produces confident
+false negatives** — should be checked against any future gate CI adds.
+
 ## What #310 must decide
 
 1. **What a review round is.** Without that, the bar cannot be evaluated. On
@@ -153,6 +196,12 @@ visible before establishing that the underlying operation can ever succeed.
 4. **Whether the subagent-write gap blocks cron.** Same reasoning — the
    dispatcher's editorial pass over agent output does not currently exist as a
    control.
+5. **Whether an agent's own report of its verification can be trusted as a signal
+   at all** (finding 6). Under manual dispatch a human eventually sees the red
+   check. Unattended, the cycle ends with a truthful-sounding green report on a
+   rejected PR, and nothing in the routine reads CI. If cron is enabled, reading
+   the live check status before the cycle reports success is the minimum;
+   the deeper question is what else the loop is a subset of.
 
 ## Verification of this ledger
 

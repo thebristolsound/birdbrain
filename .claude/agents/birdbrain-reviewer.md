@@ -27,6 +27,16 @@ Read CLAUDE.md first for the codebase map. You review; you do not fix — never 
    (plus `pnpm build:extension` if extension/ changed). A PR whose stated results you cannot
    reproduce is a blocking finding, whatever else is true.
 
+   **Then run `pnpm test:coverage` and `pnpm coverage:diff`, which those four do not cover.**
+   CI's `test` job runs the suite and then `scripts/diff-coverage.mjs`, failing under 90% of
+   changed lines covered; `pnpm test` never evaluates that threshold because it omits
+   `--coverage`. Reproducing a green four-command loop therefore proves nothing about whether
+   CI will pass. Under 90% is a blocking finding — and check *which* lines are uncovered before
+   writing it up, because they are often the error and rollback paths, which makes the gate a
+   second witness to a real defect rather than a bookkeeping complaint. Also read the live
+   check status with `gh pr checks <n>`: a PR that is already red in CI cannot be approved for
+   human review whatever the local run says.
+
 ## Evidence gate — the backstop is yours to enforce
 
 Compute the touched paths: `git diff --name-only origin/main...HEAD`. Match them against the

@@ -125,6 +125,10 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
+    # A startup hang does not crash anything here, it makes every test burn its full
+    # timeout: the green job runs ~5m, the wedged ones ran 2h24m each (32 specs x 3
+    # attempts x ~90s). Bound the blast radius of the next one.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -160,18 +164,81 @@ jobs:
       # identically on electronApplication.firstWindow(). A real (if freshly minted)
       # login keyring makes safeStorage.isEncryptionAvailable() report true so the
       # gate takes its normal non-blocking path, same as a real Linux desktop.
-      # gnome-keyring-daemon --unlock only unlocks keyrings that already exist;
-      # --login is the mode that creates the default "login" keyring on first use,
-      # same as pam_gnome_keyring does at a real login. XDG_CURRENT_DESKTOP=GNOME
-      # is what makes Chromium's os_crypt backend probe the libsecret store at all
-      # instead of silently defaulting to "unavailable" on an undetected desktop.
+      #
+      # --daemonize --unlock, not PAM's --login: --login "does not complete actual
+      # initialization" and expects a later `gnome-keyring-daemon --start` to finish
+      # the job (man gnome-keyring-daemon), which only works if that second process
+      # can find the first one's control socket. --unlock creates the login keyring
+      # when none exists and the daemon initializes itself, so it owns
+      # org.freedesktop.secrets on the session bus before anything asks for a secret.
+      # XDG_CURRENT_DESKTOP=GNOME is what makes Chromium's os_crypt backend probe the
+      # libsecret store at all instead of defaulting to "unavailable".
       - name: Start D-Bus session and unlock a keyring
         run: |
-          eval "$(dbus-launch --sh-syntax)"
-          eval "$(printf '\n' | gnome-keyring-daemon --login --components=secrets,pkcs11,ssh)"
-          echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS" >> "$GITHUB_ENV"
-          echo "GNOME_KEYRING_CONTROL=$GNOME_KEYRING_CONTROL" >> "$GITHUB_ENV"
-          echo "XDG_CURRENT_DESKTOP=GNOME" >> "$GITHUB_ENV"
+          set -euo pipefail
+
+          # gnome-keyring keeps its control socket under $XDG_RUNTIME_DIR/keyring and
+          # every later daemon invocation — including the one D-Bus autoactivates for
+          # org.freedesktop.secrets — finds the running daemon through that path. A
+          # runner with no logind session can leave the variable unset or pointing at
+          # a directory that does not exist, and the daemon then fails to bind the
+          # socket with nothing but a warning, so own the value instead of inheriting
+          # whatever the image happens to provide.
+          if [ -z "${XDG_RUNTIME_DIR:-}" ] || [ ! -w "${XDG_RUNTIME_DIR}" ]; then
+            XDG_RUNTIME_DIR="$(mktemp -d "${RUNNER_TEMP:-/tmp}/xdg-runtime-XXXXXX")"
+            export XDG_RUNTIME_DIR
+          fi
+          chmod 700 "$XDG_RUNTIME_DIR"
+
+          # Assign, then eval: `eval "$(cmd)"` reports eval's own status, so a failing
+          # or silent cmd leaves the step green. An assignment propagates the failure.
+          dbus_env="$(dbus-launch --sh-syntax)"
+          eval "$dbus_env"
+          : "${DBUS_SESSION_BUS_ADDRESS:?dbus-launch produced no session bus address}"
+
+          keyring_env="$(printf '\n' | gnome-keyring-daemon --daemonize --unlock \
+            --components=secrets,pkcs11,ssh)"
+          eval "$keyring_env"
+
+          {
+            echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR"
+            echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS"
+            echo "XDG_CURRENT_DESKTOP=GNOME"
+          } >> "$GITHUB_ENV"
+          # The daemon only prints this when it picked a non-default control
+          # directory; exporting an empty value would just mislead later steps.
+          if [ -n "${GNOME_KEYRING_CONTROL:-}" ]; then
+            echo "GNOME_KEYRING_CONTROL=$GNOME_KEYRING_CONTROL" >> "$GITHUB_ENV"
+          fi
+
+      # The step above is only worth having if its failure is loud. A keyring that
+      # never came up fails nothing by itself — it turns every e2e test into a 90s
+      # timeout, which is how one broken setup burned 2h24m of runner time. Ask
+      # Electron the same question the app asks, with the env the tests will get, and
+      # stop here in seconds if the answer is no.
+      - name: Verify Electron can reach the credential store
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/safe-storage-probe.js" <<'PROBE'
+          const { app, safeStorage } = require('electron')
+
+          // app.exit() does not wind down the GPU process, and an orphan of it can
+          // hold this step's stdout open after the probe has answered. Never start one.
+          app.disableHardwareAcceleration()
+
+          app.whenReady().then(() => {
+            const available = safeStorage.isEncryptionAvailable()
+            const backend = safeStorage.getSelectedStorageBackend()
+            console.log(`isEncryptionAvailable=${available} backend=${backend}`)
+            app.exit(available ? 0 : 1)
+          })
+          PROBE
+          # Same reason for the redirect: a file cannot be held open by a stray child.
+          status=0
+          timeout 120 xvfb-run --auto-servernum npx electron "$RUNNER_TEMP/safe-storage-probe.js" \
+            > "$RUNNER_TEMP/safe-storage-probe.log" 2>&1 || status=$?
+          cat "$RUNNER_TEMP/safe-storage-probe.log"
+          exit "$status"
 
       - name: Run E2E tests
         run: xvfb-run --auto-servernum npx playwright test

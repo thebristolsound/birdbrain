@@ -103,9 +103,14 @@ export function dbAdminMutationOptions(queryClient: QueryClient) {
     // A snapshot restore replaces every table, and re-opening the database can
     // migrate the restored file forward — which writes a new snapshot. Both the
     // app-wide caches and the snapshot list are stale afterwards.
+    //
+    // onSettled, not onSuccess: a restore reports failure from several points,
+    // including after the file has been replaced and re-opened. Leaving the
+    // caches alone on failure keeps the pre-restore case list on screen over a
+    // database that may no longer hold it.
     restoreSnapshot: {
       mutationFn: (fileName: string) => window.birdbrain.db.restoreSnapshot({ fileName }),
-      onSuccess: invalidateAll,
+      onSettled: invalidateAll,
       meta: { action: 'restore the database snapshot' }
     },
     createRow: {

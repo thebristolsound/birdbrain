@@ -382,6 +382,23 @@ export async function createPreMigrationSnapshot(
 }
 
 /**
+ * Remove the restore staging file beside `dbPath`, if one is there.
+ *
+ * Non-throwing by design, and called from both ends of the restore: on the way
+ * in, where the copy that follows would truncate whatever is there anyway, and
+ * on the failure path, where its own error would replace the one that actually
+ * stopped the restore. A staging file that cannot be removed is a disk-space
+ * problem and not a correctness one — nothing reads it and nothing trusts it.
+ */
+function clearRestorePartial(dbPath: string): void {
+  try {
+    rmSync(`${dbPath}${RESTORE_PARTIAL_SUFFIX}`, { force: true })
+  } catch {
+    // Deliberately swallowed — see above.
+  }
+}
+
+/**
  * Replace the live database file with a snapshot. Destructive and not
  * reversible: the database at `dbPath` is overwritten, and no copy of it is
  * kept anywhere. The retained snapshots are the safety net, and Settings →
@@ -399,10 +416,17 @@ export async function createPreMigrationSnapshot(
  *
  * Irreversible is not the same as unrecoverable, though: the replacement is
  * staged and renamed into place, so a restore that fails leaves `dbPath`
- * holding the database it held before rather than a piece of the snapshot.
- * That is a property of this function, not a promise the caller can lean on —
- * anything about to migrate `dbPath` after a failure should check
- * `isIntactDatabase` first.
+ * holding the previous database file rather than a piece of the snapshot.
+ * That is narrower than "unchanged". The sidecars are removed before the
+ * rename, and `-wal` goes first, so a failure after that point leaves the
+ * previous database file in place without whatever committed transactions had
+ * not yet been checkpointed into it. On the normal path there are none — the
+ * caller closes the connection first, and a clean close checkpoints and
+ * deletes both sidecars, which makes their removal a no-op — but a hot `-wal`
+ * left by an earlier abnormal exit is the case where it costs something.
+ *
+ * None of this is a promise the caller can lean on — anything about to migrate
+ * `dbPath` after a failure should check `isIntactDatabase` first.
  *
  * The caller owns the connection lifecycle: the database MUST already be
  * closed, and must be re-opened afterwards.
@@ -413,6 +437,14 @@ export function restoreSnapshotFile(dbPath: string, fileName: string): void {
   // renderer never reaches `copyFileSync`.
   const snapshot = resolveSnapshot(dbPath, fileName)
   if (!snapshot) throw new Error(`Snapshot "${fileName}" was not found`)
+
+  // Anything already at the staging name is a leak from a restore that died
+  // between the copy and the rename, and nothing else clears it: `sweepPartials`
+  // only scans the snapshot directory, and this file lives beside `dbPath`
+  // under a name no listing matches. Left alone it is a full-size second copy
+  // of the database, permanently. Cleared before the readability check, so a
+  // restore that stops there reclaims the space too.
+  clearRestorePartial(dbPath)
 
   // Before anything is written. A snapshot that is not a database would
   // otherwise overwrite a working one and leave the app with neither.
@@ -431,11 +463,14 @@ export function restoreSnapshotFile(dbPath: string, fileName: string): void {
 
   try {
     copyFileSync(snapshot.path, partial)
-    // Flushed before the rename rather than left to the page cache. The rename
-    // is atomic against a crash in this process either way; this is what makes
-    // it atomic against the machine losing power, where a rename that reaches
-    // the disk ahead of the pages it points at would leave `dbPath` naming a
-    // file that is only partly written.
+    // Flushed before the rename rather than left to the page cache, so the
+    // staged pages are on disk before anything points at them. That buys
+    // atomicity against this process dying, which is what is claimed here — not
+    // full power-loss durability: the parent directory is never fsynced, so the
+    // rename's own directory entry may not survive. It fails in the safe
+    // direction (the restore simply did not happen, and the staging file it
+    // leaves is cleared by the next one), which is why no directory fsync is
+    // paid for on this path.
     const fd = openSync(partial, 'r+')
     try {
       fsyncSync(fd)
@@ -447,19 +482,18 @@ export function restoreSnapshotFile(dbPath: string, fileName: string): void {
     // replaced, and SQLite would replay it over the snapshot on the next open.
     // Removing them after the staging copy also keeps every step that can fail
     // on the far side of the live database — a sidecar that cannot be removed
-    // stops the restore with the previous database and its WAL both intact.
+    // stops the restore with the previous database file still in place. Not
+    // with everything it held: `-wal` is unlinked first, so a failure at `-shm`
+    // or at the rename leaves that file without whatever committed transactions
+    // its WAL still held. Normally there are none, since the caller closes the
+    // connection first and a clean close checkpoints and deletes both.
     for (const suffix of DB_SIDECAR_SUFFIXES) rmSync(`${dbPath}${suffix}`, { force: true })
     renameSync(partial, dbPath)
   } catch (err) {
     // The staging file is the whole snapshot again on disk, so leaving it
-    // behind doubles the database's footprint for no benefit. Its own removal
-    // must not replace the error that stopped the restore: `force` only
-    // swallows ENOENT, and the interesting failures here are not that.
-    try {
-      rmSync(partial, { force: true })
-    } catch {
-      // Nothing to add: the rethrow below carries the real cause.
-    }
+    // behind doubles the database's footprint for no benefit. Non-throwing, so
+    // its own failure cannot replace the error that stopped the restore.
+    clearRestorePartial(dbPath)
     throw err
   }
 }

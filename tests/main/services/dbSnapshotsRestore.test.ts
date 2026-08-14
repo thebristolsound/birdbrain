@@ -138,6 +138,50 @@ describe('snapshot restore', () => {
     expect(readdirSync(dir).filter((f) => f.endsWith('.partial'))).toEqual([])
   })
 
+  it('clears a staging file left behind by an earlier interrupted restore', () => {
+    // The leak the sweep exists for: a crash or power loss between the staging
+    // copy and the rename leaves a full-size copy of the database beside it,
+    // under a name `sweepPartials` never sees — that only scans the snapshot
+    // directory, and this lives next to `dbPath`. Nothing else would ever
+    // remove it.
+    const orphan = `${dbPath}.restore.partial`
+    writeFileSync(orphan, 'x'.repeat(4096))
+
+    restoreSnapshotFile(dbPath, snapshotName)
+
+    expect(existsSync(orphan)).toBe(false)
+    expect(markerOf(dbPath)).toBe('snapshot')
+    expect(readdirSync(dir).sort()).toEqual(['birdbrain.db', 'db-snapshots'])
+  })
+
+  it('restores anyway when the orphaned staging file cannot be removed', () => {
+    // The sweep is housekeeping, not a precondition: `copyFileSync` truncates
+    // its destination before it writes, so a leftover that refuses to be
+    // deleted is a disk-space problem and nothing the restore depends on. It
+    // must not be the thing that turns a working restore into a failed one.
+    const orphan = `${dbPath}.restore.partial`
+    writeFileSync(orphan, 'x'.repeat(4096))
+    fsHooks.failOn = (op, target) => op === 'rmSync' && target === orphan
+
+    restoreSnapshotFile(dbPath, snapshotName)
+
+    expect(markerOf(dbPath)).toBe('snapshot')
+  })
+
+  it('clears an orphaned staging file even when the restore then stops', () => {
+    // Cleared before the snapshot is checked, so the space comes back on a
+    // restore that never gets as far as writing anything. Otherwise a bad
+    // snapshot would leave the operator paying for both copies indefinitely.
+    const orphan = `${dbPath}.restore.partial`
+    writeFileSync(orphan, 'x'.repeat(4096))
+    writeFileSync(join(snapshotDirFor(dbPath), snapshotName), 'not a database at all')
+
+    expect(() => restoreSnapshotFile(dbPath, snapshotName)).toThrow()
+
+    expect(existsSync(orphan)).toBe(false)
+    expect(markerOf(dbPath)).toBe('live')
+  })
+
   it('reports a copy that cannot be written rather than reporting success', () => {
     fsHooks.failOn = (op, target) => op === 'copyFileSync' && target.startsWith(dbPath)
 

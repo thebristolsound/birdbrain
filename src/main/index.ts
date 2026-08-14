@@ -243,6 +243,31 @@ app.on('web-contents-created', (_event, contents) => {
   }
 })
 
+// Playwright's Electron loader runs before this app's main script and calls
+// app.commandLine.appendSwitch('password-store', 'basic')
+// (playwright-core/lib/server/electron/loader.js). That pins Chromium's os_crypt
+// to the basic_text backend, so safeStorage.isEncryptionAvailable() is false in
+// every e2e run no matter what credential store the machine has — measured back
+// to back in one shell: direct launch reports
+// `available=true backend=gnome_libsecret`, the same binary under
+// _electron.launch() reports `available=false backend=basic_text`. appendSwitch
+// beats argv, so passing --password-store=gnome-libsecret through the fixture's
+// args does not override it.
+//
+// Left alone, initSigningKey's acknowledgement gate (#414) therefore fires on
+// every e2e run and blocks whenReady() on a native modal with no window and
+// nothing to click it, so all 32 specs time out identically on firstWindow().
+// Auto-acknowledging restores the coverage instead of removing it: e2e then
+// exercises the keyring-less Linux path an operator would reach by accepting
+// the prompt. The gate's own behaviour — both answers — is covered by
+// tests/main/services/signingKey.ts.
+//
+// Never honoured in a packaged app, so a stray environment variable cannot skip
+// the prompt on a real install.
+function isE2ERun(): boolean {
+  return !app.isPackaged && process.env.BIRDBRAIN_E2E === '1'
+}
+
 // A single-instance lock is required so a deep link launched while the app is
 // already running routes into this process (via second-instance) instead of
 // spawning a second window.
@@ -314,7 +339,10 @@ if (!gotSingleInstanceLock) {
       // not statically import it (see the note at the top of that file: it is
       // loaded by tests/setup/signing-key.ts for every unit test, before a
       // test file's own electron mock is established).
-      initSigningKey(userDataPath, { logEvent: (code) => logger.warn('signingKey', code) })
+      initSigningKey(userDataPath, {
+        logEvent: (code) => logger.warn('signingKey', code),
+        ...(isE2ERun() ? { confirmUnprotectedKey: () => true } : {})
+      })
       initServerToken(userDataPath)
 
       // Use storagePath from settings, fall back to default if empty or unwritable

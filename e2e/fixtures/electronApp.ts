@@ -37,7 +37,11 @@ export const test = base.extend<ElectronFixtures>({
       cwd: join(__dirname, '../..'),
       env: {
         ...process.env,
-        BIRDBRAIN_USER_DATA: tempDir
+        BIRDBRAIN_USER_DATA: tempDir,
+        // Playwright pins os_crypt to basic_text, so the app's signing-key
+        // acknowledgement gate would block startup on an unclickable modal.
+        // See isE2ERun() in src/main/index.ts.
+        BIRDBRAIN_E2E: '1'
       }
     })
 

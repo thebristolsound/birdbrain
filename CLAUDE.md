@@ -295,8 +295,14 @@ Unattended/background agent jobs working a `ready-for-agent` issue in this repo 
 of the global wait-for-confirmation rules: do not pause for mid-task approval and do not wait
 for the user to confirm completion. Instead, verify the work (`pnpm lint`, `pnpm typecheck`,
 `BIRDBRAIN_REQUIRE_OPENSSL=1 pnpm test`, `pnpm build`, plus `pnpm build:extension` when
-`extension/` changed), then finish by opening a **draft PR** with the standard attribution
-line. Interactive sessions are not covered by this carve-out, and it must not be copied to the
+`extension/` changed, **plus `pnpm test:coverage` and `pnpm coverage:diff`**), then finish by
+opening a **draft PR** with the standard attribution line.
+
+Those last two are the ones that catch what the others cannot. CI's job named `test` runs the
+suite *and then* `scripts/diff-coverage.mjs`, which fails the PR below 90% of changed lines
+covered — a threshold `pnpm test` never evaluates, since it omits `--coverage`. Without them
+the loop reports green on a PR CI rejects, and the red arrives after the agent has claimed
+success. Interactive sessions are not covered by this carve-out, and it must not be copied to the
 global CLAUDE.md or other repos.
 
 The gates in `docs/adr/0005-unattended-agents-on-the-evidence-path.md` still apply in full:

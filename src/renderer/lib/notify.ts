@@ -149,7 +149,10 @@ const CODE_LABELS: Record<LogCode, string> = {
   'db.snapshot_created': 'Saved a database snapshot before upgrading',
   'db.snapshot_prune_failed': "Couldn't remove an old database snapshot",
   'db.snapshot_restore_failed': "Couldn't restore the database snapshot",
-  'db.reopen_failed': "Couldn't re-open the database — restart Birdbrain"
+  'db.reopen_failed': "Couldn't re-open the database — restart Birdbrain",
+  'signingKey.unprotected_key_acknowledged':
+    "This installation's signing key is not protected at rest — see Settings → Diagnostics",
+  'signingKey.generation_declined': 'Birdbrain quit — the signing key warning was not acknowledged'
 }
 
 export function labelForCode(code: LogCode): string {

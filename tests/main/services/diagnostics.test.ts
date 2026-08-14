@@ -31,7 +31,8 @@ const FAKE_ENV: DiagnosticsEnv = {
     notes: 3,
     selectors: 1,
     extractedData: 50
-  }
+  },
+  keyProtection: { signingKey: 'protected', openRouterKey: 'not-set' }
 }
 
 function makeService() {
@@ -56,6 +57,7 @@ describe('diagnostics service — snapshot shape', () => {
     expect(snap.data).toEqual(FAKE_ENV.data)
     expect(snap.eventLoop.stalls).toEqual([])
     expect(snap.slowOps).toEqual([])
+    expect(snap.keyProtection).toEqual(FAKE_ENV.keyProtection)
   })
 })
 

@@ -263,6 +263,13 @@ export interface DiagnosticsSlowOp {
   ms: number
 }
 
+// Key-protection state for a secret wrapped by Electron's safeStorage (the OS
+// credential store — Keychain / DPAPI / a Linux Secret Service such as
+// gnome-keyring). 'not-set' only applies to the revocable OpenRouter key —
+// the signing key always exists once the app has finished starting, so it is
+// always 'protected' or 'plaintext'. See #414.
+export type KeyProtectionState = 'protected' | 'plaintext' | 'not-set'
+
 export interface DiagnosticsSnapshot {
   generatedAt: string
   app: {
@@ -299,6 +306,11 @@ export interface DiagnosticsSnapshot {
     extractedData: number
   }
   slowOps: DiagnosticsSlowOp[]
+  // At-rest protection state of this installation's secrets — see #414.
+  keyProtection: {
+    signingKey: KeyProtectionState
+    openRouterKey: KeyProtectionState
+  }
 }
 
 // Diagnostic logging. Entries are structural only — see logSafe.ts for the
@@ -335,6 +347,7 @@ export const LOG_SOURCES = [
   'consentBlocker',
   'timestampWorker',
   'db',
+  'signingKey',
   'renderer'
 ] as const
 export type LogSource = (typeof LOG_SOURCES)[number]
@@ -394,7 +407,11 @@ export const LOG_CODES = [
   'app.unclassified_error',
   'app.startup_failed',
   'app.bug_report_failed',
-  'app.installation_id'
+  'app.installation_id',
+  // The at-rest key-protection gate (#414): recorded either way so the log
+  // carries the same signal the Settings/Diagnostics indicator shows live.
+  'signingKey.unprotected_key_acknowledged',
+  'signingKey.generation_declined'
 ] as const
 export type LogCode = (typeof LOG_CODES)[number]
 

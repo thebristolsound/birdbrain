@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Activity, Check, Copy, MessageSquareWarning, RefreshCw } from 'lucide-react'
-import type { DiagnosticsSnapshot } from '@shared/types'
+import type { DiagnosticsSnapshot, KeyProtectionState } from '@shared/types'
 import {
   Card,
   CardContent,
@@ -53,6 +53,24 @@ function formatCount(n: number): string {
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString()
+}
+
+// 'plaintext' is the mis-attestation risk this indicator exists to surface
+// (#414) — it means the OS credential store was unavailable when the key was
+// written, so it sits on disk in the clear. 'not-set' only applies to the
+// revocable OpenRouter key, never the signing key.
+function keyProtectionLabel(state: KeyProtectionState): {
+  value: string
+  tone: 'default' | 'danger'
+} {
+  switch (state) {
+    case 'protected':
+      return { value: 'Protected', tone: 'default' }
+    case 'plaintext':
+      return { value: 'Unprotected', tone: 'danger' }
+    case 'not-set':
+      return { value: 'Not set', tone: 'default' }
+  }
 }
 
 // Tone thresholds: <100ms lag is normal scheduling noise, ≥100ms is visible
@@ -218,6 +236,28 @@ export function DiagnosticsPanel() {
               <p className="mt-2 text-xs text-text-muted">
                 Electron {snap.app.electron} · Chromium {snap.app.chrome} · Node {snap.app.node}
               </p>
+            </Section>
+
+            <Section title="Key protection at rest">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <StatBlock
+                  label="Signing key"
+                  value={keyProtectionLabel(snap.keyProtection.signingKey).value}
+                  tone={keyProtectionLabel(snap.keyProtection.signingKey).tone}
+                />
+                <StatBlock
+                  label="OpenRouter key"
+                  value={keyProtectionLabel(snap.keyProtection.openRouterKey).value}
+                  tone={keyProtectionLabel(snap.keyProtection.openRouterKey).tone}
+                />
+              </div>
+              {snap.keyProtection.signingKey === 'plaintext' && (
+                <p className="mt-2 text-xs text-text-muted">
+                  No OS credential store (Keychain, DPAPI, or a Linux Secret Service) was available
+                  when this installation's signing key was generated, so it was written to disk
+                  unprotected. This was acknowledged at first run.
+                </p>
+              )}
             </Section>
 
             <Section title="Responsiveness">

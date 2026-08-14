@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import { DEFAULT_UI_DENSITY, type BirdbrainSettings } from '@shared/types'
+import { DEFAULT_UI_DENSITY, type BirdbrainSettings, type KeyProtectionState } from '@shared/types'
 import { PartialBirdbrainSettingsSchema } from '@shared/schemas'
 import {
   DEFAULT_ANALYSIS_SYSTEM_PROMPT,
@@ -165,4 +165,24 @@ export function setSettingsPath(path: string): void {
 
 export function getDefaultSettings(): BirdbrainSettings {
   return { ...DEFAULT_SETTINGS }
+}
+
+// Backs the Settings/Diagnostics indicator from #414. Reads the raw on-disk
+// value directly (not decryptApiKey's merged/decrypted view) so the result
+// reflects at-rest protection rather than whether the app can currently read
+// the key back. Unlike the signing key, there is no acknowledgement gate
+// here — the OpenRouter key is a revocable credential, not evidence (#289).
+export function getOpenRouterKeyProtectionState(): KeyProtectionState {
+  if (!settingsPath || !existsSync(settingsPath)) return 'not-set'
+  try {
+    const raw: unknown = JSON.parse(readFileSync(settingsPath, 'utf-8'))
+    const stored =
+      raw && typeof raw === 'object' && 'openRouterApiKey' in raw
+        ? (raw as { openRouterApiKey: unknown }).openRouterApiKey
+        : null
+    if (!stored || typeof stored !== 'string') return 'not-set'
+    return stored.startsWith('enc:') ? 'protected' : 'plaintext'
+  } catch {
+    return 'not-set'
+  }
 }

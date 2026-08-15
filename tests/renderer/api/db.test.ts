@@ -185,7 +185,7 @@ describe('dbAdminMutationOptions', () => {
     expect(spy).toHaveBeenCalledWith()
   })
 
-  it('restoreSnapshot invalidates every query, including when the restore failed', async () => {
+  it('restoreSnapshot invalidates every query, with no error branch to skip it', async () => {
     api.restoreSnapshot.mockResolvedValue({ restored: true })
     const qc = new QueryClient()
     const spy = vi.spyOn(qc, 'invalidateQueries')

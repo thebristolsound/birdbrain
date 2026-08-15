@@ -12,7 +12,7 @@ describe('settingsUpdateMutationOptions', () => {
 
     const opts = settingsUpdateMutationOptions(qc)
     const data = await opts.mutationFn({ theme: 'dark' })
-    opts.onSuccess?.(data, { theme: 'dark' }, undefined, undefined as never)
+    opts.onSuccess?.(data, { theme: 'dark' })
 
     expect(qc.getQueryData(queryKeys.settings)).toEqual(updated)
   })

@@ -1,9 +1,17 @@
+// The Playwright + Electron E2E specs, plus playwright.config.ts.
+//
+// Every TypeScript extension tsc recognises is listed, not just .ts (#337): an
+// include of "**/*.ts" alone leaves a .tsx/.mts/.cts under e2e/ in no project
+// at all, so it carries type errors past `pnpm typecheck` silently. `jsx` is
+// set for the same reason — no spec here renders React, but without it a .tsx
+// would fail on the missing flag rather than on its own errors.
 {
   "extends": "../tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
     "composite": false,
+    "jsx": "react-jsx",
     "types": ["node"]
   },
-  "include": ["**/*.ts", "../playwright.config.ts"]
+  "include": ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts", "../playwright.config.ts"]
 }

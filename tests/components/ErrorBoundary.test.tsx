@@ -5,7 +5,7 @@ import { fakeBridge } from '../renderer/fakeBridge'
 
 const log = vi.fn().mockResolvedValue('cid')
 
-function Boom({ message = 'render exploded' }: { message?: string }): JSX.Element {
+function Boom({ message = 'render exploded' }: { message?: string }): never {
   throw new Error(message)
 }
 

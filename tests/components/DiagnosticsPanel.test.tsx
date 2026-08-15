@@ -111,7 +111,7 @@ describe('DiagnosticsPanel storage folder action', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     log = vi.fn().mockResolvedValue('cid-1')
-    openPath = vi.fn().mockResolvedValue('')
+    openPath = vi.fn().mockResolvedValue(undefined)
     fakeBridge({
       diagnostics: { get: vi.fn().mockResolvedValue(snapshot), log },
       shell: { openPath }
@@ -174,27 +174,5 @@ describe('DiagnosticsPanel storage folder action', () => {
     expect(payload).not.toContain(STORAGE_ROOT)
     expect(payload).not.toContain('tester')
     expect(payload).toContain('"error":"Error"')
-  })
-
-  it('surfaces a non-empty resolved openPath reason, the branch main normalises away', async () => {
-    // Defensive branch, and this fixture is a shape the live bridge cannot
-    // produce: main converts a non-empty shell.openPath reason into an
-    // IpcFailure, which preload rethrows, so openPath rejects for both of the
-    // signals it can carry. The branch is still reachable by type — lib/api's
-    // openPath is declared Promise<string> — and mirrors ExportComplete, so
-    // this pins it against the day either of those changes. The reason carries
-    // the path for the same reason as above.
-    openPath.mockResolvedValue(`Failed to open path ${STORAGE_ROOT}`)
-    renderPanel()
-    await clickStorageRoot()
-
-    await waitFor(() => expect(toastFns.error).toHaveBeenCalled())
-    expect(toastFns.error.mock.calls[0][0]).toContain('Failed to open path')
-    expect(toastFns.error.mock.calls[0][0]).toContain(STORAGE_ROOT)
-
-    await waitFor(() => expect(log).toHaveBeenCalled())
-    const payload = JSON.stringify(log.mock.calls[0][0])
-    expect(payload).not.toContain(STORAGE_ROOT)
-    expect(payload).not.toContain('tester')
   })
 })

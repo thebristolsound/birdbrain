@@ -28,9 +28,11 @@ Report in the tester chat — format at the bottom of this guide.
 
 ## Install the app
 
-Download the latest release from
-[github.com/thebristolsound/birdbrain/releases](https://github.com/thebristolsound/birdbrain/releases)
-— current build: **v1.0.1-beta.11**.
+Releases live at
+[github.com/thebristolsound/birdbrain/releases](https://github.com/thebristolsound/birdbrain/releases).
+Take the build named in your invitation — the same release link is pinned in the tester
+chat next to this guide. Once it's installed, **Settings → Updates** always shows the
+version you're actually running.
 
 ### Windows
 
@@ -41,20 +43,22 @@ Download the latest release from
 
 ### Ubuntu
 
-Preferred — the `.deb`:
-
-```bash
-sudo apt install ./birdbrain_<version>_amd64.deb
-```
-
-Then launch **Birdbrain** from your app launcher, or run `birdbrain` in a terminal.
-
-Alternative — the AppImage (no install needed):
+Preferred — the AppImage (no install needed, and updates replace it in place):
 
 ```bash
 chmod +x Birdbrain-<version>.AppImage
 ./Birdbrain-<version>.AppImage
 ```
+
+Alternative — the `.deb`:
+
+```bash
+sudo apt install ./birdbrain_<version>_amd64.deb
+```
+
+Then launch **Birdbrain** from your app launcher, or run `birdbrain` in a terminal. The
+`.deb` is supported on a best-effort basis this round, and installing an update on it needs
+your system password — see [Updating](#updating).
 
 ## Install the Chrome extension
 
@@ -89,9 +93,26 @@ full-text search on the Data page, and export the investigation when you're done
 
 ## Updating
 
-There's no auto-update yet. When a new beta ships we'll post in the tester chat —
-download the new installer from the releases page and install over the old version.
-Your data is kept: it lives in your user data directory, separate from the app.
+Birdbrain checks for updates on its own: shortly after launch, then every few hours while
+it's running. You can also check on demand with **Settings → Updates → Check for updates**.
+Because you're on a prerelease build, it starts on the **Beta** channel, so new betas count
+as updates.
+
+An available update downloads by itself while automatic checking is on (**Settings →
+Updates → Check automatically**); with that switched off, the update still shows up and you
+click **Download**. Nothing ever restarts on its own — a downloaded update installs when you
+click **Restart to update**, or quietly at your next quit.
+
+**The `.deb` is the exception.** Updates download the same way, but installing one runs
+`dpkg` behind a system password prompt, so it never installs at quit — only when you click
+**Restart to update** and enter your password. That's why the AppImage is the preferred
+Ubuntu build.
+
+We'll still post in the tester chat when a new beta ships. The chat is this round's
+announcement channel, so you hear what changed and whether anything needs your attention
+regardless of what the in-app check has picked up. You can always install by hand instead:
+download from the releases page and install over the old version. Your data is kept either
+way — it lives in your user data directory, separate from the app.
 
 If the extension changed in the release notes, also re-load it: `chrome://extensions`
 → click the reload icon on the Birdbrain card (or **Load unpacked** again if the
@@ -133,7 +154,9 @@ Two more things a restore does not do, both worth knowing before you click it:
 ## Known limitations
 
 - **Unsigned builds** — SmartScreen warnings on Windows are expected.
-- **No auto-update** — watch the tester chat for new versions.
+- **Updates never restart the app for you** — installing is your click or your next quit,
+  and on the `.deb` it always needs your system password. New betas are announced in the
+  tester chat as well.
 - **Extension is sideloaded** — Chrome may occasionally nag about developer-mode
   extensions.
 - **Local-only data, no backup** — captures live only on your machine. Export
@@ -167,8 +190,8 @@ log file on disk.
 
 Post in the tester chat with:
 
-1. **Version** — e.g. 1.0.1-beta.11 (the release you downloaded; check the installer
-   filename if unsure)
+1. **Version** — the build you're running; **Settings → Updates** shows it, and it's in the
+   installer filename too
 2. **OS** — e.g. Windows 11 / Ubuntu 24.04
 3. **What you did** — steps, in order
 4. **What you expected**

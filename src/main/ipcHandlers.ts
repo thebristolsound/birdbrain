@@ -21,7 +21,6 @@ import type {
   DbRestoreSnapshotParams,
   OrphanReport,
   AnalyzeCaptureParams,
-  GetAnalysisParams,
   SaveAnnotationsParams,
   UpsertAnnotationPinParams,
   ExportResult,
@@ -794,9 +793,12 @@ export function registerIpcHandlers(deps: {
     analysisService.saveAnalysis(analysis)
   })
 
-  handle(IPC_CHANNELS.AI_GET_ANALYSIS, (_, params: GetAnalysisParams) =>
-    analysisService.getAnalysis(params.captureId)
-  )
+  handle(IPC_CHANNELS.AI_GET_ANALYSIS, (_, captureId: string) => {
+    if (typeof captureId !== 'string' || captureId.length === 0) {
+      throw new IpcFailure('Invalid capture ID', 'INVALID_CAPTURE_ID')
+    }
+    return analysisService.getAnalysis(captureId)
+  })
 
   // Database Admin
   handle(IPC_CHANNELS.DB_STATS, () => {

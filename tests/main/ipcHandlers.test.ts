@@ -977,10 +977,21 @@ describe('ipcHandlers — AI analysis', () => {
     expect(saveAnalysis).toHaveBeenCalled()
 
     getAnalysis.mockReturnValue({ summary: 'stored' })
-    const got = expectOk<{ summary: string }>(
-      await invoke(IPC_CHANNELS.AI_GET_ANALYSIS, { captureId })
-    )
+    const got = expectOk<{ summary: string }>(await invoke(IPC_CHANNELS.AI_GET_ANALYSIS, captureId))
     expect(got.summary).toBe('stored')
+    expect(getAnalysis).toHaveBeenCalledWith(captureId)
+  })
+
+  it('rejects malformed analysis lookup ids before reaching the service', async () => {
+    for (const value of [undefined, null, {}, 1, '']) {
+      const res = await invoke<{ ok: boolean; code?: string }>(
+        IPC_CHANNELS.AI_GET_ANALYSIS,
+        value
+      )
+      expect(res.ok).toBe(false)
+      expect(res.code).toBe('INVALID_CAPTURE_ID')
+    }
+    expect(getAnalysis).not.toHaveBeenCalled()
   })
 
   it('wraps analysis errors as a structured failure', async () => {

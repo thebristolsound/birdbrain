@@ -8,7 +8,7 @@ import { queryKeys } from '@renderer/lib/api/keys'
 export const captureAnalysisQueryOptions = (captureId: string) =>
   queryOptions({
     queryKey: queryKeys.captureAnalysis(captureId),
-    queryFn: () => window.birdbrain.ai.getAnalysis({ captureId }),
+    queryFn: () => window.birdbrain.ai.getAnalysis(captureId),
     enabled: !!captureId
   })
 

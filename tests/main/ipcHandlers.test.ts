@@ -141,7 +141,7 @@ async function invoke<T = unknown>(channel: string, ...args: unknown[]): Promise
 }
 
 // Unwrap a `handle()` IpcResult, asserting success.
-function expectOk<T = unknown>(res: { ok: boolean; data?: T; error?: string }): T {
+function expectOk<T = unknown>(res: { ok: boolean; data?: unknown; error?: string }): T {
   expect(res.ok).toBe(true)
   return res.data as T
 }
@@ -1031,7 +1031,9 @@ describe('ipcHandlers — extracted data', () => {
 
 describe('ipcHandlers — extension', () => {
   it('reports a structured failure when the extension dir is absent', async () => {
-    const res = await invoke<{ ok: boolean; code?: string }>(IPC_CHANNELS.EXTENSION_PATH)
+    const res = await invoke<{ ok: boolean; code?: string; data?: string }>(
+      IPC_CHANNELS.EXTENSION_PATH
+    )
     // In CI the built extension dir is usually absent → EXT_NOT_FOUND.
     if (!res.ok) {
       expect(res.code).toBe('EXT_NOT_FOUND')

@@ -9,6 +9,7 @@ import {
   revealLogFile
 } from '@renderer/lib/api/diagnostics'
 import { queryKeys } from '@renderer/lib/api/keys'
+import type { RendererLogPayload } from '@shared/ipc'
 
 describe('diagnosticsQueryOptions', () => {
   it('reads the snapshot under the shared key and leaves polling to the caller', async () => {
@@ -28,7 +29,7 @@ describe('diagnostics commands', () => {
     const log = vi.fn(async () => 'entry-1')
     fakeBridge({ diagnostics: { log } })
 
-    const payload = { level: 'error' as const, code: 'react.render_error' }
+    const payload: RendererLogPayload = { level: 'error', code: 'react.render_error' }
     await expect(logDiagnosticEvent(payload)).resolves.toBe('entry-1')
     expect(log).toHaveBeenCalledWith(payload)
   })

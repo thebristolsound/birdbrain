@@ -99,6 +99,8 @@ export function fakeBridge(overrides: Overrides = {}): Birdbrain {
 
   // Assigns the property rather than replacing globalThis.window: in the jsdom
   // project `window` is a getter and reassigning it fails.
-  ;(window as unknown as { birdbrain: Birdbrain }).birdbrain = bridge as Birdbrain
-  return bridge as Birdbrain
+  // Assembled key by key from the namespace lists above, so it is only ever a
+  // partial stand-in for the full bridge — hence the widening cast.
+  ;(window as unknown as { birdbrain: Birdbrain }).birdbrain = bridge as unknown as Birdbrain
+  return bridge as unknown as Birdbrain
 }

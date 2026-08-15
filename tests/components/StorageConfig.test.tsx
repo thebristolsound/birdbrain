@@ -32,7 +32,9 @@ vi.mock('motion/react', async () => {
             void whileTap
             void whileHover
             void layout
-            return React.createElement(tag, { ...domProps, ref }, children)
+            // forwardRef wraps P in PropsWithoutRef, which collapses an index-signature
+            // props type through Omit and widens children to unknown. Narrow it back.
+            return React.createElement(tag, { ...domProps, ref }, children as ReactNode)
           }
         )
     }
@@ -58,6 +60,7 @@ const settings = {
   storagePath: '/home/tester/Birdbrain',
   theme: 'light',
   reduceMotion: false,
+  density: 'compact',
   operatorName: '',
   operatorRole: '',
   operatorOrganization: '',

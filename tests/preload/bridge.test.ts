@@ -93,8 +93,11 @@ const allChannels = Object.values(IPC_CHANNELS)
 const invokeChannels = allChannels.filter((channel) => !channel.startsWith('event:'))
 const eventChannels = allChannels.filter((channel) => channel.startsWith('event:'))
 
-// These leaves intentionally sit at the bridge root. Keeping the allowlist
-// explicit makes any new root-level placement a reviewed contract decision.
+// These leaves intentionally sit at the bridge root. The path check below gates
+// only the invokes among them: expectedBridgePath returns an event's bare method
+// name, so a root-placed event always matches and is exempt by design (#338).
+// Listing the invokes keeps any new root-level invoke a reviewed contract
+// decision; the `on*` entries are descriptive only and are not gated here.
 const ROOT_LEVEL_LEAVES = new Set([
   'search',
   'testPipeline',

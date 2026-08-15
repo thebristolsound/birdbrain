@@ -287,6 +287,12 @@ Issues live as GitHub Issues in `thebristolsound/birdbrain`, accessed via the `g
 
 Two `gh` traps that produce wrong numbers rather than errors. **`gh api --jq` rejects `-r`**, and **`gh issue comment` has no `-q`** — in both cases the command fails, and a pipeline that ends in `| tail -1` swallows the failure and reports success. Never derive a count through a pipe whose exit status you have not checked. Separately, **the label-filtered issue search (`issues?labels=…`) reads GitHub's search index and lags a direct label read by seconds** — verified twice on 2026-08-14 — so never treat it as authoritative for a decision; read `issues/<n>/labels` for that.
 
+**Every defect you notice gets filed before you finish, whatever its severity and whether or not it is in scope.** Noticing is not tracking. A defect named in a PR body, a review comment, or a chat report and left unfiled is gone the moment that context ends, and it puts the filing burden on the maintainer — who was told about it precisely because they were not the one who found it. This applies to out-of-scope findings especially: file separately rather than widening the diff, and say in the issue why it was kept out of the change that found it.
+
+Never end a report by observing that something is untracked. File it, choose labels with your own judgement, and report it as filed with the number. If a defect is too small to deserve acceptance criteria, it is still large enough for a one-line issue.
+
+The same rule covers the inverse failure: **do not write that something "is filed" until it is.** On 2026-08-15 a gate document merged to `main` asserting a `workflow_dispatch` ticket had been "filed separately" when none existed — the intent to file never executed, and the false claim shipped. File first, then reference the number you actually got back.
+
 ### Triage labels
 
 Five canonical triage roles using their default label strings (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.

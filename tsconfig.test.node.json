@@ -8,6 +8,15 @@
 // Fail-closed: everything under tests/ is in by default and the DOM-flavoured
 // directories are excluded, so a new test directory lands in a project rather
 // than in neither. .tsx is claimed by tsconfig.test.web.json wherever it sits.
+// The include lists every non-JSX extension tsc compiles (.ts/.mts/.cts, and
+// so their .d.* forms) rather than .ts alone, or a stray .mts would be in no
+// project and its errors would never be reported.
+//
+// The exclude list is hand-maintained and only one direction of it is safe. A
+// new DOM-flavoured directory of .ts files (say tests/views/) defaults in here
+// without the DOM lib and errors on `document` — an error that points at the
+// symbol rather than at the project boundary. Moving one means editing this
+// exclude and tsconfig.test.web.json's include together.
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
@@ -20,7 +29,7 @@
       "@shared/*": ["./src/shared/*"]
     }
   },
-  "include": ["tests/**/*.ts"],
+  "include": ["tests/**/*.ts", "tests/**/*.mts", "tests/**/*.cts"],
   "exclude": [
     "tests/components",
     "tests/extension",

@@ -9,7 +9,17 @@
 //
 // Claims every .tsx under tests/ wherever it sits, so a component test added
 // outside tests/components is still checked rather than falling through the gap
-// between the two projects.
+// between the two projects. The consequence to know: a .tsx placed under a
+// node-flavoured directory (tests/main/, tests/shared/) lands here, and `paths`
+// below declares no @main/* mapping — such a file importing @main/* fails to
+// resolve. That is fail-closed but the message points at the import, not at the
+// boundary. @main/* is deliberately absent: main-process code typechecked
+// against the DOM lib is the false-positive case tsconfig.test.node.json's
+// header describes.
+//
+// The five directory entries mirror tsconfig.test.node.json's exclude list and
+// spell out each non-JSX extension tsc compiles (.ts/.mts/.cts, and so their
+// .d.* forms); .ts alone would leave a stray .mts here in no project at all.
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
@@ -28,9 +38,19 @@
     "src/renderer/env.d.ts",
     "tests/**/*.tsx",
     "tests/components/**/*.ts",
+    "tests/components/**/*.mts",
+    "tests/components/**/*.cts",
     "tests/extension/**/*.ts",
+    "tests/extension/**/*.mts",
+    "tests/extension/**/*.cts",
     "tests/hooks/**/*.ts",
+    "tests/hooks/**/*.mts",
+    "tests/hooks/**/*.cts",
     "tests/lib/**/*.ts",
-    "tests/renderer/**/*.ts"
+    "tests/lib/**/*.mts",
+    "tests/lib/**/*.cts",
+    "tests/renderer/**/*.ts",
+    "tests/renderer/**/*.mts",
+    "tests/renderer/**/*.cts"
   ]
 }

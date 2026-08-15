@@ -140,8 +140,11 @@ async function invoke<T = unknown>(channel: string, ...args: unknown[]): Promise
   return (await fn(fakeEvent, ...args)) as T
 }
 
-// Unwrap a `handle()` IpcResult, asserting success.
-function expectOk<T = unknown>(res: { ok: boolean; data?: unknown; error?: string }): T {
+// Unwrap a `handle()` IpcResult, asserting success. `data?: T` rather than
+// `data?: unknown` keeps the annotation tied to the result it is read from: a
+// caller whose `T` disagrees with the value's shape is a compile error here,
+// not a silent cast at the return.
+function expectOk<T = unknown>(res: { ok: boolean; data?: T; error?: string }): T {
   expect(res.ok).toBe(true)
   return res.data as T
 }
@@ -1410,12 +1413,10 @@ describe('archive handlers', () => {
     expect(pinned.ok).toBe(true)
 
     const list = registered.get('wayback:list')!
-    const refs = expectOk<
-      Array<{
-        snapshotUrl: string
-        checkedAt: string
-      }>
-    >((await list({} as never, cap.id)) as { ok: boolean; data: unknown })
+    type WaybackRefRow = { snapshotUrl: string; checkedAt: string }
+    const refs = expectOk<WaybackRefRow[]>(
+      (await list({} as never, cap.id)) as { ok: boolean; data?: WaybackRefRow[] }
+    )
     expect(refs).toHaveLength(1)
     expect(refs[0].snapshotUrl).toBe(snapshot.snapshotUrl)
     expect(refs[0].checkedAt).toBe('2026-06-30T00:00:00.000Z')
@@ -1424,7 +1425,7 @@ describe('archive handlers', () => {
     const removed = (await unpin({} as never, pinned.data.id)) as { ok: boolean; data: boolean }
     expect(removed.ok).toBe(true)
     expect(
-      expectOk<unknown[]>((await list({} as never, cap.id)) as { ok: boolean; data: unknown })
+      expectOk<unknown[]>((await list({} as never, cap.id)) as { ok: boolean; data?: unknown[] })
     ).toHaveLength(0)
   })
 
@@ -1455,7 +1456,7 @@ describe('archive handlers', () => {
 
     const list = registered.get('wayback:list')!
     expect(
-      expectOk<unknown[]>((await list({} as never, cap.id)) as { ok: boolean; data: unknown })
+      expectOk<unknown[]>((await list({} as never, cap.id)) as { ok: boolean; data?: unknown[] })
     ).toHaveLength(0)
   })
 })

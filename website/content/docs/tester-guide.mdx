@@ -31,8 +31,8 @@ Report in the tester chat — format at the bottom of this guide.
 Releases live at
 [github.com/thebristolsound/birdbrain/releases](https://github.com/thebristolsound/birdbrain/releases).
 Take the build named in your invitation — the same release link is pinned in the tester
-chat next to this guide. Once it's installed, **Settings → Updates** always shows the
-version you're actually running.
+chat next to this guide. Once it's installed, **Settings → About** shows the version you're
+running, so you can confirm you landed on the one you were pointed at.
 
 ### Windows
 
@@ -93,15 +93,16 @@ full-text search on the Data page, and export the investigation when you're done
 
 ## Updating
 
-Birdbrain checks for updates on its own: shortly after launch, then every few hours while
-it's running. You can also check on demand with **Settings → Updates → Check for updates**.
-Because you're on a prerelease build, it starts on the **Beta** channel, so new betas count
-as updates.
+**Settings → Updates → Check automatically** is on out of the box, and while it is on
+Birdbrain checks for updates by itself: shortly after launch, then every few hours while it's
+running. Anything it finds downloads by itself too. Because you're on a prerelease build, it
+starts on the **Beta** channel, so new betas count as updates.
 
-An available update downloads by itself while automatic checking is on (**Settings →
-Updates → Check automatically**); with that switched off, the update still shows up and you
-click **Download**. Nothing ever restarts on its own — a downloaded update installs when you
-click **Restart to update**, or quietly at your next quit.
+Switch **Check automatically** off and no background check runs at all — an update will never
+surface on its own, and opening the Updates panel won't go looking for one either. You have to
+click **Settings → Updates → Check for updates** yourself, then click **Download** on whatever
+it turns up. That button works whatever the toggle says. Nothing ever restarts on its own — a
+downloaded update installs when you click **Restart to update**, or quietly at your next quit.
 
 **The `.deb` is the exception.** Updates download the same way, but installing one runs
 `dpkg` behind a system password prompt, so it never installs at quit — only when you click
@@ -154,9 +155,9 @@ Two more things a restore does not do, both worth knowing before you click it:
 ## Known limitations
 
 - **Unsigned builds** — SmartScreen warnings on Windows are expected.
-- **Updates never restart the app for you** — installing is your click or your next quit,
-  and on the `.deb` it always needs your system password. New betas are announced in the
-  tester chat as well.
+- **Updates never restart the app for you** — installing is your click, or your next quit on
+  Windows and the AppImage. The `.deb` never installs at quit: it's always your click plus your
+  system password. New betas are announced in the tester chat as well.
 - **Extension is sideloaded** — Chrome may occasionally nag about developer-mode
   extensions.
 - **Local-only data, no backup** — captures live only on your machine. Export
@@ -190,8 +191,8 @@ log file on disk.
 
 Post in the tester chat with:
 
-1. **Version** — the build you're running; **Settings → Updates** shows it, and it's in the
-   installer filename too
+1. **Version** — the build you're running; **Settings → About** shows it, **Settings →
+   Diagnostics** repeats it, and it's in the installer filename too
 2. **OS** — e.g. Windows 11 / Ubuntu 24.04
 3. **What you did** — steps, in order
 4. **What you expected**

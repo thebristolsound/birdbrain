@@ -1,0 +1,36 @@
+// DOM-flavoured half of the test typecheck (#337): the renderer, component and
+// hook tests, plus the extension tests (extension/tsconfig.json is also a DOM
+// project). Mirrors tsconfig.web.json's libs and adds the chrome typings the
+// extension code needs.
+//
+// src/renderer/env.d.ts is listed explicitly: it declares window.birdbrain, and
+// an ambient .d.ts nobody imports is otherwise absent from the program, which
+// turns every bridge access in a renderer test into a phantom error.
+//
+// Claims every .tsx under tests/ wherever it sits, so a component test added
+// outside tests/components is still checked rather than falling through the gap
+// between the two projects.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["node", "chrome", "vitest/globals"],
+    "paths": {
+      "@renderer/*": ["./src/renderer/*"],
+      "@shared/*": ["./src/shared/*"],
+      "@extension/*": ["./extension/src/*"]
+    }
+  },
+  "include": [
+    "src/renderer/env.d.ts",
+    "tests/**/*.tsx",
+    "tests/components/**/*.ts",
+    "tests/extension/**/*.ts",
+    "tests/hooks/**/*.ts",
+    "tests/lib/**/*.ts",
+    "tests/renderer/**/*.ts"
+  ]
+}

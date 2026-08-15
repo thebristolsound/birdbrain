@@ -1,0 +1,31 @@
+// Node-flavoured half of the test typecheck (#337): the tests that exercise
+// main, preload, shared and the verifier CLI. Mirrors tsconfig.node.json's libs
+// so `fetch`/`Buffer`/timers resolve to the Node typings the code under test
+// actually runs against — pulling DOM in here masks real errors (undici's
+// Response.json() returns unknown, the DOM's returns any) and invents fake ones
+// (BodyInit rejects a Buffer).
+//
+// Fail-closed: everything under tests/ is in by default and the DOM-flavoured
+// directories are excluded, so a new test directory lands in a project rather
+// than in neither. .tsx is claimed by tsconfig.test.web.json wherever it sits.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true,
+    "lib": ["ES2022"],
+    "types": ["node", "vitest/globals"],
+    "paths": {
+      "@main/*": ["./src/main/*"],
+      "@shared/*": ["./src/shared/*"]
+    }
+  },
+  "include": ["tests/**/*.ts"],
+  "exclude": [
+    "tests/components",
+    "tests/extension",
+    "tests/hooks",
+    "tests/lib",
+    "tests/renderer"
+  ]
+}

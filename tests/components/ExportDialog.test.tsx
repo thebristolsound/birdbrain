@@ -97,7 +97,7 @@ describe('ExportDialog', () => {
       filePath: 'Case_One_evidence.zip'
     } satisfies ExportResult)
     showItemInFolder = vi.fn().mockResolvedValue(undefined)
-    openPath = vi.fn().mockResolvedValue('')
+    openPath = vi.fn().mockResolvedValue(undefined)
     onExportProgress = vi.fn((cb: (event: ExportProgressEvent) => void) => {
       progressCb = cb
       return vi.fn()

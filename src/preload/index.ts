@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { BirdbrainAPI } from '@shared/birdbrainApi'
 import {
   IPC_CHANNELS,
   type ContractedChannel,
@@ -239,6 +240,6 @@ const birdbrain = {
     search: bridge(IPC_CHANNELS.EXTRACTED_DATA_SEARCH),
     reprocess: bridge(IPC_CHANNELS.EXTRACTED_DATA_REPROCESS)
   }
-}
+} satisfies BirdbrainAPI
 
 contextBridge.exposeInMainWorld('birdbrain', birdbrain)

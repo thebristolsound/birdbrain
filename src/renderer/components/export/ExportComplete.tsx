@@ -34,8 +34,7 @@ export function ExportComplete({ filePath, onClose, celebrationProps }: ExportCo
   const open = async () => {
     setActionError('')
     try {
-      const result = await openPath(filePath)
-      if (result) setActionError(result)
+      await openPath(filePath)
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err))
     }

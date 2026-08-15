@@ -1,18 +1,11 @@
 import { vi } from 'vitest'
+import type { BirdbrainAPI } from '@shared/birdbrainApi'
 
-type Birdbrain = Window['birdbrain']
 type Overrides = Record<string, unknown>
 
-// The bridge surface, mirroring the BirdbrainAPI declaration in
-// src/renderer/env.d.ts. That declaration — not the preload literal — is what
-// the renderer compiles against and what this util hands back, so it is the
-// shape a component under test actually reaches for.
-//
-// Known divergence, and the reason that distinction is worth stating: the
-// preload literal (src/preload/index.ts) still exposes the wayback namespace
-// under its pre-#256 name `archive`. Nothing typechecks preload against
-// BirdbrainAPI, so the rename left it behind and no test can see it. Reported
-// separately; out of scope for #229.
+// The bridge surface mirrors the shared BirdbrainAPI contract. The preload
+// literal is checked against the same contract, while this util still builds
+// every namespace explicitly so a missing test stub fails at the call site.
 const NAMESPACES = [
   'cases',
   'captures',
@@ -60,7 +53,7 @@ const KNOWN_KEYS: ReadonlySet<string> = new Set<string>([...NAMESPACES, ...EVENT
  * the call instead of surfacing as an unrelated assertion failure three lines
  * later. Event subscriptions default to a no-op returning an unsubscribe.
  */
-export function fakeBridge(overrides: Overrides = {}): Birdbrain {
+export function fakeBridge(overrides: Overrides = {}): BirdbrainAPI {
   // An override for a key the bridge does not have would otherwise be dropped
   // in silence, leaving the test green against a namespace nothing can reach.
   for (const key of Object.keys(overrides)) {
@@ -101,6 +94,7 @@ export function fakeBridge(overrides: Overrides = {}): Birdbrain {
   // project `window` is a getter and reassigning it fails.
   // Assembled key by key from the namespace lists above, so it is only ever a
   // partial stand-in for the full bridge — hence the widening cast.
-  ;(window as unknown as { birdbrain: Birdbrain }).birdbrain = bridge as unknown as Birdbrain
-  return bridge as unknown as Birdbrain
+  const typedBridge = bridge as unknown as BirdbrainAPI
+  ;(window as unknown as { birdbrain: BirdbrainAPI }).birdbrain = typedBridge
+  return typedBridge
 }

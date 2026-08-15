@@ -1,13 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { IPC_CHANNELS } from '@shared/ipc'
 
-// `contextBridge.exposeInMainWorld` is typed `any`, so nothing typechecks the
-// preload object against BirdbrainAPI and the two can disagree indefinitely
-// (#333: the wayback namespace stayed `archive` through the #256 rename and
-// `window.birdbrain.wayback` was undefined at runtime). These tests close that
-// gap from the runtime side: they load the real preload bundle against a stub
-// `electron`, call every exposed leaf, and check the channel each one reaches
-// against IPC_CHANNELS — the constant both sides are supposed to agree with.
+// BirdbrainAPI statically guards the bridge's shape and signatures. These tests
+// provide the runtime complement: they load the real preload bundle against a
+// stub electron, call every exposed leaf, and check both its full path and the
+// channel it reaches against IPC_CHANNELS.
 const electronStub = vi.hoisted(() => ({
   exposedKey: null as string | null,
   exposed: null as Record<string, unknown> | null,
@@ -96,10 +93,23 @@ const allChannels = Object.values(IPC_CHANNELS)
 const invokeChannels = allChannels.filter((channel) => !channel.startsWith('event:'))
 const eventChannels = allChannels.filter((channel) => channel.startsWith('event:'))
 
-// `captures:testPipeline` and `captures:testHttp` are dev-diagnostic helpers
-// that sit at the bridge root rather than under `captures`. Grandfathered, not
-// endorsed — moving them is a renderer-wide rename, not this test's business.
-const ROOT_LEVEL_INVOKES = new Set(['testPipeline', 'testHttp'])
+// These leaves intentionally sit at the bridge root. Keeping the allowlist
+// explicit makes any new root-level placement a reviewed contract decision.
+const ROOT_LEVEL_LEAVES = new Set([
+  'search',
+  'testPipeline',
+  'testHttp',
+  'onExportProgress',
+  'onArchiveProgress',
+  'onNewCapture',
+  'onSessionStateChanged',
+  'onExtensionConnection',
+  'onCaptureActivity',
+  'onLogEntry',
+  'onSelectorRematched',
+  'onDeepLinkNavigate',
+  'onUpdateStatus'
+])
 
 // Method names that predate the action-segment convention, keyed by the channel
 // each one stands for. Keeping the channel as the key is the point: legitimising
@@ -125,6 +135,11 @@ function expectedMethodName(channel: string, kind: 'invoke' | 'event'): string {
   return `on${action.charAt(0).toUpperCase()}${action.slice(1)}`
 }
 
+function expectedBridgePath(leaf: BridgeLeaf): string {
+  const domain = leaf.channel.slice(0, leaf.channel.indexOf(':'))
+  return `${domain}.${expectedMethodName(leaf.channel, leaf.kind)}`
+}
+
 describe('preload bridge', () => {
   it('exposes the API as window.birdbrain', () => {
     expect(electronStub.exposedKey).toBe('birdbrain')
@@ -145,21 +160,22 @@ describe('preload bridge', () => {
     expect(reached).toEqual([...eventChannels].sort())
   })
 
-  // The assertion #256 needed and nothing had: a channel's `domain:` segment is
-  // also its namespace on the bridge, so renaming one side without the other
-  // fails here instead of in the running app.
-  it('names each namespace after the domain segment of its channels', () => {
-    const mismatches = invokeLeaves
-      .filter((leaf) => !ROOT_LEVEL_INVOKES.has(leaf.path))
-      .filter((leaf) => leaf.path.split('.')[0] !== leaf.channel.split(':')[0])
-      .map((leaf) => `birdbrain.${leaf.path} -> ${leaf.channel}`)
+  // A leaf's complete path is derived from its channel, so extra nesting and
+  // moving an event under a namespace fail here as well as domain renames.
+  it('places each leaf at the full bridge path derived from its channel', () => {
+    const mismatches = leaves
+      .filter((leaf) => !ROOT_LEVEL_LEAVES.has(leaf.path))
+      .filter((leaf) => leaf.path !== expectedBridgePath(leaf))
+      .map(
+        (leaf) =>
+          `birdbrain.${leaf.path} -> ${leaf.channel} ` +
+          `(expected birdbrain.${expectedBridgePath(leaf)})`
+      )
     expect(mismatches).toEqual([])
   })
 
-  // The namespace rule above only checks the first path segment, so #333's
-  // defect class one level down -- renaming `notes.get` to `notes.fetch` while
-  // the channel stays `notes:get` -- would otherwise pass. The renderer breaks
-  // identically either way, so the method name is pinned to the channel too.
+  // Pinning the method name separately keeps failures local and readable when
+  // the final path segment diverges from its channel's action.
   it('names each method after the action segment of its channel', () => {
     const mismatches = leaves
       .filter((leaf) => leaf.method !== expectedMethodName(leaf.channel, leaf.kind))

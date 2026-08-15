@@ -26,7 +26,7 @@ describe('captureAnalysisQueryOptions', () => {
     expect(opts.queryKey).toEqual(queryKeys.captureAnalysis('c1'))
     expect(opts.enabled).toBe(true)
     await expect(opts.queryFn?.({} as never)).resolves.toEqual(analysis)
-    expect(getAnalysis).toHaveBeenCalledWith('c1')
+    expect(getAnalysis).toHaveBeenCalledWith({ captureId: 'c1' })
   })
 
   it('stays disabled without a capture', () => {

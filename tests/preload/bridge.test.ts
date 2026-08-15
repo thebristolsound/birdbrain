@@ -136,6 +136,7 @@ function expectedMethodName(channel: string, kind: 'invoke' | 'event'): string {
 }
 
 function expectedBridgePath(leaf: BridgeLeaf): string {
+  if (leaf.kind === 'event') return expectedMethodName(leaf.channel, leaf.kind)
   const domain = leaf.channel.slice(0, leaf.channel.indexOf(':'))
   return `${domain}.${expectedMethodName(leaf.channel, leaf.kind)}`
 }

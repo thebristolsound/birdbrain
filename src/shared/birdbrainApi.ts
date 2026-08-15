@@ -53,6 +53,7 @@ import type {
   DbRestoreSnapshotParams,
   OrphanReport,
   AnalyzeCaptureParams,
+  GetAnalysisParams,
   SaveAnnotationsParams,
   UpsertAnnotationPinParams,
   SelectorRematchedEvent,
@@ -196,7 +197,7 @@ export interface BirdbrainAPI {
   ai: {
     analyze(params: AnalyzeCaptureParams): Promise<{ content: string; tokenUsage: TokenUsage }>
     saveAnalysis(analysis: CaptureAnalysis): Promise<void>
-    getAnalysis(params: { captureId: string }): Promise<CaptureAnalysis | null>
+    getAnalysis(params: GetAnalysisParams): Promise<CaptureAnalysis | null>
   }
   db: {
     stats(): Promise<DbStats>

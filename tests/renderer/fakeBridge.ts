@@ -2,6 +2,12 @@ import { vi } from 'vitest'
 import type { BirdbrainAPI } from '@shared/birdbrainApi'
 
 type Overrides = Record<string, unknown>
+type FunctionKey = {
+  [K in keyof BirdbrainAPI]: BirdbrainAPI[K] extends (...args: never[]) => unknown ? K : never
+}[keyof BirdbrainAPI]
+type EventKey = Extract<FunctionKey, `on${string}`>
+type TopLevelKey = Exclude<FunctionKey, EventKey>
+type NamespaceKey = Exclude<keyof BirdbrainAPI, FunctionKey>
 
 // The bridge surface mirrors the shared BirdbrainAPI contract. The preload
 // literal is checked against the same contract, while this util still builds
@@ -26,7 +32,7 @@ const NAMESPACES = [
   'db',
   'ai',
   'extractedData'
-] as const
+] as const satisfies readonly NamespaceKey[]
 
 const EVENTS = [
   'onExportProgress',
@@ -39,9 +45,15 @@ const EVENTS = [
   'onSelectorRematched',
   'onDeepLinkNavigate',
   'onUpdateStatus'
-] as const
+] as const satisfies readonly EventKey[]
 
-const TOP_LEVEL = ['search', 'testPipeline', 'testHttp'] as const
+const TOP_LEVEL = ['search', 'testPipeline', 'testHttp'] as const satisfies readonly TopLevelKey[]
+
+type ListedBridgeKey =
+  (typeof NAMESPACES)[number] | (typeof EVENTS)[number] | (typeof TOP_LEVEL)[number]
+type MissingBridgeKey = Exclude<keyof BirdbrainAPI, ListedBridgeKey>
+type AssertNever<T extends never> = T
+export type FakeBridgeKeysAreExhaustive = AssertNever<MissingBridgeKey>
 
 const KNOWN_KEYS: ReadonlySet<string> = new Set<string>([...NAMESPACES, ...EVENTS, ...TOP_LEVEL])
 

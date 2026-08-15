@@ -450,6 +450,10 @@ export interface AnalyzeCaptureParams {
   model: string
 }
 
+export interface GetAnalysisParams {
+  captureId: string
+}
+
 export interface SaveCaptureParams {
   caseId: string
   url: string
@@ -656,7 +660,7 @@ export interface IpcInvokeContract {
     result: { content: string; tokenUsage: TokenUsage }
   }
   'ai:saveAnalysis': { args: [analysis: CaptureAnalysis]; result: void }
-  'ai:getAnalysis': { args: [params: { captureId: string }]; result: CaptureAnalysis | null }
+  'ai:getAnalysis': { args: [params: GetAnalysisParams]; result: CaptureAnalysis | null }
 
   'shell:showItemInFolder': { args: [path: string]; result: void }
   'shell:openPath': { args: [path: string]; result: void }

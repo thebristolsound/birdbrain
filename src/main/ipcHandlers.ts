@@ -21,6 +21,7 @@ import type {
   DbRestoreSnapshotParams,
   OrphanReport,
   AnalyzeCaptureParams,
+  GetAnalysisParams,
   SaveAnnotationsParams,
   UpsertAnnotationPinParams,
   ExportResult,
@@ -793,7 +794,7 @@ export function registerIpcHandlers(deps: {
     analysisService.saveAnalysis(analysis)
   })
 
-  handle(IPC_CHANNELS.AI_GET_ANALYSIS, (_, params: { captureId: string }) =>
+  handle(IPC_CHANNELS.AI_GET_ANALYSIS, (_, params: GetAnalysisParams) =>
     analysisService.getAnalysis(params.captureId)
   )
 

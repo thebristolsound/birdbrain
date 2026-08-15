@@ -35,13 +35,6 @@ let nextPort = 19846
 let sessionService: SessionService
 const TEST_TOKEN = 'test-server-token'
 
-// The server's JSON payloads are ad-hoc shapes asserted field by field, and
-// undici types Response.json() as unknown. Funnel every read through one
-// loosely-keyed helper rather than casting at 50 call sites.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped HTTP payloads read by key in assertions
-type JsonBody = Record<string, any>
-const readJson = async (res: Response): Promise<JsonBody> => (await res.json()) as JsonBody
-
 describe('captureServer', () => {
   let tempDir: string
   let baseUrl: string
@@ -94,7 +87,7 @@ describe('captureServer', () => {
 
   it('GET /api/status returns running state', async () => {
     const res = await fetch(`${baseUrl}/api/status`)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.running).toBe(true)
     expect(data.activeCase).toBeNull()
     expect(data.sessionActive).toBe(false)
@@ -102,11 +95,11 @@ describe('captureServer', () => {
 
   it('GET /api/status exposes the app theme', async () => {
     updateSettings({ theme: 'light' })
-    const light = await readJson(await fetch(`${baseUrl}/api/status`))
+    const light = await (await fetch(`${baseUrl}/api/status`)).json()
     expect(light.theme).toBe('light')
 
     updateSettings({ theme: 'dark' })
-    const dark = await readJson(await fetch(`${baseUrl}/api/status`))
+    const dark = await (await fetch(`${baseUrl}/api/status`)).json()
     expect(dark.theme).toBe('dark')
   })
 
@@ -114,7 +107,7 @@ describe('captureServer', () => {
     const res = await fetch(`${baseUrl}/api/status`, {
       headers: { Origin: 'chrome-extension://abcdef1234567890' }
     })
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.serverToken).toBe(TEST_TOKEN)
   })
 
@@ -124,7 +117,7 @@ describe('captureServer', () => {
   it('GET /api/status omits serverToken for dev-server renderer origins', async () => {
     for (const origin of ['http://localhost:5173', 'http://127.0.0.1:5173']) {
       const res = await fetch(`${baseUrl}/api/status`, { headers: { Origin: origin } })
-      const data = await readJson(res)
+      const data = await res.json()
       expect(data.serverToken).toBeUndefined()
     }
   })
@@ -133,7 +126,7 @@ describe('captureServer', () => {
     const res = await fetch(`${baseUrl}/api/status`, {
       headers: { Origin: 'https://evil.example.com' }
     })
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.serverToken).toBeUndefined()
   })
 
@@ -170,14 +163,14 @@ describe('captureServer', () => {
 
   it('GET /api/cases returns empty list initially', async () => {
     const res = await fetch(`${baseUrl}/api/cases`)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data).toEqual([])
   })
 
   it('GET /api/cases returns cases with capture counts', async () => {
     createCase({ name: 'Test Case' })
     const res = await fetch(`${baseUrl}/api/cases`)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data).toHaveLength(1)
     expect(data[0].name).toBe('Test Case')
     expect(data[0].captureCount).toBe(0)
@@ -186,7 +179,7 @@ describe('captureServer', () => {
   it('POST /api/cases/:id/activate sets active case', async () => {
     const testCase = createCase({ name: 'Active Case' })
     const res = await serverPost(`/api/cases/${testCase.id}/activate`)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.status).toBe('ok')
     expect(data.case.name).toBe('Active Case')
 
@@ -209,15 +202,15 @@ describe('captureServer', () => {
     await serverPost(`/api/cases/${testCase.id}/activate`)
 
     const startRes = await serverPost('/api/session/start')
-    const startData = await readJson(startRes)
+    const startData = await startRes.json()
     expect(startData.sessionActive).toBe(true)
 
     const statusRes = await fetch(`${baseUrl}/api/status`)
-    const statusData = await readJson(statusRes)
+    const statusData = await statusRes.json()
     expect(statusData.sessionActive).toBe(true)
 
     const stopRes = await serverPost('/api/session/stop')
-    const stopData = await readJson(stopRes)
+    const stopData = await stopRes.json()
     expect(stopData.sessionActive).toBe(false)
   })
 
@@ -239,7 +232,7 @@ describe('captureServer', () => {
       '<html><body>Hello World</body></html>'
     )
 
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.status).toBe('ok')
     expect(data.captureId).toBeDefined()
     expect(data.hash).toHaveLength(64)
@@ -259,7 +252,7 @@ describe('captureServer', () => {
       url: 'https://example.com'
     })
     expect(res.status).toBe(400)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.error).toContain('session')
   })
 
@@ -313,7 +306,7 @@ describe('captureServer', () => {
       '<html><body>Manual capture</body></html>'
     )
 
-    const data = await readJson(res)
+    const data = await res.json()
     expect(res.status).toBe(200)
     expect(data.status).toBe('ok')
     expect(data.captureId).toBeDefined()
@@ -335,7 +328,7 @@ describe('captureServer', () => {
       url: 'https://example.com'
     })
     expect(res.status).toBe(400)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.error).toContain('caseId')
   })
 
@@ -358,7 +351,7 @@ describe('captureServer', () => {
       url: 'https://example.com'
     })
     expect(res.status).toBe(400)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.error).toContain('archived')
   })
 
@@ -369,7 +362,7 @@ describe('captureServer', () => {
       url: 'https://example.com'
     })
     expect(res.status).toBe(400)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.error).toContain('caseId')
   })
 
@@ -387,7 +380,7 @@ describe('captureServer', () => {
       '<html><body>Selector content</body></html>'
     )
 
-    const data = await readJson(res)
+    const data = await res.json()
     expect(res.status).toBe(200)
     expect(data.status).toBe('ok')
     expect(data.source).toBe('selector')
@@ -434,7 +427,7 @@ describe('captureServer', () => {
       headers: { 'X-Birdbrain-Token': TEST_TOKEN }
     })
     expect(res.status).toBe(400)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.error).toContain('url')
   })
 
@@ -457,7 +450,7 @@ describe('captureServer', () => {
       headers: { 'X-Birdbrain-Token': TEST_TOKEN }
     })
     expect(res.status).toBe(400)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.error).toContain('Invalid source')
   })
 
@@ -484,7 +477,7 @@ describe('captureServer', () => {
     createCase({ name: 'Case B' })
 
     const res = await fetch(`${baseUrl}/api/status`)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.running).toBe(true)
     expect(data.cases).toHaveLength(2)
     expect(data.cases[0]).toHaveProperty('id')
@@ -513,7 +506,7 @@ describe('captureServer', () => {
     )
 
     expect(res.status).toBe(403)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.pattern).toBe('facebook.com')
   })
 
@@ -534,7 +527,7 @@ describe('captureServer', () => {
     )
 
     expect(res.status).toBe(200)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.status).toBe('ok')
   })
 
@@ -631,7 +624,7 @@ describe('captureServer', () => {
     createCase({ name: 'Pipeline Test Case' })
 
     const res = await serverPost('/api/captures/test')
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.success).toBe(true)
     expect(data.durationMs).toBeGreaterThanOrEqual(0)
     expect(data.error).toBeUndefined()
@@ -713,7 +706,7 @@ describe('captureServer', () => {
       timestamp: new Date().toISOString()
     })
     expect(second.status).toBe(409)
-    const data = await readJson(second)
+    const data = await second.json()
     expect(data.error).toContain('Duplicate')
 
     const captures = listCaptures(testCase.id)
@@ -907,7 +900,7 @@ describe('captureServer', () => {
     )
 
     expect(res.status).toBe(200)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.captureId).toBeDefined()
     expect(data.hash).toMatch(/^[0-9a-f]{64}$/)
     expect(data.manifestIndex).toBe(0)
@@ -981,7 +974,7 @@ describe('captureServer', () => {
       headers: { 'X-Birdbrain-Token': TEST_TOKEN }
     })
     expect(res.status).toBe(200)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.screenshotStatus).toBe('saved')
 
     const captures = listCaptures(c.id)
@@ -1013,7 +1006,7 @@ describe('captureServer', () => {
       headers: { 'X-Birdbrain-Token': TEST_TOKEN }
     })
     expect(res.status).toBe(200)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.screenshotStatus).toBe('dropped')
     expect(data.screenshotWarning).toContain('too large')
 
@@ -1037,7 +1030,7 @@ describe('captureServer', () => {
       textContent: 'page text'
     })
     expect(res.status).toBe(200)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.screenshotStatus).toBe('none')
     expect(data.screenshotWarning).toBeUndefined()
   })
@@ -1063,7 +1056,7 @@ describe('captureServer', () => {
     })
 
     expect(res.status).toBe(200)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.status).toBe('ok')
     expect(data.selector).toBeDefined()
     expect(data.selector.pattern).toBe('suspicious transaction')
@@ -1092,7 +1085,7 @@ describe('captureServer', () => {
     })
 
     expect(res.status).toBe(400)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.error).toContain('active case')
   })
 
@@ -1109,7 +1102,7 @@ describe('captureServer', () => {
     })
 
     expect(res.status).toBe(400)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.error).toContain('pattern')
   })
 
@@ -1139,7 +1132,7 @@ describe('captureServer', () => {
     })
 
     expect(res.status).toBe(400)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.error).toContain('caseId')
   })
 
@@ -1156,7 +1149,7 @@ describe('captureServer', () => {
     })
 
     expect(res.status).toBe(400)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.error).toContain('active case')
   })
 
@@ -1174,7 +1167,7 @@ describe('captureServer', () => {
     })
 
     expect(res.status).toBe(400)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.error).toContain('archived')
   })
 
@@ -1192,7 +1185,7 @@ describe('captureServer', () => {
     })
 
     expect(res.status).toBe(400)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.error).toContain('active case')
   })
 
@@ -1234,7 +1227,7 @@ describe('captureServer', () => {
     })
 
     expect(res.status).toBe(200)
-    const data = await readJson(res)
+    const data = await res.json()
 
     // Poll for retroactive matching to complete (chunked processing may need multiple ticks)
     let matchCounts = getSelectorMatchCounts(testCase.id)
@@ -1260,7 +1253,7 @@ describe('captureServer', () => {
     })
 
     expect(res.status).toBe(200)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.selector.label).toBeUndefined()
   })
 
@@ -1278,7 +1271,7 @@ describe('captureServer', () => {
     })
 
     expect(res.status).toBe(200)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.selector.label).toBeUndefined()
   })
 
@@ -1295,7 +1288,7 @@ describe('captureServer', () => {
     })
 
     expect(res.status).toBe(200)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.selector.label).toBeUndefined()
   })
 
@@ -1309,7 +1302,7 @@ describe('captureServer', () => {
     await serverPost(`/api/cases/${case1.id}/activate`)
 
     const res = await fetch(`${baseUrl}/api/selectors/active`)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data).toHaveLength(1)
     expect(data[0].caseId).toBe(case1.id)
     expect(data[0].selectors).toHaveLength(1)
@@ -1322,7 +1315,7 @@ describe('captureServer', () => {
 
     // Don't activate any case
     const res = await fetch(`${baseUrl}/api/selectors/active`)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data).toEqual([])
   })
 
@@ -1338,7 +1331,7 @@ describe('captureServer', () => {
       title: 'Test'
     })
     expect(res.status).toBe(400)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.error).toMatch(/operator name/i)
   })
 
@@ -1352,7 +1345,7 @@ describe('captureServer', () => {
       title: 'Test'
     })
     expect(res.status).toBe(400)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.error).toMatch(/operator name/i)
   })
 
@@ -1369,7 +1362,7 @@ describe('captureServer', () => {
       '<html>ok</html>'
     )
     expect(res.status).toBe(200)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.status).toBe('ok')
   })
 
@@ -1388,7 +1381,7 @@ describe('captureServer', () => {
       '<html>auto</html>'
     )
     expect(res.status).toBe(400)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.error).toMatch(/operator name/i)
   })
 
@@ -1401,7 +1394,7 @@ describe('captureServer', () => {
       headers: { 'X-Birdbrain-Token': TEST_TOKEN }
     })
     expect(res.status).toBe(400)
-    const data = await readJson(res)
+    const data = await res.json()
     expect(data.error).toMatch(/operator name/i)
   })
 
@@ -1430,14 +1423,14 @@ describe('captureServer', () => {
         const res = await fetch(`${baseUrl}/api/status`, {
           headers: { Origin: spoof }
         })
-        const data = await readJson(res)
+        const data = await res.json()
         expect(data.serverToken).toBeUndefined()
       })
     }
 
     it('exposes serverToken when no Origin header is present (same-origin / curl)', async () => {
       const res = await fetch(`${baseUrl}/api/status`)
-      const data = await readJson(res)
+      const data = await res.json()
       expect(data.serverToken).toBe(TEST_TOKEN)
     })
 
@@ -1445,7 +1438,7 @@ describe('captureServer', () => {
       const res = await fetch(`${baseUrl}/api/status`, {
         headers: { Origin: 'file:///Users/foo/page.html' }
       })
-      const data = await readJson(res)
+      const data = await res.json()
       expect(data.serverToken).toBeUndefined()
     })
 

@@ -98,7 +98,7 @@ describe('appStore', () => {
       useAppStore.getState().addCaptureEvent({
         type: 'stored',
         captureId: 'cap-1',
-        source: 'manual',
+        caseId: 'case-1',
         url: 'https://example.com',
         timestamp: new Date().toISOString()
       })
@@ -111,7 +111,7 @@ describe('appStore', () => {
       useAppStore.getState().addCaptureEvent({
         type: 'failed',
         captureId: 'cap-1',
-        source: 'manual',
+        caseId: 'case-1',
         url: 'https://example.com',
         timestamp: new Date().toISOString(),
         error: 'Network error'
@@ -126,7 +126,7 @@ describe('appStore', () => {
         useAppStore.getState().addCaptureEvent({
           type: 'stored',
           captureId: `cap-${i}`,
-          source: 'manual',
+          caseId: 'case-1',
           url: 'https://example.com',
           timestamp: new Date().toISOString()
         })
@@ -196,7 +196,7 @@ describe('appStore', () => {
       useAppStore.getState().addCaptureEvent({
         type: 'stored',
         captureId: 'cap-1',
-        source: 'manual',
+        caseId: 'case-1',
         url: 'https://example.com',
         timestamp: new Date().toISOString()
       })

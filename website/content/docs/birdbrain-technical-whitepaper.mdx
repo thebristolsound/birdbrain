@@ -247,7 +247,7 @@ Observability is minimal and deliberate. There is no logging framework, no crash
 
 Operational maturity instead shows up in CI and tests:
 
-- **CI** (GitHub Actions): lint, three-project typecheck (node, web, extension), unit tests executed under Electron-as-Node with a hard requirement that `openssl` be present (the RFC 3161 keystone test shells out to `openssl ts -verify`, so the external verification recipe is continuously proven), Electron and extension builds, and Playwright E2E under `xvfb`.
+- **CI** (GitHub Actions): lint, six-project typecheck (node, web, extension, plus the two test projects and the E2E project, so `tests/` and `e2e/` are gated too), unit tests executed under Electron-as-Node with a hard requirement that `openssl` be present (the RFC 3161 keystone test shells out to `openssl ts -verify`, so the external verification recipe is continuously proven), Electron and extension builds, and Playwright E2E under `xvfb`.
 - **Test posture**: a "coverage barbell" enforces 90 % line coverage on `src/main/services/**` and `src/shared/**` (the forensic core) while tolerating 38 % globally, an explicit statement of where correctness matters most. Roughly 50 service test files cover the manifest, signing, timestamps, TSA trust, capture pipeline, export round-trips, and migrations. Sixteen E2E specs drive the packaged app through a real preload path with a fresh temp profile per test.
 - **Release**: tag-triggered matrix builds (Windows NSIS, macOS dmg+zip, Linux AppImage+deb) with `fail_on_unmatched_files` guarding against a partial updater feed; the updater state machine gates auto-install per platform and per release channel (stable/beta via GitHub prerelease flags).
 

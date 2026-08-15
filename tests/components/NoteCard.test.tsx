@@ -19,10 +19,10 @@ import { fakeBridge } from '../renderer/fakeBridge'
 const note: Note = {
   id: 'note1',
   caseId: 'case1',
-  captureId: undefined,
+  captureId: null,
   title: 'A note',
   body: 'body text',
-  bodyDoc: undefined,
+  bodyDoc: null,
   sourceUrl: 'https://example.com/thread/42',
   createdAt: '2026-08-01T00:00:00.000Z',
   updatedAt: '2026-08-01T00:00:00.000Z'

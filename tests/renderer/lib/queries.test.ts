@@ -250,7 +250,7 @@ function setup() {
   return { client, invalidate, setQueryData, wrapper }
 }
 
-function invalidatedKeys(spy: { mock: { calls: readonly unknown[][] } }) {
+function invalidatedKeys(spy: ReturnType<typeof vi.spyOn>) {
   return spy.mock.calls.map((c) => (c[0] as { queryKey: unknown }).queryKey)
 }
 
@@ -368,8 +368,8 @@ describe('useNotesMutations', () => {
     const { result } = renderHook(() => useNotesMutations('c1'), { wrapper })
 
     for (const run of [
-      () => result.current.create.mutateAsync({ caseId: 'c1', body: 'x' }),
-      () => result.current.update.mutateAsync({ id: 'n1', body: 'y' }),
+      () => result.current.create.mutateAsync({ caseId: 'c1', content: 'x' }),
+      () => result.current.update.mutateAsync({ id: 'n1', content: 'y' }),
       () => result.current.remove.mutateAsync('n1')
     ]) {
       invalidate.mockClear()

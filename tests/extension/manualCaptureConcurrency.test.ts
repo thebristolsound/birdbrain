@@ -113,17 +113,7 @@ beforeAll(async () => {
         uploadRejecters.push(reject)
       })
   )
-  vi.mocked(createSelector).mockResolvedValue({
-    selector: {
-      id: 'sel-created',
-      caseId: 'case-1',
-      pattern: 'x',
-      isRegex: false,
-      enabled: true,
-      createdAt: '2026-01-01T00:00:00.000Z'
-    },
-    status: 'ok'
-  })
+  vi.mocked(createSelector).mockResolvedValue({ id: 'sel-created' })
 
   vi.stubGlobal('chrome', {
     runtime: {

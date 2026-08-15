@@ -41,24 +41,39 @@ either run section 5 first on a snapshot, or roll the VM back between them.
 
 ---
 
-## 1. CI green — must pass
+## 1. CI and Security green — must pass
 
 The `CI` workflow (`.github/workflows/ci.yml`) must be green **on the tagged commit**, all
 five jobs:
 
 - [ ] `lint` — `pnpm lint`
 - [ ] `typecheck` — `pnpm typecheck`
-- [ ] `test` — `pnpm test:coverage` with `BIRDBRAIN_REQUIRE_OPENSSL=1`, then
-      `scripts/diff-coverage.mjs`
+- [ ] `test` — `pnpm test:coverage` with `BIRDBRAIN_REQUIRE_OPENSSL=1`
 - [ ] `build` — `pnpm build` and `pnpm build:extension`
 - [ ] `e2e` — Playwright against the built app
 
+The `Security` workflow (`.github/workflows/security.yml`) runs on the same triggers and
+must be green on the same commit, all three jobs:
+
+- [ ] `Secret scan (full history)` — gitleaks over the whole history
+- [ ] `Dependency audit` — dependency advisories
+- [ ] `Registry publish guard` — `package.json` still marked private
+
 Notes worth knowing before you read a green tick as meaning more than it does:
 
-- CI runs on `push` to `main` and on pull requests, **not on tags**. If the tag points at a
-  commit CI has already run, that run counts; if it does not, re-run the workflow against
-  the tagged commit before ticking this section. A green run on a different commit is not
-  evidence about this build.
+- Both workflows run on `push` to `main` and on pull requests, **not on tags**, and neither
+  declares `workflow_dispatch`. There is therefore no way to aim a run at a tag: `gh workflow
+  run` has no dispatch trigger to fire, and `gh run rerun` only replays the commit its
+  original run used. **Cut the tag at a commit that already has a green `main` run** — if the
+  commit is not on `main` yet, push it to `main` first, wait for that run, then tag it. A
+  green run on a different commit is not evidence about this build.
+- Adding `workflow_dispatch` to `ci.yml` and `security.yml` would remove that constraint and
+  let a run be aimed at an arbitrary ref. It is filed separately, not a prerequisite for
+  running this gate.
+- The `test` job's diff-coverage step is gated `if: github.event_name == 'pull_request'`
+  (`.github/workflows/ci.yml:97`), so `scripts/diff-coverage.mjs` does **not** run on the
+  push-to-`main` run this section reads. Diff coverage is a per-PR gate; a green `test` here
+  means the suite and the project-wide coverage thresholds passed, nothing more.
 - `BIRDBRAIN_REQUIRE_OPENSSL=1` is what stops the OpenSSL-dependent timestamp tests from
   turning green-by-skipping (`tests/helpers/openssl.ts`). Locally, run
   `BIRDBRAIN_REQUIRE_OPENSSL=1 pnpm test` for the same reason.
@@ -88,7 +103,8 @@ Run the same eight steps per platform.
       unsigned) → launch
 - [ ] Create a case
 - [ ] Sideload the extension from `birdbrain-extension.zip` (`chrome://extensions` →
-      Developer mode → Load unpacked); the app flips to **Extension connected**
+      Developer mode → Load unpacked); the dashboard banner flips to **Browser Extension
+      Connected** and the top-bar indicator reads **Connected**
 - [ ] Capture a page as HTML
 - [ ] Capture a page as MHTML
 - [ ] View both captures in the app
@@ -99,7 +115,8 @@ Run the same eight steps per platform.
 
 - [ ] `chmod +x` → launch
 - [ ] Create a case
-- [ ] Sideload the extension; the app flips to **Extension connected**
+- [ ] Sideload the extension; the dashboard banner flips to **Browser Extension Connected**
+      and the top-bar indicator reads **Connected**
 - [ ] Capture a page as HTML
 - [ ] Capture a page as MHTML
 - [ ] View both captures in the app
@@ -122,6 +139,14 @@ actually produced.
 with the trust anchor alongside it, so this check needs no network and no system trust
 store.
 
+This decomposes #291's single "run the verifier against `tests/fixtures/timestamp/`" item
+into the three boxes below, because that item was not implementable as written: the
+standalone verifier has no mode that reads the fixture. `--self-check` routes to
+`runSelfCheck()` (`src/verifier/cli.ts:117`), which compares a frozen canonical-JSON golden
+vector, and the only other mode takes a package directory. So the fixture is exercised by
+the test suite and by hand with `openssl`, and the verifier's own known-answer check is
+`--self-check` — the same coverage, split across the tools that can actually deliver it.
+
 - [ ] `BIRDBRAIN_REQUIRE_OPENSSL=1 pnpm test` passed on the tagged commit (section 1
       covers this) — that is what exercises the fixture through
       `parseTimestampToken` and the canonical `openssl ts -verify` path.
@@ -136,14 +161,16 @@ store.
       ```
 
 - [ ] The standalone verifier's self-check passes on a binary built from the tagged commit
-      (`pnpm build:verifier`, then `dist/verifier/birdbrain-verify --self-check`). This
-      asserts the bundled canonical-JSON core is byte-identical to the in-app core; it says
-      nothing about any particular package.
+      (`pnpm build:verifier`, then `dist/verifier/birdbrain-verify --self-check`; on Windows
+      the binary is `dist\verifier\birdbrain-verify.exe`). This asserts the bundled
+      canonical-JSON core is byte-identical to the in-app core; it says nothing about any
+      particular package.
 
 The verifier binary is **not** a release artifact — `release.yml` publishes installers and
 the extension zip only, and Node SEA builds for the OS it runs on. Build it locally from
-the tagged commit for this step, and note that this is the one place section 2's
-CI-artifacts-only rule does not reach.
+the tagged commit, and note that the verifier is section 2's one exception: both this step
+and the re-verify step in 4b run a locally built binary rather than a CI-built one. That
+exception covers the verifier and nothing else — every installer stays CI-built.
 
 **4b. Live capture → verify → export → re-verify**
 
@@ -195,7 +222,8 @@ where the 45-minute target usually goes; one is the floor.
 Named here so nobody re-litigates them mid-release:
 
 - **Known-answer capture corpus** — a fixed corpus with known hashes, manifest chain and
-  tokens is filed as an ordinary follow-up, not a blocker (#291). Gate v1 leans on the
+  tokens is filed as an ordinary follow-up, not a blocker
+  ([#417](https://github.com/thebristolsound/birdbrain/issues/417)). Gate v1 leans on the
   timestamp fixture plus the live pass in 4b.
 - **macOS** — ships as a byproduct, unsupported for round 1, untested here.
 - **Code signing / notarization** — out of scope per map #284; the SmartScreen
@@ -209,7 +237,8 @@ Named here so nobody re-litigates them mid-release:
 | --- | --- |
 | Candidate tag | |
 | CI run (link) | |
-| Section 1 CI green | pass / fail |
+| Security run (link) | |
+| Section 1 CI + Security green | pass / fail |
 | Section 2 CI artifacts only | pass / fail |
 | Section 3 Windows NSIS | pass / fail |
 | Section 3 Ubuntu AppImage | pass / fail |

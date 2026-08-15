@@ -159,10 +159,10 @@ produces.
 ### Prototype walkthrough
 
 Cheap, and worth one session: show the tester the design-handoff prototype
-(branch `prototype/design-handoff-2026-08`) beside the shipped app and ask which one
-matches how they work. It needs no build. Do this in the same session as the round-1
-hand-off, and treat the answer as input to #382 rather than as feedback on the shipped
-build.
+(branch `prototype/design-handoff-2026-08`, entry point `Birdbrain.dc.html`, which runs
+standalone in a browser) beside the shipped app and ask which one matches how they work.
+It needs no build. Do this in the same session as the round-1 hand-off, and treat the
+answer as input to #382 rather than as feedback on the shipped build.
 
 ## Tester guide changes this brief requires
 

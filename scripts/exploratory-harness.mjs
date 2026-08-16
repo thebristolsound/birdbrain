@@ -8,9 +8,12 @@
  *
  * Two modes, one file:
  *
- *   node scripts/exploratory-harness.mjs serve
+ *   node scripts/exploratory-harness.mjs serve [--skip-onboarding] [--window-size WxH]
  *     Launch app, listen on 127.0.0.1 (port written to $TMPDIR/birdbrain-harness.json).
  *     Ctrl-C / `close` tool shuts down and deletes the temp dir.
+ *     `--skip-onboarding` seeds the completed-onboarding setting so the dashboard opens.
+ *     `--window-size` sets the app window's outer dimensions for layout testing.
+ *     On start, dead harness profiles with a recorded server pid are swept from $TMPDIR.
  *     Headless hosts (WSL2 shells without $DISPLAY): prefix with
  *     `xvfb-run -a -s "-screen 0 1440x900x24"`.
  *
@@ -21,6 +24,7 @@
  *   snapshot                    accessibility tree (aria snapshot) of the renderer
  *   click <selector>            Playwright selector, e.g. 'role=button[name="New case"]'
  *   type <selector> <text>      fill an input (clears first)
+ *   typetext <text>             type into the focused element (works with rich editors)
  *   press <key>                 keyboard key on focused element, e.g. Enter, Control+k
  *   screenshot [name]           full-viewport PNG -> prints saved path
  *   console                     buffered console messages + page errors since last drain
@@ -29,7 +33,7 @@
  */
 import { _electron } from '@playwright/test'
 import { createServer } from 'http'
-import { mkdtemp, rm, access, writeFile, readFile, mkdir } from 'fs/promises'
+import { mkdtemp, rm, access, writeFile, readFile, mkdir, readdir } from 'fs/promises'
 import { join, resolve, dirname } from 'path'
 import { tmpdir } from 'os'
 import { fileURLToPath } from 'url'
@@ -39,18 +43,68 @@ const INFO_FILE = join(tmpdir(), 'birdbrain-harness.json')
 
 const [mode = 'help', ...rest] = process.argv.slice(2)
 
-if (mode === 'serve') await serve()
+if (mode === 'serve') await serve(rest)
 else if (mode === 'help' || mode === '--help') usage()
 else await client(mode, rest)
 
 function usage() {
   console.log(
-    'usage: node scripts/exploratory-harness.mjs serve\n' +
-      '       node scripts/exploratory-harness.mjs <snapshot|click|type|press|screenshot|console|url|close> [args]'
+    'usage: node scripts/exploratory-harness.mjs serve [--skip-onboarding] [--window-size WxH]\n' +
+      '       node scripts/exploratory-harness.mjs <snapshot|click|type|typetext|press|screenshot|console|url|close> [args]'
   )
 }
 
-async function serve() {
+function parseServeArgs(args) {
+  let skipOnboarding = false
+  let windowSize
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]
+    if (arg === '--skip-onboarding') {
+      skipOnboarding = true
+    } else if (arg === '--window-size') {
+      windowSize = args[++i]
+      if (!windowSize) throw new Error('--window-size requires a value such as 1600x1000')
+    } else {
+      throw new Error(`unknown serve option "${arg}"`)
+    }
+  }
+  if (windowSize && !/^\d+x\d+$/.test(windowSize)) {
+    throw new Error('--window-size must use WxH, for example 1600x1000')
+  }
+  return { skipOnboarding, windowSize }
+}
+
+function processIsAlive(pid) {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (err) {
+    return err?.code === 'EPERM'
+  }
+}
+
+async function sweepStaleProfiles() {
+  const entries = await readdir(tmpdir(), { withFileTypes: true })
+  await Promise.all(
+    entries
+      .filter((entry) => entry.isDirectory() && entry.name.startsWith('birdbrain-explore-'))
+      .map(async (entry) => {
+        const dir = join(tmpdir(), entry.name)
+        let pid
+        try {
+          pid = Number.parseInt(await readFile(join(dir, 'server.pid'), 'utf8'), 10)
+        } catch {
+          return
+        }
+        if (!Number.isSafeInteger(pid) || pid <= 0 || !processIsAlive(pid)) {
+          await rm(dir, { recursive: true, force: true })
+        }
+      })
+  )
+}
+
+async function serve(args) {
+  const { skipOnboarding, windowSize } = parseServeArgs(args)
   const mainPath = join(ROOT, 'out/main/index.js')
   try {
     await access(mainPath)
@@ -59,13 +113,18 @@ async function serve() {
     process.exit(1)
   }
 
+  await sweepStaleProfiles()
   const tempDir = await mkdtemp(join(tmpdir(), 'birdbrain-explore-'))
   const shotsDir = join(tempDir, 'screenshots')
   await mkdir(shotsDir)
+  await writeFile(join(tempDir, 'server.pid'), String(process.pid))
   // Seed operator name so the #116 capture gate accepts test captures.
   await writeFile(
     join(tempDir, 'settings.json'),
-    JSON.stringify({ operatorName: 'Exploratory Tester' })
+    JSON.stringify({
+      operatorName: 'Exploratory Tester',
+      ...(skipOnboarding ? { hasCompletedOnboarding: true } : {})
+    })
   )
 
   let app
@@ -73,7 +132,11 @@ async function serve() {
     app = await _electron.launch({
       args: ['.', `--user-data-dir=${tempDir}`],
       cwd: ROOT,
-      env: { ...process.env, BIRDBRAIN_USER_DATA: tempDir }
+      env: {
+        ...process.env,
+        BIRDBRAIN_USER_DATA: tempDir,
+        ...(windowSize ? { BIRDBRAIN_WINDOW_SIZE: windowSize } : {})
+      }
     })
   } catch (err) {
     await rm(tempDir, { recursive: true, force: true }).catch(() => {})
@@ -97,6 +160,10 @@ async function serve() {
     type: async ([selector, text]) => {
       await page.locator(selector).first().fill(text, { timeout: 5000 })
       return `typed into ${selector}`
+    },
+    typetext: async ([text]) => {
+      await page.keyboard.type(text)
+      return 'typed into focused element'
     },
     press: async ([key]) => {
       await page.keyboard.press(key)

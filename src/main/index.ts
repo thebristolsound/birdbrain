@@ -135,9 +135,12 @@ app.on('child-process-gone', (_event, details) => {
 })
 
 function createWindow(): BrowserWindow {
+  const windowSize = process.env.BIRDBRAIN_WINDOW_SIZE?.match(/^(\d+)x(\d+)$/)
+  const width = windowSize ? Number.parseInt(windowSize[1], 10) : 1200
+  const height = windowSize ? Number.parseInt(windowSize[2], 10) : 800
   const win = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    width,
+    height,
     minWidth: 900,
     minHeight: 600,
     show: false,

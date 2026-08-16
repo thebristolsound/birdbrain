@@ -8,11 +8,13 @@ name: Pre-pass gate
 #   no `agent-pr` label -> success ("not applicable")
 #   `agent-pr` label    -> pending, until the dispatcher posts the real verdict
 #
-# This workflow seeds only. The dispatcher
-# (.claude/skills/dispatch/SKILL.md section 4) owns every transition after the
-# first, so a posted verdict is never overwritten by a later label or push event.
-# The one exception is a stale `pending` on a PR that has lost the `agent-pr`
-# label: nothing else will ever clear it, and left alone it blocks the PR forever.
+# This workflow writes a context that has never reported on this sha, and nothing
+# else. The dispatcher (.claude/skills/dispatch/SKILL.md section 4) owns every
+# transition after the first, so a posted verdict can never be overwritten here.
+#
+# That leaves one known gap: a PR that loses the `agent-pr` label while `pending`
+# keeps that status, and nothing clears it. Harmless while the context is
+# advisory, and a prerequisite for making it required — tracked in #488.
 #
 # The dispatcher applies `agent-pr` at `gh pr create` time, so the `opened` event
 # already sees the label and seeds `pending` directly. That ordering is what keeps
@@ -54,30 +56,31 @@ jobs:
           set -euo pipefail
 
           # The combined-status endpoint returns the latest status per context, so
-          # this is current state, not history.
+          # this is current state, not history. No `|| true`: a failed read is
+          # indistinguishable from "no status yet", and acting on that mistake is
+          # how a dispatcher verdict gets overwritten. Fail the job instead. An
+          # absent status is still an exit-0 empty string, so the normal path is
+          # unaffected.
           state="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/status" \
-            --jq '.statuses[] | select(.context=="agent/pre-pass") | .state' || true)"
+            --jq '.statuses[] | select(.context=="agent/pre-pass") | .state')"
 
-          seed() {
-            gh api "repos/${GITHUB_REPOSITORY}/statuses/${SHA}" \
-              -f state="$1" -f context='agent/pre-pass' -f description="$2" >/dev/null
-            echo "agent/pre-pass=$1 on ${SHA:0:8}"
-          }
-
-          if [ "$IS_AGENT" = "true" ]; then
-            if [ -z "$state" ]; then
-              seed pending 'Reviewer pre-pass has not reported for this commit.'
-            else
-              echo "leaving agent/pre-pass=$state in place (dispatcher owns it)"
-            fi
+          # Write only when the context has never reported on this sha. Anything
+          # already there belongs to the dispatcher, and there is no
+          # compare-and-swap on the statuses API — a read-then-write that can
+          # publish over a verdict is not made safe by narrowing the window.
+          if [ -n "$state" ]; then
+            echo "agent/pre-pass=$state already set on ${SHA:0:8}; leaving it"
             exit 0
           fi
 
-          # Not an agent PR. Seed when nothing has reported, and clear a pending
-          # left behind by a removed label — but never downgrade a real verdict,
-          # which a PR can still carry after losing the label.
-          if [ -z "$state" ] || [ "$state" = "pending" ]; then
-            seed success 'Not an agent PR — pre-pass not applicable.'
+          if [ "$IS_AGENT" = "true" ]; then
+            new_state=pending
+            new_desc='Reviewer pre-pass has not reported for this commit.'
           else
-            echo "leaving agent/pre-pass=$state in place"
+            new_state=success
+            new_desc='Not an agent PR — pre-pass not applicable.'
           fi
+
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/${SHA}" \
+            -f state="$new_state" -f context='agent/pre-pass' -f description="$new_desc" >/dev/null
+          echo "agent/pre-pass=$new_state on ${SHA:0:8}"

@@ -80,8 +80,14 @@ export function getExportPreflight(caseId: string): ExportPreflight {
   const counts: Record<TrustedTime, number> = { rfc3161: 0, pending: 0, none: 0 }
 
   for (const capture of captures) {
-    const trustedTime =
-      trustedTimes.get(capture.hash)?.trustedTime ?? capture.trustedTimeStatus ?? 'none'
+    // Manifest-derived only. The captures.trustedTimeStatus mirror is deliberately
+    // not consulted: it is rebuildable state that can disagree with the tokens
+    // actually retained, and these counts are printed in certification.html beside
+    // per-capture rows that resolve from the manifest alone (#492). A capture whose
+    // hash has no manifest entry counts as 'none' — the honest floor, not whatever
+    // the mirror last held. Keyed by content hash, which is what the index carries;
+    // data.trustedTimeByCaptureId re-keys the same resolution by capture id.
+    const trustedTime = trustedTimes.get(capture.hash)?.trustedTime ?? 'none'
     counts[trustedTime]++
   }
 

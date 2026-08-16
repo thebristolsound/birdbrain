@@ -16,10 +16,10 @@ export interface CertificationInput {
   preflight: ExportPreflight
   captures: Capture[]
   verifications: HashVerification[]
-  // Manifest-derived trusted time, snapshotted at package-build time. Required,
-  // not optional: it is the only source that agrees with the manifest-derived
-  // counts in data.preflight, and an absent map would silently degrade the
-  // per-capture rows back to 'none'.
+  // Manifest-derived trusted time, snapshotted at package-build time, keyed by
+  // capture id. Required, not optional: it is what keeps a row with no verification
+  // result agreeing with the manifest-derived counts in data.preflight, and an
+  // absent map would silently degrade those rows back to 'none'.
   trustedTimeByCaptureId: Map<string, TrustedTime>
 }
 

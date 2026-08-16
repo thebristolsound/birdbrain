@@ -15,10 +15,12 @@ import {
 } from '@main/services/captureLifecycle'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { generateReport } from '@main/services/export'
+import { buildCertification, resolveToolVersion } from '@main/services/certification'
+import { setCaptureTrustedTime } from '@main/services/db/captureRepo'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
-import type { ExportOptions } from '@shared/types'
+import type { ExportOptions, TrustedTime } from '@shared/types'
 
 function readStoredZipEntries(path: string): Map<string, Buffer> {
   const zip = readFileSync(path)
@@ -98,9 +100,9 @@ describe('certification', () => {
     rmSync(tempDir, { recursive: true, force: true })
   })
 
-  async function exportZip(): Promise<Map<string, Buffer>> {
+  async function exportZip(overrides: Partial<ExportOptions> = {}): Promise<Map<string, Buffer>> {
     const outputPath = join(tempDir, 'evidence.zip')
-    await generateReport(caseId, { ...ZIP_OPTIONS, outputPath }, captureLifecycle)
+    await generateReport(caseId, { ...ZIP_OPTIONS, ...overrides, outputPath }, captureLifecycle)
     return readStoredZipEntries(outputPath)
   }
 
@@ -199,5 +201,87 @@ describe('certification', () => {
     expect(html).toContain('https://example.com/stamped')
     expect(html).toContain('Captures without trusted time')
     expect(html).toContain('https://example.com/pending')
+  })
+
+  // #492: unchecking Audit Trail skips verification, so data.verifications is
+  // empty and the per-capture rows fall through. They must fall through to the
+  // manifest snapshot — the same source the preflight counts printed in the same
+  // document come from — not to the rebuildable captures.trustedTimeStatus
+  // mirror, which can disagree with the tokens actually retained.
+  it('resolves per-capture trusted time from the manifest, not the mirror, without an audit trail', async () => {
+    const { capture } = await ingest(
+      caseId,
+      '<html><body>Stamped</body></html>',
+      'https://example.com/stamped',
+      'Stamped Page'
+    )
+
+    // Manifest says rfc3161; the mirror disagrees and says none.
+    const token = buildSyntheticToken({
+      contentHash: capture.hash,
+      genTime: new Date('2026-04-05T12:01:00.000Z'),
+      tsaDnsName: 'tsa.example.com'
+    })
+    appendManifestEntry(join(tempDir, 'captures', caseId), {
+      type: 'timestamp',
+      caseId,
+      captureContentHash: capture.hash,
+      timestamp: '2026-04-05T12:01:00.000Z',
+      tsaToken: token.toString('base64'),
+      operatorId: 'op',
+      operatorName: 'Det. Smith',
+      toolVersion: '0.1.0'
+    })
+    setCaptureTrustedTime(capture.id, 'none')
+
+    const entries = await exportZip({
+      include: { ...ZIP_OPTIONS.include, auditTrail: false }
+    })
+    const html = entries.get('certification.html')!.toString('utf-8')
+
+    expect(html).toContain('Timestamped captures')
+    expect(html).toContain('https://example.com/stamped')
+    // The mirror's verdict must not surface anywhere in the document.
+    expect(html).not.toContain('Captures without trusted time')
+    expect(html).not.toContain('Local clock only')
+  })
+
+  it('lets the manifest override a mirror that overclaims trusted time', async () => {
+    const { capture } = await ingest(
+      caseId,
+      '<html><body>Unstamped</body></html>',
+      'https://example.com/unstamped',
+      'Unstamped Page'
+    )
+    setCaptureTrustedTime(capture.id, 'rfc3161')
+
+    // No timestamp entry was appended, so the manifest snapshot resolves 'none'.
+    const html = buildCertification(
+      {
+        caseName: 'Cert Case',
+        exportTimestamp: '2026-04-05T13:00:00.000Z',
+        installationId: 'install-1',
+        operatorName: 'Det. Smith',
+        operatorRole: 'Detective',
+        operatorOrganization: 'Metro PD',
+        tsaUrl: 'https://tsa.example/timestamp',
+        preflight: {
+          captureCount: 1,
+          stampedCaptureCount: 0,
+          unstampedCaptureCount: 1,
+          pendingCaptureCount: 0,
+          noneCaptureCount: 1
+        },
+        captures: [{ ...capture, trustedTimeStatus: 'rfc3161' }],
+        verifications: [],
+        trustedTimeByCaptureId: new Map<string, TrustedTime>([[capture.id, 'none']])
+      },
+      resolveToolVersion()
+    )
+
+    expect(html).toContain('Captures without trusted time')
+    expect(html).toContain('Local clock only')
+    expect(html).not.toContain('Timestamped captures')
+    expect(html).not.toMatch(/All \d+ captures? in this export carry an/i)
   })
 })

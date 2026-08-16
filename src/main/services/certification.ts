@@ -16,6 +16,11 @@ export interface CertificationInput {
   preflight: ExportPreflight
   captures: Capture[]
   verifications: HashVerification[]
+  // Manifest-derived trusted time, snapshotted at package-build time. Required,
+  // not optional: it is the only source that agrees with the manifest-derived
+  // counts in data.preflight, and an absent map would silently degrade the
+  // per-capture rows back to 'none'.
+  trustedTimeByCaptureId: Map<string, TrustedTime>
 }
 
 export interface CertificationCaptureRow {
@@ -68,7 +73,14 @@ export function buildCertificationFields(
 
   const captures: CertificationCaptureRow[] = data.captures.map((capture) => {
     const verification = verificationsByCaptureId.get(capture.id)
-    const trustedTime = verification?.trustedTime ?? capture.trustedTimeStatus ?? 'none'
+    // Same precedence report.html uses: a verification run this export computed,
+    // then the manifest snapshot, then nothing. The capture row's
+    // trustedTimeStatus mirror is deliberately not consulted — it is rebuildable
+    // state that can disagree with the tokens actually retained, and consulting
+    // it let these rows contradict the manifest-derived counts below in the very
+    // same document whenever the operator unchecked Audit Trail (#492).
+    const trustedTime =
+      verification?.trustedTime ?? data.trustedTimeByCaptureId.get(capture.id) ?? 'none'
     return {
       id: capture.id,
       title: capture.title,

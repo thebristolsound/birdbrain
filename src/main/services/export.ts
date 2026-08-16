@@ -308,7 +308,8 @@ function buildEvidenceZip(
         tsaUrl: data.tsaUrl,
         preflight: data.preflight,
         captures: data.captures,
-        verifications: data.verifications
+        verifications: data.verifications,
+        trustedTimeByCaptureId: data.trustedTimeByCaptureId
       },
       resolveToolVersion()
     )

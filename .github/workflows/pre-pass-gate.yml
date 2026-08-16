@@ -1,0 +1,73 @@
+name: Pre-pass gate
+
+# Seeds the `agent/pre-pass` commit status so it can be a required check without
+# blocking PRs that never get a pre-pass.
+#
+# A required status check applies to every PR to main, and a check that never
+# reports sits as "expected" forever. Most PRs here are not agent PRs — dependabot
+# alone has opened 17 — so without this seed, making `agent/pre-pass` required
+# would wedge all of them.
+#
+# Contract:
+#   no `agent-pr` label -> success ("not applicable"), merge unblocked
+#   `agent-pr` label    -> pending, until the dispatcher posts the real verdict
+#
+# The dispatcher (.claude/skills/dispatch/SKILL.md section 4) overwrites this with
+# success/failure. A new push resets the status to pending, because a pre-pass is
+# only ever a statement about the commit it ran against.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, labeled, unlabeled]
+
+permissions:
+  contents: read
+  statuses: write
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Seed agent/pre-pass status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          IS_AGENT: ${{ contains(github.event.pull_request.labels.*.name, 'agent-pr') }}
+          NOT_APPLICABLE: Not an agent PR — pre-pass not applicable.
+        run: |
+          set -euo pipefail
+
+          # Read the current status for our context. Statuses are per-sha and
+          # append-only, so this is the latest one, not a history.
+          current="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/status" \
+            --jq ".statuses[] | select(.context==\"agent/pre-pass\") | \"\(.state)\t\(.description)\"" || true)"
+          state="${current%%$'\t'*}"
+          desc="${current#*$'\t'}"
+
+          seed() {
+            gh api "repos/${GITHUB_REPOSITORY}/statuses/${SHA}" \
+              -f state="$1" -f context='agent/pre-pass' -f description="$2" >/dev/null
+            echo "seeded agent/pre-pass=$1 on ${SHA:0:8}"
+          }
+
+          if [ "$IS_AGENT" != "true" ]; then
+            # Never downgrade a real verdict: a PR can lose the label after a
+            # pre-pass has already reported on this commit.
+            if [ -z "$current" ]; then
+              seed success "$NOT_APPLICABLE"
+            else
+              echo "leaving existing agent/pre-pass=$state in place"
+            fi
+            exit 0
+          fi
+
+          # Agent PR. Seed pending only when nothing has reported yet, or when the
+          # only thing there is our own "not applicable" from before the label
+          # landed — the dispatcher labels after opening, so that ordering is normal.
+          if [ -z "$current" ] || [ "$desc" = "$NOT_APPLICABLE" ]; then
+            seed pending "Reviewer pre-pass has not reported for this commit."
+          else
+            echo "leaving existing agent/pre-pass=$state in place"
+          fi

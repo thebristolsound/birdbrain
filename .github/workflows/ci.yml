@@ -9,9 +9,16 @@ on:
 permissions:
   contents: read
 
+env:
+  # apt ships with no retries and no acquire timeout, so a mirror that accepts the
+  # connection and then stalls blocks until something else kills the job. Retries
+  # are the fix; the timeouts are what make a retry reachable.
+  APT_OPTS: -o Acquire::Retries=3 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15
+
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       # persist-credentials: false on every job except test: no job here pushes, so
       # the token has no reason to sit in .git/config where pnpm lifecycle scripts
@@ -34,6 +41,7 @@ jobs:
 
   typecheck:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -52,6 +60,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       # fetch-depth: 0 so diff coverage can resolve a merge base with the base
       # branch; a shallow clone has no common ancestor to diff against.
@@ -71,8 +80,14 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
+      # Retries and acquire timeouts because apt has neither by default: a mirror
+      # that accepts the connection and then stops sending blocks forever. On
+      # 2026-08-15 that cost the e2e job 19m13s and read as a failing gate (#475).
       - name: Install native build dependencies
-        run: sudo apt-get update && sudo apt-get install -y build-essential python3
+        timeout-minutes: 5
+        run: |
+          sudo apt-get $APT_OPTS update
+          sudo apt-get $APT_OPTS install -y build-essential python3
 
       - run: pnpm install
 
@@ -103,6 +118,7 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -141,10 +157,13 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
+      # Whether this list is still needed at all — playwright install --with-deps
+      # runs immediately below, and the runner image ships a baseline — is #476.
       - name: Install system dependencies
+        timeout-minutes: 5
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential python3 \
+          sudo apt-get $APT_OPTS update
+          sudo apt-get $APT_OPTS install -y build-essential python3 \
             libgtk-3-0 libnotify-dev libnss3 libxss1 \
             libasound2t64 libxtst6 xauth libgbm1 libsecret-1-0
 

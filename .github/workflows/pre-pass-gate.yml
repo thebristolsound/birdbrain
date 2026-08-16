@@ -1,0 +1,86 @@
+name: Pre-pass gate
+
+# Seeds the `agent/pre-pass` commit status so a reviewer verdict is visible in the
+# merge box, and so the context can eventually be a required check without blocking
+# the PRs that never get a pre-pass.
+#
+# Contract:
+#   no `agent-pr` label -> success ("not applicable")
+#   `agent-pr` label    -> pending, until the dispatcher posts the real verdict
+#
+# This workflow writes a context that has never reported on this sha, and nothing
+# else. The dispatcher (.claude/skills/dispatch/SKILL.md section 4) owns every
+# transition after the first, so a posted verdict can never be overwritten here.
+#
+# That leaves one known gap: a PR that loses the `agent-pr` label while `pending`
+# keeps that status, and nothing clears it. Harmless while the context is
+# advisory, and a prerequisite for making it required — tracked in #488.
+#
+# The dispatcher applies `agent-pr` at `gh pr create` time, so the `opened` event
+# already sees the label and seeds `pending` directly. That ordering is what keeps
+# this workflow a pure seeder — there is no "upgrade success to pending" path to
+# race the dispatcher's verdict.
+#
+# NOT YET A REQUIRED CHECK. Workflows triggered by Dependabot get a read-only
+# GITHUB_TOKEN under both `pull_request` and `pull_request_target`, so the status
+# write below cannot succeed on a Dependabot PR and the context would never report.
+# Requiring it today would permanently block every Dependabot PR — 17 opened here
+# so far. See the tracking issue before adding it to the ruleset.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, labeled, unlabeled]
+
+permissions:
+  contents: read
+  statuses: write
+
+# Label churn can queue several runs against one sha. They would each read then
+# write the same context, so serialize them per PR.
+concurrency:
+  group: pre-pass-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Seed agent/pre-pass status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          IS_AGENT: ${{ contains(github.event.pull_request.labels.*.name, 'agent-pr') }}
+        run: |
+          set -euo pipefail
+
+          # The combined-status endpoint returns the latest status per context, so
+          # this is current state, not history. No `|| true`: a failed read is
+          # indistinguishable from "no status yet", and acting on that mistake is
+          # how a dispatcher verdict gets overwritten. Fail the job instead. An
+          # absent status is still an exit-0 empty string, so the normal path is
+          # unaffected.
+          state="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/status" \
+            --jq '.statuses[] | select(.context=="agent/pre-pass") | .state')"
+
+          # Write only when the context has never reported on this sha. Anything
+          # already there belongs to the dispatcher, and there is no
+          # compare-and-swap on the statuses API — a read-then-write that can
+          # publish over a verdict is not made safe by narrowing the window.
+          if [ -n "$state" ]; then
+            echo "agent/pre-pass=$state already set on ${SHA:0:8}; leaving it"
+            exit 0
+          fi
+
+          if [ "$IS_AGENT" = "true" ]; then
+            new_state=pending
+            new_desc='Reviewer pre-pass has not reported for this commit.'
+          else
+            new_state=success
+            new_desc='Not an agent PR — pre-pass not applicable.'
+          fi
+
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/${SHA}" \
+            -f state="$new_state" -f context='agent/pre-pass' -f description="$new_desc" >/dev/null
+          echo "agent/pre-pass=$new_state on ${SHA:0:8}"

@@ -217,8 +217,13 @@ determined are required. **You** open the **draft** PR against `main` and apply 
 the write path:
 
 - Locally: `gh pr create --draft --base main --head <branch> --title <title> --body-file
-  <path>`, then `gh issue edit <n> --add-label agent-pr`.
-- On the web: `mcp__github__create_pull_request`, then `mcp__github__issue_write`.
+  <path> --label agent-pr` — **apply the label in the create call, not afterwards.** The
+  `pre-pass-gate` workflow reads labels on the `opened` event; a PR opened unlabelled seeds
+  `agent/pre-pass=success` and would then have to be upgraded to `pending`, which is a write
+  that can race the dispatcher's own verdict on the same sha.
+- On the web: `mcp__github__create_pull_request`, then `mcp__github__issue_write`. The MCP
+  tool cannot set labels at creation, so on the web label immediately and expect the seeded
+  status to be `success` until you post `pending` yourself — post it explicitly.
 
 Either way, confirm they landed
 (`gh api repos/thebristolsound/birdbrain/issues/<n>/labels --jq '[.[].name]'`). **Then release
@@ -248,6 +253,57 @@ until the next trigger, and you do not dispatch a second issue in the same cycle
 
 Run `birdbrain-reviewer` on the PR after you open it and after every feedback-response push.
 Skip only if the current head commit already has a pre-pass comment.
+
+### The verdict is a commit status, not just a comment
+
+**`agent/pre-pass` is a commit status on the head sha.** The comment is the detail; the status
+is what shows in the merge box, and it is the only signal a maintainer who is not watching this
+session can see.
+
+It is **not currently a required check** — Dependabot workflows get a read-only `GITHUB_TOKEN`,
+so the seeding workflow cannot report on their PRs and requiring the context would block them
+permanently. Treat the status as the visibility mechanism it is today, and do not tell anyone
+it blocks a merge until the ruleset actually says so.
+
+Post `pending` **before** you spawn the reviewer, and the verdict **after**:
+
+```shell
+gh api "repos/thebristolsound/birdbrain/statuses/<head-sha>" \
+  -f state=pending -f context='agent/pre-pass' \
+  -f description='Reviewer pre-pass running.'
+```
+
+then one of, once the reviewer returns:
+
+```shell
+# approve for human review
+-f state=success -f description='Approved for human review. <n> non-blocking findings.'
+# request changes
+-f state=failure -f description='<n> blocking: <shortest true summary, <=140 chars>'
+```
+
+`description` is capped at 140 characters and is what you will actually read on a phone, so
+spend it on *what is wrong*, not on "see comment below". Add
+`-f target_url=<url-of-the-pre-pass-comment>` so the status links to the detail.
+
+Three rules that matter more than the mechanics:
+
+- **Never leave a sha without a status.** If the reviewer fails, times out, or you abandon the
+  round, post `failure` with why. A missing status is indistinguishable from a pre-pass still
+  running, which is the exact ambiguity this replaces — on PR #455 a verdict sat unread for 19
+  minutes because nothing indicated whether more was coming.
+- **`pending` means work is genuinely in flight.** Do not post it speculatively and do not
+  leave it up after you stop.
+- **Say what else is outstanding.** If CodeRabbit or another reviewer has not reported on this
+  sha, say so in the comment's first line ("1 of 2 reporters"). A partial picture presented as
+  a whole one is what makes a verdict misleading rather than merely incomplete.
+
+`.github/workflows/pre-pass-gate.yml` seeds the status so non-agent PRs pass automatically and
+agent PRs start `pending`. It never overwrites a verdict you posted.
+
+**You cannot approve these PRs and neither can the reviewer.** GitHub forbids self-review, and
+agent PRs are opened by the same account the pipeline runs as, so `CHANGES_REQUESTED` is not
+available to this routine. The status is the substitute for it.
 
 ### Wait for CI first — the pre-pass is the expensive instrument
 
@@ -302,12 +358,27 @@ Post the reviewer's report as a **PR comment** via the write path (self-reviews 
 on own-account PRs, so a formal review is not an option), formatted:
 
 ```
-**Reviewer pre-pass (<head-sha>): <verdict>**
+**Reviewer pre-pass (<head-sha>): <verdict>** — <k> of <n> reporters in on this sha
 
-<findings, most-severe first, per the reviewer's report>
+| # | severity | file:line | finding |
+|---|---|---|---|
+| 1 | blocking | src/x.ts:42 | <one sentence, no rationale> |
+
+<at most 5 rows. Anything further goes in the linked full report, not here.>
+
+Full report: <path or gist url>
 ```
 
 where `<verdict>` is `approve for human review` or `request changes`.
+
+**Hard cap: 20 lines.** A pre-pass comment that does not fit is not a thorough pre-pass, it is
+an unread one — the average verdict on PR #423 ran 1,100 words across 14 comments, and 221,867
+characters of prose accumulated against 2,304 changed lines. One sentence per finding, the
+failure scenario in the linked report. If a finding genuinely needs a paragraph to state, that
+paragraph belongs in the report and the row says which section.
+
+Post the status alongside it, per "The verdict is a commit status" above — same sha, same
+round, both or neither.
 
 - **approve for human review** → done; the PR stays in draft for the human back gate. Report
   and stop.

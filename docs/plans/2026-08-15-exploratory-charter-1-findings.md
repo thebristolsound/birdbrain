@@ -11,19 +11,19 @@ run to judge signal quality (spec rollout step 1).
 
 ## Findings
 
-| # | Sev | Title | Screenshot |
-|---|-----|-------|------------|
-| 1 | med | Unsaved note draft silently lost on tab navigation | 021, 022 |
-| 2 | med | MHTML "Page" tab content overflows pane, clipped right, no h-scroll | 012, 013 |
-| 3 | low | Capture viewer toolbar overflows at 1200px: Download/prev/next clipped | 010 |
-| 4 | low | Onboarding card taller than 773px viewport; logo clipped, buttons below fold | 003 |
-| 5 | low | Empty-captures guide says "Toggle Auto-Capture in the header bar" — no such control visible | 006 |
-| 6 | low | Onboarding step 3 mock shows "Extension installed · Active" while status says "Waiting for extension…" | 003 |
-| 7 | low | Overview "Recent captures" thumbnail cropped mid-page (shows body text slice, not page top) | 015 |
-| 8 | low | Command palette: "1 captures" pluralization | 031 |
-| 9 | low | Tags page: 8 colour-swatch buttons have no accessible name | 018 (aria) |
-| 10 | low | Settings → Capture: native (unthemed) checkbox/radio/slider in dark mode | 030 |
-| 11 | low | Empty-state illustration on captures pane clipped at top | 006 |
+| # | Sev | Title | Screenshot | Issue |
+|---|-----|-------|------------|-------|
+| 1 | med | Unsaved note draft silently lost on tab navigation | 021, 022 | #464 |
+| 2 | med | MHTML "Page" tab content overflows pane, clipped right, no h-scroll | 012, 013 | #465 |
+| 3 | low | Capture viewer toolbar overflows at 1200px: Download/prev/next clipped | 010 | #466 |
+| 4 | low | Onboarding card taller than 773px viewport; logo clipped, buttons below fold | 003 | #467 |
+| 5 | low | Empty-captures guide says "Toggle Auto-Capture in the header bar" — no such control visible | 006 | #468 |
+| 6 | low | Onboarding step 3 mock shows "Extension installed · Active" while status says "Waiting for extension…" | 003 | #469 |
+| 7 | low | Overview "Recent captures" thumbnail cropped mid-page (shows body text slice, not page top) | 015 | #470 |
+| 8 | low | Command palette: "1 captures" pluralization | 031 | #471 |
+| 9 | low | Tags page: 8 colour-swatch buttons have no accessible name | 018 (aria) | #472 |
+| 10 | low | Settings → Capture: native (unthemed) checkbox/radio/slider in dark mode | 030 | #473 |
+| 11 | low | Empty-state illustration on captures pane clipped at top | 006 | #474 |
 
 ### 1. Unsaved note draft lost on navigation (med)
 - Notes tab → New note → typed title "Kit observation" + body "Land" → clicked Overview in

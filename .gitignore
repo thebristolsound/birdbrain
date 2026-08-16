@@ -63,6 +63,7 @@ coverage/
 !.claude/skills/
 .claude/skills/*
 !.claude/skills/dispatch/
+!.claude/skills/override-record/
 !.claude/hooks/
 .claude/hooks/*
 !.claude/hooks/session-start.sh

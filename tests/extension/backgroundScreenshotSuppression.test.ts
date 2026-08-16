@@ -106,7 +106,17 @@ beforeAll(async () => {
   vi.mocked(getStatus).mockResolvedValue(STATUS)
   vi.mocked(getActiveSelectors).mockResolvedValue(SELECTOR_GROUPS)
   vi.mocked(sendMhtmlCapture).mockResolvedValue(UPLOAD_RESULT)
-  vi.mocked(createSelector).mockResolvedValue({ id: 'sel-created' })
+  vi.mocked(createSelector).mockResolvedValue({
+    selector: {
+      id: 'sel-created',
+      caseId: 'case-1',
+      pattern: 'x',
+      isRegex: false,
+      enabled: true,
+      createdAt: '2026-01-01T00:00:00.000Z'
+    },
+    status: 'ok'
+  })
   vi.spyOn(console, 'warn').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
 

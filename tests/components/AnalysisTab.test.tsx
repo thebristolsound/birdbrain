@@ -88,7 +88,9 @@ vi.mock('motion/react', async () => {
           void whileTap
           void whileHover
           void layout
-          return React.createElement(tag, { ...domProps, ref }, children)
+          // forwardRef wraps P in PropsWithoutRef, which collapses an index-signature
+          // props type through Omit and widens children to unknown. Narrow it back.
+          return React.createElement(tag, { ...domProps, ref }, children as ReactNode)
         })
         cache.set(tag, component)
         return component
@@ -164,7 +166,9 @@ describe('AnalysisTab', () => {
       content: 'fresh findings',
       tokenUsage: { prompt: 4, completion: 5, total: 9 }
     }))
-    const saveAnalysis = vi.fn(async () => undefined)
+    const saveAnalysis = vi.fn(async (analysis: typeof saved) => {
+      void analysis
+    })
     fakeBridge({
       settings: { get: vi.fn(async () => settings), listModels: vi.fn(async () => []) },
       ai: { getAnalysis, analyze, saveAnalysis }
@@ -274,7 +278,9 @@ describe('AnalysisTab', () => {
       content: 'fresh findings',
       tokenUsage: { prompt: 4, completion: 5, total: 9 }
     }))
-    const saveAnalysis = vi.fn(async () => undefined)
+    const saveAnalysis = vi.fn(async (analysis: typeof saved) => {
+      void analysis
+    })
     fakeBridge({
       settings: {
         get: vi.fn(async () => settings),

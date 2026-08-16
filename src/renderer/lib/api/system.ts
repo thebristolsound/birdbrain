@@ -21,7 +21,7 @@ export function revealInFolder(path: string): Promise<void> {
   return window.birdbrain.shell.showItemInFolder(path)
 }
 
-export function openPath(path: string): Promise<string> {
+export function openPath(path: string): Promise<void> {
   return window.birdbrain.shell.openPath(path)
 }
 

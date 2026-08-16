@@ -263,6 +263,13 @@ export interface DiagnosticsSlowOp {
   ms: number
 }
 
+// Key-protection state for a secret wrapped by Electron's safeStorage (the OS
+// credential store — Keychain / DPAPI / a Linux Secret Service such as
+// gnome-keyring). 'not-set' only applies to the revocable OpenRouter key —
+// the signing key always exists once the app has finished starting, so it is
+// always 'protected' or 'plaintext'. See #414.
+export type KeyProtectionState = 'protected' | 'plaintext' | 'not-set'
+
 export interface DiagnosticsSnapshot {
   generatedAt: string
   app: {
@@ -299,6 +306,11 @@ export interface DiagnosticsSnapshot {
     extractedData: number
   }
   slowOps: DiagnosticsSlowOp[]
+  // At-rest protection state of this installation's secrets — see #414.
+  keyProtection: {
+    signingKey: KeyProtectionState
+    openRouterKey: KeyProtectionState
+  }
 }
 
 // Diagnostic logging. Entries are structural only — see logSafe.ts for the
@@ -335,6 +347,7 @@ export const LOG_SOURCES = [
   'consentBlocker',
   'timestampWorker',
   'db',
+  'signingKey',
   'renderer'
 ] as const
 export type LogSource = (typeof LOG_SOURCES)[number]
@@ -388,13 +401,28 @@ export const LOG_CODES = [
   // separately: the second can happen without the first, and only the log
   // keeps the first once the renderer has been told about the second.
   'db.snapshot_restore_failed',
+  // A failed restore that also left nothing openable at the database path.
+  // Distinct because it is the one case where the app deliberately does not
+  // re-open: migrating a truncated file forward would build a fresh, empty
+  // schema over the operator's data (#428).
+  'db.snapshot_restore_left_no_database',
   'db.reopen_failed',
   // Fallback for notify.error() with no explicit code. Its presence in a log
   // is a signal to give that call site a real code.
   'app.unclassified_error',
   'app.startup_failed',
   'app.bug_report_failed',
-  'app.installation_id'
+  'app.installation_id',
+  // The at-rest key-protection gate (#414): recorded either way so the log
+  // carries the same signal the Settings/Diagnostics indicator shows live.
+  'signingKey.unprotected_key_acknowledged',
+  'signingKey.generation_declined',
+  // getOpenRouterKeyProtectionState (#414 review) reading settings.json to
+  // report protection state, distinct from settings.schema_invalid above:
+  // this fires only when the file can't even be parsed as JSON, so the
+  // Diagnostics "not-set" it falls back to is otherwise indistinguishable
+  // from a key that was genuinely never saved.
+  'settings.key_protection_state_unreadable'
 ] as const
 export type LogCode = (typeof LOG_CODES)[number]
 
@@ -456,8 +484,7 @@ export const ERROR_NAMES = [
   'SqliteError',
   'IpcFailure',
   'ManifestRollback',
-  'PreMigrationSnapshotError',
-  'RestoreRollbackError'
+  'PreMigrationSnapshotError'
 ] as const
 
 export interface LoggedError {

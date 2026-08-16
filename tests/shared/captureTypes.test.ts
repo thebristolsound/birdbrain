@@ -2,8 +2,8 @@ import { describe, it, expectTypeOf } from 'vitest'
 import type { CaptureEvent, CaptureSource } from '@shared/types'
 
 describe('capture types', () => {
-  it('CaptureSource is a union of auto, manual, selector', () => {
-    expectTypeOf<CaptureSource>().toEqualTypeOf<'auto' | 'manual' | 'selector'>()
+  it('CaptureSource is a union of auto, manual, selector, recapture', () => {
+    expectTypeOf<CaptureSource>().toEqualTypeOf<'auto' | 'manual' | 'selector' | 'recapture'>()
   })
 
   it('CaptureEvent has required fields', () => {

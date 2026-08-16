@@ -793,9 +793,12 @@ export function registerIpcHandlers(deps: {
     analysisService.saveAnalysis(analysis)
   })
 
-  handle(IPC_CHANNELS.AI_GET_ANALYSIS, (_, params: { captureId: string }) =>
-    analysisService.getAnalysis(params.captureId)
-  )
+  handle(IPC_CHANNELS.AI_GET_ANALYSIS, (_, captureId: string) => {
+    if (typeof captureId !== 'string' || captureId.length === 0) {
+      throw new IpcFailure('Invalid capture ID', 'INVALID_CAPTURE_ID')
+    }
+    return analysisService.getAnalysis(captureId)
+  })
 
   // Database Admin
   handle(IPC_CHANNELS.DB_STATS, () => {
@@ -903,12 +906,27 @@ export function registerIpcHandlers(deps: {
       logger.error('db', 'db.snapshot_restore_failed', undefined, err)
     }
 
-    if (restoreErr instanceof dbSnapshots.RestoreRollbackError) {
-      // The one failure that must not be followed by a re-open: there is no
-      // file at `dbPath`, so opening it would create an empty database and
-      // migrate it. The operator's data is in the .pre-restore file this
-      // message names, and a fresh empty database would hide that.
-      throw new IpcFailure(restoreErr.message, 'DB_RESTORE_ROLLBACK_FAILED')
+    // A failed restore normally leaves the previous database in place — the
+    // replacement is staged and renamed — but "normally" is not a guarantee to
+    // migrate on. `initDatabase` on a truncated or zero-length file does not
+    // fail: SQLite opens a zero-length file as a brand new database, and the
+    // migrations then build a fresh schema in it. The operator would be told
+    // only that the snapshot could not be restored, over an empty database —
+    // the #428 outcome arriving by another route. So a restore that failed
+    // must prove the file is still a database before anything migrates it.
+    if (restoreErr && !dbSnapshots.isIntactDatabase(dbPath)) {
+      logger.error('db', 'db.snapshot_restore_left_no_database', undefined, restoreErr)
+      // Says "restart" for the same reason the re-open failure below does: this
+      // path returns without calling `initDatabase`, so `db` stays unset in
+      // core.ts and every later IPC call in this session fails with "Database
+      // not initialized". Without it the operator is told the restore failed
+      // and then watches the whole app fail, with nothing connecting the two.
+      throw new IpcFailure(
+        'The snapshot could not be restored, and the database file it was writing over is no ' +
+          'longer readable. Birdbrain has not touched it further. See the log for details. ' +
+          'Restart Birdbrain.',
+        'DB_RESTORE_FAILED'
+      )
     }
 
     try {
@@ -928,7 +946,7 @@ export function registerIpcHandlers(deps: {
     }
 
     // Reported as a fixed message rather than the underlying one: the failures
-    // here come from copyFileSync/renameSync and carry absolute paths, and
+    // here come from copyFileSync/rmSync and carry absolute paths, and
     // `handle()` passes anything that is not an IpcFailure straight through to
     // the renderer. The cause is in the log line above, where it is useful and
     // stays in the main process.

@@ -72,7 +72,8 @@ const SNAPSHOT = {
       detail: 'https://target.example/case-file?id=9',
       ms: 812
     }
-  ]
+  ],
+  keyProtection: { signingKey: 'protected', openRouterKey: 'not-set' }
 } satisfies DiagnosticsSnapshot
 
 const SESSIONS: SessionRecord[] = [

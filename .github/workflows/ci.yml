@@ -125,6 +125,10 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
+    # A main-process hang does not crash this job, it makes every spec burn its own
+    # timeout: the green job runs ~5m, two runs that wedged in whenReady() ran 2h24m
+    # each (32 specs x 3 attempts x ~90s) before anyone noticed. Bound the next one.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

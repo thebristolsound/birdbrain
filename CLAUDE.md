@@ -13,7 +13,7 @@ Open source web investigation & capture tool. Electron desktop app with a compan
 - `pnpm test:watch` - Run tests in watch mode
 - `pnpm test:coverage` / `pnpm coverage:report` / `pnpm coverage:all` - Coverage run and reports
 - `pnpm lint` - ESLint (.ts, .tsx)
-- `pnpm typecheck` - Typecheck all three tsconfigs (main/preload/shared, renderer, extension)
+- `pnpm typecheck` - Typecheck all six tsconfig projects: `src` main/preload/shared, `src` renderer, extension, then `tests/` (node flavour and web flavour) and `e2e/`. Tests are inside the gate — see "Testing" below
 - `pnpm format` - Prettier format src/ and extension/
 - `pnpm rebuild:electron` - Rebuild native deps (better-sqlite3)
 - `pnpm test:e2e` - Run E2E tests (Playwright + Electron, runs `pnpm build` first)
@@ -263,6 +263,16 @@ from either is silently dropped from that site's sidebar.
 - **Unit tests** (`tests/`) - Vitest running via Electron runtime (`ELECTRON_RUN_AS_NODE=1`). Config in `vitest.config.ts` (node environment, globals enabled). Covers database, services, store, types.
 - **E2E tests** (`e2e/`) - Playwright with Electron. Config in `playwright.config.ts` (30s timeout, 1 worker, trace on-first-retry). Requires `pnpm build` first (handled by `pretest:e2e` script).
 
+**`tests/` and `e2e/` are typechecked (#337).** `pnpm typecheck` runs six projects: the three `src`/extension ones, then `tsconfig.test.node.json`, `tsconfig.test.web.json` and `e2e/tsconfig.json`. The two test projects split on **lib flavour, not on the Vitest project split**: the node one mirrors `tsconfig.node.json` (no DOM lib) and covers the tests exercising main/preload/shared/verifier; the web one mirrors `tsconfig.web.json` plus `chrome` typings and covers `tests/components`, `tests/renderer`, `tests/hooks`, `tests/lib`, `tests/extension` and every `.tsx` under `tests/`. Mixing the two libs in one project is not a shortcut — DOM's `BodyInit` rejects a `Buffer`, so a combined project invents a `TS2769` in `src/main/services/timestamp.ts` against code `tsconfig.node.json` already checks clean, and chasing it means editing production code to satisfy a lib it never runs under. That false positive is the load-bearing argument. The `Response.json()` difference (DOM returns `any`, undici returns `unknown`) is the weaker one: the node project does surface ~80 more `TS18046` errors in `tests/main/services/captureServer.test.ts`, but they are then discarded by one `Record<string, any>` helper in that file, so the split does not currently recover them.
+
+The includes are fail-closed by construction: the node project takes everything under `tests/` and excludes the DOM directories, the web project takes every `.tsx` wherever it sits plus those directories, and each spells out `.ts`/`.mts`/`.cts` rather than `.ts` alone. A new test directory or a stray `.mts` therefore lands in a project rather than in the gap between two hand-maintained lists. `e2e/tsconfig.json` lists the same extensions plus `.tsx`. **Two gaps under `tests/` and `e2e/`.** No project sets `allowJs`, so `.js`/`.mjs`/`.cjs`/`.jsx` is compiled by nothing. And `skipLibCheck` is true in all six projects (five inherit `tsconfig.json:8`; `extension/tsconfig.json:8` sets its own), so `.d.ts` bodies sit in the program unchecked — a `tests/**/*.d.ts` shim looks gated and is not.
+
+`eslint.config.js` still sets no `parserOptions.project`, so **linting** remains untyped — that is a separate change and a separate issue if it is wanted. `src/renderer/env.d.ts` is listed explicitly in the web test project: an ambient `.d.ts` that nothing imports is otherwise not in the program, and every `window.birdbrain` access becomes a phantom error.
+
+A type-level assertion in `tests/` is now live, so `expectTypeOf` is available for a known-answer test rather than only a runtime probe. Note that the mutation-option objects under `src/renderer/lib/api/` are plain literals rather than React Query's `UseMutationOptions`, so their `onSuccess`/`onSettled` callbacks are typed with only the parameters they declare — a test that simulates React Query's four-argument call will not compile.
+
+**`tests/components/**/*.test.tsx` run in the jsdom Vitest project**, not the Electron node one; the node project's `tests/**/*.test.ts` include glob does not match `.test.tsx`. A `// @vitest-environment jsdom` directive in a component test is therefore valid and may be kept for clarity — it is not an invalid override of the Electron environment.
+
 ## Code style
 
 - No semicolons
@@ -280,6 +290,14 @@ from either is silently dropped from that site's sidebar.
 ### Issue tracker
 
 Issues live as GitHub Issues in `thebristolsound/birdbrain`, accessed via the `gh` CLI. External PRs are not a triage surface. See `docs/agents/issue-tracker.md`.
+
+Two `gh` traps that produce wrong numbers rather than errors. **`gh api --jq` rejects `-r`**, and **`gh issue comment` has no `-q`** — in both cases the command fails, and a pipeline that ends in `| tail -1` swallows the failure and reports success. Never derive a count through a pipe whose exit status you have not checked. Separately, **the label-filtered issue search (`issues?labels=…`) reads GitHub's search index and lags a direct label read by seconds** — verified twice on 2026-08-14 — so never treat it as authoritative for a decision; read `issues/<n>/labels` for that.
+
+**Every defect you notice gets filed before you finish, whatever its severity and whether or not it is in scope.** Noticing is not tracking. A defect named in a PR body, a review comment, or a chat report and left unfiled is gone the moment that context ends, and it puts the filing burden on the maintainer — who was told about it precisely because they were not the one who found it. This applies to out-of-scope findings especially: file separately rather than widening the diff, and say in the issue why it was kept out of the change that found it.
+
+Never end a report by observing that something is untracked. File it, choose labels with your own judgement, and report it as filed with the number. If a defect is too small to deserve acceptance criteria, it is still large enough for a one-line issue.
+
+The same rule covers the inverse failure: **do not write that something "is filed" until it is.** On 2026-08-15 a gate document merged to `main` asserting a `workflow_dispatch` ticket had been "filed separately" when none existed — the intent to file never executed, and the false claim shipped. File first, then reference the number you actually got back.
 
 ### Triage labels
 

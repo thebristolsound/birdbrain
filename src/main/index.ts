@@ -14,7 +14,7 @@ import {
 import { registerIpcHandlers } from '@main/ipcHandlers'
 import { initSettings, getSettings } from '@main/services/settings'
 import { initInstallationId, getInstallationId } from '@main/services/installationId'
-import { initSigningKey } from '@main/services/signingKey'
+import { initSigningKey, SigningKeyUnacknowledgedError } from '@main/services/signingKey'
 import { initServerToken } from '@main/services/serverToken'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createTimestampWorker } from '@main/services/timestampWorker'
@@ -313,7 +313,13 @@ if (!gotSingleInstanceLock) {
       // report reads both lines from the same sessionId, so nothing is lost
       // analytically.
       logger.info('app', 'app.installation_id', { installationId: ident(getInstallationId()) })
-      initSigningKey(userDataPath)
+      // logEvent wires the durable logger in explicitly — signingKey.ts must
+      // not statically import it (see the note at the top of that file: it is
+      // loaded by tests/setup/signing-key.ts for every unit test, before a
+      // test file's own electron mock is established).
+      initSigningKey(userDataPath, {
+        logEvent: (code) => logger.warn('signingKey', code)
+      })
       initServerToken(userDataPath)
 
       // Use storagePath from settings, fall back to default if empty or unwritable
@@ -434,6 +440,14 @@ if (!gotSingleInstanceLock) {
       // holding the single-instance lock with nothing on screen.
       logger.error('app', 'app.startup_failed', undefined, err)
       flushSync()
+      // The operator already made an explicit, informed choice — decline the
+      // acknowledgement dialog in initSigningKey — so exit quietly rather than
+      // stacking a second, contradictory "could not start" dialog that implies
+      // something broke. app.exit(0): this is not a crash.
+      if (err instanceof SigningKeyUnacknowledgedError) {
+        app.exit(0)
+        return
+      }
       // A refused migration is the one startup failure where the state of the
       // user's data is knowable and reassuring: nothing was written. Saying so
       // is the difference between "wait for a fix" and "restore from a backup".

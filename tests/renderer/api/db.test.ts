@@ -36,7 +36,7 @@ beforeEach(() => {
   api = installDbBridge()
 })
 
-function invalidatedKeys(spy: ReturnType<typeof vi.spyOn>) {
+function invalidatedKeys(spy: { mock: { calls: readonly unknown[][] } }) {
   return spy.mock.calls.map((c) => (c[0] as { queryKey: unknown } | undefined)?.queryKey)
 }
 
@@ -91,8 +91,8 @@ describe('dbAdminMutationOptions', () => {
     const spy = vi.spyOn(qc, 'invalidateQueries')
 
     const opts = dbAdminMutationOptions(qc).vacuum
-    const data = await opts.mutationFn()
-    opts.onSuccess?.(data, undefined as never, undefined, undefined as never)
+    await opts.mutationFn()
+    opts.onSuccess?.()
 
     expect(spy).toHaveBeenCalledWith({ queryKey: queryKeys.dbStats })
     expect(spy).toHaveBeenCalledTimes(1)
@@ -104,8 +104,8 @@ describe('dbAdminMutationOptions', () => {
     const spy = vi.spyOn(qc, 'invalidateQueries')
 
     const opts = dbAdminMutationOptions(qc).rebuildFts
-    const data = await opts.mutationFn()
-    opts.onSuccess?.(data, undefined as never, undefined, undefined as never)
+    await opts.mutationFn()
+    opts.onSuccess?.()
 
     expect(spy).toHaveBeenCalledWith({ queryKey: queryKeys.dbStats })
     expect(spy).toHaveBeenCalledTimes(1)
@@ -118,7 +118,7 @@ describe('dbAdminMutationOptions', () => {
 
     const opts = dbAdminMutationOptions(qc).backup
     const data = await opts.mutationFn()
-    opts.onSuccess?.(data, undefined as never, undefined, undefined as never)
+    opts.onSuccess?.(data)
 
     expect(spy).toHaveBeenCalledWith({ queryKey: queryKeys.dbStats })
     expect(spy).toHaveBeenCalledTimes(1)
@@ -150,19 +150,19 @@ describe('dbAdminMutationOptions', () => {
     const opts = dbAdminMutationOptions(qc)
 
     await opts.createRow.mutationFn({ table: 'cases', data: { name: 'x' } })
-    opts.createRow.onSuccess?.({}, undefined as never, undefined, undefined as never)
+    opts.createRow.onSuccess?.()
     expect(invalidatedKeys(spy)).toContainEqual(queryKeys.dbStats)
     expect(invalidatedKeys(spy)).toContainEqual(['db', 'tableRows'])
 
     spy.mockClear()
     await opts.updateRow.mutationFn({ table: 'cases', pk: { id: '1' }, data: { name: 'y' } })
-    opts.updateRow.onSuccess?.(true, undefined as never, undefined, undefined as never)
+    opts.updateRow.onSuccess?.()
     expect(invalidatedKeys(spy)).toContainEqual(queryKeys.dbStats)
     expect(invalidatedKeys(spy)).toContainEqual(['db', 'tableRows'])
 
     spy.mockClear()
     await opts.deleteRow.mutationFn({ table: 'cases', pk: { id: '1' } })
-    opts.deleteRow.onSuccess?.(true, undefined as never, undefined, undefined as never)
+    opts.deleteRow.onSuccess?.()
     expect(invalidatedKeys(spy)).toContainEqual(queryKeys.dbStats)
     expect(invalidatedKeys(spy)).toContainEqual(['db', 'tableRows'])
   })
@@ -170,7 +170,7 @@ describe('dbAdminMutationOptions', () => {
   it('findOrphans is a read-only report with no invalidation', () => {
     const qc = new QueryClient()
     const opts = dbAdminMutationOptions(qc).findOrphans
-    expect(opts.onSuccess).toBeUndefined()
+    expect('onSuccess' in opts).toBe(false)
   })
 
   it('restore invalidates every query', async () => {
@@ -180,29 +180,38 @@ describe('dbAdminMutationOptions', () => {
 
     const opts = dbAdminMutationOptions(qc).restore
     const data = await opts.mutationFn()
-    opts.onSuccess?.(data, undefined as never, undefined, undefined as never)
+    opts.onSuccess?.(data)
 
     expect(spy).toHaveBeenCalledWith()
   })
 
-  it('restoreSnapshot invalidates every query, including when the restore failed', async () => {
+  it('restoreSnapshot invalidates every query, with no error branch to skip it', async () => {
     api.restoreSnapshot.mockResolvedValue({ restored: true })
     const qc = new QueryClient()
     const spy = vi.spyOn(qc, 'invalidateQueries')
 
     const opts = dbAdminMutationOptions(qc).restoreSnapshot
-    const data = await opts.mutationFn('pre-migration-v26-to-v27-2026-08-01T09-00-00-000Z.db')
-    opts.onSettled?.(data, null, '', undefined as never)
+    await opts.mutationFn('pre-migration-v26-to-v27-2026-08-01T09-00-00-000Z.db')
+    opts.onSettled?.()
 
+    // The wrapping is the only thing this mutationFn adds over a direct bridge
+    // call, and the handler reads `params.fileName` — a bare string or a wrong
+    // key fails at runtime, not here, unless it is asserted.
+    expect(api.restoreSnapshot).toHaveBeenCalledWith({
+      fileName: 'pre-migration-v26-to-v27-2026-08-01T09-00-00-000Z.db'
+    })
     expect(spy).toHaveBeenCalledWith()
 
     // A restore reports failure from several points, some of them after the
     // file has been replaced and re-opened. Invalidating only on success would
-    // leave the pre-restore case list on screen over a database that may no
-    // longer hold it.
+    // leave the case list from before the restore on screen over a database
+    // that may no longer hold it.
     spy.mockClear()
-    expect(opts.onSuccess).toBeUndefined()
-    opts.onSettled?.(undefined, new Error('restore failed'), '', undefined as never)
+    expect('onSuccess' in opts).toBe(false)
+    // onSettled is declared with no parameters, so the failure case is the same
+    // call as the success case — the point is that there is no error branch to
+    // skip the invalidation.
+    opts.onSettled?.()
     expect(spy).toHaveBeenCalledWith()
   })
 
@@ -212,8 +221,8 @@ describe('dbAdminMutationOptions', () => {
     const spy = vi.spyOn(qc, 'invalidateQueries')
 
     const opts = dbAdminMutationOptions(qc).purgeArchived
-    const data = await opts.mutationFn()
-    opts.onSuccess?.(data, undefined as never, undefined, undefined as never)
+    await opts.mutationFn()
+    opts.onSuccess?.()
 
     expect(spy).toHaveBeenCalledWith()
   })
@@ -225,8 +234,8 @@ describe('dbAdminMutationOptions', () => {
 
     const report = { dbOrphans: [], fileOrphans: [] }
     const opts = dbAdminMutationOptions(qc).cleanOrphans
-    const data = await opts.mutationFn(report)
-    opts.onSuccess?.(data, undefined as never, undefined, undefined as never)
+    await opts.mutationFn(report)
+    opts.onSuccess?.()
 
     expect(spy).toHaveBeenCalledWith()
   })
@@ -244,7 +253,7 @@ describe('dbAdminMutationOptions cancellation', () => {
 
     const opts = dbAdminMutationOptions(qc).backup
     const data = await opts.mutationFn()
-    opts.onSuccess?.(data, undefined as never, undefined, undefined as never)
+    opts.onSuccess?.(data)
 
     expect(spy).not.toHaveBeenCalled()
   })
@@ -256,7 +265,7 @@ describe('dbAdminMutationOptions cancellation', () => {
 
     const opts = dbAdminMutationOptions(qc).restore
     const data = await opts.mutationFn()
-    opts.onSuccess?.(data, undefined as never, undefined, undefined as never)
+    opts.onSuccess?.(data)
 
     expect(spy).not.toHaveBeenCalled()
   })

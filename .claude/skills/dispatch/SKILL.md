@@ -244,10 +244,59 @@ vanished, which is the failure ADR-0005's give-up path exists to prevent. Then r
 found and stop: the slot stays vacant
 until the next trigger, and you do not dispatch a second issue in the same cycle.
 
-## 4. Reviewer pre-pass — after every agent push
+## 4. Reviewer pre-pass — after every agent push, and after CI reports
 
 Run `birdbrain-reviewer` on the PR after you open it and after every feedback-response push.
 Skip only if the current head commit already has a pre-pass comment.
+
+### Wait for CI first — the pre-pass is the expensive instrument
+
+**Do not start the pre-pass while CI is still running on the head commit.** Poll
+`gh pr checks <n>` until every check has a conclusion, then branch:
+
+- **CI red** → do **not** run the pre-pass. Hand the failure straight to
+  `birdbrain-implementer` as a cheap, mechanical fix round: the PR number, the failing job, and
+  the instruction to read `gh run view --job <id> --log-failed` itself. Re-poll after its push.
+  A red check means the diff is about to change, so an adversarial pass over it is spent on a
+  tree that will not survive.
+- **CI green** → run the pre-pass.
+
+This ordering is not a micro-optimisation. On PR #423 it went wrong twice in one night: CI
+failed on `dffa233` at 23:30:52 and the pre-pass posted a verdict at 23:34:49; CI failed on
+`6118c58` at 00:00:15 and the pre-pass posted at 00:08:53. Both times the reviewer ran the full
+loop — including the whole test suite — and returned findings on a commit CI had already
+rejected, while the actual failure (a diff-coverage gate, see `CLAUDE.md`) went unnoticed for
+hours because nothing in the routine read the check. Two of that PR's six pre-passes were
+avoidable.
+
+### Pin the sha, and re-check it before posting
+
+Capture the head sha **before** spawning the reviewer, pass that sha to it explicitly, and
+**re-read head immediately before posting the report.** If it moved, discard the verdict and
+re-run against the new head; do not post a verdict naming a sha that is no longer head.
+
+Also on #423: CodeRabbit reviewed `c7fdc56` at 03:52:26, a `main` merge landed at 03:53:18
+(`55ebe53`), and the pre-pass posted at 04:02:43 still naming `c7fdc56` — nine minutes after
+that sha stopped being head. It had reviewed a tree that no longer existed, and its completion
+controls (`git log origin/main..HEAD`) were computed against a different HEAD than the one it
+named. Harmless there because the merge was main-into-branch, but nothing guaranteed that, and
+ADR-0007's hygiene check keys off the *final* pre-pass verdict — which is ambiguous when the
+sha it names is not head.
+
+### Do not re-trigger CodeRabbit with a reply storm
+
+Post the implementer's inline replies **after** the pre-pass report, in one batch, and expect
+CodeRabbit to react to them. On #423 six inline replies at 23:57:33–38 produced seven
+CodeRabbit reviews in the following 34 seconds — reacting to the replies, not to code — and
+some became findings the next round had to disposition. That PR also tripped CodeRabbit's
+"Review rate limited". Batching costs nothing and keeps the next round's surface honest.
+
+### Watch the latency curve
+
+Push-to-pre-pass on #423 ran 12 → 14 → 21 → 21 → 31 minutes, because the reviewer re-runs the
+full six-command loop each round and the diff kept growing. A rising curve is a signal, not
+just a cost: it means the change is accreting rather than converging. Read it alongside the
+convergence check below.
 
 Post the reviewer's report as a **PR comment** via the write path (self-reviews are impossible
 on own-account PRs, so a formal review is not an option), formatted:
@@ -266,6 +315,30 @@ where `<verdict>` is `approve for human review` or `request changes`.
   for **one** fix round, then re-run the pre-pass. If the second pre-pass still requests
   changes, stop there: report "pre-pass unresolved after one fix round — needs human
   attention" and leave both pre-pass comments in place. Never loop further unattended.
+
+### The convergence check — before authorising any further round
+
+When a human authorises rounds past the first, watch what the rounds are *doing*, not just
+whether they end. **If two consecutive fix rounds each resolve the reported finding and the
+next pre-pass finds a new defect in the same function or construct, stop patching and put the
+design in question to the maintainer.** Say plainly that the rounds are not converging, name
+the construct, and offer removing or simplifying it alongside the next patch.
+
+This is not a hypothetical guard. PR #423 ran six rounds against one function: round two's fix
+created round three's blocking data-loss path, round three's new error class created the state
+round three then had to flag, round four's `try` split created round four's, and round five's
+exhaustive nineteen-cell state enumeration — a good-faith attempt to fix the whole space at
+once — still shipped a sixth, because its axes could not see a file present at entry or an
+interrupted process. What finally worked was round six deleting the construct. A bug-per-round
+rate that stays at 100% means the thing has more reachable states than review can hold, and
+another round of review is the wrong instrument.
+
+Two questions worth asking out loud when the check fires, because they were the answer on #423:
+
+- **Is the construct even in the ticket?** Machinery added mid-review to satisfy an earlier
+  finding is not scope the issue asked for, and it has no acceptance criteria holding it down.
+- **What is the smallest version that meets the stated requirement?** Deleting a guarantee and
+  saying so honestly is often safer than a guarantee the code keeps failing to keep.
 
 ## 5. End-of-cycle report
 

@@ -117,8 +117,32 @@ check" and "it passed" are different outcomes; never collapse them.
 
 ## Reporting
 
-Rank findings most-severe first: blocking (correctness, gate violations, unreproducible
-verification, failed or unchecked completion controls) before conventions before nits. For
+You return **two products**, and confusing them is the most common failure of this role.
+
+1. **The verdict** — what the dispatcher posts. At most **5 findings, one sentence each**, plus
+   the verdict line. This is read on a phone, by someone deciding whether to merge. Anything
+   that does not change that decision does not belong in it.
+2. **The full report** — everything else: failure scenarios, traces, what you could not check
+   and why, the non-blocking findings beyond the top 5. Write it to a file and return the path.
+   It is the audit trail, not the interface.
+
+Never inline the full report into the verdict. A 1,100-word verdict is not more rigorous than
+a 20-line one; it is a 20-line one that nobody finished reading.
+
+**Calibrate severity — three tiers, and use them literally.**
+
+- **blocking** — the change is wrong, unverifiable, or violates the evidence gate. Merging
+  produces a defect or an unsound evidence claim.
+- **gate** — a mechanical control failed: draft status, attribution line, `Co-authored-by`
+  trailer, auto-merge, missing `evidence-affecting` label, diff coverage under 90%. Objectively
+  checkable, no judgement, and say which command you ran.
+- **advisory** — conventions, scope, nits, and anything you suspect but did not confirm.
+
+Do not file a `gate` item as `blocking`. They are both merge-stoppers, but they need different
+actions from a human — one needs the code re-examined, the other needs a one-line fix — and
+collapsing them is what made "blocking" stop carrying information.
+
+Rank findings most-severe first. For
 each: file:line, the defect in one sentence, and the concrete failure scenario. Every factual
 claim you make about call sites, wiring, or coverage must be re-derived from the source on
 the branch and cited as file:line — your errors propagate with a reviewer's authority, and a

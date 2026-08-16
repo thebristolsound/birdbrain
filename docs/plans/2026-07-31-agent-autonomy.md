@@ -70,12 +70,21 @@ Write down the rules the pipeline runs under, and the agents that run under them
       and push; merged/closed → dispatch oldest eligible issue; awaiting review → exit.
       Includes the give-up path and the reviewer pre-pass
       ([#308](https://github.com/thebristolsound/birdbrain/issues/308)).
-- [ ] Run remaining pilot cycles via manual triggers; track per-issue outcome toward the exit
-      bar: **4 of the last 5 issues mergeable with ≤1 review round**
-      ([#309](https://github.com/thebristolsound/birdbrain/issues/309)).
-- [ ] Pilot verdict: decide cadence, confirm standing rules carry into scheduled operation,
-      enable the cron ([#310](https://github.com/thebristolsound/birdbrain/issues/310)).
-      Destination reached after the first full triage-and-review-only week.
+- [x] Run remaining pilot cycles via manual triggers; track per-issue outcome toward the exit
+      bar ([#309](https://github.com/thebristolsound/birdbrain/issues/309)). ~~4 of the last 5
+      issues mergeable with ≤1 review round~~ — **retired 2026-08-16**, failed on every reading
+      across three measurements; see `docs/plans/2026-08-10-pilot-part-two-ledger.md`.
+- [ ] **Exit bar, restated ([ADR-0011](../adr/0011-restate-the-autonomy-exit-bar.md)):** a streak
+      of **five consecutive clean cycles**, reset by any violation of three clauses — no false
+      claim of success, no unflagged evidence-affecting defect on `main`, no unreviewed commit
+      on `main`. One cycle is one agent PR; no exclusions. Clock starts when ADR-0011 lands and
+      [#496](https://github.com/thebristolsound/birdbrain/issues/496) ships. Stop-loss: no
+      five-streak within twenty cycles withdraws the destination.
+- [ ] Pilot verdict ([#310](https://github.com/thebristolsound/birdbrain/issues/310)) — **parked
+      2026-08-16** behind round-1 tester readiness (map
+      [#284](https://github.com/thebristolsound/birdbrain/issues/284)). Unparks when round 1 has
+      closed **and** the streak stands at five. Cadence and the standing-rules carry-over are
+      deferred to unpark. Destination reached after the first full triage-and-review-only week.
 
 ## Phase 4 — widening (out of scope for this map)
 

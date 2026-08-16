@@ -1,20 +1,29 @@
 name: Pre-pass gate
 
-# Seeds the `agent/pre-pass` commit status so it can be a required check without
-# blocking PRs that never get a pre-pass.
-#
-# A required status check applies to every PR to main, and a check that never
-# reports sits as "expected" forever. Most PRs here are not agent PRs — dependabot
-# alone has opened 17 — so without this seed, making `agent/pre-pass` required
-# would wedge all of them.
+# Seeds the `agent/pre-pass` commit status so a reviewer verdict is visible in the
+# merge box, and so the context can eventually be a required check without blocking
+# the PRs that never get a pre-pass.
 #
 # Contract:
-#   no `agent-pr` label -> success ("not applicable"), merge unblocked
+#   no `agent-pr` label -> success ("not applicable")
 #   `agent-pr` label    -> pending, until the dispatcher posts the real verdict
 #
-# The dispatcher (.claude/skills/dispatch/SKILL.md section 4) overwrites this with
-# success/failure. A new push resets the status to pending, because a pre-pass is
-# only ever a statement about the commit it ran against.
+# This workflow seeds only. The dispatcher
+# (.claude/skills/dispatch/SKILL.md section 4) owns every transition after the
+# first, so a posted verdict is never overwritten by a later label or push event.
+# The one exception is a stale `pending` on a PR that has lost the `agent-pr`
+# label: nothing else will ever clear it, and left alone it blocks the PR forever.
+#
+# The dispatcher applies `agent-pr` at `gh pr create` time, so the `opened` event
+# already sees the label and seeds `pending` directly. That ordering is what keeps
+# this workflow a pure seeder — there is no "upgrade success to pending" path to
+# race the dispatcher's verdict.
+#
+# NOT YET A REQUIRED CHECK. Workflows triggered by Dependabot get a read-only
+# GITHUB_TOKEN under both `pull_request` and `pull_request_target`, so the status
+# write below cannot succeed on a Dependabot PR and the context would never report.
+# Requiring it today would permanently block every Dependabot PR — 17 opened here
+# so far. See the tracking issue before adding it to the ruleset.
 
 on:
   pull_request:
@@ -24,6 +33,12 @@ on:
 permissions:
   contents: read
   statuses: write
+
+# Label churn can queue several runs against one sha. They would each read then
+# write the same context, so serialize them per PR.
+concurrency:
+  group: pre-pass-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
 
 jobs:
   seed:
@@ -35,39 +50,34 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ github.event.pull_request.head.sha }}
           IS_AGENT: ${{ contains(github.event.pull_request.labels.*.name, 'agent-pr') }}
-          NOT_APPLICABLE: Not an agent PR — pre-pass not applicable.
         run: |
           set -euo pipefail
 
-          # Read the current status for our context. Statuses are per-sha and
-          # append-only, so this is the latest one, not a history.
-          current="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/status" \
-            --jq ".statuses[] | select(.context==\"agent/pre-pass\") | \"\(.state)\t\(.description)\"" || true)"
-          state="${current%%$'\t'*}"
-          desc="${current#*$'\t'}"
+          # The combined-status endpoint returns the latest status per context, so
+          # this is current state, not history.
+          state="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/status" \
+            --jq '.statuses[] | select(.context=="agent/pre-pass") | .state' || true)"
 
           seed() {
             gh api "repos/${GITHUB_REPOSITORY}/statuses/${SHA}" \
               -f state="$1" -f context='agent/pre-pass' -f description="$2" >/dev/null
-            echo "seeded agent/pre-pass=$1 on ${SHA:0:8}"
+            echo "agent/pre-pass=$1 on ${SHA:0:8}"
           }
 
-          if [ "$IS_AGENT" != "true" ]; then
-            # Never downgrade a real verdict: a PR can lose the label after a
-            # pre-pass has already reported on this commit.
-            if [ -z "$current" ]; then
-              seed success "$NOT_APPLICABLE"
+          if [ "$IS_AGENT" = "true" ]; then
+            if [ -z "$state" ]; then
+              seed pending 'Reviewer pre-pass has not reported for this commit.'
             else
-              echo "leaving existing agent/pre-pass=$state in place"
+              echo "leaving agent/pre-pass=$state in place (dispatcher owns it)"
             fi
             exit 0
           fi
 
-          # Agent PR. Seed pending only when nothing has reported yet, or when the
-          # only thing there is our own "not applicable" from before the label
-          # landed — the dispatcher labels after opening, so that ordering is normal.
-          if [ -z "$current" ] || [ "$desc" = "$NOT_APPLICABLE" ]; then
-            seed pending "Reviewer pre-pass has not reported for this commit."
+          # Not an agent PR. Seed when nothing has reported, and clear a pending
+          # left behind by a removed label — but never downgrade a real verdict,
+          # which a PR can still carry after losing the label.
+          if [ -z "$state" ] || [ "$state" = "pending" ]; then
+            seed success 'Not an agent PR — pre-pass not applicable.'
           else
-            echo "leaving existing agent/pre-pass=$state in place"
+            echo "leaving agent/pre-pass=$state in place"
           fi

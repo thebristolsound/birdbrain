@@ -217,8 +217,13 @@ determined are required. **You** open the **draft** PR against `main` and apply 
 the write path:
 
 - Locally: `gh pr create --draft --base main --head <branch> --title <title> --body-file
-  <path>`, then `gh issue edit <n> --add-label agent-pr`.
-- On the web: `mcp__github__create_pull_request`, then `mcp__github__issue_write`.
+  <path> --label agent-pr` — **apply the label in the create call, not afterwards.** The
+  `pre-pass-gate` workflow reads labels on the `opened` event; a PR opened unlabelled seeds
+  `agent/pre-pass=success` and would then have to be upgraded to `pending`, which is a write
+  that can race the dispatcher's own verdict on the same sha.
+- On the web: `mcp__github__create_pull_request`, then `mcp__github__issue_write`. The MCP
+  tool cannot set labels at creation, so on the web label immediately and expect the seeded
+  status to be `success` until you post `pending` yourself — post it explicitly.
 
 Either way, confirm they landed
 (`gh api repos/thebristolsound/birdbrain/issues/<n>/labels --jq '[.[].name]'`). **Then release
@@ -251,9 +256,14 @@ Skip only if the current head commit already has a pre-pass comment.
 
 ### The verdict is a commit status, not just a comment
 
-**`agent/pre-pass` is a required status check on `main`.** Post it, or the PR cannot merge.
-The comment is the detail; the status is the gate, and — because it shows in the merge box —
-it is also the only signal a maintainer who is not watching this session can see.
+**`agent/pre-pass` is a commit status on the head sha.** The comment is the detail; the status
+is what shows in the merge box, and it is the only signal a maintainer who is not watching this
+session can see.
+
+It is **not currently a required check** — Dependabot workflows get a read-only `GITHUB_TOKEN`,
+so the seeding workflow cannot report on their PRs and requiring the context would block them
+permanently. Treat the status as the visibility mechanism it is today, and do not tell anyone
+it blocks a merge until the ruleset actually says so.
 
 Post `pending` **before** you spawn the reviewer, and the verdict **after**:
 
@@ -293,8 +303,7 @@ agent PRs start `pending`. It never overwrites a verdict you posted.
 
 **You cannot approve these PRs and neither can the reviewer.** GitHub forbids self-review, and
 agent PRs are opened by the same account the pipeline runs as, so `CHANGES_REQUESTED` is not
-available to this routine. The status check is the substitute, and it is why it is required
-rather than advisory.
+available to this routine. The status is the substitute for it.
 
 ### Wait for CI first — the pre-pass is the expensive instrument
 

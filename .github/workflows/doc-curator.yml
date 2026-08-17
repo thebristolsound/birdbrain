@@ -83,7 +83,7 @@ jobs:
             --jq "[.[] | select(.mergedAt > \"$(git show -s --format=%cI "$marker")\")]" \
             > .curator/prs.json
           # A curator PR already open means step 6 of the policy: comment, don't open.
-          gh pr list --state open --label agent-pr --label docs --search 'head:docs/curate-' \
+          gh pr list --state open --label agent-pr --label documentation --search 'head:docs/curate-' \
             --json number --jq '.[0].number // empty' > .curator/open_pr.txt || true
 
       - name: Author
@@ -143,7 +143,7 @@ jobs:
         if: steps.review.outputs.verdict == 'approve' && steps.build.outcome == 'failure' && env.DRY_RUN != 'true'
         run: |
           set -euo pipefail
-          gh issue create --label docs --label agent-pr \
+          gh issue create --label documentation --label agent-pr \
             --title "doc-curator: site build failed on curated edit ($(date -u +%F))" \
             --body-file <(printf 'The doc curator produced an approved edit that broke `pnpm build` in `website/`. Edit discarded; marker left at %s.\n\nRun: %s/%s/actions/runs/%s\n\n```\n%s\n```\n' \
               "${{ steps.window.outputs.marker }}" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$(tail -c 6000 .curator/build.log)")

@@ -55,7 +55,7 @@ A weekly GitHub Actions job (`.github/workflows/doc-curator.yml`) reconciles
    discard. A rejected edit never becomes a PR.
 3. Scope is `website/content/docs/*.mdx`, update-only. Never `meta.json`/`docs.json`,
    never a new page, never `AGENTS.md`/`CLAUDE.md`/`CONTEXT.md`, never `docs/**`.
-4. Output is a PR (`docs/curate-YYYY-MM-DD`, labels `agent-pr` + `docs`), human-merged. Never
+4. Output is a PR (`docs/curate-YYYY-MM-DD`, labels `agent-pr` + `documentation`), human-merged. Never
    a push to `main` — `docs.yml` publishes every push there.
 5. The site must build on the edit; a build failure files an issue and discards the edit.
 6. Curator PRs are exempt from the ADR-0005 one-open-agent-PR slot; the curator keeps itself

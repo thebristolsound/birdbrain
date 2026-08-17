@@ -56,6 +56,6 @@ git commit -q -m "docs(site): weekly curation ${date_tag}"
 git push -u origin "$branch"
 url="$(gh pr create --base main --head "$branch" \
   --title "docs(site): weekly curation ${date_tag}" \
-  --label agent-pr --label docs \
+  --label agent-pr --label documentation \
   --body-file "$body_file")"
 echo "Opened ${url}" >> "$GITHUB_STEP_SUMMARY"

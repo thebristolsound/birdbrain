@@ -1,0 +1,178 @@
+name: Doc curator
+
+# Weekly reconciliation of website/content/docs/**.mdx against what merged to main.
+# An author model proposes the edit; scripts/doc-budget.mjs fences it; a separate
+# reviewer model judges it; only an approved, site-building edit becomes a PR. Policy and limits:
+# docs/agents/doc-curator.md. Decision record: docs/adr/0012.
+#
+# The window is DOC_CURATOR_LAST_SHA..HEAD, held in a repository variable rather
+# than a committed file so a run never has to commit to main to remember itself.
+# The marker advances only on a PR, a comment on the open curator PR, or a clean
+# no-op — a discarded run leaves it so the next run retries the same window.
+#
+# Never pushes to main: docs.yml publishes every push there straight to Pages.
+
+on:
+  schedule:
+    - cron: '0 6 * * 1' # Monday 06:00 UTC
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Run everything but do not open a PR, comment, or advance the marker'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write # push the docs/curate-* branch
+  pull-requests: write # open or comment on the curator PR
+  issues: write # file the site-build-failure issue
+  actions: write # advance DOC_CURATOR_LAST_SHA
+
+concurrency:
+  group: doc-curator
+  cancel-in-progress: false
+
+jobs:
+  curate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+      AUTHOR_MODEL: claude-opus-5
+      REVIEWER_MODEL: claude-fable-5
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: website/pnpm-lock.yaml
+
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Collect window
+        id: window
+        run: |
+          set -euo pipefail
+          marker="$(gh variable get DOC_CURATOR_LAST_SHA 2>/dev/null || true)"
+          if [ -z "$marker" ]; then
+            echo "DOC_CURATOR_LAST_SHA is unset — seed it (see the wizard) before running." >&2
+            exit 1
+          fi
+          head="$(git rev-parse HEAD)"
+          echo "marker=$marker" >> "$GITHUB_OUTPUT"
+          echo "head=$head" >> "$GITHUB_OUTPUT"
+          if [ "$marker" = "$head" ] || [ -z "$(git log --oneline "$marker..$head")" ]; then
+            echo "no_merges=true" >> "$GITHUB_OUTPUT"
+            echo "No commits since $marker; nothing to curate." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "no_merges=false" >> "$GITHUB_OUTPUT"
+          mkdir -p .curator
+          git log --merges --format='%H %s' "$marker..$head" > .curator/merges.txt
+          # PR bodies say why; the diff says what. Both go to the author.
+          gh pr list --state merged --base main --limit 100 \
+            --json number,title,body,mergeCommit,mergedAt \
+            --jq "[.[] | select(.mergedAt > \"$(git show -s --format=%cI "$marker")\")]" \
+            > .curator/prs.json
+          # A curator PR already open means step 6 of the policy: comment, don't open.
+          gh pr list --state open --label agent-pr --label docs --search 'head:docs/curate-' \
+            --json number --jq '.[0].number // empty' > .curator/open_pr.txt || true
+
+      - name: Author
+        if: steps.window.outputs.no_merges == 'false'
+        id: author
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          CURATOR_MARKER: ${{ steps.window.outputs.marker }}
+        run: |
+          set -euo pipefail
+          date_tag="$(date -u +%F)"
+          echo "date_tag=$date_tag" >> "$GITHUB_OUTPUT"
+          bash .github/scripts/doc-curator/author.sh ""
+          node scripts/doc-budget.mjs --json > .curator/budget.json || true
+          jq -r '.failures[] | "FAIL [\(.rule)] \(.path): \(.detail)"' .curator/budget.json || true
+
+      - name: Review
+        if: steps.window.outputs.no_merges == 'false'
+        id: review
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          CURATOR_MARKER: ${{ steps.window.outputs.marker }}
+        run: |
+          set -euo pipefail
+          verdict="$(bash .github/scripts/doc-curator/review.sh)"
+          if [ "$verdict" != "approve" ]; then
+            echo "First pass rejected; retrying once with reviewer reasons." | tee -a "$GITHUB_STEP_SUMMARY"
+            git checkout -- website/content/docs
+            rm -f .curator/stray.txt .curator/budget.json
+            bash .github/scripts/doc-curator/author.sh "$(jq -r '.reasons | join("\n- ")' .curator/verdict.json)"
+            node scripts/doc-budget.mjs --json > .curator/budget.json || true
+            verdict="$(bash .github/scripts/doc-curator/review.sh)"
+          fi
+          echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
+          if git diff --quiet -- website/content/docs; then has_edit=false; else has_edit=true; fi
+          echo "has_edit=$has_edit" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Reviewer verdict: $verdict"
+            jq -r '.reasons[] | "- " + .' .curator/verdict.json
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$verdict" != "approve" ]; then
+            git checkout -- website/content/docs
+            echo "Discarded. Marker left at ${{ steps.window.outputs.marker }}." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Build site on the edit
+        if: steps.review.outputs.verdict == 'approve' && steps.review.outputs.has_edit == 'true'
+        id: build
+        working-directory: website
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+          pnpm build 2>&1 | tee ../.curator/build.log
+
+      - name: File build-failure issue
+        if: steps.review.outputs.verdict == 'approve' && steps.build.outcome == 'failure' && env.DRY_RUN != 'true'
+        run: |
+          set -euo pipefail
+          gh issue create --label docs --label agent-pr \
+            --title "doc-curator: site build failed on curated edit ($(date -u +%F))" \
+            --body-file <(printf 'The doc curator produced an approved edit that broke `pnpm build` in `website/`. Edit discarded; marker left at %s.\n\nRun: %s/%s/actions/runs/%s\n\n```\n%s\n```\n' \
+              "${{ steps.window.outputs.marker }}" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$(tail -c 6000 .curator/build.log)")
+          echo "Site build failed on the edit; issue filed, edit discarded." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open or comment PR
+        if: steps.review.outputs.verdict == 'approve' && steps.build.outcome != 'failure' && env.DRY_RUN != 'true'
+        id: pr
+        run: |
+          set -euo pipefail
+          bash .github/scripts/doc-curator/publish.sh "${{ steps.author.outputs.date_tag }}" "${{ steps.window.outputs.marker }}" "${{ steps.window.outputs.head }}"
+
+      - name: Advance marker
+        if: env.DRY_RUN != 'true' && (steps.window.outputs.no_merges == 'true' || steps.pr.outcome == 'success')
+        run: gh variable set DOC_CURATOR_LAST_SHA --body "${{ steps.window.outputs.head }}"
+
+      - name: Dry-run summary
+        if: env.DRY_RUN == 'true' && steps.window.outputs.no_merges == 'false'
+        run: |
+          {
+            echo "## Dry run — nothing published, marker untouched"
+            echo '```diff'
+            git diff -- website/content/docs | head -c 20000
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        if: always() && steps.window.outputs.no_merges == 'false'
+        with:
+          name: curator-run
+          path: .curator/
+          if-no-files-found: ignore

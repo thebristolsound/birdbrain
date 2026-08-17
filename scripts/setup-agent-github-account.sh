@@ -210,6 +210,7 @@ MAINTAINER="$(gh api user --jq .login 2>/dev/null || true)"
 [[ -n "$MAINTAINER" ]] || { warn "gh is not logged in — run 'gh auth login' as the maintainer and re-run."; exit 1; }
 say "Maintainer login: ${BOLD}${MAINTAINER}${RESET}"
 mkdir -p "$CONF_DIR" && chmod 700 "$CONF_DIR"
+export TMPDIR="$CONF_DIR"       # write_env's mktemp lands beside ENV_FILE: same-dir rename, never a copy through /tmp
 note "Token file will be $ENV_FILE (dir 0700, file 0600)."
 if [[ -f "$ENV_FILE" ]]; then
   note "An existing file was found — Enter at any prompt keeps the stored value (rotation mode)."
@@ -217,6 +218,7 @@ fi
 ask BIRDBRAIN_AGENT_GH_LOGIN "Machine account login to use (e.g. birdbrain-agent):"
 [[ -n "$BIRDBRAIN_AGENT_GH_LOGIN" ]] || { warn "a login is required"; exit 1; }
 [[ "$BIRDBRAIN_AGENT_GH_LOGIN" != "$MAINTAINER" ]] || { warn "that is your own login — the point is a *separate* account"; exit 1; }
+[[ "$BIRDBRAIN_AGENT_GH_LOGIN" =~ ^[A-Za-z0-9][A-Za-z0-9-]{0,38}$ ]] || { warn "not a valid GitHub login"; exit 1; }
 write_env BIRDBRAIN_AGENT_GH_LOGIN "$BIRDBRAIN_AGENT_GH_LOGIN"
 chmod 600 "$ENV_FILE"
 
@@ -286,9 +288,16 @@ step "    Checks ............. Read-only      (gh pr checks — wait for CI befo
 step "    Metadata ........... Read-only      (set automatically)"
 step "Account permissions: none."
 step "Generate token, then copy it — it is shown once."
+PREVIOUS_TOKEN="$(_existing BIRDBRAIN_AGENT_GH_TOKEN || true)"
 ask_secret BIRDBRAIN_AGENT_GH_TOKEN "Paste the token:"
 [[ -n "$BIRDBRAIN_AGENT_GH_TOKEN" ]] || { warn "no token entered"; exit 1; }
+[[ "$BIRDBRAIN_AGENT_GH_TOKEN" =~ ^[A-Za-z0-9_]+$ ]] || { warn "that does not look like a GitHub token (unexpected characters)"; exit 1; }
+if [[ -n "$PREVIOUS_TOKEN" && "$BIRDBRAIN_AGENT_GH_TOKEN" == "$PREVIOUS_TOKEN" ]]; then
+  warn "that is the token already stored — a rotation needs the one you just minted"
+  confirm "Keep the stored token anyway (not a rotation)?" || exit 1
+fi
 ask BIRDBRAIN_AGENT_GH_TOKEN_EXPIRES "Expiry date you chose (YYYY-MM-DD):"
+[[ "$BIRDBRAIN_AGENT_GH_TOKEN_EXPIRES" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || { warn "expiry must be YYYY-MM-DD"; exit 1; }
 write_env BIRDBRAIN_AGENT_GH_TOKEN "$BIRDBRAIN_AGENT_GH_TOKEN"
 write_env BIRDBRAIN_AGENT_GH_TOKEN_EXPIRES "$BIRDBRAIN_AGENT_GH_TOKEN_EXPIRES"
 chmod 600 "$ENV_FILE"

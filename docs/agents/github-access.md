@@ -174,13 +174,15 @@ The dispatch routine sources that file and scopes the token per call, so the mai
 own `gh` login is never displaced:
 
 ```bash
-set -a; . ~/.config/birdbrain-agent/env; set +a
+. ~/.config/birdbrain-agent/env      # plain source — never `set -a` or `export` the token
 agh() { GH_TOKEN="$BIRDBRAIN_AGENT_GH_TOKEN" gh "$@"; }
 agh api user --jq .login          # must print $BIRDBRAIN_AGENT_GH_LOGIN, else stop
 ```
 
 `GH_TOKEN` in the environment takes precedence over `gh`'s stored login, which is what makes
-the per-call scoping work without `gh auth switch`. Provisioning and rotation are a human-only
+the per-call scoping work without `gh auth switch`. The token stays a shell variable: sourcing
+without `set -a` means no child process other than the `agh` call sees it — a `set -a` or
+`export` would hand it to every subprocess the session spawns. Provisioning and rotation are a human-only
 procedure — `scripts/setup-agent-github-account.sh` walks it — and the token is never
 committed, never a repo `.env` value, and never an Actions secret (no workflow needs it).
 

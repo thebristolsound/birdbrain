@@ -55,7 +55,7 @@ self-review — so the pipeline has its own identity. Load it and check it **bef
 in the same breath as the probe above:
 
 ```
-set -a; . ~/.config/birdbrain-agent/env; set +a       # BIRDBRAIN_AGENT_GH_TOKEN, _LOGIN, _EXPIRES
+. ~/.config/birdbrain-agent/env      # BIRDBRAIN_AGENT_GH_TOKEN, _LOGIN, _EXPIRES — do NOT `set -a`/export
 agh() { GH_TOKEN="$BIRDBRAIN_AGENT_GH_TOKEN" gh "$@"; }
 [ "$(agh api user --jq .login)" = "$BIRDBRAIN_AGENT_GH_LOGIN" ] || echo "IDENTITY — stop and report"
 ```

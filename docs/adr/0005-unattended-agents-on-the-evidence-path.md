@@ -64,6 +64,8 @@ exists. **Evidence-affecting PRs never auto-merge, regardless of that future dec
   the slot is claimed at dispatch time, before the PR exists.* The record a human merge must
   leave when the final automated verdict is unresolved is set by
   [ADR-0007](0007-merging-over-an-unresolved-verdict-requires-a-recorded-override.md).
+  *Amended by [ADR-0012](0012-doc-curation-as-a-two-model-pre-gated-job.md): doc-curator
+  PRs (`docs/curate-*`, off the evidence path) do not occupy the slot.*
 - **Give-up path:** an agent that finds an issue mis-specified — at intake or mid-work —
   comments its findings on the issue, relabels it `needs-info` or `ready-for-human`, and
   vacates the slot. Giving up is a success mode; pushing through a bad specification is not.

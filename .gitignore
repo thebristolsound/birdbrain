@@ -98,3 +98,4 @@ ds-bundle/
 # redistribution rights and shipped-component provenance). Birdbrain's own
 # long-lived reference docs live in website/content/docs/, not here.
 docs/reference/
+.curator/

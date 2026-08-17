@@ -537,9 +537,12 @@ round-1 readiness work spawned from map #284's grilling will supply the next coh
 of agent PRs. Re-run the ledger procedure after the next 5."* Eleven agent PRs have
 merged since that comment, so the cohort is well past five.
 
-The cohort is now **30 PRs**: 29 merged, one open (#463). Rows #329–#407 reproduce
-the 2026-08-12 refresh exactly. #407 has since merged, which resolves the row that
-was in flight.
+The cohort is now **30 PRs**: 29 merged, one open (#463) as of this measurement.
+Rows #329–#407 reproduce the 2026-08-12 refresh with one exception: #407, recorded
+there as in flight, has since merged (2026-08-12T22:49:21Z), which resolves that
+row. #463 has since merged too (2026-08-17T00:43:27Z) — after this measurement was
+taken, so the rows below are left at what they said and the consequence is worked
+through under "The literal reading" rather than backdated into them.
 
 ### New rows
 
@@ -558,7 +561,7 @@ was in flight.
 | #455 | preload bridge contract (#338) | yes | yes | 3 | REQ ×3 |
 | #463 | bridge allowlist comment (#338) | – | **no — open** | 1 | APP |
 
-#427's six rounds is the highest count the ledger has recorded; #423's five is
+PR #427's six rounds is the highest count the ledger has recorded; #423's five is
 second. Both are #284 round-1 tickets, and both are evidence-affecting.
 
 ### Measurement against the restated bar
@@ -597,11 +600,21 @@ Eligible completed cycles, in order: #332, #334, #335, #345, #352, #356, #364,
 
 **0 of 5. The bar asks for 4 of 5. Not met.**
 
-The literal reading does not rescue it either. The five most recent agent PRs by
-number, no exclusions — #438, #440, #442, #444, #455 — run 2, 1, 2, 2, 3 rounds:
+The literal reading does not rescue it either. The five most recent **completed**
+agent PRs by number — #438, #440, #442, #444, #455 — run 2, 1, 2, 2, 3 rounds:
 **1 of 5**, and that single pass is #440, the reapply of a PR whose review had
-already happened on #438. Every reading on record across three measurements now
-fails: 0 of 5, 2 of 5, 1 of 5, 0 of 5, 1 of 5.
+already happened on #438.
+
+That "completed" filter is stated here because the earlier draft did not state it
+and the omission mattered. #463 carries `agent-pr` and was open when this was
+written, so it was excluded for having no outcome yet — but "most recent by number,
+no exclusions" is what the sentence claimed, and under that wording the window
+is #440, #442, #444, #455, #463. PR #463 has since merged at 1 round, so that
+window resolves to **2 of 5**. Still short of the 4 of 5 the bar asks for, so
+the conclusion does not move; the scope was wrong even though the verdict was not.
+
+Every reading on record across three measurements now fails: 0 of 5, 2 of 5,
+1 of 5, 0 of 5, 1 of 5, 2 of 5.
 
 Merged is still 29 of 29 by construction, for the reason given under "The merge
 signal carries no information".
@@ -633,7 +646,7 @@ half needs is a mechanism that does not depend on a status Dependabot cannot pro
 — #488 is where that belongs, and until it lands the verdict stays advisory by
 construction rather than by neglect.
 
-### Ledger question 5 — mostly closed
+### Ledger question 5 — one reporting gap remains
 
 The question was whether the routine reads live CI before a cycle reports success.
 Three changes have landed since it was written:
@@ -656,7 +669,7 @@ still unguarded, which is the exact form the question asked about. Filed as #496
 New in this cohort, and the first time merged agent work has been reverted from
 `main`.
 
-#438 merged at `02:54:44`, was reverted by #439 at `02:55:05` **by mistake**, and was
+PR #438 merged at `02:54:44`, was reverted by #439 at `02:55:05` **by mistake**, and
 reapplied by #440 at `03:15:42`. Two things happened inside that 20-minute window:
 
 - #440's only pre-pass posted at `03:18:56` — three minutes *after* its merge, so it

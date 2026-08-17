@@ -159,17 +159,19 @@ maintainer; the pipeline therefore has its own GitHub user, added as a collabora
 write access, and the dispatch routine makes every write — claim comments, PR creation,
 labels, pre-pass comments, `agent/pre-pass` statuses, review replies — as that account.
 
-The credential is a fine-grained PAT, resource owner the machine account, restricted to this
-one repository, with contents: read, issues / pull requests / commit statuses: read+write.
-It deliberately cannot push. It also cannot read CI check runs on this private repo:
-fine-grained PATs have no Checks permission (GitHub limitation — the endpoint docs claim one,
-the token UI has never offered it; see `cli/cli#8842`), so `gh pr checks` and check-run REST
-calls go through the maintainer's login, never `agh`. It lives only on the maintainer's machine, in
+The credential is a **classic PAT with the `repo` scope only** — not fine-grained. A
+fine-grained PAT cannot act on a repository the account merely collaborates on (GitHub lists
+that as unsupported; the "Only select repositories" picker does not even appear for an
+account that owns no repos), and the owner here is a user, so there is no org to select as
+resource owner. Since the machine account is a collaborator on this one repository, `repo`
+reaches this repository and nothing else. It can push in principle; ADR-0006's one-writer
+rule, not the token, keeps the dispatcher off the branch. Classic tokens can read check
+runs, so `gh pr checks` works through `agh` as well as through the maintainer's login. It lives only on the maintainer's machine, in
 `~/.config/birdbrain-agent/env` (`0700` directory, `0600` file):
 
 ```
 BIRDBRAIN_AGENT_GH_LOGIN=<machine login>
-BIRDBRAIN_AGENT_GH_TOKEN=github_pat_…
+BIRDBRAIN_AGENT_GH_TOKEN=ghp_…
 BIRDBRAIN_AGENT_GH_TOKEN_EXPIRES=YYYY-MM-DD
 ```
 

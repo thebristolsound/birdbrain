@@ -39,14 +39,14 @@ already posts here under its own identity, so a second identity is known to work
    stops before claiming the slot and reports. Falling back to the maintainer identity is not
    an option, because it would put self-authored PRs back into the same population this
    decision exists to separate.
-3. **Token custody.** The machine account's credential is a **fine-grained personal access
-   token**, resource owner the machine account, repository access restricted to
-   `thebristolsound/birdbrain` only, with the minimum permissions the write path needs
-   (contents: read; issues, pull requests, commit statuses: read and write). Fine-grained PATs
-   offer no Checks permission at all — a GitHub limitation, not a choice — so on this private
-   repo the token cannot read CI check runs; the dispatcher reads CI state through the
-   maintainer's own `gh` login, and only *writes* go through the machine token.
-   It is held **only by the maintainer**, on the maintainer's machine, in a file outside any
+3. **Token custody.** The machine account's credential is a **classic personal access
+   token with the single `repo` scope**. A fine-grained PAT was the first choice and does not
+   work: fine-grained tokens reach only repositories *owned by* the token's resource owner,
+   and GitHub documents "contributing to repositories where the user is an outside or
+   repository collaborator" as unsupported — the machine account owns nothing, and
+   `thebristolsound` is a user, not an organisation it could select. `repo` is broader than
+   the write path needs (it can push), but the account is a collaborator on exactly one
+   repository, so the token's effective reach is that repository and nothing else. It is held **only by the maintainer**, on the maintainer's machine, in a file outside any
    repository checkout — `~/.config/birdbrain-agent/env`, directory `0700`, file `0600` —
    as `BIRDBRAIN_AGENT_GH_TOKEN`, alongside `BIRDBRAIN_AGENT_GH_LOGIN` and the token's expiry
    date. It is never committed, never written to a repo `.env`, never stored as an Actions
@@ -55,9 +55,10 @@ already posts here under its own identity, so a second identity is known to work
    `gh` login is untouched. Rotation is re-running the provisioning wizard.
 4. **Human commits and pushes stay under the human's identity.** The machine account is a
    GitHub-API identity for the dispatcher. Branch pushes still go over the maintainer's git
-   credentials (SSH), and commit authorship is unchanged; the token deliberately lacks
-   contents-write so it cannot push. Whether pushes should also move is a separate decision
-   and is not made here.
+   credentials (SSH), and commit authorship is unchanged. The `repo` scope *could* push; the
+   dispatch contract, not the token, is what keeps the dispatcher off the branch (ADR-0006:
+   only the implementer pushes). Whether pushes should also move is a separate decision and
+   is not made here.
 5. The web write path (`docs/agents/github-access.md`) is not exempt from rule 2. Where the
    GitHub MCP tools would write as the sandbox identity, they no longer satisfy the dispatch
    contract for opening PRs. Provisioning the machine token into that environment is future

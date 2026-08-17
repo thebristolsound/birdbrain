@@ -66,10 +66,10 @@ agh() { GH_TOKEN="$BIRDBRAIN_AGENT_GH_TOKEN" gh "$@"; }
   failure ADR-0012 exists to prevent. Provisioning and rotation are the human's job:
   `scripts/setup-agent-github-account.sh`.
 - From here on, **`agh` is the write path locally**: every `gh pr create`, `gh issue comment`,
-  `gh issue edit`, `gh api ... -X POST`, and status post below runs through `agh`. Reads use
-  bare `gh` (your login) — and **CI state must**: fine-grained PATs have no Checks permission,
-  so `gh pr checks` and check-run reads 403 under `agh` on this private repo. After each write
-  that creates something (claim comment, PR), confirm `.user.login` is the machine account.
+  `gh issue edit`, `gh api ... -X POST`, and status post below runs through `agh`. Reads may use
+  either. The token is a classic `repo`-scope PAT and could push — you still never do
+  (ADR-0006). After each write that creates something (claim comment, PR), confirm
+  `.user.login` is the machine account.
 - **On the web there is no machine token yet.** The GitHub MCP tools write as the sandbox
   identity, which is not the machine account, so a web cycle fails the identity check and stops
   here. That is expected until the token is provisioned into that environment (ADR-0012 §5).
@@ -345,8 +345,7 @@ post them.
 ### Wait for CI first — the pre-pass is the expensive instrument
 
 **Do not start the pre-pass while CI is still running on the head commit.** Poll
-`gh pr checks <n>` (bare `gh` — the machine token cannot read check runs) until every check
-has a conclusion, then branch:
+`gh pr checks <n>` until every check has a conclusion, then branch:
 
 - **CI red** → do **not** run the pre-pass. Hand the failure straight to
   `birdbrain-implementer` as a cheap, mechanical fix round: the PR number, the failing job, and

@@ -28,6 +28,19 @@ const PAGE_WIDTH_INCHES = 8.27
 // Chromium's Page.printToPDF accepts scale in [0.1, 2].
 const MIN_PRINT_SCALE = 0.1
 const MAX_PRINT_SCALE = 2
+// Trusted-time row vocabulary, kept in step with `trustedTimeView` in
+// reportHtml.ts so the two operator-facing artifacts can't describe the same
+// axis in different words. 'none' is the honest floor — genuinely unstamped
+// and absent-from-the-manifest are indistinguishable from the manifest alone,
+// and both mean the printed capture time is the operator's local clock — so it
+// is stated, never omitted.
+const TRUSTED_TIME_STAMPED_LABEL = 'RFC 3161 token retained'
+const TRUSTED_TIME_FALLBACK_TSA_NAME = 'the configured RFC 3161 authority'
+const TRUSTED_TIME_FALLBACK_STAMPED_AT = 'the time recorded in the retained token'
+const TRUSTED_TIME_PENDING_TEXT =
+  'Local clock only — an RFC 3161 token was requested but has not been obtained'
+const TRUSTED_TIME_NONE_TEXT =
+  'Local clock only — no RFC 3161 token is retained for this capture'
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -45,26 +58,21 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-// Renders the manifest-resolved trusted-time axis as one plain-string row value,
-// using report.html's vocabulary (`trustedTimeView` in reportHtml.ts) so the two
-// operator-facing artifacts can't describe the same axis in different words.
-// 'none' is the honest floor — genuinely unstamped and absent-from-the-manifest
-// are indistinguishable from the manifest alone, and both mean the printed
-// capture time is the operator's local clock — so it is stated, never omitted.
+// Renders the manifest-resolved trusted-time axis as one plain-string row value.
 function formatTrustedTime(resolved: TrustedTimeResult): string {
   switch (resolved.trustedTime) {
     case 'rfc3161': {
-      const who = resolved.tsaName ?? 'the configured RFC 3161 authority'
+      const who = resolved.tsaName ?? TRUSTED_TIME_FALLBACK_TSA_NAME
       const when = resolved.stampedAt
         ? formatTimestamp(resolved.stampedAt)
-        : 'the time recorded in the retained token'
-      return `RFC 3161 token retained — ${who} asserts the capture digest existed no later than ${when}`
+        : TRUSTED_TIME_FALLBACK_STAMPED_AT
+      return `${TRUSTED_TIME_STAMPED_LABEL} — ${who} asserts the capture digest existed no later than ${when}`
     }
     case 'pending':
-      return 'Local clock only — an RFC 3161 token was requested but has not been obtained'
+      return TRUSTED_TIME_PENDING_TEXT
     case 'none':
     default:
-      return 'Local clock only — no RFC 3161 token is retained for this capture'
+      return TRUSTED_TIME_NONE_TEXT
   }
 }
 

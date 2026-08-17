@@ -385,7 +385,13 @@ function buildEvidenceZip(
     const mhtmlSha256 = mhtml ? add(mhtmlPath, mhtml) : null
     if (!mhtml) capturesMissingContent.push(capture.id)
     const verification = data.verifications.find((v) => v.captureId === capture.id)
-    const trustedTime = verification?.trustedTime ?? capture.trustedTimeStatus ?? 'none'
+    // Same single resolution report.html and certification.html render, for the
+    // same reason plus one this artifact has on its own: the package verifier
+    // re-derives the axis from the bundled manifest.jsonl (evidencePackage.ts,
+    // `chain.trustedTimes`), and that file IS this snapshot. Reading anything else
+    // here — the verification's earlier manifest read, or the DB mirror — puts
+    // evidence.json at odds with the manifest it ships beside.
+    const trusted = data.trustedTimeByCaptureId.get(capture.id) ?? UNSTAMPED
 
     // Content-address the screenshot into the package (#118): the file name IS
     // its sha256, and add() records it into artifacts[] so the package is
@@ -424,9 +430,9 @@ function buildEvidenceZip(
       entryHash: capture.entryHash,
       storedHash: capture.hash,
       integrityStatus: verification?.status,
-      trustedTime,
-      tsaName: verification?.tsaName,
-      stampedAt: verification?.stampedAt,
+      trustedTime: trusted.trustedTime,
+      tsaName: trusted.tsaName,
+      stampedAt: trusted.stampedAt,
       mhtmlPath: mhtml ? mhtmlPath : null,
       mhtmlSha256,
       screenshotPath,

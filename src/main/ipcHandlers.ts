@@ -61,6 +61,7 @@ import { getInstallationId } from '@main/services/installationId'
 import { CAPTURE_SERVER_PORT } from '@main/services/captureServer'
 import { getServerToken } from '@main/services/serverToken'
 import { getStorageRoot } from '@main/services/storage'
+import { resolveTrustedTime } from '@main/services/trustedTime'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import type { RecaptureService } from '@main/services/recapture'
@@ -239,7 +240,13 @@ export function registerIpcHandlers(deps: {
         filters: [{ name: 'PDF Document', extensions: ['pdf'] }]
       })
       if (canceled || !filePath) return null
-      const pdf = await renderCapturePdf(capture, artifact.abs)
+      // The trusted-time axis on the cover comes from the case manifest, never
+      // from the captures.trustedTimeStatus mirror — the mirror is rebuildable
+      // and can disagree with the tokens actually retained (#509). resolveTrustedTime
+      // rather than reconcileCaptureTrustedTime: an export is a read path and
+      // must not write the mirror as a side effect.
+      const trustedTime = resolveTrustedTime(join(getStorageRoot(), capture.caseId), capture.hash)
+      const pdf = await renderCapturePdf(capture, artifact.abs, trustedTime)
       const { writeFileSync } = await import('fs')
       writeFileSync(filePath, pdf)
       return filePath

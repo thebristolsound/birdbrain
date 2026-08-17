@@ -852,6 +852,36 @@ describe('ipcHandlers — export', () => {
     expectOk(await invoke(IPC_CHANNELS.SHELL_OPEN_PATH, target))
     expect(openPath).toHaveBeenCalledWith(target)
   })
+
+  it('reveals a case archive it just exported (#362, #C12)', async () => {
+    const archivePath = join(userDataPath, 'case.birdbrain')
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: archivePath })
+    exportCaseArchive.mockImplementationOnce(async (_caseId, outputPath: string) => {
+      writeFileSync(outputPath, '')
+    })
+    const done = expectOk(await invoke(IPC_CHANNELS.CASES_EXPORT_ARCHIVE, caseId))
+    expect(done).toEqual({ canceled: false, filePath: archivePath })
+
+    expectOk(await invoke(IPC_CHANNELS.SHELL_SHOW_ITEM_IN_FOLDER, archivePath))
+    expect(showItemInFolder).toHaveBeenCalledWith(archivePath)
+  })
+
+  it('registers nothing when the archive save dialog is canceled (#362, #C12)', async () => {
+    const archivePath = join(userDataPath, 'canceled.birdbrain')
+    showSaveDialog.mockResolvedValueOnce({ canceled: true, filePath: archivePath })
+    expect(expectOk(await invoke(IPC_CHANNELS.CASES_EXPORT_ARCHIVE, caseId))).toEqual({
+      canceled: true
+    })
+
+    writeFileSync(archivePath, '')
+    const res = await invoke<{ ok: boolean; error?: string; code?: string }>(
+      IPC_CHANNELS.SHELL_SHOW_ITEM_IN_FOLDER,
+      archivePath
+    )
+    expect(res.ok).toBe(false)
+    expect(res.code).toBe('FORBIDDEN_PATH')
+    expect(showItemInFolder).not.toHaveBeenCalled()
+  })
 })
 
 describe('ipcHandlers — case archive', () => {

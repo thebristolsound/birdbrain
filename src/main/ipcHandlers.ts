@@ -138,6 +138,8 @@ export function registerIpcHandlers(deps: {
           percent
         })
       )
+      // Permit reveal for this freshly-written archive only (same invariant as export:generate).
+      rememberRevealablePath(filePath)
       return { canceled: false, filePath }
     }
   )

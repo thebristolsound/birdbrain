@@ -38,15 +38,41 @@ esac
   report it and stop. Guessing "web" here sends the cycle to MCP tools that may not exist.
 
 **Locally, a working `gh` is not proof of write access.** The probe only lists issues;
-opening a PR, commenting, and labelling are separately permissioned. Confirm with
-`gh auth status` that the active account has `repo` scope before the first write — and if it
-does not, stop and report rather than half-completing a cycle. There is no MCP fallback
-locally.
+opening a PR, commenting, and labelling are separately permissioned — and locally they are
+done by a different identity from the one the probe ran as (the machine account, below), so
+the maintainer's `gh auth status` says nothing about them. The identity check below is the
+write-access check; if it fails, stop and report rather than half-completing a cycle. There
+is no MCP fallback locally.
 
 Full map, including the endpoints that are 403 for the `GH_TOKEN` identity (check-runs, commit
 statuses) and the ones that return `[]` (the `pulls` list endpoint), is in
 `docs/agents/github-access.md`. Below, **"the write path"** means whichever of the two
 mechanisms the probe selected; on `INDETERMINATE` there is no write path and the cycle stops.
+
+**Every write goes out as the machine account, never as the maintainer (ADR-0012).** Agent PRs
+opened by the maintainer's own account cannot be reviewed by the maintainer — GitHub forbids
+self-review — so the pipeline has its own identity. Load it and check it **before the slot check**,
+in the same breath as the probe above:
+
+```
+. ~/.config/birdbrain-agent/env      # BIRDBRAIN_AGENT_GH_TOKEN, _LOGIN, _EXPIRES — do NOT `set -a`/export
+agh() { GH_TOKEN="$BIRDBRAIN_AGENT_GH_TOKEN" gh "$@"; }
+[ "$(agh api user --jq .login)" = "$BIRDBRAIN_AGENT_GH_LOGIN" ] || echo "IDENTITY — stop and report"
+```
+
+- If the file is missing, the login does not match, or the call fails (expired token — compare
+  `BIRDBRAIN_AGENT_GH_TOKEN_EXPIRES` to today), **stop and report before claiming anything.** Do
+  not fall back to the maintainer's `gh` login for writes; a self-authored agent PR is the
+  failure ADR-0012 exists to prevent. Provisioning and rotation are the human's job:
+  `scripts/setup-agent-github-account.sh`.
+- From here on, **`agh` is the write path locally**: every `gh pr create`, `gh issue comment`,
+  `gh issue edit`, `gh api ... -X POST`, and status post below runs through `agh`. Reads may use
+  either. The token is a classic `repo`-scope PAT and could push — you still never do
+  (ADR-0006). After each write that creates something (claim comment, PR), confirm
+  `.user.login` is the machine account.
+- **On the web there is no machine token yet.** The GitHub MCP tools write as the sandbox
+  identity, which is not the machine account, so a web cycle fails the identity check and stops
+  here. That is expected until the token is provisioned into that environment (ADR-0012 §5).
 
 `.claude/hooks/session-start.sh` installs `gh` and pins Node 20, but **only on the web** — it
 exits immediately unless `CLAUDE_CODE_REMOTE=true`, by design. So:
@@ -129,10 +155,10 @@ Fetch the PR's head commit time, reviews, review threads, and issue comments. Cl
   "slot occupied, awaiting human review" and stop. Do not nudge, rebase, or re-run anything.
 - **Feedback to address** — review threads or PR comments newer than the head commit, from
   anyone other than the agent pipeline itself, that no branch commit or agent reply has
-  dispositioned yet. (Note: formal `CHANGES_REQUESTED` reviews cannot occur here — agent PRs
-  are authored by the repo owner's account and GitHub forbids self-reviews — so feedback
-  arrives as comments and review threads. Treat a human comment asking for changes exactly as
-  a changes-requested review.) Dispatch `birdbrain-implementer` with the PR number, its linked
+  dispositioned yet. Agent PRs are authored by the machine account (ADR-0012), so the
+  maintainer can post a formal `CHANGES_REQUESTED` review; treat one exactly as you treat a
+  human comment asking for changes, and vice versa — the form does not change the handling.
+  Dispatch `birdbrain-implementer` with the PR number, its linked
   issue, and the re-enumeration instruction; it applies or rejects-with-reason each item per
   its contract, then pushes. It **must not** post its replies — the REST comment endpoints do
   technically work from a subagent, and the part-two ledger (finding 2) recorded exactly that
@@ -141,7 +167,8 @@ Fetch the PR's head commit time, reviews, review threads, and issue comments. Cl
   --input <file>`, or `.../pulls/<n>/comments/<id>/replies` for an inline thread; on the web
   `mcp__github__add_issue_comment` or `add_reply_to_pull_request_comment`). Your read of that
   text before posting is the editorial pass; a subagent that posts directly has bypassed it,
-  which is a reportable contract violation even when the content was fine. Then run the
+  which is a reportable contract violation even when the content was fine — and it lands under
+  the wrong identity, since only the dispatcher holds the machine token. Then run the
   reviewer pre-pass (section 4).
 (Closed and merged PRs never reach this section — an open-PR query cannot return them; their
 hygiene checks run from section 1's free-slot branch.)
@@ -187,10 +214,10 @@ upstream is putting it back.
    a crash between comment and label leaves exactly this: a claim comment with no withdrawal
    after it and no open agent PR. 4 hours old or younger → the slot is claimed; report
    "slot claimed by #N, cycle in progress" and stop. Older → note it as stale and continue.
-1. Post a claim comment on the chosen issue via the write path — e.g. "Dispatch slot claimed
-   for this issue; a cycle is starting." **The comment is the claim** (ADR-0006): its
-   server-assigned `created_at` is the claim's timestamp and its comment `id` the final
-   tie-break.
+1. Post a claim comment on the chosen issue via the write path (locally
+   `agh issue comment <n> --body ...`) — e.g. "Dispatch slot claimed for this issue; a cycle
+   is starting." **The comment is the claim** (ADR-0006): its server-assigned `created_at` is
+   the claim's timestamp and its comment `id` the final tie-break.
 2. Apply the `agent-wip` label via the write path. The label is the claim's discoverable
    index, not the claim itself.
 3. Re-read both marker sets (the section 1 queries) **and the claim comments on every claimed
@@ -208,24 +235,31 @@ implementer owns everything downstream of intake: the ready-for-agent bar check,
 implementation, the verify loop, and the evidence gate (label determination, Evidence impact
 section, known-answer test).
 
-**You open the PR, not the implementer.** This is a control, not merely a capability limit:
-PR opening and labelling stay with the dispatcher so one place owns what enters the slot. (On
-the web it is also a hard limit — a subagent's tool list has no GitHub MCP tools and
-`gh pr create` is 403 there; see `docs/agents/github-access.md`.) The implementer pushes its
-branch and returns the PR title, head sha, a path to the PR body it wrote, and the labels it
-determined are required. **You** open the **draft** PR against `main` and apply the labels via
-the write path:
+**You open the PR, not the implementer, and you open it as the machine account.** This is a
+control, not merely a capability limit: PR opening and labelling stay with the dispatcher so
+one place owns what enters the slot, and the dispatcher is the only holder of the machine
+token so one identity authors every agent PR (ADR-0012). (On the web it is also a hard limit
+— a subagent's tool list has no GitHub MCP tools and `gh pr create` is 403 there; see
+`docs/agents/github-access.md`.) The implementer pushes its branch — over the maintainer's
+git credentials; the machine token cannot push and is not meant to — and returns the PR
+title, head sha, a path to the PR body it wrote, and the labels it determined are required.
+**You** open the **draft** PR against `main` and apply the labels via the write path:
 
-- Locally: `gh pr create --draft --base main --head <branch> --title <title> --body-file
-  <path> --label agent-pr` — **apply the label in the create call, not afterwards.** The
-  `pre-pass-gate` workflow reads labels on the `opened` event; a PR opened unlabelled seeds
-  `agent/pre-pass=success` and would then have to be upgraded to `pending`, which is a write
-  that can race the dispatcher's own verdict on the same sha.
-- On the web: `mcp__github__create_pull_request`, then `mcp__github__issue_write`. The MCP
-  tool cannot set labels at creation, so on the web label immediately and expect the seeded
-  status to be `success` until you post `pending` yourself — post it explicitly.
+- Locally: `agh pr create --draft --base main --head <branch> --title <title> --body-file
+  <path> --label agent-pr` — **through `agh`, never bare `gh`**, and **apply the label in the
+  create call, not afterwards.** The `pre-pass-gate` workflow reads labels on the `opened`
+  event; a PR opened unlabelled seeds `agent/pre-pass=success` and would then have to be
+  upgraded to `pending`, which is a write that can race the dispatcher's own verdict on the
+  same sha.
+- On the web: not currently possible under the contract — the MCP tools write as the sandbox
+  identity, and the identity check at the top of the cycle already stopped you. (For the
+  record, the mechanism was `mcp__github__create_pull_request` then `mcp__github__issue_write`,
+  with the seeded status `success` until `pending` is posted explicitly.)
 
-Either way, confirm they landed
+Confirm the PR landed **and who authored it**:
+`gh api repos/thebristolsound/birdbrain/pulls/<n> --jq '{author: .user.login, draft}'` must
+report the machine login — a PR showing the maintainer's login is a contract violation: say so
+in the report and stop, do not label it `agent-pr`. Then confirm the labels
 (`gh api repos/thebristolsound/birdbrain/issues/<n>/labels --jq '[.[].name]'`). **Then release
 the claim**: remove `agent-wip` from the issue — the `agent-pr` label on the PR is the slot
 marker from here on. A claim that outlives its PR-open is the leftover state section 1 has to
@@ -239,7 +273,7 @@ not silently substitute your own judgement for its stated reasoning.
 its blockers as text and stops. Via the write path, you post them to the issue, swap
 `ready-for-agent` to `needs-info` (or `ready-for-human`), and remove `agent-wip`:
 
-- Locally: `gh issue comment <n> --body-file <path>`, then `gh issue edit <n>` with
+- Locally: `agh issue comment <n> --body-file <path>`, then `agh issue edit <n>` with
   `--remove-label ready-for-agent --remove-label agent-wip --add-label ready-for-human`.
 - On the web: `mcp__github__add_issue_comment` and `mcp__github__issue_write`.
 
@@ -268,7 +302,7 @@ it blocks a merge until the ruleset actually says so.
 Post `pending` **before** you spawn the reviewer, and the verdict **after**:
 
 ```shell
-gh api "repos/thebristolsound/birdbrain/statuses/<head-sha>" \
+agh api "repos/thebristolsound/birdbrain/statuses/<head-sha>" \
   -f state=pending -f context='agent/pre-pass' \
   -f description='Reviewer pre-pass running.'
 ```
@@ -301,9 +335,12 @@ Three rules that matter more than the mechanics:
 `.github/workflows/pre-pass-gate.yml` seeds the status so non-agent PRs pass automatically and
 agent PRs start `pending`. It never overwrites a verdict you posted.
 
-**You cannot approve these PRs and neither can the reviewer.** GitHub forbids self-review, and
-agent PRs are opened by the same account the pipeline runs as, so `CHANGES_REQUESTED` is not
-available to this routine. The status is the substitute for it.
+**You do not approve these PRs and neither does the reviewer.** The pipeline could now post a
+formal review — agent PRs are opened by the machine account, not the maintainer (ADR-0012) —
+but the pre-pass stays a commit status plus a comment by design: a review from the same
+identity that authored the PR would sit in the review list looking like a verdict from
+someone else. Approval and `CHANGES_REQUESTED` belong to the maintainer, who can now actually
+post them.
 
 ### Wait for CI first — the pre-pass is the expensive instrument
 
@@ -354,8 +391,8 @@ full six-command loop each round and the diff kept growing. A rising curve is a 
 just a cost: it means the change is accreting rather than converging. Read it alongside the
 convergence check below.
 
-Post the reviewer's report as a **PR comment** via the write path (self-reviews are impossible
-on own-account PRs, so a formal review is not an option), formatted:
+Post the reviewer's report as a **PR comment** via the write path (not as a formal review — see
+above), formatted:
 
 ```
 **Reviewer pre-pass (<head-sha>): <verdict>** — <k> of <n> reporters in on this sha

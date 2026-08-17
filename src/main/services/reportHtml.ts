@@ -102,6 +102,12 @@ export interface ReportData {
   operatorRole: string
   operatorOrganization: string
   tsaUrl: string
+  /**
+   * The same resolution `trustedTimeByCaptureId` carries, pre-counted. Nothing in
+   * this renderer reads it — every figure printed here is folded out of the rows
+   * it appears beside — but ExportData aliases this shape, and evidence.json's
+   * warnings block is counted from it.
+   */
   preflight: ExportPreflight
   toolVersion: string
   /** Manifest state this report was generated against; null when unreadable. */
@@ -627,7 +633,7 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   exhibitIndex: {
     id: 'exhibitIndex',
     title: 'Exhibit index and verification results',
-    render: ({ data, exhibits, options }) => {
+    render: ({ exhibits, options }) => {
       if (!options.include.captures || exhibits.length === 0) return null
       const rows = exhibits
         .map(
@@ -650,15 +656,20 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
         )
         .join('')
 
-      const unstamped = data.preflight.unstampedCaptureCount
+      // Folded out of the rows above rather than read from data.preflight, like
+      // the cover tally: a disclosure counted from a second source can go silent
+      // while the rows it disclaims still say "Local clock only".
+      const pendingCount = exhibits.filter((e) => e.time.basis === 'pending').length
+      const noneCount = exhibits.filter((e) => e.time.basis === 'none').length
+      const unstamped = pendingCount + noneCount
       const banner =
         unstamped > 0
           ? `<div class="note"><p class="note-title">${unstamped} capture${
               unstamped === 1 ? '' : 's'
             } without trusted time</p><p>${unstamped} capture${
               unstamped === 1 ? '' : 's'
-            } in this package (${data.preflight.pendingCaptureCount} pending,
-            ${data.preflight.noneCaptureCount} none) carr${
+            } in this package (${pendingCount} pending,
+            ${noneCount} none) carr${
               unstamped === 1 ? 'ies' : 'y'
             } no RFC 3161 token. For ${
               unstamped === 1 ? 'it' : 'those'

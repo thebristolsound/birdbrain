@@ -105,9 +105,12 @@ export interface ExportTrustedTime {
 const UNSTAMPED: TrustedTimeResult = { trustedTime: 'none' }
 
 // Placeholder for the window inside generateReport between building ExportData
-// and taking the manifest snapshot the real counts are resolved from. Zeroed
-// rather than plausible so that rendering it by mistake reads as obviously
-// unpopulated instead of as a case with nothing to report.
+// and resolving the real counts from the manifest snapshot, which happens before
+// anything reads them. The zeroes are NOT a safe default: rendered by mistake
+// they read as a case with nothing to disclose, which is the opposite of the
+// truth. So nothing counts a disclosure from this — report.html folds every
+// figure it prints out of its own rows, and evidence.json's warnings block is
+// the only reader left.
 const UNRESOLVED_PREFLIGHT: ExportPreflight = {
   captureCount: 0,
   stampedCaptureCount: 0,

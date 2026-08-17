@@ -12,6 +12,7 @@ import {
   stopExtensionConnectionCheck
 } from '@main/services/captureServer'
 import { registerIpcHandlers } from '@main/ipcHandlers'
+import { resolveWindowSize, MIN_WINDOW_SIZE } from '@main/windowSize'
 import { initSettings, getSettings } from '@main/services/settings'
 import { initInstallationId, getInstallationId } from '@main/services/installationId'
 import { initSigningKey, SigningKeyUnacknowledgedError } from '@main/services/signingKey'
@@ -135,14 +136,12 @@ app.on('child-process-gone', (_event, details) => {
 })
 
 function createWindow(): BrowserWindow {
-  const windowSize = process.env.BIRDBRAIN_WINDOW_SIZE?.match(/^(\d+)x(\d+)$/)
-  const width = windowSize ? Number.parseInt(windowSize[1], 10) : 1200
-  const height = windowSize ? Number.parseInt(windowSize[2], 10) : 800
+  const { width, height } = resolveWindowSize(process.env.BIRDBRAIN_WINDOW_SIZE, !app.isPackaged)
   const win = new BrowserWindow({
     width,
     height,
-    minWidth: 900,
-    minHeight: 600,
+    minWidth: MIN_WINDOW_SIZE.width,
+    minHeight: MIN_WINDOW_SIZE.height,
     show: false,
     title: 'Birdbrain',
     backgroundColor: '#000000',

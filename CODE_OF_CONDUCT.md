@@ -27,12 +27,13 @@ speech).
 
 ## Reporting
 
-- **Private route:** email `mattddonovan@proton.me`. Reports are read by the
+- **Private route:** email the maintainer at the address published in
+  [SECURITY.md](SECURITY.md#reporting-a-vulnerability). Reports are read by the
   maintainer only and handled on a best-effort basis, usually within a week.
 - If your concern is **about the maintainer**, or you prefer a route outside the
   project, use [GitHub's report abuse](https://github.com/contact/report-abuse)
   process, which is handled by GitHub rather than by this project.
 
-Reports are kept confidential to the extent GitHub's tooling allows; no report will
-be shared with the person reported without the reporter's consent, except where
+Reports are kept confidential to the extent reasonably possible; no report will be
+shared with the person reported without the reporter's consent, except where
 required to act on it.

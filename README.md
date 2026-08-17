@@ -117,7 +117,7 @@ Birdbrain is beta software. Current limits:
 
 ## Contributing
 
-Open an [issue](https://github.com/thebristolsound/birdbrain/issues) for bug reports and feature requests. For non-trivial PRs, open an issue first to discuss the approach. To report a security issue, see [SECURITY.md](SECURITY.md).
+Open an [issue](https://github.com/thebristolsound/birdbrain/issues) for bug reports and feature requests. For non-trivial PRs, open an issue first to discuss the approach. Read [CONTRIBUTING.md](CONTRIBUTING.md) before you start — it covers maintainer capacity, supported scope, and inbound licensing. To report a security issue, see [SECURITY.md](SECURITY.md).
 
 ## Acknowledgements
 

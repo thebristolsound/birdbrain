@@ -12,7 +12,8 @@ body:
           required: true
         - label: >-
             This is not an exploitable security vulnerability (those go through private
-            vulnerability reporting — see SECURITY.md)
+            vulnerability reporting — see
+            [SECURITY.md](https://github.com/thebristolsound/birdbrain/blob/main/SECURITY.md))
           required: true
   - type: textarea
     id: what-happened
@@ -57,9 +58,22 @@ body:
       options:
         - Windows
         - macOS
-        - Linux (AppImage)
-        - Linux (deb)
-        - Other / built from source
+        - Linux
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: How you installed Birdbrain
+      options:
+        - Windows installer (.exe)
+        - macOS disk image (.dmg)
+        - macOS zip
+        - Linux AppImage
+        - Linux .deb
+        - Built from source
+        - Other / not sure
     validations:
       required: true
   - type: input

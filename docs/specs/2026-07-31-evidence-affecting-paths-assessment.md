@@ -1,6 +1,11 @@
 # Evidence-affecting path list — assessment
 
-**Status:** proposed draft for review confirmation (wayfinder ticket #303, autonomy map #298)
+**Status:** In force. This is the evidence gate's PR-diff backstop list, designated as such by
+[`ADR-0005`](../adr/0005-unattended-agents-on-the-evidence-path.md) and linked as the inventory from
+`CONTRIBUTING.md` and the pull request template. It stands until a maintained machine-consumed list
+supersedes it; the governance-docs ticket (#305) closed without producing one. Individual entries
+stay revisable — see "Judgment calls needing confirmation in review". (Origin: wayfinder ticket
+#303, autonomy map #298.)
 **Definition applied:** CONTEXT.md, Assurance baseline — "An evidence-affecting change includes acquisition, parsing, extraction, storage, hashing, signing, trusted time, manifests, verification, redaction, export, reporting, AI analysis, and software distribution when it can alter an evidentiary result or its interpretation."
 
 ## Purpose
@@ -8,8 +13,9 @@
 This list is the **mechanical PR-diff backstop** for the evidence gate (decision record: #299). The
 primary trigger is the `evidence-affecting` label applied at triage; this list catches PRs whose
 diff touches an evidence path without the label. It is expressed as globs so a routine or CI step
-can match it against `git diff --name-only`. Its final maintained home is decided by the
-governance-docs ticket (#305); this document is the reviewed source it will be seeded from.
+can match it against `git diff --name-only`. It was drafted as the reviewed source that a
+machine-consumed file would be seeded from; #305 closed without relocating or superseding it, so
+this document is the list itself until one is produced.
 
 Method note: produced by a three-slice parallel survey of the codebase (main services; db/shared/
 ai/extraction; extension/renderer/distribution edges), each reading files rather than classifying
@@ -50,7 +56,7 @@ seeded from this document should be checked against them.
   specific pattern wins** — an exact path beats a directory glob, and among globs the one with
   the longer literal prefix before its first wildcard beats the shorter.
 
-## Proposed include list
+## Include list
 
 ### Acquisition (extension → capture server)
 

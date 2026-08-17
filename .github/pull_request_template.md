@@ -58,23 +58,31 @@ stored data, or telemetry. "None" is a valid answer; say it explicitly.
 
 ## Evidence-affecting change review
 
-<!-- Birdbrain is an evidence tool. Select exactly one answer, even for docs-only changes. -->
+<!-- Birdbrain is an evidence tool. Answer this even for docs-only changes. -->
 
-Does this change touch capture, parsing, extraction, storage, hashing, signing, trusted
-time, manifests, verification, redaction, export, reporting, AI analysis, or release
-distribution? Check the path inventory in
-`docs/specs/2026-07-31-evidence-affecting-paths-assessment.md` if unsure.
+The canonical definition, quoted verbatim from `CONTEXT.md` ("Assurance baseline"):
 
-- [ ] No — no evidence-affecting paths are touched.
-- [ ] Yes — this PR carries the `evidence-affecting` label and requires human review before
-      merge (`docs/adr/0005-unattended-agents-on-the-evidence-path.md`). Complete the section
-      below.
+> An evidence-affecting change includes acquisition, parsing, extraction, storage, hashing,
+> signing, trusted time, manifests, verification, redaction, export, reporting, AI analysis, and
+> software distribution when it can alter an evidentiary result or its interpretation.
 
-### Evidence impact (required when "Yes" is selected)
+Check the path inventory in `docs/specs/2026-07-31-evidence-affecting-paths-assessment.md` if
+unsure.
+
+**Evidence-affecting:** ANSWER YES OR NO
+
+If Yes: complete the Evidence impact section below. Do not try to apply the
+`evidence-affecting` label — that needs triage permission a contributor does not have on their
+own PR; a maintainer applies it once you have stated the answer here. An evidence-affecting
+change requires human review before merge and never auto-merges
+(`docs/adr/0005-unattended-agents-on-the-evidence-path.md`).
+
+### Evidence impact (required when the answer above is Yes)
 
 - Evidentiary result or interpretation that could change:
 - What verification proves and does not prove after this change:
-- Existing evidence package compatibility:
+- Backward verification preserved — existing evidence packages, and once published, historical
+  Evidence Profile versions, still verify:
 - Known-answer test added or extended (or justification if none applies):
 
 ## Reviewer notes

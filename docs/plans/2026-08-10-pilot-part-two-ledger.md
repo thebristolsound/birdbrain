@@ -529,3 +529,155 @@ bar that measures the routine rather than the maintainer's merge button.
 
 The verdict itself remains #310's. This ledger records the restatement and the
 arithmetic under it; it does not close the question.
+
+## 2026-08-16 re-measurement
+
+Second re-run of the procedure, triggered by the 2026-08-12 verdict on #310: *"the
+round-1 readiness work spawned from map #284's grilling will supply the next cohort
+of agent PRs. Re-run the ledger procedure after the next 5."* Eleven agent PRs have
+merged since that comment, so the cohort is well past five.
+
+The cohort is now **30 PRs**: 29 merged, one open (#463) as of this measurement.
+Rows #329–#407 reproduce the 2026-08-12 refresh with one exception: #407, recorded
+there as in flight, has since merged (2026-08-12T22:49:21Z), which resolves that
+row. #463 has since merged too (2026-08-17T00:43:27Z) — after this measurement was
+taken, so the rows below are left at what they said and the consequence is worked
+through under "The literal reading" rather than backdated into them.
+
+### New rows
+
+| PR | Subject | Evidence-affecting | Merged | Rounds | Verdicts |
+| --- | --- | --- | --- | --- | --- |
+| #409 | post-merge review-round fixes (#379) | yes | yes | 2 | REQ, APP |
+| #419 | design-handoff style sync (#384) | – | yes | 2 | REQ, REQ |
+| #420 | UI density setting (#385) | yes | yes | 2 | APP, APP |
+| #422 | capture-UI suppression protocol (#386) | yes | yes | 2 | REQ, APP |
+| #423 | pre-migration database snapshot (#413) | yes | yes | 5 | REQ ×5 |
+| #427 | signing-key acknowledgement (#414) | yes | yes | **6** | REQ ×5, APP |
+| #438 | typecheck `tests/` and `e2e/` (#337) | yes | yes | 2 | REQ, REQ |
+| #440 | reapply #438 after the mistaken revert | yes | yes | 1 | REQ |
+| #442 | round-1 gate + tester brief (#415/#416) | – | yes | 2 | APP, REQ |
+| #444 | tester-guide stale claims (#443) | – | yes | 2 | REQ, REQ |
+| #455 | preload bridge contract (#338) | yes | yes | 3 | REQ ×3 |
+| #463 | bridge allowlist comment (#338) | – | **no — open** | 1 | APP |
+
+PR #427's six rounds is the highest count the ledger has recorded; #423's five is
+second. Both are #284 round-1 tickets, and both are evidence-affecting.
+
+### Measurement against the restated bar
+
+Fast-track exclusion, applied by the mechanical rule: *merged without a satisfied
+automated verdict — the latest pre-pass posted at or before the merge said `request
+changes`, or no eligible pre-pass existed at merge time.*
+
+| PR | Final pre-pass at merge | Merged | Excluded |
+| --- | --- | --- | --- |
+| #407 | REQ `15:40:58` | `22:49:21` | **yes** |
+| #409 | APP `23:23:34` | `02:07:31` | no |
+| #419 | REQ `04:16:45` | `04:44:23` | **yes** |
+| #420 | APP `06:52:39` | `17:42:16` | no |
+| #422 | APP `18:48:17` | `22:51:57` | no |
+| #423 | REQ `04:55:39` | `05:09:01` | **yes** |
+| #427 | APP `23:27:14` | `23:43:03` | no |
+| #438 | REQ `01:33:06` | `02:54:44` | **yes** |
+| #440 | *(pre-pass posted `03:18:56`, after the merge)* | `03:15:42` | **yes** |
+| #442 | REQ `04:59:54` | `06:28:03` | **yes** |
+| #444 | REQ `15:09:54` | `16:59:10` | **yes** |
+| #455 | REQ `22:05:49` | `22:24:41` | **yes** |
+
+Eligible completed cycles, in order: #332, #334, #335, #345, #352, #356, #364,
+#369, #409, #420, #422, #427 — twelve.
+
+**The last five eligible** — #369, #409, #420, #422, #427:
+
+| PR | Merged | Rounds | ≤1 round | Satisfies bar |
+| --- | --- | --- | --- | --- |
+| #369 | yes | 4 | no | no |
+| #409 | yes | 2 | no | no |
+| #420 | yes | 2 | no | no |
+| #422 | yes | 2 | no | no |
+| #427 | yes | 6 | no | no |
+
+**0 of 5. The bar asks for 4 of 5. Not met.**
+
+The literal reading does not rescue it either. The five most recent **completed**
+agent PRs by number — #438, #440, #442, #444, #455 — run 2, 1, 2, 2, 3 rounds:
+**1 of 5**, and that single pass is #440, the reapply of a PR whose review had
+already happened on #438.
+
+That "completed" filter is stated here because the earlier draft did not state it
+and the omission mattered. #463 carries `agent-pr` and was open when this was
+written, so it was excluded for having no outcome yet — but "most recent by number,
+no exclusions" is what the sentence claimed, and under that wording the window
+is #440, #442, #444, #455, #463. PR #463 has since merged at 1 round, so that
+window resolves to **2 of 5**. Still short of the 4 of 5 the bar asks for, so
+the conclusion does not move; the scope was wrong even though the verdict was not.
+
+Every reading on record across three measurements now fails: 0 of 5, 2 of 5,
+1 of 5, 0 of 5, 1 of 5, 2 of 5.
+
+Merged is still 29 of 29 by construction, for the reason given under "The merge
+signal carries no information".
+
+### The override rate is rising, and it is now the dominant fact
+
+Excluded (merged past an unsatisfied or absent verdict): **17 of 29 merged PRs, 59%**.
+Within the eleven new merged rows alone it is **7 of 11, 64%**, against 53% at the
+2026-08-12 refresh and 43% in the original ledger. The trend is one direction across
+three measurements.
+
+Read against #310: the routine's review verdict is advisory in practice. PR #486
+made `agent/pre-pass` a commit status posted on the head sha so it renders in the
+merge box, but the repo ruleset requires only `lint`, `typecheck`, `test`, `build`
+and `e2e` — `agent/pre-pass` is **not** in the required set
+(`gh api repos/thebristolsound/birdbrain/rulesets/14967088`), and
+`.claude/skills/dispatch/SKILL.md:263` says so correctly.
+
+**Requiring it is not the fix, and this measurement should not be read as proposing
+one.** Workflows triggered by Dependabot get a read-only `GITHUB_TOKEN` under both
+`pull_request` and `pull_request_target`, so the seeding workflow cannot write the
+status on those PRs and the context would never report. Adding it to the ruleset
+would permanently block every Dependabot PR — 17 opened here so far. That was
+attempted on 2026-08-16 and reverted the same night; #488 records it as a documented
+dead end and ADR-0011 (lines 127 and 151) accepts it as one, unworked.
+
+So the finding stands and the obvious remedy does not exist. What the bar's second
+half needs is a mechanism that does not depend on a status Dependabot cannot produce
+— #488 is where that belongs, and until it lands the verdict stays advisory by
+construction rather than by neglect.
+
+### Ledger question 5 — one reporting gap remains
+
+The question was whether the routine reads live CI before a cycle reports success.
+Three changes have landed since it was written:
+
+- `.claude/agents/birdbrain-implementer.md:53-54` and `CLAUDE.md:316` add
+  `pnpm test:coverage` and `pnpm coverage:diff` to the verify loop (PR #424), closing
+  the specific false-green of finding 6.
+- `.claude/skills/dispatch/SKILL.md:308-318` makes the dispatcher poll `gh pr checks`
+  and route a red head to a cheap fix round instead of an expensive pre-pass.
+- `.claude/agents/birdbrain-reviewer.md:44` and `:64` make the live check status
+  authoritative for the reviewer, which cannot approve a red PR.
+
+**What remains.** §5's end-of-cycle report still has no rule requiring the CI state
+to be read or stated, and not every cycle ends in a pre-pass — a fix round or an
+occupied-slot exit reports without one. The reporting surface itself is therefore
+still unguarded, which is the exact form the question asked about. Filed as #496.
+
+### Finding 10 — the revert/reapply path carries unreviewed content past the pre-pass
+
+New in this cohort, and the first time merged agent work has been reverted from
+`main`.
+
+PR #438 merged at `02:54:44`, was reverted by #439 at `02:55:05` **by mistake**, and
+reapplied by #440 at `03:15:42`. Two things happened inside that 20-minute window:
+
+- #440's only pre-pass posted at `03:18:56` — three minutes *after* its merge, so it
+  gated nothing. Same shape as #375, and the reason #440 is excluded above.
+- The reapply was not byte-identical. Commit `01341b5` was pushed to the branch
+  before merge and is not covered by #438's review; #440's body originally claimed
+  the reapply was "unchanged" and had to be corrected after merge to name it.
+
+A revert-and-reapply reads as a no-op and is treated as one, which is precisely what
+makes it a channel for unreviewed content. Nothing in the routine distinguishes
+"restoring reviewed work" from "restoring reviewed work plus a commit".

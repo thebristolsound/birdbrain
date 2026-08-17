@@ -42,7 +42,10 @@ already posts here under its own identity, so a second identity is known to work
 3. **Token custody.** The machine account's credential is a **fine-grained personal access
    token**, resource owner the machine account, repository access restricted to
    `thebristolsound/birdbrain` only, with the minimum permissions the write path needs
-   (contents: read; issues, pull requests, commit statuses: read and write; checks: read).
+   (contents: read; issues, pull requests, commit statuses: read and write). Fine-grained PATs
+   offer no Checks permission at all — a GitHub limitation, not a choice — so on this private
+   repo the token cannot read CI check runs; the dispatcher reads CI state through the
+   maintainer's own `gh` login, and only *writes* go through the machine token.
    It is held **only by the maintainer**, on the maintainer's machine, in a file outside any
    repository checkout — `~/.config/birdbrain-agent/env`, directory `0700`, file `0600` —
    as `BIRDBRAIN_AGENT_GH_TOKEN`, alongside `BIRDBRAIN_AGENT_GH_LOGIN` and the token's expiry

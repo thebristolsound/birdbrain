@@ -160,8 +160,11 @@ write access, and the dispatch routine makes every write — claim comments, PR 
 labels, pre-pass comments, `agent/pre-pass` statuses, review replies — as that account.
 
 The credential is a fine-grained PAT, resource owner the machine account, restricted to this
-one repository, with contents: read, issues / pull requests / commit statuses: read+write,
-checks: read. It deliberately cannot push. It lives only on the maintainer's machine, in
+one repository, with contents: read, issues / pull requests / commit statuses: read+write.
+It deliberately cannot push. It also cannot read CI check runs on this private repo:
+fine-grained PATs have no Checks permission (GitHub limitation — the endpoint docs claim one,
+the token UI has never offered it; see `cli/cli#8842`), so `gh pr checks` and check-run REST
+calls go through the maintainer's login, never `agh`. It lives only on the maintainer's machine, in
 `~/.config/birdbrain-agent/env` (`0700` directory, `0600` file):
 
 ```

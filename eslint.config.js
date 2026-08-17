@@ -43,7 +43,8 @@ export default tseslint.config(
         console: 'readonly',
         process: 'readonly',
         setTimeout: 'readonly',
-        clearTimeout: 'readonly'
+        clearTimeout: 'readonly',
+        fetch: 'readonly'
       }
     }
   },

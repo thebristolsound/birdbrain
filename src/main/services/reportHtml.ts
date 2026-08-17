@@ -41,6 +41,7 @@ import type {
   HashVerification,
   TrustedTime
 } from '@shared/types'
+import type { TrustedTimeResult } from '@shared/verify'
 
 // ---------------------------------------------------------------------------
 // Input
@@ -112,12 +113,11 @@ export interface ReportData {
    */
   packagedPaths: Map<string, PackagedArtifacts>
   /**
-   * Manifest-derived trusted time, keyed by capture id. The manifest is
-   * authoritative; the capture row's trustedTimeStatus is a rebuildable mirror
-   * that can be stale, and trusting it would let an exhibit claim RFC 3161 time
-   * with no token packaged, or call a bundled token local-clock-only.
+   * Manifest-derived trusted time, keyed by capture id, resolved once from the
+   * snapshot this package is built from and shared with `preflight` above — see
+   * resolveExportTrustedTime in export.ts.
    */
-  trustedTimeByCaptureId: Map<string, TrustedTime>
+  trustedTimeByCaptureId: Map<string, TrustedTimeResult>
   /**
    * Whether tsa-ca-chain.pem carries an independent trust anchor for the
    * configured TSA. False for a non-default authority, where the file holds only
@@ -217,6 +217,8 @@ const NO_ARTIFACTS: PackagedArtifacts = {
   imageAnnotated: false
 }
 
+const NO_TRUSTED_TIME: TrustedTimeResult = { trustedTime: 'none' }
+
 function buildExhibits(data: ReportData, options: ExportOptions): ExhibitView[] {
   const byCaptureId = new Map(data.verifications.map((v) => [v.captureId, v]))
   // Captures arrive newest-first from captureRepo; exhibits read chronologically.
@@ -225,18 +227,14 @@ function buildExhibits(data: ReportData, options: ExportOptions): ExhibitView[] 
 
   return ordered.map((capture, index) => {
     const verification = byCaptureId.get(capture.id)
-    // Precedence: a verification run this export computed, then the manifest,
-    // then nothing. The capture row's mirror is deliberately not consulted — it
-    // is rebuildable state that can disagree with the tokens actually retained.
-    const basis: TrustedTime =
-      verification?.trustedTime ?? data.trustedTimeByCaptureId.get(capture.id) ?? 'none'
+    const trustedTime = data.trustedTimeByCaptureId.get(capture.id) ?? NO_TRUSTED_TIME
     const packaged = data.packagedPaths.get(capture.id) ?? NO_ARTIFACTS
     return {
       number: index + 1,
       capture,
       verification,
       integrity: integrityView(verification, capture),
-      time: { basis, ...trustedTimeView(basis, verification) },
+      time: { basis: trustedTime.trustedTime, ...trustedTimeView(trustedTime) },
       screenshot: data.screenshots.get(capture.id),
       pins: data.pins.get(capture.id) ?? [],
       annotationsBurned: packaged.imageAnnotated,
@@ -305,14 +303,11 @@ function integrityView(verification: HashVerification | undefined, capture: Capt
   }
 }
 
-function trustedTimeView(
-  basis: TrustedTime,
-  verification: HashVerification | undefined
-): StateView {
-  switch (basis) {
+function trustedTimeView(resolved: TrustedTimeResult): StateView {
+  switch (resolved.trustedTime) {
     case 'rfc3161': {
-      const who = verification?.tsaName ?? 'the configured RFC 3161 authority'
-      const when = verification?.stampedAt ? isoUtc(verification.stampedAt) : null
+      const who = resolved.tsaName ?? 'the configured RFC 3161 authority'
+      const when = resolved.stampedAt ? isoUtc(resolved.stampedAt) : null
       return {
         label: 'RFC 3161 token retained',
         detail:

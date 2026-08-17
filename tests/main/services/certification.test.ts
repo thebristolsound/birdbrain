@@ -20,7 +20,8 @@ import { setCaptureTrustedTime } from '@main/services/db/captureRepo'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
-import type { ExportOptions, TrustedTime } from '@shared/types'
+import type { ExportOptions } from '@shared/types'
+import type { TrustedTimeResult } from '@shared/verify'
 
 function readStoredZipEntries(path: string): Map<string, Buffer> {
   const zip = readFileSync(path)
@@ -244,6 +245,66 @@ describe('certification', () => {
     // The mirror's verdict must not surface anywhere in the document.
     expect(html).not.toContain('Captures without trusted time')
     expect(html).not.toContain('Local clock only')
+
+    // #492's second consequence: a manifest-sourced stamped row must still name
+    // the authority and the time it asserted. Those were parsed out of the token
+    // during resolution, so a row that prints the generic placeholder instead is
+    // discarding evidence the package already holds.
+    expect(html).toContain('tsa.example.com')
+    expect(html).toContain('2026-04-05T12:01:00Z')
+    expect(html).not.toContain('RFC 3161 TSA')
+  })
+
+  // #492: the summary counts and the rows beneath them are one resolution taken
+  // from the manifest snapshot the package is built from. The timestamp worker
+  // appends whenever a token arrives, so any second read taken at a different
+  // moment can disagree with the snapshot — the export used to take one before
+  // the verification stage and one after, and a token landing in between made the
+  // document claim "0 captures ... 1 pending" above a row listed as timestamped.
+  // A CaptureLifecycle whose verify() appends the token stands in for that tick:
+  // it runs inside the export, in the window between the two old reads.
+  it('keeps the summary and the rows agreeing when a token lands mid-export', async () => {
+    const { capture } = await ingest(
+      caseId,
+      '<html><body>Raced</body></html>',
+      'https://example.com/raced',
+      'Raced Page'
+    )
+
+    const token = buildSyntheticToken({
+      contentHash: capture.hash,
+      genTime: new Date('2026-04-05T12:01:00.000Z'),
+      tsaDnsName: 'tsa.example.com'
+    })
+    const stampMidExport: CaptureLifecycle = {
+      ...captureLifecycle,
+      verify: async (captureId: string) => {
+        const result = await captureLifecycle.verify(captureId)
+        appendManifestEntry(join(tempDir, 'captures', caseId), {
+          type: 'timestamp',
+          caseId,
+          captureContentHash: capture.hash,
+          timestamp: '2026-04-05T12:01:00.000Z',
+          tsaToken: token.toString('base64'),
+          operatorId: 'op',
+          operatorName: 'Det. Smith',
+          toolVersion: '0.1.0'
+        })
+        return result
+      }
+    }
+
+    const outputPath = join(tempDir, 'raced.zip')
+    await generateReport(caseId, { ...ZIP_OPTIONS, outputPath }, stampMidExport)
+    const html = readStoredZipEntries(outputPath).get('certification.html')!.toString('utf-8')
+
+    // The snapshot carries the token, so the document asserts trusted time in
+    // both places — and, critically, in neither place only.
+    expect(html).toMatch(/All 1 capture in this export carry an/i)
+    expect(html).toContain('Timestamped captures')
+    expect(html).toContain('tsa.example.com')
+    expect(html).not.toContain('Captures without trusted time')
+    expect(html).not.toMatch(/remaining capture/i)
   })
 
   it('lets the manifest override a mirror that overclaims trusted time', async () => {
@@ -265,16 +326,10 @@ describe('certification', () => {
         operatorRole: 'Detective',
         operatorOrganization: 'Metro PD',
         tsaUrl: 'https://tsa.example/timestamp',
-        preflight: {
-          captureCount: 1,
-          stampedCaptureCount: 0,
-          unstampedCaptureCount: 1,
-          pendingCaptureCount: 0,
-          noneCaptureCount: 1
-        },
         captures: [{ ...capture, trustedTimeStatus: 'rfc3161' }],
-        verifications: [],
-        trustedTimeByCaptureId: new Map<string, TrustedTime>([[capture.id, 'none']])
+        trustedTimeByCaptureId: new Map<string, TrustedTimeResult>([
+          [capture.id, { trustedTime: 'none' }]
+        ])
       },
       resolveToolVersion()
     )
@@ -283,5 +338,52 @@ describe('certification', () => {
     expect(html).toContain('Local clock only')
     expect(html).not.toContain('Timestamped captures')
     expect(html).not.toMatch(/All \d+ captures? in this export carry an/i)
+  })
+
+  // The summary sentence is folded out of the rows it introduces, so the
+  // document has no second count to contradict them with (#492).
+  it('counts the trusted-time summary from the rows it prints', async () => {
+    const { capture: stamped } = await ingest(
+      caseId,
+      '<html><body>Stamped</body></html>',
+      'https://example.com/stamped',
+      'Stamped Page'
+    )
+    const { capture: pending } = await ingest(
+      caseId,
+      '<html><body>Pending</body></html>',
+      'https://example.com/pending',
+      'Pending Page'
+    )
+
+    const html = buildCertification(
+      {
+        caseName: 'Cert Case',
+        exportTimestamp: '2026-04-05T13:00:00.000Z',
+        installationId: 'install-1',
+        operatorName: 'Det. Smith',
+        operatorRole: 'Detective',
+        operatorOrganization: 'Metro PD',
+        tsaUrl: 'https://tsa.example/timestamp',
+        captures: [stamped, pending],
+        trustedTimeByCaptureId: new Map<string, TrustedTimeResult>([
+          [
+            stamped.id,
+            {
+              trustedTime: 'rfc3161',
+              tsaName: 'tsa.example.com',
+              stampedAt: '2026-04-05T12:01:00.000Z'
+            }
+          ],
+          [pending.id, { trustedTime: 'pending' }]
+        ])
+      },
+      resolveToolVersion()
+    )
+
+    expect(html).toMatch(/only<\/strong>\s+for\s+the\s+1\s+capture/i)
+    expect(html).toMatch(/1\s+remaining\s+capture\s+\(1\s+pending,\s+0\s+none\)/i)
+    expect(html).toContain('tsa.example.com')
+    expect(html).toContain('2026-04-05T12:01:00Z')
   })
 })

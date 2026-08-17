@@ -27,6 +27,7 @@ import {
   buildTrustedTimeIndexFromEntries,
   extractTimestampTokenCertificatesPem
 } from '@shared/verify'
+import type { TrustedTimeResult } from '@shared/verify'
 import { buildCertification, resolveToolVersion } from '@main/services/certification'
 import { buildHtmlReport } from '@main/services/reportHtml'
 import type { PackagedArtifacts, ReportData } from '@main/services/reportHtml'
@@ -74,30 +75,82 @@ export async function verifyCaptures(
   return results
 }
 
-export function getExportPreflight(caseId: string): ExportPreflight {
-  const captures = captureRepo.listCaptures(caseId)
-  const trustedTimes = buildTrustedTimeIndex(join(getStorageRoot(), caseId))
+/**
+ * The one trusted-time resolution an export gets: the summary counts and the
+ * per-capture rows printed beneath them, produced in a single pass over a single
+ * index (#492).
+ *
+ * They are two views of one resolution because resolving twice is what let them
+ * contradict each other — the timestamp worker appends to the manifest at any
+ * moment, so two reads taken either side of an await can disagree about the same
+ * capture, and the document then claims "0 remaining captures (1 pending)" above
+ * a timestamped row.
+ *
+ * The captures.trustedTimeStatus mirror feeds neither view: it is rebuildable
+ * state that can disagree with the tokens actually retained. A capture absent
+ * from the index resolves 'none' — the honest floor, not whatever the mirror
+ * last held.
+ *
+ * `byContentHash` is keyed by content hash, which is what the trusted-time index
+ * carries; `byCaptureId` re-keys the same result objects by capture id. Whole
+ * objects, not just `.trustedTime`: `stampFor` has already parsed the TSA name
+ * and asserted time out of the token, and dropping them makes a stamped row
+ * print a bare "RFC 3161 TSA" with no time.
+ */
+export interface ExportTrustedTime {
+  preflight: ExportPreflight
+  byCaptureId: Map<string, TrustedTimeResult>
+}
+
+const UNSTAMPED: TrustedTimeResult = { trustedTime: 'none' }
+
+// Placeholder for the window inside generateReport between building ExportData
+// and taking the manifest snapshot the real counts are resolved from. Zeroed
+// rather than plausible so that rendering it by mistake reads as obviously
+// unpopulated instead of as a case with nothing to report.
+const UNRESOLVED_PREFLIGHT: ExportPreflight = {
+  captureCount: 0,
+  stampedCaptureCount: 0,
+  unstampedCaptureCount: 0,
+  pendingCaptureCount: 0,
+  noneCaptureCount: 0
+}
+
+export function resolveExportTrustedTime(
+  captures: Capture[],
+  byContentHash: Map<string, TrustedTimeResult>
+): ExportTrustedTime {
   const counts: Record<TrustedTime, number> = { rfc3161: 0, pending: 0, none: 0 }
+  const byCaptureId = new Map<string, TrustedTimeResult>()
 
   for (const capture of captures) {
-    // Manifest-derived only. The captures.trustedTimeStatus mirror is deliberately
-    // not consulted: it is rebuildable state that can disagree with the tokens
-    // actually retained, and these counts are printed in certification.html beside
-    // per-capture rows that resolve from the manifest alone (#492). A capture whose
-    // hash has no manifest entry counts as 'none' — the honest floor, not whatever
-    // the mirror last held. Keyed by content hash, which is what the index carries;
-    // data.trustedTimeByCaptureId re-keys the same resolution by capture id.
-    const trustedTime = trustedTimes.get(capture.hash)?.trustedTime ?? 'none'
-    counts[trustedTime]++
+    const resolved = byContentHash.get(capture.hash) ?? UNSTAMPED
+    counts[resolved.trustedTime]++
+    byCaptureId.set(capture.id, resolved)
   }
 
   return {
-    captureCount: captures.length,
-    stampedCaptureCount: counts.rfc3161,
-    unstampedCaptureCount: counts.pending + counts.none,
-    pendingCaptureCount: counts.pending,
-    noneCaptureCount: counts.none
+    preflight: {
+      captureCount: captures.length,
+      stampedCaptureCount: counts.rfc3161,
+      unstampedCaptureCount: counts.pending + counts.none,
+      pendingCaptureCount: counts.pending,
+      noneCaptureCount: counts.none
+    },
+    byCaptureId
   }
+}
+
+/**
+ * Live manifest read, for the pre-export dialog: nothing is being packaged, so
+ * there is no snapshot to resolve against and the freshest answer is the right
+ * one. generateReport deliberately does not call this — it resolves once from
+ * the snapshot it packages.
+ */
+export function getExportPreflight(caseId: string): ExportPreflight {
+  const captures = captureRepo.listCaptures(caseId)
+  return resolveExportTrustedTime(captures, buildTrustedTimeIndex(join(getStorageRoot(), caseId)))
+    .preflight
 }
 
 export async function generateReport(
@@ -139,10 +192,11 @@ export async function generateReport(
     operatorRole: settings.operatorRole ?? '',
     operatorOrganization: settings.operatorOrganization ?? '',
     tsaUrl: settings.tsaUrl,
-    preflight: getExportPreflight(caseId),
     toolVersion: resolveToolVersion(),
     // Filled in below, once the awaited stages are done and the manifest can be
-    // snapshotted at the same instant the package is built from.
+    // snapshotted at the same instant the package is built from. Nothing reads
+    // these before then.
+    preflight: UNRESOLVED_PREFLIGHT,
     manifestHead: null,
     packagedPaths: new Map(),
     trustedTimeByCaptureId: new Map(),
@@ -210,14 +264,13 @@ export async function generateReport(
     annotatedCaptureIds
   )
 
-  // Resolved from the snapshot above, NOT by re-reading the manifest: a second
-  // live read reintroduces exactly the race the snapshot exists to close. The
-  // worker can append between the two, and the exhibit would then claim an
-  // RFC 3161 token that the packaged manifest and token paths do not contain.
-  const trustedTimes = buildTrustedTimeIndexFromEntries(manifest.entries)
-  data.trustedTimeByCaptureId = new Map(
-    captures.map((c) => [c.id, trustedTimes.get(c.hash)?.trustedTime ?? 'none'])
+  // Resolved from the snapshot above and nowhere else — see resolveExportTrustedTime.
+  const trustedTime = resolveExportTrustedTime(
+    captures,
+    buildTrustedTimeIndexFromEntries(manifest.entries)
   )
+  data.preflight = trustedTime.preflight
+  data.trustedTimeByCaptureId = trustedTime.byCaptureId
 
   onProgress?.('Generating report...', 80)
   const html = buildHtmlReport(data, options)
@@ -312,9 +365,7 @@ function buildEvidenceZip(
         operatorRole: data.operatorRole,
         operatorOrganization: data.operatorOrganization,
         tsaUrl: data.tsaUrl,
-        preflight: data.preflight,
         captures: data.captures,
-        verifications: data.verifications,
         trustedTimeByCaptureId: data.trustedTimeByCaptureId
       },
       resolveToolVersion()

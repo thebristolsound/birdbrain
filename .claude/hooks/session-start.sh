@@ -29,6 +29,64 @@ persist_env() {
   fi
 }
 
+# ---------------------------------------------------------------------------
+# 0. Refresh git refs — must run before anything else
+# ---------------------------------------------------------------------------
+# Every agent contract computes its diff base and completion controls against
+# origin/main: the implementer's evidence-affecting path gate, the reviewer's
+# touched-path backstop and commit-trailer check, and the dispatch skill's
+# completion controls. Nothing else in the repo updates that ref — the implementer
+# fetches before *pushing*, which is after the base has already been used (#479).
+#
+# A stale origin/main fails silently: the commands succeed and report a clean
+# result computed against an old ref. Because contracts use three-dot
+# (origin/main...HEAD) the merge base only moves *earlier*, so the usual outcome
+# is extra paths rather than missing ones — but a path that became
+# evidence-affecting since the last fetch is matched against a stale include list,
+# and that direction is a false negative on the evidence gate.
+#
+# Refs live on the common .git and are shared by every worktree, so one fetch here
+# repairs every concurrent session.
+#
+# Bounded and never fatal. An unbounded network call at session start is its own
+# hang risk, and a session must still start offline — so this warns rather than
+# blocks, and the warning names what is no longer trustworthy.
+fetch_refs() {
+  command -v git >/dev/null 2>&1 || { log "WARNING: git not on PATH; refs not refreshed"; return; }
+  git -C "$PROJECT_DIR" rev-parse --git-dir >/dev/null 2>&1 || {
+    log "WARNING: $PROJECT_DIR is not a git repo; refs not refreshed"; return; }
+
+  local before after
+  before="$(git -C "$PROJECT_DIR" rev-parse --quiet --verify origin/main || echo none)"
+
+  if timeout 30 git -C "$PROJECT_DIR" fetch --prune --quiet origin 2>/dev/null; then
+    after="$(git -C "$PROJECT_DIR" rev-parse --quiet --verify origin/main || echo none)"
+    if [ "$before" = "$after" ]; then
+      log "refs up to date (origin/main ${after:0:8})"
+    else
+      log "refs updated: origin/main ${before:0:8} -> ${after:0:8}"
+    fi
+  else
+    log "WARNING: git fetch failed or timed out. origin/main is ${before:0:8} and may be stale."
+    log "         The evidence-affecting path gate and the reviewer's touched-path"
+    log "         backstop are computed against it — re-run 'git fetch --prune origin'"
+    log "         before trusting either (#479)."
+    return
+  fi
+
+  # Fast-forward the local main branch without checking it out, so a prompt that
+  # says "diff against main" is not silently working from a stale ref. Refuses
+  # harmlessly if main is ever checked out in a worktree, hence the guard.
+  if git -C "$PROJECT_DIR" show-ref --quiet --verify refs/heads/main; then
+    if ! timeout 30 git -C "$PROJECT_DIR" fetch --quiet origin main:main 2>/dev/null; then
+      log "NOTE: local 'main' not fast-forwarded (checked out in a worktree, or diverged)."
+      log "      Contracts use origin/main, which is current; bare 'main' may not be."
+    fi
+  fi
+}
+
+fetch_refs
+
 if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   # Never fatal: a missing/broken mise must not block local sessions from starting.
   MISE_BIN="$(command -v mise || true)"

@@ -36,11 +36,31 @@ because the forged entry no longer carries a signature that validates against th
 installation's public key, and re-hashing one entry breaks every downstream link.
 
 It does **not** defend against a determined operator running Birdbrain's own code
-as themselves. The signing key is wrapped at rest with the OS credential store
-(DPAPI / Keychain via Electron `safeStorage`), but an operator who controls the
-running process controls the key and can, in principle, mint a fresh internally
-consistent chain. This is an inherent limit of any locally-held signing key and
-is stated here so no one over-claims it in a brief.
+as themselves. Where an OS credential store is available (DPAPI on Windows,
+Keychain on macOS, a Linux Secret Service provider such as gnome-keyring, via
+Electron `safeStorage`), the signing key is wrapped at rest with it. Even then,
+an operator who controls the running process controls the key and can, in
+principle, mint a fresh internally consistent chain. This is an inherent limit of
+any locally-held signing key and is stated here so no one over-claims it in a
+brief.
+
+Wrapping at rest is **conditional, not guaranteed.** On an installation with no
+usable credential store — typically a headless or keyring-less Linux install —
+Birdbrain does not silently degrade: on first run it refuses to generate a
+signing key until the operator explicitly acknowledges that the private key will
+be written to disk as a bare PEM, unprotected. Declining quits the app with no
+key written. Once acknowledged, the resulting state (`protected` or `plaintext`)
+is reported in Settings → Diagnostics, so a declaration can state which case
+applies to the installation that produced the evidence rather than assuming the
+wrapped one. An unprotected key widens the threat above from "an operator who
+controls the running process" to "anyone with file access to the machine".
+
+The OpenRouter API key is treated differently, by design. It is also wrapped
+with `safeStorage` when a credential store is available and stored in the clear
+otherwise, but there is no acknowledgement gate: it is a revocable service
+credential, not evidence, so its at-rest state is surfaced in Settings →
+Diagnostics only. The signing key gets the gate because a plaintext signing key
+changes what the manifest signature can be said to prove.
 
 **The RFC 3161 token is the independent anchor that closes this gap.** Because the
 timestamp is issued by an external TSA over the content hash, it establishes that

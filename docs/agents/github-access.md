@@ -14,6 +14,10 @@ against `gh`, and `gh` alone is not sufficient in that environment.
 | GitHub MCP tools (`mcp__github__*`) | **Yes**, and they can write |
 | `git` over the session proxy | **Yes** — fetch, push |
 
+Which identity a write goes out under is a separate question from which mechanism works —
+see "The pipeline's identity" below. Every write the dispatch routine makes is made as the
+machine account, and a session that cannot authenticate as it does not write at all.
+
 ## Why the high-level `gh` commands fail
 
 `gh` is not installed in the base image. `.claude/hooks/session-start.sh` installs it
@@ -115,9 +119,12 @@ inferring them:
 gh auth status   # reports the active account and the token's scopes
 ```
 
-`repo` scope on an account with write access to the repository covers everything the
-dispatch routine does. Anything less, and the routine must stop and report rather than
-half-complete a cycle — there is no MCP fallback locally.
+That reports the *maintainer's* login, which is the identity for reads and for the
+implementer's branch pushes (SSH). It is **not** the identity the dispatch routine writes
+with — those go out as the machine account, next section — so `gh auth status` showing
+`repo` scope is necessary for the human's own work and says nothing about whether a dispatch
+cycle can write. Anything less than the machine identity checking out, and the routine must
+stop and report rather than half-complete a cycle — there is no MCP fallback locally.
 
 A routine that can run in either place must therefore **probe rather than assume**. The
 probe has **three** outcomes, not two: a non-zero exit means "not the local case", which is
@@ -142,3 +149,50 @@ session runs, not whether GitHub is reachable from it.
 The dispatch skill (`.claude/skills/dispatch/SKILL.md`) runs this at the top of every
 cycle. It was added after a 2026-08-10 local run stated the web rule unconditionally and
 dead-ended at its first write.
+
+## The pipeline's identity
+
+**Agent PRs are opened by a machine account, not by the maintainer** (ADR-0012,
+`docs/adr/0012-agent-prs-are-opened-by-a-machine-account.md`). GitHub forbids self-review,
+so PRs the maintainer's account opens can never be approved or have changes requested by the
+maintainer; the pipeline therefore has its own GitHub user, added as a collaborator with
+write access, and the dispatch routine makes every write — claim comments, PR creation,
+labels, pre-pass comments, `agent/pre-pass` statuses, review replies — as that account.
+
+The credential is a **classic PAT with the `repo` scope only** — not fine-grained. A
+fine-grained PAT cannot act on a repository the account merely collaborates on (GitHub lists
+that as unsupported; the "Only select repositories" picker does not even appear for an
+account that owns no repos), and the owner here is a user, so there is no org to select as
+resource owner. Since the machine account is a collaborator on this one repository, `repo`
+reaches this repository and nothing else. It can push in principle; ADR-0006's one-writer
+rule, not the token, keeps the dispatcher off the branch. Classic tokens can read check
+runs, so `gh pr checks` works through `agh` as well as through the maintainer's login. It lives only on the maintainer's machine, in
+`~/.config/birdbrain-agent/env` (`0700` directory, `0600` file):
+
+```
+BIRDBRAIN_AGENT_GH_LOGIN=<machine login>
+BIRDBRAIN_AGENT_GH_TOKEN=ghp_…
+BIRDBRAIN_AGENT_GH_TOKEN_EXPIRES=YYYY-MM-DD
+```
+
+The dispatch routine sources that file and scopes the token per call, so the maintainer's
+own `gh` login is never displaced:
+
+```bash
+. ~/.config/birdbrain-agent/env      # plain source — never `set -a` or `export` the token
+agh() { GH_TOKEN="$BIRDBRAIN_AGENT_GH_TOKEN" gh "$@"; }
+agh api user --jq .login          # must print $BIRDBRAIN_AGENT_GH_LOGIN, else stop
+```
+
+`GH_TOKEN` in the environment takes precedence over `gh`'s stored login, which is what makes
+the per-call scoping work without `gh auth switch`. The token stays a shell variable: sourcing
+without `set -a` means no child process other than the `agh` call sees it — a `set -a` or
+`export` would hand it to every subprocess the session spawns. Provisioning and rotation are a human-only
+procedure — `scripts/setup-agent-github-account.sh` walks it — and the token is never
+committed, never a repo `.env` value, and never an Actions secret (no workflow needs it).
+
+**On the web the machine token is not provisioned.** The GitHub MCP tools write as the
+sandbox's identity, and the `GH_TOKEN` the environment exports is not the machine account's,
+so a web dispatch cycle fails the identity check and stops before claiming the slot. That is
+the intended outcome until the token exists there (ADR-0012 §5); the mechanism notes above
+about MCP writes remain accurate for non-dispatch work.

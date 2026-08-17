@@ -15,10 +15,13 @@ import {
 } from '@main/services/captureLifecycle'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { generateReport } from '@main/services/export'
+import { buildCertification, resolveToolVersion } from '@main/services/certification'
+import { setCaptureTrustedTime } from '@main/services/db/captureRepo'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 import type { ExportOptions } from '@shared/types'
+import type { TrustedTimeResult } from '@shared/verify'
 
 function readStoredZipEntries(path: string): Map<string, Buffer> {
   const zip = readFileSync(path)
@@ -98,10 +101,34 @@ describe('certification', () => {
     rmSync(tempDir, { recursive: true, force: true })
   })
 
-  async function exportZip(): Promise<Map<string, Buffer>> {
+  async function exportZip(overrides: Partial<ExportOptions> = {}): Promise<Map<string, Buffer>> {
     const outputPath = join(tempDir, 'evidence.zip')
-    await generateReport(caseId, { ...ZIP_OPTIONS, outputPath }, captureLifecycle)
+    await generateReport(caseId, { ...ZIP_OPTIONS, ...overrides, outputPath }, captureLifecycle)
     return readStoredZipEntries(outputPath)
+  }
+
+  // Stands in for the timestamp worker's tick. verify() computes its result first
+  // and appends the token afterwards, so the HashVerification carries the state
+  // before the append and the manifest snapshot generateReport takes later carries
+  // the state after it — the two disagreeing reads any artifact could pick from.
+  function stampAfterVerify(contentHash: string, token: Buffer): CaptureLifecycle {
+    return {
+      ...captureLifecycle,
+      verify: async (captureId: string) => {
+        const result = await captureLifecycle.verify(captureId)
+        appendManifestEntry(join(tempDir, 'captures', caseId), {
+          type: 'timestamp',
+          caseId,
+          captureContentHash: contentHash,
+          timestamp: '2026-04-05T12:01:00.000Z',
+          tsaToken: token.toString('base64'),
+          operatorId: 'op',
+          operatorName: 'Det. Smith',
+          toolVersion: '0.1.0'
+        })
+        return result
+      }
+    }
   }
 
   it('emits certification.html in the ZIP and lists it in evidence.json artifacts', async () => {
@@ -199,5 +226,223 @@ describe('certification', () => {
     expect(html).toContain('https://example.com/stamped')
     expect(html).toContain('Captures without trusted time')
     expect(html).toContain('https://example.com/pending')
+  })
+
+  // #492: unchecking Audit Trail skips verification, so data.verifications is
+  // empty and the per-capture rows fall through. They must fall through to the
+  // manifest snapshot — the same source the preflight counts printed in the same
+  // document come from — not to the rebuildable captures.trustedTimeStatus
+  // mirror, which can disagree with the tokens actually retained.
+  it('resolves per-capture trusted time from the manifest, not the mirror, without an audit trail', async () => {
+    const { capture } = await ingest(
+      caseId,
+      '<html><body>Stamped</body></html>',
+      'https://example.com/stamped',
+      'Stamped Page'
+    )
+
+    // Manifest says rfc3161; the mirror disagrees and says none.
+    const token = buildSyntheticToken({
+      contentHash: capture.hash,
+      genTime: new Date('2026-04-05T12:01:00.000Z'),
+      tsaDnsName: 'tsa.example.com'
+    })
+    appendManifestEntry(join(tempDir, 'captures', caseId), {
+      type: 'timestamp',
+      caseId,
+      captureContentHash: capture.hash,
+      timestamp: '2026-04-05T12:01:00.000Z',
+      tsaToken: token.toString('base64'),
+      operatorId: 'op',
+      operatorName: 'Det. Smith',
+      toolVersion: '0.1.0'
+    })
+    setCaptureTrustedTime(capture.id, 'none')
+
+    const entries = await exportZip({
+      include: { ...ZIP_OPTIONS.include, auditTrail: false }
+    })
+    const html = entries.get('certification.html')!.toString('utf-8')
+
+    expect(html).toContain('Timestamped captures')
+    expect(html).toContain('https://example.com/stamped')
+    // The mirror's verdict must not surface anywhere in the document.
+    expect(html).not.toContain('Captures without trusted time')
+    expect(html).not.toContain('Local clock only')
+
+    // #492's second consequence: a manifest-sourced stamped row must still name
+    // the authority and the time it asserted. Those were parsed out of the token
+    // during resolution, so a row that prints the generic placeholder instead is
+    // discarding evidence the package already holds.
+    expect(html).toContain('tsa.example.com')
+    expect(html).toContain('2026-04-05T12:01:00Z')
+    expect(html).not.toContain('RFC 3161 TSA')
+  })
+
+  // #492: the summary counts and the rows beneath them are one resolution taken
+  // from the manifest snapshot the package is built from — the same snapshot that
+  // becomes the bundled manifest.jsonl. What this pins is that both read that
+  // snapshot and nothing earlier. Run against 31b1c43 the document rendered "No
+  // trusted timestamps are asserted for any of the 1 capture in this export (1
+  // pending, 0 none)" above a "Token pending" row: internally consistent, but an
+  // under-claim, because the packaged manifest already carried the token and the
+  // rows were still reading the verification computed before it arrived.
+  it('asserts the token the packaged manifest carries when it lands mid-export', async () => {
+    const { capture } = await ingest(
+      caseId,
+      '<html><body>Raced</body></html>',
+      'https://example.com/raced',
+      'Raced Page'
+    )
+
+    const token = buildSyntheticToken({
+      contentHash: capture.hash,
+      genTime: new Date('2026-04-05T12:01:00.000Z'),
+      tsaDnsName: 'tsa.example.com'
+    })
+
+    const outputPath = join(tempDir, 'raced.zip')
+    await generateReport(
+      caseId,
+      { ...ZIP_OPTIONS, outputPath },
+      stampAfterVerify(capture.hash, token)
+    )
+    const html = readStoredZipEntries(outputPath).get('certification.html')!.toString('utf-8')
+
+    expect(html).toMatch(/All 1 capture in this export carry an/i)
+    expect(html).toContain('Timestamped captures')
+    expect(html).toContain('tsa.example.com')
+    expect(html).not.toContain('Captures without trusted time')
+    expect(html).not.toMatch(/remaining capture/i)
+  })
+
+  // #492/#498: the three artifacts are read side by side out of one zip, and the
+  // package verifier re-derives the axis from the bundled manifest.jsonl — which
+  // is that same snapshot (src/shared/verify/evidencePackage.ts:191). So an
+  // artifact that prefers HashVerification.trustedTime, a live manifest read taken
+  // at verify time, contradicts both the other two and the manifest it ships
+  // beside. This interleaving separates the two reads: the verification predates
+  // the token, the snapshot follows it.
+  it('ships one trusted-time answer across certification, report and evidence.json', async () => {
+    const { capture } = await ingest(
+      caseId,
+      '<html><body>Raced</body></html>',
+      'https://example.com/raced',
+      'Raced Page'
+    )
+
+    const token = buildSyntheticToken({
+      contentHash: capture.hash,
+      genTime: new Date('2026-04-05T12:01:00.000Z'),
+      tsaDnsName: 'tsa.example.com'
+    })
+
+    const outputPath = join(tempDir, 'agree.zip')
+    await generateReport(
+      caseId,
+      { ...ZIP_OPTIONS, outputPath },
+      stampAfterVerify(capture.hash, token)
+    )
+    const entries = readStoredZipEntries(outputPath)
+    const cert = entries.get('certification.html')!.toString('utf-8')
+    const report = entries.get('report.html')!.toString('utf-8')
+    const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+      captures: Array<{ id: string; trustedTime: string; tsaName?: string; stampedAt?: string }>
+    }
+
+    expect(cert).toMatch(/All 1 capture in this export carry an/i)
+    expect(cert).toContain('tsa.example.com')
+    expect(cert).not.toContain('Token pending')
+
+    expect(report).toContain('RFC 3161 token retained')
+    expect(report).not.toContain('Local clock — token pending')
+
+    expect(evidence.captures).toHaveLength(1)
+    expect(evidence.captures[0]).toMatchObject({
+      id: capture.id,
+      trustedTime: 'rfc3161',
+      tsaName: 'tsa.example.com',
+      stampedAt: '2026-04-05T12:01:00.000Z'
+    })
+  })
+
+  it('lets the manifest override a mirror that overclaims trusted time', async () => {
+    const { capture } = await ingest(
+      caseId,
+      '<html><body>Unstamped</body></html>',
+      'https://example.com/unstamped',
+      'Unstamped Page'
+    )
+    setCaptureTrustedTime(capture.id, 'rfc3161')
+
+    // No timestamp entry was appended, so the manifest snapshot resolves 'none'.
+    const html = buildCertification(
+      {
+        caseName: 'Cert Case',
+        exportTimestamp: '2026-04-05T13:00:00.000Z',
+        installationId: 'install-1',
+        operatorName: 'Det. Smith',
+        operatorRole: 'Detective',
+        operatorOrganization: 'Metro PD',
+        tsaUrl: 'https://tsa.example/timestamp',
+        captures: [{ ...capture, trustedTimeStatus: 'rfc3161' }],
+        trustedTimeByCaptureId: new Map<string, TrustedTimeResult>([
+          [capture.id, { trustedTime: 'none' }]
+        ])
+      },
+      resolveToolVersion()
+    )
+
+    expect(html).toContain('Captures without trusted time')
+    expect(html).toContain('Local clock only')
+    expect(html).not.toContain('Timestamped captures')
+    expect(html).not.toMatch(/All \d+ captures? in this export carry an/i)
+  })
+
+  // The summary sentence is folded out of the rows it introduces, so the
+  // document has no second count to contradict them with (#492).
+  it('counts the trusted-time summary from the rows it prints', async () => {
+    const { capture: stamped } = await ingest(
+      caseId,
+      '<html><body>Stamped</body></html>',
+      'https://example.com/stamped',
+      'Stamped Page'
+    )
+    const { capture: pending } = await ingest(
+      caseId,
+      '<html><body>Pending</body></html>',
+      'https://example.com/pending',
+      'Pending Page'
+    )
+
+    const html = buildCertification(
+      {
+        caseName: 'Cert Case',
+        exportTimestamp: '2026-04-05T13:00:00.000Z',
+        installationId: 'install-1',
+        operatorName: 'Det. Smith',
+        operatorRole: 'Detective',
+        operatorOrganization: 'Metro PD',
+        tsaUrl: 'https://tsa.example/timestamp',
+        captures: [stamped, pending],
+        trustedTimeByCaptureId: new Map<string, TrustedTimeResult>([
+          [
+            stamped.id,
+            {
+              trustedTime: 'rfc3161',
+              tsaName: 'tsa.example.com',
+              stampedAt: '2026-04-05T12:01:00.000Z'
+            }
+          ],
+          [pending.id, { trustedTime: 'pending' }]
+        ])
+      },
+      resolveToolVersion()
+    )
+
+    expect(html).toMatch(/only<\/strong>\s+for\s+the\s+1\s+capture/i)
+    expect(html).toMatch(/1\s+remaining\s+capture\s+\(1\s+pending,\s+0\s+none\)/i)
+    expect(html).toContain('tsa.example.com')
+    expect(html).toContain('2026-04-05T12:01:00Z')
   })
 })

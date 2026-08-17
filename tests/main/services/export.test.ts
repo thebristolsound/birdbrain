@@ -555,6 +555,29 @@ describe('export', () => {
     expect(content).toMatch(/export\s+was\s+not\s+blocked/i)
   })
 
+  // #492: the preflight counts are printed in certification.html beside per-capture
+  // rows resolved from the manifest alone. A capture with no manifest entry whose
+  // mirror claims rfc3161 used to be counted as stamped, so the document could claim
+  // trusted time above a row rendering the same capture as "Local clock only".
+  it('counts trusted time from the manifest when the mirror overclaims', () => {
+    const capture = insertCapture({
+      caseId,
+      url: 'https://legacy.example',
+      title: 'Legacy',
+      hash: 'y'.repeat(64),
+      timestamp: '2024-01-01T00:00:00Z'
+    })
+    setCaptureTrustedTime(capture.id, 'rfc3161')
+
+    expect(getExportPreflight(caseId)).toMatchObject({
+      captureCount: 1,
+      stampedCaptureCount: 0,
+      unstampedCaptureCount: 1,
+      pendingCaptureCount: 0,
+      noneCaptureCount: 1
+    })
+  })
+
   it('does not record overallValid:true when auditTrail is excluded (no verifications)', async () => {
     await ingest(caseId, '<html><body>Unverified export</body></html>', 'https://example.com', 'U')
 

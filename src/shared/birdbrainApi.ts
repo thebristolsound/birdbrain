@@ -184,6 +184,7 @@ export interface BirdbrainAPI {
     log(payload: RendererLogPayload): Promise<string>
     recentEntries(limit: number): Promise<LogEntry[]>
     revealLog(): Promise<void>
+    openStorageRoot(): Promise<void>
     lastSession(): Promise<SessionRecord | null>
     createReport(input: BugReportInput): Promise<BugReportResult | null>
   }

@@ -94,6 +94,7 @@ const snapshot: DiagnosticsSnapshot = {
 
 let log: ReturnType<typeof vi.fn>
 let openPath: ReturnType<typeof vi.fn>
+let openStorageRoot: ReturnType<typeof vi.fn>
 
 function renderPanel() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -112,8 +113,9 @@ describe('DiagnosticsPanel storage folder action', () => {
     vi.clearAllMocks()
     log = vi.fn().mockResolvedValue('cid-1')
     openPath = vi.fn().mockResolvedValue(undefined)
+    openStorageRoot = vi.fn().mockResolvedValue(undefined)
     fakeBridge({
-      diagnostics: { get: vi.fn().mockResolvedValue(snapshot), log },
+      diagnostics: { get: vi.fn().mockResolvedValue(snapshot), log, openStorageRoot },
       shell: { openPath }
     })
   })
@@ -134,7 +136,8 @@ describe('DiagnosticsPanel storage folder action', () => {
           ...snapshot,
           keyProtection: { signingKey: 'plaintext', openRouterKey: 'not-set' }
         }),
-        log
+        log,
+        openStorageRoot
       },
       shell: { openPath }
     })
@@ -143,19 +146,26 @@ describe('DiagnosticsPanel storage folder action', () => {
     expect(await screen.findByText(/was written to disk unprotected/)).toBeDefined()
   })
 
-  it('opens the storage folder without complaining when the shell accepts it', async () => {
+  // #363: the root is opened on its own main-derived channel. The generic
+  // shell:openPath is allowlist-gated and never held the root, so routing the
+  // click there is exactly the always-fails behaviour this pins against.
+  it('opens the storage folder via the diagnostics channel, never shell:openPath', async () => {
     renderPanel()
     await clickStorageRoot()
 
-    await waitFor(() => expect(openPath).toHaveBeenCalledWith(STORAGE_ROOT))
+    await waitFor(() => expect(openStorageRoot).toHaveBeenCalledOnce())
+    expect(openStorageRoot).toHaveBeenCalledWith()
+    expect(openPath).not.toHaveBeenCalled()
     expect(toastFns.error).not.toHaveBeenCalled()
   })
 
-  it('surfaces a rejected openPath and keeps the storage path out of the durable log', async () => {
+  it('surfaces a rejected open and keeps the storage path out of the durable log', async () => {
     // The rejection embeds the storage path the way a real fs/shell error does.
     // Without it the assertion below passes even if notify serialised the whole
     // toast message, because a path-free message contains no path to find.
-    openPath.mockRejectedValue(new Error(`EACCES: permission denied, scandir '${STORAGE_ROOT}'`))
+    openStorageRoot.mockRejectedValue(
+      new Error(`EACCES: permission denied, scandir '${STORAGE_ROOT}'`)
+    )
     renderPanel()
     await clickStorageRoot()
 

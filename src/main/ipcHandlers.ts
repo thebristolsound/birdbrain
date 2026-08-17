@@ -60,6 +60,7 @@ import { buildCsv } from '@main/services/csvEscape'
 import { getInstallationId } from '@main/services/installationId'
 import { CAPTURE_SERVER_PORT } from '@main/services/captureServer'
 import { getServerToken } from '@main/services/serverToken'
+import { getStorageRoot } from '@main/services/storage'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import type { RecaptureService } from '@main/services/recapture'
@@ -740,6 +741,24 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.DIAGNOSTICS_REVEAL_LOG, () => {
     const path = getLogPath()
     if (path) shell.showItemInFolder(path)
+  })
+
+  // Storage root is opened on its own channel, like the log above, rather than
+  // through shell:openPath. The reveal allowlist models per-export files this
+  // process just wrote; the root is a long-lived, operator-configurable
+  // directory, and admitting it there would either widen that control or
+  // silently rot under FIFO eviction (#363). The renderer supplies no path —
+  // the live root is read here, so it follows initStorage() and never goes stale.
+  handle(IPC_CHANNELS.DIAGNOSTICS_OPEN_STORAGE_ROOT, async () => {
+    let root: string
+    try {
+      root = getStorageRoot()
+    } catch {
+      throw new IpcFailure('Storage not initialised', 'STORAGE_NOT_INITIALISED')
+    }
+    if (!existsSync(root)) throw new IpcFailure('Storage folder not found', 'NOT_FOUND')
+    const openError = await shell.openPath(root)
+    if (openError) throw new IpcFailure(openError, 'OPEN_PATH_FAILED')
   })
 
   handle(IPC_CHANNELS.DIAGNOSTICS_LAST_SESSION, () => takeUncleanSession(getLogDir()))

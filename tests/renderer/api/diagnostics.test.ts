@@ -5,6 +5,7 @@ import {
   diagnosticsQueryOptions,
   lastSession,
   logDiagnosticEvent,
+  openStorageRoot,
   recentLogEntries,
   revealLogFile
 } from '@renderer/lib/api/diagnostics'
@@ -49,6 +50,16 @@ describe('diagnostics commands', () => {
     await revealLogFile()
 
     expect(revealLog).toHaveBeenCalledOnce()
+  })
+
+  it('opens the storage root without handing the bridge a path (#363)', async () => {
+    const openStorageRootStub = vi.fn(async () => undefined)
+    fakeBridge({ diagnostics: { openStorageRoot: openStorageRootStub } })
+
+    await openStorageRoot()
+
+    expect(openStorageRootStub).toHaveBeenCalledOnce()
+    expect(openStorageRootStub).toHaveBeenCalledWith()
   })
 
   it('returns null when there is no unclean session to recover', async () => {

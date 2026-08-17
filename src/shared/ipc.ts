@@ -165,6 +165,7 @@ export const IPC_CHANNELS = {
   DIAGNOSTICS_LOG: 'diagnostics:log',
   DIAGNOSTICS_RECENT: 'diagnostics:recent',
   DIAGNOSTICS_REVEAL_LOG: 'diagnostics:revealLog',
+  DIAGNOSTICS_OPEN_STORAGE_ROOT: 'diagnostics:openStorageRoot',
   DIAGNOSTICS_LAST_SESSION: 'diagnostics:lastSession',
   DIAGNOSTICS_CREATE_REPORT: 'diagnostics:createReport',
   LOG_ENTRY: 'event:logEntry',
@@ -669,6 +670,7 @@ export interface IpcInvokeContract {
   'diagnostics:log': { args: [payload: RendererLogPayload]; result: string }
   'diagnostics:recent': { args: [limit: number]; result: LogEntry[] }
   'diagnostics:revealLog': { args: []; result: void }
+  'diagnostics:openStorageRoot': { args: []; result: void }
   'diagnostics:lastSession': { args: []; result: SessionRecord | null }
   'diagnostics:createReport': {
     args: [input: BugReportInput]

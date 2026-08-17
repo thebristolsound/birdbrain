@@ -70,15 +70,32 @@ is enforced by Prettier/ESLint — `pnpm format` fixes style rather than debatin
 
 ## Evidence-affecting changes
 
-Birdbrain's value rests on its forensic guarantees. Changes that can alter an
-evidentiary result or its interpretation — capture, parsing, extraction, storage,
-hashing, signing, trusted time, manifests, verification, redaction, export,
-reporting, AI analysis, and release distribution — get closer review, must state
-their evidence impact in the PR, and are never merged without human review. The PR
-template walks you through this; the path inventory lives in
+Birdbrain's value rests on its forensic guarantees. The canonical definition lives in
+[`CONTEXT.md`](CONTEXT.md) under "Assurance baseline" and is quoted verbatim here — if
+that sentence changes, this copy and the one in the PR template change with it:
+
+> An evidence-affecting change includes acquisition, parsing, extraction, storage,
+> hashing, signing, trusted time, manifests, verification, redaction, export,
+> reporting, AI analysis, and software distribution when it can alter an evidentiary
+> result or its interpretation.
+
+These changes get closer review, must state their evidence impact in the PR, and are
+never merged without human review. The PR template walks you through this; the path
+inventory lives in
 [`docs/specs/2026-07-31-evidence-affecting-paths-assessment.md`](docs/specs/2026-07-31-evidence-affecting-paths-assessment.md)
 and the review gates in
 [`docs/adr/0005-unattended-agents-on-the-evidence-path.md`](docs/adr/0005-unattended-agents-on-the-evidence-path.md).
+
+Run the suite in its strict form when your change touches one of these paths:
+
+```bash
+BIRDBRAIN_REQUIRE_OPENSSL=1 pnpm test
+```
+
+Plain `pnpm test` is not enough here: without that variable the RFC 3161 trusted-time
+tests skip themselves on a machine with no `openssl` CLI, so the suite goes green with
+the keystone verification proof never having run.
+
 Expect slower, stricter review on these paths — that is by design.
 
 ## Inbound licensing

@@ -1,6 +1,7 @@
 import { app } from 'electron'
 import { REPORT_PAGE_CSS } from '@main/services/reportHtml'
-import type { ExportPreflight, HashVerification, Capture, TrustedTime } from '@shared/types'
+import type { Capture, TrustedTime } from '@shared/types'
+import type { TrustedTimeResult } from '@shared/verify'
 
 // Minimal shape of the export-time data the certification needs. Kept structural
 // (not a hard import of ExportData) so the certifier can be exercised in tests
@@ -13,10 +14,22 @@ export interface CertificationInput {
   operatorRole: string
   operatorOrganization: string
   tsaUrl: string
-  preflight: ExportPreflight
   captures: Capture[]
-  verifications: HashVerification[]
+  /**
+   * The export's single trusted-time resolution, keyed by capture id — see
+   * resolveExportTrustedTime in export.ts. This document's ONLY source for the
+   * axis, by design (#492): the summary prose is folded out of the same rows it
+   * introduces, so the two cannot contradict each other whatever else changes.
+   *
+   * Not the DB mirror, which is rebuildable state that can disagree with the
+   * tokens actually retained; and not the export's HashVerification results,
+   * whose trustedTime is an earlier read of the same manifest and so can only be
+   * superseded by the snapshot the package is built from.
+   */
+  trustedTimeByCaptureId: Map<string, TrustedTimeResult>
 }
+
+const NO_TRUSTED_TIME: TrustedTimeResult = { trustedTime: 'none' }
 
 export interface CertificationCaptureRow {
   id: string
@@ -64,24 +77,20 @@ export function buildCertificationFields(
   data: CertificationInput,
   toolVersion: string
 ): CertificationFields {
-  const verificationsByCaptureId = new Map(data.verifications.map((v) => [v.captureId, v]))
-
   const captures: CertificationCaptureRow[] = data.captures.map((capture) => {
-    const verification = verificationsByCaptureId.get(capture.id)
-    const trustedTime = verification?.trustedTime ?? capture.trustedTimeStatus ?? 'none'
+    const resolved = data.trustedTimeByCaptureId.get(capture.id) ?? NO_TRUSTED_TIME
     return {
       id: capture.id,
       title: capture.title,
       url: capture.url,
-      trustedTime,
-      tsaName: verification?.tsaName,
-      stampedAt: verification?.stampedAt
+      trustedTime: resolved.trustedTime,
+      tsaName: resolved.tsaName,
+      stampedAt: resolved.stampedAt
     }
   })
 
-  const stampedCount = data.preflight.stampedCaptureCount
-  const pendingCount = data.preflight.pendingCaptureCount
-  const noneCount = data.preflight.noneCaptureCount
+  const counts: Record<TrustedTime, number> = { rfc3161: 0, pending: 0, none: 0 }
+  for (const row of captures) counts[row.trustedTime]++
 
   return {
     toolName: 'Birdbrain',
@@ -101,10 +110,10 @@ export function buildCertificationFields(
       installationId: data.installationId
     },
     trustedTime: {
-      stampedCount,
-      pendingCount,
-      noneCount,
-      allStamped: data.preflight.unstampedCaptureCount === 0 && data.preflight.captureCount > 0
+      stampedCount: counts.rfc3161,
+      pendingCount: counts.pending,
+      noneCount: counts.none,
+      allStamped: captures.length > 0 && counts.pending + counts.none === 0
     },
     captures,
     exportTimestamp: data.exportTimestamp,

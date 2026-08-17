@@ -618,8 +618,20 @@ made `agent/pre-pass` a commit status posted on the head sha so it renders in th
 merge box, but the repo ruleset requires only `lint`, `typecheck`, `test`, `build`
 and `e2e` — `agent/pre-pass` is **not** in the required set
 (`gh api repos/thebristolsound/birdbrain/rulesets/14967088`), and
-`.claude/skills/dispatch/SKILL.md:263` says so correctly. Requiring it is the one
-mechanical change that would make the bar's second half measure anything.
+`.claude/skills/dispatch/SKILL.md:263` says so correctly.
+
+**Requiring it is not the fix, and this measurement should not be read as proposing
+one.** Workflows triggered by Dependabot get a read-only `GITHUB_TOKEN` under both
+`pull_request` and `pull_request_target`, so the seeding workflow cannot write the
+status on those PRs and the context would never report. Adding it to the ruleset
+would permanently block every Dependabot PR — 17 opened here so far. That was
+attempted on 2026-08-16 and reverted the same night; #488 records it as a documented
+dead end and ADR-0011 (lines 127 and 151) accepts it as one, unworked.
+
+So the finding stands and the obvious remedy does not exist. What the bar's second
+half needs is a mechanism that does not depend on a status Dependabot cannot produce
+— #488 is where that belongs, and until it lands the verdict stays advisory by
+construction rather than by neglect.
 
 ### Ledger question 5 — mostly closed
 

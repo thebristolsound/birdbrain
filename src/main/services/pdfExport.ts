@@ -2,6 +2,7 @@ import { app, BrowserWindow } from 'electron'
 import type { WebContents } from 'electron'
 import { pathToFileURL } from 'url'
 import type { Capture } from '@shared/types'
+import type { TrustedTimeResult } from '@shared/verify/trustedTime'
 
 // Total budget for load + inject + print. MHTML resources are all local so the
 // load itself is fast; the margin covers legacy .html captures that still fetch
@@ -44,10 +45,41 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+// Renders the manifest-resolved trusted-time axis as one plain-string row value,
+// using report.html's vocabulary (`trustedTimeView` in reportHtml.ts) so the two
+// operator-facing artifacts can't describe the same axis in different words.
+// 'none' is the honest floor — genuinely unstamped and absent-from-the-manifest
+// are indistinguishable from the manifest alone, and both mean the printed
+// capture time is the operator's local clock — so it is stated, never omitted.
+function formatTrustedTime(resolved: TrustedTimeResult): string {
+  switch (resolved.trustedTime) {
+    case 'rfc3161': {
+      const who = resolved.tsaName ?? 'the configured RFC 3161 authority'
+      const when = resolved.stampedAt
+        ? formatTimestamp(resolved.stampedAt)
+        : 'the time recorded in the retained token'
+      return `RFC 3161 token retained — ${who} asserts the capture digest existed no later than ${when}`
+    }
+    case 'pending':
+      return 'Local clock only — an RFC 3161 token was requested but has not been obtained'
+    case 'none':
+    default:
+      return 'Local clock only — no RFC 3161 token is retained for this capture'
+  }
+}
+
 // Label/value pairs for the cover page, in display order. Values are plain
 // strings — the injection script renders them via textContent, so a hostile
 // page title can't smuggle markup into the cover.
-export function buildPdfMetadataRows(capture: Capture): [string, string][] {
+//
+// `trustedTime` is resolved from the case manifest by the caller and passed in.
+// The captures.trustedTimeStatus mirror is deliberately NOT read here: it is
+// rebuildable convenience state that can disagree with the tokens actually
+// retained, and this PDF is designed to leave the machine (#509).
+export function buildPdfMetadataRows(
+  capture: Capture,
+  trustedTime: TrustedTimeResult
+): [string, string][] {
   const rows: [string, string][] = []
   const add = (label: string, value: string | number | undefined | null): void => {
     if (value === undefined || value === null || value === '') return
@@ -82,7 +114,7 @@ export function buildPdfMetadataRows(capture: Capture): [string, string][] {
         : capture.lastVerifiedStatus
     )
   }
-  add('Trusted time', capture.trustedTimeStatus)
+  add('Trusted time', formatTrustedTime(trustedTime))
   add('PDF exported at', formatTimestamp(new Date().toISOString()))
   return rows
 }
@@ -216,7 +248,11 @@ function getExportWindow(): BrowserWindow {
   return win
 }
 
-async function runPdfJob(capture: Capture, artifactAbsPath: string): Promise<Buffer> {
+async function runPdfJob(
+  capture: Capture,
+  artifactAbsPath: string,
+  trustedTime: TrustedTimeResult
+): Promise<Buffer> {
   const win = getExportWindow()
   const wc: WebContents = win.webContents
 
@@ -237,7 +273,7 @@ async function runPdfJob(capture: Capture, artifactAbsPath: string): Promise<Buf
     // cover is injected via CDP for both formats.
     wc.debugger.attach('1.3')
     const evaluated = (await wc.debugger.sendCommand('Runtime.evaluate', {
-      expression: coverInjectionScript(buildPdfMetadataRows(capture)),
+      expression: coverInjectionScript(buildPdfMetadataRows(capture, trustedTime)),
       returnByValue: true
     })) as { exceptionDetails?: { text?: string; exception?: { description?: string } } }
     if (evaluated.exceptionDetails) {
@@ -310,8 +346,16 @@ async function runPdfJob(capture: Capture, artifactAbsPath: string): Promise<Buf
 // prepended. The artifact loads in a locked-down hidden window with the same
 // hostile-page posture as the background renderer: sandboxed, isolated, no
 // node, in-memory session, every permission and popup denied.
-export function renderCapturePdf(capture: Capture, artifactAbsPath: string): Promise<Buffer> {
-  const run = jobChain.catch(() => {}).then(() => runPdfJob(capture, artifactAbsPath))
+//
+// `trustedTime` is required rather than defaulted: this module renders a Capture
+// and imports nothing from @main/services, so the caller owns the manifest read
+// and the compiler forbids a call site that silently skips it.
+export function renderCapturePdf(
+  capture: Capture,
+  artifactAbsPath: string,
+  trustedTime: TrustedTimeResult
+): Promise<Buffer> {
+  const run = jobChain.catch(() => {}).then(() => runPdfJob(capture, artifactAbsPath, trustedTime))
   jobChain = run.catch(() => {})
   return run
 }

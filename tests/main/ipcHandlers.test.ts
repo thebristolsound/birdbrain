@@ -91,6 +91,18 @@ vi.mock('@main/services/caseArchive', () => ({
   importCaseArchive: (...a: unknown[]) => importCaseArchive(...a)
 }))
 
+// The PDF renderer needs a real BrowserWindow, so only the render call is
+// replaced — the module itself loads for real, keeping buildPdfMetadataRows
+// available to assert what the cover would say (#509).
+const renderCapturePdf = vi.fn()
+vi.mock('@main/services/pdfExport', async (importActual) => {
+  const actual = await importActual<typeof import('@main/services/pdfExport')>()
+  return {
+    ...actual,
+    renderCapturePdf: (...a: unknown[]) => renderCapturePdf(...a)
+  }
+})
+
 const lookupSnapshots = vi.fn()
 vi.mock('@main/services/waybackMachine', async (importActual) => {
   const actual = await importActual<typeof import('@main/services/waybackMachine')>()
@@ -103,7 +115,14 @@ vi.mock('@main/services/waybackMachine', async (importActual) => {
 // --- Real services ----------------------------------------------------------
 import { IPC_CHANNELS } from '@shared/ipc'
 import { registerIpcHandlers } from '@main/ipcHandlers'
-import type { BugReportResult, Capture, Case, LogEntry, SessionRecord } from '@shared/types'
+import type {
+  BugReportResult,
+  Capture,
+  Case,
+  LogEntry,
+  SessionRecord,
+  TrustedTime
+} from '@shared/types'
 import {
   disposeLogger,
   flushSync as flushLogger,
@@ -128,7 +147,10 @@ import { initServerToken } from '@main/services/serverToken'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSessionService, type SessionService } from '@main/services/session'
-import { initManifest } from '@main/services/manifest'
+import { appendManifestEntry, initManifest } from '@main/services/manifest'
+import { buildPdfMetadataRows } from '@main/services/pdfExport'
+import type { TrustedTimeResult } from '@shared/verify/trustedTime'
+import { buildSyntheticToken } from '../helpers/timestampFixtures'
 
 const fakeEvent = {} as IpcMainInvokeEvent
 
@@ -455,6 +477,73 @@ describe('ipcHandlers — captures', () => {
     }
     expect(dialogArgs.defaultPath.endsWith('.mhtml')).toBe(true)
     expect(dialogArgs.filters[0].extensions).toContain('mhtml')
+  })
+
+  // #509: the PDF cover's trusted-time row must come from the case manifest, not
+  // from the rebuildable captures.trustedTimeStatus mirror. Both directions of
+  // disagreement are pinned, and the assertion runs the real row builder so the
+  // wiring and the printed wording are checked together.
+  describe('PDF cover trusted time', () => {
+    const CONTENT_HASH = 'b'.repeat(64)
+
+    // Seeds an mhtml capture with its artifact on disk, sets the DB mirror to
+    // `mirror`, exports the PDF, and returns what the cover would print.
+    async function exportPdfCoverRows(mirror: TrustedTime): Promise<[string, string][]> {
+      const cap = seedCapture({ format: 'mhtml', hash: CONTENT_HASH })
+      writeFileSync(defaultCaptureStore.artifactPaths(caseId, cap.id, 'mhtml').abs, 'mhtml-bytes')
+      captureRepo.setCaptureTrustedTime(cap.id, mirror)
+      renderCapturePdf.mockResolvedValueOnce(Buffer.from('%PDF-1.4'))
+      showSaveDialog.mockResolvedValueOnce({
+        canceled: false,
+        filePath: join(userDataPath, `${mirror}.pdf`)
+      })
+
+      expectOk(await invoke(IPC_CHANNELS.CAPTURES_DOWNLOAD_PDF, cap.id))
+
+      const [capture, , trustedTime] = renderCapturePdf.mock.calls.at(-1) as [
+        Capture,
+        string,
+        TrustedTimeResult
+      ]
+      expect(capture.trustedTimeStatus).toBe(mirror)
+      return buildPdfMetadataRows(capture, trustedTime)
+    }
+
+    function trustedTimeRow(rows: [string, string][]): string | undefined {
+      return rows.find(([label]) => label === 'Trusted time')?.[1]
+    }
+
+    it('prints the manifest floor when the mirror claims a token the manifest lacks', async () => {
+      // Mirror says rfc3161; the manifest holds no entry for this hash at all.
+      const rows = await exportPdfCoverRows('rfc3161')
+
+      expect(trustedTimeRow(rows)).toBe(
+        'Local clock only — no RFC 3161 token is retained for this capture'
+      )
+    })
+
+    it('prints the retained token when the mirror understates the manifest', async () => {
+      appendManifestEntry(join(storage.getStorageRoot(), caseId), {
+        type: 'timestamp',
+        caseId,
+        captureContentHash: CONTENT_HASH,
+        timestamp: '2026-04-05T12:00:05.000Z',
+        tsaToken: buildSyntheticToken({
+          contentHash: CONTENT_HASH,
+          genTime: new Date('2026-04-05T12:00:04.000Z'),
+          tsaDnsName: 'tsa.example.net'
+        }).toString('base64'),
+        operatorId: 'op-1',
+        operatorName: 'Operator One',
+        toolVersion: '1.2.3'
+      })
+
+      const rows = await exportPdfCoverRows('none')
+
+      expect(trustedTimeRow(rows)).toContain('RFC 3161 token retained')
+      expect(trustedTimeRow(rows)).toContain('tsa.example.net')
+      expect(trustedTimeRow(rows)).toContain('2026-04-05T12:00:04.000Z')
+    })
   })
 
   it('verifies a capture and deletes it', async () => {
@@ -1014,10 +1103,7 @@ describe('ipcHandlers — AI analysis', () => {
 
   it('rejects malformed analysis lookup ids before reaching the service', async () => {
     for (const value of [undefined, null, {}, 1, '']) {
-      const res = await invoke<{ ok: boolean; code?: string }>(
-        IPC_CHANNELS.AI_GET_ANALYSIS,
-        value
-      )
+      const res = await invoke<{ ok: boolean; code?: string }>(IPC_CHANNELS.AI_GET_ANALYSIS, value)
       expect(res.ok).toBe(false)
       expect(res.code).toBe('INVALID_CAPTURE_ID')
     }

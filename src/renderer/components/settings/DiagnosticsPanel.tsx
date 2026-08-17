@@ -13,8 +13,7 @@ import {
 } from '@renderer/components/ui'
 import { cn } from '@renderer/lib/utils'
 import { LogTab } from '@renderer/components/diagnostics/LogTab'
-import { openPath } from '@renderer/lib/api/system'
-import { diagnosticsQueryOptions } from '@renderer/lib/api/diagnostics'
+import { diagnosticsQueryOptions, openStorageRoot } from '@renderer/lib/api/diagnostics'
 import { notify } from '@renderer/lib/notify'
 
 // Settings → Diagnostics. Live snapshot of app environment, main-process
@@ -166,7 +165,7 @@ export function DiagnosticsPanel() {
   // redactSnapshot rewrites the path in anything that leaves the app.
   async function handleOpenStorageRoot() {
     try {
-      await openPath(snap.storage.storageRoot)
+      await openStorageRoot()
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err)
       notify.error(`Couldn't open the storage folder — ${reason}`, { cause: err })

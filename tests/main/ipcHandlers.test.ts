@@ -1656,6 +1656,82 @@ describe('ipcHandlers — diagnostics logging', () => {
     expect(showItemInFolder).toHaveBeenCalledWith(getLogPath())
   })
 
+  // #363: the storage root is opened on its own channel and never registered
+  // on the reveal allowlist. The renderer supplies no path; main reads the live
+  // root, so the outcome cannot depend on export history or on a boot-time
+  // registration going stale.
+  it('diagnostics:openStorageRoot opens the live storage root without a caller-supplied path', async () => {
+    const root = storage.getStorageRoot()
+    openPath.mockResolvedValueOnce('')
+    expectOk(await invoke(IPC_CHANNELS.DIAGNOSTICS_OPEN_STORAGE_ROOT))
+    expect(openPath).toHaveBeenCalledWith(root)
+    // The same root is still refused on the generic channel: no allowlist entry
+    // was created as a side effect, so the #C12 guard is untouched.
+    const generic = await invoke<{ ok: boolean; code?: string }>(IPC_CHANNELS.SHELL_OPEN_PATH, root)
+    expect(generic.ok).toBe(false)
+    expect(generic.code).toBe('FORBIDDEN_PATH')
+  })
+
+  it('diagnostics:openStorageRoot still works after the reveal allowlist has fully cycled', async () => {
+    // Exceed MAX_REVEALABLE_PATHS so every allowlist entry that existed at boot
+    // would have been evicted. A boot-time registration would fail here.
+    for (let i = 0; i < 70; i++) {
+      showSaveDialog.mockResolvedValueOnce({
+        canceled: false,
+        filePath: join(userDataPath, `cycle-${i}.zip`)
+      })
+      expectOk(await invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, { format: 'zip' }))
+    }
+    openPath.mockClear()
+    openPath.mockResolvedValueOnce('')
+    expectOk(await invoke(IPC_CHANNELS.DIAGNOSTICS_OPEN_STORAGE_ROOT))
+    expect(openPath).toHaveBeenCalledWith(storage.getStorageRoot())
+  })
+
+  it('diagnostics:openStorageRoot follows a storage root changed after boot', async () => {
+    const moved = join(userDataPath, 'captures-moved')
+    storage.initStorage(moved)
+    openPath.mockResolvedValueOnce('')
+    expectOk(await invoke(IPC_CHANNELS.DIAGNOSTICS_OPEN_STORAGE_ROOT))
+    expect(openPath).toHaveBeenCalledWith(moved)
+    expect(openPath).not.toHaveBeenCalledWith(join(userDataPath, 'captures'))
+  })
+
+  it('diagnostics:openStorageRoot keeps its failure modes distinguishable', async () => {
+    const missing = join(userDataPath, 'captures-gone')
+    storage.initStorage(missing)
+    rmSync(missing, { recursive: true, force: true })
+    const gone = await invoke<{ ok: boolean; error?: string; code?: string }>(
+      IPC_CHANNELS.DIAGNOSTICS_OPEN_STORAGE_ROOT
+    )
+    expect(gone.ok).toBe(false)
+    expect(gone.code).toBe('NOT_FOUND')
+    expect(gone.error).not.toMatch(/not permitted/i)
+    expect(openPath).not.toHaveBeenCalled()
+
+    storage.initStorage(join(userDataPath, 'captures'))
+    openPath.mockResolvedValueOnce('No application is registered for this file type')
+    const refused = await invoke<{ ok: boolean; error?: string; code?: string }>(
+      IPC_CHANNELS.DIAGNOSTICS_OPEN_STORAGE_ROOT
+    )
+    expect(refused.ok).toBe(false)
+    expect(refused.code).toBe('OPEN_PATH_FAILED')
+    expect(refused.error).toBe('No application is registered for this file type')
+
+    const rootSpy = vi.spyOn(storage, 'getStorageRoot').mockImplementation(() => {
+      throw new Error('Storage not initialized')
+    })
+    try {
+      const uninit = await invoke<{ ok: boolean; error?: string; code?: string }>(
+        IPC_CHANNELS.DIAGNOSTICS_OPEN_STORAGE_ROOT
+      )
+      expect(uninit.ok).toBe(false)
+      expect(uninit.code).toBe('STORAGE_NOT_INITIALISED')
+    } finally {
+      rootSpy.mockRestore()
+    }
+  })
+
   it('diagnostics:lastSession reports null when no unclean session is on record', async () => {
     const result = expectOk<SessionRecord | null>(
       await invoke(IPC_CHANNELS.DIAGNOSTICS_LAST_SESSION)

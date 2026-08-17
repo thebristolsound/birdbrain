@@ -28,6 +28,11 @@ export function revealLogFile(): Promise<void> {
   return window.birdbrain.diagnostics.revealLog()
 }
 
+// Main derives the root itself; the renderer never hands it a path (#363).
+export function openStorageRoot(): Promise<void> {
+  return window.birdbrain.diagnostics.openStorageRoot()
+}
+
 // Take-once server-side: the first call after an unclean exit both returns and
 // acknowledges the record.
 export function lastSession(): Promise<SessionRecord | null> {

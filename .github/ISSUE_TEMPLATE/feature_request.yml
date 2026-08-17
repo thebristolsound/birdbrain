@@ -12,7 +12,8 @@ body:
           required: true
         - label: >-
             This fits Birdbrain's posture — local-first, no accounts, no telemetry, no cloud
-            dependency (see CONTRIBUTING.md, "Supported scope")
+            dependency (see
+            [CONTRIBUTING.md, "Supported scope"](https://github.com/thebristolsound/birdbrain/blob/main/CONTRIBUTING.md#supported-scope))
           required: true
   - type: textarea
     id: problem

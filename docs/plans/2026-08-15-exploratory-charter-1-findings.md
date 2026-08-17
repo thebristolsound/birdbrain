@@ -6,8 +6,21 @@ broken, or visually wrong."
 
 **Run:** 2026-08-15, harness `scripts/exploratory-harness.mjs` under `xvfb-run` (1440x900
 screen; app window came up 1200x773), commit `28879db`, built app `1.0.1-beta.17`.
-Screenshots copied to `/tmp/charter-1/` (32 PNGs; not tracked). No issues filed — spike
-run to judge signal quality (spec rollout step 1).
+Screenshots copied to `/tmp/charter-1/` (32 PNGs; not tracked). No issues were filed during
+the run itself — it was a spike to judge signal quality (spec rollout step 1). The eleven
+findings below were filed afterwards, as #464-#474, and the Issue column records them.
+
+**Reproducibility caveat.** This session predates two changes and does not replay as recorded:
+
+- Commit `28879db` predates #414's signing-key acknowledgement gate. The harness at that
+  commit seeded only `settings.json`, so on the merged tree the same command hangs until
+  `firstWindow()` times out. It boots again only with the keypair seeding added in this PR.
+- The window was 1200x773 because `--window-size` did not exist yet. Layout findings 2-4 and
+  11 are size-dependent and hold for that geometry; re-check them at the size a later run
+  actually realizes, which the harness now prints at startup.
+
+The product findings themselves were reconfirmed at filing time; the caveat is about
+replaying the session, not about whether the defects are real.
 
 ## Findings
 
@@ -77,17 +90,30 @@ run to judge signal quality (spec rollout step 1).
 - Note create/save round-trips (title + body shown, edit/delete present).
 - Dark mode: no contrast/theme defects seen across 6 tabs, viewer, dashboard, palette.
 - Ctrl+K palette opens, lists case + create + report-a-problem.
-- Console: zero messages/pageerrors for the entire session.
+- Console: the `console` tool returned no messages or page errors on any drain taken during
+  this session. That is **not** a clean-console claim for the session as a whole. At the time
+  of this run the harness attached its console listeners after `firstWindow()` and after the
+  `[data-testid="app-ready"]` wait, so nothing the renderer logged while booting was ever
+  observable — a boot-time error would have read exactly like silence. This PR moves the
+  listeners to immediately after `firstWindow()`; the first drain of the very next run
+  surfaced a CSP `font-src` violation that had been invisible here throughout. Main-process
+  output before the window exists is still outside what the tool can see.
 
-## Harness notes (feed into step 2)
-- Need `--skip-onboarding` seed (or a `keys` tool) — every charter starts by clicking
-  through the wizard.
-- Add `typetext` (page.keyboard.type) alongside `type` (fill) for contenteditable/rich
-  editors; `press` per char is clumsy.
-- Window opens at 1200x773 under Xvfb; consider `--window-size` arg so charters can test
-  small vs large layouts deliberately (findings 2–4 are all width/height-driven).
-- Cleanup gap: killing the `xvfb-run` wrapper (or the shell) orphans the temp userData
-  dir. Two stale `birdbrain-explore-*` dirs found after this run. Consider a `--tmp-parent`
-  + sweep-on-start, or trap in a wrapper script.
+## Harness notes from this run
+
+Recorded 2026-08-15 as input to rollout step 2. All four are addressed in the harness as it
+stands in this PR; kept for the record rather than as open gaps.
+
+- **Resolved.** Needed a `--skip-onboarding` seed (or a `keys` tool) — every charter started
+  by clicking through the wizard.
+- **Resolved.** Needed `typetext` (page.keyboard.type) alongside `type` (fill) for
+  contenteditable/rich editors; `press` per char was clumsy.
+- **Resolved.** Window opened at 1200x773 under Xvfb with no way to choose; `--window-size`
+  now requests a size, and the harness prints the realized size and warns when the display
+  or the 900x600 minimum clamped the request (findings 2-4 are all width/height-driven, so
+  the realized number is the one that matters).
+- **Resolved.** Killing the `xvfb-run` wrapper (or the shell) orphaned the temp userData dir;
+  two stale `birdbrain-explore-*` dirs were left after this run. Profiles now record a server
+  pid and are swept on the next start, and the fatal-error paths remove the profile directly.
 - Signal quality: 2 medium + 9 low findings from ~35 tool calls / 32 screenshots, zero
   false positives on re-inspection. Enough to proceed to charter set.

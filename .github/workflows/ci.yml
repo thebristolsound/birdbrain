@@ -63,10 +63,15 @@ jobs:
     outputs:
       code: ${{ steps.filter.outputs.code }}
     steps:
+      # The second checkout in this file that keeps its credentials, for the same
+      # reason as `test`: the filter step runs `git fetch` and this repo is private,
+      # so a fetch without the persisted token fails with "could not read Username".
+      # The concern that motivates `persist-credentials: false` elsewhere — pnpm
+      # lifecycle scripts and project code reading the token after checkout — does
+      # not arise here: this job never installs and runs nothing but git and grep.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          persist-credentials: false
 
       - id: filter
         if: github.event_name == 'pull_request'

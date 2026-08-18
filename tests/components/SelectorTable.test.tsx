@@ -67,6 +67,38 @@ describe('SelectorTable', () => {
     expect(panel.closest('td')?.getAttribute('colspan')).toBe('7')
   })
 
+  // jsdom does not lay out, so this pins the class contract that keeps --d-row in
+  // control (#421): only the two wrapping cells carry vertical padding, and the
+  // regex chip carries none — a py on the fixed-height cells or on the chip pushes
+  // the row past compact's 26px and hands the height back to content.
+  it('lets --d-row set the row height: only the wrapping cells carry vertical padding', () => {
+    fakeBridge()
+    const regex: Selector = { ...selector, id: 's2', pattern: 'acmeregex', isRegex: true }
+    render(
+      <SelectorTable
+        selectors={[selector, regex]}
+        matchCounts={{}}
+        onRefresh={vi.fn()}
+        caseId="case-1"
+      />
+    )
+
+    const rows = screen.getAllByRole('row').filter((r) => r.querySelector('td'))
+    expect(rows).toHaveLength(2)
+    for (const row of rows) {
+      expect(row.className).toContain('h-[var(--d-row)]')
+      const cells = [...row.querySelectorAll('td')]
+      expect(cells).toHaveLength(7)
+      const padded = cells.map((td) => /\bpy-/.test(td.className))
+      // on, pattern, type, label, matches, filter, actions
+      expect(padded).toEqual([false, true, false, true, false, false, false])
+    }
+
+    const chip = screen.getByText('acmeregex').closest('span.inline-block')
+    expect(chip).not.toBeNull()
+    expect(chip?.className).not.toMatch(/\bpy-/)
+  })
+
   it('filters the listed selectors without touching the bridge', () => {
     fakeBridge()
     renderTable()

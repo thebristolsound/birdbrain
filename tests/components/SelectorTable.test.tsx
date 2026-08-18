@@ -15,7 +15,7 @@ const selector: Selector = {
 }
 
 function renderTable(onRefresh = vi.fn()) {
-  render(
+  const { container } = render(
     <SelectorTable
       selectors={[selector]}
       matchCounts={{ s1: 4 }}
@@ -23,7 +23,7 @@ function renderTable(onRefresh = vi.fn()) {
       caseId="case-1"
     />
   )
-  return { onRefresh }
+  return { container, onRefresh }
 }
 
 afterEach(() => {
@@ -59,7 +59,12 @@ describe('SelectorTable', () => {
       captures: { list: vi.fn(async () => []) },
       selectors: { matchingCaptures: vi.fn(async () => []) }
     })
-    renderTable()
+    const { container } = renderTable()
+
+    // Assert absence first: without this the test would also pass against a row that
+    // renders the preview panel unconditionally, which is the thing it claims to prove.
+    expect(screen.queryByText('No match previews available.')).toBeNull()
+    expect(container.querySelector('td[colspan="7"]')).toBeNull()
 
     fireEvent.click(screen.getByTitle('Test matches'))
 

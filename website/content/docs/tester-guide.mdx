@@ -14,25 +14,64 @@ lose (see [Known limitations](#known-limitations)).
 
 ## What we're looking for
 
-Everything is fair game, but these are especially valuable:
+The UI is changing substantially over the coming months and those decisions are already
+made, so please **don't** report:
 
-- **Install friction** — anywhere you got stuck or confused getting to your first
-  capture, even briefly
-- **Capture reliability** — pages that fail to capture, capture incompletely, or look
-  wrong in the viewer
-- **Real-workflow fit** — you run an actual investigation with it: what's missing,
-  what's awkward, what surprised you
-- **Crashes and data issues** — anything lost, duplicated, or corrupted
+- Layout, spacing, and visual design
+- Wording and labels
+- General "this looks dated / this feels clunky" impressions
+
+Nits against the current UI are work for both of us with a known expiry date. What we
+**do** want, in priority order:
+
+1. **Evidence lost, mangled, or mis-described** — anything that disappeared, came back
+   different, or is described by the app as something other than what it is. This is the
+   highest-value thing you can find.
+2. **Sites that fail to capture** — pages that won't capture at all, capture incompletely,
+   or render wrong in the viewer, with the URL where you can share it.
+3. **Workflow dead-ends** — "I wanted to do X and there was no path." Not "X is awkward":
+   *X was not possible*.
+4. **Whether the Certification and verify output read as true** — read `certification.html`
+   and the in-app verify results as someone who would have to defend them to a hostile
+   reader. Does any of it claim more than you'd be willing to stand behind?
 
 Report in the tester chat — format at the bottom of this guide.
+
+## What to expect from us
+
+- **Ordinary bugs** are acknowledged best-effort, targeting about two business days. There is
+  no SLA. Reports are swept into GitHub issues roughly weekly.
+- **One shared private chat** is the channel for everything. You never need a GitHub account.
+  The bug-report format is pinned there.
+- **Escalation:** if any report implies that captures already taken are unreliable, every
+  tester is notified in-channel and advised to pause capturing until it's resolved. This is
+  the one path that interrupts everyone.
+- **Releases:** the Windows installer and the AppImage update in place. If you're on the
+  `.deb`, new releases are announced manually in-channel and you install via
+  **Restart to update**.
+- **Absence:** if the maintainer is unavailable, that's announced in-channel. There is no
+  coverage promise.
+
+## Your data and your archives
+
+Use **synthetic or low-stakes material** where you can. Real project data is tolerated, not
+endorsed — it goes in at your own risk, and what backs that risk (and its limits) is
+described under [Updating](#updating).
+
+- Send `.birdbrain` case archives **only via the private tester chat**.
+- Birdbrain does **not** encrypt the database or capture files at rest. Confidentiality of
+  the live store relies on your operating system's full-disk encryption (BitLocker, LUKS).
+- Diagnostic bundles need no special handling — see
+  [Reporting a problem](#reporting-a-problem) for what they do and don't contain.
 
 ## Install the app
 
 Releases live at
 [github.com/thebristolsound/birdbrain/releases](https://github.com/thebristolsound/birdbrain/releases).
-Take the build named in your invitation — the same release link is pinned in the tester
-chat next to this guide. Once it's installed, **Settings → About** shows the version you're
-running, so you can confirm you landed on the one you were pointed at.
+Take the build at the release link pinned in the tester chat next to this guide — that pin
+is the source of truth for which build this round is on. Once it's installed,
+**Settings → About** shows the version you're running, so you can confirm you landed on the
+one you were pointed at.
 
 ### Windows
 
@@ -119,6 +158,9 @@ If the extension changed in the release notes, also re-load it: `chrome://extens
 → click the reload icon on the Birdbrain card (or **Load unpacked** again if the
 folder moved).
 
+If you put real project data in, this is what stands behind it — and the limits below are
+why we recommend synthetic or low-stakes material instead.
+
 When a new version needs to upgrade the case database, Birdbrain copies the
 database first — into a `db-snapshots` folder next to it in your user data
 directory — and only then applies the upgrade. If that copy cannot be made, the
@@ -163,6 +205,9 @@ Two more things a restore does not do, both worth knowing before you click it:
 - **Local-only data, no backup** — captures live only on your machine. Export
   anything you can't lose before updating or uninstalling.
 - **Chrome/Chromium only** — no Firefox or Safari extension yet.
+- **"Verified" is not a live check** — Capture details shows the result of the last
+  verification run, not the state of the file right now. Click **Re-verify** to get a current
+  statement.
 
 ## Reporting a problem
 

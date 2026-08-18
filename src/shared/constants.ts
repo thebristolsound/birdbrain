@@ -41,10 +41,13 @@ export const MANIFEST_SCHEMA_VERSION = 2
 // (e.g. freetsa.org) are a documented dev/test fallback only.
 export const DEFAULT_TSA_URL = 'http://timestamp.digicert.com'
 
-// GitHub repository that hosts Birdbrain releases. The updater service builds
-// release-page URLs from this for the "View release" notify action, and it
-// mirrors the electron-builder `publish` target in package.json.
-export const GITHUB_REPO_SLUG = 'thebristolsound/birdbrain'
+// GitHub repository that hosts Birdbrain releases. Separate from the source
+// repository, which is private: electron-updater's unauthenticated GitHub
+// provider reads the releases Atom feed, so the feed it reads has to be public
+// or every update check 404s. The updater service builds release-page URLs from
+// this for the "View release" notify action, and it mirrors the
+// electron-builder `publish` target in package.json.
+export const GITHUB_REPO_SLUG = 'thebristolsound/birdbrain-releases'
 export const GITHUB_RELEASES_URL = `https://github.com/${GITHUB_REPO_SLUG}/releases`
 
 // Default system prompt sent with every capture analysis request. Users can

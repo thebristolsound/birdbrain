@@ -50,6 +50,19 @@ no separate lower-commitment tier for one-off testers.
 Builds are unsigned. Windows testers get a SmartScreen "More info → Run anyway"
 click-through; that is accepted for an invited round (#284 out-of-scope list).
 
+**Delivery (#567, 2026-08-18).** Builds are published to the public repository
+`thebristolsound/birdbrain-releases`, which holds artifacts only; the source repository stays
+private until the #262–#274 effort completes. This is what makes "testers never need GitHub
+accounts" true rather than aspirational, and it is what electron-updater needs: its
+unauthenticated GitHub provider reads the releases Atom feed, so a private feed fails every
+update check. Making the feed private instead would mean shipping a repo-read token to each
+tester.
+
+One limit worth stating plainly: the first build published this way can only demonstrate that
+the feed is reachable. A real in-app upgrade cannot be shown until a second build ships,
+because every installed `1.0.1-beta.17` has the private repository baked into its
+`app-update.yml`. The gate's §5 upgrade check is a manual install-over-the-top this round.
+
 **A correction to the #290 wording, worth carrying forward.** That decision recorded "no
 auto-update on deb" as the reason `.deb` testers are notified manually. That is no longer
 true of the code: `src/main/services/updater.ts` treats a `.deb` install as

@@ -9,6 +9,12 @@ on:
 permissions:
   contents: read
 
+# Cheap enough to keep running on drafts — a secret is worth catching at the push
+# that introduced it, not at review time. Superseded PR runs are still cancelled.
+concurrency:
+  group: security-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   secrets:
     name: Secret scan (full history)

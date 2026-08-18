@@ -5,9 +5,20 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    # `ready_for_review` is what makes the draft skip below safe: a PR that spent
+    # its whole draft life uncovered gets a full run the moment it is marked ready,
+    # which is the only state from which it can be merged.
+    types: [opened, reopened, synchronize, ready_for_review]
 
 permissions:
   contents: read
+
+# One in-flight run per PR. Agent branches push repeatedly while a 16-minute run is
+# still going, and every superseded run was billed in full — one branch cost 9.
+# Never cancels on main: those runs are the post-merge record, not a preview.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   # apt ships with no retries and no acquire timeout, so a mirror that accepts the
@@ -15,9 +26,64 @@ env:
   # are the fix; the timeouts are what make a retry reachable.
   APT_OPTS: -o Acquire::Retries=3 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15
 
+# Draft PRs are gated at the `changes` job below, which every other job needs — a
+# skipped `changes` skips all five. A draft is not asking to merge, and the author has
+# already run the same gates locally (lint, typecheck, test, coverage:diff, build).
+#
+# `agent-pr` is exempt and must stay exempt: the dispatch routine polls `gh pr checks`
+# on a draft agent PR and will not start the reviewer pre-pass until the four ci.yml
+# jobs report a conclusion (.claude/skills/dispatch/SKILL.md, "Wait for CI first").
+# Skipping CI there would strand that loop. The label is applied at `gh pr create`
+# time, so the `opened` event already carries it — which is why `labeled` is not in
+# the trigger types above; adding it would run the full matrix on every label change.
 jobs:
+  # Answers one question for the five jobs below: did this change touch anything the
+  # root toolchain builds? Six recent PRs changed only markdown and each paid the full
+  # five-job matrix; one branch paid it seven times. Costs ~1 minute to avoid ~16.
+  #
+  # A workflow-level `paths-ignore:` would be simpler and wrong: the five contexts are
+  # required by the `master` ruleset, and a workflow that never runs never reports them,
+  # so a docs PR would sit unmergeable forever. Skipping the jobs instead reports them
+  # as `skipped`, which the ruleset accepts.
+  #
+  # Deliberately not gated on push to main: `github.event.before` is unreliable (zeroes
+  # on a force push or a new ref), and main is the last check before a release tag.
+  changes:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name != 'pull_request'
+      || github.event.pull_request.draft == false
+      || contains(github.event.pull_request.labels.*.name, 'agent-pr')
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - id: filter
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch --no-tags origin "$BASE_REF"
+          changed=$(git diff --name-only "origin/${BASE_REF}...HEAD")
+          echo "Changed files:"; printf '%s\n' "$changed"
+          # Anything outside this list is code. Note .github/workflows is NOT here —
+          # a change to CI itself must run CI.
+          if printf '%s\n' "$changed" | grep -qvE '^(docs/|website/|\.claude/|\.github/ISSUE_TEMPLATE/|CONTEXT\.md$|LICENSE$|[^/]*\.md$)'; then
+            echo 'code=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'code=false' >> "$GITHUB_OUTPUT"
+            echo '::notice::No code paths changed — lint, typecheck, test, build and e2e are skipped.'
+          fi
+
   lint:
     runs-on: ubuntu-latest
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
     timeout-minutes: 10
     steps:
       # persist-credentials: false on every job except test: no job here pushes, so
@@ -41,6 +107,8 @@ jobs:
 
   typecheck:
     runs-on: ubuntu-latest
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -60,6 +128,8 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
     timeout-minutes: 20
     steps:
       # fetch-depth: 0 so diff coverage can resolve a merge base with the base
@@ -118,6 +188,8 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -141,6 +213,8 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
     # A main-process hang does not crash this job, it makes every spec burn its own
     # timeout: the green job runs ~5m, two runs that wedged in whenReady() ran 2h24m
     # each (32 specs x 3 attempts x ~90s) before anyone noticed. Bound the next one.

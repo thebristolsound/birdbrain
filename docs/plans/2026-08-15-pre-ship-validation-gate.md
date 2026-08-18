@@ -68,15 +68,30 @@ Notes worth knowing before you read a green tick as meaning more than it does:
   own, dispatch one at the tag directly:
 
   ```sh
-  gh workflow run ci.yml --ref v1.0.1-beta.18
-  gh workflow run security.yml --ref v1.0.1-beta.18
+  gh workflow run ci.yml --ref <tag>
+  gh workflow run security.yml --ref <tag>
   ```
 
-  Either way, a green run on a *different* commit is not evidence about this build. Note that
-  `gh run rerun` is still not a substitute — it only replays the commit its original run used.
-- A dispatched run is not identical to the `push` run it stands in for: `github.event_name` is
-  `workflow_dispatch`, and `github.base_ref` is empty. Only one step in either workflow reads
-  those (the next note), and it skips.
+  **The tag has to have been cut after #445 merged.** Dispatch reads the trigger from the
+  workflow file *at the ref you name*, not from `main`, so a tag whose tree predates #445 has
+  no `workflow_dispatch` to fire and the command is refused before any run starts:
+
+  ```
+  $ gh workflow run ci.yml --ref v1.0.1-beta.18
+  could not create workflow dispatch event: HTTP 422: Workflow does not have 'workflow_dispatch' trigger
+  ```
+
+  Every tag up to and including `v1.0.1-beta.18` is in that state, so for those the
+  push-to-`main`-first path above is the only one. Either way, a green run on a *different*
+  commit is not evidence about this build. Note that `gh run rerun` is still not a substitute
+  — it only replays the commit its original run used.
+- A dispatched run is not identical to the `push` run it stands in for. `github.event_name` is
+  `workflow_dispatch`, and `github.base_ref` is empty; only one step in either workflow reads
+  those (the next note), and it skips. The difference that bears hardest on what a green tick
+  means is the same rule as above: a dispatched run executes the **job definitions at the
+  target ref**, not today's. These workflow files change often and materially, so dispatching
+  at an older tag can green-tick a weaker gate than `main` currently runs. Read the result as
+  evidence about that commit under the job set that commit carried.
 - The `test` job's diff-coverage step is gated `if: github.event_name == 'pull_request'`
   (`.github/workflows/ci.yml:116`), so `scripts/diff-coverage.mjs` does **not** run on the
   push-to-`main` run this section reads, nor on a dispatched one. Diff coverage is a per-PR

@@ -118,7 +118,7 @@ export function NewCaseWizard() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Phishing Campaign Analysis"
-            className="rounded-xl px-3 py-2 text-sm placeholder:text-text-muted"
+            className="px-3 py-2 text-sm placeholder:text-text-muted"
             autoFocus
           />
         </div>
@@ -126,6 +126,9 @@ export function NewCaseWizard() {
         {/* Description */}
         <div className="mb-6">
           <Label className="mb-1.5 text-sm font-medium text-text-secondary">Description</Label>
+          {/* The handoff screen notes (style_sync_patch/SCREEN_NOTES.md, "New case wizard")
+              call for rounded-xl on this textarea specifically, which aliases to the 6px
+              ceiling; the name Input above keeps the primitive's 4px base. */}
           <Textarea
             data-testid="case-description-input"
             value={description}

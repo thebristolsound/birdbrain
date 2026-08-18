@@ -60,6 +60,7 @@ export function SelectorTableRow({
           --d-row, and a py plus the inline line box would exceed compact's
           26px and put content back in control (#421). */}
       <tr
+        data-testid={`selector-row-${selector.id}`}
         className={`h-[var(--d-row)] border-b border-border transition-colors hover:bg-surface ${
           !selector.enabled ? 'opacity-35' : ''
         }`}
@@ -89,11 +90,16 @@ export function SelectorTableRow({
         {/* Pattern */}
         <td className="px-[var(--d-rowpad)] py-[3px] text-xs">
           {selector.isRegex ? (
-            <span className="inline-block rounded-lg border border-border bg-canvas px-2 align-top font-mono text-xs">
+            <span
+              data-testid="selector-pattern"
+              className="inline-block rounded-lg border border-border bg-canvas px-2 align-top font-mono text-xs"
+            >
               {highlightRegexSyntax(selector.pattern)}
             </span>
           ) : (
-            <span className="font-mono text-xs text-orange-400">{selector.pattern}</span>
+            <span data-testid="selector-pattern" className="font-mono text-xs text-orange-400">
+              {selector.pattern}
+            </span>
           )}
         </td>
 

@@ -102,28 +102,30 @@ test.describe('Selector-table row density', () => {
   }) => {
     // Seeded over the bridge: what is under test is the row layout, and the
     // create flows are covered by cases.spec.ts and bulk-selectors.spec.ts.
-    const caseId = await page.evaluate(async (wrappedPattern) => {
-      const { cases, selectors } = (
-        window as unknown as {
-          birdbrain: {
-            cases: { create: (p: { name: string }) => Promise<{ id: string }> }
-            selectors: {
-              create: (p: {
-                caseId: string
-                pattern: string
-                isRegex?: boolean
-                label?: string
-              }) => Promise<unknown>
+    const { caseId, stringId, regexId, wrappedId } = await page.evaluate(
+      async (wrappedPattern) => {
+        const { cases, selectors } = (
+          window as unknown as {
+            birdbrain: {
+              cases: { create: (p: { name: string }) => Promise<{ id: string }> }
+              selectors: {
+                create: (p: {
+                  caseId: string
+                  pattern: string
+                  isRegex?: boolean
+                }) => Promise<{ id: string }>
+              }
             }
           }
-        }
-      ).birdbrain
-      const { id } = await cases.create({ name: 'Row Density E2E' })
-      await selectors.create({ caseId: id, pattern: 'acme', label: 'stringrow' })
-      await selectors.create({ caseId: id, pattern: 'acme\\d+', isRegex: true, label: 'regexrow' })
-      await selectors.create({ caseId: id, pattern: wrappedPattern, label: 'wrappedrow' })
-      return id
-    }, wrappedPattern)
+        ).birdbrain
+        const { id } = await cases.create({ name: 'Row Density E2E' })
+        const string = await selectors.create({ caseId: id, pattern: 'acme' })
+        const regex = await selectors.create({ caseId: id, pattern: 'acme\\d+', isRegex: true })
+        const wrapped = await selectors.create({ caseId: id, pattern: wrappedPattern })
+        return { caseId: id, stringId: string.id, regexId: regex.id, wrappedId: wrapped.id }
+      },
+      wrappedPattern
+    )
     // The dashboard already fetched the (empty) cases list; a reload drops that
     // cache so the workspace resolves the seeded case. Same boot budget as the
     // reload test above.
@@ -139,24 +141,23 @@ test.describe('Selector-table row density', () => {
       await page.evaluate((id) => {
         window.location.hash = `/cases/${id}/selectors`
       }, caseId)
-      const rows = page.locator('tbody tr')
-      await expect(rows).toHaveCount(3)
+      await expect(page.getByTestId(/^selector-row-/)).toHaveCount(3)
 
-      const height = async (label: string) => {
-        const box = await rows.filter({ hasText: label }).boundingBox()
-        if (!box) throw new Error(`row "${label}" has no box at ${step}`)
+      const height = async (name: string, id: string) => {
+        const box = await page.getByTestId(`selector-row-${id}`).boundingBox()
+        if (!box) throw new Error(`${name} row has no box at ${step}`)
         return box.height
       }
       // Single-line rows sit exactly on the metric: a py on any fixed-height cell
       // or on the regex chip would push these past --d-row (the #421 defect).
-      expect(await height('stringrow'), `string row at ${step}`).toBe(rowPx)
-      expect(await height('regexrow'), `regex row at ${step}`).toBe(rowPx)
+      expect(await height('string', stringId), `string row at ${step}`).toBe(rowPx)
+      expect(await height('regex', regexId), `regex row at ${step}`).toBe(rowPx)
 
       // A wrapped pattern grows the row rather than clipping, and keeps the
       // clearance the pattern cell's py provides between text and row borders.
-      const wrappedRow = rows.filter({ hasText: 'wrappedrow' })
+      const wrappedRow = page.getByTestId(`selector-row-${wrappedId}`)
       const rowBox = await wrappedRow.boundingBox()
-      const textBox = await wrappedRow.getByText(wrappedPattern).boundingBox()
+      const textBox = await wrappedRow.getByTestId('selector-pattern').boundingBox()
       if (!rowBox || !textBox) throw new Error(`wrapped row has no box at ${step}`)
       expect(rowBox.height, `wrapped row at ${step}`).toBeGreaterThan(rowPx)
       expect(textBox.y - rowBox.y, `top clearance at ${step}`).toBeGreaterThanOrEqual(3)

@@ -63,6 +63,12 @@ loop of the first four commands is green on a PR that CI rejects, and the failur
 tests passing, 72.62% diff coverage, red. Renderer components are the usual shortfall — a new
 `.tsx` with no test contributes its whole line count to the denominator.
 
+`coverage:diff` scores the working tree — tracked edits plus untracked files — against the
+merge base, not the committed diff, because that is what `test:coverage` measured. Its number
+matches CI's for the commit you are about to push only when `coverage-final.json` came from a
+`test:coverage` run on the same tree state: run the two back to back after your last edit, and
+re-run both after any further change (#508).
+
 Never claim something works without having run it. If a test fails, fix the code; modify the
 test only if it is demonstrably wrong, and say why in the PR. Report actual command output in
 the PR's verification section — not a summary of what you expected.

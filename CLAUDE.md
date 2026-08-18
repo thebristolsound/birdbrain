@@ -320,8 +320,11 @@ Those last two are the ones that catch what the others cannot. CI's job named `t
 suite *and then* `scripts/diff-coverage.mjs`, which fails the PR below 90% of changed lines
 covered — a threshold `pnpm test` never evaluates, since it omits `--coverage`. Without them
 the loop reports green on a PR CI rejects, and the red arrives after the agent has claimed
-success. Interactive sessions are not covered by this carve-out, and it must not be copied to the
-global CLAUDE.md or other repos.
+success. `coverage:diff` scores the **working tree** (tracked edits plus untracked files)
+against the merge base, so it matches what CI computes for the commit you are about to push
+only when `coverage-final.json` came from `pnpm test:coverage` on the same tree state — re-run
+both after any edit (#508). Interactive sessions are not covered by this carve-out, and it must
+not be copied to the global CLAUDE.md or other repos.
 
 The gates in `docs/adr/0005-unattended-agents-on-the-evidence-path.md` still apply in full:
 strict-serial WIP (max one open agent PR), human review on every agent PR through the pilot,

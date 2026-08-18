@@ -3,6 +3,11 @@ import type { WebContents } from 'electron'
 import { pathToFileURL } from 'url'
 import type { Capture } from '@shared/types'
 import type { TrustedTimeResult } from '@shared/verify/trustedTime'
+import {
+  TRUSTED_TIME_UNRECORDED_STAMPED_AT,
+  trustedTimeAttestingParty,
+  trustedTimeLabel
+} from '@shared/trustedTimeDisclosure'
 
 // Total budget for load + inject + print. MHTML resources are all local so the
 // load itself is fast; the margin covers legacy .html captures that still fetch
@@ -28,19 +33,15 @@ const PAGE_WIDTH_INCHES = 8.27
 // Chromium's Page.printToPDF accepts scale in [0.1, 2].
 const MIN_PRINT_SCALE = 0.1
 const MAX_PRINT_SCALE = 2
-// Trusted-time row vocabulary, kept in step with `trustedTimeView` in
-// reportHtml.ts so the two operator-facing artifacts can't describe the same
-// axis in different words. 'none' is the honest floor — genuinely unstamped
-// and absent-from-the-manifest are indistinguishable from the manifest alone,
-// and both mean the printed capture time is the operator's local clock — so it
-// is stated, never omitted.
-const TRUSTED_TIME_STAMPED_LABEL = 'RFC 3161 token retained'
-const TRUSTED_TIME_FALLBACK_TSA_NAME = 'the configured RFC 3161 authority'
-const TRUSTED_TIME_FALLBACK_STAMPED_AT = 'the time recorded in the retained token'
-const TRUSTED_TIME_PENDING_TEXT =
-  'Local clock only — an RFC 3161 token was requested but has not been obtained'
-const TRUSTED_TIME_NONE_TEXT =
-  'Local clock only — no RFC 3161 token is retained for this capture'
+// The trusted-time row leads with the shared axis label (report.html renders
+// the same one), then adds this artifact's own one-line explanation. Only the
+// label and the token-fallback phrases are shared; the explanation deliberately
+// is not, so this comment claims no more than that. 'none' is the honest floor
+// — genuinely unstamped and absent-from-the-manifest are indistinguishable from
+// the manifest alone, and both mean the printed capture time is the operator's
+// local clock — so it is stated, never omitted.
+const TRUSTED_TIME_PENDING_DETAIL = 'an RFC 3161 token was requested but has not been obtained'
+const TRUSTED_TIME_NONE_DETAIL = 'no RFC 3161 token is retained for this capture'
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -60,19 +61,20 @@ function formatBytes(bytes: number): string {
 
 // Renders the manifest-resolved trusted-time axis as one plain-string row value.
 function formatTrustedTime(resolved: TrustedTimeResult): string {
+  const label = trustedTimeLabel(resolved)
   switch (resolved.trustedTime) {
     case 'rfc3161': {
-      const who = resolved.tsaName ?? TRUSTED_TIME_FALLBACK_TSA_NAME
+      const who = trustedTimeAttestingParty(resolved)
       const when = resolved.stampedAt
         ? formatTimestamp(resolved.stampedAt)
-        : TRUSTED_TIME_FALLBACK_STAMPED_AT
-      return `${TRUSTED_TIME_STAMPED_LABEL} — ${who} asserts the capture digest existed no later than ${when}`
+        : TRUSTED_TIME_UNRECORDED_STAMPED_AT
+      return `${label}: ${who} asserts the capture digest existed no later than ${when}`
     }
     case 'pending':
-      return TRUSTED_TIME_PENDING_TEXT
+      return `${label}: ${TRUSTED_TIME_PENDING_DETAIL}`
     case 'none':
     default:
-      return TRUSTED_TIME_NONE_TEXT
+      return `${label}: ${TRUSTED_TIME_NONE_DETAIL}`
   }
 }
 

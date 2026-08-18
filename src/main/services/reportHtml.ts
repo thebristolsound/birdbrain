@@ -42,6 +42,11 @@ import type {
   TrustedTime
 } from '@shared/types'
 import type { TrustedTimeResult } from '@shared/verify'
+import {
+  TRUSTED_TIME_UNRECORDED_STAMPED_AT,
+  trustedTimeAttestingParty,
+  trustedTimeLabel
+} from '@shared/trustedTimeDisclosure'
 
 // ---------------------------------------------------------------------------
 // Input
@@ -309,22 +314,26 @@ function integrityView(verification: HashVerification | undefined, capture: Capt
   }
 }
 
+// Labels and the token-fallback phrases come from the shared disclosure
+// vocabulary so this report and the per-capture PDF cover name each axis value
+// identically; the explanatory detail is this artifact's own.
 function trustedTimeView(resolved: TrustedTimeResult): StateView {
+  const label = trustedTimeLabel(resolved)
   switch (resolved.trustedTime) {
     case 'rfc3161': {
-      const who = resolved.tsaName ?? 'the configured RFC 3161 authority'
+      const who = trustedTimeAttestingParty(resolved)
       const when = resolved.stampedAt ? isoUtc(resolved.stampedAt) : null
       return {
-        label: 'RFC 3161 token retained',
+        label,
         detail:
           `${who} asserts that the capture content digest existed no later than ` +
-          `${when ?? 'the time recorded in the retained token'}. The token attests to the ` +
+          `${when ?? TRUSTED_TIME_UNRECORDED_STAMPED_AT}. The token attests to the ` +
           'digest only; it says nothing about what the page contained or who published it.'
       }
     }
     case 'pending':
       return {
-        label: 'Local clock — token pending',
+        label,
         detail:
           'A trusted timestamp was requested but has not been obtained. The capture time ' +
           "shown is the operator's local system clock and carries no independent corroboration."
@@ -332,7 +341,7 @@ function trustedTimeView(resolved: TrustedTimeResult): StateView {
     case 'none':
     default:
       return {
-        label: 'Local clock only',
+        label,
         detail:
           'No RFC 3161 token is retained for this capture. The capture time shown is the ' +
           "operator's local system clock and carries no independent corroboration."

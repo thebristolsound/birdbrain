@@ -157,8 +157,8 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
-      # Whether this list is still needed at all — playwright install --with-deps
-      # runs immediately below, and the runner image ships a baseline — is #476.
+      # Whether this list is still needed at all — the runner image ships a
+      # baseline — is #476.
       - name: Install system dependencies
         timeout-minutes: 5
         run: |
@@ -169,8 +169,11 @@ jobs:
 
       - run: pnpm install
 
-      - name: Install Playwright
-        run: npx playwright install --with-deps
+      # No `playwright install`: the suite is Electron-only (e2e/fixtures/electronApp.ts
+      # drives _electron), so the Chromium/Firefox/WebKit downloads were unused, and
+      # `--with-deps` ran its own apt-get without APT_OPTS or a step timeout — a mirror
+      # stall there consumed the whole 20m job budget four times on 2026-08-18 (#539).
+      # xvfb and the Chromium shared libs already ship in the runner image.
 
       - name: Build app
         run: pnpm build

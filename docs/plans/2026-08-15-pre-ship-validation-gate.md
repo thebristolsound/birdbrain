@@ -200,12 +200,27 @@ upgrade demonstrates.
 
 - [ ] Install the **previous** beta on a clean machine.
 - [ ] Create a case and take at least one capture in it.
-- [ ] Install the candidate over the top (Windows: run the new installer; AppImage: replace
-      the file; do not remove user data).
+- [ ] Install the candidate over the top. **Use the in-app path when the previous beta is on
+      the same public update feed** — **Settings → Updates → Check for updates**, then
+      **Download**, then **Restart to update**. Manual installation (Windows: run the new
+      installer; AppImage: replace the file; do not remove user data) is the fallback, and is
+      the only option when the previous beta predates the feed.
 - [ ] Launch. The case and its capture are still there, and the capture still opens.
 - [ ] A pre-migration snapshot exists in the `db-snapshots` folder next to the database in
       the user data directory, and it is listed under **Settings → Database → Utilities →
       Pre-Migration Snapshots**.
+
+**Why the in-app path is now first.** Until `1.0.1-beta.18` every shipped build had the
+private source repository baked into its `app-update.yml`, so electron-updater's
+unauthenticated GitHub provider could never reach a feed and no gate run could exercise the
+update mechanism (#567). Builds from `1.0.1-beta.18` onward point at the public
+`thebristolsound/birdbrain-releases` feed, so an upgrade between two of them tests what a
+tester will actually do. A manual install-over-the-top proves the data survives; it proves
+nothing about the mechanism that is meant to deliver the upgrade.
+
+Record which path was used. On the `.deb`, the download is automatic but the install runs
+`dpkg` behind a system password prompt, so it happens only on **Restart to update** — that is
+expected, not a failure.
 
 If the candidate carries no schema change, no snapshot is taken and none is expected —
 record that rather than ticking the last box. Check `LATEST_SCHEMA_VERSION` in

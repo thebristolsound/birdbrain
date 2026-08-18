@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { BirdbrainSettings, AutoCaptureMode } from '@shared/types'
+import type { BirdbrainSettings } from '@shared/types'
 import { Card, CardContent, Input, Button, Label } from '@renderer/components/ui'
 
 interface CapturePreferencesProps {
@@ -40,21 +40,10 @@ export function CapturePreferences({ settings, onUpdate }: CapturePreferencesPro
             <span className="text-sm text-text-secondary">Capture screenshots</span>
           </label>
 
-          <div>
-            <Label>Dedupe window: {settings.dedupeWindowSeconds}s</Label>
-            <input
-              type="range"
-              min={0}
-              max={300}
-              value={settings.dedupeWindowSeconds}
-              onChange={(e) => onUpdate({ dedupeWindowSeconds: parseInt(e.target.value) })}
-              className="w-full"
-            />
-            <div className="flex justify-between text-xs text-text-muted">
-              <span>0s (off)</span>
-              <span>300s</span>
-            </div>
-          </div>
+          {/* The session dedupe window is hidden for the same reason as the mode radio
+              below: its only consumer is the commented-out background.ts:322, so moving the
+              slider changes nothing. It governs the auto paths only — repeat manual captures
+              are deduped server-side by MANUAL_DEDUPE_WINDOW_MS, which is unaffected. */}
 
           <div>
             <Label>Ignored URL patterns</Label>
@@ -94,36 +83,12 @@ export function CapturePreferences({ settings, onUpdate }: CapturePreferencesPro
             </div>
           </div>
 
-          <div>
-            <Label>Selector auto-capture mode</Label>
-            <div className="space-y-1">
-              {(
-                [
-                  ['auto', 'Auto-capture', 'Automatically capture pages with selector matches'],
-                  ['notify', 'Notify only', 'Show a notification when matches are found'],
-                  ['per-case', 'Per-case', 'Configure capture behavior per case']
-                ] as [AutoCaptureMode, string, string][]
-              ).map(([value, label, desc]) => (
-                <label
-                  key={value}
-                  className="flex items-start gap-2 cursor-pointer rounded p-1.5 hover:bg-elevated"
-                >
-                  <input
-                    type="radio"
-                    name="autoCaptureMode"
-                    value={value}
-                    checked={settings.autoCaptureMode === value}
-                    onChange={() => onUpdate({ autoCaptureMode: value })}
-                    className="mt-0.5"
-                  />
-                  <div>
-                    <div className="text-sm text-text-secondary">{label}</div>
-                    <div className="text-xs text-text-muted">{desc}</div>
-                  </div>
-                </label>
-              ))}
-            </div>
-          </div>
+          {/* The selector auto-capture mode radio is not rendered while auto-capture is
+              out of service. Both auto paths in extension/src/background.ts are commented
+              out behind HOTFIX markers (#211), so every mode behaves as 'notify' — selector
+              matches update the extension badge and nothing is captured. The stored setting
+              and its schema are left untouched, so restoring the control is a revert rather
+              than a migration. See #570; #571 tracks whether auto-capture returns at all. */}
         </div>
       </CardContent>
     </Card>

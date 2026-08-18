@@ -451,5 +451,23 @@ Two questions worth asking out loud when the check fires, because they were the 
 ## 5. End-of-cycle report
 
 Finish every invocation with a short report: slot state found, action taken (dispatched #N /
-addressed feedback on PR #N / exited idle / violation found), pre-pass verdict if one ran, and
-anything a human must do next.
+addressed feedback on PR #N / exited idle / violation found), pre-pass verdict if one ran, the
+CI state of the PR's head sha, and anything a human must do next.
+
+**Read CI before you write the report, on every exit path.** If the cycle touched or observed
+an open agent PR — a fresh dispatch, a fix round, an occupied-slot exit, a give-up, not only a
+cycle that ended in a pre-pass — run `gh pr checks <n>` on it immediately before writing, and
+put the result in the report as the head sha plus the conclusion of **every** check by name
+(pass, fail, pending, skipped, or absent). Section 4 reads CI before the pre-pass, but a fix
+round, an occupied-slot exit and a give-up all report without one, and on those paths nothing
+else reads the check. Unattended, this report is the only artifact anyone reads, so it is the
+last place a red or unfinished head can be caught.
+
+**Never claim success on a cycle whose head sha is red or still pending.** "Success",
+"green", "passing", "ready for review" and their equivalents are reserved for a head on which
+every check has concluded and none has failed. A red head is reported as red, naming the
+failing check; a pending head is reported as pending, naming what has not concluded. If you
+could not read the checks at all, say so — that is a finding, not a pass. A cycle that ended
+idle with no PR in play states that instead of a CI line. Clause 1 of ADR-0011 is adjudicated
+against this rule from the API, so a report that says "success" over a red or pending head is
+counted as a failure of the routine even when the code was fine.

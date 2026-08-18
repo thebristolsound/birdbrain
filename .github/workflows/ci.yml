@@ -9,6 +9,11 @@ on:
     # its whole draft life uncovered gets a full run the moment it is marked ready,
     # which is the only state from which it can be merged.
     types: [opened, reopened, synchronize, ready_for_review]
+  # A gate run has to be able to name the commit it is asserting about, and
+  # neither push nor pull_request can be aimed at a tag. No inputs are needed:
+  # `gh workflow run <file> --ref <tag>` carries the ref itself (#445). A dispatched
+  # run clears every gate below on the `github.event_name != 'pull_request'` arm.
+  workflow_dispatch:
 
 permissions:
   contents: read

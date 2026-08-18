@@ -44,7 +44,10 @@ either run section 5 first on a snapshot, or roll the VM back between them.
 ## 1. CI and Security green — must pass
 
 The `CI` workflow (`.github/workflows/ci.yml`) must be green **on the tagged commit**, all
-five jobs:
+five jobs below. A sixth job, `changes`, decides whether those five run at all; on a `push`
+to `main` or a dispatched run it always lets them through, and its own path-filter step
+skips. Read it as plumbing, not as a gate — but a run where the five report `skipped`
+rather than `success` is **not** a pass:
 
 - [ ] `lint` — `pnpm lint`
 - [ ] `typecheck` — `pnpm typecheck`
@@ -61,19 +64,43 @@ must be green on the same commit, all three jobs:
 
 Notes worth knowing before you read a green tick as meaning more than it does:
 
-- Both workflows run on `push` to `main` and on pull requests, **not on tags**, and neither
-  declares `workflow_dispatch`. There is therefore no way to aim a run at a tag: `gh workflow
-  run` has no dispatch trigger to fire, and `gh run rerun` only replays the commit its
-  original run used. **Cut the tag at a commit that already has a green `main` run** — if the
-  commit is not on `main` yet, push it to `main` first, wait for that run, then tag it. A
-  green run on a different commit is not evidence about this build.
-- Adding `workflow_dispatch` to `ci.yml` and `security.yml` would remove that constraint and
-  let a run be aimed at an arbitrary ref. It is filed separately, not a prerequisite for
-  running this gate.
+- Both workflows run on `push` to `main`, on pull requests, and — since #445 — on
+  `workflow_dispatch`. **Prefer cutting the tag at a commit that already has a green `main`
+  run**: if the commit is not on `main` yet, push it to `main` first, wait for that run, then
+  tag it. That is no longer the only path. When the tagged commit has no green run of its
+  own, dispatch one at the tag directly:
+
+  ```sh
+  gh workflow run ci.yml --ref <tag>
+  gh workflow run security.yml --ref <tag>
+  ```
+
+  **The tag has to have been cut after #445 merged.** Dispatch reads the trigger from the
+  workflow file *at the ref you name*, not from `main`, so a tag whose tree predates #445 has
+  no `workflow_dispatch` to fire and the command is refused before any run starts:
+
+  ```
+  $ gh workflow run ci.yml --ref v1.0.1-beta.18
+  could not create workflow dispatch event: HTTP 422: Workflow does not have 'workflow_dispatch' trigger
+  ```
+
+  Every tag up to and including `v1.0.1-beta.18` is in that state, so for those the
+  push-to-`main`-first path above is the only one. Either way, a green run on a *different*
+  commit is not evidence about this build. Note that `gh run rerun` is still not a substitute
+  — it only replays the commit its original run used.
+- A dispatched run is not identical to the `push` run it stands in for. `github.event_name` is
+  `workflow_dispatch`, and `github.base_ref` is empty; two steps in either workflow read
+  those — the diff-coverage step (the next note) and the `changes` job's path filter — and
+  both skip. The difference that bears hardest on what a green tick
+  means is the same rule as above: a dispatched run executes the **job definitions at the
+  target ref**, not today's. These workflow files change often and materially, so dispatching
+  at an older tag can green-tick a weaker gate than `main` currently runs. Read the result as
+  evidence about that commit under the job set that commit carried.
 - The `test` job's diff-coverage step is gated `if: github.event_name == 'pull_request'`
-  (`.github/workflows/ci.yml:97`), so `scripts/diff-coverage.mjs` does **not** run on the
-  push-to-`main` run this section reads. Diff coverage is a per-PR gate; a green `test` here
-  means the suite and the project-wide coverage thresholds passed, nothing more.
+  (`.github/workflows/ci.yml:187`), so `scripts/diff-coverage.mjs` does **not** run on the
+  push-to-`main` run this section reads, nor on a dispatched one. Diff coverage is a per-PR
+  gate; a green `test` here means the suite and the project-wide coverage thresholds passed,
+  nothing more.
 - `BIRDBRAIN_REQUIRE_OPENSSL=1` is what stops the OpenSSL-dependent timestamp tests from
   turning green-by-skipping (`tests/helpers/openssl.ts`). Locally, run
   `BIRDBRAIN_REQUIRE_OPENSSL=1 pnpm test` for the same reason.

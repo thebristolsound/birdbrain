@@ -8,6 +8,12 @@
 // step below is what proves TSA authenticity, so a binary PASS is NOT a
 // timestamp-authenticity claim (binary-PASS != runbook-PASS).
 
+import {
+  DIGICERT_TRUSTED_ROOT_G4_SHA256,
+  TSA_INTERMEDIATES_FILENAME,
+  TSA_ROOT_FILENAME
+} from '@main/services/tsaTrust'
+
 export const VERIFY_RUNBOOK = `# Verifying this evidence package by hand
 
 This package can be re-verified by a third party **without running Birdbrain**,
@@ -39,7 +45,8 @@ internal consistency*, **not** timestamp authenticity — this runbook's
 |---|---|
 | \`manifest.jsonl\` | Signed, hash-linked audit chain (root of trust) |
 | \`signing-public-key.pem\` | RSA public key for the per-entry signatures |
-| \`tsa-ca-chain.pem\` | TSA CA + per-token cert chains |
+| \`${TSA_ROOT_FILENAME}\` | Self-signed TSA root — the trust anchor for step 6 (absent when no anchor is bundled for the configured authority) |
+| \`${TSA_INTERMEDIATES_FILENAME}\` | Responder + intermediate certs lifted from the tokens (chain-building only, never trusted on their own) |
 | \`pages/{captureId}.mhtml\` | Captured content (hashed as \`contentHash\`) |
 | \`screenshots/{sha256}.png\` | Captured screenshot (hashed as \`screenshotHash\`) |
 | \`timestamps/*.tst\` | RFC 3161 tokens (DER), when present |
@@ -119,11 +126,37 @@ shot=$(echo "$line" | jq -r '.screenshotHash // empty')
 ## Step 6 — Timestamp (canonical TSA verification)
 
 **This is the authenticity step the binary does NOT perform.** Verify each RFC
-3161 token's CMS signature against the bundled TSA chain.
+3161 token's CMS signature up to an independently trusted root.
+
+**6a. Confirm the trust anchor before using it.** \`${TSA_ROOT_FILENAME}\` is a
+convenience copy shipped inside the package; anyone who can rewrite the package
+can swap it. It becomes an anchor only once you have checked its fingerprint
+against a source outside the package — the authority's published value, or the
+same root already in your operating system's trust store. For Birdbrain's default
+authority the root is DigiCert Trusted Root G4, published fingerprint:
+
+\`\`\`
+SHA-256 ${DIGICERT_TRUSTED_ROOT_G4_SHA256}
+\`\`\`
 
 \`\`\`sh
-openssl ts -verify -digest <contentHash> -in timestamps/<token>.tst \\
-  -CAfile tsa-ca-chain.pem
+openssl x509 -in ${TSA_ROOT_FILENAME} -noout -subject -issuer -fingerprint -sha256
+# subject and issuer must be identical (self-signed); fingerprint must match above
+\`\`\`
+
+If \`${TSA_ROOT_FILENAME}\` is absent, the case was configured with a non-default
+authority and no anchor is bundled: obtain that authority's root yourself and use
+it as \`-CAfile\` below. Never use \`${TSA_INTERMEDIATES_FILENAME}\` as
+\`-CAfile\` — those certificates came out of the tokens being checked, so
+trusting them proves nothing.
+
+**6b. Verify each token.** The \`.tst\` files are bare RFC 3161 tokens (DER
+\`TimeStampToken\`), not full \`TimeStampResp\` structures, so \`-token_in\` is
+required — without it OpenSSL reports an ASN.1 error, not a verdict.
+
+\`\`\`sh
+openssl ts -verify -digest <contentHash> -in timestamps/<token>.tst -token_in \\
+  -CAfile ${TSA_ROOT_FILENAME} -untrusted ${TSA_INTERMEDIATES_FILENAME}
 # => "Verification: OK"
 \`\`\`
 

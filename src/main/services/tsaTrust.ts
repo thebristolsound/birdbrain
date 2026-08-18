@@ -34,15 +34,36 @@ gKDWHrO8Dw9TdSmq6hN35N6MgSGtBxBHEa2HPQfRdbzP82Z+
 -----END CERTIFICATE-----
 `
 
+// SHA-256 fingerprint of the self-signed DigiCert Trusted Root G4 above, as
+// DigiCert publishes it. Printed in VERIFY.md so a verifier can confirm the
+// packaged root is the real one before trusting step 6: a root inside the
+// package is only a convenience copy until it is checked against a source the
+// package author could not have rewritten (tests pin it to the PEM).
+export const DIGICERT_TRUSTED_ROOT_G4_SHA256 =
+  '55:2F:7B:DC:F1:A7:AF:9E:6C:E6:72:01:7F:4F:12:AB:F7:72:40:C7:8E:76:1A:C2:03:D1:D9:D2:0A:C8:99:88'
+
+export const TSA_ROOT_FILENAME = 'tsa-root.pem'
+export const TSA_INTERMEDIATES_FILENAME = 'tsa-intermediates.pem'
+
 export interface TsaTrustBundle {
   pem: string
   bundled: boolean
+  /** Colon-separated SHA-256 fingerprint of the bundled self-signed root, when bundled. */
+  rootSha256?: string
   note?: string
 }
 
 export function getTsaTrustBundle(tsaUrl: string): TsaTrustBundle {
   if (tsaUrl === DEFAULT_TSA_URL) {
-    return { pem: DIGICERT_TRUSTED_ROOT_G4, bundled: true }
+    return {
+      pem: DIGICERT_TRUSTED_ROOT_G4,
+      bundled: true,
+      rootSha256: DIGICERT_TRUSTED_ROOT_G4_SHA256,
+      note:
+        `${TSA_ROOT_FILENAME} is a convenience copy of DigiCert Trusted Root G4 (SHA-256 ` +
+        `${DIGICERT_TRUSTED_ROOT_G4_SHA256}). Confirm that fingerprint against DigiCert's ` +
+        'published value or your own OS trust store before relying on it as the trust anchor.'
+    }
   }
 
   return {
@@ -50,7 +71,6 @@ export function getTsaTrustBundle(tsaUrl: string): TsaTrustBundle {
       '# No built-in TSA trust anchor is available for this configured TSA.\n' +
       `# Configured TSA URL: ${tsaUrl}\n`,
     bundled: false,
-    note:
-      'Configured TSA is not the default DigiCert endpoint; provide the correct offline trust anchor separately.'
+    note: 'Configured TSA is not the default DigiCert endpoint; provide the correct offline trust anchor separately.'
   }
 }

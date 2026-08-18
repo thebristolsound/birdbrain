@@ -22,7 +22,11 @@ import {
 import { buildTrustedTimeIndex } from '@main/services/trustedTime'
 import type { ExportVerificationResult, ManifestSnapshot } from '@main/services/manifest'
 import { createStoredZip } from '@main/services/zip'
-import { getTsaTrustBundle } from '@main/services/tsaTrust'
+import {
+  getTsaTrustBundle,
+  TSA_INTERMEDIATES_FILENAME,
+  TSA_ROOT_FILENAME
+} from '@main/services/tsaTrust'
 import {
   buildTrustedTimeIndexFromEntries,
   extractTimestampTokenCertificatesPem
@@ -337,13 +341,17 @@ function buildEvidenceZip(
   // Same path rule the report was rendered against — see buildTimestampTokenPaths.
   const timestampPathsByHash = buildTimestampTokenPaths(data.captures, timestampEntries)
   const emittedTokenPaths = new Set<string>()
-  const timestampTokenChainPems: string[] = []
+  // Deduped by PEM block: every token of one authority carries the same
+  // responder/intermediate certs, and a chain repeated per token is noise a
+  // verifier has to wade through (#579).
+  const timestampTokenCertPems = new Set<string>()
   for (const entry of timestampEntries) {
     if (typeof entry.tsaToken !== 'string') continue
     const token = Buffer.from(entry.tsaToken, 'base64')
     try {
-      const chainPem = extractTimestampTokenCertificatesPem(token)
-      if (chainPem) timestampTokenChainPems.push(chainPem)
+      for (const pem of splitPemBlocks(extractTimestampTokenCertificatesPem(token))) {
+        timestampTokenCertPems.add(pem)
+      }
     } catch {
       // Malformed tokens still belong in the evidence package; they simply
       // cannot contribute certificate material to the TSA chain bundle.
@@ -377,8 +385,13 @@ function buildEvidenceZip(
   add('signing-public-key.pem', getPublicKeyPem())
   add('VERIFY.md', VERIFY_RUNBOOK)
 
+  // Anchor and chain-building material ship as separate files (#579): a single
+  // bundle that mixes the token-carried cross-signed root with the self-signed
+  // one makes `openssl ts -verify -CAfile` resolve the wrong root and fail, and
+  // leaves ambiguous which certificate the verifier is being asked to trust.
   const tsaTrust = getTsaTrustBundle(data.tsaUrl)
-  add('tsa-ca-chain.pem', [...timestampTokenChainPems, tsaTrust.pem].join('\n'))
+  add(TSA_INTERMEDIATES_FILENAME, [...timestampTokenCertPems].join('\n') + '\n')
+  if (tsaTrust.bundled) add(TSA_ROOT_FILENAME, tsaTrust.pem)
 
   const capturesMissingContent: string[] = []
   const emittedScreenshotPaths = new Set<string>()
@@ -480,7 +493,9 @@ function buildEvidenceZip(
       manifestHeadIndex: latestManifestEntry?.index ?? null,
       manifestHeadHash: latestManifestEntry?.entryHash ?? null,
       signingPublicKeyPath: 'signing-public-key.pem',
-      tsaCaChainPath: 'tsa-ca-chain.pem',
+      tsaRootPath: tsaTrust.bundled ? TSA_ROOT_FILENAME : null,
+      tsaRootSha256: tsaTrust.rootSha256 ?? null,
+      tsaIntermediatesPath: TSA_INTERMEDIATES_FILENAME,
       tsaCaChainBundled: tsaTrust.bundled,
       reportPath: 'report.html'
     },
@@ -590,4 +605,8 @@ function isTimestampEntry(entry: Record<string, unknown>): entry is ManifestTime
 
 function sha256(buf: Buffer): string {
   return createHash('sha256').update(buf).digest('hex')
+}
+
+function splitPemBlocks(pem: string): string[] {
+  return pem.match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g) ?? []
 }

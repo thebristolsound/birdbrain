@@ -10,12 +10,7 @@ import {
   DEFAULT_UI_DENSITY,
   UI_DENSITIES
 } from '@shared/types'
-import type {
-  ActiveCaseSelectors,
-  BirdbrainSettings,
-  Selector,
-  SelectorMatch
-} from '@shared/types'
+import type { ActiveCaseSelectors, BirdbrainSettings, Selector, SelectorMatch } from '@shared/types'
 
 // Shared Zod schemas for Birdbrain's trust boundaries.
 //
@@ -485,7 +480,13 @@ export const EvidencePackageSchema = z.object({
     manifestHeadIndex: z.number().int().nonnegative().nullable(),
     manifestHeadHash: z.string().nullable(),
     signingPublicKeyPath: z.string(),
-    tsaCaChainPath: z.string()
+    // Packages before #579 shipped one mixed `tsa-ca-chain.pem`; later ones ship
+    // a self-signed anchor (null when no anchor is bundled for the configured
+    // TSA) and the deduped chain-building material separately.
+    tsaCaChainPath: z.string().optional(),
+    tsaRootPath: z.string().nullable().optional(),
+    tsaRootSha256: z.string().nullable().optional(),
+    tsaIntermediatesPath: z.string().optional()
   }),
   captures: z.array(EvidenceCaptureSchema),
   artifacts: z.array(EvidenceArtifactSchema)

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { execFileSync } from 'child_process'
-import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'fs'
+import { mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
@@ -18,6 +18,7 @@ import { generateReport } from '@main/services/export'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { HAS_OPENSSL } from '../../helpers/openssl'
+import { DIGICERT_TRUSTED_ROOT_G4_SHA256 } from '@main/services/tsaTrust'
 import type { ExportOptions } from '@shared/types'
 
 const FIXTURES = join(process.cwd(), 'tests/fixtures/timestamp')
@@ -99,23 +100,29 @@ describe('exported evidence bundle verifies under openssl ts -verify', () => {
   })
 
   it.skipIf(!HAS_OPENSSL)(
-    'openssl verifies the exported .tst against the exported tsa-ca-chain.pem',
+    'openssl verifies the exported .tst with exactly the command VERIFY.md documents',
     async () => {
-      // The capture content hash must match the imprint inside the DigiCert token,
-      // otherwise openssl would still pass (it checks the token, not our capture),
-      // but the manifest binds this token to this capture as the export does.
+      // The fixture token stamps the digest in content-hash.txt, not this
+      // capture's bytes; the manifest still binds it to the capture the way the
+      // export does, and `-digest` below is fed the token's real imprint so the
+      // documented command is exercised end to end (imprint check included).
       const { capture } = await ingest(caseId, '<html><body>Packaged evidence</body></html>')
       const token = readFileSync(join(FIXTURES, 'digicert-token.der'))
-      appendManifestEntry(join(tempDir, 'captures', caseId), {
-        type: 'timestamp',
-        caseId,
-        captureContentHash: capture.hash,
-        timestamp: '2026-04-05T12:01:00.000Z',
-        tsaToken: token.toString('base64'),
-        operatorId: 'op',
-        operatorName: 'Test Operator',
-        toolVersion: '0.1.0'
-      })
+      const imprint = readFileSync(join(FIXTURES, 'content-hash.txt'), 'utf-8').trim()
+      // Two timestamp entries for one token: the intermediates file must still
+      // carry each certificate once (#579).
+      for (const timestamp of ['2026-04-05T12:01:00.000Z', '2026-04-05T12:02:00.000Z']) {
+        appendManifestEntry(join(tempDir, 'captures', caseId), {
+          type: 'timestamp',
+          caseId,
+          captureContentHash: capture.hash,
+          timestamp,
+          tsaToken: token.toString('base64'),
+          operatorId: 'op',
+          operatorName: 'Test Operator',
+          toolVersion: '0.1.0'
+        })
+      }
 
       const outputPath = join(tempDir, 'evidence.zip')
       const options: ExportOptions = {
@@ -128,40 +135,60 @@ describe('exported evidence bundle verifies under openssl ts -verify', () => {
 
       const entries = readStoredZipEntries(outputPath)
       const tst = entries.get(`timestamps/${capture.id}.tst`)
-      const chain = entries.get('tsa-ca-chain.pem')
+      const root = entries.get('tsa-root.pem')
+      const intermediates = entries.get('tsa-intermediates.pem')
+      const runbook = entries.get('VERIFY.md')?.toString('utf-8') ?? ''
       expect(tst).toBeDefined()
-      expect(chain).toBeDefined()
+      expect(root).toBeDefined()
+      expect(intermediates).toBeDefined()
+
+      const certBlocks = (pem: Buffer) => pem.toString('utf-8').match(/BEGIN CERTIFICATE/g) ?? []
+      expect(certBlocks(root!)).toHaveLength(1)
+      const embedded = readFileSync(join(FIXTURES, 'embedded-chain.pem'))
+      expect(certBlocks(intermediates!)).toHaveLength(certBlocks(embedded).length)
 
       // Extract the shipped artifacts to disk for openssl.
       const dir = mkdtempSync(join(tmpdir(), 'bb-bundle-'))
-      const tstPath = join(dir, 'capture.tst')
-      const chainPath = join(dir, 'tsa-ca-chain.pem')
-      writeFileSync(tstPath, tst!)
-      writeFileSync(chainPath, chain!)
+      writeFileSync(join(dir, 'tsa-root.pem'), root!)
+      writeFileSync(join(dir, 'tsa-intermediates.pem'), intermediates!)
+      mkdirSync(join(dir, 'timestamps'))
+      writeFileSync(join(dir, 'timestamps', `${capture.id}.tst`), tst!)
 
       try {
-        // Court verification: the shipped chain carries the responder/intermediate
-        // certs as -untrusted candidates; the self-signed DigiCert Trusted Root G4
-        // (committed fixture) is the trust anchor via -CAfile. The token also embeds
-        // its own intermediates, so this proves the bundle is self-sufficient.
-        const out = execFileSync(
-          'openssl',
-          [
-            'ts',
-            '-verify',
-            '-token_in',
-            '-in',
-            tstPath,
-            '-queryfile',
-            join(FIXTURES, 'request.tsq'),
-            '-untrusted',
-            chainPath,
-            '-CAfile',
-            join(FIXTURES, 'digicert-trusted-root-g4.pem')
-          ],
-          { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] }
-        )
+        // Lift the step-6 command out of the shipped runbook rather than
+        // restating it, so a runbook that cannot be executed as written (#578)
+        // fails here instead of in front of a third party.
+        const documented = runbook.match(/^openssl ts -verify [^\n]*\\\n[^\n]*$/m)?.[0]
+        expect(documented).toBeDefined()
+        const argv = documented!
+          .replace(/\\\n/g, ' ')
+          .split(/\s+/)
+          .slice(1)
+          .map((arg) =>
+            arg
+              .replace('<contentHash>', imprint)
+              .replace('<token>', capture.id)
+          )
+        expect(argv).toContain('-token_in')
+        expect(argv).toEqual(expect.arrayContaining(['-CAfile', 'tsa-root.pem']))
+        expect(argv).toEqual(expect.arrayContaining(['-untrusted', 'tsa-intermediates.pem']))
+        const out = execFileSync('openssl', argv, {
+          cwd: dir,
+          encoding: 'utf-8',
+          stdio: ['ignore', 'pipe', 'pipe']
+        })
         expect(out).toContain('Verification: OK')
+
+        // The step-6a anchor check, also as documented.
+        const fp = execFileSync(
+          'openssl',
+          ['x509', '-in', 'tsa-root.pem', '-noout', '-subject', '-issuer', '-fingerprint', '-sha256'],
+          { cwd: dir, encoding: 'utf-8' }
+        )
+        const [subject, issuer, fingerprint] = fp.trim().split('\n')
+        expect(subject.replace(/^subject=/, '')).toBe(issuer.replace(/^issuer=/, ''))
+        expect(fingerprint).toContain(DIGICERT_TRUSTED_ROOT_G4_SHA256)
+        expect(runbook).toContain(DIGICERT_TRUSTED_ROOT_G4_SHA256)
       } finally {
         rmSync(dir, { recursive: true, force: true })
       }

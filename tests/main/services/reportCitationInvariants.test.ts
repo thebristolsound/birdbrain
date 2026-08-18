@@ -77,7 +77,8 @@ const COMPANION_FILES = [
   'manifest.jsonl',
   'certification.html',
   'signing-public-key.pem',
-  'tsa-ca-chain.pem',
+  'tsa-root.pem',
+  'tsa-intermediates.pem',
   'VERIFY.md',
   'report.html'
 ]

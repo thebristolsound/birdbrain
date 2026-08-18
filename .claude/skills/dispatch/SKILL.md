@@ -451,5 +451,38 @@ Two questions worth asking out loud when the check fires, because they were the 
 ## 5. End-of-cycle report
 
 Finish every invocation with a short report: slot state found, action taken (dispatched #N /
-addressed feedback on PR #N / exited idle / violation found), pre-pass verdict if one ran, and
-anything a human must do next.
+addressed feedback on PR #N / exited idle / violation found), pre-pass verdict if one ran, the
+CI state of the PR's head sha, and anything a human must do next.
+
+**Read CI before you write the report, on every exit path.** If the cycle touched or observed
+an open agent PR — a fresh dispatch, a fix round, an occupied-slot exit, not only a cycle that
+ended in a pre-pass — read its checks immediately before writing, against a pinned head:
+
+1. `gh api repos/thebristolsound/birdbrain/pulls/<n> --jq .head.sha` — pin the head.
+2. `gh pr checks <n> --json name,state,bucket` — capture the output **and** the exit code.
+   Exit 0 and exit 8 are both readable (8 means at least one check is still pending); any
+   other non-zero exit means the checks could not be read.
+3. Re-read the head as in step 1. If it moved, discard the output and repeat from step 1 —
+   `gh pr checks` does not print the sha it describes, so the two reads either side of it are
+   the only thing that ties the conclusions to a commit. Never report checks against a sha
+   you did not observe both before and after reading them.
+
+Put the result in the report as the pinned head sha plus every check's `bucket` by name
+(`pass`, `fail`, `pending`, `skipping`, `cancel`), or the exit code and error if step 2 was
+unreadable. Section 4 reads CI before the pre-pass, but a fix round that ends without one and
+an occupied-slot exit both report without a read, and on those paths nothing else reads the
+check. Unattended, this report is the only artifact anyone reads, so it is the last place a
+red or unfinished head can be caught.
+
+**Never claim success on a cycle whose head sha is anything but green.** "Success", "green",
+"passing", "ready for review" and their equivalents are reserved for a head on which the
+checks were readable, at least the four `ci.yml` jobs (`lint`, `typecheck`, `test`, `build`)
+are present, and **every** observed check is `pass` or `skipping`. Everything else is
+non-green and is reported by name with its bucket: `fail` (which `gh` uses for `FAILURE`,
+`ERROR`, `TIMED_OUT` and `ACTION_REQUIRED` alike), `pending` (which includes `STALE`),
+`cancel`, an empty or partial check list — a PR opened seconds ago has no checks yet, and
+"none has failed" is vacuously true of it — and an unreadable read. If you could not read the
+checks at all, say so; that is a finding, not a pass. A cycle that ended idle or in a give-up,
+with no PR in play, states that instead of a CI line. Clause 1 of ADR-0011 is adjudicated
+against this rule from the API, so a report that says "success" over a head that was not green
+by this definition is counted as a failure of the routine even when the code was fine.

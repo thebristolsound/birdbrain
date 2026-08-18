@@ -48,6 +48,12 @@ reviews:
     # --- include: build/release tooling and CI ---
     - "scripts/**"
     - ".github/**"
+    # --- include: the agent contracts. These are process code, not local tooling:
+    #     the dispatch routine, the implementer/reviewer contracts, the session-start
+    #     hook, and the shared permission set. A defect here reaches every unattended
+    #     run, and until 2026-08-17 this directory was the one place a contract bug
+    #     could ship unreviewed. ---
+    - ".claude/**"
     # --- include: root-level config and prose ---
     - "*.md"
     - "*.ts"
@@ -67,8 +73,7 @@ reviews:
     - ".gitignore"
     - ".prettierrc"
     - ".nvmrc"
-    # Not included, deliberately: .claude/** and .design-sync/** are local agent and
-    # design tooling, not shipped code.
+    # Not included, deliberately: .design-sync/** is local design tooling, not shipped code.
 
     # --- exclude: dependencies ---
     - "!node_modules/**"
@@ -85,6 +90,9 @@ reviews:
     #     are needed; **/ also catches website/pnpm-lock.yaml (isolated sub-project). ---
     - "!**/pnpm-lock.yaml"
     - "!**/*.lock"
+    # --- exclude: vendored third-party skill (metadata.author: superdesign), dropped in
+    #     whole rather than authored here. Reviewing a vendor bump is noise. ---
+    - "!.claude/skills/superdesign/**"
     # --- exclude: binary and asset directories ---
     - "!resources/**"
     - "!website/public/assets/**"
@@ -196,6 +204,25 @@ reviews:
           pages are added, and untyped access to Fumadocs page/meta objects.
         - `website/` is an isolated sub-project with its own lockfile. Flag imports that
           reach outside it or new dependencies added to the root `package.json`.
+
+    - path: ".claude/**"
+      instructions: |
+        - These are contracts executed unattended, with no human to catch an ambiguous step.
+          Flag any instruction whose outcome the agent cannot verify from the text — a probe
+          with no stated failure branch, or a decision with no rule for the empty result.
+        - Shell commands in a contract are load-bearing. Flag a count or decision derived
+          through a pipe whose exit status is unchecked (`| tail -1` swallows a `gh` failure),
+          `gh api --jq` given `-r`, or `gh issue comment` given `-q` — all three fail rather
+          than error visibly.
+        - The label-filtered issue search (`issues?labels=…`) reads GitHub's search index and
+          lags a direct label read. Flag it used as authoritative for a dispatch decision.
+        - Gates from `docs/adr/0005-unattended-agents-on-the-evidence-path.md` and ADR-0006:
+          agents never merge, subagents never post their own comments or relabel, one open
+          agent PR at a time. Flag a step that hands a subagent the write path.
+        - `.claude/hooks/*.sh` runs under bash while the agent tool shell is zsh. Flag
+          shell-specific syntax whose behaviour differs between them.
+        - In `.claude/settings.json`, flag a new permission entry that broadens write or
+          network access beyond what the change needs.
 
   # ---------------------------------------------------------------------------
   # When reviews run. Drafts included, and pausing disabled, so every pushed

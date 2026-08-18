@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # A gate run has to be able to name the commit it is asserting about, and
+  # neither push nor pull_request can be aimed at a tag. No inputs are needed:
+  # `gh workflow run <file> --ref <tag>` carries the ref itself (#445).
+  workflow_dispatch:
 
 permissions:
   contents: read

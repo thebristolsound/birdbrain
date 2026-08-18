@@ -61,19 +61,27 @@ must be green on the same commit, all three jobs:
 
 Notes worth knowing before you read a green tick as meaning more than it does:
 
-- Both workflows run on `push` to `main` and on pull requests, **not on tags**, and neither
-  declares `workflow_dispatch`. There is therefore no way to aim a run at a tag: `gh workflow
-  run` has no dispatch trigger to fire, and `gh run rerun` only replays the commit its
-  original run used. **Cut the tag at a commit that already has a green `main` run** — if the
-  commit is not on `main` yet, push it to `main` first, wait for that run, then tag it. A
-  green run on a different commit is not evidence about this build.
-- Adding `workflow_dispatch` to `ci.yml` and `security.yml` would remove that constraint and
-  let a run be aimed at an arbitrary ref. It is filed separately, not a prerequisite for
-  running this gate.
+- Both workflows run on `push` to `main`, on pull requests, and — since #445 — on
+  `workflow_dispatch`. **Prefer cutting the tag at a commit that already has a green `main`
+  run**: if the commit is not on `main` yet, push it to `main` first, wait for that run, then
+  tag it. That is no longer the only path. When the tagged commit has no green run of its
+  own, dispatch one at the tag directly:
+
+  ```sh
+  gh workflow run ci.yml --ref v1.0.1-beta.18
+  gh workflow run security.yml --ref v1.0.1-beta.18
+  ```
+
+  Either way, a green run on a *different* commit is not evidence about this build. Note that
+  `gh run rerun` is still not a substitute — it only replays the commit its original run used.
+- A dispatched run is not identical to the `push` run it stands in for: `github.event_name` is
+  `workflow_dispatch`, and `github.base_ref` is empty. Only one step in either workflow reads
+  those (the next note), and it skips.
 - The `test` job's diff-coverage step is gated `if: github.event_name == 'pull_request'`
-  (`.github/workflows/ci.yml:97`), so `scripts/diff-coverage.mjs` does **not** run on the
-  push-to-`main` run this section reads. Diff coverage is a per-PR gate; a green `test` here
-  means the suite and the project-wide coverage thresholds passed, nothing more.
+  (`.github/workflows/ci.yml:116`), so `scripts/diff-coverage.mjs` does **not** run on the
+  push-to-`main` run this section reads, nor on a dispatched one. Diff coverage is a per-PR
+  gate; a green `test` here means the suite and the project-wide coverage thresholds passed,
+  nothing more.
 - `BIRDBRAIN_REQUIRE_OPENSSL=1` is what stops the OpenSSL-dependent timestamp tests from
   turning green-by-skipping (`tests/helpers/openssl.ts`). Locally, run
   `BIRDBRAIN_REQUIRE_OPENSSL=1 pnpm test` for the same reason.

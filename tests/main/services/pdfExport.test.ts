@@ -49,6 +49,7 @@ vi.mock('electron', () => ({
 import { buildPdfMetadataRows, renderCapturePdf } from '@main/services/pdfExport'
 import type { Capture, TrustedTime } from '@shared/types'
 import type { TrustedTimeResult } from '@shared/verify/trustedTime'
+import { TRUSTED_TIME_LABELS, TRUSTED_TIME_UNNAMED_TSA } from '@shared/trustedTimeDisclosure'
 
 const CAPTURE: Capture = {
   id: 'cap-1',
@@ -82,7 +83,7 @@ describe('buildPdfMetadataRows — trusted time (#509)', () => {
     // local-clock floor and the mirror's claim must not survive anywhere in it.
     const row = trustedTimeRow('rfc3161', { trustedTime: 'none' })
 
-    expect(row).toBe('Local clock only — no RFC 3161 token is retained for this capture')
+    expect(row).toBe('Local clock only: no RFC 3161 token is retained for this capture')
     expect(row).not.toContain('rfc3161')
   })
 
@@ -110,22 +111,46 @@ describe('buildPdfMetadataRows — trusted time (#509)', () => {
     // The asserted time is rendered like every other timestamp on the cover:
     // ISO first, operator-local rendering in parentheses after it.
     expect(row).toContain(
-      'RFC 3161 token retained — freetsa.org asserts the capture digest existed no later than ' +
+      'RFC 3161 token retained: freetsa.org asserts the capture digest existed no later than ' +
         '2026-08-17T10:00:04.000Z ('
     )
   })
 
-  it('falls back to unnamed authority and token time when the token carries neither', () => {
-    expect(trustedTimeRow(undefined, { trustedTime: 'rfc3161' })).toBe(
-      'RFC 3161 token retained — the configured RFC 3161 authority asserts the capture digest ' +
-        'existed no later than the time recorded in the retained token'
+  it('says the TSA identity is unrecorded when the token carries none (#519)', () => {
+    // Known answer: the row must not name this install's configured authority —
+    // the token may be foreign (archive import) or predate a settings change.
+    const row = trustedTimeRow(undefined, { trustedTime: 'rfc3161' })
+
+    expect(row).toBe(
+      'RFC 3161 token retained: an RFC 3161 authority whose identity is not recorded in the ' +
+        'retained token asserts the capture digest existed no later than the time recorded in ' +
+        'the retained token'
     )
+    expect(row).toContain(TRUSTED_TIME_UNNAMED_TSA)
+    expect(row).not.toContain('configured')
   })
 
-  it('discloses a pending stamp as the local clock', () => {
-    expect(trustedTimeRow('rfc3161', { trustedTime: 'pending' })).toBe(
-      'Local clock only — an RFC 3161 token was requested but has not been obtained'
+  it('discloses a pending stamp with its own label, not the none label (#519)', () => {
+    const row = trustedTimeRow('rfc3161', { trustedTime: 'pending' })
+
+    expect(row).toBe(
+      'Local clock — token pending: an RFC 3161 token was requested but has not been obtained'
     )
+    expect(row.startsWith(TRUSTED_TIME_LABELS.none)).toBe(false)
+  })
+
+  it('leads every row with the label report.html uses for the same axis (#519)', () => {
+    // The two operator-facing artifacts share one label vocabulary; this pins
+    // that the PDF actually renders it rather than a paraphrase.
+    const cases: TrustedTimeResult[] = [
+      { trustedTime: 'rfc3161', tsaName: 'tsa.example.net', stampedAt: '2026-08-17T10:00:04.000Z' },
+      { trustedTime: 'pending' },
+      { trustedTime: 'none' }
+    ]
+    for (const resolved of cases) {
+      const row = trustedTimeRow(undefined, resolved)
+      expect(row.startsWith(`${TRUSTED_TIME_LABELS[resolved.trustedTime]}: `)).toBe(true)
+    }
   })
 
   it('always emits the row — an unresolvable axis is stated, never omitted', () => {
@@ -172,7 +197,7 @@ describe('renderCapturePdf — cover injection (#509)', () => {
 
     expect(pdf.toString()).toBe('%PDF-1.4')
     const script = injectedCoverScript()
-    expect(script).toContain('Local clock only — no RFC 3161 token is retained for this capture')
+    expect(script).toContain('Local clock only: no RFC 3161 token is retained for this capture')
     expect(script).not.toContain('rfc3161')
   })
 

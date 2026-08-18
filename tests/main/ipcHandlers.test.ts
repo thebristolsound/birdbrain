@@ -518,7 +518,7 @@ describe('ipcHandlers — captures', () => {
       const rows = await exportPdfCoverRows('rfc3161')
 
       expect(trustedTimeRow(rows)).toBe(
-        'Local clock only — no RFC 3161 token is retained for this capture'
+        'Local clock only: no RFC 3161 token is retained for this capture'
       )
     })
 

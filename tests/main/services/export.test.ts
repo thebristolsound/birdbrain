@@ -18,6 +18,7 @@ import {
   verifyManifestChain
 } from '@main/services/manifest'
 import { canonicalStringify } from '@shared/verify'
+import { TRUSTED_TIME_LABELS, TRUSTED_TIME_UNNAMED_TSA } from '@shared/trustedTimeDisclosure'
 import { ingestMhtmlCapture } from '@main/services/captureLifecycle'
 import { createCaptureLifecycle, type CaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
@@ -1006,6 +1007,7 @@ describe('export', () => {
     // A v2+ capture with no timestamp entry is 'pending' by the manifest, so
     // that is what the exhibit must state — not the mirror's 'rfc3161'.
     expect(html).toContain('Local clock — token pending')
+    expect(html).toContain(TRUSTED_TIME_LABELS.pending)
     expect(html).not.toContain('RFC 3161 token retained')
   })
 
@@ -1090,7 +1092,49 @@ describe('export', () => {
     // snapshot, so a claimed token is always a packaged token.
     expect(packagedTokens).toHaveLength(1)
     expect(html).toContain('RFC 3161 token retained')
+    expect(html).toContain(TRUSTED_TIME_LABELS.rfc3161)
     expect(html).toContain(packagedTokens[0])
+  })
+
+  it('does not name the configured TSA for a token that carries no authority (#519)', async () => {
+    const { capture } = await ingest(caseId, '<html>unnamed</html>')
+    // A valid token whose TSTInfo omits the tsa GeneralName — the identity of
+    // the issuer is not recoverable from the token, so the report must not fill
+    // it in from this install's settings.
+    const token = buildSyntheticToken({
+      contentHash: capture.hash,
+      genTime: new Date('2026-04-05T12:01:00.000Z')
+    })
+    appendManifestEntry(join(tempDir, 'captures', caseId), {
+      type: 'timestamp',
+      caseId,
+      captureContentHash: capture.hash,
+      timestamp: '2026-04-05T12:01:00.000Z',
+      tsaToken: token.toString('base64'),
+      operatorId: 'op',
+      operatorName: 'Test Operator',
+      toolVersion: '0.1.0'
+    })
+
+    const outputPath = join(tempDir, 'unnamed-tsa.html')
+    await generateReport(
+      caseId,
+      {
+        format: 'html',
+        include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
+        investigatorName: 'Test',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const html = readFileSync(outputPath, 'utf-8')
+    expect(html).toContain(TRUSTED_TIME_LABELS.rfc3161)
+    expect(html).toContain(
+      `${TRUSTED_TIME_UNNAMED_TSA} asserts that the capture content digest existed no later ` +
+        'than 2026-04-05T12:01:00Z'
+    )
+    expect(html).not.toContain('the configured RFC 3161 authority')
   })
 
   it('numbers legend entries with the pin numbers burned into the image', async () => {

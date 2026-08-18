@@ -1,6 +1,6 @@
 {
   "name": "birdbrain",
-  "version": "1.0.1-beta.18",
+  "version": "1.0.1-beta.19",
   "description": "Open source web investigation & capture tool",
   "main": "./out/main/index.js",
   "private": true,
@@ -82,6 +82,9 @@
       "target": [
         "nsis"
       ]
+    },
+    "nsis": {
+      "artifactName": "${productName}-Setup-${version}.${ext}"
     },
     "mac": {
       "target": [

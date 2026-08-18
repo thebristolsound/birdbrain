@@ -124,7 +124,7 @@ describe('updater service — check transitions', () => {
     expect(result.state).toBe('available')
     expect(result.availableVersion).toBe('2.0.0')
     expect(result.releaseNotesUrl).toBe(
-      'https://github.com/thebristolsound/birdbrain/releases/tag/v2.0.0'
+      'https://github.com/thebristolsound/birdbrain-releases/releases/tag/v2.0.0'
     )
     expect(emitted.map((s) => s.state)).toContain('checking')
     expect(emitted.map((s) => s.state)).toContain('available')
@@ -391,7 +391,7 @@ describe('updater service — download & install', () => {
     expect(status.state).toBe('downloaded')
     expect(status.availableVersion).toBe('2.0.0')
     expect(status.releaseNotesUrl).toBe(
-      'https://github.com/thebristolsound/birdbrain/releases/tag/v2.0.0'
+      'https://github.com/thebristolsound/birdbrain-releases/releases/tag/v2.0.0'
     )
     expect(emitted.map((s) => s.state)).toEqual(
       expect.arrayContaining(['available', 'downloading', 'downloaded'])

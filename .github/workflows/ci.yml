@@ -36,10 +36,19 @@ env:
   # (#620, and the same mirror behind #475 and #539). Failing over up front costs
   # nothing when Azure is healthy. Interpolated into every apt step so the two cannot
   # drift apart.
+  #
+  # The target is /etc/apt/apt-mirrors.txt, NOT sources.list: the runner image points
+  # its sources at `mirror+file:/etc/apt/apt-mirrors.txt` and lists the hosts there, so
+  # rewriting sources.list edits a file that names no mirror and changes nothing. A run
+  # of this workflow with the sources.list version still fetched from Azure throughout —
+  # verified in the e2e job log, which is the only thing that distinguishes "the rewrite
+  # worked" from "Azure happened to be healthy".
+  #
+  # Rewrite rather than delete the line: the file may list Azure alone, and an empty
+  # mirrorlist breaks apt outright. A duplicated archive.ubuntu.com entry is inert.
   DROP_AZURE_MIRROR: >-
     sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g'
-    /etc/apt/sources.list /etc/apt/sources.list.d/*.list
-    /etc/apt/sources.list.d/*.sources 2>/dev/null || true
+    /etc/apt/apt-mirrors.txt 2>/dev/null || true
 
 # Draft PRs are gated at the `changes` job below, which every other job needs — a
 # skipped `changes` skips all five. A draft is not asking to merge, and the author has

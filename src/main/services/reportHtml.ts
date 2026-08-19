@@ -1243,8 +1243,12 @@ h2 { font-size: 15pt; font-weight: 700; letter-spacing: -0.01em; color: var(--in
 
 /* Steps ----------------------------------------------------------------- */
 .steps { list-style: none; counter-reset: step; }
-.steps > li { counter-increment: step; display: grid; grid-template-columns: 20pt 1fr; gap: 12pt; padding: 8pt 0; border-bottom: 1px solid var(--hair); break-inside: avoid; font-size: 10.5pt; line-height: 1.5; }
-.steps > li::before { content: counter(step); font-family: var(--mono); font-weight: 700; color: var(--ink); }
+/* Deliberately not a grid. These items carry inline <strong> and <code>, and every inline
+   child of a grid container becomes its own grid item — the prose landed in the 20pt counter
+   column and wrapped one word per line (#633). Absolute positioning keeps the same 32pt
+   indent without making the item a container. */
+.steps > li { counter-increment: step; position: relative; padding: 8pt 0 8pt 32pt; border-bottom: 1px solid var(--hair); break-inside: avoid; font-size: 10.5pt; line-height: 1.5; }
+.steps > li::before { content: counter(step); position: absolute; left: 0; top: 8pt; font-family: var(--mono); font-weight: 700; color: var(--ink); }
 
 /* Notes & alerts (greyscale-safe: weight and rules carry the emphasis) --- */
 .note { border-left: 3px solid var(--ink); padding: 8pt 0 8pt 11pt; margin-top: 13pt; break-inside: avoid; }
@@ -1332,7 +1336,7 @@ td.num, th.num { width: 22pt; font-weight: 700; color: var(--ink); }
   .plate-grid { gap: 0; }
   .rail { border-top: none; }
   .plate-main { margin-top: 16pt; }
-  .scope-row, .legend-row, .steps > li { grid-template-columns: 1fr; gap: 4pt; }
+  .scope-row, .legend-row { grid-template-columns: 1fr; gap: 4pt; }
   .sig-grid { grid-template-columns: 1fr; gap: 24pt; }
   .tally { gap: 14pt; }
   .case-name { font-size: 20pt; }

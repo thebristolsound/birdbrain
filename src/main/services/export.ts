@@ -34,7 +34,11 @@ import {
 import type { TrustedTimeResult } from '@shared/verify'
 import { buildCertification, resolveToolVersion } from '@main/services/certification'
 import { buildHtmlReport } from '@main/services/reportHtml'
-import type { PackagedArtifacts, ReportData } from '@main/services/reportHtml'
+import type {
+  EntrySignatureStatus,
+  PackagedArtifacts,
+  ReportData
+} from '@main/services/reportHtml'
 import { VERIFY_RUNBOOK } from '@main/services/verifyRunbook'
 import type {
   Capture,
@@ -149,6 +153,45 @@ export function resolveExportTrustedTime(
 }
 
 /**
+ * Per-capture signature status, folded out of the same manifest snapshot the
+ * package is built from (#581). Pre-signing entries carry no `signature` and are
+ * grandfathered by manifestChain.ts, so the report has to name them rather than
+ * present them as plain "Verified".
+ *
+ * The discriminator is `schemaVersion`, not `toolVersion`: schemaVersion is what
+ * the verifier itself branches on, and reading the version that decides
+ * enforcement keeps this from drifting away from it. Absent schemaVersion means
+ * a v1 entry, matching readEntries' lenient dialect.
+ *
+ * Where a capture has more than one entry — a recapture supersedes an earlier
+ * one — the LAST entry wins, since that is the entry the package's own chain
+ * position cites.
+ */
+export function resolveEntrySignatures(
+  captures: Capture[],
+  entries: Record<string, unknown>[]
+): Map<string, EntrySignatureStatus> {
+  const byCaptureId = new Map<string, EntrySignatureStatus>()
+
+  for (const entry of entries) {
+    if (entry.type !== 'capture' || typeof entry.captureId !== 'string') continue
+    const schemaVersion = typeof entry.schemaVersion === 'number' ? entry.schemaVersion : 1
+    byCaptureId.set(
+      entry.captureId,
+      schemaVersion >= 2 && typeof entry.signature === 'string' ? 'signed' : 'unsigned-legacy'
+    )
+  }
+
+  // Captures with no chain entry are stated as such rather than left absent, so
+  // a missing key in the report can only mean a capture this export never saw.
+  for (const capture of captures) {
+    if (!byCaptureId.has(capture.id)) byCaptureId.set(capture.id, 'no-entry')
+  }
+
+  return byCaptureId
+}
+
+/**
  * Live manifest read, for the pre-export dialog: nothing is being packaged, so
  * there is no snapshot to resolve against and the freshest answer is the right
  * one. generateReport deliberately does not call this — it resolves once from
@@ -207,6 +250,7 @@ export async function generateReport(
     manifestHead: null,
     packagedPaths: new Map(),
     trustedTimeByCaptureId: new Map(),
+    entrySignatureByCaptureId: new Map(),
     tsaTrustAnchorBundled: getTsaTrustBundle(settings.tsaUrl).bundled
   }
 
@@ -278,6 +322,7 @@ export async function generateReport(
   )
   data.preflight = trustedTime.preflight
   data.trustedTimeByCaptureId = trustedTime.byCaptureId
+  data.entrySignatureByCaptureId = resolveEntrySignatures(captures, manifest.entries)
 
   onProgress?.('Generating report...', 80)
   const html = buildHtmlReport(data, options)

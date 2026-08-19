@@ -89,6 +89,20 @@ export interface PackagedArtifacts {
  * fields the old renderer did not have access to: caseId, manifestHead,
  * toolVersion and packagedPaths.
  */
+/**
+ * Whether a capture's manifest entry carries a per-entry RSA signature.
+ *
+ * `unsigned-legacy` is a `schemaVersion` 1 entry: per-entry signing was added
+ * after the chain itself, so entries written before it have no `signature`
+ * field. manifestChain.ts grandfathers them deliberately — they verify on chain
+ * linkage alone — but a reader must be able to tell them apart from a signed
+ * entry without opening manifest.jsonl (#581).
+ *
+ * `no-entry` is a capture with no `capture` entry in the chain at all, which is
+ * the older "legacy record" case the integrity axis already reports.
+ */
+export type EntrySignatureStatus = 'signed' | 'unsigned-legacy' | 'no-entry'
+
 export interface ReportData {
   caseId: string
   caseName: string
@@ -129,6 +143,12 @@ export interface ReportData {
    * resolveExportTrustedTime in export.ts.
    */
   trustedTimeByCaptureId: Map<string, TrustedTimeResult>
+  /**
+   * Per-entry signature status, keyed by capture id, resolved from the same
+   * manifest snapshot — see resolveEntrySignatures in export.ts. A capture with
+   * no key here is reported as `no-entry` rather than as signed (#581).
+   */
+  entrySignatureByCaptureId: Map<string, EntrySignatureStatus>
   /**
    * Whether tsa-root.pem is shipped for the configured TSA. False for a
    * non-default authority, where tsa-intermediates.pem holds only
@@ -196,6 +216,7 @@ interface ExhibitView {
   verification?: HashVerification
   integrity: StateView
   time: StateView & { basis: TrustedTime }
+  entrySignature: StateView
   /** base64 PNG as reproduced in this report, if screenshots were included. */
   screenshot?: string
   pins: AnnotationPin[]
@@ -246,6 +267,9 @@ function buildExhibits(data: ReportData, options: ExportOptions): ExhibitView[] 
       verification,
       integrity: integrityView(verification, capture),
       time: { basis: trustedTime.trustedTime, ...trustedTimeView(trustedTime) },
+      entrySignature: entrySignatureView(
+        data.entrySignatureByCaptureId.get(capture.id) ?? 'no-entry'
+      ),
       screenshot: data.screenshots.get(capture.id),
       pins: data.pins.get(capture.id) ?? [],
       annotationsBurned: packaged.imageAnnotated,
@@ -310,6 +334,37 @@ function integrityView(verification: HashVerification | undefined, capture: Capt
       return {
         label: 'Unknown',
         detail: 'The verification result for this capture could not be interpreted.'
+      }
+  }
+}
+
+// Stated per exhibit because it is not uniform across a chain: a case older
+// than the signing feature carries both kinds, and presenting the unsigned ones
+// as plain "Verified" lets a reader infer a guarantee no entry gives them
+// (#581). Absence is legitimate here — it is not a finding of tampering.
+function entrySignatureView(status: EntrySignatureStatus): StateView {
+  switch (status) {
+    case 'signed':
+      return {
+        label: 'Present',
+        detail:
+          'The manifest entry for this capture carries an RSA signature over its entry ' +
+          'hash, verifiable against the enclosed public key.'
+      }
+    case 'unsigned-legacy':
+      return {
+        label: 'Absent (pre-signing tool version)',
+        detail:
+          'This entry was written before per-entry signing existed, so it carries no ' +
+          'signature. It is covered by chain linkage and by any timestamp appended later, ' +
+          'and by nothing else. This is expected for an older entry, not a sign of alteration.'
+      }
+    case 'no-entry':
+      return {
+        label: 'No manifest entry',
+        detail:
+          'No entry for this capture was found in the chain, so there is no signature to ' +
+          'report and no chain position to cite.'
       }
   }
 }
@@ -968,6 +1023,12 @@ function renderExhibit(e: ExhibitView, total: number): string {
       ${railRow(
         'Trusted time',
         `<span class="strong">${esc(e.time.label)}</span><span class="sub">${esc(e.time.detail)}</span>`
+      )}
+      ${railRow(
+        'Entry signature',
+        `<span class="strong">${esc(e.entrySignature.label)}</span><span class="sub">${esc(
+          e.entrySignature.detail
+        )}</span>`
       )}
 
       <p class="micro-heading">Stored artefacts</p>

@@ -44,7 +44,10 @@ either run section 5 first on a snapshot, or roll the VM back between them.
 ## 1. CI and Security green — must pass
 
 The `CI` workflow (`.github/workflows/ci.yml`) must be green **on the tagged commit**, all
-five jobs:
+five jobs below. A sixth job, `changes`, decides whether those five run at all; on a `push`
+to `main` or a dispatched run it always lets them through, and its own path-filter step
+skips. Read it as plumbing, not as a gate — but a run where the five report `skipped`
+rather than `success` is **not** a pass:
 
 - [ ] `lint` — `pnpm lint`
 - [ ] `typecheck` — `pnpm typecheck`
@@ -86,14 +89,15 @@ Notes worth knowing before you read a green tick as meaning more than it does:
   commit is not evidence about this build. Note that `gh run rerun` is still not a substitute
   — it only replays the commit its original run used.
 - A dispatched run is not identical to the `push` run it stands in for. `github.event_name` is
-  `workflow_dispatch`, and `github.base_ref` is empty; only one step in either workflow reads
-  those (the next note), and it skips. The difference that bears hardest on what a green tick
+  `workflow_dispatch`, and `github.base_ref` is empty; two steps in either workflow read
+  those — the diff-coverage step (the next note) and the `changes` job's path filter — and
+  both skip. The difference that bears hardest on what a green tick
   means is the same rule as above: a dispatched run executes the **job definitions at the
   target ref**, not today's. These workflow files change often and materially, so dispatching
   at an older tag can green-tick a weaker gate than `main` currently runs. Read the result as
   evidence about that commit under the job set that commit carried.
 - The `test` job's diff-coverage step is gated `if: github.event_name == 'pull_request'`
-  (`.github/workflows/ci.yml:116`), so `scripts/diff-coverage.mjs` does **not** run on the
+  (`.github/workflows/ci.yml:187`), so `scripts/diff-coverage.mjs` does **not** run on the
   push-to-`main` run this section reads, nor on a dispatched one. Diff coverage is a per-PR
   gate; a green `test` here means the suite and the project-wide coverage thresholds passed,
   nothing more.

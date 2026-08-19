@@ -151,11 +151,17 @@ export function CapturesRoute() {
       )}
 
       <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <DialogContent onClose={() => setShowDeleteConfirm(false)} className="w-80 max-w-80 p-5">
+        <DialogContent onClose={() => setShowDeleteConfirm(false)} className="w-96 max-w-96 p-5">
           <DialogHeader className="mb-2">
             <DialogTitle className="text-sm">Delete Capture?</DialogTitle>
             <DialogDescription className="text-xs">
-              This will permanently remove the capture and its files. This cannot be undone.
+              This removes the capture and its files from this machine, and cannot be undone.
+              <br />
+              <br />
+              <strong className="text-text-primary">Deleting is not redacting.</strong> The case
+              manifest is append-only, so this capture&apos;s URL, capture time and hashes stay in
+              it permanently and ship in every export that includes the audit trail. A deletion
+              entry is appended recording that you removed it.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="mt-4">

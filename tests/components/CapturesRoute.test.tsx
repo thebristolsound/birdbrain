@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { Capture } from '@shared/types'
@@ -34,13 +34,31 @@ vi.mock('@renderer/components/notes/AddNoteModal', () => ({
   AddNoteModal: () => null
 }))
 vi.mock('@renderer/components/captures/CaptureDetailsPanel', () => ({
-  CaptureDetailsPanel: ({ onOpenExternal }: { onOpenExternal: () => void }) => (
-    <button onClick={onOpenExternal}>panel: open externally</button>
+  CaptureDetailsPanel: ({
+    onOpenExternal,
+    onDelete
+  }: {
+    onOpenExternal: () => void
+    onDelete: () => void
+  }) => (
+    <>
+      <button onClick={onOpenExternal}>panel: open externally</button>
+      <button onClick={onDelete}>panel: delete</button>
+    </>
   )
 }))
 vi.mock('@renderer/components/captures/CaptureDetailsRail', () => ({
-  CaptureDetailsRail: ({ onOpenExternal }: { onOpenExternal: () => void }) => (
-    <button onClick={onOpenExternal}>rail: open externally</button>
+  CaptureDetailsRail: ({
+    onOpenExternal,
+    onExpand
+  }: {
+    onOpenExternal: () => void
+    onExpand: () => void
+  }) => (
+    <>
+      <button onClick={onOpenExternal}>rail: open externally</button>
+      <button onClick={onExpand}>rail: expand</button>
+    </>
   )
 }))
 
@@ -64,6 +82,10 @@ const capture: Capture = {
 // jsdom's viewport is 1024px wide, under the route's 1100px collapse
 // threshold, so the rail is the variant that mounts here.
 const OPEN_CONTROL = 'rail: open externally'
+// Delete lives only on the full details panel, and at this viewport the rail is
+// what mounts — so the overlay panel has to be opened first.
+const EXPAND_CONTROL = 'rail: expand'
+const DELETE_CONTROL = 'panel: delete'
 
 let openExternal: ReturnType<typeof vi.fn>
 // Held so the assertion can be on identity: the handler must pass the original
@@ -121,5 +143,21 @@ describe('CapturesRoute', () => {
 
     await waitFor(() => expect(openExternal).toHaveBeenCalledOnce())
     expect(notifyError).not.toHaveBeenCalled()
+  })
+
+  // #582. The old copy said deletion "will permanently remove the capture and its
+  // files", which an operator reads as redaction. It is not: the append-only
+  // manifest keeps the URL, and every audit-trail export ships it. The disclosure
+  // has to be at the point of decision, so assert on the dialog rather than a doc.
+  it('discloses that deleting a capture does not redact it from the manifest', async () => {
+    renderRoute()
+
+    fireEvent.click(await screen.findByText(EXPAND_CONTROL))
+    fireEvent.click(await screen.findByText(DELETE_CONTROL))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText('Deleting is not redacting.')).toBeDefined()
+    expect(within(dialog).getByText(/URL, capture time and hashes stay in it permanently/)).toBeDefined()
+    expect(within(dialog).getByText(/ship in every export that includes the audit trail/)).toBeDefined()
   })
 })

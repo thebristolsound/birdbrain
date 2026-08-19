@@ -206,6 +206,11 @@ Two more things a restore does not do, both worth knowing before you click it:
   extensions.
 - **Local-only data, no backup** — captures live only on your machine. Export
   anything you can't lose before updating or uninstalling.
+- **Deleting a capture is not redacting it** — the files go, but the case manifest is
+  append-only: the deleted capture's URL, capture time and hashes stay in it permanently and
+  ship in every export that includes the audit trail. If a URL is sensitive, deleting the
+  capture does not take it out of the evidence package. Treat a case as contaminated by
+  anything you captured into it.
 - **Chrome/Chromium only** — no Firefox or Safari extension yet.
 - **"Verified" is not a live check** — Capture details shows the result of the last
   verification run, not the state of the file right now. Click **Re-verify** to get a current

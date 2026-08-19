@@ -135,8 +135,9 @@ Run the same eight steps per platform.
 - [ ] Sideload the extension from `birdbrain-extension.zip` (`chrome://extensions` →
       Developer mode → Load unpacked); the dashboard banner flips to **Browser Extension
       Connected** and the top-bar indicator reads **Connected**
-- [ ] Capture a page as HTML
-- [ ] Capture a page as MHTML
+- [ ] Capture a page (MHTML is the only format the extension produces; there is no
+      HTML capture path)
+- [ ] Capture a second, different page
 - [ ] View both captures in the app
 - [ ] Export the case
 - [ ] Quit, relaunch, confirm the case and both captures are still there
@@ -147,8 +148,9 @@ Run the same eight steps per platform.
 - [ ] Create a case
 - [ ] Sideload the extension; the dashboard banner flips to **Browser Extension Connected**
       and the top-bar indicator reads **Connected**
-- [ ] Capture a page as HTML
-- [ ] Capture a page as MHTML
+- [ ] Capture a page (MHTML is the only format the extension produces; there is no
+      HTML capture path)
+- [ ] Capture a second, different page
 - [ ] View both captures in the app
 - [ ] Export the case
 - [ ] Quit, relaunch, confirm the case and both captures are still there

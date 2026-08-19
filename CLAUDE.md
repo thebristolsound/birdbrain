@@ -144,7 +144,7 @@ Light/dark theme support using CSS custom properties and Tailwind v4:
 
 ### Capture server
 
-Hono HTTP server (`src/main/services/captureServer.ts`) on port 19845 receives captures from the Chrome extension. Supports both HTML and MHTML forensic capture formats. Captures are stored as files on disk organized by case directory with SHA-256 hash verification and hash-chained audit manifests.
+Hono HTTP server (`src/main/services/captureServer.ts`) on port 19845 receives captures from the Chrome extension. MHTML is the only format the extension produces; `format: 'html'` is a read-only legacy value for pre-v11 captures. Captures are stored as files on disk organized by case directory with SHA-256 hash verification and hash-chained audit manifests.
 
 ### Chrome extension
 

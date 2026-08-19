@@ -325,6 +325,24 @@ export function verifyHash(content: string, expectedHash: string): boolean {
 
 This supports the integrity verification feature used in evidence export and the `HashVerification` type in `src/shared/types.ts` (line 124), which reports `verified`, `tampered`, or `missing` status per capture.
 
+### Deletion Is Not Redaction
+
+Each case directory carries a hash-chained, append-only manifest (`manifest.jsonl`). Deleting a
+capture removes its database row and its files, and appends a `deletion` entry recording the
+capture id, the time, the content hash and the operator. It does **not** remove the original
+`capture` entry — that is what append-only means, and it is what lets a reader confirm the chain
+was never rewritten.
+
+The consequence is that **the deleted capture's URL survives deletion**, along with its capture
+time and hashes, because those fields live on the `capture` entry rather than the `deletion` one.
+Any export that includes the audit trail (the default) ships that manifest, so a URL captured in
+error is still in the evidence package handed to a third party.
+
+Deletion is therefore a storage operation, not a redaction mechanism. A case is contaminated by
+everything ever captured into it, and the remedy for a sensitive URL is a new case rather than a
+delete. Redaction proper — a URL commitment scheme that lets an entry be verified without
+disclosing what it points at — is tracked separately.
+
 ## 7. Observability
 
 ### CaptureEvent Types

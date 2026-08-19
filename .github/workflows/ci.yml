@@ -36,7 +36,7 @@ env:
 # already run the same gates locally (lint, typecheck, test, coverage:diff, build).
 #
 # `agent-pr` is exempt and must stay exempt: the dispatch routine polls `gh pr checks`
-# on a draft agent PR and will not start the reviewer pre-pass until the four ci.yml
+# on a draft agent PR and will not start the reviewer pre-pass until the five ci.yml
 # jobs report a conclusion (.claude/skills/dispatch/SKILL.md, "Wait for CI first").
 # Skipping CI there would strand that loop. The label is applied at `gh pr create`
 # time, so the `opened` event already carries it — which is why `labeled` is not in

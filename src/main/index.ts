@@ -13,6 +13,7 @@ import {
 } from '@main/services/captureServer'
 import { registerIpcHandlers } from '@main/ipcHandlers'
 import { resolveWindowSize, MIN_WINDOW_SIZE } from '@main/windowSize'
+import { revealWhenReady } from '@main/windowReveal'
 import { initSettings, getSettings } from '@main/services/settings'
 import { initInstallationId, getInstallationId } from '@main/services/installationId'
 import { initSigningKey, SigningKeyUnacknowledgedError } from '@main/services/signingKey'
@@ -159,9 +160,9 @@ function createWindow(): BrowserWindow {
 
   mainWindow = win
 
-  win.on('ready-to-show', () => {
-    win.show()
-  })
+  // Not a bare ready-to-show handler: that event can never fire under Wayland on
+  // Electron 38+, which strands the window hidden forever (#643).
+  revealWhenReady(win)
 
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = null
@@ -256,6 +257,10 @@ if (!gotSingleInstanceLock) {
 
   // Windows/Linux: the second launch hands its argv to the primary instance.
   app.on('second-instance', (_event, argv) => {
+    // Unconditionally, before the dispatch: an ordinary relaunch carries no deep link,
+    // and dispatchDeepLink() returns early on one — so routing focus through it alone
+    // meant a relaunch raised nothing and the second process exited 0 in silence (#642).
+    focusMainWindow()
     dispatchDeepLink(findDeepLinkInArgv(argv))
   })
 

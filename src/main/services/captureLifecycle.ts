@@ -524,11 +524,13 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
   // The single-capture delete body, shared by `delete` and `deleteMany`.
   // A per-capture fault is reported as a `rolled_back` outcome whose `stage`
   // names the call that threw; for an MHTML capture the manifest seam has
-  // already rolled the entry back by then.
+  // already rolled the entry back by then. The one throw left is a manifest
+  // fault (the rollback itself failed), which no outcome can state honestly.
   async function deleteOne(capture: Capture, reason?: string): Promise<DeleteOneResult> {
     const captureId = capture.id
     if (capture.format === 'mhtml') {
       const caseDir = store.caseDir(capture.caseId)
+      const headBefore = getManifestHead(caseDir).nextIndex
       let stage: 'artifacts' | 'db' = 'artifacts'
       try {
         await withDeletionEntry(
@@ -557,6 +559,11 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
         )
         return { outcome: { captureId, status: 'deleted' } }
       } catch (err) {
+        // `rolled_back` asserts the entry is not in the chain. If the rollback
+        // truncate itself failed the entry is still there (the #622 artefact),
+        // so that claim would be false: surface the manifest fault as a throw
+        // rather than a tidy outcome.
+        if (getManifestHead(caseDir).nextIndex !== headBefore) throw err
         return {
           outcome: { captureId, status: 'rolled_back', stage, error: outcomeError(err) },
           cause: err

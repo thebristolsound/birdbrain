@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, rmSync, existsSync, readFileSync } from 'fs'
+import { mkdtempSync, rmSync, existsSync, readFileSync, chmodSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
@@ -781,6 +781,49 @@ describe('createCaptureLifecycle.deleteMany (#394)', () => {
     await expect(lifecycle.delete(legacy.id)).rejects.toThrow('EACCES')
     expect(getCapture(legacy.id)).toBeDefined()
   })
+
+  // truncateSync on a read-only file fails for an unprivileged user only.
+  it.skipIf(process.getuid?.() === 0)(
+    'throws rather than report rolled_back when the rollback truncate itself fails and the entry stays in the chain',
+    async () => {
+      const probe = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+      const [a, b] = await ingestN(probe, 2)
+      const manifestPath = join(caseDir, 'manifest.jsonl')
+      const real = createCaptureStore({ getRoot: getStorageRoot })
+      // The unlink fault lands after the entry is appended; making the manifest
+      // read-only at that moment makes the seam's rollback truncate fail too.
+      const lifecycle = createCaptureLifecycle({
+        selectorLifecycle: selectorStub,
+        store: {
+          ...real,
+          deleteArtifacts: (cid, capId) => {
+            if (capId === b.id) {
+              chmodSync(manifestPath, 0o444)
+              throw new Error('EBUSY: simulated unlink failure')
+            }
+            real.deleteArtifacts(cid, capId)
+          }
+        }
+      })
+      const baseIndex = getManifestHead(caseDir).nextIndex
+
+      try {
+        await expect(lifecycle.deleteMany(caseId, [a.id, b.id])).rejects.toThrow()
+      } finally {
+        chmodSync(manifestPath, 0o644)
+      }
+
+      // The #622 artefact: a's entry committed, b's entry still in the chain
+      // with b's files and row intact. No result claimed otherwise.
+      const entries = manifestEntries()
+      expect(entries).toHaveLength(baseIndex + 2)
+      expect(entries.slice(baseIndex).map((e) => e.captureId)).toEqual([a.id, b.id])
+      expect(verifyManifestChain(caseDir).valid).toBe(true)
+      expect(getCapture(a.id)).toBeUndefined()
+      expect(getCapture(b.id)).toBeDefined()
+      expect(mhtmlExists(b)).toBe(true)
+    }
+  )
 
   it('serialises two overlapping batches on one case: each id deleted exactly once, the other sees not_found', async () => {
     const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })

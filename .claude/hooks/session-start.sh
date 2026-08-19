@@ -100,6 +100,17 @@ if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   else
     log "WARNING: could not resolve the pinned Node via mise; 'node --version' may be wrong for this repo (see CLAUDE.md Node note)"
   fi
+
+  # Warm Serena's language-server cache once per worktree. Memories are committed and shared,
+  # but .serena/cache is gitignored, so a fresh worktree pays the full tsserver index on its
+  # first symbolic call — long enough to look like a hang. Bounded and never fatal.
+  if command -v serena >/dev/null 2>&1 && [ ! -d "$PROJECT_DIR/.serena/cache" ]; then
+    if (cd "$PROJECT_DIR" && timeout 120 serena project index >/dev/null 2>&1); then
+      log "serena: indexed $(basename "$PROJECT_DIR") (first session in this worktree)"
+    else
+      log "NOTE: serena project index skipped/failed; first symbolic call will be slow"
+    fi
+  fi
   exit 0
 fi
 

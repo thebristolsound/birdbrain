@@ -38,7 +38,10 @@ Python/
 
 # Specs (from birdbrain-specs repo)
 
-.serena
+# Serena: memories + project.yml are shared (committed); cache/local config stay local
+.serena/*
+!.serena/project.yml
+!.serena/memories/
 build/config.gypi
 .claude/settings.local.json
 

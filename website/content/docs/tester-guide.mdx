@@ -88,7 +88,19 @@ Preferred — the AppImage (no install needed, and updates replace it in place):
 
 ```bash
 chmod +x Birdbrain-<version>.AppImage
+sudo apt install libfuse2t64
 ./Birdbrain-<version>.AppImage
+```
+
+AppImages need FUSE 2, and Ubuntu stopped installing it by default — without it the app
+does not start, with an error that reads like a broken download rather than a missing
+library. On 22.04 and earlier the package is called `libfuse2` instead of `libfuse2t64`;
+if `apt` cannot find one, use the other.
+
+If you would rather not install anything, this runs the same build without FUSE:
+
+```bash
+./Birdbrain-<version>.AppImage --appimage-extract-and-run
 ```
 
 Alternative — the `.deb`:

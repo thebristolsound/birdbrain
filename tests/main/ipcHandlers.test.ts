@@ -114,6 +114,7 @@ vi.mock('@main/services/waybackMachine', async (importActual) => {
 
 // --- Real services ----------------------------------------------------------
 import { IPC_CHANNELS } from '@shared/ipc'
+import { MAX_BATCH_CAPTURE_IDS } from '@shared/constants'
 import type { BatchCountResult, BatchDeleteResult } from '@shared/ipc'
 import { registerIpcHandlers } from '@main/ipcHandlers'
 import type {
@@ -705,14 +706,16 @@ describe('ipcHandlers — batch operations (#394)', () => {
     expect(recaptureService.enqueue).toHaveBeenCalledTimes(1)
   })
 
-  it('every batch channel rejects malformed payloads before any lookup', async () => {
+  it('every batch channel rejects malformed or oversized payloads before any lookup', async () => {
     const bad = [
       undefined,
       null,
       {},
       { caseId },
       { caseId, captureIds: 'x' },
-      { caseId, captureIds: [1] }
+      { caseId, captureIds: [1] },
+      // One over the bound: the snapshot query binds a parameter per id.
+      { caseId, captureIds: Array.from({ length: MAX_BATCH_CAPTURE_IDS + 1 }, (_, i) => `id${i}`) }
     ]
     for (const channel of [
       IPC_CHANNELS.CAPTURES_DELETE_MANY,

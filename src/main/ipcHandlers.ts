@@ -1,6 +1,6 @@
 import { app, dialog, shell } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
-import { DEFAULT_ANALYSIS_SYSTEM_PROMPT } from '@shared/constants'
+import { DEFAULT_ANALYSIS_SYSTEM_PROMPT, MAX_BATCH_CAPTURE_IDS } from '@shared/constants'
 import { safeFilename } from '@shared/safeFilename'
 import type {
   CreateCaseParams,
@@ -99,14 +99,16 @@ const SELF_TEST_TIMEOUT_MS = 2000
 const MAX_REVEALABLE_PATHS = 64
 const revealablePaths = new Set<string>()
 
-// Shape check for every batch channel (#394). Rejects before any lookup so a
-// malformed payload can never reach a repo or the lifecycle.
+// Shape and size check for every batch channel (#394). Rejects before any
+// lookup so a malformed or oversized payload can never reach a repo or the
+// lifecycle.
 function validateBatchPayload(payload: unknown): CaptureBatchPayload {
   const p = payload as Partial<CaptureBatchPayload> | null | undefined
   if (
     !p ||
     typeof p.caseId !== 'string' ||
     !Array.isArray(p.captureIds) ||
+    p.captureIds.length > MAX_BATCH_CAPTURE_IDS ||
     !p.captureIds.every((id) => typeof id === 'string')
   ) {
     throw new IpcFailure('Invalid batch payload', 'INVALID_BATCH_PAYLOAD')

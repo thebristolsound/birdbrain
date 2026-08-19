@@ -198,6 +198,7 @@ describe('export', () => {
       url: 'birdbrain://pipeline-test',
       timestamp: '2026-04-05T12:00:00.000Z',
       contentHash: createHash('sha256').update('orphan').digest('hex'),
+      sizeBytes: 0,
       operatorId: 'op',
       operatorName: 'Test Operator',
       toolVersion: '0.1.0'

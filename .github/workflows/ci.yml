@@ -35,12 +35,25 @@ env:
 # skipped `changes` skips all five. A draft is not asking to merge, and the author has
 # already run the same gates locally (lint, typecheck, test, coverage:diff, build).
 #
-# `agent-pr` is exempt and must stay exempt: the dispatch routine polls `gh pr checks`
-# on a draft agent PR and will not start the reviewer pre-pass until the five ci.yml
-# jobs report a conclusion (.claude/skills/dispatch/SKILL.md, "Wait for CI first").
-# Skipping CI there would strand that loop. The label is applied at `gh pr create`
-# time, so the `opened` event already carries it — which is why `labeled` is not in
-# the trigger types above; adding it would run the full matrix on every label change.
+# Agent PRs are exempt and must stay exempt: the dispatch routine polls `gh pr checks`
+# on a draft agent PR and will not start the reviewer pre-pass until every check on the
+# head sha has reported a conclusion (.claude/skills/dispatch/SKILL.md, "Wait for CI
+# first"; the separate green bar there names `lint`, `typecheck`, `test` and `build`).
+# Skipping CI on a draft agent PR would strand that loop.
+#
+# The exemption keys on the PR author, with the label only as a fallback. `gh pr
+# create --label` is not atomic — `CreatePullRequestInput` has no `labelIds` field, so
+# `gh` issues a second mutation and the PR briefly exists unlabelled
+# (.claude/agents/birdbrain-implementer.md). On the last five agent PRs the label
+# landed 1s after creation. The `opened` payload has still carried it in all 13 agent
+# PRs checked, but that is a race won, not a guarantee, and it is a poor thing to
+# stake a 16-minute gate on. `user.login` is in the payload from the start and cannot
+# race; ADR-0012 makes that identity the contract — one identity authors every agent
+# PR. The label clause still covers a PR labelled after it was opened, from its next
+# push onward.
+#
+# Deliberately no `labeled` trigger: it would let any label change on any PR cancel an
+# in-flight run and start a fresh 16-minute one.
 jobs:
   # Answers one question for the five jobs below: did this change touch anything the
   # root toolchain builds? Six recent PRs changed only markdown and each paid the full
@@ -58,6 +71,7 @@ jobs:
     if: >-
       github.event_name != 'pull_request'
       || github.event.pull_request.draft == false
+      || github.event.pull_request.user.login == 'birdbrain-agent'
       || contains(github.event.pull_request.labels.*.name, 'agent-pr')
     timeout-minutes: 5
     outputs:

@@ -39,6 +39,18 @@ jobs:
           | **Ubuntu** — preferred | \`Birdbrain-${VERSION}.AppImage\` |
           | **Ubuntu** — alternative | \`birdbrain_${VERSION}_amd64.deb\` |
 
+          **On Ubuntu, the AppImage needs the execute bit and FUSE 2 before it will run:**
+
+          \`\`\`bash
+          chmod +x Birdbrain-${VERSION}.AppImage
+          sudo apt install libfuse2t64      # 22.04 and earlier: libfuse2
+          ./Birdbrain-${VERSION}.AppImage
+          \`\`\`
+
+          Ubuntu stopped installing FUSE 2 by default, and without it the app does not
+          start. If you would rather not install it, run the AppImage with
+          \`--appimage-extract-and-run\` instead.
+
           The Chrome extension ships **inside** the app — do not download it separately.
           After installing, use **Open extension folder** in the app and load that folder
           in Chrome, so the extension always matches your app version. (The

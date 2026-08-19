@@ -9,7 +9,7 @@ description: 'Product fit, onboarding, contribution areas, and governance. Start
 
 Birdbrain is an open-source, local-first desktop application for capturing, organizing, verifying, and exporting web evidence. It combines an Electron desktop app with a companion Chromium extension so investigators can preserve web pages as MHTML, screenshots, extracted text, metadata, annotations, and provenance inside named Cases. Each Capture is tied into a per-Case Manifest using SHA-256 hashes, chain links, local signatures, and optional RFC 3161 trusted timestamps.
 
-The project matters because web evidence is fragile. Pages change, disappear, personalize, or render differently across browsers and locations. Many investigative tools either depend on hosted platforms, require enterprise licensing, or obscure the evidence workflow behind proprietary systems. Birdbrain takes the opposite path: evidence stays on the Operator's machine by default, formats are inspectable, exports are portable, and the code is available under the MIT license.
+Web evidence is fragile. Pages change, disappear, personalize, or render differently across browsers and locations. Many investigative tools either depend on hosted platforms, require enterprise licensing, or obscure the evidence workflow behind proprietary systems. Birdbrain takes the opposite path: evidence stays on the Operator's machine by default, formats are inspectable, exports are portable, and the code is available under the MIT license.
 
 For adopters, Birdbrain is best understood as a capable evidence workstation, not a hosted case-management system. It is appropriate for investigators and small teams that value local custody and verifiable exports. For contributors, the project offers meaningful work across capture fidelity, verification, export, search, UI, release trust, testing, and privacy-preserving diagnostics.
 
@@ -57,7 +57,7 @@ Birdbrain intentionally does not try to be:
 - a browser automation crawler for unattended bulk collection; or
 - a runtime plugin marketplace.
 
-Those boundaries are important. They keep the core product understandable: Birdbrain captures and verifies local web evidence; it does not attempt to own every part of an investigative organization.
+Those boundaries keep the core product understandable: Birdbrain captures and verifies local web evidence; it does not attempt to own every part of an investigative organization.
 
 ## Solution Overview
 
@@ -152,7 +152,7 @@ The architecture separates three kinds of state:
 - **Manifest authority:** custody and integrity records binding artifacts to provenance.
 - **Database projections:** queryable, rebuildable state that supports the app experience.
 
-This separation is one of the codebase's strongest design choices. It prevents derived indexes and UI conveniences from becoming confused with evidence.
+The separation prevents derived indexes and UI conveniences from becoming confused with evidence.
 
 ### Request and Data Flow
 
@@ -182,7 +182,7 @@ Birdbrain does not currently expose a stable runtime plugin API. Its extension p
 - extension capture and popup code under `extension/src`;
 - tests under `tests` and `e2e`.
 
-That is a good trade-off for the current beta. A runtime plugin system would require additional answers around sandboxing, signing, compatibility, data custody, and contamination of evidence workflows.
+A runtime plugin system would require additional answers around sandboxing, signing, compatibility, data custody, and contamination of evidence workflows.
 
 ## Design Philosophy and Key Decisions
 
@@ -208,7 +208,7 @@ The trade-off is cross-store consistency. The codebase addresses this by central
 
 The codebase avoids putting forensic rules directly into HTTP handlers or UI handlers. Instead, Capture Lifecycle and Selector Lifecycle modules own multi-step invariants that matter across entry points.
 
-This is worth preserving. Contributors should be cautious about bypassing lifecycle modules for convenience. If a change affects evidence-bearing state, it probably belongs behind a lifecycle boundary.
+Contributors should be cautious about bypassing lifecycle modules for convenience. If a change affects evidence-bearing state, it probably belongs behind a lifecycle boundary.
 
 ### Integrity and Trusted Time Are Separate
 
@@ -227,7 +227,7 @@ This makes the verification path easier to audit and less likely to drift betwee
 
 ### Explicit Trade-Offs
 
-Birdbrain's design is unusually explicit about its limits:
+Birdbrain's design is explicit about its limits:
 
 - A determined Operator controlling the local machine can create a fresh internally consistent chain.
 - RFC 3161 timestamps constrain backdating but do not make the workstation trustworthy.
@@ -236,7 +236,7 @@ Birdbrain's design is unusually explicit about its limits:
 - Current releases are beta and unsigned.
 - Some loopback read endpoints expose local metadata to local processes.
 
-That candor improves trust. It gives contributors a clear map of what to improve and gives adopters a realistic basis for evaluation.
+That list gives contributors a clear map of what to improve and gives adopters a realistic basis for evaluation.
 
 ## Codebase Walkthrough
 
@@ -353,7 +353,7 @@ Birdbrain uses Vitest for unit and integration coverage across the Electron main
 
 Playwright E2E tests drive packaged Electron workflows such as app lifecycle, Case creation, MHTML capture, annotations, notes, recapture, export, forensics, tags, and archive import/export.
 
-This test shape is appropriate for the risk profile. Evidence logic has focused tests, while important user workflows have E2E coverage.
+Evidence logic has focused tests, while important user workflows have E2E coverage.
 
 ### CI/CD Overview
 
@@ -420,7 +420,7 @@ In particular:
 - loopback read endpoints currently expose some metadata to local processes; and
 - denial of service against the local Capture Server is out of scope.
 
-This threat model is a strength. It lets reviewers reason about Birdbrain's claims without relying on vague assurances.
+The stated boundaries let reviewers reason about Birdbrain's claims without relying on vague assurances.
 
 ## Observability and Operations
 
@@ -644,6 +644,6 @@ The most valuable community input will come from real investigative workflows:
 
 Birdbrain is a focused open-source application with a coherent architecture: capture web evidence locally, preserve source artifacts, bind them to a verifiable Manifest, separate integrity from trusted time, and export evidence in forms that can be reviewed outside the app.
 
-For adopters, the right framing is practical and precise. Birdbrain is not a hosted investigation platform or a legal guarantee. It is a local evidence workstation with unusually transparent custody mechanics, useful investigative workflows, and clear limits.
+For adopters, Birdbrain is not a hosted investigation platform or a legal guarantee. It is a local evidence workstation with unusually transparent custody mechanics, useful investigative workflows, and clear limits.
 
-For contributors, the project offers meaningful work at multiple levels. Documentation, tests, UI polish, diagnostics, extraction improvements, release hardening, verifier work, and capture-pipeline improvements can all raise trust in the tool. The best contributions will preserve Birdbrain's central discipline: source evidence remains distinct from derived analysis, lifecycle modules own forensic invariants, and the software should never claim more than it can prove.
+For contributors, the project offers meaningful work at multiple levels. Documentation, tests, UI polish, diagnostics, extraction improvements, release hardening, verifier work, and capture-pipeline improvements can all raise trust in the tool. The best contributions will preserve Birdbrain's central discipline: source evidence remains distinct from derived analysis, and lifecycle modules own forensic invariants.

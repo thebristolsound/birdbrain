@@ -257,6 +257,10 @@ if (!gotSingleInstanceLock) {
 
   // Windows/Linux: the second launch hands its argv to the primary instance.
   app.on('second-instance', (_event, argv) => {
+    // Unconditionally, before the dispatch: an ordinary relaunch carries no deep link,
+    // and dispatchDeepLink() returns early on one — so routing focus through it alone
+    // meant a relaunch raised nothing and the second process exited 0 in silence (#642).
+    focusMainWindow()
     dispatchDeepLink(findDeepLinkInArgv(argv))
   })
 

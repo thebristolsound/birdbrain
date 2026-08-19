@@ -22,6 +22,37 @@ jobs:
           # build/package code running after checkout could read it.
           persist-credentials: false
 
+      # A release page carries ~17 assets, four of which a tester wants. Generate the
+      # download guidance from the tag rather than hand-writing it per release, so the
+      # filenames on the page can never drift from the ones actually published (#603).
+      - name: Compose release notes
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG#v}"
+          cat > "$RUNNER_TEMP/release-notes.md" <<EOF
+          ## Which file do I download?
+
+          | You are on | Download |
+          | --- | --- |
+          | **Windows 10 / 11** | \`Birdbrain-Setup-${VERSION}.exe\` |
+          | **Ubuntu** — preferred | \`Birdbrain-${VERSION}.AppImage\` |
+          | **Ubuntu** — alternative | \`birdbrain_${VERSION}_amd64.deb\` |
+
+          Whichever you take, you also need **\`birdbrain-extension.zip\`** — the Chrome
+          extension. The app captures nothing without it.
+
+          Everything else on this page is machinery for the in-app updater
+          (\`latest*.yml\`, \`*.blockmap\`) or a build for a platform this round does not
+          support. Ignore it.
+
+          **Already running Birdbrain?** You do not need this page — **Settings → Updates →
+          Check for updates** installs this version in place.
+
+          Full setup instructions, including loading the extension into Chrome:
+          [Tester guide](https://thebristolsound.github.io/birdbrain/docs/tester-guide/).
+          EOF
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
@@ -34,6 +65,7 @@ jobs:
           target_commitish: main
           draft: false
           prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') }}
+          body_path: ${{ runner.temp }}/release-notes.md
 
   build-app:
     needs: create-release
@@ -46,10 +78,15 @@ jobs:
           # until pnpm ships node-gyp >=12.1 (pnpm/pnpm#10268).
           - os: windows-2022
             script: package:win
+            # latest.yml by name, not dist/*.yml — that also matches electron-builder's
+            # builder-debug.yml config dump, which is build debris and publishes runner
+            # paths on a public page (#603). The mac and linux legs are already narrow.
+            # Every line here is globbed, so a comment inside the block would be an
+            # unmatched pattern and fail_on_unmatched_files would fail the run.
             glob: |
               dist/*.exe
               dist/*.blockmap
-              dist/*.yml
+              dist/latest.yml
           - os: macos-latest
             script: package:mac
             glob: |

@@ -70,7 +70,10 @@ export interface CaptureLifecycleDeps {
 
 export interface CaptureLifecycle {
   ingest: (params: IngestParams) => Promise<IngestResult>
-  delete: (captureId: string) => Promise<boolean>
+  // `reason` is recorded on the manifest deletion entry. Pass it whenever the
+  // deletion is not an operator deleting evidence — a chain reader has no other
+  // way to tell a self-test cleanup from a real removal (#580).
+  delete: (captureId: string, reason?: string) => Promise<boolean>
   verify: (captureId: string) => Promise<HashVerification>
   reprocessCase: (caseId: string) => Promise<{ processed: number }>
 }
@@ -474,7 +477,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
       return result
     },
 
-    async delete(captureId) {
+    async delete(captureId, reason) {
       const capture = captureRepo.getCapture(captureId)
       if (!capture) return false
 
@@ -489,7 +492,8 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
               contentHash: capture.hash,
               operatorId: getInstallationId(),
               operatorName: getSettings().operatorName ?? '',
-              toolVersion: getToolVersion()
+              toolVersion: getToolVersion(),
+              ...(reason !== undefined ? { reason } : {})
             },
             () => {
               // Files first, DB row second. If the filesystem unlink throws,

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { existsSync, mkdtempSync, rmSync } from 'fs'
+import { existsSync, mkdtempSync, rmSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
@@ -22,7 +22,7 @@ import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSessionService, type SessionService } from '@main/services/session'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { getManifestHead } from '@main/services/manifest'
-import { MAX_SCREENSHOT_SIZE } from '@shared/constants'
+import { MAX_SCREENSHOT_SIZE, MANIFEST_FILENAME } from '@shared/constants'
 
 // Keep ingest hermetic: the corroboration-only TLS re-fetch (#123) would
 // otherwise open a real socket to https://example.com on every captured upload.
@@ -637,6 +637,32 @@ describe('captureServer', () => {
     expect(data.error).toBeUndefined()
   })
 
+  it('POST /api/captures/test leaves a deletion entry, not an orphan capture entry', async () => {
+    const testCase = createCase({ name: 'Pipeline Chain Case' })
+
+    const res = await serverPost('/api/captures/test')
+    expect((await readJson(res)).success).toBe(true)
+
+    const lines = readFileSync(join(tempDir, 'captures', testCase.id, MANIFEST_FILENAME), 'utf-8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+
+    const captures = lines.filter((e) => e.type === 'capture')
+    const deletions = lines.filter((e) => e.type === 'deletion')
+
+    // The self-test's capture entry is signed into a real case's chain, so the
+    // chain has to explain where it went. Before #580 the row and the files were
+    // deleted directly, leaving a capture entry with no files and no deletion —
+    // a package whose chain claimed more captures than it shipped.
+    expect(captures).toHaveLength(1)
+    expect(captures[0].url).toBe('birdbrain://pipeline-test')
+    expect(deletions).toHaveLength(1)
+    expect(deletions[0].captureId).toBe(captures[0].captureId)
+    expect(deletions[0].reason).toBe('pipeline-test')
+    expect(listCaptures(testCase.id)).toHaveLength(0)
+  })
+
   it('POST /api/captures/test rejects unauthenticated requests and writes nothing', async () => {
     const testCase = createCase({ name: 'Auth Test Case' })
     const caseDir = join(tempDir, 'captures', testCase.id)
@@ -653,10 +679,11 @@ describe('captureServer', () => {
     })
     expect(wrong.status).toBe(401)
 
-    // The handler's `finally` deletes the DB row but does NOT roll back the
-    // manifest append or remove the case dir, so listCaptures().length is
-    // unchanged even if the ingest ran. Assert truly persistent signals:
-    // the case dir was never created and no manifest entry was appended.
+    // An unauthenticated request is rejected before the handler runs at all, so
+    // nothing is ingested and nothing is cleaned up. Assert the persistent
+    // signals: the case dir was never created and no manifest entry appended.
+    // (When the handler does run, cleanup writes a deletion entry — see the
+    // preceding test.)
     expect(existsSync(caseDir)).toBe(false)
     expect(getManifestHead(caseDir).nextIndex).toBe(0)
   })

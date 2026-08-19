@@ -180,6 +180,83 @@ describe('export', () => {
     expect(content).toContain('Verified')
   })
 
+  it('reports chain captures the package does not contain rather than omitting them', async () => {
+    const { capture } = await ingest(
+      caseId,
+      '<html><body>Packaged evidence</body></html>',
+      'https://example.com/packaged',
+      'Packaged Page'
+    )
+
+    // A capture entry signed into the chain whose row and files are gone, with no
+    // deletion entry to account for it — the state the pipeline self-test used to
+    // leave behind (#580). The chain claims two captures; the package holds one.
+    appendManifestEntry(join(tempDir, 'captures', caseId), {
+      type: 'capture',
+      captureId: 'orphan-capture-id',
+      caseId,
+      url: 'birdbrain://pipeline-test',
+      timestamp: '2026-04-05T12:00:00.000Z',
+      contentHash: createHash('sha256').update('orphan').digest('hex'),
+      operatorId: 'op',
+      operatorName: 'Test Operator',
+      toolVersion: '0.1.0'
+    })
+
+    const outputPath = join(tempDir, 'orphan-evidence.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test User',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const entries = readStoredZipEntries(outputPath)
+    const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+      warnings: { unreconciledChainCaptureCount: number; unreconciledChainCaptureIds: string[] }
+      captures: Array<{ id: string }>
+    }
+
+    expect(evidence.warnings.unreconciledChainCaptureCount).toBe(1)
+    expect(evidence.warnings.unreconciledChainCaptureIds).toEqual(['orphan-capture-id'])
+    expect(evidence.captures.map((c) => c.id)).toEqual([capture.id])
+  })
+
+  it('does not report a chain capture that carries a matching deletion entry', async () => {
+    const { capture } = await ingest(
+      caseId,
+      '<html><body>Deleted evidence</body></html>',
+      'https://example.com/deleted',
+      'Deleted Page'
+    )
+    await captureLifecycle.delete(capture.id, 'pipeline-test')
+
+    const outputPath = join(tempDir, 'deleted-evidence.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test User',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const entries = readStoredZipEntries(outputPath)
+    const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+      warnings: { unreconciledChainCaptureCount: number }
+    }
+    const manifest = entries.get('manifest.jsonl')!.toString('utf-8')
+
+    expect(manifest).toContain('"reason":"pipeline-test"')
+    expect(evidence.warnings.unreconciledChainCaptureCount).toBe(0)
+  })
+
   it('generates a self-contained evidence ZIP with manifest, report, keys, and captures', async () => {
     const { capture } = await ingest(
       caseId,

@@ -393,6 +393,29 @@ function buildEvidenceZip(
   add(TSA_INTERMEDIATES_FILENAME, [...timestampTokenCertPems].join('\n') + '\n')
   if (tsaTrust.bundled) add(TSA_ROOT_FILENAME, tsaTrust.pem)
 
+  // Chain-vs-package reconciliation (#580). The manifest is append-only, so a
+  // capture entry with no matching deletion entry is a claim that the case still
+  // holds that capture. If such a capture is not in the package, the chain and
+  // the contents disagree and a reader has no way to account for the difference —
+  // which is what a third-party review of an alpha export found, reading it as
+  // unexplained missing evidence. Report the count rather than omitting it
+  // silently; existing chains carry self-test entries that predate the fix.
+  const deletedCaptureIds = new Set(
+    manifest.entries.filter((e) => e.type === 'deletion').map((e) => e.captureId)
+  )
+  const packagedCaptureIds = new Set(data.captures.map((c) => c.id))
+  const unreconciledChainCaptureIds = [
+    ...new Set(
+      manifest.entries
+        .filter((e) => e.type === 'capture')
+        .map((e) => e.captureId)
+        .filter(
+          (id): id is string =>
+            typeof id === 'string' && !deletedCaptureIds.has(id) && !packagedCaptureIds.has(id)
+        )
+    )
+  ]
+
   const capturesMissingContent: string[] = []
   const emittedScreenshotPaths = new Set<string>()
   const captureEvidence = data.captures.map((capture) => {
@@ -486,6 +509,9 @@ function buildEvidenceZip(
       pendingCaptureCount: data.preflight.pendingCaptureCount,
       noneCaptureCount: data.preflight.noneCaptureCount,
       missingContentCaptureCount: capturesMissingContent.length,
+      // Captures the chain still claims but the package does not contain (#580).
+      unreconciledChainCaptureCount: unreconciledChainCaptureIds.length,
+      unreconciledChainCaptureIds,
       tsaTrustAnchorNote: tsaTrust.note ?? null
     },
     verificationMaterials: {

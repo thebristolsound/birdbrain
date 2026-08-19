@@ -68,10 +68,13 @@ export const IPC_CHANNELS = {
   CAPTURES_LIST_FAVORITES: 'captures:listFavorites',
   CAPTURES_VERIFY: 'captures:verify',
   CAPTURES_GET_MHTML_URL: 'captures:getMhtmlUrl',
+  CAPTURES_DELETE_MANY: 'captures:deleteMany',
+  CAPTURES_SET_FAVORITE_MANY: 'captures:setFavoriteMany',
 
   // Recapture
   RECAPTURE_ENQUEUE: 'recapture:enqueue',
   RECAPTURE_QUEUE_STATUS: 'recapture:queueStatus',
+  RECAPTURE_ENQUEUE_CAPTURES: 'recapture:enqueueCaptures',
 
   // Tags
   TAGS_LIST: 'tags:list',
@@ -83,6 +86,7 @@ export const IPC_CHANNELS = {
   TAGS_GET_FOR_CAPTURE: 'tags:getForCapture',
   TAGS_COUNT_FOR_CASE: 'tags:countForCase',
   TAGS_USAGE_COUNTS_FOR_CASE: 'tags:usageCountsForCase',
+  TAGS_ADD_TO_CAPTURES: 'tags:addToCaptures',
 
   // Session (renderer-side session control; the extension drives HTTP)
   SESSION_SNAPSHOT: 'session:snapshot',
@@ -462,6 +466,50 @@ export interface SaveCaptureParams {
   textContent?: string
 }
 
+// --- Batch capture operations (#394) ---
+//
+// Contract: docs/specs/2026-08-19-batch-ops-interface-brief.md. Every batch
+// payload names the case its ids must belong to; an id whose row lives in a
+// different case fails the whole call (BATCH_CROSS_CASE) before anything is
+// written, while a stale (not_found) id is tolerated and reported.
+
+export interface CaptureBatchPayload {
+  caseId: string
+  captureIds: string[]
+}
+
+// Batch delete is prefix-commit over the manifest chain: entries for the ids
+// before the first failure are committed, the failing entry is rolled back,
+// and everything after it is never attempted. Each outcome says which of those
+// a given id was; there is no batch-level entry and no atomicity claim.
+export type BatchDeleteOutcome =
+  | { captureId: string; status: 'deleted' }
+  | { captureId: string; status: 'deleted_unmanifested' }
+  | { captureId: string; status: 'rolled_back'; stage: 'artifacts' | 'db'; error: string }
+  | { captureId: string; status: 'not_attempted' }
+  | { captureId: string; status: 'rejected'; reason: 'not_found' | 'duplicate' }
+
+export interface BatchDeleteResult {
+  // Exactly one per requested id, in input order.
+  outcomes: BatchDeleteOutcome[]
+  // deleted ∪ deleted_unmanifested.
+  deletedIds: string[]
+  // rolled_back ∪ not_attempted — the retry payload. Rejected ids are excluded.
+  failedIds: string[]
+  // The rolled_back id, when there is one.
+  haltedAt?: string
+  manifest: {
+    // Chain length before the batch.
+    baseIndex: number
+    // count(status === 'deleted'): the entries the chain now holds for this batch.
+    committedEntries: number
+  }
+}
+
+export interface BatchCountResult {
+  affected: number
+}
+
 // --- Recapture (background capture queue) ---
 
 export interface RecaptureQueueStatus {
@@ -545,9 +593,15 @@ export interface IpcInvokeContract {
   'captures:getMhtmlUrl': { args: [captureId: string]; result: string | null }
   'captures:testPipeline': { args: []; result: SelfTestResult }
   'captures:testHttp': { args: []; result: SelfTestResult }
+  'captures:deleteMany': { args: [payload: CaptureBatchPayload]; result: BatchDeleteResult }
+  'captures:setFavoriteMany': {
+    args: [payload: CaptureBatchPayload & { favorite: boolean }]
+    result: BatchCountResult
+  }
 
   'recapture:enqueue': { args: [payload: RecaptureEnqueuePayload]; result: EnqueueResult }
   'recapture:queueStatus': { args: []; result: RecaptureQueueStatus }
+  'recapture:enqueueCaptures': { args: [payload: CaptureBatchPayload]; result: EnqueueResult }
 
   'tags:list': { args: []; result: Tag[] }
   'tags:create': { args: [params: CreateTagParams]; result: Tag }
@@ -558,6 +612,10 @@ export interface IpcInvokeContract {
   'tags:getForCapture': { args: [captureId: string]; result: Tag[] }
   'tags:countForCase': { args: [caseId: string]; result: number }
   'tags:usageCountsForCase': { args: [caseId: string]; result: Record<string, number> }
+  'tags:addToCaptures': {
+    args: [payload: CaptureBatchPayload & { tagId: string }]
+    result: BatchCountResult
+  }
 
   'selectors:list': { args: [caseId: string]; result: Selector[] }
   'selectors:get': { args: [id: string]; result: Selector | undefined }

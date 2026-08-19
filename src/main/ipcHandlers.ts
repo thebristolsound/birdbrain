@@ -28,7 +28,8 @@ import type {
   ArchiveExportResult,
   RecaptureEnqueuePayload,
   SelfTestResult,
-  SessionStateEvent
+  SessionStateEvent,
+  CaptureBatchPayload
 } from '@shared/ipc'
 import * as dbAdmin from '@main/services/db/dbAdmin'
 import * as dbSnapshots from '@main/services/db/dbSnapshots'
@@ -63,6 +64,7 @@ import { CAPTURE_SERVER_PORT } from '@main/services/captureServer'
 import { getServerToken } from '@main/services/serverToken'
 import { getStorageRoot } from '@main/services/storage'
 import { resolveTrustedTime } from '@main/services/trustedTime'
+import { BatchCrossCaseError } from '@main/services/captureLifecycle'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import type { RecaptureService } from '@main/services/recapture'
@@ -77,6 +79,7 @@ import { ValidatedError, context, errorName, ident, isLogCode } from '@main/serv
 import type { LogContext, LogValue } from '@main/services/logSafe'
 import type {
   BirdbrainSettings,
+  Capture,
   ExportOptions,
   CaptureAnalysis,
   ArchiveInspectReport
@@ -95,6 +98,38 @@ const SELF_TEST_TIMEOUT_MS = 2000
 // process; only recent exports stay openable.
 const MAX_REVEALABLE_PATHS = 64
 const revealablePaths = new Set<string>()
+
+// Shape check for every batch channel (#394). Rejects before any lookup so a
+// malformed payload can never reach a repo or the lifecycle.
+function validateBatchPayload(payload: unknown): CaptureBatchPayload {
+  const p = payload as Partial<CaptureBatchPayload> | null | undefined
+  if (
+    !p ||
+    typeof p.caseId !== 'string' ||
+    !Array.isArray(p.captureIds) ||
+    !p.captureIds.every((id) => typeof id === 'string')
+  ) {
+    throw new IpcFailure('Invalid batch payload', 'INVALID_BATCH_PAYLOAD')
+  }
+  return { caseId: p.caseId, captureIds: p.captureIds }
+}
+
+// Same-case snapshot for the metadata batches (#394): ids whose row lives in
+// another case fail the whole call before any write, stale ids are dropped so
+// `affected` tells the truth. These batches touch no manifest and no lifecycle
+// — tags and favorites are not evidence — so there is nothing here to roll
+// back beyond the repo's own transaction.
+function snapshotSameCase(caseId: string, captureIds: string[]): Capture[] {
+  const rows = captureRepo.getCapturesByIds([...new Set(captureIds)])
+  const crossCase = rows.filter((c) => c.caseId !== caseId).map((c) => c.id)
+  if (crossCase.length > 0) {
+    throw new IpcFailure(
+      'Capture ids belong to a different case: ' + crossCase.join(', '),
+      'BATCH_CROSS_CASE'
+    )
+  }
+  return rows
+}
 
 function rememberRevealablePath(filePath: string): void {
   const resolved = resolve(filePath)
@@ -205,6 +240,23 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.CAPTURES_LIST, (_, caseId: string) => captureRepo.listCaptures(caseId))
   handle(IPC_CHANNELS.CAPTURES_GET, (_, id: string) => captureRepo.getCapture(id))
   handle(IPC_CHANNELS.CAPTURES_DELETE, (_, id: string) => captureLifecycle.delete(id))
+  handle(IPC_CHANNELS.CAPTURES_DELETE_MANY, async (_, payload) => {
+    const { caseId, captureIds } = validateBatchPayload(payload)
+    try {
+      return await captureLifecycle.deleteMany(caseId, captureIds)
+    } catch (err) {
+      if (err instanceof BatchCrossCaseError) throw new IpcFailure(err.message, 'BATCH_CROSS_CASE')
+      throw err
+    }
+  })
+  handle(IPC_CHANNELS.CAPTURES_SET_FAVORITE_MANY, (_, payload) => {
+    const { caseId, captureIds } = validateBatchPayload(payload)
+    if (typeof payload.favorite !== 'boolean') {
+      throw new IpcFailure('Invalid batch payload', 'INVALID_BATCH_PAYLOAD')
+    }
+    const ids = snapshotSameCase(caseId, captureIds).map((c) => c.id)
+    return { affected: captureRepo.setFavoriteMany(ids, payload.favorite) }
+  })
 
   handle(IPC_CHANNELS.CAPTURES_COUNTS_BY_CASE, () => captureRepo.getCaptureCountsByCase())
 
@@ -341,6 +393,14 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.TAGS_USAGE_COUNTS_FOR_CASE, (_, caseId: string) =>
     tagRepo.getTagUsageCountsForCase(caseId)
   )
+  handle(IPC_CHANNELS.TAGS_ADD_TO_CAPTURES, (_, payload) => {
+    const { caseId, captureIds } = validateBatchPayload(payload)
+    if (typeof payload.tagId !== 'string') {
+      throw new IpcFailure('Invalid batch payload', 'INVALID_BATCH_PAYLOAD')
+    }
+    const ids = snapshotSameCase(caseId, captureIds).map((c) => c.id)
+    return { affected: tagRepo.addTagToCaptures(ids, payload.tagId) }
+  })
 
   // Selectors
   handle(IPC_CHANNELS.SELECTORS_LIST, (_, caseId: string) => selectorRepo.listSelectors(caseId))
@@ -581,6 +641,19 @@ export function registerIpcHandlers(deps: {
         supersedesCaptureId: payload.supersedesCaptureId
       }))
     )
+  })
+
+  // Batch recapture (#394): fan the snapshot out to the existing queue, one job
+  // per capture superseding itself. Stale ids are dropped; the queue's own
+  // EnqueueResult reports what it accepted.
+  handle(IPC_CHANNELS.RECAPTURE_ENQUEUE_CAPTURES, (_, payload) => {
+    const { caseId, captureIds } = validateBatchPayload(payload)
+    const jobs = snapshotSameCase(caseId, captureIds).map((capture) => ({
+      url: capture.url,
+      caseId,
+      supersedesCaptureId: capture.id
+    }))
+    return recaptureService.enqueue(jobs)
   })
 
   handle(IPC_CHANNELS.RECAPTURE_QUEUE_STATUS, () => recaptureService.status())

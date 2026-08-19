@@ -9,7 +9,10 @@ import {
   getCaptureCount,
   searchCaptures,
   setCaptureTrustedTime,
-  listPendingTimestampCaptures
+  listPendingTimestampCaptures,
+  getCapturesByIds,
+  setFavoriteMany,
+  isFavorite
 } from '@main/services/db/captureRepo'
 import {
   listTags,
@@ -20,7 +23,8 @@ import {
   removeTagFromCapture,
   getTagsForCapture,
   getTagCountForCase,
-  getTagUsageCountsForCase
+  getTagUsageCountsForCase,
+  addTagToCaptures
 } from '@main/services/db/tagRepo'
 import {
   getSelectorCoverage,
@@ -157,6 +161,64 @@ describe('database', () => {
       expect(getCapture(cap.id)).toBeUndefined()
     })
 
+    it('getCapturesByIds loads a snapshot in one query, skipping ids with no row (#394)', () => {
+      const a = insertCapture({
+        caseId,
+        url: 'https://a.com',
+        title: 'A',
+        hash: 'h1',
+        timestamp: 't'
+      })
+      const b = insertCapture({
+        caseId,
+        url: 'https://b.com',
+        title: 'B',
+        hash: 'h2',
+        timestamp: 't'
+      })
+      const rows = getCapturesByIds([a.id, 'missing', b.id, a.id])
+      expect(rows.map((r) => r.id).sort()).toEqual([a.id, b.id].sort())
+      expect(getCapturesByIds([])).toEqual([])
+    })
+
+    it('setFavoriteMany is an idempotent SET in one transaction (#394)', () => {
+      const a = insertCapture({
+        caseId,
+        url: 'https://a.com',
+        title: 'A',
+        hash: 'h1',
+        timestamp: 't'
+      })
+      const b = insertCapture({
+        caseId,
+        url: 'https://b.com',
+        title: 'B',
+        hash: 'h2',
+        timestamp: 't'
+      })
+      expect(setFavoriteMany([a.id], true)).toBe(1)
+      // Already-favorited ids still count as applied: every id ends in the requested state.
+      expect(setFavoriteMany([a.id, b.id], true)).toBe(2)
+      expect(isFavorite(a.id)).toBe(true)
+      expect(isFavorite(b.id)).toBe(true)
+      expect(setFavoriteMany([a.id, b.id], false)).toBe(2)
+      expect(isFavorite(a.id)).toBe(false)
+      expect(isFavorite(b.id)).toBe(false)
+      expect(setFavoriteMany([], true)).toBe(0)
+    })
+
+    it('setFavoriteMany applies nothing when one id violates the foreign key (#394)', () => {
+      const a = insertCapture({
+        caseId,
+        url: 'https://a.com',
+        title: 'A',
+        hash: 'h1',
+        timestamp: 't'
+      })
+      expect(() => setFavoriteMany([a.id, 'ghost'], true)).toThrow()
+      expect(isFavorite(a.id)).toBe(false)
+    })
+
     it('counts captures for a case', () => {
       insertCapture({
         caseId,
@@ -287,6 +349,35 @@ describe('database', () => {
 
       removeTagFromCapture({ captureId: cap.id, tagId: tag.id })
       expect(getTagsForCapture(cap.id)).toHaveLength(0)
+    })
+
+    it('addTagToCaptures applies a tag to many captures idempotently in one transaction (#394)', () => {
+      const c = createCase({ name: 'Test' })
+      const a = insertCapture({
+        caseId: c.id,
+        url: 'https://a.com',
+        title: 'A',
+        hash: 'h1',
+        timestamp: 't'
+      })
+      const b = insertCapture({
+        caseId: c.id,
+        url: 'https://b.com',
+        title: 'B',
+        hash: 'h2',
+        timestamp: 't'
+      })
+      const tag = createTag({ name: 'batch' })
+
+      addTagToCapture({ captureId: a.id, tagId: tag.id })
+      expect(addTagToCaptures([a.id, b.id], tag.id)).toBe(2)
+      expect(getTagsForCapture(a.id)).toHaveLength(1)
+      expect(getTagsForCapture(b.id)).toHaveLength(1)
+      expect(addTagToCaptures([], tag.id)).toBe(0)
+
+      // A missing tag fails the whole batch: neither capture gains a dangling row.
+      expect(() => addTagToCaptures([a.id, b.id], 'no-such-tag')).toThrow()
+      expect(getTagsForCapture(a.id)).toHaveLength(1)
     })
   })
 

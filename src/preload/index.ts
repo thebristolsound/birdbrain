@@ -76,11 +76,14 @@ const birdbrain = {
     isFavorite: bridge(IPC_CHANNELS.CAPTURES_IS_FAVORITE),
     listFavorites: bridge(IPC_CHANNELS.CAPTURES_LIST_FAVORITES),
     verify: bridge(IPC_CHANNELS.CAPTURES_VERIFY),
-    getMhtmlUrl: bridge(IPC_CHANNELS.CAPTURES_GET_MHTML_URL)
+    getMhtmlUrl: bridge(IPC_CHANNELS.CAPTURES_GET_MHTML_URL),
+    deleteMany: bridge(IPC_CHANNELS.CAPTURES_DELETE_MANY),
+    setFavoriteMany: bridge(IPC_CHANNELS.CAPTURES_SET_FAVORITE_MANY)
   },
   recapture: {
     enqueue: bridge(IPC_CHANNELS.RECAPTURE_ENQUEUE),
-    queueStatus: bridge(IPC_CHANNELS.RECAPTURE_QUEUE_STATUS)
+    queueStatus: bridge(IPC_CHANNELS.RECAPTURE_QUEUE_STATUS),
+    enqueueCaptures: bridge(IPC_CHANNELS.RECAPTURE_ENQUEUE_CAPTURES)
   },
   tags: {
     list: bridge(IPC_CHANNELS.TAGS_LIST),
@@ -91,7 +94,8 @@ const birdbrain = {
     removeFromCapture: bridge(IPC_CHANNELS.TAGS_REMOVE_FROM_CAPTURE),
     getForCapture: bridge(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE),
     countForCase: bridge(IPC_CHANNELS.TAGS_COUNT_FOR_CASE),
-    usageCountsForCase: bridge(IPC_CHANNELS.TAGS_USAGE_COUNTS_FOR_CASE)
+    usageCountsForCase: bridge(IPC_CHANNELS.TAGS_USAGE_COUNTS_FOR_CASE),
+    addToCaptures: bridge(IPC_CHANNELS.TAGS_ADD_TO_CAPTURES)
   },
   selectors: {
     list: bridge(IPC_CHANNELS.SELECTORS_LIST),

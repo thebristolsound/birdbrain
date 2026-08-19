@@ -66,7 +66,10 @@ import type {
   EnqueueResult,
   RecaptureQueueStatus,
   RendererLogPayload,
-  SessionStateEvent
+  SessionStateEvent,
+  CaptureBatchPayload,
+  BatchDeleteResult,
+  BatchCountResult
 } from '@shared/ipc'
 
 export interface BirdbrainAPI {
@@ -97,10 +100,13 @@ export interface BirdbrainAPI {
     listFavorites(caseId: string): Promise<string[]>
     verify(captureId: string): Promise<HashVerification>
     getMhtmlUrl(captureId: string): Promise<string | null>
+    deleteMany(payload: CaptureBatchPayload): Promise<BatchDeleteResult>
+    setFavoriteMany(payload: CaptureBatchPayload & { favorite: boolean }): Promise<BatchCountResult>
   }
   recapture: {
     enqueue(payload: RecaptureEnqueuePayload): Promise<EnqueueResult>
     queueStatus(): Promise<RecaptureQueueStatus>
+    enqueueCaptures(payload: CaptureBatchPayload): Promise<EnqueueResult>
   }
   tags: {
     list(): Promise<Tag[]>
@@ -112,6 +118,7 @@ export interface BirdbrainAPI {
     getForCapture(captureId: string): Promise<Tag[]>
     countForCase(caseId: string): Promise<number>
     usageCountsForCase(caseId: string): Promise<Record<string, number>>
+    addToCaptures(payload: CaptureBatchPayload & { tagId: string }): Promise<BatchCountResult>
   }
   selectors: {
     list(caseId: string): Promise<Selector[]>

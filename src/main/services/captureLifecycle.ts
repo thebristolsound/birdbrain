@@ -10,6 +10,7 @@ import { recordSlowOp } from '@main/services/diagnostics'
 import { readExtractionHtml } from '@main/services/extraction/extractionSource'
 import { getInstallationId } from '@main/services/installationId'
 import {
+  getManifestHead,
   verifyManifestChain,
   withCaptureEntry,
   withDeletionEntry,
@@ -22,6 +23,7 @@ import { getSettings } from '@main/services/settings'
 import { fetchCertChain as defaultFetchCertChain } from '@main/services/tlsCertChain'
 import type { TlsCertChainResult } from '@main/services/tlsCertChain'
 import type { Capture, CaptureMethod, ConsentSuppression, HashVerification } from '@shared/types'
+import type { BatchDeleteOutcome, BatchDeleteResult } from '@shared/ipc'
 import { logger } from '@main/services/logger'
 import { ident } from '@main/services/logSafe'
 
@@ -74,6 +76,13 @@ export interface CaptureLifecycle {
   // deletion is not an operator deleting evidence — a chain reader has no other
   // way to tell a self-test cleanup from a real removal (#580).
   delete: (captureId: string, reason?: string) => Promise<boolean>
+  // Batch delete over a same-case id set (#394). Prefix-commit over the manifest
+  // chain: one ordinary deletion entry per capture, in order, until the first
+  // per-capture failure rolls its own entry back and the rest are left
+  // untouched. Per-capture failures are outcomes, never throws; a cross-case
+  // id fails the whole call before any write. Contract:
+  // docs/specs/2026-08-19-batch-ops-interface-brief.md.
+  deleteMany: (caseId: string, captureIds: string[]) => Promise<BatchDeleteResult>
   verify: (captureId: string) => Promise<HashVerification>
   reprocessCase: (caseId: string) => Promise<{ processed: number }>
 }
@@ -81,6 +90,22 @@ export interface CaptureLifecycle {
 function getToolVersion(): string {
   if (typeof app?.getVersion === 'function') return app.getVersion()
   return process.env.npm_package_version ?? '0.0.0'
+}
+
+// Thrown by deleteMany before any write when an id's row lives in another case.
+export class BatchCrossCaseError extends Error {
+  constructor(public readonly captureIds: string[]) {
+    super('Capture ids belong to a different case: ' + captureIds.join(', '))
+    this.name = 'BatchCrossCaseError'
+  }
+}
+
+// The per-capture delete outcome plus the error that produced it, so `delete`
+// can keep surfacing unexpected faults (an unlink that threw) as throws while
+// `deleteMany` reports the same fault as a `rolled_back` outcome.
+interface DeleteOneResult {
+  outcome: BatchDeleteOutcome
+  cause?: unknown
 }
 
 // End-to-end MHTML ingest:
@@ -464,6 +489,81 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
     })
   }
 
+  // Per-case serialisation for delete/deleteMany (#394): the manifest is one
+  // append-only file per case and a rollback is a truncation, so two deletes
+  // interleaving on the same chain could truncate each other's entries.
+  // Callers queue in memory; there is no busy error.
+  const caseSlots = new Map<string, Promise<void>>()
+
+  async function withCaseSlot<T>(caseId: string, fn: () => Promise<T>): Promise<T> {
+    const prev = caseSlots.get(caseId) ?? Promise.resolve()
+    let release: () => void = () => {}
+    const mine = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const tail = prev.then(() => mine)
+    caseSlots.set(caseId, tail)
+    await prev
+    try {
+      return await fn()
+    } finally {
+      release()
+      if (caseSlots.get(caseId) === tail) caseSlots.delete(caseId)
+    }
+  }
+
+  // The single-capture delete body, shared by `delete` and `deleteMany`.
+  // Never throws for an MHTML capture: the manifest seam has already rolled
+  // the entry back by the time the fault reaches here, so it is reported as a
+  // `rolled_back` outcome whose `stage` names the call that threw.
+  async function deleteOne(capture: Capture, reason?: string): Promise<DeleteOneResult> {
+    const captureId = capture.id
+    if (capture.format === 'mhtml') {
+      const caseDir = store.caseDir(capture.caseId)
+      let stage: 'artifacts' | 'db' = 'artifacts'
+      try {
+        await withDeletionEntry(
+          caseDir,
+          {
+            captureId,
+            caseId: capture.caseId,
+            contentHash: capture.hash,
+            operatorId: getInstallationId(),
+            operatorName: getSettings().operatorName ?? '',
+            toolVersion: getToolVersion(),
+            ...(reason !== undefined ? { reason } : {})
+          },
+          () => {
+            // Files first, DB row second. If the filesystem unlink throws,
+            // the manifest rolls back with both DB and files intact (full retry).
+            // If the DB delete fails after files are gone, the manifest still
+            // rolls back and the user sees a broken capture row they can retry —
+            // strictly better than the inverse, where a filesystem failure
+            // after the DB delete would leave permanently orphaned files.
+            store.deleteArtifacts(capture.caseId, captureId)
+            stage = 'db'
+            const deleted = captureRepo.deleteCapture(captureId)
+            if (!deleted) throw new ManifestRollback()
+          }
+        )
+        return { outcome: { captureId, status: 'deleted' } }
+      } catch (err) {
+        return {
+          outcome: { captureId, status: 'rolled_back', stage, error: String(err) },
+          cause: err
+        }
+      }
+    }
+
+    // Legacy html capture: no manifest entry exists for it, so none is written
+    // (as before). The row vanishing between snapshot and delete is the same
+    // "not there" the snapshot would have reported.
+    const deleted = captureRepo.deleteCapture(captureId)
+    if (!deleted) return { outcome: { captureId, status: 'rejected', reason: 'not_found' } }
+    store.deleteArtifacts(capture.caseId, captureId)
+    return { outcome: { captureId, status: 'deleted_unmanifested' } }
+  }
+
   return {
     async ingest(params) {
       const result = await ingestMhtmlCapture(
@@ -478,45 +578,73 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
     },
 
     async delete(captureId, reason) {
-      const capture = captureRepo.getCapture(captureId)
-      if (!capture) return false
+      const probe = captureRepo.getCapture(captureId)
+      if (!probe) return false
+      return withCaseSlot(probe.caseId, async () => {
+        // Re-read under the slot: a batch ahead of us in the queue may have
+        // removed it while we waited.
+        const capture = captureRepo.getCapture(captureId)
+        if (!capture) return false
+        const { outcome, cause } = await deleteOne(capture, reason)
+        if (cause !== undefined && !(cause instanceof ManifestRollback)) throw cause
+        return outcome.status === 'deleted' || outcome.status === 'deleted_unmanifested'
+      })
+    },
 
-      if (capture.format === 'mhtml') {
-        const caseDir = store.caseDir(capture.caseId)
-        try {
-          await withDeletionEntry(
-            caseDir,
-            {
-              captureId,
-              caseId: capture.caseId,
-              contentHash: capture.hash,
-              operatorId: getInstallationId(),
-              operatorName: getSettings().operatorName ?? '',
-              toolVersion: getToolVersion(),
-              ...(reason !== undefined ? { reason } : {})
-            },
-            () => {
-              // Files first, DB row second. If the filesystem unlink throws,
-              // the manifest rolls back with both DB and files intact (full retry).
-              // If the DB delete fails after files are gone, the manifest still
-              // rolls back and the user sees a broken capture row they can retry —
-              // strictly better than the inverse, where a filesystem failure
-              // after the DB delete would leave permanently orphaned files.
-              store.deleteArtifacts(capture.caseId, captureId)
-              const deleted = captureRepo.deleteCapture(captureId)
-              if (!deleted) throw new ManifestRollback()
-            }
-          )
-          return true
-        } catch (err) {
-          if (err instanceof ManifestRollback) return false
-          throw err
+    async deleteMany(caseId, captureIds) {
+      return withCaseSlot(caseId, async () => {
+        // Snapshot validation happens under the slot, not before it: a batch
+        // queued behind another must see the rows the earlier batch removed as
+        // not_found, not as live rows it then fails to delete.
+        const uniqueIds = [...new Set(captureIds)]
+        const byId = new Map(captureRepo.getCapturesByIds(uniqueIds).map((c) => [c.id, c]))
+        const crossCase = uniqueIds.filter((id) => {
+          const row = byId.get(id)
+          return row !== undefined && row.caseId !== caseId
+        })
+        if (crossCase.length > 0) throw new BatchCrossCaseError(crossCase)
+
+        const caseDir = store.caseDir(caseId)
+        const baseIndex = getManifestHead(caseDir).nextIndex
+        const outcomes: BatchDeleteOutcome[] = []
+        const seen = new Set<string>()
+        let haltedAt: string | undefined
+
+        for (const id of captureIds) {
+          if (seen.has(id)) {
+            outcomes.push({ captureId: id, status: 'rejected', reason: 'duplicate' })
+            continue
+          }
+          seen.add(id)
+          const capture = byId.get(id)
+          if (!capture) {
+            outcomes.push({ captureId: id, status: 'rejected', reason: 'not_found' })
+            continue
+          }
+          if (haltedAt !== undefined) {
+            outcomes.push({ captureId: id, status: 'not_attempted' })
+            continue
+          }
+          const { outcome } = await deleteOne(capture)
+          outcomes.push(outcome)
+          if (outcome.status === 'rolled_back') haltedAt = id
         }
-      }
 
-      const deleted = captureRepo.deleteCapture(captureId)
-      if (deleted) store.deleteArtifacts(capture.caseId, captureId)
-      return deleted
+        const deletedIds = outcomes
+          .filter((o) => o.status === 'deleted' || o.status === 'deleted_unmanifested')
+          .map((o) => o.captureId)
+        const failedIds = outcomes
+          .filter((o) => o.status === 'rolled_back' || o.status === 'not_attempted')
+          .map((o) => o.captureId)
+        const committedEntries = outcomes.filter((o) => o.status === 'deleted').length
+        return {
+          outcomes,
+          deletedIds,
+          failedIds,
+          ...(haltedAt !== undefined ? { haltedAt } : {}),
+          manifest: { baseIndex, committedEntries }
+        }
+      })
     },
 
     verify(captureId) {

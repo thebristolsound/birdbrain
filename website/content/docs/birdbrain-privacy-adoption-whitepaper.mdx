@@ -62,7 +62,7 @@ Two opt-in features sit outside that table: configuring an AI-analysis API key s
 
 Read that table with your adversary in mind. Nothing in it sends captured content anywhere by default. But the timestamp authority learns that *someone at your IP is capturing evidence at these times*, and the TLS corroboration step means your machine contacts the target site a second time, outside your browser.
 
-**The network-identity warning.** If you browse through a VPN or Tor but run the desktop app on your bare connection, the app's outbound requests (timestamps, TLS corroboration, update checks) take your real network route. Route the whole machine, not just the browser, or the split will undo your browser-level anonymity. This is the single most common way a careful browser setup gets betrayed by a helpful desktop tool, and Birdbrain is not exempt.
+**The network-identity warning.** If you browse through a VPN or Tor but run the desktop app on your bare connection, the app's outbound requests (timestamps, TLS corroboration, update checks) take your real network route. Route the whole machine, not just the browser, or the split will undo your browser-level anonymity. This is a common way a careful browser setup gets betrayed by a helpful desktop tool, and Birdbrain is not exempt.
 
 ## Operational security realities
 
@@ -74,7 +74,7 @@ Read that table with your adversary in mind. Nothing in it sends captured conten
 
 **Shared machines leak metadata.** A few read-only endpoints on the local capture port answer without authentication to any process on the same machine, exposing case names and watchlist patterns. On a computer you fully control this is a non-issue. On a shared or organizationally managed machine, treat local metadata as visible.
 
-**Installers are currently unsigned.** Releases come from GitHub without code signing or notarization, so your operating system will warn you, and you carry the burden of fetching from the genuine repository over HTTPS. This is the project's most significant trust gap today, and it is documented rather than hidden. Verify what you install, and treat the warning as a real prompt to check, not noise to click through.
+**Installers are currently unsigned.** Releases come from GitHub without code signing or notarization, so your operating system will warn you, and you carry the burden of fetching from the genuine repository over HTTPS. This is the project's most significant trust gap today. Verify what you install, and treat the warning as a real prompt to check, not noise to click through.
 
 **One more honest wrinkle.** On systems without OS credential storage (mainly some Linux setups), the app's signing key falls back to plaintext storage on disk. Full-disk encryption covers this too, which is one more reason it is a prerequisite.
 
@@ -90,7 +90,7 @@ What you give up without a server: simultaneous editing, central assignment, and
 
 ## What Birdbrain cannot protect you from
 
-Candor is the project's stated policy, so here is the honest list:
+Candor is the project's stated policy, so here is the list:
 
 - **A compromised computer.** If your machine has malware or an attacker with your login, no application-level integrity scheme saves you. The evidence chain proves tampering happened *after* capture; it cannot make a hostile machine trustworthy *during* capture.
 - **Yourself, mostly.** A person who controls the machine can discard everything and fabricate a fresh, internally consistent history. External timestamps are the main constraint: they make it impossible to backdate fabrications, which is precisely why you should timestamp promptly and export early. Give copies of evidence packages to people outside the blast radius.
@@ -117,6 +117,6 @@ Adopting any tool is a bet on its future, and small-project bets deserve sober t
 
 ## Conclusion
 
-Birdbrain fits a specific niche well: a small group that needs captures which survive hostile scrutiny, refuses to put source material on other people's infrastructure, and can take responsibility for its own machines. It gives you provable integrity, independent time anchors, custody that survives handoffs between members, and evidence packages that argue for themselves, all without an account or a server.
+Birdbrain fits a specific niche: a small group that needs captures which survive hostile scrutiny, refuses to put source material on other people's infrastructure, and can take responsibility for its own machines.
 
-It asks discipline from you in return: encrypted disks, careful network routing, a clean browser profile, verified installs, and clear-eyed acceptance that the tool cannot defend a machine you have already lost. If your group can hold up that end, the trade is a good one, and everything you produce with it remains yours, on your hardware, readable and provable with or without the project behind it.
+It asks discipline from you in return: encrypted disks, careful network routing, a clean browser profile, verified installs, and acceptance that the tool cannot defend a machine you have already lost.

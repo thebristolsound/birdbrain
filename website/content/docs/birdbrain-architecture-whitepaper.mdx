@@ -41,10 +41,9 @@ continue outside the running application.
 
 Birdbrain is intentionally a workstation product, not a multi-tenant service.
 SQLite, filesystem artifact storage, a loopback-only Capture Server, and typed
-Electron IPC keep deployment simple and data custody legible. This design provides strong local workflows and portable
-verification, but it does not provide centralized identity, role-based access
-control, remote administration, or protection against an Operator who fully
-controls the host.
+Electron IPC keep deployment simple and data custody legible. This design does
+not provide centralized identity, role-based access control, remote
+administration, or protection against an Operator who fully controls the host.
 
 ## Problem statement and business context
 
@@ -686,9 +685,9 @@ and Selector Lifecycle modules own multi-step invariants that must remain
 consistent across IPC and HTTP entry points. This avoids placing forensic and
 matching rules in transport handlers.
 
-The distinction between Persisted Matches and Foreground Match Preview is a
-particularly effective boundary. It gives the UI immediate feedback without
-allowing provisional renderer state to masquerade as Case-wide results.
+The distinction between Persisted Matches and Foreground Match Preview gives
+the UI immediate feedback without allowing provisional renderer state to
+masquerade as Case-wide results.
 
 ### Shared, pure verification core
 
@@ -720,8 +719,8 @@ verification result. Verification can switch keys across these boundaries,
 allowing a chain to preserve prior installation history and continue under the
 receiving installation.
 
-This is a meaningful technical strength for distributed, file-based workflows.
-It avoids pretending that all history was signed by the current workstation.
+The import boundary avoids pretending that all history was signed by the
+current workstation.
 
 ### Sidecars as recoverable authority
 
@@ -736,7 +735,7 @@ report trusted-time coverage, content-address packaged screenshots, include
 public keys and verification instructions, and compute a deterministic hash over
 the sorted artifact inventory. The final ZIP is not hashed by that package hash
 because the signed export record and bundled Manifest would create a circular
-dependency. The design states this explicitly rather than hiding it.
+dependency.
 
 ### Testing strategy
 
@@ -863,12 +862,9 @@ clear product boundary: preserve and investigate web evidence locally, make
 modification detectable, attach independently verifiable time where possible,
 and let evidence travel without requiring a hosted account.
 
-Its strongest properties are not any single algorithm or framework. They are the
-composition of browser-aware capture, lifecycle-owned forensic invariants,
-artifact and Manifest authority, repairable database projections, portable
-verification, and unusually explicit limits on assurance claims. The separation
-of integrity from trusted time, and of source evidence from derived analysis,
-gives reviewers a defensible vocabulary for interpreting results.
+The separation of integrity from trusted time, and of source evidence from
+derived analysis, gives reviewers a defensible vocabulary for interpreting
+results.
 
 The same boundary defines the trade-offs. Birdbrain is not a centralized,
 multi-user evidence platform. It relies on workstation security, local key

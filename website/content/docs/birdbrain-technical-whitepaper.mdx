@@ -129,7 +129,7 @@ On disk, artifacts live under `{storageRoot}/{caseId}/{captureId}.{mhtml|png|txt
 
 ## 4. The Forensic Integrity Layer
 
-This is the system's core intellectual property and deserves its own section.
+This is the system's core intellectual property.
 
 ### 4.1 Streaming hash on ingest
 
@@ -185,13 +185,13 @@ A standalone verifier binary (`build:verifier`, assembled with `postject`, sugge
 
 The code and migration history imply several roads not taken:
 
-- **A cloud backend** would simplify sync and collaboration but was clearly rejected: no accounts, no telemetry, loopback-only server, and an explicit security-policy statement limiting network egress to a short, documented list. For evidence handling, local-first is a feature, not a limitation.
+- **A cloud backend** would simplify sync and collaboration but was clearly rejected: no accounts, no telemetry, loopback-only server, and an explicit security-policy statement limiting network egress to a short, documented list.
 - **Playwright/CDP-based capture from the desktop app** instead of an extension. A companion extension captures what the operator actually sees in their authenticated browser session, including logged-in content; a separate automation browser would not. The `method` column (`extension | background`) shows a hybrid emerging: a background recapture path exists in the app.
 - **Trusting the platform's timestamps.** Rejected in favor of RFC 3161; the threat model explicitly includes an operator forging their own evidence, which local clocks cannot survive.
 - **A full JCS implementation.** Rejected with documented reasoning (§4.3): conformance would actively hurt (Unicode normalization would change hashed bytes) and the constrained schema makes the simpler recipe provably equivalent.
 ### 5.3 Notable trade-offs accepted
 
-- **`webviewTag: true`** is enabled for MHTML display, an attack-surface expansion mitigated by JS-disabled webviews, a navigation guard that allows only the initial `file://` load, and the sandbox. A `<webview>` is the only practical way to render captured MHTML in isolation, but it is a trade.
+- **`webviewTag: true`** is enabled for MHTML display, an attack-surface expansion mitigated by JS-disabled webviews, a navigation guard that allows only the initial `file://` load, and the sandbox. A `<webview>` is the only practical way to render captured MHTML in isolation.
 - **Unsigned release artifacts.** No code-signing or notarization exists in the build config. Consequences are handled honestly: macOS auto-install is disabled in code ("blocked until Developer ID signing + notarization"), updates rely on electron-updater's SHA-512 feed verification, and SECURITY.md lists this as a known limitation.
 - **Renderer trust in IPC payload shapes.** Most handlers validate types at compile time only; runtime guards exist where stakes are high (URL protocol checks, path allowlisting, forged-snapshot rejection). Given a sandboxed renderer with no node access, this is a reasoned economy, not an oversight, but it is a real boundary decision.
 
@@ -308,6 +308,6 @@ Grounded in code structure, explicit code comments, and documented limitations r
 
 ## 13. Conclusion
 
-Birdbrain is a focused answer to a real evidentiary problem: it makes web captures that a skeptical third party can verify with standard tools, and it wraps that core in a genuinely usable investigation workspace. The architecture is disciplined where discipline pays (a narrow, typed IPC surface; a defense-in-depth loopback boundary; an append-only signed chain with rollback semantics; 90 % test coverage enforced exactly on the forensic core) and pragmatic where pragmatism pays (synchronous SQLite, no server infrastructure at all).
+Birdbrain is a focused answer to a real evidentiary problem: it makes web captures that a skeptical third party can verify with standard tools, and it wraps that core in a genuinely usable investigation workspace. The architecture is disciplined where it counts (a narrow, typed IPC surface; a defense-in-depth loopback boundary; an append-only signed chain with rollback semantics; 90 % test coverage enforced exactly on the forensic core) and pragmatic elsewhere (synchronous SQLite, no server infrastructure at all).
 
-The honest limitations are the ones the project itself documents: unsigned binaries, a style-CSP concession, and plaintext fallback for secrets on platforms without OS key storage. None undermine the central design claim. For engineering leaders, the codebase demonstrates that chain-of-custody guarantees fit inside a modern Electron/React application without enterprise tooling. For security reviewers, the threat model is written down, the trust boundaries are few and inspectable, and the verification story deliberately removes the tool itself from the trust path. For contributors, the seams (services, typed channels, the shared verify core) are clean enough that the next feature has an obvious place to live.
+The honest limitations are the ones the project itself documents: unsigned binaries, a style-CSP concession, and plaintext fallback for secrets on platforms without OS key storage. None undermine the central design claim. The codebase demonstrates that chain-of-custody guarantees fit inside a modern Electron/React application without enterprise tooling: the threat model is written down, the trust boundaries are few and inspectable, the verification story deliberately removes the tool itself from the trust path, and the seams (services, typed channels, the shared verify core) are clean enough that the next feature has an obvious place to live.

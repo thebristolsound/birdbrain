@@ -509,7 +509,15 @@ describe('createCaptureLifecycle.deleteMany (#394)', () => {
     return {
       ...real,
       deleteArtifacts: (cid, capId) => {
-        if (capId === failId) throw new Error('EACCES: simulated unlink failure')
+        if (capId === failId) {
+          // Shaped like a real fs error: message carries the absolute path,
+          // `code` carries the errno.
+          const err: NodeJS.ErrnoException = new Error(
+            `EACCES: simulated unlink failure, unlink '${join(getStorageRoot(), cid, capId)}'`
+          )
+          err.code = 'EACCES'
+          throw err
+        }
         real.deleteArtifacts(cid, capId)
       }
     }
@@ -583,7 +591,9 @@ describe('createCaptureLifecycle.deleteMany (#394)', () => {
     ])
     const rolled = result.outcomes[1] as Extract<BatchDeleteOutcome, { status: 'rolled_back' }>
     expect(rolled.stage).toBe('artifacts')
-    expect(rolled.error).toContain('EACCES')
+    // Name + errno only: the fs message's absolute path must not cross the bridge.
+    expect(rolled.error).toBe('Error (EACCES)')
+    expect(rolled.error).not.toContain(tempDir)
     expect(result.haltedAt).toBe(failing.id)
     expect(result.deletedIds).toEqual([caps[0].id])
     expect(result.failedIds).toEqual([failing.id, caps[2].id, caps[3].id])
@@ -633,6 +643,7 @@ describe('createCaptureLifecycle.deleteMany (#394)', () => {
     ])
     const rolled = result.outcomes[1] as Extract<BatchDeleteOutcome, { status: 'rolled_back' }>
     expect(rolled.stage).toBe('db')
+    expect(rolled.error).toBe('ManifestRollback')
     expect(result.haltedAt).toBe(failing.id)
     expect(result.manifest).toEqual({ baseIndex, committedEntries: 1 })
     expect(manifestEntries()).toHaveLength(baseIndex + 1)

@@ -108,6 +108,15 @@ interface DeleteOneResult {
   cause?: unknown
 }
 
+// `rolled_back.error` crosses the preload bridge, so it carries the error's
+// name and errno code only — an fs message would otherwise hand the renderer
+// an absolute storage path.
+function outcomeError(err: unknown): string {
+  if (!(err instanceof Error)) return 'UnknownError'
+  const { code } = err as NodeJS.ErrnoException
+  return typeof code === 'string' && code.length > 0 ? `${err.name} (${code})` : err.name
+}
+
 // End-to-end MHTML ingest:
 // 1. Stream-write + hash to disk (through the Capture Store)
 // 2. Inside withCaptureEntry's write-ahead seam: write sidecar files (.txt, .png) and insert the
@@ -549,7 +558,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
         return { outcome: { captureId, status: 'deleted' } }
       } catch (err) {
         return {
-          outcome: { captureId, status: 'rolled_back', stage, error: String(err) },
+          outcome: { captureId, status: 'rolled_back', stage, error: outcomeError(err) },
           cause: err
         }
       }

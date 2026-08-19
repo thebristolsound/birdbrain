@@ -482,6 +482,7 @@ export interface CaptureBatchPayload {
 // before the first failure are committed, the failing entry is rolled back,
 // and everything after it is never attempted. Each outcome says which of those
 // a given id was; there is no batch-level entry and no atomicity claim.
+// `rolled_back.error` is the fault's name and errno code only, never a path.
 export type BatchDeleteOutcome =
   | { captureId: string; status: 'deleted' }
   | { captureId: string; status: 'deleted_unmanifested' }

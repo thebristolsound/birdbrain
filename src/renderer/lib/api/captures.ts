@@ -98,7 +98,12 @@ export function useCapturesMutations(caseId: string) {
   const removeMany = useMutation<BatchDeleteResult, unknown, string[]>({
     mutationFn: (captureIds) => window.birdbrain.captures.deleteMany({ caseId, captureIds }),
     onSuccess: (result) => {
-      if (result.deletedIds.length === 0) return
+      // A not_found rejection means the cache showed a row that is already
+      // gone (removed from another window), so it is as stale as a deletion.
+      const sawStale = result.outcomes.some(
+        (o) => o.status === 'rejected' && o.reason === 'not_found'
+      )
+      if (result.deletedIds.length === 0 && !sawStale) return
       queryClient.invalidateQueries({ queryKey: queryKeys.captures(caseId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.captureCounts })
       queryClient.invalidateQueries({ queryKey: queryKeys.captureFavorites(caseId) })

@@ -63,7 +63,7 @@ function installBirdbrainMock() {
       delete: fn(),
       toggleFavorite: fn(),
       deleteMany: vi.fn().mockResolvedValue({
-        outcomes: [],
+        outcomes: [{ captureId: 'cap1', status: 'deleted' }],
         deletedIds: ['cap1'],
         failedIds: [],
         manifest: { baseIndex: 0, committedEntries: 1 }
@@ -328,7 +328,7 @@ describe('useCapturesMutations batch hooks (#394)', () => {
     expect(keys).toContainEqual(['captures', 'favorites', 'c1'])
   })
 
-  it('removeMany invalidates nothing when the batch deleted nothing', async () => {
+  it('removeMany still invalidates when every id was not_found: the cache showed rows already gone', async () => {
     api.captures.deleteMany.mockResolvedValue({
       outcomes: [{ captureId: 'ghost', status: 'rejected', reason: 'not_found' }],
       deletedIds: [],
@@ -340,6 +340,26 @@ describe('useCapturesMutations batch hooks (#394)', () => {
 
     await act(async () => {
       await result.current.removeMany.mutateAsync(['ghost'])
+    })
+    expect(invalidatedKeys(invalidate)).toContainEqual(['captures', 'c1'])
+  })
+
+  it('removeMany invalidates nothing when the batch deleted nothing and saw no stale ids', async () => {
+    api.captures.deleteMany.mockResolvedValue({
+      outcomes: [
+        { captureId: 'cap1', status: 'rolled_back', stage: 'artifacts', error: 'Error (EBUSY)' },
+        { captureId: 'cap1', status: 'rejected', reason: 'duplicate' }
+      ],
+      deletedIds: [],
+      failedIds: ['cap1'],
+      haltedAt: 'cap1',
+      manifest: { baseIndex: 0, committedEntries: 0 }
+    })
+    const { invalidate, wrapper } = setup()
+    const { result } = renderHook(() => useCapturesMutations('c1'), { wrapper })
+
+    await act(async () => {
+      await result.current.removeMany.mutateAsync(['cap1', 'cap1'])
     })
     expect(invalidate).not.toHaveBeenCalled()
   })

@@ -45,15 +45,31 @@ no separate lower-commitment tier for one-off testers.
 | Windows | NSIS `.exe` | Supported; must pass the pre-ship gate |
 | Ubuntu | AppImage | Supported, **primary Linux format** — auto-update works here; must pass the gate |
 | Ubuntu | `.deb` | Best-effort; release notifications are manual (see the note below) |
-| macOS | — | **Not built** as of `1.0.1-beta.20` (#605) |
+| macOS | `.dmg` / `.zip` | **Built on request**, not per tag (#605); untested, unsigned |
 
-**macOS is no longer built (#605).** It previously shipped as a byproduct, publishing six
-of seventeen release assets — about 850 MB — for a platform this guide does not document,
-unsigned so Gatekeeper blocks it on a default install, on a runner billed at ten times the
-Linux rate. Nothing pointed a tester at it and no tester could have launched it. A macOS
-tester in a later round needs signing and notarization (#274, #92) before a build is worth
-handing over; `pnpm package:mac` still works locally in the meantime. This is a stated
-limitation of the round, not a gap that appeared by accident.
+**macOS is built on request rather than per tag (#605).** Building it on every tag published
+six of seventeen release assets — about 850 MB — on a runner billed at ten times the Linux
+rate, for a platform nobody was pointed at. Building it *never* stopped being right the
+moment a round-1 tester turned out to be on a Mac. So it moved to
+`.github/workflows/release-macos.yml`, dispatched per tag that needs it:
+
+```sh
+gh workflow run release-macos.yml -f tag=v1.0.1-beta.20
+```
+
+It attaches the macOS assets to the existing Release and fails if that Release does not
+exist, rather than creating a macOS-only one.
+
+What the macOS tester gets, stated plainly because it is worse than the other two platforms:
+
+- **Unsigned and un-notarized.** Gatekeeper refuses the app until the quarantine attribute
+  is cleared by hand. The tester guide carries the command. Signing and notarization are
+  #274 and #92 and are not in this round.
+- **Outside the pre-ship gate.** The gate covers Windows NSIS and the Ubuntu AppImage. No
+  macOS build passes a checklist before it ships, so the tester is the first person to run it.
+- **Auto-update only between two macOS-built releases.** `latest-mac.yml` is published only
+  when a macOS build is made, so the feed skips tags that had none. It will not offer an
+  update across a gap; a manual install is the fallback.
 
 Builds are unsigned. Windows testers get a SmartScreen "More info → Run anyway"
 click-through; that is accepted for an invited round (#284 out-of-scope list).

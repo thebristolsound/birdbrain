@@ -101,6 +101,27 @@ Then launch **Birdbrain** from your app launcher, or run `birdbrain` in a termin
 `.deb` is supported on a best-effort basis this round, and installing an update on it needs
 your system password — see [Updating](#updating).
 
+### macOS
+
+macOS builds are **not published by default** — ask in the tester chat and one will be added
+to the release you were pointed at. Take `Birdbrain-<version>-arm64.dmg` on Apple Silicon or
+`Birdbrain-<version>.dmg` on Intel.
+
+Our builds are unsigned and not notarized, so macOS will refuse to open the app on a default
+install. Clearing that is one command:
+
+```bash
+xattr -d com.apple.quarantine /Applications/Birdbrain.app
+```
+
+Run it after dragging the app into **Applications** from the `.dmg`. If macOS says the app is
+*damaged and can't be opened*, that is the same quarantine flag rather than a corrupt
+download — the command above is the fix, not a re-download.
+
+macOS is the least-tested platform this round: it is not covered by our pre-ship checklist,
+so you are the first person running it. Report anything platform-specific you hit, including
+the install itself.
+
 ## Install the Chrome extension
 
 The extension isn't on the Chrome Web Store yet, so it loads in developer mode. The
@@ -212,6 +233,9 @@ Two more things a restore does not do, both worth knowing before you click it:
   capture does not take it out of the evidence package. Treat a case as contaminated by
   anything you captured into it.
 - **Chrome/Chromium only** — no Firefox or Safari extension yet.
+- **macOS is untested and unsigned** — built on request, cleared through Gatekeeper by hand,
+  and not covered by the checklist every Windows and Ubuntu build must pass. Auto-update on
+  macOS only works between two releases that both had a macOS build made for them.
 - **"Verified" is not a live check** — Capture details shows the result of the last
   verification run, not the state of the file right now. Click **Re-verify** to get a current
   statement.

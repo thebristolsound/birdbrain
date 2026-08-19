@@ -31,8 +31,22 @@ silently lose, corrupt, or mis-attest evidence.** Everything else ships rough, o
 
 ### Testers
 
-**2–3, personally invited** (#285). Smaller than the July brief's 3–10, sized to what one
-maintainer can support.
+**Six, personally invited** (amended 2026-08-19; was 2–3 per #285). Sized originally to what
+one maintainer can support, and revised upward once the cohort was actually named. Six is
+the **ceiling**, not a target: backfills replace lapsed testers rather than adding to them
+(see Participation and backfill below). Above six the support commitment stops being
+credible, and with this cohort a promise that is missed costs more than a slot left empty.
+
+Testers are referred to by **codename only** — in this brief, in GitHub issues, in commit
+messages, and in the tester channel. The mapping is held privately by the maintainer and is
+deliberately not in this repository, which is going public (#262–#274).
+
+Never write a role, employer, or location beside a codename outside that private mapping.
+With a cohort this small and one publication involved, "the journalist at X" is an
+identification even when no name appears.
+
+Coverage as invited: adversarial OSINT ×2, investigative journalism ×2, software
+engineering ×1, archival / disinformation tracking ×1.
 
 The investigator who asked to test early is **inside** this cohort, not an exception to it
 (#416, 2026-08-15). The support commitment below applies to them in full, and round 1 has
@@ -132,9 +146,14 @@ Passphrase encryption for case archives is filed as a post-round enhancement.
 This wording goes into the tester guide, not just this brief.
 
 - **Ordinary bugs:** acknowledged best-effort, target ~2 business days. **No SLA.** Reports
-  are swept into GitHub issues roughly weekly.
+  are swept into GitHub issues roughly weekly. This target was set against a 2–3 tester
+  cohort; it is restated unchanged for six, which is why six is a ceiling. Say it in the
+  invitation as written here rather than implying anything faster.
 - **Channel:** one shared private chat. Testers never need GitHub accounts. The bug-report
-  format is pinned there.
+  format is pinned there. **A shared channel means every tester can see who the others
+  are** — codenames protect them from the repository, not from each other. Confirm each
+  tester is willing to be in a room with the rest *before* opening it; some will not be,
+  and for them the channel is per-tester with the escalation path mirrored by hand.
 - **Escalation:** any report implying that **captures already taken** are unreliable →
   every tester is notified in-channel and advised to pause capturing until it is resolved.
   This is the one path that interrupts everyone.
@@ -223,13 +242,71 @@ fixes is the list of what the rewrite must say:
 
 1. Pass the pre-ship gate against a freshly tagged build.
 2. Update the tester guide per the list above.
-3. Personal invitation per tester, with the guide link and the scoped feedback ask in the
-   message itself — not only in the guide.
+3. Personal invitation per tester, in waves (see Participation and backfill), with the guide
+   link and the scoped feedback ask in the message itself — not only in the guide. Record
+   the invitation date and the starting build per codename.
 4. Open the shared private chat; pin the guide link, the current release link, and the
    bug-report format (version, OS, what you did, what you expected, what happened,
    screenshot, diagnostic bundle where relevant).
 5. Prototype walkthrough in the hand-off session.
 6. Sweep the channel into GitHub issues weekly.
+
+## Participation and backfill
+
+Added 2026-08-19, after the cohort was named.
+
+**The problem this solves: silence and satisfaction are indistinguishable.** Birdbrain sends
+no telemetry, by design and permanently (see the privacy posture). So a tester who never
+installed produces exactly the same evidence as a tester who installed, captured for a week
+and found nothing wrong: an empty channel. Without a participation check, an unused build
+reads as a clean one, and the round reports success on a sample of two.
+
+Participation is therefore tracked **separately from findings**, per tester, with dates.
+
+### Waves
+
+Invitations are staggered rather than sent at once.
+
+| Wave | Who | Why |
+| --- | --- | --- |
+| 0 | The colocated tester | Fastest feedback loop. Walks the guide, the extension sideload, the first capture and the export before anyone else sees them — a wrong instruction gets fixed once instead of six times. |
+| 1 | The two most dependable | Proves the guide works for someone who cannot lean over and ask. |
+| 2 | The remainder | |
+
+Wave 0 is also the reason the least-certain testers do not consume the only first impression.
+
+### Lapse triggers
+
+From each tester's own invitation date, not from the start of the round:
+
+- **Day 7** — no confirmation they have installed → one nudge, and only one.
+- **Day 14** — no first evidence package returned → **presumed lapsed**; backfill starts.
+
+The returned evidence package is the checkpoint because it is the only signal that exists.
+Record the two dates per codename somewhere durable. Left untracked, "quiet" becomes "still
+waiting" for a month, and the round ends without anyone having decided it had.
+
+Presumed-lapsed is not a judgement about the person. It is a scheduling fact, and it should
+be reversible without ceremony if they come back.
+
+### Backfilling
+
+Backfill the **perspective**, not the headcount. If both journalists lapse, the round has
+lost a class of use that a third OSINT researcher does not restore — and journalism is the
+use case with the sharpest court-facing requirements.
+
+Where no reserve fits the gap, **record the gap** and run the round without it. A slot
+filled by whoever was available produces feedback about the wrong workflow, which is worse
+than a stated absence because it looks like coverage.
+
+Reserves must be **named in advance**, privately, alongside the codename mapping. A backfill
+plan with no names is a wish.
+
+### Build provenance
+
+Record which build each tester started on. A wave-2 joiner may begin on a later tag, so
+their "this is broken" and wave 0's are not statements about the same software. Without
+this, the weekly issue sweep silently merges reports across builds.
 
 ## Out of scope this round
 

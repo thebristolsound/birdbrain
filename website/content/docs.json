@@ -39,14 +39,14 @@
   "navbar": {
     "links": [
       {
-        "label": "GitHub",
-        "href": "https://github.com/thebristolsound/birdbrain"
+        "label": "Downloads",
+        "href": "https://github.com/thebristolsound/birdbrain-releases/releases"
       }
     ]
   },
   "footer": {
     "socials": {
-      "github": "https://github.com/thebristolsound/birdbrain"
+      "github": "https://github.com/thebristolsound/birdbrain-releases"
     }
   }
 }

@@ -48,7 +48,6 @@ body:
     attributes:
       label: Birdbrain version
       description: Shown in Settings → About, or in the installer filename.
-      placeholder: 1.0.1-beta.17
     validations:
       required: true
   - type: dropdown

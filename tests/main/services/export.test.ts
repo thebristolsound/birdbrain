@@ -4,6 +4,7 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
 import { createHash } from 'crypto'
+import { execFileSync } from 'child_process'
 import sharp from 'sharp'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
@@ -32,6 +33,63 @@ import {
   resetInstallationId
 } from '@main/services/installationId'
 import type { ExportOptions } from '@shared/types'
+
+// Skipped rather than failed when jq is absent: unlike openssl, jq is not a
+// keystone proof — it is the convenience command the runbook offers for finding
+// unsigned entries, and the fact those entries exist is asserted without it.
+const HAS_JQ = (() => {
+  try {
+    execFileSync('jq', ['--version'], { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+})()
+
+// A pre-signing manifest entry: schemaVersion 1, no `signature` key at all.
+// Written as the genesis entry because a chain may go v1 -> v2 as the tool was
+// upgraded but never back — verifyManifestChain rejects a v1 entry after a
+// signed one as a schema downgrade, which is a different finding entirely.
+async function seedLegacyGenesisCapture(caseId: string, caseDir: string) {
+  const bytes = 'legacy bytes'
+  const capture = insertCapture({
+    caseId,
+    url: 'https://legacy.example/page',
+    title: 'Legacy Page',
+    hash: createHash('sha256').update(bytes).digest('hex'),
+    timestamp: '2026-04-05T11:00:00.000Z'
+  })
+  await defaultCaptureStore.writeMhtmlStream(
+    caseId,
+    capture.id,
+    Readable.from([Buffer.from(bytes)]) as unknown as ReadableStream<Uint8Array>
+  )
+
+  const body = {
+    type: 'capture',
+    captureId: capture.id,
+    caseId,
+    url: 'https://legacy.example/page',
+    timestamp: '2026-04-05T11:00:00.000Z',
+    contentHash: capture.hash,
+    sizeBytes: Buffer.byteLength(bytes),
+    operatorId: 'op',
+    operatorName: '',
+    toolVersion: '0.0.1',
+    index: 0,
+    prevHash: '',
+    schemaVersion: 1
+  }
+  writeFileSync(
+    join(caseDir, 'manifest.jsonl'),
+    JSON.stringify({
+      ...body,
+      entryHash: createHash('sha256').update(canonicalStringify(body)).digest('hex')
+    }) + '\n'
+  )
+
+  return capture
+}
 
 function readStoredZipEntries(path: string): Map<string, Buffer> {
   const zip = readFileSync(path)
@@ -662,6 +720,116 @@ describe('export', () => {
       pendingCaptureCount: 0,
       noneCaptureCount: 1
     })
+  })
+
+  // #581. A case older than per-entry signing carries both kinds of entry. The
+  // report used to render every integrity-verified exhibit as plain "Verified",
+  // so a reader could not tell which exhibits an RSA signature actually covered
+  // without opening manifest.jsonl. Order matters: the chain may go v1 -> v2 as
+  // the tool was upgraded, never back, so the legacy entry has to be written
+  // first — a v1 entry after a signed one is tampering and verifyManifestChain
+  // rejects it as a schema downgrade.
+  it('names per-exhibit signature status when the chain mixes signed and legacy entries', async () => {
+    const caseDir = join(tempDir, 'captures', caseId)
+    await seedLegacyGenesisCapture(caseId, caseDir)
+
+    await ingest(caseId, '<html><body>Signed</body></html>', 'https://example.com/signed', 'Signed')
+
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+
+    const outputPath = join(tempDir, 'mixed-evidence.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test User',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const report = readStoredZipEntries(outputPath).get('report.html')!.toString('utf-8')
+    expect(report).toContain('Entry signature')
+    expect(report).toContain('Absent (pre-signing tool version)')
+    // Both states in one document: the disclosure is worthless if the unsigned
+    // row reads the same as the signed one.
+    expect(report).toContain('carries an RSA signature over its entry')
+  })
+
+  // The runbook is the by-hand proof, so asserting its prose is not enough: run
+  // the identification command it now gives against a real mixed chain and check
+  // it names the unsigned entry and only that one. If the command drifts from
+  // what jq accepts, or from the shape the export actually writes, this fails.
+  it.skipIf(!HAS_JQ)('ships a VERIFY.md whose unsigned-entry command finds the legacy entry', async () => {
+    const caseDir = join(tempDir, 'captures', caseId)
+    await seedLegacyGenesisCapture(caseId, caseDir)
+    await ingest(caseId, '<html><body>Signed</body></html>', 'https://example.com/signed', 'Signed')
+
+    const outputPath = join(tempDir, 'runbook-evidence.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test User',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const entries = readStoredZipEntries(outputPath)
+    const runbook = entries.get('VERIFY.md')!.toString('utf-8')
+    expect(runbook).toContain('Not every entry is signed')
+
+    // Lift the jq filter out of the shipped document rather than restating it,
+    // so the command under test is the one a reader is actually given.
+    const filter = runbook.match(/jq -r '([^']+)' manifest\.jsonl/)?.[1]
+    expect(filter).toBeDefined()
+
+    const manifestPath = join(tempDir, 'runbook-manifest.jsonl')
+    writeFileSync(manifestPath, entries.get('manifest.jsonl')!)
+    const found = execFileSync('jq', ['-r', filter!, manifestPath], { encoding: 'utf-8' })
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+
+    // Exactly one line. A filter that over-matched — listing the signed entry
+    // too — would send a reader chasing a signature that is legitimately there.
+    expect(found).toHaveLength(1)
+    expect(found[0]).toBe('index 0 capture — unsigned')
+  })
+
+  // A capture the chain never recorded has no signature to report and must not
+  // borrow the signed wording by defaulting.
+  it('reports no manifest entry rather than a signature status for an unchained capture', async () => {
+    const orphan = insertCapture({
+      caseId,
+      url: 'https://unchained.example',
+      title: 'Unchained',
+      hash: createHash('sha256').update('unchained').digest('hex'),
+      timestamp: '2026-04-05T10:00:00.000Z'
+    })
+    await defaultCaptureStore.writeMhtmlStream(
+      caseId,
+      orphan.id,
+      Readable.from([Buffer.from('unchained')]) as unknown as ReadableStream<Uint8Array>
+    )
+
+    const outputPath = join(tempDir, 'unchained-evidence.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test User',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const report = readStoredZipEntries(outputPath).get('report.html')!.toString('utf-8')
+    expect(report).toContain('No manifest entry')
   })
 
   it('does not record overallValid:true when auditTrail is excluded (no verifications)', async () => {

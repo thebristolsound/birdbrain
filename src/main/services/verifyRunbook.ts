@@ -21,9 +21,26 @@ using only stock tools: \`sha256sum\`, \`openssl\`, and \`jq\`.
 
 ## Trust model (read first)
 
-The signed \`manifest.jsonl\` is the **root of trust**. Each entry carries an
-\`entryHash\` and an RSA \`signature\` over that hash; entries are hash-linked
-(\`prevHash\` == the prior entry's \`entryHash\`) and \`index\`-ordered.
+The signed \`manifest.jsonl\` is the **root of trust**. Every entry carries an
+\`entryHash\`; entries are hash-linked (\`prevHash\` == the prior entry's
+\`entryHash\`) and \`index\`-ordered. Entries with \`schemaVersion\` 2 or above
+additionally carry an RSA \`signature\` over that hash.
+
+**Not every entry is signed.** Per-entry signing was added after the chain
+itself, so a case that predates it can contain \`schemaVersion\` 1 entries with
+no \`signature\` field. They are legitimate, and they are not silently accepted:
+what covers them is chain linkage (step 3) and any RFC 3161 timestamp appended
+later (step 6), not a signature. Step 2 does not apply to them. Identify them
+with:
+
+\`\`\`sh
+jq -r 'select((.schemaVersion // 1) < 2) | "index \\(.index) \\(.type) — unsigned"' manifest.jsonl
+\`\`\`
+
+A chain may go v1 → v2 as the tool was upgraded. It must never go **back**: a
+\`schemaVersion\` 1 entry appearing after a signed one is tampering, because
+rewriting a signed entry as an unsigned one needs no private key. Birdbrain's
+verifier rejects that; a hand check should too.
 
 \`evidence.json\` is an **unsigned convenience index**. Do not trust it on its
 own — its own integrity is established by re-deriving everything from the chain.
@@ -61,11 +78,13 @@ files match the **untrusted** index — the authoritative content bind is step 5
 jq -r '.artifacts[] | "\\(.sha256)  \\(.path)"' evidence.json | sha256sum -c -
 \`\`\`
 
-## Step 2 — Entry signature
+## Step 2 — Entry signature (\`schemaVersion\` 2 and above)
 
-For a manifest entry, verify its RSA signature. The signature is over the **bare
-\`entryHash\` hex string** with **no trailing newline** — a stray newline makes
-verification fail spuriously.
+For a **signed** manifest entry, verify its RSA signature. The signature is over
+the **bare \`entryHash\` hex string** with **no trailing newline** — a stray
+newline makes verification fail spuriously. Entries with no \`signature\` field
+are the pre-signing entries described under Trust model; skip them here and rely
+on steps 3 and 6.
 
 \`\`\`sh
 # Pick an entry (e.g. the first line):

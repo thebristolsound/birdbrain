@@ -132,11 +132,17 @@ The short version:
 
 1. Open `chrome://extensions` in Chrome.
 2. Switch on **Developer mode** (toggle in the top-right corner).
-3. Click **Load unpacked** and select the extension folder — the one containing
-   `manifest.json`. Use the app's **Open extension folder** button to find it, or
-   unzip `birdbrain-extension.zip` from the release and select that folder.
-4. The Birdbrain icon appears in your Chrome toolbar. Back in the app, the status
+3. In the app, click **Open extension folder**. This opens the extension that ships
+   inside the Birdbrain build you just installed — always load this one, not a copy
+   downloaded or unzipped from somewhere else, so the extension and the desktop app
+   are the same version.
+4. Click **Load unpacked** and select that folder — the one containing `manifest.json`.
+5. The Birdbrain icon appears in your Chrome toolbar. Back in the app, the status
    should flip to **Extension connected**.
+
+Because the extension is loaded from the app's install folder, updating the app updates
+the files on disk — but Chrome keeps running the old copy until you reload it (see
+[Updating](#updating)).
 
 The desktop app must be running for the extension to work — it talks to the app
 locally on `127.0.0.1:19845`. Nothing is sent to any external server.
@@ -177,9 +183,11 @@ regardless of what the in-app check has picked up. You can always install by han
 download from the releases page and install over the old version. Your data is kept either
 way — it lives in your user data directory, separate from the app.
 
-If the extension changed in the release notes, also re-load it: `chrome://extensions`
-→ click the reload icon on the Birdbrain card (or **Load unpacked** again if the
-folder moved).
+After every app update, also reload the extension: `chrome://extensions` → click the
+reload icon on the Birdbrain card (or **Load unpacked** again from **Open extension
+folder** if the card shows an error). Chrome does not pick up changed extension files on
+its own, so until you reload, the extension is still the previous version — captures it
+makes may not match what the app expects.
 
 If you put real project data in, this is what stands behind it — and the limits below are
 why we recommend synthetic or low-stakes material instead.

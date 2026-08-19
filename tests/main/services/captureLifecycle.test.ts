@@ -645,6 +645,7 @@ describe('createCaptureLifecycle.deleteMany (#394)', () => {
     expect(rolled.stage).toBe('db')
     expect(rolled.error).toBe('ManifestRollback')
     expect(result.haltedAt).toBe(failing.id)
+    expect(result.failedIds).toEqual([failing.id, caps[2].id])
     expect(result.manifest).toEqual({ baseIndex, committedEntries: 1 })
     expect(manifestEntries()).toHaveLength(baseIndex + 1)
     expect(verifyManifestChain(caseDir).valid).toBe(true)
@@ -655,6 +656,22 @@ describe('createCaptureLifecycle.deleteMany (#394)', () => {
     expect(mhtmlExists(failing)).toBe(false)
     expect(getCapture(caps[2].id)).toBeDefined()
     expect(mhtmlExists(caps[2])).toBe(true)
+
+    // Retry through the same path once the row delete works again: the
+    // rolled-back entry left no trace, so the retry's entry is the only
+    // committed deletion entry for k.
+    vi.spyOn(captureRepo, 'deleteCapture').mockImplementation(realDelete)
+    const retry = await lifecycle.deleteMany(caseId, result.failedIds)
+    expect(retry.outcomes.map((o) => o.status)).toEqual(['deleted', 'deleted'])
+    expect(retry.manifest).toEqual({ baseIndex: baseIndex + 1, committedEntries: 2 })
+    const entries = manifestEntries()
+    expect(entries).toHaveLength(baseIndex + 3)
+    expect(entries.slice(baseIndex).map((e) => e.captureId)).toEqual(caps.map((c) => c.id))
+    expect(entries.filter((e) => e.captureId === failing.id && e.type === 'deletion')).toHaveLength(
+      1
+    )
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+    expect(listCaptures(caseId)).toHaveLength(0)
   })
 
   it('throws BATCH_CROSS_CASE before any write when an id belongs to another case', async () => {

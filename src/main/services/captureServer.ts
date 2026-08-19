@@ -11,7 +11,6 @@ import { sendEvent } from '@main/ipcWrap'
 import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
 import * as selectorRepo from '@main/services/db/selectorRepo'
-import { defaultCaptureStore } from '@main/services/captureStore'
 import { getSettings } from '@main/services/settings'
 import { ingestMhtmlCapture } from '@main/services/captureLifecycle'
 import { getInstallationId } from '@main/services/installationId'
@@ -99,6 +98,10 @@ function emitCaptureEvent(event: CaptureEvent): void {
 
 // The single source of truth for the pipeline self-test route.
 const CAPTURE_TEST_ROUTE = '/api/captures/test'
+
+// Recorded on the deletion entry the pipeline self-test leaves behind, so a
+// chain reader can tell a self-test cleanup from an operator deleting evidence.
+const PIPELINE_TEST_DELETION_REASON = 'pipeline-test'
 
 function createApp(deps: CaptureServerDeps): Hono {
   const { selectorLifecycle, captureLifecycle, token } = deps
@@ -537,15 +540,13 @@ function createApp(deps: CaptureServerDeps): Hono {
       return c.json({ success: false, durationMs: Date.now() - startTime, error: String(err) })
     } finally {
       if (testCaptureId) {
+        // Route cleanup through the lifecycle so the manifest gets a matching
+        // deletion entry. Deleting the row and the artifacts directly left a
+        // signed `capture` entry in a real case's chain with no files and no
+        // deletion record, so the chain and the exported package disagreed about
+        // how many captures the case has, with nothing to explain the gap (#580).
         try {
-          captureRepo.deleteCapture(testCaptureId)
-        } catch {
-          /* best effort */
-        }
-      }
-      if (testCaseId && testCaptureId) {
-        try {
-          defaultCaptureStore.deleteArtifacts(testCaseId, testCaptureId)
+          await captureLifecycle.delete(testCaptureId, PIPELINE_TEST_DELETION_REASON)
         } catch {
           /* best effort */
         }

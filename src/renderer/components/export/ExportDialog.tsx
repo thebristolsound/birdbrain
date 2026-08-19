@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { useQuery } from '@tanstack/react-query'
 import type { ExportOptions } from '@shared/types'
+import { safeFilename } from '@shared/safeFilename'
 import { presets } from '@renderer/lib/motion'
 import { useCompletionCelebration } from '@renderer/hooks/useCompletionCelebration'
 import { Button, Input, Label } from '@renderer/components/ui'
@@ -58,7 +59,7 @@ export function ExportDialog({ caseId, caseName, onClose }: ExportDialogProps) {
 
   const handleExport = () => {
     const ext = 'zip'
-    const safeName = caseName.replace(/[^a-zA-Z0-9-_]/g, '_')
+    const safeName = safeFilename(caseName, 'case')
     const outputPath = `${safeName}_evidence.${ext}`
 
     const options: ExportOptions = {

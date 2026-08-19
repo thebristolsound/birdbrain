@@ -150,6 +150,13 @@ export interface ReportData {
    */
   entrySignatureByCaptureId: Map<string, EntrySignatureStatus>
   /**
+   * Captures the chain still claims — a `capture` entry with no matching
+   * `deletion` entry — that this package does not contain. Resolved once by
+   * resolveUnreconciledChainCaptures in export.ts and shared with evidence.json's
+   * warnings block, so the document and the index cannot disagree (#580).
+   */
+  unreconciledChainCaptureIds: string[]
+  /**
    * Whether tsa-root.pem is shipped for the configured TSA. False for a
    * non-default authority, where tsa-intermediates.pem holds only
    * certificates lifted from the tokens themselves — validating a token against
@@ -667,6 +674,28 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     )}
   </div>
 
+  ${
+    data.unreconciledChainCaptureIds.length > 0
+      ? `<div class="alert">
+    <p class="alert-title">The chain claims captures this package does not contain</p>
+    <p>The manifest holds ${
+      data.unreconciledChainCaptureIds.length
+    } capture entries with no corresponding deletion entry whose captures are neither listed as
+    exhibits below nor enclosed as stored page archives. The chain and the contents of this
+    package therefore disagree by that number. It is disclosed rather than omitted: a reader
+    reconciling the two would otherwise find the shortfall unexplained.</p>
+    <p>The known cause is Birdbrain's own capture-pipeline self-test, which in versions before
+    this fix wrote a capture entry into a real case's chain and removed it without recording a
+    deletion. Such entries carry the URL <code>birdbrain://pipeline-test</code>. An entry with any
+    other URL is not accounted for by that explanation and should be treated as a gap.</p>
+    ${field(
+      'Capture identifiers',
+      mono(data.unreconciledChainCaptureIds.map((id) => esc(id)).join('<br>')),
+      true
+    )}
+  </div>`
+      : ''
+  }
   ${
     packaged
       ? `<div class="note">

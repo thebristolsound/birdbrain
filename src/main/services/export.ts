@@ -192,6 +192,43 @@ export function resolveEntrySignatures(
 }
 
 /**
+ * Chain-vs-package reconciliation (#580). The manifest is append-only, so a
+ * capture entry with no matching deletion entry is a standing claim that the
+ * case still holds that capture. If such a capture is not in the package, the
+ * chain and the contents disagree and a reader has no way to account for the
+ * difference — which is what a third-party review of an alpha export found,
+ * reading it as unexplained missing evidence.
+ *
+ * Resolved once, from the same snapshot, and consumed by both report.html and
+ * evidence.json. Two derivations could disagree, and a document that contradicts
+ * its own machine-readable index is worse than one that says nothing.
+ *
+ * Existing chains carry self-test entries that predate the fix, so this reports
+ * rather than throws: the point is to make an old package explainable, not to
+ * refuse to export it.
+ */
+export function resolveUnreconciledChainCaptures(
+  captures: Capture[],
+  entries: Record<string, unknown>[]
+): string[] {
+  const deletedCaptureIds = new Set(
+    entries.filter((e) => e.type === 'deletion').map((e) => e.captureId)
+  )
+  const packagedCaptureIds = new Set(captures.map((c) => c.id))
+  return [
+    ...new Set(
+      entries
+        .filter((e) => e.type === 'capture')
+        .map((e) => e.captureId)
+        .filter(
+          (id): id is string =>
+            typeof id === 'string' && !deletedCaptureIds.has(id) && !packagedCaptureIds.has(id)
+        )
+    )
+  ]
+}
+
+/**
  * Live manifest read, for the pre-export dialog: nothing is being packaged, so
  * there is no snapshot to resolve against and the freshest answer is the right
  * one. generateReport deliberately does not call this — it resolves once from
@@ -251,6 +288,7 @@ export async function generateReport(
     packagedPaths: new Map(),
     trustedTimeByCaptureId: new Map(),
     entrySignatureByCaptureId: new Map(),
+    unreconciledChainCaptureIds: [],
     tsaTrustAnchorBundled: getTsaTrustBundle(settings.tsaUrl).bundled
   }
 
@@ -323,6 +361,7 @@ export async function generateReport(
   data.preflight = trustedTime.preflight
   data.trustedTimeByCaptureId = trustedTime.byCaptureId
   data.entrySignatureByCaptureId = resolveEntrySignatures(captures, manifest.entries)
+  data.unreconciledChainCaptureIds = resolveUnreconciledChainCaptures(captures, manifest.entries)
 
   onProgress?.('Generating report...', 80)
   const html = buildHtmlReport(data, options)
@@ -438,29 +477,6 @@ function buildEvidenceZip(
   add(TSA_INTERMEDIATES_FILENAME, [...timestampTokenCertPems].join('\n') + '\n')
   if (tsaTrust.bundled) add(TSA_ROOT_FILENAME, tsaTrust.pem)
 
-  // Chain-vs-package reconciliation (#580). The manifest is append-only, so a
-  // capture entry with no matching deletion entry is a claim that the case still
-  // holds that capture. If such a capture is not in the package, the chain and
-  // the contents disagree and a reader has no way to account for the difference —
-  // which is what a third-party review of an alpha export found, reading it as
-  // unexplained missing evidence. Report the count rather than omitting it
-  // silently; existing chains carry self-test entries that predate the fix.
-  const deletedCaptureIds = new Set(
-    manifest.entries.filter((e) => e.type === 'deletion').map((e) => e.captureId)
-  )
-  const packagedCaptureIds = new Set(data.captures.map((c) => c.id))
-  const unreconciledChainCaptureIds = [
-    ...new Set(
-      manifest.entries
-        .filter((e) => e.type === 'capture')
-        .map((e) => e.captureId)
-        .filter(
-          (id): id is string =>
-            typeof id === 'string' && !deletedCaptureIds.has(id) && !packagedCaptureIds.has(id)
-        )
-    )
-  ]
-
   const capturesMissingContent: string[] = []
   const emittedScreenshotPaths = new Set<string>()
   const captureEvidence = data.captures.map((capture) => {
@@ -555,8 +571,8 @@ function buildEvidenceZip(
       noneCaptureCount: data.preflight.noneCaptureCount,
       missingContentCaptureCount: capturesMissingContent.length,
       // Captures the chain still claims but the package does not contain (#580).
-      unreconciledChainCaptureCount: unreconciledChainCaptureIds.length,
-      unreconciledChainCaptureIds,
+      unreconciledChainCaptureCount: data.unreconciledChainCaptureIds.length,
+      unreconciledChainCaptureIds: data.unreconciledChainCaptureIds,
       tsaTrustAnchorNote: tsaTrust.note ?? null
     },
     verificationMaterials: {

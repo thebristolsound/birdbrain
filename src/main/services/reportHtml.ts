@@ -130,8 +130,8 @@ export interface ReportData {
    */
   trustedTimeByCaptureId: Map<string, TrustedTimeResult>
   /**
-   * Whether tsa-ca-chain.pem carries an independent trust anchor for the
-   * configured TSA. False for a non-default authority, where the file holds only
+   * Whether tsa-root.pem is shipped for the configured TSA. False for a
+   * non-default authority, where tsa-intermediates.pem holds only
    * certificates lifted from the tokens themselves — validating a token against
    * those is circular, and the verification instructions must say so rather than
    * implying the check establishes authenticity.
@@ -456,7 +456,7 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   contents: {
     id: 'contents',
     title: 'Contents',
-    render: ({ included, exhibits, options }) => {
+    render: ({ included, exhibits, options, data }) => {
       const listed = included.filter((id) => id !== 'cover' && id !== 'contents')
       if (listed.length === 0) return null
       const rows = listed
@@ -489,7 +489,9 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     isPackagedExport(options)
       ? `<p class="fine">Companion files in this evidence package: <code>evidence.json</code>,
   <code>manifest.jsonl</code>, <code>certification.html</code>,
-  <code>signing-public-key.pem</code>, <code>tsa-ca-chain.pem</code>, <code>VERIFY.md</code>,
+  <code>signing-public-key.pem</code>, <code>tsa-intermediates.pem</code>,${
+    data.tsaTrustAnchorBundled ? ' <code>tsa-root.pem</code>,' : ''
+  } <code>VERIFY.md</code>,
   and the <code>pages/</code>, <code>screenshots/</code> and <code>timestamps/</code>
   directories.</p>`
       : `<p class="fine">This is a standalone report, not an evidence package. The stored page
@@ -760,10 +762,14 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     the cover — not to any named person.</li>
     <li><strong>Validate the timestamp tokens.</strong> For each <code>.tst</code> in
     <code>timestamps/</code>, confirm the token's message imprint equals that exhibit's capture
-    digest${
+    digest and that its signing chain, built with <code>tsa-intermediates.pem</code>, terminates in
+    ${
       data.tsaTrustAnchorBundled
-        ? ' and that the signing chain terminates in <code>tsa-ca-chain.pem</code>, which carries the authority’s trust anchor'
-        : ' and that the signing chain terminates in a trust anchor you obtain independently from the authority named on the cover'
+        ? `the self-signed root shipped as <code>tsa-root.pem</code>. That file is a convenience copy,
+    not an independent anchor: check its SHA-256 fingerprint against the authority’s published
+    value or your own trust store first (<code>VERIFY.md</code> step 6a prints the expected
+    fingerprint and the exact <code>openssl</code> command)`
+        : 'a trust anchor you obtain independently from the authority named on the cover'
     }.</li>
     <li><strong>Match the screenshots.</strong> Each file name in <code>screenshots/</code> is its
     own digest; recomputing it confirms that the packaged image is the one the exhibit cites.</li>
@@ -777,8 +783,9 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
       : `<div class="alert">
     <p class="alert-title">No trust anchor is bundled for the configured authority</p>
     <p>Birdbrain ships a trust anchor only for its default time-stamping authority. A different
-    authority is configured for this case, so <code>tsa-ca-chain.pem</code> contains only
-    certificates carried inside the tokens themselves. Validating a token against certificates it
+    authority is configured for this case, so no root file is bundled and
+    <code>tsa-intermediates.pem</code> holds only certificates carried inside the tokens
+    themselves. Validating a token against certificates it
     supplied is circular and establishes nothing about who issued it. Step 4 therefore requires a
     root obtained independently from the authority named on the cover; until one is used, the
     tokens demonstrate internal consistency but not authenticity.</p>

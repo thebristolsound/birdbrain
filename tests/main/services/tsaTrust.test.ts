@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { getTsaTrustBundle } from '@main/services/tsaTrust'
+import { X509Certificate } from 'crypto'
+import {
+  DIGICERT_TRUSTED_ROOT_G4_SHA256,
+  getTsaTrustBundle,
+  TSA_ROOT_FILENAME
+} from '@main/services/tsaTrust'
 import { DEFAULT_TSA_URL } from '@shared/constants'
 
 describe('getTsaTrustBundle', () => {
@@ -8,7 +13,17 @@ describe('getTsaTrustBundle', () => {
     expect(bundle.bundled).toBe(true)
     expect(bundle.pem).toContain('BEGIN CERTIFICATE')
     expect(bundle.pem).toContain('END CERTIFICATE')
-    expect(bundle.note).toBeUndefined()
+    expect(bundle.rootSha256).toBe(DIGICERT_TRUSTED_ROOT_G4_SHA256)
+    expect(bundle.note).toContain(TSA_ROOT_FILENAME)
+    expect(bundle.note).toContain(DIGICERT_TRUSTED_ROOT_G4_SHA256)
+  })
+
+  // The fingerprint VERIFY.md tells a third party to check is a literal; this
+  // pins it to the certificate actually shipped so the two cannot drift.
+  it('published fingerprint matches the bundled self-signed root', () => {
+    const cert = new X509Certificate(getTsaTrustBundle(DEFAULT_TSA_URL).pem)
+    expect(cert.subject).toBe(cert.issuer)
+    expect(cert.fingerprint256).toBe(DIGICERT_TRUSTED_ROOT_G4_SHA256)
   })
 
   it('returns an un-bundled placeholder with guidance for a custom TSA url', () => {
@@ -17,6 +32,7 @@ describe('getTsaTrustBundle', () => {
     expect(bundle.bundled).toBe(false)
     expect(bundle.pem).toContain(customUrl)
     expect(bundle.pem).not.toContain('BEGIN CERTIFICATE')
+    expect(bundle.rootSha256).toBeUndefined()
     expect(bundle.note).toMatch(/offline trust anchor/i)
   })
 })

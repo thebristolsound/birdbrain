@@ -219,12 +219,19 @@ describe('export', () => {
     expect(entries.has('manifest.jsonl')).toBe(true)
     expect(entries.has('report.html')).toBe(true)
     expect(entries.has('signing-public-key.pem')).toBe(true)
-    expect(entries.has('tsa-ca-chain.pem')).toBe(true)
+    expect(entries.has('tsa-root.pem')).toBe(true)
+    expect(entries.has('tsa-intermediates.pem')).toBe(true)
     expect(entries.has(`pages/${capture.id}.mhtml`)).toBe(true)
     expect(entries.get(`timestamps/${capture.id}.tst`)).toEqual(token)
     expect(
       entries
-        .get('tsa-ca-chain.pem')!
+        .get('tsa-root.pem')!
+        .toString('utf-8')
+        .match(/BEGIN CERTIFICATE/g)?.length
+    ).toBe(1)
+    expect(
+      entries
+        .get('tsa-intermediates.pem')!
         .toString('utf-8')
         .match(/BEGIN CERTIFICATE/g)?.length
     ).toBeGreaterThan(1)

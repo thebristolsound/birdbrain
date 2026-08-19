@@ -426,7 +426,8 @@ describe('EvidencePackageSchema', () => {
         manifestHeadIndex: 1,
         manifestHeadHash: 'abc',
         signingPublicKeyPath: 'signing-public-key.pem',
-        tsaCaChainPath: 'tsa-ca-chain.pem',
+        tsaRootPath: 'tsa-root.pem',
+        tsaIntermediatesPath: 'tsa-intermediates.pem',
         extraInfoKey: 'ignored'
       },
       captures: [

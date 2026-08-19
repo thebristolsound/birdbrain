@@ -1,6 +1,7 @@
 import { app, dialog, shell } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
 import { DEFAULT_ANALYSIS_SYSTEM_PROMPT } from '@shared/constants'
+import { safeFilename } from '@shared/safeFilename'
 import type {
   CreateCaseParams,
   UpdateCaseParams,
@@ -129,7 +130,7 @@ export function registerIpcHandlers(deps: {
       const caseData = caseRepo.getCase(caseId)
       if (!caseData) throw new IpcFailure('Case not found', 'NOT_FOUND')
       const { canceled, filePath } = await dialog.showSaveDialog({
-        defaultPath: `${caseData.name.replace(/[^\w\- ]+/g, '_')}.birdbrain`,
+        defaultPath: `${safeFilename(caseData.name, 'case')}.birdbrain`,
         filters: [{ name: 'Birdbrain Case Archive', extensions: ['birdbrain'] }]
       })
       if (canceled || !filePath) return { canceled: true }
@@ -213,7 +214,7 @@ export function registerIpcHandlers(deps: {
     // Modern captures store a raw .mhtml artifact; only legacy pre-v11 rows have .html.
     const ext = capture.format === 'mhtml' ? 'mhtml' : 'html'
     const { canceled, filePath } = await dialog.showSaveDialog({
-      defaultPath: `${capture.title || 'capture'}.${ext}`,
+      defaultPath: `${safeFilename(capture.title, 'capture')}.${ext}`,
       filters:
         ext === 'mhtml'
           ? [{ name: 'MHTML Archive', extensions: ['mhtml'] }]
@@ -236,7 +237,7 @@ export function registerIpcHandlers(deps: {
       const artifact = defaultCaptureStore.artifactPaths(capture.caseId, captureId, ext)
       if (!existsSync(artifact.abs)) throw new IpcFailure(`Capture file (.${ext}) not found`)
       const { canceled, filePath } = await dialog.showSaveDialog({
-        defaultPath: `${capture.title || 'capture'}.pdf`,
+        defaultPath: `${safeFilename(capture.title, 'capture')}.pdf`,
         filters: [{ name: 'PDF Document', extensions: ['pdf'] }]
       })
       if (canceled || !filePath) return null
@@ -259,7 +260,7 @@ export function registerIpcHandlers(deps: {
       const capture = captureRepo.getCapture(captureId)
       if (!capture) return null
       const { canceled, filePath } = await dialog.showSaveDialog({
-        defaultPath: `${capture.title || 'capture'}.png`,
+        defaultPath: `${safeFilename(capture.title, 'capture')}.png`,
         filters: [{ name: 'PNG Image', extensions: ['png'] }]
       })
       if (canceled || !filePath) return null
@@ -389,7 +390,7 @@ export function registerIpcHandlers(deps: {
         r.captureTimestamp
       ])
     )
-    const safeName = caseRow.name.replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 80) || 'case'
+    const safeName = safeFilename(caseRow.name, 'case')
     const { canceled, filePath } = await dialog.showSaveDialog({
       defaultPath: `${safeName}_selector_matches.csv`,
       filters: [{ name: 'CSV', extensions: ['csv'] }]

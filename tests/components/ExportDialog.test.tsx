@@ -130,7 +130,7 @@ describe('ExportDialog', () => {
     await waitFor(() => expect(generateReport).toHaveBeenCalledTimes(1))
     const [, options] = generateReport.mock.calls[0] as [string, ExportOptions]
     expect(options.format).toBe('zip')
-    expect(options.outputPath).toBe('Case_One_evidence.zip')
+    expect(options.outputPath).toBe('Case One_evidence.zip')
     // The include toggles decide what lands in the evidence package, so pin all
     // four rather than only the two that name the file.
     expect(options.include).toEqual({

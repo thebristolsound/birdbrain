@@ -351,8 +351,6 @@ async function captureFullPage(maxBytes: number = MAX_SCREENSHOT_BITMAP_BYTES): 
         break
       }
 
-      const yOffset = i * viewportHeight
-
       // Hide sticky elements after first slice (so headers appear at top)
       if (i === 1) {
         for (const entry of stickyElements) {
@@ -360,8 +358,16 @@ async function captureFullPage(maxBytes: number = MAX_SCREENSHOT_BITMAP_BYTES): 
         }
       }
 
-      window.scrollTo(0, yOffset)
+      window.scrollTo(0, i * viewportHeight)
       await new Promise((r) => setTimeout(r, 150))
+
+      // The browser clamps the final scroll to scrollHeight - viewportHeight, so
+      // the frame shows the page at the *actual* scroll position, not the one
+      // requested. Placing it at the requested offset squashed the whole
+      // viewport into the leftover strip and duplicated the previous slice.
+      const yOffset = window.scrollY
+      const prev = slices[slices.length - 1]
+      if (prev && yOffset <= prev.yOffset) break
 
       // Per frame, not once per capture: slices are separated by a scroll and a
       // 150ms settle, and the page is unattended in between — a toast queued
@@ -384,20 +390,32 @@ async function captureFullPage(maxBytes: number = MAX_SCREENSHOT_BITMAP_BYTES): 
       }
     }
 
-    // Stitch slices onto OffscreenCanvas
+    // Stitch slices onto OffscreenCanvas. Geometry comes from the bitmaps
+    // Chrome actually returned, not from devicePixelRatio: on fractional-DPR
+    // displays (Windows 125%/150%) the two disagree by rounding, and stitching
+    // on the assumed value drifts the seams and mis-sizes the canvas.
+    const bitmaps: Array<{ img: ImageBitmap; yOffset: number }> = []
+    for (const slice of slices) {
+      bitmaps.push({
+        img: await createImageBitmapFromDataUrl(slice.dataUrl),
+        yOffset: slice.yOffset
+      })
+    }
+    const first = bitmaps[0]?.img
+    const scale = first ? first.width / viewportWidth : dpr
+    const canvasWidth = first ? first.width : Math.round(viewportWidth * dpr)
     const capturedHeight =
-      slices.length > 0 ? slices[slices.length - 1].yOffset + viewportHeight : viewportHeight
-    const clampedHeight = Math.min(capturedHeight, totalHeight)
-    const bitmapTotalHeight = Math.round(clampedHeight * dpr)
+      bitmaps.length > 0 ? bitmaps[bitmaps.length - 1].yOffset + viewportHeight : viewportHeight
+    const bitmapTotalHeight = Math.round(Math.min(capturedHeight, totalHeight) * scale)
 
-    const canvas = new OffscreenCanvas(Math.round(viewportWidth * dpr), bitmapTotalHeight)
+    const canvas = new OffscreenCanvas(canvasWidth, bitmapTotalHeight)
     const ctx = canvas.getContext('2d')!
 
-    for (const slice of slices) {
-      const img = await createImageBitmapFromDataUrl(slice.dataUrl)
-      const destY = Math.round(slice.yOffset * dpr)
-      const destH = Math.min(img.height, bitmapTotalHeight - destY)
-      ctx.drawImage(img, 0, 0, img.width, img.height, 0, destY, img.width, destH)
+    for (const { img, yOffset } of bitmaps) {
+      const destY = Math.round(yOffset * scale)
+      // Crop, never rescale: a 1:1 blit keeps the frame pixel-exact.
+      const h = Math.min(img.height, bitmapTotalHeight - destY)
+      if (h > 0) ctx.drawImage(img, 0, 0, img.width, h, 0, destY, img.width, h)
       img.close()
     }
 

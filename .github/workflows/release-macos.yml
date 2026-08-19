@@ -1,0 +1,73 @@
+name: Release (macOS, on request)
+
+# macOS is built on request rather than on every tag (#605). The round-1 tester
+# guide covers Windows and Ubuntu; a macOS build is produced when a tester needs
+# one, and uploaded to the existing Release for that tag in the public releases
+# repository. Building it on every tag published ~850MB of assets nobody was
+# pointed at, on a runner billed at a 10x minute multiplier.
+#
+# Run it from the Actions tab, or:
+#   gh workflow run release-macos.yml -f tag=v1.0.1-beta.20
+#
+# The Release must already exist — this workflow adds assets to it and will not
+# create one, so a typo'd tag fails loudly instead of publishing a macOS-only
+# release nobody expects.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag to attach macOS artifacts to (e.g. v1.0.1-beta.20)'
+        required: true
+        type: string
+
+# Read-only, like release.yml: the upload uses RELEASES_REPO_TOKEN against the
+# separate public repository, so GITHUB_TOKEN never needs write access here.
+permissions:
+  contents: read
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Build the tag, not the default branch — the artifacts have to match the
+          # release they are being attached to, or the update feed describes bytes
+          # that were never built from that source.
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
+
+      # Fail before spending ~15 macOS minutes if the tag has no Release to attach
+      # to. softprops/action-gh-release would otherwise create one, which for a tag
+      # whose Linux and Windows assets are missing is worse than failing.
+      - name: Verify the release exists
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
+        run: |
+          gh release view "${{ inputs.tag }}" --repo thebristolsound/birdbrain-releases >/dev/null
+
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install
+
+      - name: Build and package
+        run: pnpm package:mac
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        with:
+          repository: thebristolsound/birdbrain-releases
+          token: ${{ secrets.RELEASES_REPO_TOKEN }}
+          tag_name: ${{ inputs.tag }}
+          files: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*.blockmap
+            dist/latest-mac.yml
+          fail_on_unmatched_files: true

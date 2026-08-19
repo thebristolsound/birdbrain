@@ -42,9 +42,12 @@ jobs:
           Whichever you take, you also need **\`birdbrain-extension.zip\`** — the Chrome
           extension. The app captures nothing without it.
 
-          Everything else on this page is machinery for the in-app updater
-          (\`latest*.yml\`, \`*.blockmap\`) or a build for a platform this round does not
-          support. Ignore it.
+          Everything else on this page (\`latest*.yml\`, \`*.blockmap\`) is machinery for
+          the in-app updater. Ignore it.
+
+          **On macOS?** Builds are not published here by default — ask in the tester chat
+          and one will be added to this release. They are unsigned, so macOS will refuse
+          to open one until you clear it; the tester guide has the command.
 
           **Already running Birdbrain?** You do not need this page — **Settings → Updates →
           Check for updates** installs this version in place.
@@ -73,6 +76,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # No macOS leg here (#605) — it is a separate, manually dispatched workflow,
+          # release-macos.yml. Building it on every tag published 6 of 17 assets (~850MB)
+          # on a 10x-billed runner for a platform no round-1 tester was on. Building it
+          # never was wrong too, the moment one of them was. Dispatch it per tag that
+          # needs it. Do NOT restore it to this matrix without also deciding what the
+          # release page should look like for the testers who are not on macOS.
+          #
           # windows-latest now resolves to a VS 2026 (v18) image that node-gyp <12.1
           # can't detect, breaking the better-sqlite3 native build. Pin to windows-2022
           # until pnpm ships node-gyp >=12.1 (pnpm/pnpm#10268).
@@ -80,20 +90,13 @@ jobs:
             script: package:win
             # latest.yml by name, not dist/*.yml — that also matches electron-builder's
             # builder-debug.yml config dump, which is build debris and publishes runner
-            # paths on a public page (#603). The mac and linux legs are already narrow.
+            # paths on a public page (#603). The linux leg is already narrow.
             # Every line here is globbed, so a comment inside the block would be an
             # unmatched pattern and fail_on_unmatched_files would fail the run.
             glob: |
               dist/*.exe
               dist/*.blockmap
               dist/latest.yml
-          - os: macos-latest
-            script: package:mac
-            glob: |
-              dist/*.dmg
-              dist/*.zip
-              dist/*.blockmap
-              dist/*-mac.yml
           - os: ubuntu-latest
             script: package:linux
             glob: |

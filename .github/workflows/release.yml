@@ -42,9 +42,8 @@ jobs:
           Whichever you take, you also need **\`birdbrain-extension.zip\`** — the Chrome
           extension. The app captures nothing without it.
 
-          Everything else on this page is machinery for the in-app updater
-          (\`latest*.yml\`, \`*.blockmap\`) or a build for a platform this round does not
-          support. Ignore it.
+          Everything else on this page (\`latest*.yml\`, \`*.blockmap\`) is machinery for
+          the in-app updater. Ignore it.
 
           **Already running Birdbrain?** You do not need this page — **Settings → Updates →
           Check for updates** installs this version in place.
@@ -73,6 +72,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # No macOS leg (#605). It published 6 of 17 release assets (~850MB) for a
+          # platform the tester guide does not document, unsigned so Gatekeeper blocks
+          # it on a default install, on a runner billed at a 10x minute multiplier.
+          # `pnpm package:mac` still works locally. Re-add this entry when macOS becomes
+          # a supported target with signing and notarization in place — not before, or
+          # the release page fills back up with builds nobody can launch.
+          #
           # windows-latest now resolves to a VS 2026 (v18) image that node-gyp <12.1
           # can't detect, breaking the better-sqlite3 native build. Pin to windows-2022
           # until pnpm ships node-gyp >=12.1 (pnpm/pnpm#10268).
@@ -87,13 +93,6 @@ jobs:
               dist/*.exe
               dist/*.blockmap
               dist/latest.yml
-          - os: macos-latest
-            script: package:mac
-            glob: |
-              dist/*.dmg
-              dist/*.zip
-              dist/*.blockmap
-              dist/*-mac.yml
           - os: ubuntu-latest
             script: package:linux
             glob: |

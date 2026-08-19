@@ -45,7 +45,15 @@ no separate lower-commitment tier for one-off testers.
 | Windows | NSIS `.exe` | Supported; must pass the pre-ship gate |
 | Ubuntu | AppImage | Supported, **primary Linux format** — auto-update works here; must pass the gate |
 | Ubuntu | `.deb` | Best-effort; release notifications are manual (see the note below) |
-| macOS | `.dmg` / `.zip` | Ships as a byproduct, **unsupported** |
+| macOS | — | **Not built** as of `1.0.1-beta.20` (#605) |
+
+**macOS is no longer built (#605).** It previously shipped as a byproduct, publishing six
+of seventeen release assets — about 850 MB — for a platform this guide does not document,
+unsigned so Gatekeeper blocks it on a default install, on a runner billed at ten times the
+Linux rate. Nothing pointed a tester at it and no tester could have launched it. A macOS
+tester in a later round needs signing and notarization (#274, #92) before a build is worth
+handing over; `pnpm package:mac` still works locally in the meantime. This is a stated
+limitation of the round, not a gap that appeared by accident.
 
 Builds are unsigned. Windows testers get a SmartScreen "More info → Run anyway"
 click-through; that is accepted for an invited round (#284 out-of-scope list).

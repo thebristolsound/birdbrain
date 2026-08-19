@@ -213,7 +213,14 @@ Do this on one of the section 3 platforms, using that platform's captures.
 - [ ] **Re-verify outside the app** — unzip the package and run
       `birdbrain-verify <package-dir>` against it. It reports PASS.
 - [ ] The unzipped package contains `manifest.jsonl`, `evidence.json`, `report.html`,
-      `certification.html`, `signing-public-key.pem`, `VERIFY.md`, and `tsa-ca-chain.pem`.
+      `certification.html`, `signing-public-key.pem`, `VERIFY.md` and
+      `tsa-intermediates.pem`. It also contains `tsa-root.pem` **when a trust anchor is
+      bundled for the configured authority** — the default DigiCert TSA has one; another
+      authority does not, and then the absence is correct. Record which case this build is
+      in rather than ticking past it: without a bundled root, the tokens can be checked for
+      internal consistency but not for authenticity until the runner supplies an anchor
+      obtained independently. (#579 split the single `tsa-ca-chain.pem` this step used to
+      name; a package has not carried that file since.)
 
 What a PASS here does and does not mean, so the tick is not read as more than it is: it is
 an integrity and internal-consistency result. The manifest chain shows nobody edited the

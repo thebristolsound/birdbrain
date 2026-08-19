@@ -175,14 +175,17 @@ export const INSTALL_STEPS: InstallStep[] = [
     title: 'Select the extension folder',
     sub: (
       <>
-        Pick the folder containing <span className="font-mono">manifest.json</span>
+        Use <span className="font-mono">Open extension folder</span> below — it ships inside this
+        Birdbrain build
       </>
     ),
     caption: (
       <>
         Choose the folder that holds{' '}
-        <strong className="font-semibold text-text-primary">manifest.json</strong> — not a zip. The
-        extension appears immediately, no restart needed.
+        <strong className="font-semibold text-text-primary">manifest.json</strong> — the one this
+        button opens, not a zip or a copy from elsewhere, so the extension matches this app version.
+        After an app update, reload it from{' '}
+        <span className="font-mono text-accent">chrome://extensions</span>.
       </>
     ),
     Visual: SelectFolderVisual

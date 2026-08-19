@@ -152,6 +152,68 @@ describe('verifyEvidencePackage', () => {
     if (pkgDir && existsSync(pkgDir)) rmSync(pkgDir, { recursive: true, force: true })
   })
 
+  // #580. A `capture` entry with no matching `deletion` entry is a standing claim
+  // that the case still holds that capture. The reviewed alpha package had three
+  // of them — self-test entries removed without a deletion record — while
+  // report.html asserted "15/15 integrity verified". The verifier must not call
+  // such a package PASS, and its reasons must name the capture so a reader can
+  // find it in the chain rather than being told only that a count disagrees.
+  it('fails a package whose chain claims a capture the package does not contain', async () => {
+    const caseDir = join(tempDir, 'captures', caseId)
+    appendManifestEntry(caseDir, {
+      type: 'capture',
+      captureId: 'orphan-capture-id',
+      caseId,
+      url: 'birdbrain://pipeline-test',
+      timestamp: '2026-04-05T12:02:00.000Z',
+      contentHash: createHash('sha256').update('orphan').digest('hex'),
+      sizeBytes: 0,
+      operatorId: 'op',
+      operatorName: 'Test Operator',
+      toolVersion: '0.1.0'
+    })
+
+    const outputPath = join(tempDir, 'orphan-evidence.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: { captures: true, screenshots: true, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test User',
+        outputPath
+      },
+      createCaptureLifecycle({ selectorLifecycle: createSelectorLifecycle({ emitRematched: () => {} }) })
+    )
+
+    const orphanDir = mkdtempSync(join(tmpdir(), 'bb-pkg-orphan-'))
+    try {
+      unzipToDir(outputPath, orphanDir)
+      const result = verifyEvidencePackage(orphanDir)
+
+      expect(result.pass, JSON.stringify(result.checks, null, 2)).toBe(false)
+      expect(hasReason(result, 'orphan-capture-id')).toBe(true)
+
+      // report.html must disclose the same gap rather than leaving the verifier
+      // to be the only place it surfaces — a reader may never run the verifier.
+      const report = readFileSync(join(orphanDir, 'report.html'), 'utf-8')
+      expect(report).toContain('this package does not contain')
+      expect(report).toContain('orphan-capture-id')
+      expect(report).toContain('birdbrain://pipeline-test')
+
+      // And evidence.json's count must agree with the document — both are folded
+      // out of one resolution, so a disagreement means that stopped being true.
+      // Read raw rather than through EvidencePackageSchema: that schema models
+      // only the fields the verifier consumes, and strips `warnings`.
+      const evidence = JSON.parse(readFileSync(join(orphanDir, 'evidence.json'), 'utf-8')) as {
+        warnings: { unreconciledChainCaptureCount: number; unreconciledChainCaptureIds: string[] }
+      }
+      expect(evidence.warnings.unreconciledChainCaptureCount).toBe(1)
+      expect(evidence.warnings.unreconciledChainCaptureIds).toEqual(['orphan-capture-id'])
+    } finally {
+      rmSync(orphanDir, { recursive: true, force: true })
+    }
+  })
+
   it('verifies a good package as PASS with the runbook present', () => {
     const result = verifyEvidencePackage(pkgDir)
     expect(result.pass, JSON.stringify(result.checks, null, 2)).toBe(true)

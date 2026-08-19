@@ -95,6 +95,30 @@ async function extractWithLibrary(zipPath) {
   }
 }
 
+// @electron/get downloads through undici fetch with no retry of its own, so one
+// ECONNRESET partway through ~100MB fails the whole install — and `pnpm install`
+// runs on three runners per tag in release.yml, so that can kill a release build
+// after the tag is already pushed (#620). Bounded and logged: a real outage still
+// fails, just after three tries instead of one.
+const DOWNLOAD_ATTEMPTS = 3
+const RETRY_BASE_DELAY_MS = 2_000
+
+async function withRetry(operation) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await operation()
+    } catch (err) {
+      if (attempt >= DOWNLOAD_ATTEMPTS) throw err
+      const delay = RETRY_BASE_DELAY_MS * attempt
+      console.log(
+        `  download attempt ${attempt}/${DOWNLOAD_ATTEMPTS} failed (${err.message}); ` +
+          `retrying in ${delay / 1000}s`
+      )
+      await new Promise((resolve) => setTimeout(resolve, delay))
+    }
+  }
+}
+
 // Honour the same opt-out install.js does, so a deliberate skip is not undone here.
 if (process.env['ELECTRON_SKIP_BINARY_DOWNLOAD']) {
   process.exit(0)
@@ -107,17 +131,19 @@ if (alreadyInstalled()) {
 console.log(`Electron ${version} binary missing — fetching it`)
 
 const { downloadArtifact } = electronRequire('@electron/get')
-const zipPath = await downloadArtifact({
-  version,
-  artifactName: 'electron',
-  checksums: require('electron/checksums.json'),
-  platform: process.platform,
-  arch: process.arch,
-  // Same cache knobs install.js honours.
-  cacheRoot: process.env['electron_config_cache'],
-  force: process.env['force_no_cache'] === 'true',
-  downloadOptions: { timeout: { socket: DOWNLOAD_SOCKET_TIMEOUT_MS } }
-})
+const zipPath = await withRetry(() =>
+  downloadArtifact({
+    version,
+    artifactName: 'electron',
+    checksums: require('electron/checksums.json'),
+    platform: process.platform,
+    arch: process.arch,
+    // Same cache knobs install.js honours.
+    cacheRoot: process.env['electron_config_cache'],
+    force: process.env['force_no_cache'] === 'true',
+    downloadOptions: { timeout: { socket: DOWNLOAD_SOCKET_TIMEOUT_MS } }
+  })
+)
 
 try {
   extractWithCli(zipPath)

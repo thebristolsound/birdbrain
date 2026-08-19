@@ -30,6 +30,25 @@ env:
   # connection and then stalls blocks until something else kills the job. Retries
   # are the fix; the timeouts are what make a retry reachable.
   APT_OPTS: -o Acquire::Retries=3 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15
+  # Drop Azure's Ubuntu mirror before apt ever sees it. When it goes dark, apt burns
+  # most of a step's timeout failing over to archive.ubuntu.com and then has none left
+  # to install — the cap meant to stop a hang instead kills a run that was recovering
+  # (#620, and the same mirror behind #475 and #539). Failing over up front costs
+  # nothing when Azure is healthy. Interpolated into every apt step so the two cannot
+  # drift apart.
+  #
+  # The target is /etc/apt/apt-mirrors.txt, NOT sources.list: the runner image points
+  # its sources at `mirror+file:/etc/apt/apt-mirrors.txt` and lists the hosts there, so
+  # rewriting sources.list edits a file that names no mirror and changes nothing. A run
+  # of this workflow with the sources.list version still fetched from Azure throughout —
+  # verified in the e2e job log, which is the only thing that distinguishes "the rewrite
+  # worked" from "Azure happened to be healthy".
+  #
+  # Rewrite rather than delete the line: the file may list Azure alone, and an empty
+  # mirrorlist breaks apt outright. A duplicated archive.ubuntu.com entry is inert.
+  DROP_AZURE_MIRROR: >-
+    sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g'
+    /etc/apt/apt-mirrors.txt 2>/dev/null || true
 
 # Draft PRs are gated at the `changes` job below, which every other job needs — a
 # skipped `changes` skips all five. A draft is not asking to merge, and the author has
@@ -166,6 +185,7 @@ jobs:
       - name: Install native build dependencies
         timeout-minutes: 5
         run: |
+          ${{ env.DROP_AZURE_MIRROR }}
           sudo apt-get $APT_OPTS update
           sudo apt-get $APT_OPTS install -y build-essential python3
 
@@ -246,6 +266,7 @@ jobs:
       - name: Install system dependencies
         timeout-minutes: 5
         run: |
+          ${{ env.DROP_AZURE_MIRROR }}
           sudo apt-get $APT_OPTS update
           sudo apt-get $APT_OPTS install -y build-essential python3 \
             libgtk-3-0 libnotify-dev libnss3 libxss1 \

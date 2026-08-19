@@ -13,6 +13,7 @@ import {
 } from '@main/services/captureServer'
 import { registerIpcHandlers } from '@main/ipcHandlers'
 import { resolveWindowSize, MIN_WINDOW_SIZE } from '@main/windowSize'
+import { revealWhenReady } from '@main/windowReveal'
 import { initSettings, getSettings } from '@main/services/settings'
 import { initInstallationId, getInstallationId } from '@main/services/installationId'
 import { initSigningKey, SigningKeyUnacknowledgedError } from '@main/services/signingKey'
@@ -159,9 +160,9 @@ function createWindow(): BrowserWindow {
 
   mainWindow = win
 
-  win.on('ready-to-show', () => {
-    win.show()
-  })
+  // Not a bare ready-to-show handler: that event can never fire under Wayland on
+  // Electron 38+, which strands the window hidden forever (#643).
+  revealWhenReady(win)
 
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = null

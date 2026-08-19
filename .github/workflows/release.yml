@@ -39,8 +39,10 @@ jobs:
           | **Ubuntu** — preferred | \`Birdbrain-${VERSION}.AppImage\` |
           | **Ubuntu** — alternative | \`birdbrain_${VERSION}_amd64.deb\` |
 
-          Whichever you take, you also need **\`birdbrain-extension.zip\`** — the Chrome
-          extension. The app captures nothing without it.
+          The Chrome extension ships **inside** the app — do not download it separately.
+          After installing, use **Open extension folder** in the app and load that folder
+          in Chrome, so the extension always matches your app version. (The
+          \`birdbrain-extension.zip\` here is the same build, for developers only.)
 
           Everything else on this page (\`latest*.yml\`, \`*.blockmap\`) is machinery for
           the in-app updater. Ignore it.
@@ -50,7 +52,9 @@ jobs:
           to open one until you clear it; the tester guide has the command.
 
           **Already running Birdbrain?** You do not need this page — **Settings → Updates →
-          Check for updates** installs this version in place.
+          Check for updates** installs this version in place. After it restarts, reload the
+          Birdbrain extension at \`chrome://extensions\` — Chrome keeps the old copy loaded
+          until you do.
 
           Full setup instructions, including loading the extension into Chrome:
           [Tester guide](https://thebristolsound.github.io/birdbrain/docs/tester-guide/).

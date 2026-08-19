@@ -483,6 +483,8 @@ export interface CaptureBatchPayload {
 // and everything after it is never attempted. Each outcome says which of those
 // a given id was; there is no batch-level entry and no atomicity claim.
 // `rolled_back.error` is the fault's name and errno code only, never a path.
+// A legacy html capture whose unlink threw is also `rolled_back` (stage
+// `artifacts`, files + row intact) even though it had no entry to roll back.
 export type BatchDeleteOutcome =
   | { captureId: string; status: 'deleted' }
   | { captureId: string; status: 'deleted_unmanifested' }

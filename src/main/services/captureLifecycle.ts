@@ -522,9 +522,9 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
   }
 
   // The single-capture delete body, shared by `delete` and `deleteMany`.
-  // Never throws for an MHTML capture: the manifest seam has already rolled
-  // the entry back by the time the fault reaches here, so it is reported as a
-  // `rolled_back` outcome whose `stage` names the call that threw.
+  // A per-capture fault is reported as a `rolled_back` outcome whose `stage`
+  // names the call that threw; for an MHTML capture the manifest seam has
+  // already rolled the entry back by then.
   async function deleteOne(capture: Capture, reason?: string): Promise<DeleteOneResult> {
     const captureId = capture.id
     if (capture.format === 'mhtml') {
@@ -565,11 +565,20 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
     }
 
     // Legacy html capture: no manifest entry exists for it, so none is written
-    // (as before). The row vanishing between snapshot and delete is the same
-    // "not there" the snapshot would have reported.
+    // (as before). Files first, row second, for the same reason as the MHTML
+    // branch: with no entry to roll back, an unlink failure after the row is
+    // gone would orphan the files for good. The row vanishing between snapshot
+    // and delete is the same "not there" the snapshot would have reported.
+    try {
+      store.deleteArtifacts(capture.caseId, captureId)
+    } catch (err) {
+      return {
+        outcome: { captureId, status: 'rolled_back', stage: 'artifacts', error: outcomeError(err) },
+        cause: err
+      }
+    }
     const deleted = captureRepo.deleteCapture(captureId)
     if (!deleted) return { outcome: { captureId, status: 'rejected', reason: 'not_found' } }
-    store.deleteArtifacts(capture.caseId, captureId)
     return { outcome: { captureId, status: 'deleted_unmanifested' } }
   }
 

@@ -724,6 +724,64 @@ describe('createCaptureLifecycle.deleteMany (#394)', () => {
     expect(verifyManifestChain(caseDir).valid).toBe(true)
   })
 
+  it('a legacy html unlink fault is a rolled_back outcome, not a throw: earlier outcomes survive, row intact', async () => {
+    const probe = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const [mhtml, after] = await ingestN(probe, 2)
+    const legacy = insertCapture({
+      caseId,
+      url: 'https://legacy.example.com',
+      title: 'Legacy',
+      hash: 'x'.repeat(64),
+      timestamp: '2026-04-05T12:00:00.000Z'
+    })
+    const lifecycle = createCaptureLifecycle({
+      selectorLifecycle: selectorStub,
+      store: storeFailingOn(legacy.id)
+    })
+    const baseIndex = getManifestHead(caseDir).nextIndex
+
+    const result = await lifecycle.deleteMany(caseId, [mhtml.id, legacy.id, after.id])
+
+    expect(result.outcomes).toEqual([
+      { captureId: mhtml.id, status: 'deleted' },
+      { captureId: legacy.id, status: 'rolled_back', stage: 'artifacts', error: 'Error (EACCES)' },
+      { captureId: after.id, status: 'not_attempted' }
+    ])
+    expect(result.deletedIds).toEqual([mhtml.id])
+    expect(result.failedIds).toEqual([legacy.id, after.id])
+    expect(result.haltedAt).toBe(legacy.id)
+    expect(result.manifest).toEqual({ baseIndex, committedEntries: 1 })
+    expect(manifestEntries()).toHaveLength(baseIndex + 1)
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+    // Files first, row second: the legacy row is still there to retry from.
+    expect(getCapture(legacy.id)).toBeDefined()
+    expect(getCapture(after.id)).toBeDefined()
+    expect(mhtmlExists(after)).toBe(true)
+
+    // Retry through a healthy store finishes the job without a second entry for the legacy row.
+    const retry = await probe.deleteMany(caseId, result.failedIds)
+    expect(retry.outcomes.map((o) => o.status)).toEqual(['deleted_unmanifested', 'deleted'])
+    expect(retry.manifest).toEqual({ baseIndex: baseIndex + 1, committedEntries: 1 })
+    expect(listCaptures(caseId)).toHaveLength(0)
+  })
+
+  it('single delete of a legacy html capture still surfaces an unlink fault as a throw, row intact', async () => {
+    const legacy = insertCapture({
+      caseId,
+      url: 'https://legacy.example.com',
+      title: 'Legacy',
+      hash: 'x'.repeat(64),
+      timestamp: '2026-04-05T12:00:00.000Z'
+    })
+    const lifecycle = createCaptureLifecycle({
+      selectorLifecycle: selectorStub,
+      store: storeFailingOn(legacy.id)
+    })
+
+    await expect(lifecycle.delete(legacy.id)).rejects.toThrow('EACCES')
+    expect(getCapture(legacy.id)).toBeDefined()
+  })
+
   it('serialises two overlapping batches on one case: each id deleted exactly once, the other sees not_found', async () => {
     const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
     const caps = await ingestN(lifecycle, 4)

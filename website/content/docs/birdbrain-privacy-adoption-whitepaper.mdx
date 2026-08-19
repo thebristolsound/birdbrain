@@ -58,7 +58,7 @@ For your threat model, this is the section that matters. Every outbound connecti
 | Wayback Machine (archive.org) | The URL you ask it to look up or pin | Only when you explicitly click | Never click it for sensitive targets |
 | GitHub | Ordinary release-check traffic | Periodic update checks | Disable automatic update checks in settings |
 
-Two opt-in features sit outside that table: configuring an AI-analysis API key sends captured text to the provider you choose, and background recapture first downloads public cookie-banner filter lists. Leave both off if either disclosure matters to you; the [security policy](https://github.com/thebristolsound/birdbrain/blob/main/SECURITY.md) keeps the authoritative egress list.
+Two opt-in features sit outside that table: configuring an AI-analysis API key sends captured text to the provider you choose, and background recapture first downloads public cookie-banner filter lists. Leave both off if either disclosure matters to you. That table plus these two opt-in features is the complete list of outbound connections Birdbrain can make: there is no telemetry, no account, and no other network activity.
 
 Read that table with your adversary in mind. Nothing in it sends captured content anywhere by default. But the timestamp authority learns that *someone at your IP is capturing evidence at these times*, and the TLS corroboration step means your machine contacts the target site a second time, outside your browser.
 

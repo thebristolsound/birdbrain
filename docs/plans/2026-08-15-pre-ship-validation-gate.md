@@ -36,8 +36,11 @@ either run section 5 first on a snapshot, or roll the VM back between them.
 - [ ] `release.yml` finished green for that tag and the GitHub Release carries the
       Windows `.exe`, Linux `.AppImage` and `.deb`, the `latest*.yml` update manifests, and
       `birdbrain-extension.zip`.
-- [ ] The previous beta's installers are still downloadable (section 5 needs them). At the
-      time of writing the previous shipped build is `v1.0.1-beta.17`, tagged 2026-07-24.
+- [ ] The previous beta's installers are still downloadable (section 5 needs them) — that is
+      the tag immediately below the candidate in
+      <https://github.com/thebristolsound/birdbrain-releases/releases>, not a version named
+      here. Naming one dates this document at every release, which is how the previous
+      version of this line came to point at a build two releases old.
 
 ---
 

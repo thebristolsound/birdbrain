@@ -12,6 +12,7 @@ import type {
   UpdateSelectorParams,
   CreateNoteParams,
   UpdateNoteParams,
+  NoteBacklinksParams,
   PinWaybackSnapshotParams,
   BulkCreateSelectorsParams,
   DbTableRowsParams,
@@ -41,6 +42,7 @@ import * as captureRepo from '@main/services/db/captureRepo'
 import * as tagRepo from '@main/services/db/tagRepo'
 import * as selectorRepo from '@main/services/db/selectorRepo'
 import * as noteRepo from '@main/services/db/noteRepo'
+import * as noteReferenceRepo from '@main/services/db/noteReferenceRepo'
 import * as waybackRefRepo from '@main/services/db/waybackRefRepo'
 import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
 import * as annotations from '@main/services/annotations'
@@ -466,12 +468,16 @@ export function registerIpcHandlers(deps: {
   // Notes
   handle(IPC_CHANNELS.NOTES_LIST, (_, caseId: string) => noteRepo.listNotes(caseId))
   handle(IPC_CHANNELS.NOTES_GET, (_, id: string) => noteRepo.getNote(id))
-  // A cross-case anchor (#234) is the one note-write failure mode that needs a
-  // structured IpcFailure rather than a rejected promise, so the renderer can
-  // branch on it explicitly instead of treating it as an unexpected error.
-  function rethrowAnchorCaseMismatch(err: unknown): never {
+  // A cross-case anchor (#234) or Mention (#389) is the note-write failure
+  // mode that needs a structured IpcFailure rather than a rejected promise,
+  // so the renderer can branch on it explicitly instead of treating it as an
+  // unexpected error.
+  function rethrowNoteCaseMismatch(err: unknown): never {
     if (err instanceof noteRepo.AnchorCaseMismatchError) {
       throw new IpcFailure(err.message, 'ANCHOR_CASE_MISMATCH')
+    }
+    if (err instanceof noteReferenceRepo.MentionCaseMismatchError) {
+      throw new IpcFailure(err.message, 'MENTION_CASE_MISMATCH')
     }
     throw err
   }
@@ -479,18 +485,27 @@ export function registerIpcHandlers(deps: {
     try {
       return noteRepo.createNote(params)
     } catch (err) {
-      rethrowAnchorCaseMismatch(err)
+      rethrowNoteCaseMismatch(err)
     }
   })
   handle(IPC_CHANNELS.NOTES_UPDATE, (_, params: UpdateNoteParams) => {
     try {
       return noteRepo.updateNote(params)
     } catch (err) {
-      rethrowAnchorCaseMismatch(err)
+      rethrowNoteCaseMismatch(err)
     }
   })
   handle(IPC_CHANNELS.NOTES_DELETE, (_, id: string) => noteRepo.deleteNote(id))
   handle(IPC_CHANNELS.NOTES_COUNT, (_, caseId: string) => noteRepo.getNoteCount(caseId))
+  handle(IPC_CHANNELS.NOTES_REFERENCES, (_, noteId: string) =>
+    noteReferenceRepo.referencesForNote(noteId)
+  )
+  handle(IPC_CHANNELS.NOTES_BACKLINKS, (_, params: NoteBacklinksParams) =>
+    noteReferenceRepo.backlinksForTarget(params)
+  )
+  handle(IPC_CHANNELS.NOTES_BACKLINK_COUNTS, (_, caseId: string) =>
+    noteReferenceRepo.backlinkCountsForCase(caseId)
+  )
   handle(IPC_CHANNELS.NOTES_SEARCH, (_, caseId: string, query: string) => {
     try {
       return noteRepo.searchNotes(caseId, query)
@@ -914,14 +929,14 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.DB_TABLE_ROWS, (_, params: DbTableRowsParams) => dbAdmin.getTableRows(params))
 
   // Database Admin is a genuine fourth write path for notes.anchor_json
-  // (#234), so a cross-case anchor rejected here needs the same structured
-  // IpcFailure translation as notes:create/notes:update rather than a raw
-  // rejected promise.
+  // (#234) and notes.body_doc (#389), so a cross-case anchor or Mention
+  // rejected here needs the same structured IpcFailure translation as
+  // notes:create/notes:update rather than a raw rejected promise.
   handle(IPC_CHANNELS.DB_CREATE_ROW, (_, params: DbCreateRowParams) => {
     try {
       return dbAdmin.createRow(params.table, params.data)
     } catch (err) {
-      rethrowAnchorCaseMismatch(err)
+      rethrowNoteCaseMismatch(err)
     }
   })
 
@@ -929,7 +944,7 @@ export function registerIpcHandlers(deps: {
     try {
       return dbAdmin.updateRow(params.table, params.pk, params.data)
     } catch (err) {
-      rethrowAnchorCaseMismatch(err)
+      rethrowNoteCaseMismatch(err)
     }
   })
 

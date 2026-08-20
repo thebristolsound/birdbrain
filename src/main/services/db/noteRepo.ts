@@ -1,8 +1,18 @@
 import { v4 as uuid } from 'uuid'
 import type { Note } from '@shared/types'
 import type { CreateNoteParams, UpdateNoteParams } from '@shared/ipc'
-import { getDb, type ImportCtx } from '@main/services/db/core'
-import { noteDocToText, parseNoteDoc } from '@shared/noteDoc'
+import { getDb, withTransaction, type ImportCtx } from '@main/services/db/core'
+import {
+  extractNoteMentions,
+  noteDocToText,
+  parseNoteDoc,
+  remapMentionTargetIds,
+  type NoteMention
+} from '@shared/noteDoc'
+import {
+  assertMentionsInCase,
+  rewriteReferencesForNote
+} from '@main/services/db/noteReferenceRepo'
 import {
   parseNoteAnchor,
   remapAnchorIds,
@@ -102,16 +112,27 @@ function resolveAnchor(
  * the note does not contain. A `body` on its own is a plain-text write and
  * clears `body_doc` — the note becomes what was actually written, rather than
  * keeping a rich document the plain text no longer matches.
+ *
+ * `mentions` are extracted from the same validated document the body derives
+ * from (#389, spike constraint 2), so the references index cannot describe a
+ * document that was never stored. A plain-text write yields no mentions —
+ * writing that empty list clears the note's references together with
+ * `body_doc` (constraint 8).
  */
 function resolveBody(params: { body?: string; bodyDoc?: string }): {
   body: string
   bodyDoc: string | null
+  mentions: NoteMention[]
 } {
   if (params.bodyDoc !== undefined) {
     const doc = parseNoteDoc(params.bodyDoc)
-    return { body: noteDocToText(doc), bodyDoc: JSON.stringify(doc) }
+    return {
+      body: noteDocToText(doc),
+      bodyDoc: JSON.stringify(doc),
+      mentions: extractNoteMentions(doc)
+    }
   }
-  return { body: params.body ?? '', bodyDoc: null }
+  return { body: params.body ?? '', bodyDoc: null, mentions: [] }
 }
 
 export function listNotes(caseId: string): Note[] {
@@ -130,28 +151,34 @@ export function getNote(id: string): Note | undefined {
 export function createNote(params: CreateNoteParams): Note {
   const id = uuid()
   const now = new Date().toISOString()
-  const { body, bodyDoc } = resolveBody(params)
+  const { body, bodyDoc, mentions } = resolveBody(params)
   const anchor = resolveAnchor(params.anchor, params.caseId)
-  getDb()
-    .prepare(
-      `INSERT INTO notes (id, case_id, capture_id, title, body, body_doc, anchor_kind, anchor_json, source_url, screenshot_path, created_at, updated_at)
+  // One transaction for the row and its references: the index is derived
+  // from body_doc and must never commit without it (#389).
+  return withTransaction(() => {
+    assertMentionsInCase(mentions, params.caseId)
+    getDb()
+      .prepare(
+        `INSERT INTO notes (id, case_id, capture_id, title, body, body_doc, anchor_kind, anchor_json, source_url, screenshot_path, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-    .run(
-      id,
-      params.caseId,
-      params.captureId ?? null,
-      params.title ?? '',
-      body,
-      bodyDoc,
-      anchor.kind,
-      anchor.json,
-      params.sourceUrl ?? null,
-      params.screenshotPath ?? null,
-      now,
-      now
-    )
-  return getNote(id)!
+      )
+      .run(
+        id,
+        params.caseId,
+        params.captureId ?? null,
+        params.title ?? '',
+        body,
+        bodyDoc,
+        anchor.kind,
+        anchor.json,
+        params.sourceUrl ?? null,
+        params.screenshotPath ?? null,
+        now,
+        now
+      )
+    rewriteReferencesForNote(id, mentions)
+    return getNote(id)!
+  })
 }
 
 export function updateNote(params: UpdateNoteParams): Note | undefined {
@@ -163,7 +190,7 @@ export function updateNote(params: UpdateNoteParams): Note | undefined {
   const touchesBody = params.body !== undefined || params.bodyDoc !== undefined
   const resolved = touchesBody
     ? resolveBody(params)
-    : { body: existing.body, bodyDoc: existing.bodyDoc ?? null }
+    : { body: existing.body, bodyDoc: existing.bodyDoc ?? null, mentions: [] }
   // An absent `anchor` leaves the stored one in place; an explicit null clears
   // it. The untouched branch passes the already-parsed anchor straight
   // through rather than re-serializing and re-validating it with
@@ -176,21 +203,30 @@ export function updateNote(params: UpdateNoteParams): Note | undefined {
       : existing.anchor
         ? { kind: existing.anchor.kind, json: JSON.stringify(existing.anchor) }
         : { kind: null, json: null }
-  getDb()
-    .prepare(
-      `UPDATE notes SET title = ?, body = ?, body_doc = ?, anchor_kind = ?, anchor_json = ?, updated_at = ?
+  return withTransaction(() => {
+    if (touchesBody) assertMentionsInCase(resolved.mentions, existing.caseId)
+    getDb()
+      .prepare(
+        `UPDATE notes SET title = ?, body = ?, body_doc = ?, anchor_kind = ?, anchor_json = ?, updated_at = ?
        WHERE id = ?`
-    )
-    .run(
-      params.title !== undefined ? params.title : existing.title,
-      resolved.body,
-      resolved.bodyDoc,
-      anchor.kind,
-      anchor.json,
-      now,
-      params.id
-    )
-  return getNote(params.id)
+      )
+      .run(
+        params.title !== undefined ? params.title : existing.title,
+        resolved.body,
+        resolved.bodyDoc,
+        anchor.kind,
+        anchor.json,
+        now,
+        params.id
+      )
+    // References follow the body: any body write rewrites them from the
+    // document just stored (a plain-text write clears them with body_doc). A
+    // body-less update leaves the index alone, mirroring the untouched-anchor
+    // branch above — an unrelated title edit must not re-validate mentions a
+    // rule change or case move has since made questionable.
+    if (touchesBody) rewriteReferencesForNote(params.id, resolved.mentions)
+    return getNote(params.id)
+  })
 }
 
 export function deleteNote(id: string): boolean {
@@ -253,6 +289,21 @@ export function importNoteRows(rows: Record<string, unknown>[], ctx: ImportCtx):
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
   for (const n of rows) {
+    // Mention target ids are remapped BEFORE the document is parsed and
+    // stored, the same way the anchor and the capture_id column are below:
+    // capture/selector/note targets follow ctx.mapId (the collision remap),
+    // tag targets follow ctx.mapTag — tags merge by case-insensitive name on
+    // import, so mapId never covers them, and a miss would leave references
+    // pointing at pre-merge tag ids that silently resolve broken. The
+    // references index itself never travels (it is derived); it is re-written
+    // here from the remapped document.
+    const rawBodyDoc = (n.body_doc as string) ?? undefined
+    const remappedBodyDoc =
+      rawBodyDoc !== undefined
+        ? remapMentionTargetIds(rawBodyDoc, (targetType, targetId) =>
+            targetType === 'tag' ? ctx.mapTag(targetId) : ctx.mapId(targetId)
+          )
+        : undefined
     // An archive is a file from outside this installation, so its `body` is no
     // more trustworthy than a renderer's: resolve both columns the same way
     // createNote does rather than copying them across independently. A note
@@ -261,10 +312,25 @@ export function importNoteRows(rows: Record<string, unknown>[], ctx: ImportCtx):
     // permanent. Rows written by an older Birdbrain have no body_doc key at
     // all and stay plain text. The whole import runs in one transaction, so a
     // body that fails validation fails the import rather than half-landing it.
-    const { body, bodyDoc } = resolveBody({
-      body: (n.body as string) ?? '',
-      bodyDoc: (n.body_doc as string) ?? undefined
-    })
+    let resolvedBody: ReturnType<typeof resolveBody>
+    try {
+      resolvedBody = resolveBody({
+        body: (n.body as string) ?? '',
+        bodyDoc: remappedBodyDoc
+      })
+    } catch (err) {
+      // The failure takes the whole import with it, so name the note — a
+      // refused archive is untriageable from a bare schema message.
+      throw new Error(
+        `Note ${String(n.id)} ("${String(n.title ?? '')}"): ${(err as Error).message}`
+      )
+    }
+    const { body, bodyDoc, mentions } = resolvedBody
+    // Membership is checked against the REMAPPED ids, mirroring resolveAnchor:
+    // the ids above are the rows this installation will actually hold. A
+    // mention of a note later in this same batch does not exist yet, which is
+    // the dangling case and is accepted; it resolves once that row lands.
+    assertMentionsInCase(mentions, ctx.newCaseId)
     // The archive's anchor_kind column is ignored in favour of the kind the
     // anchor itself declares, so the two cannot land in the database
     // disagreeing. A pre-v27 archive has no anchor at all and imports loose.
@@ -274,8 +340,9 @@ export function importNoteRows(rows: Record<string, unknown>[], ctx: ImportCtx):
     const anchor = resolveAnchor((n.anchor_json as string) ?? null, ctx.newCaseId, {
       mapId: ctx.mapId
     })
+    const newId = ctx.mapId(n.id as string)
     insert.run(
-      ctx.mapId(n.id as string),
+      newId,
       ctx.newCaseId,
       n.capture_id ? ctx.mapId(n.capture_id as string) : null,
       n.title ?? '',
@@ -288,5 +355,6 @@ export function importNoteRows(rows: Record<string, unknown>[], ctx: ImportCtx):
       n.created_at ?? null,
       n.updated_at ?? null
     )
+    rewriteReferencesForNote(newId, mentions)
   }
 }

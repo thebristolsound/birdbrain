@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase, updateCase, listCases } from '@main/services/db/caseRepo'
 import { insertCapture, getCaptureTextContent } from '@main/services/db/captureRepo'
 import { AnchorCaseMismatchError } from '@main/services/db/noteRepo'
+import { MentionCaseMismatchError } from '@main/services/db/noteReferenceRepo'
 import {
   getDbStats,
   getTableRows,
@@ -370,6 +371,160 @@ describe('dbAdmin', () => {
         // The rejected multi-row write must not have partially landed:
         // n-21 (case B) must not have picked up an anchor into case A.
         expect(anchorRow('n-21').anchor_json).toContain(captureB.id)
+      })
+    })
+
+    // #389, maintainer ruling 2026-08-20: body_doc is the fourth write path
+    // for the references index, so the admin hatch must derive `body` and
+    // rewrite the index like every other path. Left unguarded it would be the
+    // one place a note's document and its references could drift apart.
+    describe('body_doc and the references index (#389)', () => {
+      const docWith = (...inline: Record<string, unknown>[]): string =>
+        JSON.stringify({ type: 'doc', content: [{ type: 'paragraph', content: inline }] })
+
+      const mentionOf = (targetType: string, targetId: string): Record<string, unknown> => ({
+        type: 'mention',
+        attrs: { targetType, targetId, label: '' }
+      })
+
+      function captureInCase(caseIdForCapture: string) {
+        return insertCapture({
+          caseId: caseIdForCapture,
+          url: 'https://example.com',
+          title: 'Mentioned',
+          hash: 'abc123',
+          timestamp: new Date().toISOString()
+        })
+      }
+
+      function refs(noteId: string): Array<Record<string, unknown>> {
+        return getDb()
+          .prepare('SELECT * FROM note_references WHERE note_id = ? ORDER BY ord')
+          .all(noteId) as Array<Record<string, unknown>>
+      }
+
+      it('rejects an unparseable body_doc on create', () => {
+        expect(() =>
+          createRow('notes', { ...noteRow('b-1', newCase()), body_doc: '{oops' })
+        ).toThrow(/not valid JSON/)
+      })
+
+      it('rejects a body_doc carrying a malformed Mention', () => {
+        expect(() =>
+          createRow('notes', {
+            ...noteRow('b-2', newCase()),
+            body_doc: docWith(mentionOf('bogus', 'x'))
+          })
+        ).toThrow(/targetType/)
+      })
+
+      it('writes the index from the document on create', () => {
+        const caseId = newCase()
+        createRow('notes', {
+          ...noteRow('b-3', caseId),
+          body_doc: docWith(mentionOf('tag', 'tag-1'), mentionOf('tag', 'tag-2'))
+        })
+
+        expect(refs('b-3')).toEqual([
+          { note_id: 'b-3', ord: 0, target_type: 'tag', target_id: 'tag-1' },
+          { note_id: 'b-3', ord: 1, target_type: 'tag', target_id: 'tag-2' }
+        ])
+      })
+
+      it('rewrites the index on update, replacing the previous set', () => {
+        const caseId = newCase()
+        createRow('notes', { ...noteRow('b-4', caseId), body_doc: docWith(mentionOf('tag', 't-a')) })
+
+        updateRow('notes', { id: 'b-4' }, { body_doc: docWith(mentionOf('tag', 't-b')) })
+
+        expect(refs('b-4')).toEqual([
+          { note_id: 'b-4', ord: 0, target_type: 'tag', target_id: 't-b' }
+        ])
+      })
+
+      it('clears the index when body_doc is cleared to NULL', () => {
+        const caseId = newCase()
+        createRow('notes', { ...noteRow('b-5', caseId), body_doc: docWith(mentionOf('tag', 't-a')) })
+
+        updateRow('notes', { id: 'b-5' }, { body_doc: null })
+
+        expect(refs('b-5')).toEqual([])
+        expect(anchorRow('b-5').body_doc).toBeNull()
+      })
+
+      // `body` is derived from the document everywhere else, so the hatch
+      // must not be the one place a submitted body can contradict it — that
+      // is the pre-existing drift this guard closes.
+      it('derives body from the document, overriding a body submitted alongside it', () => {
+        const caseId = newCase()
+        createRow('notes', {
+          ...noteRow('b-6', caseId),
+          body: 'a body the document does not contain',
+          body_doc: docWith({ type: 'text', text: 'what the document says' })
+        })
+
+        expect(anchorRow('b-6').body).toBe('what the document says')
+      })
+
+      it('rejects a cross-case Mention on create, writing no row', () => {
+        const caseId = newCase()
+        const capture = captureInCase(newCase())
+
+        expect(() =>
+          createRow('notes', {
+            ...noteRow('b-7', caseId),
+            body_doc: docWith(mentionOf('capture', capture.id))
+          })
+        ).toThrow(MentionCaseMismatchError)
+        expect(anchorRow('b-7')).toBeUndefined()
+      })
+
+      it('rejects a cross-case Mention on update, leaving the stored index intact', () => {
+        const caseId = newCase()
+        const local = captureInCase(caseId)
+        const foreign = captureInCase(newCase())
+        createRow('notes', {
+          ...noteRow('b-8', caseId),
+          body_doc: docWith(mentionOf('capture', local.id))
+        })
+
+        expect(() =>
+          updateRow('notes', { id: 'b-8' }, { body_doc: docWith(mentionOf('capture', foreign.id)) })
+        ).toThrow(MentionCaseMismatchError)
+        expect(refs('b-8')).toEqual([
+          { note_id: 'b-8', ord: 0, target_type: 'capture', target_id: local.id }
+        ])
+      })
+
+      // The same hole the anchor guard closes: a case_id move carries the
+      // stored document's mentions into a case they do not belong to.
+      it('rejects a case_id-only move that would orphan the document’s Mentions', () => {
+        const caseId = newCase()
+        const otherCaseId = newCase()
+        const capture = captureInCase(caseId)
+        createRow('notes', {
+          ...noteRow('b-9', caseId),
+          body_doc: docWith(mentionOf('capture', capture.id))
+        })
+
+        expect(() => updateRow('notes', { id: 'b-9' }, { case_id: otherCaseId })).toThrow(
+          MentionCaseMismatchError
+        )
+        expect(anchorRow('b-9').case_id).toBe(caseId)
+      })
+
+      it('allows a case_id-only move for a note whose Mentions are global tags', () => {
+        const caseId = newCase()
+        const otherCaseId = newCase()
+        createRow('notes', { ...noteRow('b-10', caseId), body_doc: docWith(mentionOf('tag', 't')) })
+
+        expect(updateRow('notes', { id: 'b-10' }, { case_id: otherCaseId })).toBe(true)
+      })
+
+      it('rejects a non-string body_doc rather than storing it', () => {
+        expect(() => createRow('notes', { ...noteRow('b-11', newCase()), body_doc: 42 })).toThrow(
+          /must be a string or NULL/
+        )
       })
     })
   })

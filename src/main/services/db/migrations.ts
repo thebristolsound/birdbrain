@@ -553,4 +553,27 @@ export function runMigrations(db: Database.Database): void {
       db.pragma('user_version = 27')
     })()
   }
+
+  if (version < 28) {
+    db.transaction(() => {
+      // References index over note Mentions (#389), derived from body_doc in
+      // main on every note-body write. FK to notes only: a deleted TARGET must
+      // stay representable as a broken reference, so target rows are resolved
+      // at read time rather than constrained here. (note_id, ord) as the
+      // primary key preserves document order and duplicate mentions.
+      // Create-only, no backfill: before this version parseNoteDoc rejected
+      // unknown node types, so no stored body_doc can contain a Mention.
+      db.exec(`
+        CREATE TABLE note_references (
+          note_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+          ord INTEGER NOT NULL,
+          target_type TEXT NOT NULL,
+          target_id TEXT NOT NULL,
+          PRIMARY KEY (note_id, ord)
+        );
+        CREATE INDEX idx_note_references_target ON note_references(target_type, target_id);
+      `)
+      db.pragma('user_version = 28')
+    })()
+  }
 }

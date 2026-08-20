@@ -87,10 +87,8 @@ export function CaptureItem({
         }
       }}
       className={`group relative w-full rounded-xl border p-2 text-left transition-colors cursor-pointer ${
-        isSelected ? 'border-accent/35' : 'border-transparent'
-      } ${
-        isMultiSelected ? 'bg-accent/12' : isSelected ? 'bg-accent-subtle' : 'hover:bg-elevated'
-      }`}
+        isSelected ? 'border-accent/35' : isMultiSelected ? 'border-accent/20' : 'border-transparent'
+      } ${isSelected || isMultiSelected ? 'bg-accent-subtle' : 'hover:bg-elevated'}`}
     >
       {/* Multi-select rail (session-3 note: multi-select only; single
           selection relies on the accent border + tint) */}

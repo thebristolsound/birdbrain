@@ -126,9 +126,13 @@ export function NewCaseWizard() {
         {/* Description */}
         <div className="mb-6">
           <Label className="mb-1.5 text-sm font-medium text-text-secondary">Description</Label>
-          {/* The handoff screen notes (style_sync_patch/SCREEN_NOTES.md, "New case wizard")
-              call for rounded-xl on this textarea specifically, which aliases to the 6px
-              ceiling; the name Input above keeps the primitive's 4px base. */}
+          {/* Recessed fill, not the V1 note's bg-elevated (#563): the V2 handoff bundle
+              (prototype/design-handoff-2026-08, style_sync_patch/SCREEN_NOTES.md "New case
+              wizard") rules this textarea "6px, recessed fill", and HANDOFF.md defines
+              recessed as bg-canvas + border-border-strong — it "replaces the
+              elevated/surface/canvas mix". The primitive already bases on that; the call
+              site adds only the wizard's 14px density and rounded-xl, which the globals.css
+              radius collapse aliases to the ruled 6px. The name Input above keeps 4px. */}
           <Textarea
             data-testid="case-description-input"
             value={description}

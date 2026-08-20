@@ -11,17 +11,17 @@ description: 'The code-grounded implementation companion: exact mechanisms with 
 
 ---
 
-## Executive Summary
+## Executive summary
 
 Birdbrain is an open-source (MIT) desktop application for capturing web pages as evidence during investigations. An Electron app pairs with a Chrome (Manifest V3) extension: the extension captures full-fidelity MHTML snapshots, screenshots, and page text from the browser, and delivers them over an authenticated loopback HTTP channel to the desktop app, which stores them in per-case directories backed by SQLite.
 
-What separates Birdbrain from a bookmarking or scraping tool is its integrity layer. Every capture is SHA-256 hashed while it streams to disk, then committed to a per-case, append-only JSONL manifest in which each entry links to the previous entry's hash and carries an RSA-2048 signature from a per-installation key. Trusted time arrives through RFC 3161 timestamps from an external Time Stamping Authority, and corroboration options include TLS certificate records and Wayback Machine pins. Exports produce a self-contained evidence ZIP whose contents can be verified by a third party with nothing more exotic than `jq`, `sha256sum`, and `openssl`, following a bundled runbook.
+What separates Birdbrain from a bookmarking or scraping tool is its integrity layer. Every capture is SHA-256 hashed while it streams to disk, then committed to a per-case, append-only JSONL manifest in which each entry links to the previous entry's hash and carries an RSA-2048 signature from a per-installation key. Trusted time arrives through RFC 3161 timestamps from an external Time Stamping Authority, and corroboration options include TLS certificate records and Wayback Machine pins. Exports produce a self-contained evidence ZIP that a third party can verify with nothing more exotic than `jq`, `sha256sum`, and `openssl`, following a bundled runbook.
 
 The application layers investigation tooling on top of that foundation: case workspaces, text/regex selector watchlists that trigger automatic captures, IOC extraction with trigram full-text search, notes, tags, and screenshot annotation with redaction. The system runs entirely on the operator's machine, makes a short, documented list of outbound connections, and ships with no telemetry.
 
 ---
 
-## 1. Problem Statement and Business Context
+## 1. Problem statement and business context
 
 Investigators who need to preserve web content (fraud analysts, OSINT researchers, trust-and-safety teams, legal support staff) face a gap between two classes of tooling:
 
@@ -30,16 +30,16 @@ Investigators who need to preserve web content (fraud analysts, OSINT researcher
 
 The specific failure mode Birdbrain targets is evidentiary: a screenshot of a scam page or a threat post is easy to challenge because the challenger only has the operator's word that the file is authentic and unmodified. A defensible capture needs four properties:
 
-1. **Content integrity** — proof the bytes have not changed since capture.
-2. **Sequence integrity** — proof captures were not inserted, deleted, or reordered after the fact.
-3. **Trusted time** — proof of *when* the content existed, anchored outside the operator's control.
-4. **Independent verifiability** — a skeptical third party must be able to check all of the above without trusting the tool or the operator.
+1. **Content integrity.** Proof the bytes have not changed since capture.
+2. **Sequence integrity.** Proof captures were not inserted, deleted, or reordered after the fact.
+3. **Trusted time.** Proof of *when* the content existed, anchored outside the operator's control.
+4. **Independent verifiability.** A skeptical third party must be able to check all of the above without trusting the tool or the operator.
 
 Birdbrain's design treats these as first-class requirements and builds the investigation UX around them, on a local-first architecture with no accounts, no server, and no telemetry.
 
 ---
 
-## 2. Solution Overview
+## 2. Solution overview
 
 ### 2.1 What the application does
 
@@ -76,15 +76,15 @@ The case `type` enum in the schema (`crypto | malware | fraud | custom`) reflect
 
 Draw five vertical zones, left to right:
 
-**Zone 1 — Chrome browser.** Three boxes: *Content script* (selector matching, highlight overlay, full-page screenshot stitching), *Background service worker* (capture orchestration, MHTML via pageCapture, header cache, status polling, icon/badge state), *Popup UI* (case selector, session start/stop, manual capture). Arrows: content ↔ background (runtime messages), popup ↔ background.
+**Zone 1: Chrome browser.** Three boxes: *Content script* (selector matching, highlight overlay, full-page screenshot stitching), *Background service worker* (capture orchestration, MHTML via pageCapture, header cache, status polling, icon/badge state), *Popup UI* (case selector, session start/stop, manual capture). Arrows: content ↔ background (runtime messages), popup ↔ background.
 
-**Zone 2 — Loopback HTTP boundary.** A single arrow from the background worker to `127.0.0.1:19845`, labeled "multipart POST /api/captures + X-Birdbrain-Token; GET /api/status heartbeat (30 s)". Annotate the boundary with its guards: Host-header allowlist (DNS-rebinding defense), CORS restricted to `chrome-extension://` and localhost origins, 250 MB body limit, token auth on all POSTs.
+**Zone 2: Loopback HTTP boundary.** A single arrow from the background worker to `127.0.0.1:19845`, labeled "multipart POST /api/captures + X-Birdbrain-Token; GET /api/status heartbeat (30 s)". Annotate the boundary with its guards: Host-header allowlist (DNS-rebinding defense), CORS restricted to `chrome-extension://` and localhost origins, 250 MB body limit, token auth on all POSTs.
 
-**Zone 3 — Electron main process.** Boxes: *Hono capture server*, *captureLifecycle* (ingest pipeline), *SQLite (better-sqlite3, WAL, FTS5)*, *File storage* (per-case dirs: `.mhtml`, `.png`, `.txt`, thumbnails), *manifest.jsonl* (signed hash chain, one per case), *signing key + server token + installation id* (per-install secrets), *timestamp worker* (RFC 3161), *export service*, *updater*. Arrows: server → lifecycle → `{storage, SQLite, manifest}` with a note "manifest append happens before side effects; rollback truncates on failure".
+**Zone 3: Electron main process.** Boxes: *Hono capture server*, *captureLifecycle* (ingest pipeline), *SQLite (better-sqlite3, WAL, FTS5)*, *File storage* (per-case dirs: `.mhtml`, `.png`, `.txt`, thumbnails), *manifest.jsonl* (signed hash chain, one per case), *signing key + server token + installation id* (per-install secrets), *timestamp worker* (RFC 3161), *export service*, *updater*. Arrows: server → lifecycle → `{storage, SQLite, manifest}` with a note "manifest append happens before side effects; rollback truncates on failure".
 
-**Zone 4 — Renderer (sandboxed).** One box for the React 19 UI (TanStack Router, React Query, Zustand, Tailwind v4) connected to Zone 3 through a narrow arrow labeled "typed contextBridge, ~90 fixed IPC channels, no raw ipcRenderer". A side arrow renderer → capture server labeled "connect-src 127.0.0.1:19845 (CSP-pinned)".
+**Zone 4: Renderer (sandboxed).** One box for the React 19 UI (TanStack Router, React Query, Zustand, Tailwind v4) connected to Zone 3 through a narrow arrow labeled "typed contextBridge, ~90 fixed IPC channels, no raw ipcRenderer". A side arrow renderer → capture server labeled "connect-src 127.0.0.1:19845 (CSP-pinned)".
 
-**Zone 5 — External services (all optional or user-initiated).** Six boxes with arrows from Zone 3: *DigiCert TSA* ("RFC 3161; hashes only leave the machine"), *captured origin* ("post-capture TLS handshake recording the site's current certificate chain"), *archive.org* ("Wayback pinning, explicit user action"), *filter-list CDNs* ("cookie-banner lists fetched before a background recapture"), *OpenRouter* ("opt-in analysis; captured text leaves the machine only if an API key is configured"), *GitHub Releases* ("update checks"). Add a crossed-out box labeled "telemetry" to make the absence explicit.
+**Zone 5: External services (all optional or user-initiated).** Six boxes with arrows from Zone 3: *DigiCert TSA* ("RFC 3161; hashes only leave the machine"), *captured origin* ("post-capture TLS handshake recording the site's current certificate chain"), *archive.org* ("Wayback pinning, explicit user action"), *filter-list CDNs* ("cookie-banner lists fetched before a background recapture"), *OpenRouter* ("opt-in analysis; captured text leaves the machine only if an API key is configured"), *GitHub Releases* ("update checks"). Add a crossed-out box labeled "telemetry" to make the absence explicit.
 
 ### 3.2 Component breakdown
 
@@ -119,15 +119,15 @@ The capture row deliberately duplicates chain-linkage fields (`manifest_index`, 
 
 On disk, artifacts live under `{storageRoot}/{caseId}/{captureId}.{mhtml|png|txt}` plus a JPEG thumbnail; the database stores relative paths, and a single module (`captureStore.ts`) owns the layout.
 
-### 3.4 Integration and API surface
+### 3.4 Integrations and APIs
 
-- **Local HTTP API** (Hono, bound to 127.0.0.1:19845): status/heartbeat, case list and activation, session start/stop, capture upload, selector list/create, and a self-test route that ingests and then deletes a dummy capture. This is the extension's entire integration surface, and Zod schemas validate every payload.
+- **Local HTTP API** (Hono, bound to 127.0.0.1:19845): status/heartbeat, case list and activation, session start/stop, capture upload, selector list/create, and a self-test route that ingests and then deletes a dummy capture. This is everything the extension can call, and Zod schemas validate every payload.
 - **Custom protocol** `birdbrain://` with a closed two-value target enum (`open`, `settings`) lets the extension popup deep-link into the desktop app.
 - **Outbound integrations**: DigiCert TSA (RFC 3161, hash-only), the captured origin itself (post-capture TLS certificate corroboration), GitHub Releases (updates), archive.org (explicit user action; the code comments note that lookups are user-initiated to avoid disclosing investigation URLs to archive.org), cookie-banner filter lists (fetched before background recapture), and OpenRouter (opt-in, only with a configured API key). SECURITY.md keeps the authoritative list.
 
 ---
 
-## 4. The Forensic Integrity Layer
+## 4. The forensic integrity layer
 
 This is the system's core intellectual property.
 
@@ -161,7 +161,7 @@ The signing keypair is generated per installation. The private key is wrapped at
 
 ### 4.5 Trusted time and corroboration
 
-Integrity and time are treated as orthogonal axes. Each capture carries a `trusted_time_status` of `rfc3161 | pending | none`; a background worker requests timestamps from `timestamp.digicert.com` without blocking ingest, and only content hashes leave the machine. Two corroboration mechanisms are explicitly labeled as such in the code: a TLS certificate re-fetch (records the certificate served *now*, fail-soft, not a claim about the captured transaction) and user-initiated Wayback Machine pins.
+Birdbrain treats integrity and time as orthogonal axes. Each capture carries a `trusted_time_status` of `rfc3161 | pending | none`; a background worker requests timestamps from `timestamp.digicert.com` without blocking ingest, and only content hashes leave the machine. Two corroboration mechanisms are explicitly labeled as such in the code: a TLS certificate re-fetch (records the certificate served *now*, fail-soft, not a claim about the captured transaction) and user-initiated Wayback Machine pins.
 
 ### 4.6 Verifiable exports
 
@@ -171,7 +171,7 @@ A standalone verifier binary (`build:verifier`, assembled with `postject`, sugge
 
 ---
 
-## 5. Design Decisions and Trade-offs
+## 5. Design decisions and trade-offs
 
 ### 5.1 Why this stack
 
@@ -197,7 +197,7 @@ The code and migration history imply several roads not taken:
 
 ---
 
-## 6. Security and Compliance Considerations
+## 6. Security and compliance considerations
 
 ### 6.1 Electron hardening
 
@@ -231,7 +231,7 @@ CI runs a full-history gitleaks scan and an advisory `pnpm audit` (known accepte
 
 ---
 
-## 7. Performance, Scalability, and Reliability
+## 7. Performance, scalability, and reliability
 
 - **Ingest path**: single-pass streaming (hash computed during the disk write), post-capture work (selector matching, IOC extraction) deferred via `setImmediate`, and RFC 3161 requests handed to a worker queue so slow TSAs never block capture.
 - **Query path**: synchronous better-sqlite3 under WAL with targeted indexes (case, manifest index, format, trusted time, extracted-data uniqueness) and three FTS5 indexes. The v25 migration moved capture search to an external-content FTS5 table maintained by triggers, eliminating a class of orphan-row bugs that two earlier repair migrations (v12, v14) had to clean up; the trigram tokenizer on extracted data enables substring IOC search.
@@ -241,7 +241,7 @@ CI runs a full-history gitleaks scan and an advisory `pnpm audit` (known accepte
 
 ---
 
-## 8. Observability and Operations
+## 8. Observability and operations
 
 Observability is minimal and deliberate. There is no logging framework, no crash reporter, and no telemetry; diagnostics are `console.warn`/`console.error`. For an evidence tool, silent operation is partly a feature (nothing phones home), but operators debugging a failed capture have limited artifacts to consult; a local, rotating log file would improve supportability without changing the privacy posture (§12).
 
@@ -253,18 +253,18 @@ Operational maturity instead shows up in CI and tests:
 
 ---
 
-## 9. Extensibility and Customization
+## 9. Extensibility and customization
 
 - **Typed IPC as the internal API.** Adding a feature means adding a channel constant, a Zod/TS payload type, a handler, and a preload method; the pattern is uniform across ~90 channels and hard to get wrong.
 - **The verification core is a library.** `src/shared/verify/` is filesystem-free and key-injected, which is why the same code serves the app, the tests, and the standalone verifier. Third parties could embed it.
 - **Operator-tunable behavior**: ignore patterns (substring, glob, or `/regex/flags`), dedupe window, auto-capture mode (notify vs auto), capture screenshot toggle, storage path, custom TSA URL (normalized defensively), release channel.
 - **Selector system** as a user-level extension point: per-case watchlists created from the app or directly from a browser text selection via context menu.
-- **Case archives** (export/import with custody-preserving manifest entries) enable transfer between installations, effectively a federation primitive.
+- **Case archives** (export/import with custody-preserving manifest entries) enable transfer between installations, the closest thing Birdbrain has to federation.
 - **What is absent**: no plugin API, no scripting hooks, no user-defined extractors. For an evidence tool this conservatism is arguably correct (arbitrary plugins would undermine the integrity story), but a sanctioned read-only extension point (e.g., custom extractors over capture text) is a plausible future seam.
 
 ---
 
-## 10. Implementation Highlights
+## 10. Implementation highlights
 
 Details a code reviewer would flag as unusually good:
 
@@ -281,7 +281,7 @@ Code organization follows the process boundary cleanly: `src/main/services/` (on
 
 ---
 
-## 11. Deployment and Infrastructure
+## 11. Deployment and infrastructure
 
 - **Packaging**: electron-builder; Windows NSIS, macOS dmg+zip, Linux AppImage+deb. `sharp`'s native modules are asar-unpacked; the built extension ships inside the app's resources so the in-app setup guide can point at it.
 - **Updates**: electron-updater against GitHub Releases. Auto-download only where auto-install is safe (Windows NSIS; Linux only when running as AppImage; macOS notify-only pending signing). Checks run 30 s after launch and every 4 h, only in packaged builds, and installation always requires explicit user action.
@@ -291,18 +291,18 @@ Code organization follows the process boundary cleanly: `src/main/services/` (on
 
 ---
 
-## 12. Roadmap and Future Directions (inferred)
+## 12. Roadmap and future directions (inferred)
 
 Grounded in code structure, explicit code comments, and documented limitations rather than any stated plan:
 
-1. **Code signing and notarization** — the single highest-leverage item; it unblocks macOS auto-update (the gate is already written) and removes install friction.
-2. **Style CSP tightening** — eliminate `'unsafe-inline'` for styles; the script-src pipeline shows the team knows how to enforce it at build time.
-3. **safeStorage fallback hardening** — refuse to persist secrets in plaintext, or require explicit operator acknowledgment on platforms without OS key storage.
-4. **CSV formula-injection prefixing** — small, cheap, and closes the one injection vector the escaping layer currently leaves open.
-5. **Local diagnostic logging** — a rotating on-disk log would fix the supportability gap without touching the no-telemetry stance.
-6. **Background/recapture growth** — the `method` enum, `supersedes_capture_id` linkage, and recapture queue suggest scheduled re-capture and change monitoring as a natural next capability.
-7. **Team workflows** — case archive import/export with multi-signer verification is the seed of review/collaboration flows between installations.
-8. **Firefox support** — the extension's server contract is small; the main coupling is `pageCapture.saveAsMHTML`, which would need a WebExtension-compatible alternative.
+1. **Code signing and notarization.** The single highest-leverage item; it unblocks macOS auto-update (the gate is already written) and removes install friction.
+2. **Style CSP tightening.** Eliminate `'unsafe-inline'` for styles; the script-src pipeline shows the team knows how to enforce it at build time.
+3. **safeStorage fallback hardening.** Refuse to persist secrets in plaintext, or require explicit operator acknowledgment on platforms without OS key storage.
+4. **CSV formula-injection prefixing.** Small, cheap, and closes the one injection path the escaping layer currently leaves open.
+5. **Local diagnostic logging.** A rotating on-disk log would fix the supportability gap without touching the no-telemetry stance.
+6. **Background/recapture growth.** The `method` enum, `supersedes_capture_id` linkage, and recapture queue suggest scheduled re-capture and change monitoring as a natural next capability.
+7. **Team workflows.** Case archive import/export with multi-signer verification is the seed of review/collaboration flows between installations.
+8. **Firefox support.** The extension's server contract is small; the main coupling is `pageCapture.saveAsMHTML`, which would need a WebExtension-compatible alternative.
 
 ---
 

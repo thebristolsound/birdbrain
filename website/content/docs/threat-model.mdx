@@ -21,50 +21,50 @@ apart is deliberate.
 | **Trusted time** | Did this content provably exist no later than time *T*, per a third party? | RFC 3161 token from an external TSA, anchored in the manifest (#120) |
 
 A byte-perfect capture is **integrity-verified** whether or not it carries a
-trusted timestamp. Lacking a timestamp is *not* an integrity failure — it is
+trusted timestamp. Lacking a timestamp is *not* an integrity failure. It is
 an empty (or pending) trusted-time axis. The trusted-time axis has three
 states: `rfc3161` (a TSA token attests the content hash), `pending` (an eligible
 capture awaiting its token), and `none` (a grandfathered legacy capture that
 predates timestamping).
 
-## What the manifest signature defends against — and what it does not
+## What the manifest signature defends against, and what it does not
 
 The per-entry signature over each manifest `entryHash` (#117) raises the bar
-against **casual tampering**: copying the case directory elsewhere and editing a
-capture, a hash, or a chain link with ordinary tools will fail verification,
-because the forged entry no longer carries a signature that validates against the
+against **casual tampering**. Copying the case directory elsewhere and editing a
+capture, a hash, or a chain link with ordinary tools will fail verification. The
+forged entry no longer carries a signature that validates against the
 installation's public key, and re-hashing one entry breaks every downstream link.
 
 It does **not** defend against a determined operator running Birdbrain's own code
 as themselves. Where an OS credential store is available (DPAPI on Windows,
 Keychain on macOS, a Linux Secret Service provider such as gnome-keyring, via
-Electron `safeStorage`), the signing key is wrapped at rest with it. Even then,
+Electron `safeStorage`), Birdbrain wraps the signing key at rest with it. Even then,
 an operator who controls the running process controls the key and can, in
 principle, mint a fresh internally consistent chain. This is an inherent limit of
 any locally-held signing key and is stated here so no one over-claims it in a
 brief.
 
 Wrapping at rest is **conditional, not guaranteed.** On an installation with no
-usable credential store — typically a headless or keyring-less Linux install —
-Birdbrain does not silently degrade: on first run it refuses to generate a
+usable credential store, typically a headless or keyring-less Linux install,
+Birdbrain does not silently degrade. On first run it refuses to generate a
 signing key until the operator explicitly acknowledges that the private key will
 be written to disk as a bare PEM, unprotected. Declining quits the app with no
-key written. Once acknowledged, the resulting state (`protected` or `plaintext`)
-is reported in Settings → Diagnostics, so a declaration can state which case
+key written. Once acknowledged, Settings → Diagnostics reports the resulting
+state (`protected` or `plaintext`), so a declaration can state which case
 applies to the installation that produced the evidence rather than assuming the
 wrapped one. An unprotected key widens the threat above from "an operator who
 controls the running process" to "anyone with file access to the machine".
 
-The OpenRouter API key is treated differently, by design. It is also wrapped
-with `safeStorage` when a credential store is available and stored in the clear
-otherwise, but there is no acknowledgement gate: it is a revocable service
-credential, not evidence, so its at-rest state is surfaced in Settings →
+The OpenRouter API key is treated differently, by design. Birdbrain also wraps
+it with `safeStorage` when a credential store is available and stores it in the
+clear otherwise, but there is no acknowledgement gate. It is a revocable service
+credential, not evidence, so its at-rest state appears in Settings →
 Diagnostics only. The signing key gets the gate because a plaintext signing key
 changes what the manifest signature can be said to prove.
 
-**The RFC 3161 token is the independent anchor that closes this gap.** Because the
-timestamp is issued by an external TSA over the content hash, it establishes that
-the captured bytes existed no later than the stamped time — a fact the operator
+**The RFC 3161 token is the independent anchor that closes this gap.** Because an
+external TSA issues the timestamp over the content hash, it establishes that
+the captured bytes existed no later than the stamped time, a fact the operator
 cannot back-date or forge, regardless of their control over the local machine.
 Integrity proves the bytes are unchanged; trusted time proves *when* they existed;
 together they are far harder to dispute than either alone.
@@ -78,7 +78,7 @@ The default RFC 3161 endpoint is DigiCert's unauthenticated service
   root that cross-signs it) is present out of the box in essentially every OS,
   browser, and document-verification trust store an opposing expert or a court is
   likely to use. Verification with stock `openssl ts -verify` succeeds offline
-  against a root the verifier already trusts — no special configuration, no
+  against a root the verifier already trusts, with no special configuration and no
   "trust us" step. (Confirmed: see `tests/fixtures/timestamp/README.md`, where a
   real DigiCert token returns `Verification: OK` against only the bundled root.)
 - **No account, no key, works out of the box.** The endpoint is unauthenticated,
@@ -92,13 +92,13 @@ The default RFC 3161 endpoint is DigiCert's unauthenticated service
 
 The endpoint is configurable in Settings for jurisdictions or engagements that
 require a specific TSA. Free/hobbyist authorities (e.g. `freetsa.org`) are a
-documented **development/test fallback only** — their roots are not in common
+documented **development/test fallback only**. Their roots are not in common
 trust stores and should not anchor evidence.
 
 ## Canonical verification path
 
-In-app trusted-time display performs **structural** parsing only — it confirms the
-token's message imprint matches the capture's content hash and surfaces the TSA
+In-app trusted-time display performs **structural** parsing only. It confirms the
+token's message imprint matches the capture's content hash and shows the TSA
 identity and stamped time. The **canonical**, court-facing verification is stock
 `openssl ts -verify` against the TSA chain (decision D5 / #113); Birdbrain never
 hand-rolls CMS signature cryptography. This keeps the authoritative check in a

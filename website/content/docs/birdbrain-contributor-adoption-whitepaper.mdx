@@ -5,7 +5,7 @@ description: 'Product fit, onboarding, contribution areas, and governance. Start
 
 > **Birdbrain whitepaper series.** Four companion papers cover this project. This paper covers product fit, onboarding, contribution areas, and governance; start here to adopt the tool or contribute. The [architecture whitepaper](./birdbrain-architecture-whitepaper.mdx) is the formal architecture and assurance analysis: trust boundaries, evidence claims and their limits, and deployment posture; start there for security review. The [technical whitepaper](./birdbrain-technical-whitepaper.mdx) is the code-grounded implementation companion: exact mechanisms with file references and gaps observed during code review. The [privacy-focused adoption guide](./birdbrain-privacy-adoption-whitepaper.mdx) addresses activists and independent researchers evaluating Birdbrain for small privacy-focused groups. All four describe version `1.0.1-beta.15`.
 
-## Executive Summary
+## Executive summary
 
 Birdbrain is an open-source, local-first desktop application for capturing, organizing, verifying, and exporting web evidence. It combines an Electron desktop app with a companion Chromium extension so investigators can preserve web pages as MHTML, screenshots, extracted text, metadata, annotations, and provenance inside named Cases. Each Capture is tied into a per-Case Manifest using SHA-256 hashes, chain links, local signatures, and optional RFC 3161 trusted timestamps.
 
@@ -13,9 +13,9 @@ Web evidence is fragile. Pages change, disappear, personalize, or render differe
 
 For adopters, Birdbrain is best understood as a capable evidence workstation, not a hosted case-management system. It is appropriate for investigators and small teams that value local custody and verifiable exports. For contributors, the project offers meaningful work across capture fidelity, verification, export, search, UI, release trust, testing, and privacy-preserving diagnostics.
 
-## Problem and Vision
+## Problem and vision
 
-### The Gap in Existing Tooling
+### The gap in existing tooling
 
 Web evidence is difficult to preserve well. A screenshot captures appearance but loses underlying page content, metadata, response context, and machine-readable text. A bookmark preserves only a pointer to mutable content. A downloaded HTML file is incomplete for many modern pages. A full local copy is more useful, but without integrity metadata a reviewer still cannot tell whether the captured bytes changed after collection.
 
@@ -29,7 +29,7 @@ Investigators also face practical constraints:
 
 Birdbrain exists to keep a serious capture-and-prove workflow available in a local, inspectable, open-source application.
 
-### Long-Term Vision
+### Long-term vision
 
 Birdbrain's long-term vision is to become a trustworthy local evidence workstation for web investigations. The project should make it straightforward to:
 
@@ -44,7 +44,7 @@ Birdbrain's long-term vision is to become a trustworthy local evidence workstati
 
 The guiding principle is candor over overclaiming. Birdbrain should say exactly what it protects, what it does not protect, and where operational procedure still matters.
 
-### Non-Goals
+### Non-goals
 
 Birdbrain intentionally does not try to be:
 
@@ -57,28 +57,28 @@ Birdbrain intentionally does not try to be:
 - a browser automation crawler for unattended bulk collection; or
 - a runtime plugin marketplace.
 
-Those boundaries keep the core product understandable: Birdbrain captures and verifies local web evidence; it does not attempt to own every part of an investigative organization.
+Those boundaries keep the core product understandable. Birdbrain captures and verifies local web evidence; it does not attempt to own every part of an investigative organization.
 
-## Solution Overview
+## Solution overview
 
-### Core Capabilities
+### Core capabilities
 
 Birdbrain organizes work around a **Case**. A Case owns Captures, Selectors, Notes, tags, annotations, extracted indicators, archive references, and verification state.
 
 Its core capabilities include:
 
-- **Capture:** The Chromium extension captures pages and sends MHTML, screenshots, extracted text, headers, and metadata to the desktop app over `127.0.0.1`.
-- **Local storage:** Captures are stored in per-Case archives on the local filesystem, with SQLite used for queryable application state.
-- **Verification:** Captures are hashed and linked through a per-Case Manifest. Current Manifest entries are signed locally, and eligible Captures can receive RFC 3161 trusted timestamps.
-- **Search:** SQLite FTS5 supports per-Case full-text search across extracted Capture text.
-- **Selectors:** Operators define literal or regex patterns and Birdbrain reconciles them across existing and future Captures.
-- **Recon extraction:** Birdbrain extracts indicators such as domains, IP addresses, hashes, CVEs, social handles, email addresses, tracking pixels, `.onion` hosts, and I2P hosts.
-- **Annotation:** Operators can mark up screenshots with shapes and pinned comments while preserving source evidence.
-- **Export:** Birdbrain can generate self-contained HTML reports and portable evidence packages with included verification material.
-- **Case archives:** `.birdbrain` archives support transfer between installations while preserving custody boundaries.
-- **Recapture and corroboration:** The app includes workflows for recapturing pages and adding supporting archive or TLS corroboration.
+- **Capture.** The Chromium extension captures pages and sends MHTML, screenshots, extracted text, headers, and metadata to the desktop app over `127.0.0.1`.
+- **Local storage.** Birdbrain stores Captures in per-Case archives on the local filesystem, with SQLite holding queryable application state.
+- **Verification.** Birdbrain hashes and links Captures through a per-Case Manifest and signs current Manifest entries locally; eligible Captures can receive RFC 3161 trusted timestamps.
+- **Search.** SQLite FTS5 supports per-Case full-text search across extracted Capture text.
+- **Selectors.** Operators define literal or regex patterns and Birdbrain reconciles them across existing and future Captures.
+- **Recon extraction.** Birdbrain extracts indicators such as domains, IP addresses, hashes, CVEs, social handles, email addresses, tracking pixels, `.onion` hosts, and I2P hosts.
+- **Annotation.** Operators can mark up screenshots with shapes and pinned comments while preserving source evidence.
+- **Export.** Birdbrain can generate self-contained HTML reports and portable evidence packages with included verification material.
+- **Case archives.** `.birdbrain` archives support transfer between installations while preserving custody boundaries.
+- **Recapture and corroboration.** The app includes workflows for recapturing pages and adding supporting archive or TLS corroboration.
 
-### Example Use Cases
+### Example use cases
 
 An investigative journalist can preserve a volatile webpage before publication, annotate the screenshot for editors, and export a reviewable package with hashes and verification notes.
 
@@ -88,7 +88,7 @@ A researcher documenting platform abuse can collect a sequence of pages over tim
 
 A pentester can document engagement evidence with page-level Captures, tags, notes, timestamps, and a final HTML report.
 
-### Why Birdbrain Instead of Alternatives
+### Why Birdbrain instead of alternatives
 
 Choose Birdbrain over ordinary screenshots when you need more than appearance: MHTML, extracted text, metadata, hashing, Manifest linkage, search, and export verification.
 
@@ -100,61 +100,61 @@ Choose Birdbrain over hosted OSINT platforms when local custody, inspectable for
 
 Choose a hosted enterprise platform instead if your primary requirements are shared case assignment, centralized identity, role-based access control, legal hold workflows, remote administration, audit dashboards, and organization-wide retention policy.
 
-## Architecture Deep Dive
+## Architecture deep dive
 
-### High-Level Component Diagram
+### High-level component diagram
 
 A diagram of Birdbrain should contain these blocks and flows:
 
-1. **Chromium Browser and Birdbrain Extension**
+1. **Chromium browser and Birdbrain extension**
    The browser extension observes the active tab, captures browser-accessible page content, collects screenshot and metadata where available, and sends capture payloads to the desktop app.
 
 2. **Loopback Capture Server**
    A Hono HTTP server listens on `127.0.0.1:19845`. It is the extension-facing boundary and the only entry point for current MHTML Capture ingestion. Mutating requests require a per-installation bearer token.
 
-3. **Electron Main Process**
+3. **Electron main process**
    The main process owns privileged operations: Capture Lifecycle, Selector Lifecycle, storage, database access, Manifest writing, signing keys, timestamp workers, export, case archives, recapture, updates, and external adapters.
 
-4. **Local Persistence**
+4. **Local persistence**
    SQLite stores queryable state, migrations, relationships, FTS indexes, notes, tags, selector matches, extracted indicators, and settings. The filesystem stores forensic-bearing artifacts such as MHTML, screenshots, text sidecars, timestamp tokens, and `manifest.jsonl`.
 
-5. **Preload Bridge and Renderer**
+5. **Preload bridge and renderer**
    The renderer is a React app. It communicates with the main process through a constrained, typed `contextBridge` API. Node integration is disabled in the renderer.
 
-6. **Optional External Services**
+6. **Optional external services**
    Outbound integrations include RFC 3161 timestamp authorities, GitHub Releases for updates, Wayback Machine lookup, and TLS endpoints for corroboration. These are outbound-only and feature-specific.
 
-7. **Evidence Consumer**
+7. **Evidence consumer**
    Exported HTML reports, evidence ZIPs, `.birdbrain` archives, and the standalone verifier allow review outside the running desktop app.
 
 The important trust boundaries are untrusted web content, local application privilege, local persistence, and external network services.
 
-### Data Model and Key Entities
+### Data model and key entities
 
 Birdbrain's domain model is intentionally explicit:
 
-- **Case:** The unit of organization, storage, verification, export, and archive transfer.
-- **Capture:** A preserved web page record, currently MHTML-oriented, with sidecars and metadata.
-- **Capture Lifecycle:** The forensic-bearing path for ingestion, hashing, storage, Manifest writing, deletion, verification, and re-extraction.
-- **Manifest:** The hash-chained, operator-attributed audit log in each Case directory.
-- **Operator:** The human investigator, represented by a per-installation UUID and optional profile fields.
-- **Selector:** A user-defined literal or regex pattern.
-- **Selector Lifecycle:** The operation set that creates, updates, deletes, and reconciles Selectors against Captures.
-- **Persisted Match:** A database row stating that a Selector matched a Capture's stored text.
-- **Foreground Match Preview:** Renderer-local, in-memory feedback for the currently open Capture.
-- **Extracted Text:** The plain-text sidecar, integrity-bound through the Manifest and mirrored into SQLite for search.
-- **Tag, Note, Annotation:** Non-destructive investigative context layered onto Captures and Cases.
-- **Archive Reference:** Supporting corroboration from an external archive such as the Wayback Machine.
+- **Case.** The unit of organization, storage, verification, export, and archive transfer.
+- **Capture.** A preserved web page record, currently MHTML-oriented, with sidecars and metadata.
+- **Capture Lifecycle.** The forensic-bearing path for ingestion, hashing, storage, Manifest writing, deletion, verification, and re-extraction.
+- **Manifest.** The hash-chained, operator-attributed audit log in each Case directory.
+- **Operator.** The human investigator, represented by a per-installation UUID and optional profile fields.
+- **Selector.** A user-defined literal or regex pattern.
+- **Selector Lifecycle.** The operation set that creates, updates, deletes, and reconciles Selectors against Captures.
+- **Persisted Match.** A database row stating that a Selector matched a Capture's stored text.
+- **Foreground Match Preview.** Renderer-local, in-memory feedback for the currently open Capture.
+- **Extracted Text.** The plain-text sidecar, integrity-bound through the Manifest and mirrored into SQLite for search.
+- **Tag, Note, Annotation.** Non-destructive investigative context layered onto Captures and Cases.
+- **Archive Reference.** Supporting corroboration from an external archive such as the Wayback Machine.
 
 The architecture separates three kinds of state:
 
-- **Evidence artifacts:** preserved bytes on disk.
-- **Manifest authority:** custody and integrity records binding artifacts to provenance.
-- **Database projections:** queryable, rebuildable state that supports the app experience.
+- **Evidence artifacts.** Preserved bytes on disk.
+- **Manifest authority.** Custody and integrity records binding artifacts to provenance.
+- **Database projections.** Queryable, rebuildable state that supports the app experience.
 
-The separation prevents derived indexes and UI conveniences from becoming confused with evidence.
+The separation prevents derived indexes and UI conveniences from being mistaken for evidence.
 
-### Request and Data Flow
+### Request and data flow
 
 A typical Capture flows through the system as follows:
 
@@ -169,7 +169,7 @@ A typical Capture flows through the system as follows:
 
 Deletion and archive import are also lifecycle operations because they affect forensic-bearing state. Whole-Case deletion is intentionally different: the Case directory and Manifest are removed as a unit rather than appending one deletion entry per Capture.
 
-### Extension Points
+### Extension points
 
 Birdbrain does not currently expose a stable runtime plugin API. Its extension points are source-level:
 
@@ -184,9 +184,9 @@ Birdbrain does not currently expose a stable runtime plugin API. Its extension p
 
 A runtime plugin system would require additional answers around sandboxing, signing, compatibility, data custody, and contamination of evidence workflows.
 
-## Design Philosophy and Key Decisions
+## Design philosophy and key decisions
 
-### Local-First by Default
+### Local-first by default
 
 Birdbrain's most important product decision is that the primary workflow runs locally. Captures stay on the workstation unless the Operator exports them or explicitly uses an outbound feature.
 
@@ -196,36 +196,36 @@ This reduces custody ambiguity and avoids account dependency. It also means Bird
 
 Electron gives Birdbrain a cross-platform desktop shell, Chromium rendering, filesystem access, local networking, native packaging, and a natural bridge to a Chromium extension. TypeScript lets the project share types and schemas across main, preload, renderer, extension, and verifier code.
 
-The trade-off is a larger runtime and a wider desktop security surface than a native single-purpose app. Birdbrain mitigates this through sandboxing, context isolation, disabled Node integration in the renderer, typed IPC, and a constrained preload API.
+The trade-off is a larger runtime and more code exposed to attack than a native single-purpose app. Birdbrain mitigates this through sandboxing, context isolation, disabled Node integration in the renderer, typed IPC, and a constrained preload API.
 
-### SQLite Plus Filesystem Artifacts
+### SQLite plus filesystem artifacts
 
 SQLite is a good fit for local investigation state: it provides transactions, relational constraints, FTS5, portability, and no server dependency. The filesystem is better suited for large artifacts such as MHTML, screenshots, text sidecars, timestamp tokens, and Manifests.
 
 The trade-off is cross-store consistency. The codebase addresses this by centralizing forensic transitions in lifecycle modules, using Manifest append and rollback behavior, and treating database projections as repairable when possible.
 
-### Lifecycle-Oriented Boundaries
+### Lifecycle-oriented boundaries
 
 The codebase avoids putting forensic rules directly into HTTP handlers or UI handlers. Instead, Capture Lifecycle and Selector Lifecycle modules own multi-step invariants that matter across entry points.
 
 Contributors should be cautious about bypassing lifecycle modules for convenience. If a change affects evidence-bearing state, it probably belongs behind a lifecycle boundary.
 
-### Integrity and Trusted Time Are Separate
+### Integrity and trusted time are separate
 
 Birdbrain deliberately separates two claims:
 
-- **Integrity:** whether captured bytes and Manifest links remain intact.
-- **Trusted time:** whether a third-party timestamp authority attests that specific bytes existed no later than a stated time.
+- **Integrity.** Whether captured bytes and Manifest links remain intact.
+- **Trusted time.** Whether a third-party timestamp authority attests that specific bytes existed no later than a stated time.
 
 This separation avoids overclaiming. A Capture can be integrity-verified without a trusted timestamp. A trusted timestamp adds an independent time anchor but does not replace local integrity checks.
 
-### Pure Verification Core
+### Pure verification core
 
 Verification logic under `src/shared/verify` is designed to be independent of Electron, SQLite, Hono, and network access. The desktop app and standalone verifier can reuse the same core algorithms.
 
 This makes the verification path easier to audit and less likely to drift between in-app verification and exported-package verification.
 
-### Explicit Trade-Offs
+### Explicit trade-offs
 
 Birdbrain's design is explicit about its limits:
 
@@ -238,16 +238,16 @@ Birdbrain's design is explicit about its limits:
 
 That list gives contributors a clear map of what to improve and gives adopters a realistic basis for evaluation.
 
-## Codebase Walkthrough
+## Codebase walkthrough
 
-### Repository Structure
+### Repository structure
 
 Important top-level paths include:
 
 - `README.md`: Product overview, installation flow, features, current limitations, and contribution entry point.
 - `CONTEXT.md`: Domain language and relationships. Contributors should read this early.
 - `SECURITY.md`: Supported versions, vulnerability reporting, security architecture, egress list, and known limitations.
-- `website/content/docs`: Architecture, threat model, tester guide, and capture-pipeline references — the source of this documentation site.
+- `website/content/docs`: Architecture, threat model, tester guide, and capture-pipeline references, the source of this documentation site.
 - `docs/adr`: Accepted architectural decisions.
 - `docs/specs` and `docs/plans`: Design notes and implementation plans for major features.
 - `src/main`: Electron main process, IPC handlers, and privileged services.
@@ -260,7 +260,7 @@ Important top-level paths include:
 - `e2e`: Playwright tests that drive the packaged Electron application.
 - `.github/workflows`: CI, release, and security workflows.
 
-### Files to Read First
+### Files to read first
 
 New contributors should start with:
 
@@ -274,20 +274,20 @@ New contributors should start with:
 8. `src/shared/verify/*` for portable verification logic.
 9. Representative tests under `tests/main/services` and `tests/shared/verify`.
 
-### Key Patterns
+### Key patterns
 
 The project uses several patterns contributors should preserve:
 
-- **Domain vocabulary over generic service names:** use Case, Capture, Manifest, Selector, Persisted Match, and Operator consistently.
-- **Typed boundaries:** renderer-main communication should go through typed IPC and preload methods.
-- **Schema validation:** external and cross-boundary inputs should be validated.
-- **Source evidence versus derived state:** do not treat FTS rows, UI previews, model output, or cached matches as evidence.
-- **Feature-scoped UI:** renderer code is organized around concrete workflows such as captures, cases, export, selectors, notes, settings, and search.
-- **Pure verification functions:** verifier-safe code should stay free of Electron, database, and network imports.
+- **Domain vocabulary over generic service names.** Use Case, Capture, Manifest, Selector, Persisted Match, and Operator consistently.
+- **Typed boundaries.** Renderer-main communication should go through typed IPC and preload methods.
+- **Schema validation.** Validate external and cross-boundary inputs.
+- **Source evidence versus derived state.** Do not treat FTS rows, UI previews, model output, or cached matches as evidence.
+- **Feature-scoped UI.** Renderer code is organized around concrete workflows such as captures, cases, export, selectors, notes, settings, and search.
+- **Pure verification functions.** Verifier-safe code should stay free of Electron, database, and network imports.
 
-## Developer Experience
+## Developer experience
 
-### Local Setup
+### Local setup
 
 Birdbrain is a TypeScript project using Node 20.19 or newer and `pnpm`.
 
@@ -306,7 +306,7 @@ pnpm package
 
 Native dependencies such as `better-sqlite3`, Electron, and Sharp-related packages are rebuilt through the postinstall flow. Contributors touching native packaging should test on the target operating system where possible.
 
-### Common Workflows
+### Common workflows
 
 For desktop app development, run `pnpm dev`.
 
@@ -322,7 +322,7 @@ pnpm package:mac
 pnpm package:linux
 ```
 
-### Pull Request Norms
+### Pull request norms
 
 The README asks contributors to open an issue before non-trivial PRs. That is the right norm for a project with forensic and security-sensitive behavior. Small docs fixes, narrow tests, and low-risk UI improvements can usually be proposed directly.
 
@@ -335,9 +335,9 @@ Good PRs should:
 - update docs or domain language when behavior changes; and
 - call out security, privacy, or export-compatibility implications.
 
-## Testing, CI/CD, and Quality Gates
+## Testing, CI/CD, and quality gates
 
-### Test Strategy
+### Test strategy
 
 Birdbrain uses Vitest for unit and integration coverage across the Electron main process, renderer components, hooks, shared modules, extension utilities, and verifier logic. Tests cover areas such as:
 
@@ -355,7 +355,7 @@ Playwright E2E tests drive packaged Electron workflows such as app lifecycle, Ca
 
 Evidence logic has focused tests, while important user workflows have E2E coverage.
 
-### CI/CD Overview
+### CI/CD overview
 
 The GitHub workflows include CI, release, and security jobs. Based on the repository configuration and docs, the pipeline covers linting, type checking, unit tests, builds, E2E tests, secret scanning, dependency audit, and release packaging.
 
@@ -367,7 +367,7 @@ Release packaging uses `electron-builder` for:
 - bundled extension resources; and
 - GitHub Releases/update metadata.
 
-### Current Quality Gaps
+### Current quality gaps
 
 The project is beta, and several maturity gaps are already documented:
 
@@ -380,9 +380,9 @@ The project is beta, and several maturity gaps are already documented:
 
 These are strong contribution areas because they improve adoption confidence without changing the product's core philosophy.
 
-## Security and Threat Model
+## Security and threat model
 
-### Security Architecture
+### Security architecture
 
 Birdbrain's security design follows its local-first boundary:
 
@@ -396,7 +396,7 @@ Birdbrain's security design follows its local-first boundary:
 - Manifest signing keys use Electron `safeStorage` where available.
 - The extension sends captures only to the loopback server and rejects messages from other extensions.
 
-### Network Egress
+### Network egress
 
 Birdbrain's documented outbound connections are narrow:
 
@@ -406,7 +406,7 @@ Birdbrain's documented outbound connections are narrow:
 
 There is no telemetry and no required account.
 
-### Threat Model Boundaries
+### Threat model boundaries
 
 The Manifest, signatures, hashes, and timestamps defend against casual tampering and support later verification. They do not defend against every adversary.
 
@@ -422,7 +422,7 @@ In particular:
 
 The stated boundaries let reviewers reason about Birdbrain's claims without relying on vague assurances.
 
-## Observability and Operations
+## Observability and operations
 
 Birdbrain currently emphasizes operator-facing state over telemetry. Implemented signals include:
 
@@ -449,9 +449,9 @@ For adopters, operational planning should cover:
 - export verification procedure; and
 - version/update channel policy.
 
-## Contribution Guide
+## Contribution guide
 
-### Good First Issue Areas
+### Good first issue areas
 
 Good first contributions should be narrow, testable, and unlikely to disturb forensic invariants. Suitable areas include:
 
@@ -466,7 +466,7 @@ Good first contributions should be narrow, testable, and unlikely to disturb for
 - import/export wording and report polish; and
 - small DX scripts that reduce contributor friction.
 
-### Medium Contribution Areas
+### Medium contribution areas
 
 Medium-scope work can improve real user workflows while staying inside existing architecture:
 
@@ -482,7 +482,7 @@ Medium-scope work can improve real user workflows while staying inside existing 
 - benchmark fixtures for realistic Case sizes; and
 - compatibility tests for archive schema evolution.
 
-### Advanced Contribution Areas
+### Advanced contribution areas
 
 Experienced contributors can have high impact in areas that affect trust, architecture, or long-term maintainability:
 
@@ -498,7 +498,7 @@ Experienced contributors can have high impact in areas that affect trust, archit
 - performance benchmarks for search, selectors, export, and verification;
 - stronger dependency security gates.
 
-### Contributor Cautions
+### Contributor cautions
 
 Contributors should be especially careful when touching:
 
@@ -515,9 +515,9 @@ Contributors should be especially careful when touching:
 
 Changes in these areas should include tests and documentation because they affect trust, compatibility, or security posture.
 
-## Adoption Guide
+## Adoption guide
 
-### When Birdbrain Fits
+### When Birdbrain fits
 
 Birdbrain is a strong fit when a team needs:
 
@@ -532,7 +532,7 @@ Birdbrain is a strong fit when a team needs:
 
 It is especially appropriate for individual investigators and small teams that can handle workstation security and backup policy themselves.
 
-### When Birdbrain May Not Fit
+### When Birdbrain may not fit
 
 Birdbrain may not be the right primary system when a team requires:
 
@@ -549,7 +549,7 @@ Birdbrain may not be the right primary system when a team requires:
 
 In those environments, Birdbrain may still be useful as a local collection workstation that feeds a broader governance system.
 
-### Integration Pattern
+### Integration pattern
 
 The practical adoption pattern is:
 
@@ -562,13 +562,13 @@ The practical adoption pattern is:
 7. Document export verification procedures.
 8. Train Operators on what the integrity and trusted-time results mean.
 
-### Configuration and Customization
+### Configuration and customization
 
 Operators can configure storage location, screenshot collection, deduplication behavior, ignored URL patterns, automatic capture behavior, Operator provenance fields, timestamp authority, appearance, reduced motion, and update channel.
 
 For most teams, the most important settings are storage, ignored URLs, timestamp authority, and update channel.
 
-### Debugging Tips
+### Debugging tips
 
 For adopters troubleshooting Birdbrain:
 
@@ -581,13 +581,13 @@ For adopters troubleshooting Birdbrain:
 - Treat missing trusted timestamps as a separate issue from integrity failures.
 - Use the standalone verifier for exported packages where appropriate.
 
-### Compatibility and Versioning
+### Compatibility and versioning
 
 Birdbrain is beta software. The README states that data formats may change between releases. Teams evaluating adoption should test upgrade paths with representative Cases and retain backups before moving important evidence between versions.
 
 A future compatibility policy should define supported archive schema versions, verifier availability guarantees, migration behavior, and breaking-change communication.
 
-## Community and Governance
+## Community and governance
 
 Birdbrain appears to be a solo-maintained open-source project. The README directs users to GitHub issues for bugs and feature requests and asks contributors to open an issue before non-trivial PRs. `SECURITY.md` asks researchers to use GitHub private vulnerability reporting or a fallback email for exploitable vulnerabilities.
 
@@ -603,9 +603,9 @@ The governance model should remain lightweight while the project is beta, but a 
 
 As adoption grows, the project would benefit from a clearer maintainer policy, release support policy, issue labels for contributor onboarding, and documented decision-making for architecture changes.
 
-## Roadmap and Future Directions
+## Roadmap and future directions
 
-### Near-Term Priorities
+### Near-term priorities
 
 Near-term work should focus on trust, contributor clarity, and beta hardening:
 
@@ -618,7 +618,7 @@ Near-term work should focus on trust, contributor clarity, and beta hardening:
 - add realistic performance benchmarks; and
 - improve capture failure explanations.
 
-### Longer-Term Architectural Bets
+### Longer-term architectural bets
 
 Longer-term work can explore:
 
@@ -629,7 +629,7 @@ Longer-term work can explore:
 - better background-job cancellation and retry visibility;
 - cross-Case search, if it can preserve the Case-centered model.
 
-### Where Community Input Is Most Valuable
+### Where community input is most valuable
 
 The most valuable community input will come from real investigative workflows:
 

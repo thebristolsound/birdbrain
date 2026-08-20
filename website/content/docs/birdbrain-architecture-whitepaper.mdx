@@ -32,7 +32,7 @@ and provenance into named Cases.
 The architecture treats evidence integrity as a first-class system property.
 SHA-256 hashes bind captured artifacts to an append-only, hash-chained Manifest.
 Each current-schema Manifest entry is signed by a per-installation RSA key, and
-eligible Captures are asynchronously submitted to an RFC 3161 timestamp
+Birdbrain asynchronously submits eligible Captures to an RFC 3161 timestamp
 authority. Integrity and trusted time remain separate claims: hashing and
 signatures show whether evidence changed, while a third-party timestamp
 establishes that the hashed content existed no later than an asserted time.
@@ -159,31 +159,31 @@ the renderer or network.
 
 A diagram should contain the following blocks and arrows:
 
-1. **Chromium Browser and Birdbrain Extension** on the left. Inside it, show a
+1. **Chromium browser and Birdbrain extension** on the left. Inside it, show a
    content script, background service worker, and popup. Draw arrows from the
    active web page into the content script for page content and visible context.
-2. **Loopback Trust Boundary** in the center-left. Inside it, place the Hono
+2. **Loopback trust boundary** in the center-left. Inside it, place the Hono
    Capture Server on `127.0.0.1:19845`. Draw an authenticated HTTP arrow from the
    extension to this block, labeled "MHTML, screenshot, extracted text, headers,
    metadata, bearer token."
-3. **Electron Main Process** in the center. Place the Capture Lifecycle, Selector
+3. **Electron main process** in the center. Place the Capture Lifecycle, Selector
    Lifecycle, Case archive/export services, verification core adapters,
    timestamp worker, background recapture renderer, and integration clients
    inside it. Draw an arrow from the Capture Server to the Capture Lifecycle.
-4. **Local Persistence** below the main process. Split it into SQLite and
+4. **Local persistence** below the main process. Split it into SQLite and
    per-Case filesystem storage. Draw arrows from lifecycle and repository
    components to SQLite. Draw separate arrows to MHTML, screenshot, text
    sidecars, timestamp tokens, and `manifest.jsonl`.
-5. **Electron Renderer** on the right. Show React, TanStack Router, React Query,
+5. **Electron renderer** on the right. Show React, TanStack Router, React Query,
    and Zustand. Between renderer and main, place the preload/context bridge.
    Label the bidirectional arrow "typed IPC commands, queries, and events."
-6. **External Optional Services** above the main process. Include an RFC 3161
+6. **External optional services** above the main process. Include an RFC 3161
    timestamp authority, Wayback Machine, origin TLS endpoints, and GitHub
    Releases. Draw outbound-only arrows from their owning main-process services.
    Label each arrow with the data sent: content hash for the timestamp
    authority; URL for Wayback and TLS corroboration; version/update traffic for
    GitHub.
-7. **Evidence Consumer** below or to the far right. Draw an export arrow from the
+7. **Evidence consumer** below or to the far right. Draw an export arrow from the
    main process to an evidence ZIP or `.birdbrain` Case archive, then an arrow
    into the standalone verifier and a separate `openssl ts -verify` step.
 
@@ -202,7 +202,7 @@ matches; the popup exposes Case and capture controls.
 The extension requests broad HTTP and HTTPS host permissions because arbitrary
 page collection is its core function. It sends captures only to the loopback
 Capture Server. Background message handlers reject messages from other
-extensions. URL ignore rules are applied in both the extension and server, so a
+extensions. Both the extension and the server apply URL ignore rules, so a
 client-side omission does not remove the server-side control.
 
 #### Capture Server
@@ -232,9 +232,9 @@ a Capture. It orchestrates ingestion, artifact storage, Manifest appends,
 database persistence, deletion, verification, re-extraction, and asynchronous
 follow-up work.
 
-The lifecycle uses a write-ahead Manifest pattern. A signed entry is appended and
-flushed before dependent persistence completes; if the later operation fails,
-the Manifest is truncated to its prior byte boundary. This makes the invariant
+The lifecycle uses a write-ahead Manifest pattern. It appends and flushes a
+signed entry before dependent persistence completes; if the later operation
+fails, it truncates the Manifest to its prior byte boundary. This makes the invariant
 explicit: the surviving Manifest should not claim a Capture or deletion that did
 not complete.
 
@@ -315,11 +315,11 @@ The primary entities and their roles are:
 
 The storage design distinguishes three levels of authority:
 
-1. **Evidence artifacts:** MHTML and integrity-bound sidecars are the preserved
+1. **Evidence artifacts.** MHTML and integrity-bound sidecars are the preserved
    bytes.
-2. **Manifest:** the append-only custody and integrity record binds those bytes
+2. **Manifest.** The append-only custody and integrity record binds those bytes
    to provenance and subsequent actions.
-3. **Database projections:** relational metadata, extracted text mirrors,
+3. **Database projections.** Relational metadata, extracted text mirrors,
    Persisted Matches, and FTS5 indexes support application workflows.
 
 Extracted Text illustrates this distinction. Its `.txt` sidecar is authoritative
@@ -328,18 +328,18 @@ paths, while `captures_fts` is a trigger-maintained derived index. Rebuild
 operations heal database projections by rereading sidecars rather than treating
 the index as evidence.
 
-### Integration and API surface
+### Integrations and APIs
 
-Birdbrain has four principal integration surfaces:
+Birdbrain has four principal integration points:
 
-- **Extension HTTP API:** a small loopback API for Case discovery, session
+- **Extension HTTP API.** A small loopback API for Case discovery, session
   control, capture ingestion, Selector access, and health checks.
-- **Typed Electron IPC:** the renderer-facing application API, organized into
+- **Typed Electron IPC.** The renderer-facing application API, organized into
   domains such as Cases, Captures, tags, Selectors, Notes, settings, export,
   updates, and events.
-- **Portable files:** evidence ZIPs and `.birdbrain` Case archives support review
+- **Portable files.** Evidence ZIPs and `.birdbrain` Case archives support review
   and transfer without a live Birdbrain service.
-- **Outbound adapters:** RFC 3161, Wayback Machine, origin TLS, and GitHub
+- **Outbound adapters.** RFC 3161, Wayback Machine, origin TLS, and GitHub
   Releases are isolated behind main-process services.
 
 There is no supported remote REST API, webhook framework, or network-listening
@@ -359,7 +359,7 @@ listener, and a separately installed browser extension in one TypeScript
 codebase. Shared types and schemas reduce contract drift among main, preload,
 renderer, verifier, and extension components.
 
-The cost is a larger distribution and a wider security surface than a native
+The cost is a larger distribution and more code exposed to attack than a native
 single-purpose application. Birdbrain mitigates this with sandboxing, context
 isolation, navigation controls, a production Content Security Policy, and a
 constrained preload API.
@@ -420,7 +420,7 @@ repository decisions:
 | ------------------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | Hosted multi-tenant service           | Central collaboration, policy, and backup            | Conflicts with local custody, offline use, and no-account operation                                                     |
 | Browser-extension-only product        | Smaller installation                                 | Weak privileged storage, export, local database, and independent verification capabilities                              |
-| Native desktop implementation         | Smaller runtime and narrower web surface             | Higher cross-platform cost and less shared browser/UI technology                                                        |
+| Native desktop implementation         | Smaller runtime and less exposed code             | Higher cross-platform cost and less shared browser/UI technology                                                        |
 | Store every artifact as a SQLite BLOB | Single backup unit and stronger transaction boundary | Poorer handling of large artifacts and less transparent evidence packaging                                              |
 | Plain filesystem metadata             | Maximum inspectability                               | Loses relational integrity, FTS, migrations, and efficient Case workflows                                               |
 | WARC as the sole capture format       | Established web-archiving conventions                | More capture and replay complexity for an extension-centered, investigator-facing workflow                              |
@@ -453,7 +453,7 @@ fixed credential.
 Authentication exists at the extension-to-server boundary as possession of the
 installation token. It identifies an authorized local client, not a human
 identity. Electron IPC relies on the trusted application renderer and its
-constrained preload surface.
+constrained preload API.
 
 Birdbrain does not implement accounts, sessions tied to people, RBAC, approval
 workflows, or Case-level access policies. Operator name, role, and organization
@@ -658,8 +658,8 @@ Operators can configure:
 
 Investigation behavior is extensible through Selectors, tags, Notes,
 annotations, background recapture, and structured extraction. Case archives
-provide a file-level interchange surface, while evidence ZIPs provide a
-verification-oriented delivery surface.
+provide file-level interchange, while evidence ZIPs provide
+verification-oriented delivery.
 
 For contributors, the strongest extension points are:
 

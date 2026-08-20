@@ -29,6 +29,17 @@
   --font-body: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
 }
 
+/* Overlay shadow, mirroring globals.css. A plain custom property rather than a
+   @theme --shadow-* entry: Tailwind inlines theme shadow values into the
+   utility at build time, so the html.dark override below would never reach it. */
+:root {
+  --bb-shadow-overlay: 0 10px 30px rgba(0, 0, 0, 0.12);
+}
+
+.shadow-overlay {
+  box-shadow: var(--bb-shadow-overlay);
+}
+
 html.dark {
   --color-canvas: #090a0b;
   --color-surface: #0e0e11;
@@ -43,6 +54,8 @@ html.dark {
   --color-accent-subtle: rgba(100,103,242,0.16);
   --color-border: #27272a;
   --color-border-strong: #3d3d42;
+
+  --bb-shadow-overlay: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
 
 body {
@@ -55,30 +68,29 @@ body {
 }
 
 /* Functional motion only — no decorative glow/shimmer/pulse */
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.7; transform: scale(1.15); }
 }
 
-.animate-fade-up {
-  animation: fadeUp 0.3s ease-out forwards;
+/* Overlay entrance, per MOTION.md: scaleY(.92) -> 1 + fade, 130ms, from the top. */
+@keyframes bbpop {
+  from { opacity: 0; transform: scaleY(0.92); }
+  to { opacity: 1; transform: scaleY(1); }
 }
 
-.animate-fade-up-delay-1 {
-  animation: fadeUp 0.3s ease-out 0.1s forwards;
-  opacity: 0;
-}
-
-.animate-fade-up-delay-2 {
-  animation: fadeUp 0.3s ease-out 0.2s forwards;
-  opacity: 0;
+.pop {
+  animation: bbpop 130ms ease-out;
+  transform-origin: top;
 }
 
 .status-recording {
   animation: pulse-dot 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pop,
+  .status-recording {
+    animation: none;
+  }
 }

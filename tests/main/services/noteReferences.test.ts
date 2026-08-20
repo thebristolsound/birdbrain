@@ -74,7 +74,11 @@ describe('note references index', () => {
         pk: number
       }>
 
-      expect(cols.map((c) => c.name)).toEqual(['note_id', 'ord', 'target_type', 'target_id'])
+      // Which columns exist, not what order they sit in — a later migration
+      // that rebuilds the table is free to reorder them.
+      expect(cols.map((c) => c.name).sort()).toEqual(
+        ['note_id', 'ord', 'target_id', 'target_type'].sort()
+      )
       expect(cols.filter((c) => c.pk > 0).map((c) => c.name)).toEqual(['note_id', 'ord'])
     })
 
@@ -449,6 +453,24 @@ describe('note references index', () => {
 
       expect(rebuildForCase(caseId)).toBe(0)
       expect(indexRows(note.id)).toEqual([])
+    })
+
+    // A document that no longer parses is exactly what this seam is for
+    // (#662), so it must not leave the case half rebuilt: the first note's
+    // rebuilt rows roll back with the failure rather than landing while the
+    // rest stay stale.
+    it('rolls the whole rebuild back when one stored document does not parse', () => {
+      const cap = capture()
+      const first = createNote({ caseId, bodyDoc: docOf(mention('capture', cap.id)) })
+      const drifted = createNote({ caseId, bodyDoc: docOf(mention('tag', 'tag-1')) })
+      getDb().prepare('UPDATE notes SET body_doc = ? WHERE id = ?').run('{not json', drifted.id)
+      // Emptied so a committed rebuild of the first note would be visible.
+      getDb().prepare('DELETE FROM note_references WHERE note_id = ?').run(first.id)
+
+      expect(() => rebuildForCase(caseId)).toThrow(/not valid JSON/)
+
+      expect(indexRows(first.id)).toEqual([])
+      expect(indexRows(drifted.id)).toHaveLength(1)
     })
   })
 

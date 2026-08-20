@@ -936,6 +936,26 @@ describe('ipcHandlers — notes', () => {
     ])
   })
 
+  // Backlinks is the one reference channel taking a payload object, and the
+  // contract's types are compile-time only. An off-enum targetType reaching
+  // the query would come back as an empty list — an answer, not a refusal.
+  it('refuses a malformed backlinks payload instead of answering it', async () => {
+    for (const payload of [
+      undefined,
+      { caseId, targetType: 'bogus', targetId: 'x' },
+      { caseId, targetType: 'capture' },
+      { targetType: 'capture', targetId: 'x' },
+      { caseId, targetType: 'capture', targetId: 42 }
+    ]) {
+      const res = await invoke<{ ok: boolean; code?: string }>(
+        IPC_CHANNELS.NOTES_BACKLINKS,
+        payload
+      )
+      expect(res.ok).toBe(false)
+      expect(res.code).toBe('INVALID_BACKLINKS_PAYLOAD')
+    }
+  })
+
   // Mirrors the anchor translation above: a cross-case Mention is a distinct
   // structured failure, not a generic rejected promise.
   it('reports a cross-case Mention as a structured failure on create', async () => {

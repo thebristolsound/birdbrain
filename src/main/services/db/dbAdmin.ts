@@ -321,7 +321,20 @@ export function updateRow(
       .prepare(`SELECT body_doc FROM "${table}" WHERE ${whereClauses}`)
       .get(...pkValues) as { body_doc?: string | null } | undefined
     if (existing?.body_doc) {
-      assertMentionsInCase(extractNoteMentions(existing.body_doc), data.case_id as string)
+      let mentions: NoteMention[]
+      try {
+        mentions = extractNoteMentions(existing.body_doc)
+      } catch (err) {
+        // A stored document that no longer parses (a hatch write predating
+        // #389, #662) refuses the move rather than carrying mentions nothing
+        // can read into another case — but name the column that refused it,
+        // or the operator reads a schema error about one they never touched.
+        throw new Error(
+          `notes.body_doc for this row does not parse, so its Mentions cannot be checked ` +
+            `against the destination case: ${(err as Error).message}`
+        )
+      }
+      assertMentionsInCase(mentions, data.case_id as string)
     }
   }
 

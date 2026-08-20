@@ -2,6 +2,7 @@ import { app, dialog, shell } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
 import { DEFAULT_ANALYSIS_SYSTEM_PROMPT, MAX_BATCH_CAPTURE_IDS } from '@shared/constants'
 import { safeFilename } from '@shared/safeFilename'
+import { MENTION_TARGET_TYPES } from '@shared/noteDoc'
 import type {
   CreateCaseParams,
   UpdateCaseParams,
@@ -500,9 +501,22 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.NOTES_REFERENCES, (_, noteId: string) =>
     noteReferenceRepo.referencesForNote(noteId)
   )
-  handle(IPC_CHANNELS.NOTES_BACKLINKS, (_, params: NoteBacklinksParams) =>
-    noteReferenceRepo.backlinksForTarget(params)
-  )
+  // The one new reference channel taking a payload object rather than a bare
+  // id, so it gets the shape check the other payload channels get (#394's
+  // validateBatchPayload, recapture, wayback): a targetType off the enum would
+  // otherwise reach the query and come back as an honest-looking empty list.
+  handle(IPC_CHANNELS.NOTES_BACKLINKS, (_, params: NoteBacklinksParams) => {
+    const p = params as Partial<NoteBacklinksParams> | null | undefined
+    if (
+      !p ||
+      typeof p.caseId !== 'string' ||
+      typeof p.targetId !== 'string' ||
+      !(MENTION_TARGET_TYPES as readonly unknown[]).includes(p.targetType)
+    ) {
+      throw new IpcFailure('Invalid backlinks payload', 'INVALID_BACKLINKS_PAYLOAD')
+    }
+    return noteReferenceRepo.backlinksForTarget(p as NoteBacklinksParams)
+  })
   handle(IPC_CHANNELS.NOTES_BACKLINK_COUNTS, (_, caseId: string) =>
     noteReferenceRepo.backlinkCountsForCase(caseId)
   )

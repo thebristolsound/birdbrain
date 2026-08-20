@@ -1,4 +1,4 @@
-import { getDb } from '@main/services/db/core'
+import { getDb, withTransaction } from '@main/services/db/core'
 import { extractNoteMentions, type MentionTargetType, type NoteMention } from '@shared/noteDoc'
 import type { NoteBacklink, NoteBacklinkCount, NoteReference } from '@shared/types'
 
@@ -155,18 +155,25 @@ export function backlinkCountsForCase(caseId: string): NoteBacklinkCount[] {
 /**
  * Re-derive the whole index for a case from stored body_doc rows — the
  * repair seam spike constraint 7 requires: the index is derived state and
- * must always be reconstructible from the documents. Callers own the
- * transaction. Returns the number of reference rows written.
+ * must always be reconstructible from the documents. Returns the number of
+ * reference rows written.
+ *
+ * All of it or none of it: a drifted body_doc that no longer parses (#662) is
+ * exactly what this seam is for, and throwing halfway through would leave the
+ * scanned notes rebuilt and the rest stale — worse than the index it
+ * replaced. The transaction nests, so an outer caller still gets one unit.
  */
 export function rebuildForCase(caseId: string): number {
-  const rows = getDb()
-    .prepare('SELECT id, body_doc FROM notes WHERE case_id = ?')
-    .all(caseId) as Array<{ id: string; body_doc: string | null }>
-  let written = 0
-  for (const row of rows) {
-    const mentions = row.body_doc ? extractNoteMentions(row.body_doc) : []
-    rewriteReferencesForNote(row.id, mentions)
-    written += mentions.length
-  }
-  return written
+  return withTransaction(() => {
+    const rows = getDb()
+      .prepare('SELECT id, body_doc FROM notes WHERE case_id = ?')
+      .all(caseId) as Array<{ id: string; body_doc: string | null }>
+    let written = 0
+    for (const row of rows) {
+      const mentions = row.body_doc ? extractNoteMentions(row.body_doc) : []
+      rewriteReferencesForNote(row.id, mentions)
+      written += mentions.length
+    }
+    return written
+  })
 }

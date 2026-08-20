@@ -52,14 +52,14 @@ import type {
 
 // 3 since note Mentions (#389): a note's body_doc may carry Mention inline
 // nodes. A pre-Mention Birdbrain's parseNoteDoc rejects the unknown node type,
-// so importing a mention-bearing archive there would fail mid-transaction with
-// an opaque schema error; the `schemaVersion >` gate in inspectCaseArchive
-// turns that into the clean "update Birdbrain" refusal instead. The references
-// index derived from those Mentions never travels — it is re-extracted after
-// id remapping on import.
+// so importing a mention-bearing Case Archive there would fail mid-transaction
+// with an opaque schema error; the `schemaVersion >` gate in
+// inspectCaseArchive turns that into the clean "update Birdbrain" refusal
+// instead. The references index derived from those Mentions never travels — it
+// is re-extracted after id remapping on import.
 // 2 since anchored notes (schema v27): note rows carry anchor_kind and
-// anchor_json, which a pre-v27 import would silently drop. Bump this whenever
-// an archive gains data an older release would silently discard or reject
+// anchor_json, which a pre-v27 import would silently drop. Bump this whenever a
+// Case Archive gains data an older release would silently discard or reject
 // opaquely.
 export const CASE_ARCHIVE_SCHEMA_VERSION = 3
 

@@ -483,6 +483,9 @@ describe('dbAdmin', () => {
           })
         ).toThrow(MentionCaseMismatchError)
         expect(anchorRow('b-7')).toBeUndefined()
+        // Both halves of the transaction, not just the row: the index exists
+        // to be written with the note, so it must be absent with it too.
+        expect(refs('b-7')).toEqual([])
       })
 
       it('rejects a cross-case Mention on update, leaving the stored index intact', () => {
@@ -517,6 +520,22 @@ describe('dbAdmin', () => {
           MentionCaseMismatchError
         )
         expect(anchorRow('b-9').case_id).toBe(caseId)
+      })
+
+      // A row drifted by a hatch write predating this guard (#662) cannot have
+      // its Mentions checked, so the move is refused — but the operator
+      // touched only case_id, and a bare "does not fit the note schema" would
+      // point them at the wrong column.
+      it('refuses a case_id-only move for an unparseable stored body_doc, naming it', () => {
+        const caseId = newCase()
+        const otherCaseId = newCase()
+        createRow('notes', noteRow('b-12', caseId))
+        getDb().prepare('UPDATE notes SET body_doc = ? WHERE id = ?').run('{not json', 'b-12')
+
+        expect(() => updateRow('notes', { id: 'b-12' }, { case_id: otherCaseId })).toThrow(
+          /notes\.body_doc for this row does not parse/
+        )
+        expect(anchorRow('b-12').case_id).toBe(caseId)
       })
 
       it('allows a case_id-only move for a note whose Mentions are global tags', () => {

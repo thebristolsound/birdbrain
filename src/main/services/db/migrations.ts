@@ -561,8 +561,12 @@ export function runMigrations(db: Database.Database): void {
       // stay representable as a broken reference, so target rows are resolved
       // at read time rather than constrained here. (note_id, ord) as the
       // primary key preserves document order and duplicate mentions.
-      // Create-only, no backfill: before this version parseNoteDoc rejected
-      // unknown node types, so no stored body_doc can contain a Mention.
+      // Create-only, no backfill: every validated write path (noteRepo, the
+      // Case Archive import) put body_doc through parseNoteDoc, which rejected
+      // unknown node types, so none of them can have stored a Mention. The
+      // Database Admin hatch did not parse body_doc before this version, so a
+      // hand-written mention-shaped node there stays unindexed until
+      // rebuildForCase re-derives the case (#662).
       db.exec(`
         CREATE TABLE note_references (
           note_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,

@@ -37,6 +37,7 @@ import {
   useCasesMutations,
   useCapturesMutations,
   useTagsMutations,
+  useRecaptureMutations,
   useSelectorsMutations,
   useNotesMutations,
   useExtractedDataMutations,
@@ -60,8 +61,16 @@ function installBirdbrainMock() {
       getMatchingSelectors: fn(),
       listFavorites: fn(),
       delete: fn(),
-      toggleFavorite: fn()
+      toggleFavorite: fn(),
+      deleteMany: vi.fn().mockResolvedValue({
+        outcomes: [{ captureId: 'cap1', status: 'deleted' }],
+        deletedIds: ['cap1'],
+        failedIds: [],
+        manifest: { baseIndex: 0, committedEntries: 1 }
+      }),
+      setFavoriteMany: vi.fn().mockResolvedValue({ affected: 2 })
     },
+    recapture: { enqueue: fn(), queueStatus: fn(), enqueueCaptures: fn() },
     search: fn(),
     tags: {
       list: fn(),
@@ -72,7 +81,8 @@ function installBirdbrainMock() {
       update: fn(),
       delete: fn(),
       addToCapture: fn(),
-      removeFromCapture: fn()
+      removeFromCapture: fn(),
+      addToCaptures: vi.fn().mockResolvedValue({ affected: 2 })
     },
     selectors: {
       list: fn(),
@@ -297,6 +307,123 @@ describe('useCapturesMutations', () => {
     })
     expect(invalidatedKeys(invalidate)).toContainEqual(['captures', 'favorites', 'c1'])
     expect(invalidatedKeys(invalidate)).toContainEqual(['captures', 'c1'])
+  })
+})
+
+describe('useCapturesMutations batch hooks (#394)', () => {
+  it('removeMany invalidates captures, counts and favorites when something was deleted', async () => {
+    const { invalidate, wrapper } = setup()
+    const { result } = renderHook(() => useCapturesMutations('c1'), { wrapper })
+
+    await act(async () => {
+      await result.current.removeMany.mutateAsync(['cap1', 'cap2'])
+    })
+    expect(api.captures.deleteMany).toHaveBeenCalledWith({
+      caseId: 'c1',
+      captureIds: ['cap1', 'cap2']
+    })
+    const keys = invalidatedKeys(invalidate)
+    expect(keys).toContainEqual(['captures', 'c1'])
+    expect(keys).toContainEqual(['captureCounts'])
+    expect(keys).toContainEqual(['captures', 'favorites', 'c1'])
+  })
+
+  it('removeMany still invalidates when every id was not_found: the cache showed rows already gone', async () => {
+    api.captures.deleteMany.mockResolvedValue({
+      outcomes: [{ captureId: 'ghost', status: 'rejected', reason: 'not_found' }],
+      deletedIds: [],
+      failedIds: [],
+      manifest: { baseIndex: 0, committedEntries: 0 }
+    })
+    const { invalidate, wrapper } = setup()
+    const { result } = renderHook(() => useCapturesMutations('c1'), { wrapper })
+
+    await act(async () => {
+      await result.current.removeMany.mutateAsync(['ghost'])
+    })
+    expect(invalidatedKeys(invalidate)).toContainEqual(['captures', 'c1'])
+  })
+
+  it('removeMany invalidates nothing when the batch deleted nothing and saw no stale ids', async () => {
+    api.captures.deleteMany.mockResolvedValue({
+      outcomes: [
+        { captureId: 'cap1', status: 'rolled_back', stage: 'artifacts', error: 'Error (EBUSY)' },
+        { captureId: 'cap1', status: 'rejected', reason: 'duplicate' }
+      ],
+      deletedIds: [],
+      failedIds: ['cap1'],
+      haltedAt: 'cap1',
+      manifest: { baseIndex: 0, committedEntries: 0 }
+    })
+    const { invalidate, wrapper } = setup()
+    const { result } = renderHook(() => useCapturesMutations('c1'), { wrapper })
+
+    await act(async () => {
+      await result.current.removeMany.mutateAsync(['cap1', 'cap1'])
+    })
+    expect(invalidate).not.toHaveBeenCalled()
+  })
+
+  it('setFavoriteMany invalidates favorites and captures', async () => {
+    const { invalidate, wrapper } = setup()
+    const { result } = renderHook(() => useCapturesMutations('c1'), { wrapper })
+
+    await act(async () => {
+      await result.current.setFavoriteMany.mutateAsync({ captureIds: ['cap1'], favorite: true })
+    })
+    expect(api.captures.setFavoriteMany).toHaveBeenCalledWith({
+      caseId: 'c1',
+      captureIds: ['cap1'],
+      favorite: true
+    })
+    expect(invalidatedKeys(invalidate)).toContainEqual(['captures', 'favorites', 'c1'])
+    expect(invalidatedKeys(invalidate)).toContainEqual(['captures', 'c1'])
+  })
+})
+
+describe('useTagsMutations.addToCaptures (#394)', () => {
+  it('invalidates each capture tag list and the tag counts', async () => {
+    const { invalidate, wrapper } = setup()
+    const { result } = renderHook(() => useTagsMutations('c1'), { wrapper })
+
+    await act(async () => {
+      await result.current.addToCaptures.mutateAsync({ captureIds: ['cap1', 'cap2'], tagId: 't1' })
+    })
+    expect(api.tags.addToCaptures).toHaveBeenCalledWith({
+      caseId: 'c1',
+      captureIds: ['cap1', 'cap2'],
+      tagId: 't1'
+    })
+    const keys = invalidatedKeys(invalidate)
+    expect(keys).toContainEqual(['tags', 'capture', 'cap1'])
+    expect(keys).toContainEqual(['tags', 'capture', 'cap2'])
+    expect(keys).toContainEqual(['tags', 'usageCounts'])
+    expect(keys).toContainEqual(['tags', 'caseCount'])
+  })
+
+  it('rejects without a caseId instead of sending an unguarded batch', async () => {
+    const { wrapper } = setup()
+    const { result } = renderHook(() => useTagsMutations(), { wrapper })
+    await expect(
+      result.current.addToCaptures.mutateAsync({ captureIds: ['cap1'], tagId: 't1' })
+    ).rejects.toThrow('caseId')
+    expect(api.tags.addToCaptures).not.toHaveBeenCalled()
+  })
+})
+
+describe('useRecaptureMutations.enqueueCaptures (#394)', () => {
+  it('sends the case-scoped batch and invalidates the queue', async () => {
+    const { invalidate, wrapper } = setup()
+    const { result } = renderHook(() => useRecaptureMutations('c1'), { wrapper })
+
+    await act(async () => {
+      await result.current.enqueueCaptures.mutateAsync(['cap1', 'cap2'])
+    })
+    expect(api.recapture.enqueueCaptures).toHaveBeenCalledWith({
+      caseId: 'c1',
+      captureIds: ['cap1', 'cap2']
+    })
+    expect(invalidatedKeys(invalidate)).toContainEqual(['recaptureQueue'])
   })
 })
 

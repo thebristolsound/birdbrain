@@ -1,5 +1,6 @@
 import { queryOptions, useIsMutating, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Capture } from '@shared/types'
+import type { BatchCountResult, BatchDeleteResult } from '@shared/ipc'
 import { queryKeys } from '@renderer/lib/api/keys'
 
 export const capturesQueryOptions = (caseId: string) =>
@@ -91,7 +92,40 @@ export function useCapturesMutations(caseId: string) {
     meta: { action: 'toggle favorite' }
   })
 
-  return { remove, toggleFavorite }
+  // Batch delete (#394). The result is prefix-commit, so a partial failure is
+  // still a success at the mutation level: the caller reads `failedIds` for the
+  // retry payload and `deletedIds` for what actually went.
+  const removeMany = useMutation<BatchDeleteResult, unknown, string[]>({
+    mutationFn: (captureIds) => window.birdbrain.captures.deleteMany({ caseId, captureIds }),
+    onSuccess: (result) => {
+      // A not_found rejection means the cache showed a row that is already
+      // gone (removed from another window), so it is as stale as a deletion.
+      const sawStale = result.outcomes.some(
+        (o) => o.status === 'rejected' && o.reason === 'not_found'
+      )
+      if (result.deletedIds.length === 0 && !sawStale) return
+      queryClient.invalidateQueries({ queryKey: queryKeys.captures(caseId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.captureCounts })
+      queryClient.invalidateQueries({ queryKey: queryKeys.captureFavorites(caseId) })
+    },
+    meta: { action: 'delete captures' }
+  })
+
+  const setFavoriteMany = useMutation<
+    BatchCountResult,
+    unknown,
+    { captureIds: string[]; favorite: boolean }
+  >({
+    mutationFn: ({ captureIds, favorite }) =>
+      window.birdbrain.captures.setFavoriteMany({ caseId, captureIds, favorite }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.captureFavorites(caseId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.captures(caseId) })
+    },
+    meta: { action: 'set favorites' }
+  })
+
+  return { remove, toggleFavorite, removeMany, setFavoriteMany }
 }
 
 // Shared by ProvenanceBadge, ForensicsTab and CaptureDetailsPanel, all three

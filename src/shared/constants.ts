@@ -29,6 +29,11 @@ export const MANUAL_DEDUPE_WINDOW_MS = 5_000
 // block (extension/src/background.ts).
 export const DEFAULT_DEDUPE_WINDOW_SECONDS = 60
 
+// Upper bound on ids in one batch capture operation (#394). The snapshot query
+// binds one parameter per id, so this keeps a batch well under SQLite's bound-
+// parameter limit; the action bar itself is sized for 2–50.
+export const MAX_BATCH_CAPTURE_IDS = 500
+
 // Audit manifest filename, written alongside captures in each case directory.
 export const MANIFEST_FILENAME = 'manifest.jsonl'
 

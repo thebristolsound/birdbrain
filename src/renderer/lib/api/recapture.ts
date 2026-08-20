@@ -1,4 +1,5 @@
-import { queryOptions, useMutation } from '@tanstack/react-query'
+import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
+import type { EnqueueResult } from '@shared/ipc'
 import { queryKeys } from '@renderer/lib/api/keys'
 
 // The queue only renders inside the CaptureHealth popover, so the poll
@@ -28,6 +29,7 @@ export function testCaptureHttp(): Promise<{
 }
 
 export function useRecaptureMutations(caseId: string) {
+  const queryClient = useQueryClient()
   const enqueue = useMutation({
     mutationFn: (params: { urls: string[]; supersedesCaptureId?: string }) =>
       window.birdbrain.recapture.enqueue({
@@ -39,5 +41,14 @@ export function useRecaptureMutations(caseId: string) {
   })
   // No cache invalidation here: completion arrives via the NEW_CAPTURE event,
   // which useServerStatus already folds into the captures cache.
-  return { enqueue }
+
+  // Batch recapture (#394): one job per capture, each superseding itself.
+  const enqueueCaptures = useMutation<EnqueueResult, unknown, string[]>({
+    mutationFn: (captureIds) => window.birdbrain.recapture.enqueueCaptures({ caseId, captureIds }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.recaptureQueue })
+    },
+    meta: { action: 'queue recapture' }
+  })
+  return { enqueue, enqueueCaptures }
 }

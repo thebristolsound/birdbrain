@@ -114,6 +114,8 @@ vi.mock('@main/services/waybackMachine', async (importActual) => {
 
 // --- Real services ----------------------------------------------------------
 import { IPC_CHANNELS } from '@shared/ipc'
+import { MAX_BATCH_CAPTURE_IDS } from '@shared/constants'
+import type { BatchCountResult, BatchDeleteResult } from '@shared/ipc'
 import { registerIpcHandlers } from '@main/ipcHandlers'
 import type {
   BugReportResult,
@@ -563,6 +565,183 @@ describe('ipcHandlers — captures', () => {
       await invoke(IPC_CHANNELS.CAPTURES_TEST_PIPELINE)
     )
     expect(pipeline.success).toBe(false)
+  })
+})
+
+describe('ipcHandlers — batch operations (#394)', () => {
+  let otherCaseId = ''
+  let foreignId = ''
+
+  beforeEach(() => {
+    otherCaseId = caseRepo.createCase({ name: 'Other' }).id
+    storage.ensureCaseDir(otherCaseId)
+    foreignId = captureRepo.insertCapture({
+      caseId: otherCaseId,
+      url: 'https://other.example.com',
+      title: 'Foreign',
+      hash: 'foreign',
+      timestamp: '2026-04-05T12:00:00.000Z'
+    }).id
+  })
+
+  it('captures:deleteMany delegates to the lifecycle and returns the batch result', async () => {
+    const second = seedCapture({ url: 'https://example.com/2' }).id
+    const result = expectOk<BatchDeleteResult>(
+      await invoke(IPC_CHANNELS.CAPTURES_DELETE_MANY, {
+        caseId,
+        captureIds: [captureId, 'ghost', second]
+      })
+    )
+    // Seeded captures are legacy html rows: deleted without a manifest entry.
+    expect(result.outcomes.map((o) => o.status)).toEqual([
+      'deleted_unmanifested',
+      'rejected',
+      'deleted_unmanifested'
+    ])
+    expect(result.deletedIds).toEqual([captureId, second])
+    expect(result.manifest.committedEntries).toBe(0)
+    expect(expectOk<Capture[]>(await invoke(IPC_CHANNELS.CAPTURES_LIST, caseId))).toHaveLength(0)
+  })
+
+  it('captures:deleteMany fails the whole call with BATCH_CROSS_CASE, writing nothing', async () => {
+    const res = (await invoke(IPC_CHANNELS.CAPTURES_DELETE_MANY, {
+      caseId,
+      captureIds: [captureId, foreignId]
+    })) as { ok: boolean; code?: string; error?: string }
+    expect(res.ok).toBe(false)
+    expect(res.code).toBe('BATCH_CROSS_CASE')
+    expect(res.error).toContain(foreignId)
+    expect(captureRepo.getCapture(captureId)).toBeDefined()
+    expect(captureRepo.getCapture(foreignId)).toBeDefined()
+  })
+
+  it('captures:setFavoriteMany applies to the same-case snapshot and reports affected', async () => {
+    const second = seedCapture({ url: 'https://example.com/2' }).id
+    const set = expectOk<BatchCountResult>(
+      await invoke(IPC_CHANNELS.CAPTURES_SET_FAVORITE_MANY, {
+        caseId,
+        captureIds: [captureId, second, 'ghost'],
+        favorite: true
+      })
+    )
+    expect(set.affected).toBe(2)
+    expect(expectOk<string[]>(await invoke(IPC_CHANNELS.CAPTURES_LIST_FAVORITES, caseId))).toEqual(
+      expect.arrayContaining([captureId, second])
+    )
+    const unset = expectOk<BatchCountResult>(
+      await invoke(IPC_CHANNELS.CAPTURES_SET_FAVORITE_MANY, {
+        caseId,
+        captureIds: [captureId],
+        favorite: false
+      })
+    )
+    expect(unset.affected).toBe(1)
+    expect(expectOk<string[]>(await invoke(IPC_CHANNELS.CAPTURES_LIST_FAVORITES, caseId))).toEqual([
+      second
+    ])
+  })
+
+  it('captures:setFavoriteMany rejects cross-case ids before writing', async () => {
+    const res = (await invoke(IPC_CHANNELS.CAPTURES_SET_FAVORITE_MANY, {
+      caseId,
+      captureIds: [captureId, foreignId],
+      favorite: true
+    })) as { ok: boolean; code?: string }
+    expect(res.ok).toBe(false)
+    expect(res.code).toBe('BATCH_CROSS_CASE')
+    expect(expectOk<string[]>(await invoke(IPC_CHANNELS.CAPTURES_LIST_FAVORITES, caseId))).toEqual(
+      []
+    )
+  })
+
+  it('tags:addToCaptures tags the same-case snapshot in one call', async () => {
+    const second = seedCapture({ url: 'https://example.com/2' }).id
+    const tag = expectOk<{ id: string }>(await invoke(IPC_CHANNELS.TAGS_CREATE, { name: 'batch' }))
+    const res = expectOk<BatchCountResult>(
+      await invoke(IPC_CHANNELS.TAGS_ADD_TO_CAPTURES, {
+        caseId,
+        captureIds: [captureId, second, second, 'ghost'],
+        tagId: tag.id
+      })
+    )
+    expect(res.affected).toBe(2)
+    for (const id of [captureId, second]) {
+      const tags = expectOk<{ id: string }[]>(await invoke(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, id))
+      expect(tags.map((t) => t.id)).toEqual([tag.id])
+    }
+    const cross = (await invoke(IPC_CHANNELS.TAGS_ADD_TO_CAPTURES, {
+      caseId,
+      captureIds: [foreignId],
+      tagId: tag.id
+    })) as { ok: boolean; code?: string }
+    expect(cross.code).toBe('BATCH_CROSS_CASE')
+  })
+
+  it('recapture:enqueueCaptures fans the same-case snapshot out as self-superseding jobs', async () => {
+    const second = seedCapture({ url: 'https://example.com/2' }).id
+    expectOk(
+      await invoke(IPC_CHANNELS.RECAPTURE_ENQUEUE_CAPTURES, {
+        caseId,
+        captureIds: [captureId, second, 'ghost']
+      })
+    )
+    expect(recaptureService.enqueue).toHaveBeenCalledTimes(1)
+    const jobs = recaptureService.enqueue.mock.calls[0][0] as Array<{
+      url: string
+      caseId: string
+      supersedesCaptureId: string
+    }>
+    expect(jobs).toHaveLength(2)
+    expect(jobs).toEqual(
+      expect.arrayContaining([
+        { url: 'https://example.com', caseId, supersedesCaptureId: captureId },
+        { url: 'https://example.com/2', caseId, supersedesCaptureId: second }
+      ])
+    )
+    const cross = (await invoke(IPC_CHANNELS.RECAPTURE_ENQUEUE_CAPTURES, {
+      caseId,
+      captureIds: [foreignId]
+    })) as { ok: boolean; code?: string }
+    expect(cross.code).toBe('BATCH_CROSS_CASE')
+    expect(recaptureService.enqueue).toHaveBeenCalledTimes(1)
+  })
+
+  it('every batch channel rejects malformed or oversized payloads before any lookup', async () => {
+    const bad = [
+      undefined,
+      null,
+      {},
+      { caseId },
+      { caseId, captureIds: 'x' },
+      { caseId, captureIds: [1] },
+      // One over the bound: the snapshot query binds a parameter per id.
+      { caseId, captureIds: Array.from({ length: MAX_BATCH_CAPTURE_IDS + 1 }, (_, i) => `id${i}`) }
+    ]
+    for (const channel of [
+      IPC_CHANNELS.CAPTURES_DELETE_MANY,
+      IPC_CHANNELS.CAPTURES_SET_FAVORITE_MANY,
+      IPC_CHANNELS.TAGS_ADD_TO_CAPTURES,
+      IPC_CHANNELS.RECAPTURE_ENQUEUE_CAPTURES
+    ]) {
+      for (const payload of bad) {
+        const res = (await invoke(channel, payload)) as { ok: boolean; code?: string }
+        expect(res.ok).toBe(false)
+        expect(res.code).toBe('INVALID_BATCH_PAYLOAD')
+      }
+    }
+    // The extra field each metadata channel needs is checked too.
+    const fav = (await invoke(IPC_CHANNELS.CAPTURES_SET_FAVORITE_MANY, {
+      caseId,
+      captureIds: [captureId],
+      favorite: 'yes'
+    })) as { ok: boolean; code?: string }
+    expect(fav.code).toBe('INVALID_BATCH_PAYLOAD')
+    const tag = (await invoke(IPC_CHANNELS.TAGS_ADD_TO_CAPTURES, {
+      caseId,
+      captureIds: [captureId]
+    })) as { ok: boolean; code?: string }
+    expect(tag.code).toBe('INVALID_BATCH_PAYLOAD')
+    expect(recaptureService.enqueue).not.toHaveBeenCalled()
   })
 })
 

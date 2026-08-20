@@ -25,6 +25,19 @@ export function getCapture(id: string): Capture | undefined {
   return row ? rowToCapture(row) : undefined
 }
 
+// One query for a batch snapshot (#394). Unordered and deduplicated by the
+// database: callers map rows back to their own id list. Ids with no row are
+// simply absent, and no case filter is applied — the caller decides whether a
+// foreign-case row is a fault.
+export function getCapturesByIds(ids: string[]): Capture[] {
+  if (ids.length === 0) return []
+  const placeholders = ids.map(() => '?').join(', ')
+  const rows = getDb()
+    .prepare(`SELECT * FROM captures WHERE id IN (${placeholders})`)
+    .all(...ids) as Array<Record<string, unknown>>
+  return rows.map(rowToCapture)
+}
+
 export interface InsertCaptureParams {
   caseId: string
   url: string
@@ -265,6 +278,29 @@ export function toggleFavorite(captureId: string): boolean {
       .run(captureId, now)
     return true
   }
+}
+
+// Idempotent SET over a validated id list (#394): every given id ends in the
+// requested state, already-favorited / already-unfavorited ids included, so
+// the count is the ids applied, not the rows that happened to flip. Runs in
+// one transaction so a mid-list failure leaves nothing half-applied.
+export function setFavoriteMany(captureIds: string[], favorite: boolean): number {
+  if (captureIds.length === 0) return 0
+  const d = getDb()
+  const run = d.transaction(() => {
+    if (favorite) {
+      const now = new Date().toISOString()
+      const insert = d.prepare(
+        'INSERT OR IGNORE INTO capture_favorites (capture_id, created_at) VALUES (?, ?)'
+      )
+      for (const id of captureIds) insert.run(id, now)
+    } else {
+      const remove = d.prepare('DELETE FROM capture_favorites WHERE capture_id = ?')
+      for (const id of captureIds) remove.run(id)
+    }
+    return captureIds.length
+  })
+  return run()
 }
 
 export function isFavorite(captureId: string): boolean {

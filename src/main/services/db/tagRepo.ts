@@ -37,6 +37,23 @@ export function addTagToCapture(params: CaptureTagParams): void {
     .run(params.captureId, params.tagId)
 }
 
+// Batch counterpart of addTagToCapture (#394): INSERT OR IGNORE per id in one
+// transaction, so re-tagging is a no-op and a mid-list failure applies nothing.
+// Returns the ids applied (every given id carries the tag afterwards), not the
+// rows that were newly inserted.
+export function addTagToCaptures(captureIds: string[], tagId: string): number {
+  if (captureIds.length === 0) return 0
+  const d = getDb()
+  const run = d.transaction(() => {
+    const insert = d.prepare(
+      'INSERT OR IGNORE INTO capture_tags (capture_id, tag_id) VALUES (?, ?)'
+    )
+    for (const id of captureIds) insert.run(id, tagId)
+    return captureIds.length
+  })
+  return run()
+}
+
 export function removeTagFromCapture(params: CaptureTagParams): void {
   getDb()
     .prepare('DELETE FROM capture_tags WHERE capture_id = ? AND tag_id = ?')

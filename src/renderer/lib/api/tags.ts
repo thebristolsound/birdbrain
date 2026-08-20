@@ -1,5 +1,5 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { CreateTagParams, UpdateTagParams } from '@shared/ipc'
+import type { BatchCountResult, CreateTagParams, UpdateTagParams } from '@shared/ipc'
 import { queryKeys } from '@renderer/lib/api/keys'
 
 export const tagsQueryOptions = queryOptions({
@@ -28,7 +28,7 @@ export const tagUsageCountsForCaseQueryOptions = (caseId: string) =>
     enabled: !!caseId
   })
 
-export function useTagsMutations() {
+export function useTagsMutations(caseId?: string) {
   const queryClient = useQueryClient()
 
   const invalidateTagCounts = () => {
@@ -77,5 +77,25 @@ export function useTagsMutations() {
     meta: { action: 'remove tag from capture' }
   })
 
-  return { create, update, remove, addToCapture, removeFromCapture }
+  // Batch tag-apply (#394). Needs the hook's caseId for the same-case guard;
+  // calling it without one is a programming error, surfaced as a rejection.
+  const addToCaptures = useMutation<
+    BatchCountResult,
+    unknown,
+    { captureIds: string[]; tagId: string }
+  >({
+    mutationFn: ({ captureIds, tagId }) => {
+      if (!caseId) return Promise.reject(new Error('useTagsMutations(caseId) required'))
+      return window.birdbrain.tags.addToCaptures({ caseId, captureIds, tagId })
+    },
+    onSuccess: (_data, vars) => {
+      for (const id of vars.captureIds) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.tagsForCapture(id) })
+      }
+      invalidateTagCounts()
+    },
+    meta: { action: 'add tag to captures' }
+  })
+
+  return { create, update, remove, addToCapture, removeFromCapture, addToCaptures }
 }

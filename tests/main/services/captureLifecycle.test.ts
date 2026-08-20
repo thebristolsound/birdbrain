@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, rmSync, existsSync } from 'fs'
+import { mkdtempSync, rmSync, existsSync, readFileSync, chmodSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
@@ -7,10 +7,20 @@ import { createHash } from 'crypto'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
 import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
+import * as captureRepo from '@main/services/db/captureRepo'
 import { getCapture, insertCapture, listCaptures } from '@main/services/db/captureRepo'
-import { initManifest, verifyManifestChain, appendManifestEntry } from '@main/services/manifest'
+import {
+  initManifest,
+  verifyManifestChain,
+  appendManifestEntry,
+  getManifestHead
+} from '@main/services/manifest'
+import { createCaptureStore } from '@main/services/captureStore'
+import type { CaptureStore } from '@main/services/captureStore'
+import type { BatchDeleteOutcome } from '@shared/ipc'
+import type { Capture } from '@shared/types'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
-import { createCaptureLifecycle } from '@main/services/captureLifecycle'
+import { createCaptureLifecycle, BatchCrossCaseError } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { initSettings, updateSettings } from '@main/services/settings'
@@ -433,6 +443,523 @@ describe('createCaptureLifecycle.delete', () => {
     expect(getCapture(capture.id)).toBeUndefined()
     expect(existsSync(join(getStorageRoot(), capture.mhtmlPath!))).toBe(false)
     expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+  })
+})
+
+describe('createCaptureLifecycle.deleteMany (#394)', () => {
+  let tempDir: string
+  let caseId: string
+  let caseDir: string
+  let selectorStub: SelectorLifecycle
+
+  beforeEach(async () => {
+    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-lifecycle-batch-'))
+    initStorage(join(tempDir, 'captures'))
+    await initDatabase(':memory:')
+    initSettings(tempDir)
+    updateSettings({ operatorName: 'Test Operator' })
+    resetInstallationId()
+    initInstallationId(tempDir)
+    caseId = createCase({ name: 'Batch' }).id
+    ensureCaseDir(caseId)
+    caseDir = join(tempDir, 'captures', caseId)
+    initManifest(caseDir)
+    selectorStub = { runActiveSelectorsForCapture: vi.fn() } as unknown as SelectorLifecycle
+  })
+
+  afterEach(() => {
+    closeDatabase()
+    resetInstallationId()
+    rmSync(tempDir, { recursive: true, force: true })
+    vi.restoreAllMocks()
+  })
+
+  // Parsed manifest lines, for asserting chain length and entry order.
+  function manifestEntries(): Array<{ type: string; captureId?: string; index: number }> {
+    return readFileSync(join(caseDir, 'manifest.jsonl'), 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+      .map((l) => JSON.parse(l))
+  }
+
+  async function ingestN(
+    lifecycle: ReturnType<typeof createCaptureLifecycle>,
+    n: number
+  ): Promise<Capture[]> {
+    const out: Capture[] = []
+    for (let i = 0; i < n; i++) {
+      const { capture } = await lifecycle.ingest(
+        buildIngestParams(caseId, Buffer.from(`mhtml-body-${i}`), {
+          url: `https://example.com/${i}`
+        })
+      )
+      out.push(capture)
+    }
+    return out
+  }
+
+  function mhtmlExists(capture: Capture): boolean {
+    return existsSync(join(getStorageRoot(), capture.mhtmlPath!))
+  }
+
+  // A store whose deleteArtifacts throws for one capture id and otherwise
+  // delegates to a real store rooted in this test's temp dir.
+  function storeFailingOn(failId: string): CaptureStore {
+    const real = createCaptureStore({ getRoot: getStorageRoot })
+    return {
+      ...real,
+      deleteArtifacts: (cid, capId) => {
+        if (capId === failId) {
+          // Shaped like a real fs error: message carries the absolute path,
+          // `code` carries the errno.
+          const err: NodeJS.ErrnoException = new Error(
+            `EACCES: simulated unlink failure, unlink '${join(getStorageRoot(), cid, capId)}'`
+          )
+          err.code = 'EACCES'
+          throw err
+        }
+        real.deleteArtifacts(cid, capId)
+      }
+    }
+  }
+
+  it('deletes every capture in input order: N ordinary deletion entries, chain valid, proof fields match', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const caps = await ingestN(lifecycle, 3)
+    const baseIndex = getManifestHead(caseDir).nextIndex
+    expect(baseIndex).toBe(3)
+
+    const result = await lifecycle.deleteMany(
+      caseId,
+      caps.map((c) => c.id)
+    )
+
+    expect(result.outcomes).toEqual(caps.map((c) => ({ captureId: c.id, status: 'deleted' })))
+    expect(result.deletedIds).toEqual(caps.map((c) => c.id))
+    expect(result.failedIds).toEqual([])
+    expect(result.haltedAt).toBeUndefined()
+    expect(result.manifest).toEqual({ baseIndex, committedEntries: 3 })
+
+    // ADR-0004 "what is proven": entries baseIndex..baseIndex+committedEntries-1
+    // are ordinary deletion entries, one per deleted capture, in order.
+    const entries = manifestEntries()
+    expect(entries).toHaveLength(baseIndex + result.manifest.committedEntries)
+    const batch = entries.slice(baseIndex)
+    expect(batch.map((e) => e.type)).toEqual(['deletion', 'deletion', 'deletion'])
+    expect(batch.map((e) => e.captureId)).toEqual(caps.map((c) => c.id))
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+
+    for (const c of caps) {
+      expect(getCapture(c.id)).toBeUndefined()
+      expect(mhtmlExists(c)).toBe(false)
+    }
+  })
+
+  it('returns an empty result for an empty id list without touching the manifest', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    await ingestN(lifecycle, 1)
+    const result = await lifecycle.deleteMany(caseId, [])
+    expect(result).toEqual({
+      outcomes: [],
+      deletedIds: [],
+      failedIds: [],
+      manifest: { baseIndex: 1, committedEntries: 0 }
+    })
+    expect(manifestEntries()).toHaveLength(1)
+  })
+
+  it('rolls back at the k-th capture when its unlink throws: prefix committed, stage=artifacts, rest untouched', async () => {
+    const probe = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const caps = await ingestN(probe, 4)
+    const failing = caps[1]
+    const lifecycle = createCaptureLifecycle({
+      selectorLifecycle: selectorStub,
+      store: storeFailingOn(failing.id)
+    })
+    const baseIndex = getManifestHead(caseDir).nextIndex
+
+    const result = await lifecycle.deleteMany(
+      caseId,
+      caps.map((c) => c.id)
+    )
+
+    expect(result.outcomes.map((o) => o.status)).toEqual([
+      'deleted',
+      'rolled_back',
+      'not_attempted',
+      'not_attempted'
+    ])
+    const rolled = result.outcomes[1] as Extract<BatchDeleteOutcome, { status: 'rolled_back' }>
+    expect(rolled.stage).toBe('artifacts')
+    // Name + errno only: the fs message's absolute path must not cross the bridge.
+    expect(rolled.error).toBe('Error (EACCES)')
+    expect(rolled.error).not.toContain(tempDir)
+    expect(result.haltedAt).toBe(failing.id)
+    expect(result.deletedIds).toEqual([caps[0].id])
+    expect(result.failedIds).toEqual([failing.id, caps[2].id, caps[3].id])
+    expect(result.manifest).toEqual({ baseIndex, committedEntries: 1 })
+
+    // Chain: exactly one new entry, and it is the committed deletion; the
+    // rolled-back entry is not in the chain.
+    const entries = manifestEntries()
+    expect(entries).toHaveLength(baseIndex + 1)
+    expect(entries.at(-1)?.captureId).toBe(caps[0].id)
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+
+    // artifacts stage: files + row for k intact, k+1..N untouched.
+    expect(getCapture(caps[0].id)).toBeUndefined()
+    for (const c of caps.slice(1)) {
+      expect(getCapture(c.id)).toBeDefined()
+      expect(mhtmlExists(c)).toBe(true)
+    }
+
+    // The retry payload, through a healthy store, finishes the job.
+    const retry = await probe.deleteMany(caseId, result.failedIds)
+    expect(retry.outcomes.every((o) => o.status === 'deleted')).toBe(true)
+    expect(retry.manifest).toEqual({ baseIndex: baseIndex + 1, committedEntries: 3 })
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+    expect(listCaptures(caseId)).toHaveLength(0)
+  })
+
+  it('rolls back at the k-th capture when its row delete fails: stage=db, files gone, row remains', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const caps = await ingestN(lifecycle, 3)
+    const failing = caps[1]
+    const realDelete = captureRepo.deleteCapture
+    vi.spyOn(captureRepo, 'deleteCapture').mockImplementation((id: string) =>
+      id === failing.id ? false : realDelete(id)
+    )
+    const baseIndex = getManifestHead(caseDir).nextIndex
+
+    const result = await lifecycle.deleteMany(
+      caseId,
+      caps.map((c) => c.id)
+    )
+
+    expect(result.outcomes.map((o) => o.status)).toEqual([
+      'deleted',
+      'rolled_back',
+      'not_attempted'
+    ])
+    const rolled = result.outcomes[1] as Extract<BatchDeleteOutcome, { status: 'rolled_back' }>
+    expect(rolled.stage).toBe('db')
+    expect(rolled.error).toBe('ManifestRollback')
+    expect(result.haltedAt).toBe(failing.id)
+    expect(result.failedIds).toEqual([failing.id, caps[2].id])
+    expect(result.manifest).toEqual({ baseIndex, committedEntries: 1 })
+    expect(manifestEntries()).toHaveLength(baseIndex + 1)
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+
+    // db stage: k's files are gone but its row remains (retry proceeds through
+    // the same path); k+1 untouched.
+    expect(getCapture(failing.id)).toBeDefined()
+    expect(mhtmlExists(failing)).toBe(false)
+    expect(getCapture(caps[2].id)).toBeDefined()
+    expect(mhtmlExists(caps[2])).toBe(true)
+
+    // Retry through the same path once the row delete works again: the
+    // rolled-back entry left no trace, so the retry's entry is the only
+    // committed deletion entry for k.
+    vi.spyOn(captureRepo, 'deleteCapture').mockImplementation(realDelete)
+    const retry = await lifecycle.deleteMany(caseId, result.failedIds)
+    expect(retry.outcomes.map((o) => o.status)).toEqual(['deleted', 'deleted'])
+    expect(retry.manifest).toEqual({ baseIndex: baseIndex + 1, committedEntries: 2 })
+    const entries = manifestEntries()
+    expect(entries).toHaveLength(baseIndex + 3)
+    expect(entries.slice(baseIndex).map((e) => e.captureId)).toEqual(caps.map((c) => c.id))
+    expect(entries.filter((e) => e.captureId === failing.id && e.type === 'deletion')).toHaveLength(
+      1
+    )
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+    expect(listCaptures(caseId)).toHaveLength(0)
+  })
+
+  it('throws BATCH_CROSS_CASE before any write when an id belongs to another case', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const caps = await ingestN(lifecycle, 2)
+    const otherCaseId = createCase({ name: 'Other' }).id
+    ensureCaseDir(otherCaseId)
+    initManifest(join(tempDir, 'captures', otherCaseId))
+    const { capture: foreign } = await lifecycle.ingest(
+      buildIngestParams(otherCaseId, Buffer.from('foreign-body'))
+    )
+    const before = manifestEntries().length
+
+    await expect(
+      lifecycle.deleteMany(caseId, [caps[0].id, foreign.id, caps[1].id])
+    ).rejects.toBeInstanceOf(BatchCrossCaseError)
+
+    expect(manifestEntries()).toHaveLength(before)
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+    for (const c of [...caps, foreign]) {
+      expect(getCapture(c.id)).toBeDefined()
+      expect(mhtmlExists(c)).toBe(true)
+    }
+  })
+
+  it('reports stale ids as rejected{not_found} and repeats as rejected{duplicate}, in input order', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const [a, b] = await ingestN(lifecycle, 2)
+
+    const result = await lifecycle.deleteMany(caseId, [a.id, 'ghost', a.id, b.id])
+
+    expect(result.outcomes).toEqual([
+      { captureId: a.id, status: 'deleted' },
+      { captureId: 'ghost', status: 'rejected', reason: 'not_found' },
+      { captureId: a.id, status: 'rejected', reason: 'duplicate' },
+      { captureId: b.id, status: 'deleted' }
+    ])
+    expect(result.deletedIds).toEqual([a.id, b.id])
+    // Rejected ids are not a retry payload.
+    expect(result.failedIds).toEqual([])
+    expect(result.manifest.committedEntries).toBe(2)
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+  })
+
+  it('deletes legacy html captures as deleted_unmanifested, excluded from committedEntries', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const [mhtml] = await ingestN(lifecycle, 1)
+    const legacy = insertCapture({
+      caseId,
+      url: 'https://legacy.example.com',
+      title: 'Legacy',
+      hash: 'x'.repeat(64),
+      timestamp: '2026-04-05T12:00:00.000Z'
+    })
+    const baseIndex = getManifestHead(caseDir).nextIndex
+
+    const result = await lifecycle.deleteMany(caseId, [legacy.id, mhtml.id])
+
+    expect(result.outcomes).toEqual([
+      { captureId: legacy.id, status: 'deleted_unmanifested' },
+      { captureId: mhtml.id, status: 'deleted' }
+    ])
+    expect(result.deletedIds).toEqual([legacy.id, mhtml.id])
+    expect(result.manifest).toEqual({ baseIndex, committedEntries: 1 })
+    expect(manifestEntries()).toHaveLength(baseIndex + 1)
+    expect(getCapture(legacy.id)).toBeUndefined()
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+  })
+
+  it('a legacy html unlink fault is a rolled_back outcome, not a throw: earlier outcomes survive, row intact', async () => {
+    const probe = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const [mhtml, after] = await ingestN(probe, 2)
+    const legacy = insertCapture({
+      caseId,
+      url: 'https://legacy.example.com',
+      title: 'Legacy',
+      hash: 'x'.repeat(64),
+      timestamp: '2026-04-05T12:00:00.000Z'
+    })
+    const lifecycle = createCaptureLifecycle({
+      selectorLifecycle: selectorStub,
+      store: storeFailingOn(legacy.id)
+    })
+    const baseIndex = getManifestHead(caseDir).nextIndex
+
+    const result = await lifecycle.deleteMany(caseId, [mhtml.id, legacy.id, after.id])
+
+    expect(result.outcomes).toEqual([
+      { captureId: mhtml.id, status: 'deleted' },
+      { captureId: legacy.id, status: 'rolled_back', stage: 'artifacts', error: 'Error (EACCES)' },
+      { captureId: after.id, status: 'not_attempted' }
+    ])
+    expect(result.deletedIds).toEqual([mhtml.id])
+    expect(result.failedIds).toEqual([legacy.id, after.id])
+    expect(result.haltedAt).toBe(legacy.id)
+    expect(result.manifest).toEqual({ baseIndex, committedEntries: 1 })
+    expect(manifestEntries()).toHaveLength(baseIndex + 1)
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+    // Files first, row second: the legacy row is still there to retry from.
+    expect(getCapture(legacy.id)).toBeDefined()
+    expect(getCapture(after.id)).toBeDefined()
+    expect(mhtmlExists(after)).toBe(true)
+
+    // Retry through a healthy store finishes the job without a second entry for the legacy row.
+    const retry = await probe.deleteMany(caseId, result.failedIds)
+    expect(retry.outcomes.map((o) => o.status)).toEqual(['deleted_unmanifested', 'deleted'])
+    expect(retry.manifest).toEqual({ baseIndex: baseIndex + 1, committedEntries: 1 })
+    expect(listCaptures(caseId)).toHaveLength(0)
+  })
+
+  it('single delete of a legacy html capture still surfaces an unlink fault as a throw, row intact', async () => {
+    const legacy = insertCapture({
+      caseId,
+      url: 'https://legacy.example.com',
+      title: 'Legacy',
+      hash: 'x'.repeat(64),
+      timestamp: '2026-04-05T12:00:00.000Z'
+    })
+    const lifecycle = createCaptureLifecycle({
+      selectorLifecycle: selectorStub,
+      store: storeFailingOn(legacy.id)
+    })
+
+    await expect(lifecycle.delete(legacy.id)).rejects.toThrow('EACCES')
+    expect(getCapture(legacy.id)).toBeDefined()
+  })
+
+  // truncateSync on a read-only file fails for an unprivileged user only.
+  it.skipIf(process.getuid?.() === 0)(
+    'throws rather than report rolled_back when the rollback truncate itself fails and the entry stays in the chain',
+    async () => {
+      const probe = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+      const [a, b] = await ingestN(probe, 2)
+      const manifestPath = join(caseDir, 'manifest.jsonl')
+      const real = createCaptureStore({ getRoot: getStorageRoot })
+      // The unlink fault lands after the entry is appended; making the manifest
+      // read-only at that moment makes the seam's rollback truncate fail too.
+      const lifecycle = createCaptureLifecycle({
+        selectorLifecycle: selectorStub,
+        store: {
+          ...real,
+          deleteArtifacts: (cid, capId) => {
+            if (capId === b.id) {
+              chmodSync(manifestPath, 0o444)
+              throw new Error('EBUSY: simulated unlink failure')
+            }
+            real.deleteArtifacts(cid, capId)
+          }
+        }
+      })
+      const baseIndex = getManifestHead(caseDir).nextIndex
+
+      try {
+        await expect(lifecycle.deleteMany(caseId, [a.id, b.id])).rejects.toThrow()
+      } finally {
+        chmodSync(manifestPath, 0o644)
+      }
+
+      // The #622 artefact: a's entry committed, b's entry still in the chain
+      // with b's files and row intact. No result claimed otherwise.
+      const entries = manifestEntries()
+      expect(entries).toHaveLength(baseIndex + 2)
+      expect(entries.slice(baseIndex).map((e) => e.captureId)).toEqual([a.id, b.id])
+      expect(verifyManifestChain(caseDir).valid).toBe(true)
+      expect(getCapture(a.id)).toBeUndefined()
+      expect(getCapture(b.id)).toBeDefined()
+      expect(mhtmlExists(b)).toBe(true)
+    }
+  )
+
+  it('serialises two overlapping batches on one case: each id deleted exactly once, the other sees not_found', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const caps = await ingestN(lifecycle, 4)
+    const ids = caps.map((c) => c.id)
+    const baseIndex = getManifestHead(caseDir).nextIndex
+
+    // Overlapping id sets, started without awaiting between them.
+    const [first, second] = await Promise.all([
+      lifecycle.deleteMany(caseId, [ids[0], ids[1], ids[2]]),
+      lifecycle.deleteMany(caseId, [ids[1], ids[2], ids[3]])
+    ])
+
+    expect(first.outcomes.map((o) => o.status)).toEqual(['deleted', 'deleted', 'deleted'])
+    expect(second.outcomes).toEqual([
+      { captureId: ids[1], status: 'rejected', reason: 'not_found' },
+      { captureId: ids[2], status: 'rejected', reason: 'not_found' },
+      { captureId: ids[3], status: 'deleted' }
+    ])
+    expect(first.manifest).toEqual({ baseIndex, committedEntries: 3 })
+    expect(second.manifest).toEqual({ baseIndex: baseIndex + 3, committedEntries: 1 })
+
+    const entries = manifestEntries()
+    expect(entries).toHaveLength(baseIndex + 4)
+    expect(entries.slice(baseIndex).map((e) => e.captureId)).toEqual(ids)
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+    expect(listCaptures(caseId)).toHaveLength(0)
+  })
+
+  it('single delete shares the per-case slot with deleteMany and still verifies', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const caps = await ingestN(lifecycle, 3)
+    const ids = caps.map((c) => c.id)
+
+    const [batch, single, stale] = await Promise.all([
+      lifecycle.deleteMany(caseId, [ids[0], ids[1]]),
+      lifecycle.delete(ids[2]),
+      // Queued behind the batch that removes it: resolves false, no entry.
+      lifecycle.delete(ids[0])
+    ])
+
+    expect(batch.deletedIds).toEqual([ids[0], ids[1]])
+    expect(single).toBe(true)
+    expect(stale).toBe(false)
+    expect(
+      manifestEntries()
+        .slice(3)
+        .map((e) => e.captureId)
+    ).toEqual(ids)
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+  })
+
+  it('single delete still surfaces an unlink fault as a throw, with the entry rolled back (#394 hoist keeps delete() semantics)', async () => {
+    const probe = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const [cap] = await ingestN(probe, 1)
+    const lifecycle = createCaptureLifecycle({
+      selectorLifecycle: selectorStub,
+      store: storeFailingOn(cap.id)
+    })
+
+    await expect(lifecycle.delete(cap.id)).rejects.toThrow('EACCES')
+    expect(manifestEntries()).toHaveLength(1)
+    expect(getCapture(cap.id)).toBeDefined()
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+  })
+
+  it('single delete returns false when the row delete fails, entry rolled back (unchanged behaviour)', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const [cap] = await ingestN(lifecycle, 1)
+    vi.spyOn(captureRepo, 'deleteCapture').mockReturnValue(false)
+
+    expect(await lifecycle.delete(cap.id)).toBe(false)
+    expect(manifestEntries()).toHaveLength(1)
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+  })
+
+  it('crash mid-item leaves a valid trailing deletion entry with a live row, and a later batch proceeds past it', async () => {
+    // Simulate the write-ahead crash window: the deletion entry landed, the
+    // process died before unlink/row delete ran. The artefact is a valid chain
+    // whose tail is a deletion entry for a capture that still exists. #394
+    // asserts that state; surfacing it is #622.
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const [a, b] = await ingestN(lifecycle, 2)
+    appendManifestEntry(caseDir, {
+      type: 'deletion',
+      captureId: a.id,
+      caseId,
+      timestamp: new Date().toISOString(),
+      contentHash: a.hash,
+      operatorId: 'op',
+      operatorName: 'Crash',
+      toolVersion: '0.0.0'
+    })
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+    expect(manifestEntries().at(-1)).toMatchObject({ type: 'deletion', captureId: a.id })
+    expect(getCapture(a.id)).toBeDefined()
+    expect(mhtmlExists(a)).toBe(true)
+
+    // A subsequent batch treats the row as live: it appends its own deletion
+    // entry (the chain now carries two for `a`) and actually removes it.
+    const result = await lifecycle.deleteMany(caseId, [a.id, b.id])
+    expect(result.outcomes.map((o) => o.status)).toEqual(['deleted', 'deleted'])
+    expect(result.manifest).toEqual({ baseIndex: 3, committedEntries: 2 })
+    expect(
+      manifestEntries().filter((e) => e.captureId === a.id && e.type === 'deletion')
+    ).toHaveLength(2)
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+    expect(listCaptures(caseId)).toHaveLength(0)
+  })
+
+  it('throws before the loop when the manifest head is unreadable, writing nothing', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const [a] = await ingestN(lifecycle, 1)
+    const { appendFileSync } = await import('fs')
+    appendFileSync(join(caseDir, 'manifest.jsonl'), 'not json\n')
+
+    await expect(lifecycle.deleteMany(caseId, [a.id])).rejects.toThrow()
+    expect(getCapture(a.id)).toBeDefined()
+    expect(mhtmlExists(a)).toBe(true)
   })
 })
 

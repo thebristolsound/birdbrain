@@ -31,6 +31,7 @@ import type {
   Note,
   OpenRouterModel,
   OperatorIdentity,
+  RecentActivityEvent,
   Selector,
   SessionRecord,
   Tag,
@@ -50,6 +51,7 @@ export const IPC_CHANNELS = {
   CASES_EXPORT_ARCHIVE: 'cases:exportArchive',
   CASES_INSPECT_ARCHIVE: 'cases:inspectArchive',
   CASES_IMPORT_ARCHIVE: 'cases:importArchive',
+  CASES_RECENT_ACTIVITY: 'cases:recentActivity',
 
   // Captures
   CAPTURES_LIST: 'captures:list',
@@ -574,6 +576,7 @@ export interface IpcInvokeContract {
     args: [archivePath: string, overrideTamper: boolean]
     result: { newCaseId: string }
   }
+  'cases:recentActivity': { args: [limit?: number]; result: RecentActivityEvent[] }
 
   'captures:list': { args: [caseId: string]; result: Capture[] }
   'captures:get': { args: [id: string]; result: Capture | undefined }

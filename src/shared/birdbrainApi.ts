@@ -29,7 +29,8 @@ import type {
   LogEntry,
   SessionRecord,
   BugReportInput,
-  BugReportResult
+  BugReportResult,
+  RecentActivityEvent
 } from '@shared/types'
 import type {
   CreateCaseParams,
@@ -82,6 +83,7 @@ export interface BirdbrainAPI {
     exportArchive(caseId: string): Promise<ArchiveExportResult>
     inspectArchive(): Promise<ArchiveInspectReport | null>
     importArchive(archivePath: string, overrideTamper: boolean): Promise<{ newCaseId: string }>
+    recentActivity(limit?: number): Promise<RecentActivityEvent[]>
   }
   captures: {
     list(caseId: string): Promise<Capture[]>

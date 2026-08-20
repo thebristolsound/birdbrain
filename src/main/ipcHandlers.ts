@@ -36,6 +36,7 @@ import * as dbSnapshots from '@main/services/db/dbSnapshots'
 import { existsSync } from 'fs'
 import { join, resolve } from 'path'
 import { pathToFileURL } from 'url'
+import * as activityRepo from '@main/services/db/activityRepo'
 import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
 import * as tagRepo from '@main/services/db/tagRepo'
@@ -160,6 +161,9 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.CASES_CREATE, (_, params: CreateCaseParams) => caseRepo.createCase(params))
   handle(IPC_CHANNELS.CASES_UPDATE, (_, params: UpdateCaseParams) => caseRepo.updateCase(params))
   handle(IPC_CHANNELS.CASES_DELETE, (_, id: string) => caseRepo.deleteCase(id))
+  handle(IPC_CHANNELS.CASES_RECENT_ACTIVITY, (_, limit?: number) =>
+    activityRepo.listRecentActivity(limit)
+  )
 
   handle(
     IPC_CHANNELS.CASES_EXPORT_ARCHIVE,

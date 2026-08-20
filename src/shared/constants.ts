@@ -34,6 +34,12 @@ export const DEFAULT_DEDUPE_WINDOW_SECONDS = 60
 // parameter limit; the action bar itself is sized for 2–50.
 export const MAX_BATCH_CAPTURE_IDS = 500
 
+// Dashboard cross-case activity feed (#403). The default is what the feed asks
+// for; the maximum is what the repository will serve however large a limit the
+// caller passes, so the query stays bounded no matter what reaches the channel.
+export const RECENT_ACTIVITY_LIMIT = 10
+export const MAX_RECENT_ACTIVITY_LIMIT = 50
+
 // Audit manifest filename, written alongside captures in each case directory.
 export const MANIFEST_FILENAME = 'manifest.jsonl'
 

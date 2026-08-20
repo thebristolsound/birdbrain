@@ -10,10 +10,7 @@ import {
 import { buildCsv } from '@main/services/csvEscape'
 import { parseNoteAnchor } from '@shared/noteAnchor'
 import { assertAnchorInCase } from '@main/services/db/noteRepo'
-import {
-  assertMentionsInCase,
-  rewriteReferencesForNote
-} from '@main/services/db/noteReferenceRepo'
+import { assertMentionsInCase, rewriteReferencesForNote } from '@main/services/db/noteReferenceRepo'
 import { extractNoteMentions, noteDocToText, parseNoteDoc, type NoteMention } from '@shared/noteDoc'
 import type { DbStats, DbTableRowsParams, DbTableRowsResult, OrphanReport } from '@shared/ipc'
 
@@ -181,7 +178,10 @@ function validatedRow(
   // column constraint below fails the write anyway, and there is nothing
   // this check adds ahead of that.
   if (caseId) assertAnchorInCase(parsed, caseId)
-  return { row: { ...row, anchor_json: JSON.stringify(parsed), anchor_kind: parsed.kind }, mentions }
+  return {
+    row: { ...row, anchor_json: JSON.stringify(parsed), anchor_kind: parsed.kind },
+    mentions
+  }
 }
 
 export function getDbStats(dbPath: string): DbStats {
@@ -259,8 +259,9 @@ export function createRow(table: string, data: Record<string, unknown>): Record<
     ).run(...values)
 
     // Return the inserted row by looking up the last rowid
-    const lastRow = db.prepare(`SELECT * FROM "${table}" WHERE rowid = last_insert_rowid()`).get() as
-      Record<string, unknown> | undefined
+    const lastRow = db
+      .prepare(`SELECT * FROM "${table}" WHERE rowid = last_insert_rowid()`)
+      .get() as Record<string, unknown> | undefined
     if (mentions && typeof lastRow?.id === 'string') {
       rewriteReferencesForNote(lastRow.id, mentions)
     }
@@ -289,11 +290,7 @@ export function updateRow(
   // An anchor or document edit that doesn't also touch case_id needs the
   // row's CURRENT case to validate against — look it up before writing.
   let fallbackCaseId: string | undefined
-  if (
-    table === 'notes' &&
-    ('anchor_json' in data || 'body_doc' in data) &&
-    !('case_id' in data)
-  ) {
+  if (table === 'notes' && ('anchor_json' in data || 'body_doc' in data) && !('case_id' in data)) {
     const existing = db
       .prepare(`SELECT case_id FROM "${table}" WHERE ${whereClauses}`)
       .get(...pkValues) as { case_id?: string } | undefined

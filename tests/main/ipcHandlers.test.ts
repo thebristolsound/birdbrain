@@ -912,9 +912,7 @@ describe('ipcHandlers — notes', () => {
     )
 
     expect(
-      expectOk<Array<Record<string, unknown>>>(
-        await invoke(IPC_CHANNELS.NOTES_REFERENCES, note.id)
-      )
+      expectOk<Array<Record<string, unknown>>>(await invoke(IPC_CHANNELS.NOTES_REFERENCES, note.id))
     ).toMatchObject([
       { targetType: 'capture', targetId: capture.id, label: 'Mentioned capture', resolved: true }
     ])

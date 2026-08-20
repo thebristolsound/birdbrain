@@ -9,10 +9,7 @@ import {
   remapMentionTargetIds,
   type NoteMention
 } from '@shared/noteDoc'
-import {
-  assertMentionsInCase,
-  rewriteReferencesForNote
-} from '@main/services/db/noteReferenceRepo'
+import { assertMentionsInCase, rewriteReferencesForNote } from '@main/services/db/noteReferenceRepo'
 import {
   parseNoteAnchor,
   remapAnchorIds,

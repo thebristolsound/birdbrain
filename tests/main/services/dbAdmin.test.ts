@@ -433,7 +433,10 @@ describe('dbAdmin', () => {
 
       it('rewrites the index on update, replacing the previous set', () => {
         const caseId = newCase()
-        createRow('notes', { ...noteRow('b-4', caseId), body_doc: docWith(mentionOf('tag', 't-a')) })
+        createRow('notes', {
+          ...noteRow('b-4', caseId),
+          body_doc: docWith(mentionOf('tag', 't-a'))
+        })
 
         updateRow('notes', { id: 'b-4' }, { body_doc: docWith(mentionOf('tag', 't-b')) })
 
@@ -444,7 +447,10 @@ describe('dbAdmin', () => {
 
       it('clears the index when body_doc is cleared to NULL', () => {
         const caseId = newCase()
-        createRow('notes', { ...noteRow('b-5', caseId), body_doc: docWith(mentionOf('tag', 't-a')) })
+        createRow('notes', {
+          ...noteRow('b-5', caseId),
+          body_doc: docWith(mentionOf('tag', 't-a'))
+        })
 
         updateRow('notes', { id: 'b-5' }, { body_doc: null })
 

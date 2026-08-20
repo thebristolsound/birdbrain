@@ -11,7 +11,13 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import type { JSONContent } from '@tiptap/core'
 import { initDatabase, closeDatabase, getDb, type ImportCtx } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
-import { createNote, updateNote, deleteNote, getNote, importNoteRows } from '@main/services/db/noteRepo'
+import {
+  createNote,
+  updateNote,
+  deleteNote,
+  getNote,
+  importNoteRows
+} from '@main/services/db/noteRepo'
 import {
   MentionCaseMismatchError,
   backlinkCountsForCase,
@@ -184,9 +190,9 @@ describe('note references index', () => {
       const otherCase = createCase({ name: 'Elsewhere', description: '' }).id
       const foreign = capture(otherCase, 'Foreign')
 
-      expect(() =>
-        createNote({ caseId, bodyDoc: docOf(mention('capture', foreign.id)) })
-      ).toThrow(MentionCaseMismatchError)
+      expect(() => createNote({ caseId, bodyDoc: docOf(mention('capture', foreign.id)) })).toThrow(
+        MentionCaseMismatchError
+      )
 
       expect(getDb().prepare('SELECT COUNT(*) AS n FROM notes').get()).toEqual({ n: 0 })
       expect(getDb().prepare('SELECT COUNT(*) AS n FROM note_references').get()).toEqual({ n: 0 })
@@ -198,27 +204,27 @@ describe('note references index', () => {
       const otherCase = createCase({ name: 'Elsewhere', description: '' }).id
       const foreign = capture(otherCase, 'Foreign')
 
-      expect(() =>
-        createNote({ caseId, bodyDoc: docOf(mention('capture', foreign.id)) })
-      ).toThrow(/capture .* belongs to a different case/)
+      expect(() => createNote({ caseId, bodyDoc: docOf(mention('capture', foreign.id)) })).toThrow(
+        /capture .* belongs to a different case/
+      )
     })
 
     it('rejects a mention of a selector that exists in another case', () => {
       const otherCase = createCase({ name: 'Elsewhere', description: '' }).id
       const foreign = createSelector({ caseId: otherCase, pattern: 'x' })
 
-      expect(() =>
-        createNote({ caseId, bodyDoc: docOf(mention('selector', foreign.id)) })
-      ).toThrow(MentionCaseMismatchError)
+      expect(() => createNote({ caseId, bodyDoc: docOf(mention('selector', foreign.id)) })).toThrow(
+        MentionCaseMismatchError
+      )
     })
 
     it('rejects a mention of a note in another case', () => {
       const otherCase = createCase({ name: 'Elsewhere', description: '' }).id
       const foreign = createNote({ caseId: otherCase, title: 'Foreign' })
 
-      expect(() =>
-        createNote({ caseId, bodyDoc: docOf(mention('note', foreign.id)) })
-      ).toThrow(MentionCaseMismatchError)
+      expect(() => createNote({ caseId, bodyDoc: docOf(mention('note', foreign.id)) })).toThrow(
+        MentionCaseMismatchError
+      )
     })
 
     // Only an EXISTING target in the wrong case is a violation. A target that
@@ -342,11 +348,7 @@ describe('note references index', () => {
       const a = createNote({
         caseId,
         title: 'Twice',
-        bodyDoc: docOf(
-          text('body text '),
-          mention('capture', cap.id),
-          mention('capture', cap.id)
-        )
+        bodyDoc: docOf(text('body text '), mention('capture', cap.id), mention('capture', cap.id))
       })
       const b = createNote({
         caseId,

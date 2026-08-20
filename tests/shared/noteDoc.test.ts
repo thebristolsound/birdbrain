@@ -162,12 +162,8 @@ describe('noteDoc mentions', () => {
   })
 
   it('rejects a Mention whose targetId is not a non-empty string', () => {
-    expect(() => parseNoteDoc(JSON.stringify(docWith(mention('capture', 42))))).toThrow(
-      /targetId/
-    )
-    expect(() => parseNoteDoc(JSON.stringify(docWith(mention('capture', ''))))).toThrow(
-      /targetId/
-    )
+    expect(() => parseNoteDoc(JSON.stringify(docWith(mention('capture', 42))))).toThrow(/targetId/)
+    expect(() => parseNoteDoc(JSON.stringify(docWith(mention('capture', ''))))).toThrow(/targetId/)
   })
 
   it('rejects a Mention at block level', () => {

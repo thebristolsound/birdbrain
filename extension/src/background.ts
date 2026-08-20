@@ -10,6 +10,7 @@ import { CaptureUiSuppressionError, createCaptureSuppression } from '@extension/
 import { MAX_SCREENSHOT_BITMAP_BYTES } from '@shared/constants'
 import { matchIgnoredUrl } from '@shared/urlPatterns'
 import type { ActiveSelectorsResult, SelectorMatchInfo } from '@shared/schemas'
+import type { ManualCaptureResponse, PopupBlock, PopupPageStatus } from '@extension/messages'
 
 function captureMhtml(tabId: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
@@ -147,6 +148,10 @@ const DEFAULT_IGNORE = [
   /localhost:19845/
 ]
 
+function matchesDefaultIgnore(url: string): boolean {
+  return DEFAULT_IGNORE.some((pattern) => pattern.test(url))
+}
+
 // Deduplication: url -> timestamp of last capture
 const dedupeMap = new Map<string, number>()
 // HOTFIX: auto-capture temporarily disabled — dedupe window only used by auto paths
@@ -161,6 +166,21 @@ const selectorDedupeMap = new Map<string, number>()
 
 // Manual capture in-flight guard: tabId:caseId -> true while capture is in progress
 const pendingManualCaptures = new Set<string>()
+
+function isCapturingTab(tabId: number): boolean {
+  const prefix = `${tabId}:`
+  for (const key of pendingManualCaptures) {
+    if (key.startsWith(prefix)) return true
+  }
+  return false
+}
+
+// What the popup's page-status block is answered from. Both maps are service
+// worker memory and nothing more: MV3 evicts the worker and they go with it,
+// which is why the popup treats a miss as "not seen here" rather than as
+// "never captured" (there is no capture lookup by URL — see #392).
+const lastCaptureByTab = new Map<number, { url: string; at: number; manifestIndex: number | null }>()
+const selectorSummaryByTab = new Map<number, { url: string; selectors: number; hits: number }>()
 
 // Capture-UI suppression (#379, #386): the single suppress/restore boundary
 // every capture runs inside. While a tab is collecting frames nothing may
@@ -280,6 +300,8 @@ chrome.webRequest.onBeforeRequest.addListener(
 chrome.tabs.onRemoved.addListener((tabId) => {
   responseHeadersByTab.delete(tabId)
   heldToastByTab.delete(tabId)
+  lastCaptureByTab.delete(tabId)
+  selectorSummaryByTab.delete(tabId)
 })
 
 // Returns the cached headers for a tab only when they belong to the URL being
@@ -348,6 +370,9 @@ async function checkStatus(): Promise<void> {
 
     // If active case changed, clear old highlights and re-scan active tab
     if (connected && activeCaseId !== previousCaseId) {
+      // The cached per-tab match summaries counted the previous case's
+      // selectors, so the popup would otherwise attribute them to the new one.
+      selectorSummaryByTab.clear()
       // Clear highlights on all tabs
       chrome.tabs.query({}, (tabs) => {
         for (const t of tabs) {
@@ -507,8 +532,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     return
   if (!tab?.id || !tab.url) return
   if (!connected) return
-  if (DEFAULT_IGNORE.some((pattern) => pattern.test(tab.url!))) return
-  if (isIgnoredByUser(tab.url!)) return
+  if (blockedCaptureReason(tab.url) !== null) return
 
   const targetCaseId = activeCaseId
   if (!targetCaseId) {
@@ -529,14 +553,61 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 // so a pattern that exhausts the server's budget is skipped here and accepted
 // there — see matchIgnoredUrl.
 //
-// Two live routes pre-filter with this — the context-menu capture handler
-// above (immediately before manualCaptureTab) and checkSelectorsOnTab — plus
-// shouldCapture, which is inside the HOTFIX-disabled block below. The popup's
-// Capture button does not: its MANUAL_CAPTURE message goes straight to
-// manualCaptureTab, so on that one route the server's 403 is the sole
-// enforcement of an operator's ignore rule.
-function isIgnoredByUser(url: string): boolean {
-  return matchIgnoredUrl(url, userIgnoredPatterns) !== null
+// THE seam: this is the only function in the extension that reads the
+// operator's ignore patterns, and every route that needs an answer asks it —
+// the context-menu capture handler above, the popup's MANUAL_CAPTURE message
+// and its page-status query, and checkSelectorsOnTab, all through
+// blockedCaptureReason below. Anything that widens or narrows the list (the
+// per-case exclusions of #400) changes it here and nowhere else; in particular
+// the popup never matches patterns itself, it asks.
+//
+// It returns the matched pattern rather than a boolean because every caller
+// that blocks something also has to say which rule did it — the server's 403
+// names the pattern for the same reason — and a second lookup for the text
+// would be a second place patterns are read.
+function isIgnoredByUser(url: string): string | null {
+  return matchIgnoredUrl(url, userIgnoredPatterns)
+}
+
+// Why a capture of `url` would be refused before it is attempted, or null when
+// nothing refuses it. The built-in scheme list is reported without a pattern —
+// it is not an operator rule and there is nothing useful to name.
+function blockedCaptureReason(url: string): PopupBlock | null {
+  if (matchesDefaultIgnore(url)) return { reason: 'default', pattern: null }
+  const pattern = isIgnoredByUser(url)
+  return pattern === null ? null : { reason: 'user', pattern }
+}
+
+// The popup's view of one tab. Read-only: taking it must not scan the page or
+// touch the network, because it runs every time the popup polls.
+function pageStatusForTab(tabId: number, url: string | undefined): PopupPageStatus {
+  const activeSelectorCount = activeSelectors.reduce((sum, g) => sum + g.selectors.length, 0)
+  if (!url) {
+    return {
+      url: null,
+      blocked: null,
+      capturing: false,
+      lastCapture: null,
+      selectorSummary: null,
+      activeSelectorCount
+    }
+  }
+  // Both caches are keyed by tab but matched on URL: a tab that navigated away
+  // must not inherit the previous page's capture record or match counts.
+  const lastCapture = lastCaptureByTab.get(tabId)
+  const summary = selectorSummaryByTab.get(tabId)
+  return {
+    url,
+    blocked: blockedCaptureReason(url),
+    capturing: isCapturingTab(tabId),
+    lastCapture:
+      lastCapture?.url === url
+        ? { at: lastCapture.at, manifestIndex: lastCapture.manifestIndex }
+        : null,
+    selectorSummary:
+      summary?.url === url ? { selectors: summary.selectors, hits: summary.hits } : null,
+    activeSelectorCount
+  }
 }
 
 // HOTFIX: auto-capture temporarily disabled — shouldCapture/captureTab (session auto-capture)
@@ -656,6 +727,15 @@ async function manualCaptureTab(
         headers: getHeadersForCapture(tabId, url)
       })
 
+      // The only record the extension keeps of a capture. It backs the popup's
+      // "Captured N min ago" line and nothing else — no evidence claim rides
+      // on it, and the app remains the authority on what was stored.
+      lastCaptureByTab.set(tabId, {
+        url,
+        at: Date.now(),
+        manifestIndex: result.manifestIndex ?? null
+      })
+
       const toastStatus = result.screenshotStatus === 'dropped' ? 'degraded' : 'success'
       const toastMessage =
         result.screenshotStatus === 'dropped' ? 'Captured (screenshot too large)' : undefined
@@ -731,8 +811,7 @@ async function checkSelectorsOnTab(tabId: number, url: string): Promise<void> {
   // case-change re-scan and a finished concurrent capture's restore all route
   // through here. The suppression boundary re-runs this when the capture ends.
   if (captureSuppression.isCollectingFrames(tabId)) return
-  if (DEFAULT_IGNORE.some((pattern) => pattern.test(url))) return
-  if (isIgnoredByUser(url)) return
+  if (blockedCaptureReason(url) !== null) return
 
   try {
     const matches = (await chrome.tabs.sendMessage(tabId, {
@@ -740,10 +819,22 @@ async function checkSelectorsOnTab(tabId: number, url: string): Promise<void> {
       selectors: activeSelectors
     })) as SelectorMatchInfo[]
 
-    if (!matches || matches.length === 0) return
+    // The scan is the only thing that knows which selectors hit this page, and
+    // it has been discarding that after the badge update. Keep the counts the
+    // popup's match-summary line reports — including a scan that matched
+    // nothing, which is the difference between "no selectors matched" and
+    // "this page was never scanned".
+    const hits = matches ?? []
+    selectorSummaryByTab.set(tabId, {
+      url,
+      selectors: new Set(hits.map((m) => m.selectorId)).size,
+      hits: hits.length
+    })
+
+    if (hits.length === 0) return
 
     // Update badge to show match count
-    chrome.action.setBadgeText({ text: String(matches.length) })
+    chrome.action.setBadgeText({ text: String(hits.length) })
     chrome.action.setBadgeBackgroundColor({ color: '#3b82f6' })
 
     // HOTFIX: auto-capture temporarily disabled — selector matches only update the badge
@@ -850,12 +941,44 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     })
   }
 
+  if (message.type === 'CASE_ACTIVATED') {
+    // The popup switches the active case against the capture server directly,
+    // so the background would not notice until the next 30 s status alarm — and
+    // until then its selectors, highlights and cached per-tab match summaries
+    // all still belong to the case the operator just left. Re-poll now, and
+    // answer only once that has landed so the popup's next page-status read
+    // sees the new case rather than the old one's counts.
+    checkStatus().then(() => sendResponse({ ok: true }))
+    return true
+  }
+
+  if (message.type === 'GET_PAGE_STATUS' && message.tabId) {
+    chrome.tabs.get(message.tabId, (tab) => {
+      sendResponse(pageStatusForTab(message.tabId, tab?.url))
+    })
+    return true
+  }
+
   if (message.type === 'MANUAL_CAPTURE' && message.tabId && message.caseId) {
     chrome.tabs.get(message.tabId, (tab) => {
-      if (tab?.url) {
-        manualCaptureTab(message.tabId, tab.url, message.caseId)
+      // The URL is re-read here rather than taken from the popup: the tab may
+      // have navigated between the popup rendering its Capture button and the
+      // click, and the ignore rules must be applied to the page that is there
+      // now — the same reason restoreSelectorHighlights re-reads it.
+      const url = tab?.url
+      if (!url) {
+        sendResponse({ started: false, blocked: null } satisfies ManualCaptureResponse)
+        return
       }
+      const blocked = blockedCaptureReason(url)
+      if (blocked) {
+        sendResponse({ started: false, blocked } satisfies ManualCaptureResponse)
+        return
+      }
+      manualCaptureTab(message.tabId, url, message.caseId)
+      sendResponse({ started: true, blocked: null } satisfies ManualCaptureResponse)
     })
+    return true
   }
 
   return true

@@ -50,9 +50,12 @@ export function globToRegex(pattern: string): RegExp {
  * production), so the server reports such a URL as *not* ignored while the
  * extension, which has no budget, eventually reports the match. That direction
  * is fail-open on the server: an operator's ignore rule can admit a capture
- * rather than refuse it. Most extension routes pre-filter with this matcher and
- * so never reach the server's answer; the popup's Capture button is the one live
- * route that does not, and there the server's answer is the only enforcement.
+ * rather than refuse it. Every live extension route pre-filters with this
+ * matcher and so never reaches the server's answer — including the popup's
+ * Capture button, which used to leave the server's 403 as sole enforcement
+ * until #387 closed it. On a pattern of that class the extension therefore
+ * refuses a capture the server would have accepted: more conservative than the
+ * server, never less.
  * Pinned as a known answer in `tests/shared/urlPatterns.test.ts` (with the
  * budget injected, so the pin is on the semantics and not on the runner's
  * hardware); closing it means changing what a timeout means, which is a

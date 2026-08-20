@@ -36,6 +36,9 @@ export function useServerStatus() {
         old ? [capture, ...old] : [capture]
       )
       queryClient.invalidateQueries({ queryKey: queryKeys.captureCounts })
+      // A capture arriving while the dashboard is open must land in its
+      // cross-case feed (#403); nothing else remounts it.
+      queryClient.invalidateQueries({ queryKey: queryKeys.recentActivityAll })
     })
 
     const unsubSelectorRematched = window.birdbrain.onSelectorRematched(({ caseId }) => {

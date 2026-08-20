@@ -33,12 +33,12 @@ let openExternal: ReturnType<typeof vi.fn>
 // rejection through as `cause`, not a rewrapped stand-in.
 let cause: Error
 
-function renderCard() {
+function renderCard(selected = false) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
   }
-  return render(<NoteCard note={note} caseId="case1" />, { wrapper: Wrapper })
+  return render(<NoteCard note={note} caseId="case1" selected={selected} />, { wrapper: Wrapper })
 }
 
 beforeEach(() => {
@@ -69,6 +69,17 @@ describe('NoteCard', () => {
     // here.
     expect(message).toBe("Couldn't open the link in your browser")
     expect(opts.cause).toBe(cause)
+  })
+
+  // The dashboard activity feed (#403) navigates here with one note selected;
+  // aria-current is how the arrived-at note is marked.
+  it('marks itself as current only when selected', () => {
+    renderCard()
+    expect(screen.getByTestId('note-card-note1').getAttribute('aria-current')).toBeNull()
+
+    cleanup()
+    renderCard(true)
+    expect(screen.getByTestId('note-card-note1').getAttribute('aria-current')).toBe('true')
   })
 
   it('says nothing when the source URL opens successfully', async () => {

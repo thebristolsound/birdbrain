@@ -2,6 +2,9 @@ export const queryKeys = {
   cases: ['cases'] as const,
   session: ['session'] as const,
   case: (id: string) => ['cases', id] as const,
+  recentActivity: (limit: number) => ['cases', 'recentActivity', limit] as const,
+  // Prefix over every page size, for invalidating the feed without knowing it.
+  recentActivityAll: ['cases', 'recentActivity'] as const,
   captures: (caseId: string) => ['captures', caseId] as const,
   captureContent: (captureId: string, type: 'html' | 'png' | 'txt') =>
     ['captures', 'content', captureId, type] as const,

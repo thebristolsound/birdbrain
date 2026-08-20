@@ -6,6 +6,9 @@ interface AppState {
   connectedToExtension: boolean
   selectedCaptureId: string | null
   selectedCaptureIds: Set<string>
+  // Which note the Notes tab should mark as selected when it next renders.
+  // Set by the dashboard activity feed (#403); the Notes tab reads it.
+  selectedNoteId: string | null
   searchQuery: string
   activeSelectorFilters: string[]
   filteredCaptureIds: string[] | null
@@ -27,6 +30,7 @@ interface AppState {
   setPanelCollapsedForced: (forced: boolean) => void
   setOnboardingOverlayOpen: (open: boolean) => void
   setSelectedCaptureId: (id: string | null) => void
+  setSelectedNoteId: (id: string | null) => void
   setSearchQuery: (query: string) => void
   selectCapture: (id: string) => void
   toggleCaptureSelection: (id: string) => void
@@ -45,6 +49,7 @@ export const useAppStore = create<AppState>((set) => ({
   connectedToExtension: false,
   selectedCaptureId: null,
   selectedCaptureIds: new Set(),
+  selectedNoteId: null,
   searchQuery: '',
   activeSelectorFilters: [],
   filteredCaptureIds: null,
@@ -61,6 +66,7 @@ export const useAppStore = create<AppState>((set) => ({
   setPanelCollapsedForced: (forced) => set({ panelCollapsedForced: forced }),
   setOnboardingOverlayOpen: (open) => set({ onboardingOverlayOpen: open }),
   setSelectedCaptureId: (id) => set({ selectedCaptureId: id }),
+  setSelectedNoteId: (id) => set({ selectedNoteId: id }),
   setSearchQuery: (query) => set({ searchQuery: query }),
 
   selectCapture: (id) => set({ selectedCaptureId: id }),

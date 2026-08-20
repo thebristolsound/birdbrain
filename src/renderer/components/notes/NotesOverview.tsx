@@ -8,9 +8,12 @@ import { Button } from '@renderer/components/ui'
 import { presets } from '@renderer/lib/motion'
 import { NoteCard } from '@renderer/components/notes/NoteCard'
 import { CreateNoteCard } from '@renderer/components/notes/CreateNoteCard'
+import { useAppStore } from '@renderer/stores/appStore'
 
 export function NotesOverview() {
   const { caseId } = useParams({ from: '/cases/$caseId/notes' })
+  // Set when the operator arrived from the dashboard activity feed (#403).
+  const selectedNoteId = useAppStore((s) => s.selectedNoteId)
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [searchInput, setSearchInput] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
@@ -110,7 +113,7 @@ export function NotesOverview() {
                 exit={presets.listItem.exit}
                 transition={presets.listItem.transition}
               >
-                <NoteCard note={note} caseId={caseId} />
+                <NoteCard note={note} caseId={caseId} selected={note.id === selectedNoteId} />
               </motion.div>
             ))}
           </AnimatePresence>

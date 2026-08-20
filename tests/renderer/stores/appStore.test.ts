@@ -7,6 +7,7 @@ describe('appStore', () => {
       sessionActive: false,
       connectedToExtension: false,
       selectedCaptureId: null,
+      selectedNoteId: null,
       searchQuery: '',
       activeSelectorFilters: [],
       filteredCaptureIds: null,
@@ -29,6 +30,16 @@ describe('appStore', () => {
     it('sets selectedCaptureId', () => {
       useAppStore.getState().selectCapture('cap-1')
       expect(useAppStore.getState().selectedCaptureId).toBe('cap-1')
+    })
+  })
+
+  describe('setSelectedNoteId', () => {
+    it('sets and clears the note the Notes tab should mark as selected', () => {
+      useAppStore.getState().setSelectedNoteId('note-1')
+      expect(useAppStore.getState().selectedNoteId).toBe('note-1')
+
+      useAppStore.getState().setSelectedNoteId(null)
+      expect(useAppStore.getState().selectedNoteId).toBeNull()
     })
   })
 

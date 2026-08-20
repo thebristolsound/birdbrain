@@ -267,10 +267,22 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
     for (const id of indexIds) {
       if (!activeIds.has(id)) {
         coverageOk = false
+        // Still a FAIL, and still the same check (#622 ruling): the package's
+        // index and its signed manifest disagree about what the case contains,
+        // and softening that to a warning would change an evidentiary verdict.
+        // What the deletion entry adds is the explanation — the exporting
+        // database held a live row for a capture its own chain records as
+        // deleted, the write-ahead crash window Settings → Diagnostics reports.
+        // Naming it distinguishes this from a fabricated index entry, which is
+        // the other way to reach this line.
         add(
           'evidence.json coverage',
           'fail',
-          `evidence.json lists capture ${id} absent from the verified manifest`
+          deletedIds.has(id)
+            ? `evidence.json lists capture ${id} absent from the verified manifest: the chain ` +
+                'records it as deleted, so the exporting database had not reconciled that ' +
+                'deletion (an interrupted delete)'
+            : `evidence.json lists capture ${id} absent from the verified manifest`
         )
       }
     }

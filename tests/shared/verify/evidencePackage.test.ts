@@ -422,6 +422,86 @@ describe('verifyEvidencePackage', () => {
     expect(hasReason(result, 'timestamp token file missing')).toBe(true)
   })
 
+  // #622 known-answer test. A package exported while the database still held a
+  // row for a capture its own chain records as deleted. The verdict is
+  // unchanged by the ruling — this is still the section 7.5 coverage FAIL, not
+  // a new check and not a warning — but the reason now names the cause, so a
+  // reader can tell an interrupted delete from a fabricated index entry.
+  it('explains an unreconciled deletion in the coverage FAIL reason, keeping the FAIL', () => {
+    const caseDir = join(tempDir, 'captures', caseId)
+    const firstEntry = JSON.parse(
+      readFileSync(join(caseDir, 'manifest.jsonl'), 'utf-8')
+        .split('\n')
+        .filter((l) => l.trim())[0]
+    )
+    appendManifestEntry(caseDir, {
+      type: 'deletion',
+      captureId,
+      caseId,
+      contentHash: firstEntry.contentHash,
+      timestamp: '2026-04-05T13:00:00.000Z',
+      operatorId: 'op',
+      operatorName: 'Test Operator',
+      toolVersion: '0.1.0'
+    })
+
+    // Sync the package's manifest and head to the appended entry, but leave
+    // evidence.json's capture list and files alone: that IS the unreconciled
+    // state — the exporting database never removed the row.
+    const freshManifest = readFileSync(join(caseDir, 'manifest.jsonl'))
+    writeFileSync(join(pkgDir, 'manifest.jsonl'), freshManifest)
+    const lines = freshManifest
+      .toString('utf-8')
+      .split('\n')
+      .filter((l) => l.trim())
+    const head = JSON.parse(lines[lines.length - 1])
+    mutateEvidenceJson(pkgDir, (evidence) => {
+      const materials = (
+        evidence as unknown as {
+          verificationMaterials: { manifestHeadIndex: number; manifestHeadHash: string }
+        }
+      ).verificationMaterials
+      materials.manifestHeadIndex = head.index
+      materials.manifestHeadHash = head.entryHash
+      const manArtifact = evidence.artifacts.find((a) => a.path === 'manifest.jsonl')
+      if (manArtifact) {
+        manArtifact.sha256 = createHash('sha256').update(freshManifest).digest('hex')
+        manArtifact.sizeBytes = freshManifest.length
+      }
+    })
+
+    const result = verifyEvidencePackage(pkgDir)
+
+    expect(result.pass).toBe(false)
+    const coverage = result.checks.filter((c) => c.name === 'evidence.json coverage')
+    expect(coverage.map((c) => c.status)).toEqual(['fail'])
+    expect(coverage[0].reason).toContain(captureId)
+    expect(coverage[0].reason).toContain('absent from the verified manifest')
+    expect(coverage[0].reason).toContain('the chain records it as deleted')
+    expect(coverage[0].reason).toContain('an interrupted delete')
+    // The chain itself is untouched and still verifies — the disagreement is
+    // between the signed manifest and the unsigned index, not within the chain.
+    expect(result.checks.find((c) => c.name === 'manifest chain')?.status).toBe('pass')
+    // Ruling pinned: no new check name and no status outside the existing union.
+    expect(result.checks.every((c) => ['pass', 'fail', 'skip'].includes(c.status))).toBe(true)
+  })
+
+  it('does NOT claim a deletion for an index entry the chain never mentions', () => {
+    // The other way to reach the same line: an id invented in evidence.json.
+    // The reason must stay bare rather than blaming an interrupted delete.
+    mutateEvidenceJson(pkgDir, (evidence) => {
+      evidence.captures.push({ id: 'never-in-the-chain', timestampTokenPaths: [] })
+    })
+
+    const result = verifyEvidencePackage(pkgDir)
+    const coverage = result.checks.filter((c) => c.name === 'evidence.json coverage')
+
+    expect(result.pass).toBe(false)
+    expect(coverage.map((c) => c.status)).toEqual(['fail'])
+    expect(coverage[0].reason).toContain('never-in-the-chain')
+    expect(coverage[0].reason).not.toContain('deleted')
+  })
+
   it('PASSes a package whose capture was deleted (artifacts absent)', () => {
     // Append a deletion entry for the active capture, drop its artifacts and its
     // evidence.json record + artifacts so the package reflects a hard-delete.

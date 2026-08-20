@@ -7,6 +7,8 @@ describe('appStore', () => {
       sessionActive: false,
       connectedToExtension: false,
       selectedCaptureId: null,
+      selectedCaptureIds: new Set(),
+      selectionAnchorId: null,
       searchQuery: '',
       activeSelectorFilters: [],
       filteredCaptureIds: null,
@@ -29,6 +31,98 @@ describe('appStore', () => {
     it('sets selectedCaptureId', () => {
       useAppStore.getState().selectCapture('cap-1')
       expect(useAppStore.getState().selectedCaptureId).toBe('cap-1')
+    })
+  })
+
+  describe('multi-select', () => {
+    it('toggleCaptureSelection adds then removes an id', () => {
+      useAppStore.getState().toggleCaptureSelection('cap-1')
+      expect(useAppStore.getState().selectedCaptureIds.has('cap-1')).toBe(true)
+      useAppStore.getState().toggleCaptureSelection('cap-1')
+      expect(useAppStore.getState().selectedCaptureIds.has('cap-1')).toBe(false)
+    })
+
+    it('selectAllCaptures replaces the whole set', () => {
+      useAppStore.getState().toggleCaptureSelection('cap-hidden')
+      useAppStore.getState().selectAllCaptures(['cap-1', 'cap-2'])
+      const ids = useAppStore.getState().selectedCaptureIds
+      expect([...ids].sort()).toEqual(['cap-1', 'cap-2'])
+    })
+
+    it('clearCaptureSelection empties the set and resets the anchor', () => {
+      useAppStore.getState().toggleCaptureSelection('cap-1')
+      useAppStore.getState().setSelectionAnchor('cap-1')
+      useAppStore.getState().clearCaptureSelection()
+      expect(useAppStore.getState().selectedCaptureIds.size).toBe(0)
+      expect(useAppStore.getState().selectionAnchorId).toBeNull()
+    })
+
+    it('deselectCaptures removes only the given ids', () => {
+      useAppStore.getState().selectAllCaptures(['cap-1', 'cap-2', 'cap-3'])
+      useAppStore.getState().deselectCaptures(['cap-1', 'cap-3'])
+      expect([...useAppStore.getState().selectedCaptureIds]).toEqual(['cap-2'])
+    })
+  })
+
+  describe('selectCaptureRange', () => {
+    const order = ['cap-1', 'cap-2', 'cap-3', 'cap-4', 'cap-5']
+
+    it('extends forward from the anchor', () => {
+      useAppStore.getState().setSelectionAnchor('cap-2')
+      useAppStore.getState().selectCaptureRange(order, 'cap-4')
+      expect([...useAppStore.getState().selectedCaptureIds].sort()).toEqual([
+        'cap-2',
+        'cap-3',
+        'cap-4'
+      ])
+    })
+
+    it('extends backward when the target precedes the anchor', () => {
+      useAppStore.getState().setSelectionAnchor('cap-4')
+      useAppStore.getState().selectCaptureRange(order, 'cap-2')
+      expect([...useAppStore.getState().selectedCaptureIds].sort()).toEqual([
+        'cap-2',
+        'cap-3',
+        'cap-4'
+      ])
+    })
+
+    it('unions the range with the existing selection', () => {
+      useAppStore.getState().toggleCaptureSelection('cap-5')
+      useAppStore.getState().setSelectionAnchor('cap-1')
+      useAppStore.getState().selectCaptureRange(order, 'cap-2')
+      expect([...useAppStore.getState().selectedCaptureIds].sort()).toEqual([
+        'cap-1',
+        'cap-2',
+        'cap-5'
+      ])
+    })
+
+    it('keeps the anchor after a range extension so it can re-extend', () => {
+      useAppStore.getState().setSelectionAnchor('cap-2')
+      useAppStore.getState().selectCaptureRange(order, 'cap-3')
+      useAppStore.getState().selectCaptureRange(order, 'cap-5')
+      expect(useAppStore.getState().selectionAnchorId).toBe('cap-2')
+      expect(useAppStore.getState().selectedCaptureIds.size).toBe(4)
+    })
+
+    it('falls back to the target when the anchor is missing, and adopts it', () => {
+      useAppStore.getState().selectCaptureRange(order, 'cap-3')
+      expect([...useAppStore.getState().selectedCaptureIds]).toEqual(['cap-3'])
+      expect(useAppStore.getState().selectionAnchorId).toBe('cap-3')
+    })
+
+    it('falls back to the target when the anchor is filtered out of the order', () => {
+      useAppStore.getState().setSelectionAnchor('cap-hidden')
+      useAppStore.getState().selectCaptureRange(order, 'cap-2')
+      expect([...useAppStore.getState().selectedCaptureIds]).toEqual(['cap-2'])
+      expect(useAppStore.getState().selectionAnchorId).toBe('cap-2')
+    })
+
+    it('does nothing when the target is not in the order', () => {
+      useAppStore.getState().setSelectionAnchor('cap-1')
+      useAppStore.getState().selectCaptureRange(order, 'cap-unknown')
+      expect(useAppStore.getState().selectedCaptureIds.size).toBe(0)
     })
   })
 

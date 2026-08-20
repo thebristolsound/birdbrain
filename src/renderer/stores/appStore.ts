@@ -6,6 +6,8 @@ interface AppState {
   connectedToExtension: boolean
   selectedCaptureId: string | null
   selectedCaptureIds: Set<string>
+  // Shift-click range anchor (#396): the last plainly- or cmd-clicked row.
+  selectionAnchorId: string | null
   searchQuery: string
   activeSelectorFilters: string[]
   filteredCaptureIds: string[] | null
@@ -32,6 +34,9 @@ interface AppState {
   toggleCaptureSelection: (id: string) => void
   selectAllCaptures: (ids: string[]) => void
   clearCaptureSelection: () => void
+  setSelectionAnchor: (id: string | null) => void
+  selectCaptureRange: (orderedIds: string[], targetId: string) => void
+  deselectCaptures: (ids: string[]) => void
   addSelectorFilter: (selectorId: string) => void
   removeSelectorFilter: (selectorId: string) => void
   clearSelectorFilters: () => void
@@ -45,6 +50,7 @@ export const useAppStore = create<AppState>((set) => ({
   connectedToExtension: false,
   selectedCaptureId: null,
   selectedCaptureIds: new Set(),
+  selectionAnchorId: null,
   searchQuery: '',
   activeSelectorFilters: [],
   filteredCaptureIds: null,
@@ -78,7 +84,35 @@ export const useAppStore = create<AppState>((set) => ({
 
   selectAllCaptures: (ids) => set({ selectedCaptureIds: new Set(ids) }),
 
-  clearCaptureSelection: () => set({ selectedCaptureIds: new Set() }),
+  clearCaptureSelection: () => set({ selectedCaptureIds: new Set(), selectionAnchorId: null }),
+
+  setSelectionAnchor: (id) => set({ selectionAnchorId: id }),
+
+  selectCaptureRange: (orderedIds, targetId) =>
+    set((s) => {
+      const targetIdx = orderedIds.indexOf(targetId)
+      if (targetIdx === -1) return {}
+      const anchorIdx = s.selectionAnchorId ? orderedIds.indexOf(s.selectionAnchorId) : -1
+      // A missing or stale anchor (cleared, or filtered out of the current
+      // order) falls back to the target itself, so the gesture still selects
+      // the clicked row instead of silently doing nothing.
+      const from = anchorIdx === -1 ? targetIdx : Math.min(anchorIdx, targetIdx)
+      const to = anchorIdx === -1 ? targetIdx : Math.max(anchorIdx, targetIdx)
+      const next = new Set(s.selectedCaptureIds)
+      for (const id of orderedIds.slice(from, to + 1)) next.add(id)
+      return {
+        selectedCaptureIds: next,
+        selectionAnchorId: anchorIdx === -1 ? targetId : s.selectionAnchorId
+      }
+    }),
+
+  deselectCaptures: (ids) =>
+    set((s) => {
+      if (ids.length === 0) return {}
+      const next = new Set(s.selectedCaptureIds)
+      for (const id of ids) next.delete(id)
+      return { selectedCaptureIds: next }
+    }),
 
   addSelectorFilter: (selectorId) =>
     set((s) => ({

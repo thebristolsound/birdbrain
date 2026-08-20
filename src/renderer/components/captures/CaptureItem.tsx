@@ -34,11 +34,14 @@ function formatTimestamp(ts: string): string {
 interface CaptureItemProps {
   capture: Capture
   isSelected: boolean
-  onClick: () => void
+  // Modifier-aware (#396): plain click selects, cmd/ctrl toggles the
+  // multi-set, shift extends from the anchor. Keyboard Enter/Space reuses it.
+  onClick: (e: React.MouseEvent | React.KeyboardEvent) => void
   isFavorite?: boolean
   onToggleFavorite?: (e: React.MouseEvent) => void
   isMultiSelected?: boolean
   onToggleMultiSelect?: (e: React.MouseEvent) => void
+  // Sticky mode: once any row is checked, every row's checkbox stays visible.
   showCheckbox?: boolean
   matchingSelectors?: Selector[]
 }
@@ -72,19 +75,36 @@ export function CaptureItem({
       data-testid="capture-item"
       data-capture-id={capture.id}
       onClick={onClick}
+      onMouseDown={(e) => {
+        // Shift-click extends the selection range; without this the browser
+        // also starts a native text selection across the rows.
+        if (e.shiftKey) e.preventDefault()
+      }}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
-          onClick()
+          onClick(e)
         }
       }}
-      className={`w-full rounded-xl border p-2 text-left transition-colors cursor-pointer ${
-        isSelected ? 'border-accent/35 bg-accent-subtle' : 'border-transparent hover:bg-elevated'
+      className={`group relative w-full rounded-xl border p-2 text-left transition-colors cursor-pointer ${
+        isSelected ? 'border-accent/35' : 'border-transparent'
+      } ${
+        isMultiSelected ? 'bg-accent/12' : isSelected ? 'bg-accent-subtle' : 'hover:bg-elevated'
       }`}
     >
+      {/* Multi-select rail (session-3 note: multi-select only; single
+          selection relies on the accent border + tint) */}
+      {isMultiSelected && (
+        <span
+          aria-hidden="true"
+          data-testid="capture-multiselect-rail"
+          className="absolute bottom-1.5 left-0 top-1.5 w-0.5 rounded-r-sm bg-accent"
+        />
+      )}
       <div className="flex gap-2">
-        {/* Checkbox for multi-select */}
-        {showCheckbox && onToggleMultiSelect && (
+        {/* Multi-select checkbox: fades in on row hover, stays once any row
+            is checked (showCheckbox) or this row is */}
+        {onToggleMultiSelect && (
           <button
             onClick={(e) => {
               e.stopPropagation()
@@ -93,17 +113,18 @@ export function CaptureItem({
             aria-label={isMultiSelected ? 'Deselect capture' : 'Select capture'}
             aria-checked={isMultiSelected}
             role="checkbox"
-            className="shrink-0 mt-1"
+            data-testid="capture-select-checkbox"
+            className={`mt-1.5 shrink-0 self-start transition-opacity duration-150 ${
+              isMultiSelected || showCheckbox ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+            }`}
           >
-            <div
-              className={`h-4 w-4 rounded border-2 flex items-center justify-center transition-colors ${
-                isMultiSelected
-                  ? 'bg-accent border-accent'
-                  : 'border-border bg-card hover:border-accent/50'
+            <span
+              className={`flex h-3.5 w-3.5 items-center justify-center rounded-[2px] border ${
+                isMultiSelected ? 'border-accent bg-accent' : 'border-border-strong'
               }`}
             >
-              {isMultiSelected && <Check className="h-3 w-3 text-white" />}
-            </div>
+              {isMultiSelected && <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
+            </span>
           </button>
         )}
         {/* Thumbnail */}

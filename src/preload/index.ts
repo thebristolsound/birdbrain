@@ -178,7 +178,8 @@ const birdbrain = {
     revealLog: bridge(IPC_CHANNELS.DIAGNOSTICS_REVEAL_LOG),
     openStorageRoot: bridge(IPC_CHANNELS.DIAGNOSTICS_OPEN_STORAGE_ROOT),
     lastSession: bridge(IPC_CHANNELS.DIAGNOSTICS_LAST_SESSION),
-    createReport: bridge(IPC_CHANNELS.DIAGNOSTICS_CREATE_REPORT)
+    createReport: bridge(IPC_CHANNELS.DIAGNOSTICS_CREATE_REPORT),
+    unreconciledDeletions: bridge(IPC_CHANNELS.DIAGNOSTICS_UNRECONCILED_DELETIONS)
   },
 
   updates: {

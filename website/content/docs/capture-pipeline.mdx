@@ -343,6 +343,33 @@ everything ever captured into it, and the remedy for a sensitive URL is a new ca
 delete. Redaction proper, a URL commitment scheme that lets an entry be verified without
 disclosing what it points at, is tracked separately.
 
+### Unreconciled deletions
+
+Deleting a capture is write-ahead: the signed `deletion` entry is appended and flushed to disk
+*before* the files are unlinked and the database row is removed, so the manifest can never record
+a removal that did not happen. The cost of that ordering is a narrow window. If the app is killed
+between the flush and the row delete, the manifest holds a valid, fully-formed deletion entry
+while `captures` still holds the row.
+
+Nothing about the chain is wrong in that state, so chain verification reports it as valid — which
+is why **Settings → Diagnostics → Unreconciled deletions** exists. It re-verifies each case's
+chain and joins the deletion entries against live capture rows in that same case, listing any
+entry the database has not caught up with.
+
+What a finding establishes is bounded, and the panel says so: the chain verifies, and the row is
+still present. Whether the capture's files are still on disk is **not** part of the claim — the
+check never reads them.
+
+There is no automatic repair, because the manifest holds the claim rather than the data:
+truncating the entry would be a lie if the files are in fact already gone. The recovery action is
+to **delete the capture again from its case**. That appends a fresh signed deletion entry and
+removes the row; it succeeds whether or not the files survived, because each unlink is guarded by
+an existence check. The stale entry stays in the chain, as append-only requires.
+
+An evidence package exported from an unreconciled case already fails verification: `evidence.json`
+lists a capture the signed manifest records as deleted, which the standalone verifier reports as
+an `evidence.json coverage` failure naming the capture and the interrupted delete.
+
 ## 7. Observability
 
 ### CaptureEvent types

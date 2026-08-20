@@ -72,6 +72,7 @@ import type { UpdaterService } from '@main/services/updater'
 import type { SessionService } from '@main/services/session'
 import { handle, IpcFailure, sendEvent } from '@main/ipcWrap'
 import { diagnosticsService } from '@main/services/diagnostics'
+import { scanUnreconciledDeletions } from '@main/services/deletionReconciliation'
 import { flushSync, getLogDir, getLogPath, logger, readRecentEntries } from '@main/services/logger'
 import { takeUncleanSession } from '@main/services/sessionLog'
 import { buildBugReport, bugReportFilename } from '@main/services/bugReport'
@@ -763,6 +764,10 @@ export function registerIpcHandlers(deps: {
   // registration (idempotent) so stall history predates opening the panel.
   diagnosticsService.start()
   handle(IPC_CHANNELS.DIAGNOSTICS_GET, () => diagnosticsService.snapshot())
+
+  // On demand only — see the channel's comment in shared/ipc.ts for why this is
+  // not part of the polled snapshot (#622).
+  handle(IPC_CHANNELS.DIAGNOSTICS_UNRECONCILED_DELETIONS, () => scanUnreconciledDeletions())
 
   // Renderer-side failures join the same durable log as main-process ones.
   // Everything crossing this boundary is untrusted: the renderer holds page

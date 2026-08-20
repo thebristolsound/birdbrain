@@ -26,6 +26,7 @@ import type {
   ArchiveInspectReport,
   UpdateStatus,
   DiagnosticsSnapshot,
+  UnreconciledDeletionReport,
   LogEntry,
   SessionRecord,
   BugReportInput,
@@ -194,6 +195,7 @@ export interface BirdbrainAPI {
     openStorageRoot(): Promise<void>
     lastSession(): Promise<SessionRecord | null>
     createReport(input: BugReportInput): Promise<BugReportResult | null>
+    unreconciledDeletions(): Promise<UnreconciledDeletionReport>
   }
   updates: {
     getStatus(): Promise<UpdateStatus>

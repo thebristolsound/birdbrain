@@ -16,6 +16,14 @@ export const diagnosticsQueryOptions = queryOptions({
   queryFn: () => window.birdbrain.diagnostics.get()
 })
 
+// No refetchInterval, deliberately (#622): the scan reads and signature-
+// verifies every case manifest on the main process, so it runs on mount and on
+// an explicit refresh, never on a poll.
+export const unreconciledDeletionsQueryOptions = queryOptions({
+  queryKey: queryKeys.unreconciledDeletions,
+  queryFn: () => window.birdbrain.diagnostics.unreconciledDeletions()
+})
+
 export function logDiagnosticEvent(payload: RendererLogPayload): Promise<string> {
   return window.birdbrain.diagnostics.log(payload)
 }

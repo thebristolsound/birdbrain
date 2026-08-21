@@ -1,7 +1,11 @@
 import { useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Activity, Check, Copy, MessageSquareWarning, RefreshCw } from 'lucide-react'
-import type { DiagnosticsSnapshot, KeyProtectionState } from '@shared/types'
+import type {
+  DiagnosticsSnapshot,
+  KeyProtectionState,
+  UnreconciledDeletionReport
+} from '@shared/types'
 import {
   Card,
   CardContent,
@@ -13,7 +17,11 @@ import {
 } from '@renderer/components/ui'
 import { cn } from '@renderer/lib/utils'
 import { LogTab } from '@renderer/components/diagnostics/LogTab'
-import { diagnosticsQueryOptions, openStorageRoot } from '@renderer/lib/api/diagnostics'
+import {
+  diagnosticsQueryOptions,
+  openStorageRoot,
+  unreconciledDeletionsQueryOptions
+} from '@renderer/lib/api/diagnostics'
 import { notify } from '@renderer/lib/notify'
 
 // Settings → Diagnostics. Live snapshot of app environment, main-process
@@ -52,6 +60,14 @@ function formatCount(n: number): string {
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString()
+}
+
+// Deletion entries can be days old, so the date carries as much weight as the
+// clock time. An entry that carried no timestamp reads as unknown, not as now.
+function formatDateTime(iso: string): string {
+  if (!iso) return 'an unrecorded time'
+  const parsed = new Date(iso)
+  return Number.isNaN(parsed.getTime()) ? 'an unrecorded time' : parsed.toLocaleString()
 }
 
 // 'plaintext' is the mis-attestation risk this indicator exists to surface
@@ -116,12 +132,117 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
+// #622. Every sentence here is bounded by what the scan actually established:
+// the chain verified, the row is present, the files were never looked at. Per
+// ADR-0004, verification establishes only the property actually tested — so the
+// copy must not drift into "the capture is intact" or "the delete failed".
+function ManifestReconciliation({ report }: { report: UnreconciledDeletionReport | undefined }) {
+  if (!report) {
+    return <p className="text-xs text-text-muted">Checking case manifests against the database…</p>
+  }
+
+  if (!report.available) {
+    return (
+      <p className="text-xs text-text-muted">
+        Not run — the database, storage folder or signing key was not available. Nothing is claimed
+        about this installation&rsquo;s deletions.
+      </p>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      {report.findings.length === 0 && report.casesScanned > 0 && report.unscanned.length === 0 ? (
+        <p className="text-xs text-text-muted">
+          None found across {formatCount(report.casesScanned)} verified{' '}
+          {report.casesScanned === 1 ? 'case' : 'cases'}. Every capture those manifests record as
+          deleted is gone from the database.
+        </p>
+      ) : report.findings.length === 0 ? (
+        // No findings, but the scan did not cover everything, so the clean bill
+        // above would be a claim about cases it never read. The unscanned list
+        // below says which. Archived cases are skipped by listCases and appear
+        // in neither count (#670), which is why the wording above is bounded to
+        // the manifests actually scanned.
+        <p className="text-xs text-text-muted">
+          None found across {formatCount(report.casesScanned)} verified{' '}
+          {report.casesScanned === 1 ? 'case' : 'cases'}. This says nothing about the cases listed
+          below.
+        </p>
+      ) : (
+        <>
+          <ul className="space-y-1.5">
+            {report.findings.map((finding) => (
+              <li key={`${finding.caseId}-${finding.manifestIndex}`} className="text-xs">
+                <div className="flex items-baseline gap-2">
+                  <span className="shrink-0 font-mono tabular-nums text-amber-500">
+                    #{finding.manifestIndex}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate font-mono text-text-secondary">
+                    {finding.captureId}
+                  </span>
+                  <span className="min-w-0 shrink truncate text-text-muted">
+                    {finding.caseName}
+                  </span>
+                </div>
+                <div className="text-text-muted">
+                  Recorded deleted {formatDateTime(finding.entryTimestamp)}
+                  {finding.operatorName ? ` by ${finding.operatorName}` : ''}
+                  {finding.reason ? ` — ${finding.reason}` : ''}
+                </div>
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-text-muted">
+            What this establishes: the case manifest chain verifies, and it carries a deletion entry
+            for {report.findings.length === 1 ? 'that capture' : 'each capture above'}, whose row is
+            still in the database. What it does not: whether the capture&rsquo;s files are still on
+            disk — this check never reads them.
+          </p>
+          <p className="text-xs text-text-muted">
+            To reconcile, delete the capture again from its case. That appends a fresh signed
+            deletion entry and removes the row. It cannot remove the entry already in the chain —
+            the manifest is append-only, and no repair is possible from the manifest alone, because
+            it holds the claim rather than the data.
+          </p>
+        </>
+      )}
+      {report.unscanned.length > 0 && (
+        <ul className="space-y-1">
+          {report.unscanned.map((unscanned) => (
+            <li key={unscanned.caseId} className="flex items-baseline gap-2 text-xs">
+              <span className="shrink-0 text-red-500">Not scanned</span>
+              <span className="min-w-0 shrink truncate text-text-secondary">
+                {unscanned.caseName}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-text-muted">{unscanned.reason}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {report.unscanned.length > 0 && (
+        <p className="text-xs text-text-muted">
+          Nothing is claimed about deletions in{' '}
+          {report.unscanned.length === 1 ? 'that case' : 'those cases'}: the finding asserts a valid
+          chain, and these chains did not verify.
+        </p>
+      )}
+    </div>
+  )
+}
+
 export function DiagnosticsPanel() {
   const [copied, setCopied] = useState(false)
   const { data, refetch, isFetching } = useQuery({
     ...diagnosticsQueryOptions,
     refetchInterval: POLL_MS
   })
+  // Its own query, never merged into the polled snapshot (#622): this one reads
+  // and signature-verifies every case manifest, so it runs on mount and on
+  // Refresh only.
+  const { data: reconciliation, refetch: refetchReconciliation } = useQuery(
+    unreconciledDeletionsQueryOptions
+  )
 
   async function handleCopy() {
     if (!data) return
@@ -131,6 +252,10 @@ export function DiagnosticsPanel() {
     // paths carrying the operator's username, and slowOps[].detail is a
     // captured page URL. The panel may show them on screen (that is the
     // operator looking at their own machine); copying them out is different.
+    //
+    // The unreconciled-deletion findings (#622) are deliberately absent: they
+    // carry case names, capture ids and operator names — investigation data,
+    // not environment facts — and nothing in a bug report needs them.
     await navigator.clipboard.writeText(
       JSON.stringify(
         {
@@ -184,7 +309,10 @@ export function DiagnosticsPanel() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => refetch()}
+              onClick={() => {
+                void refetch()
+                void refetchReconciliation()
+              }}
               disabled={isFetching}
               className="gap-1.5"
             >
@@ -337,6 +465,10 @@ export function DiagnosticsPanel() {
               >
                 {snap.storage.storageRoot}
               </button>
+            </Section>
+
+            <Section title="Unreconciled deletions">
+              <ManifestReconciliation report={reconciliation} />
             </Section>
 
             <Section title="Processes">

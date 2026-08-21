@@ -17,6 +17,7 @@ import type {
   CaptureEvent,
   Case,
   DiagnosticsSnapshot,
+  UnreconciledDeletionReport,
   ExportOptions,
   ExportPreflight,
   ExtractedDataCategory,
@@ -181,6 +182,10 @@ export const IPC_CHANNELS = {
   DIAGNOSTICS_OPEN_STORAGE_ROOT: 'diagnostics:openStorageRoot',
   DIAGNOSTICS_LAST_SESSION: 'diagnostics:lastSession',
   DIAGNOSTICS_CREATE_REPORT: 'diagnostics:createReport',
+  // Deliberately NOT folded into diagnostics:get — the panel polls that every
+  // 2s, and this scan reads and signature-verifies every case manifest on the
+  // main process. On demand only (#622).
+  DIAGNOSTICS_UNRECONCILED_DELETIONS: 'diagnostics:unreconciledDeletions',
   LOG_ENTRY: 'event:logEntry',
 
   // Updates (update delivery)
@@ -760,6 +765,7 @@ export interface IpcInvokeContract {
     args: [input: BugReportInput]
     result: BugReportResult | null
   }
+  'diagnostics:unreconciledDeletions': { args: []; result: UnreconciledDeletionReport }
 
   'updates:getStatus': { args: []; result: UpdateStatus }
   'updates:check': { args: []; result: UpdateStatus }

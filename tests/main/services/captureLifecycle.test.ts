@@ -21,6 +21,7 @@ import type { BatchDeleteOutcome } from '@shared/ipc'
 import type { Capture } from '@shared/types'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 import { createCaptureLifecycle, BatchCrossCaseError } from '@main/services/captureLifecycle'
+import { scanUnreconciledDeletions } from '@main/services/deletionReconciliation'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { initSettings, updateSettings } from '@main/services/settings'
@@ -949,6 +950,43 @@ describe('createCaptureLifecycle.deleteMany (#394)', () => {
     ).toHaveLength(2)
     expect(verifyManifestChain(caseDir).valid).toBe(true)
     expect(listCaptures(caseId)).toHaveLength(0)
+  })
+
+  // #622 recovery path. The artefact is not repairable from the manifest — it
+  // holds the claim, not the data — so the documented remedy is to run the
+  // delete again. This asserts that remedy works from the worst version of the
+  // state (files already unlinked before the crash) and that it clears the
+  // finding the Diagnostics panel raises.
+  it('re-running delete over the crash artefact appends a clean entry and clears the finding', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const [a] = await ingestN(lifecycle, 1)
+    appendManifestEntry(caseDir, {
+      type: 'deletion',
+      captureId: a.id,
+      caseId,
+      timestamp: new Date().toISOString(),
+      contentHash: a.hash,
+      operatorId: 'op',
+      operatorName: 'Crash',
+      toolVersion: '0.0.0'
+    })
+    // The crash landed after the unlink, before the row delete: files gone, row
+    // live. deleteArtifacts guards each unlink with existsSync, so the retry
+    // must not throw over the missing files.
+    createCaptureStore({ getRoot: getStorageRoot }).deleteArtifacts(caseId, a.id)
+    expect(mhtmlExists(a)).toBe(false)
+    expect(scanUnreconciledDeletions().findings.map((f) => f.captureId)).toEqual([a.id])
+
+    expect(await lifecycle.delete(a.id)).toBe(true)
+
+    // Two deletion entries for the same capture: the stale one stays, because
+    // the manifest is append-only. The chain still verifies over both.
+    expect(
+      manifestEntries().filter((e) => e.type === 'deletion' && e.captureId === a.id)
+    ).toHaveLength(2)
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+    expect(getCapture(a.id)).toBeUndefined()
+    expect(scanUnreconciledDeletions().findings).toEqual([])
   })
 
   it('throws before the loop when the manifest head is unreadable, writing nothing', async () => {

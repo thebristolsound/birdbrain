@@ -425,11 +425,15 @@ The unsigned index must agree with the verified truth:
   must be the same set. A verified-but-missing capture → FAIL "evidence.json omits
   verified capture <id>". An index entry with no verified capture → FAIL
   "evidence.json lists capture <id> absent from the verified manifest". This
-  equality currently holds because deletion **hard-removes** the DB row
-  (`database.ts:595` — `DELETE FROM captures WHERE id = ?`), so
-  `evidence.json.captures` already equals the active set; if deletion ever becomes a
-  soft-delete, this rule must be re-derived from the active set, not assumed
-  one-to-one.
+  equality **usually** holds because deletion hard-removes the DB row
+  (`DELETE FROM captures WHERE id = ?`), so `evidence.json.captures` normally equals
+  the active set. It does not always hold: the delete is write-ahead, so a crash
+  between appending the signed deletion entry and removing the row leaves a live row
+  for a capture the chain records as deleted (#622), and an export taken in that
+  window trips this rule. The verifier names the fact the chain establishes and does
+  not attribute a cause, because an edited index that re-adds a deleted capture
+  reaches the same branch. If deletion ever becomes a soft-delete, this rule must be
+  re-derived from the active set, not assumed one-to-one.
 - **Artifact sweep:** for each `evidence.json.artifacts[]` entry, `sha256(file)` ==
   the recorded digest. Mismatch → FAIL "artifact <path>: sha256 does not match
   evidence.json". This is index self-consistency; the authoritative content bind is

@@ -267,10 +267,29 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
     for (const id of indexIds) {
       if (!activeIds.has(id)) {
         coverageOk = false
+        // Still a FAIL, and still the same check (#622 ruling): the package's
+        // index and its signed manifest disagree about what the case contains,
+        // and softening that to a warning would change an evidentiary verdict.
+        //
+        // The deletion entry adds one fact and no more: the chain records this
+        // id as deleted. It deliberately does NOT name a cause. Two different
+        // inputs reach this branch with byte-identical evidence — an export
+        // taken during the #622 crash window, and an evidence.json edited to
+        // re-add a capture the chain legitimately deleted — and nothing else
+        // in this module separates them. `evidence.json head` compares only the
+        // head index and hash, so a captures-array edit does not trip it, and
+        // the artifact sweep walks evidence.json's own list, so it does not
+        // either. This check is the only one that fires on that tamper. Naming
+        // an interrupted delete here would hand the tamperer a benign
+        // explanation, and would infer a fact about the exporting database from
+        // evidence.json, which line 129 declares untrusted.
         add(
           'evidence.json coverage',
           'fail',
-          `evidence.json lists capture ${id} absent from the verified manifest`
+          deletedIds.has(id)
+            ? `evidence.json lists capture ${id} absent from the verified manifest: the chain ` +
+                'records it as deleted'
+            : `evidence.json lists capture ${id} absent from the verified manifest`
         )
       }
     }

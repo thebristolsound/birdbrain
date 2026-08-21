@@ -48,6 +48,7 @@ export const queryKeys = {
   exportPreflight: (caseId: string) => ['export', 'preflight', caseId] as const,
   recaptureQueue: ['recaptureQueue'] as const,
   diagnostics: ['diagnostics'] as const,
+  unreconciledDeletions: ['diagnostics', 'unreconciledDeletions'] as const,
   dbStats: ['db', 'stats'] as const,
   dbSnapshots: ['db', 'snapshots'] as const,
   dbTableRows: (table: string, offset: number, limit: number) =>

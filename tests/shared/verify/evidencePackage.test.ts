@@ -422,6 +422,158 @@ describe('verifyEvidencePackage', () => {
     expect(hasReason(result, 'timestamp token file missing')).toBe(true)
   })
 
+  // #622 known-answer test. A package exported while the database still held a
+  // row for a capture its own chain records as deleted. The verdict is
+  // unchanged by the ruling — this is still the section 7.5 coverage FAIL, not
+  // a new check and not a warning. The reason names the one fact the chain
+  // establishes, that the id is recorded as deleted, and stops there. It must
+  // not name a cause: the tamper test below reaches this same branch.
+  it('explains an unreconciled deletion in the coverage FAIL reason, keeping the FAIL', () => {
+    const caseDir = join(tempDir, 'captures', caseId)
+    const firstEntry = JSON.parse(
+      readFileSync(join(caseDir, 'manifest.jsonl'), 'utf-8')
+        .split('\n')
+        .filter((l) => l.trim())[0]
+    )
+    appendManifestEntry(caseDir, {
+      type: 'deletion',
+      captureId,
+      caseId,
+      contentHash: firstEntry.contentHash,
+      timestamp: '2026-04-05T13:00:00.000Z',
+      operatorId: 'op',
+      operatorName: 'Test Operator',
+      toolVersion: '0.1.0'
+    })
+
+    // Sync the package's manifest and head to the appended entry, but leave
+    // evidence.json's capture list and files alone: that IS the unreconciled
+    // state — the exporting database never removed the row.
+    const freshManifest = readFileSync(join(caseDir, 'manifest.jsonl'))
+    writeFileSync(join(pkgDir, 'manifest.jsonl'), freshManifest)
+    const lines = freshManifest
+      .toString('utf-8')
+      .split('\n')
+      .filter((l) => l.trim())
+    const head = JSON.parse(lines[lines.length - 1])
+    mutateEvidenceJson(pkgDir, (evidence) => {
+      const materials = (
+        evidence as unknown as {
+          verificationMaterials: { manifestHeadIndex: number; manifestHeadHash: string }
+        }
+      ).verificationMaterials
+      materials.manifestHeadIndex = head.index
+      materials.manifestHeadHash = head.entryHash
+      const manArtifact = evidence.artifacts.find((a) => a.path === 'manifest.jsonl')
+      if (manArtifact) {
+        manArtifact.sha256 = createHash('sha256').update(freshManifest).digest('hex')
+        manArtifact.sizeBytes = freshManifest.length
+      }
+    })
+
+    const result = verifyEvidencePackage(pkgDir)
+
+    expect(result.pass).toBe(false)
+    const coverage = result.checks.filter((c) => c.name === 'evidence.json coverage')
+    expect(coverage.map((c) => c.status)).toEqual(['fail'])
+    expect(coverage[0].reason).toContain(captureId)
+    expect(coverage[0].reason).toContain('absent from the verified manifest')
+    expect(coverage[0].reason).toContain('the chain records it as deleted')
+    // Deliberately absent. Verification never establishes the cause, and the
+    // tamper case below is indistinguishable from this one at this branch.
+    expect(coverage[0].reason).not.toContain('interrupted')
+    // The chain itself is untouched and still verifies — the disagreement is
+    // between the signed manifest and the unsigned index, not within the chain.
+    expect(result.checks.find((c) => c.name === 'manifest chain')?.status).toBe('pass')
+    // Ruling pinned: no new check name and no status outside the existing union.
+    expect(result.checks.every((c) => ['pass', 'fail', 'skip'].includes(c.status))).toBe(true)
+  })
+
+  it('does NOT claim a deletion for an index entry the chain never mentions', () => {
+    // The other way to reach the same line: an id invented in evidence.json.
+    // The reason must stay bare rather than blaming an interrupted delete.
+    mutateEvidenceJson(pkgDir, (evidence) => {
+      evidence.captures.push({ id: 'never-in-the-chain', timestampTokenPaths: [] })
+    })
+
+    const result = verifyEvidencePackage(pkgDir)
+    const coverage = result.checks.filter((c) => c.name === 'evidence.json coverage')
+
+    expect(result.pass).toBe(false)
+    expect(coverage.map((c) => c.status)).toEqual(['fail'])
+    expect(coverage[0].reason).toContain('never-in-the-chain')
+    expect(coverage[0].reason).not.toContain('deleted')
+  })
+
+  // The tamper this branch cannot tell apart from the #622 crash window, and
+  // the reason the reason stays bare. An operator hands over a package with a
+  // capture removed on the record; someone re-adds that id to evidence.json to
+  // make the package look as though it still contained the capture. The chain
+  // still records the deletion, so `deletedIds.has(id)` is true and this is the
+  // same branch the honest case takes. `evidence.json head` compares only the
+  // head index and hash, and the artifact sweep walks evidence.json's own list,
+  // so neither fires — coverage is the only check that catches this.
+  it('does NOT blame a crash when a deleted id is re-added to the index', () => {
+    const caseDir = join(tempDir, 'captures', caseId)
+    const firstEntry = JSON.parse(
+      readFileSync(join(caseDir, 'manifest.jsonl'), 'utf-8')
+        .split('\n')
+        .filter((l) => l.trim())[0]
+    )
+    appendManifestEntry(caseDir, {
+      type: 'deletion',
+      captureId,
+      caseId,
+      contentHash: firstEntry.contentHash,
+      timestamp: '2026-04-05T13:00:00.000Z',
+      operatorId: 'op',
+      operatorName: 'Test Operator',
+      toolVersion: '0.1.0'
+    })
+
+    const freshManifest = readFileSync(join(caseDir, 'manifest.jsonl'))
+    writeFileSync(join(pkgDir, 'manifest.jsonl'), freshManifest)
+    const lines = freshManifest.toString('utf-8').split('\n').filter((l) => l.trim())
+    const head = JSON.parse(lines[lines.length - 1])
+    const evidence = JSON.parse(readFileSync(join(pkgDir, 'evidence.json'), 'utf-8'))
+    const rec = evidence.captures.find((c: { id: string }) => c.id === captureId)
+
+    // Honest hard-delete first: the index and artifacts reflect the removal.
+    for (const rel of [rec.mhtmlPath, rec.screenshotPath, ...rec.timestampTokenPaths]) {
+      if (rel && existsSync(join(pkgDir, rel))) rmSync(join(pkgDir, rel))
+    }
+    evidence.captures = []
+    evidence.artifacts = evidence.artifacts.filter(
+      (a: { path: string }) =>
+        a.path !== rec.mhtmlPath &&
+        a.path !== rec.screenshotPath &&
+        !rec.timestampTokenPaths.includes(a.path)
+    )
+    evidence.verificationMaterials.manifestHeadIndex = head.index
+    evidence.verificationMaterials.manifestHeadHash = head.entryHash
+    const manArtifact = evidence.artifacts.find((a: { path: string }) => a.path === 'manifest.jsonl')
+    if (manArtifact) {
+      manArtifact.sha256 = createHash('sha256').update(freshManifest).digest('hex')
+      manArtifact.sizeBytes = freshManifest.length
+    }
+    // Now the tamper: put the deleted capture back into the unsigned index.
+    evidence.captures.push({ id: captureId, timestampTokenPaths: [] })
+    writeFileSync(join(pkgDir, 'evidence.json'), JSON.stringify(evidence, null, 2))
+
+    const result = verifyEvidencePackage(pkgDir)
+    const coverage = result.checks.filter((c) => c.name === 'evidence.json coverage')
+
+    expect(result.pass).toBe(false)
+    expect(coverage.map((c) => c.status)).toEqual(['fail'])
+    expect(coverage[0].reason).toContain(captureId)
+    expect(coverage[0].reason).toContain('the chain records it as deleted')
+    // The whole point. A tamperer must not be handed an innocent explanation.
+    expect(coverage[0].reason).not.toContain('interrupted')
+    expect(coverage[0].reason).not.toContain('had not reconciled')
+    // The head check does not catch this, which is why coverage must not soften.
+    expect(result.checks.find((c) => c.name === 'evidence.json head')?.status).toBe('pass')
+  })
+
   it('PASSes a package whose capture was deleted (artifacts absent)', () => {
     // Append a deletion entry for the active capture, drop its artifacts and its
     // evidence.json record + artifacts so the package reflects a hard-delete.

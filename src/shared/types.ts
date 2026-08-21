@@ -314,6 +314,44 @@ export interface DiagnosticsSnapshot {
   }
 }
 
+// Manifest/database reconciliation (#622). A capture delete appends its signed
+// `deletion` entry BEFORE unlinking files and removing the row. If the process
+// dies in that window the chain is left valid and complete while the database
+// still holds the capture — a disagreement no chain check can see, because
+// nothing about the chain is wrong.
+export interface UnreconciledDeletionFinding {
+  caseId: string
+  caseName: string
+  captureId: string
+  // Position of the deletion entry in the case's manifest chain.
+  manifestIndex: number
+  // The deletion entry's own timestamp — when the delete was recorded, which is
+  // not when the finding was observed.
+  entryTimestamp: string
+  operatorName: string
+  // #580's optional reason field: distinguishes a self-test cleanup from an
+  // operator deletion. Absent on entries that carried none.
+  reason?: string
+}
+
+// A case the scan could not make the "chain valid" claim over, so it reports
+// nothing about that case's deletions rather than implying it found none.
+export interface UnscannedCase {
+  caseId: string
+  caseName: string
+  reason: string
+}
+
+export interface UnreconciledDeletionReport {
+  generatedAt: string
+  // False when the database, storage root or signing key was not available, so
+  // no scan ran at all. The panel must not render "none found" over that.
+  available: boolean
+  casesScanned: number
+  findings: UnreconciledDeletionFinding[]
+  unscanned: UnscannedCase[]
+}
+
 // Diagnostic logging. Entries are structural only — see logSafe.ts for the
 // boundary that keeps investigation data (URLs, case names, paths) out of
 // them. No `message` field: free-form prose (e.g. a case name typed into an

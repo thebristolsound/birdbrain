@@ -332,6 +332,14 @@ for the user to confirm completion. Instead, verify the work (`pnpm lint`, `pnpm
 `extension/` changed, **plus `pnpm test:coverage` and `pnpm coverage:diff`**), then finish by
 opening a **draft PR** with the standard attribution line.
 
+**Label it, or the gates cannot see it.** `agent-authored` always, `agent-pr` as well only if
+the PR takes the strict-serial dispatch slot, `evidence-affecting` when the gate fired.
+`pre-pass-gate.yml` and `ci.yml`'s draft exemption both key on those labels, so an unlabelled
+agent PR reports `agent/pre-pass success — "Not an agent PR"` and no reviewer is ever waiting
+on it. Wave 1 batch 1 shipped five such PRs, four evidence-affecting, and a hand-run pre-pass
+found twelve blocking defects behind the green badges. `gh pr create --label` is not atomic,
+so verify with `gh api repos/{owner}/{repo}/issues/<n>/labels` rather than asserting it.
+
 Those last two are the ones that catch what the others cannot. CI's job named `test` runs the
 suite *and then* `scripts/diff-coverage.mjs`, which fails the PR below 90% of changed lines
 covered — a threshold `pnpm test` never evaluates, since it omits `--coverage`. Without them

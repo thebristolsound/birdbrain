@@ -60,6 +60,12 @@ env:
 # Skipping CI there would strand that loop. The label is applied at `gh pr create`
 # time, so the `opened` event already carries it — which is why `labeled` is not in
 # the trigger types above; adding it would run the full matrix on every label change.
+#
+# `agent-authored` is exempt for the same reason. It is the off-slot marker (#561):
+# an agent PR that does not hold the strict-serial slot never carries `agent-pr`, so
+# keying only on the slot marker left every off-slot agent draft with no CI at all
+# and no reviewer waiting on it. Both labels mean an agent wrote the diff, which is
+# what this exemption is actually about.
 jobs:
   # Answers one question for the five jobs below: did this change touch anything the
   # root toolchain builds? Six recent PRs changed only markdown and each paid the full
@@ -78,6 +84,7 @@ jobs:
       github.event_name != 'pull_request'
       || github.event.pull_request.draft == false
       || contains(github.event.pull_request.labels.*.name, 'agent-pr')
+      || contains(github.event.pull_request.labels.*.name, 'agent-authored')
     timeout-minutes: 5
     outputs:
       code: ${{ steps.filter.outputs.code }}

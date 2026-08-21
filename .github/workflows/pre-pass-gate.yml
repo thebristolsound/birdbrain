@@ -5,8 +5,17 @@ name: Pre-pass gate
 # the PRs that never get a pre-pass.
 #
 # Contract:
-#   no `agent-pr` label -> success ("not applicable")
-#   `agent-pr` label    -> pending, until the dispatcher posts the real verdict
+#   no agent label                     -> success ("not applicable")
+#   `agent-pr` or `agent-authored`      -> pending, until a reviewer posts the verdict
+#
+# Both labels, not just `agent-pr`. `agent-pr` is the strict-serial slot marker, so an
+# agent PR opened outside the slot never carries it and wears `agent-authored`
+# instead. The #561 decision of 2026-08-18 states that the pre-pass runs on
+# `agent-authored` PRs the same as `agent-pr` ones; this workflow was not updated at
+# the time. Wave 1 batch 1 is what that cost: five PRs, four of them evidence-affecting,
+# all reporting "Not an agent PR" while no reviewer had read a line. A hand-run pre-pass
+# on each found twelve blocking defects. Keying on the slot marker alone asks whether a
+# PR is in the queue; what the gate needs to know is whether an agent wrote it.
 #
 # This workflow writes a context that has never reported on this sha, and nothing
 # else. The dispatcher (.claude/skills/dispatch/SKILL.md section 4) owns every
@@ -17,9 +26,11 @@ name: Pre-pass gate
 # advisory, and a prerequisite for making it required — tracked in #488.
 #
 # The dispatcher applies `agent-pr` at `gh pr create` time, so the `opened` event
-# already sees the label and seeds `pending` directly. That ordering is what keeps
-# this workflow a pure seeder — there is no "upgrade success to pending" path to
-# race the dispatcher's verdict.
+# already sees the label and seeds `pending` directly.
+#
+# That ordering does not hold off-slot. #674 was labelled after `opened`, so the seed
+# had already written the "not applicable" success and write-only-if-absent left it
+# there (#501). The re-seed below covers exactly that transition and nothing wider.
 #
 # NOT YET A REQUIRED CHECK. Workflows triggered by Dependabot get a read-only
 # GITHUB_TOKEN under both `pull_request` and `pull_request_target`, so the status
@@ -51,7 +62,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ github.event.pull_request.head.sha }}
-          IS_AGENT: ${{ contains(github.event.pull_request.labels.*.name, 'agent-pr') }}
+          IS_AGENT: ${{ contains(github.event.pull_request.labels.*.name, 'agent-pr') || contains(github.event.pull_request.labels.*.name, 'agent-authored') }}
         run: |
           set -euo pipefail
 
@@ -61,16 +72,37 @@ jobs:
           # how a dispatcher verdict gets overwritten. Fail the job instead. An
           # absent status is still an exit-0 empty string, so the normal path is
           # unaffected.
-          state="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/status" \
-            --jq '.statuses[] | select(.context=="agent/pre-pass") | .state')"
+          # Read state AND description together. The description is what makes the
+          # re-seed below safe, so reading it separately would open the window the
+          # single read closes.
+          current="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/status" \
+            --jq '.statuses[] | select(.context=="agent/pre-pass") | "\(.state)\t\(.description)"')"
+          state="${current%%$'\t'*}"
+          desc="${current#*$'\t'}"
+          [ -n "$current" ] || { state=''; desc=''; }
 
-          # Write only when the context has never reported on this sha. Anything
-          # already there belongs to the dispatcher, and there is no
-          # compare-and-swap on the statuses API — a read-then-write that can
-          # publish over a verdict is not made safe by narrowing the window.
+          NOT_APPLICABLE='Not an agent PR — pre-pass not applicable.'
+
+          # Write when the context has never reported on this sha, and in exactly one
+          # other case: this workflow's own "not applicable" success, on a PR that now
+          # carries an agent label. That is #501 — a label applied after `opened` left
+          # a green badge that write-only-if-absent could never correct, and #674
+          # merged wearing one.
+          #
+          # The guard is the description, not the state. A reviewer verdict is also a
+          # `success`, so state alone cannot tell a verdict from a seed. No reviewer
+          # writes this exact string, so matching it cannot overwrite a verdict — which
+          # is the property 9c8ce66 was protecting when it removed the old
+          # success-to-pending transition. There is still no compare-and-swap on the
+          # statuses API; what changed is that the only value this can clobber is one
+          # this workflow wrote itself.
           if [ -n "$state" ]; then
-            echo "agent/pre-pass=$state already set on ${SHA:0:8}; leaving it"
-            exit 0
+            if [ "$state" = 'success' ] && [ "$desc" = "$NOT_APPLICABLE" ] && [ "$IS_AGENT" = 'true' ]; then
+              echo "agent/pre-pass=success was this workflow's own seed and ${SHA:0:8} is now an agent PR; re-seeding pending"
+            else
+              echo "agent/pre-pass=$state already set on ${SHA:0:8}; leaving it"
+              exit 0
+            fi
           fi
 
           if [ "$IS_AGENT" = "true" ]; then
@@ -78,7 +110,7 @@ jobs:
             new_desc='Reviewer pre-pass has not reported for this commit.'
           else
             new_state=success
-            new_desc='Not an agent PR — pre-pass not applicable.'
+            new_desc="$NOT_APPLICABLE"
           fi
 
           gh api "repos/${GITHUB_REPOSITORY}/statuses/${SHA}" \

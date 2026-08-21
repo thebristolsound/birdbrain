@@ -14,6 +14,7 @@ import {
 import { createTag, addTagToCapture, listTags, getTagsForCapture } from '@main/services/db/tagRepo'
 import { createSelector, listSelectors } from '@main/services/db/selectorRepo'
 import { createNote, listNotes } from '@main/services/db/noteRepo'
+import { referencesForNote } from '@main/services/db/noteReferenceRepo'
 import { getDb } from '@main/services/db/core'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
 import { defaultCaptureStore } from '@main/services/captureStore'
@@ -408,6 +409,21 @@ describe('caseArchive inspect', () => {
     expect(() => inspectCaseArchive(archivePath)).toThrow(/newer version/i)
   })
 
+  // The gate is the whole point of the #389 bump: a Birdbrain one version
+  // behind must refuse a mention-bearing archive with the worded message
+  // rather than fail opaquely mid-import on a node type it cannot parse. An
+  // off-by-one here (>= vs >) would let exactly that archive through.
+  it('refuses an archive exactly one version newer, and accepts its own version', () => {
+    rewritePackageJson(archivePath, (h) => ({
+      ...h,
+      schemaVersion: CASE_ARCHIVE_SCHEMA_VERSION + 1
+    }))
+    expect(() => inspectCaseArchive(archivePath)).toThrow(/newer version/i)
+
+    rewritePackageJson(archivePath, (h) => ({ ...h, schemaVersion: CASE_ARCHIVE_SCHEMA_VERSION }))
+    expect(inspectCaseArchive(archivePath).schemaVersion).toBe(CASE_ARCHIVE_SCHEMA_VERSION)
+  })
+
   it('does not write to disk or mutate the archive file', () => {
     const before = readFileSync(archivePath)
     inspectCaseArchive(archivePath)
@@ -475,6 +491,7 @@ describe('caseArchive import', () => {
   let archivePath: string
   let originalCaptureIds: string[]
   let originalHashes: string[]
+  let mentionNoteId: string
   const taggedCaptureUrl = 'https://example.com/mhtml'
   // Single FTS5 token (no hyphens — those parse as column filters in MATCH).
   const distinctiveText = 'distinctivetextfromtxtsidecar'
@@ -554,12 +571,52 @@ describe('caseArchive import', () => {
     originalCaptureIds = [mhtmlCaptureId, legacyCaptureId]
     originalHashes = [contentHash, legacyHash]
 
-    createNote({ caseId, captureId: mhtmlCaptureId, title: 'Note 1', body: 'Body text' })
+    const plainNote = createNote({
+      caseId,
+      captureId: mhtmlCaptureId,
+      title: 'Note 1',
+      body: 'Body text'
+    })
 
     const tag = createTag({ name: 'Evidence', color: '#00ff00' })
     addTagToCapture({ captureId: mhtmlCaptureId, tagId: tag.id })
 
-    createSelector({ caseId, pattern: 'foo', isRegex: false, label: 'Foo selector' })
+    const selector = createSelector({
+      caseId,
+      pattern: 'foo',
+      isRegex: false,
+      label: 'Foo selector'
+    })
+
+    // A note carrying one Mention of each target type (#389). Re-import lands
+    // in this same database with the source rows still present, so every
+    // remappable id collides and the round-trip below sees the remap rather
+    // than a lucky pass-through.
+    mentionNoteId = createNote({
+      caseId,
+      title: 'Mentions',
+      bodyDoc: JSON.stringify({
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [
+              { type: 'text', text: 'links: ' },
+              {
+                type: 'mention',
+                attrs: { targetType: 'capture', targetId: mhtmlCaptureId, label: 'stale' }
+              },
+              {
+                type: 'mention',
+                attrs: { targetType: 'selector', targetId: selector.id, label: '' }
+              },
+              { type: 'mention', attrs: { targetType: 'tag', targetId: tag.id, label: '' } },
+              { type: 'mention', attrs: { targetType: 'note', targetId: plainNote.id, label: '' } }
+            ]
+          }
+        ]
+      })
+    }).id
 
     toggleFavorite(mhtmlCaptureId)
 
@@ -593,7 +650,7 @@ describe('caseArchive import', () => {
     const imported = listCaptures(newCaseId)
     expect(imported).toHaveLength(2)
     expect(imported.map((c) => c.hash).sort()).toEqual([...originalHashes].sort())
-    expect(listNotes(newCaseId)).toHaveLength(1)
+    expect(listNotes(newCaseId)).toHaveLength(2)
     expect(listSelectors(newCaseId)).toHaveLength(1)
 
     // files landed under the new case dir, named by each capture's (possibly
@@ -659,6 +716,73 @@ describe('caseArchive import', () => {
     const all = listTags().filter((t) => t.name.toLowerCase() === 'evidence')
     expect(all).toHaveLength(1)
     void newCaseId
+  })
+
+  // #389 known-answer: export a mention-bearing case, import it back into the
+  // database that still holds the source rows (so every remappable id
+  // collides and the tag merges by name), and require the resolved references
+  // to be the same set of targets — pointing at the IMPORTED rows. The index
+  // itself never travels; this is what proves re-extraction reproduced it.
+  it('carries note Mentions through import with ids remapped and references re-extracted', async () => {
+    const before = referencesForNote(mentionNoteId)
+    expect(before.map((r) => r.targetType)).toEqual(['capture', 'selector', 'tag', 'note'])
+
+    const { newCaseId } = await importCaseArchive(archivePath)
+
+    const importedMentionNote = listNotes(newCaseId).find((n) => n.title === 'Mentions')!
+    const importedCapture = listCaptures(newCaseId).find((c) => c.url === taggedCaptureUrl)!
+    const importedSelector = listSelectors(newCaseId)[0]
+    const importedPlainNote = listNotes(newCaseId).find((n) => n.title === 'Note 1')!
+    const mergedTag = listTags().find((t) => t.name.toLowerCase() === 'evidence')!
+
+    const after = referencesForNote(importedMentionNote.id)
+    expect(after).toEqual([
+      {
+        noteId: importedMentionNote.id,
+        ord: 0,
+        targetType: 'capture',
+        targetId: importedCapture.id,
+        label: 'MHTML Capture',
+        resolved: true
+      },
+      {
+        noteId: importedMentionNote.id,
+        ord: 1,
+        targetType: 'selector',
+        targetId: importedSelector.id,
+        label: 'Foo selector',
+        resolved: true
+      },
+      {
+        noteId: importedMentionNote.id,
+        ord: 2,
+        targetType: 'tag',
+        targetId: mergedTag.id,
+        label: mergedTag.name,
+        resolved: true
+      },
+      {
+        noteId: importedMentionNote.id,
+        ord: 3,
+        targetType: 'note',
+        targetId: importedPlainNote.id,
+        label: 'Note 1',
+        resolved: true
+      }
+    ])
+    // The remap actually happened for the collision-remapped types: the
+    // imported references cite the new rows, not the source ones.
+    expect(importedCapture.id).not.toBe(mhtmlCaptureId)
+    expect(after.map((r) => ({ ord: r.ord, targetType: r.targetType, label: r.label }))).toEqual(
+      before.map((r) => ({ ord: r.ord, targetType: r.targetType, label: r.label }))
+    )
+
+    // Derived state stays derived: no reference rows travel in the archive.
+    const data = JSON.parse(
+      readStoredZip(readFileSync(archivePath)).get('data.json')!.toString('utf-8')
+    )
+    expect(Object.keys(data)).not.toContain('noteReferences')
+    expect(JSON.stringify(data)).not.toContain('note_references')
   })
 
   it('blocks tampered archives unless overridden, and records the override', async () => {

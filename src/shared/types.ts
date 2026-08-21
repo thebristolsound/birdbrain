@@ -2,6 +2,7 @@
 // change here is a change to the contract between all three.
 
 import type { NoteAnchor } from '@shared/noteAnchor'
+import type { MentionTargetType } from '@shared/noteDoc'
 
 export interface Case {
   id: string
@@ -629,6 +630,50 @@ export interface Note {
   screenshotPath?: string
   createdAt: string
   updatedAt: string
+}
+
+export type { MentionTargetType } from '@shared/noteDoc'
+
+/**
+ * One row of a note's outgoing references, in document order. Derived in main
+ * from the note's Mentions at write time; resolve status and label are read
+ * time — a deleted target surfaces as `resolved: false`, never disappears.
+ */
+export interface NoteReference {
+  noteId: string
+  /** Document-order position; duplicates of the same target keep their own row. */
+  ord: number
+  targetType: MentionTargetType
+  targetId: string
+  /**
+   * The target's CURRENT display name (capture title, selector label or
+   * pattern, tag name, note title) — not the label cached in the Mention.
+   * Null when the reference is broken (and for an untitled capture).
+   */
+  label: string | null
+  /** False when the target row does not exist: a broken, still-visible reference. */
+  resolved: boolean
+}
+
+/** A note that mentions a given target, grouped per note for backlink lists. */
+export interface NoteBacklink {
+  noteId: string
+  noteTitle: string
+  /** How many times the note mentions the target. */
+  mentionCount: number
+  /** Leading plain-text excerpt of the note body, for list snippets. */
+  snippet: string
+  updatedAt: string
+}
+
+/** Whole-case aggregate for the backlink map (#402): one row per mentioned target. */
+export interface NoteBacklinkCount {
+  targetType: MentionTargetType
+  targetId: string
+  /** Distinct notes mentioning the target. */
+  noteCount: number
+  /** Total mentions across those notes. */
+  mentionCount: number
 }
 
 export type AnnotationShape =

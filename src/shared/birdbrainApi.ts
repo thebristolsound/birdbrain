@@ -17,6 +17,9 @@ import type {
   ExtractedDataSubcategory,
   ExtractedDataItem,
   ExtractedDataSearchResult,
+  NoteBacklink,
+  NoteBacklinkCount,
+  NoteReference,
   AnnotationsBundle,
   CaptureAnnotations,
   AnnotationPin,
@@ -41,6 +44,7 @@ import type {
   UpdateSelectorParams,
   CreateNoteParams,
   UpdateNoteParams,
+  NoteBacklinksParams,
   BulkCreateSelectorsParams,
   DbStats,
   DbTableRowsParams,
@@ -141,6 +145,9 @@ export interface BirdbrainAPI {
     delete(id: string): Promise<boolean>
     count(caseId: string): Promise<number>
     search(caseId: string, query: string): Promise<Note[]>
+    references(noteId: string): Promise<NoteReference[]>
+    backlinks(params: NoteBacklinksParams): Promise<NoteBacklink[]>
+    backlinkCounts(caseId: string): Promise<NoteBacklinkCount[]>
   }
   wayback: {
     lookup(captureId: string): Promise<WaybackLookupResult>

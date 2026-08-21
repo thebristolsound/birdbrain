@@ -10,6 +10,8 @@ import {
 import { buildCsv } from '@main/services/csvEscape'
 import { parseNoteAnchor } from '@shared/noteAnchor'
 import { assertAnchorInCase } from '@main/services/db/noteRepo'
+import { assertMentionsInCase, rewriteReferencesForNote } from '@main/services/db/noteReferenceRepo'
+import { extractNoteMentions, noteDocToText, parseNoteDoc, type NoteMention } from '@shared/noteDoc'
 import type { DbStats, DbTableRowsParams, DbTableRowsResult, OrphanReport } from '@shared/ipc'
 
 export const ALLOWED_TABLES = [
@@ -111,41 +113,75 @@ function assertPkIdentifiesUniqueRow(table: string, pk: Record<string, string>):
  * place a structurally valid but cross-case anchor slips through.
  * `fallbackCaseId` is the row's CURRENT `case_id`, supplied by the caller for
  * an update whose payload does not itself touch that column. The inverse — a
- * payload that moves `case_id` without touching `anchor_json` — is not this
- * function's job to catch, because it never sees the row's stored anchor;
- * `updateRow` validates that case ahead of calling in, against the existing
- * `anchor_json`.
+ * payload that moves `case_id` without touching the structured columns — is
+ * not this function's job to catch, because it never sees the row's stored
+ * anchor or document; `updateRow` validates that case ahead of calling in,
+ * against the existing `anchor_json` and `body_doc`.
+ *
+ * `body_doc` gets the same treatment (#389, maintainer ruling 2026-08-20):
+ * `body` is derived from it everywhere else, and since Mentions the note's
+ * rows in the references index are too. A `mentions` array in the result
+ * means the write touches `body_doc` and the caller must rewrite the note's
+ * references to exactly that list, in the same transaction as the write.
  */
 function validatedRow(
   table: string,
   data: Record<string, unknown>,
   fallbackCaseId?: string
-): Record<string, unknown> {
-  if (table !== 'notes') return data
+): { row: Record<string, unknown>; mentions?: NoteMention[] } {
+  if (table !== 'notes') return { row: data }
 
-  const writesJson = 'anchor_json' in data
-  const writesKind = 'anchor_kind' in data
+  let row = data
+  let mentions: NoteMention[] | undefined
+
+  if ('body_doc' in row) {
+    const value = row.body_doc
+    if (value === null || value === undefined || value === '') {
+      // Clearing the document leaves the note plain text — a valid state —
+      // and clears the references derived from it (spike constraint 8). Any
+      // `body` in the same payload is a plain-text write and passes through.
+      row = { ...row, body_doc: null }
+      mentions = []
+    } else if (typeof value !== 'string') {
+      throw new Error('notes.body_doc must be a string or NULL')
+    } else {
+      const doc = parseNoteDoc(value)
+      // The document dictates `body`, overriding any submitted alongside it —
+      // same rule as resolveBody in noteRepo, so the hatch cannot store a
+      // body the document does not contain.
+      row = { ...row, body: noteDocToText(doc), body_doc: JSON.stringify(doc) }
+      mentions = extractNoteMentions(doc)
+      const mentionCaseId = (row.case_id as string | undefined) ?? fallbackCaseId
+      if (mentionCaseId) assertMentionsInCase(mentions, mentionCaseId)
+    }
+  }
+
+  const writesJson = 'anchor_json' in row
+  const writesKind = 'anchor_kind' in row
 
   if (writesKind && !writesJson) {
     throw new Error('notes.anchor_kind is derived from anchor_json; edit anchor_json instead')
   }
-  if (!writesJson) return data
+  if (!writesJson) return { row, mentions }
 
-  const value = data.anchor_json
+  const value = row.anchor_json
   if (value === null || value === undefined || value === '') {
-    return { ...data, anchor_json: null, anchor_kind: null }
+    return { row: { ...row, anchor_json: null, anchor_kind: null }, mentions }
   }
   if (typeof value !== 'string') {
     throw new Error('notes.anchor_json must be a string or NULL')
   }
   const parsed = parseNoteAnchor(value)
-  const caseId = (data.case_id as string | undefined) ?? fallbackCaseId
+  const caseId = (row.case_id as string | undefined) ?? fallbackCaseId
   // A create/update whose row we cannot resolve a case_id for skips this
   // check rather than blocking: for a create with no case_id the NOT NULL
   // column constraint below fails the write anyway, and there is nothing
   // this check adds ahead of that.
   if (caseId) assertAnchorInCase(parsed, caseId)
-  return { ...data, anchor_json: JSON.stringify(parsed), anchor_kind: parsed.kind }
+  return {
+    row: { ...row, anchor_json: JSON.stringify(parsed), anchor_kind: parsed.kind },
+    mentions
+  }
 }
 
 export function getDbStats(dbPath: string): DbStats {
@@ -208,20 +244,31 @@ export function getTableRows(params: DbTableRowsParams): DbTableRowsResult {
 export function createRow(table: string, data: Record<string, unknown>): Record<string, unknown> {
   assertAllowedTable(table)
   assertValidColumns(table, data)
-  const row = validatedRow(table, data)
+  const { row, mentions } = validatedRow(table, data)
 
   const db = getDb()
   const keys = Object.keys(row)
   const placeholders = keys.map(() => '?').join(', ')
   const values = keys.map((k) => row[k])
 
-  db.prepare(
-    `INSERT INTO "${table}" (${keys.map((k) => `"${k}"`).join(', ')}) VALUES (${placeholders})`
-  ).run(...values)
+  // One transaction for the row and its references (#389): the index is
+  // derived from body_doc and must never commit without it.
+  const write = db.transaction(() => {
+    db.prepare(
+      `INSERT INTO "${table}" (${keys.map((k) => `"${k}"`).join(', ')}) VALUES (${placeholders})`
+    ).run(...values)
 
-  // Return the inserted row by looking up the last rowid
-  const lastRow = db.prepare(`SELECT * FROM "${table}" WHERE rowid = last_insert_rowid()`).get()
-  return (lastRow as Record<string, unknown>) ?? data
+    // Return the inserted row by looking up the last rowid
+    const lastRow = db
+      .prepare(`SELECT * FROM "${table}" WHERE rowid = last_insert_rowid()`)
+      .get() as Record<string, unknown> | undefined
+    if (mentions && typeof lastRow?.id === 'string') {
+      rewriteReferencesForNote(lastRow.id, mentions)
+    }
+    return lastRow
+  })
+
+  return write() ?? data
 }
 
 export function updateRow(
@@ -240,10 +287,10 @@ export function updateRow(
     .join(' AND ')
   const pkValues = Object.values(pk)
 
-  // An anchor edit that doesn't also touch case_id needs the row's CURRENT
-  // case to validate against — look it up before writing.
+  // An anchor or document edit that doesn't also touch case_id needs the
+  // row's CURRENT case to validate against — look it up before writing.
   let fallbackCaseId: string | undefined
-  if (table === 'notes' && 'anchor_json' in data && !('case_id' in data)) {
+  if (table === 'notes' && ('anchor_json' in data || 'body_doc' in data) && !('case_id' in data)) {
     const existing = db
       .prepare(`SELECT case_id FROM "${table}" WHERE ${whereClauses}`)
       .get(...pkValues) as { case_id?: string } | undefined
@@ -265,17 +312,52 @@ export function updateRow(
     }
   }
 
-  const row = validatedRow(table, data, fallbackCaseId)
+  // Same guard for Mentions (#389): a case_id move that doesn't touch
+  // body_doc carries the stored document's mentions with it — validate them
+  // against the destination case so the move cannot land cross-case
+  // references the write paths all reject.
+  if (table === 'notes' && 'case_id' in data && !('body_doc' in data)) {
+    const existing = db
+      .prepare(`SELECT body_doc FROM "${table}" WHERE ${whereClauses}`)
+      .get(...pkValues) as { body_doc?: string | null } | undefined
+    if (existing?.body_doc) {
+      let mentions: NoteMention[]
+      try {
+        mentions = extractNoteMentions(existing.body_doc)
+      } catch (err) {
+        // A stored document that no longer parses (a hatch write predating
+        // #389, #662) refuses the move rather than carrying mentions nothing
+        // can read into another case — but name the column that refused it,
+        // or the operator reads a schema error about one they never touched.
+        throw new Error(
+          `notes.body_doc for this row does not parse, so its Mentions cannot be checked ` +
+            `against the destination case: ${(err as Error).message}`
+        )
+      }
+      assertMentionsInCase(mentions, data.case_id as string)
+    }
+  }
+
+  const { row, mentions } = validatedRow(table, data, fallbackCaseId)
   const dataKeys = Object.keys(row)
   if (dataKeys.length === 0) return false
 
   const setClauses = dataKeys.map((k) => `"${k}" = ?`).join(', ')
   const values = [...Object.values(row), ...pkValues]
 
-  const result = db
-    .prepare(`UPDATE "${table}" SET ${setClauses} WHERE ${whereClauses}`)
-    .run(...values)
-  return result.changes > 0
+  // One transaction for the row and its references (#389); pk names exactly
+  // the table's primary key (asserted above), so for notes `pk.id` is the
+  // note whose index rows the write must replace.
+  const write = db.transaction(() => {
+    const result = db
+      .prepare(`UPDATE "${table}" SET ${setClauses} WHERE ${whereClauses}`)
+      .run(...values)
+    if (mentions && result.changes > 0) {
+      rewriteReferencesForNote(pk.id, mentions)
+    }
+    return result
+  })
+  return write().changes > 0
 }
 
 export function deleteRow(table: string, pk: Record<string, string>): boolean {

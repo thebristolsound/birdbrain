@@ -117,7 +117,10 @@ const birdbrain = {
     update: bridge(IPC_CHANNELS.NOTES_UPDATE),
     delete: bridge(IPC_CHANNELS.NOTES_DELETE),
     count: bridge(IPC_CHANNELS.NOTES_COUNT),
-    search: bridge(IPC_CHANNELS.NOTES_SEARCH)
+    search: bridge(IPC_CHANNELS.NOTES_SEARCH),
+    references: bridge(IPC_CHANNELS.NOTES_REFERENCES),
+    backlinks: bridge(IPC_CHANNELS.NOTES_BACKLINKS),
+    backlinkCounts: bridge(IPC_CHANNELS.NOTES_BACKLINK_COUNTS)
   },
   wayback: {
     lookup: bridge(IPC_CHANNELS.WAYBACK_LOOKUP),

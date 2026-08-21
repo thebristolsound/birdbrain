@@ -208,7 +208,8 @@ describe('popup MANUAL_CAPTURE pre-filter (#387)', () => {
 
     expect(response).toEqual({
       started: false,
-      blocked: { reason: 'user', pattern: IGNORE_PATTERN }
+      blocked: { reason: 'user', pattern: IGNORE_PATTERN },
+      notReady: false
     })
     // The point of the pre-filter: the capture never reaches the server, so the
     // 403 is no longer the only thing standing between an ignored URL and the
@@ -225,7 +226,11 @@ describe('popup MANUAL_CAPTURE pre-filter (#387)', () => {
       caseId: 'case-a'
     })
 
-    expect(response).toEqual({ started: false, blocked: { reason: 'default', pattern: null } })
+    expect(response).toEqual({
+      started: false,
+      blocked: { reason: 'default', pattern: null },
+      notReady: false
+    })
     expect(vi.mocked(sendMhtmlCapture)).not.toHaveBeenCalled()
   })
 
@@ -238,7 +243,7 @@ describe('popup MANUAL_CAPTURE pre-filter (#387)', () => {
       caseId: 'case-a'
     })
 
-    expect(response).toEqual({ started: false, blocked: null })
+    expect(response).toEqual({ started: false, blocked: null, notReady: false })
     expect(vi.mocked(sendMhtmlCapture)).not.toHaveBeenCalled()
   })
 
@@ -250,7 +255,7 @@ describe('popup MANUAL_CAPTURE pre-filter (#387)', () => {
       tabId: 13,
       caseId: 'case-a'
     })
-    expect(response).toEqual({ started: true, blocked: null })
+    expect(response).toEqual({ started: true, blocked: null, notReady: false })
 
     const capturingStatus = await ask<PopupPageStatus>({ type: 'GET_PAGE_STATUS', tabId: 13 })
     expect(capturingStatus?.capturing).toBe(true)
@@ -414,6 +419,10 @@ describe('popup GET_PAGE_STATUS (#387)', () => {
 
     const after = await ask<PopupPageStatus>({ type: 'GET_PAGE_STATUS', tabId: 30 })
     expect(after?.selectorSummary).toBeNull()
+    // And the capture record with them. A manifest index is meaningful only in
+    // the case directory that produced it, so reporting "captured, index #42"
+    // under Case B would tell the operator Case B holds a page it does not.
+    expect(after?.lastCapture).toBeNull()
   })
 
   it('answers neutrally when the tab URL cannot be read', async () => {
@@ -427,7 +436,8 @@ describe('popup GET_PAGE_STATUS (#387)', () => {
       capturing: false,
       lastCapture: null,
       selectorSummary: null,
-      activeSelectorCount: 2
+      activeSelectorCount: 2,
+      rulesLoaded: true
     })
   })
 })

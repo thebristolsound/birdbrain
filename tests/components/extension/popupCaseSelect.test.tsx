@@ -51,6 +51,7 @@ function pageStatus(overrides: Partial<PopupPageStatus> = {}): PopupPageStatus {
     lastCapture: null,
     selectorSummary: null,
     activeSelectorCount: 0,
+    rulesLoaded: true,
     ...overrides
   }
 }
@@ -254,6 +255,33 @@ describe('popup page status', () => {
     expect(screen.queryByRole('button', { name: 'Capture now' })).toBeNull()
   })
 
+  it('offers no capture and says why while the ignore rules are still loading', async () => {
+    // The worker answers blocked: null here only because its pattern list is
+    // empty. Offering Capture now would send a page the operator may have
+    // excluded, which is the fail-open the pre-filter exists to close.
+    backgroundReplies = {
+      GET_PAGE_STATUS: pageStatus({ rulesLoaded: false })
+    }
+    await renderPopup()
+
+    expect(await screen.findByText('Checking this page…')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Capture now' })).toBeNull()
+  })
+
+  it('says nothing about selectors while the ignore rules are still loading', async () => {
+    backgroundReplies = {
+      GET_PAGE_STATUS: pageStatus({
+        rulesLoaded: false,
+        selectorSummary: { selectors: 2, hits: 3 },
+        activeSelectorCount: 5
+      })
+    }
+    await renderPopup()
+
+    await screen.findByText('Checking this page…')
+    expect(screen.queryByText('2 selectors matched · 3 hits on this page')).toBeNull()
+  })
+
   it('summarises the last selector scan of this page', async () => {
     backgroundReplies = {
       GET_PAGE_STATUS: pageStatus({
@@ -271,7 +299,8 @@ describe('popup page status', () => {
       GET_PAGE_STATUS: pageStatus(),
       MANUAL_CAPTURE: {
         started: false,
-        blocked: { reason: 'user', pattern: 'secret.example.*' }
+        blocked: { reason: 'user', pattern: 'secret.example.*' },
+        notReady: false
       } satisfies ManualCaptureResponse
     }
     await renderPopup()
@@ -293,7 +322,11 @@ describe('popup page status', () => {
   it('shows the capture in flight once the background accepts it', async () => {
     backgroundReplies = {
       GET_PAGE_STATUS: pageStatus(),
-      MANUAL_CAPTURE: { started: true, blocked: null } satisfies ManualCaptureResponse
+      MANUAL_CAPTURE: {
+        started: true,
+        blocked: null,
+        notReady: false
+      } satisfies ManualCaptureResponse
     }
     await renderPopup()
 

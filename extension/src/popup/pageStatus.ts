@@ -9,7 +9,7 @@
 // before it starts — and says so rather than implying a lookup happened.
 import type { PopupPageStatus } from '@extension/messages'
 
-export type PageStatusTone = 'blocked' | 'capturing' | 'captured' | 'idle'
+export type PageStatusTone = 'blocked' | 'capturing' | 'captured' | 'idle' | 'unknown'
 
 export interface PageStatusView {
   tone: PageStatusTone
@@ -44,6 +44,16 @@ export function derivePageStatus(status: PopupPageStatus | null, now: number): P
   }
   if (!status.url) {
     return { tone: 'idle', text: 'No page to capture', sub: 'Open a page in this tab first.' }
+  }
+  // The rules have not reached this worker yet, so `blocked` is answered from an
+  // empty list and means nothing. Reporting "not captured yet" here would offer
+  // a capture of a page the operator may have excluded.
+  if (!status.rulesLoaded) {
+    return {
+      tone: 'unknown',
+      text: 'Checking this page…',
+      sub: 'Waiting for your ignore rules from Birdbrain.'
+    }
   }
   if (status.blocked) {
     return {
@@ -89,6 +99,9 @@ export function derivePageStatus(status: PopupPageStatus | null, now: number): P
  */
 export function deriveMatchSummary(status: PopupPageStatus | null): string | null {
   if (!status || !status.url) return null
+  // Same reason as derivePageStatus: with no rules loaded, "ignored" is not yet
+  // a question this worker can answer.
+  if (!status.rulesLoaded) return null
   if (status.blocked) return "Selectors don't run on ignored pages."
   if (status.selectorSummary) {
     const { selectors, hits } = status.selectorSummary

@@ -51,11 +51,18 @@ export function globToRegex(pattern: string): RegExp {
  * extension, which has no budget, eventually reports the match. That direction
  * is fail-open on the server: an operator's ignore rule can admit a capture
  * rather than refuse it. Every live extension route pre-filters with this
- * matcher and so never reaches the server's answer — including the popup's
- * Capture button, which used to leave the server's 403 as sole enforcement
- * until #387 closed it. On a pattern of that class the extension therefore
- * refuses a capture the server would have accepted: more conservative than the
- * server, never less.
+ * matcher — including the popup's Capture button, which left the server's 403
+ * as sole enforcement until #387 closed it — so on a pattern of that class the
+ * extension refuses a capture the server would have accepted.
+ *
+ * That holds only once the extension has the rules. They reach the service
+ * worker with the first successful status poll and live in worker memory, so
+ * between a cold start and that poll the pattern list is empty and this matcher
+ * answers "not ignored" for everything. The extension routes therefore gate on
+ * `PopupPageStatus.rulesLoaded` rather than on this matcher alone: no capture
+ * route runs while the list may be empty. Without that gate the pre-filter is
+ * fail-open in the same direction as the server, and for a much wider class of
+ * pattern.
  * Pinned as a known answer in `tests/shared/urlPatterns.test.ts` (with the
  * budget injected, so the pin is on the semantics and not on the runner's
  * hardware); closing it means changing what a timeout means, which is a

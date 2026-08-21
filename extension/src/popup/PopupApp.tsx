@@ -392,12 +392,18 @@ export function Popup(): React.JSX.Element {
       tabId: tab.id,
       caseId: activeCase.id
     })
-    if (response?.blocked) {
+    if (!response) {
+      setBlockedNotice('Not captured — Birdbrain did not answer. Try again.')
+    } else if (response.notReady) {
+      setBlockedNotice('Not captured — still loading your ignore rules. Try again in a moment.')
+    } else if (response.blocked) {
       setBlockedNotice(
         response.blocked.reason === 'user' && response.blocked.pattern
           ? `Not captured — ignored by your rule: ${response.blocked.pattern}`
           : "Not captured — this page can't be captured."
       )
+    } else if (!response.started) {
+      setBlockedNotice('Not captured — this tab has no page to capture.')
     }
     await refreshPageStatus()
   }
@@ -482,8 +488,9 @@ export function Popup(): React.JSX.Element {
           <div className="mt-[9px] flex items-start gap-[7px] rounded-md border border-border bg-canvas px-[10px] py-2">
             <Lock className="mt-px shrink-0 text-text-faint" />
             <span className="text-[11px] leading-[1.5] text-text-faint">
-              The extension only ever knows the case you&apos;re working in — no other case names,
-              captures or selectors leave the app.
+              Nothing you capture or select leaves Birdbrain. The extension reads your case
+              list so you can pick one here, and sends captures only to the app on this
+              machine.
             </span>
           </div>
         </div>
@@ -494,7 +501,14 @@ export function Popup(): React.JSX.Element {
 
   const status = derivePageStatus(pageStatus, now)
   const matchSummary = deriveMatchSummary(pageStatus)
-  const capturable = pageStatus !== null && pageStatus.url !== null && pageStatus.blocked === null
+  // `rulesLoaded` is part of the condition, not a detail: until the operator's
+  // ignore rules reach the worker, `blocked === null` only means the empty list
+  // matched nothing.
+  const capturable =
+    pageStatus !== null &&
+    pageStatus.url !== null &&
+    pageStatus.rulesLoaded &&
+    pageStatus.blocked === null
   const StatusIcon =
     status.tone === 'captured' ? CheckCircle : status.tone === 'blocked' ? Ban : Clock
 

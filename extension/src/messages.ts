@@ -36,6 +36,16 @@ export interface PopupPageStatus {
   selectorSummary: { selectors: number; hits: number } | null
   /** Enabled selectors on the active case, across all its groups. */
   activeSelectorCount: number
+  /**
+   * The operator's ignore rules have reached this service worker at least once.
+   *
+   * They live only in worker memory and arrive with the first successful status
+   * poll, so between a cold start and that poll the worker holds an empty list.
+   * An empty list matches nothing, which would answer `blocked: null` for a URL
+   * the operator has excluded. While this is false, `blocked` says nothing and
+   * the popup must not offer a capture.
+   */
+  rulesLoaded: boolean
 }
 
 /** The background's answer to a popup MANUAL_CAPTURE request. */
@@ -44,4 +54,10 @@ export interface ManualCaptureResponse {
   started: boolean
   /** Non-null when the pre-filter refused the URL, so the popup can say why. */
   blocked: PopupBlock | null
+  /**
+   * Nothing was sent because the operator's ignore rules had not loaded yet, so
+   * the pre-filter could not decide. Distinct from `blocked`: the rules may or
+   * may not refuse this URL, and the worker declines to guess.
+   */
+  notReady: boolean
 }

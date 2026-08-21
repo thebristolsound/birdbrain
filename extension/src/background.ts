@@ -323,6 +323,11 @@ let activeSelectors: ActiveSelectorsResult = []
 let availableCases: Array<{ id: string; name: string }> = []
 let activeCaseId: string | null = null
 let userIgnoredPatterns: string[] = []
+// The ignore rules live only here, and only from the first successful poll
+// onwards. Before that the list is empty, and an empty list matches nothing —
+// so every URL would read as allowed. Nothing that refuses a capture may run
+// while this is false; see PopupPageStatus.rulesLoaded.
+let ignoreRulesLoaded = false
 let captureScreenshotsEnabled = true
 
 // --- Connection management ---
@@ -340,6 +345,7 @@ async function checkStatus(): Promise<void> {
     availableCases = status.cases || []
     activeCaseId = status.activeCase?.id || null
     userIgnoredPatterns = status.ignoredUrlPatterns || []
+    ignoreRulesLoaded = true
     captureScreenshotsEnabled = status.captureScreenshots !== false
     // dedupeWindowMs = (status.dedupeWindowSeconds ?? 60) * 1000
 
@@ -373,6 +379,11 @@ async function checkStatus(): Promise<void> {
       // The cached per-tab match summaries counted the previous case's
       // selectors, so the popup would otherwise attribute them to the new one.
       selectorSummaryByTab.clear()
+      // Same reason, and it matters more: a manifest index is meaningful only
+      // inside the case directory that produced it. Left in place, the popup
+      // would report "captured, index #36" under the new case's name and the
+      // operator would skip a page that case does not have.
+      lastCaptureByTab.clear()
       // Clear highlights on all tabs
       chrome.tabs.query({}, (tabs) => {
         for (const t of tabs) {
@@ -589,7 +600,8 @@ function pageStatusForTab(tabId: number, url: string | undefined): PopupPageStat
       capturing: false,
       lastCapture: null,
       selectorSummary: null,
-      activeSelectorCount
+      activeSelectorCount,
+      rulesLoaded: ignoreRulesLoaded
     }
   }
   // Both caches are keyed by tab but matched on URL: a tab that navigated away
@@ -606,7 +618,8 @@ function pageStatusForTab(tabId: number, url: string | undefined): PopupPageStat
         : null,
     selectorSummary:
       summary?.url === url ? { selectors: summary.selectors, hits: summary.hits } : null,
-    activeSelectorCount
+    activeSelectorCount,
+    rulesLoaded: ignoreRulesLoaded
   }
 }
 
@@ -952,14 +965,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
 
-  if (message.type === 'GET_PAGE_STATUS' && message.tabId) {
+  if (message.type === 'GET_PAGE_STATUS' && typeof message.tabId === 'number') {
     chrome.tabs.get(message.tabId, (tab) => {
       sendResponse(pageStatusForTab(message.tabId, tab?.url))
     })
     return true
   }
 
-  if (message.type === 'MANUAL_CAPTURE' && message.tabId && message.caseId) {
+  if (message.type === 'MANUAL_CAPTURE' && typeof message.tabId === 'number' && message.caseId) {
+    // Refused before the tab is even read: with no rules loaded the pre-filter
+    // cannot decide, and starting anyway would send a capture the operator may
+    // have excluded. The popup asks the operator to retry rather than silently
+    // capturing or silently doing nothing.
+    if (!ignoreRulesLoaded) {
+      sendResponse({ started: false, blocked: null, notReady: true } satisfies ManualCaptureResponse)
+      return true
+    }
     chrome.tabs.get(message.tabId, (tab) => {
       // The URL is re-read here rather than taken from the popup: the tab may
       // have navigated between the popup rendering its Capture button and the
@@ -967,16 +988,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       // now — the same reason restoreSelectorHighlights re-reads it.
       const url = tab?.url
       if (!url) {
-        sendResponse({ started: false, blocked: null } satisfies ManualCaptureResponse)
+        sendResponse({
+          started: false,
+          blocked: null,
+          notReady: false
+        } satisfies ManualCaptureResponse)
         return
       }
       const blocked = blockedCaptureReason(url)
       if (blocked) {
-        sendResponse({ started: false, blocked } satisfies ManualCaptureResponse)
+        sendResponse({ started: false, blocked, notReady: false } satisfies ManualCaptureResponse)
         return
       }
       manualCaptureTab(message.tabId, url, message.caseId)
-      sendResponse({ started: true, blocked: null } satisfies ManualCaptureResponse)
+      sendResponse({ started: true, blocked: null, notReady: false } satisfies ManualCaptureResponse)
     })
     return true
   }

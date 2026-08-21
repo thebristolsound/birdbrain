@@ -895,6 +895,116 @@ describe('ipcHandlers — notes', () => {
     const reread = expectOk<{ anchor?: unknown }>(await invoke(IPC_CHANNELS.NOTES_GET, note.id))
     expect(reread.anchor).toBeUndefined()
   })
+
+  // #389: the reference reads are the whole renderer-facing surface of the
+  // index (the write side has no channel of its own — it rides the note
+  // write), so the wiring is what this covers.
+  it('serves references, backlinks and whole-case backlink counts', async () => {
+    const capture = insertCapture({
+      caseId,
+      url: 'https://mentioned.example',
+      title: 'Mentioned capture',
+      hash: 'abc123',
+      timestamp: new Date().toISOString()
+    })
+    const bodyDoc = JSON.stringify({
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            {
+              type: 'mention',
+              attrs: { targetType: 'capture', targetId: capture.id, label: 'stale' }
+            }
+          ]
+        }
+      ]
+    })
+    const note = expectOk<{ id: string }>(
+      await invoke(IPC_CHANNELS.NOTES_CREATE, { caseId, title: 'Mentions', bodyDoc })
+    )
+
+    expect(
+      expectOk<Array<Record<string, unknown>>>(await invoke(IPC_CHANNELS.NOTES_REFERENCES, note.id))
+    ).toMatchObject([
+      { targetType: 'capture', targetId: capture.id, label: 'Mentioned capture', resolved: true }
+    ])
+
+    expect(
+      expectOk<Array<Record<string, unknown>>>(
+        await invoke(IPC_CHANNELS.NOTES_BACKLINKS, {
+          caseId,
+          targetType: 'capture',
+          targetId: capture.id
+        })
+      )
+    ).toMatchObject([{ noteId: note.id, noteTitle: 'Mentions', mentionCount: 1 }])
+
+    expect(
+      expectOk<Array<Record<string, unknown>>>(
+        await invoke(IPC_CHANNELS.NOTES_BACKLINK_COUNTS, caseId)
+      )
+    ).toMatchObject([
+      { targetType: 'capture', targetId: capture.id, noteCount: 1, mentionCount: 1 }
+    ])
+  })
+
+  // Backlinks is the one reference channel taking a payload object, and the
+  // contract's types are compile-time only. An off-enum targetType reaching
+  // the query would come back as an empty list — an answer, not a refusal.
+  it('refuses a malformed backlinks payload instead of answering it', async () => {
+    for (const payload of [
+      undefined,
+      { caseId, targetType: 'bogus', targetId: 'x' },
+      { caseId, targetType: 'capture' },
+      { targetType: 'capture', targetId: 'x' },
+      { caseId, targetType: 'capture', targetId: 42 }
+    ]) {
+      const res = await invoke<{ ok: boolean; code?: string }>(
+        IPC_CHANNELS.NOTES_BACKLINKS,
+        payload
+      )
+      expect(res.ok).toBe(false)
+      expect(res.code).toBe('INVALID_BACKLINKS_PAYLOAD')
+    }
+  })
+
+  // Mirrors the anchor translation above: a cross-case Mention is a distinct
+  // structured failure, not a generic rejected promise.
+  it('reports a cross-case Mention as a structured failure on create', async () => {
+    const otherCase = createCase({ name: 'Elsewhere', description: '' })
+    const otherCapture = insertCapture({
+      caseId: otherCase.id,
+      url: 'https://example.com',
+      title: 'Elsewhere',
+      hash: 'abc123',
+      timestamp: new Date().toISOString()
+    })
+    const bodyDoc = JSON.stringify({
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            {
+              type: 'mention',
+              attrs: { targetType: 'capture', targetId: otherCapture.id, label: '' }
+            }
+          ]
+        }
+      ]
+    })
+
+    const res = await invoke<{ ok: boolean; code?: string }>(IPC_CHANNELS.NOTES_CREATE, {
+      caseId,
+      bodyDoc
+    })
+
+    expect(res.ok).toBe(false)
+    expect(res.code).toBe('MENTION_CASE_MISMATCH')
+    expect(expectOk<unknown[]>(await invoke(IPC_CHANNELS.NOTES_LIST, caseId))).toHaveLength(0)
+  })
 })
 
 describe('ipcHandlers — annotations', () => {
@@ -1480,6 +1590,57 @@ describe('ipcHandlers — database admin', () => {
     })
     expect(updateRes.ok).toBe(false)
     expect(updateRes.code).toBe('ANCHOR_CASE_MISMATCH')
+  })
+
+  // #389: body_doc joined anchor_json as a guarded column on the admin hatch,
+  // so its rejection needs the same structured code rather than a raw
+  // rejected promise.
+  it('reports a cross-case Mention as a structured failure on db:updateRow', async () => {
+    const otherCase = createCase({ name: 'Elsewhere', description: '' })
+    const otherCapture = insertCapture({
+      caseId: otherCase.id,
+      url: 'https://example.com',
+      title: 'Elsewhere',
+      hash: 'abc123',
+      timestamp: new Date().toISOString()
+    })
+    const note = expectOk<Record<string, unknown>>(
+      await invoke(IPC_CHANNELS.DB_CREATE_ROW, {
+        table: 'notes',
+        data: {
+          id: 'admin-mention-note',
+          case_id: caseId,
+          title: 'T',
+          body: '',
+          created_at: '2026-08-20T00:00:00Z',
+          updated_at: '2026-08-20T00:00:00Z'
+        }
+      })
+    )
+
+    const res = await invoke<{ ok: boolean; code?: string }>(IPC_CHANNELS.DB_UPDATE_ROW, {
+      table: 'notes',
+      pk: { id: note.id as string },
+      data: {
+        body_doc: JSON.stringify({
+          type: 'doc',
+          content: [
+            {
+              type: 'paragraph',
+              content: [
+                {
+                  type: 'mention',
+                  attrs: { targetType: 'capture', targetId: otherCapture.id, label: '' }
+                }
+              ]
+            }
+          ]
+        })
+      }
+    })
+
+    expect(res.ok).toBe(false)
+    expect(res.code).toBe('MENTION_CASE_MISMATCH')
   })
 
   it('runs maintenance: vacuum, rebuild-fts, purge, orphans and export', async () => {

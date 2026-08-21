@@ -50,12 +50,18 @@ import type {
   CaseArchiveCounts
 } from '@shared/types'
 
-// 2 since anchored notes (schema v27): note rows now carry anchor_kind and
-// anchor_json. A pre-v27 Birdbrain has no columns for them and its import would
-// drop every anchor without saying so, which the `schemaVersion >` gate in
-// importCaseArchive turns into "update Birdbrain" instead. Bump this whenever
-// an archive gains data an older release would silently discard.
-export const CASE_ARCHIVE_SCHEMA_VERSION = 2
+// 3 since note Mentions (#389): a note's body_doc may carry Mention inline
+// nodes. A pre-Mention Birdbrain's parseNoteDoc rejects the unknown node type,
+// so importing a mention-bearing Case Archive there would fail mid-transaction
+// with an opaque schema error; the `schemaVersion >` gate in
+// inspectCaseArchive turns that into the clean "update Birdbrain" refusal
+// instead. The references index derived from those Mentions never travels — it
+// is re-extracted after id remapping on import.
+// 2 since anchored notes (schema v27): note rows carry anchor_kind and
+// anchor_json, which a pre-v27 import would silently drop. Bump this whenever a
+// Case Archive gains data an older release would silently discard or reject
+// opaquely.
+export const CASE_ARCHIVE_SCHEMA_VERSION = 3
 
 export interface CaseArchiveData {
   case: Record<string, unknown>

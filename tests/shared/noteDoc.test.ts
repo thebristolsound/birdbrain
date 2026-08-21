@@ -1,10 +1,14 @@
 import { describe, it, expect } from 'vitest'
+import { getSchema, type JSONContent } from '@tiptap/core'
 import {
   EMPTY_NOTE_DOC,
+  extractNoteMentions,
   isEmptyNoteDoc,
   noteDocToText,
+  noteExtensions,
   parseNoteDoc,
-  plainTextToNoteDoc
+  plainTextToNoteDoc,
+  remapMentionTargetIds
 } from '@shared/noteDoc'
 
 const RICH_DOC = {
@@ -117,5 +121,130 @@ describe('noteDoc', () => {
     expect(() => parseNoteDoc(JSON.stringify(EMPTY_NOTE_DOC))).not.toThrow()
     expect(() => parseNoteDoc(JSON.stringify(RICH_DOC))).not.toThrow()
     expect(() => parseNoteDoc(JSON.stringify(plainTextToNoteDoc('a\n\nb')))).not.toThrow()
+  })
+})
+
+// --- Mentions (#389) --------------------------------------------------------
+
+function mention(targetType: unknown, targetId: unknown, label = ''): JSONContent {
+  return { type: 'mention', attrs: { targetType, targetId, label } }
+}
+
+function docWith(...inline: JSONContent[]): JSONContent {
+  return { type: 'doc', content: [{ type: 'paragraph', content: inline }] }
+}
+
+const text = (t: string): JSONContent => ({ type: 'text', text: t })
+
+describe('noteDoc mentions', () => {
+  it('accepts an inline Mention with valid attrs, for every target type', () => {
+    for (const targetType of ['capture', 'selector', 'tag', 'note']) {
+      const doc = docWith(text('see '), mention(targetType, 'id-1', 'Label'))
+      expect(() => parseNoteDoc(JSON.stringify(doc))).not.toThrow()
+    }
+  })
+
+  it('leaves documents without Mentions unaffected', () => {
+    // The four real v27 bodies validated unchanged in the spike; the schema
+    // addition must stay purely additive.
+    expect(parseNoteDoc(JSON.stringify(RICH_DOC))).toEqual(RICH_DOC)
+    expect(extractNoteMentions(RICH_DOC)).toEqual([])
+  })
+
+  it('rejects a Mention with no attrs — PM check() alone would accept it', () => {
+    const doc = docWith({ type: 'mention' })
+    expect(() => parseNoteDoc(JSON.stringify(doc))).toThrow(/Mention/)
+  })
+
+  it('rejects a Mention whose targetType is off the enum', () => {
+    const doc = docWith(mention('bogus', 'id-1'))
+    expect(() => parseNoteDoc(JSON.stringify(doc))).toThrow(/targetType/)
+  })
+
+  it('rejects a Mention whose targetId is not a non-empty string', () => {
+    expect(() => parseNoteDoc(JSON.stringify(docWith(mention('capture', 42))))).toThrow(/targetId/)
+    expect(() => parseNoteDoc(JSON.stringify(docWith(mention('capture', ''))))).toThrow(/targetId/)
+  })
+
+  it('rejects a Mention at block level', () => {
+    const doc = { type: 'doc', content: [mention('tag', 't-1')] }
+    expect(() => parseNoteDoc(JSON.stringify(doc))).toThrow(/does not fit the note schema/)
+  })
+
+  it('derives searchable text from the label, falling back to the target type', () => {
+    const doc = docWith(
+      text('see '),
+      mention('capture', 'c-1', 'Acme homepage'),
+      text(' and '),
+      mention('tag', 't-1')
+    )
+    expect(noteDocToText(doc)).toBe('see @Acme homepage and @tag')
+  })
+
+  it('extracts mentions in document order, duplicates preserved', () => {
+    const doc: JSONContent = {
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [mention('capture', 'c-1', 'A'), mention('tag', 't-1')] },
+        { type: 'paragraph', content: [mention('capture', 'c-1', 'A again')] }
+      ]
+    }
+    expect(extractNoteMentions(doc)).toEqual([
+      { targetType: 'capture', targetId: 'c-1', label: 'A' },
+      { targetType: 'tag', targetId: 't-1', label: '' },
+      { targetType: 'capture', targetId: 'c-1', label: 'A again' }
+    ])
+  })
+
+  it('extracts from a serialized string, inheriting full validation', () => {
+    const doc = docWith(mention('note', 'n-1', 'other note'))
+    expect(extractNoteMentions(JSON.stringify(doc))).toEqual([
+      { targetType: 'note', targetId: 'n-1', label: 'other note' }
+    ])
+    expect(() => extractNoteMentions(JSON.stringify(docWith(mention('bogus', 'x'))))).toThrow(
+      /targetType/
+    )
+    expect(() => extractNoteMentions('{oops')).toThrow(/not valid JSON/)
+  })
+
+  it('remaps target ids by type, leaving malformed mentions for the validator', () => {
+    const doc = docWith(
+      mention('capture', 'c-1'),
+      mention('tag', 't-1'),
+      mention('bogus', 'x-1'),
+      mention('note', 42)
+    )
+    const remapped = JSON.parse(
+      remapMentionTargetIds(JSON.stringify(doc), (targetType, targetId) =>
+        targetType === 'tag' ? `tag:${targetId}` : `id:${targetId}`
+      )
+    ) as JSONContent
+    const attrs = remapped.content![0].content!.map((n) => n.attrs)
+    expect(attrs[0]!.targetId).toBe('id:c-1')
+    expect(attrs[1]!.targetId).toBe('tag:t-1')
+    // Off-enum and non-string ids pass through untouched so parseNoteDoc
+    // rejects them with its normal message, not a remap-time one.
+    expect(attrs[2]!.targetId).toBe('x-1')
+    expect(attrs[3]!.targetId).toBe(42)
+  })
+
+  it('passes unparseable input through the remap unchanged', () => {
+    expect(remapMentionTargetIds('{not json', () => 'x')).toBe('{not json')
+  })
+
+  it('serializes to a span carrying identity as data attributes', () => {
+    // The DOM shape the renderer's editor (#390) will hydrate from. toDOM is
+    // invoked directly because main-side tests have no DOM to serialize into.
+    const schema = getSchema(noteExtensions())
+    const node = schema.nodes.mention.create({
+      targetType: 'capture',
+      targetId: 'c-1',
+      label: 'Acme'
+    })
+    expect(schema.nodes.mention.spec.toDOM!(node)).toEqual([
+      'span',
+      { 'data-mention': '', 'data-target-type': 'capture', 'data-target-id': 'c-1' },
+      '@Acme'
+    ])
   })
 })

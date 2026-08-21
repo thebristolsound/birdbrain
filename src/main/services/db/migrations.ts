@@ -553,4 +553,42 @@ export function runMigrations(db: Database.Database): void {
       db.pragma('user_version = 27')
     })()
   }
+
+  if (version < 28) {
+    db.transaction(() => {
+      // References index over note Mentions (#389), derived from body_doc in
+      // main on every note-body write. FK to notes only: a deleted TARGET must
+      // stay representable as a broken reference, so target rows are resolved
+      // at read time rather than constrained here. (note_id, ord) as the
+      // primary key preserves document order and duplicate mentions.
+      // Create-only, no backfill, and this is a declared deviation from spike
+      // constraint 7 rather than an oversight. Every validated write path
+      // (noteRepo, the Case Archive import) put body_doc through parseNoteDoc,
+      // which rejected unknown node types, and `mention` was not in the schema
+      // before this version — so none of them can have stored one. Only the
+      // Database Admin hatch, which did not parse body_doc, could, and a
+      // backfill would have to call extractNoteMentions on every row: that
+      // throws on an unparseable body_doc, and a throw here aborts
+      // runMigrations, which initDatabase turns into a database the app cannot
+      // open. The backfill would break on exactly the drifted rows it exists
+      // to repair.
+      //
+      // A hand-written mention-shaped node therefore stays unindexed, and
+      // there is no repair surface for it yet: rebuildForCase exists but has
+      // no production caller, and note_references is not in dbAdmin's
+      // ALLOWED_TABLES, so it cannot be read or fixed from the interface.
+      // Tracked in #662.
+      db.exec(`
+        CREATE TABLE note_references (
+          note_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+          ord INTEGER NOT NULL,
+          target_type TEXT NOT NULL,
+          target_id TEXT NOT NULL,
+          PRIMARY KEY (note_id, ord)
+        );
+        CREATE INDEX idx_note_references_target ON note_references(target_type, target_id);
+      `)
+      db.pragma('user_version = 28')
+    })()
+  }
 }

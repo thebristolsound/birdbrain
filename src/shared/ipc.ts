@@ -28,7 +28,11 @@ import type {
   LogContextKey,
   LogEntry,
   LogLevel,
+  MentionTargetType,
   Note,
+  NoteBacklink,
+  NoteBacklinkCount,
+  NoteReference,
   OpenRouterModel,
   OperatorIdentity,
   RecentActivityEvent,
@@ -133,6 +137,9 @@ export const IPC_CHANNELS = {
   NOTES_DELETE: 'notes:delete',
   NOTES_COUNT: 'notes:count',
   NOTES_SEARCH: 'notes:search',
+  NOTES_REFERENCES: 'notes:references',
+  NOTES_BACKLINKS: 'notes:backlinks',
+  NOTES_BACKLINK_COUNTS: 'notes:backlinkCounts',
 
   // Wayback Machine corroboration
   WAYBACK_LOOKUP: 'wayback:lookup',
@@ -351,6 +358,16 @@ export interface UpdateNoteParams {
   body?: string
   bodyDoc?: string
   anchor?: string | null
+}
+
+/**
+ * Backlink lookups are case-scoped through the referring notes: the target id
+ * alone would also surface notes from other cases that mention a global tag.
+ */
+export interface NoteBacklinksParams {
+  caseId: string
+  targetType: MentionTargetType
+  targetId: string
 }
 
 export interface PinWaybackSnapshotParams {
@@ -648,6 +665,9 @@ export interface IpcInvokeContract {
   'notes:delete': { args: [id: string]; result: boolean }
   'notes:count': { args: [caseId: string]; result: number }
   'notes:search': { args: [caseId: string, query: string]; result: Note[] }
+  'notes:references': { args: [noteId: string]; result: NoteReference[] }
+  'notes:backlinks': { args: [params: NoteBacklinksParams]; result: NoteBacklink[] }
+  'notes:backlinkCounts': { args: [caseId: string]; result: NoteBacklinkCount[] }
 
   'session:snapshot': { args: []; result: SessionStateEvent }
   'session:activateCase': { args: [caseId: string]; result: SessionStateEvent }

@@ -125,7 +125,7 @@ SQLite via better-sqlite3. The data-access layer lives in `src/main/services/db/
 
 - `core.ts` - Owns the connection. `initDatabase()` opens the file, sets the pragmas (`journal_mode = WAL`, `foreign_keys = ON`, `busy_timeout`), then runs migrations. Also exports `getDb()`, `closeDatabase()`, `withTransaction()`, the `ImportCtx` archive-import context, and `ID_PROBE_TABLES` / `hasRowWithId()` for archive-import id collision remapping.
 - `migrations.ts` - The whole schema history in one `runMigrations(db)` function: a sequence of `if (version < N)` blocks, each running its DDL inside a transaction that ends by setting `db.pragma('user_version = N')`. New schema changes append a new block and bump `LATEST_SCHEMA_VERSION` in `core.ts` — that constant is the single source of truth for the current version, so read it rather than counting blocks.
-- Per-domain repos - `caseRepo.ts`, `captureRepo.ts`, `tagRepo.ts`, `selectorRepo.ts`, `noteRepo.ts`, `extractedDataRepo.ts`, `waybackRefRepo.ts`. Each owns the SQL for its aggregate.
+- Per-domain repos - `caseRepo.ts`, `captureRepo.ts`, `tagRepo.ts`, `selectorRepo.ts`, `noteRepo.ts`, `noteReferenceRepo.ts`, `extractedDataRepo.ts`, `waybackRefRepo.ts`. Each owns the SQL for its aggregate. `noteReferenceRepo.ts` owns the note Mention references index (`note_references`) — derived state, rewritten inside the transaction of every note-body write, never a source of truth.
 - `dbAdmin.ts` - Generic table browse/edit, vacuum, FTS rebuild, orphan cleanup, backup/restore, CSV export (backs Settings → Database).
 - `diagnosticsRepo.ts` - Read-only DB facts for Settings → Diagnostics, including the live `user_version` alongside `LATEST_SCHEMA_VERSION`.
 

@@ -6,6 +6,7 @@ import { join } from 'path'
 import {
   changedLinesByFile,
   executableChangedLines,
+  isSourceLike,
   lineHitsForFile,
   resolveMergeBase
   // @ts-expect-error - build script with no type declarations; the tsconfigs exclude scripts/
@@ -126,5 +127,35 @@ describe('executableChangedLines', () => {
 
   it('treats an untracked file as entirely new', () => {
     expect(executableChangedLines(null, lineHitsForFile(entry))).toEqual([1, 3, 7])
+  })
+})
+
+// #684. vitest's coverage `include` covers src/main, src/shared and src/renderer
+// only, so a changed file outside those is invisible to the score. It used to be
+// skipped silently, which is how #673 shipped ~1,300 lines of extension code
+// under "PASS — diff coverage 100.00%". These are the files the report now names.
+describe('isSourceLike', () => {
+  it('names uninstrumented extension source, the case that motivated this', () => {
+    expect(isSourceLike('extension/src/background.ts')).toBe(true)
+    expect(isSourceLike('extension/src/popup/PopupApp.tsx')).toBe(true)
+  })
+
+  it('names uninstrumented source under src/ too', () => {
+    // src/preload is excluded from instrumentation by the same config.
+    expect(isSourceLike('src/preload/index.ts')).toBe(true)
+  })
+
+  it('stays quiet about files a coverage report has no business naming', () => {
+    expect(isSourceLike('docs/specs/2026-08-20-thing.md')).toBe(false)
+    expect(isSourceLike('pnpm-lock.yaml')).toBe(false)
+    expect(isSourceLike('.github/workflows/ci.yml')).toBe(false)
+    expect(isSourceLike('website/content/docs/capture-pipeline.mdx')).toBe(false)
+  })
+
+  it('does not name the test and tooling trees, which are not what the gate scores', () => {
+    expect(isSourceLike('tests/main/services/captureServer.test.ts')).toBe(false)
+    expect(isSourceLike('e2e/dashboard-activity.spec.ts')).toBe(false)
+    expect(isSourceLike('scripts/diff-coverage.mjs')).toBe(false)
+    expect(isSourceLike('src/renderer/env.d.ts')).toBe(false)
   })
 })

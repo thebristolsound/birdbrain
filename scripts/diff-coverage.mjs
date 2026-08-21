@@ -106,6 +106,18 @@ export const executableChangedLines = (lines, hits) => {
   return all.sort((a, b) => a - b)
 }
 
+// Which uninstrumented changed files are worth naming. Docs, lockfiles and
+// workflow YAML have no business in a coverage report; code does. `extension/**`
+// is the case that motivated this: it is excluded from vitest's coverage
+// `include`, so an extension-only PR scored zero lines and printed a pass.
+const SOURCE_LIKE = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/
+export const isSourceLike = (path) =>
+  SOURCE_LIKE.test(path) &&
+  !path.startsWith('tests/') &&
+  !path.startsWith('e2e/') &&
+  !path.startsWith('scripts/') &&
+  !path.endsWith('.d.ts')
+
 const main = async () => {
   const root = process.cwd()
   const coverageFinalPath = join(root, 'coverage', 'coverage-final.json')
@@ -130,9 +142,18 @@ const main = async () => {
   let covered = 0
   let total = 0
 
+  // Changed source files vitest does not instrument. These are invisible to the
+  // score, so they are collected and named rather than skipped in silence: a gate
+  // that cannot fail on a file should say which file, or it reads as a pass over
+  // work it never looked at (#684).
+  const unscored = []
+
   for (const [path, lines] of [...changed].sort(([a], [b]) => a.localeCompare(b))) {
     const entry = byRelPath.get(path)
-    if (!entry) continue // not instrumented by vitest — nothing to score
+    if (!entry) {
+      if (isSourceLike(path)) unscored.push(path)
+      continue
+    }
     const hits = lineHitsForFile(entry)
     const executable = executableChangedLines(lines, hits)
     if (executable.length === 0) continue
@@ -142,16 +163,26 @@ const main = async () => {
     rows.push({ path, executable: executable.length, missed })
   }
 
-  const pct = total === 0 ? 100 : (100 * covered) / total
-  const passed = pct >= args.min
+  // `scored` is the honest distinction. A run with nothing to score is not a run
+  // that scored 100%, and reporting it as one is what let #673 ship ~1,300 lines
+  // of extension code behind a "PASS — 100.00%".
+  const scored = total > 0
+  const pct = scored ? (100 * covered) / total : null
+  const passed = !scored || pct >= args.min
 
   if (args.json) {
-    console.log(JSON.stringify({ mergeBase, min: args.min, covered, total, pct, passed, rows }, null, 2))
+    console.log(
+      JSON.stringify(
+        { mergeBase, min: args.min, covered, total, scored, pct, passed, unscored, rows },
+        null,
+        2
+      )
+    )
   } else {
     console.log(`Diff coverage vs ${args.base} (merge base ${mergeBase.slice(0, 9)})`)
     console.log('')
     if (rows.length === 0) {
-      console.log('  No instrumented source lines changed — nothing to score.')
+      console.log('  No instrumented source lines changed.')
     } else {
       for (const row of rows) {
         const rowPct = (100 * (row.executable - row.missed.length)) / row.executable
@@ -165,11 +196,21 @@ const main = async () => {
       console.log('')
       console.log(`  Total: ${covered}/${total} changed lines covered (${pct.toFixed(2)}%)`)
     }
+
+    if (unscored.length > 0) {
+      console.log('')
+      console.log(`  NOT SCORED — ${unscored.length} changed source file${unscored.length === 1 ? '' : 's'} vitest does not instrument:`)
+      for (const path of unscored) console.log(`      ${path}`)
+      console.log('      These lines are not in the number above and cannot fail this gate.')
+    }
+
     console.log('')
     console.log(
-      passed
-        ? `PASS — diff coverage ${pct.toFixed(2)}% meets the ${args.min}% minimum.`
-        : `FAIL — diff coverage ${pct.toFixed(2)}% is below the ${args.min}% minimum.`
+      !scored
+        ? 'NOT SCORED — no instrumented source lines changed, so this gate checked nothing.'
+        : passed
+          ? `PASS — diff coverage ${pct.toFixed(2)}% meets the ${args.min}% minimum.`
+          : `FAIL — diff coverage ${pct.toFixed(2)}% is below the ${args.min}% minimum.`
     )
   }
 

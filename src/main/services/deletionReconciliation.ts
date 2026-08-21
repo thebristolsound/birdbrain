@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
+import { MANIFEST_FILENAME } from '@shared/constants'
 import type {
   UnreconciledDeletionFinding,
   UnreconciledDeletionReport,
@@ -87,7 +90,24 @@ export function scanUnreconciledDeletions(
       // would re-read the file, and the timestamp worker can append between the
       // two reads — leaving the entries reported on and the text actually
       // verified as different manifests.
-      const snapshot = readManifestSnapshot(store.caseDir(caseId))
+      // Checked before the read, not after: readManifestSnapshot returns an
+      // empty buffer for a missing file rather than throwing, and an empty
+      // chain verifies, so the case would otherwise count as verified and feed
+      // the panel's "every deletion is reconciled" line. A check whose whole
+      // purpose is reconciling manifests against the database must not report a
+      // missing manifest as clean. Emptiness alone is not the test — initManifest
+      // creates an empty file, so a case that has never written an entry is
+      // legitimately empty and genuinely has nothing to reconcile.
+      const caseDir = store.caseDir(caseId)
+      if (!existsSync(join(caseDir, MANIFEST_FILENAME))) {
+        unscanned.push({
+          caseId,
+          caseName,
+          reason: 'manifest is missing — nothing to reconcile against'
+        })
+        continue
+      }
+      const snapshot = readManifestSnapshot(caseDir)
       entries = snapshot.entries
       const chain = verifyManifestChainText(snapshot.jsonl.toString('utf-8'), { publicKeyPem })
       chainValid = chain.valid

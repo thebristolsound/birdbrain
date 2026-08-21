@@ -335,6 +335,26 @@ describe('DiagnosticsPanel unreconciled deletions', () => {
     expect(screen.getByText('Broken Chain')).toBeDefined()
     expect(screen.getByText('Entry hash mismatch')).toBeDefined()
     expect(screen.getByText(/Nothing is claimed about deletions in that case/)).toBeDefined()
+    // The clean bill has to be absent, the way it is for available: false. It
+    // was not: the sentence keys only on findings.length, so the panel asserted
+    // "every capture the manifests record as deleted is gone" across zero
+    // scanned cases while naming a case it could not read.
+    expect(screen.queryByText(/is gone from the database/)).toBeNull()
+  })
+
+  // A scan that covered something but not everything. The count is true and
+  // worth showing; the claim about it is not, because it would extend to cases
+  // the scan never read.
+  it('withholds the clean bill when the scan skipped a case', async () => {
+    mount({
+      ...cleanReport,
+      casesScanned: 2,
+      unscanned: [{ caseId: 'case-9', caseName: 'Missing Manifest', reason: 'manifest is missing' }]
+    })
+
+    expect(await screen.findByText(/None found across 2 verified cases/)).toBeDefined()
+    expect(screen.getByText(/This says nothing about the cases listed below/)).toBeDefined()
+    expect(screen.queryByText(/is gone from the database/)).toBeNull()
   })
 
   // Case names, capture ids and operator names are investigation data. The

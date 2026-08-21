@@ -163,6 +163,27 @@ describe('scanUnreconciledDeletions', () => {
     expect(report.unscanned).toEqual([{ caseId, caseName: 'Corrupt', reason: 'Invalid JSON' }])
   })
 
+  // readManifestSnapshot returns an empty buffer for a missing file rather than
+  // throwing, and verifyManifestChainText reports an empty chain as valid. So
+  // this case used to increment casesScanned and feed the panel's "every
+  // deletion is reconciled" line: a check whose whole purpose is reconciling
+  // manifests against the database, reporting a missing manifest as clean.
+  // Note this is keyed on the file being absent, not on it being empty —
+  // initManifest creates an empty file and that state is legitimate.
+  it('reports a missing manifest as unscanned, not as a verified case', () => {
+    const { caseId, caseDir } = makeCase('Lost Manifest')
+    addCapture(caseId, 'https://example.com/lost')
+    rmSync(join(caseDir, 'manifest.jsonl'))
+
+    const report = scanUnreconciledDeletions()
+    expect(report.available).toBe(true)
+    expect(report.findings).toEqual([])
+    expect(report.casesScanned).toBe(0)
+    expect(report.unscanned).toHaveLength(1)
+    expect(report.unscanned[0]).toMatchObject({ caseId, caseName: 'Lost Manifest' })
+    expect(report.unscanned[0].reason).toContain('manifest is missing')
+  })
+
   it('reports an unreadable manifest as unscanned rather than throwing', () => {
     const { caseId, caseDir } = makeCase('Unreadable')
     // A directory where the manifest file belongs: readFileSync throws EISDIR,

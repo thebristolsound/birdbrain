@@ -152,11 +152,22 @@ function ManifestReconciliation({ report }: { report: UnreconciledDeletionReport
 
   return (
     <div className="space-y-2">
-      {report.findings.length === 0 ? (
+      {report.findings.length === 0 && report.casesScanned > 0 && report.unscanned.length === 0 ? (
         <p className="text-xs text-text-muted">
           None found across {formatCount(report.casesScanned)} verified{' '}
-          {report.casesScanned === 1 ? 'case' : 'cases'}. Every capture the manifests record as
+          {report.casesScanned === 1 ? 'case' : 'cases'}. Every capture those manifests record as
           deleted is gone from the database.
+        </p>
+      ) : report.findings.length === 0 ? (
+        // No findings, but the scan did not cover everything, so the clean bill
+        // above would be a claim about cases it never read. The unscanned list
+        // below says which. Archived cases are skipped by listCases and appear
+        // in neither count (#670), which is why the wording above is bounded to
+        // the manifests actually scanned.
+        <p className="text-xs text-text-muted">
+          None found across {formatCount(report.casesScanned)} verified{' '}
+          {report.casesScanned === 1 ? 'case' : 'cases'}. This says nothing about the cases listed
+          below.
         </p>
       ) : (
         <>

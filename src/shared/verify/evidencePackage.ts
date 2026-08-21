@@ -270,18 +270,25 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
         // Still a FAIL, and still the same check (#622 ruling): the package's
         // index and its signed manifest disagree about what the case contains,
         // and softening that to a warning would change an evidentiary verdict.
-        // What the deletion entry adds is the explanation — the exporting
-        // database held a live row for a capture its own chain records as
-        // deleted, the write-ahead crash window Settings → Diagnostics reports.
-        // Naming it distinguishes this from a fabricated index entry, which is
-        // the other way to reach this line.
+        //
+        // The deletion entry adds one fact and no more: the chain records this
+        // id as deleted. It deliberately does NOT name a cause. Two different
+        // inputs reach this branch with byte-identical evidence — an export
+        // taken during the #622 crash window, and an evidence.json edited to
+        // re-add a capture the chain legitimately deleted — and nothing else
+        // in this module separates them. `evidence.json head` compares only the
+        // head index and hash, so a captures-array edit does not trip it, and
+        // the artifact sweep walks evidence.json's own list, so it does not
+        // either. This check is the only one that fires on that tamper. Naming
+        // an interrupted delete here would hand the tamperer a benign
+        // explanation, and would infer a fact about the exporting database from
+        // evidence.json, which line 129 declares untrusted.
         add(
           'evidence.json coverage',
           'fail',
           deletedIds.has(id)
             ? `evidence.json lists capture ${id} absent from the verified manifest: the chain ` +
-                'records it as deleted, so the exporting database had not reconciled that ' +
-                'deletion (an interrupted delete)'
+                'records it as deleted'
             : `evidence.json lists capture ${id} absent from the verified manifest`
         )
       }

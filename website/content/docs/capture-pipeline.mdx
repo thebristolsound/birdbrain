@@ -352,9 +352,10 @@ between the flush and the row delete, the manifest holds a valid, fully-formed d
 while `captures` still holds the row.
 
 Nothing about the chain is wrong in that state, so chain verification reports it as valid — which
-is why **Settings → Diagnostics → Unreconciled deletions** exists. It re-verifies each case's
-chain and joins the deletion entries against live capture rows in that same case, listing any
-entry the database has not caught up with.
+is why **Settings → Diagnostics → Unreconciled deletions** exists. It re-verifies the chain of
+every case it can read and joins the deletion entries against live capture rows in that same case,
+listing any entry the database has not caught up with. Cases it could not read are named
+separately, and nothing is claimed about them. Archived cases are not scanned at all.
 
 What a finding establishes is bounded, and the panel says so: the chain verifies, and the row is
 still present. Whether the capture's files are still on disk is **not** part of the claim — the
@@ -368,7 +369,12 @@ an existence check. The stale entry stays in the chain, as append-only requires.
 
 An evidence package exported from an unreconciled case already fails verification: `evidence.json`
 lists a capture the signed manifest records as deleted, which the standalone verifier reports as
-an `evidence.json coverage` failure naming the capture and the interrupted delete.
+an `evidence.json coverage` failure naming the capture and saying the chain records it as deleted.
+
+The verifier stops there and does not call it an interrupted delete, because it cannot tell one
+from the other. An `evidence.json` edited to re-add a capture that was legitimately deleted
+produces the same failure on the same branch, and naming a crash would hand that edit an innocent
+explanation.
 
 ## 7. Observability
 

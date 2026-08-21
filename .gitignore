@@ -98,3 +98,6 @@ ds-bundle/
 # long-lived reference docs live in website/content/docs/, not here.
 docs/reference/
 .curator/
+
+# Vale: third-party style package, fetched with `vale sync`
+.vale/styles/Google/

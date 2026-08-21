@@ -561,12 +561,23 @@ export function runMigrations(db: Database.Database): void {
       // stay representable as a broken reference, so target rows are resolved
       // at read time rather than constrained here. (note_id, ord) as the
       // primary key preserves document order and duplicate mentions.
-      // Create-only, no backfill: every validated write path (noteRepo, the
-      // Case Archive import) put body_doc through parseNoteDoc, which rejected
-      // unknown node types, so none of them can have stored a Mention. The
-      // Database Admin hatch did not parse body_doc before this version, so a
-      // hand-written mention-shaped node there stays unindexed until
-      // rebuildForCase re-derives the case (#662).
+      // Create-only, no backfill, and this is a declared deviation from spike
+      // constraint 7 rather than an oversight. Every validated write path
+      // (noteRepo, the Case Archive import) put body_doc through parseNoteDoc,
+      // which rejected unknown node types, and `mention` was not in the schema
+      // before this version — so none of them can have stored one. Only the
+      // Database Admin hatch, which did not parse body_doc, could, and a
+      // backfill would have to call extractNoteMentions on every row: that
+      // throws on an unparseable body_doc, and a throw here aborts
+      // runMigrations, which initDatabase turns into a database the app cannot
+      // open. The backfill would break on exactly the drifted rows it exists
+      // to repair.
+      //
+      // A hand-written mention-shaped node therefore stays unindexed, and
+      // there is no repair surface for it yet: rebuildForCase exists but has
+      // no production caller, and note_references is not in dbAdmin's
+      // ALLOWED_TABLES, so it cannot be read or fixed from the interface.
+      // Tracked in #662.
       db.exec(`
         CREATE TABLE note_references (
           note_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,

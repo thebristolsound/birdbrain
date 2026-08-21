@@ -242,12 +242,22 @@ describe('matchIgnoredUrl', () => {
 // operator wrote a rule that matches, and the capture is accepted, hashed,
 // manifest-chained and filed with no `Blacklisted: <pattern>` skip record.
 //
-// What that costs depends on the route. The extension pre-filters with this
-// matcher on the context-menu capture handler and on checkSelectorsOnTab, so
-// those never reach the server's answer (they pay the backtracking in the
-// service worker instead). The popup's Capture button does not pre-filter — its
-// MANUAL_CAPTURE message goes straight to manualCaptureTab — so that is the one
-// live route where the fail-open answer decides what enters the case.
+// What that costs used to depend on the route. The extension pre-filters with
+// this matcher on the context-menu capture handler and on checkSelectorsOnTab,
+// so those never reach the server's answer (they pay the backtracking in the
+// service worker instead). The popup's Capture button was the one live route
+// that did not — its MANUAL_CAPTURE message went straight to manualCaptureTab —
+// until #387 gave that message the same pre-check. So on a pattern of this
+// class the extension is more conservative than the server: it refuses what the
+// server would have accepted. The divergence itself is unchanged and still
+// pinned below.
+//
+// The pre-check is only as good as the pattern list behind it, and that list is
+// worker memory filled by the first successful status poll. Before it lands the
+// list is empty and this matcher answers "not ignored" for every URL, which is
+// the server's fail-open direction reached by a different route. #387 gates the
+// popup's capture route on rulesLoaded for that reason, pinned in
+// tests/extension/popupPrefilter.test.ts.
 //
 // This is inherited behaviour, not introduced by the extraction — the server
 // timed out to `false` before it too. It is recorded, not fixed: making a

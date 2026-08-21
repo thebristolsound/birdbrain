@@ -23,9 +23,10 @@ afterEach(() => {
 
 describe('NewCaseWizard', () => {
   // cn() runs twMerge, so a rounded-* at the call site replaces the primitive's own.
-  // The handoff screen notes ask for rounded-xl on the description textarea only (#425
-  // N1), which is the whole reason the two fields differ — assert both halves so a
-  // sweep that "harmonises" them has to revisit the note rather than silently win.
+  // The screen notes ask for a 6px description textarea only (#425 N1; rounded-xl aliases
+  // to 6px via the globals.css radius collapse), which is the whole reason the two fields
+  // differ — assert both halves so a sweep that "harmonises" them has to revisit the note
+  // rather than silently win.
   it('rounds the name input from the primitive base and the description to rounded-xl', () => {
     render(<NewCaseWizard />)
 
@@ -36,5 +37,16 @@ describe('NewCaseWizard', () => {
     const description = screen.getByTestId('case-description-input')
     expect(description.className).toContain('rounded-xl')
     expect(description.className).not.toMatch(/\brounded-md\b/)
+  })
+
+  // The V2 handoff bundle rules this field "6px, recessed fill" — bg-canvas +
+  // border-border-strong — superseding the V1 note's bg-elevated (#563). Pin the fill so a
+  // sweep that raises the field has to revisit the note rather than silently win.
+  it('keeps the description textarea on the recessed bg-canvas fill', () => {
+    render(<NewCaseWizard />)
+
+    const description = screen.getByTestId('case-description-input')
+    expect(description.className).toContain('bg-canvas')
+    expect(description.className).not.toMatch(/\bbg-elevated\b/)
   })
 })

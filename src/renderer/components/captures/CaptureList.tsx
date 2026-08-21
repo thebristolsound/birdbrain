@@ -10,6 +10,8 @@ import { useFavorites } from '@renderer/hooks/useFavorites'
 import { CaptureItem } from '@renderer/components/captures/CaptureItem'
 import { CaptureListEmptyState } from '@renderer/components/captures/CaptureListEmptyState'
 import { CaptureMenu } from '@renderer/components/captures/CaptureMenu'
+import { CaptureSelectionBar } from '@renderer/components/captures/CaptureSelectionBar'
+import { useCaptureSelection } from '@renderer/components/captures/useCaptureSelection'
 import {
   computeDisplayedCaptures,
   SORT_OPTIONS,
@@ -21,6 +23,9 @@ import type { Selector } from '@shared/types'
 
 interface CaptureListProps {
   caseId: string
+  // The route owns the batch-delete confirm/result dialogs so they survive
+  // the bar unmounting once the selection empties.
+  onDeleteSelection: (ids: string[]) => void
 }
 
 function useClickOutside(ref: React.RefObject<HTMLElement | null>, onClose: () => void) {
@@ -35,7 +40,7 @@ function useClickOutside(ref: React.RefObject<HTMLElement | null>, onClose: () =
   }, [ref, onClose])
 }
 
-export function CaptureList({ caseId }: CaptureListProps) {
+export function CaptureList({ caseId, onDeleteSelection }: CaptureListProps) {
   const {
     data: captures = [],
     isLoading,
@@ -44,7 +49,6 @@ export function CaptureList({ caseId }: CaptureListProps) {
     refetch
   } = useQuery(capturesQueryOptions(caseId))
   const selectedCaptureId = useAppStore((s) => s.selectedCaptureId)
-  const selectCapture = useAppStore((s) => s.selectCapture)
   const filteredCaptureIds = useAppStore((s) => s.filteredCaptureIds)
   const activeSelectorFilters = useAppStore((s) => s.activeSelectorFilters)
   const clearSelectorFilters = useAppStore((s) => s.clearSelectorFilters)
@@ -92,6 +96,18 @@ export function CaptureList({ caseId }: CaptureListProps) {
     () => computeDisplayedCaptures({ captures, filteredCaptureIds, favorites, filters }),
     [captures, filteredCaptureIds, favorites, filters]
   )
+
+  const displayedIds = useMemo(() => displayedCaptures.map((c) => c.id), [displayedCaptures])
+  const {
+    selectedCaptureIds,
+    visibleSelectedIds,
+    allVisibleSelected,
+    selectionActive,
+    handleRowClick,
+    handleCheckboxClick,
+    toggleSelectAll,
+    clearSelection
+  } = useCaptureSelection(displayedIds)
 
   if (isLoading) {
     return (
@@ -280,6 +296,18 @@ export function CaptureList({ caseId }: CaptureListProps) {
         )}
       </div>
 
+      {/* Inline selection bar: rises whenever the visible multi-set is non-empty */}
+      {selectionActive && (
+        <CaptureSelectionBar
+          caseId={caseId}
+          selectedIds={visibleSelectedIds}
+          allSelected={allVisibleSelected}
+          onToggleSelectAll={toggleSelectAll}
+          onClear={clearSelection}
+          onDeleteSelection={onDeleteSelection}
+        />
+      )}
+
       {/* Scrollable capture list */}
       <div className="flex flex-1 flex-col space-y-1 overflow-y-auto p-2">
         <AnimatePresence mode="popLayout" initial={firstPaintRef.current}>
@@ -298,7 +326,10 @@ export function CaptureList({ caseId }: CaptureListProps) {
               <CaptureItem
                 capture={cap}
                 isSelected={cap.id === selectedCaptureId}
-                onClick={() => selectCapture(cap.id)}
+                isMultiSelected={selectedCaptureIds.has(cap.id)}
+                showCheckbox={selectionActive}
+                onClick={(e) => handleRowClick(cap.id, e)}
+                onToggleMultiSelect={(e) => handleCheckboxClick(cap.id, e)}
                 isFavorite={favorites.has(cap.id)}
                 onToggleFavorite={() => toggleFavorite(cap.id)}
                 matchingSelectors={matchingSelectorsMap.get(cap.id)}

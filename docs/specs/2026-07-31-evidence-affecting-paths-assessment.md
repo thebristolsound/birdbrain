@@ -30,7 +30,11 @@ and the rename-detection-off rule only catches the move itself, not later edits 
 of `src/renderer/lib/queries.ts` into per-domain modules, so the reasoning recorded against that
 one file now applies to the directory. The call is unchanged (still excluded), and judgment call 2
 below is restated against the new path; `queries.ts` itself is a re-export barrel that the last PR
-of that sequence deletes.
+of that sequence deletes. `extension/src/popup/PopupApp.tsx`, `extension/src/popup/pageStatus.ts`
+and `extension/src/messages.ts` added to Acquisition (#387) — the popup's case routing and its
+capture button moved out of the already-listed `extension/src/popup/popup.tsx`, which is now a
+mount point, and the same rename-detection caveat applies: without these three the backstop would
+stop firing on the code that actually routes a capture.
 
 ## List format
 
@@ -68,6 +72,9 @@ seeded from this document should be checked against them.
 | `extension/src/utils/api.ts` | Builds the multipart capture payload that becomes hashed evidence and manifest fields |
 | `extension/src/utils/headers.ts` | Deterministic header normalization anchored into the hash-chained manifest |
 | `extension/src/popup/popup.tsx` | Routes a capture to a case (chain-of-custody routing) |
+| `extension/src/popup/PopupApp.tsx` | The popup itself since #387: picks the case a capture is routed to, and gates the capture button on the ignore rules |
+| `extension/src/popup/pageStatus.ts` | Derives what the popup tells the operator about a page, including whether a capture would be refused |
+| `extension/src/messages.ts` | The popup/background contract carrying the block reason and the rules-loaded flag the capture route gates on |
 | `extension/manifest.json` | Acquisition permissions; ships in the release zip |
 | `src/main/services/captureServer.ts` | Ingest endpoint: upload validation, case routing, ingest-time selector matching |
 | `src/shared/urlPatterns.ts` | The ignored-URL matcher both sides run: it decides what never enters a case at all, and names the rule recorded as the reason for the absence |

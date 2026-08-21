@@ -24,8 +24,12 @@ vi.mock('@tanstack/react-router', () => ({
 // the overlay panel renders *in addition to* the rail once forcedPanelOpen
 // flips — and a shared label would turn a future default change into a
 // "found multiple elements" failure rather than a failure about this handler.
+// The list itself contributes nothing here; the batch-delete tests only need
+// the callback seam the real list's selection bar invokes.
 vi.mock('@renderer/components/captures/CaptureList', () => ({
-  CaptureList: () => null
+  CaptureList: ({ onDeleteSelection }: { onDeleteSelection: (ids: string[]) => void }) => (
+    <button onClick={() => onDeleteSelection(['cap1', 'cap2'])}>list: delete selection</button>
+  )
 }))
 vi.mock('@renderer/components/captures/CaptureViewer', () => ({
   CaptureViewer: () => null
@@ -66,6 +70,7 @@ import { CapturesRoute } from '@renderer/routes/cases/$caseId/captures'
 import { useAppStore } from '@renderer/stores/appStore'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { stubMatchMedia } from './matchMediaStub'
+import type { BatchDeleteResult } from '@shared/ipc'
 
 const capture: Capture = {
   id: 'cap1',
@@ -88,9 +93,32 @@ const EXPAND_CONTROL = 'rail: expand'
 const DELETE_CONTROL = 'panel: delete'
 
 let openExternal: ReturnType<typeof vi.fn>
+let deleteMany: ReturnType<typeof vi.fn>
 // Held so the assertion can be on identity: the handler must pass the original
 // rejection through as `cause`, not a rewrapped stand-in.
 let cause: Error
+
+const BATCH_CONTROL = 'list: delete selection'
+
+function cleanDeleteResult(ids: string[]): BatchDeleteResult {
+  return {
+    outcomes: ids.map((captureId) => ({ captureId, status: 'deleted' as const })),
+    deletedIds: ids,
+    failedIds: [],
+    manifest: { baseIndex: 4, committedEntries: ids.length }
+  }
+}
+
+// Renders, opens the batch confirm dialog and presses through it, returning
+// the result dialog. Every batch test starts here, so the sequence lives in
+// one place.
+async function runBatchDelete() {
+  renderRoute()
+  fireEvent.click(await screen.findByText(BATCH_CONTROL))
+  const confirm = await screen.findByTestId('batch-delete-confirm')
+  fireEvent.click(within(confirm).getByText('Delete 2 captures'))
+  return screen.findByTestId('batch-delete-result')
+}
 
 function renderRoute() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -106,8 +134,9 @@ beforeEach(() => {
   openExternal = vi.fn(async () => {
     throw cause
   })
+  deleteMany = vi.fn(async () => cleanDeleteResult(['cap1', 'cap2']))
   fakeBridge({
-    captures: { list: vi.fn(async () => [capture]), openExternal },
+    captures: { list: vi.fn(async () => [capture]), openExternal, deleteMany },
     settings: { get: vi.fn(async () => ({ detailsPanelCollapsed: false })) }
   })
   useAppStore.getState().setSelectedCaptureId(capture.id)
@@ -117,6 +146,7 @@ afterEach(() => {
   cleanup()
   notifyError.mockReset()
   useAppStore.getState().setSelectedCaptureId(null)
+  useAppStore.getState().clearCaptureSelection()
 })
 
 describe('CapturesRoute', () => {
@@ -157,7 +187,147 @@ describe('CapturesRoute', () => {
 
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByText('Deleting is not redacting.')).toBeDefined()
-    expect(within(dialog).getByText(/URL, capture time and hashes stay in it permanently/)).toBeDefined()
-    expect(within(dialog).getByText(/ship in every export that includes the audit trail/)).toBeDefined()
+    expect(
+      within(dialog).getByText(/URL, capture time and hashes stay in it permanently/)
+    ).toBeDefined()
+    expect(
+      within(dialog).getByText(/ship in every export that includes the audit trail/)
+    ).toBeDefined()
+  })
+
+  // #396. The bar hands its ids up to the route, which owns both dialogs so
+  // they outlive the bar once the selection empties.
+  describe('batch delete', () => {
+    it('confirms the count and repeats the manifest disclosure before deleting', async () => {
+      renderRoute()
+
+      fireEvent.click(await screen.findByText(BATCH_CONTROL))
+
+      const confirm = await screen.findByTestId('batch-delete-confirm')
+      expect(within(confirm).getByText('Delete 2 captures?')).toBeDefined()
+      expect(within(confirm).getByText('Deleting is not redacting.')).toBeDefined()
+      // Nothing is written until the operator confirms.
+      expect(deleteMany).not.toHaveBeenCalled()
+
+      fireEvent.click(within(confirm).getByText('Cancel'))
+      await waitFor(() => expect(screen.queryByTestId('batch-delete-confirm')).toBeNull())
+      expect(deleteMany).not.toHaveBeenCalled()
+    })
+
+    it('reports a clean batch as deleted N of N with the committed entry count', async () => {
+      const result = await runBatchDelete()
+
+      expect(deleteMany).toHaveBeenCalledWith({ caseId: 'case1', captureIds: ['cap1', 'cap2'] })
+      expect(within(result).getByText('Deleted 2 of 2')).toBeDefined()
+      expect(
+        within(result).getByText(/All selected captures were removed from this machine/)
+      ).toBeDefined()
+      expect(within(result).getByText(/2 deletion entries were appended/)).toBeDefined()
+      // Nothing failed, so there is nothing to retry.
+      expect(within(result).queryByText(/Retry/)).toBeNull()
+    })
+
+    // Prefix-commit: the mutation resolves even when part of the batch failed,
+    // so the dialog has to key off the outcomes rather than an error.
+    it('spells out the rolled-back, unattempted and rejected parts of a partial batch', async () => {
+      deleteMany.mockResolvedValue({
+        outcomes: [
+          { captureId: 'cap1', status: 'deleted' },
+          { captureId: 'cap2', status: 'rolled_back', stage: 'db', error: 'SqliteError' },
+          { captureId: 'cap3', status: 'not_attempted' },
+          { captureId: 'cap4', status: 'rejected', reason: 'not_found' },
+          { captureId: 'cap5', status: 'rejected', reason: 'duplicate' }
+        ],
+        deletedIds: ['cap1'],
+        failedIds: ['cap2', 'cap3'],
+        haltedAt: 'cap2',
+        manifest: { baseIndex: 4, committedEntries: 1 }
+      } satisfies BatchDeleteResult)
+
+      const result = await runBatchDelete()
+
+      expect(within(result).getByText('Deleted 1 of 2')).toBeDefined()
+      expect(within(result).getByText(/1 deletion entry was appended/)).toBeDefined()
+      expect(
+        within(result).getByText(/its files were removed but its database record remains/)
+      ).toBeDefined()
+      expect(within(result).getByText(/SqliteError/)).toBeDefined()
+      expect(within(result).getByText(/1 capture was not attempted/)).toBeDefined()
+      expect(within(result).getByText(/1 was already gone/)).toBeDefined()
+      expect(within(result).getByText(/1 duplicate id was ignored/)).toBeDefined()
+      // The clean line must not appear alongside the failures.
+      expect(within(result).queryByText(/All selected captures were removed/)).toBeNull()
+    })
+
+    it('names the artifact stage when the files themselves could not be removed', async () => {
+      deleteMany.mockResolvedValue({
+        outcomes: [
+          { captureId: 'cap1', status: 'rolled_back', stage: 'artifacts', error: 'EACCES' },
+          { captureId: 'cap2', status: 'not_attempted' }
+        ],
+        deletedIds: [],
+        failedIds: ['cap1', 'cap2'],
+        haltedAt: 'cap1',
+        manifest: { baseIndex: 4, committedEntries: 0 }
+      } satisfies BatchDeleteResult)
+
+      const result = await runBatchDelete()
+
+      expect(within(result).getByText('Deleted 0 of 2')).toBeDefined()
+      expect(
+        within(result).getByText(/its files could not be removed, so it is intact/)
+      ).toBeDefined()
+      // committedEntries is 0, so the manifest sentence is suppressed entirely.
+      expect(within(result).queryByText(/appended/)).toBeNull()
+    })
+
+    it('retries only the failed ids, never the rejected ones', async () => {
+      deleteMany.mockResolvedValueOnce({
+        outcomes: [
+          { captureId: 'cap1', status: 'rolled_back', stage: 'db', error: 'SqliteError' },
+          { captureId: 'cap2', status: 'rejected', reason: 'not_found' }
+        ],
+        deletedIds: [],
+        failedIds: ['cap1'],
+        haltedAt: 'cap1',
+        manifest: { baseIndex: 4, committedEntries: 0 }
+      } satisfies BatchDeleteResult)
+      deleteMany.mockResolvedValueOnce(cleanDeleteResult(['cap1']))
+
+      const result = await runBatchDelete()
+      fireEvent.click(within(result).getByText('Retry 1 failed'))
+
+      await waitFor(() => expect(deleteMany).toHaveBeenCalledTimes(2))
+      expect(deleteMany).toHaveBeenLastCalledWith({ caseId: 'case1', captureIds: ['cap1'] })
+      expect(await screen.findByText('Deleted 1 of 1')).toBeDefined()
+    })
+
+    it('drops deleted rows from the selection and moves the detail off a deleted capture', async () => {
+      useAppStore.getState().selectAllCaptures(['cap1', 'cap2', 'cap3'])
+      renderRoute()
+
+      fireEvent.click(await screen.findByText(BATCH_CONTROL))
+      const confirm = await screen.findByTestId('batch-delete-confirm')
+      fireEvent.click(within(confirm).getByText('Delete 2 captures'))
+
+      await screen.findByTestId('batch-delete-result')
+      expect([...useAppStore.getState().selectedCaptureIds]).toEqual(['cap3'])
+      // cap1 was the detail selection and the case has nothing left to fall
+      // back to (the captures query returns cap1 alone).
+      expect(useAppStore.getState().selectedCaptureId).toBeNull()
+    })
+
+    it('keeps the confirm dialog up when the whole call is rejected', async () => {
+      deleteMany.mockRejectedValue(new Error('BATCH_CROSS_CASE'))
+      renderRoute()
+
+      fireEvent.click(await screen.findByText(BATCH_CONTROL))
+      const confirm = await screen.findByTestId('batch-delete-confirm')
+      fireEvent.click(within(confirm).getByText('Delete 2 captures'))
+
+      await waitFor(() => expect(deleteMany).toHaveBeenCalledOnce())
+      expect(screen.queryByTestId('batch-delete-result')).toBeNull()
+      expect(screen.getByTestId('batch-delete-confirm')).toBeDefined()
+    })
   })
 })

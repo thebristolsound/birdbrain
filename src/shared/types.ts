@@ -632,6 +632,35 @@ export interface Note {
   updatedAt: string
 }
 
+// --- Cross-case recent activity (#403) ---
+// One row of the dashboard's recent-activity feed. Derived read-only from the
+// captures/notes/cases tables — nothing persists it. Selector hits are absent
+// deliberately: `selector_matches` carries no timestamp, so a hit event has no
+// honest time to order by (maintainer ruling 2026-08-20, #403).
+interface RecentActivityBase {
+  caseId: string
+  caseName: string
+  caseType?: Case['type']
+  /** ISO 8601. Capture rows use created_at, note rows updated_at. */
+  occurredAt: string
+  /** Raw row title; null when the row has none. Display copy lives in the view. */
+  title: string | null
+}
+
+export interface RecentCaptureActivity extends RecentActivityBase {
+  kind: 'capture'
+  captureId: string
+  url: string
+  lastVerifiedStatus?: HashVerification['status']
+}
+
+export interface RecentNoteActivity extends RecentActivityBase {
+  kind: 'note'
+  noteId: string
+}
+
+export type RecentActivityEvent = RecentCaptureActivity | RecentNoteActivity
+
 export type { MentionTargetType } from '@shared/noteDoc'
 
 /**

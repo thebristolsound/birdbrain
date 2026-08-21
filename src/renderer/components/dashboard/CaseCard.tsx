@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, memo } from 'react'
 import type { Case } from '@shared/types'
-import { Camera, ArrowUpRight, ShieldAlert, Users, FolderOpen, MoreVertical } from 'lucide-react'
+import { Camera, ArrowUpRight, MoreVertical } from 'lucide-react'
 import { Card } from '@renderer/components/ui'
+import { getCaseTypeStyle } from '@renderer/components/dashboard/caseTypeStyle'
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -12,30 +13,6 @@ function timeAgo(dateStr: string): string {
   if (hours < 24) return `${hours} hour${hours !== 1 ? 's' : ''} ago`
   const days = Math.floor(hours / 24)
   return `${days} day${days !== 1 ? 's' : ''} ago`
-}
-
-const CASE_ICONS: Record<string, { icon: typeof FolderOpen; bgClass: string; iconClass: string }> =
-  {
-    crypto: {
-      icon: FolderOpen,
-      bgClass: 'bg-amber-500/10 border border-amber-500/20',
-      iconClass: 'text-amber-500'
-    },
-    malware: {
-      icon: ShieldAlert,
-      bgClass: 'bg-sky-500/10 border border-sky-500/20',
-      iconClass: 'text-sky-500'
-    },
-    fraud: {
-      icon: Users,
-      bgClass: 'bg-pink-500/10 border border-pink-500/20',
-      iconClass: 'text-pink-500'
-    }
-  }
-const DEFAULT_ICON = {
-  icon: FolderOpen,
-  bgClass: 'bg-accent-subtle border border-accent/20',
-  iconClass: 'text-accent'
 }
 
 interface CaseCardProps {
@@ -63,11 +40,7 @@ export const CaseCard = memo(function CaseCard({
   const inputRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
-  const {
-    icon: IconComponent,
-    bgClass,
-    iconClass
-  } = CASE_ICONS[caseData.type ?? ''] ?? DEFAULT_ICON
+  const { icon: IconComponent, bgClass, iconClass } = getCaseTypeStyle(caseData.type)
 
   useEffect(() => {
     if (editingName !== null && inputRef.current) {

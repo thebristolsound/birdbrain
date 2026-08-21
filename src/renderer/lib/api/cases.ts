@@ -1,6 +1,7 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { CreateCaseParams, UpdateCaseParams } from '@shared/ipc'
 import type { ArchiveInspectReport } from '@shared/types'
+import { RECENT_ACTIVITY_LIMIT } from '@shared/constants'
 import { queryKeys } from '@renderer/lib/api/keys'
 
 // Opens a file dialog and verifies the chosen archive without importing it;
@@ -19,6 +20,17 @@ export const caseQueryOptions = (id: string) =>
   queryOptions({
     queryKey: queryKeys.case(id),
     queryFn: () => window.birdbrain.cases.get(id)
+  })
+
+// The dashboard's cross-case activity feed (#403). `refetchOnMount: 'always'`
+// overrides the client's 30s staleTime: returning to the dashboard after
+// capturing is exactly when the feed is read, and a stale-but-fresh-enough
+// cache would show the operator a feed missing the work they just did.
+export const recentActivityQueryOptions = (limit: number = RECENT_ACTIVITY_LIMIT) =>
+  queryOptions({
+    queryKey: queryKeys.recentActivity(limit),
+    queryFn: () => window.birdbrain.cases.recentActivity(limit),
+    refetchOnMount: 'always'
   })
 
 export function useCasesMutations() {

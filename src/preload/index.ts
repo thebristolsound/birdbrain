@@ -58,7 +58,8 @@ const birdbrain = {
     delete: bridge(IPC_CHANNELS.CASES_DELETE),
     exportArchive: bridge(IPC_CHANNELS.CASES_EXPORT_ARCHIVE),
     inspectArchive: bridge(IPC_CHANNELS.CASES_INSPECT_ARCHIVE),
-    importArchive: bridge(IPC_CHANNELS.CASES_IMPORT_ARCHIVE)
+    importArchive: bridge(IPC_CHANNELS.CASES_IMPORT_ARCHIVE),
+    recentActivity: bridge(IPC_CHANNELS.CASES_RECENT_ACTIVITY)
   },
   captures: {
     list: bridge(IPC_CHANNELS.CAPTURES_LIST),

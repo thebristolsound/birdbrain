@@ -23,6 +23,8 @@ function formatRelative(ts: string): string {
 interface NoteCardProps {
   note: Note
   caseId: string
+  /** Marks the note the operator arrived here to read (#403 activity feed). */
+  selected?: boolean
 }
 
 interface NoteCardEditorProps {
@@ -86,7 +88,7 @@ function NoteCardEditor({ note, isPending, onSave, onCancel }: NoteCardEditorPro
   )
 }
 
-export function NoteCard({ note, caseId }: NoteCardProps) {
+export function NoteCard({ note, caseId, selected = false }: NoteCardProps) {
   const { update, remove } = useNotesMutations(caseId)
   const [isEditing, setIsEditing] = useState(false)
   const { data: thumbnail } = useQuery({
@@ -124,7 +126,10 @@ export function NoteCard({ note, caseId }: NoteCardProps) {
     <div
       key={note.id}
       data-testid={`note-card-${note.id}`}
-      className="flex gap-3 rounded-2xl border border-border bg-surface p-4"
+      aria-current={selected ? 'true' : undefined}
+      className={`flex gap-3 rounded-2xl border bg-surface p-4 ${
+        selected ? 'border-accent/60 ring-1 ring-accent/30' : 'border-border'
+      }`}
     >
       <div className="shrink-0">
         {thumbSrc ? (

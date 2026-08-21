@@ -6,6 +6,9 @@ interface AppState {
   connectedToExtension: boolean
   selectedCaptureId: string | null
   selectedCaptureIds: Set<string>
+  // Which note the Notes tab should mark as selected when it next renders.
+  // Set by the dashboard activity feed (#403); the Notes tab reads it.
+  selectedNoteId: string | null
   // Shift-click range anchor (#396): the last plainly- or cmd-clicked row.
   selectionAnchorId: string | null
   // The selection as it stood when the anchor was set. A shift-click replaces
@@ -34,6 +37,7 @@ interface AppState {
   setPanelCollapsedForced: (forced: boolean) => void
   setOnboardingOverlayOpen: (open: boolean) => void
   setSelectedCaptureId: (id: string | null) => void
+  setSelectedNoteId: (id: string | null) => void
   setSearchQuery: (query: string) => void
   selectCapture: (id: string) => void
   toggleCaptureSelection: (id: string) => void
@@ -55,6 +59,7 @@ export const useAppStore = create<AppState>((set) => ({
   connectedToExtension: false,
   selectedCaptureId: null,
   selectedCaptureIds: new Set(),
+  selectedNoteId: null,
   selectionAnchorId: null,
   selectionRangeBase: [],
   searchQuery: '',
@@ -73,6 +78,7 @@ export const useAppStore = create<AppState>((set) => ({
   setPanelCollapsedForced: (forced) => set({ panelCollapsedForced: forced }),
   setOnboardingOverlayOpen: (open) => set({ onboardingOverlayOpen: open }),
   setSelectedCaptureId: (id) => set({ selectedCaptureId: id }),
+  setSelectedNoteId: (id) => set({ selectedNoteId: id }),
   setSearchQuery: (query) => set({ searchQuery: query }),
 
   selectCapture: (id) => set({ selectedCaptureId: id }),

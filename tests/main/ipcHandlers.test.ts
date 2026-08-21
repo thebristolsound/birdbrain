@@ -122,6 +122,7 @@ import type {
   Capture,
   Case,
   LogEntry,
+  RecentActivityEvent,
   SessionRecord,
   TrustedTime
 } from '@shared/types'
@@ -319,6 +320,19 @@ describe('ipcHandlers — cases', () => {
     expectOk(await invoke(IPC_CHANNELS.CASES_DELETE, created.id))
     const after = expectOk<Case[]>(await invoke(IPC_CHANNELS.CASES_LIST))
     expect(after.some((c) => c.id === created.id)).toBe(false)
+  })
+
+  it('serves the cross-case activity feed and honours the limit argument', async () => {
+    const note = expectOk<{ id: string }>(
+      await invoke(IPC_CHANNELS.NOTES_CREATE, { caseId, title: 'Feed note' })
+    )
+
+    const feed = async (limit?: number) =>
+      expectOk<RecentActivityEvent[]>(await invoke(IPC_CHANNELS.CASES_RECENT_ACTIVITY, limit))
+
+    const events = await feed()
+    expect(events.some((e) => e.kind === 'note' && e.noteId === note.id)).toBe(true)
+    expect(await feed(1)).toHaveLength(1)
   })
 
   it('translates a unique-constraint violation into a structured failure', async () => {

@@ -129,6 +129,8 @@ describe('useServerStatus', () => {
     const list = queryClient.getQueryData<Capture[]>(queryKeys.captures('case-1'))
     expect(list?.map((c) => c.id)).toEqual(['new', 'old'])
     expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.captureCounts })
+    // The dashboard feed does not remount while it is being looked at (#403).
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.recentActivityAll })
   })
 
   it('seeds a fresh list when no captures were cached', () => {

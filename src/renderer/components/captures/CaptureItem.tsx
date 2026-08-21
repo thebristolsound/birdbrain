@@ -101,7 +101,11 @@ export function CaptureItem({
       )}
       <div className="flex gap-2">
         {/* Multi-select checkbox: fades in on row hover, stays once any row
-            is checked (showCheckbox) or this row is */}
+            is checked (showCheckbox) or this row is. It stays mounted so rows
+            never shift, which means opacity is the only thing hiding it — and
+            opacity: 0 does not leave the tab order. focus-visible reveals it,
+            so keyboard focus can never land on a control the operator cannot
+            see. */}
         {onToggleMultiSelect && (
           <button
             onClick={(e) => {
@@ -113,7 +117,9 @@ export function CaptureItem({
             role="checkbox"
             data-testid="capture-select-checkbox"
             className={`mt-1.5 shrink-0 self-start transition-opacity duration-150 ${
-              isMultiSelected || showCheckbox ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+              isMultiSelected || showCheckbox
+                ? 'opacity-100'
+                : 'opacity-0 focus-visible:opacity-100 group-hover:opacity-100'
             }`}
           >
             <span

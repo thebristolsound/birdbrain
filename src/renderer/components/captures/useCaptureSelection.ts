@@ -20,6 +20,7 @@ export function useCaptureSelection(displayedIds: string[]) {
   const toggleCaptureSelection = useAppStore((s) => s.toggleCaptureSelection)
   const selectAllCaptures = useAppStore((s) => s.selectAllCaptures)
   const clearCaptureSelection = useAppStore((s) => s.clearCaptureSelection)
+  const deselectCaptures = useAppStore((s) => s.deselectCaptures)
   const selectCaptureRange = useAppStore((s) => s.selectCaptureRange)
   const setSelectionAnchor = useAppStore((s) => s.setSelectionAnchor)
 
@@ -57,7 +58,11 @@ export function useCaptureSelection(displayedIds: string[]) {
   }
 
   function toggleSelectAll() {
-    if (allVisibleSelected) clearCaptureSelection()
+    // Both branches are scoped to what the filter shows, because the checkbox's
+    // own checked state and the bar's count are. Clearing the whole store here
+    // would drop selections the operator cannot currently see and was given no
+    // indication of.
+    if (allVisibleSelected) deselectCaptures(displayedIds)
     else selectAllCaptures(displayedIds)
   }
 
@@ -78,17 +83,25 @@ export function useCaptureSelection(displayedIds: string[]) {
         // Open dialogs and the bar's own overlays own Escape while they are
         // up; the guard attribute lets non-dialog overlays opt in.
         if (document.querySelector('[role="dialog"], [data-selection-escape-guard]')) return
+        // The command palette is checked by state rather than by the DOM query
+        // above, because it renders no role="dialog". Reading the store makes
+        // the precedence independent of listener registration order; see the
+        // note on the listener below.
+        if (useAppStore.getState().commandPaletteOpen) return
         if (useAppStore.getState().selectedCaptureIds.size > 0) clearCaptureSelection()
       }
     }
-    // On `window`, not `document`: the command palette's Escape handler is
-    // also a window listener, and it is registered first (it mounts in the
-    // root layout), so its preventDefault lands before the defaultPrevented
-    // check above. A document listener would fire first during bubbling and
-    // clear the selection out from under a palette dismissal.
+    // On `window`, not `document`: a document listener fires first during
+    // bubbling and would clear the selection out from under a palette
+    // dismissal. That is necessary but not sufficient. Same-target listeners
+    // fire in registration order, and this hook lives in CaptureList, a
+    // descendant of the root layout that owns the palette — React flushes child
+    // effects before parent effects, so this listener registers first and the
+    // defaultPrevented check cannot be relied on. The palette is therefore
+    // checked by store state above rather than by ordering.
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [displayedIds, selectAllCaptures, clearCaptureSelection])
+  }, [displayedIds, selectAllCaptures, clearCaptureSelection, deselectCaptures])
 
   return {
     selectedCaptureIds,

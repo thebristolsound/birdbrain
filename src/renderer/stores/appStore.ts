@@ -8,6 +8,11 @@ interface AppState {
   selectedCaptureIds: Set<string>
   // Shift-click range anchor (#396): the last plainly- or cmd-clicked row.
   selectionAnchorId: string | null
+  // The selection as it stood when the anchor was set. A shift-click replaces
+  // the previous range rather than unioning with it, so correcting an
+  // overshoot shrinks the selection; anything selected before the anchor
+  // survives, which is the Finder/Explorer contract.
+  selectionRangeBase: string[]
   searchQuery: string
   activeSelectorFilters: string[]
   filteredCaptureIds: string[] | null
@@ -51,6 +56,7 @@ export const useAppStore = create<AppState>((set) => ({
   selectedCaptureId: null,
   selectedCaptureIds: new Set(),
   selectionAnchorId: null,
+  selectionRangeBase: [],
   searchQuery: '',
   activeSelectorFilters: [],
   filteredCaptureIds: null,
@@ -82,11 +88,17 @@ export const useAppStore = create<AppState>((set) => ({
       return { selectedCaptureIds: newSet }
     }),
 
-  selectAllCaptures: (ids) => set({ selectedCaptureIds: new Set(ids) }),
+  // Unions rather than replaces. The gesture means "select what I can see";
+  // discarding ids the current filter hides would break the contract that
+  // selection survives a filter change.
+  selectAllCaptures: (ids) =>
+    set((s) => ({ selectedCaptureIds: new Set([...s.selectedCaptureIds, ...ids]) })),
 
-  clearCaptureSelection: () => set({ selectedCaptureIds: new Set(), selectionAnchorId: null }),
+  clearCaptureSelection: () =>
+    set({ selectedCaptureIds: new Set(), selectionAnchorId: null, selectionRangeBase: [] }),
 
-  setSelectionAnchor: (id) => set({ selectionAnchorId: id }),
+  setSelectionAnchor: (id) =>
+    set((s) => ({ selectionAnchorId: id, selectionRangeBase: [...s.selectedCaptureIds] })),
 
   selectCaptureRange: (orderedIds, targetId) =>
     set((s) => {
@@ -98,11 +110,17 @@ export const useAppStore = create<AppState>((set) => ({
       // the clicked row instead of silently doing nothing.
       const from = anchorIdx === -1 ? targetIdx : Math.min(anchorIdx, targetIdx)
       const to = anchorIdx === -1 ? targetIdx : Math.max(anchorIdx, targetIdx)
-      const next = new Set(s.selectedCaptureIds)
+      // Rebuilt from the base each time, not accumulated. Shift-clicking a
+      // nearer row after overshooting has to shrink the range, or the operator
+      // corrects the gesture, sees no change, and a bulk delete takes rows they
+      // thought they had dropped.
+      const base = anchorIdx === -1 ? [...s.selectedCaptureIds] : s.selectionRangeBase
+      const next = new Set(base)
       for (const id of orderedIds.slice(from, to + 1)) next.add(id)
       return {
         selectedCaptureIds: next,
-        selectionAnchorId: anchorIdx === -1 ? targetId : s.selectionAnchorId
+        selectionAnchorId: anchorIdx === -1 ? targetId : s.selectionAnchorId,
+        selectionRangeBase: base
       }
     }),
 

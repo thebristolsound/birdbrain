@@ -143,8 +143,11 @@ describe('useCaptureSelection', () => {
     expect(state().selectedCaptureIds.size).toBe(0)
   })
 
-  // The command palette dismisses on Escape by preventing the default on a
-  // window listener registered before this one (it mounts in the root layout).
+  // Kept, but it no longer carries the palette's weight. Registering `claim`
+  // before renderHook hard-codes the favourable ordering, and the real ordering
+  // is the opposite: this hook lives in a descendant of the layout that owns the
+  // palette, and React flushes child effects first. The palette case is pinned
+  // by store state in the test below instead.
   it('Escape defers to a handler that already claimed the key', () => {
     useAppStore.setState({ selectedCaptureIds: new Set(['cap-1']) })
     const claim = (e: Event) => e.preventDefault()
@@ -156,6 +159,20 @@ describe('useCaptureSelection', () => {
     })
     expect(state().selectedCaptureIds.size).toBe(1)
     window.removeEventListener('keydown', claim)
+  })
+
+  it('Escape defers to the command palette regardless of listener order', () => {
+    useAppStore.setState({ selectedCaptureIds: new Set(['cap-1']), commandPaletteOpen: true })
+    // No competing listener and no preventDefault: if precedence depended on
+    // registration order or on the DOM dialog query, this would clear. The
+    // palette renders no role="dialog", so state is the only honest signal.
+    renderHook(() => useCaptureSelection(ORDER))
+
+    act(() => {
+      press('Escape')
+    })
+    expect(state().selectedCaptureIds.size).toBe(1)
+    useAppStore.setState({ commandPaletteOpen: false })
   })
 
   it('Escape defers to an open dialog or guarded overlay', () => {

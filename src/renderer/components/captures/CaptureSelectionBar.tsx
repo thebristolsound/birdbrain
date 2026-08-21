@@ -149,7 +149,11 @@ export function CaptureSelectionBar({
       <span className="flex-1" />
       <button
         onClick={() => setShowExport(true)}
-        title="Export selection"
+        // "Export case", not "Export selection": the export dialog is
+        // case-scoped and there is no selection-scoped export yet. The tooltip
+        // is the only text the operator reads before handing an evidence
+        // package over, so it names the scope the action actually has.
+        title="Export case"
         className={`${ICON_BTN} text-text-secondary`}
       >
         <Download className="h-[13px] w-[13px]" strokeWidth={1.9} />

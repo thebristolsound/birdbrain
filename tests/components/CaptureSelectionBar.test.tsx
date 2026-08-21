@@ -204,7 +204,7 @@ describe('CaptureSelectionBar', () => {
 
   it('opens the export dialog case-scoped', async () => {
     renderBar()
-    fireEvent.click(screen.getByTitle('Export selection'))
+    fireEvent.click(screen.getByTitle('Export case'))
     expect(await screen.findByTestId('export-dialog-stub')).toBeDefined()
     await waitFor(() =>
       expect(exportDialogProps).toHaveBeenCalledWith(

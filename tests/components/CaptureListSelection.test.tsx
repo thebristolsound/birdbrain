@@ -199,4 +199,18 @@ describe('CaptureList selection', () => {
     )
     expect(useAppStore.getState().selectedCaptureIds.size).toBe(3)
   })
+
+  it('unchecking select-all under a filter drops only the rows on screen', async () => {
+    renderList()
+    await rows()
+    act(() => useAppStore.getState().selectAllCaptures(['cap-a', 'cap-b', 'cap-c']))
+    act(() => useAppStore.getState().setFilteredCaptureIds(['cap-b']))
+
+    // The checkbox reads checked because every visible row is selected, and the
+    // bar says "1 selected". Unchecking has to mean that one row, not all three
+    // — the operator was never told the other two were still in the set.
+    act(() => barProps.mock.lastCall![0].onToggleSelectAll())
+
+    expect([...useAppStore.getState().selectedCaptureIds].sort()).toEqual(['cap-a', 'cap-c'])
+  })
 })

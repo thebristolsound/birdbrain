@@ -10,6 +10,7 @@ import {
   routeOfPath,
   tourSteps,
   type TourChapter,
+  type TourOutcome,
   type TourRoute,
   type TourStep
 } from '@renderer/components/onboarding/tourSteps'
@@ -107,6 +108,8 @@ export function useTourEngine(caseId: string | null): TourEngine {
   const lastPath = useRef(pathname)
   const settingsRef = useRef(settings)
   settingsRef.current = settings
+  const stateRef = useRef(state)
+  stateRef.current = state
 
   const go = useCallback(
     (route: TourRoute, path: string) => {
@@ -120,15 +123,29 @@ export function useTourEngine(caseId: string | null): TourEngine {
     [caseId, navigate]
   )
 
-  const close = useCallback(
-    (chapter: TourChapter, auto: boolean, outcome: 'finished' | 'skipped') => {
-      setState(null)
-      setRect(null)
-      setAnchorMissing(false)
+  /**
+   * The completion write, without the teardown.
+   *
+   * `close` is not the only way a chapter ends: starting another one over the
+   * top of it ends it too, and that path has to persist the same thing or the
+   * chapter auto-fires again on the next launch.
+   */
+  const persistCompletion = useCallback(
+    (chapter: TourChapter, auto: boolean, outcome: TourOutcome) => {
       const next = completionAfter(settingsRef.current?.onboardingChapters, chapter, outcome, auto)
       if (next) update.mutate({ onboardingChapters: next })
     },
     [update]
+  )
+
+  const close = useCallback(
+    (chapter: TourChapter, auto: boolean, outcome: TourOutcome) => {
+      setState(null)
+      setRect(null)
+      setAnchorMissing(false)
+      persistCompletion(chapter, auto, outcome)
+    },
+    [persistCompletion]
   )
 
   /** Navigates to a step's route when it is not the one already on screen. */
@@ -144,6 +161,17 @@ export function useTourEngine(caseId: string | null): TourEngine {
   const start = useCallback(
     (chapter: TourChapter, options?: { auto?: boolean }) => {
       if (chapter === 'case' && !caseId) return
+      // A chapter starting over a running one displaces it, and the displaced
+      // chapter never reaches `close`. Persist its completion here or it is
+      // lost: the intro's own third step rings the extension banner, whose
+      // Setup Guide button starts the extension chapter from inside the ring,
+      // and `isFreshInstall` is latched once and never cleared, so an intro
+      // that loses its completion write raises the welcome card on every
+      // launch from then on. `finished` rather than `skipped` because the
+      // operator followed where the tour pointed rather than dismissing it,
+      // and the chapters they have not seen must still be able to fire.
+      const displaced = stateRef.current
+      if (displaced) persistCompletion(displaced.chapter, displaced.auto, 'finished')
       setRect(null)
       setAnchorMissing(false)
       // The extension chapter opens with the install walkthrough already
@@ -151,7 +179,7 @@ export function useTourEngine(caseId: string | null): TourEngine {
       setState({ chapter, step: 0, installOpen: chapter === 'ext', auto: options?.auto ?? false })
       routeTo(tourSteps(chapter)[0]?.route)
     },
-    [caseId, routeTo]
+    [caseId, persistCompletion, routeTo]
   )
 
   const next = useCallback(() => {

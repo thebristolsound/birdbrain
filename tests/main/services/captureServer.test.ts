@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
-import { createCase, updateCase } from '@main/services/db/caseRepo'
+import { createCase, setAutoCapturePolicy, updateCase } from '@main/services/db/caseRepo'
 import { listCaptures } from '@main/services/db/captureRepo'
 import {
   createSelector,
@@ -19,6 +19,7 @@ import {
   resetManualDedup
 } from '@main/services/captureServer'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
+import { matchCaseExclusion } from '@main/services/exclusionPolicy'
 import { createSessionService, type SessionService } from '@main/services/session'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { getManifestHead } from '@main/services/manifest'
@@ -709,6 +710,24 @@ describe('captureServer', () => {
     expect(deletions).toHaveLength(1)
     expect(deletions[0].captureId).toBe(captures[0].captureId)
     expect(deletions[0].reason).toBe('pipeline-test')
+    expect(listCaptures(testCase.id)).toHaveLength(0)
+  })
+
+  // The pipeline self-test is the deliberate exception to the per-case
+  // exclusion list (#400, #766): it acquires nothing — fixed sentinel URL,
+  // literal body — so a policy written about web pages must not be able to
+  // disable the operator's proof that the capture pipeline works.
+  it('POST /api/captures/test runs even when the case excludes its sentinel URL', async () => {
+    const testCase = createCase({ name: 'Excluding Everything' })
+    setAutoCapturePolicy(testCase.id, { exclusions: ['/./'], mode: 'override' })
+    // Self-proving: without this the test would pass on a pattern that never
+    // matched the sentinel, and pin nothing.
+    expect(matchCaseExclusion('birdbrain://pipeline-test', testCase.id)).toBe('/./')
+
+    const res = await serverPost('/api/captures/test')
+    const data = await readJson(res)
+    expect(data.success).toBe(true)
+    // And the residue is still cleaned up through the lifecycle.
     expect(listCaptures(testCase.id)).toHaveLength(0)
   })
 

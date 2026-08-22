@@ -532,6 +532,17 @@ function createApp(deps: CaptureServerDeps): Hono {
         timestamp: new Date().toISOString()
       })
 
+      // The one producer the per-case exclusion list is deliberately not
+      // applied to (#400, #766). Every acquisition route is checked — the
+      // extension/manual route above, and both recapture enforcement points —
+      // but this one acquires nothing: the URL is the fixed sentinel below and
+      // the body is a literal, so no page content and no operator-supplied URL
+      // enters the case. What a check would buy is the ability for a broad
+      // pattern like `/./` to break the operator's only proof that the capture
+      // pipeline works, which is the worse failure for a diagnostic. The
+      // residue is real and bounded: a capture row and a `capture` manifest
+      // entry exist in the case until the `finally` below deletes them through
+      // the lifecycle, which appends the matching deletion entry.
       const { capture } = await ingestMhtmlCapture({
         caseId: testCaseId,
         url: 'birdbrain://pipeline-test',

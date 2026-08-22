@@ -148,6 +148,7 @@ export function CaptureViewer() {
         </div>
         <div
           role="tablist"
+          data-tour="viewertabs"
           className="flex shrink-0 items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5"
         >
           {TABS.map((tab) => {

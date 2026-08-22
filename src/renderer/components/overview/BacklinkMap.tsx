@@ -63,7 +63,7 @@ export function BacklinkMap({ notes, edges, labels, onOpenNote, onAllNotes }: Ba
       data-testid="overview-link-map"
       className="flex min-h-0 flex-1 flex-col rounded-[var(--d-r)] border border-border bg-card p-[var(--d-card)]"
     >
-      <div className="mb-2.5 flex items-center gap-2">
+      <div data-tour="linkmap" className="mb-2.5 flex items-center gap-2">
         <LinkIcon size={13} strokeWidth={1.8} className="shrink-0 text-text-faint" />
         <span className="font-display text-[10px] font-semibold uppercase tracking-[0.06em] text-text-faint">
           Link map

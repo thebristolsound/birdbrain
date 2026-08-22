@@ -54,6 +54,7 @@ export function Sidebar() {
                 : 'text-text-muted hover:bg-elevated hover:text-text-secondary'
             ].join(' ')}
             aria-label="Home"
+            data-tour="nav-dashboard"
           >
             {isOnHome && (
               <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r bg-accent" />
@@ -87,6 +88,7 @@ export function Sidebar() {
                       : 'text-text-muted hover:bg-elevated hover:text-text-secondary'
                 ].join(' ')}
                 aria-label={label}
+                data-tour={`nav-${id}`}
               >
                 {/* Active left-edge bar */}
                 {active && (

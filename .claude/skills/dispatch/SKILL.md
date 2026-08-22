@@ -263,11 +263,16 @@ title, head sha, a path to the PR body it wrote, and the labels it determined ar
 Confirm the PR landed **and who authored it**:
 `gh api repos/thebristolsound/birdbrain/pulls/<n> --jq '{author: .user.login, draft}'` must
 report the machine login — a PR showing the maintainer's login is a contract violation: say so
-in the report and stop, do not label it `agent-pr`. Then confirm the labels
-(`gh api repos/thebristolsound/birdbrain/issues/<n>/labels --jq '[.[].name]'`). **Then release
-the claim**: remove `agent-wip` from the issue — the `agent-pr` label on the PR is the slot
-marker from here on. A claim that outlives its PR-open is the leftover state section 1 has to
-clean up.
+in the report and stop, do not label it `agent-pr`. Then confirm the labels with
+`gh api repos/thebristolsound/birdbrain/issues/<n>/labels --jq '[.[].name]'`: the set must
+contain `agent-authored` and `agent-pr`, plus `evidence-affecting` if the implementer reported
+the gate fired. A non-zero exit is not an empty set — do not read a failed call as "no
+labels". Re-apply anything missing and read again; if the second read still falls short,
+report the PR number and what it is missing, and **do not release the claim** — an unlabelled
+PR holding an unreleased slot is recoverable, an unlabelled PR with the slot already vacated
+is the wave 1 failure. **Then release the claim**: remove `agent-wip` from the issue — the
+`agent-pr` label on the PR is the slot marker from here on. A claim that outlives its
+PR-open is the leftover state section 1 has to clean up.
 
 `agent-authored` goes on every agent PR — it records that an agent wrote the diff, and both
 `pre-pass-gate.yml` and `ci.yml`'s draft exemption key on it (#561). `agent-pr` goes on every

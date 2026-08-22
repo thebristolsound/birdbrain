@@ -193,9 +193,18 @@ Evidence-affecting PRs are never merged without human review. Do not weaken that
   which is also why its authoring under the maintainer's login is not the violation above.
   Note that `--label` does not attach labels atomically: `CreatePullRequestInput` has no
   `labelIds` field, so `gh` issues a second `updatePullRequest` mutation and the PR does
-  briefly exist unlabelled. **Verify rather than assert**, with
-  `gh api repos/{owner}/{repo}/issues/<n>/labels`, and fix it if the second mutation did not
-  land.
+  briefly exist unlabelled. **Verify rather than assert**, and treat every outcome. Read the
+  set with `gh api repos/thebristolsound/birdbrain/issues/<n>/labels --jq '[.[].name]'`. It
+  satisfies the contract when it contains `agent-authored`, contains `evidence-affecting` if
+  and only if the gate fired, and does not contain `agent-pr`.
+
+  A non-zero exit is not an empty set. Do not read a failed call as "no labels", and do not
+  pipe it through anything that swallows the exit status. On a failed read, retry once; if
+  the retry fails, report the PR number and the labels it still needs, and stop. On a set
+  missing a label, `gh issue edit <n> --add-label <name>` and read again. If the second read
+  still does not satisfy the predicate, report the PR number, the labels present, and the
+  labels required, and stop — do not report success. A PR that is unlabelled and known to be
+  is recoverable in one command; one that is unlabelled and reported as done is #504 again.
 
   The description covers: what changed, how it was verified (real output), the Evidence impact
   section when the gate fired, and ends with exactly this attribution line and nothing else:

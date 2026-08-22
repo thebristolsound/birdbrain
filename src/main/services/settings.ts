@@ -70,6 +70,8 @@ const DEFAULT_SETTINGS: BirdbrainSettings = {
   analysisSystemPrompt: DEFAULT_ANALYSIS_SYSTEM_PROMPT,
   detailsPanelCollapsed: false,
   tooltipsSeen: {},
+  onboardingChapters: {},
+  isFreshInstall: false,
   releaseChannel: 'stable',
   autoCheckForUpdates: true
 }
@@ -98,6 +100,22 @@ export function initSettings(userDataPath: string): void {
     }
   } catch {
     /* keep the 'stable' default */
+  }
+  // Latch the fresh-install determination (#404). No settings.json means this
+  // launch is the first one, and only a fresh install ever auto-fires a tour
+  // chapter. The determination has to be persisted here rather than re-derived
+  // later, because the very next write creates the file and the signal is gone.
+  // Runs last so the storagePath and releaseChannel derivations above are
+  // already on DEFAULT_SETTINGS when they get written out.
+  if (!existsSync(settingsPath)) {
+    DEFAULT_SETTINGS.isFreshInstall = true
+    try {
+      writeFileSync(settingsPath, JSON.stringify(DEFAULT_SETTINGS, null, 2), 'utf-8')
+    } catch {
+      // An unwritable userData directory is already fatal elsewhere; failing to
+      // seed the file here only costs the tour, so never throw from init.
+      logger.warn('settings', 'settings.fresh_install_seed_failed')
+    }
   }
 }
 

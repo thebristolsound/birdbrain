@@ -374,9 +374,6 @@ describe('validateIgnorePattern', () => {
     ['single-char glob', 'exa?ple.com'],
     ['regex with flags', '/\\.gov(\\.|\\/|$)/i'],
     ['regex without flags', '/^https:/'],
-    // Not a regex literal (no closing slash past position 0), so it is read as
-    // a substring and needs no compilation.
-    ['leading slash, no closing slash', '/some/path'],
     ['pattern with surrounding whitespace', '  facebook.com  ']
   ])('accepts a %s pattern', (_name, pattern) => {
     expect(validateIgnorePattern(pattern)).toEqual({ ok: true })
@@ -400,6 +397,17 @@ describe('validateIgnorePattern', () => {
 
   it('rejects an unknown regex flag', () => {
     expect(validateIgnorePattern('/abc/q').ok).toBe(false)
+  })
+
+  // A URL path typed as an exclusion reads as a regex literal under this
+  // grammar — '/some/path' is body 'some' with flags 'path' — and
+  // matchIgnoredUrl would silently skip it. Refusing it is the whole point of
+  // validating: the operator finds out now rather than discovering later that
+  // the rule never excluded anything.
+  it('rejects a URL path, which the grammar reads as a regex with bad flags', () => {
+    const result = validateIgnorePattern('/some/path')
+    expect(result.ok).toBe(false)
+    expect(result.ok === false && result.reason).toContain('flags')
   })
 
   // The write seam refuses what cannot compile, not what is slow. Containment

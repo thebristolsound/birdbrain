@@ -4,6 +4,11 @@ Extracted design-handoff bundles from the claude.ai prototype loop, kept byte-fa
 
 | Bundle | Received | Engineering response |
 | --- | --- | --- |
-| [`2026-08-10-birdbrain-prototype/`](2026-08-10-birdbrain-prototype/) | 2026-08-10 | [Feasibility assessment](../specs/2026-08-10-design-handoff-feasibility-assessment.md) |
+| [`2026-08-21-birdbrain-standalone/`](2026-08-21-birdbrain-standalone/) | 2026-08-21 | **Current source.** Supersedes both bundles below |
+| [`2026-08-10-birdbrain-prototype/`](2026-08-10-birdbrain-prototype/) | 2026-08-10 | Superseded. [Feasibility assessment](../specs/2026-08-10-design-handoff-feasibility-assessment.md) |
 
-Do not edit bundle contents — corrections go back through the design side, per the round-trip protocol in each bundle's `ENGINEERING_REVIEW.md`.
+The 2026-08-21 standalone is the single design source by maintainer ruling. It ships packed,
+so read its README before you grep it. The V2 bundle on the `prototype/design-handoff-2026-08`
+branch still holds prose documents the standalone does not carry.
+
+Do not edit bundle contents. Corrections go back through the design side, per the round-trip protocol in each bundle's `ENGINEERING_REVIEW.md`.

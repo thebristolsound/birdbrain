@@ -541,8 +541,12 @@ function createApp(deps: CaptureServerDeps): Hono {
       // pattern like `/./` to break the operator's only proof that the capture
       // pipeline works, which is the worse failure for a diagnostic. The
       // residue is real and bounded: a capture row and a `capture` manifest
-      // entry exist in the case until the `finally` below deletes them through
-      // the lifecycle, which appends the matching deletion entry.
+      // entry exist in the case for the duration of the self-test. On the happy
+      // path the `finally` below deletes them through the lifecycle, which
+      // appends the matching `deletion` entry. That cleanup is best-effort: it
+      // discards both a thrown fault and the lifecycle's `false` return, so a
+      // failure there leaves the `capture` entry with no `deletion` beside it.
+      // A matched pair is the normal case, not a guarantee.
       const { capture } = await ingestMhtmlCapture({
         caseId: testCaseId,
         url: 'birdbrain://pipeline-test',

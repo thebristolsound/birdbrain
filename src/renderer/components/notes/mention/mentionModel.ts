@@ -35,9 +35,19 @@ export const MENTION_SIGIL: Record<MentionTargetType, MentionSigil> = {
  * A Mention pasted as HTML from outside the app arrives with whatever the
  * markup carried, which may be nothing at all — the chip has to render that
  * legibly rather than throw inside the editor.
+ *
+ * `Object.hasOwn`, never `in`. `in` walks the prototype chain, so eight
+ * `Object.prototype` names — `constructor`, `__proto__`, `toString`,
+ * `valueOf`, `hasOwnProperty`, `isPrototypeOf`, `propertyIsEnumerable`,
+ * `toLocaleString` — passed this guard. A pasted
+ * `data-target-type="constructor"` then indexed every per-kind record here to
+ * a function rather than to a value, `resolveMention` fell off its switch and
+ * returned undefined, and reading `.status` off that threw inside the node
+ * view: the error boundary unmounted the route body and the draft went with
+ * it. That is the "note cannot be saved" failure this work exists to remove.
  */
 export function isMentionTargetType(value: unknown): value is MentionTargetType {
-  return typeof value === 'string' && value in MENTION_SIGIL
+  return typeof value === 'string' && Object.hasOwn(MENTION_SIGIL, value)
 }
 
 /** The kinds a sigil offers, primary kind first. */
@@ -87,6 +97,11 @@ export function mentionColor(targetType: MentionTargetType, tagColor?: string | 
       return SELECTOR_COLOR
     case 'tag':
       return tagColor || TAG_FALLBACK_COLOR
+    // Reachable only from a kind the type system never sanctioned — a pasted
+    // attribute. It has no entity colour because it is not an entity, and the
+    // chip that carries it is broken.
+    default:
+      return MENTION_BROKEN_COLOR
   }
 }
 
@@ -104,7 +119,10 @@ export function truncateMentionLabel(label: string): string {
  * the app.
  */
 export function mentionPlainText(targetType: MentionTargetType, label: string): string {
-  return MENTION_SIGIL[targetType] + label
+  // A kind outside the model has no trigger key, so it contributes nothing
+  // rather than whatever the prototype chain would have handed back.
+  const sigil = Object.hasOwn(MENTION_SIGIL, targetType) ? MENTION_SIGIL[targetType] : ''
+  return sigil + label
 }
 
 /** The same, elided, for the chip and for note list-row snippets. */
@@ -125,7 +143,10 @@ export function mentionTooltip(
   label: string,
   broken = false
 ): string {
-  const hint = broken ? 'target deleted' : CLICK_HINT[targetType]
+  // A kind with no hint is a kind with no screen behind it, which reads to the
+  // operator exactly as a deleted target does: nothing will happen on click.
+  const known = !broken && Object.hasOwn(CLICK_HINT, targetType)
+  const hint = known ? CLICK_HINT[targetType] : 'target deleted'
   return `${targetType} · ${label} — ${hint}`
 }
 
@@ -146,6 +167,11 @@ export const MENTION_ROUTES = {
 export type MentionRoute = (typeof MENTION_ROUTES)[MentionTargetType]
 
 export function mentionRoute(targetType: MentionTargetType): MentionRoute {
+  // Same discipline as the guard: a kind off a pasted attribute must not index
+  // this record through the prototype chain and hand `navigate` a function.
+  // `note` is the fallback the chip already substitutes for a Mention whose
+  // identity attributes did not survive the paste — see MentionChip.
+  if (!Object.hasOwn(MENTION_ROUTES, targetType)) return MENTION_ROUTES.note
   return MENTION_ROUTES[targetType]
 }
 
@@ -271,6 +297,11 @@ export function resolveMention(
   sources: MentionSources,
   loaded: MentionSourcesLoaded
 ): MentionResolution {
+  // Typed, but not trusted: this arrives as a node attribute off a paste. An
+  // unrecognised kind would index `loaded` through the prototype chain to a
+  // truthy non-boolean and then fall off the switch below, so it is settled
+  // here — a target the model cannot name is missing, never loading.
+  if (!isMentionTargetType(targetType)) return MISSING
   if (!loaded[targetType]) return { status: 'loading', label: null, color: null }
   const resolved = (label: string, color: string | null = null): MentionResolution => ({
     status: 'resolved',
@@ -294,6 +325,10 @@ export function resolveMention(
       const hit = sources.tags.find((t) => t.id === targetId)
       return hit ? resolved(hit.name, hit.color ?? null) : MISSING
     }
+    // Belt and braces behind the guard above: falling off this switch returned
+    // undefined, and every caller reads `.status` off the result.
+    default:
+      return MISSING
   }
 }
 

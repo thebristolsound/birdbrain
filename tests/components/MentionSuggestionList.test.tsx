@@ -59,6 +59,17 @@ describe('MentionSuggestionList', () => {
     expect(screen.getByText('start typing…')).toBeTruthy()
   })
 
+  it('draws a row whose kind is an Object.prototype name rather than rendering one', () => {
+    // ICONS[targetType] returned Object.prototype.toString for this row, which
+    // React then tried to mount as a component.
+    const polluted: MentionCandidate = {
+      ...candidate('x', 'Odd'),
+      targetType: 'toString' as MentionCandidate['targetType']
+    }
+    renderList({ items: [polluted] })
+    expect(screen.getByText('Odd')).toBeTruthy()
+  })
+
   it('carries the keyboard contract in its footer', () => {
     renderList()
     expect(screen.getByText('↑↓ to move · ⏎ to insert')).toBeTruthy()

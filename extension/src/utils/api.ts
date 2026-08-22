@@ -12,7 +12,9 @@ import type {
   SelectorMatchInfo
 } from '@shared/schemas'
 
-const BASE_URL = 'http://127.0.0.1:19845'
+/** Mirrors CAPTURE_SERVER_PORT. Exported so the options page displays the one
+ *  address the extension actually talks to rather than a second literal. */
+export const BASE_URL = 'http://127.0.0.1:19845'
 const STORAGE_KEY = 'birdbrainServerToken'
 
 let cachedServerToken: string | null = null
@@ -79,8 +81,14 @@ async function throwIfNotOk(res: Response): Promise<void> {
   throw new ApiError(res.status, res.statusText, detail)
 }
 
-async function fetchStatus(): Promise<CaptureServerStatus> {
-  const res = await fetch(`${BASE_URL}/api/status`)
+export interface StatusOptions {
+  /** Pass false to skip the case list the server would otherwise enumerate. */
+  includeCases?: boolean
+}
+
+async function fetchStatus(options?: StatusOptions): Promise<CaptureServerStatus> {
+  const query = options?.includeCases === false ? '?includeCases=0' : ''
+  const res = await fetch(`${BASE_URL}/api/status${query}`)
   await throwIfNotOk(res)
   const data = (await res.json()) as CaptureServerStatus
   if (data.serverToken) {
@@ -147,8 +155,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json() as Promise<T>
 }
 
-export async function getStatus(): Promise<CaptureServerStatus> {
-  return fetchStatus()
+export async function getStatus(options?: StatusOptions): Promise<CaptureServerStatus> {
+  return fetchStatus(options)
 }
 
 export async function getCases(): Promise<CaptureServerCase[]> {

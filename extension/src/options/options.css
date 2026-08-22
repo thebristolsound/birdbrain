@@ -1,0 +1,10 @@
+/* Tokens come from the shared entry; popup.css cannot be reused here because it
+   clamps the body to the popup's 320px. */
+@import "../theme.css";
+
+body {
+  margin: 0;
+  background: var(--color-canvas);
+  color: var(--color-text-primary);
+  font-family: var(--font-body);
+}

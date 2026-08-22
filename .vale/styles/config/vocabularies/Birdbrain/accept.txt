@@ -173,3 +173,16 @@ ProseMirror
 [Ww]ebfont
 [Rr]ecomposition
 mock's
+[Dd]ischargeable
+[Dd]ocstrings?
+KATs
+[Pp]aram(s)?
+[Rr]ebased
+[Rr]etarget(s|ed|ing)?
+[Ss]ubtree
+[Ss]uperset
+[Tt]ablist
+[Tt]ruthy
+[Uu]ncompilable
+[Uu]ngated
+install's

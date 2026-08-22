@@ -34,3 +34,12 @@ e110997ac02e43a5d988737180b5c137bcfddbd0:docs/superpowers/plans/2026-03-18-captu
 7be984ea6955fc030a167d5de61064b83d1613bd:design_handoff_birdbrain_prototype/style_sync_patch/prototypes/Case Reviewer.dc.html:generic-api-key:434
 7be984ea6955fc030a167d5de61064b83d1613bd:design_handoff_birdbrain_prototype/style_sync_patch/prototypes/Birdbrain.dc.html:generic-api-key:5727
 7be984ea6955fc030a167d5de61064b83d1613bd:design_handoff_birdbrain_prototype/Birdbrain.dc.html:generic-api-key:5727
+#
+# The 2026-08-21 standalone mock carries the same fake fixture line as the V1
+# bundle above: an nj_-prefixed session token on a mocked phishing page, beside
+# a fake card-collection form and a fake bitcoin address. The file ships packed,
+# so the whole template is one line and the rule reports it at line 384. Mock
+# page content, not a credential. Two commits carry it: the squashed merge of
+# #703 and the pre-merge commit on its branch.
+a447ef03d1ed557433f5c36a1bfdb03d99dd926e:docs/design-handoff/2026-08-21-birdbrain-standalone/Birdbrain-standalone.html:generic-api-key:384
+8496383ab885be6e1444273135f760a7e260a06a:docs/design-handoff/2026-08-21-birdbrain-standalone/Birdbrain-standalone.html:generic-api-key:384

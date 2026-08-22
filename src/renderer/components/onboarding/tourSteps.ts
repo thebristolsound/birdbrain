@@ -1,0 +1,287 @@
+/**
+ * The coach-mark tour's chapter definitions and every decision that can be made
+ * without a DOM (#404).
+ *
+ * Deliberately free of React and of `document`: the step list, the counters,
+ * the forward-only jump scan, the auto-fire rule and the completion write are
+ * all pure functions here, so they are tested directly rather than through a
+ * rendered tour.
+ */
+
+export type TourChapter = 'intro' | 'ext' | 'case'
+
+/** The screens a step can pin itself to. */
+export type TourRoute = 'dashboard' | 'overview' | 'captures' | 'signals' | 'notes'
+
+export interface TourStep {
+  /** The centered welcome card. Only the intro chapter's first step. */
+  welcome?: true
+  /** A screen card notched off the sidebar rail, rather than a coach mark. */
+  screen?: string
+  /** The `data-tour` value this step rings. */
+  target?: string
+  route?: TourRoute
+  title?: string
+  body?: string
+  kbd?: string
+  kbdNote?: string
+  /** Renders the collapsible three-step install walkthrough. */
+  install?: true
+  /** Overrides the 'Next' label. */
+  last?: string
+  /** Last step of the case chapter. */
+  final?: true
+}
+
+/**
+ * Two clauses of the mock's copy are dropped here rather than transcribed.
+ *
+ * The mock's Browser button opens a simulated Chrome window, which this app has
+ * no equivalent of, and its intro promises a seeded demo case that nothing
+ * creates. Both were sent back as constraints (#707) rather than built, so the
+ * copy must not promise either.
+ */
+const EXT_BODY_INTRO =
+  'Right-click any page in Chrome to log it to your active case. Install the extension ' +
+  'below, then start your first investigation.'
+
+const EXT_BODY_REPLAY =
+  'Right-click any page in Chrome to log it to your active case. Install it below — the ' +
+  'folder ships inside this Birdbrain build.'
+
+function extStep(chapter: 'intro' | 'ext'): TourStep {
+  return {
+    target: 'browser',
+    route: 'dashboard',
+    title: 'The extension does the capturing',
+    body: chapter === 'ext' ? EXT_BODY_REPLAY : EXT_BODY_INTRO,
+    install: true,
+    last: 'Done'
+  }
+}
+
+const CASE_STEPS: TourStep[] = [
+  {
+    screen: 'Captures',
+    route: 'captures',
+    target: 'nav-captures',
+    body:
+      'The evidence locker. Every page you log lands in the list on the left; the viewer on ' +
+      'the right shows exactly what was saved, pixel for pixel.'
+  },
+  {
+    target: 'viewertabs',
+    route: 'captures',
+    title: 'Four views of every capture',
+    body: 'Screenshot, full page, extracted text, and archive.org snapshots — one tab each.'
+  },
+  {
+    target: 'caseswitcher',
+    route: 'captures',
+    title: 'You’re inside a case',
+    body:
+      'Everything you see is scoped to this investigation. Click the name to switch cases or ' +
+      'start a new one.',
+    kbd: 'Ctrl K',
+    kbdNote: 'opens the switcher anywhere'
+  },
+  {
+    screen: 'Signals',
+    route: 'signals',
+    target: 'nav-signals',
+    body:
+      'The watchlist. Define selectors — emails, wallets, IPs — and Birdbrain flags every ' +
+      'capture that matches, past and future.'
+  },
+  {
+    target: 'selectors',
+    route: 'signals',
+    title: 'Selectors watch for patterns',
+    body:
+      'Emails, wallets, panel IPs — matches are highlighted across every capture, and ' +
+      'auto-capture can log pages that hit.'
+  },
+  {
+    screen: 'Notes',
+    route: 'notes',
+    target: 'nav-notes',
+    body:
+      'Your case narrative. Write up findings here and link them straight to the evidence ' +
+      'they came from.'
+  },
+  {
+    target: 'noteeditor',
+    route: 'notes',
+    title: 'Notes link to evidence',
+    body:
+      'Type @ to mention a capture or selector, # for a tag. Mentions become live links in ' +
+      'both directions.',
+    kbd: '@ #',
+    kbdNote: 'work in any note'
+  },
+  {
+    screen: 'Overview',
+    route: 'overview',
+    target: 'nav-overview',
+    body:
+      'The case at a glance — stats, recent activity, and a map of how everything you’ve ' +
+      'gathered connects.'
+  },
+  {
+    target: 'linkmap',
+    route: 'overview',
+    title: 'The link map ties it together',
+    body:
+      'Notes, captures, selectors, and tags, connected by their mentions. Click any node to ' +
+      'jump to it.'
+  },
+  {
+    target: 'export',
+    route: 'overview',
+    title: 'Court-ready exports',
+    body:
+      'Every artifact is hashed on capture and sealed in a signed manifest — export the whole ' +
+      'case or just a selection, cover sheet included.',
+    final: true
+  }
+]
+
+const INTRO_STEPS: TourStep[] = [
+  { welcome: true },
+  {
+    target: 'newcase',
+    route: 'dashboard',
+    title: 'Everything lives in a case',
+    body:
+      'Start one per investigation — captures, selectors, notes, and exports stay scoped to it.',
+    kbd: 'Ctrl N',
+    kbdNote: 'starts one from anywhere'
+  },
+  extStep('intro')
+]
+
+export function tourSteps(chapter: TourChapter): TourStep[] {
+  if (chapter === 'ext') return [extStep('ext')]
+  if (chapter === 'intro') return INTRO_STEPS
+  return CASE_STEPS
+}
+
+/** Steps that render a coach mark, i.e. everything the mark counter counts. */
+export function markSteps(steps: TourStep[]): TourStep[] {
+  return steps.filter((s) => s.target && !s.screen)
+}
+
+/** Steps that render a screen card. */
+export function screenSteps(steps: TourStep[]): TourStep[] {
+  return steps.filter((s) => Boolean(s.screen))
+}
+
+/** The number in the badge. Zero for the welcome card, which carries no badge. */
+export function markNumber(steps: TourStep[], index: number): number {
+  const step = steps[index]
+  if (!step || step.welcome || step.screen) return 0
+  return markSteps(steps).indexOf(step) + 1
+}
+
+/** Footer counter for a coach mark, e.g. '2 of 6'. */
+export function markCountLabel(steps: TourStep[], index: number): string {
+  return `${markNumber(steps, index)} of ${markSteps(steps).length}`
+}
+
+/** Eyebrow for a screen card, e.g. 'Screen 3 of 4'. */
+export function screenCountLabel(steps: TourStep[], index: number): string {
+  const step = steps[index]
+  const screens = screenSteps(steps)
+  const position = step ? screens.indexOf(step) + 1 : 0
+  return `Screen ${position} of ${screens.length}`
+}
+
+/** The next step, or null when the chapter is over. */
+export function nextStepIndex(steps: TourStep[], index: number): number | null {
+  return index + 1 < steps.length ? index + 1 : null
+}
+
+/**
+ * Where a user-driven navigation moves the tour to.
+ *
+ * Forward only, by design: the operator clicking ahead skips the steps in
+ * between, but clicking back never rewinds the tour into steps it has already
+ * shown. Returns null when the destination is not ahead of the current step,
+ * in which case the tour stays put.
+ */
+export function jumpAheadIndex(
+  steps: TourStep[],
+  index: number,
+  route: TourRoute
+): number | null {
+  for (let i = index + 1; i < steps.length; i += 1) {
+    if (steps[i].route === route) return i
+  }
+  return null
+}
+
+/** The pathname a step's route resolves to, or null when it cannot be reached. */
+export function pathForRoute(route: TourRoute, caseId: string | null): string | null {
+  if (route === 'dashboard') return '/'
+  return caseId ? `/cases/${caseId}/${route}` : null
+}
+
+/** Which tour route a pathname is, if any. */
+export function routeOfPath(pathname: string): TourRoute | null {
+  if (pathname === '/') return 'dashboard'
+  const match = /^\/cases\/[^/]+\/(overview|captures|signals|notes)\/?$/.exec(pathname)
+  return match ? (match[1] as TourRoute) : null
+}
+
+interface AutoFireSettings {
+  isFreshInstall?: boolean
+  onboardingChapters?: Record<string, boolean>
+}
+
+/**
+ * Auto-fire is confined to fresh installs. An install that already had a
+ * settings.json when this release landed has `isFreshInstall` false and is
+ * never toured, which is what keeps an upgrade from ambushing an operator
+ * mid-case.
+ */
+export function shouldAutoFire(
+  settings: AutoFireSettings | undefined,
+  chapter: TourChapter
+): boolean {
+  if (!settings?.isFreshInstall) return false
+  return !settings.onboardingChapters?.[chapter]
+}
+
+export const ALL_CHAPTERS: TourChapter[] = ['intro', 'ext', 'case']
+
+export type TourOutcome = 'finished' | 'skipped'
+
+/**
+ * What to persist when a chapter closes, or null to persist nothing.
+ *
+ * Three rules, and the second two are the ones the prototype gets wrong:
+ *
+ * - A replay writes nothing at all. Replaying the extension chapter from the
+ *   dashboard banner must not mark the case chapter — which has never run —
+ *   complete. The prototype sets that flag from any chapter and permanently
+ *   suppresses a chapter the operator never saw.
+ * - Skip completes the whole tour, per the 2026-08-21 ruling. Dismissing it
+ *   means dismissing it; a tour that reappears next launch is the worse
+ *   failure. It stays replayable on demand.
+ * - Finishing a chapter completes that chapter alone.
+ */
+export function completionAfter(
+  previous: Record<string, boolean> | undefined,
+  chapter: TourChapter,
+  outcome: TourOutcome,
+  auto: boolean
+): Record<string, boolean> | null {
+  if (!auto) return null
+  const base = { ...(previous ?? {}) }
+  if (outcome === 'skipped') {
+    for (const key of ALL_CHAPTERS) base[key] = true
+    return base
+  }
+  base[chapter] = true
+  return base
+}

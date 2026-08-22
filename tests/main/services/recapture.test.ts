@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'fs'
+import { createReadStream, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import { once } from 'events'
 import { MANIFEST_FILENAME } from '@shared/constants'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
@@ -206,6 +207,29 @@ describe('recapture service', () => {
     // Nothing written to the database, and nothing appended to the hash chain:
     // the case directory has no manifest at all, because no entry was ever made.
     expect(existsSync(join(getStorageRoot(), caseId, MANIFEST_FILENAME))).toBe(false)
+  })
+
+  // A real ReadStream rather than a spy: what leaks is an open fd, and the
+  // renderer's cleanup unlinks the temp file without closing it, so an
+  // abandoned stream pins the deleted file's blocks (#766).
+  it('releases the rendered stream when the redirect is blocked', async () => {
+    setAutoCapturePolicy(caseId, { exclusions: ['blocked.example'], mode: 'stack' })
+    const tmpFile = join(tempDir, 'rendered.mhtml')
+    writeFileSync(tmpFile, 'mhtml-bytes')
+    const mhtmlStream = createReadStream(tmpFile)
+    // The fd is opened lazily, so wait for it: an assertion that a
+    // never-opened stream is closed would pass without proving anything.
+    await once(mhtmlStream, 'ready')
+    const svc = makeService(
+      fakeRender({ finalUrl: 'https://blocked.example/landing', mhtmlStream })
+    )
+    svc.enqueue([{ url: 'https://example.com/page', caseId }])
+    await svc.idle()
+
+    expect(newCaptures).toHaveLength(0)
+    expect(mhtmlStream.destroyed).toBe(true)
+    if (!mhtmlStream.closed) await once(mhtmlStream, 'close')
+    expect(mhtmlStream.closed).toBe(true)
   })
 
   it('emits a failed event (and no capture) when rendering throws', async () => {

@@ -8,7 +8,11 @@ import type { Capture, CaptureEvent, ConsentSuppression } from '@shared/types'
 import type { EnqueueResult, RecaptureQueueStatus } from '@shared/ipc'
 
 export interface RenderedPage {
-  mhtmlStream: AsyncIterable<Uint8Array>
+  // The live renderer hands over a Node ReadStream on its temp file, so the fd
+  // is already open by the time this object exists and `cleanup()` only unlinks
+  // the path. `destroy` is optional because the contract is only an async
+  // iterable, but any path that abandons the stream has to call it (#766).
+  mhtmlStream: AsyncIterable<Uint8Array> & { destroy?: () => void }
   screenshot: Buffer
   text: string
   title: string
@@ -127,6 +131,12 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
       // so nothing reaches the database or the manifest.
       const blocked = matchCaseExclusion(rendered.finalUrl, job.caseId)
       if (blocked) {
+        // Nothing consumes the rendered stream on this path, and the unlink in
+        // `cleanup()` removes only the directory entry — the open fd would keep
+        // the deleted temp file's blocks pinned for the life of the main
+        // process. Batch recapture fans out one job per capture, so that is one
+        // fd and one multi-megabyte file per blocked job (#766).
+        rendered.mhtmlStream.destroy?.()
         deps.emitEvent({
           type: 'skipped',
           source: 'recapture',

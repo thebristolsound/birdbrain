@@ -53,7 +53,7 @@ function note(over: Partial<Note>): Note {
   }
 }
 
-const EMPTY = { captures: [], selectors: [], matchCounts: {}, notes: [], lastVisitAt: null }
+const EMPTY = { captures: [], selectors: [], notes: [], lastVisitAt: null }
 
 describe('hostOf', () => {
   it('extracts the hostname from a valid url', () => {
@@ -81,7 +81,6 @@ describe('computeOverview', () => {
     expect(m.verified).toBe(0)
     expect(m.unverified).toBe(0)
     expect(m.tampered).toBe(0)
-    expect(m.coverageRows).toEqual([])
     expect(m.recent).toEqual([])
     expect(m.deltas).toEqual({ captures: 0, sources: 0, selectors: 0, notes: 0 })
     expect(m.newCount).toBe(0)
@@ -129,30 +128,6 @@ describe('computeOverview', () => {
     expect(m.verified + m.tampered + m.unverified).toBe(7)
   })
 
-  it('maps coverage rows sorted by match count, defaulting missing counts to 0', () => {
-    const m = computeOverview(
-      {
-        ...EMPTY,
-        selectors: [sel({ id: 's1' }), sel({ id: 's2' }), sel({ id: 's3' })],
-        matchCounts: { s1: 5, s3: 2 }
-      },
-      NOW
-    )
-    expect(m.coverageRows.map((r) => [r.id, r.matchCount])).toEqual([
-      ['s1', 5],
-      ['s3', 2],
-      ['s2', 0]
-    ])
-  })
-
-  it('caps coverage rows at six', () => {
-    const selectors = Array.from({ length: 8 }, (_, i) => sel({ id: `s${i}` }))
-    const matchCounts = Object.fromEntries(selectors.map((s, i) => [s.id, i]))
-    const m = computeOverview({ ...EMPTY, selectors, matchCounts }, NOW)
-    expect(m.coverageRows).toHaveLength(6)
-    expect(m.coverageRows[0].matchCount).toBe(7)
-  })
-
   it('buckets captures into the activity window and excludes out-of-range/invalid dates', () => {
     const m = computeOverview(
       {
@@ -187,7 +162,6 @@ describe('computeOverview', () => {
           sel({ id: 's1', createdAt: dayAgo(1) }), // new
           sel({ id: 's2', createdAt: dayAgo(10) }) // old
         ],
-        matchCounts: {},
         notes: [note({ id: 'n1', createdAt: dayAgo(0) })], // new
         lastVisitAt: dayAgo(2)
       },

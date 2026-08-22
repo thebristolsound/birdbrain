@@ -38,6 +38,7 @@ import type {
   OperatorIdentity,
   RecentActivityEvent,
   Selector,
+  SelectorOrigin,
   SessionRecord,
   Tag,
   TokenUsage,
@@ -324,6 +325,7 @@ export interface CreateSelectorParams {
   pattern: string
   isRegex?: boolean
   label?: string
+  origin?: SelectorOrigin
 }
 
 export interface UpdateSelectorParams {
@@ -396,7 +398,7 @@ export interface UpsertAnnotationPinParams {
 
 export interface BulkCreateSelectorsParams {
   caseId: string
-  selectors: Array<{ pattern: string; isRegex: boolean; label?: string }>
+  selectors: Array<{ pattern: string; isRegex: boolean; label?: string; origin?: SelectorOrigin }>
 }
 
 // --- Database Admin ---

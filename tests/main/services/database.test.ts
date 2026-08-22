@@ -53,6 +53,7 @@ import {
   getExtractedDataCountForCase,
   deleteExtractedDataForCapture
 } from '@main/services/db/extractedDataRepo'
+import { SELECTOR_ORIGINS, type SelectorOrigin } from '@shared/types'
 
 describe('database', () => {
   beforeEach(async () => {
@@ -927,7 +928,8 @@ describe('database', () => {
       // bumped to 25 (capture_texts + external-content captures_fts);
       // bumped to 26 (notes.body_doc — rich-text note bodies);
       // bumped to 27 (notes.anchor_kind / anchor_json — anchored notes);
-      // bumped in #389 (note_references — mention references index).
+      // bumped in #389 (note_references — mention references index);
+      // bumped in #395 (selectors.origin — selector provenance).
       // No literal pin: three concurrent tickets each append a migration, so
       // whichever lands later renumbers — asserting the constant against the
       // migrated database checks the same invariant without the churn.
@@ -1261,6 +1263,78 @@ describe('database', () => {
         tlsCertChain: JSON.stringify(tls)
       })
       expect(getCapture(cap.id)?.tlsCertChain).toEqual(tls)
+    })
+  })
+
+  describe('migration v29 (selector origin column, #395)', () => {
+    it('adds a nullable origin column with no default', () => {
+      const cols = getDb().prepare("PRAGMA table_info('selectors')").all() as Array<{
+        name: string
+        notnull: number
+        dflt_value: string | null
+      }>
+      const byName = new Map(cols.map((c) => [c.name, c]))
+      expect(byName.has('origin')).toBe(true)
+      expect(byName.get('origin')!.notnull).toBe(0)
+      // No DEFAULT: a stamped-by-default column would claim a provenance the
+      // database never recorded.
+      expect(byName.get('origin')!.dflt_value).toBeNull()
+    })
+
+    it('leaves origin NULL for a selector created without one', () => {
+      const c = createCase({ name: 'Legacy Origin' })
+      const sel = createSelector({ caseId: c.id, pattern: 'legacy' })
+
+      expect(sel.origin).toBeUndefined()
+      const row = getDb().prepare('SELECT origin FROM selectors WHERE id = ?').get(sel.id) as {
+        origin: string | null
+      }
+      expect(row.origin).toBeNull()
+    })
+
+    it('persists and reads back each recorded origin', () => {
+      const c = createCase({ name: 'Origins' })
+      for (const origin of SELECTOR_ORIGINS) {
+        const sel = createSelector({ caseId: c.id, pattern: `p-${origin}`, origin })
+        expect(sel.origin).toBe(origin)
+      }
+    })
+
+    it('stores an unrecognised origin as NULL rather than as a provenance claim', () => {
+      const c = createCase({ name: 'Bogus Origin' })
+      const sel = createSelector({
+        caseId: c.id,
+        pattern: 'bogus',
+        // The IPC surface has no Zod validation and the column is plain TEXT,
+        // so the repo boundary is what keeps a junk value out.
+        origin: 'smuggled' as SelectorOrigin
+      })
+
+      expect(sel.origin).toBeUndefined()
+      const row = getDb().prepare('SELECT origin FROM selectors WHERE id = ?').get(sel.id) as {
+        origin: string | null
+      }
+      expect(row.origin).toBeNull()
+    })
+
+    it('reads a hand-edited unrecognised origin back as absent', () => {
+      const c = createCase({ name: 'Hand Edited' })
+      const sel = createSelector({ caseId: c.id, pattern: 'edited', origin: 'manual' })
+      // Database Admin can edit the column directly, bypassing the repo.
+      getDb().prepare('UPDATE selectors SET origin = ? WHERE id = ?').run('nonsense', sel.id)
+
+      expect(listSelectors(c.id).find((s) => s.id === sel.id)?.origin).toBeUndefined()
+    })
+
+    it('carries per-item origin through bulkCreateSelectors', () => {
+      const c = createCase({ name: 'Bulk Origins' })
+      const created = bulkCreateSelectors([
+        { caseId: c.id, pattern: 'a', origin: 'extension' },
+        { caseId: c.id, pattern: 'b', origin: 'note' },
+        { caseId: c.id, pattern: 'c' }
+      ])
+
+      expect(created.map((s) => s.origin)).toEqual(['extension', 'note', undefined])
     })
   })
 

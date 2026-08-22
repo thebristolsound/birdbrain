@@ -14,10 +14,10 @@ const selector: Selector = {
   createdAt: '2026-08-01T00:00:00.000Z'
 }
 
-function renderTable(onRefresh = vi.fn()) {
+function renderTable(onRefresh = vi.fn(), only: Selector = selector) {
   const { container } = render(
     <SelectorTable
-      selectors={[selector]}
+      selectors={[only]}
       matchCounts={{ s1: 4 }}
       onRefresh={onRefresh}
       caseId="case-1"
@@ -70,6 +70,49 @@ describe('SelectorTable', () => {
 
     const panel = await screen.findByText('No match previews available.')
     expect(panel.closest('td')?.getAttribute('colspan')).toBe('7')
+  })
+
+  // The four labels are fixed by the design (#395) — assert the exact copy, not a
+  // substring, so a reworded pill has to revisit the ruling.
+  it.each([
+    ['extension', 'Added from the extension'],
+    ['capture', 'Added from a capture'],
+    ['note', 'Added from a note'],
+    ['manual', 'Added by hand']
+  ] as const)('names %s provenance in the expanded detail', async (origin, label) => {
+    fakeBridge({
+      captures: { list: vi.fn(async () => []) },
+      selectors: { matchingCaptures: vi.fn(async () => []) }
+    })
+    renderTable(vi.fn(), { ...selector, origin })
+
+    fireEvent.click(screen.getByTitle('Test matches'))
+
+    const pill = await screen.findByTestId('selector-origin')
+    expect(pill.textContent).toBe(label)
+  })
+
+  // NULL means the selector predates provenance recording, and a legacy row has
+  // nothing to state — so it renders nothing rather than guessing 'manual'.
+  it('renders no provenance for a selector that has no origin', async () => {
+    fakeBridge({
+      captures: { list: vi.fn(async () => []) },
+      selectors: { matchingCaptures: vi.fn(async () => []) }
+    })
+    renderTable()
+
+    fireEvent.click(screen.getByTitle('Test matches'))
+
+    await screen.findByText('No match previews available.')
+    expect(screen.queryByTestId('selector-origin')).toBeNull()
+    for (const label of [
+      'Added from the extension',
+      'Added from a capture',
+      'Added from a note',
+      'Added by hand'
+    ]) {
+      expect(screen.queryByText(label)).toBeNull()
+    }
   })
 
   // jsdom does not lay out, so this pins the class contract that keeps --d-row in

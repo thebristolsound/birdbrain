@@ -28,7 +28,9 @@ import {
 
 // A minimal pre-v25 database with real rows in it — the "install with real
 // data" of #413's first acceptance criterion. Same shape as the v25 migration
-// fixture, so every migration block from 25 onwards runs against it.
+// fixture, so every migration block from 25 onwards runs against it. Tables
+// carry only what those blocks need: `selectors` is here because v29 alters
+// it, not because anything below reads it.
 function seedLegacyDb(dbPath: string): void {
   const raw = new Database(dbPath)
   raw.exec(`
@@ -40,6 +42,8 @@ function seedLegacyDb(dbPath: string): void {
     CREATE TABLE notes (id TEXT PRIMARY KEY, case_id TEXT NOT NULL, capture_id TEXT,
       title TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', source_url TEXT,
       screenshot_path TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE selectors (id TEXT PRIMARY KEY, case_id TEXT NOT NULL, pattern TEXT NOT NULL,
+      is_regex INTEGER DEFAULT 0, enabled INTEGER DEFAULT 1, label TEXT, created_at TEXT NOT NULL);
     CREATE VIRTUAL TABLE captures_fts USING fts5(title, url, content);
   `)
   raw

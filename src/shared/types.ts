@@ -615,6 +615,18 @@ export interface HashVerification {
   stampedAt?: string
 }
 
+// Where a Selector came from (#395). Recorded at creation and never edited
+// after. Absent means the row predates provenance recording — legacy rows are
+// not backfilled, because guessing a value would be a false provenance claim.
+export const SELECTOR_ORIGINS = ['extension', 'capture', 'note', 'manual'] as const
+export type SelectorOrigin = (typeof SELECTOR_ORIGINS)[number]
+
+// The column is plain TEXT and the Database Admin hatch can hand-edit it, so
+// anything reaching a Selector has to be checked rather than asserted.
+export function isSelectorOrigin(value: unknown): value is SelectorOrigin {
+  return SELECTOR_ORIGINS.includes(value as SelectorOrigin)
+}
+
 export interface Selector {
   id: string
   caseId: string
@@ -622,6 +634,7 @@ export interface Selector {
   isRegex: boolean
   enabled: boolean
   label?: string
+  origin?: SelectorOrigin
   createdAt: string
 }
 

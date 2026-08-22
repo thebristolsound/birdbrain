@@ -1,5 +1,6 @@
 import { v4 as uuid } from 'uuid'
 import type { Selector, ActiveCaseSelectors, SelectorMatchExportRow } from '@shared/types'
+import { isSelectorOrigin } from '@shared/types'
 import type { CreateSelectorParams, UpdateSelectorParams } from '@shared/ipc'
 import { safeRegexTest } from '@main/services/safeRegex'
 import { getDb, type ImportCtx } from '@main/services/db/core'
@@ -23,10 +24,26 @@ export function createSelector(params: CreateSelectorParams): Selector {
   const now = new Date().toISOString()
   getDb()
     .prepare(
-      'INSERT INTO selectors (id, case_id, pattern, is_regex, label, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+      `INSERT INTO selectors (id, case_id, pattern, is_regex, label, origin, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(id, params.caseId, params.pattern, params.isRegex ? 1 : 0, params.label ?? null, now)
+    .run(
+      id,
+      params.caseId,
+      params.pattern,
+      params.isRegex ? 1 : 0,
+      params.label ?? null,
+      originOrNull(params.origin),
+      now
+    )
   return getSelector(id)!
+}
+
+// A value outside the recorded set is stored as NULL rather than kept: an
+// unrecognised origin renders nothing anyway, and a bad string in the column
+// would read as a provenance claim nothing can interpret.
+function originOrNull(origin: unknown): string | null {
+  return isSelectorOrigin(origin) ? origin : null
 }
 
 export function bulkCreateSelectors(params: CreateSelectorParams[]): Selector[] {
@@ -34,13 +51,22 @@ export function bulkCreateSelectors(params: CreateSelectorParams[]): Selector[] 
   const d = getDb()
   const now = new Date().toISOString()
   const insert = d.prepare(
-    'INSERT INTO selectors (id, case_id, pattern, is_regex, label, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+    `INSERT INTO selectors (id, case_id, pattern, is_regex, label, origin, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
   )
   const ids: string[] = []
   const run = d.transaction(() => {
     for (const p of params) {
       const id = uuid()
-      insert.run(id, p.caseId, p.pattern, p.isRegex ? 1 : 0, p.label ?? null, now)
+      insert.run(
+        id,
+        p.caseId,
+        p.pattern,
+        p.isRegex ? 1 : 0,
+        p.label ?? null,
+        originOrNull(p.origin),
+        now
+      )
       ids.push(id)
     }
   })
@@ -284,6 +310,10 @@ function rowToSelector(row: Record<string, unknown>): Selector {
     isRegex: row.is_regex === 1,
     enabled: row.enabled === 1,
     label: (row.label as string) || undefined,
+    // Checked, not cast: the column is plain TEXT and reachable from the
+    // Database Admin hatch and from imported archives, so an unrecognised
+    // value reads as absent rather than as a provenance claim.
+    origin: isSelectorOrigin(row.origin) ? row.origin : undefined,
     createdAt: row.created_at as string
   }
 }
@@ -309,8 +339,8 @@ export function collectSelectorMatchesForCase(caseId: string): Record<string, un
 
 export function importSelectorRows(rows: Record<string, unknown>[], ctx: ImportCtx): void {
   const insert = getDb().prepare(
-    `INSERT INTO selectors (id, case_id, pattern, is_regex, enabled, label, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO selectors (id, case_id, pattern, is_regex, enabled, label, origin, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   )
   for (const s of rows) {
     insert.run(
@@ -320,6 +350,7 @@ export function importSelectorRows(rows: Record<string, unknown>[], ctx: ImportC
       s.is_regex ?? 0,
       s.enabled ?? 1,
       s.label ?? null,
+      s.origin ?? null,
       s.created_at ?? null
     )
   }

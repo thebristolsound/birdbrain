@@ -66,6 +66,15 @@ describe('selectorLifecycle', () => {
       await waitFor(events, 1)
     })
 
+    it('persists the origin it was given', async () => {
+      const c = createCase({ name: 'C' })
+      const sel = lifecycle.createSelector({ caseId: c.id, pattern: 'alpha', origin: 'capture' })
+
+      expect(sel.origin).toBe('capture')
+      expect(listSelectors(c.id)[0].origin).toBe('capture')
+      await waitFor(events, 1)
+    })
+
     it('does not write Persisted Matches before async work runs', async () => {
       const c = createCase({ name: 'C' })
       const cap = insertCapture({
@@ -219,6 +228,22 @@ describe('selectorLifecycle', () => {
       expect(events).toHaveLength(1)
       expect([...events[0].selectorIds].sort()).toEqual(created.map((s) => s.id).sort())
       expect(events[0].status).toBe('done')
+    })
+
+    it('carries each item its own origin', async () => {
+      const c = createCase({ name: 'C' })
+
+      const created = lifecycle.bulkCreateSelectors({
+        caseId: c.id,
+        selectors: [
+          { pattern: 'alpha', isRegex: false, origin: 'manual' },
+          { pattern: 'beta', isRegex: false, origin: 'note' },
+          { pattern: 'gamma', isRegex: false }
+        ]
+      })
+
+      expect(created.map((s) => s.origin)).toEqual(['manual', 'note', undefined])
+      await waitFor(events, 1)
     })
 
     it('returns an empty array and emits no events when given no selectors', async () => {

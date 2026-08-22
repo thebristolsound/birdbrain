@@ -1,6 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { initDatabase, closeDatabase, getDb, LATEST_SCHEMA_VERSION } from '@main/services/db/core'
-import { listCases, getCase, createCase, updateCase, deleteCase } from '@main/services/db/caseRepo'
+import {
+  listCases,
+  getCase,
+  createCase,
+  updateCase,
+  deleteCase,
+  getAutoCapturePolicy,
+  setAutoCapturePolicy
+} from '@main/services/db/caseRepo'
 import {
   listCaptures,
   getCapture,
@@ -929,7 +937,9 @@ describe('database', () => {
       // bumped to 26 (notes.body_doc — rich-text note bodies);
       // bumped to 27 (notes.anchor_kind / anchor_json — anchored notes);
       // bumped in #389 (note_references — mention references index);
-      // bumped in #395 (selectors.origin — selector provenance).
+      // bumped in #395 (selectors.origin — selector provenance);
+      // bumped in #400 (cases.exclusions / cases.exclusion_mode — per-case
+      // auto-capture exclusions).
       // No literal pin: three concurrent tickets each append a migration, so
       // whichever lands later renumbers — asserting the constant against the
       // migrated database checks the same invariant without the churn.
@@ -1335,6 +1345,104 @@ describe('database', () => {
       ])
 
       expect(created.map((s) => s.origin)).toEqual(['extension', 'note', undefined])
+    })
+  })
+
+  describe('migration v30 (per-case auto-capture exclusions, #400)', () => {
+    it('adds two nullable columns with no defaults', () => {
+      const cols = getDb().prepare("PRAGMA table_info('cases')").all() as Array<{
+        name: string
+        notnull: number
+        dflt_value: string | null
+      }>
+      const byName = new Map(cols.map((c) => [c.name, c]))
+      for (const name of ['exclusions', 'exclusion_mode']) {
+        expect(byName.has(name)).toBe(true)
+        expect(byName.get(name)!.notnull).toBe(0)
+        // No DEFAULT: NULL already means "no exclusions, stack on global", so a
+        // written-in default would record an operator decision nobody made.
+        expect(byName.get(name)!.dflt_value).toBeNull()
+      }
+    })
+
+    it('reads a case that has never set a policy as empty and stacking', () => {
+      const c = createCase({ name: 'No Policy' })
+
+      expect(getAutoCapturePolicy(c.id)).toEqual({ exclusions: [], mode: 'stack' })
+      const row = getDb()
+        .prepare('SELECT exclusions, exclusion_mode FROM cases WHERE id = ?')
+        .get(c.id) as { exclusions: string | null; exclusion_mode: string | null }
+      expect(row.exclusions).toBeNull()
+      expect(row.exclusion_mode).toBeNull()
+    })
+
+    it('round-trips a policy through the columns', () => {
+      const c = createCase({ name: 'Policy' })
+
+      const saved = setAutoCapturePolicy(c.id, {
+        exclusions: ['*.bank.com', 'mail.google.com', '/\\.gov(\\.|\\/|$)/'],
+        mode: 'override'
+      })
+
+      expect(saved).toEqual({
+        exclusions: ['*.bank.com', 'mail.google.com', '/\\.gov(\\.|\\/|$)/'],
+        mode: 'override'
+      })
+      expect(getAutoCapturePolicy(c.id)).toEqual(saved)
+    })
+
+    it('trims patterns and drops blank ones on write', () => {
+      const c = createCase({ name: 'Trim' })
+
+      setAutoCapturePolicy(c.id, { exclusions: ['  a.com  ', '', '   '], mode: 'stack' })
+
+      expect(getAutoCapturePolicy(c.id).exclusions).toEqual(['a.com'])
+    })
+
+    it('does not touch updated_at, so an exclusion edit is not a case edit', () => {
+      const c = createCase({ name: 'Timestamps' })
+      const before = getCase(c.id)!.updatedAt
+
+      setAutoCapturePolicy(c.id, { exclusions: ['a.com'], mode: 'stack' })
+
+      expect(getCase(c.id)!.updatedAt).toBe(before)
+    })
+
+    it('returns undefined for a case that does not exist', () => {
+      expect(setAutoCapturePolicy('no-such-case', { exclusions: [], mode: 'stack' })).toBeUndefined()
+      expect(getAutoCapturePolicy('no-such-case')).toEqual({ exclusions: [], mode: 'stack' })
+    })
+
+    // Both columns are plain TEXT and the Database Admin hatch edits them
+    // directly, so every read is re-checked. Degrading to the empty policy is
+    // visible on the screen; trusting the value would put junk in the matcher.
+    it.each([
+      ['malformed JSON', 'not json at all'],
+      ['a JSON object', '{"a":1}'],
+      ['a JSON string', '"a.com"']
+    ])('reads a hand-edited %s exclusion list as empty', (_name, raw) => {
+      const c = createCase({ name: 'Hand Edited List' })
+      getDb().prepare('UPDATE cases SET exclusions = ? WHERE id = ?').run(raw, c.id)
+
+      expect(getAutoCapturePolicy(c.id).exclusions).toEqual([])
+    })
+
+    it('drops non-string entries from a hand-edited exclusion list', () => {
+      const c = createCase({ name: 'Mixed List' })
+      getDb()
+        .prepare('UPDATE cases SET exclusions = ? WHERE id = ?')
+        .run(JSON.stringify(['a.com', 42, null, '', 'b.com']), c.id)
+
+      expect(getAutoCapturePolicy(c.id).exclusions).toEqual(['a.com', 'b.com'])
+    })
+
+    it('reads an unrecognised mode as stack, the safer of the two', () => {
+      const c = createCase({ name: 'Bogus Mode' })
+      getDb().prepare('UPDATE cases SET exclusion_mode = ? WHERE id = ?').run('nonsense', c.id)
+
+      // stack, not override: an unreadable mode must not silently bypass the
+      // operator's global ignore list for this case.
+      expect(getAutoCapturePolicy(c.id).mode).toBe('stack')
     })
   })
 

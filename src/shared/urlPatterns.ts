@@ -16,6 +16,8 @@
 // failing the whole check: one bad entry in Settings must not silently disable
 // every other ignore rule.
 
+import type { AutoCaptureExclusionMode } from '@shared/types'
+
 /** How a regex-literal pattern is evaluated. See `matchIgnoredUrl`. */
 export type RegexTest = (source: string, flags: string, text: string) => boolean
 
@@ -90,4 +92,68 @@ export function matchIgnoredUrl(
     }
   }
   return null
+}
+
+/**
+ * Whether `pattern` is one this module can evaluate, and why not when it is
+ * not. Checked at the write seam so a rule that can never match is refused
+ * when it is typed rather than skipped in silence at capture time —
+ * `matchIgnoredUrl` swallows a throwing pattern by design, so without this a
+ * mistyped regex reads to the operator as an active exclusion while enforcing
+ * nothing at all.
+ *
+ * Only the regex form can fail to compile: a glob is escaped into a valid
+ * RegExp by construction and a substring is always evaluable. Note what this
+ * does NOT reject — a pattern that compiles but backtracks catastrophically.
+ * That one is contained at match time by the server's time-budgeted evaluator,
+ * and containment there is fail-open (see above).
+ */
+export function validateIgnorePattern(
+  pattern: string
+): { ok: true } | { ok: false; reason: string } {
+  const trimmed = pattern.trim()
+  if (!trimmed) return { ok: false, reason: 'Pattern is empty' }
+  if (trimmed.startsWith('/') && trimmed.lastIndexOf('/') > 0) {
+    const lastSlash = trimmed.lastIndexOf('/')
+    try {
+      new RegExp(trimmed.slice(1, lastSlash), trimmed.slice(lastSlash + 1))
+    } catch (err) {
+      return {
+        ok: false,
+        reason: err instanceof Error ? err.message : 'Invalid regular expression'
+      }
+    }
+  }
+  return { ok: true }
+}
+
+/**
+ * The patterns actually in force for one case (#400): the operator's global
+ * ignore list combined with the case's own, per the case's mode.
+ *
+ * Global entries come first under `stack`, so a URL on both lists is reported
+ * as blocked by the global rule — `matchIgnoredUrl` returns the first match,
+ * and naming the broader policy is the more useful answer. Exact-string
+ * duplicates collapse, so a pattern on both lists is evaluated once.
+ *
+ * Under `override` the global list is dropped for this case. That is the point
+ * of the mode, and it is the only place in the app where one case is more
+ * permissive than the global policy. It does not reach the extension's
+ * built-in scheme list (`matchesDefaultIgnore`), which is not an operator rule
+ * and stays unconditional.
+ */
+export function resolveEffectiveIgnorePatterns(
+  globalPatterns: readonly string[],
+  casePatterns: readonly string[],
+  mode: AutoCaptureExclusionMode
+): string[] {
+  const ordered = mode === 'override' ? casePatterns : [...globalPatterns, ...casePatterns]
+  const seen = new Set<string>()
+  const effective: string[] = []
+  for (const pattern of ordered) {
+    if (seen.has(pattern)) continue
+    seen.add(pattern)
+    effective.push(pattern)
+  }
+  return effective
 }

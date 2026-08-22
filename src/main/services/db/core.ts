@@ -3,7 +3,7 @@ import { runMigrations } from '@main/services/db/migrations'
 import { createPreMigrationSnapshot } from '@main/services/db/dbSnapshots'
 
 let db: Database.Database | null = null
-export const LATEST_SCHEMA_VERSION = 29
+export const LATEST_SCHEMA_VERSION = 30
 
 /**
  * Snapshot the database if — and only if — migrations are about to change it.

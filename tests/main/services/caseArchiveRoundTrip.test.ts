@@ -1,7 +1,13 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { initDatabase, closeDatabase, withTransaction } from '@main/services/db/core'
 import type { ImportCtx } from '@main/services/db/core'
-import { createCase, collectCaseRow, importCaseRow } from '@main/services/db/caseRepo'
+import {
+  createCase,
+  collectCaseRow,
+  importCaseRow,
+  getAutoCapturePolicy,
+  setAutoCapturePolicy
+} from '@main/services/db/caseRepo'
 import {
   insertCapture,
   setCaptureVerification,
@@ -71,6 +77,14 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
   it('every table survives field-for-field modulo intended transforms', async () => {
     await initDatabase(':memory:')
     const c = createCase({ name: 'Source', description: 'src', type: 'custom' })
+    // A non-default auto-capture policy (#400). With the columns left NULL the
+    // case-row comparison at the bottom passes even if importCaseRow never
+    // learns them, so the archive would silently drop the exclusion list — and
+    // a re-imported case would capture pages the operator excluded.
+    setAutoCapturePolicy(c.id, {
+      exclusions: ['*.bank.com', '/\\.gov(\\.|\\/|$)/i'],
+      mode: 'override'
+    })
 
     // Two captures with full provenance: cap2 supersedes cap1, non-default
     // method, consent suppression, TLS chain, verification + trusted time.
@@ -329,6 +343,33 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
     )
     // Case row itself (id replaced, everything else verbatim).
     expect(collectCaseRow(NEW_CASE)).toEqual({ ...src.case, id: NEW_CASE })
+    // And read back through the repo, not just as raw columns: the imported
+    // case must enforce the policy it was exported under (#400).
+    expect(getAutoCapturePolicy(NEW_CASE)).toEqual({
+      exclusions: ['*.bank.com', '/\\.gov(\\.|\\/|$)/i'],
+      mode: 'override'
+    })
+  })
+
+  // A pre-v30 archive has no exclusion keys on its case row. It must import as
+  // the default policy rather than throwing or writing junk — the same "no
+  // exclusions, stack on global" a case that never set one reads as.
+  it('an archive case row without exclusion columns imports as the default policy', async () => {
+    await initDatabase(':memory:')
+    withTransaction(() => {
+      importCaseRow(
+        {
+          id: 'src',
+          name: 'Old Epoch',
+          type: 'custom',
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z'
+        },
+        ctx
+      )
+    })
+
+    expect(getAutoCapturePolicy(NEW_CASE)).toEqual({ exclusions: [], mode: 'stack' })
   })
 
   it('old-epoch archive rows (missing method/supersedes/consent columns) import with DDL defaults', async () => {

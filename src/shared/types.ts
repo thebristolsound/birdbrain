@@ -14,6 +14,25 @@ export interface Case {
   archived: boolean
 }
 
+// How a case's own exclusion list relates to the operator's global ignore list
+// (#400). 'stack' applies both; 'override' applies only the case's, bypassing
+// the global list for this case — the first mechanism in the app that makes one
+// case more permissive than the global policy.
+export const AUTO_CAPTURE_EXCLUSION_MODES = ['stack', 'override'] as const
+export type AutoCaptureExclusionMode = (typeof AUTO_CAPTURE_EXCLUSION_MODES)[number]
+
+export function isAutoCaptureExclusionMode(value: unknown): value is AutoCaptureExclusionMode {
+  return AUTO_CAPTURE_EXCLUSION_MODES.includes(value as AutoCaptureExclusionMode)
+}
+
+// A case's auto-capture exclusion policy. Kept off `Case` on purpose: the wire
+// shape of a Case is read on every dashboard render, and this is read only by
+// the capture server and the one screen that edits it.
+export interface CaseAutoCapturePolicy {
+  exclusions: string[]
+  mode: AutoCaptureExclusionMode
+}
+
 export type CaptureFormat = 'html' | 'mhtml'
 
 // How the capture was produced (#recapture). 'extension' = operator-witnessed

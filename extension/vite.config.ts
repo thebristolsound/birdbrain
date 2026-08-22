@@ -8,6 +8,10 @@ import { copyFileSync, mkdirSync, cpSync, readFileSync, writeFileSync, rmSync } 
 // Background + popup can use ES modules (background declares "type": "module" in manifest).
 const isContentBuild = process.env.BUILD_TARGET === 'content'
 
+// Every HTML entry point, by directory name under src/. Each one is both a
+// Rollup input and a page the closeBundle fixup below lifts to the dist root.
+const HTML_ENTRIES = ['popup', 'options'] as const
+
 const contentConfig = defineConfig({
   esbuild: {
     charset: 'ascii'
@@ -48,18 +52,28 @@ const mainConfig = defineConfig({
         cpSync(resolve(__dirname, 'icons'), resolve(dist, 'icons'), { recursive: true })
         mkdirSync(resolve(dist, 'fonts'), { recursive: true })
         cpSync(resolve(__dirname, 'src/fonts'), resolve(dist, 'fonts'), { recursive: true })
-        // Move popup.html from nested path to dist root, fix relative paths
-        const nestedPopup = resolve(dist, 'extension', 'src', 'popup', 'popup.html')
-        try {
-          let html = readFileSync(nestedPopup, 'utf-8')
-          html = html.replace(/src="[^"]*popup\.js"/g, 'src="./popup.js"')
-          html = html.replace(/href="[^"]*chunks\//g, 'href="./chunks/')
-          html = html.replace('</head>', '    <script src="./theme-preinit.js"></script>\n  </head>')
-          writeFileSync(resolve(dist, 'popup.html'), html)
-          rmSync(resolve(dist, 'extension'), { recursive: true, force: true })
-        } catch {
-          /* popup.html may not exist in content-only builds */
+        // Move each HTML entry from its nested path to the dist root and fix the
+        // asset paths, which Rollup emits relative to that nested location.
+        // The rmSync of the nested tree runs once, after every page is written:
+        // doing it per page would delete the next page's source HTML, and the
+        // catch inside the loop would swallow that into a green build.
+        for (const name of HTML_ENTRIES) {
+          const nested = resolve(dist, 'extension', 'src', name, `${name}.html`)
+          try {
+            let html = readFileSync(nested, 'utf-8')
+            html = html.replace(new RegExp(`src="[^"]*${name}\\.js"`, 'g'), `src="./${name}.js"`)
+            html = html.replace(/href="[^"]*chunks\//g, 'href="./chunks/')
+            html = html.replace(/href="[^"]*assets\//g, 'href="./assets/')
+            html = html.replace(
+              '</head>',
+              '    <script src="./theme-preinit.js"></script>\n  </head>'
+            )
+            writeFileSync(resolve(dist, `${name}.html`), html)
+          } catch {
+            /* the HTML entries do not exist in content-only builds */
+          }
         }
+        rmSync(resolve(dist, 'extension'), { recursive: true, force: true })
       }
     }
   ],
@@ -71,7 +85,9 @@ const mainConfig = defineConfig({
     rollupOptions: {
       input: {
         background: resolve(__dirname, 'src/background.ts'),
-        popup: resolve(__dirname, 'src/popup/popup.html')
+        ...Object.fromEntries(
+          HTML_ENTRIES.map((name) => [name, resolve(__dirname, `src/${name}/${name}.html`)])
+        )
       },
       output: {
         entryFileNames: '[name].js',

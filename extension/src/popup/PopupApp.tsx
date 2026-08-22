@@ -1,24 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getStatus, getCases, activateCase, stopSession } from '@extension/utils/api'
+import { openInApp } from '@extension/utils/appLink'
+import { applyExtensionTheme } from '@extension/utils/theme'
 import type { CaptureServerCase, CaptureServerCaseRef } from '@shared/schemas'
 import type { ManualCaptureResponse, PopupPageStatus } from '@extension/messages'
 import { derivePageStatus, deriveMatchSummary } from '@extension/popup/pageStatus'
-
-// Hand off to the desktop app via its registered birdbrain:// scheme. Opening a
-// tab lets Chrome surface the external-protocol prompt and launch/focus the app;
-// the app routes the renderer based on the host segment (open | settings).
-function openInApp(target: 'open' | 'settings'): void {
-  chrome.tabs.create({ url: `birdbrain://${target}` })
-}
-
-function applyPopupTheme(theme: 'light' | 'dark'): void {
-  document.documentElement.classList.toggle('dark', theme === 'dark')
-  try {
-    localStorage.setItem('bb-theme', theme)
-  } catch {
-    //
-  }
-}
 
 function currentTab(): Promise<chrome.tabs.Tab | undefined> {
   return new Promise((resolve) => {
@@ -197,9 +183,11 @@ function Footer({ version }: { version: string }) {
       <span className="flex items-center gap-2">
         <button
           type="button"
-          onClick={() => openInApp('settings')}
-          title="Birdbrain settings"
-          aria-label="Birdbrain settings"
+          onClick={() => {
+            void chrome.runtime.openOptionsPage()
+          }}
+          title="Extension options"
+          aria-label="Extension options"
           className="flex h-5 w-5 cursor-pointer items-center justify-center rounded border-none bg-transparent text-text-faint hover:bg-surface hover:text-text-secondary"
         >
           <Gear />
@@ -314,7 +302,7 @@ export function Popup(): React.JSX.Element {
     try {
       const status = await getStatus()
       setConnected(status.running)
-      if (status.theme) applyPopupTheme(status.theme)
+      if (status.theme) applyExtensionTheme(status.theme)
       setSessionActive(status.sessionActive)
       setActiveCase(status.activeCase)
       if (status.running) {

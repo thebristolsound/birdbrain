@@ -59,12 +59,14 @@ function pageStatus(overrides: Partial<PopupPageStatus> = {}): PopupPageStatus {
 const sentMessages: Array<Record<string, unknown>> = []
 let backgroundReplies: Record<string, unknown> = {}
 const createdTabs: string[] = []
+const openOptionsPage = vi.fn()
 
 function stubChrome(): void {
   vi.stubGlobal('chrome', {
     runtime: {
       lastError: undefined,
       getManifest: () => ({ version: '1.2.3' }),
+      openOptionsPage,
       sendMessage: (message: Record<string, unknown>, callback?: (response: unknown) => void) => {
         sentMessages.push(message)
         callback?.(backgroundReplies[message.type as string])
@@ -171,12 +173,15 @@ describe('popup case select', () => {
     expect(screen.queryByRole('button', { name: /Select a case/ })).toBeNull()
   })
 
-  it('keeps the gear on the app settings deep link and offers no session toggle', async () => {
+  it('points the gear at the extension options page and offers no session toggle', async () => {
     await renderPopup()
     await screen.findByText('Logging to')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Birdbrain settings' }))
-    expect(createdTabs).toEqual(['birdbrain://settings'])
+    fireEvent.click(screen.getByRole('button', { name: 'Extension options' }))
+    expect(openOptionsPage).toHaveBeenCalledTimes(1)
+    // The deep link was replaced, not supplemented: app settings are reached
+    // from the options page's own footnote now (#406).
+    expect(createdTabs).toEqual([])
     // HOTFIX semantics: Stop appears only while a session is actually running.
     expect(screen.queryByRole('button', { name: 'Stop session' })).toBeNull()
   })

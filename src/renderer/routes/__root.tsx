@@ -10,10 +10,9 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { TopBar } from '@renderer/components/layout/TopBar'
 import { Sidebar } from '@renderer/components/layout/Sidebar'
 import { MotionProvider } from '@renderer/lib/motion'
-import { OnboardingWizard } from '@renderer/components/layout/OnboardingWizard'
 import { Dashboard } from '@renderer/components/dashboard/Dashboard'
 import { useQuery } from '@tanstack/react-query'
-import { casesQueryOptions, settingsQueryOptions } from '@renderer/lib/queries'
+import { casesQueryOptions } from '@renderer/lib/queries'
 import { NewCaseWizard } from '@renderer/components/dashboard/cases/NewCaseWizard'
 import { CaseWorkspace } from '@renderer/components/dashboard/cases/CaseWorkspace'
 import { CaseOverview } from '@renderer/components/overview/CaseOverview'
@@ -21,13 +20,12 @@ import { CapturesRoute } from '@renderer/routes/cases/$caseId/captures'
 import { NotesOverview } from '@renderer/components/notes/NotesOverview'
 import { SignalsOverview } from '@renderer/components/signals/SignalsOverview'
 import { DataExplorer } from '@renderer/components/dashboard/cases/DataExplorer'
-import { InstallExtensionGuide } from '@renderer/components/extension/InstallExtensionGuide'
 import { SettingsView } from '@renderer/components/settings/SettingsView'
 import { useSessionRestore } from '@renderer/hooks/useSessionRestore'
 import { useCommandPalette } from '@renderer/hooks/useCommandPalette'
 import { CommandPalette } from '@renderer/components/layout/CommandPalette'
+import { OnboardingTour } from '@renderer/components/onboarding/OnboardingTour'
 import { Toaster } from 'sonner'
-import { useAppStore } from '@renderer/stores/appStore'
 import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
 import { subscribeToMainLog } from '@renderer/lib/mainLogBridge'
 import { ReportProblemDialog } from '@renderer/components/diagnostics/ReportProblemDialog'
@@ -82,8 +80,6 @@ const rootRoute = createRootRoute({
     useCommandPalette()
     useEffect(() => subscribeToMainLog(), [])
     const matchRoute = useMatchRoute()
-    const onboardingOverlayOpen = useAppStore((s) => s.onboardingOverlayOpen)
-    const setOnboardingOverlayOpen = useAppStore((s) => s.setOnboardingOverlayOpen)
 
     const [reportOpen, setReportOpen] = useState(false)
     const [reportCorrelationId, setReportCorrelationId] = useState<string | undefined>(undefined)
@@ -118,7 +114,7 @@ const rootRoute = createRootRoute({
         {/* Two nested boundaries, deliberately. The inner one around <Outlet />
             keeps the chrome alive when a route blows up — the tester can still
             navigate away. This outer one is the last resort: a render failure in
-            TopBar, Sidebar, CommandPalette, the onboarding overlay or the
+            TopBar, Sidebar, CommandPalette, the onboarding tour or the
             diagnostic components is outside the inner boundary and would
             otherwise blank the renderer with no react.render_error recorded. */}
         <ErrorBoundary source="root">
@@ -137,15 +133,13 @@ const rootRoute = createRootRoute({
             </div>
           </div>
           <CommandPalette />
+          <OnboardingTour />
           <CrashRecoveryPrompt />
           <ReportProblemDialog
             open={reportOpen}
             onOpenChange={setReportOpen}
             correlationId={reportCorrelationId}
           />
-          {onboardingOverlayOpen && (
-            <OnboardingWizard mode="overlay" onClose={() => setOnboardingOverlayOpen(false)} />
-          )}
         </ErrorBoundary>
         {/* Every user-visible failure notice routes through notify.ts, which
             renders here. Mounted once at the root so a toast raised from a
@@ -187,24 +181,20 @@ const rootRoute = createRootRoute({
   }
 })
 
-// Home / index — shows Dashboard, or OnboardingWizard on very first launch
+// Home / index. The first-run wizard that used to gate this route is gone; the
+// coach-mark tour (#404) runs over the dashboard rather than in place of it.
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
   component: function IndexPage() {
     const { isLoading: casesLoading } = useQuery(casesQueryOptions)
-    const { data: settings, isLoading: settingsLoading } = useQuery(settingsQueryOptions)
 
-    if (casesLoading || settingsLoading) {
+    if (casesLoading) {
       return (
         <div className="flex h-full items-center justify-center">
           <span className="text-sm text-text-muted">Loading...</span>
         </div>
       )
-    }
-
-    if (settings && !settings.hasCompletedOnboarding) {
-      return <OnboardingWizard />
     }
 
     return (
@@ -224,20 +214,6 @@ const settingsRoute = createRoute({
     return (
       <div className="p-[var(--d-pad)]">
         <SettingsView />
-      </div>
-    )
-  },
-  errorComponent: RouteErrorComponent
-})
-
-// Extension setup guide
-const extensionSetupRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/extension-setup',
-  component: function ExtensionSetupPage() {
-    return (
-      <div className="h-full overflow-y-auto">
-        <InstallExtensionGuide />
       </div>
     )
   },
@@ -316,7 +292,6 @@ const dataRoute = createRoute({
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   settingsRoute,
-  extensionSetupRoute,
   newCaseRoute,
   caseRoute.addChildren([
     caseIndexRoute,

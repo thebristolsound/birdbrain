@@ -1,7 +1,7 @@
-import { Link } from '@tanstack/react-router'
 import { Puzzle, FolderOpen, CheckCircle, BookOpen } from 'lucide-react'
 import { Card, Button } from '@renderer/components/ui'
 import { openExtensionFolder } from '@renderer/lib/api/system'
+import { startTour } from '@renderer/components/onboarding/startTour'
 
 interface ExtensionBannerProps {
   connected: boolean
@@ -16,8 +16,12 @@ export function ExtensionBanner({ connected }: ExtensionBannerProps) {
     }
   }
 
+  // The mock's `browser` anchor rings a top-bar Browser button that opens a
+  // simulated Chrome window. This app has neither, so the tour step rings the
+  // banner it is actually describing — present in both connected states, and on
+  // the dashboard route the step already declares. Sent back as #707.
   return (
-    <Card className="mt-8 p-6 flex items-center justify-between">
+    <Card data-tour="browser" className="mt-8 p-6 flex items-center justify-between">
       {connected ? (
         <>
           <div className="flex items-center gap-5">
@@ -56,13 +60,14 @@ export function ExtensionBanner({ connected }: ExtensionBannerProps) {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <Link
-              to="/extension-setup"
+            <button
+              data-testid="extension-banner-setup-guide"
+              onClick={() => startTour('ext')}
               className="flex items-center gap-2 px-4 py-2.5 font-display font-medium text-xs rounded-xl border border-border-strong text-text-muted hover:bg-elevated hover:text-text-primary transition-colors"
             >
               <BookOpen className="h-3.5 w-3.5" />
               Setup Guide
-            </Link>
+            </button>
             <Button
               onClick={handleOpenFolder}
               className="gap-2 px-5 py-2.5 font-display font-bold text-xs rounded-xl shadow-lg shadow-indigo-500/30 active:scale-[0.98]"

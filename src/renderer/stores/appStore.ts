@@ -36,7 +36,6 @@ interface AppState {
   }
   commandPaletteOpen: boolean
   panelCollapsedForced: boolean
-  onboardingOverlayOpen: boolean
   activeViewerTab: CaptureViewerTab
 
   setSessionActive: (active: boolean) => void
@@ -44,7 +43,6 @@ interface AppState {
   setCommandPaletteOpen: (open: boolean) => void
   toggleCommandPalette: () => void
   setPanelCollapsedForced: (forced: boolean) => void
-  setOnboardingOverlayOpen: (open: boolean) => void
   setActiveViewerTab: (tab: CaptureViewerTab) => void
   setSelectedCaptureId: (id: string | null) => void
   setSelectedNoteId: (id: string | null) => void
@@ -81,7 +79,6 @@ export const useAppStore = create<AppState>((set) => ({
   captureStats: { successCount: 0, failCount: 0, skipCount: 0 },
   commandPaletteOpen: false,
   panelCollapsedForced: false,
-  onboardingOverlayOpen: false,
   activeViewerTab: 'screenshot',
 
   setSessionActive: (active) => set({ sessionActive: active }),
@@ -89,7 +86,6 @@ export const useAppStore = create<AppState>((set) => ({
   setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
   toggleCommandPalette: () => set((s) => ({ commandPaletteOpen: !s.commandPaletteOpen })),
   setPanelCollapsedForced: (forced) => set({ panelCollapsedForced: forced }),
-  setOnboardingOverlayOpen: (open) => set({ onboardingOverlayOpen: open }),
   setActiveViewerTab: (tab) => set({ activeViewerTab: tab }),
   setSelectedCaptureId: (id) => set({ selectedCaptureId: id }),
   setSelectedNoteId: (id) => set({ selectedNoteId: id }),

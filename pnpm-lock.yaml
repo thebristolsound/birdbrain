@@ -71,6 +71,9 @@ importers:
       '@tiptap/static-renderer':
         specifier: 3.29.0
         version: 3.29.0(@tiptap/core@3.29.0(@tiptap/pm@3.29.0))(@tiptap/pm@3.29.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@tiptap/suggestion':
+        specifier: 3.29.0
+        version: 3.29.0(@floating-ui/dom@1.7.6)(@tiptap/core@3.29.0(@tiptap/pm@3.29.0))(@tiptap/pm@3.29.0)
       better-sqlite3:
         specifier: ^12.11.1
         version: 12.11.1
@@ -2486,6 +2489,13 @@ packages:
       '@tiptap/pm': 3.29.0
       react: ^17.0.0 || ^18.0.0 || ^19.0.0
       react-dom: ^17.0.0 || ^18.0.0 || ^19.0.0
+
+  '@tiptap/suggestion@3.29.0':
+    resolution: {integrity: sha512-M/84rGfmyNc9meGqbbWnfpZpRttW34Hltk3XxeXKUGNx+87CQazR49sXxDtvcP5JHeAgCZ2gtYkhstpOKPQ6qQ==}
+    peerDependencies:
+      '@floating-ui/dom': ^1.0.0
+      '@tiptap/core': 3.29.0
+      '@tiptap/pm': 3.29.0
 
   '@ts-morph/common@0.27.0':
     resolution: {integrity: sha512-Wf29UqxWDpc+i61k3oIOzcUfQt79PIT9y/MWfAGlrkjg6lBC1hwDECLXPVJAhWjiGbfBCxZd65F/LIZF3+jeJQ==}
@@ -8147,6 +8157,12 @@ snapshots:
       '@tiptap/pm': 3.29.0
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
+
+  '@tiptap/suggestion@3.29.0(@floating-ui/dom@1.7.6)(@tiptap/core@3.29.0(@tiptap/pm@3.29.0))(@tiptap/pm@3.29.0)':
+    dependencies:
+      '@floating-ui/dom': 1.7.6
+      '@tiptap/core': 3.29.0(@tiptap/pm@3.29.0)
+      '@tiptap/pm': 3.29.0
 
   '@ts-morph/common@0.27.0':
     dependencies:

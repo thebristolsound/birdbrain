@@ -277,6 +277,20 @@ describe('one chapter displacing another', () => {
     expect(updated).toEqual([{ onboardingChapters: { intro: true } }])
   })
 
+  // Mounting straight onto a case route runs both auto-fire effects in one
+  // passive-effect flush, so the case chapter displaces an intro that has not
+  // rendered yet. Reading the displaced chapter off a ref assigned only during
+  // render would see null here and lose the write all over again.
+  it('records the intro complete when both chapters auto-fire in one flush', async () => {
+    routerState.caseId = 'case-1'
+    routerState.pathname = '/cases/case-1/overview'
+    anchor('nav-captures', { top: 120, left: 4, width: 40, height: 40 })
+    renderTour()
+
+    expect(await screen.findByTestId('tour-screen')).toBeTruthy()
+    await waitFor(() => expect(updated).toEqual([{ onboardingChapters: { intro: true } }]))
+  })
+
   it('writes nothing when the displaced chapter was itself a replay', async () => {
     install(settingsFixture({ onboardingChapters: { intro: true, ext: true, case: true } }))
     anchor('browser')

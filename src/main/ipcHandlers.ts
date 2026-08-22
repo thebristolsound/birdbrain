@@ -424,6 +424,9 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.TAGS_USAGE_COUNTS_FOR_CASE, (_, caseId: string) =>
     tagRepo.getTagUsageCountsForCase(caseId)
   )
+  handle(IPC_CHANNELS.TAGS_CAPTURE_MATRIX, (_, caseId: string, limit: number) =>
+    tagRepo.getTagCaptureMatrix(caseId, limit)
+  )
   handle(IPC_CHANNELS.TAGS_ADD_TO_CAPTURES, (_, payload) => {
     const { caseId, captureIds } = validateBatchPayload(payload)
     if (typeof payload.tagId !== 'string') {
@@ -459,10 +462,13 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.SELECTORS_COVERAGE, (_, caseId: string) =>
     selectorRepo.getSelectorCoverage(caseId)
   )
-  handle(IPC_CHANNELS.SELECTORS_EXPORT_MATCHES, async (_, caseId: string) => {
+  handle(IPC_CHANNELS.SELECTORS_CAPTURE_MATRIX, (_, caseId: string, limit: number) =>
+    selectorRepo.getSelectorCaptureMatrix(caseId, limit)
+  )
+  handle(IPC_CHANNELS.SELECTORS_EXPORT_MATCHES, async (_, caseId: string, selectorId?: string) => {
     const caseRow = caseRepo.getCase(caseId)
     if (!caseRow) return { exported: false }
-    const rows = selectorRepo.getSelectorMatchesForExport(caseId)
+    const rows = selectorRepo.getSelectorMatchesForExport(caseId, selectorId)
     const csv = buildCsv(
       [
         'Selector Pattern',
@@ -482,8 +488,14 @@ export function registerIpcHandlers(deps: {
       ])
     )
     const safeName = safeFilename(caseRow.name, 'case')
+    // Named after the selector when the export is scoped to one (#400), so the
+    // file on disk says what it holds rather than implying the whole case.
+    const scoped = selectorId ? selectorRepo.getSelector(selectorId) : undefined
+    const suffix = scoped
+      ? `_${safeFilename(scoped.label || scoped.pattern, 'selector')}_matches`
+      : '_selector_matches'
     const { canceled, filePath } = await dialog.showSaveDialog({
-      defaultPath: `${safeName}_selector_matches.csv`,
+      defaultPath: `${safeName}${suffix}.csv`,
       filters: [{ name: 'CSV', extensions: ['csv'] }]
     })
     if (canceled || !filePath) return { exported: false }

@@ -32,6 +32,7 @@ import {
   getTagsForCapture,
   getTagCountForCase,
   getTagUsageCountsForCase,
+  getTagCaptureMatrix,
   addTagToCaptures
 } from '@main/services/db/tagRepo'
 import {
@@ -41,7 +42,8 @@ import {
   listActiveSelectors,
   listSelectors,
   bulkCreateSelectors,
-  getSelectorMatchesForExport
+  getSelectorMatchesForExport,
+  getSelectorCaptureMatrix
 } from '@main/services/db/selectorRepo'
 import {
   createNote,
@@ -806,6 +808,129 @@ describe('database', () => {
     it('returns empty array when case has no matches', () => {
       const c = createCase({ name: 'No Matches' })
       expect(getSelectorMatchesForExport(c.id)).toEqual([])
+    })
+
+    // #400: the Signals rail's Export CSV is per-signal. Without the filter the
+    // button would write the whole case under a label that says otherwise.
+    it('scopes to one selector when a selector id is given', () => {
+      const c = createCase({ name: 'Scoped Export' })
+      const cap = insertCapture({
+        caseId: c.id,
+        url: 'https://example.com/a',
+        title: 'Page A',
+        hash: 'h1',
+        timestamp: '2026-01-01T00:00:00.000Z'
+      })
+      const wanted = createSelector({ caseId: c.id, pattern: 'alpha' })
+      const unwanted = createSelector({ caseId: c.id, pattern: 'beta' })
+      matchSelectorAgainstCaptures(wanted.id, [{ captureId: cap.id, text: 'alpha' }])
+      matchSelectorAgainstCaptures(unwanted.id, [{ captureId: cap.id, text: 'beta' }])
+
+      expect(getSelectorMatchesForExport(c.id)).toHaveLength(2)
+      const scoped = getSelectorMatchesForExport(c.id, wanted.id)
+      expect(scoped).toHaveLength(1)
+      expect(scoped[0].selectorPattern).toBe('alpha')
+    })
+
+    it('scopes to nothing when the selector belongs to another case', () => {
+      const c = createCase({ name: 'Scoped Export Cross' })
+      const other = createCase({ name: 'Elsewhere' })
+      const cap = insertCapture({
+        caseId: other.id,
+        url: 'https://example.com/a',
+        title: 'Page A',
+        hash: 'h1',
+        timestamp: '2026-01-01T00:00:00.000Z'
+      })
+      const foreign = createSelector({ caseId: other.id, pattern: 'alpha' })
+      matchSelectorAgainstCaptures(foreign.id, [{ captureId: cap.id, text: 'alpha' }])
+
+      expect(getSelectorMatchesForExport(c.id, foreign.id)).toEqual([])
+    })
+  })
+
+  describe('coverage matrices (#400)', () => {
+    // Newest first, matching listCaptures, so "the N most recent" means the
+    // same thing to the query and to the strip that draws it.
+    function seedCaptures(caseId: string, count: number): string[] {
+      return Array.from({ length: count }, (_, i) =>
+        insertCapture({
+          caseId,
+          url: `https://example.com/${i}`,
+          title: `Page ${i}`,
+          hash: `h${i}`,
+          // Ascending timestamps, so index 0 is the OLDEST.
+          timestamp: `2026-01-${String(i + 1).padStart(2, '0')}T00:00:00.000Z`
+        }).id
+      )
+    }
+
+    it('maps each selector to the recent captures it matched', () => {
+      const c = createCase({ name: 'Selector Matrix' })
+      const [cap0, cap1, cap2] = seedCaptures(c.id, 3)
+      const both = createSelector({ caseId: c.id, pattern: 'both' })
+      const one = createSelector({ caseId: c.id, pattern: 'one' })
+      createSelector({ caseId: c.id, pattern: 'none' })
+      matchSelectorAgainstCaptures(both.id, [
+        { captureId: cap0, text: 'both' },
+        { captureId: cap2, text: 'both' }
+      ])
+      matchSelectorAgainstCaptures(one.id, [{ captureId: cap1, text: 'one' }])
+
+      const matrix = getSelectorCaptureMatrix(c.id, 24)
+
+      expect(new Set(matrix[both.id])).toEqual(new Set([cap0, cap2]))
+      expect(matrix[one.id]).toEqual([cap1])
+      // A selector that matched nothing is absent, not present-and-empty.
+      expect(Object.keys(matrix)).toHaveLength(2)
+    })
+
+    it('bounds the selector matrix to the most recent captures', () => {
+      const c = createCase({ name: 'Bounded Selector Matrix' })
+      const caps = seedCaptures(c.id, 5)
+      const sel = createSelector({ caseId: c.id, pattern: 'all' })
+      matchSelectorAgainstCaptures(
+        sel.id,
+        caps.map((captureId) => ({ captureId, text: 'all' }))
+      )
+
+      // Newest two only: caps[4] and caps[3].
+      expect(new Set(getSelectorCaptureMatrix(c.id, 2)[sel.id])).toEqual(
+        new Set([caps[4], caps[3]])
+      )
+    })
+
+    it('keeps one case out of another case matrix', () => {
+      const c = createCase({ name: 'Matrix Isolation' })
+      const other = createCase({ name: 'Matrix Other' })
+      const [cap] = seedCaptures(other.id, 1)
+      const foreign = createSelector({ caseId: other.id, pattern: 'x' })
+      matchSelectorAgainstCaptures(foreign.id, [{ captureId: cap, text: 'x' }])
+
+      expect(getSelectorCaptureMatrix(c.id, 24)).toEqual({})
+    })
+
+    it('maps each tag to the recent captures carrying it', () => {
+      const c = createCase({ name: 'Tag Matrix' })
+      const [cap0, cap1] = seedCaptures(c.id, 2)
+      const applied = createTag({ name: 'applied' })
+      createTag({ name: 'unused' })
+      addTagToCapture({ captureId: cap0, tagId: applied.id })
+      addTagToCapture({ captureId: cap1, tagId: applied.id })
+
+      const matrix = getTagCaptureMatrix(c.id, 24)
+
+      expect(new Set(matrix[applied.id])).toEqual(new Set([cap0, cap1]))
+      expect(Object.keys(matrix)).toHaveLength(1)
+    })
+
+    it('bounds the tag matrix to the most recent captures', () => {
+      const c = createCase({ name: 'Bounded Tag Matrix' })
+      const caps = seedCaptures(c.id, 4)
+      const tag = createTag({ name: 'everywhere' })
+      for (const captureId of caps) addTagToCapture({ captureId, tagId: tag.id })
+
+      expect(getTagCaptureMatrix(c.id, 1)[tag.id]).toEqual([caps[3]])
     })
   })
 

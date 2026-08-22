@@ -98,6 +98,7 @@ const birdbrain = {
     getForCapture: bridge(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE),
     countForCase: bridge(IPC_CHANNELS.TAGS_COUNT_FOR_CASE),
     usageCountsForCase: bridge(IPC_CHANNELS.TAGS_USAGE_COUNTS_FOR_CASE),
+    captureMatrix: bridge(IPC_CHANNELS.TAGS_CAPTURE_MATRIX),
     addToCaptures: bridge(IPC_CHANNELS.TAGS_ADD_TO_CAPTURES)
   },
   selectors: {
@@ -110,6 +111,7 @@ const birdbrain = {
     matchCounts: bridge(IPC_CHANNELS.SELECTORS_MATCH_COUNTS),
     matchingCaptures: bridge(IPC_CHANNELS.SELECTORS_MATCHING_CAPTURES),
     coverage: bridge(IPC_CHANNELS.SELECTORS_COVERAGE),
+    captureMatrix: bridge(IPC_CHANNELS.SELECTORS_CAPTURE_MATRIX),
     bulkCreate: bridge(IPC_CHANNELS.SELECTORS_BULK_CREATE),
     exportMatches: bridge(IPC_CHANNELS.SELECTORS_EXPORT_MATCHES)
   },

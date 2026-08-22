@@ -91,6 +91,9 @@ test.describe('theme screenshots', () => {
       window.location.hash = `/cases/${id}/overview`
     }, caseId)
     await page.waitForSelector('[data-testid="case-overview"]', { timeout: 10000 })
+    // The link map is the last block to settle: it waits on the note-references
+    // query, so shooting on `case-overview` alone can catch a half-drawn card.
+    await page.waitForSelector('[data-testid="overview-map-canvas"]', { timeout: 10000 })
 
     // CaseOverview screenshots in both themes
     for (const theme of ['light', 'dark'] as const) {

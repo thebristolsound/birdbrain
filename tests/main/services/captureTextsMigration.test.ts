@@ -16,8 +16,9 @@ describe('migration v25: capture_texts', () => {
     const raw = new Database(dbPath)
     // Minimal pre-v25 schema: standalone FTS shape, user_version pinned to 24.
     // searchCaptures does SELECT c.* and asserts on id only, so captures needs
-    // only the columns exercised here. `notes` is present but unused: every
-    // migration from 25 onwards runs against this fixture, and v26 alters it.
+    // only the columns exercised here. `notes` and `selectors` are present but
+    // unused: every migration from 25 onwards runs against this fixture, v26
+    // alters notes and v29 alters selectors.
     raw.exec(`
       CREATE TABLE cases (id TEXT PRIMARY KEY, name TEXT, description TEXT, type TEXT,
         created_at TEXT, updated_at TEXT, archived INTEGER DEFAULT 0);
@@ -27,6 +28,8 @@ describe('migration v25: capture_texts', () => {
       CREATE TABLE notes (id TEXT PRIMARY KEY, case_id TEXT NOT NULL, capture_id TEXT,
         title TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', source_url TEXT,
         screenshot_path TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+      CREATE TABLE selectors (id TEXT PRIMARY KEY, case_id TEXT NOT NULL, pattern TEXT NOT NULL,
+        is_regex INTEGER DEFAULT 0, enabled INTEGER DEFAULT 1, label TEXT, created_at TEXT NOT NULL);
       CREATE VIRTUAL TABLE captures_fts USING fts5(title, url, content);
     `)
     raw.prepare(`INSERT INTO cases VALUES ('case1','C','','custom','2026-01-01','2026-01-01',0)`).run()

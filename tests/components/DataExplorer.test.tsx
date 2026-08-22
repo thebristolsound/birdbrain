@@ -92,4 +92,47 @@ describe('DataExplorer', () => {
     await waitFor(() => expect(openExternal).toHaveBeenCalledOnce())
     expect(notifyError).not.toHaveBeenCalled()
   })
+
+  // 'capture', not 'manual': the search results are the only place
+  // CreateSelectorPopover is mounted, and the value it seeds was extracted out
+  // of a capture rather than typed by the operator (#395).
+  it('stamps a selector made from an extracted indicator as coming from a capture', async () => {
+    const create = vi.fn(async () => ({ id: 's1' }))
+    fakeBridge({
+      extractedData: {
+        categories: vi.fn(async () => [{ category: 'emails', count: 1 }]),
+        subcategories: vi.fn(async () => [{ subcategory: 'personal', count: 1 }]),
+        items: vi.fn(async () => []),
+        count: vi.fn(async () => 1),
+        search: vi.fn(async () => [
+          {
+            category: 'emails',
+            subcategory: 'personal',
+            value: 'someone@example.com',
+            pageCount: 1,
+            sourceUrls: [SOURCE_URL]
+          }
+        ])
+      },
+      selectors: { create }
+    })
+    renderExplorer()
+
+    // The query input is debounced by 250ms, so the result row arrives a beat
+    // after the change event.
+    fireEvent.change(await screen.findByPlaceholderText('Search indicators...'), {
+      target: { value: 'someone' }
+    })
+    fireEvent.click(await screen.findByTitle('Create selector from this indicator'))
+    fireEvent.click(await screen.findByText('Create'))
+
+    await waitFor(() => expect(create).toHaveBeenCalledOnce())
+    expect(create).toHaveBeenCalledWith({
+      caseId: 'case1',
+      pattern: 'someone@example.com',
+      isRegex: false,
+      label: 'personal',
+      origin: 'capture'
+    })
+  })
 })

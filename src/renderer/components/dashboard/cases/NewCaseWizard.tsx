@@ -75,7 +75,8 @@ export function NewCaseWizard() {
             caseId: newCase.id,
             pattern: preset.pattern,
             isRegex: preset.isRegex,
-            label: preset.label
+            label: preset.label,
+            origin: 'manual'
           })
         }
       }

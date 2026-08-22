@@ -4,6 +4,7 @@ import type { Selector } from '@shared/types'
 import { useAppStore } from '@renderer/stores/appStore'
 import { highlightRegexSyntax } from '@renderer/components/selectors/selectorUtils'
 import { useForegroundMatchPreview } from '@renderer/components/selectors/useForegroundMatchPreview'
+import { ORIGIN_ICON, ORIGIN_LABEL } from '@renderer/components/selectors/selectorOrigin'
 
 interface SelectorTableRowProps {
   selector: Selector
@@ -34,6 +35,8 @@ export function SelectorTableRow({
   } = useForegroundMatchPreview(caseId, { maxCaptures: 3, maxMatchesPerCapture: 5 })
 
   const isFilterActive = activeSelectorFilters.includes(selector.id)
+  const { origin } = selector
+  const OriginIcon = origin ? ORIGIN_ICON[origin] : null
 
   function handleToggleExpand() {
     if (!isExpanded && !previews && !loadingPreviews) {
@@ -180,6 +183,20 @@ export function SelectorTableRow({
         <tr>
           <td colSpan={7} className="bg-surface px-[var(--d-rowpad)] py-3">
             <div className="expand-panel">
+              {/* Provenance, styled as the design's Signals rail styles it
+                  (#395). Absent origin renders nothing: a row created before
+                  provenance was recorded has none to state. */}
+              {origin && OriginIcon && (
+                <div className="mb-2 flex flex-wrap items-center gap-[7px]">
+                  <span
+                    data-testid="selector-origin"
+                    className="inline-flex items-center gap-1 rounded-full border border-border bg-canvas px-2 py-px text-[10px] text-text-faint"
+                  >
+                    <OriginIcon className="h-2.5 w-2.5" strokeWidth={2} />
+                    {ORIGIN_LABEL[origin]}
+                  </span>
+                </div>
+              )}
               {loadingPreviews ? (
                 <p className="text-xs text-text-muted">Loading previews...</p>
               ) : previews && previews.length > 0 ? (

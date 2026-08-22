@@ -1098,6 +1098,7 @@ describe('captureServer', () => {
     expect(data.selector.enabled).toBe(true)
     expect(data.selector.label).toBe('from example.com')
     expect(data.selector.caseId).toBe(testCase.id)
+    expect(data.selector.origin).toBe('extension')
     expect(data.selector.id).toBeDefined()
     expect(data.selector.createdAt).toBeDefined()
 
@@ -1105,6 +1106,29 @@ describe('captureServer', () => {
     const selectors = listSelectors(testCase.id)
     expect(selectors).toHaveLength(1)
     expect(selectors[0].pattern).toBe('suspicious transaction')
+    expect(selectors[0].origin).toBe('extension')
+  })
+
+  it('POST /api/selectors stamps origin server-side, ignoring any supplied value', async () => {
+    const testCase = createCase({ name: 'Origin Is Server Stamped' })
+    await activateSessionForCase(testCase.id)
+
+    const res = await serverPost('/api/selectors', {
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        caseId: testCase.id,
+        pattern: 'forged provenance',
+        origin: 'manual'
+      })
+    })
+
+    // Provenance is a claim about how a selector entered the case, so it is
+    // never taken from the request body — anything that can reach the loopback
+    // port could otherwise assert a false one.
+    expect(res.status).toBe(200)
+    const data = await readJson(res)
+    expect(data.selector.origin).toBe('extension')
+    expect(listSelectors(testCase.id)[0].origin).toBe('extension')
   })
 
   it('POST /api/selectors returns 400 without active case', async () => {

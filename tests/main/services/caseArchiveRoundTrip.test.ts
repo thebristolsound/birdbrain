@@ -113,8 +113,17 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
     const tag = createTag({ name: 'Evidence', color: '#f00' })
     addTagToCapture({ captureId: cap1.id, tagId: tag.id })
 
-    const sel = createSelector({ caseId: c.id, pattern: 'alpha', isRegex: false })
+    // Non-null origin, deliberately: with NULL the deep column comparison
+    // below passes even if importSelectorRows never learns the column (#395).
+    const sel = createSelector({
+      caseId: c.id,
+      pattern: 'alpha',
+      isRegex: false,
+      origin: 'extension'
+    })
     matchSelectorAgainstCaptures(sel.id, [{ captureId: cap1.id, text: 'alpha text' }])
+    // And one without, so NULL-survives-as-NULL is covered in the same pass.
+    createSelector({ caseId: c.id, pattern: 'legacy', isRegex: false })
 
     // Rich body, so the deep column comparison below covers body_doc too.
     createNote({

@@ -456,11 +456,16 @@ function createApp(deps: CaptureServerDeps): Hono {
           return c.json({ error: 'Case is archived' }, 400)
         }
 
+        // Server-stamped, never read from the request body (#395).
+        // SelectorCreateSchema has no origin field on purpose: anything that
+        // reaches 127.0.0.1:19845 could otherwise assert a false claim about
+        // how a selector entered the case.
         const selector = selectorLifecycle.createSelector({
           caseId,
           pattern,
           isRegex: false,
-          label
+          label,
+          origin: 'extension'
         })
 
         return c.json({ selector, status: 'ok' } satisfies SelectorCreateResult)

@@ -51,7 +51,8 @@ export function CreateSelectorCard({
         caseId,
         pattern: pattern.trim(),
         isRegex,
-        label: label.trim() || undefined
+        label: label.trim() || undefined,
+        origin: 'manual'
       })
       setPattern('')
       setLabel('')

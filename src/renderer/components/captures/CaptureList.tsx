@@ -190,7 +190,7 @@ export function CaptureList({
                   setShowSortMenu(!showSortMenu)
                   setShowFilterMenu(false)
                 }}
-                className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] hover:bg-elevated ${
+                className={`flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-[11px] hover:bg-elevated ${
                   sortBy !== 'newest' ? 'text-accent' : 'text-text-muted hover:text-text-muted'
                 }`}
               >
@@ -226,7 +226,7 @@ export function CaptureList({
                   setShowFilterMenu(!showFilterMenu)
                   setShowSortMenu(false)
                 }}
-                className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] hover:bg-elevated ${
+                className={`flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-[11px] hover:bg-elevated ${
                   activeFilterCount > 0 ? 'text-accent' : 'text-text-muted hover:text-text-muted'
                 }`}
               >

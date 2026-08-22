@@ -13,6 +13,10 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
   useEffect(() => {
     if (!open) return
     function handleKey(e: KeyboardEvent) {
+      // An Escape something inside the dialog already handled — a Mention
+      // autocomplete dismissing itself, say — must not also close the dialog
+      // and discard whatever was being written into it.
+      if (e.defaultPrevented) return
       if (e.key === 'Escape') onOpenChange(false)
     }
     window.addEventListener('keydown', handleKey)

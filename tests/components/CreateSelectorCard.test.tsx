@@ -34,7 +34,9 @@ describe('CreateSelectorCard', () => {
       caseId: 'case-1',
       pattern: 'acme',
       isRegex: false,
-      label: undefined
+      label: undefined,
+      // Typed into the Selectors screen by hand, so 'manual' (#395).
+      origin: 'manual'
     })
   })
 

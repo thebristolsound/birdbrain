@@ -104,7 +104,8 @@ export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLi
           caseId: params.caseId,
           pattern: s.pattern,
           isRegex: s.isRegex,
-          label: s.label
+          label: s.label,
+          origin: s.origin
         }))
       )
       scheduleRetroactiveMatch(created, params.caseId)

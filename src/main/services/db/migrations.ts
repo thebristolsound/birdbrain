@@ -591,4 +591,21 @@ export function runMigrations(db: Database.Database): void {
       db.pragma('user_version = 28')
     })()
   }
+
+  if (version < 29) {
+    db.transaction(() => {
+      // Selector provenance (#395): where the pattern came from, stamped once
+      // at creation and never edited after. Nullable with no default and no
+      // backfill — NULL means the row predates provenance recording, and the
+      // interface renders nothing for it. A default of 'manual' was rejected
+      // deliberately: it would claim by hand for every selector the extension
+      // created before this migration, which is a false provenance claim in an
+      // evidence tool. No index: nothing queries or filters on origin, it is
+      // read only through the existing SELECT * paths.
+      db.exec(`
+        ALTER TABLE selectors ADD COLUMN origin TEXT;
+      `)
+      db.pragma('user_version = 29')
+    })()
+  }
 }

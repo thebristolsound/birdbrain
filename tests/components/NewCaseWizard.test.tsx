@@ -1,23 +1,29 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { NewCaseWizard } from '@renderer/components/dashboard/cases/NewCaseWizard'
+
+// Hoisted so the wizard's own module graph shares the instances the
+// assertions read, and so `create` can resolve to a case with an id.
+const createCase = vi.hoisted(() => vi.fn(async () => ({ id: 'case-1' })))
+const createSelector = vi.hoisted(() => vi.fn())
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => vi.fn()
 }))
 
 vi.mock('@renderer/lib/queries', () => ({
-  useCasesMutations: () => ({ create: { mutateAsync: vi.fn() } }),
+  useCasesMutations: () => ({ create: { mutateAsync: createCase } }),
   useSettingsMutations: () => ({ update: { mutateAsync: vi.fn() } })
 }))
 
 vi.mock('@renderer/lib/api/selectors', () => ({
-  createSelector: vi.fn()
+  createSelector
 }))
 
 afterEach(() => {
   cleanup()
+  createSelector.mockReset()
   vi.restoreAllMocks()
 })
 
@@ -48,5 +54,22 @@ describe('NewCaseWizard', () => {
     const description = screen.getByTestId('case-description-input')
     expect(description.className).toContain('bg-canvas')
     expect(description.className).not.toMatch(/\bbg-elevated\b/)
+  })
+
+  // Presets are picked by the operator during case creation, so the selectors
+  // they produce are 'manual' (#395). Without this the wizard's rows would land
+  // with no origin and read as legacy, which is the hole the column exists to
+  // close.
+  it('stamps preset selectors as added by hand', async () => {
+    render(<NewCaseWizard />)
+
+    fireEvent.change(screen.getByTestId('case-name-input'), { target: { value: 'Case' } })
+    fireEvent.click(screen.getByText('Email Addresses'))
+    fireEvent.click(screen.getByTestId('case-create-btn'))
+
+    await waitFor(() => expect(createSelector).toHaveBeenCalledOnce())
+    expect(createSelector).toHaveBeenCalledWith(
+      expect.objectContaining({ caseId: 'case-1', label: 'Email Addresses', origin: 'manual' })
+    )
   })
 })

@@ -95,7 +95,8 @@ export function BulkAddSelectorsModal({
       const selectors = parsed.unique.map((pattern, i) => ({
         pattern,
         isRegex,
-        label: labelPrefix.trim() ? `${labelPrefix.trim()} ${i + 1}` : undefined
+        label: labelPrefix.trim() ? `${labelPrefix.trim()} ${i + 1}` : undefined,
+        origin: 'manual' as const
       }))
       const created = await bulkCreate.mutateAsync({ caseId, selectors })
       onCreated(created)

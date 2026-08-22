@@ -38,11 +38,15 @@ export function CreateSelectorPopover({
 
   async function handleCreate() {
     if (!pattern.trim()) return
+    // 'capture', not 'manual': this popover is mounted only from the Data
+    // Explorer, over a value extracted out of a capture rather than one the
+    // operator typed.
     await create.mutateAsync({
       caseId,
       pattern: pattern.trim(),
       isRegex: false,
-      label: label.trim() || undefined
+      label: label.trim() || undefined,
+      origin: 'capture'
     })
     onClose()
   }

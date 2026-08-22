@@ -135,7 +135,19 @@ export interface CaptureServerStatus {
   autoCaptureMode: BirdbrainSettings['autoCaptureMode']
   /** Empty when the caller passed `?includeCases=0`. */
   cases: CaptureServerCaseRef[]
+  /** The operator's global ignore list, unchanged by any case's policy. */
   ignoredUrlPatterns: string[]
+  /**
+   * What is actually in force for the active case (#400): the global list plus
+   * that case's exclusions, or the case's alone under 'override'. The global
+   * list when no case is active.
+   *
+   * Optional because a pre-#400 server does not send it and the extension
+   * updates independently of the app; the extension falls back to
+   * `ignoredUrlPatterns`, so an older server degrades to global-only advisory
+   * filtering rather than to none. The server always sets it.
+   */
+  effectiveIgnoredUrlPatterns?: string[]
   captureScreenshots: boolean
   dedupeWindowSeconds: number
   theme: BirdbrainSettings['theme']

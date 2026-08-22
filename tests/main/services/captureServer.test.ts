@@ -490,6 +490,9 @@ describe('captureServer', () => {
     expect(data.cases[0]).toHaveProperty('id')
     expect(data.cases[0]).toHaveProperty('name')
     expect(data.ignoredUrlPatterns).toEqual([])
+    // Always published (#400) so the extension mirrors what is actually in
+    // force. The per-case matrix lives in perCaseExclusions.test.ts.
+    expect(data.effectiveIgnoredUrlPatterns).toEqual([])
     expect(data.captureScreenshots).toBe(true)
     expect(data.dedupeWindowSeconds).toBe(60)
   })
@@ -569,6 +572,52 @@ describe('captureServer', () => {
     )
 
     expect(res.status).toBe(403)
+  })
+
+  // #400 moved the exclusion check to AFTER case resolution, because a case's
+  // 'override' mode has to be able to bypass the global list and the mode is
+  // unknown until the case is. These two pin what that reordering changed: an
+  // excluded URL with no usable case now answers the case error, not the
+  // exclusion one. No existing test covered it — every blacklist test above
+  // posts with a real, activated case — so without these the precedence could
+  // move back in silence.
+  it('an excluded URL with a missing caseId answers 400, not 403', async () => {
+    createCase({ name: 'Reorder Missing Case' })
+    updateSettings({ ignoredUrlPatterns: ['blocked-site.com'] })
+
+    const res = await postCapture(
+      { source: 'manual', url: 'https://blocked-site.com/page' },
+      '<html>blocked</html>'
+    )
+
+    expect(res.status).toBe(400)
+    expect((await readJson(res)).error).toBe('Missing required field: caseId')
+  })
+
+  it('an excluded URL with an unknown caseId answers 404, not 403', async () => {
+    updateSettings({ ignoredUrlPatterns: ['blocked-site.com'] })
+
+    const res = await postCapture(
+      { source: 'manual', caseId: 'no-such-case', url: 'https://blocked-site.com/page' },
+      '<html>blocked</html>'
+    )
+
+    expect(res.status).toBe(404)
+    expect((await readJson(res)).error).toBe('Case not found')
+  })
+
+  it('an excluded URL for an archived case answers 400, not 403', async () => {
+    const archived = createCase({ name: 'Reorder Archived' })
+    updateCase({ id: archived.id, archived: true })
+    updateSettings({ ignoredUrlPatterns: ['blocked-site.com'] })
+
+    const res = await postCapture(
+      { source: 'manual', caseId: archived.id, url: 'https://blocked-site.com/page' },
+      '<html>blocked</html>'
+    )
+
+    expect(res.status).toBe(400)
+    expect((await readJson(res)).error).toBe('Case is archived')
   })
 
   it('blacklist supports regex patterns', async () => {

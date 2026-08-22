@@ -421,9 +421,16 @@ describe('CapturesRoute', () => {
 
       fireEvent.click(await screen.findByText(EXPAND_CONTROL))
 
-      // The rail stays mounted beside the overlay, so both panels are present.
       expect(screen.getByText(DELETE_CONTROL)).toBeDefined()
       expect(screen.getByTestId('capture-details-overlay')).toBeDefined()
+      // The 40px rail stays mounted beside the overlay rather than being
+      // replaced by it — its expand button is the only way back to the details
+      // once the overlay is closed. This is what makes `detailsOverlay` a
+      // separate output rather than a fourth `details` state, so assert it:
+      // folding the two together would strand the operator under 1100px.
+      expect(screen.getByTestId('capture-details-aside').className).toContain('w-10')
+      expect(screen.getByText(OPEN_CONTROL)).toBeDefined()
+      expect(screen.getByText(EXPAND_CONTROL)).toBeDefined()
     })
 
     // The overlay is opaque and 400px wide, so leaving it up on the full-bleed

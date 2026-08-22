@@ -165,3 +165,11 @@ prosemirror's
 [Rr]emappable
 ProseMirror
 [Tt]oolchain
+[Dd]eleter
+[Uu]nflagged
+[Uu]ndercounts
+[Nn]avigations
+[Bb]ranchy
+[Ww]ebfont
+[Rr]ecomposition
+mock's

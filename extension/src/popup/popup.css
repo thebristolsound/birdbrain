@@ -1,62 +1,7 @@
-@import "tailwindcss" source(none);
-@source "../../";
-
-@theme {
-  /* Flat zinc surfaces — light defaults; html.dark overrides below */
-  --color-canvas: #fafafa;
-  --color-surface: #f4f4f5;
-  --color-card: #ffffff;
-  --color-elevated: #ffffff;
-  --color-text-primary: #09090b;
-  --color-text-secondary: #3f3f46;
-  --color-text-muted: #71717a;
-  --color-text-faint: #a1a1aa;
-  --color-accent: #5659f0;
-  --color-accent-hover: #4f52e0;
-  --color-accent-subtle: rgba(100,103,242,0.10);
-  --color-border: #e4e4e7;
-  --color-border-strong: #d4d4d8;
-
-  /* Status palette (allowed raw-colour exception) */
-  --color-red-400: #f87171;
-  --color-red-500: #ef4444;
-  --color-amber-500: #f59e0b;
-  --color-emerald-500: #22c55e;
-
-  --radius: 0.5rem;
-
-  --font-display: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
-  --font-body: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
-}
-
-/* Overlay shadow, mirroring globals.css. A plain custom property rather than a
-   @theme --shadow-* entry: Tailwind inlines theme shadow values into the
-   utility at build time, so the html.dark override below would never reach it. */
-:root {
-  --bb-shadow-overlay: 0 10px 30px rgba(0, 0, 0, 0.12);
-}
-
-.shadow-overlay {
-  box-shadow: var(--bb-shadow-overlay);
-}
-
-html.dark {
-  --color-canvas: #090a0b;
-  --color-surface: #0e0e11;
-  --color-card: #131316;
-  --color-elevated: #1c1c20;
-  --color-text-primary: #fafafa;
-  --color-text-secondary: #d4d4d8;
-  --color-text-muted: #a1a1aa;
-  --color-text-faint: #71717a;
-  --color-accent: #6467f2;
-  --color-accent-hover: #7a7cf5;
-  --color-accent-subtle: rgba(100,103,242,0.16);
-  --color-border: #27272a;
-  --color-border-strong: #3d3d42;
-
-  --bb-shadow-overlay: 0 10px 30px rgba(0, 0, 0, 0.5);
-}
+/* Shared design tokens live in ../theme.css so the popup and the options page
+   cannot drift apart. What stays here is popup-only: the 320px body clamp and
+   the popup's motion. */
+@import "../theme.css";
 
 body {
   width: 320px;

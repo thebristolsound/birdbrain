@@ -17,8 +17,10 @@ Each ticket carries a wave-2 prep comment dated 2026-08-21 with its rulings, cor
 | Ticket | Area | Evidence-affecting |
 | --- | --- | --- |
 | #395 selector origin | migration v29, `selectorRepo`, five creation paths, archive round-trip, row detail | no; backstop fires on `db/**` |
+
+**#400 is now an XL.** It absorbed the Signals screen consolidation on 2026-08-21. Size the wave around that.
 | #397 three-column layout rework | `captures/` route, viewer tabs, `capView` toggle, resize panels | no; backstop fires on the lockfile |
-| #400 per-case auto-capture exclusions | migration v30, `captureServer`, Signals UI, one-line extension mirror | yes; human review, no auto-merge |
+| #400 per-case exclusions **and the Signals rebuild** | migration v30, `captureServer`, whole Signals screen, one-line extension mirror | yes; human review, no auto-merge |
 | #390 Mention editing UI | notes editor, chips, suggestion popup, snippet rendering | no, if the diff stays renderer-side |
 | #402 consolidated Overview with backlink map | `overview/`, first SVG primitive, backlink query layer | no; backstop may fire on `overviewModel.ts` |
 | #404 coach-mark engine and intro tour | tour engine, `__root.tsx`, extension-setup removal, settings keys | no; backstop fires on `schemas.ts` |
@@ -53,16 +55,19 @@ wave-2 ticket:
 - **Right-click context menus.** The mock binds 23 context-menu handlers across 13 entity
   kinds: capture, case, event, file, folder, ledger, link, note, part, selector, snapshot,
   suggestion, tag. The app has zero (`grep -rn onContextMenu src/renderer/` returns nothing).
-  Tracked as #701.
+  Tracked as #701 and ruled: shared component plus registry, wave 3, no wave-2 hooks.
 - **Signals against Selectors and Tags.** The Signals screen in the mock carries a Selectors
   section and a Tags section, and the navigation still lists all three as separate entries.
-  Which survive is unresolved. Tracked as #700.
+  #400 now builds the consolidated page. Whether `/selectors` and `/tags` survive is still
+  open on #700 and **blocks #400**, because that ticket should not decide it alone.
 
 ## Rulings recorded 2026-08-21 (all on the issues)
 
 - #395: origin column is nullable TEXT, NULL = legacy; the DataExplorer popover path records `'capture'`; the flask-opened row-detail panel is an accepted surface.
 - #397: both prototype time treatments ship behind the `capView` detailed/list toggle; the Wayback tab ships here, hosting existing `WaybackTab` content, and the details-panel Wayback section is removed (#401 swaps the tab's content later); per-list search stays out (#695); `react-resizable-panels` approved as a new dependency.
-- #400: the per-case list blocks every capture source, manual included, matching the global list; the prototype's per-case auto-capture switch is omitted and the constraint goes back to the prototype; manifest visibility lives in #694, not here.
+- #400: the per-case list blocks every capture source, manual included, matching the global list; manifest visibility lives in #694, not here. **Amended 2026-08-21 after the standalone mock landed:** #400 also rebuilds the Signals screen, and the auto-capture switch ships wired to `autoCaptureMode`. My earlier "omit the switch" instruction was wrong; `autoCaptureMode: z.enum(['auto','notify','per-case'])` has been in `schemas.ts:530` all along, and #570 removed only its control. The top-bar Recording indicator is out of scope and is #702.
+- #395, amended 2026-08-21: origin renders per the four values and icons in the mock (`extension`, `capture`, `note`, `manual`), and renders nothing when absent. #395 puts it in the current row detail; #400 carries it into the rebuilt detail rail. My earlier acceptance of the flask-opened "Test matches" panel as the final surface was wrong.
+- #701 context menus, ruled 2026-08-21: adopt them, built as one shared component plus a per-kind action registry, in wave 3. **Wave 2 leaves no hooks.** No speculative row handlers, no element boundaries kept back.
 - #390: tag Mentions accept any tag id (re-confirming the 2026-08-20 ruling already encoded in `noteReferenceRepo.ts:16-26`); `@tiptap/suggestion@3.29.0` approved as a new dependency.
 - Follow-up fixes: dispatch after the wave, not in it.
 
@@ -70,7 +75,7 @@ wave-2 ticket:
 
 - `src/main/services/db/migrations.ts` and `core.ts`: #395 (v29) then #400 (v30). Serial, fixed merge order, same rule as wave 1. Neither bumps `CASE_ARCHIVE_SCHEMA_VERSION` (stays 3, adjudicated 2026-08-19).
 - `src/main/services/captureServer.ts`: #395 (`POST /api/selectors` stamps origin) and #400 (block reorder, `/api/status` effective list). Different handlers, but the migration order serializes them anyway.
-- `src/renderer/components/selectors/`: #395 stays inside `SelectorTableRow.tsx`/`SelectorTable.tsx`; #400 stays inside `SelectorsOverview.tsx` plus a new `AutoCaptureExclusions.tsx`. Parallel is fine; the second to land resolves.
+- `src/renderer/components/selectors/` and `tags/`: no longer parallel. #395 adds origin to `SelectorTableRow.tsx`; #400 then rebuilds the whole screen and must preserve it. Strict order, #395 first, and #400 owns both directories.
 - `extension/src/`: #400's delta is the one-line mirror at `background.ts:347-348` (the `isIgnoredByUser` seam held from wave 1); #406 owns `PopupApp.tsx`'s footer, the new `options/` directory, `manifest.json`, and `vite.config.ts`. Disjoint; parallel is fine.
 - `package.json` and `pnpm-lock.yaml`: #390 adds `@tiptap/suggestion`, #397 adds `react-resizable-panels`. The second to land rebases the lockfile and re-runs `pnpm install`. Both hit the distribution backstop.
 - #390 and #402 both extend `src/renderer/lib/api/notes.ts` and the query keys. Append-only; tolerable in parallel.
@@ -100,5 +105,7 @@ Wave 3 opens as wave 2 merges: #391 unblocks when #390 and #395 land; #398 is al
 
 ## Open items
 
+- **#700 blocks #400.** Confirm with the designer whether `/selectors` and `/tags` are removed when Signals lands, or whether the navigation list in the mock is stale. Cheapest of the open items and the only one that gates a wave ticket.
+- #702 (top-bar Recording indicator) needs a ruling on whether it reflects `autoCaptureMode`, the existing `sessionActive`, or both. Does not gate the wave.
 - #698 (orphaned `AnalysisTab`, filed during this prep) is `ready-for-human`: the remount surface needs a ruling. It does not gate the wave.
 - The twelve fixes from the 2026-08-21 triage sweep hold for `/dispatch` after the wave merges.

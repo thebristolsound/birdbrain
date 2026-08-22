@@ -236,6 +236,40 @@ export function getCapturesMatchingSelectors(caseId: string, selectorIds: string
   return rows.map((r) => r.capture_id)
 }
 
+/**
+ * Which of the `limit` most recent captures each selector in the case matched
+ * (#400). Backs the Signals coverage strip, which needs per-selector membership
+ * — `getCapturesMatchingSelectors` merges across selectors and
+ * `getSelectorCoverage` is a case-wide scalar, so neither answers this.
+ *
+ * Bounded in SQL rather than in the renderer: the strip draws a fixed number of
+ * cells, so the payload should be that size whether the case holds twenty
+ * captures or twenty thousand. Selectors with no match among those captures are
+ * absent from the result; the caller reads a missing key as an empty row.
+ */
+export function getSelectorCaptureMatrix(
+  caseId: string,
+  limit: number
+): Record<string, string[]> {
+  const rows = getDb()
+    .prepare(
+      `SELECT sm.selector_id, sm.capture_id
+       FROM selector_matches sm
+       JOIN selectors s ON sm.selector_id = s.id
+       JOIN (
+         SELECT id FROM captures WHERE case_id = ? ORDER BY timestamp DESC LIMIT ?
+       ) recent ON recent.id = sm.capture_id
+       WHERE s.case_id = ?`
+    )
+    .all(caseId, limit, caseId) as Array<{ selector_id: string; capture_id: string }>
+
+  const matrix: Record<string, string[]> = {}
+  for (const row of rows) {
+    ;(matrix[row.selector_id] ??= []).push(row.capture_id)
+  }
+  return matrix
+}
+
 export function getSelectorCoverage(caseId: string): { matched: number; total: number } {
   // Inlined capture count: repos never import each other (was captureRepo.getCaptureCount)
   const totalRow = getDb()
@@ -254,7 +288,16 @@ export function getSelectorCoverage(caseId: string): { matched: number; total: n
   return { matched: row?.matched ?? 0, total }
 }
 
-export function getSelectorMatchesForExport(caseId: string): SelectorMatchExportRow[] {
+/**
+ * Match rows for a CSV export. Case-wide by default; pass `selectorId` to
+ * scope it to one selector (#400), which the Signals rail's per-signal Export
+ * CSV needs — without the filter that button's label would misstate what it
+ * writes.
+ */
+export function getSelectorMatchesForExport(
+  caseId: string,
+  selectorId?: string
+): SelectorMatchExportRow[] {
   const rows = getDb()
     .prepare(
       `SELECT s.pattern as selectorPattern,
@@ -268,9 +311,10 @@ export function getSelectorMatchesForExport(caseId: string): SelectorMatchExport
        JOIN captures c ON sm.capture_id = c.id
        WHERE s.case_id = ?
          AND c.case_id = ?
+         AND (? IS NULL OR s.id = ?)
        ORDER BY s.pattern, c.timestamp DESC`
     )
-    .all(caseId, caseId) as Array<{
+    .all(caseId, caseId, selectorId ?? null, selectorId ?? null) as Array<{
     selectorPattern: string
     selectorLabel: string | null
     isRegex: number

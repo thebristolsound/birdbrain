@@ -97,6 +97,7 @@ export const IPC_CHANNELS = {
   TAGS_GET_FOR_CAPTURE: 'tags:getForCapture',
   TAGS_COUNT_FOR_CASE: 'tags:countForCase',
   TAGS_USAGE_COUNTS_FOR_CASE: 'tags:usageCountsForCase',
+  TAGS_CAPTURE_MATRIX: 'tags:captureMatrix',
   TAGS_ADD_TO_CAPTURES: 'tags:addToCaptures',
 
   // Session (renderer-side session control; the extension drives HTTP)
@@ -131,6 +132,7 @@ export const IPC_CHANNELS = {
   SELECTORS_MATCH_COUNTS: 'selectors:matchCounts',
   SELECTORS_MATCHING_CAPTURES: 'selectors:matchingCaptures',
   SELECTORS_COVERAGE: 'selectors:coverage',
+  SELECTORS_CAPTURE_MATRIX: 'selectors:captureMatrix',
   SELECTORS_BULK_CREATE: 'selectors:bulkCreate',
   SELECTORS_EXPORT_MATCHES: 'selectors:exportMatches',
 
@@ -657,6 +659,7 @@ export interface IpcInvokeContract {
   'tags:getForCapture': { args: [captureId: string]; result: Tag[] }
   'tags:countForCase': { args: [caseId: string]; result: number }
   'tags:usageCountsForCase': { args: [caseId: string]; result: Record<string, number> }
+  'tags:captureMatrix': { args: [caseId: string, limit: number]; result: Record<string, string[]> }
   'tags:addToCaptures': {
     args: [payload: CaptureBatchPayload & { tagId: string }]
     result: BatchCountResult
@@ -674,9 +677,13 @@ export interface IpcInvokeContract {
     result: string[]
   }
   'selectors:coverage': { args: [caseId: string]; result: { matched: number; total: number } }
+  'selectors:captureMatrix': {
+    args: [caseId: string, limit: number]
+    result: Record<string, string[]>
+  }
   'selectors:bulkCreate': { args: [params: BulkCreateSelectorsParams]; result: Selector[] }
   'selectors:exportMatches': {
-    args: [caseId: string]
+    args: [caseId: string, selectorId?: string]
     result: { exported: boolean; path?: string }
   }
 

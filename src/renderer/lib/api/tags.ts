@@ -1,6 +1,7 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { BatchCountResult, CreateTagParams, UpdateTagParams } from '@shared/ipc'
 import { queryKeys } from '@renderer/lib/api/keys'
+import { SIGNAL_COVERAGE_CAPTURES } from '@shared/constants'
 
 export const tagsQueryOptions = queryOptions({
   queryKey: queryKeys.tags,
@@ -28,12 +29,22 @@ export const tagUsageCountsForCaseQueryOptions = (caseId: string) =>
     enabled: !!caseId
   })
 
+// Which of the most recent captures carry each tag (#400). The tag half of the
+// Signals coverage strip.
+export const tagCaptureMatrixQueryOptions = (caseId: string) =>
+  queryOptions({
+    queryKey: queryKeys.tagCaptureMatrix(caseId),
+    queryFn: () => window.birdbrain.tags.captureMatrix(caseId, SIGNAL_COVERAGE_CAPTURES),
+    enabled: !!caseId
+  })
+
 export function useTagsMutations(caseId?: string) {
   const queryClient = useQueryClient()
 
   const invalidateTagCounts = () => {
     queryClient.invalidateQueries({ queryKey: ['tags', 'usageCounts'] })
     queryClient.invalidateQueries({ queryKey: ['tags', 'caseCount'] })
+    queryClient.invalidateQueries({ queryKey: ['tags', 'captureMatrix'] })
   }
 
   const create = useMutation({

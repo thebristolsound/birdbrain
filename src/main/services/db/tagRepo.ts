@@ -100,6 +100,30 @@ export function getTagUsageCountsForCase(caseId: string): Record<string, number>
   return result
 }
 
+/**
+ * Which of the `limit` most recent captures in the case carry each tag (#400).
+ * The tag half of the Signals coverage strip; `getTagUsageCountsForCase` gives
+ * counts only. Bounded in SQL for the same reason as the selector matrix, and
+ * a tag with no capture among those is absent rather than present-and-empty.
+ */
+export function getTagCaptureMatrix(caseId: string, limit: number): Record<string, string[]> {
+  const rows = getDb()
+    .prepare(
+      `SELECT ct.tag_id, ct.capture_id
+       FROM capture_tags ct
+       JOIN (
+         SELECT id FROM captures WHERE case_id = ? ORDER BY timestamp DESC LIMIT ?
+       ) recent ON recent.id = ct.capture_id`
+    )
+    .all(caseId, limit) as Array<{ tag_id: string; capture_id: string }>
+
+  const matrix: Record<string, string[]> = {}
+  for (const row of rows) {
+    ;(matrix[row.tag_id] ??= []).push(row.capture_id)
+  }
+  return matrix
+}
+
 // --- Archive bulk ops ---
 
 export function collectTagsForCase(caseId: string): Record<string, unknown>[] {

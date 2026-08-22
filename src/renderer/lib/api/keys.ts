@@ -2,6 +2,7 @@ export const queryKeys = {
   cases: ['cases'] as const,
   session: ['session'] as const,
   case: (id: string) => ['cases', id] as const,
+  caseAutoCapturePolicy: (id: string) => ['cases', id, 'autoCapturePolicy'] as const,
   recentActivity: (limit: number) => ['cases', 'recentActivity', limit] as const,
   // Prefix over every page size, for invalidating the feed without knowing it.
   recentActivityAll: ['cases', 'recentActivity'] as const,
@@ -19,9 +20,11 @@ export const queryKeys = {
   tagsForCapture: (captureId: string) => ['tags', 'capture', captureId] as const,
   tagCountForCase: (caseId: string) => ['tags', 'caseCount', caseId] as const,
   tagUsageCounts: (caseId: string) => ['tags', 'usageCounts', caseId] as const,
+  tagCaptureMatrix: (caseId: string) => ['tags', 'captureMatrix', caseId] as const,
   selectors: (caseId: string) => ['selectors', caseId] as const,
   selectorMatchCounts: (caseId: string) => ['selectors', 'matchCounts', caseId] as const,
   selectorCoverage: (caseId: string) => ['selectors', 'coverage', caseId] as const,
+  selectorCaptureMatrix: (caseId: string) => ['selectors', 'captureMatrix', caseId] as const,
   selectorMatchingCapturesAll: (caseId: string) =>
     ['selectors', 'matchingCaptures', caseId] as const,
   selectorMatchingCaptures: (caseId: string, selectorIds: string[]) =>

@@ -40,6 +40,12 @@ export const MAX_BATCH_CAPTURE_IDS = 500
 export const RECENT_ACTIVITY_LIMIT = 10
 export const MAX_RECENT_ACTIVITY_LIMIT = 50
 
+// Signals coverage strip (#400): how many of the most recent captures each
+// selector or tag row draws a cell for. The card caption states the number, so
+// the two must not drift — both read this. Also the SQL bound, so the matrix
+// query stays the same size whatever the case holds.
+export const SIGNAL_COVERAGE_CAPTURES = 24
+
 // Audit manifest filename, written alongside captures in each case directory.
 export const MANIFEST_FILENAME = 'manifest.jsonl'
 

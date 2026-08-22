@@ -1,5 +1,9 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { CreateCaseParams, UpdateCaseParams } from '@shared/ipc'
+import type {
+  CreateCaseParams,
+  SetAutoCapturePolicyParams,
+  UpdateCaseParams
+} from '@shared/ipc'
 import type { ArchiveInspectReport } from '@shared/types'
 import { RECENT_ACTIVITY_LIMIT } from '@shared/constants'
 import { queryKeys } from '@renderer/lib/api/keys'
@@ -32,6 +36,28 @@ export const recentActivityQueryOptions = (limit: number = RECENT_ACTIVITY_LIMIT
     queryFn: () => window.birdbrain.cases.recentActivity(limit),
     refetchOnMount: 'always'
   })
+
+// The case's auto-capture exclusion policy (#400). Its own key rather than a
+// field on the case: the policy is written by one card on one screen, and
+// folding it into `cases` would invalidate every dashboard card on each edit.
+export const caseAutoCapturePolicyQueryOptions = (caseId: string) =>
+  queryOptions({
+    queryKey: queryKeys.caseAutoCapturePolicy(caseId),
+    queryFn: () => window.birdbrain.cases.getAutoCapturePolicy(caseId),
+    enabled: !!caseId
+  })
+
+export function useCaseAutoCapturePolicyMutation(caseId: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (params: SetAutoCapturePolicyParams) =>
+      window.birdbrain.cases.setAutoCapturePolicy(params),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.caseAutoCapturePolicy(caseId) }),
+    meta: { action: 'save auto-capture exclusions' }
+  })
+}
 
 export function useCasesMutations() {
   const queryClient = useQueryClient()

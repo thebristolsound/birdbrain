@@ -51,7 +51,15 @@ import { fakeBridge } from '../fakeBridge'
 function installBirdbrainMock() {
   const fn = () => vi.fn().mockResolvedValue('ok')
   const api = {
-    cases: { list: fn(), get: fn(), create: fn(), update: fn(), delete: fn() },
+    cases: {
+      list: fn(),
+      get: fn(),
+      create: fn(),
+      update: fn(),
+      delete: fn(),
+      getAutoCapturePolicy: fn(),
+      setAutoCapturePolicy: fn()
+    },
     captures: {
       list: fn(),
       countsByCase: fn(),
@@ -77,6 +85,7 @@ function installBirdbrainMock() {
       getForCapture: fn(),
       countForCase: fn(),
       usageCountsForCase: fn(),
+      captureMatrix: fn(),
       create: fn(),
       update: fn(),
       delete: fn(),
@@ -88,6 +97,7 @@ function installBirdbrainMock() {
       list: fn(),
       matchCounts: fn(),
       coverage: fn(),
+      captureMatrix: fn(),
       create: fn(),
       update: fn(),
       delete: fn(),

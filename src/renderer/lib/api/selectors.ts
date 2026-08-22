@@ -6,6 +6,7 @@ import type {
 } from '@shared/ipc'
 import type { Selector } from '@shared/types'
 import { queryKeys } from '@renderer/lib/api/keys'
+import { SIGNAL_COVERAGE_CAPTURES } from '@shared/constants'
 
 export const selectorsQueryOptions = (caseId: string) =>
   queryOptions({
@@ -28,6 +29,15 @@ export const selectorCoverageQueryOptions = (caseId: string) =>
     enabled: !!caseId
   })
 
+// Which of the most recent captures each selector matched (#400). Backs the
+// Signals coverage strip; a selector absent from the map matched none of them.
+export const selectorCaptureMatrixQueryOptions = (caseId: string) =>
+  queryOptions({
+    queryKey: queryKeys.selectorCaptureMatrix(caseId),
+    queryFn: () => window.birdbrain.selectors.captureMatrix(caseId, SIGNAL_COVERAGE_CAPTURES),
+    enabled: !!caseId
+  })
+
 // Plain wrappers alongside the mutation hooks below, deliberately. Their call
 // sites (SelectorTable, CreateSelectorCard, NewCaseWizard) drive their own
 // pending state and refresh explicitly, so routing them through
@@ -47,11 +57,14 @@ export function deleteSelector(id: string): Promise<boolean> {
 }
 
 // Writes a CSV outside the database and returns where it went; `exported:
-// false` means the operator cancelled the save dialog.
+// false` means the operator cancelled the save dialog. Scoped to one selector
+// when `selectorId` is given (#400) — the Signals rail exports the selected
+// signal, the card header exports the whole case.
 export function exportSelectorMatches(
-  caseId: string
+  caseId: string,
+  selectorId?: string
 ): Promise<{ exported: boolean; path?: string }> {
-  return window.birdbrain.selectors.exportMatches(caseId)
+  return window.birdbrain.selectors.exportMatches(caseId, selectorId)
 }
 
 // Read without a cache identity: the capture-filter effect and the foreground
@@ -68,6 +81,7 @@ export function useSelectorsMutations(caseId: string) {
     queryClient.invalidateQueries({ queryKey: queryKeys.selectors(caseId) })
     queryClient.invalidateQueries({ queryKey: queryKeys.selectorMatchCounts(caseId) })
     queryClient.invalidateQueries({ queryKey: queryKeys.selectorCoverage(caseId) })
+    queryClient.invalidateQueries({ queryKey: queryKeys.selectorCaptureMatrix(caseId) })
   }
 
   const create = useMutation({

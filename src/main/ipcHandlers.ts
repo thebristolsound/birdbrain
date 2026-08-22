@@ -3,9 +3,11 @@ import { IPC_CHANNELS } from '@shared/ipc'
 import { DEFAULT_ANALYSIS_SYSTEM_PROMPT, MAX_BATCH_CAPTURE_IDS } from '@shared/constants'
 import { safeFilename } from '@shared/safeFilename'
 import { MENTION_TARGET_TYPES } from '@shared/noteDoc'
+import { validateIgnorePattern } from '@shared/urlPatterns'
 import type {
   CreateCaseParams,
   UpdateCaseParams,
+  SetAutoCapturePolicyParams,
   CreateTagParams,
   UpdateTagParams,
   CaptureTagParams,
@@ -168,6 +170,25 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.CASES_RECENT_ACTIVITY, (_, limit?: number) =>
     activityRepo.listRecentActivity(limit)
   )
+  handle(IPC_CHANNELS.CASES_GET_AUTO_CAPTURE_POLICY, (_, caseId: string) =>
+    caseRepo.getAutoCapturePolicy(caseId)
+  )
+  handle(IPC_CHANNELS.CASES_SET_AUTO_CAPTURE_POLICY, (_, params: SetAutoCapturePolicyParams) => {
+    const { caseId, exclusions, mode } = params
+    // Refused at the write seam, naming the pattern. matchIgnoredUrl skips a
+    // pattern that throws, so storing an uncompilable one would leave the
+    // operator looking at an exclusion chip that excludes nothing — an absence
+    // of enforcement they had every reason to believe was in place (#400).
+    for (const pattern of exclusions) {
+      const result = validateIgnorePattern(pattern)
+      if (!result.ok) {
+        throw new IpcFailure(`Invalid exclusion pattern "${pattern}": ${result.reason}`)
+      }
+    }
+    const saved = caseRepo.setAutoCapturePolicy(caseId, { exclusions, mode })
+    if (!saved) throw new IpcFailure('Case not found')
+    return saved
+  })
 
   handle(
     IPC_CHANNELS.CASES_EXPORT_ARCHIVE,

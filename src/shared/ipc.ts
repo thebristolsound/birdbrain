@@ -16,6 +16,7 @@ import type {
   CaptureAnnotations,
   CaptureEvent,
   Case,
+  CaseAutoCapturePolicy,
   DiagnosticsSnapshot,
   UnreconciledDeletionReport,
   ExportOptions,
@@ -58,6 +59,8 @@ export const IPC_CHANNELS = {
   CASES_INSPECT_ARCHIVE: 'cases:inspectArchive',
   CASES_IMPORT_ARCHIVE: 'cases:importArchive',
   CASES_RECENT_ACTIVITY: 'cases:recentActivity',
+  CASES_GET_AUTO_CAPTURE_POLICY: 'cases:getAutoCapturePolicy',
+  CASES_SET_AUTO_CAPTURE_POLICY: 'cases:setAutoCapturePolicy',
 
   // Captures
   CAPTURES_LIST: 'captures:list',
@@ -302,6 +305,13 @@ export interface UpdateCaseParams {
   name?: string
   description?: string
   archived?: boolean
+}
+
+// The whole policy, not a delta: the exclusion list is edited as a set and a
+// partial write has no meaning for it. Kept off UpdateCaseParams so the write
+// never touches the case's updated_at (see caseRepo.setAutoCapturePolicy).
+export interface SetAutoCapturePolicyParams extends CaseAutoCapturePolicy {
+  caseId: string
 }
 
 export interface CreateTagParams {
@@ -601,6 +611,11 @@ export interface IpcInvokeContract {
     result: { newCaseId: string }
   }
   'cases:recentActivity': { args: [limit?: number]; result: RecentActivityEvent[] }
+  'cases:getAutoCapturePolicy': { args: [caseId: string]; result: CaseAutoCapturePolicy }
+  'cases:setAutoCapturePolicy': {
+    args: [params: SetAutoCapturePolicyParams]
+    result: CaseAutoCapturePolicy
+  }
 
   'captures:list': { args: [caseId: string]; result: Capture[] }
   'captures:get': { args: [id: string]; result: Capture | undefined }

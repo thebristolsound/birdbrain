@@ -1,5 +1,6 @@
 import type {
   Case,
+  CaseAutoCapturePolicy,
   Capture,
   Tag,
   BirdbrainSettings,
@@ -39,6 +40,7 @@ import type {
 import type {
   CreateCaseParams,
   UpdateCaseParams,
+  SetAutoCapturePolicyParams,
   CreateTagParams,
   UpdateTagParams,
   CaptureTagParams,
@@ -89,6 +91,8 @@ export interface BirdbrainAPI {
     inspectArchive(): Promise<ArchiveInspectReport | null>
     importArchive(archivePath: string, overrideTamper: boolean): Promise<{ newCaseId: string }>
     recentActivity(limit?: number): Promise<RecentActivityEvent[]>
+    getAutoCapturePolicy(caseId: string): Promise<CaseAutoCapturePolicy>
+    setAutoCapturePolicy(params: SetAutoCapturePolicyParams): Promise<CaseAutoCapturePolicy>
   }
   captures: {
     list(caseId: string): Promise<Capture[]>

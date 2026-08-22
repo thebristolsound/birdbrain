@@ -198,6 +198,17 @@ describe('caseArchive export', () => {
     rmSync(tempDir, { recursive: true, force: true })
   })
 
+  // Pinned as a literal, deliberately, and only here. #400 adds two columns to
+  // the case row, and the constant's own doc comment says to bump whenever an
+  // archive gains data an older release would silently discard — which a
+  // pre-v30 release importing an exclusion list would do, since importCaseRow
+  // uses an explicit column list. The maintainer ruled no bump (2026-08-19),
+  // so this pin makes any future bump a deliberate act rather than drift, and
+  // records that the tension was seen rather than missed.
+  it('keeps CASE_ARCHIVE_SCHEMA_VERSION at 3 across the #400 case columns', () => {
+    expect(CASE_ARCHIVE_SCHEMA_VERSION).toBe(3)
+  })
+
   it('exports a .birdbrain archive with header, data, manifest, and files', async () => {
     const out = join(tempDir, 'case.birdbrain')
     await exportCaseArchive(caseId, out)

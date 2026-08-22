@@ -35,6 +35,13 @@ and `extension/src/messages.ts` added to Acquisition (#387) — the popup's case
 capture button moved out of the already-listed `extension/src/popup/popup.tsx`, which is now a
 mount point, and the same rename-detection caveat applies: without these three the backstop would
 stop firing on the code that actually routes a capture.
+`src/main/services/exclusionPolicy.ts` added to Acquisition (#400) — the same move as #227, one
+step further: the decision about what may enter a case moved out of the already-listed
+`src/main/services/captureServer.ts` so that `src/main/services/recapture.ts`, a producer the
+capture server never sees, enforces the identical rule rather than a second copy of it. The
+rename-detection-off rule catches the move itself and nothing after, and this file is now the
+single place that answer is computed, so a later edit touching only it would otherwise match no
+entry.
 
 ## List format
 
@@ -78,6 +85,7 @@ seeded from this document should be checked against them.
 | `extension/manifest.json` | Acquisition permissions; ships in the release zip |
 | `src/main/services/captureServer.ts` | Ingest endpoint: upload validation, case routing, ingest-time selector matching |
 | `src/shared/urlPatterns.ts` | The ignored-URL matcher both sides run: it decides what never enters a case at all, and names the rule recorded as the reason for the absence |
+| `src/main/services/exclusionPolicy.ts` | Resolves the per-case exclusion list into the enforcement answer every capture route asks for, so it decides what may enter a case and what is refused |
 | `src/main/services/serverToken.ts` | Authenticates ingest; weakening admits spoofed captures into the evidence chain |
 | `src/main/services/session.ts` | Active-case state deciding which case a capture is filed under |
 | `src/main/services/recapture.ts` | Recapture queue re-acquiring URLs as new evidence |

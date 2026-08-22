@@ -127,6 +127,14 @@ export function exclusionSummary(count: number, mode: AutoCaptureExclusionMode):
  *    singling out the one the design happened to mention.
  *
  * The entry count is live, not the design's seeded 12.
+ *
+ * The pipeline self-test (`POST /api/captures/test`) is exempt from the list
+ * (#766), and the string is deliberately not qualified for it: it captures no
+ * page. Its URL is a fixed `birdbrain://pipeline-test` sentinel that fetches
+ * nothing, so the promise the operator relies on — that a page they excluded
+ * never enters the case — holds absolutely. Hedging it to cover a diagnostic
+ * would trade that promise for doubt and tell the operator nothing they can act
+ * on; the exemption and its residue are documented at the call site instead.
  */
 export function exclusionFooter(mode: AutoCaptureExclusionMode, globalCount: number): string {
   const entries = `${globalCount} ${globalCount === 1 ? 'entry' : 'entries'}`

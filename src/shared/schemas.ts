@@ -541,8 +541,12 @@ export const BirdbrainSettingsSchema = z.object({
   tsaUrl: z.preprocess(normalizeTsaUrl, z.string()).optional().default(DEFAULT_TSA_URL),
   autoCaptureMode: z.enum(['auto', 'notify', 'per-case']),
   lastActiveCaseId: z.string().nullable(),
+  // 'selectors' and 'tags' are gone as routes (#400/#700) but are still in
+  // settings files written before this release, so they stay in the enum:
+  // dropping them would fail the whole settings parse on upgrade. They are
+  // mapped to 'signals' on read — see useSessionRestore.
   lastActiveSection: z
-    .enum(['overview', 'captures', 'selectors', 'notes', 'tags', 'settings', 'data'])
+    .enum(['overview', 'captures', 'selectors', 'notes', 'tags', 'signals', 'settings', 'data'])
     .optional()
     .default('captures'),
   hasCompletedOnboarding: z.boolean().optional().default(false),

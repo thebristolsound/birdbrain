@@ -330,7 +330,9 @@ of the global wait-for-confirmation rules: do not pause for mid-task approval an
 for the user to confirm completion. Instead, verify the work (`pnpm lint`, `pnpm typecheck`,
 `BIRDBRAIN_REQUIRE_OPENSSL=1 pnpm test`, `pnpm build`, plus `pnpm build:extension` when
 `extension/` changed, **plus `pnpm test:coverage` and `pnpm coverage:diff`**), then finish by
-opening a **draft PR** with the standard attribution line.
+opening a **draft PR** with the standard attribution line. Exception: if a dispatcher
+spawned you, push the branch and hand off instead. PR opening stays with the dispatcher so
+one identity authors every PR entering the slot (ADR-0012).
 
 **Label it, or the gates cannot see it.** `agent-authored` always, `agent-pr` as well only if
 the PR takes the strict-serial dispatch slot, `evidence-affecting` when the gate fired.

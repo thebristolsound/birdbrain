@@ -150,8 +150,8 @@ Evidence-affecting PRs are never merged without human review. Do not weaken that
 - Never add `Co-authored-by: Claude` or any variant — and the tooling adds one by default, so
   this means actively removing it, not just declining to type it. After every commit, read
   `git log -1 --format=%B`; if a trailer appeared, `git commit --amend` it away before pushing.
-- **Opening the PR.** Which half of this applies depends on where you are running, and the
-  distinction is environmental rather than a rule about who is allowed to do what.
+- **Opening the PR.** Which half of this applies depends on who spawned you, not on whether
+  `gh pr create` happens to work where you are running.
 
   **The labels are the same either way, and they are not optional.** `agent-authored` always,
   because it records that an agent wrote the diff — `.github/workflows/pre-pass-gate.yml` and
@@ -165,24 +165,31 @@ Evidence-affecting PRs are never merged without human review. Do not weaken that
   four of them evidence-affecting, and every gate that keys on a label read them as
   human-written. Twelve blocking defects reached the merge box behind a green badge.
 
-  **In Claude Code on the web you cannot open the PR or apply its labels yourself.**
-  `gh pr create` and `gh pr edit` are GraphQL-backed and the session proxy serves only a
-  pinned set of PR-review GraphQL operations, so both return 403; writes need the GitHub MCP
-  tools, which are not in your tool list. See `docs/agents/github-access.md` for what does
-  work (`gh api` REST for reads). Push the branch, write the complete PR body to a file, and
-  return the branch name, PR title, head sha, body path, and the labels above. Whoever opens
-  the PR applies them.
+  **Dispatched by the routine: push the branch and hand off. Never open the PR yourself.**
+  This is a control, not a capability limit, so it holds even where `gh pr create` works. The
+  dispatcher is the only holder of the machine token, which is what makes one identity the
+  author of every PR entering the slot (ADR-0012); it is instructed to treat a PR showing the
+  maintainer's login as a contract violation, refuse `agent-pr`, and stop
+  (`.claude/skills/dispatch/SKILL.md`). Opening it yourself does not rescue the PR, it strands
+  it. On the web you could not do it in any case — `gh pr create` and `gh pr edit` are
+  GraphQL-backed and the session proxy serves only a pinned set of PR-review operations, so
+  both return 403, and the writes need GitHub MCP tools that are not in your tool list. See
+  `docs/agents/github-access.md` for what does work (`gh api` REST for reads).
 
-  Because you are not the actor who opens or labels it, your body must not claim you did
-  either: name the handoff explicitly, per rule 4 of the evidence gate.
+  So: push the branch, write the complete PR body to a file, and return the branch name, PR
+  title, head sha, body path, and the labels above. The dispatcher opens the draft PR against
+  `main` and applies them. Because you are not the actor who opens or labels it, your body
+  must not claim you did either: name the handoff explicitly, per rule 4 of the evidence gate.
 
-  **Anywhere `gh pr create` works, open the draft PR yourself and apply the labels yourself.**
-  The prohibition above is a statement about the web proxy, not a policy. An unlabelled PR is
-  worse than one you opened. Note that `--label` does not attach labels atomically —
-  `CreatePullRequestInput` has no `labelIds` field, so `gh` issues a second
-  `updatePullRequest` mutation and the PR does briefly exist unlabelled. **Verify rather than
-  assert**, with `gh api repos/{owner}/{repo}/issues/<n>/labels`, and fix it if the second
-  mutation did not land.
+  **Run ad hoc as a background job, with no dispatcher above you: open the draft PR yourself
+  and apply the labels yourself.** Nothing else is going to, and an unlabelled PR is #504.
+  Such a PR is not entering the slot, so it carries `agent-authored` without `agent-pr` —
+  which is also why its authoring under the maintainer's login is not the violation above.
+  Note that `--label` does not attach labels atomically: `CreatePullRequestInput` has no
+  `labelIds` field, so `gh` issues a second `updatePullRequest` mutation and the PR does
+  briefly exist unlabelled. **Verify rather than assert**, with
+  `gh api repos/{owner}/{repo}/issues/<n>/labels`, and fix it if the second mutation did not
+  land.
 
   The description covers: what changed, how it was verified (real output), the Evidence impact
   section when the gate fired, and ends with exactly this attribution line and nothing else:

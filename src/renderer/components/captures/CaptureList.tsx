@@ -1,5 +1,14 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { ArrowUpDown, Filter, Crosshair, X, Check } from 'lucide-react'
+import {
+  ArrowUpDown,
+  Filter,
+  Crosshair,
+  X,
+  Check,
+  ChevronLeft,
+  LayoutGrid,
+  List as ListIcon
+} from 'lucide-react'
 import { useQuery, useQueries } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'motion/react'
 import { capturesQueryOptions, captureMatchingSelectorsQueryOptions } from '@renderer/lib/queries'
@@ -19,10 +28,15 @@ import {
   DATE_OPTIONS
 } from '@renderer/components/captures/captureListModel'
 import { useCaptureListFilters } from '@renderer/components/captures/useCaptureListFilters'
+import { useTimeTick } from '@renderer/hooks/useTimeTick'
+import type { CaptureView } from '@renderer/components/captures/useCaptureView'
 import type { Selector } from '@shared/types'
 
 interface CaptureListProps {
   caseId: string
+  view: CaptureView
+  onChangeView: (view: CaptureView) => void
+  onCollapse: () => void
   // The route owns the batch-delete confirm/result dialogs so they survive
   // the bar unmounting once the selection empties.
   onDeleteSelection: (ids: string[]) => void
@@ -40,7 +54,13 @@ function useClickOutside(ref: React.RefObject<HTMLElement | null>, onClose: () =
   }, [ref, onClose])
 }
 
-export function CaptureList({ caseId, onDeleteSelection }: CaptureListProps) {
+export function CaptureList({
+  caseId,
+  view,
+  onChangeView,
+  onCollapse,
+  onDeleteSelection
+}: CaptureListProps) {
   const {
     data: captures = [],
     isLoading,
@@ -53,6 +73,10 @@ export function CaptureList({ caseId, onDeleteSelection }: CaptureListProps) {
   const activeSelectorFilters = useAppStore((s) => s.activeSelectorFilters)
   const clearSelectorFilters = useAppStore((s) => s.clearSelectorFilters)
   const { favorites, toggleFavorite } = useFavorites(caseId)
+  // Rows carry relative times; one interval here keeps every row current
+  // instead of each owning its own.
+  const nowTick = useTimeTick(60_000)
+  const nowMs = useMemo(() => Date.now(), [nowTick])
 
   // Batch-fetch matching selectors for all captures (avoids N+1 per CaptureItem)
   const matchingSelectorsResults = useQueries({
@@ -145,11 +169,20 @@ export function CaptureList({ caseId, onDeleteSelection }: CaptureListProps) {
 
   return (
     <aside className="flex h-full flex-1 flex-col bg-surface min-w-0">
-      {/* Header: sort/filter + selector indicator */}
+      {/* Header: collapse, sort/filter, view toggle, capture menu.
+          The design puts a per-list search input above this row; that is #695,
+          so the header stays a single row rather than reserving a hole. */}
       <div className="border-b p-2 border-border">
-        {/* Sort + Filter buttons, Capture menu on the right */}
-        <div className="flex items-center justify-between gap-1">
-          <div className="flex gap-1">
+        <div className="flex items-center gap-1">
+          <button
+            onClick={onCollapse}
+            title="Collapse list"
+            data-testid="capture-list-collapse"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-text-muted hover:bg-elevated hover:text-text-secondary"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+          </button>
+          <div className="flex min-w-0 gap-1">
             {/* Sort dropdown */}
             <div ref={sortRef} className="relative">
               <button
@@ -279,6 +312,33 @@ export function CaptureList({ caseId, onDeleteSelection }: CaptureListProps) {
               )}
             </div>
           </div>
+          <span className="flex-1" />
+          <div
+            role="group"
+            aria-label="List view"
+            className="flex shrink-0 items-center gap-0.5 rounded-md border border-border bg-canvas p-0.5"
+          >
+            <button
+              onClick={() => onChangeView('detailed')}
+              title="Detailed view"
+              aria-pressed={view === 'detailed'}
+              className={`flex h-5 w-[22px] items-center justify-center rounded ${
+                view === 'detailed' ? 'bg-card text-text-primary' : 'text-text-faint'
+              }`}
+            >
+              <LayoutGrid className="h-3 w-3" />
+            </button>
+            <button
+              onClick={() => onChangeView('list')}
+              title="List view"
+              aria-pressed={view === 'list'}
+              className={`flex h-5 w-[22px] items-center justify-center rounded ${
+                view === 'list' ? 'bg-card text-text-primary' : 'text-text-faint'
+              }`}
+            >
+              <ListIcon className="h-3 w-3" />
+            </button>
+          </div>
           <CaptureMenu caseId={caseId} />
         </div>
         {/* Selector filter indicator */}
@@ -309,7 +369,7 @@ export function CaptureList({ caseId, onDeleteSelection }: CaptureListProps) {
       )}
 
       {/* Scrollable capture list */}
-      <div className="flex flex-1 flex-col space-y-1 overflow-y-auto p-2">
+      <div className="flex flex-1 flex-col gap-[var(--d-listgap)] overflow-y-auto px-2 pb-[18px] pt-[var(--d-listgap)]">
         <AnimatePresence mode="popLayout" initial={firstPaintRef.current}>
           {displayedCaptures.map((cap, i) => (
             <motion.div
@@ -325,6 +385,8 @@ export function CaptureList({ caseId, onDeleteSelection }: CaptureListProps) {
             >
               <CaptureItem
                 capture={cap}
+                view={view}
+                nowMs={nowMs}
                 isSelected={cap.id === selectedCaptureId}
                 isMultiSelected={selectedCaptureIds.has(cap.id)}
                 showCheckbox={selectionActive}

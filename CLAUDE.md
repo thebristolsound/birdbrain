@@ -174,7 +174,7 @@ Settings persist `openRouterApiKey`, `defaultModel`, and `analysisSystemPrompt` 
 
 Organized by feature under `src/renderer/components/`:
 
-- **captures/** - Capture list/viewer workflow, details panel/rail, add-URL box, provenance, wayback/analysis/forensics tabs, MHTML viewer, download menu, inline tag/note editing hooks, verify mutation, and the annotation editor under `captures/annotation/` (canvas, zoom/pan and editor hooks, pin popover, shape components under `annotation/shapes/`)
+- **captures/** - Capture list/viewer workflow (three resizable columns, each side one collapsible to a 40px rail), details panel/rail, add-URL box, provenance, viewer tabs Screenshot/Page/Text/Wayback, analysis and forensics sections, MHTML viewer, download menu, inline tag/note editing hooks, verify mutation, and the annotation editor under `captures/annotation/` (canvas, zoom/pan and editor hooks, pin popover, shape components under `annotation/shapes/`)
 - **dashboard/** - Dashboard, CaseCard, DashboardFooter, ExtensionBanner, HeroSection, QuickStartGuide, RecentCases, plus case workspace components under `dashboard/cases/` (CaseWorkspace, CreateCaseDialog, DataExplorer, ImportCaseDialog, NewCaseWizard)
 - **export/** - ExportDialog, ExportMenu, ExportProgress, ExportComplete
 - **extension/** - InstallExtensionGuide, InstallExtensionStepper, installSteps.tsx

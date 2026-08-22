@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, cleanup, within, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { Capture } from '@shared/types'
@@ -70,6 +70,7 @@ import { CapturesRoute } from '@renderer/routes/cases/$caseId/captures'
 import { useAppStore } from '@renderer/stores/appStore'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { stubMatchMedia } from './matchMediaStub'
+import { stubResizeObserver } from './resizeObserverStub'
 import type { BatchDeleteResult } from '@shared/ipc'
 
 const capture: Capture = {
@@ -128,8 +129,19 @@ function renderRoute() {
   return render(<CapturesRoute />, { wrapper: Wrapper })
 }
 
+const NARROW_WIDTH = window.innerWidth
+
+// jsdom is 1024px wide, under the 1100px threshold, so the details column is
+// forced to its rail. Widening first is the only way to reach the docked panel.
+function renderRouteWide() {
+  window.innerWidth = 1400
+  return renderRoute()
+}
+
 beforeEach(() => {
   stubMatchMedia(false)
+  stubResizeObserver()
+  localStorage.clear()
   cause = new Error('EACCES')
   openExternal = vi.fn(async () => {
     throw cause
@@ -144,8 +156,10 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  window.innerWidth = NARROW_WIDTH
   notifyError.mockReset()
   useAppStore.getState().setSelectedCaptureId(null)
+  useAppStore.getState().setActiveViewerTab('screenshot')
   useAppStore.getState().clearCaptureSelection()
 })
 
@@ -328,6 +342,88 @@ describe('CapturesRoute', () => {
       await waitFor(() => expect(deleteMany).toHaveBeenCalledOnce())
       expect(screen.queryByTestId('batch-delete-result')).toBeNull()
       expect(screen.getByTestId('batch-delete-confirm')).toBeDefined()
+    })
+  })
+
+  // #397. Which of the three columns render, and in which form, is the whole
+  // point of the layout rework — so assert the branches rather than the pixels.
+  describe('column layout', () => {
+    it('docks the details panel on a wide viewport', async () => {
+      renderRouteWide()
+
+      expect(await screen.findByTestId('capture-details-aside')).toBeDefined()
+      expect(screen.getByText(DELETE_CONTROL)).toBeDefined()
+      expect(screen.getByText(BATCH_CONTROL)).toBeDefined()
+    })
+
+    it('swaps the list for its rail when the list is collapsed', async () => {
+      localStorage.setItem('captureListCollapsed', 'true')
+      renderRouteWide()
+
+      expect(await screen.findByTestId('capture-list-rail')).toBeDefined()
+      expect(screen.queryByText(BATCH_CONTROL)).toBeNull()
+    })
+
+    it('restores the list when the rail is expanded', async () => {
+      localStorage.setItem('captureListCollapsed', 'true')
+      renderRouteWide()
+
+      fireEvent.click(await screen.findByTestId('capture-list-rail-expand'))
+
+      expect(await screen.findByText(BATCH_CONTROL)).toBeDefined()
+      expect(screen.queryByTestId('capture-list-rail')).toBeNull()
+      expect(localStorage.getItem('captureListCollapsed')).toBe('false')
+    })
+
+    it('steps through captures from the collapsed list rail', async () => {
+      const second: Capture = { ...capture, id: 'cap2', url: 'https://example.com/second' }
+      fakeBridge({
+        captures: { list: vi.fn(async () => [capture, second]), openExternal, deleteMany },
+        settings: { get: vi.fn(async () => ({ detailsPanelCollapsed: false })) }
+      })
+      localStorage.setItem('captureListCollapsed', 'true')
+      renderRouteWide()
+
+      const next = await screen.findByTitle('Next capture')
+      await waitFor(() => expect((next as HTMLButtonElement).disabled).toBe(false))
+
+      fireEvent.click(next)
+      expect(useAppStore.getState().selectedCaptureId).toBe('cap2')
+
+      fireEvent.click(screen.getByTitle('Previous capture'))
+      expect(useAppStore.getState().selectedCaptureId).toBe('cap1')
+    })
+
+    it('gives the Wayback tab the full width, hiding both side columns', async () => {
+      renderRouteWide()
+      await screen.findByTestId('capture-details-aside')
+
+      act(() => useAppStore.getState().setActiveViewerTab('wayback'))
+
+      expect(screen.queryByTestId('capture-details-aside')).toBeNull()
+      expect(screen.queryByText(BATCH_CONTROL)).toBeNull()
+      // Not even the rail: the list disappears outright on this tab.
+      expect(screen.queryByTestId('capture-list-rail')).toBeNull()
+    })
+
+    it('keeps a collapsed details rail reachable on the Wayback tab', async () => {
+      renderRoute()
+      await screen.findByText(OPEN_CONTROL)
+
+      act(() => useAppStore.getState().setActiveViewerTab('wayback'))
+
+      expect(screen.getByTestId('capture-details-aside').className).toContain('w-10')
+      expect(screen.getByText(OPEN_CONTROL)).toBeDefined()
+    })
+
+    it('keeps the forced-collapse overlay reaching the route handlers', async () => {
+      renderRoute()
+
+      fireEvent.click(await screen.findByText(EXPAND_CONTROL))
+
+      // The rail stays mounted beside the overlay, so both panels are present.
+      expect(screen.getByText(DELETE_CONTROL)).toBeDefined()
+      expect(screen.getByTestId('capture-details-overlay')).toBeDefined()
     })
   })
 })

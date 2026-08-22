@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
+import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels'
 import {
   capturesQueryOptions,
   settingsQueryOptions,
@@ -11,6 +12,19 @@ import { CaptureList } from '@renderer/components/captures/CaptureList'
 import { CaptureViewer } from '@renderer/components/captures/CaptureViewer'
 import { CaptureDetailsPanel } from '@renderer/components/captures/CaptureDetailsPanel'
 import { CaptureDetailsRail } from '@renderer/components/captures/CaptureDetailsRail'
+import { CaptureListRail } from '@renderer/components/captures/CaptureListRail'
+import {
+  capturePanelIds,
+  visibleCaptureColumns,
+  DETAILS_PANEL,
+  LIST_PANEL,
+  PANEL_GROUP_ID,
+  VIEWER_PANEL
+} from '@renderer/components/captures/captureColumns'
+import {
+  useCaptureListCollapsed,
+  useCaptureView
+} from '@renderer/components/captures/useCaptureView'
 import { AddNoteModal } from '@renderer/components/notes/AddNoteModal'
 import {
   Button,
@@ -23,12 +37,16 @@ import {
 } from '@renderer/components/ui'
 import { useAppStore } from '@renderer/stores/appStore'
 import { useViewportWidth } from '@renderer/hooks/useViewportWidth'
-import { useReduceMotion } from '@renderer/hooks/useReduceMotion'
 import { openCaptureExternal } from '@renderer/lib/api/system'
 import { notify } from '@renderer/lib/notify'
 import type { BatchDeleteOutcome, BatchDeleteResult } from '@shared/ipc'
 
 const COLLAPSE_THRESHOLD = 1100
+
+// 7px hit strip, invisible until the library flags it hovered, focused or
+// being dragged — the design's own treatment for both splitters.
+const SEPARATOR_CLASS =
+  'w-[7px] shrink-0 self-stretch bg-transparent transition-colors data-[separator=hover]:bg-accent/40 data-[separator=active]:bg-accent/40 data-[separator=focus]:bg-accent/40 focus-visible:outline-none'
 
 // Prefix-commit result, stated without an atomicity claim (batch-ops brief):
 // committed entries, the single rolled-back failure and its stage, the ids
@@ -99,8 +117,10 @@ export function CapturesRoute() {
   const { update: updateSettings } = useSettingsMutations()
   const { remove: removeCapture, removeMany } = useCapturesMutations(caseId)
   const deselectCaptures = useAppStore((s) => s.deselectCaptures)
-  const reduceMotion = useReduceMotion()
+  const activeViewerTab = useAppStore((s) => s.activeViewerTab)
   const viewportWidth = useViewportWidth()
+  const { view, setView } = useCaptureView()
+  const { collapsed: listCollapsed, setCollapsed: setListCollapsed } = useCaptureListCollapsed()
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showAddNote, setShowAddNote] = useState(false)
@@ -131,6 +151,36 @@ export function CapturesRoute() {
     () => captures.find((c) => c.id === selectedCaptureId) ?? null,
     [captures, selectedCaptureId]
   )
+
+  // The Wayback tab is full-bleed, but only once there is something to show it
+  // for — without this guard, deselecting from that tab would leave the
+  // operator on an empty viewer with no list to pick a row from.
+  const waybackActive = activeViewerTab === 'wayback' && selectedCapture !== null
+
+  const columns = useMemo(
+    () =>
+      visibleCaptureColumns({
+        waybackActive,
+        listCollapsed,
+        detailsCollapsed: panelDisplayedCollapsed,
+        hasSelection: selectedCapture !== null
+      }),
+    [waybackActive, listCollapsed, panelDisplayedCollapsed, selectedCapture]
+  )
+  const panelIds = useMemo(() => capturePanelIds(columns), [columns])
+  // Keyed on the panel set, so collapsing a column cannot overwrite the widths
+  // the full three-column configuration was last dragged to.
+  const { defaultLayout, onLayoutChanged } = useDefaultLayout({ id: PANEL_GROUP_ID, panelIds })
+
+  const currentIndex = captures.findIndex((c) => c.id === selectedCaptureId)
+  const goPrev = useCallback(() => {
+    if (currentIndex > 0) selectCapture(captures[currentIndex - 1].id)
+  }, [currentIndex, captures, selectCapture])
+  const goNext = useCallback(() => {
+    if (currentIndex >= 0 && currentIndex < captures.length - 1) {
+      selectCapture(captures[currentIndex + 1].id)
+    }
+  }, [currentIndex, captures, selectCapture])
 
   function toggleUserPref() {
     updateSettings.mutate({ detailsPanelCollapsed: !userPref })
@@ -201,39 +251,95 @@ export function CapturesRoute() {
 
   return (
     <div className="relative flex h-full flex-1 overflow-hidden">
-      <div className="flex w-[380px] shrink-0 flex-col border-r border-border">
-        <div className="flex flex-1 min-h-0 overflow-hidden">
-          <CaptureList caseId={caseId} onDeleteSelection={setPendingDeleteIds} />
-        </div>
-      </div>
-      <div className="flex flex-1 min-w-0 overflow-hidden">
-        <CaptureViewer />
-      </div>
-      {selectedCapture && (
+      {columns.list === 'rail' && (
+        <CaptureListRail
+          captureCount={captures.length}
+          onExpand={() => setListCollapsed(false)}
+          onPrev={goPrev}
+          onNext={goNext}
+          canGoPrev={currentIndex > 0}
+          canGoNext={currentIndex >= 0 && currentIndex < captures.length - 1}
+        />
+      )}
+      {/* The rails sit outside the Group: they are fixed 40px chrome, not
+          resizable columns, and keeping them out of the layout maths is what
+          the design does too. */}
+      <Group
+        id={PANEL_GROUP_ID}
+        orientation="horizontal"
+        defaultLayout={defaultLayout}
+        onLayoutChanged={onLayoutChanged}
+        style={{ flex: '1 1 0%', width: 'auto', minWidth: 0 }}
+      >
+        {columns.list === 'panel' && (
+          <>
+            <Panel
+              id={LIST_PANEL.id}
+              defaultSize={LIST_PANEL.defaultSize}
+              minSize={LIST_PANEL.minSize}
+              maxSize={LIST_PANEL.maxSize}
+              className="flex min-w-0 border-r border-border"
+              style={{ overflow: 'hidden' }}
+            >
+              <CaptureList
+                caseId={caseId}
+                view={view}
+                onChangeView={setView}
+                onCollapse={() => setListCollapsed(true)}
+                onDeleteSelection={setPendingDeleteIds}
+              />
+            </Panel>
+            <Separator id="capture-list-separator" className={SEPARATOR_CLASS} />
+          </>
+        )}
+        <Panel
+          id={VIEWER_PANEL.id}
+          minSize={VIEWER_PANEL.minSize}
+          className="flex min-w-0"
+          style={{ overflow: 'hidden' }}
+        >
+          <CaptureViewer />
+        </Panel>
+        {columns.details === 'panel' && selectedCapture && (
+          <>
+            <Separator id="capture-details-separator" className={SEPARATOR_CLASS} />
+            <Panel
+              id={DETAILS_PANEL.id}
+              defaultSize={DETAILS_PANEL.defaultSize}
+              minSize={DETAILS_PANEL.minSize}
+              maxSize={DETAILS_PANEL.maxSize}
+              className="flex min-w-0"
+              style={{ overflow: 'hidden' }}
+            >
+              <aside
+                data-testid="capture-details-aside"
+                className="flex min-w-0 flex-1 flex-col overflow-hidden border-l border-border bg-surface"
+              >
+                <CaptureDetailsPanel
+                  capture={selectedCapture}
+                  caseId={caseId}
+                  onCollapse={toggleUserPref}
+                  onOpenExternal={handleOpenExternal}
+                  onDelete={() => setShowDeleteConfirm(true)}
+                  onOpenAddNote={() => setShowAddNote(true)}
+                />
+              </aside>
+            </Panel>
+          </>
+        )}
+      </Group>
+      {columns.details === 'rail' && selectedCapture && (
         <aside
           data-testid="capture-details-aside"
-          className={`shrink-0 overflow-hidden border-l border-border bg-surface ${
-            reduceMotion ? '' : 'transition-[width] duration-150'
-          } ${panelDisplayedCollapsed ? 'w-10' : 'w-[400px] min-w-[400px]'}`}
+          className="w-10 shrink-0 overflow-hidden border-l border-border bg-surface"
         >
-          {panelDisplayedCollapsed ? (
-            <CaptureDetailsRail
-              capture={selectedCapture}
-              caseId={caseId}
-              forced={panelCollapsedForced}
-              onExpand={panelCollapsedForced ? () => setForcedPanelOpen(true) : toggleUserPref}
-              onOpenExternal={handleOpenExternal}
-            />
-          ) : (
-            <CaptureDetailsPanel
-              capture={selectedCapture}
-              caseId={caseId}
-              onCollapse={toggleUserPref}
-              onOpenExternal={handleOpenExternal}
-              onDelete={() => setShowDeleteConfirm(true)}
-              onOpenAddNote={() => setShowAddNote(true)}
-            />
-          )}
+          <CaptureDetailsRail
+            capture={selectedCapture}
+            caseId={caseId}
+            forced={panelCollapsedForced}
+            onExpand={panelCollapsedForced ? () => setForcedPanelOpen(true) : toggleUserPref}
+            onOpenExternal={handleOpenExternal}
+          />
         </aside>
       )}
 

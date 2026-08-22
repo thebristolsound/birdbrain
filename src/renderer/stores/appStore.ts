@@ -1,6 +1,11 @@
 import { create } from 'zustand'
 import type { CaptureEvent } from '@shared/types'
 
+// The viewer's tab lives in the store rather than in CaptureViewer because the
+// captures route has to know about it: the Wayback tab takes the full width,
+// hiding the list and details columns.
+export type CaptureViewerTab = 'screenshot' | 'page' | 'text' | 'wayback'
+
 interface AppState {
   sessionActive: boolean
   connectedToExtension: boolean
@@ -29,6 +34,7 @@ interface AppState {
   commandPaletteOpen: boolean
   panelCollapsedForced: boolean
   onboardingOverlayOpen: boolean
+  activeViewerTab: CaptureViewerTab
 
   setSessionActive: (active: boolean) => void
   setConnectedToExtension: (connected: boolean) => void
@@ -36,6 +42,7 @@ interface AppState {
   toggleCommandPalette: () => void
   setPanelCollapsedForced: (forced: boolean) => void
   setOnboardingOverlayOpen: (open: boolean) => void
+  setActiveViewerTab: (tab: CaptureViewerTab) => void
   setSelectedCaptureId: (id: string | null) => void
   setSelectedNoteId: (id: string | null) => void
   setSearchQuery: (query: string) => void
@@ -70,6 +77,7 @@ export const useAppStore = create<AppState>((set) => ({
   commandPaletteOpen: false,
   panelCollapsedForced: false,
   onboardingOverlayOpen: false,
+  activeViewerTab: 'screenshot',
 
   setSessionActive: (active) => set({ sessionActive: active }),
   setConnectedToExtension: (connected) => set({ connectedToExtension: connected }),
@@ -77,6 +85,7 @@ export const useAppStore = create<AppState>((set) => ({
   toggleCommandPalette: () => set((s) => ({ commandPaletteOpen: !s.commandPaletteOpen })),
   setPanelCollapsedForced: (forced) => set({ panelCollapsedForced: forced }),
   setOnboardingOverlayOpen: (open) => set({ onboardingOverlayOpen: open }),
+  setActiveViewerTab: (tab) => set({ activeViewerTab: tab }),
   setSelectedCaptureId: (id) => set({ selectedCaptureId: id }),
   setSelectedNoteId: (id) => set({ selectedNoteId: id }),
   setSearchQuery: (query) => set({ searchQuery: query }),

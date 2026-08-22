@@ -63,9 +63,16 @@ function renderList() {
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
   }
-  return render(<CaptureList caseId="case1" onDeleteSelection={onDeleteSelection} />, {
-    wrapper: Wrapper
-  })
+  return render(
+    <CaptureList
+      caseId="case1"
+      view="detailed"
+      onChangeView={vi.fn()}
+      onCollapse={vi.fn()}
+      onDeleteSelection={onDeleteSelection}
+    />,
+    { wrapper: Wrapper }
+  )
 }
 
 async function rows() {

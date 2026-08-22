@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { useAppStore } from '@renderer/stores/appStore'
+import { useAppStore, type CaptureViewerTab } from '@renderer/stores/appStore'
 import { capturesQueryOptions, captureContentQueryOptions } from '@renderer/lib/queries'
 import { ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react'
 import { MhtmlViewer } from '@renderer/components/captures/MhtmlViewer'
@@ -12,19 +12,20 @@ import { CaptureViewerToolbar } from '@renderer/components/captures/CaptureViewe
 import { CaptureDownloadMenu } from '@renderer/components/captures/CaptureDownloadMenu'
 import { BrowserChromeFrame } from '@renderer/components/captures/BrowserChromeFrame'
 import { AnnotationToolsTooltip } from '@renderer/components/captures/AnnotationToolsTooltip'
+import { WaybackTab } from '@renderer/components/captures/WaybackTab'
 import { useAnnotationEditor } from '@renderer/components/captures/annotation/useAnnotationEditor'
 import { useZoomPan } from '@renderer/components/captures/annotation/useZoomPan'
 import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
 
-type ViewTab = 'screenshot' | 'page' | 'source' | 'text'
+// Source is gone: Page *is* the MHTML, so the two tabs rendered the same
+// artifact twice. The raw file is still one click away in the download menu.
+const TABS: CaptureViewerTab[] = ['screenshot', 'page', 'text', 'wayback']
 
-const TABS: ViewTab[] = ['screenshot', 'page', 'source', 'text']
-
-const TAB_LABELS: Record<ViewTab, string> = {
+const TAB_LABELS: Record<CaptureViewerTab, string> = {
   screenshot: 'Screenshot',
   page: 'Page',
-  source: 'Source',
-  text: 'Text'
+  text: 'Text',
+  wayback: 'Wayback'
 }
 
 export function CaptureViewer() {
@@ -34,14 +35,16 @@ export function CaptureViewer() {
   const sessionActive = useAppStore((s) => s.sessionActive)
   const { data: captures = [] } = useQuery(capturesQueryOptions(caseId))
 
-  const [activeTab, setActiveTab] = useState<ViewTab>('screenshot')
+  const activeTab = useAppStore((s) => s.activeViewerTab)
+  const setActiveTab = useAppStore((s) => s.setActiveViewerTab)
   const capture = captures.find((item) => item.id === selectedCaptureId) ?? null
 
-  // Determine content type based on active tab and capture format
+  // Determine content type based on active tab and capture format. Wayback
+  // reads archive.org rather than an artifact, so it fetches nothing here.
   const contentType =
     activeTab === 'screenshot'
       ? 'png'
-      : activeTab === 'page' || activeTab === 'source'
+      : activeTab === 'page'
         ? 'html'
         : activeTab === 'text'
           ? 'txt'
@@ -252,16 +255,7 @@ export function CaptureViewer() {
               <div className="p-4 text-text-muted">No HTML available</div>
             )
           ) : null}
-          {activeTab === 'source' &&
-            (content ? (
-              <div className="h-full overflow-y-auto p-4">
-                <pre className="whitespace-pre-wrap break-all font-mono text-xs text-text-muted">
-                  {content}
-                </pre>
-              </div>
-            ) : (
-              <div className="p-4 text-text-muted">No HTML available</div>
-            ))}
+          {activeTab === 'wayback' && <WaybackTab capture={capture} />}
           {activeTab === 'text' &&
             (content ? (
               <div className="h-full overflow-y-auto p-4">

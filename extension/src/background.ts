@@ -344,7 +344,11 @@ async function checkStatus(): Promise<void> {
     // autoCaptureMode = status.autoCaptureMode || 'notify'
     availableCases = status.cases || []
     activeCaseId = status.activeCase?.id || null
-    userIgnoredPatterns = status.ignoredUrlPatterns || []
+    // The effective list for the active case (#400): global plus that case's
+    // exclusions, or the case's alone under 'override'. Falls back to the
+    // global list so an older server degrades to global-only filtering rather
+    // than to none. Advisory either way — the server is the enforcement point.
+    userIgnoredPatterns = status.effectiveIgnoredUrlPatterns || status.ignoredUrlPatterns || []
     ignoreRulesLoaded = true
     captureScreenshotsEnabled = status.captureScreenshots !== false
     // dedupeWindowMs = (status.dedupeWindowSeconds ?? 60) * 1000

@@ -80,4 +80,34 @@ describe('resolveStartRoute', () => {
       params: { caseId: 'case-1' }
     })
   })
+
+  it('routes the signals section to /cases/$caseId/signals', () => {
+    const result = resolveStartRoute({
+      lastActiveCaseId: 'case-1',
+      lastActiveSection: 'signals',
+      cases: [{ id: 'case-1' }]
+    })
+    expect(result).toEqual({
+      to: '/cases/$caseId/signals',
+      params: { caseId: 'case-1' }
+    })
+  })
+
+  // #400/#700 removed both routes. A settings file written by an earlier
+  // release still names them, and landing such an operator on Captures would
+  // read as the app forgetting where they were rather than as a screen moving.
+  it.each(['selectors', 'tags'] as const)(
+    'sends a stored %s section to the screen that replaced it',
+    (section) => {
+      const result = resolveStartRoute({
+        lastActiveCaseId: 'case-1',
+        lastActiveSection: section,
+        cases: [{ id: 'case-1' }]
+      })
+      expect(result).toEqual({
+        to: '/cases/$caseId/signals',
+        params: { caseId: 'case-1' }
+      })
+    }
+  )
 })

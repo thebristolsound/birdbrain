@@ -6,13 +6,23 @@ import type { BirdbrainSettings } from '@shared/types'
 
 type Section = BirdbrainSettings['lastActiveSection']
 
-const SECTION_PATHS: Record<Exclude<Section, 'settings'>, string> = {
+type RestorableSection = Exclude<Section, 'settings' | 'selectors' | 'tags'>
+
+const SECTION_PATHS: Record<RestorableSection, string> = {
   overview: '/cases/$caseId/overview',
   captures: '/cases/$caseId/captures',
-  selectors: '/cases/$caseId/selectors',
   notes: '/cases/$caseId/notes',
-  tags: '/cases/$caseId/tags',
+  signals: '/cases/$caseId/signals',
   data: '/cases/$caseId/data'
+}
+
+// Sections that no longer exist as routes (#400/#700) but are still written in
+// settings files from before this release. Mapped rather than left to the
+// fallback below, so an operator who was last on Selectors lands on the screen
+// that replaced it instead of on Captures.
+const LEGACY_SECTIONS: Record<'selectors' | 'tags', RestorableSection> = {
+  selectors: 'signals',
+  tags: 'signals'
 }
 
 interface ResolveInput {
@@ -34,10 +44,12 @@ export function resolveStartRoute(input: ResolveInput): RouteResult {
     return { to: '/settings' }
   }
 
-  const section: Exclude<Section, 'settings'> =
-    lastActiveSection in SECTION_PATHS
-      ? (lastActiveSection as Exclude<Section, 'settings'>)
-      : 'captures'
+  const section: RestorableSection =
+    lastActiveSection === 'selectors' || lastActiveSection === 'tags'
+      ? LEGACY_SECTIONS[lastActiveSection]
+      : lastActiveSection in SECTION_PATHS
+        ? (lastActiveSection as RestorableSection)
+        : 'captures'
 
   const matchedCase = lastActiveCaseId ? cases.find((c) => c.id === lastActiveCaseId) : null
   const targetCase = matchedCase ?? cases[0]

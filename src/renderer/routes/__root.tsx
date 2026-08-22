@@ -18,9 +18,8 @@ import { NewCaseWizard } from '@renderer/components/dashboard/cases/NewCaseWizar
 import { CaseWorkspace } from '@renderer/components/dashboard/cases/CaseWorkspace'
 import { CaseOverview } from '@renderer/components/overview/CaseOverview'
 import { CapturesRoute } from '@renderer/routes/cases/$caseId/captures'
-import { SelectorsOverview } from '@renderer/components/selectors/SelectorsOverview'
 import { NotesOverview } from '@renderer/components/notes/NotesOverview'
-import { TagsOverview } from '@renderer/components/tags/TagsOverview'
+import { SignalsOverview } from '@renderer/components/signals/SignalsOverview'
 import { DataExplorer } from '@renderer/components/dashboard/cases/DataExplorer'
 import { InstallExtensionGuide } from '@renderer/components/extension/InstallExtensionGuide'
 import { SettingsView } from '@renderer/components/settings/SettingsView'
@@ -289,14 +288,6 @@ const capturesRoute = createRoute({
   errorComponent: RouteErrorComponent
 })
 
-// Selectors tab
-const selectorsRoute = createRoute({
-  getParentRoute: () => caseRoute,
-  path: '/selectors',
-  component: SelectorsOverview,
-  errorComponent: RouteErrorComponent
-})
-
 // Notes tab
 const notesRoute = createRoute({
   getParentRoute: () => caseRoute,
@@ -305,11 +296,11 @@ const notesRoute = createRoute({
   errorComponent: RouteErrorComponent
 })
 
-// Tags tab
-const tagsRoute = createRoute({
+// Signals tab — selectors and tags on one screen (#400, #700)
+const signalsRoute = createRoute({
   getParentRoute: () => caseRoute,
-  path: '/tags',
-  component: TagsOverview,
+  path: '/signals',
+  component: SignalsOverview,
   errorComponent: RouteErrorComponent
 })
 
@@ -331,9 +322,8 @@ export const routeTree = rootRoute.addChildren([
     caseIndexRoute,
     overviewRoute,
     capturesRoute,
-    selectorsRoute,
     notesRoute,
-    tagsRoute,
+    signalsRoute,
     dataRoute
   ])
 ])

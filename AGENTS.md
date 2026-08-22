@@ -94,9 +94,8 @@ TanStack Router (`@tanstack/react-router`) with the following route tree:
   ├── / → redirects to /overview
   ├── /overview → CaseOverview
   ├── /captures → CaptureList + CaptureViewer (split view)
-  ├── /selectors → SelectorsOverview
   ├── /notes → NotesOverview
-  ├── /tags → TagsOverview
+  ├── /signals → SignalsOverview (selectors + tags on one screen)
   └── /data → DataExplorer
 ```
 
@@ -181,10 +180,11 @@ Organized by feature under `src/renderer/components/`:
 - **notes/** - AddNoteModal, CreateNoteCard, NoteCard, NoteBody, NoteEditor, NotesOverview, useNoteEditor.ts
 - **overview/** - CaseOverview, CaseSubhead, ActivityTimeline, MetricRow, RecentCapturesStrip, SelectorCoverageBlock, SinceLastVisitBanner, SourcesBlock, VerifyBar, overviewModel.ts
 - **search/** - SearchBar
-- **selectors/** - BulkAddSelectorsModal, CreateSelectorCard, CreateSelectorPopover, SelectorFilterFooter, SelectorTable, SelectorTableRow, SelectorsOverview, selectorUtils.ts
+- **selectors/** - CreateSelectorCard, CreateSelectorPopover, selectorOrigin.ts, selectorUtils.ts, useForegroundMatchPreview.ts (the Selectors screen itself moved to `signals/`)
 - **settings/** - SettingsView, AIConfig, AppearanceConfig, CapturePreferences, DatabaseAdmin, DiagnosticsPanel, OperatorConfig, StorageConfig, UpdatesConfig, About, plus database utility views under `settings/db/`
+- **signals/** - SignalsOverview (the consolidated Signals screen), AutoCaptureCard, AddSelectorRow, AddTagRow, BulkImportDrawer, SignalRow, CoverageStrip, SignalDetailRail, signalsModel.ts
 - **status/** - CaptureHealth, ConnectionStatus, SessionControls
-- **tags/** - TagBadge, TagManager, TagsOverview
+- **tags/** - TagBadge
 - **ui/** - Shared primitives re-exported from `ui/index.ts`: badge, button, card, dialog, input, label, scroll-area, skeleton, tabs, textarea
 
 ## Documentation conventions

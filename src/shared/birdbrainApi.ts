@@ -1,5 +1,6 @@
 import type {
   Case,
+  CaseAutoCapturePolicy,
   Capture,
   Tag,
   BirdbrainSettings,
@@ -39,6 +40,7 @@ import type {
 import type {
   CreateCaseParams,
   UpdateCaseParams,
+  SetAutoCapturePolicyParams,
   CreateTagParams,
   UpdateTagParams,
   CaptureTagParams,
@@ -89,6 +91,8 @@ export interface BirdbrainAPI {
     inspectArchive(): Promise<ArchiveInspectReport | null>
     importArchive(archivePath: string, overrideTamper: boolean): Promise<{ newCaseId: string }>
     recentActivity(limit?: number): Promise<RecentActivityEvent[]>
+    getAutoCapturePolicy(caseId: string): Promise<CaseAutoCapturePolicy>
+    setAutoCapturePolicy(params: SetAutoCapturePolicyParams): Promise<CaseAutoCapturePolicy>
   }
   captures: {
     list(caseId: string): Promise<Capture[]>
@@ -125,6 +129,7 @@ export interface BirdbrainAPI {
     getForCapture(captureId: string): Promise<Tag[]>
     countForCase(caseId: string): Promise<number>
     usageCountsForCase(caseId: string): Promise<Record<string, number>>
+    captureMatrix(caseId: string, limit: number): Promise<Record<string, string[]>>
     addToCaptures(payload: CaptureBatchPayload & { tagId: string }): Promise<BatchCountResult>
   }
   selectors: {
@@ -137,8 +142,9 @@ export interface BirdbrainAPI {
     matchCounts(caseId: string): Promise<Record<string, number>>
     matchingCaptures(caseId: string, selectorIds: string[]): Promise<string[]>
     coverage(caseId: string): Promise<{ matched: number; total: number }>
+    captureMatrix(caseId: string, limit: number): Promise<Record<string, string[]>>
     bulkCreate(params: BulkCreateSelectorsParams): Promise<Selector[]>
-    exportMatches(caseId: string): Promise<{ exported: boolean; path?: string }>
+    exportMatches(caseId: string, selectorId?: string): Promise<{ exported: boolean; path?: string }>
   }
   notes: {
     list(caseId: string): Promise<Note[]>

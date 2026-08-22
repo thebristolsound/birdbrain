@@ -135,7 +135,19 @@ export interface CaptureServerStatus {
   autoCaptureMode: BirdbrainSettings['autoCaptureMode']
   /** Empty when the caller passed `?includeCases=0`. */
   cases: CaptureServerCaseRef[]
+  /** The operator's global ignore list, unchanged by any case's policy. */
   ignoredUrlPatterns: string[]
+  /**
+   * What is actually in force for the active case (#400): the global list plus
+   * that case's exclusions, or the case's alone under 'override'. The global
+   * list when no case is active.
+   *
+   * Optional because a pre-#400 server does not send it and the extension
+   * updates independently of the app; the extension falls back to
+   * `ignoredUrlPatterns`, so an older server degrades to global-only advisory
+   * filtering rather than to none. The server always sets it.
+   */
+  effectiveIgnoredUrlPatterns?: string[]
   captureScreenshots: boolean
   dedupeWindowSeconds: number
   theme: BirdbrainSettings['theme']
@@ -529,8 +541,12 @@ export const BirdbrainSettingsSchema = z.object({
   tsaUrl: z.preprocess(normalizeTsaUrl, z.string()).optional().default(DEFAULT_TSA_URL),
   autoCaptureMode: z.enum(['auto', 'notify', 'per-case']),
   lastActiveCaseId: z.string().nullable(),
+  // 'selectors' and 'tags' are gone as routes (#400/#700) but are still in
+  // settings files written before this release, so they stay in the enum:
+  // dropping them would fail the whole settings parse on upgrade. They are
+  // mapped to 'signals' on read — see useSessionRestore.
   lastActiveSection: z
-    .enum(['overview', 'captures', 'selectors', 'notes', 'tags', 'settings', 'data'])
+    .enum(['overview', 'captures', 'selectors', 'notes', 'tags', 'signals', 'settings', 'data'])
     .optional()
     .default('captures'),
   hasCompletedOnboarding: z.boolean().optional().default(false),

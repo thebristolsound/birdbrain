@@ -214,7 +214,18 @@ export interface BirdbrainSettings {
   tsaUrl: string
   autoCaptureMode: AutoCaptureMode
   lastActiveCaseId: string | null
-  lastActiveSection: 'overview' | 'captures' | 'selectors' | 'notes' | 'tags' | 'data' | 'settings'
+  // 'selectors' and 'tags' are retired routes (#400/#700) kept in the union
+  // because older settings files still hold them; both resolve to 'signals'
+  // on restore. Dropping them would fail the settings parse on upgrade.
+  lastActiveSection:
+    | 'overview'
+    | 'captures'
+    | 'selectors'
+    | 'notes'
+    | 'tags'
+    | 'signals'
+    | 'data'
+    | 'settings'
   hasCompletedOnboarding: boolean
   analysisSystemPrompt: string
   detailsPanelCollapsed: boolean

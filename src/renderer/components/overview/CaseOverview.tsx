@@ -100,7 +100,7 @@ export function CaseOverview() {
   }
 
   const goToCaptures = () => navigate({ to: '/cases/$caseId/captures', params: { caseId } })
-  const goToSelectors = () => navigate({ to: '/cases/$caseId/selectors', params: { caseId } })
+  const goToSignals = () => navigate({ to: '/cases/$caseId/signals', params: { caseId } })
   const openCapture = (captureId: string) => {
     useAppStore.getState().setSelectedCaptureId(captureId)
     navigate({ to: '/cases/$caseId/captures', params: { caseId } })
@@ -152,7 +152,7 @@ export function CaseOverview() {
           </SectionCard>
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-4">
-          <SectionCard icon={Target} title="Selector coverage" action="Manage" onAction={goToSelectors}>
+          <SectionCard icon={Target} title="Selector coverage" action="Manage" onAction={goToSignals}>
             <SelectorCoverageBlock selectors={derived.coverageRows} totalCaptures={captures.length} />
           </SectionCard>
           <SectionCard icon={ShieldCheck} title="Evidence integrity" className="flex-1">

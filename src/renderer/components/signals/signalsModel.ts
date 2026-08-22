@@ -83,6 +83,26 @@ export function buildTagSignals(
 }
 
 /**
+ * The Auto-capture card's description, and the disclosure under it.
+ *
+ * The description used to say that any page matching an enabled selector is
+ * captured automatically while browsing. Nothing shipped does that: both
+ * passive producers in the extension's service worker — shouldCapture/
+ * captureTab and shouldSelectorCapture/handleSelectorCapture — sit inside the
+ * hotfix comment block, so no page is captured without an explicit action. The
+ * sentence is written to be true on its own rather than corrected by the
+ * disclosure below it, because a screenshot of the card, or an operator who
+ * reads only the heading, carries the primary sentence and not the footnote.
+ */
+export const AUTO_CAPTURE_DESCRIPTION =
+  'App-wide setting — it records whether pages matching an enabled selector should be ' +
+  'captured while browsing. It applies to every case, not only this one.'
+
+export const AUTO_CAPTURE_SUSPENDED =
+  'Passive capture is suspended in the current extension build, so no page is captured ' +
+  'without an explicit action. The switch records the preference for when it returns (#600).'
+
+/**
  * The collapsed summary on the Auto-capture card: how many exclusions this case
  * carries, and what they do to the global list.
  */

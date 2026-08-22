@@ -8,7 +8,12 @@ import {
   caseAutoCapturePolicyQueryOptions,
   useCaseAutoCapturePolicyMutation
 } from '@renderer/lib/api/cases'
-import { exclusionFooter, exclusionSummary } from '@renderer/components/signals/signalsModel'
+import {
+  AUTO_CAPTURE_DESCRIPTION,
+  AUTO_CAPTURE_SUSPENDED,
+  exclusionFooter,
+  exclusionSummary
+} from '@renderer/components/signals/signalsModel'
 
 interface AutoCaptureCardProps {
   caseId: string
@@ -93,9 +98,8 @@ export function AutoCaptureCard({ caseId }: AutoCaptureCardProps) {
         />
         <div className="min-w-0 flex-1">
           <div className="text-xs font-semibold text-text-primary">Auto-capture</div>
-          <div className="mt-px text-[10px] text-text-muted">
-            App-wide setting — while browsing, any page matching an enabled selector is captured
-            automatically. It applies to every case, not only this one.
+          <div className="mt-px text-[10px] text-text-muted" data-testid="auto-capture-description">
+            {AUTO_CAPTURE_DESCRIPTION}
           </div>
         </div>
 
@@ -139,8 +143,7 @@ export function AutoCaptureCard({ caseId }: AutoCaptureCardProps) {
       </div>
 
       <p className="mt-2 text-[10px] text-text-faint" data-testid="auto-capture-suspended">
-        Passive capture is suspended in the current extension build, so no page is captured without
-        an explicit action. The switch records the preference for when it returns (#600).
+        {AUTO_CAPTURE_SUSPENDED}
       </p>
 
       {modeIsAuto && (

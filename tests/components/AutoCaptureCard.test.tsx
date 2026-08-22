@@ -227,4 +227,23 @@ describe('AutoCaptureCard switch', () => {
     expect(await screen.findByText(/App-wide setting/)).toBeTruthy()
     expect(screen.queryByText(/Case-level/)).toBeNull()
   })
+
+  // The description and the disclosure are one claim between them: without the
+  // second the first overstates what the build does, so both are pinned here
+  // as well as in signalsModel.test.ts.
+  it('describes the setting without claiming browsing captures pages today', async () => {
+    renderCard()
+
+    const description = (await screen.findByTestId('auto-capture-description')).textContent ?? ''
+    expect(description).toContain('records whether')
+    expect(description).not.toMatch(/captured automatically/)
+  })
+
+  it('discloses that passive capture is suspended, naming where it returns', async () => {
+    renderCard()
+
+    const suspended = (await screen.findByTestId('auto-capture-suspended')).textContent ?? ''
+    expect(suspended).toContain('Passive capture is suspended')
+    expect(suspended).toContain('#600')
+  })
 })

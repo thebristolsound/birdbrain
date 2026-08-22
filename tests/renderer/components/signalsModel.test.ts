@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import type { Selector, Tag } from '@shared/types'
 import {
+  AUTO_CAPTURE_DESCRIPTION,
+  AUTO_CAPTURE_SUSPENDED,
   buildSelectorSignals,
   buildTagSignals,
   exclusionFooter,
@@ -88,6 +90,27 @@ describe('nextTagColor', () => {
     expect(nextTagColor(0)).toBe(TAG_PALETTE[0])
     expect(nextTagColor(3)).toBe(TAG_PALETTE[3])
     expect(nextTagColor(TAG_PALETTE.length)).toBe(TAG_PALETTE[0])
+  })
+})
+
+// The card's primary description is what a screenshot carries and what an
+// operator who skips the footnote takes away, so it is held to what the shipped
+// build does rather than corrected by the disclosure under it (#600).
+describe('auto-capture copy', () => {
+  it('does not promise that browsing captures pages by itself', () => {
+    expect(AUTO_CAPTURE_DESCRIPTION).not.toMatch(/captured automatically/)
+    expect(AUTO_CAPTURE_DESCRIPTION).toContain('records whether')
+  })
+
+  it('still says the setting is app-wide, since the exclusions beside it are not', () => {
+    expect(AUTO_CAPTURE_DESCRIPTION).toContain('App-wide setting')
+    expect(AUTO_CAPTURE_DESCRIPTION).toContain('every case, not only this one')
+  })
+
+  it('discloses the suspension and where passive capture returns', () => {
+    expect(AUTO_CAPTURE_SUSPENDED).toContain('Passive capture is suspended')
+    expect(AUTO_CAPTURE_SUSPENDED).toContain('without an explicit action')
+    expect(AUTO_CAPTURE_SUSPENDED).toContain('#600')
   })
 })
 

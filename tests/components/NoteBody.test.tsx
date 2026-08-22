@@ -58,3 +58,96 @@ describe('NoteBody', () => {
     expect(container.innerHTML).toBe('')
   })
 })
+
+const WITH_MENTION = JSON.stringify({
+  type: 'doc',
+  content: [
+    { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Finding' }] },
+    {
+      type: 'paragraph',
+      content: [
+        { type: 'text', text: 'Seen on ' },
+        {
+          type: 'mention',
+          attrs: { targetType: 'selector', targetId: 's1', label: 'nightjar' }
+        },
+        { type: 'text', text: ' twice.' }
+      ]
+    }
+  ]
+})
+
+function docWithMentionLabel(label: string, targetType = 'capture'): string {
+  return JSON.stringify({
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        content: [{ type: 'mention', attrs: { targetType, targetId: 'x1', label } }]
+      }
+    ]
+  })
+}
+
+describe('NoteBody Mentions', () => {
+  it('masks a Mention to its sigil plus label rather than drawing a chip', () => {
+    const { container } = render(<NoteBody note={{ body: '', bodyDoc: WITH_MENTION }} />)
+
+    expect(container.textContent).toContain('Seen on #nightjar twice.')
+    expect(container.querySelector('[data-mention-chip]')).toBeNull()
+  })
+
+  it('leaves every other node rendering as it did', () => {
+    // The nodeMapping override is merged over the extension-derived map, not
+    // substituted for it — a heading must survive a paragraph gaining a chip.
+    const { container } = render(<NoteBody note={{ body: '', bodyDoc: WITH_MENTION }} />)
+
+    expect(container.querySelector('h2')?.textContent).toBe('Finding')
+  })
+
+  it('elides a label past thirty characters', () => {
+    const { container } = render(
+      <NoteBody note={{ body: '', bodyDoc: docWithMentionLabel('x'.repeat(40)) }} />
+    )
+
+    expect(container.textContent).toBe(`@${'x'.repeat(29)}…`)
+  })
+
+  it('prefers the current label over the one the note was written against', () => {
+    const resolveMention = () => ({ status: 'resolved' as const, label: 'Renamed', color: null })
+    const { container } = render(
+      <NoteBody
+        note={{ body: '', bodyDoc: docWithMentionLabel('Old') }}
+        resolveMention={resolveMention}
+      />
+    )
+
+    expect(container.textContent).toBe('@Renamed')
+  })
+
+  it('keeps the written label while the resolver is still looking', () => {
+    const resolveMention = () => ({ status: 'loading' as const, label: null, color: null })
+    const { container } = render(
+      <NoteBody
+        note={{ body: '', bodyDoc: docWithMentionLabel('Old') }}
+        resolveMention={resolveMention}
+      />
+    )
+
+    expect(container.textContent).toBe('@Old')
+  })
+
+  it('names a Mention by its kind when it was written without a label', () => {
+    const { container } = render(<NoteBody note={{ body: '', bodyDoc: docWithMentionLabel('') }} />)
+
+    expect(container.textContent).toBe('@capture')
+  })
+
+  it('renders a node that lost its target type as bare text, not as a broken row', () => {
+    const { container } = render(
+      <NoteBody note={{ body: '', bodyDoc: docWithMentionLabel('Thread', 'nonsense') }} />
+    )
+
+    expect(container.textContent).toBe('Thread')
+  })
+})

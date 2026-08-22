@@ -572,14 +572,22 @@ describe('ipcHandlers — captures', () => {
     expect(expectOk<Capture[]>(await invoke(IPC_CHANNELS.CAPTURES_LIST, caseId))).toHaveLength(0)
   })
 
-  it('reports failure for the http/pipeline self-tests when the server is down', async () => {
-    const http = expectOk<{ success: boolean }>(await invoke(IPC_CHANNELS.CAPTURES_TEST_HTTP))
-    expect(http.success).toBe(false)
-    const pipeline = expectOk<{ success: boolean }>(
-      await invoke(IPC_CHANNELS.CAPTURES_TEST_PIPELINE)
-    )
-    expect(pipeline.success).toBe(false)
-  })
+  // Both handlers wait out a 2s AbortSignal against a port nothing answers, so
+  // this test's own worst case is 4s — under the default 5s budget by less
+  // than a second, and it goes over whenever the suite is busy enough. Give it
+  // room for the wait it is designed to make.
+  it(
+    'reports failure for the http/pipeline self-tests when the server is down',
+    async () => {
+      const http = expectOk<{ success: boolean }>(await invoke(IPC_CHANNELS.CAPTURES_TEST_HTTP))
+      expect(http.success).toBe(false)
+      const pipeline = expectOk<{ success: boolean }>(
+        await invoke(IPC_CHANNELS.CAPTURES_TEST_PIPELINE)
+      )
+      expect(pipeline.success).toBe(false)
+    },
+    15000
+  )
 })
 
 describe('ipcHandlers — batch operations (#394)', () => {

@@ -12,15 +12,21 @@ const base = {
   waybackActive: false,
   listCollapsed: false,
   detailsCollapsed: false,
-  hasSelection: true
+  hasSelection: true,
+  forcedPanelOpen: false
 }
+
+// The narrow-viewport shape: the details column is forced to its rail and the
+// operator has pressed Expand details, which floats the overlay beside it.
+const forcedOpen = { ...base, detailsCollapsed: true, forcedPanelOpen: true }
 
 describe('visibleCaptureColumns', () => {
   it('renders all three columns as panels in the default configuration', () => {
     expect(visibleCaptureColumns(base)).toEqual({
       list: 'panel',
       viewer: 'panel',
-      details: 'panel'
+      details: 'panel',
+      detailsOverlay: false
     })
   })
 
@@ -54,13 +60,37 @@ describe('visibleCaptureColumns', () => {
     ).toBe('rail')
   })
 
+  it('raises the narrow-viewport overlay beside the rail, not instead of it', () => {
+    const columns = visibleCaptureColumns(forcedOpen)
+    expect(columns.detailsOverlay).toBe(true)
+    expect(columns.details).toBe('rail')
+  })
+
+  it('keeps the overlay down until the operator expands the rail', () => {
+    expect(visibleCaptureColumns({ ...base, detailsCollapsed: true }).detailsOverlay).toBe(false)
+  })
+
+  // An opaque 400px overlay left up on the full-bleed Wayback tab covers the
+  // snapshot list and the pin controls behind it.
+  it('drops the overlay on the Wayback tab, leaving the tab full-bleed', () => {
+    const columns = visibleCaptureColumns({ ...forcedOpen, waybackActive: true })
+    expect(columns.detailsOverlay).toBe(false)
+    expect(columns.list).toBe('hidden')
+    expect(columns.details).toBe('rail')
+  })
+
+  it('hides the overlay when nothing is selected', () => {
+    expect(visibleCaptureColumns({ ...forcedOpen, hasSelection: false }).detailsOverlay).toBe(false)
+  })
+
   it('always keeps the viewer as a panel', () => {
     expect(
       visibleCaptureColumns({
         waybackActive: true,
         listCollapsed: true,
         detailsCollapsed: true,
-        hasSelection: false
+        hasSelection: false,
+        forcedPanelOpen: true
       }).viewer
     ).toBe('panel')
   })

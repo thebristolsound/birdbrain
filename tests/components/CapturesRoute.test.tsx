@@ -425,5 +425,20 @@ describe('CapturesRoute', () => {
       expect(screen.getByText(DELETE_CONTROL)).toBeDefined()
       expect(screen.getByTestId('capture-details-overlay')).toBeDefined()
     })
+
+    // The overlay is opaque and 400px wide, so leaving it up on the full-bleed
+    // Wayback tab hides the snapshot list and its pin controls behind it.
+    it('drops the forced-collapse overlay when the Wayback tab takes the full width', async () => {
+      renderRoute()
+
+      fireEvent.click(await screen.findByText(EXPAND_CONTROL))
+      expect(screen.getByTestId('capture-details-overlay')).toBeDefined()
+
+      act(() => useAppStore.getState().setActiveViewerTab('wayback'))
+
+      expect(screen.queryByTestId('capture-details-overlay')).toBeNull()
+      // The rail it was expanded from is still there to re-open it with.
+      expect(screen.getByTestId('capture-details-aside').className).toContain('w-10')
+    })
   })
 })

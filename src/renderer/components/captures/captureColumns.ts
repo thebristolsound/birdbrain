@@ -36,27 +36,41 @@ export interface CaptureColumnsInput {
   /** User preference or the narrow-viewport force; the route folds them first. */
   detailsCollapsed: boolean
   hasSelection: boolean
+  /**
+   * The operator has expanded the details rail on a viewport too narrow to dock
+   * the panel. The route folds its forced flag in first, as with
+   * `detailsCollapsed`.
+   */
+  forcedPanelOpen: boolean
 }
 
 export interface CaptureColumns {
   list: CaptureColumnState
   viewer: 'panel'
   details: CaptureColumnState
+  /**
+   * The narrow-viewport details overlay floats over the viewer's right edge
+   * *beside* its rail, so it is a fourth output rather than a `details` state.
+   */
+  detailsOverlay: boolean
 }
 
 /**
  * Which of the three columns render as a resizable panel, as a 40px rail, or
- * not at all.
+ * not at all, plus whether the narrow-viewport details overlay is up.
  *
  * On the Wayback tab the list does not fall back to its rail — it disappears
- * outright, and so does the expanded details panel. A details rail the operator
- * collapsed themselves stays put, so the tags/notes counts remain reachable.
+ * outright, and so does the expanded details panel, in either the docked or the
+ * overlay form: an opaque 400px overlay left up would cover the full-bleed
+ * snapshot list and its pin controls. A details rail the operator collapsed
+ * themselves stays put, so the tags/notes counts remain reachable.
  */
 export function visibleCaptureColumns({
   waybackActive,
   listCollapsed,
   detailsCollapsed,
-  hasSelection
+  hasSelection,
+  forcedPanelOpen
 }: CaptureColumnsInput): CaptureColumns {
   const list: CaptureColumnState = waybackActive ? 'hidden' : listCollapsed ? 'rail' : 'panel'
 
@@ -71,7 +85,9 @@ export function visibleCaptureColumns({
     details = 'panel'
   }
 
-  return { list, viewer: 'panel', details }
+  const detailsOverlay = hasSelection && forcedPanelOpen && !waybackActive
+
+  return { list, viewer: 'panel', details, detailsOverlay }
 }
 
 /**

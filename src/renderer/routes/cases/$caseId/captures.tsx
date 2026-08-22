@@ -163,9 +163,17 @@ export function CapturesRoute() {
         waybackActive,
         listCollapsed,
         detailsCollapsed: panelDisplayedCollapsed,
-        hasSelection: selectedCapture !== null
+        hasSelection: selectedCapture !== null,
+        forcedPanelOpen: panelCollapsedForced && forcedPanelOpen
       }),
-    [waybackActive, listCollapsed, panelDisplayedCollapsed, selectedCapture]
+    [
+      waybackActive,
+      listCollapsed,
+      panelDisplayedCollapsed,
+      selectedCapture,
+      panelCollapsedForced,
+      forcedPanelOpen
+    ]
   )
   const panelIds = useMemo(() => capturePanelIds(columns), [columns])
   // Keyed on the panel set, so collapsing a column cannot overwrite the widths
@@ -344,7 +352,7 @@ export function CapturesRoute() {
       )}
 
       {/* Overlay details panel for viewports too narrow for the docked panel */}
-      {selectedCapture && panelCollapsedForced && forcedPanelOpen && (
+      {columns.detailsOverlay && selectedCapture && (
         <div
           data-testid="capture-details-overlay"
           className="absolute right-0 top-0 z-40 h-full w-[400px] border-l border-border bg-surface shadow-xl"

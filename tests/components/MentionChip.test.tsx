@@ -182,7 +182,7 @@ describe('the Mention node view', () => {
     })
     fireEvent.click(await screen.findByText('#suspect'))
     expect(navigateSpy).toHaveBeenCalledWith({
-      to: '/cases/$caseId/tags',
+      to: '/cases/$caseId/signals',
       params: { caseId: 'case1' }
     })
   })

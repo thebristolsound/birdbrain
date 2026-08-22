@@ -38,12 +38,35 @@ The packer rewrites three things, so a grep for the ordinary form finds nothing:
 Asset `src` and `href` values are 36-character UUIDs that resolve against the manifest in
 `<script type="__bundler/manifest">`.
 
+## Variant props: read this before you build anything
+
+The mock is not one fixed design. It carries editable props, and the defaults are the
+design. Build the defaults.
+
+| Prop | Options | Default |
+| --- | --- | --- |
+| `overviewVariant` | `consolidated`, `classic` | **`consolidated`** |
+| `density` | `compact`, `default`, `comfortable` | **`compact`** |
+| `mentionStyle` | `chip`, `underline`, `bracket` | **`chip`** |
+
+`overviewVariant` is the one that misleads. In the default `consolidated` value the sidebar
+filters out the Selectors and Tags entries (template lines 13481-13482), and the Case
+Overview renders no selector-coverage card (line 9859). The `classic` value restores both.
+It is the arrangement the redesign replaces, kept for comparison.
+
+So a reader who greps `navDefs` finds eight navigation entries including Selectors and
+Tags, and concludes the design keeps three overlapping screens. It does not. The rendered
+sidebar has six. I made exactly that mistake; #700 records it.
+
+The remaining props are simulation states for screenshots: `extensionConnected`,
+`sinceLastVisit`, `firstRun`, `tourOnLaunch`, `motion`, all defaulting to true.
+
 ## Screens
 
 Eleven screens carry a `data-screen-label`: Dashboard, Case Overview, Captures, Selectors,
-Notes, Signals, Tags, Data, Settings, New Case Wizard, Chrome Extension. The case
-navigation lists eight entries and includes Selectors, Signals, and Tags as three separate
-items. Whether all three survive is unresolved and tracked as #700.
+Notes, Signals, Tags, Data, Settings, New Case Wizard, Chrome Extension. The Selectors and
+Tags screens are the `classic` branch. Under the default `consolidated` variant the Signals
+screen replaces both, and #400 removes them.
 
 ## What this file does not carry
 

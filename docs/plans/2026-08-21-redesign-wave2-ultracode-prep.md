@@ -20,7 +20,7 @@ Each ticket carries a wave-2 prep comment dated 2026-08-21 with its rulings, cor
 
 **#400 is now an XL.** It absorbed the Signals screen consolidation on 2026-08-21. Size the wave around that.
 | #397 three-column layout rework | `captures/` route, viewer tabs, `capView` toggle, resize panels | no; backstop fires on the lockfile |
-| #400 per-case exclusions **and the Signals rebuild** | migration v30, `captureServer`, whole Signals screen, one-line extension mirror | yes; human review, no auto-merge |
+| #400 per-case exclusions **and the Signals rebuild** | migration v30, `captureServer`, whole Signals screen, removal of `/selectors` and `/tags`, one-line extension mirror | yes; human review, no auto-merge |
 | #390 Mention editing UI | notes editor, chips, suggestion popup, snippet rendering | no, if the diff stays renderer-side |
 | #402 consolidated Overview with backlink map | `overview/`, first SVG primitive, backlink query layer | no; backstop may fire on `overviewModel.ts` |
 | #404 coach-mark engine and intro tour | tour engine, `__root.tsx`, extension-setup removal, settings keys | no; backstop fires on `schemas.ts` |
@@ -36,13 +36,20 @@ because the file ships packed and a plain grep for `onClick` or `viewBox` finds 
 Line numbers below are into the unpacked template (16161 lines), produced by the snippet in
 that README.
 
+**Build the default variant.** The mock carries editable props, and the defaults are the
+design: `overviewVariant: consolidated`, `density: compact`, `mentionStyle: chip`. The
+`classic` variant restores the Selectors and Tags screens and the Overview's
+selector-coverage card, and it is the arrangement this wave replaces. Reading `navDefs`
+without applying the variant filter is how I mis-reported the navigation as keeping three
+overlapping screens.
+
 | Ticket | Screen label in the mock | Template line |
 | --- | --- | --- |
 | #395 selector origin | Signals, detail rail | 10818 |
 | #397 three-column layout rework | Captures | 9942 |
 | #400 per-case exclusions | Signals, Auto-capture card | 10818 |
-| #390 Mention editing UI | Notes | 11219 |
-| #402 consolidated Overview and backlink map | Case Overview | 9620 |
+| #390 Mention editing UI | Notes, `chip` mention style | 11219 |
+| #402 consolidated Overview and backlink map | Case Overview, `consolidated` branch | 9620 |
 | #404 coach-mark engine and intro tour | Dashboard, plus the `data-tour` anchors | 9343 |
 | #406 read-only extension options page | Chrome Extension | 12176 |
 
@@ -56,10 +63,11 @@ wave-2 ticket:
   kinds: capture, case, event, file, folder, ledger, link, note, part, selector, snapshot,
   suggestion, tag. The app has zero (`grep -rn onContextMenu src/renderer/` returns nothing).
   Tracked as #701 and ruled: shared component plus registry, wave 3, no wave-2 hooks.
-- **Signals against Selectors and Tags.** The Signals screen in the mock carries a Selectors
-  section and a Tags section, and the navigation still lists all three as separate entries.
-  #400 now builds the consolidated page. Whether `/selectors` and `/tags` survive is still
-  open on #700 and **blocks #400**, because that ticket should not decide it alone.
+- **Signals replaces Selectors and Tags.** Ruled 2026-08-21, #700 closed. The mock settles it
+  itself: `overviewVariant` defaults to `consolidated`, and in that mode the sidebar filters
+  out the Selectors and Tags entries (template lines 13481-13482). The standalone Selectors
+  and Tags screens are its `classic` branch, kept for comparison. #400 builds the
+  consolidated page and removes both routes; the deletion list is on that ticket.
 
 ## Rulings recorded 2026-08-21 (all on the issues)
 
@@ -105,7 +113,7 @@ Wave 3 opens as wave 2 merges: #391 unblocks when #390 and #395 land; #398 is al
 
 ## Open items
 
-- **#700 blocks #400.** Confirm with the designer whether `/selectors` and `/tags` are removed when Signals lands, or whether the navigation list in the mock is stale. Cheapest of the open items and the only one that gates a wave ticket.
+- ~~#700 blocks #400.~~ Ruled 2026-08-21 and closed: Selectors and Tags are removed when Signals lands. **Nothing now gates the wave.**
 - #702 (top-bar Recording indicator) needs a ruling on whether it reflects `autoCaptureMode`, the existing `sessionActive`, or both. Does not gate the wave.
 - #698 (orphaned `AnalysisTab`, filed during this prep) is `ready-for-human`: the remount surface needs a ruling. It does not gate the wave.
 - The twelve fixes from the 2026-08-21 triage sweep hold for `/dispatch` after the wave merges.

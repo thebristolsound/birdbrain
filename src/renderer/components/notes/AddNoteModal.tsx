@@ -38,7 +38,7 @@ export function AddNoteModal({
   const { create } = useNotesMutations(caseId)
   const [title, setTitle] = useState('')
   const [bodyDoc, setBodyDoc] = useState<string | null>(null)
-  const editor = useNoteEditor({ onChange: setBodyDoc, testId: 'add-note-body' })
+  const editor = useNoteEditor({ caseId, onChange: setBodyDoc, testId: 'add-note-body' })
   const hasBody = editor ? !editor.isEmpty : false
 
   useEffect(() => {
@@ -82,7 +82,11 @@ export function AddNoteModal({
           className="mb-2 border-border bg-canvas font-semibold"
         />
         <div className="mb-3">
-          <NoteEditor editor={editor} minHeightClass="min-h-32" />
+          <NoteEditor
+            editor={editor}
+            minHeightClass="min-h-32"
+            placeholder="Start writing — type @ to link a capture, # for a selector or tag."
+          />
         </div>
         <div className="mb-3 truncate text-[11px] text-text-muted">Linked to: {captureUrl}</div>
         <DialogFooter>

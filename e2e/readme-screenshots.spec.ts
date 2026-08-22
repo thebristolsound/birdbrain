@@ -554,12 +554,12 @@ test.describe('README screenshots', () => {
     }
     await shootBothThemes(page, 'screenshot-recon')
 
-    // --- 4b. Selectors overview --------------------------------------------
+    // --- 4b. Signals (selectors + tags on one screen, #400) -----------------
     await page.evaluate((id) => {
-      window.location.hash = `/cases/${id}/selectors`
+      window.location.hash = `/cases/${id}/signals`
     }, caseId)
     await page.waitForTimeout(1200)
-    await shootBothThemes(page, 'screenshot-selectors')
+    await shootBothThemes(page, 'screenshot-signals')
 
     // --- 4c. Notes overview -------------------------------------------------
     await page.evaluate((id) => {
@@ -568,12 +568,9 @@ test.describe('README screenshots', () => {
     await page.waitForTimeout(1000)
     await shootBothThemes(page, 'screenshot-notes')
 
-    // --- 4d. Tags overview --------------------------------------------------
-    await page.evaluate((id) => {
-      window.location.hash = `/cases/${id}/tags`
-    }, caseId)
-    await page.waitForTimeout(1000)
-    await shootBothThemes(page, 'screenshot-tags')
+    // --- 4d. (was Tags overview) --------------------------------------------
+    // Tags are part of the Signals screen shot above (#400/#700); there is no
+    // separate Tags route left to photograph.
 
     // --- 4e. Command palette over the captures view -------------------------
     await page.evaluate((id) => {

@@ -1,7 +1,10 @@
 import { test, expect } from './fixtures/electronApp'
 
-test.describe('Tags tab', () => {
-  test('navigate to Tags tab, create and delete tags, see usage table', async ({ page }) => {
+// Tags moved onto the Signals screen with #400/#700 — same job, same case, one
+// page. The old inline manager and the separate usage table are gone; the card
+// row carries the name and the per-case count together.
+test.describe('Tags on the Signals screen', () => {
+  test('navigate to Signals, create and delete tags, see per-case counts', async ({ page }) => {
     // Create a case via the hash router.
     await page.evaluate(() => {
       window.location.hash = '/cases/new'
@@ -13,29 +16,31 @@ test.describe('Tags tab', () => {
     await page.waitForURL(/#\/cases\/.+\/overview/, { timeout: 10000 })
     await expect(page.getByRole('heading', { name: 'Tags E2E Case' })).toBeVisible()
 
-    // Navigate to Tags via the sidebar icon button.
-    await page.click('button[aria-label="Tags"]')
-    await page.waitForURL(/#\/cases\/.+\/tags/)
+    // Navigate to Signals via the sidebar icon button.
+    await page.click('button[aria-label="Signals"]')
+    await page.waitForURL(/#\/cases\/.+\/signals/)
 
-    // Create a tag from the inline manager.
-    await page.getByTestId('tag-name-input').fill('important')
-    await page.getByTestId('tag-add-btn').click()
+    // Create a tag from the inline add row.
+    const tagInput = page.getByTestId('add-tag-input')
+    await tagInput.fill('important')
+    await tagInput.press('Enter')
 
-    // The tag list inside TagManager should show the tag.
-    await expect(page.getByTestId('tag-manager')).toContainText('important')
+    const tagList = page.getByTestId('signals-tag-list')
+    await expect(tagList).toContainText('important')
+    // Zero captures in this case, so the row's count reads 0.
+    const importantRow = tagList.locator('[data-testid^="signal-row-"]', {
+      hasText: 'important'
+    })
+    await expect(importantRow.getByTestId('signal-count')).toHaveText('0')
 
-    // The usage table should list the tag with 0 usage in this case.
-    await expect(page.getByTestId('tags-usage-table')).toContainText('important')
-    await expect(page.getByTestId('tag-usage-count-important')).toHaveText('0')
+    // A second tag, added without leaving the field.
+    await tagInput.fill('reviewed')
+    await tagInput.press('Enter')
+    await expect(tagList).toContainText('reviewed')
 
-    // Create a second tag and confirm it also appears in the usage table.
-    await page.getByTestId('tag-name-input').fill('reviewed')
-    await page.getByTestId('tag-add-btn').click()
-    await expect(page.getByTestId('tag-usage-count-reviewed')).toHaveText('0')
-
-    // Delete the first tag via the manager's delete button (first row in the manager list).
-    await page.getByTestId('tag-delete-btn').first().click()
-    // Wait for the deleted tag to leave the usage table.
-    await expect(page.getByTestId('tags-usage-table')).not.toContainText('important')
+    // Delete the first tag from its row.
+    await page.getByLabel('Delete important').click()
+    await expect(tagList).not.toContainText('important')
+    await expect(tagList).toContainText('reviewed')
   })
 })

@@ -84,87 +84,11 @@ test.describe('UI density', () => {
   })
 })
 
-// #421: --d-row has to be the body-row height at every step, not only at
-// comfortable. jsdom does not lay out, so the class-contract test in
-// tests/components/SelectorTable.test.tsx cannot see a cell's padding push the
-// row past the metric — this measures the rendered rows in the built app.
-test.describe('Selector-table row density', () => {
-  const steps = [
-    ['compact', 26],
-    ['default', 30],
-    ['comfortable', 36]
-  ] as const
-
-  const wrappedPattern = Array.from({ length: 40 }, (_, i) => `wrapped-token-${i}`).join(' ')
-
-  test('body rows track --d-row at every step and a wrapped pattern grows the row', async ({
-    page
-  }) => {
-    // Seeded over the bridge: what is under test is the row layout, and the
-    // create flows are covered by cases.spec.ts and bulk-selectors.spec.ts.
-    const { caseId, stringId, regexId, wrappedId } = await page.evaluate(
-      async (wrappedPattern) => {
-        const { cases, selectors } = (
-          window as unknown as {
-            birdbrain: {
-              cases: { create: (p: { name: string }) => Promise<{ id: string }> }
-              selectors: {
-                create: (p: {
-                  caseId: string
-                  pattern: string
-                  isRegex?: boolean
-                }) => Promise<{ id: string }>
-              }
-            }
-          }
-        ).birdbrain
-        const { id } = await cases.create({ name: 'Row Density E2E' })
-        const string = await selectors.create({ caseId: id, pattern: 'acme' })
-        const regex = await selectors.create({ caseId: id, pattern: 'acme\\d+', isRegex: true })
-        const wrapped = await selectors.create({ caseId: id, pattern: wrappedPattern })
-        return { caseId: id, stringId: string.id, regexId: regex.id, wrappedId: wrapped.id }
-      },
-      wrappedPattern
-    )
-    // The dashboard already fetched the (empty) cases list; a reload drops that
-    // cache so the workspace resolves the seeded case. Same boot budget as the
-    // reload test above.
-    await page.reload()
-    await expect(page.getByTestId('app-ready')).toBeVisible({ timeout: 15000 })
-
-    for (const [step, rowPx] of steps) {
-      await openAppearanceTab(page)
-      await page.click(`[data-testid="density-${step}"]`)
-      await expect.poll(() => densityAttr(page)).toBe(step)
-      expect(await rootVar(page, '--d-row')).toBe(`${rowPx}px`)
-
-      await page.evaluate((id) => {
-        window.location.hash = `/cases/${id}/selectors`
-      }, caseId)
-      await expect(page.getByTestId(/^selector-row-/)).toHaveCount(3)
-
-      const height = async (name: string, id: string) => {
-        const box = await page.getByTestId(`selector-row-${id}`).boundingBox()
-        if (!box) throw new Error(`${name} row has no box at ${step}`)
-        return box.height
-      }
-      // Single-line rows sit exactly on the metric: a py on any fixed-height cell
-      // or on the regex chip would push these past --d-row (the #421 defect).
-      expect(await height('string', stringId), `string row at ${step}`).toBe(rowPx)
-      expect(await height('regex', regexId), `regex row at ${step}`).toBe(rowPx)
-
-      // A wrapped pattern grows the row rather than clipping, and keeps the
-      // clearance the pattern cell's py provides between text and row borders.
-      const wrappedRow = page.getByTestId(`selector-row-${wrappedId}`)
-      const rowBox = await wrappedRow.boundingBox()
-      const textBox = await wrappedRow.getByTestId('selector-pattern').boundingBox()
-      if (!rowBox || !textBox) throw new Error(`wrapped row has no box at ${step}`)
-      expect(rowBox.height, `wrapped row at ${step}`).toBeGreaterThan(rowPx)
-      expect(textBox.y - rowBox.y, `top clearance at ${step}`).toBeGreaterThanOrEqual(3)
-      expect(
-        rowBox.y + rowBox.height - (textBox.y + textBox.height),
-        `bottom clearance at ${step}`
-      ).toBeGreaterThanOrEqual(3)
-    }
-  })
-})
+// The `Selector-table row density` describe lived here until #400 replaced the
+// Selectors screen with Signals. It pinned #421: single-line table rows had to
+// equal `--d-row` exactly at every density step. The Signals rows are two-line
+// (name over pattern) with fixed 8px/10px padding, so there is no single-line
+// metric left for them to track and the design supplies no replacement.
+//
+// The guard is not silently dropped: issue #706 carries the successor pin for
+// the Signals rows, to be written once the design supplies a row metric.

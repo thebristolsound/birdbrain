@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   dimOpacity,
+  isRectVisible,
   markLayout,
   rectMoved,
   screenLayout,
@@ -134,6 +135,35 @@ describe('dimOpacity', () => {
   it('falls back to a flat dim when there is no ring to do it', () => {
     expect(dimOpacity('mark', false)).toBe(0.38)
     expect(dimOpacity('screen', false)).toBe(0.45)
+  })
+})
+
+describe('isRectVisible', () => {
+  it('accepts an anchor inside the viewport', () => {
+    expect(isRectVisible({ top: 100, left: 200, width: 120, height: 40 }, VIEWPORT)).toBe(true)
+  })
+
+  it('accepts an anchor only partly in view, which the flip rule still handles', () => {
+    expect(isRectVisible({ top: 780, left: 0, width: 120, height: 40 }, VIEWPORT)).toBe(true)
+    expect(isRectVisible({ top: -20, left: 0, width: 120, height: 40 }, VIEWPORT)).toBe(true)
+  })
+
+  // The extension banner sits below the fold on a dashboard with anything above
+  // it, which is what took the tooltip off screen with it.
+  it('rejects an anchor below the fold', () => {
+    expect(isRectVisible({ top: 900, left: 200, width: 120, height: 40 }, VIEWPORT)).toBe(false)
+  })
+
+  it('rejects an anchor scrolled off the top or off either side', () => {
+    expect(isRectVisible({ top: -60, left: 200, width: 120, height: 40 }, VIEWPORT)).toBe(false)
+    expect(isRectVisible({ top: 100, left: 1400, width: 120, height: 40 }, VIEWPORT)).toBe(false)
+    expect(isRectVisible({ top: 100, left: -200, width: 120, height: 40 }, VIEWPORT)).toBe(false)
+  })
+
+  // A hidden element measures all-zero, which this rejects; a zero-size element
+  // at a real position is still on screen and gets its ring.
+  it('rejects a hidden anchor', () => {
+    expect(isRectVisible({ top: 0, left: 0, width: 0, height: 0 }, VIEWPORT)).toBe(false)
   })
 })
 

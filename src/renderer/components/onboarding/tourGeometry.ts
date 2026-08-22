@@ -128,6 +128,24 @@ export function dimOpacity(kind: 'welcome' | 'mark' | 'screen', anchored: boolea
   return kind === 'screen' ? 0.45 : 0.38
 }
 
+/**
+ * Whether a measured anchor is on screen at all.
+ *
+ * Not every anchor is: the extension banner sits below the fold on a dashboard
+ * with any content above it. A ring drawn around something the operator cannot
+ * see is worse than useless, because the tooltip goes off screen with it — so
+ * the engine scrolls the anchor into view, and falls back to the centred card
+ * if it still cannot bring it in.
+ */
+export function isRectVisible(rect: TourRect, viewport: Viewport): boolean {
+  return (
+    rect.top < viewport.height &&
+    rect.top + rect.height > 0 &&
+    rect.left < viewport.width &&
+    rect.left + rect.width > 0
+  )
+}
+
 /** Whether a re-measurement has moved enough to be worth re-rendering for. */
 export function rectMoved(previous: TourRect | null, next: TourRect): boolean {
   if (!previous) return true

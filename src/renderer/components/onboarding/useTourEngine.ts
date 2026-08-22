@@ -13,7 +13,11 @@ import {
   type TourRoute,
   type TourStep
 } from '@renderer/components/onboarding/tourSteps'
-import { rectMoved, type TourRect } from '@renderer/components/onboarding/tourGeometry'
+import {
+  isRectVisible,
+  rectMoved,
+  type TourRect
+} from '@renderer/components/onboarding/tourGeometry'
 
 interface TourState {
   chapter: TourChapter
@@ -59,12 +63,22 @@ export interface TourEngine {
   toggleInstall: () => void
 }
 
-function measure(target: string | undefined): TourRect | null {
-  if (!target) return null
-  const el = document.querySelector(`[data-tour="${target}"]`)
-  if (!el) return null
+function find(target: string | undefined): Element | null {
+  return target ? document.querySelector(`[data-tour="${target}"]`) : null
+}
+
+function rectOf(el: Element): TourRect {
   const r = el.getBoundingClientRect()
   return { top: r.top, left: r.left, width: r.width, height: r.height }
+}
+
+function measure(target: string | undefined): TourRect | null {
+  const el = find(target)
+  return el ? rectOf(el) : null
+}
+
+function viewport(): { width: number; height: number } {
+  return { width: window.innerWidth, height: window.innerHeight }
 }
 
 /**
@@ -178,14 +192,26 @@ export function useTourEngine(caseId: string | null): TourEngine {
     let attempts = 0
     let timer = 0
     let cancelled = false
+    let scrolled = false
 
     function attempt(): void {
       if (cancelled) return
-      const found = measure(target)
-      if (found) {
-        setRect((previous) => (rectMoved(previous, found) ? found : previous))
-        setAnchorMissing(false)
-        return
+      const el = find(target)
+      if (el) {
+        const found = rectOf(el)
+        if (isRectVisible(found, viewport())) {
+          setRect((previous) => (rectMoved(previous, found) ? found : previous))
+          setAnchorMissing(false)
+          return
+        }
+        // Below the fold: bring it up once, then re-measure. Without this the
+        // ring lands on something off screen and takes the tooltip with it.
+        if (!scrolled) {
+          scrolled = true
+          el.scrollIntoView({ block: 'center', inline: 'nearest' })
+          timer = window.setTimeout(attempt, ANCHOR_RETRY_MS)
+          return
+        }
       }
       attempts += 1
       if (attempts > ANCHOR_RETRY_LIMIT) {
@@ -210,7 +236,9 @@ export function useTourEngine(caseId: string | null): TourEngine {
     if (!state || !target) return
     function remeasure(): void {
       const found = measure(target)
-      if (found) setRect((previous) => (rectMoved(previous, found) ? found : previous))
+      if (found && isRectVisible(found, viewport())) {
+        setRect((previous) => (rectMoved(previous, found) ? found : previous))
+      }
     }
     window.addEventListener('resize', remeasure)
     window.addEventListener('scroll', remeasure, true)

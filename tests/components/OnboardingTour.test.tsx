@@ -343,6 +343,48 @@ describe('the case chapter', () => {
   })
 })
 
+describe('an anchor below the fold', () => {
+  // The extension banner is under the hero on any dashboard with content above
+  // it, so the ring — and with it the tooltip — landed off screen.
+  it('scrolls the anchor into view and rings it there', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    install(settingsFixture({ isFreshInstall: true }))
+    const target = anchor('newcase', { top: 1400 })
+    const scrollIntoView = vi.fn(() => {
+      target.getBoundingClientRect = () =>
+        ({ top: 380, left: 200, width: 120, height: 40, right: 320, bottom: 420, x: 200, y: 380 })
+          .valueOf() as DOMRect
+    })
+    target.scrollIntoView = scrollIntoView
+
+    renderTour()
+    fireEvent.click(await screen.findByTestId('tour-next'))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200)
+    })
+
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center', inline: 'nearest' })
+    expect(screen.getByTestId('tour-ring').style.top).toBe('376px')
+    expect(screen.getByTestId('tour-mark').getAttribute('data-anchored')).toBe('true')
+  })
+
+  it('falls back to the centred card when it cannot be brought into view', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    install(settingsFixture({ isFreshInstall: true }))
+    const target = anchor('newcase', { top: 1400 })
+    target.scrollIntoView = vi.fn()
+
+    renderTour()
+    fireEvent.click(await screen.findByTestId('tour-next'))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(800)
+    })
+
+    expect(screen.getByTestId('tour-mark').getAttribute('data-anchored')).toBe('false')
+    expect(screen.queryByTestId('tour-ring')).toBeNull()
+  })
+})
+
 describe('measurement', () => {
   it('follows a target that scrolls inside its pane', async () => {
     install(settingsFixture({ isFreshInstall: true }))

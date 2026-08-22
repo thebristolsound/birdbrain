@@ -132,7 +132,8 @@ export function CapturesRoute() {
     result: BatchDeleteResult
   } | null>(null)
   // When the viewport forces the rail, the panel can still be opened as an
-  // overlay so custody/Wayback/tags/notes stay reachable on narrow windows.
+  // overlay so custody/tags/notes stay reachable on narrow windows. Not
+  // Wayback: it is a viewer tab now, and the overlay is dropped while it is up.
   const [forcedPanelOpen, setForcedPanelOpen] = useState(false)
 
   // Sync forced flag from viewport width.

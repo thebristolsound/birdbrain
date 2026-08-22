@@ -20,8 +20,9 @@ export function CaptureDetailsRail({ capture, caseId, forced, onExpand, onOpenEx
   const noteCount = notes.filter((n) => n.captureId === capture.id).length
 
   // When the viewport forces the collapse there's no room for a docked panel,
-  // but custody/Wayback/tags/notes must stay reachable — onExpand then opens
-  // the details as an overlay instead of re-docking.
+  // but custody/tags/notes must stay reachable — onExpand then opens the
+  // details as an overlay instead of re-docking. Wayback is not among them: it
+  // is a viewer tab now, and the overlay is dropped while it is up.
   const expandTitle = forced ? 'Show details' : 'Expand details'
 
   return (

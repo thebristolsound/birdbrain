@@ -32,6 +32,7 @@ export const queryKeys = {
   notes: (caseId: string) => ['notes', caseId] as const,
   noteCount: (caseId: string) => ['notes', 'count', caseId] as const,
   notesSearch: (caseId: string, query: string) => ['notes', 'search', caseId, query] as const,
+  noteReferenceEdges: (caseId: string) => ['notes', 'referenceEdges', caseId] as const,
   extractedDataCategories: (caseId: string) => ['extractedData', 'categories', caseId] as const,
   extractedDataSubcategories: (caseId: string, category: string) =>
     ['extractedData', 'subcategories', caseId, category] as const,

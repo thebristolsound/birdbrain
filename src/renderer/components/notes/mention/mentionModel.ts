@@ -156,6 +156,15 @@ export function mentionTooltip(
  * One function on purpose. #400 replaces the Selectors and Tags screens with a
  * single Signals screen, at which point retargeting both chip kinds is an edit
  * to two lines here rather than a hunt through the editor.
+ *
+ * Those two lines cannot land here yet (#716): `/cases/$caseId/signals` is not
+ * in the router's route union until #400 merges, so retargeting now fails
+ * `tsc -p tsconfig.web.json` on this branch. Retargeting alone is also not the
+ * whole fix — the Signals screen selects `allSignals[0]` when nothing names a
+ * target, so a chip that says "click to edit the rule" would open whichever
+ * rule sorts first. Whoever carries this over must also correct
+ * CLICK_HINT.selector and hand `targetId` through, the way the capture kind
+ * already does in MentionChip.
  */
 export const MENTION_ROUTES = {
   capture: '/cases/$caseId/captures',

@@ -140,6 +140,12 @@ export interface InstallStep {
   title: string
   sub: ReactNode
   caption: ReactNode
+  /**
+   * One-sentence form, for surfaces with no room for `caption` — the tour's
+   * install walkthrough renders these three inside a 296px tooltip (#404).
+   * Kept here so the two surfaces cannot drift on what the steps say.
+   */
+  brief: ReactNode
   Visual: ComponentType
 }
 
@@ -158,6 +164,12 @@ export const INSTALL_STEPS: InstallStep[] = [
         corner of the page.
       </>
     ),
+    brief: (
+      <>
+        Open <span className="font-mono text-text-secondary">chrome://extensions</span> and switch
+        on Developer mode (top right).
+      </>
+    ),
     Visual: DeveloperModeVisual
   },
   {
@@ -167,6 +179,12 @@ export const INSTALL_STEPS: InstallStep[] = [
       <>
         Click <strong className="font-semibold text-text-primary">Load unpacked</strong> on the left
         of the developer toolbar. A system file picker opens.
+      </>
+    ),
+    brief: (
+      <>
+        Click <span className="font-semibold text-text-primary">Load unpacked</span> in the toolbar
+        that appears.
       </>
     ),
     Visual: LoadUnpackedVisual
@@ -186,6 +204,12 @@ export const INSTALL_STEPS: InstallStep[] = [
         button opens, not a zip or a copy from elsewhere, so the extension matches this app version.
         After an app update, reload it from{' '}
         <span className="font-mono text-accent">chrome://extensions</span>.
+      </>
+    ),
+    brief: (
+      <>
+        Pick the folder holding <span className="font-mono text-text-secondary">manifest.json</span>{' '}
+        — no restart needed. Pin it from the puzzle-piece menu.
       </>
     ),
     Visual: SelectFolderVisual

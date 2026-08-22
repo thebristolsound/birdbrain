@@ -234,6 +234,62 @@ describe('replay', () => {
   })
 })
 
+describe('one chapter displacing another', () => {
+  // Neither of these paths reaches `close`, so the displaced chapter's
+  // completion has to be written where the displacement happens. Without that
+  // the intro is never recorded, `isFreshInstall` is latched once and never
+  // cleared, and the welcome card returns on every launch from then on. Every
+  // other case-chapter test pre-seeds `{ intro: true }`, which is why this
+  // survived the first pass.
+  beforeEach(() => {
+    install(settingsFixture({ isFreshInstall: true }))
+  })
+
+  it('records the intro complete when creating a case pre-empts it', async () => {
+    anchor('nav-captures', { top: 120, left: 4, width: 40, height: 40 })
+    const { rerender } = renderTour()
+    expect(await screen.findByTestId('tour-welcome')).toBeTruthy()
+
+    routerState.caseId = 'case-1'
+    await navigateTo('/cases/case-1/overview', () => rerender(<OnboardingTour />))
+
+    expect(await screen.findByTestId('tour-screen')).toBeTruthy()
+    await waitFor(() => expect(updated).toEqual([{ onboardingChapters: { intro: true } }]))
+  })
+
+  it('records the intro complete when the button it is ringing replays another chapter', async () => {
+    anchor('newcase')
+    anchor('browser')
+    renderTour()
+    fireEvent.click(await screen.findByTestId('tour-next'))
+    fireEvent.click(await screen.findByTestId('tour-next'))
+    // Now on the step that rings the whole extension banner. The ring is
+    // pointer-events-none, so the Setup Guide button inside it is live and
+    // dispatches exactly this.
+    expect(screen.getByTestId('tour-count').textContent).toContain('2 of 2')
+    act(() => startTour('ext'))
+
+    await waitFor(() => expect(updated).toEqual([{ onboardingChapters: { intro: true } }]))
+
+    // The replay that displaced it still writes nothing of its own.
+    fireEvent.click(await screen.findByTestId('tour-skip'))
+    await expectTourClosed()
+    expect(updated).toEqual([{ onboardingChapters: { intro: true } }])
+  })
+
+  it('writes nothing when the displaced chapter was itself a replay', async () => {
+    install(settingsFixture({ onboardingChapters: { intro: true, ext: true, case: true } }))
+    anchor('browser')
+    renderTour()
+    act(() => startTour('ext'))
+    await screen.findByTestId('tour-mark')
+    act(() => startTour('intro'))
+
+    expect(await screen.findByTestId('tour-welcome')).toBeTruthy()
+    expect(updated).toEqual([])
+  })
+})
+
 describe('a missing anchor', () => {
   // Six of the nine anchor families live on surfaces the rest of the redesign
   // rebuilt, so anchor slip is the expected failure. The prototype leaves the

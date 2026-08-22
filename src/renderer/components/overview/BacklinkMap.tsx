@@ -5,8 +5,10 @@ import {
   computeBacklinkMap,
   nodeTypeColor,
   MAP_LEGEND_TYPES,
+  NODE_CAP,
   type BacklinkMapLabels,
   type MapNodeType,
+  type MapNotice,
   type MapNoteInput
 } from '@renderer/components/overview/backlinkMapModel'
 
@@ -18,9 +20,11 @@ interface BacklinkMapProps {
   onAllNotes: () => void
 }
 
-const EMPTY_COPY: Record<'no-notes' | 'no-mentions', string> = {
+const NOTICE_COPY: Record<MapNotice, string> = {
   'no-notes': 'No notes in this case yet.',
-  'no-mentions': 'No Mentions to map yet.'
+  'no-mentions': 'No Mentions to map yet.',
+  'entities-capped':
+    `All ${NODE_CAP} nodes the map can draw are notes, so what they mention is not drawn.`
 }
 
 /**
@@ -86,6 +90,12 @@ export function BacklinkMap({ notes, edges, labels, onOpenNote, onAllNotes }: Ba
         </button>
       </div>
 
+      {!model.isEmpty && model.notice ? (
+        <p data-testid="overview-map-notice" className="mb-2 font-body text-[11px] text-text-muted">
+          {NOTICE_COPY[model.notice]}
+        </p>
+      ) : null}
+
       <div
         data-testid="overview-map-canvas"
         className="relative min-h-[220px] flex-1 overflow-hidden rounded-md border border-border"
@@ -101,7 +111,7 @@ export function BacklinkMap({ notes, edges, labels, onOpenNote, onAllNotes }: Ba
             data-testid="overview-map-empty"
             className="absolute inset-0 grid place-items-center px-4 text-center font-body text-xs text-text-faint"
           >
-            {EMPTY_COPY[model.emptyReason ?? 'no-notes']}
+            {NOTICE_COPY[model.notice ?? 'no-notes']}
           </p>
         ) : (
           <>

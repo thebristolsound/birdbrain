@@ -87,7 +87,7 @@ describe('computeBacklinkMap', () => {
       capped: false,
       backlinkCount: 0,
       isEmpty: true,
-      emptyReason: 'no-notes'
+      notice: 'no-notes'
     })
     expect(model.countLabel).toBe('0 nodes · 0 backlinks')
   })
@@ -96,7 +96,7 @@ describe('computeBacklinkMap', () => {
     const model = build({ notes: [note('n1'), note('n2')] })
 
     expect(model.isEmpty).toBe(true)
-    expect(model.emptyReason).toBe('no-mentions')
+    expect(model.notice).toBe('no-mentions')
     expect(model.edges).toEqual([])
     // The nodes are still computed: the header count stays honest about what
     // the case holds even while the canvas shows its empty state.
@@ -275,6 +275,41 @@ describe('computeBacklinkMap', () => {
       expect(capped.nodes.filter((n) => n.isNote)).toHaveLength(24)
       expect(capped.nodes.filter((n) => !n.isNote)).toHaveLength(0)
       expect(capped.edges).toEqual([])
+      // The case has a Mention; the ceiling is why it is not on the canvas.
+      expect(capped.isEmpty).toBe(false)
+      expect(capped.notice).toBe('entities-capped')
+    })
+
+    // NODE_CAP notes is where the ceiling first leaves nothing for the entities:
+    // one note fewer and a single entity still survives to be drawn.
+    it('keeps the notes drawn when the ceiling leaves no room for their Mentions', () => {
+      const notes = Array.from({ length: NODE_CAP }, (_, i) => note(`n${i}`))
+      const mentions = [edge('n0', 'capture', 'cap1'), edge('n1', 'tag', 'tag1')]
+      const model = build({ notes, edges: mentions })
+
+      expect(model.nodes).toHaveLength(NODE_CAP)
+      expect(model.nodes.every((n) => n.isNote)).toBe(true)
+      expect(model.edges).toEqual([])
+      expect(model.isEmpty).toBe(false)
+      expect(model.notice).toBe('entities-capped')
+      expect(model.countLabel).toBe('showing 20 of 22 nodes · 0 backlinks')
+
+      const under = build({ notes: notes.slice(0, NODE_CAP - 1), edges: mentions })
+      expect(under.notice).toBeNull()
+      expect(under.edges).toHaveLength(1)
+    })
+
+    // A Note-to-Note Backlink joins two nodes the ceiling never drops, so it
+    // survives however many notes the case has.
+    it('is not the capped notice when a surviving Backlink still draws', () => {
+      const notes = Array.from({ length: 24 }, (_, i) => note(`n${i}`))
+      const model = build({
+        notes,
+        edges: [edge('n0', 'note', 'n1'), edge('n2', 'capture', 'cap1')]
+      })
+
+      expect(model.edges.map((e) => e.kind)).toEqual(['backlink'])
+      expect(model.notice).toBeNull()
     })
   })
 

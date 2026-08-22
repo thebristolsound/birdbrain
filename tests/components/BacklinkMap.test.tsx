@@ -188,6 +188,27 @@ describe('BacklinkMap', () => {
     renderMap({ edges: [] })
 
     expect(screen.getByTestId('overview-map-empty').textContent).toBe('No Mentions to map yet.')
+    expect(screen.queryByTestId('overview-map-notice')).toBeNull()
+  })
+
+  // A case whose notes fill the ceiling still has Mentions; saying it has none
+  // while hiding all 20 note pills was the #402 review's blocking finding.
+  it('keeps the notes drawn and explains the ceiling instead of claiming no Mentions', () => {
+    const notes = Array.from({ length: 20 }, (_, i) => ({ id: `n${i}`, title: `Note ${i}` }))
+    renderMap({ notes, edges: [edge('n0', 'capture', 'cap1')], labels: {} })
+
+    expect(screen.queryByTestId('overview-map-empty')).toBeNull()
+    expect(screen.getAllByTestId('overview-map-node')).toHaveLength(20)
+    expect(screen.queryAllByTestId('overview-map-edge')).toHaveLength(0)
+    expect(screen.getByTestId('overview-map-notice').textContent).toBe(
+      'All 20 nodes the map can draw are notes, so what they mention is not drawn.'
+    )
+  })
+
+  it('carries no notice on a map that draws in full', () => {
+    renderMap()
+
+    expect(screen.queryByTestId('overview-map-notice')).toBeNull()
   })
 
   it('routes the header action to the notes screen', () => {

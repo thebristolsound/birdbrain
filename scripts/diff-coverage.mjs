@@ -111,12 +111,14 @@ export const executableChangedLines = (lines, hits) => {
 // is the case that motivated this: it is excluded from vitest's coverage
 // `include`, so an extension-only PR scored zero lines and printed a pass.
 const SOURCE_LIKE = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/
+// `.d.mts` and `.d.cts` are declarations too, and `SOURCE_LIKE` matches their tails.
+const DECLARATION = /\.d\.(ts|mts|cts)$/
 export const isSourceLike = (path) =>
   SOURCE_LIKE.test(path) &&
   !path.startsWith('tests/') &&
   !path.startsWith('e2e/') &&
   !path.startsWith('scripts/') &&
-  !path.endsWith('.d.ts')
+  !DECLARATION.test(path)
 
 const main = async () => {
   const root = process.cwd()

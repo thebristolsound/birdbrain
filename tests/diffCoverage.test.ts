@@ -158,4 +158,11 @@ describe('isSourceLike', () => {
     expect(isSourceLike('scripts/diff-coverage.mjs')).toBe(false)
     expect(isSourceLike('src/renderer/env.d.ts')).toBe(false)
   })
+
+  it('excludes every declaration-file variant, not just .d.ts', () => {
+    expect(isSourceLike('src/shared/shim.d.mts')).toBe(false)
+    expect(isSourceLike('src/shared/shim.d.cts')).toBe(false)
+    expect(isSourceLike('src/shared/real.mts')).toBe(true)
+    expect(isSourceLike('src/shared/real.cts')).toBe(true)
+  })
 })

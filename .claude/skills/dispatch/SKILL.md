@@ -230,8 +230,12 @@ upstream is putting it back.
    winner's marker; leave it in place.
 
 Only after the claim settles in your favour, dispatch `birdbrain-implementer` with that issue
-number and worktree isolation. The
-implementer owns everything downstream of intake: the ready-for-agent bar check, the
+number and worktree isolation. **Say in the prompt that it is dispatched.** Its PR-opening
+contract branches on that word and fails closed to hand-off without it, so an implementer told
+nothing will return handoff data rather than open its own PR — correct, but it will also flag
+the mode as unstated in its report.
+
+The implementer owns everything downstream of intake: the ready-for-agent bar check, the
 implementation, the verify loop, and the evidence gate (label determination, Evidence impact
 section, known-answer test).
 
@@ -246,11 +250,11 @@ title, head sha, a path to the PR body it wrote, and the labels it determined ar
 **You** open the **draft** PR against `main` and apply the labels via the write path:
 
 - Locally: `agh pr create --draft --base main --head <branch> --title <title> --body-file
-  <path> --label agent-pr` — **through `agh`, never bare `gh`**, and **apply the label in the
-  create call, not afterwards.** The `pre-pass-gate` workflow reads labels on the `opened`
-  event; a PR opened unlabelled seeds `agent/pre-pass=success` and would then have to be
-  upgraded to `pending`, which is a write that can race the dispatcher's own verdict on the
-  same sha.
+  <path> --label agent-authored --label agent-pr` — **through `agh`, never bare `gh`**, and
+  **apply the labels in the create call, not afterwards.** The `pre-pass-gate` workflow reads
+  labels on the `opened` event; a PR opened unlabelled seeds `agent/pre-pass=success` and
+  would then have to be upgraded to `pending`, which is a write that can race the
+  dispatcher's own verdict on the same sha.
 - On the web: not currently possible under the contract — the MCP tools write as the sandbox
   identity, and the identity check at the top of the cycle already stopped you. (For the
   record, the mechanism was `mcp__github__create_pull_request` then `mcp__github__issue_write`,
@@ -265,9 +269,12 @@ the claim**: remove `agent-wip` from the issue — the `agent-pr` label on the P
 marker from here on. A claim that outlives its PR-open is the leftover state section 1 has to
 clean up.
 
-`agent-pr` goes on every agent PR; add `evidence-affecting` when the implementer reports the
-gate fired. If the implementer's label determination looks wrong, say so in your report — do
-not silently substitute your own judgement for its stated reasoning.
+`agent-authored` goes on every agent PR — it records that an agent wrote the diff, and both
+`pre-pass-gate.yml` and `ci.yml`'s draft exemption key on it (#561). `agent-pr` goes on every
+PR you open, because everything you open is taking the slot; it is the off-slot work you did
+not dispatch that carries `agent-authored` alone. Add `evidence-affecting` when the
+implementer reports the gate fired. If the implementer's label determination looks wrong, say
+so in your report — do not silently substitute your own judgement for its stated reasoning.
 
 **The give-up path needs you too.** The implementer cannot comment or relabel, so it returns
 its blockers as text and stops. Via the write path, you post them to the issue, swap

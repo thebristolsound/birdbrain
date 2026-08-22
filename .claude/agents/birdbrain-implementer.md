@@ -151,7 +151,11 @@ Evidence-affecting PRs are never merged without human review. Do not weaken that
   this means actively removing it, not just declining to type it. After every commit, read
   `git log -1 --format=%B`; if a trailer appeared, `git commit --amend` it away before pushing.
 - **Opening the PR.** Which half of this applies depends on who spawned you, not on whether
-  `gh pr create` happens to work where you are running.
+  `gh pr create` happens to work where you are running. **Read your invoking prompt and
+  decide before you push.** If it does not say, you are dispatched: hand off, and say in
+  your report that the mode was unstated so whoever reads it can open the PR. Handing off
+  a PR nobody opens costs one message. Opening one the dispatcher then refuses costs the
+  slot.
 
   **The labels are the same either way, and they are not optional.** `agent-authored` always,
   because it records that an agent wrote the diff — `.github/workflows/pre-pass-gate.yml` and
@@ -165,7 +169,8 @@ Evidence-affecting PRs are never merged without human review. Do not weaken that
   four of them evidence-affecting, and every gate that keys on a label read them as
   human-written. Twelve blocking defects reached the merge box behind a green badge.
 
-  **Dispatched by the routine: push the branch and hand off. Never open the PR yourself.**
+  **Dispatched by the routine, or unsure: push the branch and hand off. Never open the PR
+  yourself.** The dispatcher says so when it spawns you; absent that, assume it.
   This is a control, not a capability limit, so it holds even where `gh pr create` works. The
   dispatcher is the only holder of the machine token, which is what makes one identity the
   author of every PR entering the slot (ADR-0012); it is instructed to treat a PR showing the
@@ -181,8 +186,9 @@ Evidence-affecting PRs are never merged without human review. Do not weaken that
   `main` and applies them. Because you are not the actor who opens or labels it, your body
   must not claim you did either: name the handoff explicitly, per rule 4 of the evidence gate.
 
-  **Run ad hoc as a background job, with no dispatcher above you: open the draft PR yourself
-  and apply the labels yourself.** Nothing else is going to, and an unlabelled PR is #504.
+  **Told explicitly that you are running ad hoc, with no dispatcher above you: open the
+  draft PR yourself and apply the labels yourself.** Nothing else is going to, and an
+  unlabelled PR is #504.
   Such a PR is not entering the slot, so it carries `agent-authored` without `agent-pr` —
   which is also why its authoring under the maintainer's login is not the violation above.
   Note that `--label` does not attach labels atomically: `CreatePullRequestInput` has no

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Plus, ChevronDown, ClipboardList, RefreshCcw } from 'lucide-react'
+import { Plus, ClipboardList, RefreshCcw } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { Button, Dialog, DialogContent, DialogHeader, DialogTitle } from '@renderer/components/ui'
 import { AddUrlsBox } from '@renderer/components/captures/AddUrlsBox'
@@ -97,18 +97,20 @@ export function CaptureMenu({ caseId }: CaptureMenuProps) {
           Recapture failed
         </span>
       )}
+      {/* Icon-only, per the design: the rebuilt list header is a single row and
+          a labelled split button does not fit beside sort, filter and the view
+          toggle at the list column's 316px default. */}
       <Button
         ref={anchorRef}
-        size="sm"
+        size="icon"
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-label="New capture"
+        title="New capture"
         data-testid="capture-menu-btn"
-        className="gap-1.5"
       >
-        <Plus className="h-3 w-3" strokeWidth={2} />
-        Capture
-        <ChevronDown className="h-3 w-3" strokeWidth={1.8} />
+        <Plus className="h-3.5 w-3.5" strokeWidth={2} />
       </Button>
 
       {open && (

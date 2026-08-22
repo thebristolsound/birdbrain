@@ -115,7 +115,7 @@ test.describe('Annotations', () => {
       .toBeGreaterThan(0)
 
     // Switch to another view and back to screenshot to force a remount of the editor.
-    await page.getByRole('tab', { name: 'Source' }).click()
+    await page.getByRole('tab', { name: 'Text' }).click()
     await page.getByRole('tab', { name: 'Screenshot' }).click()
 
     // Verify the saved shape is rendered after reload by inspecting the editor's react-konva tree.

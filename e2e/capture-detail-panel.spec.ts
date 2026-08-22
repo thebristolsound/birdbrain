@@ -72,10 +72,11 @@ test.describe('Capture detail panel', () => {
     await item.waitFor({ timeout: 10000 })
     await item.click()
 
-    // Panel renders expanded.
+    // Panel renders expanded. Its width is now the resizable panel's inline
+    // flex-basis, not a Tailwind class, so measure it.
     const aside = page.getByTestId('capture-details-aside')
     await expect(aside).toBeVisible()
-    await expect(aside).toHaveClass(/w-\[400px\]/)
+    expect((await aside.boundingBox())!.width).toBeGreaterThan(300)
 
     // Toggle favorite — the star action now lives in the header ⋯ menu and its
     // label flips from "Star" to "Unstar".
@@ -99,6 +100,7 @@ test.describe('Capture detail panel', () => {
 
     // Restore wide viewport — panel returns to expanded.
     await win.setViewportSize({ width: 1400, height: 900 })
-    await expect(aside).toHaveClass(/w-\[400px\]/)
+    await expect(aside).not.toHaveClass(/w-10/)
+    expect((await aside.boundingBox())!.width).toBeGreaterThan(300)
   })
 })

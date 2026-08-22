@@ -9,7 +9,6 @@ import {
   Calendar,
   Shield,
   ShieldCheck,
-  Archive,
   RefreshCcw,
   MoreHorizontal,
   Plus,
@@ -21,7 +20,6 @@ import type { Capture } from '@shared/types'
 import {
   notesQueryOptions,
   useNotesMutations,
-  waybackLookupQueryOptions,
   useRecaptureMutations,
   useVerifyCapture
 } from '@renderer/lib/queries'
@@ -39,7 +37,6 @@ import { NoteEditor } from '@renderer/components/notes/NoteEditor'
 import { useNoteEditor } from '@renderer/components/notes/useNoteEditor'
 import { getProvenanceColor } from '@renderer/components/captures/getProvenanceColor'
 import { ForensicsTab } from '@renderer/components/captures/ForensicsTab'
-import { WaybackTab } from '@renderer/components/captures/WaybackTab'
 
 interface Props {
   capture: Capture
@@ -48,18 +45,6 @@ interface Props {
   onOpenExternal: () => void
   onDelete: () => void
   onOpenAddNote: () => void
-}
-
-function formatClosestDelta(snapshotIso: string, captureIso: string): string {
-  const diff = new Date(snapshotIso).getTime() - new Date(captureIso).getTime()
-  const mins = Math.round(Math.abs(diff) / 60_000)
-  const span =
-    mins < 60
-      ? `${mins}m`
-      : mins < 48 * 60
-        ? `${Math.round(mins / 60)}h`
-        : `${Math.round(mins / (24 * 60))}d`
-  return `${span} ${diff <= 0 ? 'before' : 'after'}`
 }
 
 export function CaptureDetailsPanel({
@@ -78,8 +63,6 @@ export function CaptureDetailsPanel({
   const { tags } = useCaptureTagEditor(capture.id)
   const verify = useVerifyCapture(capture.id, caseId)
   const { enqueue } = useRecaptureMutations(caseId)
-  // enabled:false — reads whatever the last explicit "Look up" cached, never fetches.
-  const lookup = useQuery(waybackLookupQueryOptions(capture.id))
 
   const [tagPopoverOpen, setTagPopoverOpen] = useState(false)
   const tagAnchorRef = useRef<HTMLButtonElement>(null)
@@ -92,7 +75,6 @@ export function CaptureDetailsPanel({
   const menuAnchorRef = useRef<HTMLButtonElement>(null)
 
   const [custodyOpen, setCustodyOpen] = useState(true)
-  const [waybackOpen, setWaybackOpen] = useState(false)
 
   // A background recapture emits a 'received' event at the start of its job and a
   // terminal 'stored'/'failed' event when it finishes; the store keeps the
@@ -216,21 +198,6 @@ export function CaptureDetailsPanel({
       }
     )
   }
-
-  const waybackResult = lookup.data
-  const waybackSummary =
-    waybackResult && waybackResult.snapshots.length > 0
-      ? `${waybackResult.snapshots.length} snapshot${
-          waybackResult.snapshots.length === 1 ? '' : 's'
-        }${
-          waybackResult.closestIndex !== null
-            ? ` · closest ${formatClosestDelta(
-                waybackResult.snapshots[waybackResult.closestIndex].timestamp,
-                capture.timestamp
-              )}`
-            : ''
-        }`
-      : null
 
   const menuItemClass =
     'flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary hover:bg-elevated disabled:opacity-50'
@@ -421,39 +388,6 @@ export function CaptureDetailsPanel({
         {custodyOpen && (
           <div data-testid="custody-section-body" className="border-t border-border">
             <ForensicsTab capture={capture} caseId={caseId} />
-          </div>
-        )}
-      </section>
-
-      {/* Wayback Machine (absorbs the old Archive tab) */}
-      <section className="border-b border-border [&:last-child]:border-b-0">
-        <button
-          onClick={() => setWaybackOpen((v) => !v)}
-          aria-expanded={waybackOpen}
-          data-testid="wayback-section-toggle"
-          className="flex w-full items-center gap-2 px-5 py-3.5 text-left"
-        >
-          <Archive className="h-3.5 w-3.5 shrink-0 text-text-muted" />
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary">
-            Wayback Machine
-          </span>
-          {waybackSummary && (
-            <span
-              data-testid="wayback-section-summary"
-              className="ml-auto truncate text-[11px] text-text-muted"
-            >
-              {waybackSummary}
-            </span>
-          )}
-          <ChevronDown
-            className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${
-              waybackOpen ? '' : '-rotate-90'
-            } ${waybackSummary ? '' : 'ml-auto'}`}
-          />
-        </button>
-        {waybackOpen && (
-          <div data-testid="wayback-section-body" className="border-t border-border">
-            <WaybackTab capture={capture} />
           </div>
         )}
       </section>

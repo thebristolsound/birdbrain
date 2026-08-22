@@ -9,6 +9,7 @@ import { Button, Input } from '@renderer/components/ui'
 import { NoteBody } from '@renderer/components/notes/NoteBody'
 import { NoteEditor } from '@renderer/components/notes/NoteEditor'
 import { useNoteEditor } from '@renderer/components/notes/useNoteEditor'
+import { useMentionResolver } from '@renderer/components/notes/mention/useMentionSources'
 
 function formatRelative(ts: string): string {
   const diff = Date.now() - new Date(ts).getTime()
@@ -29,6 +30,7 @@ interface NoteCardProps {
 
 interface NoteCardEditorProps {
   note: Note
+  caseId: string
   isPending: boolean
   onSave: (values: { title: string; bodyDoc: string }) => void
   onCancel: () => void
@@ -39,10 +41,12 @@ interface NoteCardEditorProps {
  * means a case with two hundred notes does not mount two hundred ProseMirror
  * views to display them.
  */
-function NoteCardEditor({ note, isPending, onSave, onCancel }: NoteCardEditorProps) {
+function NoteCardEditor({ note, caseId, isPending, onSave, onCancel }: NoteCardEditorProps) {
   const [title, setTitle] = useState(note.title)
   const [bodyDoc, setBodyDoc] = useState<string | null>(note.bodyDoc ?? null)
   const editor = useNoteEditor({
+    caseId,
+    noteId: note.id,
     bodyDoc: note.bodyDoc,
     plainText: note.body,
     onChange: setBodyDoc,
@@ -66,7 +70,10 @@ function NoteCardEditor({ note, isPending, onSave, onCancel }: NoteCardEditorPro
         placeholder="Title"
         className="border-border bg-canvas font-semibold"
       />
-      <NoteEditor editor={editor} placeholder="Note body" />
+      <NoteEditor
+        editor={editor}
+        placeholder="Start writing — type @ to link a capture, # for a selector or tag."
+      />
       <div className="flex items-center justify-end gap-2">
         <Button variant="ghost" size="xs" onClick={onCancel} className="gap-1" type="button">
           <X className="h-3.5 w-3.5" />
@@ -90,6 +97,7 @@ function NoteCardEditor({ note, isPending, onSave, onCancel }: NoteCardEditorPro
 
 export function NoteCard({ note, caseId, selected = false }: NoteCardProps) {
   const { update, remove } = useNotesMutations(caseId)
+  const resolveMention = useMentionResolver(caseId)
   const [isEditing, setIsEditing] = useState(false)
   const { data: thumbnail } = useQuery({
     ...captureThumbnailQueryOptions(note.captureId || ''),
@@ -150,6 +158,7 @@ export function NoteCard({ note, caseId, selected = false }: NoteCardProps) {
           <NoteCardEditor
             key={`edit-${note.id}`}
             note={note}
+            caseId={caseId}
             isPending={update.isPending}
             onSave={handleSave}
             onCancel={handleCancel}
@@ -214,7 +223,7 @@ export function NoteCard({ note, caseId, selected = false }: NoteCardProps) {
               )}
             </div>
 
-            <NoteBody note={note} className="mt-2" />
+            <NoteBody note={note} className="mt-2" resolveMention={resolveMention} />
           </>
         )}
       </div>

@@ -45,6 +45,11 @@
 
   --color-teal-500: #14b8a6;
 
+  /* Mention entity hues. Selector and the tag fallback have no other use yet;
+     they exist so a chip references a token rather than a hex literal. */
+  --color-violet-500: #8b5cf6;
+  --color-pink-500: #ec4899;
+
   /* Status surfaces — a tinted triple (10% fill / 20% line / foreground), never
      a solid fill. Replaces ad-hoc rgba() literals. Light darkens the foreground
      two-to-three palette steps off the tint hue for the same reason the accent
@@ -400,4 +405,55 @@ html.reduce-motion *::after {
 .note-prose a {
   color: var(--color-accent);
   text-decoration: underline;
+}
+
+/* === Mentions === */
+/* The entity colour arrives inline as --mention-color; everything geometric
+   lives here. That split is what lets a tag chip carry the tag's own colour
+   without a rule per tag, and it keeps the chip identical in the editor and in
+   any other surface that renders one. */
+.mention-chip {
+  border-radius: 5px;
+  padding: 1px 6px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: inherit;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  color: var(--mention-color);
+  background: color-mix(in srgb, var(--mention-color) 14%, transparent);
+  /* A ring rather than a border: it adds no layout box, so a chip cannot
+     shift the line it sits on. */
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--mention-color) 28%, transparent);
+}
+.mention-chip:hover {
+  background: color-mix(in srgb, var(--mention-color) 22%, transparent);
+}
+/* A deleted target. The design does not draw this state, so it is derived: the
+   destructive foreground, a dashed ring, and the same geometry as a live chip
+   so removing a target cannot reflow the paragraph around it. */
+.mention-chip-broken {
+  cursor: default;
+  text-decoration: line-through;
+  box-shadow: none;
+  outline: 1px dashed color-mix(in srgb, var(--mention-color) 55%, transparent);
+  outline-offset: -1px;
+}
+.mention-chip-broken:hover {
+  background: color-mix(in srgb, var(--mention-color) 14%, transparent);
+}
+/* The suggestion plugin mounts its popup on <body>, outside the stacking
+   context of any dialog it was opened from, so it needs its own layer above
+   the z-50 modals. */
+.mention-popup-layer {
+  z-index: 60;
+}
+/* The live "@query" the plugin decorates while the popup is open. Underlined
+   rather than filled: it is text being typed, not a committed Mention. */
+.mention-suggestion {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }

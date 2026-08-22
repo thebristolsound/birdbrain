@@ -37,8 +37,11 @@ import {
   MANUAL_DEDUPE_WINDOW_MS,
   MAX_SCREENSHOT_SIZE
 } from '@shared/constants'
-import { matchIgnoredUrl, resolveEffectiveIgnorePatterns } from '@shared/urlPatterns'
-import { safeRegexTest } from '@main/services/safeRegex'
+import {
+  blockedSkipReason,
+  effectiveIgnorePatternsForCase,
+  isUrlBlacklisted
+} from '@main/services/exclusionPolicy'
 import { logger } from '@main/services/logger'
 import { tag } from '@main/services/logSafe'
 export { CAPTURE_SERVER_PORT }
@@ -80,30 +83,6 @@ export function resetManualDedup(): void {
 
 export function setMainWindow(win: BrowserWindow): void {
   mainWindow = win
-}
-
-// Regex literals are evaluated in the vm sandbox: the patterns come from
-// settings, so a catastrophically backtracking one must not stall the server.
-// Containment is fail-open — a pattern that exhausts the 200 ms budget yields
-// no match, so the capture is accepted rather than refused. See matchIgnoredUrl.
-function isUrlBlacklisted(url: string, patterns: string[]): string | null {
-  return matchIgnoredUrl(url, patterns, safeRegexTest)
-}
-
-// The patterns in force for one case: the operator's global ignore list plus
-// the case's own, or the case's alone under 'override' (#400).
-//
-// Read here rather than cached, because a policy edit has to take effect on the
-// next capture — the extension's mirror of this list is advisory and this is
-// the enforcement point. The case is looked up by id, so an unknown id yields
-// the global list rather than an empty one: an id that resolves to no case
-// never reaches a capture anyway (the handler 404s first), and answering
-// "nothing is excluded" would be the wrong default if it ever did.
-function effectiveIgnorePatternsForCase(caseId: string | null): string[] {
-  const globalPatterns = getSettings().ignoredUrlPatterns
-  if (!caseId) return [...globalPatterns]
-  const { exclusions, mode } = caseRepo.getAutoCapturePolicy(caseId)
-  return resolveEffectiveIgnorePatterns(globalPatterns, exclusions, mode)
 }
 
 function emitCaptureEvent(event: CaptureEvent): void {
@@ -354,7 +333,7 @@ function createApp(deps: CaptureServerDeps): Hono {
             source,
             url,
             timestamp: new Date().toISOString(),
-            skipReason: 'Blacklisted: ' + blocked
+            skipReason: blockedSkipReason(blocked)
           })
           return c.json({ error: 'URL blocked by ignored pattern', pattern: blocked }, 403)
         }

@@ -1,6 +1,7 @@
 import { app } from 'electron'
 import * as captureRepo from '@main/services/db/captureRepo'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
+import { blockedSkipReason, matchCaseExclusion } from '@main/services/exclusionPolicy'
 import { getInstallationId } from '@main/services/installationId'
 import { getSettings } from '@main/services/settings'
 import type { Capture, CaptureEvent, ConsentSuppression } from '@shared/types'
@@ -119,6 +120,23 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         clearTimeout(fallbackTimer)
       }
 
+      // Second enforcement point (#400). `enqueue` could only judge the URL the
+      // operator asked for; what gets persisted is `rendered.finalUrl`, and the
+      // capture server checks the URL it stores. A recapture that redirects into
+      // an excluded URL is refused here — after the render, before the ingest,
+      // so nothing reaches the database or the manifest.
+      const blocked = matchCaseExclusion(rendered.finalUrl, job.caseId)
+      if (blocked) {
+        deps.emitEvent({
+          type: 'skipped',
+          source: 'recapture',
+          url: rendered.finalUrl,
+          timestamp: new Date().toISOString(),
+          skipReason: blockedSkipReason(blocked)
+        })
+        return
+      }
+
       const settings = getSettings()
       const result = await deps.captureLifecycle.ingest({
         caseId: job.caseId,
@@ -195,10 +213,31 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         const reason = validateUrl(job.url)
         if (reason) {
           rejected.push({ url: job.url, reason })
-        } else {
-          queue.push(job)
-          accepted++
+          continue
         }
+        // The per-case exclusion list blocks every capture route, manual
+        // included (#400, ruled 2026-08-21). This is the recapture route's
+        // enforcement point, and `enqueue` is its only producer — both IPC
+        // handlers funnel through here. A blocked job is reported the way the
+        // capture server reports one: a `skipped` event naming the pattern, and
+        // nothing written to the database or the manifest. It is returned as a
+        // rejection because the four renderer call sites already render
+        // `rejected[0].reason` verbatim, so the operator is told which pattern
+        // refused the recapture without a new result state.
+        const blocked = matchCaseExclusion(job.url, job.caseId)
+        if (blocked) {
+          deps.emitEvent({
+            type: 'skipped',
+            source: 'recapture',
+            url: job.url,
+            timestamp: new Date().toISOString(),
+            skipReason: blockedSkipReason(blocked)
+          })
+          rejected.push({ url: job.url, reason: blockedSkipReason(blocked) })
+          continue
+        }
+        queue.push(job)
+        accepted++
       }
       if (accepted > 0) drain()
       return { accepted, rejected }

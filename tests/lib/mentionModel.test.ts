@@ -159,8 +159,8 @@ describe('mentionRoute', () => {
   it('sends each kind to the screen that shows it', () => {
     expect(mentionRoute('capture')).toBe('/cases/$caseId/captures')
     expect(mentionRoute('note')).toBe('/cases/$caseId/notes')
-    expect(mentionRoute('selector')).toBe('/cases/$caseId/selectors')
-    expect(mentionRoute('tag')).toBe('/cases/$caseId/tags')
+    expect(mentionRoute('selector')).toBe('/cases/$caseId/signals')
+    expect(mentionRoute('tag')).toBe('/cases/$caseId/signals')
   })
 })
 

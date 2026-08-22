@@ -132,15 +132,14 @@ export function mentionTooltip(
 /**
  * Where a chip click goes.
  *
- * One function on purpose. #400 replaces the Selectors and Tags screens with a
- * single Signals screen, at which point retargeting both chip kinds is an edit
- * to two lines here rather than a hunt through the editor.
+ * One function on purpose. #400 replaced the Selectors and Tags screens with a
+ * single Signals screen, so both chip kinds land there.
  */
 export const MENTION_ROUTES = {
   capture: '/cases/$caseId/captures',
   note: '/cases/$caseId/notes',
-  selector: '/cases/$caseId/selectors',
-  tag: '/cases/$caseId/tags'
+  selector: '/cases/$caseId/signals',
+  tag: '/cases/$caseId/signals'
 } as const satisfies Record<MentionTargetType, string>
 
 export type MentionRoute = (typeof MENTION_ROUTES)[MentionTargetType]

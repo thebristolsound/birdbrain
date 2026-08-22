@@ -17,7 +17,7 @@ export function CreateNoteCard({ caseId, isOpen, onToggle, onCreated }: CreateNo
   const { create } = useNotesMutations(caseId)
   const [title, setTitle] = useState('')
   const [bodyDoc, setBodyDoc] = useState<string | null>(null)
-  const editor = useNoteEditor({ onChange: setBodyDoc, testId: 'create-note-body' })
+  const editor = useNoteEditor({ caseId, onChange: setBodyDoc, testId: 'create-note-body' })
   const hasBody = editor ? !editor.isEmpty : false
 
   async function handleSubmit() {
@@ -62,7 +62,10 @@ export function CreateNoteCard({ caseId, isOpen, onToggle, onCreated }: CreateNo
         className="mb-2 border-border bg-canvas font-semibold"
       />
       <div className="mb-3">
-        <NoteEditor editor={editor} placeholder="Note body" />
+        <NoteEditor
+          editor={editor}
+          placeholder="Start writing — type @ to link a capture, # for a selector or tag."
+        />
       </div>
       <div className="flex items-center justify-end gap-2">
         <Button variant="ghost" size="sm" onClick={onToggle}>

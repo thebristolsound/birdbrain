@@ -125,7 +125,8 @@ const birdbrain = {
     search: bridge(IPC_CHANNELS.NOTES_SEARCH),
     references: bridge(IPC_CHANNELS.NOTES_REFERENCES),
     backlinks: bridge(IPC_CHANNELS.NOTES_BACKLINKS),
-    backlinkCounts: bridge(IPC_CHANNELS.NOTES_BACKLINK_COUNTS)
+    backlinkCounts: bridge(IPC_CHANNELS.NOTES_BACKLINK_COUNTS),
+    referenceEdges: bridge(IPC_CHANNELS.NOTES_REFERENCE_EDGES)
   },
   wayback: {
     lookup: bridge(IPC_CHANNELS.WAYBACK_LOOKUP),

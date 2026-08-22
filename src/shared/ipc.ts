@@ -35,6 +35,7 @@ import type {
   NoteBacklink,
   NoteBacklinkCount,
   NoteReference,
+  NoteReferenceEdge,
   OpenRouterModel,
   OperatorIdentity,
   RecentActivityEvent,
@@ -147,6 +148,7 @@ export const IPC_CHANNELS = {
   NOTES_REFERENCES: 'notes:references',
   NOTES_BACKLINKS: 'notes:backlinks',
   NOTES_BACKLINK_COUNTS: 'notes:backlinkCounts',
+  NOTES_REFERENCE_EDGES: 'notes:referenceEdges',
 
   // Wayback Machine corroboration
   WAYBACK_LOOKUP: 'wayback:lookup',
@@ -697,6 +699,7 @@ export interface IpcInvokeContract {
   'notes:references': { args: [noteId: string]; result: NoteReference[] }
   'notes:backlinks': { args: [params: NoteBacklinksParams]; result: NoteBacklink[] }
   'notes:backlinkCounts': { args: [caseId: string]; result: NoteBacklinkCount[] }
+  'notes:referenceEdges': { args: [caseId: string]; result: NoteReferenceEdge[] }
 
   'session:snapshot': { args: []; result: SessionStateEvent }
   'session:activateCase': { args: [caseId: string]; result: SessionStateEvent }

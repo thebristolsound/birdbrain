@@ -25,6 +25,7 @@ import {
   notesQueryOptions,
   noteCountQueryOptions,
   notesSearchQueryOptions,
+  noteReferenceEdgesQueryOptions,
   extractedDataCategoriesQueryOptions,
   extractedDataSubcategoriesQueryOptions,
   extractedDataItemsQueryOptions,
@@ -103,7 +104,15 @@ function installBirdbrainMock() {
       delete: fn(),
       bulkCreate: fn()
     },
-    notes: { list: fn(), count: fn(), search: fn(), create: fn(), update: fn(), delete: fn() },
+    notes: {
+      list: fn(),
+      count: fn(),
+      search: fn(),
+      create: fn(),
+      update: fn(),
+      delete: fn(),
+      referenceEdges: fn()
+    },
     extractedData: {
       categories: fn(),
       subcategories: fn(),
@@ -143,6 +152,7 @@ describe('queryKeys', () => {
       's2'
     ])
     expect(queryKeys.notesSearch('c1', 'q')).toEqual(['notes', 'search', 'c1', 'q'])
+    expect(queryKeys.noteReferenceEdges('c1')).toEqual(['notes', 'referenceEdges', 'c1'])
     expect(queryKeys.extractedDataItems('c1', 'ioc', 'email')).toEqual([
       'extractedData',
       'items',
@@ -226,6 +236,9 @@ describe('queryOptions queryFns', () => {
     await notesSearch.queryFn?.({} as never)
     expect(api.notes.search).toHaveBeenCalledWith('c1', 'q')
     expect(notesSearchQueryOptions('c1', '  ').enabled).toBe(false)
+    await noteReferenceEdgesQueryOptions('c1').queryFn?.({} as never)
+    expect(api.notes.referenceEdges).toHaveBeenCalledWith('c1')
+    expect(noteReferenceEdgesQueryOptions('').enabled).toBe(false)
 
     await extractedDataCategoriesQueryOptions('c1').queryFn?.({} as never)
     expect(api.extractedData.categories).toHaveBeenCalledWith('c1')
@@ -500,7 +513,10 @@ describe('useSelectorsMutations', () => {
 })
 
 describe('useNotesMutations', () => {
-  it('invalidates notes, count and search on create/update/remove', async () => {
+  // The reference-edges key is asserted explicitly because ['notes', caseId]
+  // does not prefix-match ['notes', 'referenceEdges', caseId]: without its own
+  // invalidation line the Overview map would survive every note write (#402).
+  it('invalidates notes, count, search and reference edges on create/update/remove', async () => {
     const { invalidate, wrapper } = setup()
     const { result } = renderHook(() => useNotesMutations('c1'), { wrapper })
 
@@ -517,6 +533,7 @@ describe('useNotesMutations', () => {
       expect(keys).toContainEqual(['notes', 'c1'])
       expect(keys).toContainEqual(['notes', 'count', 'c1'])
       expect(keys).toContainEqual(['notes', 'search', 'c1'])
+      expect(keys).toContainEqual(['notes', 'referenceEdges', 'c1'])
     }
   })
 })

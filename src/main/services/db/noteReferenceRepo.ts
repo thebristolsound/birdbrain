@@ -1,6 +1,11 @@
 import { getDb, withTransaction } from '@main/services/db/core'
 import { extractNoteMentions, type MentionTargetType, type NoteMention } from '@shared/noteDoc'
-import type { NoteBacklink, NoteBacklinkCount, NoteReference } from '@shared/types'
+import type {
+  NoteBacklink,
+  NoteBacklinkCount,
+  NoteReference,
+  NoteReferenceEdge
+} from '@shared/types'
 
 // Thrown when a Mention's target exists but in a different case. A distinct
 // class from parseNoteDoc's structural errors so a caller at the IPC boundary
@@ -150,6 +155,33 @@ export function backlinkCountsForCase(caseId: string): NoteBacklinkCount[] {
        GROUP BY r.target_type, r.target_id`
     )
     .all(caseId) as NoteBacklinkCount[]
+}
+
+/**
+ * Every (note, target) pair in the case — the edge list the Overview backlink
+ * map draws (#402). `backlinkCountsForCase` above cannot serve this: it groups
+ * `note_id` away, so it yields a target's degree and never an edge's two
+ * endpoints.
+ *
+ * Case scope comes from the referring note, same as `backlinksForTarget`: the
+ * index carries none, and scoping by the target would pull other cases in
+ * through a global tag. A target row that no longer exists still returns its
+ * edge — a dangling reference is drawn, not dropped, matching
+ * `referencesForNote`. The ORDER BY is what makes the rendered map stable
+ * across runs; the layout downstream is deterministic in this row order.
+ */
+export function referenceEdgesForCase(caseId: string): NoteReferenceEdge[] {
+  return getDb()
+    .prepare(
+      `SELECT r.note_id AS noteId, r.target_type AS targetType,
+              r.target_id AS targetId, COUNT(*) AS mentionCount
+       FROM note_references r
+       JOIN notes n ON n.id = r.note_id
+       WHERE n.case_id = ?
+       GROUP BY r.note_id, r.target_type, r.target_id
+       ORDER BY r.note_id, r.target_type, r.target_id`
+    )
+    .all(caseId) as NoteReferenceEdge[]
 }
 
 /**

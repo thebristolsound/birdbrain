@@ -81,7 +81,13 @@ export interface MapEdge {
   opacity: number
 }
 
-export type MapEmptyReason = 'no-notes' | 'no-mentions'
+/**
+ * What the canvas has to say for itself. The first two mean there is nothing to
+ * draw. `entities-capped` still draws: the notes are all on the lattice, but the
+ * node ceiling left no room for the entities they mention, so the map has pills
+ * and no edges and the operator would otherwise have no way to know why.
+ */
+export type MapNotice = 'no-notes' | 'no-mentions' | 'entities-capped'
 
 export interface BacklinkMapModel {
   nodes: MapNode[]
@@ -94,8 +100,9 @@ export interface BacklinkMapModel {
   backlinkCount: number
   /** The header string, e.g. `showing 20 of 26 nodes · 3 backlinks`. */
   countLabel: string
+  /** Nothing to draw at all — a fact about the case, never about the ceiling. */
   isEmpty: boolean
-  emptyReason: MapEmptyReason | null
+  notice: MapNotice | null
 }
 
 const TYPE_COLORS: Record<MapNodeType, string> = {
@@ -135,7 +142,7 @@ interface WorkEdge {
   kind: MapEdgeKind
 }
 
-const emptyModel = (reason: MapEmptyReason): BacklinkMapModel => ({
+const emptyModel = (notice: MapNotice): BacklinkMapModel => ({
   nodes: [],
   edges: [],
   nodeCount: 0,
@@ -144,7 +151,7 @@ const emptyModel = (reason: MapEmptyReason): BacklinkMapModel => ({
   backlinkCount: 0,
   countLabel: '0 nodes · 0 backlinks',
   isEmpty: true,
-  emptyReason: reason
+  notice
 })
 
 function labelFor(
@@ -229,9 +236,13 @@ function seedPositions(
 }
 
 /**
- * Apply the node ceiling. Notes are never dropped, so a case with more than
- * NODE_CAP notes shows all of them and no entities. Entities are ranked by edge
+ * Apply the node ceiling. Notes are never dropped, so a case with NODE_CAP
+ * notes or more shows all of them and no entities. Entities are ranked by edge
  * degree, ties broken by key so two runs over the same data drop the same ones.
+ *
+ * That last case leaves a map of note pills with no edges on a case that does
+ * have Mentions, which is why the model reports it as `entities-capped` rather
+ * than letting it read as an empty map (#402 review).
  */
 function applyCap(nodes: WorkNode[], edges: WorkEdge[]): { nodes: WorkNode[]; edges: WorkEdge[] } {
   if (nodes.length <= NODE_CAP) return { nodes, edges }
@@ -361,6 +372,10 @@ export function computeBacklinkMap({
 
   const seeded = seedPositions(notes, outgoing, labels, noteIds)
   const totalNodes = seeded.nodes.length
+  // Read before the ceiling runs: whether the case has anything to map is a
+  // fact about the case, and reading it after applyCap made a full map of notes
+  // indistinguishable from a case with no Mentions at all (#402 review).
+  const hasMentions = seeded.edges.length > 0
   const capped = applyCap(seeded.nodes, seeded.edges)
   const rows = rowsFor(
     capped.nodes.filter((n) => n.isNote).length,
@@ -444,7 +459,7 @@ export function computeBacklinkMap({
     capped: wasCapped,
     backlinkCount,
     countLabel,
-    isEmpty: edges.length === 0,
-    emptyReason: edges.length === 0 ? 'no-mentions' : null
+    isEmpty: !hasMentions,
+    notice: !hasMentions ? 'no-mentions' : edges.length === 0 ? 'entities-capped' : null
   }
 }

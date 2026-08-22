@@ -21,6 +21,7 @@ import type {
   NoteBacklink,
   NoteBacklinkCount,
   NoteReference,
+  NoteReferenceEdge,
   AnnotationsBundle,
   CaptureAnnotations,
   AnnotationPin,
@@ -157,6 +158,7 @@ export interface BirdbrainAPI {
     references(noteId: string): Promise<NoteReference[]>
     backlinks(params: NoteBacklinksParams): Promise<NoteBacklink[]>
     backlinkCounts(caseId: string): Promise<NoteBacklinkCount[]>
+    referenceEdges(caseId: string): Promise<NoteReferenceEdge[]>
   }
   wayback: {
     lookup(captureId: string): Promise<WaybackLookupResult>

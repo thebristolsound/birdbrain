@@ -138,6 +138,11 @@ export function AutoCaptureCard({ caseId }: AutoCaptureCardProps) {
         </button>
       </div>
 
+      <p className="mt-2 text-[10px] text-text-faint" data-testid="auto-capture-suspended">
+        Passive capture is suspended in the current extension build, so no page is captured without
+        an explicit action. The switch records the preference for when it returns (#600).
+      </p>
+
       {modeIsAuto && (
         <p className="mt-2 text-[10px] text-text-faint" data-testid="auto-capture-locked">
           Auto-capture is set to capture every page, not only selector matches. A two-state switch

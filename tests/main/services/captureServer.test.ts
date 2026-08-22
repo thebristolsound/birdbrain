@@ -727,6 +727,18 @@ describe('captureServer', () => {
     const res = await serverPost('/api/captures/test')
     const data = await readJson(res)
     expect(data.success).toBe(true)
+    // The route ingests into `listCases()[0]`, so `success` alone would be true
+    // just as well from an unexcluded case seeded ahead of this one. Pin that
+    // the self-test really landed in the case carrying the exclusion.
+    const manifestPath = join(tempDir, 'captures', testCase.id, MANIFEST_FILENAME)
+    expect(existsSync(manifestPath)).toBe(true)
+    const entries = readFileSync(manifestPath, 'utf-8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+    expect(entries.filter((e) => e.type === 'capture').map((e) => e.url)).toEqual([
+      'birdbrain://pipeline-test'
+    ])
     // And the residue is still cleaned up through the lifecycle.
     expect(listCaptures(testCase.id)).toHaveLength(0)
   })

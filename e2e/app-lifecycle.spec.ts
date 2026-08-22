@@ -9,17 +9,12 @@ test.describe('App Lifecycle', () => {
     expect(title).toBe('Birdbrain')
   })
 
-  test('onboarding wizard renders on first launch', async ({ page }) => {
-    // With no cases, the app shows the OnboardingWizard
-    await expect(page.locator('[data-testid="onboarding-wizard"]')).toBeVisible()
-    await expect(page.getByText('Install the Extension')).toBeVisible()
-  })
-
-  test('onboarding wizard skip button navigates to step 2', async ({ page }) => {
-    await expect(page.locator('[data-testid="onboarding-skip-btn"]')).toBeVisible()
-    await page.click('[data-testid="onboarding-skip-btn"]')
-    await expect(page.getByText('Create Investigation')).toBeVisible()
-    await expect(page.locator('[data-testid="onboarding-name-input"]')).toBeVisible()
+  // The fixture seeds a settings.json, so every spec launches as an existing
+  // install. That is what confines the tour to fresh installs (#404), and it is
+  // why the dashboard is reachable here without dismissing anything.
+  test('an existing install lands straight on the dashboard, untoured', async ({ page }) => {
+    await expect(page.locator('[data-testid="dashboard"]')).toBeVisible()
+    await expect(page.locator('[data-testid="onboarding-tour"]')).toBeHidden()
   })
 
   test('theme toggle persists between reloads', async ({ page }) => {

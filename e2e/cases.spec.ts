@@ -83,7 +83,7 @@ test.describe('Cases CRUD', () => {
       return w.birdbrain.cases.delete(id)
     }, caseId)
 
-    // Navigate back to root — should show dashboard (onboarding only on first launch)
+    // Navigate back to root — should show the dashboard
     await page.evaluate(() => {
       window.location.hash = '/'
     })

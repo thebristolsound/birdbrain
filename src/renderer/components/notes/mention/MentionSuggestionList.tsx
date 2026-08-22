@@ -14,6 +14,15 @@ const ICONS: Record<MentionTargetType, LucideIcon> = {
   tag: Tag
 }
 
+// Same discipline as isMentionTargetType: never index a per-kind record with a
+// key that could have come off a paste, because `in` and a bare lookup both
+// walk the prototype chain and would render `Object.prototype.toString` as a
+// component. `note`'s icon is the fallback the chip already uses for a kind it
+// cannot name.
+function iconForKind(targetType: MentionTargetType): LucideIcon {
+  return Object.hasOwn(ICONS, targetType) ? ICONS[targetType] : StickyNote
+}
+
 export interface MentionSuggestionListProps {
   sigil: MentionSigil
   query: string
@@ -100,7 +109,7 @@ export const MentionSuggestionList = forwardRef<
 
       <div className="max-h-[210px] overflow-y-auto p-1">
         {items.map((item, i) => {
-          const Icon = ICONS[item.targetType]
+          const Icon = iconForKind(item.targetType)
           return (
             <button
               key={`${item.targetType}:${item.targetId}`}

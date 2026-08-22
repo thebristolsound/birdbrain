@@ -187,6 +187,22 @@ describe('the Mention node view', () => {
     })
   })
 
+  // The paste that motivated the Object.hasOwn guard. `constructor` used to
+  // pass isMentionTargetType, resolve to undefined, and throw here — the error
+  // boundary at __root then unmounted the route body and took the draft.
+  it.each(['constructor', '__proto__', 'toString'])(
+    'renders a pasted data-target-type="%s" as broken rather than throwing',
+    (rawType) => {
+      const Chip = createMentionNodeView('case1')
+      const { container } = render(
+        <Chip {...nodeProps({ targetType: rawType, targetId: 'cap1', label: 'Thread' })} />,
+        { wrapper: Wrapper }
+      )
+      expect(container.querySelector('[data-mention-broken]')).not.toBeNull()
+      expect(container.textContent).toBe('@Thread')
+    }
+  )
+
   it('renders a node that lost its identity attributes as broken rather than throwing', () => {
     const Chip = createMentionNodeView('case1')
     const { container } = render(<Chip {...nodeProps({ targetType: null, targetId: null })} />, {

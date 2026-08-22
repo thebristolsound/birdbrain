@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import type { MentionTargetType } from '@shared/noteDoc'
 import type { Capture, Note, Selector, Tag } from '@shared/types'
 import {
   EMPTY_MENTION_SOURCES,
@@ -19,6 +20,18 @@ import {
 } from '@renderer/components/notes/mention/mentionModel'
 
 const ALL_LOADED: MentionSourcesLoaded = { capture: true, note: true, selector: true, tag: true }
+
+/** Every name a bare `{}` inherits — the whole hole `in` left open. */
+const PROTOTYPE_KEYS = [
+  'constructor',
+  '__proto__',
+  'toString',
+  'valueOf',
+  'hasOwnProperty',
+  'isPrototypeOf',
+  'propertyIsEnumerable',
+  'toLocaleString'
+] as const
 
 function capture(id: string, title: string, url = `https://example.com/${id}`): Capture {
   return {
@@ -89,6 +102,53 @@ describe('isMentionTargetType', () => {
       expect(isMentionTargetType(value)).toBe(false)
     }
   )
+
+  // Every one of these passed the `in` check this guard used to run, because
+  // `in` walks the prototype chain. A pasted data-target-type="constructor"
+  // then took the whole draft down — see the guard's comment.
+  it.each(PROTOTYPE_KEYS)('rejects the Object.prototype name %p', (value) => {
+    expect(isMentionTargetType(value)).toBe(false)
+  })
+})
+
+// The same eight names, cast the way a node attribute reaches these functions:
+// past the compiler, because the value came off pasted markup.
+const POLLUTED = PROTOTYPE_KEYS.map((key) => key as MentionTargetType)
+
+describe('a target type that is an Object.prototype name', () => {
+  it.each(POLLUTED)('resolves %p as missing rather than as undefined', (kind) => {
+    // Returning undefined here is what threw inside the node view: every
+    // caller reads `.status` off this result.
+    expect(resolveMention(kind, 'x', EMPTY_MENTION_SOURCES, ALL_LOADED)).toEqual({
+      status: 'missing',
+      label: null,
+      color: null
+    })
+  })
+
+  it.each(POLLUTED)('does not read %p as loaded through the prototype chain', (kind) => {
+    // `loaded[kind]` was truthy for all eight, so the loading gate let them
+    // through to the switch. The kind is settled before the gate now.
+    const none: MentionSourcesLoaded = { capture: false, note: false, selector: false, tag: false }
+    expect(resolveMention(kind, 'x', EMPTY_MENTION_SOURCES, none).status).toBe('missing')
+  })
+
+  it.each(POLLUTED)('gives %p the broken colour rather than a function', (kind) => {
+    expect(mentionColor(kind)).toBe('var(--color-danger-fg)')
+  })
+
+  it.each(POLLUTED)('routes %p to the notes screen rather than to a function', (kind) => {
+    expect(mentionRoute(kind)).toBe('/cases/$caseId/notes')
+  })
+
+  it.each(POLLUTED)('gives %p no sigil rather than Object.prototype[key]', (kind) => {
+    expect(mentionPlainText(kind, 'Label')).toBe('Label')
+    expect(maskMention(kind, 'Label')).toBe('Label')
+  })
+
+  it.each(POLLUTED)('does not invite a click on %p', (kind) => {
+    expect(mentionTooltip(kind, 'Label')).toBe(`${kind} · Label — target deleted`)
+  })
 })
 
 describe('truncateMentionLabel', () => {

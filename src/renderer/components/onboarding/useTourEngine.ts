@@ -108,6 +108,11 @@ export function useTourEngine(caseId: string | null): TourEngine {
   const lastPath = useRef(pathname)
   const settingsRef = useRef(settings)
   settingsRef.current = settings
+  // Mirrors `state` for the callbacks that have to know what is running without
+  // depending on it. Assigned on render for the committed value, and again by
+  // `start`/`close` because two of those can run in a single effect flush —
+  // the intro and case auto-fires do exactly that — and the second must not
+  // read the pre-flush value.
   const stateRef = useRef(state)
   stateRef.current = state
 
@@ -140,6 +145,7 @@ export function useTourEngine(caseId: string | null): TourEngine {
 
   const close = useCallback(
     (chapter: TourChapter, auto: boolean, outcome: TourOutcome) => {
+      stateRef.current = null
       setState(null)
       setRect(null)
       setAnchorMissing(false)
@@ -162,21 +168,24 @@ export function useTourEngine(caseId: string | null): TourEngine {
     (chapter: TourChapter, options?: { auto?: boolean }) => {
       if (chapter === 'case' && !caseId) return
       // A chapter starting over a running one displaces it, and the displaced
-      // chapter never reaches `close`. Persist its completion here or it is
-      // lost: the intro's own third step rings the extension banner, whose
-      // Setup Guide button starts the extension chapter from inside the ring,
-      // and `isFreshInstall` is latched once and never cleared, so an intro
-      // that loses its completion write raises the welcome card on every
-      // launch from then on. `finished` rather than `skipped` because the
-      // operator followed where the tour pointed rather than dismissing it,
-      // and the chapters they have not seen must still be able to fire.
+      // chapter never reaches `close`. Persist it here or its completion is
+      // lost and it auto-fires again for good, because `isFreshInstall` is
+      // latched once at settings.ts and never cleared. `finished` rather than
+      // `skipped` so the chapters the operator has not reached can still fire.
       const displaced = stateRef.current
       if (displaced) persistCompletion(displaced.chapter, displaced.auto, 'finished')
       setRect(null)
       setAnchorMissing(false)
       // The extension chapter opens with the install walkthrough already
       // expanded — it is the whole reason its entry points exist.
-      setState({ chapter, step: 0, installOpen: chapter === 'ext', auto: options?.auto ?? false })
+      const opening = {
+        chapter,
+        step: 0,
+        installOpen: chapter === 'ext',
+        auto: options?.auto ?? false
+      }
+      stateRef.current = opening
+      setState(opening)
       routeTo(tourSteps(chapter)[0]?.route)
     },
     [caseId, persistCompletion, routeTo]

@@ -261,10 +261,13 @@ export type TourOutcome = 'finished' | 'skipped'
  *
  * Three rules, and the second two are the ones the prototype gets wrong:
  *
- * - A replay writes nothing at all. Replaying the extension chapter from the
- *   dashboard banner must not mark the case chapter — which has never run —
- *   complete. The prototype sets that flag from any chapter and permanently
- *   suppresses a chapter the operator never saw.
+ * - Closing a replay writes nothing at all. Replaying the extension chapter
+ *   from the dashboard banner must not mark the case chapter — which has never
+ *   run — complete. The prototype sets that flag from any chapter and
+ *   permanently suppresses a chapter the operator never saw. Note this is a
+ *   rule about the chapter being closed, not about how it started: `auto` is
+ *   read off the closing chapter, so a replay that displaces a running auto
+ *   chapter still persists that one. See `useTourEngine.start`.
  * - Skip completes the whole tour, per the 2026-08-21 ruling. Dismissing it
  *   means dismissing it; a tour that reappears next launch is the worse
  *   failure. It stays replayable on demand.

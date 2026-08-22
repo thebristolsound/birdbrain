@@ -85,7 +85,7 @@ seeded from this document should be checked against them.
 | `extension/manifest.json` | Acquisition permissions; ships in the release zip |
 | `src/main/services/captureServer.ts` | Ingest endpoint: upload validation, case routing, ingest-time selector matching |
 | `src/shared/urlPatterns.ts` | The ignored-URL matcher both sides run: it decides what never enters a case at all, and names the rule recorded as the reason for the absence |
-| `src/main/services/exclusionPolicy.ts` | Resolves the per-case exclusion list into the enforcement answer every capture route asks for, so it decides what may enter a case and what is refused |
+| `src/main/services/exclusionPolicy.ts` | Resolves the per-case exclusion list into the answer the acquisition routes check before ingest, so it decides what those routes refuse. Not every route asks: the pipeline self-test (`POST /api/captures/test`) is a documented exception, so read the call sites rather than assuming coverage is total |
 | `src/main/services/serverToken.ts` | Authenticates ingest; weakening admits spoofed captures into the evidence chain |
 | `src/main/services/session.ts` | Active-case state deciding which case a capture is filed under |
 | `src/main/services/recapture.ts` | Recapture queue re-acquiring URLs as new evidence |

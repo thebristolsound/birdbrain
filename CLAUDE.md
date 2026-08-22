@@ -61,7 +61,7 @@ src/renderer/stores/         # Zustand store (appStore.ts)
 src/renderer/hooks/          # React hooks for theme, search, filters, viewport, favorites, session restore, server status, etc.
 src/renderer/lib/            # React Query client, query/mutation factories, motion presets, formatting helpers
 src/renderer/components/     # UI organized by feature — see "UI components" below
-extension/src/               # Chrome extension source (background, content, popup, toast, utils/api, utils/headers)
+extension/src/               # Chrome extension source (background, content, popup, options, toast, utils/api, utils/headers)
 tests/                       # Vitest unit tests
 e2e/                         # Playwright E2E tests
 docs/                        # Local working notes — see docs/README.md for layout (reference/, specs/, plans/, archive/)
@@ -153,9 +153,12 @@ Located in `extension/src/`:
 - **background.ts** - Service worker managing extension state and tab capture events
 - **content.ts** - Injected into pages for HTML/screenshot capture and selector detection
 - **popup/** - React-based popup UI with case selector and capture controls
+- **options/** - Read-only options page (`options.html`), opened in a tab by the popup footer gear
 - **utils/api.ts** - HTTP client targeting `http://127.0.0.1:19845`
 
-Built separately via `pnpm build:extension` (uses `extension/vite.config.ts`).
+Built separately via `pnpm build:extension` (uses `extension/vite.config.ts`). Both HTML entries
+(`popup`, `options`) are listed in `HTML_ENTRIES` there; the `closeBundle` fixup lifts each one
+from its nested Rollup path to the dist root and injects `theme-preinit.js`.
 
 ### AI services
 

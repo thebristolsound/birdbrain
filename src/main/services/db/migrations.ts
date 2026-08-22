@@ -608,4 +608,30 @@ export function runMigrations(db: Database.Database): void {
       db.pragma('user_version = 29')
     })()
   }
+
+  if (version < 30) {
+    db.transaction(() => {
+      // Per-case auto-capture exclusions (#400): the patterns this case never
+      // captures, and whether they stack on the operator's global ignore list
+      // or replace it for this case.
+      //
+      // Two columns on `cases` rather than a `case_exclusions` table, ruled
+      // 2026-08-21. The list is read and written whole, one case at a time by
+      // primary key, so relational storage buys nothing here and costs five
+      // archive edit sites; this way `caseRepo.importCaseRow` is the only one.
+      // JSON-in-TEXT is already the house pattern (notes.body_doc, annotations
+      // shapes_json, anchor_json).
+      //
+      // Both nullable with no DEFAULT, and NULL is the legacy behaviour: no
+      // case exclusions, stacking on the global list. So every existing case is
+      // already correct after this migration and no backfill runs — the
+      // alternative, writing '[]'/'stack' into every row, would claim an
+      // operator decision nobody made. No index: one row, by primary key.
+      db.exec(`
+        ALTER TABLE cases ADD COLUMN exclusions TEXT;
+        ALTER TABLE cases ADD COLUMN exclusion_mode TEXT;
+      `)
+      db.pragma('user_version = 30')
+    })()
+  }
 }

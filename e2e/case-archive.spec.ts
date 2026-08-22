@@ -79,8 +79,8 @@ test.describe('Case archive export/import round-trip', () => {
     const archivePath = join(tempDir, 'roundtrip.birdbrain')
 
     try {
-      // Seed a case with a capture, a note, and a tag so the archive round-trip
-      // exercises more than just the empty-case path.
+      // Seed a case with a capture, a note, a tag and an auto-capture exclusion
+      // so the archive round-trip exercises more than just the empty-case path.
       const caseId = await createCase(page, 'Archive Roundtrip Case')
       await seedCapture(page, caseId, 'https://example.com/roundtrip', 'Roundtrip Capture')
 
@@ -92,11 +92,26 @@ test.describe('Case archive export/import round-trip', () => {
       await page.getByTestId('create-note-submit').click()
       await expect(page.getByText('Roundtrip note')).toBeVisible()
 
-      await page.click('button[aria-label="Tags"]')
-      await page.waitForURL(/#\/cases\/.+\/tags/)
-      await page.getByTestId('tag-name-input').fill('roundtrip-tag')
-      await page.getByTestId('tag-add-btn').click()
-      await expect(page.getByTestId('tag-manager')).toContainText('roundtrip-tag')
+      await page.click('button[aria-label="Signals"]')
+      await page.waitForURL(/#\/cases\/.+\/signals/)
+      const tagInput = page.getByTestId('add-tag-input')
+      await tagInput.fill('roundtrip-tag')
+      await tagInput.press('Enter')
+      await expect(page.getByTestId('signals-tag-list')).toContainText('roundtrip-tag')
+
+      // And a per-case auto-capture exclusion (#400), so the round-trip covers
+      // the two columns migration v30 adds to the case row. An exclusion that
+      // did not survive export would let a re-imported case capture pages the
+      // operator had excluded, with nothing on screen to say the rule was lost.
+      await page.getByTestId('exclusions-summary').click()
+      const exclusionInput = page.getByTestId('exclusion-input')
+      await exclusionInput.fill('*.roundtrip-excluded.test')
+      await exclusionInput.press('Enter')
+      await expect(page.getByTestId('exclusion-chip')).toContainText('*.roundtrip-excluded.test')
+      await page.getByRole('radio', { name: 'Override global' }).click()
+      await expect(page.getByTestId('exclusions-summary')).toContainText(
+        '1 exclusion · overrides global'
+      )
 
       // Back to Overview, where the export button lives.
       await page.click('button[aria-label="Overview"]')
@@ -133,7 +148,7 @@ test.describe('Case archive export/import round-trip', () => {
       expect(newCaseId).not.toBe(caseId)
       await expect(page.getByRole('heading', { name: 'Archive Roundtrip Case' })).toBeVisible()
 
-      // The imported case carries over its capture, note, and tag.
+      // The imported case carries over its capture, note, tag and exclusions.
       await page.click('button[aria-label="Captures"]')
       await page.waitForURL(/#\/cases\/.+\/captures/)
       await expect(page.getByTestId('capture-item').first()).toBeVisible({ timeout: 10000 })
@@ -143,9 +158,17 @@ test.describe('Case archive export/import round-trip', () => {
       await page.waitForURL(/#\/cases\/.+\/notes/)
       await expect(page.getByText('Roundtrip note')).toBeVisible()
 
-      await page.click('button[aria-label="Tags"]')
-      await page.waitForURL(/#\/cases\/.+\/tags/)
-      await expect(page.getByTestId('tag-manager')).toContainText('roundtrip-tag')
+      await page.click('button[aria-label="Signals"]')
+      await page.waitForURL(/#\/cases\/.+\/signals/)
+      await expect(page.getByTestId('signals-tag-list')).toContainText('roundtrip-tag')
+
+      // The exclusion list and its mode survived the round-trip, so the
+      // imported case enforces the policy it was exported under.
+      await expect(page.getByTestId('exclusions-summary')).toContainText(
+        '1 exclusion · overrides global'
+      )
+      await page.getByTestId('exclusions-summary').click()
+      await expect(page.getByTestId('exclusion-chip')).toContainText('*.roundtrip-excluded.test')
 
       // Dashboard now lists both the source case and the imported one.
       await page.evaluate(() => {

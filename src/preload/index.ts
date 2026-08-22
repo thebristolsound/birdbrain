@@ -59,7 +59,9 @@ const birdbrain = {
     exportArchive: bridge(IPC_CHANNELS.CASES_EXPORT_ARCHIVE),
     inspectArchive: bridge(IPC_CHANNELS.CASES_INSPECT_ARCHIVE),
     importArchive: bridge(IPC_CHANNELS.CASES_IMPORT_ARCHIVE),
-    recentActivity: bridge(IPC_CHANNELS.CASES_RECENT_ACTIVITY)
+    recentActivity: bridge(IPC_CHANNELS.CASES_RECENT_ACTIVITY),
+    getAutoCapturePolicy: bridge(IPC_CHANNELS.CASES_GET_AUTO_CAPTURE_POLICY),
+    setAutoCapturePolicy: bridge(IPC_CHANNELS.CASES_SET_AUTO_CAPTURE_POLICY)
   },
   captures: {
     list: bridge(IPC_CHANNELS.CAPTURES_LIST),
@@ -96,6 +98,7 @@ const birdbrain = {
     getForCapture: bridge(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE),
     countForCase: bridge(IPC_CHANNELS.TAGS_COUNT_FOR_CASE),
     usageCountsForCase: bridge(IPC_CHANNELS.TAGS_USAGE_COUNTS_FOR_CASE),
+    captureMatrix: bridge(IPC_CHANNELS.TAGS_CAPTURE_MATRIX),
     addToCaptures: bridge(IPC_CHANNELS.TAGS_ADD_TO_CAPTURES)
   },
   selectors: {
@@ -108,6 +111,7 @@ const birdbrain = {
     matchCounts: bridge(IPC_CHANNELS.SELECTORS_MATCH_COUNTS),
     matchingCaptures: bridge(IPC_CHANNELS.SELECTORS_MATCHING_CAPTURES),
     coverage: bridge(IPC_CHANNELS.SELECTORS_COVERAGE),
+    captureMatrix: bridge(IPC_CHANNELS.SELECTORS_CAPTURE_MATRIX),
     bulkCreate: bridge(IPC_CHANNELS.SELECTORS_BULK_CREATE),
     exportMatches: bridge(IPC_CHANNELS.SELECTORS_EXPORT_MATCHES)
   },

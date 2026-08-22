@@ -1,23 +1,21 @@
 import { useNavigate, useMatchRoute, useParams } from '@tanstack/react-router'
-import { Home, LayoutDashboard, Layers, Crosshair, StickyNote, Tag, Database } from 'lucide-react'
+import { Home, LayoutDashboard, Layers, Crosshair, StickyNote, Database } from 'lucide-react'
 
-type SidebarSection = 'overview' | 'captures' | 'selectors' | 'notes' | 'tags' | 'data'
+type SidebarSection = 'overview' | 'captures' | 'notes' | 'signals' | 'data'
 
 const NAV_ITEMS: { id: SidebarSection; icon: typeof Layers; label: string }[] = [
   { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
   { id: 'captures', icon: Layers, label: 'Captures' },
-  { id: 'selectors', icon: Crosshair, label: 'Selectors' },
   { id: 'notes', icon: StickyNote, label: 'Notes' },
-  { id: 'tags', icon: Tag, label: 'Tags' },
+  { id: 'signals', icon: Crosshair, label: 'Signals' },
   { id: 'data', icon: Database, label: 'Data' }
 ]
 
 const SECTION_PATHS = {
   overview: '/cases/$caseId/overview',
   captures: '/cases/$caseId/captures',
-  selectors: '/cases/$caseId/selectors',
   notes: '/cases/$caseId/notes',
-  tags: '/cases/$caseId/tags',
+  signals: '/cases/$caseId/signals',
   data: '/cases/$caseId/data'
 } as const satisfies Record<SidebarSection, string>
 

@@ -48,7 +48,19 @@ describe('selector commands', () => {
     fakeBridge({ selectors: { exportMatches } })
 
     await expect(exportSelectorMatches('case1')).resolves.toEqual({ exported: false })
-    expect(exportMatches).toHaveBeenCalledWith('case1')
+    // No selector id: case-wide, the shape the card header's export uses (#400).
+    expect(exportMatches).toHaveBeenCalledWith('case1', undefined)
+  })
+
+  it('scopes a match export to one selector when asked', async () => {
+    const exportMatches = vi.fn(async () => ({ exported: true, path: '/tmp/x.csv' }))
+    fakeBridge({ selectors: { exportMatches } })
+
+    await expect(exportSelectorMatches('case1', 's1')).resolves.toEqual({
+      exported: true,
+      path: '/tmp/x.csv'
+    })
+    expect(exportMatches).toHaveBeenCalledWith('case1', 's1')
   })
 
   it('asks for matching capture ids for an ad-hoc selector set', async () => {

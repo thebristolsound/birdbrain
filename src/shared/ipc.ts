@@ -16,6 +16,7 @@ import type {
   CaptureAnnotations,
   CaptureEvent,
   Case,
+  CaseAutoCapturePolicy,
   DiagnosticsSnapshot,
   UnreconciledDeletionReport,
   ExportOptions,
@@ -58,6 +59,8 @@ export const IPC_CHANNELS = {
   CASES_INSPECT_ARCHIVE: 'cases:inspectArchive',
   CASES_IMPORT_ARCHIVE: 'cases:importArchive',
   CASES_RECENT_ACTIVITY: 'cases:recentActivity',
+  CASES_GET_AUTO_CAPTURE_POLICY: 'cases:getAutoCapturePolicy',
+  CASES_SET_AUTO_CAPTURE_POLICY: 'cases:setAutoCapturePolicy',
 
   // Captures
   CAPTURES_LIST: 'captures:list',
@@ -94,6 +97,7 @@ export const IPC_CHANNELS = {
   TAGS_GET_FOR_CAPTURE: 'tags:getForCapture',
   TAGS_COUNT_FOR_CASE: 'tags:countForCase',
   TAGS_USAGE_COUNTS_FOR_CASE: 'tags:usageCountsForCase',
+  TAGS_CAPTURE_MATRIX: 'tags:captureMatrix',
   TAGS_ADD_TO_CAPTURES: 'tags:addToCaptures',
 
   // Session (renderer-side session control; the extension drives HTTP)
@@ -128,6 +132,7 @@ export const IPC_CHANNELS = {
   SELECTORS_MATCH_COUNTS: 'selectors:matchCounts',
   SELECTORS_MATCHING_CAPTURES: 'selectors:matchingCaptures',
   SELECTORS_COVERAGE: 'selectors:coverage',
+  SELECTORS_CAPTURE_MATRIX: 'selectors:captureMatrix',
   SELECTORS_BULK_CREATE: 'selectors:bulkCreate',
   SELECTORS_EXPORT_MATCHES: 'selectors:exportMatches',
 
@@ -302,6 +307,13 @@ export interface UpdateCaseParams {
   name?: string
   description?: string
   archived?: boolean
+}
+
+// The whole policy, not a delta: the exclusion list is edited as a set and a
+// partial write has no meaning for it. Kept off UpdateCaseParams so the write
+// never touches the case's updated_at (see caseRepo.setAutoCapturePolicy).
+export interface SetAutoCapturePolicyParams extends CaseAutoCapturePolicy {
+  caseId: string
 }
 
 export interface CreateTagParams {
@@ -601,6 +613,11 @@ export interface IpcInvokeContract {
     result: { newCaseId: string }
   }
   'cases:recentActivity': { args: [limit?: number]; result: RecentActivityEvent[] }
+  'cases:getAutoCapturePolicy': { args: [caseId: string]; result: CaseAutoCapturePolicy }
+  'cases:setAutoCapturePolicy': {
+    args: [params: SetAutoCapturePolicyParams]
+    result: CaseAutoCapturePolicy
+  }
 
   'captures:list': { args: [caseId: string]; result: Capture[] }
   'captures:get': { args: [id: string]; result: Capture | undefined }
@@ -642,6 +659,7 @@ export interface IpcInvokeContract {
   'tags:getForCapture': { args: [captureId: string]; result: Tag[] }
   'tags:countForCase': { args: [caseId: string]; result: number }
   'tags:usageCountsForCase': { args: [caseId: string]; result: Record<string, number> }
+  'tags:captureMatrix': { args: [caseId: string, limit: number]; result: Record<string, string[]> }
   'tags:addToCaptures': {
     args: [payload: CaptureBatchPayload & { tagId: string }]
     result: BatchCountResult
@@ -659,9 +677,13 @@ export interface IpcInvokeContract {
     result: string[]
   }
   'selectors:coverage': { args: [caseId: string]; result: { matched: number; total: number } }
+  'selectors:captureMatrix': {
+    args: [caseId: string, limit: number]
+    result: Record<string, string[]>
+  }
   'selectors:bulkCreate': { args: [params: BulkCreateSelectorsParams]; result: Selector[] }
   'selectors:exportMatches': {
-    args: [caseId: string]
+    args: [caseId: string, selectorId?: string]
     result: { exported: boolean; path?: string }
   }
 

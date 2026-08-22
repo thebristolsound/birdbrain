@@ -1,6 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { initDatabase, closeDatabase, getDb, LATEST_SCHEMA_VERSION } from '@main/services/db/core'
-import { listCases, getCase, createCase, updateCase, deleteCase } from '@main/services/db/caseRepo'
+import {
+  listCases,
+  getCase,
+  createCase,
+  updateCase,
+  deleteCase,
+  getAutoCapturePolicy,
+  setAutoCapturePolicy
+} from '@main/services/db/caseRepo'
 import {
   listCaptures,
   getCapture,
@@ -24,6 +32,7 @@ import {
   getTagsForCapture,
   getTagCountForCase,
   getTagUsageCountsForCase,
+  getTagCaptureMatrix,
   addTagToCaptures
 } from '@main/services/db/tagRepo'
 import {
@@ -33,7 +42,8 @@ import {
   listActiveSelectors,
   listSelectors,
   bulkCreateSelectors,
-  getSelectorMatchesForExport
+  getSelectorMatchesForExport,
+  getSelectorCaptureMatrix
 } from '@main/services/db/selectorRepo'
 import {
   createNote,
@@ -799,6 +809,129 @@ describe('database', () => {
       const c = createCase({ name: 'No Matches' })
       expect(getSelectorMatchesForExport(c.id)).toEqual([])
     })
+
+    // #400: the Signals rail's Export CSV is per-signal. Without the filter the
+    // button would write the whole case under a label that says otherwise.
+    it('scopes to one selector when a selector id is given', () => {
+      const c = createCase({ name: 'Scoped Export' })
+      const cap = insertCapture({
+        caseId: c.id,
+        url: 'https://example.com/a',
+        title: 'Page A',
+        hash: 'h1',
+        timestamp: '2026-01-01T00:00:00.000Z'
+      })
+      const wanted = createSelector({ caseId: c.id, pattern: 'alpha' })
+      const unwanted = createSelector({ caseId: c.id, pattern: 'beta' })
+      matchSelectorAgainstCaptures(wanted.id, [{ captureId: cap.id, text: 'alpha' }])
+      matchSelectorAgainstCaptures(unwanted.id, [{ captureId: cap.id, text: 'beta' }])
+
+      expect(getSelectorMatchesForExport(c.id)).toHaveLength(2)
+      const scoped = getSelectorMatchesForExport(c.id, wanted.id)
+      expect(scoped).toHaveLength(1)
+      expect(scoped[0].selectorPattern).toBe('alpha')
+    })
+
+    it('scopes to nothing when the selector belongs to another case', () => {
+      const c = createCase({ name: 'Scoped Export Cross' })
+      const other = createCase({ name: 'Elsewhere' })
+      const cap = insertCapture({
+        caseId: other.id,
+        url: 'https://example.com/a',
+        title: 'Page A',
+        hash: 'h1',
+        timestamp: '2026-01-01T00:00:00.000Z'
+      })
+      const foreign = createSelector({ caseId: other.id, pattern: 'alpha' })
+      matchSelectorAgainstCaptures(foreign.id, [{ captureId: cap.id, text: 'alpha' }])
+
+      expect(getSelectorMatchesForExport(c.id, foreign.id)).toEqual([])
+    })
+  })
+
+  describe('coverage matrices (#400)', () => {
+    // Newest first, matching listCaptures, so "the N most recent" means the
+    // same thing to the query and to the strip that draws it.
+    function seedCaptures(caseId: string, count: number): string[] {
+      return Array.from({ length: count }, (_, i) =>
+        insertCapture({
+          caseId,
+          url: `https://example.com/${i}`,
+          title: `Page ${i}`,
+          hash: `h${i}`,
+          // Ascending timestamps, so index 0 is the OLDEST.
+          timestamp: `2026-01-${String(i + 1).padStart(2, '0')}T00:00:00.000Z`
+        }).id
+      )
+    }
+
+    it('maps each selector to the recent captures it matched', () => {
+      const c = createCase({ name: 'Selector Matrix' })
+      const [cap0, cap1, cap2] = seedCaptures(c.id, 3)
+      const both = createSelector({ caseId: c.id, pattern: 'both' })
+      const one = createSelector({ caseId: c.id, pattern: 'one' })
+      createSelector({ caseId: c.id, pattern: 'none' })
+      matchSelectorAgainstCaptures(both.id, [
+        { captureId: cap0, text: 'both' },
+        { captureId: cap2, text: 'both' }
+      ])
+      matchSelectorAgainstCaptures(one.id, [{ captureId: cap1, text: 'one' }])
+
+      const matrix = getSelectorCaptureMatrix(c.id, 24)
+
+      expect(new Set(matrix[both.id])).toEqual(new Set([cap0, cap2]))
+      expect(matrix[one.id]).toEqual([cap1])
+      // A selector that matched nothing is absent, not present-and-empty.
+      expect(Object.keys(matrix)).toHaveLength(2)
+    })
+
+    it('bounds the selector matrix to the most recent captures', () => {
+      const c = createCase({ name: 'Bounded Selector Matrix' })
+      const caps = seedCaptures(c.id, 5)
+      const sel = createSelector({ caseId: c.id, pattern: 'all' })
+      matchSelectorAgainstCaptures(
+        sel.id,
+        caps.map((captureId) => ({ captureId, text: 'all' }))
+      )
+
+      // Newest two only: caps[4] and caps[3].
+      expect(new Set(getSelectorCaptureMatrix(c.id, 2)[sel.id])).toEqual(
+        new Set([caps[4], caps[3]])
+      )
+    })
+
+    it('keeps one case out of another case matrix', () => {
+      const c = createCase({ name: 'Matrix Isolation' })
+      const other = createCase({ name: 'Matrix Other' })
+      const [cap] = seedCaptures(other.id, 1)
+      const foreign = createSelector({ caseId: other.id, pattern: 'x' })
+      matchSelectorAgainstCaptures(foreign.id, [{ captureId: cap, text: 'x' }])
+
+      expect(getSelectorCaptureMatrix(c.id, 24)).toEqual({})
+    })
+
+    it('maps each tag to the recent captures carrying it', () => {
+      const c = createCase({ name: 'Tag Matrix' })
+      const [cap0, cap1] = seedCaptures(c.id, 2)
+      const applied = createTag({ name: 'applied' })
+      createTag({ name: 'unused' })
+      addTagToCapture({ captureId: cap0, tagId: applied.id })
+      addTagToCapture({ captureId: cap1, tagId: applied.id })
+
+      const matrix = getTagCaptureMatrix(c.id, 24)
+
+      expect(new Set(matrix[applied.id])).toEqual(new Set([cap0, cap1]))
+      expect(Object.keys(matrix)).toHaveLength(1)
+    })
+
+    it('bounds the tag matrix to the most recent captures', () => {
+      const c = createCase({ name: 'Bounded Tag Matrix' })
+      const caps = seedCaptures(c.id, 4)
+      const tag = createTag({ name: 'everywhere' })
+      for (const captureId of caps) addTagToCapture({ captureId, tagId: tag.id })
+
+      expect(getTagCaptureMatrix(c.id, 1)[tag.id]).toEqual([caps[3]])
+    })
   })
 
   describe('notes schema (migration 10)', () => {
@@ -929,7 +1062,9 @@ describe('database', () => {
       // bumped to 26 (notes.body_doc — rich-text note bodies);
       // bumped to 27 (notes.anchor_kind / anchor_json — anchored notes);
       // bumped in #389 (note_references — mention references index);
-      // bumped in #395 (selectors.origin — selector provenance).
+      // bumped in #395 (selectors.origin — selector provenance);
+      // bumped in #400 (cases.exclusions / cases.exclusion_mode — per-case
+      // auto-capture exclusions).
       // No literal pin: three concurrent tickets each append a migration, so
       // whichever lands later renumbers — asserting the constant against the
       // migrated database checks the same invariant without the churn.
@@ -1335,6 +1470,104 @@ describe('database', () => {
       ])
 
       expect(created.map((s) => s.origin)).toEqual(['extension', 'note', undefined])
+    })
+  })
+
+  describe('migration v30 (per-case auto-capture exclusions, #400)', () => {
+    it('adds two nullable columns with no defaults', () => {
+      const cols = getDb().prepare("PRAGMA table_info('cases')").all() as Array<{
+        name: string
+        notnull: number
+        dflt_value: string | null
+      }>
+      const byName = new Map(cols.map((c) => [c.name, c]))
+      for (const name of ['exclusions', 'exclusion_mode']) {
+        expect(byName.has(name)).toBe(true)
+        expect(byName.get(name)!.notnull).toBe(0)
+        // No DEFAULT: NULL already means "no exclusions, stack on global", so a
+        // written-in default would record an operator decision nobody made.
+        expect(byName.get(name)!.dflt_value).toBeNull()
+      }
+    })
+
+    it('reads a case that has never set a policy as empty and stacking', () => {
+      const c = createCase({ name: 'No Policy' })
+
+      expect(getAutoCapturePolicy(c.id)).toEqual({ exclusions: [], mode: 'stack' })
+      const row = getDb()
+        .prepare('SELECT exclusions, exclusion_mode FROM cases WHERE id = ?')
+        .get(c.id) as { exclusions: string | null; exclusion_mode: string | null }
+      expect(row.exclusions).toBeNull()
+      expect(row.exclusion_mode).toBeNull()
+    })
+
+    it('round-trips a policy through the columns', () => {
+      const c = createCase({ name: 'Policy' })
+
+      const saved = setAutoCapturePolicy(c.id, {
+        exclusions: ['*.bank.com', 'mail.google.com', '/\\.gov(\\.|\\/|$)/'],
+        mode: 'override'
+      })
+
+      expect(saved).toEqual({
+        exclusions: ['*.bank.com', 'mail.google.com', '/\\.gov(\\.|\\/|$)/'],
+        mode: 'override'
+      })
+      expect(getAutoCapturePolicy(c.id)).toEqual(saved)
+    })
+
+    it('trims patterns and drops blank ones on write', () => {
+      const c = createCase({ name: 'Trim' })
+
+      setAutoCapturePolicy(c.id, { exclusions: ['  a.com  ', '', '   '], mode: 'stack' })
+
+      expect(getAutoCapturePolicy(c.id).exclusions).toEqual(['a.com'])
+    })
+
+    it('does not touch updated_at, so an exclusion edit is not a case edit', () => {
+      const c = createCase({ name: 'Timestamps' })
+      const before = getCase(c.id)!.updatedAt
+
+      setAutoCapturePolicy(c.id, { exclusions: ['a.com'], mode: 'stack' })
+
+      expect(getCase(c.id)!.updatedAt).toBe(before)
+    })
+
+    it('returns undefined for a case that does not exist', () => {
+      expect(setAutoCapturePolicy('no-such-case', { exclusions: [], mode: 'stack' })).toBeUndefined()
+      expect(getAutoCapturePolicy('no-such-case')).toEqual({ exclusions: [], mode: 'stack' })
+    })
+
+    // Both columns are plain TEXT and the Database Admin hatch edits them
+    // directly, so every read is re-checked. Degrading to the empty policy is
+    // visible on the screen; trusting the value would put junk in the matcher.
+    it.each([
+      ['malformed JSON', 'not json at all'],
+      ['a JSON object', '{"a":1}'],
+      ['a JSON string', '"a.com"']
+    ])('reads a hand-edited %s exclusion list as empty', (_name, raw) => {
+      const c = createCase({ name: 'Hand Edited List' })
+      getDb().prepare('UPDATE cases SET exclusions = ? WHERE id = ?').run(raw, c.id)
+
+      expect(getAutoCapturePolicy(c.id).exclusions).toEqual([])
+    })
+
+    it('drops non-string entries from a hand-edited exclusion list', () => {
+      const c = createCase({ name: 'Mixed List' })
+      getDb()
+        .prepare('UPDATE cases SET exclusions = ? WHERE id = ?')
+        .run(JSON.stringify(['a.com', 42, null, '', 'b.com']), c.id)
+
+      expect(getAutoCapturePolicy(c.id).exclusions).toEqual(['a.com', 'b.com'])
+    })
+
+    it('reads an unrecognised mode as stack, the safer of the two', () => {
+      const c = createCase({ name: 'Bogus Mode' })
+      getDb().prepare('UPDATE cases SET exclusion_mode = ? WHERE id = ?').run('nonsense', c.id)
+
+      // stack, not override: an unreadable mode must not silently bypass the
+      // operator's global ignore list for this case.
+      expect(getAutoCapturePolicy(c.id).mode).toBe('stack')
     })
   })
 

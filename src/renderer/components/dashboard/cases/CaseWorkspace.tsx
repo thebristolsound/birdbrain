@@ -39,9 +39,8 @@ export function CaseWorkspace() {
 
   const isOverview = matchRoute({ to: '/cases/$caseId/overview', fuzzy: true }) !== false
   const isCaptures = matchRoute({ to: '/cases/$caseId/captures', fuzzy: true }) !== false
-  const isSelectors = matchRoute({ to: '/cases/$caseId/selectors', fuzzy: true }) !== false
   const isNotes = matchRoute({ to: '/cases/$caseId/notes', fuzzy: true }) !== false
-  const isTags = matchRoute({ to: '/cases/$caseId/tags', fuzzy: true }) !== false
+  const isSignals = matchRoute({ to: '/cases/$caseId/signals', fuzzy: true }) !== false
   const isData = matchRoute({ to: '/cases/$caseId/data', fuzzy: true }) !== false
 
   // Persist active section for session restore
@@ -50,17 +49,15 @@ export function CaseWorkspace() {
       ? 'overview'
       : isCaptures
         ? 'captures'
-        : isSelectors
-          ? 'selectors'
-          : isNotes
-            ? 'notes'
-            : isTags
-              ? 'tags'
-              : isData
-                ? 'data'
-                : 'overview'
+        : isNotes
+          ? 'notes'
+          : isSignals
+            ? 'signals'
+            : isData
+              ? 'data'
+              : 'overview'
     update.mutate({ lastActiveSection: section })
-  }, [isOverview, isCaptures, isSelectors, isNotes, isTags, isData])
+  }, [isOverview, isCaptures, isNotes, isSignals, isData])
 
   if (isLoading) {
     return (
@@ -76,7 +73,10 @@ export function CaseWorkspace() {
 
   return (
     <div className="flex h-full flex-col">
-      {isCaptures || isData ? (
+      {/* Signals joins the full-height branch: it is a split view with its own
+          scroll regions, and the padded/scrolling wrapper below would stop its
+          360px rail pinning to the window. */}
+      {isCaptures || isData || isSignals ? (
         <div className="flex-1 overflow-hidden">
           <Outlet />
         </div>

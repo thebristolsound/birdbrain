@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
-import { createCase, updateCase } from '@main/services/db/caseRepo'
+import { createCase, setAutoCapturePolicy, updateCase } from '@main/services/db/caseRepo'
 import { listCaptures } from '@main/services/db/captureRepo'
 import {
   createSelector,
@@ -19,6 +19,7 @@ import {
   resetManualDedup
 } from '@main/services/captureServer'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
+import { matchCaseExclusion } from '@main/services/exclusionPolicy'
 import { createSessionService, type SessionService } from '@main/services/session'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { getManifestHead } from '@main/services/manifest'
@@ -490,6 +491,9 @@ describe('captureServer', () => {
     expect(data.cases[0]).toHaveProperty('id')
     expect(data.cases[0]).toHaveProperty('name')
     expect(data.ignoredUrlPatterns).toEqual([])
+    // Always published (#400) so the extension mirrors what is actually in
+    // force. The per-case matrix lives in perCaseExclusions.test.ts.
+    expect(data.effectiveIgnoredUrlPatterns).toEqual([])
     expect(data.captureScreenshots).toBe(true)
     expect(data.dedupeWindowSeconds).toBe(60)
   })
@@ -569,6 +573,52 @@ describe('captureServer', () => {
     )
 
     expect(res.status).toBe(403)
+  })
+
+  // #400 moved the exclusion check to AFTER case resolution, because a case's
+  // 'override' mode has to be able to bypass the global list and the mode is
+  // unknown until the case is. These two pin what that reordering changed: an
+  // excluded URL with no usable case now answers the case error, not the
+  // exclusion one. No existing test covered it — every blacklist test above
+  // posts with a real, activated case — so without these the precedence could
+  // move back in silence.
+  it('an excluded URL with a missing caseId answers 400, not 403', async () => {
+    createCase({ name: 'Reorder Missing Case' })
+    updateSettings({ ignoredUrlPatterns: ['blocked-site.com'] })
+
+    const res = await postCapture(
+      { source: 'manual', url: 'https://blocked-site.com/page' },
+      '<html>blocked</html>'
+    )
+
+    expect(res.status).toBe(400)
+    expect((await readJson(res)).error).toBe('Missing required field: caseId')
+  })
+
+  it('an excluded URL with an unknown caseId answers 404, not 403', async () => {
+    updateSettings({ ignoredUrlPatterns: ['blocked-site.com'] })
+
+    const res = await postCapture(
+      { source: 'manual', caseId: 'no-such-case', url: 'https://blocked-site.com/page' },
+      '<html>blocked</html>'
+    )
+
+    expect(res.status).toBe(404)
+    expect((await readJson(res)).error).toBe('Case not found')
+  })
+
+  it('an excluded URL for an archived case answers 400, not 403', async () => {
+    const archived = createCase({ name: 'Reorder Archived' })
+    updateCase({ id: archived.id, archived: true })
+    updateSettings({ ignoredUrlPatterns: ['blocked-site.com'] })
+
+    const res = await postCapture(
+      { source: 'manual', caseId: archived.id, url: 'https://blocked-site.com/page' },
+      '<html>blocked</html>'
+    )
+
+    expect(res.status).toBe(400)
+    expect((await readJson(res)).error).toBe('Case is archived')
   })
 
   it('blacklist supports regex patterns', async () => {
@@ -660,6 +710,36 @@ describe('captureServer', () => {
     expect(deletions).toHaveLength(1)
     expect(deletions[0].captureId).toBe(captures[0].captureId)
     expect(deletions[0].reason).toBe('pipeline-test')
+    expect(listCaptures(testCase.id)).toHaveLength(0)
+  })
+
+  // The pipeline self-test is the deliberate exception to the per-case
+  // exclusion list (#400, #766): it acquires nothing — fixed sentinel URL,
+  // literal body — so a policy written about web pages must not be able to
+  // disable the operator's proof that the capture pipeline works.
+  it('POST /api/captures/test runs even when the case excludes its sentinel URL', async () => {
+    const testCase = createCase({ name: 'Excluding Everything' })
+    setAutoCapturePolicy(testCase.id, { exclusions: ['/./'], mode: 'override' })
+    // Self-proving: without this the test would pass on a pattern that never
+    // matched the sentinel, and pin nothing.
+    expect(matchCaseExclusion('birdbrain://pipeline-test', testCase.id)).toBe('/./')
+
+    const res = await serverPost('/api/captures/test')
+    const data = await readJson(res)
+    expect(data.success).toBe(true)
+    // The route ingests into `listCases()[0]`, so `success` alone would be true
+    // just as well from an unexcluded case seeded ahead of this one. Pin that
+    // the self-test really landed in the case carrying the exclusion.
+    const manifestPath = join(tempDir, 'captures', testCase.id, MANIFEST_FILENAME)
+    expect(existsSync(manifestPath)).toBe(true)
+    const entries = readFileSync(manifestPath, 'utf-8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+    expect(entries.filter((e) => e.type === 'capture').map((e) => e.url)).toEqual([
+      'birdbrain://pipeline-test'
+    ])
+    // And the residue is still cleaned up through the lifecycle.
     expect(listCaptures(testCase.id)).toHaveLength(0)
   })
 

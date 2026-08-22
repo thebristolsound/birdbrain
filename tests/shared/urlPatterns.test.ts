@@ -1,6 +1,12 @@
 import { runInNewContext } from 'node:vm'
 import { describe, expect, it } from 'vitest'
-import { globToRegex, matchIgnoredUrl, type RegexTest } from '@shared/urlPatterns'
+import {
+  globToRegex,
+  matchIgnoredUrl,
+  resolveEffectiveIgnorePatterns,
+  validateIgnorePattern,
+  type RegexTest
+} from '@shared/urlPatterns'
 import { safeRegexTest } from '@main/services/safeRegex'
 
 // Known-answer table for the ignored-URL matcher (#227).
@@ -352,7 +358,110 @@ describe('globToRegex', () => {
   })
 
   it('is case-insensitive and unanchored', () => {
-    expect(globToRegex('*.example.com*').flags).toBe('i')
     expect(globToRegex('example').test('https://EXAMPLE.com/page')).toBe(true)
+    expect(globToRegex('*.example.com*').flags).toBe('i')
+  })
+})
+
+// #400. Known answers for the two pure functions the per-case exclusion feature
+// adds. Both sit on the acquisition path — one decides whether a pattern is
+// allowed to be stored at all, the other decides which patterns are in force
+// for a case — so both are pinned by exact answer rather than by shape.
+describe('validateIgnorePattern', () => {
+  it.each([
+    ['substring', 'facebook.com'],
+    ['glob', '*.bank.com*'],
+    ['single-char glob', 'exa?ple.com'],
+    ['regex with flags', '/\\.gov(\\.|\\/|$)/i'],
+    ['regex without flags', '/^https:/'],
+    ['pattern with surrounding whitespace', '  facebook.com  ']
+  ])('accepts a %s pattern', (_name, pattern) => {
+    expect(validateIgnorePattern(pattern)).toEqual({ ok: true })
+  })
+
+  it.each([
+    ['empty', ''],
+    ['whitespace only', '   ']
+  ])('rejects an %s pattern', (_name, pattern) => {
+    expect(validateIgnorePattern(pattern)).toEqual({ ok: false, reason: 'Pattern is empty' })
+  })
+
+  it('rejects an uncompilable regex and surfaces the engine error', () => {
+    const result = validateIgnorePattern('/[/')
+    expect(result.ok).toBe(false)
+    // The engine's own message, not a generic one: the operator has to be able
+    // to see what is wrong with the pattern they typed.
+    expect(result.ok === false && result.reason.length > 0).toBe(true)
+    expect(result.ok === false && result.reason).toMatch(/character class|Invalid regular/i)
+  })
+
+  it('rejects an unknown regex flag', () => {
+    expect(validateIgnorePattern('/abc/q').ok).toBe(false)
+  })
+
+  // A URL path typed as an exclusion reads as a regex literal under this
+  // grammar — '/some/path' is body 'some' with flags 'path' — and
+  // matchIgnoredUrl would silently skip it. Refusing it is the whole point of
+  // validating: the operator finds out now rather than discovering later that
+  // the rule never excluded anything.
+  it('rejects a URL path, which the grammar reads as a regex with bad flags', () => {
+    const result = validateIgnorePattern('/some/path')
+    expect(result.ok).toBe(false)
+    expect(result.ok === false && result.reason).toContain('flags')
+  })
+
+  // The write seam refuses what cannot compile, not what is slow. Containment
+  // for that class is the server's time budget, and it is fail-open — stated
+  // here so a reader does not mistake validation for protection against it.
+  it('accepts a pattern that compiles but backtracks catastrophically', () => {
+    expect(validateIgnorePattern('/(a+)+$/').ok).toBe(true)
+  })
+})
+
+describe('resolveEffectiveIgnorePatterns', () => {
+  it('stacks the case list after the global list, global first', () => {
+    // Order is load-bearing: matchIgnoredUrl returns the FIRST match, and a URL
+    // on both lists should be reported as blocked by the broader global rule.
+    expect(resolveEffectiveIgnorePatterns(['g1', 'g2'], ['c1'], 'stack')).toEqual([
+      'g1',
+      'g2',
+      'c1'
+    ])
+  })
+
+  it('collapses a pattern present on both lists to one entry', () => {
+    expect(resolveEffectiveIgnorePatterns(['dup', 'g'], ['dup', 'c'], 'stack')).toEqual([
+      'dup',
+      'g',
+      'c'
+    ])
+  })
+
+  it('returns the case list verbatim under override, bypassing the global list', () => {
+    expect(resolveEffectiveIgnorePatterns(['g1', 'g2'], ['c1', 'c2'], 'override')).toEqual([
+      'c1',
+      'c2'
+    ])
+  })
+
+  it('is empty under override with no case patterns, however long the global list', () => {
+    expect(resolveEffectiveIgnorePatterns(['g1', 'g2'], [], 'override')).toEqual([])
+  })
+
+  it('is the global list under stack with no case patterns', () => {
+    expect(resolveEffectiveIgnorePatterns(['g1'], [], 'stack')).toEqual(['g1'])
+  })
+
+  it('handles both lists empty in either mode', () => {
+    expect(resolveEffectiveIgnorePatterns([], [], 'stack')).toEqual([])
+    expect(resolveEffectiveIgnorePatterns([], [], 'override')).toEqual([])
+  })
+
+  it('does not mutate either input', () => {
+    const globalPatterns = ['g1']
+    const casePatterns = ['c1']
+    resolveEffectiveIgnorePatterns(globalPatterns, casePatterns, 'stack')
+    expect(globalPatterns).toEqual(['g1'])
+    expect(casePatterns).toEqual(['c1'])
   })
 })

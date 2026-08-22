@@ -37,8 +37,11 @@ import {
   MANUAL_DEDUPE_WINDOW_MS,
   MAX_SCREENSHOT_SIZE
 } from '@shared/constants'
-import { matchIgnoredUrl } from '@shared/urlPatterns'
-import { safeRegexTest } from '@main/services/safeRegex'
+import {
+  blockedSkipReason,
+  effectiveIgnorePatternsForCase,
+  isUrlBlacklisted
+} from '@main/services/exclusionPolicy'
 import { logger } from '@main/services/logger'
 import { tag } from '@main/services/logSafe'
 export { CAPTURE_SERVER_PORT }
@@ -80,14 +83,6 @@ export function resetManualDedup(): void {
 
 export function setMainWindow(win: BrowserWindow): void {
   mainWindow = win
-}
-
-// Regex literals are evaluated in the vm sandbox: the patterns come from
-// settings, so a catastrophically backtracking one must not stall the server.
-// Containment is fail-open — a pattern that exhausts the 200 ms budget yields
-// no match, so the capture is accepted rather than refused. See matchIgnoredUrl.
-function isUrlBlacklisted(url: string, patterns: string[]): string | null {
-  return matchIgnoredUrl(url, patterns, safeRegexTest)
 }
 
 function emitCaptureEvent(event: CaptureEvent): void {
@@ -204,6 +199,14 @@ function createApp(deps: CaptureServerDeps): Hono {
       autoCaptureMode: settings.autoCaptureMode,
       cases: includeCases && allCases ? allCases.map((cs) => ({ id: cs.id, name: cs.name })) : [],
       ignoredUrlPatterns: settings.ignoredUrlPatterns,
+      // What the extension mirrors (#400): the global list combined with the
+      // active case's exclusions, or that case's alone under 'override'. Sent
+      // alongside `ignoredUrlPatterns` rather than overwriting it, so that
+      // field keeps meaning "the operator's global list" for anything that
+      // reads it. With no active case there is no case policy to apply, so this
+      // is the global list — the extension only ever captures into the active
+      // case, so its mirror and this list describe the same target.
+      effectiveIgnoredUrlPatterns: effectiveIgnorePatternsForCase(activeCase?.id ?? null),
       captureScreenshots: settings.captureScreenshots,
       dedupeWindowSeconds: settings.dedupeWindowSeconds,
       theme: settings.theme
@@ -293,18 +296,17 @@ function createApp(deps: CaptureServerDeps): Hono {
           return c.json({ error: OPERATOR_NAME_REQUIRED_MSG }, 400)
         }
 
-        const blocked = isUrlBlacklisted(url, captureSettings.ignoredUrlPatterns)
-        if (blocked) {
-          emitCaptureEvent({
-            type: 'skipped',
-            source,
-            url,
-            timestamp: new Date().toISOString(),
-            skipReason: 'Blacklisted: ' + blocked
-          })
-          return c.json({ error: 'URL blocked by ignored pattern', pattern: blocked }, 403)
-        }
-
+        // Case resolution runs BEFORE the exclusion check (#400), where it used
+        // to run after. Exclusions are per-case now, and 'override' mode has to
+        // be able to bypass the global list, so the mode cannot be known until
+        // the case is. Splitting the check in two — global first, case after —
+        // is not available for the same reason.
+        //
+        // Observable consequence: an excluded URL submitted with a missing,
+        // unknown or archived caseId now answers 400/404 rather than 403, and
+        // emits no 'skipped' event. Nothing is captured either way; what changes
+        // is which refusal the operator is told about. Pinned below and in
+        // tests/main/services/captureServer.test.ts.
         let caseId = ''
         if (source === 'auto') {
           const session = sessionService.snapshot()
@@ -317,6 +319,23 @@ function createApp(deps: CaptureServerDeps): Hono {
           if (!caseData) return c.json({ error: 'Case not found' }, 404)
           if (caseData.archived) return c.json({ error: 'Case is archived' }, 400)
           caseId = caseIdField
+        }
+
+        // Ahead of the source branch below, as the global-only check always was:
+        // the list blocks every capture route into this case, manual included
+        // (ruled 2026-08-21). An operator who excludes a URL from a case means
+        // it, and a rule that permits the one route that currently works would
+        // be worse than no rule.
+        const blocked = isUrlBlacklisted(url, effectiveIgnorePatternsForCase(caseId))
+        if (blocked) {
+          emitCaptureEvent({
+            type: 'skipped',
+            source,
+            url,
+            timestamp: new Date().toISOString(),
+            skipReason: blockedSkipReason(blocked)
+          })
+          return c.json({ error: 'URL blocked by ignored pattern', pattern: blocked }, 403)
         }
 
         if (source === 'manual') {
@@ -513,6 +532,21 @@ function createApp(deps: CaptureServerDeps): Hono {
         timestamp: new Date().toISOString()
       })
 
+      // The one producer the per-case exclusion list is deliberately not
+      // applied to (#400, #766). Every acquisition route is checked — the
+      // extension/manual route above, and both recapture enforcement points —
+      // but this one acquires nothing: the URL is the fixed sentinel below and
+      // the body is a literal, so no page content and no operator-supplied URL
+      // enters the case. What a check would buy is the ability for a broad
+      // pattern like `/./` to break the operator's only proof that the capture
+      // pipeline works, which is the worse failure for a diagnostic. The
+      // residue is real and bounded: a capture row and a `capture` manifest
+      // entry exist in the case for the duration of the self-test. On the happy
+      // path the `finally` below deletes them through the lifecycle, which
+      // appends the matching `deletion` entry. That cleanup is best-effort: it
+      // discards both a thrown fault and the lifecycle's `false` return, so a
+      // failure there leaves the `capture` entry with no `deletion` beside it.
+      // A matched pair is the normal case, not a guarantee.
       const { capture } = await ingestMhtmlCapture({
         caseId: testCaseId,
         url: 'birdbrain://pipeline-test',

@@ -29,6 +29,10 @@ const CLEAN_URL = 'https://example.test/page'
 const USER_IGNORED_URL = 'https://secret.example.test/inbox'
 const IGNORE_PATTERN = 'secret.example.test'
 const CHROME_URL = 'chrome://settings/'
+// A URL excluded by the active case rather than by the global list (#400): it
+// reaches the extension only through `effectiveIgnoredUrlPatterns`.
+const CASE_EXCLUDED_URL = 'https://caseonly.example.test/page'
+const CASE_EXCLUDE_PATTERN = 'caseonly.example.test'
 
 const runtimeListeners: Listener[] = []
 // Each tab reports whatever URL the case under test put there, so one chrome
@@ -73,6 +77,10 @@ async function ask<T>(message: unknown): Promise<T | undefined> {
   return captured
 }
 
+// No `effectiveIgnoredUrlPatterns` on purpose: this is what a pre-#400 server
+// sends, so every assertion in this file that depends on IGNORE_PATTERN is
+// also the pin on the extension's fallback to `ignoredUrlPatterns`. The
+// effective-list path gets its own describe at the bottom.
 const STATUS: CaptureServerStatus = {
   running: true,
   activeCase: { id: 'case-a', name: 'Case A' },
@@ -439,5 +447,94 @@ describe('popup GET_PAGE_STATUS (#387)', () => {
       activeSelectorCount: 2,
       rulesLoaded: true
     })
+  })
+})
+
+// #400: the extension mirrors the ACTIVE CASE's effective ignore list, not the
+// operator's global list. It is advisory — the capture server is the
+// enforcement point — but the popup has to agree with the server about the
+// active case, or it offers a Capture button for a page the server refuses.
+describe('per-case exclusion mirror (#400)', () => {
+  // Swaps in a status payload for one poll, fires the alarm, then restores the
+  // default so the shared background module is left as found.
+  async function poll(status: CaptureServerStatus): Promise<void> {
+    vi.mocked(getStatus).mockResolvedValueOnce(status)
+    alarmListener?.({ name: 'birdbrain-status-check' })
+    await flush()
+  }
+
+  async function restore(): Promise<void> {
+    vi.mocked(getStatus).mockResolvedValue(STATUS)
+    alarmListener?.({ name: 'birdbrain-status-check' })
+    await flush()
+  }
+
+  it('blocks a URL excluded only by the active case', async () => {
+    tabUrlById.set(40, CASE_EXCLUDED_URL)
+    await poll({
+      ...STATUS,
+      ignoredUrlPatterns: [IGNORE_PATTERN],
+      effectiveIgnoredUrlPatterns: [IGNORE_PATTERN, CASE_EXCLUDE_PATTERN]
+    })
+
+    const response = await ask<ManualCaptureResponse>({
+      type: 'MANUAL_CAPTURE',
+      tabId: 40,
+      caseId: 'case-a'
+    })
+
+    expect(response).toEqual({
+      started: false,
+      // Still 'user': a merged effective list is all operator-authored, and
+      // `pattern` names the rule that matched, so nothing here is misreported.
+      blocked: { reason: 'user', pattern: CASE_EXCLUDE_PATTERN },
+      notReady: false
+    })
+    expect(vi.mocked(sendMhtmlCapture)).not.toHaveBeenCalled()
+    await restore()
+  })
+
+  it('stops mirroring a global pattern the active case overrides', async () => {
+    tabUrlById.set(41, USER_IGNORED_URL)
+    // Override mode: the case's list replaces the global one, so a URL still
+    // present in `ignoredUrlPatterns` is capturable inside this case. Reading
+    // the wrong field would over-block a capture the server allows.
+    await poll({ ...STATUS, ignoredUrlPatterns: [IGNORE_PATTERN], effectiveIgnoredUrlPatterns: [] })
+
+    const status = await ask<PopupPageStatus>({ type: 'GET_PAGE_STATUS', tabId: 41 })
+
+    expect(status?.blocked).toBeNull()
+    await restore()
+  })
+
+  it('keeps blocking a built-in scheme when the effective list is empty', async () => {
+    tabUrlById.set(42, CHROME_URL)
+    await poll({ ...STATUS, ignoredUrlPatterns: [], effectiveIgnoredUrlPatterns: [] })
+
+    const response = await ask<ManualCaptureResponse>({
+      type: 'MANUAL_CAPTURE',
+      tabId: 42,
+      caseId: 'case-a'
+    })
+
+    // The scheme list is not an operator rule and override mode does not reach
+    // it. A case that bypasses the global ignore list must not thereby become
+    // able to capture chrome://.
+    expect(response?.blocked).toEqual({ reason: 'default', pattern: null })
+    expect(vi.mocked(sendMhtmlCapture)).not.toHaveBeenCalled()
+    await restore()
+  })
+
+  it('falls back to the global list when the server sends no effective list', async () => {
+    tabUrlById.set(43, USER_IGNORED_URL)
+    // An older server against a newer extension: global-only advisory
+    // filtering, rather than none at all.
+    await poll({ ...STATUS, ignoredUrlPatterns: [IGNORE_PATTERN] })
+
+    const status = await ask<PopupPageStatus>({ type: 'GET_PAGE_STATUS', tabId: 43 })
+
+    expect(status?.blocked).toEqual({ reason: 'user', pattern: IGNORE_PATTERN })
+    expect(status?.rulesLoaded).toBe(true)
+    await restore()
   })
 })

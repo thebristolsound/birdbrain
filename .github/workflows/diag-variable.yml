@@ -5,39 +5,47 @@ on:
     branches: [diag/curator-variable-read]
 
 permissions:
-  contents: read
-  actions: write
+  contents: write
 
 jobs:
   probe:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: gh version
-        run: gh --version
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
-      - name: vars context
-        run: |
-          echo "vars.DOC_CURATOR_LAST_SHA = [${{ vars.DOC_CURATOR_LAST_SHA }}]"
-
-      - name: gh variable get, stderr visible
+      - name: Create and push the marker tag
         continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
         run: |
           set +e
-          out="$(gh variable get DOC_CURATOR_LAST_SHA)"
-          rc=$?
-          echo "rc=$rc out=[$out]"
+          git config user.name 'diag'
+          git config user.email 'diag@example.com'
+          sha="$(git rev-list -n1 HEAD)"
+          git tag --force diag/curator-marker "$sha"
+          git push --force origin refs/tags/diag/curator-marker
+          echo "push rc=$?"
 
-      - name: raw REST call, stderr visible
+      - name: Read it back
         continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set +e
-          gh api "repos/${GITHUB_REPOSITORY}/actions/variables/DOC_CURATOR_LAST_SHA"
-          echo "rc=$?"
+          git fetch --no-tags --force origin 'refs/tags/diag/curator-marker:refs/tags/diag/curator-marker'
+          git rev-parse --verify 'diag/curator-marker^{commit}'
+          echo "read rc=$?"
+
+      - name: Advance it, as a weekly run would
+        continue-on-error: true
+        run: |
+          set +e
+          git tag --force diag/curator-marker "$(git rev-list -n1 HEAD~1)"
+          git push --force origin refs/tags/diag/curator-marker
+          echo "advance rc=$?"
+
+      - name: Unresolvable marker fails loudly
+        continue-on-error: true
+        run: |
+          set +e
+          git rev-parse --verify 'diag/no-such-marker^{commit}'
+          echo "absent rc=$?"

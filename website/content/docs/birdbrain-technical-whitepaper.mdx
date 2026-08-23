@@ -283,7 +283,7 @@ Code organization follows the process boundary cleanly: `src/main/services/` (on
 
 ## 11. Deployment and infrastructure
 
-- **Packaging**: electron-builder; Windows NSIS, macOS dmg+zip, Linux AppImage+deb. `sharp`'s native modules are asar-unpacked; the built extension ships inside the app's resources so the in-app setup guide can point at it.
+- **Packaging**: electron-builder; Windows NSIS, macOS dmg+zip, Linux AppImage+deb. `sharp`'s native modules are asar-unpacked; the built extension ships inside the app's resources so the tour's extension step can point at it.
 - **Updates**: electron-updater against GitHub Releases. Auto-download only where auto-install is safe (Windows NSIS; Linux only when running as AppImage; macOS notify-only pending signing). Checks run 30 s after launch and every 4 h, only in packaged builds, and installation always requires explicit user action.
 - **Channels**: stable/beta via GitHub prerelease flags; first-run channel is derived from the installed build's own version string.
 - **Infrastructure footprint**: none. There is no server component to operate; GitHub hosts releases and the update feed. This is a meaningful property for security review: the vendor cannot access user data because no vendor infrastructure touches it.

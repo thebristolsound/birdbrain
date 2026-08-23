@@ -72,7 +72,7 @@ Every capture is fingerprinted with SHA-256, timestamped, and chained to the pre
   <em>Export — self-contained HTML report, verifiable without Birdbrain</em>
 </p>
 
-More screens — onboarding, dashboard, selectors, notes, tags, command palette, settings, and the extension setup guide — in the [screenshot tour](website/content/docs/screenshots.mdx).
+The [screenshot tour](website/content/docs/screenshots.mdx) has more screens: onboarding, dashboard, signals, notes, command palette, and settings.
 
 ## Use cases
 

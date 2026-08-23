@@ -14,6 +14,9 @@ interface AppState {
   // Which note the Notes tab should mark as selected when it next renders.
   // Set by the dashboard activity feed (#403); the Notes tab reads it.
   selectedNoteId: string | null
+  // The same hand-off for the Signals screen (#716). Signals otherwise opens
+  // on allSignals[0], so a Mention chip naming one rule would open another.
+  selectedSignalId: string | null
   // Shift-click range anchor (#396): the last plainly- or cmd-clicked row.
   selectionAnchorId: string | null
   // The selection as it stood when the anchor was set. A shift-click replaces
@@ -45,6 +48,7 @@ interface AppState {
   setActiveViewerTab: (tab: CaptureViewerTab) => void
   setSelectedCaptureId: (id: string | null) => void
   setSelectedNoteId: (id: string | null) => void
+  setSelectedSignalId: (id: string | null) => void
   setSearchQuery: (query: string) => void
   selectCapture: (id: string) => void
   toggleCaptureSelection: (id: string) => void
@@ -67,6 +71,7 @@ export const useAppStore = create<AppState>((set) => ({
   selectedCaptureId: null,
   selectedCaptureIds: new Set(),
   selectedNoteId: null,
+  selectedSignalId: null,
   selectionAnchorId: null,
   selectionRangeBase: [],
   searchQuery: '',
@@ -88,6 +93,7 @@ export const useAppStore = create<AppState>((set) => ({
   setActiveViewerTab: (tab) => set({ activeViewerTab: tab }),
   setSelectedCaptureId: (id) => set({ selectedCaptureId: id }),
   setSelectedNoteId: (id) => set({ selectedNoteId: id }),
+  setSelectedSignalId: (id) => set({ selectedSignalId: id }),
   setSearchQuery: (query) => set({ searchQuery: query }),
 
   selectCapture: (id) => set({ selectedCaptureId: id }),

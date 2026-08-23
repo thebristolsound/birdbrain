@@ -131,6 +131,7 @@
     "@tiptap/react": "3.29.0",
     "@tiptap/starter-kit": "3.29.0",
     "@tiptap/static-renderer": "3.29.0",
+    "@tiptap/suggestion": "3.29.0",
     "better-sqlite3": "^12.11.1",
     "cheerio": "^1.2.0",
     "class-variance-authority": "^0.7.1",

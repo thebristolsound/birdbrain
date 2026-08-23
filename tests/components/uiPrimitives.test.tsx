@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { describe, it, expect, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
-import { Badge, CardPanel, CardTitle, SectionLabel } from '@renderer/components/ui'
+import { describe, it, expect, afterEach, vi } from 'vitest'
+import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+import { Badge, CardPanel, CardTitle, Dialog, SectionLabel } from '@renderer/components/ui'
 
 describe('design-system primitives', () => {
   afterEach(() => {
@@ -79,6 +79,40 @@ describe('design-system primitives', () => {
       const el = screen.getByRole('heading', { level: 3 })
       expect(el.className).toContain('text-sm')
       expect(el.className).not.toContain('text-xs')
+    })
+  })
+
+  describe('Dialog', () => {
+    it('closes on Escape', () => {
+      const onOpenChange = vi.fn()
+      render(
+        <Dialog open onOpenChange={onOpenChange}>
+          <p>body</p>
+        </Dialog>
+      )
+
+      fireEvent.keyDown(window, { key: 'Escape' })
+
+      expect(onOpenChange).toHaveBeenCalledWith(false)
+    })
+
+    // A Mention autocomplete inside the dialog dismisses itself on Escape and
+    // marks the event handled. The listener is on the window, so it still
+    // fires — and closing the dialog here would throw away the note being
+    // written, which is exactly what dismissing a popup must not do.
+    it('leaves an Escape something inside it already handled alone', () => {
+      const onOpenChange = vi.fn()
+      render(
+        <Dialog open onOpenChange={onOpenChange}>
+          <p>body</p>
+        </Dialog>
+      )
+
+      const event = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true })
+      event.preventDefault()
+      window.dispatchEvent(event)
+
+      expect(onOpenChange).not.toHaveBeenCalled()
     })
   })
 })

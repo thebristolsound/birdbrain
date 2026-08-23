@@ -22,6 +22,25 @@ import { StarterKit } from '@tiptap/starter-kit'
 export const MENTION_TARGET_TYPES = ['capture', 'selector', 'tag', 'note'] as const
 export type MentionTargetType = (typeof MENTION_TARGET_TYPES)[number]
 
+export const MENTION_SIGILS = ['@', '#'] as const
+export type MentionSigil = (typeof MENTION_SIGILS)[number]
+
+/**
+ * The prefix each kind reads with — the key that opens its popup in the editor,
+ * and the character it carries everywhere text is derived from a Mention.
+ *
+ * Declared here rather than beside the popup because main derives every note's
+ * indexed text, and every exported report's, from this module. While the map
+ * lived only in the renderer a `#nightjar` selector chip indexed and exported as
+ * `@nightjar`, so the text on screen and the text in the report disagreed.
+ */
+export const MENTION_SIGIL: Record<MentionTargetType, MentionSigil> = {
+  capture: '@',
+  note: '@',
+  selector: '#',
+  tag: '#'
+}
+
 /** A Mention as extracted from a validated document, in document order. */
 export interface NoteMention {
   targetType: MentionTargetType
@@ -33,8 +52,16 @@ export interface NoteMention {
 // to its DOM serialization. Label is a display cache; when a mention was
 // written without one, the target type still reads sensibly ('@capture').
 function mentionText(attrs: Record<string, unknown>): string {
-  const label = typeof attrs.label === 'string' && attrs.label.length > 0 ? attrs.label : null
-  return `@${label ?? String(attrs.targetType)}`
+  const { targetType, label } = attrs
+  // Object.hasOwn, never a bare index: targetType arrives off a pasted
+  // attribute, and eight Object.prototype names would otherwise resolve to a
+  // function here.
+  const sigil =
+    typeof targetType === 'string' && Object.hasOwn(MENTION_SIGIL, targetType)
+      ? MENTION_SIGIL[targetType as MentionTargetType]
+      : ''
+  const text = typeof label === 'string' && label.length > 0 ? label : String(targetType)
+  return sigil + text
 }
 
 /**

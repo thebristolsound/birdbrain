@@ -45,7 +45,13 @@ export function CoachMark({
   const card = (
     <div className="rounded-md border border-border-strong bg-elevated px-3.5 py-3 shadow-[0_12px_32px_rgba(0,0,0,0.45)]">
       <div className="text-xs leading-relaxed text-text-secondary">
-        {step.title ? <span className="font-bold text-text-primary">{step.title}.</span> : null}{' '}
+        {/* Inline with the body copy by design, so it carries heading semantics
+            rather than an <h*> element, which would force a block break. */}
+        {step.title ? (
+          <span role="heading" aria-level={2} className="font-bold text-text-primary">
+            {step.title}.
+          </span>
+        ) : null}{' '}
         {step.body}
       </div>
 

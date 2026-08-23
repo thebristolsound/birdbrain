@@ -20,9 +20,9 @@ export function WelcomeCard({ onStart, onSkip }: WelcomeCardProps) {
         className="pointer-events-auto w-[380px] rounded-md border border-border-strong bg-elevated p-5 shadow-[0_16px_40px_rgba(0,0,0,0.5)]"
       >
         <img src={logoImg} alt="" className="mb-3 h-8 w-8" />
-        <div className="mb-1.5 font-display text-base font-extrabold tracking-[-0.025em] text-text-primary">
+        <h2 className="mb-1.5 font-display text-base font-extrabold tracking-[-0.025em] text-text-primary">
           Welcome to Birdbrain
-        </div>
+        </h2>
         <div className="mb-3 text-xs leading-relaxed text-text-muted">
           A quick tour of how evidence gets captured, organized, and exported. Two minutes here,
           three more inside your first case — skippable anytime.

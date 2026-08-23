@@ -137,6 +137,7 @@ export function CaptureDetailsPanel({
 
   const noteEditor = useNoteEditor({
     caseId,
+    noteId: inline.boundNoteId ?? undefined,
     onChange: inline.setValue,
     testId: 'inline-note-editor'
   })

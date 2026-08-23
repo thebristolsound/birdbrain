@@ -12,7 +12,8 @@ export interface RendererNoteExtensionsArgs {
   caseId: string
   /** Reads the cached lists at call time; see MentionSuggestionOptions. */
   getSources: () => MentionSources
-  excludeNoteId?: string
+  /** Reads the note being written at call time; see MentionSuggestionOptions. */
+  getExcludeNoteId?: () => string | undefined
 }
 
 /**
@@ -92,11 +93,11 @@ function withMentionChip(node: TiptapNode, component: Parameters<typeof ReactNod
 export function rendererNoteExtensions({
   caseId,
   getSources,
-  excludeNoteId
+  getExcludeNoteId = () => undefined
 }: RendererNoteExtensionsArgs): Extensions {
   const MentionChip = createMentionNodeView(caseId)
   const base = noteExtensions().map((extension) =>
     extension.name === 'mention' ? withMentionChip(extension as TiptapNode, MentionChip) : extension
   )
-  return [...base, MentionSuggestion.configure({ getSources, excludeNoteId })]
+  return [...base, MentionSuggestion.configure({ getSources, getExcludeNoteId })]
 }

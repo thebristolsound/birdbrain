@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useEditor, type Editor } from '@tiptap/react'
 import { EMPTY_NOTE_DOC, plainTextToNoteDoc } from '@shared/noteDoc'
 import type { JSONContent } from '@tiptap/core'
@@ -65,46 +65,62 @@ export function useNoteEditor({
 }: UseNoteEditorArgs): Editor | null {
   const { ref: sourcesRef } = useMentionSources(caseId)
 
+  // Behind a ref for the same reason the sources are, plus one of its own: the
+  // inline editor on a capture has no note to exclude until autosave creates
+  // one, and rebuilding the editor at that moment would destroy the view the
+  // investigator is mid-sentence in.
+  const excludeRef = useRef(noteId)
+  useEffect(() => {
+    excludeRef.current = noteId
+  }, [noteId])
+
   // Rebuilding this list rebuilds the editor, so it is keyed on the case
-  // alone. The autocompletes read live data through the getter, not from here.
+  // alone. The autocompletes read live data through the getters, not from here.
   const extensions = useMemo(
     () =>
       rendererNoteExtensions({
         caseId,
         getSources: () => sourcesRef.current,
-        excludeNoteId: noteId
+        getExcludeNoteId: () => excludeRef.current
       }),
-    [caseId, sourcesRef, noteId]
+    [caseId, sourcesRef]
   )
 
-  return useEditor({
-    extensions,
-    content: initialNoteDoc(bodyDoc, plainText),
-    editable,
-    editorProps: {
-      attributes: {
-        class: 'outline-none',
-        ...(testId ? { 'data-testid': testId } : {})
+  return useEditor(
+    {
+      extensions,
+      content: initialNoteDoc(bodyDoc, plainText),
+      editable,
+      editorProps: {
+        attributes: {
+          class: 'outline-none',
+          ...(testId ? { 'data-testid': testId } : {})
+        },
+        /**
+         * Without this a copied Mention contributes the empty string.
+         *
+         * Tiptap's `renderText` writes `schema.spec.toText`, which only
+         * `generateText` reads; ProseMirror's clipboard falls back to
+         * `textBetween`, which reads `spec.leafText` — a field Tiptap never
+         * sets. So the atom serializes to nothing and a copied paragraph loses
+         * the entity it was about.
+         */
+        clipboardTextSerializer: (slice) =>
+          slice.content.textBetween(0, slice.content.size, '\n\n', mentionLeafText)
       },
-      /**
-       * Without this a copied Mention contributes the empty string.
-       *
-       * Tiptap's `renderText` writes `schema.spec.toText`, which only
-       * `generateText` reads; ProseMirror's clipboard falls back to
-       * `textBetween`, which reads `spec.leafText` — a field Tiptap never
-       * sets. So the atom serializes to nothing and a copied paragraph loses
-       * the entity it was about.
-       */
-      clipboardTextSerializer: (slice) =>
-        slice.content.textBetween(0, slice.content.size, '\n\n', mentionLeafText)
+      // React 19 StrictMode double-invokes effects; deferring the first render
+      // keeps the editor from mounting twice into the same element.
+      immediatelyRender: false,
+      // Off by default in v3, which leaves toolbar active states stale until the
+      // document changes — a cursor moved into bold text would not light Bold.
+      // Notes are short enough that re-rendering per transaction is free.
+      shouldRerenderOnTransaction: true,
+      onUpdate: ({ editor }) => onChange?.(JSON.stringify(editor.getJSON()))
     },
-    // React 19 StrictMode double-invokes effects; deferring the first render
-    // keeps the editor from mounting twice into the same element.
-    immediatelyRender: false,
-    // Off by default in v3, which leaves toolbar active states stale until the
-    // document changes — a cursor moved into bold text would not light Bold.
-    // Notes are short enough that re-rendering per transaction is free.
-    shouldRerenderOnTransaction: true,
-    onUpdate: ({ editor }) => onChange?.(JSON.stringify(editor.getJSON()))
-  })
+    // useEditor defaults to `[]`, which builds the editor once and then ignores
+    // every later extension list. The chip's node view closes over the case, so
+    // without this a case switch that reuses this component leaves chips
+    // navigating into the case the operator has left.
+    [caseId]
+  )
 }

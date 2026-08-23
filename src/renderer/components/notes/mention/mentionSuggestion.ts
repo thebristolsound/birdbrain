@@ -37,8 +37,15 @@ export interface MentionSuggestionOptions {
    * the merge by reference.
    */
   getSources: () => MentionSources
-  /** The note being written, so it cannot be offered as a target of itself. */
-  excludeNoteId?: string
+  /**
+   * The note being written, so it cannot be offered as a target of itself.
+   *
+   * A getter for the same reason as `getSources`, plus one of its own: the
+   * inline editor on a capture binds to a note only once autosave has created
+   * it, and rebuilding the editor at that moment would tear down the view the
+   * investigator is typing into.
+   */
+  getExcludeNoteId: () => string | undefined
 }
 
 type MentionRenderer = ReactRenderer<MentionSuggestionListHandle, MentionSuggestionListProps>
@@ -96,11 +103,11 @@ export const MentionSuggestion = Extension.create<MentionSuggestionOptions>({
   name: 'mentionSuggestion',
 
   addOptions() {
-    return { getSources: () => EMPTY_MENTION_SOURCES, excludeNoteId: undefined }
+    return { getSources: () => EMPTY_MENTION_SOURCES, getExcludeNoteId: () => undefined }
   },
 
   addProseMirrorPlugins() {
-    const { getSources, excludeNoteId } = this.options
+    const { getSources, getExcludeNoteId } = this.options
     const { editor } = this
 
     return MENTION_SIGILS.map((sigil) =>
@@ -110,7 +117,12 @@ export const MentionSuggestion = Extension.create<MentionSuggestionOptions>({
         pluginKey: PLUGIN_KEYS[sigil],
         decorationClass: 'mention-suggestion',
         items: ({ query }) =>
-          rankMentionCandidates({ sigil, query, sources: getSources(), excludeNoteId }),
+          rankMentionCandidates({
+            sigil,
+            query,
+            sources: getSources(),
+            excludeNoteId: getExcludeNoteId()
+          }),
         command: ({ editor: ed, range, props }) => {
           ed.chain()
             .focus()

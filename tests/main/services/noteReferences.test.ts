@@ -23,6 +23,7 @@ import {
   backlinkCountsForCase,
   backlinksForTarget,
   rebuildForCase,
+  referenceEdgesForCase,
   referencesForNote
 } from '@main/services/db/noteReferenceRepo'
 import { insertCapture, deleteCapture } from '@main/services/db/captureRepo'
@@ -422,6 +423,71 @@ describe('note references index', () => {
       createNote({ caseId, body: 'plain' })
 
       expect(backlinkCountsForCase(caseId)).toEqual([])
+    })
+  })
+
+  // The counts above group note_id away, so they can name a busy target but
+  // never an edge's two endpoints. The map (#402) needs the pairs.
+  describe('whole-case reference edges', () => {
+    it('returns one row per (note, target) pair with that note’s mention count', () => {
+      const cap = capture()
+      const first = createNote({
+        caseId,
+        bodyDoc: docOf(mention('capture', cap.id), mention('capture', cap.id))
+      })
+      const second = createNote({
+        caseId,
+        bodyDoc: docOf(mention('capture', cap.id), mention('tag', 'tag-1'))
+      })
+
+      expect(referenceEdgesForCase(caseId)).toEqual(
+        expect.arrayContaining([
+          { noteId: first.id, targetType: 'capture', targetId: cap.id, mentionCount: 2 },
+          { noteId: second.id, targetType: 'capture', targetId: cap.id, mentionCount: 1 },
+          { noteId: second.id, targetType: 'tag', targetId: 'tag-1', mentionCount: 1 }
+        ])
+      )
+      expect(referenceEdgesForCase(caseId)).toHaveLength(3)
+    })
+
+    it('scopes by the referring note, so another case never bleeds in', () => {
+      const mine = createNote({ caseId, bodyDoc: docOf(mention('tag', 'tag-1')) })
+      const otherCase = createCase({ name: 'Elsewhere', description: '' }).id
+      createNote({ caseId: otherCase, bodyDoc: docOf(mention('tag', 'tag-1')) })
+
+      expect(referenceEdgesForCase(caseId).map((e) => e.noteId)).toEqual([mine.id])
+    })
+
+    // A dangling reference is still an edge: the note says it points at that
+    // capture, and the map draws what the note says rather than what survives.
+    it('keeps an edge whose target row has been deleted', () => {
+      const cap = capture()
+      const note = createNote({ caseId, bodyDoc: docOf(mention('capture', cap.id)) })
+      deleteCapture(cap.id)
+
+      expect(referenceEdgesForCase(caseId)).toEqual([
+        { noteId: note.id, targetType: 'capture', targetId: cap.id, mentionCount: 1 }
+      ])
+    })
+
+    it('is empty for a case whose notes mention nothing', () => {
+      createNote({ caseId, body: 'plain' })
+
+      expect(referenceEdgesForCase(caseId)).toEqual([])
+    })
+
+    // The declared ORDER BY is what makes the rendered map stable run to run.
+    it('returns rows ordered by note, then target type, then target id', () => {
+      const note = createNote({
+        caseId,
+        bodyDoc: docOf(mention('tag', 'tag-b'), mention('tag', 'tag-a'), mention('selector', 'sx'))
+      })
+
+      expect(referenceEdgesForCase(caseId)).toEqual([
+        { noteId: note.id, targetType: 'selector', targetId: 'sx', mentionCount: 1 },
+        { noteId: note.id, targetType: 'tag', targetId: 'tag-a', mentionCount: 1 },
+        { noteId: note.id, targetType: 'tag', targetId: 'tag-b', mentionCount: 1 }
+      ])
     })
   })
 

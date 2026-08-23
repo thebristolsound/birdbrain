@@ -23,11 +23,14 @@ const DEFS: { key: MetricKey; label: string; icon: LucideIcon }[] = [
 export function MetricRow({ captures, sources, selectors, tags, notes, deltas = {} }: MetricRowProps) {
   const values: Record<MetricKey, number> = { captures, sources, selectors, tags, notes }
   return (
-    <div className="flex gap-4">
+    <div className="flex gap-[var(--d-gap)]">
       {DEFS.map(({ key, label, icon: Icon }) => {
         const delta = deltas[key]
         return (
-          <div key={key} className="neu-card flex flex-1 flex-col gap-2.5 rounded-2xl px-4 py-4">
+          <div
+            key={key}
+            className="neu-card flex flex-1 flex-col gap-2.5 rounded-2xl p-[var(--d-cardsm)]"
+          >
             <div className="flex items-center gap-1.5">
               <Icon size={13} strokeWidth={1.8} className="text-text-faint" />
               <span className="font-display text-[10.5px] font-semibold uppercase tracking-[0.06em] text-text-muted">
@@ -37,7 +40,7 @@ export function MetricRow({ captures, sources, selectors, tags, notes, deltas = 
             <div className="flex items-baseline gap-2">
               <span
                 data-testid={`overview-metric-${key}`}
-                className="font-display text-3xl font-extrabold leading-none tracking-tight text-text-primary"
+                className="font-display text-[length:var(--d-metric)] font-extrabold leading-none tracking-tight text-text-primary"
               >
                 {values[key]}
               </span>

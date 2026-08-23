@@ -786,6 +786,19 @@ export interface NoteBacklinkCount {
   mentionCount: number
 }
 
+/**
+ * One edge of the Overview backlink map (#402): a (note, target) pair. The
+ * whole-case counts above aggregate `note_id` away, so they give a target's
+ * degree but never an edge's two endpoints — which is what a map needs.
+ */
+export interface NoteReferenceEdge {
+  noteId: string
+  targetType: MentionTargetType
+  targetId: string
+  /** How many times that note mentions that target. */
+  mentionCount: number
+}
+
 export type AnnotationShape =
   | {
       kind: 'rect'

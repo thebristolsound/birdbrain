@@ -23,6 +23,14 @@ export const notesSearchQueryOptions = (caseId: string, query: string) =>
     enabled: !!caseId && query.trim().length > 0
   })
 
+// The edge list behind the Overview backlink map (#402).
+export const noteReferenceEdgesQueryOptions = (caseId: string) =>
+  queryOptions({
+    queryKey: queryKeys.noteReferenceEdges(caseId),
+    queryFn: () => window.birdbrain.notes.referenceEdges(caseId),
+    enabled: !!caseId
+  })
+
 export function useNotesMutations(caseId: string) {
   const queryClient = useQueryClient()
 
@@ -30,6 +38,10 @@ export function useNotesMutations(caseId: string) {
     queryClient.invalidateQueries({ queryKey: queryKeys.notes(caseId) })
     queryClient.invalidateQueries({ queryKey: queryKeys.noteCount(caseId) })
     queryClient.invalidateQueries({ queryKey: ['notes', 'search', caseId] })
+    // Listed explicitly: `queryKeys.notes(caseId)` is ['notes', caseId], which
+    // does not prefix-match ['notes', 'referenceEdges', caseId]. Every
+    // note-body write rewrites the references index, so the map stales with it.
+    queryClient.invalidateQueries({ queryKey: queryKeys.noteReferenceEdges(caseId) })
   }
 
   const create = useMutation({

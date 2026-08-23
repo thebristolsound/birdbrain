@@ -20,7 +20,6 @@ export function dayStartMs(ms: number): number {
 export interface ComputeInput {
   captures: Capture[]
   selectors: Selector[]
-  matchCounts: Record<string, number>
   notes: Note[]
   lastVisitAt: string | null
 }
@@ -28,7 +27,7 @@ export interface ComputeInput {
 // `now` is injected (defaulting to wall-clock) so the 14-day bucketing is
 // deterministic under test.
 export function computeOverview(
-  { captures, selectors, matchCounts, notes, lastVisitAt }: ComputeInput,
+  { captures, selectors, notes, lastVisitAt }: ComputeInput,
   now = Date.now()
 ) {
   const hostCounts = new Map<string, number>()
@@ -55,17 +54,6 @@ export function computeOverview(
     else if (st === 'tampered' || st === 'chain-broken' || st === 'missing') tampered++
   }
   const unverified = captures.length - verified - tampered
-
-  const coverageRows = selectors
-    .map((s) => ({
-      id: s.id,
-      label: s.label,
-      pattern: s.pattern,
-      isRegex: s.isRegex,
-      matchCount: matchCounts[s.id] ?? 0
-    }))
-    .sort((a, b) => b.matchCount - a.matchCount)
-    .slice(0, 6)
 
   const startOfToday = dayStartMs(now)
   const cutoffMs = lastVisitAt ? new Date(lastVisitAt).getTime() : null
@@ -109,7 +97,6 @@ export function computeOverview(
     verified,
     unverified,
     tampered,
-    coverageRows,
     dayBuckets,
     recent,
     deltas,

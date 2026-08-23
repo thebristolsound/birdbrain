@@ -1,0 +1,43 @@
+name: Diag variable read
+
+on:
+  push:
+    branches: [diag/curator-variable-read]
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: gh version
+        run: gh --version
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: vars context
+        run: |
+          echo "vars.DOC_CURATOR_LAST_SHA = [${{ vars.DOC_CURATOR_LAST_SHA }}]"
+
+      - name: gh variable get, stderr visible
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set +e
+          out="$(gh variable get DOC_CURATOR_LAST_SHA)"
+          rc=$?
+          echo "rc=$rc out=[$out]"
+
+      - name: raw REST call, stderr visible
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          gh api "repos/${GITHUB_REPOSITORY}/actions/variables/DOC_CURATOR_LAST_SHA"
+          echo "rc=$?"

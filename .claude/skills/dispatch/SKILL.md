@@ -255,6 +255,16 @@ title, head sha, a path to the PR body it wrote, and the labels it determined ar
   labels on the `opened` event; a PR opened unlabelled seeds `agent/pre-pass=success` and
   would then have to be upgraded to `pending`, which is a write that can race the
   dispatcher's own verdict on the same sha.
+
+  **Never open the PR with `agh api ... /pulls -X POST` and label it in a second call.**
+  `ci.yml`'s draft exemption keys on labels carried by the `opened` webhook, and `labeled` is
+  deliberately not one of its trigger types. A PR created that way has `changes` skip for its
+  entire draft life, and with it `build`, `e2e`, `lint`, `test` and `typecheck`, with nothing
+  that re-runs them. That is the signal "Wait for CI first" below blocks on, so the
+  poll never completes. #777 and #779 were both opened this way and only recovered because a
+  human marked them ready for review, which fired `ready_for_review`. `gh pr create --label`
+  is the fix and **works with the machine token** despite that token lacking `read:org`,
+  verified on #788 (#784).
 - On the web: not currently possible under the contract — the MCP tools write as the sandbox
   identity, and the identity check at the top of the cycle already stopped you. (For the
   record, the mechanism was `mcp__github__create_pull_request` then `mcp__github__issue_write`,
@@ -365,6 +375,12 @@ post them.
   A red check means the diff is about to change, so an adversarial pass over it is spent on a
   tree that will not survive.
 - **CI green** → run the pre-pass.
+
+**Every check reporting `skipping` is the #784 bug, not a conclusion.** If the poll
+shows `build`, `changes`, `e2e`, `lint`, `test` and `typecheck` all skipping on a labelled
+draft agent PR, the labels did not reach the `opened` webhook and no further event will
+re-run them. Do not wait: confirm the labels are actually on the PR, then re-drive CI by
+pushing to the head branch. The create-call rule in section 3 is what prevents this.
 
 This ordering is not a micro-optimisation. On PR #423 it went wrong twice in one night: CI
 failed on `dffa233` at 23:30:52 and the pre-pass posted a verdict at 23:34:49; CI failed on

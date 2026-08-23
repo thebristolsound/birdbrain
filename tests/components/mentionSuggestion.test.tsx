@@ -38,8 +38,35 @@ const selector: Selector = {
 
 const tag: Tag = { id: 't1', name: 'suspect', color: '#22c55e' }
 
+// Seeded under a different case so the popup has something it must not offer.
+// Both share the query word, so a fake that ignored its caseId argument would
+// put them in the rows rather than merely fail to filter them out.
+const otherCapture: Capture = { ...capture, id: 'cap9', caseId: 'case9', title: 'Nightjar decoy' }
+
+const otherSelector: Selector = { ...selector, id: 's9', caseId: 'case9', label: 'Decoy handle' }
+
+// Tags are global by design — the backend accepts any tag id — so a tag has no
+// case to be filtered by. What is per-case is the usage that orders them.
+const otherTag: Tag = { id: 't9', name: 'suspect-decoy', color: '#ef4444' }
+
+function capturesFor(caseId: string): Capture[] {
+  return [capture, otherCapture].filter((c) => c.caseId === caseId)
+}
+
+function selectorsFor(caseId: string): Selector[] {
+  return [selector, otherSelector].filter((s) => s.caseId === caseId)
+}
+
 let editor: Editor | null = null
 let loaded = false
+
+// Held rather than reached for through window.birdbrain, which is typed as the
+// real bridge and so carries no call history on its methods.
+let listCaptures: ReturnType<typeof vi.fn>
+let listNotes: ReturnType<typeof vi.fn>
+let listSelectors: ReturnType<typeof vi.fn>
+let matchCounts: ReturnType<typeof vi.fn>
+let usageCounts: ReturnType<typeof vi.fn>
 
 function Harness() {
   const instance = useNoteEditor({ caseId: 'case1', testId: 'body' })
@@ -89,11 +116,16 @@ beforeEach(() => {
   stubResizeObserver()
   editor = null
   loaded = false
+  listCaptures = vi.fn(async (caseId: string) => capturesFor(caseId))
+  listNotes = vi.fn(async () => [])
+  listSelectors = vi.fn(async (caseId: string) => selectorsFor(caseId))
+  matchCounts = vi.fn(async (caseId: string) => (caseId === 'case1' ? { s1: 7 } : { s9: 99 }))
+  usageCounts = vi.fn(async (caseId: string) => (caseId === 'case1' ? { t1: 4 } : {}))
   fakeBridge({
-    captures: { list: vi.fn(async () => [capture]) },
-    notes: { list: vi.fn(async () => []) },
-    selectors: { list: vi.fn(async () => [selector]), matchCounts: vi.fn(async () => ({ s1: 7 })) },
-    tags: { list: vi.fn(async () => [tag]), usageCountsForCase: vi.fn(async () => ({})) }
+    captures: { list: listCaptures },
+    notes: { list: listNotes },
+    selectors: { list: listSelectors, matchCounts },
+    tags: { list: vi.fn(async () => [tag, otherTag]), usageCountsForCase: usageCounts }
   })
 })
 
@@ -111,6 +143,9 @@ describe('the @ and # autocompletes', () => {
     expect(await screen.findByTestId('mention-popup')).toBeTruthy()
     expect(screen.getByText('captures · notes')).toBeTruthy()
     expect(screen.getByTestId('mention-option-capture-cap1')).toBeTruthy()
+    // A capture in another case matching the same query, which the popup would
+    // offer if the list query were asked for the wrong case or for none.
+    expect(screen.queryByTestId('mention-option-capture-cap9')).toBeNull()
   })
 
   it('offers selectors and tags behind #', async () => {
@@ -121,7 +156,32 @@ describe('the @ and # autocompletes', () => {
     expect(await screen.findByText('selectors · tags')).toBeTruthy()
     expect(screen.getByTestId('mention-option-selector-s1')).toBeTruthy()
     expect(screen.getByTestId('mention-option-tag-t1')).toBeTruthy()
+    expect(screen.queryByTestId('mention-option-selector-s9')).toBeNull()
+    // The match count is this case's, not the other case's 99.
     expect(screen.getByText('7 hits')).toBeTruthy()
+  })
+
+  it('asks every list query for the case the editor was given', async () => {
+    await mountEditor()
+
+    expect(listCaptures).toHaveBeenCalledWith('case1')
+    expect(listNotes).toHaveBeenCalledWith('case1')
+    expect(listSelectors).toHaveBeenCalledWith('case1')
+    expect(matchCounts).toHaveBeenCalledWith('case1')
+    expect(usageCounts).toHaveBeenCalledWith('case1')
+  })
+
+  it('ranks the tags this case uses above the ones it does not', async () => {
+    const instance = await mountEditor()
+
+    await type(instance, '#sus')
+
+    await screen.findByTestId('mention-option-tag-t1')
+    const rows = screen.getAllByTestId(/^mention-option-/)
+    expect(rows.map((row) => row.getAttribute('data-testid'))).toEqual([
+      'mention-option-tag-t1',
+      'mention-option-tag-t9'
+    ])
   })
 
   it('stays shut mid-word, so an email address is not read as a Mention', async () => {

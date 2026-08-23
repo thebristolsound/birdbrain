@@ -142,13 +142,19 @@ describe('pasting a Mention back as HTML', () => {
     expect(() => parseNoteDoc(json)).not.toThrow()
   })
 
-  it('degrades a target type the model does not define', async () => {
-    const instance = await mountEditor()
-    instance.commands.setContent(
-      '<p><span data-mention data-target-type="null" data-target-id="null">@capture</span></p>'
-    )
+  // 'null' covers a value that is simply not on the allowlist. 'constructor'
+  // covers the other half: a key that `in` would have found on the prototype
+  // chain, which is what isMentionTargetType's Object.hasOwn is there to stop.
+  it.each(['null', 'constructor'])(
+    'degrades a target type the model does not define: %j',
+    async (rawType) => {
+      const instance = await mountEditor()
+      instance.commands.setContent(
+        `<p><span data-mention data-target-type="${rawType}" data-target-id="x1">@capture</span></p>`
+      )
 
-    expect(() => parseNoteDoc(JSON.stringify(instance.getJSON()))).not.toThrow()
-    expect(JSON.stringify(instance.getJSON())).not.toContain('mention')
-  })
+      expect(() => parseNoteDoc(JSON.stringify(instance.getJSON()))).not.toThrow()
+      expect(JSON.stringify(instance.getJSON())).not.toContain('mention')
+    }
+  )
 })

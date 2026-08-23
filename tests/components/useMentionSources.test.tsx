@@ -27,8 +27,12 @@ const capture: Capture = {
 
 const tag: Tag = { id: 't1', name: 'suspect', color: '#22c55e' }
 
+// One client per test, not one per render. A client built in the render body
+// is a new cache on every re-render, so the queries under test would restart
+// from scratch each time and never settle.
+let client: QueryClient
+
 function Wrapper({ children }: { children: ReactNode }) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>
 }
 
@@ -42,6 +46,7 @@ function Probe() {
 }
 
 beforeEach(() => {
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   latest = null
   resolver = null
   fakeBridge({

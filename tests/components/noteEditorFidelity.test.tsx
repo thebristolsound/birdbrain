@@ -93,7 +93,15 @@ describe('renderer note extensions leave the document model alone', () => {
     const shared = getSchema(noteExtensions()).spec.nodes.get('mention')
     const renderer = getSchema(rendererExtensions()).spec.nodes.get('mention')
 
-    expect(JSON.stringify(renderer?.attrs)).toBe(JSON.stringify(shared?.attrs))
+    // Key by key rather than through JSON.stringify, which drops function
+    // properties — a parseHTML reader leaking into the attribute *spec* is
+    // exactly the drift this test exists to catch, and stringify would hide it.
+    const attrKeys = (spec?: typeof shared) => Object.keys(spec?.attrs ?? {})
+    expect(attrKeys(renderer)).toEqual(attrKeys(shared))
+    for (const key of attrKeys(shared)) {
+      expect(Object.keys(renderer!.attrs![key])).toEqual(Object.keys(shared!.attrs![key]))
+      expect(renderer!.attrs![key].default).toEqual(shared!.attrs![key].default)
+    }
     expect(renderer?.group).toBe(shared?.group)
     expect(renderer?.inline).toBe(shared?.inline)
     expect(renderer?.atom).toBe(shared?.atom)
@@ -126,24 +134,45 @@ describe('renderer note extensions leave the document model alone', () => {
     editor.destroy()
   })
 
-  it('derives the same indexed text from a Mention as it always did', () => {
+  // The indexed text is what FTS searches and what an exported report prints,
+  // so it has to read the way the chip on screen reads. While the sigil map
+  // lived only in the renderer, main prefixed every kind with '@' and a
+  // '#nightjar' selector chip was indexed and exported as '@nightjar'.
+  it.each([
+    ['selector', '#nightjar'],
+    ['tag', '#nightjar'],
+    ['capture', '@nightjar'],
+    ['note', '@nightjar']
+  ])('derives the %s sigil the chip shows into the indexed text', (targetType, expected) => {
     const doc = {
       type: 'doc',
       content: [
         {
           type: 'paragraph',
-          content: [
-            {
-              type: 'mention',
-              attrs: { targetType: 'selector', targetId: 's1', label: 'nightjar' }
-            }
-          ]
+          content: [{ type: 'mention', attrs: { targetType, targetId: 'x1', label: 'nightjar' } }]
         }
       ]
     }
     const editor = new Editor({ extensions: rendererExtensions(), content: doc })
 
-    expect(noteDocToText(editor.getJSON())).toBe('@nightjar')
+    expect(noteDocToText(editor.getJSON())).toBe(expected)
+
+    editor.destroy()
+  })
+
+  it('falls back to the target type when a Mention was written without a label', () => {
+    const doc = {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [{ type: 'mention', attrs: { targetType: 'tag', targetId: 't1', label: '' } }]
+        }
+      ]
+    }
+    const editor = new Editor({ extensions: rendererExtensions(), content: doc })
+
+    expect(noteDocToText(editor.getJSON())).toBe('#tag')
 
     editor.destroy()
   })

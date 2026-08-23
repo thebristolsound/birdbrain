@@ -1,33 +1,24 @@
 /**
- * Pure Mention presentation logic — no React, no Tiptap, no DOM.
+ * Pure Mention presentation logic — no React, no DOM, no editor state.
  *
  * The chip, the autocomplete popup and the masked list-row snippet all read
  * from here so the three surfaces cannot drift: a rename that changes what a
  * chip says has to change what the snippet says by construction.
  *
- * Import `MentionTargetType` as a type only. This module is pulled in by the
- * note list rows, which must not drag the editor's extension graph with them.
- */
-import type { MentionTargetType } from '@shared/noteDoc'
-import type { Capture, Note, Selector, Tag } from '@shared/types'
-
-export const MENTION_SIGILS = ['@', '#'] as const
-export type MentionSigil = (typeof MENTION_SIGILS)[number]
-
-/**
- * Which key opens the popup that offers each kind.
+ * The sigil map is re-exported from `@shared/noteDoc` rather than declared
+ * again here. Main derives indexed and exported note text from that module, so
+ * a second copy is a second answer to "what prefix does a selector read with".
  *
  * The design source splits them `@` = captures + notes, `#` = selectors +
  * tags, which is not the split the issue body describes. The mock states it
  * four independent times (the placeholder, both footers and the popup's own
  * scope label) and is the later artefact, so it wins.
  */
-export const MENTION_SIGIL: Record<MentionTargetType, MentionSigil> = {
-  capture: '@',
-  note: '@',
-  selector: '#',
-  tag: '#'
-}
+import { MENTION_SIGIL, MENTION_SIGILS, type MentionSigil } from '@shared/noteDoc'
+import type { MentionTargetType } from '@shared/noteDoc'
+import type { Capture, Note, Selector, Tag } from '@shared/types'
+
+export { MENTION_SIGIL, MENTION_SIGILS, type MentionSigil }
 
 /**
  * Guard for an attribute read off a node.

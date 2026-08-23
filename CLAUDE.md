@@ -338,7 +338,8 @@ spawned you, push the branch and hand off instead. PR opening stays with the dis
 one identity authors every PR entering the slot (ADR-0012).
 
 **Label it, or the gates cannot see it.** `agent-authored` always, `agent-pr` as well only if
-the PR takes the strict-serial dispatch slot, `evidence-affecting` when the gate fired.
+the PR takes a dispatch slot, `evidence-affecting` when the gate fired at the **blocking** tier
+(the path list is tiered since ADR-0014; an advisory-tier hit is not a label).
 `pre-pass-gate.yml` and `ci.yml`'s draft exemption both key on those labels, so an unlabelled
 agent PR reports `agent/pre-pass success — "Not an agent PR"` and no reviewer is ever waiting
 on it. Wave 1 batch 1 shipped five such PRs, four evidence-affecting, and a hand-run pre-pass
@@ -355,8 +356,10 @@ only when `coverage-final.json` came from `pnpm test:coverage` on the same tree 
 both after any edit (#508). Interactive sessions are not covered by this carve-out, and it must
 not be copied to the global CLAUDE.md or other repos.
 
-The gates in `docs/adr/0005-unattended-agents-on-the-evidence-path.md` still apply in full:
-strict-serial WIP (max one open agent PR), human review on every agent PR through the pilot,
-evidence-affecting PRs never auto-merge, and the give-up path (comment findings on the issue, relabel
-`needs-info`/`ready-for-human`, vacate the slot) whenever the issue fails the ready-for-agent
-bar at intake or mid-work.
+The gates in `docs/adr/0005-unattended-agents-on-the-evidence-path.md` still apply, as amended by
+`docs/adr/0014-tier-the-evidence-backstop-and-widen-the-dispatch-slot.md`: WIP of three concurrent
+agent PRs with every branch cut from `main` and never from another cycle's branch,
+`evidence-affecting` PRs never auto-merge and always get human review, non-evidence agent PRs may
+merge on all required checks green plus an `agent/pre-pass` success verdict, and the give-up path
+(comment findings on the issue, relabel `needs-info`/`ready-for-human`, vacate the slot) whenever
+the issue fails the ready-for-agent bar at intake or mid-work.

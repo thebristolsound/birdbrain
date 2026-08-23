@@ -67,7 +67,9 @@ The canonical definition, quoted verbatim from `CONTEXT.md` ("Assurance baseline
 > software distribution when it can alter an evidentiary result or its interpretation.
 
 Check the path inventory in `docs/specs/2026-07-31-evidence-affecting-paths-assessment.md` if
-unsure.
+unsure. That list is tiered: a **blocking** entry means answer Yes, an **advisory** entry means
+read the region your diff touched and decide. Advisory covers shared files like `src/shared/ipc.ts`
+and `pnpm-lock.yaml`, where most changes are nowhere near evidence behaviour and some are.
 
 **Evidence-affecting:** ANSWER YES OR NO
 

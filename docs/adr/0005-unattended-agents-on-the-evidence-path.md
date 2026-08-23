@@ -4,6 +4,11 @@
 
 **Date:** 2026-07-31
 
+**Amended 2026-08-23 by [ADR-0014](0014-tier-the-evidence-backstop-and-widen-the-dispatch-slot.md):**
+the backstop list is tiered (blocking or advisory), the strict-serial slot widens from one cycle to
+three, and non-evidence agent PRs may auto-merge on green plus a pre-pass success. The evidence-
+affecting PR gate and the never-auto-merge rule for evidence-affecting PRs are unchanged.
+
 Birdbrain is adopting an autonomous agent pipeline: unattended agents work `ready-for-agent`
 issues end-to-end and open draft PRs, eventually dispatched on a schedule
 ([#298](https://github.com/thebristolsound/birdbrain/issues/298)). The obvious reflex for an
@@ -36,6 +41,9 @@ PR's diff as a mechanical backstop: a touched path on the list on a PR that carr
 `evidence-affecting` label (and whose linked issue carries none) is a blocking review finding.
 Until the maintained list is confirmed, the drafted assessment
 (`docs/specs/2026-07-31-evidence-affecting-paths-assessment.md`, PR #315) serves as the list.
+*Amended by [ADR-0014](0014-tier-the-evidence-backstop-and-widen-the-dispatch-slot.md): that list is
+now tiered. A blocking-tier hit is a blocking finding as written here; an advisory-tier hit is a
+one-line reviewer disposition owing no Evidence impact section.*
 
 ### PR gate — evidence impact and known-answer tests
 
@@ -55,12 +63,16 @@ the backstop before any human sees the PR.
 
 Every agent PR gets human review through the pilot; no agent PR auto-merges. Whether
 non-evidence agent PRs may ever auto-merge is deferred until post-pilot review-burden data
-exists. **Evidence-affecting PRs never auto-merge, regardless of that future decision.**
+exists. *Answered by [ADR-0014](0014-tier-the-evidence-backstop-and-widen-the-dispatch-slot.md)
+on 2026-08-23: they may, on all required checks green plus an `agent/pre-pass` success verdict.* **Evidence-affecting PRs never auto-merge, regardless of that future decision.**
 
 ### Flow control and the give-up path
 
 - **Strict serial:** at most one open agent PR at a time; the dispatch routine exits without
-  dispatching while one is open. *Amended by [ADR-0006](0006-claim-the-dispatch-slot-at-dispatch-time.md):
+  dispatching while one is open. *Amended by
+  [ADR-0014](0014-tier-the-evidence-backstop-and-widen-the-dispatch-slot.md): the limit is three
+  concurrent cycles, and every agent branch is cut from `main` rather than from another cycle's
+  branch.* *Amended by [ADR-0006](0006-claim-the-dispatch-slot-at-dispatch-time.md):
   the slot is claimed at dispatch time, before the PR exists.* The record a human merge must
   leave when the final automated verdict is unresolved is set by
   [ADR-0007](0007-merging-over-an-unresolved-verdict-requires-a-recorded-override.md).

@@ -4,6 +4,9 @@
 
 **Date:** 2026-08-16
 
+**Amended 2026-08-23 by [ADR-0014](0014-tier-the-evidence-backstop-and-widen-the-dispatch-slot.md):**
+clause 2 keys on the **blocking** tier of the path list, which is now tiered. See the clause itself.
+
 ## Context
 
 Phase 3 of the autonomy plan (`docs/plans/2026-07-31-agent-autonomy.md`) set the exit bar for
@@ -57,7 +60,10 @@ A cycle is clean when all three hold.
    or still pending in CI.
 2. **No unflagged evidence-affecting defect.** No defect on an evidence-affecting path (per
    `docs/specs/2026-07-31-evidence-affecting-paths-assessment.md`) reaches `main` without
-   being named.
+   being named. **Amended 2026-08-23:** that list is now tiered, and this clause means the
+   **blocking** tier. An advisory-tier defect does not break a clean cycle. Without this
+   restatement, tiering the list would have loosened the exit bar as a side effect of a decision
+   about review load, which is not a trade anyone made.
 3. **No unreviewed commit.** No commit lands on `main` that no review covered.
 
 ### Threshold

@@ -4,6 +4,10 @@
 
 **Date:** 2026-08-10
 
+**Amended 2026-08-23 by [ADR-0014](0014-tier-the-evidence-backstop-and-widen-the-dispatch-slot.md):**
+there are three slots, not one. The two markers and the claim-comment protocol below are unchanged;
+the routine counts them and dispatches while the count is under three.
+
 Amends the flow-control clause of
 [ADR-0005](0005-unattended-agents-on-the-evidence-path.md). The strict-serial rule — at most
 one agent cycle in flight — stands unchanged; this ADR changes *when* and *how* the slot is

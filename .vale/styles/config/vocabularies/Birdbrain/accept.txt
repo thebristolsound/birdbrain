@@ -186,3 +186,8 @@ KATs
 [Uu]ncompilable
 [Uu]ngated
 install's
+[Tt]ier(s|ed|ing)?
+[Ss]ha(s)?
+[Dd]ispatchable
+[Cc]anonicaliz(e|es|ed|ing)
+[Aa]dvisor(y|ies)

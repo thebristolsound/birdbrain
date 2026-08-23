@@ -80,7 +80,9 @@ that sentence changes, this copy and the one in the PR template change with it:
 > result or its interpretation.
 
 These changes get closer review, must state their evidence impact in the PR, and are
-never merged without human review. The PR template walks you through this; the path
+never merged without human review. Changes that are not evidence-affecting may merge on green
+once reviewed ([`docs/adr/0014-tier-the-evidence-backstop-and-widen-the-dispatch-slot.md`](docs/adr/0014-tier-the-evidence-backstop-and-widen-the-dispatch-slot.md)).
+The PR template walks you through this; the path
 inventory lives in
 [`docs/specs/2026-07-31-evidence-affecting-paths-assessment.md`](docs/specs/2026-07-31-evidence-affecting-paths-assessment.md)
 and the review gates in

@@ -62,12 +62,19 @@ describe('MentionSuggestionList', () => {
   it('draws a row whose kind is an Object.prototype name rather than rendering one', () => {
     // ICONS[targetType] returned Object.prototype.toString for this row, which
     // React then tried to mount as a component.
+    //
+    // Asserting only that the label renders does not pin the guard (#773).
+    // React mounts Object.prototype.toString happily: it returns a string, so
+    // nothing throws and the row renders the literal text `[object Undefined]`
+    // beside the label. Both assertions below fail with the guard reverted.
     const polluted: MentionCandidate = {
       ...candidate('x', 'Odd'),
       targetType: 'toString' as MentionCandidate['targetType']
     }
-    renderList({ items: [polluted] })
+    const { view } = renderList({ items: [polluted] })
     expect(screen.getByText('Odd')).toBeTruthy()
+    expect(view.container.querySelector('[role="option"] svg')).toBeTruthy()
+    expect(view.container.textContent).not.toContain('[object')
   })
 
   it('carries the keyboard contract in its footer', () => {

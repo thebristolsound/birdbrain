@@ -1,4 +1,4 @@
-import { useMemo, useRef, type RefObject } from 'react'
+import { useEffect, useMemo, useRef, type RefObject } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { capturesQueryOptions } from '@renderer/lib/api/captures'
 import { notesQueryOptions } from '@renderer/lib/api/notes'
@@ -65,8 +65,14 @@ export function useMentionSources(caseId: string): UseMentionSourcesResult {
     [captures.isSuccess, notes.isSuccess, selectors.isSuccess, tags.isSuccess]
   )
 
+  // Updated after commit, not during render. A render can be thrown away, and
+  // a ref written from a discarded one would leave the plugin reading data no
+  // committed tree ever showed. The plugin only reads this on a keystroke,
+  // which is always after a commit.
   const ref = useRef(sources)
-  ref.current = sources
+  useEffect(() => {
+    ref.current = sources
+  }, [sources])
 
   return { sources, loaded, ref }
 }

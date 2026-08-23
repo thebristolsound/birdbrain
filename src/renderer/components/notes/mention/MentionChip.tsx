@@ -107,10 +107,20 @@ export function createMentionNodeView(caseId: string) {
       // click has to name its target before it navigates or it lands on the
       // right screen showing the wrong thing (#716, #772).
       const store = useAppStore.getState()
-      const selection = mentionSelection(targetType)
-      if (selection === 'capture') store.setSelectedCaptureId(targetId)
-      else if (selection === 'note') store.setSelectedNoteId(targetId)
-      else store.setSelectedSignalId(targetId)
+      // Exhaustive on purpose. A bare `else` would route a selection kind added
+      // later to Signals in silence, which is the shape of defect this whole
+      // fix is about.
+      switch (mentionSelection(targetType)) {
+        case 'capture':
+          store.setSelectedCaptureId(targetId)
+          break
+        case 'note':
+          store.setSelectedNoteId(targetId)
+          break
+        case 'signal':
+          store.setSelectedSignalId(targetId)
+          break
+      }
       navigate({ to: mentionRoute(targetType), params: { caseId } })
     }
 

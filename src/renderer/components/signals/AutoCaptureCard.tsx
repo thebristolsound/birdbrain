@@ -90,7 +90,10 @@ export function AutoCaptureCard({ caseId }: AutoCaptureCardProps) {
   }
 
   return (
-    <section className="rounded-md border border-border bg-card p-[var(--d-card)]">
+    <section
+      data-tour="selectors"
+      className="rounded-md border border-border bg-card p-[var(--d-card)]"
+    >
       <div className="flex items-center gap-3">
         <Camera
           className={`h-4 w-4 shrink-0 ${switchOn ? 'text-accent' : 'text-text-faint'}`}

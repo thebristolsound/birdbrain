@@ -553,6 +553,13 @@ export const BirdbrainSettingsSchema = z.object({
   analysisSystemPrompt: z.string().optional().default(DEFAULT_ANALYSIS_SYSTEM_PROMPT),
   detailsPanelCollapsed: z.boolean().optional().default(false),
   tooltipsSeen: z.record(z.string(), z.boolean()).optional().default({}),
+  // Coach-mark tour state (#404). `onboardingChapters` records which chapters
+  // have run so none auto-fires twice; `isFreshInstall` is latched once at
+  // first launch (see initSettings) and is what confines auto-firing to new
+  // installs. Both are optional-with-default, so a settings file written
+  // before this release loads unchanged.
+  onboardingChapters: z.record(z.string(), z.boolean()).optional().default({}),
+  isFreshInstall: z.boolean().optional().default(false),
   releaseChannel: z.enum(['stable', 'beta']).optional().default('stable'),
   autoCheckForUpdates: z.boolean().optional().default(true)
 })

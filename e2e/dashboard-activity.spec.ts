@@ -9,17 +9,11 @@ const PNG_BASE64 =
   'wKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKzA' +
   'rMCswKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKz9zzotw8GdFsEYhAAAAABJRU5ErkJggg=='
 
-// The dashboard is settings-gated behind first-run onboarding, whose only
-// completion path creates a case. Marking it complete directly is what leaves a
-// caseless dashboard reachable — which is the Quick Start state under test.
-async function completeOnboarding(page: Page): Promise<void> {
-  await page.evaluate(async () => {
-    await (
-      window as unknown as {
-        birdbrain: { settings: { update: (p: object) => Promise<unknown> } }
-      }
-    ).birdbrain.settings.update({ hasCompletedOnboarding: true })
-  })
+// The dashboard is no longer gated behind a first-run wizard (#404): the fixture
+// seeds a settings.json, so the app launches as an existing install, is never
+// toured, and the caseless dashboard — the Quick Start state under test — is
+// reachable straight from a reload.
+async function openCaselessDashboard(page: Page): Promise<void> {
   await reloadToDashboard(page)
 }
 
@@ -112,7 +106,7 @@ test.describe('Dashboard recent activity', () => {
   test('first run keeps Quick Start, and the feed replaces it once a case exists', async ({
     page
   }) => {
-    await completeOnboarding(page)
+    await openCaselessDashboard(page)
 
     // No cases yet: the walkthrough, not the feed.
     await expect(page.getByRole('heading', { name: 'Quick Start' })).toBeVisible()
@@ -138,7 +132,7 @@ test.describe('Dashboard recent activity', () => {
   })
 
   test('a capture row opens that capture in its case', async ({ page }) => {
-    await completeOnboarding(page)
+    await openCaselessDashboard(page)
     const caseId = await createCase(page, 'Capture Row E2E')
     await seedCapture(page, caseId, 'https://example.com/login', 'Bravo Capture')
     await reloadToDashboard(page)
@@ -153,7 +147,7 @@ test.describe('Dashboard recent activity', () => {
   })
 
   test('a note row opens Notes with that note selected', async ({ page }) => {
-    await completeOnboarding(page)
+    await openCaselessDashboard(page)
     const caseId = await createCase(page, 'Note Row E2E')
     const noteId = await seedNote(page, caseId, 'Operator timezone')
     await reloadToDashboard(page)

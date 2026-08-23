@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { appVersionQueryOptions } from '@renderer/lib/queries'
 import { Card, CardContent } from '@renderer/components/ui'
+import { startTour } from '@renderer/components/onboarding/startTour'
 
 export function About() {
   const { data: version } = useQuery(appVersionQueryOptions)
@@ -25,6 +26,15 @@ export function About() {
               GitHub
             </a>{' '}
             &middot; <span className="text-text-muted">MIT License</span>
+          </p>
+          <p>
+            <button
+              data-testid="about-replay-tour"
+              onClick={() => startTour('intro')}
+              className="border-none bg-transparent p-0 text-xs text-accent hover:text-accent-hover"
+            >
+              Replay the welcome walkthrough
+            </button>
           </p>
         </div>
       </CardContent>

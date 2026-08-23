@@ -2,7 +2,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { CapturesGettingStarted } from '@renderer/components/captures/CapturesGettingStarted'
-import { useAppStore } from '@renderer/stores/appStore'
 import { stubMatchMedia } from './matchMediaStub'
 import { fakeBridge } from '../renderer/fakeBridge'
 
@@ -13,7 +12,6 @@ describe('CapturesGettingStarted', () => {
     stubMatchMedia()
     openFolder = vi.fn().mockResolvedValue(undefined)
     fakeBridge({ extension: { openFolder } })
-    useAppStore.setState({ onboardingOverlayOpen: false })
   })
 
   afterEach(() => {
@@ -33,10 +31,18 @@ describe('CapturesGettingStarted', () => {
     expect(openFolder).toHaveBeenCalledTimes(1)
   })
 
-  it('opens the onboarding overlay when Learn more clicked', () => {
-    render(<CapturesGettingStarted />)
-    expect(useAppStore.getState().onboardingOverlayOpen).toBe(false)
-    fireEvent.click(screen.getByTestId('captures-getting-started-learn-more-btn'))
-    expect(useAppStore.getState().onboardingOverlayOpen).toBe(true)
+  it('replays the extension tour chapter when Learn more clicked', () => {
+    const chapters: string[] = []
+    const listener = (e: Event) => {
+      chapters.push((e as CustomEvent<{ chapter: string }>).detail.chapter)
+    }
+    window.addEventListener('birdbrain:tour', listener)
+    try {
+      render(<CapturesGettingStarted />)
+      fireEvent.click(screen.getByTestId('captures-getting-started-learn-more-btn'))
+      expect(chapters).toEqual(['ext'])
+    } finally {
+      window.removeEventListener('birdbrain:tour', listener)
+    }
   })
 })

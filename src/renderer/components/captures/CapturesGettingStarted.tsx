@@ -9,10 +9,10 @@ import {
   Lightbulb
 } from 'lucide-react'
 import { motion } from 'motion/react'
-import { useAppStore } from '@renderer/stores/appStore'
 import { useReduceMotion } from '@renderer/hooks/useReduceMotion'
 import { Button } from '@renderer/components/ui'
 import { openExtensionFolder } from '@renderer/lib/api/system'
+import { startTour } from '@renderer/components/onboarding/startTour'
 
 const STEPS = [
   {
@@ -36,7 +36,6 @@ const STEPS = [
 ]
 
 export function CapturesGettingStarted() {
-  const setOnboardingOverlayOpen = useAppStore((s) => s.setOnboardingOverlayOpen)
   const reduce = useReduceMotion()
 
   const handleInstall = async () => {
@@ -125,7 +124,7 @@ export function CapturesGettingStarted() {
           </Button>
           <button
             data-testid="captures-getting-started-learn-more-btn"
-            onClick={() => setOnboardingOverlayOpen(true)}
+            onClick={() => startTour('ext')}
             className="flex items-center gap-1.5 rounded-lg border border-transparent px-4 py-2.5 text-sm font-medium text-text-muted transition-colors hover:border-border hover:bg-card hover:text-text-secondary"
           >
             Learn more

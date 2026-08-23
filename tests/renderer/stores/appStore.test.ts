@@ -187,19 +187,6 @@ describe('appStore', () => {
     })
   })
 
-  describe('onboarding overlay', () => {
-    it('defaults to closed', () => {
-      expect(useAppStore.getState().onboardingOverlayOpen).toBe(false)
-    })
-
-    it('opens and closes the onboarding overlay', () => {
-      useAppStore.getState().setOnboardingOverlayOpen(true)
-      expect(useAppStore.getState().onboardingOverlayOpen).toBe(true)
-      useAppStore.getState().setOnboardingOverlayOpen(false)
-      expect(useAppStore.getState().onboardingOverlayOpen).toBe(false)
-    })
-  })
-
   describe('selector filters', () => {
     it('adds a selector filter', () => {
       useAppStore.getState().addSelectorFilter('sel-1')

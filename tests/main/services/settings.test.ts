@@ -279,4 +279,101 @@ describe('settings', () => {
     expect(settings.theme).toBe('dark')
     expect(settings.operatorName).toBe('Det. Smith')
   })
+
+  describe('tour state (#404)', () => {
+    it('defaults to no chapters seen and not a fresh install', () => {
+      const defaults = getDefaultSettings()
+      expect(defaults.onboardingChapters).toEqual({})
+      expect(defaults.isFreshInstall).toBe(false)
+    })
+
+    it('round-trips per-chapter completion', () => {
+      updateSettings({ onboardingChapters: { intro: true } })
+      expect(getSettings().onboardingChapters).toEqual({ intro: true })
+      updateSettings({ onboardingChapters: { intro: true, ext: true, case: true } })
+      expect(getSettings().onboardingChapters).toEqual({ intro: true, ext: true, case: true })
+    })
+
+    it('rejects a non-boolean chapter value', () => {
+      expect(() =>
+        updateSettings({ onboardingChapters: { intro: 'yes' } as unknown as Record<string, boolean> })
+      ).toThrow(/Invalid settings/)
+    })
+
+    it('supplies both keys for a settings file written before they existed', () => {
+      writeFileSync(settingsFile, JSON.stringify({ theme: 'dark' }), 'utf-8')
+      const settings = getSettings()
+      expect(settings.onboardingChapters).toEqual({})
+      expect(settings.isFreshInstall).toBe(false)
+      expect(settings.theme).toBe('dark')
+    })
+  })
+})
+
+// initSettings mutates the module-level defaults, which is deliberate — it is
+// how the fresh-install determination survives to the first read. That makes it
+// sticky across tests, so each case here gets its own module instance.
+describe('initSettings and the fresh-install latch', () => {
+  let tempDir: string
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'bb-settings-init-'))
+    vi.resetModules()
+  })
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  async function load() {
+    return import('@main/services/settings')
+  }
+
+  it('latches the flag and seeds the file when there is no settings.json', async () => {
+    const { initSettings, getSettings: read } = await load()
+    initSettings(tempDir)
+    expect(existsSync(join(tempDir, 'settings.json'))).toBe(true)
+    expect(read().isFreshInstall).toBe(true)
+  })
+
+  it('leaves an existing install alone', async () => {
+    writeFileSync(
+      join(tempDir, 'settings.json'),
+      JSON.stringify({ operatorName: 'Det. Smith' }),
+      'utf-8'
+    )
+    const { initSettings, getSettings: read } = await load()
+    initSettings(tempDir)
+    const settings = read()
+    expect(settings.isFreshInstall).toBe(false)
+    expect(settings.operatorName).toBe('Det. Smith')
+  })
+
+  // The upgrade case the acceptance criteria call out: an install predating
+  // both keys still has a settings.json, so it is not fresh and is never toured.
+  it('leaves an install predating the tour keys alone', async () => {
+    writeFileSync(join(tempDir, 'settings.json'), JSON.stringify({ theme: 'dark' }), 'utf-8')
+    const { initSettings, getSettings: read } = await load()
+    initSettings(tempDir)
+    expect(read().isFreshInstall).toBe(false)
+    expect(read().onboardingChapters).toEqual({})
+  })
+
+  it('seeds a file with no API key, so key protection still reads not-set', async () => {
+    const { initSettings, getOpenRouterKeyProtectionState: state } = await load()
+    initSettings(tempDir)
+    expect(state()).toBe('not-set')
+  })
+
+  it('does not throw when the settings directory cannot be written', async () => {
+    const { initSettings, getSettings: read } = await load()
+    expect(() => initSettings(join(tempDir, 'does', 'not', 'exist'))).not.toThrow()
+    expect(read().isFreshInstall).toBe(true)
+    expect(loggerWarn).toHaveBeenCalledWith(
+      'settings',
+      'settings.fresh_install_seed_failed',
+      undefined,
+      expect.objectContaining({ code: 'ENOENT' })
+    )
+  })
 })

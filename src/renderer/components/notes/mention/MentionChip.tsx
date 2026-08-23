@@ -1,4 +1,4 @@
-import type { CSSProperties, MouseEvent } from 'react'
+import type { CSSProperties, KeyboardEvent, MouseEvent } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react'
 import type { MentionTargetType } from '@shared/noteDoc'
@@ -49,6 +49,22 @@ export function MentionChipView({
     onOpen?.()
   }
 
+  // A chip is a control, so it has to be reachable without a mouse. Both keys
+  // mean something to the editor underneath — Enter splits the paragraph and
+  // Space types a character — so activation cancels the event rather than
+  // letting the same press do two things.
+  function handleKeyDown(e: KeyboardEvent) {
+    if (e.key !== 'Enter' && e.key !== ' ') return
+    e.preventDefault()
+    e.stopPropagation()
+    onOpen?.()
+  }
+
+  // A broken chip opens nothing, so it is not a control and does not take
+  // focus: a keyboard user tabbing through a note would otherwise stop on it
+  // and find that nothing happens.
+  const interactive = !broken
+
   return (
     <NodeViewWrapper
       as="span"
@@ -60,7 +76,10 @@ export function MentionChipView({
       className={broken ? 'mention-chip mention-chip-broken' : 'mention-chip'}
       style={{ '--mention-color': color } as CSSProperties}
       title={mentionTooltip(targetType, label, broken)}
-      onClick={broken ? undefined : handleClick}
+      role={interactive ? 'button' : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      onClick={interactive ? handleClick : undefined}
+      onKeyDown={interactive ? handleKeyDown : undefined}
     >
       {maskMention(targetType, label)}
     </NodeViewWrapper>
@@ -128,7 +147,10 @@ export function createMentionNodeView(caseId: string) {
       <MentionChipView
         targetType={targetType}
         targetId={targetId}
-        label={resolution.label ?? storedLabel ?? targetType}
+        // `||`, not `??`: an unresolved node whose stored label is the empty
+        // string would otherwise render as a bare sigil. storedLabel is already
+        // coalesced to '' above, so `??` never reached the target-type fallback.
+        label={resolution.label || storedLabel || targetType}
         broken={broken}
         tagColor={resolution.color}
         onOpen={handleOpen}

@@ -130,7 +130,11 @@ describe('MentionChipView', () => {
     expect(chip.style.getPropertyValue('--mention-color')).toBe('var(--color-danger-fg)')
     expect(chip.getAttribute('title')).toBe('capture · Thread — target deleted')
     fireEvent.click(chip)
+    fireEvent.keyDown(chip, { key: 'Enter' })
     expect(onOpen).not.toHaveBeenCalled()
+    // Nothing happens on activation, so it must not be a tab stop either.
+    expect(chip.getAttribute('role')).toBeNull()
+    expect(chip.getAttribute('tabindex')).toBeNull()
   })
 
   it('opens the target on click without also moving the caret', () => {
@@ -149,6 +153,54 @@ describe('MentionChipView', () => {
     fireEvent(chip, event)
     expect(onOpen).toHaveBeenCalled()
     expect(event.defaultPrevented).toBe(true)
+  })
+
+  it('is a focusable control, so a chip is reachable without a mouse', () => {
+    const { container } = render(
+      <MentionChipView targetType="capture" targetId="c1" label="Thread" broken={false} />
+    )
+    const chip = container.querySelector('[data-mention-chip]') as HTMLElement
+    expect(chip.getAttribute('role')).toBe('button')
+    expect(chip.tabIndex).toBe(0)
+  })
+
+  // Both keys mean something to the editor underneath, so activation has to
+  // cancel the press rather than let it open the target *and* split the
+  // paragraph or type a space.
+  it.each(['Enter', ' '])('opens the target on %j and cancels the key', (key) => {
+    const onOpen = vi.fn()
+    const { container } = render(
+      <MentionChipView
+        targetType="capture"
+        targetId="c1"
+        label="Thread"
+        broken={false}
+        onOpen={onOpen}
+      />
+    )
+    const chip = container.querySelector('[data-mention-chip]') as HTMLElement
+    const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+    fireEvent(chip, event)
+    expect(onOpen).toHaveBeenCalledTimes(1)
+    expect(event.defaultPrevented).toBe(true)
+  })
+
+  it('leaves every other key to the editor', () => {
+    const onOpen = vi.fn()
+    const { container } = render(
+      <MentionChipView
+        targetType="capture"
+        targetId="c1"
+        label="Thread"
+        broken={false}
+        onOpen={onOpen}
+      />
+    )
+    const chip = container.querySelector('[data-mention-chip]') as HTMLElement
+    const event = new KeyboardEvent('keydown', { key: 'a', bubbles: true, cancelable: true })
+    fireEvent(chip, event)
+    expect(onOpen).not.toHaveBeenCalled()
+    expect(event.defaultPrevented).toBe(false)
   })
 })
 
@@ -262,6 +314,31 @@ describe('the Mention node view', () => {
       expect(container.textContent).toBe('@Thread')
     }
   )
+
+  it('names the kind when a valid node has no label and none has resolved yet', () => {
+    // Valid identity, empty label cache, lists still in flight. `??` treated
+    // the empty string as a label and rendered a bare '#'.
+    const Chip = createMentionNodeView('case1')
+    const { container } = render(
+      <Chip {...nodeProps({ targetType: 'selector', targetId: 's1', label: '' })} />,
+      { wrapper: Wrapper }
+    )
+    expect(container.textContent).toBe('#selector')
+  })
+
+  it('opens the target from the keyboard, not only from a click', async () => {
+    useAppStore.getState().setSelectedCaptureId('a-previously-opened-capture')
+    const Chip = createMentionNodeView('case1')
+    render(<Chip {...nodeProps({ targetType: 'capture', targetId: 'cap1', label: 'Thread' })} />, {
+      wrapper: Wrapper
+    })
+    fireEvent.keyDown(await screen.findByText('@Nightjar thread'), { key: 'Enter' })
+    expect(useAppStore.getState().selectedCaptureId).toBe('cap1')
+    expect(navigateSpy).toHaveBeenCalledWith({
+      to: '/cases/$caseId/captures',
+      params: { caseId: 'case1' }
+    })
+  })
 
   it('renders a node that lost its identity attributes as broken rather than throwing', () => {
     const Chip = createMentionNodeView('case1')

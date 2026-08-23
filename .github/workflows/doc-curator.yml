@@ -5,10 +5,21 @@ name: Doc curator
 # reviewer model judges it; only an approved, site-building edit becomes a PR. Policy and limits:
 # docs/agents/doc-curator.md. Decision record: docs/adr/0012.
 #
-# The window is DOC_CURATOR_LAST_SHA..HEAD, held in a repository variable rather
-# than a committed file so a run never has to commit to main to remember itself.
-# The marker advances only on a PR, a comment on the open curator PR, or a clean
-# no-op — a discarded run leaves it so the next run retries the same window.
+# The window is <marker>..HEAD. The marker is the body of issue #795, and is a bare
+# 40-character SHA. Not a committed file, so a run never has to commit to main to
+# remember itself. The marker advances only on a PR, a comment on the open curator
+# PR, or a clean no-op — a discarded run leaves it so the next run retries the same
+# window.
+#
+# It used to be the repository variable DOC_CURATOR_LAST_SHA, which never worked:
+# GITHUB_TOKEN cannot read or write Actions variables, whatever `permissions:` says,
+# and there is no scope in that block which grants it. Every run failed at "Collect
+# window" reporting the 403 as "unset" (#792). A git tag was the other candidate and
+# is worse: creating one is allowed, but moving it is refused whenever
+# `.github/workflows/**` differs between the old and new target, because GITHUB_TOKEN
+# has no `workflows` permission — and moving it weekly is the entire job. An issue
+# body needs only `issues: write`, which this workflow already holds, and its edit
+# history is a free audit trail of every window the curator has run.
 #
 # Never pushes to main: docs.yml publishes every push there straight to Pages.
 
@@ -25,8 +36,7 @@ on:
 permissions:
   contents: write # push the docs/curate-* branch
   pull-requests: write # open or comment on the curator PR
-  issues: write # file the site-build-failure issue
-  actions: write # advance DOC_CURATOR_LAST_SHA
+  issues: write # file the site-build-failure issue, and read/advance the marker issue
 
 concurrency:
   group: doc-curator
@@ -38,6 +48,8 @@ jobs:
     timeout-minutes: 45
     env:
       GH_TOKEN: ${{ github.token }}
+      # The issue whose body holds the marker SHA. See the header comment.
+      MARKER_ISSUE: 795
       AUTHOR_MODEL: claude-opus-5
       REVIEWER_MODEL: claude-fable-5
       DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
@@ -61,15 +73,30 @@ jobs:
         id: window
         run: |
           set -euo pipefail
-          marker="$(gh variable get DOC_CURATOR_LAST_SHA 2>/dev/null || true)"
-          if [ -z "$marker" ]; then
-            echo "DOC_CURATOR_LAST_SHA is unset — seed it (see the wizard) before running." >&2
+          # No `|| true` and no `2>/dev/null`. A read that fails must fail the step: an
+          # error swallowed into the empty string is indistinguishable from a marker that
+          # was never set, and reporting the first as the second is what sent four manual
+          # dispatches chasing a variable that was fine (#792).
+          raw="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${MARKER_ISSUE}" --jq '.body')"
+          # Keep the unresolved value in its own variable. `rev-parse --quiet` assigns the
+          # empty string when it fails, so validating in place would print "[]" as the bad
+          # value — losing the only thing an operator needs to fix it.
+          candidate="$(printf '%s' "$raw" | tr -d '[:space:]')"
+          # A marker that names no commit is a configuration error, not an empty window.
+          # Without this the `git log` below writes to stderr, yields the empty string, and
+          # the no-op branch reports "nothing to curate" with exit 0 — so a bad marker makes
+          # the curator look healthy while doing nothing, every week, forever (#793).
+          if ! marker="$(git rev-parse --verify --quiet "${candidate}^{commit}")"; then
+            echo "Marker in issue #${MARKER_ISSUE} does not resolve to a commit: [${candidate}]" >&2
             exit 1
           fi
           head="$(git rev-parse HEAD)"
           echo "marker=$marker" >> "$GITHUB_OUTPUT"
           echo "head=$head" >> "$GITHUB_OUTPUT"
-          if [ "$marker" = "$head" ] || [ -z "$(git log --oneline "$marker..$head")" ]; then
+          # Standalone assignment, so `set -e` sees a git failure here. Inline in the `[`
+          # test below it would be swallowed exactly like the case above.
+          commits="$(git log --oneline "$marker..$head")"
+          if [ "$marker" = "$head" ] || [ -z "$commits" ]; then
             echo "no_merges=true" >> "$GITHUB_OUTPUT"
             echo "No commits since $marker; nothing to curate." >> "$GITHUB_STEP_SUMMARY"
             exit 0
@@ -158,7 +185,21 @@ jobs:
 
       - name: Advance marker
         if: env.DRY_RUN != 'true' && (steps.window.outputs.no_merges == 'true' || steps.pr.outcome == 'success')
-        run: gh variable set DOC_CURATOR_LAST_SHA --body "${{ steps.window.outputs.head }}"
+        env:
+          NEW_MARKER: ${{ steps.window.outputs.head }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/issues/${MARKER_ISSUE}" -X PATCH \
+            -f body="$NEW_MARKER" --jq '.number' > /dev/null
+          # Read it back. A PATCH that reports success but leaves the body unchanged would
+          # make the next run redo this window and open a second PR over the same commits.
+          written="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${MARKER_ISSUE}" --jq '.body' \
+            | tr -d '[:space:]')"
+          if [ "$written" != "$NEW_MARKER" ]; then
+            echo "Marker did not advance: wanted $NEW_MARKER, issue #${MARKER_ISSUE} holds [$written]" >&2
+            exit 1
+          fi
+          echo "Marker advanced to $NEW_MARKER." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Dry-run summary
         if: env.DRY_RUN == 'true' && steps.window.outputs.no_merges == 'false'

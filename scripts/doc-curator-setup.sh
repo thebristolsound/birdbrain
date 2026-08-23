@@ -187,10 +187,40 @@ finish() {
 
 # ──────────────────────────────────────────────────────────────────────────
 # STAGES — provisioning for .github/workflows/doc-curator.yml.
-# Values: CLAUDE_CODE_OAUTH_TOKEN (secret, from `claude setup-token`), DOC_CURATOR_LAST_SHA
-# (variable, seeded to origin/main HEAD). Then a workflow_dispatch dry run.
+# Values: CLAUDE_CODE_OAUTH_TOKEN (secret, from `claude setup-token`), and the window
+# marker seeded to origin/main HEAD. Then a workflow_dispatch dry run.
 # Nothing is written to .env — CI is the only consumer.
 # ──────────────────────────────────────────────────────────────────────────
+
+# The marker lives in the body of an issue, not in a repository variable: GITHUB_TOKEN
+# cannot read or write Actions variables, so the workflow could never see one (#792).
+MARKER_ISSUE=795
+
+# set_marker SHA — validate and write the window marker.
+#
+# The validation is the point. The old wizard took a free-text SHA and wrote it through
+# unchecked, which is how the marker came to hold a 21-character string that was not a
+# commit at all (#793). A marker that names no commit is not a small problem: the
+# workflow's window check reads it as an empty window and reports "nothing to curate".
+set_marker() {
+  local sha
+  if ! sha="$(git rev-parse --verify --quiet "${1}^{commit}")"; then
+    warn "not a commit: ${1} — marker not written"
+    SKIPPED+=("doc-curator marker")
+    return 1
+  fi
+  if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+    local repo; repo="$(gh repo view --json nameWithOwner --jq .nameWithOwner)"
+    if gh api "repos/${repo}/issues/${MARKER_ISSUE}" -X PATCH -f body="$sha" \
+         --jq .number >/dev/null 2>&1; then
+      printf '  %s✓ set%s doc-curator marker to %s\n' "$GREEN" "$RESET" "${sha:0:12}"
+      return 0
+    fi
+  fi
+  SKIPPED+=("doc-curator marker")
+  warn "skipped doc-curator marker — gh not ready; set it later"
+  return 1
+}
 
 TOTAL_STAGES=3
 TOTAL_MINUTES=7
@@ -208,16 +238,21 @@ set_secret CLAUDE_CODE_OAUTH_TOKEN "$CLAUDE_CODE_OAUTH_TOKEN"
 note "Subscription tokens expire; when the workflow starts failing auth, re-run this stage."
 
 stage "Seed the window marker" 1
-say "DOC_CURATOR_LAST_SHA is where the first run starts diffing from. Seeding it to the"
-say "current origin/main HEAD means the first real run covers only merges after today."
+say "The marker is where the first run starts diffing from, and it lives in the body of"
+say "issue #${MARKER_ISSUE}. Seeding it to the current origin/main HEAD means the first real"
+say "run covers only merges after today."
 git fetch -q origin main
 HEAD_SHA="$(git rev-parse origin/main)"
 say "origin/main is ${HEAD_SHA:0:12}"
-if confirm "Set DOC_CURATOR_LAST_SHA=${HEAD_SHA:0:12}?"; then
-  set_var DOC_CURATOR_LAST_SHA "$HEAD_SHA"
+if confirm "Set the marker to ${HEAD_SHA:0:12}?"; then
+  set_marker "$HEAD_SHA"
 else
-  ask DOC_CURATOR_LAST_SHA "Enter the SHA to seed instead:"
-  set_var DOC_CURATOR_LAST_SHA "$DOC_CURATOR_LAST_SHA"
+  # Loop rather than write through: a value that is not a commit leaves the curator
+  # reporting "nothing to curate" every week with no error anywhere (#793).
+  until ask DOC_CURATOR_MARKER "Enter the SHA to seed instead:" && \
+        set_marker "$DOC_CURATOR_MARKER"; do
+    warn "try again, or Ctrl-C to leave the marker as it is"
+  done
 fi
 
 stage "Dry run" 3
@@ -227,13 +262,13 @@ if gh workflow view doc-curator.yml >/dev/null 2>&1; then
   say "Because the marker equals HEAD right now, it will report 'nothing to curate' —"
   say "to exercise the whole pipeline once, temporarily point the marker a week back:"
   WEEK_AGO="$(git rev-list -1 --before='7 days ago' origin/main)"
-  if confirm "Move DOC_CURATOR_LAST_SHA to ${WEEK_AGO:0:12} (7 days ago) for the dry run, then restore it?"; then
-    set_var DOC_CURATOR_LAST_SHA "$WEEK_AGO"
+  if confirm "Move the marker to ${WEEK_AGO:0:12} (7 days ago) for the dry run, then restore it?"; then
+    set_marker "$WEEK_AGO"
     gh workflow run doc-curator.yml -f dry_run=true
     say "Dispatched. Watch it here:"
     open_url "https://github.com/$(gh repo view --json nameWithOwner --jq .nameWithOwner)/actions/workflows/doc-curator.yml"
     pause "When the run finishes and you've read its summary, press Enter to restore the marker."
-    set_var DOC_CURATOR_LAST_SHA "$HEAD_SHA"
+    set_marker "$HEAD_SHA"
   else
     gh workflow run doc-curator.yml -f dry_run=true
     say "Dispatched (will no-op)."

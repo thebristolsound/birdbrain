@@ -88,6 +88,11 @@ test.describe('Onboarding tour', () => {
     await launchAsFreshInstall(page)
     await page.click('[data-testid="tour-skip"]')
     await expect(page.locator('[data-testid="onboarding-tour"]')).toBeHidden()
+    // The overlay hides synchronously but the completion write is an async IPC
+    // round trip, so settle it before snapshotting. Reading straight through
+    // captures the pre-write map, and the replay assertion below then either
+    // times out or compares against a state that never existed.
+    await expect.poll(() => readChapters(page)).toEqual({ intro: true, ext: true, case: true })
     const before = await readChapters(page)
 
     await page.keyboard.press('Control+k')

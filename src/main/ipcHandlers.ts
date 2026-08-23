@@ -558,9 +558,12 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.NOTES_BACKLINK_COUNTS, (_, caseId: string) =>
     noteReferenceRepo.backlinkCountsForCase(caseId)
   )
-  handle(IPC_CHANNELS.NOTES_REFERENCE_EDGES, (_, caseId: string) =>
-    noteReferenceRepo.referenceEdgesForCase(caseId)
-  )
+  handle(IPC_CHANNELS.NOTES_REFERENCE_EDGES, (_, caseId: string) => {
+    if (typeof caseId !== 'string') {
+      throw new IpcFailure('Invalid caseId: expected string')
+    }
+    return noteReferenceRepo.referenceEdgesForCase(caseId)
+  })
   handle(IPC_CHANNELS.NOTES_SEARCH, (_, caseId: string, query: string) => {
     try {
       return noteRepo.searchNotes(caseId, query)

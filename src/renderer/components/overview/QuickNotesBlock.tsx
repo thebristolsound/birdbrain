@@ -23,8 +23,12 @@ export function QuickNotesBlock({ caseId, notes }: QuickNotesBlockProps) {
     e.preventDefault()
     const trimmed = title.trim()
     if (!trimmed || create.isPending) return
-    await create.mutateAsync({ caseId, title: trimmed, bodyDoc: JSON.stringify(EMPTY_NOTE_DOC) })
-    setTitle('')
+    try {
+      await create.mutateAsync({ caseId, title: trimmed, bodyDoc: JSON.stringify(EMPTY_NOTE_DOC) })
+      setTitle('')
+    } catch {
+      // Preserve the title on failure so the user can retry
+    }
   }
 
   return (

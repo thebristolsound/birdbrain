@@ -307,7 +307,7 @@ test.describe('README screenshots', () => {
     await page.reload()
     await page.waitForSelector('[data-testid="app-ready"]', { timeout: 15000 })
     await page.waitForSelector('[data-testid="tour-welcome"]', { timeout: 15000 })
-    await page.waitForTimeout(800)
+    await expect(page.locator('[data-testid="tour-welcome"]')).toBeVisible()
     await shootBothThemes(page, 'screenshot-onboarding')
 
     // Dismiss the tour for the clean empty dashboard.
@@ -618,7 +618,8 @@ test.describe('README screenshots', () => {
       window.dispatchEvent(new CustomEvent('birdbrain:tour', { detail: { chapter: 'ext' } }))
     })
     await page.waitForSelector('[data-testid="tour-install-steps"]', { timeout: 15000 })
-    await page.waitForTimeout(1000)
+    await expect(page.locator('[data-testid="tour-mark"]')).toBeVisible()
+    await expect(page.locator('[data-testid="tour-install-step"]')).toHaveCount(3)
     await shootBothThemes(page, 'screenshot-extension-setup')
     await page.click('[data-testid="tour-skip"]')
     await page.waitForSelector('[data-testid="onboarding-tour"]', { state: 'hidden' })

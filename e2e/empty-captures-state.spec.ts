@@ -46,7 +46,9 @@ test.describe('Empty Captures State', () => {
     await page.waitForURL(/#\/$/, { timeout: 10000 })
     const mark = page.locator('[data-testid="tour-mark"]')
     await expect(mark).toBeVisible()
-    await expect(mark.getByText('The extension does the capturing')).toBeVisible()
+    await expect(
+      mark.getByRole('heading', { name: 'The extension does the capturing' })
+    ).toBeVisible()
     await expect(page.locator('[data-testid="tour-install-step"]')).toHaveCount(3)
 
     await page.click('[data-testid="tour-skip"]')

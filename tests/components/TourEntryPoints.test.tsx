@@ -114,7 +114,14 @@ describe('the dashboard extension banner', () => {
   })
 
   it('still opens the extension folder from Install Extension', () => {
+    const mockBridge = fakeBridge({
+      cases: { list: vi.fn(async () => CASES) },
+      captures: { countsByCase: vi.fn(async () => ({})) },
+      app: { getVersion: vi.fn(async () => '2.0.0') },
+      extension: { openFolder: vi.fn(async () => undefined) }
+    })
     render(<ExtensionBanner connected={false} />, { wrapper: Wrapper })
-    expect(screen.getByText('Install Extension')).toBeTruthy()
+    fireEvent.click(screen.getByText('Install Extension'))
+    expect(mockBridge.extension.openFolder).toHaveBeenCalled()
   })
 })

@@ -172,13 +172,16 @@ describe('noteDoc mentions', () => {
   })
 
   it('derives searchable text from the label, falling back to the target type', () => {
+    // Each kind carries its own sigil, the one the chip shows. This read '@tag'
+    // while the sigil map lived only in the renderer, so the indexed and
+    // exported text disagreed with the '#tag' chip the note displayed.
     const doc = docWith(
       text('see '),
       mention('capture', 'c-1', 'Acme homepage'),
       text(' and '),
       mention('tag', 't-1')
     )
-    expect(noteDocToText(doc)).toBe('see @Acme homepage and @tag')
+    expect(noteDocToText(doc)).toBe('see @Acme homepage and #tag')
   })
 
   it('extracts mentions in document order, duplicates preserved', () => {

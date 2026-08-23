@@ -135,7 +135,12 @@ export function CaptureDetailsPanel({
     }
   })
 
-  const noteEditor = useNoteEditor({ onChange: inline.setValue, testId: 'inline-note-editor' })
+  const noteEditor = useNoteEditor({
+    caseId,
+    noteId: inline.boundNoteId ?? undefined,
+    onChange: inline.setValue,
+    testId: 'inline-note-editor'
+  })
 
   // Push the hook's document into the editor when it changes from outside —
   // a different capture selected, or Esc reverting. The equality guard keeps
@@ -453,6 +458,9 @@ export function CaptureDetailsPanel({
           minHeightClass="min-h-20"
           onBlur={() => void inline.flush()}
           onKeyDown={(e) => {
+            // An Escape the editor already handled — dismissing the Mention
+            // autocomplete — must not also throw the draft away.
+            if (e.defaultPrevented) return
             if (e.key === 'Escape') {
               e.preventDefault()
               inline.revert()

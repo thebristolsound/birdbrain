@@ -262,9 +262,12 @@ title, head sha, a path to the PR body it wrote, and the labels it determined ar
   entire draft life, and with it `build`, `e2e`, `lint`, `test` and `typecheck`, with nothing
   that re-runs them. That is the signal "Wait for CI first" below blocks on, so the
   poll never completes. #777 and #779 were both opened this way and only recovered because a
-  human marked them ready for review, which fired `ready_for_review`. `gh pr create --label`
-  is the fix and **works with the machine token** despite that token lacking `read:org`,
-  verified on #788 (#784).
+  human marked them ready for review, which fired `ready_for_review`. The `agh pr create
+  --label` command above is the fix, and it **works with the machine token** despite that
+  token lacking `read:org`, verified on #788 and again on #790 (#784). Bare `gh` is still
+  forbidden: `agh` is that same command carrying the machine token, and running it bare
+  authors the PR as the maintainer, which is the contract violation the confirmation step
+  below is there to catch.
 - On the web: not currently possible under the contract — the MCP tools write as the sandbox
   identity, and the identity check at the top of the cycle already stopped you. (For the
   record, the mechanism was `mcp__github__create_pull_request` then `mcp__github__issue_write`,
@@ -376,11 +379,30 @@ post them.
   tree that will not survive.
 - **CI green** → run the pre-pass.
 
-**Every check reporting `skipping` is the #784 bug, not a conclusion.** If the poll
-shows `build`, `changes`, `e2e`, `lint`, `test` and `typecheck` all skipping on a labelled
-draft agent PR, the labels did not reach the `opened` webhook and no further event will
-re-run them. Do not wait: confirm the labels are actually on the PR, then re-drive CI by
-pushing to the head branch. The create-call rule in section 3 is what prevents this.
+**Every check reporting `skipping` is the #784 bug, not a conclusion.** If the poll shows
+`build`, `changes`, `e2e`, `lint`, `test` and `typecheck` all skipping on a labelled draft
+agent PR, the labels did not reach the `opened` webhook and no further event will re-run them.
+Waiting cannot resolve it. Recover in this order, and stop at the first step that fails:
+
+1. Read the labels directly: `gh api repos/thebristolsound/birdbrain/issues/<n>/labels --jq
+   '[.[].name]'`. A non-zero exit is not an empty set. If the read fails, report the PR number
+   and the exit status and stop. If `agent-authored` and `agent-pr` are genuinely absent,
+   re-apply them through the write path and go to step 3, since a `labeled` event will not
+   re-run `ci.yml` but the next push will.
+2. Push to the head branch to re-drive CI. Over the maintainer's git credentials, not the
+   machine token, which cannot push. If the push fails, report the failure and stop. A branch
+   that never landed means the old all-`skipping` result is still the only result, and acting
+   on it is what this whole section exists to prevent.
+3. Re-read head: `gh api repos/thebristolsound/birdbrain/pulls/<n> --jq .head.sha`. It must
+   differ from the one you polled. If it has not moved, the push did not land; report and stop.
+4. Poll `gh pr checks <n>` again against the new head until every check has a conclusion, then
+   take the red or green branch above as normal.
+5. If the five jobs still report `skipping` after a landed push, stop and report it. Do not run
+   the pre-pass, and **do not release the claim**: something outside this contract is
+   suppressing the workflow, and a verdict posted on a PR that CI never examined is worse than
+   no verdict.
+
+The create-call rule in section 3 is what prevents all of this.
 
 This ordering is not a micro-optimisation. On PR #423 it went wrong twice in one night: CI
 failed on `dffa233` at 23:30:52 and the pre-pass posted a verdict at 23:34:49; CI failed on

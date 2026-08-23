@@ -20,7 +20,8 @@ jobs:
         continue-on-error: true
         run: |
           set +e
-          n="$(gh issue create --title 'diag: marker holder, delete me' --body 'seed' --json number --jq .number 2>&1)"
+          n="$(gh api "repos/${GITHUB_REPOSITORY}/issues" -X POST \
+                -f title='diag: marker holder, delete me' -f body='seed' --jq .number)"
           echo "create rc=$? n=[$n]"
           echo "N=$n" >> "$GITHUB_ENV"
 
@@ -28,19 +29,21 @@ jobs:
         continue-on-error: true
         run: |
           set +e
-          gh issue edit "$N" --body "0123456789abcdef0123456789abcdef01234567"
+          gh api "repos/${GITHUB_REPOSITORY}/issues/${N}" -X PATCH \
+            -f body='0123456789abcdef0123456789abcdef01234567' --jq .body
           echo "edit rc=$?"
 
       - name: Read it back
         continue-on-error: true
         run: |
           set +e
-          body="$(gh issue view "$N" --json body --jq .body)"
+          body="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${N}" --jq .body)"
           echo "read rc=$? body=[$body]"
 
       - name: Close it
         continue-on-error: true
         run: |
           set +e
-          gh issue close "$N" --reason 'not planned'
+          gh api "repos/${GITHUB_REPOSITORY}/issues/${N}" -X PATCH \
+            -f state=closed -f state_reason=not_planned --jq .state
           echo "close rc=$?"

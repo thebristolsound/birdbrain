@@ -106,8 +106,14 @@ export function useTourEngine(caseId: string | null): TourEngine {
   // back as the operator navigating and does not trigger the jump-ahead scan.
   const engineNav = useRef<string | null>(null)
   const lastPath = useRef(pathname)
-  const settingsRef = useRef(settings)
-  settingsRef.current = settings
+  // Retained completion map, merged forward rather than re-reading stale settings.
+  const completionMapRef = useRef<Record<string, boolean>>(settings?.onboardingChapters ?? {})
+  // Sync it forward when settings update.
+  useEffect(() => {
+    if (settings?.onboardingChapters) {
+      completionMapRef.current = settings.onboardingChapters
+    }
+  }, [settings?.onboardingChapters])
   // Mirrors `state` for the callbacks that have to know what is running without
   // depending on it. Assigned on render for the committed value, and again by
   // `start`/`close` because two of those can run in a single effect flush —
@@ -137,8 +143,11 @@ export function useTourEngine(caseId: string | null): TourEngine {
    */
   const persistCompletion = useCallback(
     (chapter: TourChapter, auto: boolean, outcome: TourOutcome) => {
-      const next = completionAfter(settingsRef.current?.onboardingChapters, chapter, outcome, auto)
-      if (next) update.mutate({ onboardingChapters: next })
+      const next = completionAfter(completionMapRef.current, chapter, outcome, auto)
+      if (next) {
+        completionMapRef.current = next
+        update.mutate({ onboardingChapters: next })
+      }
     },
     [update]
   )

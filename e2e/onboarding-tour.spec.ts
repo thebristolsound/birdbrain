@@ -43,7 +43,7 @@ test.describe('Onboarding tour', () => {
 
     const welcome = page.locator('[data-testid="tour-welcome"]')
     await expect(welcome).toBeVisible()
-    await expect(welcome.getByText('Welcome to Birdbrain')).toBeVisible()
+    await expect(welcome.getByRole('heading', { name: 'Welcome to Birdbrain' })).toBeVisible()
     await expect(welcome.getByText('replays this tour anytime')).toBeVisible()
 
     await page.click('[data-testid="tour-next"]')

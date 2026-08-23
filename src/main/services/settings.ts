@@ -116,7 +116,6 @@ export function initSettings(userDataPath: string): void {
       // seed the file here only costs the tour, so never throw from init.
       logger.warn('settings', 'settings.fresh_install_seed_failed', undefined, err)
     }
-    }
   }
 }
 

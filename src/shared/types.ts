@@ -230,6 +230,11 @@ export interface BirdbrainSettings {
   analysisSystemPrompt: string
   detailsPanelCollapsed: boolean
   tooltipsSeen: Record<string, boolean>
+  // Coach-mark tour state (#404). Chapter keys are 'intro' | 'ext' | 'case'.
+  onboardingChapters: Record<string, boolean>
+  // Latched once, at the first launch that finds no settings.json. Only a
+  // fresh install auto-fires a tour chapter; upgrades never do.
+  isFreshInstall: boolean
   // Update delivery. `releaseChannel` selects the GitHub release track;
   // `autoCheckForUpdates` gates the background check schedule (manual checks are
   // always available). First-run `releaseChannel` is derived from the installed
@@ -491,7 +496,11 @@ export const LOG_CODES = [
   // this fires only when the file can't even be parsed as JSON, so the
   // Diagnostics "not-set" it falls back to is otherwise indistinguishable
   // from a key that was genuinely never saved.
-  'settings.key_protection_state_unreadable'
+  'settings.key_protection_state_unreadable',
+  // The first-launch settings.json seed that latches the fresh-install flag
+  // (#404). Failing it costs only the onboarding tour, so init swallows the
+  // error — this is the record that it happened.
+  'settings.fresh_install_seed_failed'
 ] as const
 export type LogCode = (typeof LOG_CODES)[number]
 

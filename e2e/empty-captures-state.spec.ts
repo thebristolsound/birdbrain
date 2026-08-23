@@ -1,21 +1,13 @@
 import { test, expect } from './fixtures/electronApp'
 
-async function dismissOnboardingAndCreateCase(page: import('@playwright/test').Page, name: string) {
-  // First-run wizard: skip step 1 (extension), then create a case from step 2.
-  if (await page.locator('[data-testid="onboarding-skip-btn"]').isVisible()) {
-    await page.click('[data-testid="onboarding-skip-btn"]')
-    await page.waitForSelector('[data-testid="onboarding-name-input"]')
-    await page.fill('[data-testid="onboarding-name-input"]', name)
-    await page.keyboard.press('Enter')
-  } else {
-    await page.evaluate(() => {
-      window.location.hash = '/cases/new'
-    })
-    await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
-    await page.fill('[data-testid="case-name-input"]', name)
-    await page.click('[data-testid="case-create-btn"]')
-  }
-  // Case creation now lands on the Overview; hop to the captures route, which is
+async function createCaseAndOpenCaptures(page: import('@playwright/test').Page, name: string) {
+  await page.evaluate(() => {
+    window.location.hash = '/cases/new'
+  })
+  await page.waitForSelector('[data-testid="case-name-input"]', { timeout: 10000 })
+  await page.fill('[data-testid="case-name-input"]', name)
+  await page.click('[data-testid="case-create-btn"]')
+  // Case creation lands on the Overview; hop to the captures route, which is
   // what these empty-state tests exercise.
   await page.waitForURL(/#\/cases\/.+\/(overview|captures)/, { timeout: 10000 })
   await page.evaluate(() => {
@@ -32,7 +24,7 @@ test.describe('Empty Captures State', () => {
   test('shows illustrated empty list and getting-started panel for a fresh case', async ({
     page
   }) => {
-    await dismissOnboardingAndCreateCase(page, 'Empty State Case')
+    await createCaseAndOpenCaptures(page, 'Empty State Case')
 
     await expect(page.locator('[data-testid="capture-list-empty-state"]')).toBeVisible()
     await expect(page.getByRole('heading', { name: 'No captures yet' })).toBeVisible()
@@ -44,26 +36,23 @@ test.describe('Empty Captures State', () => {
     await expect(page.getByText('Browse and investigate')).toBeVisible()
   })
 
-  test('Learn more opens an in-app onboarding overlay that can be dismissed', async ({ page }) => {
-    await dismissOnboardingAndCreateCase(page, 'Overlay Case')
+  test('Learn more replays the extension chapter of the tour', async ({ page }) => {
+    await createCaseAndOpenCaptures(page, 'Walkthrough Case')
 
     await page.click('[data-testid="captures-getting-started-learn-more-btn"]')
 
-    const overlay = page.locator('[data-testid="onboarding-wizard"][data-mode="overlay"]')
-    await expect(overlay).toBeVisible()
-    await expect(overlay).toHaveAttribute('role', 'dialog')
-    await expect(overlay).toHaveAttribute('aria-modal', 'true')
-    await expect(overlay.getByText('Install the Extension')).toBeVisible()
+    // The extension chapter opens on the dashboard, where its anchor lives, with
+    // the install walkthrough already expanded.
+    await page.waitForURL(/#\/$/, { timeout: 10000 })
+    const mark = page.locator('[data-testid="tour-mark"]')
+    await expect(mark).toBeVisible()
+    await expect(
+      mark.getByRole('heading', { name: 'The extension does the capturing' })
+    ).toBeVisible()
+    await expect(page.locator('[data-testid="tour-install-step"]')).toHaveCount(3)
 
-    // Escape key dismisses the overlay
-    await page.keyboard.press('Escape')
-    await expect(overlay).toBeHidden()
-
-    // Reopen and dismiss via the close button
-    await page.click('[data-testid="captures-getting-started-learn-more-btn"]')
-    await expect(overlay).toBeVisible()
-    await page.click('[data-testid="onboarding-overlay-close"]')
-    await expect(overlay).toBeHidden()
-    await expect(page.locator('[data-testid="captures-getting-started"]')).toBeVisible()
+    await page.click('[data-testid="tour-skip"]')
+    await expect(page.locator('[data-testid="onboarding-tour"]')).toBeHidden()
+    await expect(page.locator('[data-testid="dashboard"]')).toBeVisible()
   })
 })

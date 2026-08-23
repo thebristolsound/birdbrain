@@ -86,6 +86,7 @@ export function TopBar() {
           <ChevronRight className="h-3.5 w-3.5 shrink-0 text-text-faint" />
           <button
             data-testid="topbar-case-name"
+            data-tour="caseswitcher"
             onClick={() => setCommandPaletteOpen(true)}
             className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 hover:bg-elevated transition-colors"
             title="Switch investigation (Ctrl+K)"

@@ -118,7 +118,7 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
   const isExporting = exportingCaseId === caseId
 
   return (
-    <div className="relative">
+    <div className="relative" data-tour="export">
       <Button
         ref={anchorRef}
         variant="outline"

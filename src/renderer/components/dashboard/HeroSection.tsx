@@ -26,6 +26,7 @@ export function HeroSection({ onNewInvestigation, onOpenRecent, onImportCase }: 
         <div className="flex items-center justify-center gap-4 mb-6">
           <button
             data-testid="new-case-btn"
+            data-tour="newcase"
             onClick={onNewInvestigation}
             className="group flex items-center gap-3 px-7 py-4 bg-accent hover:bg-accent-hover text-white font-display font-bold text-sm rounded-2xl shadow-lg shadow-indigo-500/40 hover:shadow-xl hover:shadow-indigo-500/50 transition-[transform,box-shadow,background-color] active:scale-[0.98]"
           >

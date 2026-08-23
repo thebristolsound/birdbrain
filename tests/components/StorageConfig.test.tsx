@@ -72,6 +72,8 @@ const settings = {
   analysisSystemPrompt: '',
   detailsPanelCollapsed: false,
   tooltipsSeen: {},
+  onboardingChapters: {},
+  isFreshInstall: false,
   releaseChannel: 'stable',
   autoCheckForUpdates: false
 } satisfies BirdbrainSettings

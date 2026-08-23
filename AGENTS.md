@@ -88,7 +88,6 @@ TanStack Router (`@tanstack/react-router`) with the following route tree:
 ```
 / → Dashboard
 /settings → SettingsView
-/extension-setup → InstallExtensionGuide
 /cases/new → NewCaseWizard
 /cases/$caseId → CaseWorkspace (layout with tabs)
   ├── / → redirects to /overview
@@ -99,7 +98,7 @@ TanStack Router (`@tanstack/react-router`) with the following route tree:
   └── /data → DataExplorer
 ```
 
-Root layout in `__root.tsx` renders TopBar, optional case Sidebar, main content area, CommandPalette, onboarding overlay, and devtools in development.
+Root layout in `__root.tsx` renders TopBar, optional case Sidebar, main content area, CommandPalette, the coach-mark onboarding tour, and devtools in development.
 
 ### Data fetching
 
@@ -178,8 +177,9 @@ Organized by feature under `src/renderer/components/`:
 - **captures/** - Capture list/viewer workflow (three resizable columns, each side one collapsible to a 40px rail), details panel/rail, add-URL box, provenance, viewer tabs Screenshot/Page/Text/Wayback, analysis and forensics sections, MHTML viewer, download menu, inline tag/note editing hooks, verify mutation, and the annotation editor under `captures/annotation/` (canvas, zoom/pan and editor hooks, pin popover, shape components under `annotation/shapes/`)
 - **dashboard/** - Dashboard, CaseCard, DashboardFooter, ExtensionBanner, HeroSection, QuickStartGuide, RecentCases, plus case workspace components under `dashboard/cases/` (CaseWorkspace, CreateCaseDialog, DataExplorer, ImportCaseDialog, NewCaseWizard)
 - **export/** - ExportDialog, ExportMenu, ExportProgress, ExportComplete
-- **extension/** - InstallExtensionGuide, InstallExtensionStepper, installSteps.tsx
-- **layout/** - TopBar, Sidebar, CommandPalette, OnboardingWizard
+- **extension/** - InstallExtensionStepper, installSteps.tsx
+- **layout/** - TopBar, Sidebar, CommandPalette
+- **onboarding/** - The coach-mark tour: OnboardingTour (the single mount), useTourEngine, WelcomeCard, CoachMark, ScreenCard, plus the pure `tourSteps.ts` (chapters, counters, completion rules) and `tourGeometry.ts` (layout maths). `startTour(chapter)` dispatches the `birdbrain:tour` event any entry point uses
 - **notes/** - AddNoteModal, CreateNoteCard, NoteCard, NoteBody, NoteEditor, NotesOverview, useNoteEditor.ts
 - **overview/** - CaseOverview, CaseSubhead, ActivityTimeline, MetricRow, RecentCapturesStrip, SelectorCoverageBlock, SinceLastVisitBanner, SourcesBlock, VerifyBar, overviewModel.ts
 - **search/** - SearchBar

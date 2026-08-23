@@ -290,24 +290,29 @@ test.describe('README screenshots', () => {
       })
     })
 
-    // --- 0a. First-run onboarding, then the fresh dashboard ------------------
+    // --- 0a. First-run walkthrough, then the fresh dashboard -----------------
+    // The tour auto-fires on fresh installs only (#404), and the fixture seeds
+    // a settings.json, so this asks for it explicitly. Direct IPC bypasses
+    // React Query, hence the reload.
     await page.evaluate(() => {
       window.location.hash = '/'
     })
-    await page.waitForTimeout(800)
-    await shootBothThemes(page, 'screenshot-onboarding')
-
-    // Mark onboarding complete (settings-gated), then reload for the clean
-    // empty dashboard. Direct IPC bypasses React Query, hence the reload.
     await page.evaluate(async () => {
       await (
         window as unknown as {
           birdbrain: { settings: { update: (p: object) => Promise<unknown> } }
         }
-      ).birdbrain.settings.update({ hasCompletedOnboarding: true })
+      ).birdbrain.settings.update({ isFreshInstall: true, onboardingChapters: {} })
     })
     await page.reload()
     await page.waitForSelector('[data-testid="app-ready"]', { timeout: 15000 })
+    await page.waitForSelector('[data-testid="tour-welcome"]', { timeout: 15000 })
+    await expect(page.locator('[data-testid="tour-welcome"]')).toBeVisible()
+    await shootBothThemes(page, 'screenshot-onboarding')
+
+    // Dismiss the tour for the clean empty dashboard.
+    await page.click('[data-testid="tour-skip"]')
+    await page.waitForSelector('[data-testid="onboarding-tour"]', { state: 'hidden' })
     await page.evaluate(() => {
       window.location.hash = '/'
     })
@@ -602,12 +607,22 @@ test.describe('README screenshots', () => {
     await page.waitForTimeout(1000)
     await shootBothThemes(page, 'screenshot-settings')
 
-    // --- 4h. Extension setup guide ------------------------------------------
+    // --- 4h. Extension install walkthrough -----------------------------------
+    // The standalone setup-guide screen is gone (#404); its replacement is the
+    // tour's extension chapter, which opens with the install steps expanded.
     await page.evaluate(() => {
-      window.location.hash = '/extension-setup'
+      window.location.hash = '/'
     })
-    await page.waitForTimeout(1000)
+    await page.waitForSelector('[data-testid="dashboard"]', { timeout: 15000 })
+    await page.evaluate(() => {
+      window.dispatchEvent(new CustomEvent('birdbrain:tour', { detail: { chapter: 'ext' } }))
+    })
+    await page.waitForSelector('[data-testid="tour-install-steps"]', { timeout: 15000 })
+    await expect(page.locator('[data-testid="tour-mark"]')).toBeVisible()
+    await expect(page.locator('[data-testid="tour-install-step"]')).toHaveCount(3)
     await shootBothThemes(page, 'screenshot-extension-setup')
+    await page.click('[data-testid="tour-skip"]')
+    await page.waitForSelector('[data-testid="onboarding-tour"]', { state: 'hidden' })
 
     // --- 5. Export: generate report and render it --------------------------
     const exportPath = join(tmpdir(), `birdbrain-readme-report-${Date.now()}.html`)

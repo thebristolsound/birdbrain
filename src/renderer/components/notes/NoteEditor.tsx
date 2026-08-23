@@ -115,7 +115,7 @@ export function NoteEditor({
         </div>
       ) : null}
 
-      <div className="relative" onBlur={onBlur} onKeyDown={onKeyDown}>
+      <div data-tour="noteeditor" className="relative" onBlur={onBlur} onKeyDown={onKeyDown}>
         {isEmpty ? (
           <p className="pointer-events-none absolute left-3 top-2 text-sm text-text-muted">
             {placeholder}

@@ -369,6 +369,11 @@ describe('initSettings and the fresh-install latch', () => {
     const { initSettings, getSettings: read } = await load()
     expect(() => initSettings(join(tempDir, 'does', 'not', 'exist'))).not.toThrow()
     expect(read().isFreshInstall).toBe(true)
-    expect(loggerWarn).toHaveBeenCalledWith('settings', 'settings.fresh_install_seed_failed')
+    expect(loggerWarn).toHaveBeenCalledWith(
+      'settings',
+      'settings.fresh_install_seed_failed',
+      undefined,
+      expect.objectContaining({ code: 'ENOENT' })
+    )
   })
 })

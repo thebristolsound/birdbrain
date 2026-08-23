@@ -111,10 +111,11 @@ export function initSettings(userDataPath: string): void {
     DEFAULT_SETTINGS.isFreshInstall = true
     try {
       writeFileSync(settingsPath, JSON.stringify(DEFAULT_SETTINGS, null, 2), 'utf-8')
-    } catch {
+    } catch (err) {
       // An unwritable userData directory is already fatal elsewhere; failing to
       // seed the file here only costs the tour, so never throw from init.
-      logger.warn('settings', 'settings.fresh_install_seed_failed')
+      logger.warn('settings', 'settings.fresh_install_seed_failed', undefined, err)
+    }
     }
   }
 }

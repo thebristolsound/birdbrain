@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Download, ListPlus } from 'lucide-react'
@@ -20,6 +20,7 @@ import {
   useTagsMutations
 } from '@renderer/lib/api/tags'
 import { queryKeys } from '@renderer/lib/api/keys'
+import { useAppStore } from '@renderer/stores/appStore'
 import { CreateSelectorCard } from '@renderer/components/selectors/CreateSelectorCard'
 import { AutoCaptureCard } from '@renderer/components/signals/AutoCaptureCard'
 import { AddSelectorRow } from '@renderer/components/signals/AddSelectorRow'
@@ -67,7 +68,14 @@ export function SignalsOverview() {
   const { create: createTag, update: updateTag, remove: removeTag } = useTagsMutations(caseId)
   const { create: createSelectorMutation } = useSelectorsMutations(caseId)
 
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  // A Mention chip names its target in the store before it navigates (#716).
+  // Read once as the initial value rather than subscribed, then cleared below:
+  // it is a hand-off, not a stored selection. Leaving it set is what makes a
+  // note chip open the previously-selected note instead of its own (#772), and
+  // this screen would inherit the same defect.
+  const [selectedId, setSelectedId] = useState<string | null>(
+    () => useAppStore.getState().selectedSignalId
+  )
   const [bulkOpen, setBulkOpen] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -81,6 +89,10 @@ export function SignalsOverview() {
     () => captures.slice(0, SIGNAL_COVERAGE_CAPTURES),
     [captures]
   )
+
+  useEffect(() => {
+    if (useAppStore.getState().selectedSignalId) useAppStore.getState().setSelectedSignalId(null)
+  }, [])
 
   const selectorSignals = useMemo(
     () => buildSelectorSignals(selectors, matchCounts, selectorMatrix),

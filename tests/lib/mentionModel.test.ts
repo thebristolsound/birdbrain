@@ -4,13 +4,16 @@ import type { Capture, Note, Selector, Tag } from '@shared/types'
 import {
   EMPTY_MENTION_SOURCES,
   MAX_MENTION_LABEL,
+  MENTION_ROUTES,
   MENTION_SCOPE_LABEL,
+  MENTION_SELECTIONS,
   MENTION_SIGIL,
   isMentionTargetType,
   maskMention,
   mentionColor,
   mentionPlainText,
   mentionRoute,
+  mentionSelection,
   mentionTooltip,
   rankMentionCandidates,
   resolveMention,
@@ -203,11 +206,12 @@ describe('mentionColor', () => {
 
 describe('mentionTooltip', () => {
   it('says what a click will do, in the app vocabulary', () => {
-    expect(mentionTooltip('selector', 'nightjar')).toBe(
-      'selector · nightjar — click to edit the rule'
-    )
+    // "edit the rule" and "view" both promised more than the click delivers
+    // once selectors and tags share one Signals screen: the chip opens that
+    // screen on its row, and editing is a further click from there.
+    expect(mentionTooltip('selector', 'nightjar')).toBe('selector · nightjar — click to open')
     expect(mentionTooltip('capture', 'Thread')).toBe('capture · Thread — click to open')
-    expect(mentionTooltip('tag', 'suspect')).toBe('tag · suspect — click to view')
+    expect(mentionTooltip('tag', 'suspect')).toBe('tag · suspect — click to open')
   })
 
   it('does not invite a click on a target that is gone', () => {
@@ -219,8 +223,33 @@ describe('mentionRoute', () => {
   it('sends each kind to the screen that shows it', () => {
     expect(mentionRoute('capture')).toBe('/cases/$caseId/captures')
     expect(mentionRoute('note')).toBe('/cases/$caseId/notes')
-    expect(mentionRoute('selector')).toBe('/cases/$caseId/selectors')
-    expect(mentionRoute('tag')).toBe('/cases/$caseId/tags')
+    // #400 folded Selectors and Tags into one Signals screen, so both land there.
+    expect(mentionRoute('selector')).toBe('/cases/$caseId/signals')
+    expect(mentionRoute('tag')).toBe('/cases/$caseId/signals')
+  })
+
+  it('falls back to notes for a kind off a pasted attribute', () => {
+    expect(mentionRoute('toString' as MentionTargetType)).toBe('/cases/$caseId/notes')
+  })
+})
+
+describe('mentionSelection', () => {
+  // The route alone lands on the right screen with the wrong row open, because
+  // every destination reads a selection the chip has to write first (#716, #772).
+  it('names the selection each kind has to hand over', () => {
+    expect(mentionSelection('capture')).toBe('capture')
+    expect(mentionSelection('note')).toBe('note')
+    expect(mentionSelection('selector')).toBe('signal')
+    expect(mentionSelection('tag')).toBe('signal')
+  })
+
+  it('never resolves a kind through the prototype chain', () => {
+    expect(mentionSelection('toString' as MentionTargetType)).toBe('note')
+    expect(mentionSelection('constructor' as MentionTargetType)).toBe('note')
+  })
+
+  it('covers every kind the route map covers', () => {
+    expect(Object.keys(MENTION_SELECTIONS).sort()).toEqual(Object.keys(MENTION_ROUTES).sort())
   })
 })
 

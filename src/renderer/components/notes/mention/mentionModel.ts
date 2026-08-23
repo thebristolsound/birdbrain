@@ -133,8 +133,8 @@ export function maskMention(targetType: MentionTargetType, label: string): strin
 const CLICK_HINT: Record<MentionTargetType, string> = {
   capture: 'click to open',
   note: 'click to open',
-  selector: 'click to edit the rule',
-  tag: 'click to view'
+  selector: 'click to open',
+  tag: 'click to open'
 }
 
 /** The chip's title attribute. Broken targets say so instead of inviting a click. */
@@ -153,24 +153,19 @@ export function mentionTooltip(
 /**
  * Where a chip click goes.
  *
- * One function on purpose. #400 replaces the Selectors and Tags screens with a
- * single Signals screen, at which point retargeting both chip kinds is an edit
- * to two lines here rather than a hunt through the editor.
+ * One function on purpose. #400 replaced the Selectors and Tags screens with a
+ * single Signals screen, so both of those kinds land there.
  *
- * Those two lines cannot land here yet (#716): `/cases/$caseId/signals` is not
- * in the router's route union until #400 merges, so retargeting now fails
- * `tsc -p tsconfig.web.json` on this branch. Retargeting alone is also not the
- * whole fix — the Signals screen selects `allSignals[0]` when nothing names a
- * target, so a chip that says "click to edit the rule" would open whichever
- * rule sorts first. Whoever carries this over must also correct
- * CLICK_HINT.selector and hand `targetId` through, the way the capture kind
- * already does in MentionChip.
+ * The route alone does not open the right row. Signals falls back to
+ * `allSignals[0]` when nothing names a target, so every kind here also needs a
+ * selection handed over before the navigate, which is what `mentionSelection`
+ * below is for.
  */
 export const MENTION_ROUTES = {
   capture: '/cases/$caseId/captures',
   note: '/cases/$caseId/notes',
-  selector: '/cases/$caseId/selectors',
-  tag: '/cases/$caseId/tags'
+  selector: '/cases/$caseId/signals',
+  tag: '/cases/$caseId/signals'
 } as const satisfies Record<MentionTargetType, string>
 
 export type MentionRoute = (typeof MENTION_ROUTES)[MentionTargetType]
@@ -182,6 +177,34 @@ export function mentionRoute(targetType: MentionTargetType): MentionRoute {
   // identity attributes did not survive the paste — see MentionChip.
   if (!Object.hasOwn(MENTION_ROUTES, targetType)) return MENTION_ROUTES.note
   return MENTION_ROUTES[targetType]
+}
+
+/**
+ * Which selection a chip click has to write before it navigates.
+ *
+ * Every destination screen opens on whichever row is already selected, so the
+ * route on its own lands the operator on the right screen looking at the wrong
+ * thing. Captures reads `selectedCaptureId`, Notes reads `selectedNoteId`, and
+ * Signals reads `selectedSignalId` and falls back to `allSignals[0]` when that
+ * is empty, which is how a chip naming one rule opens another.
+ *
+ * Kept beside MENTION_ROUTES rather than in the chip so that adding a kind is
+ * still an edit to this file alone.
+ */
+export const MENTION_SELECTIONS = {
+  capture: 'capture',
+  note: 'note',
+  selector: 'signal',
+  tag: 'signal'
+} as const satisfies Record<MentionTargetType, string>
+
+export type MentionSelection = (typeof MENTION_SELECTIONS)[MentionTargetType]
+
+export function mentionSelection(targetType: MentionTargetType): MentionSelection {
+  // Same discipline as mentionRoute: never index this record with a key that
+  // could have come off a pasted attribute.
+  if (!Object.hasOwn(MENTION_SELECTIONS, targetType)) return MENTION_SELECTIONS.note
+  return MENTION_SELECTIONS[targetType]
 }
 
 /** One row of the autocomplete popup. */

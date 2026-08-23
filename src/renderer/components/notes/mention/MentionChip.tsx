@@ -9,6 +9,7 @@ import {
   maskMention,
   mentionColor,
   mentionRoute,
+  mentionSelection,
   mentionTooltip
 } from '@renderer/components/notes/mention/mentionModel'
 import { useMentionResolver } from '@renderer/components/notes/mention/useMentionSources'
@@ -102,9 +103,14 @@ export function createMentionNodeView(caseId: string) {
     const broken = resolution.status === 'missing'
 
     function handleOpen() {
-      // The captures screen opens on whichever capture is selected, so a chip
-      // click has to say which one before it navigates.
-      if (targetType === 'capture') useAppStore.getState().setSelectedCaptureId(targetId)
+      // Every destination opens on whichever row is already selected, so a chip
+      // click has to name its target before it navigates or it lands on the
+      // right screen showing the wrong thing (#716, #772).
+      const store = useAppStore.getState()
+      const selection = mentionSelection(targetType)
+      if (selection === 'capture') store.setSelectedCaptureId(targetId)
+      else if (selection === 'note') store.setSelectedNoteId(targetId)
+      else store.setSelectedSignalId(targetId)
       navigate({ to: mentionRoute(targetType), params: { caseId } })
     }
 

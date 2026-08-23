@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { Capture, Selector, Tag } from '@shared/types'
 import { fakeBridge } from '../renderer/fakeBridge'
+import { useAppStore } from '@renderer/stores/appStore'
 
 vi.mock('@tanstack/react-router', () => ({
   useParams: () => ({ caseId: 'case-1' }),
@@ -105,6 +106,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
+  useAppStore.getState().setSelectedSignalId(null)
 })
 
 describe('SignalsOverview', () => {
@@ -125,6 +127,33 @@ describe('SignalsOverview', () => {
 
     fireEvent.click(screen.getByTestId('signal-row-t1'))
     expect(screen.getByTestId('rail').textContent).toBe('evidence')
+  })
+
+  it('opens on the signal a Mention chip named rather than the first row', async () => {
+    // #716. The chip writes the store then navigates. Without the seed the
+    // screen falls back to allSignals[0], which is 's1' here, so a chip naming
+    // the tag would silently open the first selector instead.
+    useAppStore.getState().setSelectedSignalId('t1')
+    renderScreen()
+    await screen.findByTestId('signal-row-s1')
+
+    await waitFor(() => expect(screen.getByTestId('rail').textContent).toBe('evidence'))
+  })
+
+  it('clears the hand-off so a later visit is not still holding it', async () => {
+    // The field is a hand-off, not a stored selection. Leaving it set is the
+    // mechanism behind #772 on the Notes screen, and this screen must not
+    // inherit it: opening Signals from the sidebar afterwards should land on
+    // the default row again.
+    useAppStore.getState().setSelectedSignalId('t1')
+    renderScreen()
+    await waitFor(() => expect(screen.getByTestId('rail').textContent).toBe('evidence'))
+    expect(useAppStore.getState().selectedSignalId).toBeNull()
+
+    cleanup()
+    renderScreen()
+    await screen.findByTestId('signal-row-s1')
+    await waitFor(() => expect(screen.getByTestId('rail').textContent).toBe('Acme mentions'))
   })
 
   it('shows the empty rail when the case has no signals at all', async () => {

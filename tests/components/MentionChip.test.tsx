@@ -4,7 +4,7 @@ import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { NodeViewProps } from '@tiptap/react'
-import type { Capture, Tag } from '@shared/types'
+import type { Capture, Note, Selector, Tag } from '@shared/types'
 
 const navigateSpy = vi.hoisted(() => vi.fn())
 
@@ -31,11 +31,35 @@ const capture: Capture = {
 
 const tag: Tag = { id: 't1', name: 'suspect', color: '#22c55e' }
 
-function stubLists(captures: Capture[] = [capture], tags: Tag[] = [tag]) {
+const note: Note = {
+  id: 'n1',
+  caseId: 'case1',
+  title: 'Timeline',
+  body: '',
+  createdAt: '2026-08-01T00:00:00.000Z',
+  updatedAt: '2026-08-01T00:00:00.000Z'
+}
+
+const selector: Selector = {
+  id: 's1',
+  caseId: 'case1',
+  pattern: 'nightjar',
+  isRegex: false,
+  enabled: true,
+  label: 'nightjar',
+  createdAt: '2026-08-01T00:00:00.000Z'
+}
+
+function stubLists(
+  captures: Capture[] = [capture],
+  tags: Tag[] = [tag],
+  notes: Note[] = [note],
+  selectors: Selector[] = [selector]
+) {
   fakeBridge({
     captures: { list: vi.fn(async () => captures) },
-    notes: { list: vi.fn(async () => []) },
-    selectors: { list: vi.fn(async () => []), matchCounts: vi.fn(async () => ({})) },
+    notes: { list: vi.fn(async () => notes) },
+    selectors: { list: vi.fn(async () => selectors), matchCounts: vi.fn(async () => ({})) },
     tags: { list: vi.fn(async () => tags), usageCountsForCase: vi.fn(async () => ({})) }
   })
 }
@@ -175,14 +199,50 @@ describe('the Mention node view', () => {
     })
   })
 
-  it('routes a tag chip to the screen that shows tags', async () => {
+  it('routes a tag chip to the Signals screen and names the tag it opens', async () => {
+    // Seeded with a different id on purpose. Signals falls back to
+    // allSignals[0] and the store field is sticky, so an assertion against an
+    // empty store passes whether or not the chip hands its target over (#716).
+    useAppStore.getState().setSelectedSignalId('someone-elses-signal')
     const Chip = createMentionNodeView('case1')
     render(<Chip {...nodeProps({ targetType: 'tag', targetId: 't1', label: 'suspect' })} />, {
       wrapper: Wrapper
     })
     fireEvent.click(await screen.findByText('#suspect'))
+    expect(useAppStore.getState().selectedSignalId).toBe('t1')
     expect(navigateSpy).toHaveBeenCalledWith({
-      to: '/cases/$caseId/tags',
+      to: '/cases/$caseId/signals',
+      params: { caseId: 'case1' }
+    })
+  })
+
+  it('routes a selector chip to the Signals screen and names the rule it opens', async () => {
+    useAppStore.getState().setSelectedSignalId('someone-elses-signal')
+    const Chip = createMentionNodeView('case1')
+    render(<Chip {...nodeProps({ targetType: 'selector', targetId: 's1', label: 'nightjar' })} />, {
+      wrapper: Wrapper
+    })
+    fireEvent.click(await screen.findByText('#nightjar'))
+    expect(useAppStore.getState().selectedSignalId).toBe('s1')
+    expect(navigateSpy).toHaveBeenCalledWith({
+      to: '/cases/$caseId/signals',
+      params: { caseId: 'case1' }
+    })
+  })
+
+  it('opens the note a chip names rather than the one already selected', async () => {
+    // #772: the Notes screen rings whatever selectedNoteId holds, and the
+    // dashboard activity feed leaves it set, so a chip that does not write its
+    // own target opens a different note than the one it names.
+    useAppStore.getState().setSelectedNoteId('a-previously-opened-note')
+    const Chip = createMentionNodeView('case1')
+    render(<Chip {...nodeProps({ targetType: 'note', targetId: 'n1', label: 'Timeline' })} />, {
+      wrapper: Wrapper
+    })
+    fireEvent.click(await screen.findByText('@Timeline'))
+    expect(useAppStore.getState().selectedNoteId).toBe('n1')
+    expect(navigateSpy).toHaveBeenCalledWith({
+      to: '/cases/$caseId/notes',
       params: { caseId: 'case1' }
     })
   })

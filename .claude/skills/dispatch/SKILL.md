@@ -1,14 +1,18 @@
 ---
 name: dispatch
-description: Run one cycle of the birdbrain serial-slot dispatch routine — check the agent-PR slot, then either address review feedback, dispatch the oldest eligible ready-for-agent issue, or exit. Reviewer pre-pass on every agent push. Manual trigger (#308); the schedule wraps this later (#310).
+description: Run one cycle of the birdbrain dispatch routine — count the agent-PR slots (three, ADR-0014), then address review feedback, auto-merge a finished non-evidence PR, dispatch the oldest eligible ready-for-agent issue, or exit. Reviewer pre-pass on every agent push. Manual trigger (#308); the schedule wraps this later (#310).
 ---
 
-# Dispatch — one serial-slot cycle
+# Dispatch — one cycle
 
 You are the dispatch routine for birdbrain's autonomous agent pipeline
-(ADR-0005, `docs/adr/0005-unattended-agents-on-the-evidence-path.md`). One invocation runs
+(ADR-0005, `docs/adr/0005-unattended-agents-on-the-evidence-path.md`, as amended by ADR-0014,
+`docs/adr/0014-tier-the-evidence-backstop-and-widen-the-dispatch-slot.md`). One invocation runs
 exactly one cycle of the state machine below, then reports and stops. Repo:
 `thebristolsound/birdbrain`.
+
+**Capacity is three concurrent cycles, not one** (ADR-0014). Everything ADR-0006 says about *how*
+a slot is claimed is unchanged; you count the markers and act while the count is under three.
 
 ## GitHub access — read this before running any command
 
@@ -98,9 +102,12 @@ exits immediately unless `CLAUDE_CODE_REMOTE=true`, by design. So:
   `.../pulls/<n>/comments`, `.../issues/<n>/comments`; all default to 30 per page).
   Never summarize
   what reviewers said — a mislabeled paraphrase caused finding 9 of pilot part one.
-- **You never merge, never mark a PR ready for review, never push to main, never enable
-  auto-merge.** Human review is the back gate for every agent PR; evidence-affecting PRs never
-  auto-merge under any future policy.
+- **You never push to `main` and never force-merge.** You may merge exactly one class of PR,
+  under the four conditions in section 2a: a non-evidence agent PR with every required check
+  green and an `agent/pre-pass` success verdict (ADR-0014). Everything else waits for a human.
+  **Evidence-affecting PRs never auto-merge, under any policy** — that clause of ADR-0005 is
+  untouched. If you cannot establish all four conditions, you do not merge. An unreadable check
+  state counts against the merge, never for it.
 - **One writer per branch (ADR-0006).** During a cycle only the implementer pushes to the
   working branch — you never do. The implementer fetches before pushing and pushes only if the
   push fast-forwards the remote head it last saw; force-push is never used. A remote head that
@@ -109,9 +116,9 @@ exits immediately unless `CLAUDE_CODE_REMOTE=true`, by design. So:
 
 ## 1. Slot check
 
-The strict-serial slot has **two markers**, checked together (ADR-0006,
-`docs/agents/triage-labels.md`): an open PR labelled `agent-pr`, and an open issue labelled
-`agent-wip` — the claim for a cycle whose PR does not exist yet:
+There are **three slots** (ADR-0014). Each is held by one of **two markers**, counted together
+(ADR-0006, `docs/agents/triage-labels.md`): an open PR labelled `agent-pr`, and an open issue
+labelled `agent-wip` — the claim for a cycle whose PR does not exist yet:
 
 ```
 gh api --paginate "repos/thebristolsound/birdbrain/issues?state=open&labels=agent-pr&per_page=100" \
@@ -120,16 +127,25 @@ gh api --paginate "repos/thebristolsound/birdbrain/issues?state=open&labels=agen
   --jq '[.[] | select(.pull_request|not) | .number]'
 ```
 
-- **More than one open `agent-pr` PR** → strict-serial violation. Take no other action; report
-  the PR numbers and stop. A human untangles it.
-- **Exactly one open `agent-pr` PR** → the PR is the slot. If an `agent-wip` claim is also
-  open, its release step was missed: remove the label with a note, then classify the PR
-  (section 2).
-- **No PR, one `agent-wip` claim** → read the claim comment's `created_at`. 4 hours old or
-  younger: a cycle is in flight — report "slot claimed by #N, cycle in progress" and stop.
-  Older than 4 hours with no agent PR: the claim is stale — remove the label, comment that a
-  stale claim was cleared, and proceed to dispatch (section 3).
-- **No PR, no claim** → the slot is free. Before dispatching, run the **departed-slot hygiene
+Occupancy is `open agent-pr PRs + live agent-wip claims`. Work the two lists in this order.
+
+**First, age out the stale claims.** For each open `agent-wip` issue with no corresponding open
+agent PR, read its claim comment's `created_at`. 4 hours old or younger, it is a cycle in flight
+and holds a slot. Older than 4 hours, the claim is stale: remove the label, comment that a stale
+claim was cleared, and stop counting it.
+
+**Then classify every open `agent-pr` PR** through section 2, one at a time. Each holds a slot
+until it merges or closes. A PR that also has an open `agent-wip` claim on its linked issue missed
+its release step: remove the label with a note, and count the slot once, not twice.
+
+**Then compare the count to capacity.**
+
+- **Occupancy 3 or more** → full. Report the holders and stop. Do not dispatch. An occupancy
+  above three is not a violation the way a second PR used to be, but report it as one to look
+  at: it means a release step was missed somewhere.
+- **Occupancy under 3** → there is room. Dispatch one issue (section 3). **One dispatch per
+  invocation**, even with two slots free, so that a bad cycle is visible before it is repeated.
+- **Occupancy 0** → before dispatching, run the **departed-slot hygiene
   check** — closed PRs never appear in the open-PR query above, so this branch is the only
   entry point ADR-0007's rule 4 and the give-up check have. Fetch the most recently created
   closed `agent-pr` PR:
@@ -144,15 +160,24 @@ gh api --paginate "repos/thebristolsound/birdbrain/issues?state=open&labels=agen
   verdict and at or before the merge, each finding dispositioned). If it closed without
   merging, verify give-up hygiene: the linked issue carries a findings comment and a
   `needs-info`/`ready-for-human` relabel. Report any gap in the end-of-cycle report —
-  report-only, and it re-fires every free-slot cycle until the record appears. Then dispatch
+  report-only, and it re-fires every empty-queue cycle until the record appears. Then dispatch
   (section 3).
+
+**Branches are cut from `main`, never from another cycle's branch** (ADR-0014). Three concurrent
+cycles make stacking possible for the first time, and a stacked PR is how redesign wave 2 produced
+a branch that could not rebase and ran no CI at all (#763, #769). If a dispatched issue genuinely
+depends on unmerged work, it is not eligible: leave it and take the next one.
 
 ## 2. Occupied slot — classify and act
 
-Fetch the PR's head commit time, reviews, review threads, and issue comments. Classify:
+Run this per open agent PR. Fetch the PR's head commit time, reviews, review threads, and issue
+comments. Classify:
 
-- **Awaiting review** — no actionable feedback newer than the head commit. Exit: report
-  "slot occupied, awaiting human review" and stop. Do not nudge, rebase, or re-run anything.
+- **Mergeable without a human** — see section 2a. Merge it, release the slot, and carry on to the
+  next PR.
+- **Awaiting review** — no actionable feedback newer than the head commit, and section 2a does not
+  apply. Report "#N awaiting human review" and move to the next PR. Do not nudge, rebase, or
+  re-run anything.
 - **Feedback to address** — review threads or PR comments newer than the head commit, from
   anyone other than the agent pipeline itself, that no branch commit or agent reply has
   dispositioned yet. Agent PRs are authored by the machine account (ADR-0012), so the
@@ -171,9 +196,42 @@ Fetch the PR's head commit time, reviews, review threads, and issue comments. Cl
   the wrong identity, since only the dispatcher holds the machine token. Then run the
   reviewer pre-pass (section 4).
 (Closed and merged PRs never reach this section — an open-PR query cannot return them; their
-hygiene checks run from section 1's free-slot branch.)
+hygiene checks run from section 1's empty-queue branch.)
 
-## 3. Free slot — dispatch the oldest eligible issue
+## 2a. Auto-merge — the one merge you may perform
+
+ADR-0014 lets a non-evidence agent PR merge without a human. **All four conditions must hold, and
+each must be established by a command whose exit status you checked.** An unreadable answer counts
+against the merge.
+
+1. **Every required check on `main` is green.** Read the combined status and the check runs for the
+   PR head sha. A `pending` is not a green, and a check that never reported is not a green either.
+2. **`agent/pre-pass` reports `success`.** The context must exist on *this* head sha. A verdict
+   posted against an earlier sha says nothing about the current one; section 4's pin-the-sha rule
+   is the same rule.
+3. **The PR is not evidence-affecting.** It carries no `evidence-affecting` label, its linked issue
+   carries none, and its diff hits no **blocking**-tier entry in
+   `docs/specs/2026-07-31-evidence-affecting-paths-assessment.md`. An advisory-tier hit does not
+   block the merge; it wants a one-line disposition in your report.
+4. **It is not a draft**, or you take it out of draft as the first step of merging. An agent PR
+   opens as a draft, so this is normally an action rather than a check.
+
+Read the label with a direct label read, never the search index: the label-filtered issue search
+lags by seconds and is not authoritative for a decision.
+
+```shell
+gh api repos/thebristolsound/birdbrain/issues/<n>/labels --jq '[.[].name]'
+```
+
+If all four hold: mark ready for review, merge with the repository's normal squash strategy, delete
+the branch, and note the merge in the end-of-cycle report with the four conditions as you found
+them. If any does not, do not merge, and say which one failed.
+
+**Evidence-affecting PRs never take this path.** Neither does any PR whose final pre-pass verdict
+was `request changes`, even if a later push turned CI green: that needs a fresh `success` verdict
+on the current sha, or a human and an ADR-0007 override record.
+
+## 3. Room in the queue — dispatch the oldest eligible issue
 
 Eligibility (the frontier): open, labelled `ready-for-agent`, unassigned, and no open
 blockers via native dependencies:
@@ -186,6 +244,10 @@ gh api repos/thebristolsound/birdbrain/issues/<n>/dependencies/blocked_by   # sk
 
 Pick the **lowest issue number** among eligible issues. If none are eligible, report "frontier
 empty" and stop.
+
+**An issue whose work must build on an unmerged agent branch is not eligible**, even with its
+native dependencies closed. ADR-0014 requires every agent branch to be cut from `main`, so a
+dependency that has not landed is a reason to skip the issue this cycle, not a reason to stack.
 
 **Then check the candidate is not already done — before claiming.** A `ready-for-agent` label
 on an issue whose work already merged is indistinguishable from real work, and costs a full
@@ -208,12 +270,13 @@ checked, remove `ready-for-agent`, and apply `ready-for-human` so a human closes
 as a misdispatch, naming who re-added the label and when, since a repeat means something
 upstream is putting it back.
 
-**Claim the slot before spawning anything** (ADR-0006). In this order:
+**Claim a slot before spawning anything** (ADR-0006). In this order:
 
 0. Check the chosen issue's recent comments for an existing claim the label query missed —
    a crash between comment and label leaves exactly this: a claim comment with no withdrawal
-   after it and no open agent PR. 4 hours old or younger → the slot is claimed; report
-   "slot claimed by #N, cycle in progress" and stop. Older → note it as stale and continue.
+   after it and no open agent PR. 4 hours old or younger → this issue is already claimed by
+   another cycle. Note it, drop this candidate, and take the next eligible issue; with three
+   slots a claimed candidate no longer ends the invocation. Older → note it as stale and continue.
 1. Post a claim comment on the chosen issue via the write path (locally
    `agh issue comment <n> --body ...`) — e.g. "Dispatch slot claimed for this issue; a cycle
    is starting." **The comment is the claim** (ADR-0006): its server-assigned `created_at` is
@@ -305,8 +368,8 @@ its blockers as text and stops. Via the write path, you post them to the issue, 
 A give-up that leaves the claim in place stalls dispatch for 4 hours for nothing, and one that
 leaves the issue otherwise unchanged is indistinguishable from an agent that silently
 vanished, which is the failure ADR-0005's give-up path exists to prevent. Then report what it
-found and stop: the slot stays vacant
-until the next trigger, and you do not dispatch a second issue in the same cycle.
+found and stop: the slot the give-up vacated stays vacant until the next trigger, and you do
+not dispatch a second issue in the same cycle.
 
 ## 4. Reviewer pre-pass — after every agent push, and after CI reports
 
@@ -319,10 +382,14 @@ Skip only if the current head commit already has a pre-pass comment.
 is what shows in the merge box, and it is the only signal a maintainer who is not watching this
 session can see.
 
-It is **not currently a required check** — Dependabot workflows get a read-only `GITHUB_TOKEN`,
-so the seeding workflow cannot report on their PRs and requiring the context would block them
-permanently. Treat the status as the visibility mechanism it is today, and do not tell anyone
-it blocks a merge until the ruleset actually says so.
+It is **not a required check in the ruleset** (#488) — Dependabot workflows get a read-only
+`GITHUB_TOKEN` under both `pull_request` and `pull_request_target`, so the seeding workflow cannot
+report on their PRs and requiring the context would block all of them permanently.
+
+That does not make it advisory to *you*. Since ADR-0014 it is condition 2 of section 2a: a
+`success` verdict on the current head sha is what authorises the one merge you may perform. The
+merge box does not enforce it, you do. So the accurate statement to anyone else is that the status
+does not block a *human* merge, and does block an automatic one.
 
 Post `pending` **before** you spawn the reviewer, and the verdict **after**:
 
@@ -500,9 +567,14 @@ Two questions worth asking out loud when the check fires, because they were the 
 
 ## 5. End-of-cycle report
 
-Finish every invocation with a short report: slot state found, action taken (dispatched #N /
-addressed feedback on PR #N / exited idle / violation found), pre-pass verdict if one ran, the
-CI state of the PR's head sha, and anything a human must do next.
+Finish every invocation with a short report: occupancy found out of three and which PRs or claims
+hold it, action taken per PR (merged #N / dispatched #N / addressed feedback on PR #N / exited idle
+/ violation found), pre-pass verdict if one ran, the CI state of every head sha you touched, and
+anything a human must do next.
+
+A cycle now touches up to three PRs, so report them as a list rather than one narrative. If you
+merged under section 2a, state the four conditions as you found them, and name any advisory-tier
+backstop hits with their one-line dispositions.
 
 **Read CI before you write the report, on every exit path.** If the cycle touched or observed
 an open agent PR — a fresh dispatch, a fix round, an occupied-slot exit, not only a cycle that

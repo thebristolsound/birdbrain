@@ -186,3 +186,6 @@ KATs
 [Uu]ncompilable
 [Uu]ngated
 install's
+[Tt]ier(s|ed|ing)?
+[Ss]ha(s)?
+[Aa]dvisor(y|ies)

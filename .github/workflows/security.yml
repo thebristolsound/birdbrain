@@ -3,8 +3,10 @@ name: Security
 on:
   push:
     branches: [main]
+  # No `branches:` filter, for the same reason as ci.yml (#763): a PR stacked on another
+  # branch was scanned by nothing, and a secret is worth catching at the push that
+  # introduced it whatever that push is based on.
   pull_request:
-    branches: [main]
   # A gate run has to be able to name the commit it is asserting about, and
   # neither push nor pull_request can be aimed at a tag. No inputs are needed:
   # `gh workflow run <file> --ref <tag>` carries the ref itself (#445).

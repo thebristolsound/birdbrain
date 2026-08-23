@@ -3,8 +3,14 @@ name: CI
 on:
   push:
     branches: [main]
+  # No `branches:` filter, deliberately. Filtering on `[main]` meant a PR stacked on
+  # another PR's branch ran nothing at all — no lint, no typecheck, no test, no build,
+  # no e2e — and the author's own reported numbers were the only evidence it had. Four
+  # wave-2 PRs merged that way (#712, #713, #714, #715), and #715 put a file that does
+  # not parse on a branch with zero checks against it (#763, #783). Stacking is what
+  # makes those diffs reviewable, so the answer is to check every base, not to ban it.
+  # A stacked run scores its parent's changes too; that is the accepted cost.
   pull_request:
-    branches: [main]
     # `ready_for_review` is what makes the draft skip below safe: a PR that spent
     # its whole draft life uncovered gets a full run the moment it is marked ready,
     # which is the only state from which it can be merged.

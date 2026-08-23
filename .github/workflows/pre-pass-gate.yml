@@ -39,8 +39,11 @@ name: Pre-pass gate
 # so far. See the tracking issue before adding it to the ruleset.
 
 on:
+  # No `branches:` filter, for the same reason as ci.yml (#763): filtering on `[main]`
+  # left a PR stacked on another branch with no gate seeded at all, so an agent PR could
+  # carry both labels and still show no `agent/pre-pass` context for a reviewer to be
+  # waiting on. Seeding on every base costs one short job per PR.
   pull_request:
-    branches: [main]
     types: [opened, reopened, synchronize, labeled, unlabeled]
 
 permissions:

@@ -257,3 +257,10 @@ TSA's
 [Tt]estid(s)?
 [Rr]adix
 radix-ui
+
+; Added 2026-08-24 for the README rewrite
+Birdbrain
+Birdbrain's
+[Cc]ryptocurrency
+[Tt]imestamp(s|ed|ing)?
+[Ww]hitepapers?

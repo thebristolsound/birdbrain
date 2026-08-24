@@ -380,6 +380,15 @@ const ManifestExportEntrySchema = z
     toolVersion: z.string(),
     packageHash: z.string(),
     verificationResult: ManifestExportVerificationResultSchema,
+    // Selection scope (#398, ADR-0009). Present-means-selection: a case-scoped
+    // export OMITS both keys (never null/''/[]), so legacy and case-scoped
+    // entries keep identical canonical bodies and chain hashes. Both MUST stay
+    // `.optional()` with NO `.default()`: a required key makes every legacy
+    // export entry fail this .strict() schema ('Invalid entry shape'), and a
+    // default is injected into the parsed output manifestChain re-hashes,
+    // breaking every legacy export entry ('Entry hash mismatch').
+    scope: z.literal('selection').optional(),
+    captureIds: z.array(z.string()).optional(),
     index: z.number().int().nonnegative(),
     prevHash: z.string(),
     schemaVersion: z.number().int().min(2).max(MANIFEST_SCHEMA_VERSION),

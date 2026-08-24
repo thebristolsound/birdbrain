@@ -48,6 +48,19 @@ The signing key (\`signing-public-key.pem\`) is installation-local and is **not*
 an independent trust anchor; it defeats casual tampering. The independent anchor
 for *timestamped* captures is the RFC 3161 timestamp, verified in step 6.
 
+\`export-entry.json\`, when present, is the **signed export entry for this very
+package** — the one entry the bundled \`manifest.jsonl\` cannot contain, because
+the manifest copy is sealed just before the entry is appended to the live case
+manifest. Verify it exactly like a manifest line before using anything in it:
+its \`signature\` with the step 2 recipe, its \`entryHash\` with the step 3
+recipe, and its \`prevHash\` must equal the \`entryHash\` of the **last line** of
+\`manifest.jsonl\`. Once verified, its \`scope\` / \`captureIds\` fields are the
+authoritative statement of what this package encloses: \`scope: "selection"\`
+means the operator deliberately exported a subset, and \`captureIds\` lists
+exactly the captures whose files are enclosed. The manifest still covers the
+whole case — the chain is never sliced. A package with no \`export-entry.json\`
+predates this file and encloses every active capture.
+
 **What the programmatic/binary verifier does vs. this runbook:** the binary
 checks timestamp tokens **structurally only** (the token's message imprint binds
 the capture's content hash, and the \`.tst\` bytes match the signed manifest
@@ -68,6 +81,7 @@ internal consistency*, **not** timestamp authenticity — this runbook's
 | \`screenshots/{sha256}.png\` | Captured screenshot (hashed as \`screenshotHash\`) |
 | \`timestamps/*.tst\` | RFC 3161 tokens (DER), when present |
 | \`evidence.json\` | Unsigned index (reconcile, do not trust) |
+| \`export-entry.json\` | Signed export entry for this package — scope of the enclosed captures (absent from older packages) |
 
 ## Step 1 — File integrity (index self-consistency)
 
@@ -129,6 +143,14 @@ For each \`type: "capture"\` entry, confirm the actual captured bytes match the
 hash **inside that signed entry** (NOT the value in \`evidence.json\`). Without
 this you could verify a pristine signed chain yet never confirm the MHTML/PNG
 bytes are the ones it attests.
+
+**Selection-scoped packages:** if a **verified** \`export-entry.json\` (see
+Trust model) carries \`scope: "selection"\`, only the captures listed in its
+\`captureIds\` are enclosed under \`pages/\` — run this step for those and
+expect the others absent. Only the signed entry can account for an absent
+capture; never accept that explanation from \`evidence.json\` or the report.
+Without a verified selection scope, every capture entry with no later
+\`deletion\` entry must be present and must match.
 
 \`\`\`sh
 # Content:

@@ -300,6 +300,12 @@ export type ManifestEntryInput =
       toolVersion: string
       packageHash: string
       verificationResult: ExportVerificationResult
+      // Selection scope (#398, ADR-0009): a selection-scoped export records the
+      // exported capture ids on its signed entry. OMITTED (never ''/[]/null) on
+      // case-scoped exports so legacy and case-scoped entries' canonical bodies
+      // — and chain hashes — are unchanged.
+      scope?: 'selection'
+      captureIds?: string[]
     }
   | {
       // Signed audit record of a case-archive export (.birdbrain). `packageHash`
@@ -345,6 +351,11 @@ export interface AppendResult {
   prevHash: string
   entryHash: string
   anchorBytes: number
+  // The exact JSONL line appended (trailing newline included). The evidence
+  // export packages its own export entry's line as export-entry.json (#398), so
+  // the packaged copy is byte-identical to the live manifest's line rather than
+  // a re-serialization that could drift.
+  line: string
 }
 
 // Write-ahead append: compute hash, append JSONL line, fsync.
@@ -377,7 +388,7 @@ export function appendManifestEntry(caseDir: string, entry: ManifestEntryInput):
     closeSync(fd)
   }
 
-  return { index: nextIndex, prevHash, entryHash, anchorBytes }
+  return { index: nextIndex, prevHash, entryHash, anchorBytes, line }
 }
 
 // Truncates the manifest file back to the byte offset captured before append.

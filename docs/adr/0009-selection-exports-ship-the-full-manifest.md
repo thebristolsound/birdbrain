@@ -12,3 +12,23 @@ A selection-scoped Evidence Package (exporting a subset of a Case's Captures) al
 - The `export` Manifest Entry schema gains `scope` and (for selections) `captureIds`. Entry-hash canonicalisation must account for the new fields; this is an Evidence-Affecting Change under ADR-0004.
 - Package Verification is untouched: one chain, one walk, existing semantics. Backward verification of pre-`scope` packages continues to hold.
 - The unsigned index/report must reconcile against the selection (`captureIds`), not the full Manifest, when checking that every exported artifact is accounted for.
+
+## Amendment (2026-08-24, #398 intake ruling)
+
+Two of the preceding consequences are superseded by the maintainer rulings recorded on #398, and
+by the implementation:
+
+- **`scope: 'case' | 'selection'` is superseded by present-means-selection.** A case-scoped
+  export **omits** `scope` and `captureIds` entirely — never `null`, `''` or `[]`. That is the
+  only shape in which a pre-scope entry and a new case-scoped entry canonicalise to identical
+  bytes, which is what makes backward verification provable against a frozen fixture rather than
+  asserted.
+- **"Package Verification is untouched" was false against the tree this shipped into.** The
+  verifier hard-FAILed every chain capture whose `pages/{id}.mhtml` was absent and FAILed §7.5
+  coverage in both directions, so a selection package could not verify. The verifier now reads
+  the selection from `export-entry.json` — the package's own signed export entry, shipped as a
+  member outside `packageHash` — and trusts its `captureIds` only after checking its signature
+  against the bundled key, its `prevHash` against the bundled chain head, and its recomputed
+  `entryHash`. Reconciling against `evidence.json` instead was explicitly rejected: it is
+  unsigned, and padding its list would explain away a removed capture (the #580 detection
+  class).

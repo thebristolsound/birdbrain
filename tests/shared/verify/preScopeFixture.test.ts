@@ -3,7 +3,8 @@ import { createHash } from 'crypto'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
-import { verifyManifestChainText } from '@shared/verify'
+import { canonicalStringify, verifyManifestChainText } from '@shared/verify'
+import { ManifestEntrySchema } from '@shared/schemas'
 
 // Backward-verification known-answer test (#398). fixtures/pre-scope-package is
 // a REAL evidence package frozen from the tree as it stood before #398 shipped
@@ -51,6 +52,29 @@ describe('frozen pre-scope fixture package', () => {
     expect('scope' in exportEntries[0]).toBe(false)
     expect('captureIds' in exportEntries[0]).toBe(false)
     expect(entries.some((e) => e.type === 'deletion')).toBe(true)
+  })
+
+  // The exact mechanism a bad schema change breaks legacy chains by: a
+  // REQUIRED new key fails safeParse ('Invalid entry shape'), and a key with a
+  // .default() is injected into the parsed output that manifestChain.ts
+  // destructures and re-hashes ('Entry hash mismatch'). Both are pinned here
+  // at the seam itself, against a frozen entry today's writer did not produce.
+  it('Zod-parses the frozen export entry without injecting scope keys, re-hashing to its entryHash', () => {
+    const exportLine = readFileSync(join(FIXTURE_DIR, 'manifest.jsonl'), 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim())
+      .find((l) => (JSON.parse(l) as { type: string }).type === 'export')
+    expect(exportLine).toBeDefined()
+
+    const result = ManifestEntrySchema.safeParse(JSON.parse(exportLine!))
+    expect(result.success).toBe(true)
+    const parsed = result.data!
+    expect('scope' in parsed).toBe(false)
+    expect('captureIds' in parsed).toBe(false)
+
+    const { entryHash, signature: _signature, ...body } = parsed
+    void _signature
+    expect(createHash('sha256').update(canonicalStringify(body)).digest('hex')).toBe(entryHash)
   })
 
   it('chain-verifies against its own bundled public key', () => {

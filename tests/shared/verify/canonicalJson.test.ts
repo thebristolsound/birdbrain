@@ -131,3 +131,86 @@ describe('canonicalStringify golden vector', () => {
     expect(canonicalStringify({ ...GOLDEN_BODY, screenshotHash: undefined })).toBe(GOLDEN_CANONICAL)
   })
 })
+
+// Export-entry golden vectors (#398). Two frozen literals: the pre-scope shape
+// every legacy export entry hashes to, and the selection-scoped shape. The
+// third assertion is the load-bearing one — a case-scoped entry built with the
+// new fields left undefined canonicalizes to the PRE-SCOPE bytes, which is the
+// writer-side half of backward verification: case exports keep producing
+// entries byte-identical to entries already in the world.
+describe('canonicalStringify export-entry golden vectors', () => {
+  const GOLDEN_EXPORT_BODY = {
+    // Deliberately listed in non-canonical order to exercise the sort.
+    type: 'export',
+    caseId: '0196f7a2-aaaa-bbbb-cccc-000000000002',
+    timestamp: '2026-08-24T12:00:00.000Z',
+    operatorId: 'op-1',
+    operatorName: 'Casey Operator',
+    toolVersion: '0.4.0',
+    packageHash: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
+    verificationResult: {
+      overallValid: true,
+      captureCount: 2,
+      verifiedCount: 2,
+      tamperedCount: 0,
+      missingCount: 0
+    },
+    index: 7,
+    prevHash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+    schemaVersion: 2
+  }
+
+  const GOLDEN_EXPORT_CANONICAL =
+    '{"caseId":"0196f7a2-aaaa-bbbb-cccc-000000000002",' +
+    '"index":7,' +
+    '"operatorId":"op-1",' +
+    '"operatorName":"Casey Operator",' +
+    '"packageHash":"9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",' +
+    '"prevHash":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",' +
+    '"schemaVersion":2,' +
+    '"timestamp":"2026-08-24T12:00:00.000Z",' +
+    '"toolVersion":"0.4.0",' +
+    '"type":"export",' +
+    '"verificationResult":{"captureCount":2,"missingCount":0,"overallValid":true,' +
+    '"tamperedCount":0,"verifiedCount":2}}'
+
+  const GOLDEN_SCOPED_EXPORT_CANONICAL =
+    '{"captureIds":["0196f7a2-aaaa-bbbb-cccc-000000000010",' +
+    '"0196f7a2-aaaa-bbbb-cccc-000000000011"],' +
+    '"caseId":"0196f7a2-aaaa-bbbb-cccc-000000000002",' +
+    '"index":7,' +
+    '"operatorId":"op-1",' +
+    '"operatorName":"Casey Operator",' +
+    '"packageHash":"9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",' +
+    '"prevHash":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",' +
+    '"schemaVersion":2,' +
+    '"scope":"selection",' +
+    '"timestamp":"2026-08-24T12:00:00.000Z",' +
+    '"toolVersion":"0.4.0",' +
+    '"type":"export",' +
+    '"verificationResult":{"captureCount":2,"missingCount":0,"overallValid":true,' +
+    '"tamperedCount":0,"verifiedCount":2}}'
+
+  it('produces the frozen pre-scope canonical bytes for an export entry body', () => {
+    expect(canonicalStringify(GOLDEN_EXPORT_BODY)).toBe(GOLDEN_EXPORT_CANONICAL)
+  })
+
+  it('produces the frozen canonical bytes for a selection-scoped export entry body', () => {
+    expect(
+      canonicalStringify({
+        ...GOLDEN_EXPORT_BODY,
+        scope: 'selection',
+        captureIds: [
+          '0196f7a2-aaaa-bbbb-cccc-000000000010',
+          '0196f7a2-aaaa-bbbb-cccc-000000000011'
+        ]
+      })
+    ).toBe(GOLDEN_SCOPED_EXPORT_CANONICAL)
+  })
+
+  it('drops undefined scope/captureIds without disturbing the pre-scope bytes', () => {
+    expect(
+      canonicalStringify({ ...GOLDEN_EXPORT_BODY, scope: undefined, captureIds: undefined })
+    ).toBe(GOLDEN_EXPORT_CANONICAL)
+  })
+})

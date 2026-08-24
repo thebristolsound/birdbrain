@@ -164,6 +164,13 @@ export interface ReportData {
    * implying the check establishes authenticity.
    */
   tsaTrustAnchorBundled: boolean
+  /**
+   * Selection scope (#398, ADR-0009): set when the operator exported a
+   * selection rather than the whole case. The custody module states that the
+   * Manifest covers the whole Case while the artifacts cover the selection, so
+   * the mismatch reads as designed behaviour rather than as missing evidence.
+   */
+  selectionScope: { selectedCaptureCount: number; caseCaptureCount: number } | null
 }
 
 export type ReportModuleId =
@@ -675,6 +682,24 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   </div>
 
   ${
+    data.selectionScope
+      ? `<div class="note">
+    <p class="note-title">Selection-scoped export</p>
+    <p>This export covers a selection of ${data.selectionScope.selectedCaptureCount} of the
+    case's ${data.selectionScope.caseCaptureCount} captures, chosen by the operator.${
+      packaged
+        ? ` The enclosed <code>manifest.jsonl</code> deliberately covers the <em>whole case</em> —
+    the manifest is never sliced, because its completeness is what makes deletions and omissions
+    detectable — while the enclosed page archives, screenshots and exhibits cover only the
+    selection. Captures the chain records but this package does not enclose are accounted for by
+    the signed export entry (<code>export-entry.json</code>), which records the selected capture
+    identifiers; their absence is designed behaviour, not a gap.`
+        : ''
+    }</p>
+  </div>`
+      : ''
+  }
+  ${
     data.unreconciledChainCaptureIds.length > 0
       ? `<div class="alert">
     <p class="alert-title">The chain claims captures this package does not contain</p>
@@ -700,17 +725,20 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     packaged
       ? `<div class="note">
     <p class="note-title">Disclosed ordering artefact</p>
-    <p>The export event is written to the live case manifest after this package is sealed, so the
-    bundled copy of <code>manifest.jsonl</code> ends one entry earlier than the live case
-    manifest. The package hash recorded in that trailing entry commits to packaged file content,
-    not to the entry itself. This is disclosed so that a reviewer comparing the two files is not
-    misled by the difference.</p>
+    <p>This export's own entry is appended to the live case manifest after the package contents
+    are assembled, so the bundled copy of <code>manifest.jsonl</code> ends one entry earlier than
+    the live case manifest. That trailing entry is enclosed beside it as
+    <code>export-entry.json</code> — the same signed line, whose <code>prevHash</code> equals the
+    bundled manifest's last entry hash. The package hash recorded in it commits to packaged file
+    content, not to the entry itself. This is disclosed so that a reviewer comparing the files is
+    not misled by the difference.</p>
   </div>
   <div class="note">
     <p class="note-title">Where the package hash lives</p>
     <p>The package hash is deliberately absent from this report: report.html is itself one of the
     hashed artefacts, so printing the hash here could not be self-consistent. It is recorded in
-    the export entry of the live case manifest and can be recomputed from the artefact list in
+    the signed export entry — enclosed as <code>export-entry.json</code> and appended to the live
+    case manifest — and can be recomputed from the artefact list in
     <code>evidence.json</code>.</p>
   </div>`
       : `<div class="note">

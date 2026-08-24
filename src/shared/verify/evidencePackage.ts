@@ -5,6 +5,8 @@ import { EvidencePackageSchema, ManifestEntrySchema } from '@shared/schemas'
 import type { ManifestEntry } from '@shared/schemas'
 import { parseTimestampToken } from '@shared/verify/timestampToken'
 import { verifyManifestChainText } from '@shared/verify/manifestChain'
+import { canonicalStringify } from '@shared/verify/canonicalJson'
+import { verifyEntrySignature } from '@shared/verify/signature'
 
 // The standalone package verifier (#122 §7). This is the ONLY fs-touching
 // module under src/shared/verify and is deliberately kept OFF the `index.ts`
@@ -15,6 +17,12 @@ import { verifyManifestChainText } from '@shared/verify/manifestChain'
 // truth. The verifier establishes the chain, derives the active-capture set from
 // it, binds package files to the chain, cross-checks the head, and finally
 // reconciles the UNSIGNED `evidence.json` index against that verified truth.
+// A selection-scoped package (#398, ADR-0009) additionally ships
+// `export-entry.json` — its own export entry's signed manifest line — whose
+// captureIds become the trusted selection ONLY after the entry's signature,
+// chain linkage and recomputed hash are established against the bundled key
+// and chain head. `evidence.json` is never that source: it is unsigned, and a
+// tamperer could pad an unsigned list to explain away a removed capture (#580).
 // A PASS is an integrity + internal-consistency result — NOT an authenticity
 // claim. Timestamp checks here are STRUCTURAL ONLY (imprint + byte-binding);
 // canonical TSA authenticity is the runbook's `openssl ts -verify` (VERIFY.md),
@@ -64,6 +72,57 @@ function parseManifestEntries(jsonl: string): ManifestEntry[] {
     out.push(result.data)
   }
   return out
+}
+
+type ExportEntry = Extract<ManifestEntry, { type: 'export' }>
+
+// Establishes trust in export-entry.json (#398) from primitives, in the same
+// way the chain walk trusts a manifest line: schema shape, recomputed
+// entryHash over the canonical body (excluding entryHash + signature, exactly
+// as manifestChain.ts does), prevHash/index continuing the bundled chain head,
+// and a valid signature over the entryHash by the bundled public key. Nothing
+// from the file is used until every one of these holds — its captureIds are
+// what scopes §7.3/§7.5, so an unproven entry must confer no scope.
+function validateExportEntry(
+  raw: string,
+  chainEntries: ManifestEntry[],
+  publicKeyPem: string
+): { entry: ExportEntry } | { reason: string } {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return { reason: 'export-entry.json is not valid JSON' }
+  }
+  const result = ManifestEntrySchema.safeParse(parsed)
+  if (!result.success) {
+    return { reason: 'export-entry.json is not a valid manifest entry' }
+  }
+  if (result.data.type !== 'export') {
+    return { reason: `export-entry.json is a '${result.data.type}' entry, not an export entry` }
+  }
+  const entry = result.data
+  const { entryHash, signature, ...body } = entry
+  const recomputed = createHash('sha256').update(canonicalStringify(body)).digest('hex')
+  if (recomputed !== entryHash) {
+    return { reason: 'export-entry.json entry hash mismatch' }
+  }
+  const head = chainEntries.at(-1)
+  if (entry.prevHash !== (head?.entryHash ?? '')) {
+    return { reason: 'export-entry.json prevHash does not match the bundled manifest head' }
+  }
+  if (entry.index !== (head ? head.index + 1 : 0)) {
+    return { reason: 'export-entry.json index does not continue the bundled manifest' }
+  }
+  if (!signature || !verifyEntrySignature(entryHash, signature, publicKeyPem)) {
+    return { reason: 'export-entry.json signature invalid' }
+  }
+  // The writer sets scope and captureIds together or not at all; an entry
+  // claiming one without the other is no writer of ours and confers no scope.
+  if ((entry.scope === 'selection') !== (entry.captureIds !== undefined)) {
+    return { reason: 'export-entry.json scope and captureIds are inconsistent' }
+  }
+  return { entry }
 }
 
 /**
@@ -129,6 +188,52 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
     (e): e is Extract<ManifestEntry, { type: 'timestamp' }> => e.type === 'timestamp'
   )
 
+  // §7.2b export-entry.json (#398): the package's signed statement of its own
+  // scope — the exact export-entry line appended to the live manifest when
+  // this package was sealed, which the bundled manifest.jsonl (snapshotted
+  // before that append) cannot contain. When the file is absent the package is
+  // pre-scope (or its scope proof was stripped) and verification proceeds
+  // unscoped — so a selection package with the file removed FAILs §7.3 for
+  // every unselected capture rather than passing with its absences
+  // unexplained.
+  let selectionIds: Set<string> | undefined
+  const exportEntryPath = join(dir, 'export-entry.json')
+  if (existsSync(exportEntryPath)) {
+    const validated = validateExportEntry(
+      readFileSync(exportEntryPath, 'utf-8'),
+      entries,
+      publicKeyPem
+    )
+    if ('reason' in validated) {
+      add('export entry', 'fail', validated.reason)
+    } else {
+      add('export entry', 'pass')
+      const { scope, captureIds } = validated.entry
+      if (scope === 'selection' && captureIds !== undefined) {
+        selectionIds = new Set(captureIds)
+      }
+    }
+  }
+
+  // The trusted selection must itself reconcile against the chain: a selection
+  // id with no active capture entry is a claim the chain cannot bind bytes to,
+  // and an unverifiable claimed member fails closed.
+  if (selectionIds) {
+    const chainActiveIds = new Set(activeCaptures.map((c) => c.captureId))
+    let scopeOk = true
+    for (const id of selectionIds) {
+      if (!chainActiveIds.has(id)) {
+        scopeOk = false
+        add(
+          'export scope',
+          'fail',
+          `selection names capture ${id} with no active capture entry in the verified manifest`
+        )
+      }
+    }
+    if (scopeOk) add('export scope', 'pass')
+  }
+
   // Untrusted index: parsed for structure, used ONLY to detect index edits and
   // to help LOCATE timestamp files (§7.3). Never used to decide what to check.
   let evidence: ReturnType<typeof EvidencePackageSchema.parse> | undefined
@@ -155,6 +260,18 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
 
   // §7.3 per-active-capture binding (chain -> files).
   for (const cap of activeCaptures) {
+    // Scoped verification (#398): a chain capture outside the signed selection
+    // is absent by design — the verified export entry records its exclusion —
+    // so its absence is not evidence loss. One SKIP keeps the exclusion
+    // visible; captures inside the selection keep the full strict checks.
+    if (selectionIds && !selectionIds.has(cap.captureId)) {
+      add(
+        `capture ${cap.captureId}`,
+        'skip',
+        'outside the signed export selection — not packaged'
+      )
+      continue
+    }
     const mhtmlPath = join(dir, 'pages', `${cap.captureId}.mhtml`)
     const name = `capture ${cap.captureId} content`
     if (!existsSync(mhtmlPath)) {
@@ -253,18 +370,32 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
     }
   }
 
-  // §7.5 evidence.json reconciliation (secondary).
+  // §7.5 evidence.json reconciliation (secondary). Scoped packages reconcile
+  // the index against the signed selection (#398): the chain captures expected
+  // in the index are those inside the selection, and an index row outside the
+  // selection is as much a chain/index disagreement as one outside the chain.
   if (evidence) {
     const activeIds = new Set(activeCaptures.map((c) => c.captureId))
     const indexIds = new Set(evidence.captures.map((c) => c.id))
+    const expectedIds = selectionIds
+      ? new Set([...activeIds].filter((id) => selectionIds.has(id)))
+      : activeIds
     let coverageOk = true
-    for (const id of activeIds) {
+    for (const id of expectedIds) {
       if (!indexIds.has(id)) {
         coverageOk = false
         add('evidence.json coverage', 'fail', `evidence.json omits verified capture ${id}`)
       }
     }
     for (const id of indexIds) {
+      if (activeIds.has(id) && selectionIds && !selectionIds.has(id)) {
+        coverageOk = false
+        add(
+          'evidence.json coverage',
+          'fail',
+          `evidence.json lists capture ${id} outside the signed export selection`
+        )
+      }
       if (!activeIds.has(id)) {
         coverageOk = false
         // Still a FAIL, and still the same check (#622 ruling): the package's

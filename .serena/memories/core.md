@@ -35,6 +35,8 @@ authoritative over anything here:
   worktree sees the same set, but the LS cache is per worktree (cold on first call).
 
 ## Detail memories
+- Build mechanisms not spelled out in CLAUDE.md (verifier SEA injection, extension two-pass
+  `BUILD_TARGET=content` build, `postinstall` chain, `asarUnpack` requirement): `mem:build_targets`
 - Maltego research (competitor reference for the Link Map / investigation-graph surfaces; where
   the primary-source notes live, durable takeaways, what is volatile): `mem:research/maltego`
 - How to write/maintain memories in this project: `mem:memory_maintenance`

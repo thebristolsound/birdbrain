@@ -10,6 +10,10 @@ first; the file ships packed, so a plain grep for `onClick` or `viewBox` finds n
 **This is the last wave.** It closes every remaining item on the redesign project board and every
 open `redesign`-labelled issue that carries scope, which closes #382.
 
+**Amended 2026-08-23, after the rulings below.** The wave is **thirteen** items, not fifteen: #663,
+#699 and #707 closed as resolved rather than built, and #803 (the Data screen rebuild) was scoped in
+their place. It carries **five** evidence reviews.
+
 ## Program state
 
 Wave 2 merged completely on 2026-08-22: #709, #710, #711, #766, #777, #779, #786, plus the docs
@@ -78,33 +82,52 @@ a display tweak. It also rewrites `WaybackTab.tsx`, itself blocking-tier.
 operator who exports the demo Case by accident hands a court a case full of fixture data. The
 ticket has no acceptance criterion covering that, and it needs one before it is dispatchable.
 
-## Rulings needed before dispatch
+## Rulings, all eight settled 2026-08-23
 
-None of these has acceptance criteria until it is answered. This is the prep phase's real work, and
-seven of the eight are maintainer calls rather than engineering ones.
+Recorded on each issue. Three of the eight ended in a closure rather than a build.
 
-1. **#701 context menus.** Adopt at all? If yes, one shared component plus a per-kind action
-   registry, or per-surface? Every action needs a keyboard route or the menu is unreachable without
-   a pointer. Interacts with #686 and #687, both already fixing renderer menu-role problems, so
-   those two should land first whatever the answer.
-2. **#702 Recording indicator.** `autoCaptureMode`, `sessionActive`, or both with a stated rule for
-   auto-capture on with no session? And does the Connected chip really hide while recording, given
-   that it is the operator's only signal that captures can arrive?
-3. **#704 archived-copy banner.** Capture time, verification state, both, or neither? Every viewer
-   tab or the Page tab only? How does it compose with the Wayback pane's own non-evidence label,
-   which #401 is separately building?
-4. **#695 per-list search.** What it searches (title, title plus URL, or FTS), how it divides
-   labour with `SearchBar`, and its precedence against active selector filters.
-5. **#707 Browser affordance.** Does birdbrain get an in-app browsing surface at all? This is a
-   product question well beyond a tour step, and "no" is a complete answer that closes half the
-   ticket.
-6. **#405 demo Case marking.** How a demo Case is distinguishable in an export. Needs an answer
-   before #405 is dispatchable, and the answer becomes an acceptance criterion.
-7. **#699 Data Explorer.** Option 1 (record it as Out of Scope in #382) or option 2 (a scoped
-   Stage 4 sibling with a prototype reference attached). The issue itself argues option 1 and I
-   agree: no prototype artifact for the screen exists beyond `SCREEN_NOTES.md:73`.
-8. **#663 hover checkbox.** Confirm the metrics #396 derived from the selection bar, or restore the
-   row markup to the bundle and recapture screenshot 13.
+1. **#701 context menus.** Adopt, one shared component plus a per-kind registry, one ticket.
+   **Four kinds** (capture, note, selector, tag), not the mock's thirteen. **The menu is an
+   accelerator, never the sole route**: every action must also be reachable inline or by keyboard.
+   `ui/` has no menu primitive today, so this ticket writes the accessible one, and #686/#687 land
+   first. `file`, `folder`, `part` and `ledger` are deferred to #803, which builds the rows they
+   attach to.
+2. **#702 Recording indicator.** Reflects `sessionActive`, not `autoCaptureMode`, and **the Connected
+   chip never hides**. Both are divergences from the mock, recorded on #708. Auto-capture stays a
+   Signals concern, shown where it is set.
+3. **#704 archived-copy banner.** States the **capture time**, on the **Page tab only**. Verification
+   state stays with `ProvenanceBadge` so the two cannot drift. No collision with #401's non-evidence
+   label, which is a different and stronger claim on a different tab.
+4. **#695 per-list search.** A **client-side title and URL filter** over the loaded list, not FTS.
+   `SearchBar` finds across the case; this narrows what is on screen. Intersects with selector
+   filters, and one control clears both.
+5. **#707 Browser affordance.** **No.** Birdbrain gets no in-app browsing surface; capture happens in
+   the operator's real browser through the extension, and a second acquisition path was never asked
+   for. Recorded on #708. **#707 closed**, its demo-Case half folded into #405.
+6. **#405 demo Case marking.** A **demo flag on the Case**, surfaced in the export dialog and stated
+   in the Certification. It rides **#399's v31 migration** alongside `case_number`, so #399 lands the
+   field and #405 consumes it. Export is not blocked and the package still verifies; the fix is that
+   it now says what it is.
+7. **#699 Data Explorer.** **Option 2, and my earlier reading was wrong.** #699's body says no
+   prototype artifact exists beyond `SCREEN_NOTES.md:73` and I repeated it. The standalone mock
+   carries a full retooling: a three-group tree (Data Sources, Views, Results), an artifact table with
+   a per-artifact `SHA-256` column, and tabs for Extracted Text, MHTML Parts, Headers & TLS, Manifest Ledger and
+   Properties. Scoped as **#803**, evidence-affecting, **re-presenting existing data only**.
+   `network.har` is excluded because the app captures no HAR; that is **#804**, a spike, because it is
+   new acquisition with a credential-disclosure problem attached. **#699 closed** in favour of #803.
+8. **#663 hover checkbox.** **Closed, no work.** The V2 bundle it targets was superseded by the
+   standalone mock, and #708 item 9 already ruled the app keeps the checkbox with
+   `e2e/capture-multiselect.spec.ts` green. The metrics #396 shipped are the record.
+
+### What the rulings changed about the wave
+
+- **Sixteen items became thirteen.** #663, #699 and #707 closed; #803 was added.
+- **#803 is the wave's newest and largest unknown**, and it is evidence-affecting. It did not exist
+  when this document was written this morning.
+- **#399 grew by one column.** v31 now carries `case_number` and the demo flag.
+- **Five evidence reviews, not four**: #392, #398, #399, #401, #803.
+- #804 is filed but **not in the wave**. It is `needs-triage` and needs four questions answered
+  before it can be scoped.
 
 ## Conflict map
 

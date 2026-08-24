@@ -6,6 +6,8 @@
 // Forbidden anywhere under src/shared/verify/: electron, src/main,
 // better-sqlite3, keytar, hono, network calls.
 export { canonicalStringify } from '@shared/verify/canonicalJson'
+export { packageHash } from '@shared/verify/packageHash'
+export type { PackagedArtifact } from '@shared/verify/packageHash'
 export { verifyEntrySignature } from '@shared/verify/signature'
 export {
   parseTimestampToken,

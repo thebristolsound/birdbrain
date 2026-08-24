@@ -156,6 +156,7 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
             <span className="font-display text-[11px] font-semibold">{typeLabel}</span>
           </span>
           {editingNumber ? (
+            <input
               data-testid="case-subhead-number-input"
               ref={numberInputRef}
               value={numberValue}
@@ -170,7 +171,6 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
               }}
               aria-label="Case number"
               placeholder="Case number"
-              className="w-40 rounded border border-accent bg-elevated px-2 py-0.5 font-mono text-[11px] text-text-primary focus:outline-none"
               className="w-40 rounded border border-accent bg-elevated px-2 py-0.5 font-mono text-[11px] text-text-primary focus:outline-none"
             />
           ) : (

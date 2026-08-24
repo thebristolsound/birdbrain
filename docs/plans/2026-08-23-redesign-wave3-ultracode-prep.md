@@ -28,6 +28,12 @@ mechanism (it is not in `manifest.ts`) and #393's evidence tier (blocking, not n
 notes, its sharpened conflict map, its eleven blocking questions and its readiness verdict per
 ticket are in `docs/plans/2026-08-23-wave3-phase1-understand-notes.md`.
 
+**Amended a third time 2026-08-24, at the phase-2 intake.** The maintainer answered phase 1's
+eleven blocking questions plus the follow-ups those answers forced: 23 rulings, R1-R23, recorded
+in `docs/plans/2026-08-24-wave3-phase2-intake-rulings.md` and posted as ruling comments on the
+issues. Corrections from that session are marked **Corrected at phase-2 intake** below; the
+roll-up is the "Phase 2 intake rulings, 2026-08-24" section.
+
 Seven board tickets remain, and every blocker outside the wave is closed. Eight more
 `redesign`-labelled issues sit off the board; the maintainer ruled on 2026-08-23 that they join
 this wave rather than outliving the program.
@@ -156,9 +162,46 @@ Recorded on each issue. Three of the eight ended in a closure rather than a buil
   when this document was written this morning.
 - **#399 grew by one column.** v31 now carries `case_number` and the demo flag.
 - **Seven evidence reviews.** *Corrected after phase 1; this line said five.* #392, #393, #398,
-  #399, #401, #405, #803.
+  #399, #401, #405, #803. *Corrected at phase-2 intake: **ten**. #829 and #830 joined the wave and
+  #391's tier verification came back blocking; see "Phase 2 intake rulings, 2026-08-24" below.*
 - #804 is filed but **not in the wave**. It is `needs-triage` and needs four questions answered
   before it can be scoped.
+
+## Phase 2 intake rulings, 2026-08-24
+
+The phase-2 intake session settled 23 rulings, R1-R23, recorded in full in
+`docs/plans/2026-08-24-wave3-phase2-intake-rulings.md` and posted as
+`## Ruling, 2026-08-24 (wave-3 phase 2 intake)` comments on the issues. Four rulings override a
+phase-1 recommendation (R5, R9, R14, R22); wherever the phase-1 notes recommend otherwise, the
+issue comments out-rank them. What the intake changed about the wave:
+
+- **Seven new tickets filed.** Six capability tickets from R5/R13/R14 plus the R8 popover ticket:
+  #825 copy URL (capture), #826 copy `SHA-256` (capture), #827 duplicate capture, #828 merge
+  tags, #829 backfill selector (a user-invokable rescan, distinct from R17's checked-and-disabled
+  checkbox in #391), #830 per-entity export, and #824, the typed confirm popover for Selector
+  creation (Watch and Backfill toggles) in the extension bar and the renderer.
+- **Ten evidence reviews, not seven.** Nine were known: #392, #393, #398, #399, #401, #405,
+  #803, #830 (per-entity export reaches `export.ts`), and #829 (backfill selector reaches
+  `selectorLifecycle.ts`). #391's tier verification made it ten: R9's `note_tags` relation fires
+  the blocking tier on `src/main/services/db/**` (assessment:216, covering `migrations.ts`, the
+  `note_tags` repo SQL, and `caseRepo.importCaseRow`) and on `src/main/services/caseArchive.ts`
+  (assessment:241, the archive round trip plus `ID_PROBE_TABLES`), with advisory hits on
+  `ipcHandlers.ts` (:277), `preload/index.ts` (:278), `shared/ipc.ts` (:279), and
+  `shared/types.ts` (:280). `evidence-affecting` applied and verified by direct label read.
+- **Migration numbers are assigned by merge order** (R16). #391 adds `note_tags` and will likely
+  take v31; #399's two-column Case migration then takes v32. The conflict map's "only #399
+  migrates" claim is dead; see the corrected migration paragraph below.
+- **#391 grew from medium to large** (R9): migration plus repo SQL plus IPC spine plus the
+  archive round trip. Phase 1's "#391 appends to none of them" no longer holds.
+- **#405 absorbs #771** (R12): one branch owns both edits to `useTourEngine.start()` and
+  `completionAfter`; #771 stays open until #405 lands and is closed by it.
+- **#401 runs two live guests** (R22): the compare panel's left pane is the live MHTML webview,
+  not the stored screenshot. `webviewPolicy.ts` must discriminate correctly between the
+  `mhtml-sandbox` partition (JavaScript off, `file://` once) and the Wayback partition
+  (JavaScript on, archive.org prefix only). The partition-aware rewrite is load-bearing, not
+  theoretical.
+- **Track A serialization unchanged**: #398 then #399 then #401 then #405, strict, every branch
+  cut from `main` after the previous merges. #830 joins the tail behind #401.
 
 ## Conflict map
 
@@ -170,7 +213,13 @@ Lighter than wave 2's. The three tracks barely touch each other; the contention 
 contradicts the rulings section two pages above it; an implementer reading only the map writes a
 one-column migration and #405 is blocked.* Nothing else in the wave migrates, so there is no
 ordering constraint between tickets on `migrations.ts` or `core.ts` for the first time in three
-waves.
+waves. *Corrected at phase-2 intake: the "only #399 migrates" claim is dead. R9 gives #391 a
+`note_tags` table and migration, and R16 assigns migration numbers by merge order, migrations
+being append-only: whichever branch merges first appends the next block and bumps
+`LATEST_SCHEMA_VERSION`. #391 keeps its early track-C slot and will likely take **v31**
+(`note_tags`), making #399's two-column Case migration **v32**; if #399 somehow lands first the
+numbers swap and no document needs a second edit. Every "#399 = v31" pin in this document,
+including ruling 6 and the board table, reads as next-version-at-merge.*
 
 *Corrected after phase 1: the archive round trip is not in `caseArchive.ts`.* That file holds no
 `cases` column list. `collectCaseRow` is `SELECT *`, so both new columns travel into `data.json`
@@ -269,13 +318,22 @@ rest of the wave builds.
 Three tracks, one per slot.
 
 - **Track A, export.** #398 → #399, then #401 joins behind #398. Two evidence reviews plus #401's.
-  The deepest chain and the wave's critical path.
-- **Track B, extension and server.** #392 → #393. One evidence review.
+  The deepest chain and the wave's critical path. *Corrected at phase-2 intake: #830 per-entity
+  export joins the tail behind #401 (it reaches `export.ts`, so it is evidence-affecting,
+  human-reviewed, and never auto-merges).*
+- **Track B, extension and server.** #392 → #393. One evidence review. *Corrected at phase-2
+  intake: #824, the typed confirm popover, follows. It waits on #829 (its Backfill toggle), not on
+  auto-capture work; its Watch toggle ships disabled if #386's HOTFIX still stands, stated in its
+  body.*
 - **Track C, independent.** *Corrected after phase 1, which reordered this track and added two
   tickets to it.* Cheapest first: **#702** (a three-line deletion in `ConnectionStatus.tsx`; the REC
   pill already ships at `TopBar.tsx:118-123`), then **#695**, #391, #701, #704, then #803's menu
   split. All non-evidence and auto-merge-eligible except #704, which stays non-evidence only if it
-  mounts in `CaptureViewer.tsx` and never edits `MhtmlViewer.tsx`.
+  mounts in `CaptureViewer.tsx` and never edits `MhtmlViewer.tsx`. *Corrected at phase-2 intake:
+  #825, #826, #827, and #828 (small, any order) land between #391 and #701 so #701's registry has
+  real actions to consume, and #829 lands before #701 for the same reason. #829 needs only
+  `selectorLifecycle.ts`, independent of track A, but it is evidence-affecting and never
+  auto-merges; #391 is now evidence-affecting too, so its auto-merge eligibility is gone.*
 
 **#695 is not paperwork.** *Corrected after phase 1.* Ruling 4 rules it to be **built**: a
 client-side title and URL filter across three renderer files plus tests. This document listed it
@@ -297,6 +355,14 @@ because #401 must now write `ExportDialog.tsx` after #399 rebuilds it and #405 c
 demo column. And #702 moves to the front because it is a single deletion that warms a slot at
 near-zero cost while track A's three blocking questions are answered.
 
+Merge order, *amended at phase-2 intake* with the seven new tickets slotted in: **#702 (done, PR
+#822) → #398 → #392 → #695 → #391 → [#825, #826, #827, #828: small, any order, track C] → #399 →
+#401 → #393 → #829 → #701 → #704 → #830 → #824 → #803a-d in order → #405.** The four
+non-colliding capability tickets land early so #701's registry has real actions to consume. #829
+needs only `selectorLifecycle.ts` and is independent of track A; it lands before #701 for the same
+reason. #830 waits for #401 at the export-chain tail. #824 waits for #829 (its Backfill toggle)
+and is not blocked on auto-capture work. #708's brief takes no slot and can land any time.
+
 ## Session process rules
 
 Unchanged from wave 2 except where ADR-0014 moved them.
@@ -307,7 +373,9 @@ Unchanged from wave 2 except where ADR-0014 moved them.
   and never auto-merge (ADR-0004, ADR-0005, unchanged by ADR-0014).
 - Non-evidence tickets in this wave (#391 and the extras; **not #393**, see above) may auto-merge
   on required checks
-  green plus an `agent/pre-pass` success verdict.
+  green plus an `agent/pre-pass` success verdict. *Corrected at phase-2 intake: not #391 either.
+  Its tier verification came back blocking, so it carries `evidence-affecting`, human review, and
+  never auto-merges; #829 and #830 likewise.*
 - Verify loop per PR: `pnpm lint`, `pnpm typecheck`, `BIRDBRAIN_REQUIRE_OPENSSL=1 pnpm test`,
   `pnpm build`, plus `pnpm build:extension` when `extension/` changed, plus `pnpm test:coverage`
   and `pnpm coverage:diff` re-run after any edit.
@@ -336,7 +404,10 @@ a partition-aware policy rather than add beside it, and a wrong discriminator si
 evidence viewer. There is no `will-attach-webview` handler anywhere in `src/`, no permission handler
 on any renderer-facing session, and no `will-download` listener. Extract the decision to a pure
 `src/main/webviewPolicy.ts` with unit tests, following the `windowSize.ts` and `windowReveal.ts`
-precedent. This is the branch's highest-risk edit. Related: #810.
+precedent. This is the branch's highest-risk edit. Related: #810. *Corrected at phase-2 intake:
+R22 makes this load-bearing rather than theoretical. The compare panel's left pane is the live
+MHTML webview, so #401 runs two live guests in one panel under two partitions with different
+policies, and `webviewPolicy.ts` must discriminate between them correctly.*
 
 **E2E per ticket** as each specifies: selection-to-selector round trip (#391), HTTP-seam tests
 covering happy path, auth failure, capture failure and duplicate-URL resolution (#392), preset

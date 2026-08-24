@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, rmSync, readFileSync, existsSync, writeFileSync } from 'fs'
+import { mkdtempSync, mkdirSync, rmSync, readFileSync, existsSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
@@ -8,7 +8,7 @@ import { execFileSync } from 'child_process'
 import sharp from 'sharp'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
-import { insertCapture, setCaptureTrustedTime } from '@main/services/db/captureRepo'
+import { insertCapture, listCaptures, setCaptureTrustedTime } from '@main/services/db/captureRepo'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import * as manifest from '@main/services/manifest'
@@ -170,7 +170,7 @@ describe('export', () => {
   it('verifyCaptures marks verified when hash matches', async () => {
     await ingest(caseId, '<html><body>Test content</body></html>')
 
-    const results = await verifyCaptures(caseId, captureLifecycle)
+    const results = await verifyCaptures(listCaptures(caseId), captureLifecycle)
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('verified')
     expect(results[0].storedHash).toBe(results[0].computedHash)
@@ -180,7 +180,7 @@ describe('export', () => {
     const { capture } = await ingest(caseId, '<html><body>Original</body></html>')
     writeFileSync(join(tempDir, 'captures', capture.mhtmlPath!), 'mutated bytes')
 
-    const results = await verifyCaptures(caseId, captureLifecycle)
+    const results = await verifyCaptures(listCaptures(caseId), captureLifecycle)
     expect(results[0].status).toBe('tampered')
   })
 
@@ -188,7 +188,7 @@ describe('export', () => {
     const { capture } = await ingest(caseId, '<html><body>Vanishing</body></html>')
     rmSync(join(tempDir, 'captures', capture.mhtmlPath!))
 
-    const results = await verifyCaptures(caseId, captureLifecycle)
+    const results = await verifyCaptures(listCaptures(caseId), captureLifecycle)
     expect(results[0].status).toBe('missing')
   })
 
@@ -201,7 +201,7 @@ describe('export', () => {
       timestamp: '2024-01-01T00:00:00Z'
     })
 
-    const results = await verifyCaptures(caseId, captureLifecycle)
+    const results = await verifyCaptures(listCaptures(caseId), captureLifecycle)
     expect(results[0].status).toBe('legacy')
   })
 
@@ -461,6 +461,258 @@ describe('export', () => {
       .update(canonicalStringify(sorted), 'utf-8')
       .digest('hex')
     expect(entry.packageHash).toBe(expectedHash)
+  })
+
+  // #398: the export entry's signed line ships inside the package it records,
+  // outside `artifacts` and outside packageHash, exactly like evidence.json.
+  it('ships the signed export entry as export-entry.json, outside artifacts and packageHash', async () => {
+    await ingest(caseId, '<html><body>Entry shipped</body></html>', 'https://example.com', 'E')
+
+    const caseDir = join(tempDir, 'captures', caseId)
+    const outputPath = join(tempDir, 'entry-evidence.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test User',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const entries = readStoredZipEntries(outputPath)
+    const exportEntryText = entries.get('export-entry.json')!.toString('utf-8')
+    const bundledManifest = entries.get('manifest.jsonl')!.toString('utf-8')
+
+    // Byte fidelity: the live manifest IS the bundled copy plus this line.
+    expect(readFileSync(join(caseDir, 'manifest.jsonl'), 'utf-8')).toBe(
+      bundledManifest + exportEntryText
+    )
+
+    // The entry extends the bundled chain head — the linkage the verifier
+    // checks before trusting the entry's scope.
+    const entry = JSON.parse(exportEntryText) as Record<string, unknown>
+    const bundledLines = bundledManifest.split('\n').filter((l) => l.trim())
+    const bundledHead = JSON.parse(bundledLines[bundledLines.length - 1]) as Record<string, unknown>
+    expect(entry.type).toBe('export')
+    expect(entry.prevHash).toBe(bundledHead.entryHash)
+    expect(entry.index).toBe((bundledHead.index as number) + 1)
+    expect(typeof entry.signature).toBe('string')
+
+    // The entryHash recomputes over the canonical body (minus hash + signature).
+    const { entryHash, signature: _sig, ...body } = entry
+    void _sig
+    expect(createHash('sha256').update(canonicalStringify(body)).digest('hex')).toBe(entryHash)
+
+    // Outside artifacts (and therefore outside packageHash, whose recipe covers
+    // exactly the artifact list — pinned by the packageHash recompute test).
+    const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+      artifacts: Array<{ path: string }>
+    }
+    expect(evidence.artifacts.some((a) => a.path === 'export-entry.json')).toBe(false)
+  })
+
+  it('omits scope and captureIds entirely on a case-scoped export entry', async () => {
+    await ingest(caseId, '<html><body>Case scoped</body></html>', 'https://example.com', 'C')
+
+    const outputPath = join(tempDir, 'case-scoped-evidence.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test User',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    // Raw line, not the parsed object: the omission is a byte-level property —
+    // present-means-selection is what keeps case-scoped entries hash-identical
+    // to pre-scope ones (#398 intake ruling).
+    const line = readStoredZipEntries(outputPath).get('export-entry.json')!.toString('utf-8')
+    expect(line).not.toContain('"scope"')
+    expect(line).not.toContain('"captureIds"')
+  })
+
+  // #398 acceptance criteria 1 and 4: artifact membership follows the
+  // selection, the manifest ships complete regardless, and a case with a
+  // deletion still exports and reconciles end to end.
+  it('selection export packages only the selection while the manifest ships complete', async () => {
+    const { capture: selected } = await ingest(
+      caseId,
+      '<html><body>Selected</body></html>',
+      'https://example.com/selected',
+      'Selected'
+    )
+    const { capture: unselected } = await ingest(
+      caseId,
+      '<html><body>Unselected</body></html>',
+      'https://example.com/unselected',
+      'Unselected'
+    )
+    const { capture: doomed } = await ingest(
+      caseId,
+      '<html><body>Doomed</body></html>',
+      'https://example.com/doomed',
+      'Doomed'
+    )
+    await captureLifecycle.delete(doomed.id, 'no longer needed')
+
+    const caseDir = join(tempDir, 'captures', caseId)
+    const outputPath = join(tempDir, 'selection-evidence.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test User',
+        outputPath,
+        captureIds: [selected.id]
+      },
+      captureLifecycle
+    )
+
+    const entries = readStoredZipEntries(outputPath)
+
+    // Artifact membership follows the selection...
+    expect([...entries.keys()].filter((k) => k.startsWith('pages/'))).toEqual([
+      `pages/${selected.id}.mhtml`
+    ])
+    // ...while the bundled manifest is the complete chain: the unselected
+    // capture and the deletion both remain visible in it.
+    const bundledManifest = entries.get('manifest.jsonl')!.toString('utf-8')
+    expect(bundledManifest).toContain(unselected.id)
+    expect(bundledManifest).toContain(doomed.id)
+    expect(bundledManifest).toContain('"type":"deletion"')
+
+    // The signed entry records the scope, and only the selection is verified.
+    const entry = JSON.parse(entries.get('export-entry.json')!.toString('utf-8')) as {
+      scope: string
+      captureIds: string[]
+      verificationResult: { captureCount: number; verifiedCount: number }
+    }
+    expect(entry.scope).toBe('selection')
+    expect(entry.captureIds).toEqual([selected.id])
+    expect(entry.verificationResult).toMatchObject({ captureCount: 1, verifiedCount: 1 })
+    expect(readFileSync(join(caseDir, 'manifest.jsonl'), 'utf-8')).toBe(
+      bundledManifest + entries.get('export-entry.json')!.toString('utf-8')
+    )
+
+    // The index covers the selection, and deliberately unselected captures are
+    // NOT reported as unreconciled chain orphans (#580 stays for real orphans).
+    const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+      captures: Array<{ id: string }>
+      warnings: { unreconciledChainCaptureCount: number }
+    }
+    expect(evidence.captures.map((c) => c.id)).toEqual([selected.id])
+    expect(evidence.warnings.unreconciledChainCaptureCount).toBe(0)
+
+    // The report states the ADR-0009 reconciliation plainly.
+    const report = entries.get('report.html')!.toString('utf-8')
+    expect(report).toContain('Selection-scoped export')
+    expect(report).toContain('export-entry.json')
+    expect(report).toContain('1 of the')
+  })
+
+  it('states the selection scope in a standalone HTML export without package-only copy', async () => {
+    const { capture: selected } = await ingest(
+      caseId,
+      '<html><body>Selected</body></html>',
+      'https://example.com/selected',
+      'Selected'
+    )
+    await ingest(
+      caseId,
+      '<html><body>Unselected</body></html>',
+      'https://example.com/unselected',
+      'Unselected'
+    )
+
+    const outputPath = join(tempDir, 'selection-report.html')
+    await generateReport(
+      caseId,
+      {
+        format: 'html',
+        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+        investigatorName: 'Test User',
+        outputPath,
+        captureIds: [selected.id]
+      },
+      captureLifecycle
+    )
+
+    const html = readFileSync(outputPath, 'utf-8')
+    expect(html).toContain('Selection-scoped export')
+    expect(html).toContain('1 of the')
+    // A standalone report encloses nothing, so the packaged-manifest sentence
+    // (and its export-entry.json reference) must not appear.
+    expect(html).not.toContain('export-entry.json')
+  })
+
+  it('rejects a selection naming captures the case does not hold', async () => {
+    await ingest(caseId, '<html><body>Only capture</body></html>', 'https://example.com', 'Only')
+
+    await expect(
+      generateReport(
+        caseId,
+        {
+          format: 'zip',
+          include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+          investigatorName: 'Test User',
+          outputPath: join(tempDir, 'never-written.zip'),
+          captureIds: ['not-a-real-capture-id']
+        },
+        captureLifecycle
+      )
+    ).rejects.toThrow(/not-a-real-capture-id/)
+    expect(existsSync(join(tempDir, 'never-written.zip'))).toBe(false)
+  })
+
+  it('rejects an empty selection', async () => {
+    await ingest(caseId, '<html><body>Only capture</body></html>', 'https://example.com', 'Only')
+
+    await expect(
+      generateReport(
+        caseId,
+        {
+          format: 'zip',
+          include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+          investigatorName: 'Test User',
+          outputPath: join(tempDir, 'never-written.zip'),
+          captureIds: []
+        },
+        captureLifecycle
+      )
+    ).rejects.toThrow(/at least one capture/)
+  })
+
+  it('rolls the export entry back when the zip write fails', async () => {
+    await ingest(caseId, '<html><body>Rollback check</body></html>', 'https://example.com', 'R')
+
+    const caseDir = join(tempDir, 'captures', caseId)
+    const headBefore = getManifestHead(caseDir)
+    // A directory as outputPath makes writeFileSync throw AFTER the entry was
+    // appended — the manifest must not keep recording an export that produced
+    // no package.
+    const dirAsOutput = join(tempDir, 'i-am-a-directory')
+    mkdirSync(dirAsOutput)
+
+    await expect(
+      generateReport(
+        caseId,
+        {
+          format: 'zip',
+          include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
+          investigatorName: 'Test User',
+          outputPath: dirAsOutput
+        },
+        captureLifecycle
+      )
+    ).rejects.toThrow()
+
+    expect(getManifestHead(caseDir)).toEqual(headBefore)
   })
 
   it('content-addresses screenshots into screenshots/<sha256>.png and records them in artifacts[] (#118)', async () => {
@@ -860,9 +1112,12 @@ describe('export', () => {
     })
   })
 
-  it('deletes the written zip when the export audit append throws', async () => {
+  it('writes no zip when the export audit append throws', async () => {
     await ingest(caseId, '<html><body>Orphan check</body></html>', 'https://example.com', 'O')
 
+    // The entry is appended BEFORE the zip is written (#398, so its signed line
+    // can be packaged as export-entry.json), so a signing failure leaves no
+    // orphaned package behind — nothing has been written at all.
     const spy = vi.spyOn(manifest, 'appendManifestEntry').mockImplementation(() => {
       throw new Error('signing key failure')
     })

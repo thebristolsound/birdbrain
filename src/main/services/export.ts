@@ -1,5 +1,4 @@
 import { existsSync, writeFileSync } from 'fs'
-import { unlink } from 'fs/promises'
 import { createHash } from 'crypto'
 import { join } from 'path'
 import * as caseRepo from '@main/services/db/caseRepo'
@@ -17,10 +16,15 @@ import {
   createArtifactAccumulator,
   initManifest,
   packageHash as computePackageHash,
-  readManifestSnapshot
+  readManifestSnapshot,
+  rollbackManifestEntry
 } from '@main/services/manifest'
 import { buildTrustedTimeIndex } from '@main/services/trustedTime'
-import type { ExportVerificationResult, ManifestSnapshot } from '@main/services/manifest'
+import type {
+  ArtifactAccumulator,
+  ExportVerificationResult,
+  ManifestSnapshot
+} from '@main/services/manifest'
 import { createStoredZip } from '@main/services/zip'
 import {
   getTsaTrustBundle,
@@ -67,11 +71,10 @@ interface ManifestTimestampEntry {
 }
 
 export async function verifyCaptures(
-  caseId: string,
+  captures: Capture[],
   captureLifecycle: CaptureLifecycle,
   onItem?: (done: number, total: number) => void
 ): Promise<HashVerification[]> {
-  const captures = captureRepo.listCaptures(caseId)
   const results: HashVerification[] = []
   for (const [index, capture] of captures.entries()) {
     // Delegate to the MHTML-aware pipeline so export-time verification matches the
@@ -192,12 +195,18 @@ export function resolveEntrySignatures(
 }
 
 /**
- * Chain-vs-package reconciliation (#580). The manifest is append-only, so a
+ * Chain-vs-case reconciliation (#580). The manifest is append-only, so a
  * capture entry with no matching deletion entry is a standing claim that the
- * case still holds that capture. If such a capture is not in the package, the
- * chain and the contents disagree and a reader has no way to account for the
+ * case still holds that capture. If the case does not hold it, the chain and
+ * the tool's own records disagree and a reader has no way to account for the
  * difference — which is what a third-party review of an alpha export found,
  * reading it as unexplained missing evidence.
+ *
+ * `caseCaptures` is the FULL live capture list, never a selection-scoped
+ * subset (#398, ADR-0009): a capture the operator deliberately left out of a
+ * selection export is accounted for by the signed export entry's scope, not an
+ * orphan — reporting it here would present designed behaviour as a gap and
+ * bury real orphans in noise.
  *
  * Resolved once, from the same snapshot, and consumed by both report.html and
  * evidence.json. Two derivations could disagree, and a document that contradicts
@@ -208,13 +217,13 @@ export function resolveEntrySignatures(
  * refuse to export it.
  */
 export function resolveUnreconciledChainCaptures(
-  captures: Capture[],
+  caseCaptures: Capture[],
   entries: Record<string, unknown>[]
 ): string[] {
   const deletedCaptureIds = new Set(
     entries.filter((e) => e.type === 'deletion').map((e) => e.captureId)
   )
-  const packagedCaptureIds = new Set(captures.map((c) => c.id))
+  const heldCaptureIds = new Set(caseCaptures.map((c) => c.id))
   return [
     ...new Set(
       entries
@@ -222,7 +231,7 @@ export function resolveUnreconciledChainCaptures(
         .map((e) => e.captureId)
         .filter(
           (id): id is string =>
-            typeof id === 'string' && !deletedCaptureIds.has(id) && !packagedCaptureIds.has(id)
+            typeof id === 'string' && !deletedCaptureIds.has(id) && !heldCaptureIds.has(id)
         )
     )
   ]
@@ -257,7 +266,9 @@ export async function generateReport(
   if (!caseData) throw new Error(`Case not found: ${caseId}`)
 
   onProgress?.('Loading captures...', 10)
-  const captures = captureRepo.listCaptures(caseId)
+  const allCaptures = captureRepo.listCaptures(caseId)
+  const captures = resolveScopedCaptures(allCaptures, options.captureIds)
+  const scoped = options.captureIds !== undefined
 
   // Build export data
   const data: ExportData = {
@@ -289,14 +300,17 @@ export async function generateReport(
     trustedTimeByCaptureId: new Map(),
     entrySignatureByCaptureId: new Map(),
     unreconciledChainCaptureIds: [],
-    tsaTrustAnchorBundled: getTsaTrustBundle(settings.tsaUrl).bundled
+    tsaTrustAnchorBundled: getTsaTrustBundle(settings.tsaUrl).bundled,
+    selectionScope: scoped
+      ? { selectedCaptureCount: captures.length, caseCaptureCount: allCaptures.length }
+      : null
   }
 
   if (options.include.auditTrail) {
     onProgress?.('Verifying capture integrity...', 10)
     // Per-item progress across the 10–50% band so a large case advances
     // continuously instead of parking on a single milestone.
-    data.verifications = await verifyCaptures(caseId, captureLifecycle, (done, total) =>
+    data.verifications = await verifyCaptures(captures, captureLifecycle, (done, total) =>
       onProgress?.(`Verifying capture ${done} of ${total}...`, 10 + Math.round((done / total) * 40))
     )
   }
@@ -361,41 +375,62 @@ export async function generateReport(
   data.preflight = trustedTime.preflight
   data.trustedTimeByCaptureId = trustedTime.byCaptureId
   data.entrySignatureByCaptureId = resolveEntrySignatures(captures, manifest.entries)
-  data.unreconciledChainCaptureIds = resolveUnreconciledChainCaptures(captures, manifest.entries)
+  // Reconciled against the FULL case, not the exported selection — see the
+  // resolver's comment for why a deliberately unselected capture is no orphan.
+  data.unreconciledChainCaptureIds = resolveUnreconciledChainCaptures(allCaptures, manifest.entries)
 
   onProgress?.('Generating report...', 80)
   const html = buildHtmlReport(data, options)
 
   if (options.format === 'zip') {
     onProgress?.('Packaging evidence...', 90)
-    const { zip, packageHash, verificationResult } = buildEvidenceZip(caseId, data, html, manifest)
-    writeFileSync(options.outputPath, zip)
+    const { entries, packageHash, verificationResult } = buildEvidenceZip(
+      caseId,
+      data,
+      html,
+      manifest
+    )
 
     // Record the export as a signed, hash-chained audit entry (#124). Ordering
-    // is deliberate: the evidence (and thus packageHash) is built from the
+    // is deliberate: the entries (and thus packageHash) are built from the
     // manifest tail BEFORE this append, so packageHash does not — and must not —
     // cover this entry. The bundled manifest.jsonl copy therefore lags the live
-    // case manifest by exactly this one entry; that is acceptable because
-    // packageHash commits to artifact content, not to the manifest.
+    // case manifest by exactly this one entry; the entry itself ships beside it
+    // as export-entry.json, so a reviewer can still reconcile the two files.
     //
-    // The append happens after the .zip is written. If it throws (signing key
-    // failure, disk error), best-effort delete the orphaned package so we never
-    // leave a zip on disk without its corresponding audit entry, then re-throw.
+    // Write-ahead + rollback (#398): the entry is appended BEFORE the zip is
+    // written so its signed line can be packaged. If the append throws, nothing
+    // has been written; if the zip write then fails, the manifest is truncated
+    // back to its anchor so it never records an export that produced no
+    // package. Everything between the snapshot read above and this append is
+    // synchronous, so the entry's prevHash is the bundled chain head — the link
+    // the verifier checks before trusting the entry's scope.
     const caseDir = join(getStorageRoot(), caseId)
     initManifest(caseDir)
+    const appended = appendManifestEntry(caseDir, {
+      type: 'export',
+      caseId,
+      timestamp: data.exportTimestamp,
+      operatorId: data.installationId,
+      operatorName: data.operatorName,
+      toolVersion: resolveToolVersion(),
+      packageHash,
+      verificationResult,
+      // Omitted — never ''/[]/null — on case-scoped exports so their entries
+      // stay byte-identical to pre-scope ones (#398, ADR-0009).
+      ...(scoped ? { scope: 'selection' as const, captureIds: captures.map((c) => c.id) } : {})
+    })
     try {
-      appendManifestEntry(caseDir, {
-        type: 'export',
-        caseId,
-        timestamp: data.exportTimestamp,
-        operatorId: data.installationId,
-        operatorName: data.operatorName,
-        toolVersion: resolveToolVersion(),
-        packageHash,
-        verificationResult
-      })
+      // The signed line itself, unshifted exactly like evidence.json: outside
+      // `artifacts` and outside packageHash, which was computed before the
+      // entry existed — covering it would be circular. This is the package's
+      // trusted statement of its own scope: the verifier checks its signature,
+      // its prevHash against the bundled chain head, and its recomputed
+      // entryHash before trusting captureIds (#398).
+      entries.unshift({ name: 'export-entry.json', data: appended.line })
+      writeFileSync(options.outputPath, createStoredZip(entries))
     } catch (err) {
-      await unlink(options.outputPath).catch(() => {})
+      rollbackManifestEntry(caseDir, appended.anchorBytes)
       throw err
     }
   } else {
@@ -404,8 +439,31 @@ export async function generateReport(
   onProgress?.('Complete', 100)
 }
 
+/**
+ * Resolves the exported capture set (#398). A selection must name at least one
+ * capture and every id must exist in the case: silently narrowing what the
+ * operator asked to export would sign a scope the operator never chose.
+ */
+function resolveScopedCaptures(allCaptures: Capture[], captureIds?: string[]): Capture[] {
+  if (captureIds === undefined) return allCaptures
+  if (captureIds.length === 0) {
+    throw new Error('Selection-scoped export requires at least one capture')
+  }
+  const selected = new Set(captureIds)
+  const captures = allCaptures.filter((c) => selected.has(c.id))
+  if (captures.length !== selected.size) {
+    const found = new Set(captures.map((c) => c.id))
+    const missing = [...selected].filter((id) => !found.has(id))
+    throw new Error(`Selected captures not found in this case: ${missing.join(', ')}`)
+  }
+  return captures
+}
+
 interface EvidenceZipResult {
-  zip: Buffer
+  // Zip entries ready for createStoredZip. Returned unwritten so the caller can
+  // append the export manifest entry first and unshift its signed line as
+  // export-entry.json before sealing the package (#398).
+  entries: ArtifactAccumulator['entries']
   packageHash: string
   verificationResult: ExportVerificationResult
 }
@@ -579,6 +637,9 @@ function buildEvidenceZip(
       manifestPath: 'manifest.jsonl',
       manifestHeadIndex: latestManifestEntry?.index ?? null,
       manifestHeadHash: latestManifestEntry?.entryHash ?? null,
+      // Informational pointer only: the file is unshifted by generateReport
+      // after this index is built, and the verifier reads it by its fixed name.
+      exportEntryPath: 'export-entry.json',
       signingPublicKeyPath: 'signing-public-key.pem',
       tsaRootPath: tsaTrust.bundled ? TSA_ROOT_FILENAME : null,
       tsaRootSha256: tsaTrust.rootSha256 ?? null,
@@ -614,7 +675,7 @@ function buildEvidenceZip(
     missingCount: data.verifications.filter((v) => v.status === 'missing').length
   }
 
-  return { zip: createStoredZip(entries), packageHash, verificationResult }
+  return { entries, packageHash, verificationResult }
 }
 
 /**

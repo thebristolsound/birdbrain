@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Forensic capture report — Pre-scope Fixture Case</title>
+<style>
+@page { size: letter; margin: 0.75in 0.7in 0.9in; }
+
+:root {
+  --ink: #09090b;
+  --ink-2: #18181b;
+  --ink-3: #3f3f46;
+  --ink-4: #52525b;
+  --muted: #71717a;
+  --faint: #a1a1aa;
+  --hair: #e4e4e7;
+  --rule: #d4d4d8;
+  --wash: #f4f4f5;
+  --sans: Inter, "Inter Variable", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body {
+  font-family: var(--sans);
+  font-size: 11pt;
+  line-height: 1.55;
+  color: var(--ink-2);
+  background: #fff;
+  max-width: 7.1in;
+  margin: 0 auto;
+  padding: 0.75in 0.7in 0.9in;
+  text-wrap: pretty;
+}
+@media print { body { max-width: none; padding: 0; } }
+
+.mono, code { font-family: var(--mono); font-size: 0.92em; }
+code { background: none; }
+a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
+a:hover { color: var(--ink-4); }
+.break { overflow-wrap: anywhere; }
+.nowrap { white-space: nowrap; }
+.fine { font-size: 9.5pt; line-height: 1.5; color: var(--ink-3); margin-top: 10pt; }
+em { font-style: italic; }
+strong, .strong { font-weight: 650; color: var(--ink); }
+
+/* Sheets ---------------------------------------------------------------- */
+.sheet { break-after: page; page-break-after: always; }
+.sheet:last-of-type { break-after: auto; page-break-after: auto; }
+.exhibit { break-inside: auto; }
+
+/* On screen the page breaks are invisible, so sections would otherwise run
+   together with nothing between them. Separate them with a rule and space, and
+   give the document room to breathe at the end — print keeps its own geometry. */
+@media screen {
+  .sheet + .sheet { border-top: 1px solid var(--rule); margin-top: 34pt; padding-top: 30pt; }
+  body { padding-bottom: 3rem; }
+  .running { margin-top: 34pt; }
+}
+
+/* Cover ----------------------------------------------------------------- */
+.wordmark { display: flex; justify-content: space-between; align-items: baseline; }
+.wordmark-name { font-size: 12pt; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink); }
+.wordmark-kind { font-family: var(--mono); font-size: 8pt; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.rule-heavy { height: 3px; background: var(--ink); margin: 9pt 0 24pt; }
+.rule-medium { height: 2px; background: var(--ink); margin: 4pt 0 13pt; }
+.rule-medium.tight { margin: 10pt 0 0; }
+.rule-top { border-top: 1px solid var(--ink); }
+.eyebrow { font-size: 7.5pt; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); margin-bottom: 7pt; }
+.eyebrow.spaced { margin-top: 22pt; }
+.case-name { font-size: 25pt; line-height: 1.15; font-weight: 700; letter-spacing: -0.02em; color: var(--ink); }
+.case-desc { font-size: 11.5pt; line-height: 1.5; color: var(--ink-3); margin-top: 10pt; max-width: 58ch; }
+
+.field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 30pt; }
+.field { border-bottom: 1px solid var(--hair); padding: 8pt 0; min-width: 0; }
+.field.wide { grid-column: 1 / -1; }
+.field-label { font-size: 7pt; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+.field-value { font-size: 10.5pt; line-height: 1.4; color: var(--ink); margin-top: 3pt; overflow-wrap: anywhere; }
+.field-value .sub { display: block; font-size: 9pt; line-height: 1.45; color: var(--ink-4); margin-top: 2pt; }
+
+.attest-box { border: 1px solid var(--ink); padding: 12pt 13pt; margin-top: 22pt; }
+.box-title { font-size: 7.5pt; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink); }
+.tally { display: flex; flex-wrap: wrap; gap: 20pt; margin-top: 9pt; }
+.tally-value { font-size: 17pt; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+.tally-label { font-size: 8pt; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-4); margin-top: 1pt; }
+.box-note { font-size: 9pt; line-height: 1.5; color: var(--ink-3); border-top: 1px solid var(--hair); margin-top: 10pt; padding-top: 8pt; }
+
+/* Headings & prose ------------------------------------------------------ */
+h2 { font-size: 15pt; font-weight: 700; letter-spacing: -0.01em; color: var(--ink); }
+.sheet > p { margin-top: 9pt; }
+.micro-heading { font-size: 7pt; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin-top: 15pt; margin-bottom: 5pt; }
+
+/* Contents -------------------------------------------------------------- */
+.toc { list-style: none; }
+.toc-row { display: flex; align-items: baseline; gap: 8pt; padding: 6pt 0; border-bottom: 1px solid var(--wash); }
+.toc-label { font-size: 10.5pt; color: var(--ink); }
+
+/* Scope ----------------------------------------------------------------- */
+.scope-row { display: grid; grid-template-columns: 1.15in 1fr; gap: 15pt; padding: 9pt 0; border-bottom: 1px solid var(--hair); break-inside: avoid; }
+.scope-row dt { font-size: 7.5pt; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink); }
+.scope-row dd { font-size: 10.5pt; line-height: 1.5; color: var(--ink-2); }
+
+/* Steps ----------------------------------------------------------------- */
+.steps { list-style: none; counter-reset: step; }
+/* Deliberately not a grid. These items carry inline <strong> and <code>, and every inline
+   child of a grid container becomes its own grid item — the prose landed in the 20pt counter
+   column and wrapped one word per line (#633). Absolute positioning keeps the same 32pt
+   indent without making the item a container. */
+.steps > li { counter-increment: step; position: relative; padding: 8pt 0 8pt 32pt; border-bottom: 1px solid var(--hair); break-inside: avoid; font-size: 10.5pt; line-height: 1.5; }
+.steps > li::before { content: counter(step); position: absolute; left: 0; top: 8pt; font-family: var(--mono); font-weight: 700; color: var(--ink); }
+
+/* Notes & alerts (greyscale-safe: weight and rules carry the emphasis) --- */
+.note { border-left: 3px solid var(--ink); padding: 8pt 0 8pt 11pt; margin-top: 13pt; break-inside: avoid; }
+.note-title { font-size: 7.5pt; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink); }
+.note p + p, .note-title + p { font-size: 9.5pt; line-height: 1.5; color: var(--ink-2); margin-top: 4pt; }
+.alert { border: 2px solid var(--ink); padding: 10pt 12pt; margin-top: 13pt; break-inside: avoid; }
+.alert-title { font-size: 8.5pt; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink); }
+.alert p + p { font-size: 9.5pt; line-height: 1.5; margin-top: 5pt; }
+
+/* Index table ----------------------------------------------------------- */
+table.index { width: 100%; border-collapse: collapse; margin-top: 13pt; }
+table.index th { text-align: left; font-size: 7pt; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-4); padding: 0 6pt 5pt 0; border-bottom: 1.5px solid var(--ink); }
+table.index td { vertical-align: top; padding: 8pt 6pt 8pt 0; border-bottom: 1px solid var(--hair); font-size: 9.5pt; }
+table.index th:last-child, table.index td:last-child { padding-right: 0; }
+table.index tr { break-inside: avoid; }
+td.num, th.num { width: 22pt; font-weight: 700; color: var(--ink); }
+.ex-title { display: block; font-size: 10pt; font-weight: 600; color: var(--ink); line-height: 1.3; }
+.ex-url { display: block; font-size: 8pt; color: var(--ink-4); margin-top: 2pt; overflow-wrap: anywhere; }
+.state-primary { display: block; font-size: 8pt; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); }
+.state-secondary { display: block; font-size: 8pt; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-4); margin-top: 2pt; }
+
+.legend { border: 1px solid var(--rule); margin-top: 18pt; break-inside: avoid; }
+.legend .box-title { padding: 8pt 11pt; border-bottom: 1px solid var(--rule); background: var(--wash); }
+.legend-row { display: grid; grid-template-columns: 0.95in 1fr; gap: 12pt; padding: 6pt 11pt; font-size: 9.5pt; line-height: 1.45; }
+.legend-row span:first-child { font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+
+/* Exhibits -------------------------------------------------------------- */
+.exhibit-head { display: flex; align-items: baseline; gap: 9pt; }
+.exhibit-tag { font-size: 8.5pt; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: #fff; background: var(--ink); padding: 3pt 7pt; }
+.exhibit-of { font-size: 8pt; letter-spacing: 0.06em; color: var(--muted); }
+.exhibit-title { font-size: 16pt; font-weight: 700; line-height: 1.25; letter-spacing: -0.01em; color: var(--ink); margin-top: 9pt; }
+.exhibit-url { font-size: 9.5pt; font-family: var(--mono); line-height: 1.4; color: var(--ink-2); margin-top: 4pt; overflow-wrap: anywhere; }
+
+/* Two-column exhibit plate: metadata rail beside the reproduced image. The
+   columns are independent, so a long rail and a tall image each flow without
+   clipping the other. min-width:0 on both keeps long digests and URLs from
+   forcing the grid wider than the sheet. */
+.plate-grid { display: grid; grid-template-columns: 2.3in 1fr; gap: 0 24pt; margin-top: 14pt; align-items: start; }
+.rail, .plate-main { min-width: 0; }
+.rail { border-top: 1px solid var(--ink); }
+.rail .micro-heading { margin-top: 13pt; margin-bottom: 3pt; }
+.rail .micro-heading.first { margin-top: 7pt; }
+.rail-row { border-bottom: 1px solid var(--hair); padding: 5pt 0; }
+.rail-label { font-size: 6.5pt; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.rail-value { font-size: 9pt; line-height: 1.4; color: var(--ink); margin-top: 2pt; overflow-wrap: anywhere; }
+.rail-value .sub { display: block; font-size: 8pt; line-height: 1.45; color: var(--ink-4); margin-top: 3pt; }
+.rail-value .strong { font-size: 9.5pt; }
+.plate-main > .alert:first-child, .plate-main > .plate:first-child { margin-top: 0; }
+
+.plate { margin-top: 14pt; break-inside: avoid; }
+.plate-frame { border: 1px solid var(--ink); background: var(--wash); padding: 7pt; }
+.plate-frame img { display: block; width: 100%; height: auto; max-height: 6.4in; object-fit: contain; object-position: top; }
+.plate figcaption { margin-top: 6pt; border-bottom: 1px solid var(--rule); padding-bottom: 6pt; }
+.cap-text { display: block; font-size: 9.5pt; line-height: 1.45; color: var(--ink-2); }
+.cap-meta { display: block; font-size: 8pt; line-height: 1.45; color: var(--ink-4); overflow-wrap: anywhere; margin-top: 3pt; }
+.legend-block { break-inside: avoid; }
+.pins { padding-left: 16pt; font-size: 9.5pt; line-height: 1.5; }
+.pins li { margin-top: 3pt; }
+
+/* Signature ------------------------------------------------------------- */
+.tbd { border: 2px dashed var(--muted); padding: 9pt 11pt; margin-top: 13pt; break-inside: avoid; }
+.tbd-title { font-size: 7.5pt; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-3); }
+.tbd p + p { font-size: 9.5pt; line-height: 1.5; color: var(--ink-3); margin-top: 4pt; }
+.sig-grid { display: grid; grid-template-columns: 1fr 1.7in; gap: 32pt; margin-top: 40pt; break-inside: avoid; }
+.sig-line { border-top: 1px solid var(--ink); padding-top: 5pt; }
+.sig-caption { display: block; font-size: 7.5pt; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-4); }
+.sig-name { display: block; font-size: 10pt; color: var(--ink); margin-top: 7pt; }
+
+/* Running footer: position:fixed repeats on every printed page. No page
+   number here — see PDF_FOOTER_TEMPLATE for numbered output. */
+.running { display: flex; justify-content: space-between; gap: 16pt; font-size: 7.5pt; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); border-top: 1px solid var(--hair); padding-top: 7pt; margin-top: 24pt; }
+@media print {
+  .running { position: fixed; bottom: 0; left: 0; right: 0; margin: 0; padding: 5pt 0; background: #fff; }
+}
+
+/* Narrow screens ---------------------------------------------------------
+   Every multi-column grid above is sized in inches for paper. Below roughly a
+   sheet's text width those columns stop working — a 2.3in rail leaves too
+   little for the plate, and 64-character digests shred a half-width field. Fold
+   them to a single column on screen only; @page and print layout are untouched,
+   so this can never change what comes out of a printer. */
+@media screen and (max-width: 680px) {
+  body { padding: 1.25rem 1rem 3rem; font-size: 10.5pt; }
+  .field-grid, .plate-grid { grid-template-columns: 1fr; }
+  .plate-grid { gap: 0; }
+  .rail { border-top: none; }
+  .plate-main { margin-top: 16pt; }
+  .scope-row, .legend-row { grid-template-columns: 1fr; gap: 4pt; }
+  .sig-grid { grid-template-columns: 1fr; gap: 24pt; }
+  .tally { gap: 14pt; }
+  .case-name { font-size: 20pt; }
+  .exhibit-title { font-size: 14pt; }
+  /* The index table cannot fold, so let it scroll inside its own box rather
+     than forcing the whole document to scroll sideways. */
+  table.index { display: block; overflow-x: auto; white-space: nowrap; }
+  table.index td, table.index th { white-space: normal; }
+  .running { flex-direction: column; gap: 3pt; }
+}
+</style>
+</head>
+<body>
+
+<section class="sheet cover">
+  <header class="wordmark">
+    <span class="wordmark-name">Birdbrain</span>
+    <span class="wordmark-kind">Forensic capture report</span>
+  </header>
+  <div class="rule-heavy"></div>
+
+  <p class="eyebrow">Case</p>
+  <h1 class="case-name">Pre-scope Fixture Case</h1>
+  <p class="case-desc">frozen #398 fixture</p>
+
+  <div class="field-grid rule-top">
+    <div class="field">
+    <div class="field-label">Case identifier</div>
+    <div class="field-value"><span class="mono break">933cc1e8-8e53-4e66-871b-34be709d79f2</span></div>
+  </div>
+    <div class="field">
+    <div class="field-label">Capture period (UTC)</div>
+    <div class="field-value"><span class="mono break">2026-08-24T10:00:00Z — 2026-08-24T10:00:00Z</span></div>
+  </div>
+    <div class="field">
+    <div class="field-label">Captures in package</div>
+    <div class="field-value">1 (Exhibits 1–1)</div>
+  </div>
+    <div class="field">
+    <div class="field-label">Report generated</div>
+    <div class="field-value"><span class="mono break">2026-08-24T08:32:42Z (8/24/2026, 1:32:42 AM)</span></div>
+  </div>
+  </div>
+
+  <p class="eyebrow spaced">Custody</p>
+  <div class="field-grid rule-top">
+    <div class="field">
+    <div class="field-label">Investigator (self-asserted)</div>
+    <div class="field-value">Fixture User</div>
+  </div>
+    <div class="field">
+    <div class="field-label">Operator (self-asserted)</div>
+    <div class="field-value">Fixture Operator</div>
+  </div>
+    <div class="field">
+    <div class="field-label">Installation identifier</div>
+    <div class="field-value"><span class="mono break">f4bbafb6-0e46-4524-b272-662ed742c5aa</span></div>
+  </div>
+    <div class="field">
+    <div class="field-label">Tool / hash algorithm</div>
+    <div class="field-value">Birdbrain 1.0.1-beta.21 · SHA-256</div>
+  </div>
+  </div>
+
+  <p class="eyebrow spaced">Manifest reference</p>
+  <div class="rule-top">
+    <div class="field wide">
+    <div class="field-label">Manifest head at generation</div>
+    <div class="field-value"><span class="mono break">entry #4 · 44ca3f42cb2c43ca98235aa5f59b8421effea31edf23be03cd86fa2ac89c0220</span></div>
+  </div>
+    <div class="field wide">
+    <div class="field-label">Time-stamping authority (configured)</div>
+    <div class="field-value"><span class="mono break">http://timestamp.digicert.com</span></div>
+  </div>
+  </div>
+
+  <div class="attest-box">
+    <p class="box-title">Attested state of this package</p>
+    <div class="tally">
+      <div><div class="tally-value">1 / 1</div><div class="tally-label">Integrity verified</div></div>
+      <div><div class="tally-value">1 / 1</div><div class="tally-label">RFC 3161 trusted time</div></div>
+      <div><div class="tally-value">1 / 1</div><div class="tally-label">Page archive present</div></div>
+      <div><div class="tally-value">1</div><div class="tally-label">Distinct host</div></div>
+    </div>
+    <p class="box-note">The integrity count is produced by the verification run recorded under “Chain of custody”. Identity fields above are entered by the operator and are not authenticated by
+    Birdbrain. This report attests to the integrity and timing of stored bytes only — never to
+    the truthfulness of the captured content.</p>
+  </div>
+</section>
+
+<section class="sheet">
+  <h2>Contents</h2>
+  <div class="rule-medium"></div>
+  <ol class="toc"><li class="toc-row"><span class="toc-label">Scope and limitations</span></li><li class="toc-row"><span class="toc-label">Method of capture and preservation</span></li><li class="toc-row"><span class="toc-label">Chain of custody and manifest reference</span></li><li class="toc-row"><span class="toc-label">Exhibit index and verification results</span></li><li class="toc-row"><span class="toc-label">Exhibit 1 — Kept Page</span></li><li class="toc-row"><span class="toc-label">Independent verification instructions</span></li><li class="toc-row"><span class="toc-label">Operator statement and signature</span></li></ol>
+  <p class="fine">Page numbers are supplied by the printing engine rather than written into this
+  file, so that a printed copy can never disagree with its own index. Sections and exhibits are
+  listed in document order.</p>
+  <p class="fine">Companion files in this evidence package: <code>evidence.json</code>,
+  <code>manifest.jsonl</code>, <code>certification.html</code>,
+  <code>signing-public-key.pem</code>, <code>tsa-intermediates.pem</code>, <code>tsa-root.pem</code>, <code>VERIFY.md</code>,
+  and the <code>pages/</code>, <code>screenshots/</code> and <code>timestamps/</code>
+  directories.</p>
+</section>
+
+<section class="sheet">
+  <h2>Scope and limitations</h2>
+  <div class="rule-medium"></div>
+  <p>This report describes what Birdbrain recorded and what it can demonstrate about that
+  recording. It is deliberately narrow. A reader should treat the four statements below as the
+  boundary of the tool's assertions.</p>
+  <dl class="scope rule-top">
+    <div class="scope-row">
+      <dt>Is attested</dt>
+      <dd>Of each capture <em>whose exhibit records a verified result</em>: that its stored bytes
+      recompute to the recorded SHA-256 digest, and that the digest is bound into an append-only
+      hash-chained manifest. Where a timestamp token is retained, that the digest existed no later
+      than the time asserted by the named RFC 3161 authority. This is asserted per capture and
+      never for the package as a whole — the exhibit index states the result for each, and any
+      capture recorded there as altered, chain-broken, absent, legacy or not verified is excluded
+      from this statement.</dd>
+    </div>
+    <div class="scope-row">
+      <dt>Is not attested</dt>
+      <dd>The truthfulness, authorship or lawfulness of any captured page; the identity of the
+      person or entity operating a captured site; and the real-world identity of this tool's
+      operator. Operator name, role and organisation are entered by the operator and are not
+      cryptographically authenticated by Birdbrain.</dd>
+    </div>
+    <div class="scope-row">
+      <dt>Corroboration only</dt>
+      <dd>Where a TLS certificate chain or a public web-archive record appears in an exhibit it
+      is labelled as corroboration. It was obtained by contacting the origin or the archive
+      <em>after</em> storage, at the stated retrieval time, and is therefore not bound to the
+      captured transaction.</dd>
+    </div>
+    <div class="scope-row">
+      <dt>Clock basis</dt>
+      <dd>Capture times shown without an RFC 3161 token derive from the operator's local system
+      clock and carry no independent corroboration. Every exhibit states which basis applies to
+      it; no capture is presented as timestamped unless a token is retained for it.</dd>
+    </div>
+  </dl>
+</section>
+
+<section class="sheet">
+  <h2>Method of capture and preservation</h2>
+  <div class="rule-medium"></div>
+  <p>Each page was captured as a self-contained MHTML archive, so that the HTML, stylesheets,
+  scripts and images served at capture time are preserved together in one file rather than
+  re-fetched at reading time. The captured bytes were hashed with SHA-256 immediately on
+  storage.</p>
+  <p>Each digest was appended to a per-case manifest as a single-line entry containing the entry
+  index, the previous entry's hash and the hash of the entry itself. Because every entry commits
+  to its predecessor, altering a capture or removing, reordering or editing a manifest line
+  breaks the chain at that point and is detectable by recomputation.</p>
+  <p>Where trusted time is enabled, the capture content digest — not the page content — was
+  submitted to an RFC 3161 Time-Stamping Authority, and the returned token was retained beside
+  the capture and bundled under <code>timestamps/</code>. A token asserts that the digest existed
+  at or before the time the authority states; it says nothing about what the page contained or
+  who published it.</p>
+  <p>Screenshots are stored content-addressed: the file name of each image is its own SHA-256
+  digest, so an image reproduced in an exhibit can be matched to the packaged file by name alone. Where annotations were burned into an exhibit image for legibility, the exhibit says so and
+  the unannotated original remains the stored, digest-anchored copy.</p>
+</section>
+
+<section class="sheet">
+  <h2>Chain of custody and manifest reference</h2>
+  <div class="rule-medium"></div>
+  <p>Custody of this evidence is recorded in the manifest, not in this document. The values below
+  identify the exact manifest state this report was generated against.</p>
+  <div class="rule-top">
+    <div class="field wide">
+    <div class="field-label">Manifest file</div>
+    <div class="field-value"><code>manifest.jsonl</code> (append-only, hash-chained)</div>
+  </div>
+    <div class="field">
+    <div class="field-label">Head entry</div>
+    <div class="field-value"><span class="mono break">#4</span></div>
+  </div><div class="field">
+    <div class="field-label">Head entry hash (SHA-256, full)</div>
+    <div class="field-value"><span class="mono break">44ca3f42cb2c43ca98235aa5f59b8421effea31edf23be03cd86fa2ac89c0220</span></div>
+  </div>
+    <div class="field">
+    <div class="field-label">Signing key</div>
+    <div class="field-value"><code>signing-public-key.pem</code></div>
+  </div>
+    <div class="field">
+    <div class="field-label">Verification run</div>
+    <div class="field-value"><span class="mono break">2026-08-24T08:32:42Z · 1 of 1 verified</span></div>
+  </div>
+  </div>
+
+  
+  <div class="note">
+    <p class="note-title">Disclosed ordering artefact</p>
+    <p>The export event is written to the live case manifest after this package is sealed, so the
+    bundled copy of <code>manifest.jsonl</code> ends one entry earlier than the live case
+    manifest. The package hash recorded in that trailing entry commits to packaged file content,
+    not to the entry itself. This is disclosed so that a reviewer comparing the two files is not
+    misled by the difference.</p>
+  </div>
+  <div class="note">
+    <p class="note-title">Where the package hash lives</p>
+    <p>The package hash is deliberately absent from this report: report.html is itself one of the
+    hashed artefacts, so printing the hash here could not be self-consistent. It is recorded in
+    the export entry of the live case manifest and can be recomputed from the artefact list in
+    <code>evidence.json</code>.</p>
+  </div>
+</section>
+
+<section class="sheet">
+  <h2>Exhibit index and verification results</h2>
+  <div class="rule-medium"></div>
+  <p class="fine">Times are UTC. The digest column shows the first 16 hexadecimal characters of a
+  64-character SHA-256 digest and is truncated for layout only; the full digest for every exhibit
+  is printed on that exhibit's page and in <code>evidence.json</code>.</p>
+  
+  <table class="index">
+    <thead>
+      <tr>
+        <th class="num">Ex.</th><th>Captured (UTC)</th><th>Page title and URL</th>
+        <th>SHA-256 (first 16 of 64)</th><th>State</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="num">1</td>
+        <td class="mono nowrap">2026-08-24<br>10:00:00Z</td>
+        <td>
+          <span class="ex-title">Kept Page</span>
+          <span class="ex-url mono">https://example.com/kept</span>
+        </td>
+        <td class="mono break">84f3cb2ff70bb5e4</td>
+        <td class="state">
+          <span class="state-primary">Verified</span>
+          <span class="state-secondary">RFC 3161</span>
+        </td>
+      </tr></tbody>
+  </table>
+
+  <div class="legend">
+    <p class="box-title">How to read the state column</p>
+    <div class="legend-row"><span>Verified</span><span>Stored bytes recompute to the recorded digest and the manifest chain reconciles through this entry.</span></div>
+    <div class="legend-row"><span>Altered</span><span>Stored bytes no longer recompute to the recorded digest. The capture must not be relied upon.</span></div>
+    <div class="legend-row"><span>Chain broken</span><span>Bytes match, but the manifest chain does not reconcile at or before this entry.</span></div>
+    <div class="legend-row"><span>Absent</span><span>The stored artefact could not be read at verification time. The row is retained rather than removed.</span></div>
+    <div class="legend-row"><span>Legacy record</span><span>The capture predates the hash-chained manifest; its digest is recorded but not chain-bound.</span></div>
+    <div class="legend-row"><span>Local clock</span><span>No RFC 3161 token is retained; the capture time is the operator's system clock only.</span></div>
+  </div>
+</section>
+
+<section class="sheet exhibit">
+  <div class="exhibit-head">
+    <span class="exhibit-tag">Exhibit 1</span>
+    <span class="exhibit-of mono">of 1 · Verified · RFC 3161 · 2026-08-24T10:00:00Z</span>
+  </div>
+  <h3 class="exhibit-title">Kept Page</h3>
+  <p class="exhibit-url mono">https://example.com/kept</p>
+  <div class="rule-medium tight"></div>
+
+  <div class="plate-grid">
+    <aside class="rail">
+      <p class="micro-heading first">Record</p>
+      <div class="rail-row">
+    <div class="rail-label">Capture identifier</div>
+    <div class="rail-value"><span class="mono break">843600c0-0768-40e5-8db5-026433ddd4af</span></div>
+  </div>
+      <div class="rail-row">
+    <div class="rail-label">Captured at</div>
+    <div class="rail-value"><span class="mono break">2026-08-24T10:00:00Z<br>8/24/2026, 3:00:00 AM local</span></div>
+  </div>
+      <div class="rail-row">
+    <div class="rail-label">Capture SHA-256 (full)</div>
+    <div class="rail-value"><span class="mono break">84f3cb2ff70bb5e44b832d59e5830b55f0205c09a820a7ce03f6b0530ce77c90</span></div>
+  </div>
+      <div class="rail-row">
+    <div class="rail-label">Integrity at verification</div>
+    <div class="rail-value"><span class="strong">Verified</span><span class="sub">The stored bytes recompute to the recorded digest and the manifest chain reconciles at manifest entry #0.</span></div>
+  </div>
+      <div class="rail-row">
+    <div class="rail-label">Trusted time</div>
+    <div class="rail-value"><span class="strong">RFC 3161 token retained</span><span class="sub">tsa.example.com asserts that the capture content digest existed no later than 2026-08-24T10:01:00Z. The token attests to the digest only; it says nothing about what the page contained or who published it.</span></div>
+  </div>
+      <div class="rail-row">
+    <div class="rail-label">Entry signature</div>
+    <div class="rail-value"><span class="strong">Present</span><span class="sub">The manifest entry for this capture carries an RSA signature over its entry hash, verifiable against the enclosed public key.</span></div>
+  </div>
+
+      <p class="micro-heading">Stored artefacts</p>
+      <div class="rail-row">
+    <div class="rail-label">Page archive</div>
+    <div class="rail-value"><span class="mono break">pages/843600c0-0768-40e5-8db5-026433ddd4af.mhtml</span></div>
+  </div><div class="rail-row">
+    <div class="rail-label">Timestamp token</div>
+    <div class="rail-value"><span class="mono break">timestamps/843600c0-0768-40e5-8db5-026433ddd4af.tst</span></div>
+  </div><div class="rail-row">
+    <div class="rail-label">Screenshot</div>
+    <div class="rail-value"><span class="mono break">screenshots/66ecbd88502f8c8c7f29927ec9ae09dc3e74054022cb741f7611694049c5cfc7.png</span></div>
+  </div><div class="rail-row">
+    <div class="rail-label">Text digest</div>
+    <div class="rail-value"><span class="mono break">5cb72f90e968922d… (first 16 of 64)</span></div>
+  </div>
+
+      <p class="micro-heading">Recorded capture environment</p>
+      <div class="rail-row">
+    <div class="rail-label">Format</div>
+    <div class="rail-value">MHTML archive</div>
+  </div><div class="rail-row">
+    <div class="rail-label">Method</div>
+    <div class="rail-value">extension</div>
+  </div><div class="rail-row">
+    <div class="rail-label">HTTP status</div>
+    <div class="rail-value">200</div>
+  </div><div class="rail-row">
+    <div class="rail-label">Size</div>
+    <div class="rail-value">43 B (43 bytes)</div>
+  </div><div class="rail-row">
+    <div class="rail-label">Tool version</div>
+    <div class="rail-value">0.1.0</div>
+  </div><div class="rail-row">
+    <div class="rail-label">Manifest entry</div>
+    <div class="rail-value">#0</div>
+  </div>
+      
+      <div class="rail-row">
+    <div class="rail-label">Recorded operator</div>
+    <div class="rail-value">Fixture Operator · op<span class="sub"><em>Self-asserted; not authenticated by Birdbrain.</em></span></div>
+  </div>
+    </aside>
+
+    <div class="plate-main">
+      
+      <figure class="plate">
+    <div class="plate-frame"><img src="data:image/png;base64,a2VwdC1zY3JlZW5zaG90LXBuZy1ieXRlcw==" alt="Exhibit 1 screenshot"></div>
+    <figcaption>
+      <span class="cap-text"><strong>Exhibit 1, image.</strong> Rendered page as
+      captured.
+      Packaged copy: <code>screenshots/66ecbd88502f8c8c7f29927ec9ae09dc3e74054022cb741f7611694049c5cfc7.png</code>.</span>
+      <span class="cap-meta mono">image SHA-256 66ecbd88502f8c8c7f29927ec9ae09dc3e74054022cb741f7611694049c5cfc7</span>
+    </figcaption>
+  </figure>
+      
+      <div class="note">
+      <p class="note-title">Corroboration only — not bound to the capture</p>
+      <p>A TLS certificate chain was retrieved from the origin at 2026-08-24T08:32:42Z, after this capture was stored. It records the certificate served at that
+            retrieval time, not at capture time. The interval between the two is stated so that a
+            reviewer can weigh it.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sheet">
+  <h2>Independent verification instructions</h2>
+  <div class="rule-medium"></div>
+  <p>Nothing in this report needs to be taken on trust. A reviewer holding the evidence package
+  can reproduce every integrity claim it makes using standard tools. The full procedure,
+  including exact commands, is in <code>VERIFY.md</code>.</p>
+  
+  <ol class="steps rule-top">
+    <li><strong>Rehash each stored page.</strong> Compute the SHA-256 of each file in
+    <code>pages/</code> and compare it to that exhibit's digest in <code>evidence.json</code> and
+    on its exhibit page.</li>
+    <li><strong>Replay the manifest chain.</strong> Walk <code>manifest.jsonl</code> from the
+    first entry, recomputing each entry hash over its canonical form plus its predecessor's hash.
+    The chain must reconcile to the head hash printed under “Chain of custody”.</li>
+    <li><strong>Check the entry signatures.</strong> Verify each signed manifest entry against
+    <code>signing-public-key.pem</code>. This binds the entries to the installation identified on
+    the cover — not to any named person.</li>
+    <li><strong>Validate the timestamp tokens.</strong> For each <code>.tst</code> in
+    <code>timestamps/</code>, confirm the token's message imprint equals that exhibit's capture
+    digest and that its signing chain, built with <code>tsa-intermediates.pem</code>, terminates in
+    the self-signed root shipped as <code>tsa-root.pem</code>. That file is a convenience copy,
+    not an independent anchor: check its SHA-256 fingerprint against the authority’s published
+    value or your own trust store first (<code>VERIFY.md</code> step 6a prints the expected
+    fingerprint and the exact <code>openssl</code> command).</li>
+    <li><strong>Match the screenshots.</strong> Each file name in <code>screenshots/</code> is its
+    own digest; recomputing it confirms that the packaged image is the one the exhibit cites.</li>
+    <li><strong>Recompute the package hash.</strong> Hash the canonical, path-sorted artefact list
+    in <code>evidence.json</code> and compare it to the package hash in the export entry of the
+    live case manifest.</li>
+  </ol>
+  
+</section>
+
+<section class="sheet">
+  <h2>Operator statement and signature</h2>
+  <div class="rule-medium"></div>
+  <p>I generated this report from the Birdbrain case identified on the cover. I have not altered
+  the captures, the manifest or the packaged artefacts, and the counts and digests reproduced here
+  are those produced by the tool at the verification run recorded under “Chain of custody”.</p>
+  <div class="tbd">
+    <p class="tbd-title">Sworn declaration wording not supplied</p>
+    <p>The statement above is a factual operator statement, not a sworn declaration. Certifying
+    language for the applicable rule and jurisdiction must be supplied by counsel; it is not
+    asserted here and must not be inferred. See <code>certification.html</code> in this
+    package.</p>
+  </div>
+  <div class="sig-grid">
+    <div class="sig-line">
+      <span class="sig-caption">Signature of operator</span>
+      <span class="sig-name">Fixture Operator</span>
+    </div>
+    <div class="sig-line"><span class="sig-caption">Date</span></div>
+  </div>
+</section>
+<footer class="running">
+  <span>Birdbrain 1.0.1-beta.21 · report.html</span>
+  <span class="mono">Pre-scope Fixture Case · 2026-08-24T08:32:42Z</span>
+</footer>
+</body>
+</html>

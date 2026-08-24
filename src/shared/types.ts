@@ -627,6 +627,11 @@ export interface ExportOptions {
   }
   investigatorName: string
   outputPath: string
+  // Selection scope (#398, ADR-0009): when present, only these captures are
+  // exported as artifacts; the Manifest chain still ships complete. Absent
+  // means whole-case. Every id must exist in the case — the export refuses to
+  // silently narrow a selection.
+  captureIds?: string[]
 }
 
 export interface ExportPreflight {

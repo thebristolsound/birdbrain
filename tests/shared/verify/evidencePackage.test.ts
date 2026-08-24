@@ -6,6 +6,7 @@ import { Readable } from 'stream'
 import { createHash } from 'crypto'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
+import { insertCapture } from '@main/services/db/captureRepo'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
 import { appendManifestEntry, initManifest } from '@main/services/manifest'
 import { ingestMhtmlCapture, createCaptureLifecycle } from '@main/services/captureLifecycle'
@@ -13,7 +14,9 @@ import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { generateReport } from '@main/services/export'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
+import { signEntryHash } from '@main/services/signingKey'
 import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
+import { canonicalStringify } from '@shared/verify'
 import { EvidencePackageSchema } from '@shared/schemas'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 import type { ExportOptions } from '@shared/types'
@@ -221,6 +224,10 @@ describe('verifyEvidencePackage', () => {
     // The structural timestamp check passed and points to the runbook.
     expect(hasReason(result, 'openssl ts -verify')).toBe(true)
     expect(existsSync(join(pkgDir, 'VERIFY.md'))).toBe(true)
+    // A case-scoped package ships export-entry.json too (#398): validated when
+    // present, conferring no selection scope.
+    expect(result.checks.find((c) => c.name === 'export entry')?.status).toBe('pass')
+    expect(result.checks.find((c) => c.name === 'export scope')).toBeUndefined()
   })
 
   it('reports the resolved trusted-time axis (rfc3161 + TSA identity) in the timestamp check', () => {
@@ -597,8 +604,12 @@ describe('verifyEvidencePackage', () => {
 
     // Rebuild the package directory from the now-updated manifest, dropping the
     // deleted capture's content/screenshot/timestamp files and index entries.
+    // The packaged export-entry.json extended the ORIGINAL bundled head, so the
+    // hand-rebuilt manifest orphans it; drop it too — the rebuilt package takes
+    // the pre-scope layout, which must keep verifying without one (#398).
     const freshManifest = readFileSync(join(caseDir, 'manifest.jsonl'))
     writeFileSync(join(pkgDir, 'manifest.jsonl'), freshManifest)
+    rmSync(join(pkgDir, 'export-entry.json'))
     const evidence = JSON.parse(readFileSync(join(pkgDir, 'evidence.json'), 'utf-8'))
     const rec = evidence.captures.find((c: { id: string }) => c.id === captureId)
     // Remove the deleted capture's files.
@@ -627,6 +638,280 @@ describe('verifyEvidencePackage', () => {
 
     const result = verifyEvidencePackage(pkgDir)
     expect(result.pass, JSON.stringify(result.checks, null, 2)).toBe(true)
+  })
+
+  // #398 selection scope, built on the outer fixture: capture A (the outer
+  // captureId) plus B and C, with C deleted, then a selection export of [A].
+  // The chain in the selection package therefore holds captures A/B/C, a
+  // timestamp, C's deletion and the outer case export's entry — and the
+  // package must PASS with B reported as designed absence, while every edit
+  // that could smuggle a capture out keeps FAILing.
+  describe('selection-scoped packages', () => {
+    let selDir: string
+    let selZipPath: string
+    let captureB: string
+    let lifecycle: ReturnType<typeof createCaptureLifecycle>
+
+    const ingestPlain = async (url: string, body: string) => {
+      const { capture } = await ingestMhtmlCapture({
+        caseId,
+        url,
+        title: 'Page',
+        timestamp: '2026-04-05T12:05:00.000Z',
+        stream: Readable.from([Buffer.from(body)]) as unknown as ReadableStream<Uint8Array>,
+        textContent: 'text',
+        headers: {},
+        browserVersion: '',
+        userAgent: '',
+        httpStatus: 200,
+        extensionVersion: '',
+        operatorId: 'op',
+        operatorName: '',
+        toolVersion: '0.1.0'
+      })
+      return capture
+    }
+
+    beforeEach(async () => {
+      lifecycle = createCaptureLifecycle({
+        selectorLifecycle: createSelectorLifecycle({ emitRematched: () => {} })
+      })
+      const b = await ingestPlain('https://example.com/unselected', '<html><body>B</body></html>')
+      const c = await ingestPlain('https://example.com/deleted', '<html><body>C</body></html>')
+      captureB = b.id
+      await lifecycle.delete(c.id, 'fixture deletion')
+
+      selZipPath = join(tempDir, 'selection-evidence.zip')
+      await generateReport(
+        caseId,
+        {
+          format: 'zip',
+          include: { captures: true, screenshots: true, auditTrail: true, annotations: 'none' },
+          investigatorName: 'Test User',
+          outputPath: selZipPath,
+          captureIds: [captureId]
+        },
+        lifecycle
+      )
+      selDir = mkdtempSync(join(tmpdir(), 'bb-selpkg-'))
+      unzipToDir(selZipPath, selDir)
+    })
+
+    afterEach(() => {
+      if (selDir && existsSync(selDir)) rmSync(selDir, { recursive: true, force: true })
+    })
+
+    it('PASSes, reporting unselected captures as designed absence with the deletion intact', () => {
+      const result = verifyEvidencePackage(selDir)
+      expect(result.pass, JSON.stringify(result.checks, null, 2)).toBe(true)
+      expect(result.checks.find((c) => c.name === 'export entry')?.status).toBe('pass')
+      expect(result.checks.find((c) => c.name === 'export scope')?.status).toBe('pass')
+      const skip = result.checks.find((c) => c.name === `capture ${captureB}`)
+      expect(skip?.status).toBe('skip')
+      expect(skip?.reason).toContain('outside the signed export selection')
+      // The selected capture kept the full strict checks.
+      expect(result.checks.find((c) => c.name === `capture ${captureId} content`)?.status).toBe(
+        'pass'
+      )
+      // The chain ships complete: the unselected capture and the deletion are
+      // both in the bundled manifest, and the chain still verifies.
+      const manifest = readFileSync(join(selDir, 'manifest.jsonl'), 'utf-8')
+      expect(manifest).toContain(captureB)
+      expect(manifest).toContain('"type":"deletion"')
+      expect(result.checks.find((c) => c.name === 'manifest chain')?.status).toBe('pass')
+    })
+
+    it('still FAILs when a SELECTED capture content file is missing', () => {
+      rmSync(join(selDir, 'pages', `${captureId}.mhtml`))
+      const result = verifyEvidencePackage(selDir)
+      expect(result.pass).toBe(false)
+      expect(hasReason(result, `capture ${captureId}: content file missing`)).toBe(true)
+    })
+
+    // The #580 detection class the R1 ruling exists to close: a tamperer pads
+    // captureIds to explain away a capture they removed. The scope is SIGNED,
+    // so the edit breaks the entry hash — and with no trusted scope, every
+    // unselected capture's absence FAILs loudly again.
+    it('FAILs when captureIds is padded to cover an absent capture', () => {
+      const p = join(selDir, 'export-entry.json')
+      const entry = JSON.parse(readFileSync(p, 'utf-8')) as { captureIds: string[] }
+      entry.captureIds.push(captureB)
+      writeFileSync(p, JSON.stringify(entry))
+      const result = verifyEvidencePackage(selDir)
+      expect(result.pass).toBe(false)
+      expect(hasReason(result, 'export-entry.json entry hash mismatch')).toBe(true)
+      expect(hasReason(result, `capture ${captureB}: content file missing`)).toBe(true)
+    })
+
+    it('FAILs when export-entry.json is stripped from a selection package', () => {
+      // Deleting the scope proof must not quietly widen trust: with no signed
+      // selection, the unselected captures' absences are unexplained again.
+      rmSync(join(selDir, 'export-entry.json'))
+      const result = verifyEvidencePackage(selDir)
+      expect(result.pass).toBe(false)
+      expect(hasReason(result, `capture ${captureB}: content file missing`)).toBe(true)
+    })
+
+    // Rebuilds export-entry.json with the harness's real signing key after
+    // mutating the body, so every check BEFORE the targeted one passes and the
+    // targeted branch is provably what fired.
+    const forgeExportEntry = (mutate: (entry: Record<string, unknown>) => void): void => {
+      const p = join(selDir, 'export-entry.json')
+      const entry = JSON.parse(readFileSync(p, 'utf-8')) as Record<string, unknown>
+      delete entry.entryHash
+      delete entry.signature
+      mutate(entry)
+      const entryHash = createHash('sha256').update(canonicalStringify(entry)).digest('hex')
+      writeFileSync(p, JSON.stringify({ ...entry, entryHash, signature: signEntryHash(entryHash) }))
+    }
+
+    it('FAILs without crashing when export-entry.json is unreadable (a directory)', () => {
+      // existsSync passes for a directory, and readFileSync then throws EISDIR;
+      // verification must complete and record the failure, not abort (#838).
+      const p = join(selDir, 'export-entry.json')
+      rmSync(p)
+      mkdirSync(p)
+      const result = verifyEvidencePackage(selDir)
+      expect(result.pass).toBe(false)
+      expect(hasReason(result, 'export-entry.json unreadable')).toBe(true)
+      // The rest of the run still executed: with no trusted scope, the
+      // unselected capture's absence FAILs as usual.
+      expect(hasReason(result, `capture ${captureB}: content file missing`)).toBe(true)
+    })
+
+    it('FAILs when export-entry.json is not valid JSON', () => {
+      writeFileSync(join(selDir, 'export-entry.json'), 'not-json{')
+      const result = verifyEvidencePackage(selDir)
+      expect(result.pass).toBe(false)
+      expect(hasReason(result, 'export-entry.json is not valid JSON')).toBe(true)
+    })
+
+    it('FAILs when export-entry.json is not a manifest entry shape', () => {
+      writeFileSync(join(selDir, 'export-entry.json'), '{}')
+      const result = verifyEvidencePackage(selDir)
+      expect(result.pass).toBe(false)
+      expect(hasReason(result, 'export-entry.json is not a valid manifest entry')).toBe(true)
+    })
+
+    it('FAILs when export-entry.json holds a non-export entry', () => {
+      // A perfectly valid SIGNED line — just the wrong kind: the chain's own
+      // first capture entry.
+      const captureLine = readFileSync(join(selDir, 'manifest.jsonl'), 'utf-8')
+        .split('\n')
+        .filter((l) => l.trim())[0]
+      writeFileSync(join(selDir, 'export-entry.json'), captureLine)
+      const result = verifyEvidencePackage(selDir)
+      expect(result.pass).toBe(false)
+      expect(hasReason(result, "is a 'capture' entry, not an export entry")).toBe(true)
+    })
+
+    it('FAILs when export-entry.json comes from a different chain state', async () => {
+      // A genuinely signed, hash-valid export entry from a LATER export cannot
+      // vouch for this package: its prevHash extends a head the bundled
+      // manifest does not end at.
+      const secondZip = join(tempDir, 'second-selection.zip')
+      await generateReport(
+        caseId,
+        {
+          format: 'zip',
+          include: { captures: true, screenshots: true, auditTrail: true, annotations: 'none' },
+          investigatorName: 'Test User',
+          outputPath: secondZip,
+          captureIds: [captureId]
+        },
+        lifecycle
+      )
+      const swapped = readStoredZipEntries(secondZip).get('export-entry.json')!
+      writeFileSync(join(selDir, 'export-entry.json'), swapped)
+      const result = verifyEvidencePackage(selDir)
+      expect(result.pass).toBe(false)
+      expect(
+        hasReason(result, 'export-entry.json prevHash does not match the bundled manifest head')
+      ).toBe(true)
+      // No trusted scope: the unselected capture's absence FAILs again.
+      expect(hasReason(result, `capture ${captureB}: content file missing`)).toBe(true)
+    })
+
+    it('FAILs when the export entry signature is stripped', () => {
+      const p = join(selDir, 'export-entry.json')
+      const entry = JSON.parse(readFileSync(p, 'utf-8')) as Record<string, unknown>
+      delete entry.signature
+      writeFileSync(p, JSON.stringify(entry))
+      const result = verifyEvidencePackage(selDir)
+      expect(result.pass).toBe(false)
+      expect(hasReason(result, 'export-entry.json signature invalid')).toBe(true)
+    })
+
+    it('FAILs when the index does not continue the bundled chain', () => {
+      forgeExportEntry((entry) => {
+        entry.index = (entry.index as number) + 1
+        // Keep prevHash intact so the index check — not the link check — fires.
+      })
+      const result = verifyEvidencePackage(selDir)
+      expect(result.pass).toBe(false)
+      expect(
+        hasReason(result, 'export-entry.json index does not continue the bundled manifest')
+      ).toBe(true)
+    })
+
+    it('FAILs when scope and captureIds are inconsistent, conferring no scope', () => {
+      forgeExportEntry((entry) => {
+        delete entry.captureIds
+      })
+      const result = verifyEvidencePackage(selDir)
+      expect(result.pass).toBe(false)
+      expect(hasReason(result, 'export-entry.json scope and captureIds are inconsistent')).toBe(
+        true
+      )
+      expect(hasReason(result, `capture ${captureB}: content file missing`)).toBe(true)
+    })
+
+    it('FAILs coverage when evidence.json lists a capture outside the signed selection', () => {
+      mutateEvidenceJson(selDir, (evidence) => {
+        evidence.captures.push({ id: captureB, timestampTokenPaths: [] })
+      })
+      const result = verifyEvidencePackage(selDir)
+      expect(result.pass).toBe(false)
+      expect(
+        hasReason(result, `evidence.json lists capture ${captureB} outside the signed export selection`)
+      ).toBe(true)
+    })
+
+    it('FAILs the scope check when the signed selection names a capture with no chain entry', async () => {
+      // A DB row with no manifest entry (the legacy no-entry shape): the writer
+      // will sign a selection containing it, and the verifier must refuse to
+      // treat a capture the chain cannot bind as a verifiable member.
+      const orphan = insertCapture({
+        caseId,
+        url: 'https://unchained.example',
+        title: 'Unchained',
+        hash: createHash('sha256').update('unchained').digest('hex'),
+        timestamp: '2026-04-05T10:00:00.000Z'
+      })
+      const outputPath = join(tempDir, 'unchained-selection.zip')
+      await generateReport(
+        caseId,
+        {
+          format: 'zip',
+          include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
+          investigatorName: 'Test User',
+          outputPath,
+          captureIds: [orphan.id]
+        },
+        lifecycle
+      )
+      const dir = mkdtempSync(join(tmpdir(), 'bb-unchained-'))
+      try {
+        unzipToDir(outputPath, dir)
+        const result = verifyEvidencePackage(dir)
+        expect(result.pass).toBe(false)
+        expect(
+          hasReason(result, `selection names capture ${orphan.id} with no active capture entry`)
+        ).toBe(true)
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    })
   })
 })
 

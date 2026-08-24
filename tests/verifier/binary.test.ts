@@ -58,7 +58,9 @@ function unzipToDir(zipPath: string, destDir: string): void {
 describe.skipIf(!haveBinary)('built verifier binary', () => {
   let tempDir: string
   let pkgDir: string
+  let selPkgDir: string
   let captureId: string
+  let unselectedCaptureId: string
 
   beforeAll(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'bb-binverify-'))
@@ -114,6 +116,27 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
       toolVersion: '0.1.0'
     })
 
+    // A second capture so the selection export below scopes a real subset.
+    const { capture: unselected } = await ingestMhtmlCapture({
+      caseId,
+      url: 'https://example.com/unselected',
+      title: 'Unselected',
+      timestamp: '2026-04-05T12:02:00.000Z',
+      stream: Readable.from([
+        Buffer.from('<html><body>Not selected</body></html>')
+      ]) as unknown as ReadableStream<Uint8Array>,
+      textContent: 'extracted text',
+      headers: {},
+      browserVersion: '',
+      userAgent: '',
+      httpStatus: 200,
+      extensionVersion: '',
+      operatorId: 'op',
+      operatorName: '',
+      toolVersion: '0.1.0'
+    })
+    unselectedCaptureId = unselected.id
+
     const outputPath = join(tempDir, 'evidence.zip')
     const options: ExportOptions = {
       format: 'zip',
@@ -125,12 +148,23 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
 
     pkgDir = mkdtempSync(join(tmpdir(), 'bb-binpkg-'))
     unzipToDir(outputPath, pkgDir)
+
+    // A selection-scoped package (#398): only the first capture is enclosed.
+    const selectionPath = join(tempDir, 'selection-evidence.zip')
+    await generateReport(
+      caseId,
+      { ...options, outputPath: selectionPath, captureIds: [captureId] },
+      captureLifecycle
+    )
+    selPkgDir = mkdtempSync(join(tmpdir(), 'bb-binselpkg-'))
+    unzipToDir(selectionPath, selPkgDir)
   })
 
   afterAll(() => {
     closeDatabase()
     if (tempDir && existsSync(tempDir)) rmSync(tempDir, { recursive: true, force: true })
     if (pkgDir && existsSync(pkgDir)) rmSync(pkgDir, { recursive: true, force: true })
+    if (selPkgDir && existsSync(selPkgDir)) rmSync(selPkgDir, { recursive: true, force: true })
   })
 
   it('--self-check exits 0 and prints canonical bytes identical to the in-app core', () => {
@@ -158,6 +192,33 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
     const proc = spawnSync(binaryPath, [pkgDir], { encoding: 'utf-8' })
     expect(proc.status, proc.stdout + proc.stderr).toBe(0)
     expect(proc.stdout).toContain('RESULT: PASS')
+  })
+
+  // #398 backward verification through the BUILT binary: the frozen pre-scope
+  // package (no export-entry.json, legacy export entry in its chain) must keep
+  // passing byte-for-byte unchanged.
+  it('exits 0 with a PASS report on the frozen pre-scope fixture package', () => {
+    const fixtureDir = resolve(
+      __dirname,
+      '..',
+      'shared',
+      'verify',
+      'fixtures',
+      'pre-scope-package'
+    )
+    const proc = spawnSync(binaryPath, [fixtureDir], { encoding: 'utf-8' })
+    expect(proc.status, proc.stdout + proc.stderr).toBe(0)
+    expect(proc.stdout).toContain('RESULT: PASS')
+  })
+
+  // #398 selection scope through the BUILT binary: the unselected capture is a
+  // SKIP accounted for by the signed export entry, not a FAIL.
+  it('exits 0 with a PASS report on a selection-scoped package', () => {
+    const proc = spawnSync(binaryPath, [selPkgDir], { encoding: 'utf-8' })
+    expect(proc.status, proc.stdout + proc.stderr).toBe(0)
+    expect(proc.stdout).toContain('RESULT: PASS')
+    expect(proc.stdout).toContain(`[SKIP] capture ${unselectedCaptureId}`)
+    expect(proc.stdout).toContain('outside the signed export selection')
   })
 
   it('exits 1 with a FAIL report on a tampered package', () => {

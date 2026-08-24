@@ -1,0 +1,161 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "Birdbrain",
+  "exportedAt": "2026-08-24T08:32:42.312Z",
+  "case": {
+    "id": "933cc1e8-8e53-4e66-871b-34be709d79f2",
+    "name": "Pre-scope Fixture Case",
+    "description": "frozen #398 fixture",
+    "dateRange": {
+      "first": "2026-08-24T10:00:00.000Z",
+      "last": "2026-08-24T10:00:00.000Z"
+    }
+  },
+  "operator": {
+    "installationId": "f4bbafb6-0e46-4524-b272-662ed742c5aa",
+    "name": "Fixture Operator",
+    "role": "",
+    "organization": ""
+  },
+  "investigatorName": "Fixture User",
+  "warnings": {
+    "unstampedCaptureCount": 0,
+    "pendingCaptureCount": 0,
+    "noneCaptureCount": 0,
+    "missingContentCaptureCount": 0,
+    "unreconciledChainCaptureCount": 0,
+    "unreconciledChainCaptureIds": [],
+    "tsaTrustAnchorNote": "tsa-root.pem is a convenience copy of DigiCert Trusted Root G4 (SHA-256 55:2F:7B:DC:F1:A7:AF:9E:6C:E6:72:01:7F:4F:12:AB:F7:72:40:C7:8E:76:1A:C2:03:D1:D9:D2:0A:C8:99:88). Confirm that fingerprint against DigiCert's published value or your own OS trust store before relying on it as the trust anchor."
+  },
+  "verificationMaterials": {
+    "manifestPath": "manifest.jsonl",
+    "manifestHeadIndex": 4,
+    "manifestHeadHash": "44ca3f42cb2c43ca98235aa5f59b8421effea31edf23be03cd86fa2ac89c0220",
+    "signingPublicKeyPath": "signing-public-key.pem",
+    "tsaRootPath": "tsa-root.pem",
+    "tsaRootSha256": "55:2F:7B:DC:F1:A7:AF:9E:6C:E6:72:01:7F:4F:12:AB:F7:72:40:C7:8E:76:1A:C2:03:D1:D9:D2:0A:C8:99:88",
+    "tsaIntermediatesPath": "tsa-intermediates.pem",
+    "tsaCaChainBundled": true,
+    "reportPath": "report.html"
+  },
+  "captures": [
+    {
+      "id": "843600c0-0768-40e5-8db5-026433ddd4af",
+      "title": "Kept Page",
+      "url": "https://example.com/kept",
+      "capturedAt": "2026-08-24T10:00:00.000Z",
+      "manifestIndex": 0,
+      "entryHash": "9f6ff575c9ebea16260f531426b0458f778c59e91e96064d4c12a63a0f965f31",
+      "storedHash": "84f3cb2ff70bb5e44b832d59e5830b55f0205c09a820a7ce03f6b0530ce77c90",
+      "integrityStatus": "verified",
+      "trustedTime": "rfc3161",
+      "tsaName": "tsa.example.com",
+      "stampedAt": "2026-08-24T10:01:00.000Z",
+      "mhtmlPath": "pages/843600c0-0768-40e5-8db5-026433ddd4af.mhtml",
+      "mhtmlSha256": "84f3cb2ff70bb5e44b832d59e5830b55f0205c09a820a7ce03f6b0530ce77c90",
+      "screenshotPath": "screenshots/66ecbd88502f8c8c7f29927ec9ae09dc3e74054022cb741f7611694049c5cfc7.png",
+      "screenshotSha256": "66ecbd88502f8c8c7f29927ec9ae09dc3e74054022cb741f7611694049c5cfc7",
+      "textSha256": "5cb72f90e968922d30557d0af8f719d21f61792becaa87eb32477767d739dc0b",
+      "tlsCorroboration": {
+        "url": "https://example.com/kept",
+        "refetchedAt": "2026-08-24T08:32:42.146Z",
+        "chain": [
+          {
+            "subject": "CN=example.com",
+            "issuer": "C=US, CN=Cloudflare TLS Issuing ECC CA 3, O=SSL Corporation",
+            "validFrom": "Jul 29 22:10:08 2026 GMT",
+            "validTo": "Oct 27 22:17:21 2026 GMT",
+            "fingerprint256": "61:53:A9:6F:D1:A6:AB:7F:4D:43:8F:C3:49:32:48:42:99:D0:72:9D:91:40:B3:A1:26:BB:2F:9C:07:B0:22:00",
+            "serialNumber": "0624D0AB311558780B7D5213B9631831",
+            "subjectAltNames": [
+              "DNS:*.example.com",
+              "DNS:example.com"
+            ]
+          },
+          {
+            "subject": "C=US, CN=Cloudflare TLS Issuing ECC CA 3, O=SSL Corporation",
+            "issuer": "C=US, CN=SSL.com TLS Transit ECC CA R2, O=SSL Corporation",
+            "validFrom": "May 29 19:49:45 2025 GMT",
+            "validTo": "May 27 19:49:44 2035 GMT",
+            "fingerprint256": "F1:5F:29:AB:EF:73:AA:4D:D9:AB:75:4B:AE:AE:36:85:BD:D3:87:4B:46:B5:25:07:11:77:62:86:85:71:80:26",
+            "serialNumber": "31EEE88AFB87CD9EF8336604743F9B27",
+            "subjectAltNames": []
+          },
+          {
+            "subject": "C=US, CN=SSL.com TLS Transit ECC CA R2, O=SSL Corporation",
+            "issuer": "C=US, CN=SSL.com TLS ECC Root CA 2022, O=SSL Corporation",
+            "validFrom": "Oct 21 17:02:23 2022 GMT",
+            "validTo": "Oct 17 17:02:22 2037 GMT",
+            "fingerprint256": "5D:1B:C3:99:27:4E:64:9E:1C:72:69:7D:E9:1A:54:AD:72:50:88:C5:22:1C:B6:1E:17:EE:9C:29:0B:C4:2A:92",
+            "serialNumber": "604D8AF8D00BA8748B955853172C5F2E",
+            "subjectAltNames": []
+          },
+          {
+            "subject": "C=US, CN=SSL.com TLS ECC Root CA 2022, O=SSL Corporation",
+            "issuer": "C=GB, CN=AAA Certificate Services, L=Salford, O=Comodo CA Limited, ST=Greater Manchester",
+            "validFrom": "Aug  1 00:00:00 2025 GMT",
+            "validTo": "Dec 31 23:59:59 2028 GMT",
+            "fingerprint256": "BA:06:D3:D3:E3:48:FC:E7:47:8C:C8:4B:42:2D:0E:63:8E:9E:22:1E:F1:A0:B5:3A:DC:14:CC:70:E0:4B:8A:B8",
+            "serialNumber": "173DCA60EA9F8E1026DAFCD72810E48E",
+            "subjectAltNames": []
+          }
+        ]
+      },
+      "timestampTokenPaths": [
+        "timestamps/843600c0-0768-40e5-8db5-026433ddd4af.tst"
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "timestamps/843600c0-0768-40e5-8db5-026433ddd4af.tst",
+      "sha256": "de9b433f38f99c78af2bd433ef7dc8e466a4d9864ef8627c2aa95b188d80ca2e",
+      "sizeBytes": 143
+    },
+    {
+      "path": "manifest.jsonl",
+      "sha256": "395461f2bf42d5f9354df90f31f5412b58e94dfd9bc83390c022a1dcc2c2da5c",
+      "sizeBytes": 8442
+    },
+    {
+      "path": "report.html",
+      "sha256": "33fa712ee8dece5aa5437177d75841a59c95375750630fb099cdaffd60b30e12",
+      "sizeBytes": 34616
+    },
+    {
+      "path": "certification.html",
+      "sha256": "3361cce7672be57d9a0a475ae5b133924ec57d43df9160eadc8f8d047804366d",
+      "sizeBytes": 18303
+    },
+    {
+      "path": "signing-public-key.pem",
+      "sha256": "d7383d2314547ffa17e70517d42c5d8559e52c0a90fb5fbac1a98968069249b6",
+      "sizeBytes": 451
+    },
+    {
+      "path": "VERIFY.md",
+      "sha256": "03087cc8fec07d426e9ec3b8c06b29680acbbed5faa496ac0a4d9d7624af82b2",
+      "sizeBytes": 7772
+    },
+    {
+      "path": "tsa-intermediates.pem",
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "sizeBytes": 1
+    },
+    {
+      "path": "tsa-root.pem",
+      "sha256": "ce7d6b44f5d510391be98c8d76b18709400a30cd87659bfebe1c6f97ff5181ee",
+      "sizeBytes": 1988
+    },
+    {
+      "path": "pages/843600c0-0768-40e5-8db5-026433ddd4af.mhtml",
+      "sha256": "84f3cb2ff70bb5e44b832d59e5830b55f0205c09a820a7ce03f6b0530ce77c90",
+      "sizeBytes": 43
+    },
+    {
+      "path": "screenshots/66ecbd88502f8c8c7f29927ec9ae09dc3e74054022cb741f7611694049c5cfc7.png",
+      "sha256": "66ecbd88502f8c8c7f29927ec9ae09dc3e74054022cb741f7611694049c5cfc7",
+      "sizeBytes": 25
+    }
+  ]
+}

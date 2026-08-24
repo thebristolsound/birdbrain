@@ -26,7 +26,8 @@ describe('visibleCaptureColumns', () => {
       list: 'panel',
       viewer: 'panel',
       details: 'panel',
-      detailsOverlay: false
+      detailsOverlay: false,
+      waybackPanel: false
     })
   })
 
@@ -70,9 +71,9 @@ describe('visibleCaptureColumns', () => {
     expect(visibleCaptureColumns({ ...base, detailsCollapsed: true }).detailsOverlay).toBe(false)
   })
 
-  // An opaque 400px overlay left up on the full-bleed Wayback tab covers the
-  // snapshot list and the pin controls behind it.
-  it('drops the overlay on the Wayback tab, leaving the tab full-bleed', () => {
+  // An opaque 400px overlay left up on the Wayback tab covers the compare panes
+  // and the snapshot panel behind it.
+  it('drops the overlay on the Wayback tab, leaving the compare its width', () => {
     const columns = visibleCaptureColumns({ ...forcedOpen, waybackActive: true })
     expect(columns.detailsOverlay).toBe(false)
     expect(columns.list).toBe('hidden')
@@ -81,6 +82,16 @@ describe('visibleCaptureColumns', () => {
 
   it('hides the overlay when nothing is selected', () => {
     expect(visibleCaptureColumns({ ...forcedOpen, hasSelection: false }).detailsOverlay).toBe(false)
+  })
+
+  it('raises the archive.org slide-out exactly on the Wayback tab (#401)', () => {
+    expect(visibleCaptureColumns(base).waybackPanel).toBe(false)
+    expect(visibleCaptureColumns({ ...base, waybackActive: true }).waybackPanel).toBe(true)
+    // It is chrome outside the resizable Group, so it does not join the panel
+    // set the saved layout is keyed on.
+    expect(capturePanelIds(visibleCaptureColumns({ ...base, waybackActive: true }))).toEqual([
+      'capture-viewer'
+    ])
   })
 
   it('always keeps the viewer as a panel', () => {

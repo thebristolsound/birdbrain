@@ -49,6 +49,12 @@ export interface CaptureColumns {
   viewer: 'panel'
   details: CaptureColumnState
   /**
+   * The 436px archive.org slide-out (#401). Like the rails it is fixed chrome
+   * outside the resizable Group, so it is a fourth output rather than a column
+   * state, and it is bound 1:1 to the Wayback tab rather than toggled on its own.
+   */
+  waybackPanel: boolean
+  /**
    * The narrow-viewport details overlay floats over the viewer's right edge
    * *beside* its rail, so it is a fourth output rather than a `details` state.
    */
@@ -61,9 +67,9 @@ export interface CaptureColumns {
  *
  * On the Wayback tab the list does not fall back to its rail — it disappears
  * outright, and so does the expanded details panel, in either the docked or the
- * overlay form: an opaque 400px overlay left up would cover the full-bleed
- * snapshot list and its pin controls. A details rail the operator collapsed
- * themselves stays put, so the tags/notes counts remain reachable.
+ * overlay form: an opaque 400px overlay left up would cover the compare panes and
+ * the snapshot panel beside them. A details rail the operator collapsed themselves
+ * stays put, so the tags/notes counts remain reachable.
  */
 export function visibleCaptureColumns({
   waybackActive,
@@ -87,7 +93,7 @@ export function visibleCaptureColumns({
 
   const detailsOverlay = hasSelection && forcedPanelOpen && !waybackActive
 
-  return { list, viewer: 'panel', details, detailsOverlay }
+  return { list, viewer: 'panel', details, detailsOverlay, waybackPanel: waybackActive }
 }
 
 /**

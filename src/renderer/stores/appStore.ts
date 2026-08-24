@@ -6,6 +6,15 @@ import type { CaptureEvent } from '@shared/types'
 // hiding the list and details columns.
 export type CaptureViewerTab = 'screenshot' | 'page' | 'text' | 'wayback'
 
+// The archive.org snapshot selected for side-by-side comparison. Keyed by
+// capture so moving to another capture cannot leave the previous one's snapshot
+// beside it.
+export interface WaybackSelection {
+  captureId: string
+  snapshotUrl: string
+  timestamp: string
+}
+
 interface AppState {
   sessionActive: boolean
   connectedToExtension: boolean
@@ -37,6 +46,12 @@ interface AppState {
   commandPaletteOpen: boolean
   panelCollapsedForced: boolean
   activeViewerTab: CaptureViewerTab
+  // Which archive.org snapshot the Wayback compare shows on the right (#401).
+  // It lives here because the panel that picks it is an aside of the captures
+  // route while the pane that replays it is inside the viewer, and neither is
+  // an ancestor of the other. Never a Capture: it is a replay URL and the time
+  // archive.org states for it, held only for as long as the panel is open.
+  waybackSelection: WaybackSelection | null
 
   setSessionActive: (active: boolean) => void
   setConnectedToExtension: (connected: boolean) => void
@@ -44,6 +59,7 @@ interface AppState {
   toggleCommandPalette: () => void
   setPanelCollapsedForced: (forced: boolean) => void
   setActiveViewerTab: (tab: CaptureViewerTab) => void
+  setWaybackSelection: (selection: WaybackSelection | null) => void
   setSelectedCaptureId: (id: string | null) => void
   setSelectedNoteId: (id: string | null) => void
   setSelectedSignalId: (id: string | null) => void
@@ -80,6 +96,7 @@ export const useAppStore = create<AppState>((set) => ({
   commandPaletteOpen: false,
   panelCollapsedForced: false,
   activeViewerTab: 'screenshot',
+  waybackSelection: null,
 
   setSessionActive: (active) => set({ sessionActive: active }),
   setConnectedToExtension: (connected) => set({ connectedToExtension: connected }),
@@ -87,6 +104,7 @@ export const useAppStore = create<AppState>((set) => ({
   toggleCommandPalette: () => set((s) => ({ commandPaletteOpen: !s.commandPaletteOpen })),
   setPanelCollapsedForced: (forced) => set({ panelCollapsedForced: forced }),
   setActiveViewerTab: (tab) => set({ activeViewerTab: tab }),
+  setWaybackSelection: (selection) => set({ waybackSelection: selection }),
   setSelectedCaptureId: (id) => set({ selectedCaptureId: id }),
   setSelectedNoteId: (id) => set({ selectedNoteId: id }),
   setSelectedSignalId: (id) => set({ selectedSignalId: id }),

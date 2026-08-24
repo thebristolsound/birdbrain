@@ -11,13 +11,11 @@ sub="${1:-}"
 
 bin="$(command -v serena-hooks 2>/dev/null || true)"
 if [ -z "$bin" ] && [ -x "${HOME:-}/.local/bin/serena-hooks" ]; then
-  bin="$HOME/.local/bin/serena-hooks"
+  bin="${HOME:-}/.local/bin/serena-hooks"
 fi
 [ -z "$bin" ] && exit 0
 
 if command -v timeout >/dev/null 2>&1; then
   timeout 10 "$bin" "$sub" --client=claude-code 2>/dev/null || true
-else
-  "$bin" "$sub" --client=claude-code 2>/dev/null || true
 fi
 exit 0

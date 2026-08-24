@@ -29,9 +29,14 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
   const [descValue, setDescValue] = useState('')
   const descInputRef = useRef<HTMLTextAreaElement>(null)
 
+  const [editingNumber, setEditingNumber] = useState(false)
+  const [numberValue, setNumberValue] = useState('')
+  const numberInputRef = useRef<HTMLInputElement>(null)
+
   useEffect(() => {
     setNameValue(caseData.name)
     setDescValue(caseData.description ?? '')
+    setNumberValue(caseData.caseNumber ?? '')
   }, [caseData])
 
   useEffect(() => {
@@ -46,6 +51,13 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
       descInputRef.current.focus()
     }
   }, [editingDesc])
+
+  useEffect(() => {
+    if (editingNumber && numberInputRef.current) {
+      numberInputRef.current.focus()
+      numberInputRef.current.select()
+    }
+  }, [editingNumber])
 
   async function saveName() {
     const trimmed = nameValue.trim()
@@ -75,6 +87,23 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
     } catch (err) {
       // Keep the field in edit mode with the user's value so they can retry.
       console.error('Failed to update case description', err)
+    }
+  }
+
+  async function saveNumber() {
+    const trimmed = numberValue.trim()
+    if (trimmed === (caseData.caseNumber ?? '')) {
+      setNumberValue(caseData.caseNumber ?? '')
+      setEditingNumber(false)
+      return
+    }
+    try {
+      // A blank submission clears the number: the repo stores NULL, never ''.
+      await update.mutateAsync({ id: caseData.id, caseNumber: trimmed })
+      setEditingNumber(false)
+    } catch (err) {
+      // Keep the field in edit mode with the user's value so they can retry.
+      console.error('Failed to update case number', err)
     }
   }
 
@@ -126,6 +155,45 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
             <PillIcon size={11} strokeWidth={1.8} />
             <span className="font-display text-[11px] font-semibold">{typeLabel}</span>
           </span>
+          {editingNumber ? (
+            <input
+              data-testid="case-subhead-number-input"
+              ref={numberInputRef}
+              value={numberValue}
+              onChange={(e) => setNumberValue(e.target.value)}
+              onBlur={saveNumber}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') saveNumber()
+                if (e.key === 'Escape') {
+                  setNumberValue(caseData.caseNumber ?? '')
+                  setEditingNumber(false)
+                }
+              }}
+              placeholder="Case number"
+              className="w-40 rounded border border-accent bg-elevated px-2 py-0.5 font-mono text-[11px] text-text-primary focus:outline-none"
+            />
+          ) : (
+            <button
+              data-testid="case-subhead-number-btn"
+              className="group flex items-center gap-1.5"
+              onClick={() => setEditingNumber(true)}
+              title="Click to edit case number"
+            >
+              {caseData.caseNumber ? (
+                <span className="font-mono text-[11px] text-text-muted">
+                  No. {caseData.caseNumber}
+                </span>
+              ) : (
+                <span className="font-mono text-[11px] italic text-text-faint">
+                  Add case number…
+                </span>
+              )}
+              <Pencil
+                size={11}
+                className="shrink-0 text-text-muted opacity-0 transition-opacity group-hover:opacity-100"
+              />
+            </button>
+          )}
         </div>
         {editingDesc ? (
           <textarea

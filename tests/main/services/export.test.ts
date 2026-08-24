@@ -6,8 +6,8 @@ import { Readable } from 'stream'
 import { createHash } from 'crypto'
 import { execFileSync } from 'child_process'
 import sharp from 'sharp'
-import { initDatabase, closeDatabase } from '@main/services/db/core'
-import { createCase } from '@main/services/db/caseRepo'
+import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
+import { createCase, updateCase } from '@main/services/db/caseRepo'
 import { insertCapture, listCaptures, setCaptureTrustedTime } from '@main/services/db/captureRepo'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
 import { defaultCaptureStore } from '@main/services/captureStore'
@@ -23,7 +23,13 @@ import { TRUSTED_TIME_LABELS, TRUSTED_TIME_UNNAMED_TSA } from '@shared/trustedTi
 import { ingestMhtmlCapture } from '@main/services/captureLifecycle'
 import { createCaptureLifecycle, type CaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
-import { verifyCaptures, generateReport, getExportPreflight } from '@main/services/export'
+import {
+  verifyCaptures,
+  generateReport,
+  getExportPreflight,
+  buildNotesMarkdown
+} from '@main/services/export'
+import { createNote } from '@main/services/db/noteRepo'
 import { saveAnnotations, upsertPin, deletePin } from '@main/services/annotations'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 import { initSettings, updateSettings } from '@main/services/settings'
@@ -32,7 +38,7 @@ import {
   initInstallationId,
   resetInstallationId
 } from '@main/services/installationId'
-import type { ExportOptions } from '@shared/types'
+import type { ExportOptions, Note } from '@shared/types'
 
 // Skipped rather than failed when jq is absent: unlike openssl, jq is not a
 // keystone proof — it is the convenience command the runbook offers for finding
@@ -220,9 +226,10 @@ describe('export', () => {
         captures: true,
         screenshots: false,
         auditTrail: true,
+        notes: false,
         annotations: 'none'
       },
-      investigatorName: 'Test User',
+      exportClass: 'evidence',
       outputPath
     }
 
@@ -231,7 +238,10 @@ describe('export', () => {
 
     const content = readFileSync(outputPath, 'utf-8')
     expect(content).toContain('Export Test Case')
-    expect(content).toContain('Test User')
+    // The Operator is the only signer vocabulary (#399): the report names the
+    // operator from settings, and the Investigator vestige is gone.
+    expect(content).toContain('Test Operator')
+    expect(content).not.toContain('Investigator')
     expect(content).toContain('example.com')
     expect(content).toContain('Birdbrain')
     expect(content).toContain('Exhibit index and verification results')
@@ -267,8 +277,8 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
-        investigatorName: 'Test User',
+        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
         outputPath
       },
       captureLifecycle
@@ -299,8 +309,8 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
-        investigatorName: 'Test User',
+        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
         outputPath
       },
       captureLifecycle
@@ -342,9 +352,10 @@ describe('export', () => {
         captures: true,
         screenshots: false,
         auditTrail: true,
+        notes: false,
         annotations: 'none'
       },
-      investigatorName: 'Test User',
+      exportClass: 'evidence',
       outputPath
     }
 
@@ -410,8 +421,8 @@ describe('export', () => {
     const outputPath = join(tempDir, 'audited-evidence.zip')
     const options: ExportOptions = {
       format: 'zip',
-      include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
-      investigatorName: 'Test User',
+      include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+      exportClass: 'evidence',
       outputPath
     }
     await generateReport(caseId, options, captureLifecycle)
@@ -474,8 +485,8 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
-        investigatorName: 'Test User',
+        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
         outputPath
       },
       captureLifecycle
@@ -521,8 +532,8 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
-        investigatorName: 'Test User',
+        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
         outputPath
       },
       captureLifecycle
@@ -566,8 +577,8 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
-        investigatorName: 'Test User',
+        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
         outputPath,
         captureIds: [selected.id]
       },
@@ -635,8 +646,8 @@ describe('export', () => {
       caseId,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
-        investigatorName: 'Test User',
+        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
         outputPath,
         captureIds: [selected.id]
       },
@@ -659,8 +670,8 @@ describe('export', () => {
         caseId,
         {
           format: 'zip',
-          include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
-          investigatorName: 'Test User',
+          include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+          exportClass: 'evidence',
           outputPath: join(tempDir, 'never-written.zip'),
           captureIds: ['not-a-real-capture-id']
         },
@@ -678,8 +689,8 @@ describe('export', () => {
         caseId,
         {
           format: 'zip',
-          include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
-          investigatorName: 'Test User',
+          include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+          exportClass: 'evidence',
           outputPath: join(tempDir, 'never-written.zip'),
           captureIds: []
         },
@@ -704,8 +715,8 @@ describe('export', () => {
         caseId,
         {
           format: 'zip',
-          include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
-          investigatorName: 'Test User',
+          include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+          exportClass: 'evidence',
           outputPath: dirAsOutput
         },
         captureLifecycle
@@ -740,8 +751,8 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: true, auditTrail: true, annotations: 'none' },
-        investigatorName: 'Test User',
+        include: { captures: true, screenshots: true, auditTrail: true, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
         outputPath
       },
       captureLifecycle
@@ -812,8 +823,8 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: true, auditTrail: true, annotations: 'none' },
-        investigatorName: 'Test User',
+        include: { captures: true, screenshots: true, auditTrail: true, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
         outputPath
       },
       captureLifecycle
@@ -874,8 +885,8 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
-        investigatorName: 'Test User',
+        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
         outputPath
       },
       captureLifecycle
@@ -905,8 +916,8 @@ describe('export', () => {
     const outputPath = join(tempDir, 'axes.html')
     const options: ExportOptions = {
       format: 'html',
-      include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
-      investigatorName: 'Test User',
+      include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+      exportClass: 'evidence',
       outputPath
     }
 
@@ -918,6 +929,39 @@ describe('export', () => {
     expect(content).toContain('Trusted time')
     expect(content).toContain('Verified')
     expect(content).toContain('Local clock — token pending')
+  })
+
+  it('counts only the selection when preflight is scoped to selected captures', async () => {
+    // The dialog opened from the selection toolbar must not warn about
+    // unstamped captures the operator did not select: they are not going to
+    // export (PR #842 review).
+    const { capture: selected } = await ingest(
+      caseId,
+      '<html><body>Selected</body></html>',
+      'https://example.com/selected',
+      'S'
+    )
+    await ingest(
+      caseId,
+      '<html><body>Unselected</body></html>',
+      'https://example.com/unselected',
+      'U'
+    )
+
+    expect(getExportPreflight(caseId)).toMatchObject({
+      captureCount: 2,
+      unstampedCaptureCount: 2
+    })
+    expect(getExportPreflight(caseId, [selected.id])).toMatchObject({
+      captureCount: 1,
+      unstampedCaptureCount: 1
+    })
+    // An empty selection is still a selection: it counts nothing, rather than
+    // falling back to the whole case.
+    expect(getExportPreflight(caseId, [])).toMatchObject({
+      captureCount: 0,
+      unstampedCaptureCount: 0
+    })
   })
 
   it('reports un-stamped captures in preflight and the HTML summary without blocking export', async () => {
@@ -937,8 +981,8 @@ describe('export', () => {
       caseId,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
-        investigatorName: 'Test',
+        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
         outputPath
       },
       captureLifecycle
@@ -994,8 +1038,8 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
-        investigatorName: 'Test User',
+        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
         outputPath
       },
       captureLifecycle
@@ -1023,8 +1067,8 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
-        investigatorName: 'Test User',
+        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
         outputPath
       },
       captureLifecycle
@@ -1073,8 +1117,8 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
-        investigatorName: 'Test User',
+        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
         outputPath
       },
       captureLifecycle
@@ -1091,8 +1135,8 @@ describe('export', () => {
     const outputPath = join(tempDir, 'unverified-evidence.zip')
     const options: ExportOptions = {
       format: 'zip',
-      include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
-      investigatorName: 'Test User',
+      include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+      exportClass: 'evidence',
       outputPath
     }
     await generateReport(caseId, options, captureLifecycle)
@@ -1125,8 +1169,8 @@ describe('export', () => {
     const outputPath = join(tempDir, 'orphan-evidence.zip')
     const options: ExportOptions = {
       format: 'zip',
-      include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
-      investigatorName: 'Test User',
+      include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+      exportClass: 'evidence',
       outputPath
     }
 
@@ -1150,9 +1194,10 @@ describe('export', () => {
         captures: true,
         screenshots: false,
         auditTrail: false,
+        notes: false,
         annotations: 'none'
       },
-      investigatorName: 'Test',
+      exportClass: 'evidence',
       outputPath
     }
 
@@ -1173,8 +1218,8 @@ describe('export', () => {
       caseId,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
-        investigatorName: 'Test',
+        include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
         outputPath
       },
       captureLifecycle
@@ -1222,9 +1267,10 @@ describe('export', () => {
         captures: true,
         screenshots: true,
         auditTrail: false,
+        notes: false,
         annotations: 'burned'
       },
-      investigatorName: 'Tester',
+      exportClass: 'evidence',
       outputPath: outPath
     }
     await generateReport(c.id, options, captureLifecycle)
@@ -1255,8 +1301,8 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
-        investigatorName: 'Test',
+        include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
         outputPath
       },
       captureLifecycle
@@ -1285,8 +1331,8 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
-        investigatorName: 'Test',
+        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
         outputPath
       },
       captureLifecycle
@@ -1324,8 +1370,8 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
-        investigatorName: 'Test',
+        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
         outputPath
       },
       captureLifecycle
@@ -1350,8 +1396,8 @@ describe('export', () => {
       caseId,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
-        investigatorName: 'Test',
+        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
         outputPath
       },
       captureLifecycle
@@ -1405,8 +1451,8 @@ describe('export', () => {
       c.id,
       {
         format: 'html',
-        include: { captures: true, screenshots: true, auditTrail: false, annotations: 'burned' },
-        investigatorName: 'Test',
+        include: { captures: true, screenshots: true, auditTrail: false, notes: false, annotations: 'burned' },
+        exportClass: 'evidence',
         outputPath
       },
       captureLifecycle
@@ -1435,8 +1481,8 @@ describe('export', () => {
       c.id,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
-        investigatorName: 'Test',
+        include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
         outputPath
       },
       captureLifecycle
@@ -1456,8 +1502,8 @@ describe('export', () => {
       caseId,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
-        investigatorName: 'Test',
+        include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
         outputPath
       },
       captureLifecycle
@@ -1478,8 +1524,8 @@ describe('export', () => {
       caseId,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
-        investigatorName: 'Test',
+        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
         outputPath
       },
       captureLifecycle
@@ -1504,8 +1550,8 @@ describe('export', () => {
       caseId,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
-        investigatorName: 'Test',
+        include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
         outputPath
       },
       captureLifecycle
@@ -1544,8 +1590,8 @@ describe('export', () => {
       c.id,
       {
         format: 'html',
-        include: { captures: true, screenshots: true, auditTrail: false, annotations: 'none' },
-        investigatorName: 'Test',
+        include: { captures: true, screenshots: true, auditTrail: false, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
         outputPath
       },
       captureLifecycle
@@ -1585,8 +1631,8 @@ describe('export', () => {
         format: 'zip',
         // auditTrail off, so the claim comes from the manifest fallback rather
         // than from a verification result — the path that read a stale mirror.
-        include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
-        investigatorName: 'Test',
+        include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
         outputPath
       },
       captureLifecycle
@@ -1629,8 +1675,8 @@ describe('export', () => {
       caseId,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
-        investigatorName: 'Test',
+        include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
         outputPath
       },
       captureLifecycle
@@ -1687,8 +1733,8 @@ describe('export', () => {
       c.id,
       {
         format: 'html',
-        include: { captures: true, screenshots: true, auditTrail: false, annotations: 'burned' },
-        investigatorName: 'Test',
+        include: { captures: true, screenshots: true, auditTrail: false, notes: false, annotations: 'burned' },
+        exportClass: 'evidence',
         outputPath
       },
       captureLifecycle
@@ -1706,8 +1752,8 @@ describe('export', () => {
       caseId,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
-        investigatorName: 'Test',
+        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
         outputPath
       },
       captureLifecycle
@@ -1728,8 +1774,8 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
-        investigatorName: 'Test',
+        include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
         outputPath
       },
       captureLifecycle
@@ -1749,8 +1795,8 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
-        investigatorName: 'Test',
+        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
         outputPath
       },
       captureLifecycle
@@ -1774,8 +1820,8 @@ describe('export', () => {
         caseId,
         {
           format: 'html',
-          include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
-          investigatorName: 'Det. Smith',
+          include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+          exportClass: 'evidence',
           outputPath
         },
         captureLifecycle
@@ -1792,8 +1838,8 @@ describe('export', () => {
         caseId,
         {
           format: 'html',
-          include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
-          investigatorName: 'Det. Smith',
+          include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+          exportClass: 'evidence',
           outputPath
         },
         captureLifecycle
@@ -1813,8 +1859,8 @@ describe('export', () => {
       caseId,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
-        investigatorName: 'Det. Smith',
+        include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
         outputPath
       },
       captureLifecycle
@@ -1863,8 +1909,8 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: true, auditTrail: true, annotations: 'none' },
-        investigatorName: 'Test',
+        include: { captures: true, screenshots: true, auditTrail: true, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
         outputPath
       },
       captureLifecycle,
@@ -1884,5 +1930,322 @@ describe('export', () => {
     for (let i = 1; i < percents.length; i++) {
       expect(percents[i]).toBeGreaterThanOrEqual(percents[i - 1])
     }
+  })
+
+  describe('export classes and notes as package content (#399)', () => {
+    const EVIDENCE_INCLUDE: ExportOptions['include'] = {
+      captures: true,
+      screenshots: false,
+      auditTrail: true,
+      notes: true,
+      annotations: 'none'
+    }
+
+    function lastManifestEntry(): Record<string, unknown> {
+      const jsonl = readFileSync(join(tempDir, 'captures', caseId, 'manifest.jsonl'), 'utf-8')
+      const lines = jsonl.split('\n').filter((l) => l.trim().length > 0)
+      return JSON.parse(lines[lines.length - 1]) as Record<string, unknown>
+    }
+
+    it('ships notes.md in an Evidence Package, inside the artifact index', async () => {
+      await ingest(caseId, '<html><body>Content</body></html>')
+      createNote({ caseId, title: 'Finding one', body: 'The page linked to the paste site.' })
+
+      const outputPath = join(tempDir, 'with-notes.zip')
+      await generateReport(
+        caseId,
+        { format: 'zip', include: EVIDENCE_INCLUDE, exportClass: 'evidence', outputPath },
+        captureLifecycle
+      )
+
+      const entries = readStoredZipEntries(outputPath)
+      const notesMd = entries.get('notes.md')!.toString('utf-8')
+      expect(notesMd).toContain('## Finding one')
+      expect(notesMd).toContain('The page linked to the paste site.')
+      expect(notesMd).toContain('Operator work product')
+
+      // Inside the index and therefore inside packageHash: notes.md went
+      // through add(), so its digest is pinned like every packaged document.
+      const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+        artifacts: Array<{ path: string; sha256: string }>
+      }
+      const artifact = evidence.artifacts.find((a) => a.path === 'notes.md')
+      expect(artifact?.sha256).toBe(
+        createHash('sha256').update(entries.get('notes.md')!).digest('hex')
+      )
+    })
+
+    // AC 5: the Court exhibit excludes Notes — proven at the byte level, as
+    // the exact zip entry-list difference between the two evidence presets.
+    it('Court exhibit differs from the Full bundle by exactly notes.md', async () => {
+      await ingest(caseId, '<html><body>Content</body></html>')
+      createNote({ caseId, title: 'Kept out of court exhibit', body: 'note body' })
+
+      const fullPath = join(tempDir, 'full.zip')
+      const courtPath = join(tempDir, 'court.zip')
+      await generateReport(
+        caseId,
+        { format: 'zip', include: EVIDENCE_INCLUDE, exportClass: 'evidence', outputPath: fullPath },
+        captureLifecycle
+      )
+      await generateReport(
+        caseId,
+        {
+          format: 'zip',
+          include: { ...EVIDENCE_INCLUDE, notes: false },
+          exportClass: 'evidence',
+          outputPath: courtPath
+        },
+        captureLifecycle
+      )
+
+      const fullNames = [...readStoredZipEntries(fullPath).keys()].sort()
+      const courtNames = [...readStoredZipEntries(courtPath).keys()].sort()
+      expect(fullNames).toContain('notes.md')
+      expect(courtNames).not.toContain('notes.md')
+      expect(courtNames).toEqual(fullNames.filter((n) => n !== 'notes.md'))
+    })
+
+    it('writes notes.md even when the case has no notes, so exclusion stays distinguishable', async () => {
+      await ingest(caseId, '<html><body>Content</body></html>')
+
+      const outputPath = join(tempDir, 'no-notes.zip')
+      await generateReport(
+        caseId,
+        { format: 'zip', include: EVIDENCE_INCLUDE, exportClass: 'evidence', outputPath },
+        captureLifecycle
+      )
+
+      const notesMd = readStoredZipEntries(outputPath).get('notes.md')!.toString('utf-8')
+      expect(notesMd).toContain('0 notes')
+    })
+
+    // The Working Copy's whole entry list, as a known answer: pages, notes and
+    // the marker — and none of the evidentiary files (#399, ADR-0010).
+    it('a Working Copy zip contains exactly the marker, pages and notes', async () => {
+      updateCase({ id: caseId, caseNumber: 'CPS 2026/114' })
+      getDb().prepare('UPDATE cases SET is_demo = 1 WHERE id = ?').run(caseId)
+      const { capture } = await ingest(caseId, '<html><body>WC</body></html>')
+      createNote({ caseId, title: 'Draft note', body: 'working copy body' })
+
+      const outputPath = join(tempDir, 'working-copy.zip')
+      await generateReport(
+        caseId,
+        {
+          format: 'zip',
+          include: { ...EVIDENCE_INCLUDE, auditTrail: false },
+          exportClass: 'working-copy',
+          purposeOrAuthority: 'Internal review',
+          outputPath
+        },
+        captureLifecycle
+      )
+
+      const entries = readStoredZipEntries(outputPath)
+      expect([...entries.keys()].sort()).toEqual([
+        'WORKING-COPY.json',
+        'notes.md',
+        `pages/${capture.id}.mhtml`
+      ])
+
+      const marker = JSON.parse(entries.get('WORKING-COPY.json')!.toString('utf-8')) as {
+        exportClass: string
+        statement: string
+        case: {
+          name: string
+          caseNumber: string | null
+          isDemo: boolean
+          demoStatement?: string
+        }
+        purposeOrAuthority: string | null
+        contents: { captureCount: number; screenshotCount: number; noteCount: number }
+        artifacts: Array<{ path: string }>
+      }
+      expect(marker.exportClass).toBe('working-copy')
+      expect(marker.statement).toContain('non-evidentiary')
+      expect(marker.statement).toContain('cannot be verified')
+      expect(marker.case.caseNumber).toBe('CPS 2026/114')
+      expect(marker.case.isDemo).toBe(true)
+      expect(marker.case.demoStatement).toContain('fixture data')
+      expect(marker.purposeOrAuthority).toBe('Internal review')
+      expect(marker.contents).toEqual({ captureCount: 1, screenshotCount: 0, noteCount: 1 })
+      expect(marker.artifacts.map((a) => a.path).sort()).toEqual([
+        'notes.md',
+        `pages/${capture.id}.mhtml`
+      ])
+    })
+
+    it('a Working Copy packages the operator-facing screenshot keyed by capture id', async () => {
+      const screenshot = Buffer.from('raw-screenshot-bytes')
+      const { capture } = await ingestMhtmlCapture({
+        caseId,
+        url: 'https://example.com/shot',
+        title: 'Shot',
+        timestamp: '2026-04-05T12:00:00.000Z',
+        stream: Readable.from([
+          Buffer.from('<html><body>Shot</body></html>')
+        ]) as unknown as ReadableStream<Uint8Array>,
+        textContent: 'shot',
+        headers: {},
+        browserVersion: '',
+        userAgent: '',
+        httpStatus: 200,
+        extensionVersion: '',
+        operatorId: 'op',
+        operatorName: '',
+        toolVersion: '0.1.0',
+        screenshot
+      })
+
+      const outputPath = join(tempDir, 'wc-shots.zip')
+      await generateReport(
+        caseId,
+        {
+          format: 'zip',
+          include: {
+            captures: true,
+            screenshots: true,
+            auditTrail: false,
+            notes: false,
+            annotations: 'none'
+          },
+          exportClass: 'working-copy',
+          outputPath
+        },
+        captureLifecycle
+      )
+
+      const entries = readStoredZipEntries(outputPath)
+      expect(entries.get(`screenshots/${capture.id}.png`)).toEqual(screenshot)
+      expect([...entries.keys()].sort()).toEqual([
+        'WORKING-COPY.json',
+        `pages/${capture.id}.mhtml`,
+        `screenshots/${capture.id}.png`
+      ])
+    })
+
+    // R4's two known answers on the manifest entry: a Working Copy appends an
+    // entry carrying exportClass 'working-copy'; an evidence export's entry
+    // OMITS the key — never null, never 'evidence'.
+    it('records exportClass on the Working Copy export entry and keeps the chain valid', async () => {
+      await ingest(caseId, '<html><body>Audit</body></html>')
+
+      const outputPath = join(tempDir, 'wc-audit.zip')
+      await generateReport(
+        caseId,
+        {
+          format: 'zip',
+          include: { ...EVIDENCE_INCLUDE, auditTrail: false },
+          exportClass: 'working-copy',
+          outputPath
+        },
+        captureLifecycle
+      )
+
+      const entry = lastManifestEntry()
+      expect(entry.type).toBe('export')
+      expect(entry.exportClass).toBe('working-copy')
+      expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+    })
+
+    it('omits the exportClass key entirely from an evidence export entry', async () => {
+      await ingest(caseId, '<html><body>Audit</body></html>')
+
+      const outputPath = join(tempDir, 'ev-audit.zip')
+      await generateReport(
+        caseId,
+        { format: 'zip', include: EVIDENCE_INCLUDE, exportClass: 'evidence', outputPath },
+        captureLifecycle
+      )
+
+      const entry = lastManifestEntry()
+      expect(entry.type).toBe('export')
+      // Key absence, not a null/'evidence' value: the omit-when-absent
+      // discipline keeps evidence entries byte-identical to pre-#399 ones.
+      expect(Object.prototype.hasOwnProperty.call(entry, 'exportClass')).toBe(false)
+    })
+
+    it('rejects a Working Copy with a non-zip format', async () => {
+      await ingest(caseId, '<html><body>Content</body></html>')
+
+      await expect(
+        generateReport(
+          caseId,
+          {
+            format: 'html',
+            include: { ...EVIDENCE_INCLUDE, auditTrail: false },
+            exportClass: 'working-copy',
+            outputPath: join(tempDir, 'wc.html')
+          },
+          captureLifecycle
+        )
+      ).rejects.toThrow(/working copy.*zip/i)
+    })
+
+    it('records caseNumber and isDemo in evidence.json and drops investigatorName', async () => {
+      updateCase({ id: caseId, caseNumber: 'REF-9' })
+      await ingest(caseId, '<html><body>Content</body></html>')
+
+      const outputPath = join(tempDir, 'case-fields.zip')
+      await generateReport(
+        caseId,
+        { format: 'zip', include: EVIDENCE_INCLUDE, exportClass: 'evidence', outputPath },
+        captureLifecycle
+      )
+
+      const evidence = JSON.parse(
+        readStoredZipEntries(outputPath).get('evidence.json')!.toString('utf-8')
+      ) as { case: { caseNumber: string | null; isDemo: boolean } }
+      expect(evidence.case.caseNumber).toBe('REF-9')
+      expect(evidence.case.isDemo).toBe(false)
+      expect(Object.prototype.hasOwnProperty.call(evidence, 'investigatorName')).toBe(false)
+    })
+
+    // Frozen known answer for the notes serializer: fixed input, exact bytes.
+    it('buildNotesMarkdown output is byte-stable for a fixed input', () => {
+      const note = (over: Partial<Note>): Note => ({
+        id: 'n1',
+        caseId: 'c1',
+        title: 'Title',
+        body: 'Body text.',
+        createdAt: '2026-08-01T10:00:00.000Z',
+        updatedAt: '2026-08-02T11:00:00.000Z',
+        ...over
+      })
+
+      const md = buildNotesMarkdown('Case X', '2026-08-24T00:00:00.000Z', [
+        note({ id: 'n1', title: 'First finding', captureId: 'cap-1' }),
+        note({ id: 'n2', title: '', body: '', sourceUrl: 'https://example.com/src' })
+      ])
+
+      expect(md).toBe(
+        '# Operator notes — Case X\n' +
+          '\n' +
+          'Exported 2026-08-24T00:00:00.000Z. 2 notes.\n' +
+          '\n' +
+          'Operator work product: these notes were written by the operator in Birdbrain. They are\n' +
+          'not captured page content and are not anchored in the capture manifest chain.\n' +
+          '\n' +
+          '---\n' +
+          '\n' +
+          '## First finding\n' +
+          '\n' +
+          '- Created: 2026-08-01T10:00:00.000Z\n' +
+          '- Updated: 2026-08-02T11:00:00.000Z\n' +
+          '- Attached to capture: cap-1\n' +
+          '\n' +
+          'Body text.\n' +
+          '\n' +
+          '---\n' +
+          '\n' +
+          '## Untitled note\n' +
+          '\n' +
+          '- Created: 2026-08-01T10:00:00.000Z\n' +
+          '- Updated: 2026-08-02T11:00:00.000Z\n' +
+          '- Source URL: https://example.com/src\n' +
+          '\n' +
+          '_(no text)_\n'
+      )
+    })
   })
 })

@@ -17,6 +17,7 @@ import { initInstallationId, resetInstallationId } from '@main/services/installa
 import { signEntryHash } from '@main/services/signingKey'
 import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
 import { canonicalStringify } from '@shared/verify'
+import { packageHash } from '@shared/verify/packageHash'
 import { EvidencePackageSchema } from '@shared/schemas'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 import type { ExportOptions } from '@shared/types'
@@ -71,6 +72,26 @@ function mutateEvidenceJson(pkgDir: string, mutate: (evidence: EvidenceJson) => 
   const evidence: EvidenceJson = JSON.parse(readFileSync(p, 'utf-8'))
   mutate(evidence)
   writeFileSync(p, JSON.stringify(evidence, null, 2))
+}
+
+// Re-signs export-entry.json with the packageHash recomputed from the CURRENT
+// evidence.json artifact index, using the harness's real signing key. A test
+// that legitimately changes the packaged artifact list (a dedup rename the
+// packager would have produced itself) must reseal, or it hands the verifier a
+// package whose signed statement of itself no longer matches its index — which
+// the #836 binding rejects, correctly, for reasons unrelated to that test's
+// subject.
+function resealExportEntry(pkgDir: string): void {
+  const p = join(pkgDir, 'export-entry.json')
+  const entry = JSON.parse(readFileSync(p, 'utf-8')) as Record<string, unknown>
+  const evidence: EvidenceJson = JSON.parse(readFileSync(join(pkgDir, 'evidence.json'), 'utf-8'))
+  delete entry.entryHash
+  delete entry.signature
+  entry.packageHash = packageHash(
+    evidence.artifacts as Array<{ path: string; sha256: string; sizeBytes: number }>
+  )
+  const entryHash = createHash('sha256').update(canonicalStringify(entry)).digest('hex')
+  writeFileSync(p, JSON.stringify({ ...entry, entryHash, signature: signEntryHash(entryHash) }))
 }
 
 describe('verifyEvidencePackage', () => {
@@ -139,8 +160,8 @@ describe('verifyEvidencePackage', () => {
     const outputPath = join(tempDir, 'evidence.zip')
     const options: ExportOptions = {
       format: 'zip',
-      include: { captures: true, screenshots: true, auditTrail: true, annotations: 'none' },
-      investigatorName: 'Test User',
+      include: { captures: true, screenshots: true, auditTrail: true, notes: false, annotations: 'none' },
+      exportClass: 'evidence',
       outputPath
     }
     await generateReport(caseId, options, captureLifecycle)
@@ -181,8 +202,8 @@ describe('verifyEvidencePackage', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: true, auditTrail: true, annotations: 'none' },
-        investigatorName: 'Test User',
+        include: { captures: true, screenshots: true, auditTrail: true, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
         outputPath
       },
       createCaptureLifecycle({ selectorLifecycle: createSelectorLifecycle({ emitRematched: () => {} }) })
@@ -382,6 +403,9 @@ describe('verifyEvidencePackage', () => {
       expect(artifact).toBeDefined()
       artifact!.path = 'timestamps/shared-token.tst'
     })
+    // The packager itself would have written this path into the index before
+    // sealing, so the coherent fixture is a resealed one (#836).
+    resealExportEntry(pkgDir)
 
     const result = verifyEvidencePackage(pkgDir)
     const ts = result.checks.find((c) => c.name === `capture ${captureId} timestamp`)
@@ -406,6 +430,7 @@ describe('verifyEvidencePackage', () => {
       expect(artifact).toBeDefined()
       artifact!.path = 'timestamps/orphan-token.tst'
     })
+    resealExportEntry(pkgDir)
 
     const result = verifyEvidencePackage(pkgDir)
     const ts = result.checks.find((c) => c.name === `capture ${captureId} timestamp`)
@@ -686,8 +711,8 @@ describe('verifyEvidencePackage', () => {
         caseId,
         {
           format: 'zip',
-          include: { captures: true, screenshots: true, auditTrail: true, annotations: 'none' },
-          investigatorName: 'Test User',
+          include: { captures: true, screenshots: true, auditTrail: true, notes: false, annotations: 'none' },
+          exportClass: 'evidence',
           outputPath: selZipPath,
           captureIds: [captureId]
         },
@@ -814,8 +839,8 @@ describe('verifyEvidencePackage', () => {
         caseId,
         {
           format: 'zip',
-          include: { captures: true, screenshots: true, auditTrail: true, annotations: 'none' },
-          investigatorName: 'Test User',
+          include: { captures: true, screenshots: true, auditTrail: true, notes: false, annotations: 'none' },
+          exportClass: 'evidence',
           outputPath: secondZip,
           captureIds: [captureId]
         },
@@ -866,6 +891,102 @@ describe('verifyEvidencePackage', () => {
       expect(hasReason(result, `capture ${captureB}: content file missing`)).toBe(true)
     })
 
+    // #836: the signed packageHash must bind the artifact index, or a
+    // tamperer edits a packaged file AND its row and both prior checks stay
+    // silent. That gap matters most for notes.md (#399), which unlike a
+    // capture has no manifest entry of its own.
+    it('FAILs when a packaged file and its evidence.json row are edited together', () => {
+      const target = JSON.parse(readFileSync(join(selDir, 'evidence.json'), 'utf-8'))
+        .artifacts[0] as { path: string }
+      const tampered = Buffer.from('fabricated after sealing\n')
+      writeFileSync(join(selDir, target.path), tampered)
+      const digest = createHash('sha256').update(tampered).digest('hex')
+      mutateEvidenceJson(selDir, (evidence) => {
+        const row = evidence.artifacts.find((a) => a.path === target.path)!
+        row.sha256 = digest
+        row.sizeBytes = tampered.length
+      })
+      const result = verifyEvidencePackage(selDir)
+      expect(result.pass).toBe(false)
+      // The row-versus-bytes sweep is satisfied by the coordinated edit, so
+      // the packageHash binding is provably the check that fires.
+      expect(result.checks.find((c) => c.name === 'evidence.json artifact sweep')?.status).toBe(
+        'pass'
+      )
+      expect(
+        hasReason(
+          result,
+          "evidence.json's artifact index does not match the packageHash in the signed export entry"
+        )
+      ).toBe(true)
+    })
+
+    it('FAILs when a packaged notes.md and its row are removed together', async () => {
+      // Built with notes:true so the file under test is the one #399 adds and
+      // no manifest entry covers.
+      const notesZip = join(tempDir, 'notes-selection.zip')
+      await generateReport(
+        caseId,
+        {
+          format: 'zip',
+          include: { captures: true, screenshots: true, auditTrail: true, notes: true, annotations: 'none' },
+          exportClass: 'evidence',
+          outputPath: notesZip,
+          captureIds: [captureId]
+        },
+        lifecycle
+      )
+      const dir = mkdtempSync(join(tmpdir(), 'bb-notespkg-'))
+      try {
+        unzipToDir(notesZip, dir)
+        const notesRow = (
+          JSON.parse(readFileSync(join(dir, 'evidence.json'), 'utf-8')).artifacts as Array<{
+            path: string
+          }>
+        ).find((a) => a.path.endsWith('notes.md'))
+        expect(notesRow, 'a notes:true export must package notes.md').toBeTruthy()
+        expect(verifyEvidencePackage(dir).pass).toBe(true)
+
+        rmSync(join(dir, notesRow!.path))
+        mutateEvidenceJson(dir, (evidence) => {
+          evidence.artifacts = evidence.artifacts.filter((a) => a.path !== notesRow!.path)
+        })
+        const result = verifyEvidencePackage(dir)
+        expect(result.pass).toBe(false)
+        expect(result.checks.find((c) => c.name === 'evidence.json artifact sweep')?.status).toBe(
+          'pass'
+        )
+        expect(result.checks.find((c) => c.name === 'package hash')?.status).toBe('fail')
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    })
+
+    it('PASSes the package hash check on an untampered package', () => {
+      const result = verifyEvidencePackage(selDir)
+      expect(result.checks.find((c) => c.name === 'package hash')?.status).toBe('pass')
+    })
+
+    // #851: a Working Copy's entry is a genuine signed line continuing the same
+    // chain head, so every structural check above passes — the class itself
+    // must disqualify it from standing as an evidence package's scope proof.
+    it('FAILs when a working-copy export entry is supplied as the package entry', () => {
+      forgeExportEntry((entry) => {
+        entry.exportClass = 'working-copy'
+      })
+      const result = verifyEvidencePackage(selDir)
+      expect(result.pass).toBe(false)
+      expect(
+        hasReason(
+          result,
+          'export-entry.json declares a working-copy export, not an evidence package'
+        )
+      ).toBe(true)
+      // Rejected outright, so it confers no scope: the unselected capture's
+      // absence FAILs again rather than being explained away.
+      expect(hasReason(result, `capture ${captureB}: content file missing`)).toBe(true)
+    })
+
     it('FAILs coverage when evidence.json lists a capture outside the signed selection', () => {
       mutateEvidenceJson(selDir, (evidence) => {
         evidence.captures.push({ id: captureB, timestampTokenPaths: [] })
@@ -893,8 +1014,8 @@ describe('verifyEvidencePackage', () => {
         caseId,
         {
           format: 'zip',
-          include: { captures: true, screenshots: false, auditTrail: false, annotations: 'none' },
-          investigatorName: 'Test User',
+          include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+          exportClass: 'evidence',
           outputPath,
           captureIds: [orphan.id]
         },
@@ -911,6 +1032,129 @@ describe('verifyEvidencePackage', () => {
       } finally {
         rmSync(dir, { recursive: true, force: true })
       }
+    })
+  })
+
+  // The third outcome (#399, ADR-0010): a self-identified Working Copy is
+  // reported as "not a verifiable object" — never PASS, never FAIL — and the
+  // unsigned marker must not be able to mask or soften anything else.
+  describe('working copy detection (#399)', () => {
+    const MARKER = 'WORKING-COPY.json'
+
+    async function exportWorkingCopy(): Promise<string> {
+      const outputPath = join(tempDir, 'working-copy.zip')
+      await generateReport(
+        caseId,
+        {
+          format: 'zip',
+          include: { captures: true, screenshots: true, auditTrail: false, notes: true, annotations: 'none' },
+          exportClass: 'working-copy',
+          outputPath
+        },
+        createCaptureLifecycle({
+          selectorLifecycle: createSelectorLifecycle({ emitRematched: () => {} })
+        })
+      )
+      const dir = mkdtempSync(join(tmpdir(), 'bb-wc-'))
+      unzipToDir(outputPath, dir)
+      return dir
+    }
+
+    it('reports a real Working Copy export as not a verifiable object', async () => {
+      const dir = await exportWorkingCopy()
+      try {
+        const result = verifyEvidencePackage(dir)
+
+        expect(result.notVerifiable?.reason).toContain('Working Copy')
+        expect(result.notVerifiable?.reason).toContain('non-evidentiary')
+        // No integrity claim in either direction: pass stays false, and no
+        // checks ran to be misread as findings.
+        expect(result.pass).toBe(false)
+        expect(result.checks).toEqual([])
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    })
+
+    it('still FAILs — not not-verifiable — for an evidence package whose manifest was deleted', () => {
+      rmSync(join(pkgDir, 'manifest.jsonl'))
+
+      const result = verifyEvidencePackage(pkgDir)
+
+      expect(result.notVerifiable).toBeUndefined()
+      expect(result.pass).toBe(false)
+      expect(hasReason(result, 'manifest.jsonl missing from package')).toBe(true)
+    })
+
+    it('a planted marker cannot silence a present manifest', () => {
+      // A tamperer drops a valid marker into a genuine evidence package: the
+      // chain is still there, so it is still verified — and still PASSes here,
+      // because the package itself is intact.
+      writeFileSync(join(pkgDir, MARKER), JSON.stringify({ exportClass: 'working-copy' }))
+
+      const result = verifyEvidencePackage(pkgDir)
+
+      expect(result.notVerifiable).toBeUndefined()
+      expect(result.pass, JSON.stringify(result.checks, null, 2)).toBe(true)
+    })
+
+    it('an invalid marker falls through to the missing-manifest FAIL', () => {
+      rmSync(join(pkgDir, 'manifest.jsonl'))
+
+      for (const bad of ['not json at all', JSON.stringify({ exportClass: 'evidence' })]) {
+        writeFileSync(join(pkgDir, MARKER), bad)
+        const result = verifyEvidencePackage(pkgDir)
+        expect(result.notVerifiable).toBeUndefined()
+        expect(hasReason(result, 'manifest.jsonl missing from package')).toBe(true)
+      }
+    })
+
+    it('an evidence package whose bundled chain contains a Working Copy entry still verifies', async () => {
+      // The WC export appended a marked `export` entry to the live chain; the
+      // next evidence package bundles that chain, so the strict verifier
+      // schema must accept the exportClass key and the chain must still walk.
+      const wcDir = await exportWorkingCopy()
+      rmSync(wcDir, { recursive: true, force: true })
+
+      const outputPath = join(tempDir, 'after-wc.zip')
+      await generateReport(
+        caseId,
+        {
+          format: 'zip',
+          include: { captures: true, screenshots: true, auditTrail: true, notes: false, annotations: 'none' },
+          exportClass: 'evidence',
+          outputPath
+        },
+        createCaptureLifecycle({
+          selectorLifecycle: createSelectorLifecycle({ emitRematched: () => {} })
+        })
+      )
+      const dir = mkdtempSync(join(tmpdir(), 'bb-after-wc-'))
+      try {
+        unzipToDir(outputPath, dir)
+        const manifest = readFileSync(join(dir, 'manifest.jsonl'), 'utf-8')
+        expect(manifest).toContain('"exportClass":"working-copy"')
+
+        const result = verifyEvidencePackage(dir)
+        expect(result.notVerifiable).toBeUndefined()
+        expect(result.pass, JSON.stringify(result.checks, null, 2)).toBe(true)
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    })
+
+    it('a stripped evidence package with a planted valid marker reads as not verifiable, never PASS', () => {
+      // The residual channel, stated as a known answer: remove the manifest
+      // AND plant a marker and the result is indistinguishable from a real
+      // Working Copy — which confers no integrity claim, so the tamper gains
+      // no PASS from it.
+      rmSync(join(pkgDir, 'manifest.jsonl'))
+      writeFileSync(join(pkgDir, MARKER), JSON.stringify({ exportClass: 'working-copy' }))
+
+      const result = verifyEvidencePackage(pkgDir)
+
+      expect(result.notVerifiable).toBeDefined()
+      expect(result.pass).toBe(false)
     })
   })
 })

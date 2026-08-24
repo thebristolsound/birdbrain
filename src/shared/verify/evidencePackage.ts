@@ -1,11 +1,17 @@
 import { createHash } from 'crypto'
 import { existsSync, readFileSync, readdirSync, realpathSync } from 'fs'
 import { join, resolve, sep } from 'path'
-import { EvidencePackageSchema, ManifestEntrySchema } from '@shared/schemas'
+import {
+  EvidencePackageSchema,
+  ManifestEntrySchema,
+  WORKING_COPY_MARKER_FILENAME,
+  WorkingCopyMarkerSchema
+} from '@shared/schemas'
 import type { ManifestEntry } from '@shared/schemas'
 import { parseTimestampToken } from '@shared/verify/timestampToken'
 import { verifyManifestChainText } from '@shared/verify/manifestChain'
 import { canonicalStringify } from '@shared/verify/canonicalJson'
+import { packageHash } from '@shared/verify/packageHash'
 import { verifyEntrySignature } from '@shared/verify/signature'
 
 // The standalone package verifier (#122 §7). This is the ONLY fs-touching
@@ -41,6 +47,15 @@ export interface PackageVerifyResult {
   // EVERY check and collects ALL failures — it never short-circuits.
   pass: boolean
   checks: PackageCheck[]
+  /**
+   * Third outcome (#399, ADR-0010): the directory is a self-identified Working
+   * Copy — a non-evidentiary export with no manifest to verify — so the honest
+   * report is "not a verifiable object", not FAIL. `pass` stays false: this
+   * outcome confers no integrity claim whatsoever. Only ever set when
+   * manifest.jsonl is ABSENT — a present manifest is always verified, so a
+   * planted marker can never silence a chain.
+   */
+  notVerifiable?: { reason: string }
 }
 
 function sha256File(path: string): string {
@@ -122,6 +137,15 @@ function validateExportEntry(
   if ((entry.scope === 'selection') !== (entry.captureIds !== undefined)) {
     return { reason: 'export-entry.json scope and captureIds are inconsistent' }
   }
+  // A Working Copy is non-evidentiary by its own signed statement (#399,
+  // ADR-0010), so its entry cannot stand as an evidence package's scope proof
+  // — otherwise a genuine signed working-copy entry from the same case, which
+  // continues the same chain head, would satisfy every check above and let the
+  // package pass (#851). Historical working-copy entries INSIDE the bundled
+  // manifest stay valid: this rejects the role, not the record.
+  if (entry.exportClass === 'working-copy') {
+    return { reason: 'export-entry.json declares a working-copy export, not an evidence package' }
+  }
   return { entry }
 }
 
@@ -145,6 +169,34 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   const publicKeyPath = join(dir, 'signing-public-key.pem')
 
   if (!existsSync(manifestPath)) {
+    // Working Copy detection (#399), gated on the manifest's ABSENCE: the
+    // marker is unsigned and confers nothing, so when a manifest exists it is
+    // verified regardless of any marker — a tamperer cannot downgrade a
+    // failing package to "not verifiable" without also removing the manifest,
+    // which the marker-less branch below still reports as FAIL.
+    const markerPath = join(dir, WORKING_COPY_MARKER_FILENAME)
+    if (existsSync(markerPath)) {
+      let marker: unknown
+      try {
+        marker = JSON.parse(readFileSync(markerPath, 'utf-8'))
+      } catch {
+        marker = undefined
+      }
+      if (WorkingCopyMarkerSchema.safeParse(marker).success) {
+        return {
+          pass: false,
+          checks,
+          notVerifiable: {
+            reason:
+              `${WORKING_COPY_MARKER_FILENAME} identifies this as a Birdbrain Working Copy — ` +
+              'a non-evidentiary export with no manifest, no signing key and no ' +
+              'certification. There is nothing to verify.'
+          }
+        }
+      }
+      // An unreadable or wrong-class marker is no marker of ours: fall through
+      // to the missing-manifest FAIL rather than inventing a verdict from it.
+    }
     add('manifest present', 'fail', 'manifest.jsonl missing from package')
     return { pass: false, checks }
   }
@@ -197,6 +249,8 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   // every unselected capture rather than passing with its absences
   // unexplained.
   let selectionIds: Set<string> | undefined
+  // The signed statement of what the package contained when it was sealed.
+  let signedPackageHash: string | undefined
   const exportEntryPath = join(dir, 'export-entry.json')
   if (existsSync(exportEntryPath)) {
     // existsSync also passes for a directory or a file this process cannot
@@ -214,6 +268,7 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
       } else {
         add('export entry', 'pass')
         const { scope, captureIds } = validated.entry
+        signedPackageHash = validated.entry.packageHash
         if (scope === 'selection' && captureIds !== undefined) {
           selectionIds = new Set(captureIds)
         }
@@ -455,6 +510,28 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
       }
     }
     if (sweepOk) add('evidence.json artifact sweep', 'pass')
+
+    // Binds the artifact index to the package's signed statement of itself
+    // (#836). The sweep above proves each listed file matches its row; this
+    // proves the ROW SET is the one that was sealed. Without it a tamperer can
+    // edit or drop a packaged file AND its row in the unsigned evidence.json
+    // and both checks stay silent — the gap that left notes.md (#399), which
+    // has no manifest entry of its own, anchored only by a hash nothing
+    // recomputed. Runs only when the package ships a validated export entry:
+    // pre-scope packages (#398) carry no such statement, and their absence is
+    // already handled unscoped above, so they are unaffected.
+    if (signedPackageHash !== undefined) {
+      const recomputed = packageHash(evidence.artifacts)
+      if (recomputed === signedPackageHash) {
+        add('package hash', 'pass')
+      } else {
+        add(
+          'package hash',
+          'fail',
+          "evidence.json's artifact index does not match the packageHash in the signed export entry"
+        )
+      }
+    }
   }
 
   const pass = !checks.some((c) => c.status === 'fail')

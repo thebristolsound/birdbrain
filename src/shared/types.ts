@@ -9,6 +9,18 @@ export interface Case {
   name: string
   description?: string
   type?: 'crypto' | 'malware' | 'fraud' | 'custom'
+  /**
+   * Operator-assigned case/reference number (#399). Absent when never set —
+   * the repo stores NULL, never '', because an empty string would be a claim
+   * nobody made. Rendered on the Certification as 'not stated' when absent.
+   */
+  caseNumber?: string
+  /**
+   * True only for the seeded demonstration case (#405). Exports of a demo case
+   * state it in the export dialog and the Certification so fixture data is
+   * never handed over as evidence by accident.
+   */
+  isDemo: boolean
   createdAt: string
   updatedAt: string
   archived: boolean
@@ -615,15 +627,30 @@ export interface OpenRouterModel {
   pricing: { prompt: string; completion: string }
 }
 
+// The two semantically distinct export classes (#399, ADR-0010). An
+// 'evidence' export is the verifiable package: full Manifest, Certification,
+// signing key, evidence.json. A 'working-copy' is a clearly-labelled
+// non-evidentiary export that ships none of those — the standalone verifier
+// reports it as not a verifiable object rather than FAIL.
+export const EXPORT_CLASSES = ['evidence', 'working-copy'] as const
+export type ExportClass = (typeof EXPORT_CLASSES)[number]
+
 export interface ExportOptions {
   format: 'html' | 'pdf' | 'zip'
+  exportClass: ExportClass
   include: {
     captures: boolean
     screenshots: boolean
     auditTrail: boolean
+    // Operator notes as package content (#399): notes.md in the zip. The
+    // Court-exhibit preset is this flag off; extracted text and selector hits
+    // deliberately did NOT become package content (maintainer ruling R4).
+    notes: boolean
     annotations: 'none' | 'burned'
   }
-  investigatorName: string
+  // Free-text purpose-or-authority statement rendered on the Certification
+  // (e.g. "Disclosure under CPS request 2026/114"). Absent renders 'not stated'.
+  purposeOrAuthority?: string
   outputPath: string
   // Selection scope (#398, ADR-0009): when present, only these captures are
   // exported as artifacts; the Manifest chain still ships complete. Absent

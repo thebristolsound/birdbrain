@@ -64,7 +64,12 @@ valid, every active capture's bytes bind to the chain, and every present
 timestamp token's imprint + bytes match the signed entry. It is NOT a standalone
 authenticity claim. Timestamp checks here are STRUCTURAL (imprint / byte-
 binding) — run the documented \`openssl ts -verify\` (VERIFY.md) for canonical
-TSA authenticity. So binary-PASS is not the same as runbook-PASS.`
+TSA authenticity. So binary-PASS is not the same as runbook-PASS.
+
+Exit codes: 0 = PASS, 1 = FAIL, 2 = not a verifiable object. Exit 2 is a
+Birdbrain Working Copy — a deliberately non-evidentiary export that
+self-identifies via WORKING-COPY.json and contains nothing to verify. It is
+neither a PASS nor a FAIL: no integrity claim is made either way.`
 
 function runSelfCheck(): number {
   const actual = canonicalStringify(GOLDEN_BODY)
@@ -88,6 +93,12 @@ function printReport(dir: string, result: PackageVerifyResult): void {
     status === 'pass' ? 'PASS' : status === 'fail' ? 'FAIL' : 'SKIP'
   process.stdout.write(`Birdbrain evidence-package verification\n`)
   process.stdout.write(`Package: ${dir}\n\n`)
+  // Third outcome (#399): a self-identified Working Copy has nothing to
+  // verify, so no checks ran and neither PASS nor FAIL would be honest.
+  if (result.notVerifiable) {
+    process.stdout.write(`RESULT: NOT A VERIFIABLE OBJECT — ${result.notVerifiable.reason}\n`)
+    return
+  }
   for (const check of result.checks) {
     const line = `  [${symbol(check.status)}] ${check.name}`
     process.stdout.write(check.reason ? `${line} — ${check.reason}\n` : `${line}\n`)
@@ -127,6 +138,9 @@ export function main(argv: string[]): number {
     return 1
   }
   printReport(dir, result)
+  // 2, not 1, for a Working Copy: scripts must be able to distinguish
+  // nothing-to-verify against failed-verification (#399).
+  if (result.notVerifiable) return 2
   return result.pass ? 0 : 1
 }
 

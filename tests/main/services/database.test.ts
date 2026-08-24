@@ -1571,6 +1571,84 @@ describe('database', () => {
     })
   })
 
+  describe('migration v31 (case number + demo flag, #399/#405)', () => {
+    it('adds a nullable case_number column with no default', () => {
+      const cols = getDb().prepare("PRAGMA table_info('cases')").all() as Array<{
+        name: string
+        notnull: number
+        dflt_value: string | null
+      }>
+      const byName = new Map(cols.map((c) => [c.name, c]))
+      expect(byName.has('case_number')).toBe(true)
+      expect(byName.get('case_number')!.notnull).toBe(0)
+      // No DEFAULT: NULL means "never assigned"; '' would be a claim nobody made.
+      expect(byName.get('case_number')!.dflt_value).toBeNull()
+    })
+
+    it('adds is_demo as NOT NULL DEFAULT 0', () => {
+      const cols = getDb().prepare("PRAGMA table_info('cases')").all() as Array<{
+        name: string
+        notnull: number
+        dflt_value: string | null
+      }>
+      const byName = new Map(cols.map((c) => [c.name, c]))
+      expect(byName.has('is_demo')).toBe(true)
+      // Backfilling 0 is a TRUE claim: nothing before this migration was ever
+      // seeded as a demo case, so the total field is warranted (v23 precedent).
+      expect(byName.get('is_demo')!.notnull).toBe(1)
+      expect(byName.get('is_demo')!.dflt_value).toBe('0')
+    })
+
+    it('reads a case that never set either as un-numbered and not a demo', () => {
+      const c = createCase({ name: 'Plain Case' })
+
+      expect(c.caseNumber).toBeUndefined()
+      expect(c.isDemo).toBe(false)
+      const row = getDb()
+        .prepare('SELECT case_number, is_demo FROM cases WHERE id = ?')
+        .get(c.id) as { case_number: string | null; is_demo: number }
+      expect(row.case_number).toBeNull()
+      expect(row.is_demo).toBe(0)
+    })
+
+    it('round-trips a case number through updateCase', () => {
+      const c = createCase({ name: 'Numbered' })
+
+      const updated = updateCase({ id: c.id, caseNumber: 'CPS 2026/114' })
+      expect(updated?.caseNumber).toBe('CPS 2026/114')
+      expect(getCase(c.id)?.caseNumber).toBe('CPS 2026/114')
+    })
+
+    it('leaves the case number untouched when the update omits it', () => {
+      const c = createCase({ name: 'Keep Number' })
+      updateCase({ id: c.id, caseNumber: 'REF-1' })
+
+      updateCase({ id: c.id, name: 'Keep Number Renamed' })
+
+      expect(getCase(c.id)?.caseNumber).toBe('REF-1')
+    })
+
+    it('clears the case number to NULL on a blank submission, never storing an empty string', () => {
+      const c = createCase({ name: 'Cleared' })
+      updateCase({ id: c.id, caseNumber: 'REF-2' })
+
+      updateCase({ id: c.id, caseNumber: '   ' })
+
+      expect(getCase(c.id)?.caseNumber).toBeUndefined()
+      const row = getDb().prepare('SELECT case_number FROM cases WHERE id = ?').get(c.id) as {
+        case_number: string | null
+      }
+      expect(row.case_number).toBeNull()
+    })
+
+    it('reads a hand-set demo flag back as isDemo true', () => {
+      const c = createCase({ name: 'Demo' })
+      getDb().prepare('UPDATE cases SET is_demo = 1 WHERE id = ?').run(c.id)
+
+      expect(getCase(c.id)?.isDemo).toBe(true)
+    })
+  })
+
   describe('notes search (FTS)', () => {
     it('finds notes matching a query in body', () => {
       const c = createCase({ name: 'C' })

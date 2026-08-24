@@ -49,7 +49,8 @@ export const queryKeys = {
   openRouterModels: ['openRouterModels'] as const,
   appVersion: ['appVersion'] as const,
   captureAnalysis: (captureId: string) => ['analysis', captureId] as const,
-  exportPreflight: (caseId: string) => ['export', 'preflight', caseId] as const,
+  exportPreflight: (caseId: string, captureIds?: string[]) =>
+    ['export', 'preflight', caseId, captureIds ?? null] as const,
   recaptureQueue: ['recaptureQueue'] as const,
   diagnostics: ['diagnostics'] as const,
   unreconciledDeletions: ['diagnostics', 'unreconciledDeletions'] as const,

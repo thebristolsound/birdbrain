@@ -194,7 +194,7 @@ export interface BirdbrainAPI {
     chooseStoragePath(): Promise<string | null>
   }
   export: {
-    preflight(caseId: string): Promise<ExportPreflight>
+    preflight(caseId: string, captureIds?: string[]): Promise<ExportPreflight>
     generateReport(caseId: string, options: ExportOptions): Promise<ExportResult>
   }
   shell: {

@@ -59,6 +59,7 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
   let tempDir: string
   let pkgDir: string
   let selPkgDir: string
+  let wcPkgDir: string
   let captureId: string
   let unselectedCaptureId: string
 
@@ -140,8 +141,8 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
     const outputPath = join(tempDir, 'evidence.zip')
     const options: ExportOptions = {
       format: 'zip',
-      include: { captures: true, screenshots: true, auditTrail: true, annotations: 'none' },
-      investigatorName: 'Test User',
+      include: { captures: true, screenshots: true, auditTrail: true, notes: false, annotations: 'none' },
+      exportClass: 'evidence',
       outputPath
     }
     await generateReport(caseId, options, captureLifecycle)
@@ -158,6 +159,21 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
     )
     selPkgDir = mkdtempSync(join(tmpdir(), 'bb-binselpkg-'))
     unzipToDir(selectionPath, selPkgDir)
+
+    // A Working Copy export (#399): the deliberately non-evidentiary class.
+    const workingCopyPath = join(tempDir, 'working-copy.zip')
+    await generateReport(
+      caseId,
+      {
+        ...options,
+        include: { ...options.include, auditTrail: false },
+        exportClass: 'working-copy',
+        outputPath: workingCopyPath
+      },
+      captureLifecycle
+    )
+    wcPkgDir = mkdtempSync(join(tmpdir(), 'bb-binwcpkg-'))
+    unzipToDir(workingCopyPath, wcPkgDir)
   })
 
   afterAll(() => {
@@ -165,6 +181,7 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
     if (tempDir && existsSync(tempDir)) rmSync(tempDir, { recursive: true, force: true })
     if (pkgDir && existsSync(pkgDir)) rmSync(pkgDir, { recursive: true, force: true })
     if (selPkgDir && existsSync(selPkgDir)) rmSync(selPkgDir, { recursive: true, force: true })
+    if (wcPkgDir && existsSync(wcPkgDir)) rmSync(wcPkgDir, { recursive: true, force: true })
   })
 
   it('--self-check exits 0 and prints canonical bytes identical to the in-app core', () => {
@@ -192,6 +209,15 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
     const proc = spawnSync(binaryPath, [pkgDir], { encoding: 'utf-8' })
     expect(proc.status, proc.stdout + proc.stderr).toBe(0)
     expect(proc.stdout).toContain('RESULT: PASS')
+  })
+
+  // #399 AC 2 through the BUILT binary: a Working Copy is reported as not a
+  // verifiable object — its own wording and its own exit code, never FAIL/1.
+  it('exits 2 with a not-a-verifiable-object report on a Working Copy', () => {
+    const proc = spawnSync(binaryPath, [wcPkgDir], { encoding: 'utf-8' })
+    expect(proc.status, proc.stdout + proc.stderr).toBe(2)
+    expect(proc.stdout).toContain('RESULT: NOT A VERIFIABLE OBJECT')
+    expect(proc.stdout).not.toContain('RESULT: FAIL')
   })
 
   // #398 backward verification through the BUILT binary: the frozen pre-scope

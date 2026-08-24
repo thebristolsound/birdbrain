@@ -634,4 +634,29 @@ export function runMigrations(db: Database.Database): void {
       db.pragma('user_version = 30')
     })()
   }
+
+  if (version < 31) {
+    db.transaction(() => {
+      // Case number and demo flag (#399, ADR-0010; demo flag ruled onto this
+      // migration by the #405 ruling of 2026-08-23).
+      //
+      // `case_number` follows the v29/v30 precedent exactly: nullable with no
+      // default, because NULL means the operator never assigned one and ''
+      // would be a claim nobody made.
+      //
+      // `is_demo` takes the opposite treatment (the v23 precedent): backfilling
+      // every pre-existing case with 0 is a TRUE claim — nothing before this
+      // migration was ever seeded as a demonstration case — and NOT NULL gives
+      // readers a total field rather than a tri-state. The flag exists so an
+      // exported demo case is stated as fixture data in the Certification and
+      // the export dialog, never handed over as evidence by accident (#405).
+      //
+      // No index: both are read through the existing SELECT * paths.
+      db.exec(`
+        ALTER TABLE cases ADD COLUMN case_number TEXT;
+        ALTER TABLE cases ADD COLUMN is_demo INTEGER NOT NULL DEFAULT 0;
+      `)
+      db.pragma('user_version = 31')
+    })()
+  }
 }

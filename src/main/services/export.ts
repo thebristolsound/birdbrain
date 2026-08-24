@@ -3,6 +3,7 @@ import { createHash } from 'crypto'
 import { join } from 'path'
 import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
+import * as noteRepo from '@main/services/db/noteRepo'
 import { getStorageRoot } from '@main/services/storage'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
@@ -44,11 +45,13 @@ import type {
   ReportData
 } from '@main/services/reportHtml'
 import { VERIFY_RUNBOOK } from '@main/services/verifyRunbook'
+import { WORKING_COPY_MARKER_FILENAME } from '@shared/schemas'
 import type {
   Capture,
   ExportOptions,
   ExportPreflight,
   HashVerification,
+  Note,
   TrustedTime
 } from '@shared/types'
 
@@ -243,8 +246,13 @@ export function resolveUnreconciledChainCaptures(
  * one. generateReport deliberately does not call this — it resolves once from
  * the snapshot it packages.
  */
-export function getExportPreflight(caseId: string): ExportPreflight {
-  const captures = captureRepo.listCaptures(caseId)
+export function getExportPreflight(caseId: string, captureIds?: string[]): ExportPreflight {
+  // Scoped to the selection when the dialog was opened from the selection
+  // toolbar: an unstamped capture the operator did not select is not going to
+  // export, so counting it would warn about evidence the package will not
+  // contain (PR #842 review).
+  const all = captureRepo.listCaptures(caseId)
+  const captures = captureIds ? all.filter((c) => captureIds.includes(c.id)) : all
   return resolveExportTrustedTime(captures, buildTrustedTimeIndex(join(getStorageRoot(), caseId)))
     .preflight
 }
@@ -260,6 +268,13 @@ export async function generateReport(
     throw new Error(
       'Operator name required. Configure your name in Birdbrain settings before exporting.'
     )
+  }
+
+  const workingCopy = options.exportClass === 'working-copy'
+  // A Working Copy has no standalone report to fall back to — its whole output
+  // is the marked zip — so any other format is a caller error, not a variant.
+  if (workingCopy && options.format !== 'zip') {
+    throw new Error('A Working Copy export is always a zip package')
   }
 
   const caseData = caseRepo.getCase(caseId)
@@ -279,7 +294,6 @@ export async function generateReport(
       captures.length > 0
         ? { first: captures[captures.length - 1].timestamp, last: captures[0].timestamp }
         : null,
-    investigatorName: options.investigatorName,
     exportTimestamp: new Date().toISOString(),
     captures,
     verifications: [],
@@ -352,6 +366,12 @@ export async function generateReport(
     }
   }
 
+  // Operator notes as package content (#399). Null means excluded; an empty
+  // array means the toggle was on and the case simply has none — notes.md is
+  // still written then, so "no notes existed" stays distinguishable from
+  // "notes were excluded".
+  const notes = options.include.notes ? noteRepo.listNotes(caseId) : null
+
   // One manifest snapshot, taken after every awaited stage and shared by the
   // report and the package. Reading it twice would let the timestamp worker
   // append between the two, so report.html could cite a head the bundled
@@ -379,24 +399,35 @@ export async function generateReport(
   // resolver's comment for why a deliberately unselected capture is no orphan.
   data.unreconciledChainCaptureIds = resolveUnreconciledChainCaptures(allCaptures, manifest.entries)
 
-  onProgress?.('Generating report...', 80)
-  const html = buildHtmlReport(data, options)
-
   if (options.format === 'zip') {
-    onProgress?.('Packaging evidence...', 90)
-    const { entries, packageHash, verificationResult } = buildEvidenceZip(
-      caseId,
-      data,
-      html,
-      manifest
-    )
+    const packageMeta: PackageMeta = {
+      caseNumber: caseData.caseNumber,
+      isDemo: caseData.isDemo,
+      purposeOrAuthority: options.purposeOrAuthority,
+      notes
+    }
+    let zip: EvidenceZipResult
+    if (workingCopy) {
+      // No report, no certification: the Working Copy deliberately carries no
+      // evidentiary documents at all (#399, ADR-0010).
+      onProgress?.('Packaging working copy...', 90)
+      zip = buildWorkingCopyZip(caseId, data, packageMeta)
+    } else {
+      onProgress?.('Generating report...', 80)
+      const html = buildHtmlReport(data, options)
+      onProgress?.('Packaging evidence...', 90)
+      zip = buildEvidenceZip(caseId, data, html, manifest, packageMeta)
+    }
+    const { entries, packageHash, verificationResult } = zip
 
-    // Record the export as a signed, hash-chained audit entry (#124). Ordering
-    // is deliberate: the entries (and thus packageHash) are built from the
-    // manifest tail BEFORE this append, so packageHash does not — and must not —
-    // cover this entry. The bundled manifest.jsonl copy therefore lags the live
-    // case manifest by exactly this one entry; the entry itself ships beside it
-    // as export-entry.json, so a reviewer can still reconcile the two files.
+    // Record the export as a signed, hash-chained audit entry (#124) — for
+    // BOTH classes: a Working Copy extraction must not go silent on the audit
+    // trail, it is recorded and marked as one (#399). Ordering is deliberate:
+    // the entries (and thus packageHash) are built from the manifest tail
+    // BEFORE this append, so packageHash does not — and must not — cover this
+    // entry. The bundled manifest.jsonl copy therefore lags the live case
+    // manifest by exactly this one entry; the entry itself ships beside it as
+    // export-entry.json, so a reviewer can still reconcile the two files.
     //
     // Write-ahead + rollback (#398): the entry is appended BEFORE the zip is
     // written so its signed line can be packaged. If the append throws, nothing
@@ -418,7 +449,10 @@ export async function generateReport(
       verificationResult,
       // Omitted — never ''/[]/null — on case-scoped exports so their entries
       // stay byte-identical to pre-scope ones (#398, ADR-0009).
-      ...(scoped ? { scope: 'selection' as const, captureIds: captures.map((c) => c.id) } : {})
+      ...(scoped ? { scope: 'selection' as const, captureIds: captures.map((c) => c.id) } : {}),
+      // Omitted — never 'evidence'/null — on evidence exports, the same
+      // omit-when-absent discipline as `scope` (#399, ADR-0010).
+      ...(workingCopy ? { exportClass: 'working-copy' as const } : {})
     })
     try {
       // The signed line itself, unshifted exactly like evidence.json: outside
@@ -427,16 +461,32 @@ export async function generateReport(
       // trusted statement of its own scope: the verifier checks its signature,
       // its prevHash against the bundled chain head, and its recomputed
       // entryHash before trusting captureIds (#398).
-      entries.unshift({ name: 'export-entry.json', data: appended.line })
+      //
+      // Not shipped in a Working Copy: with no bundled manifest or signing key
+      // the line proves nothing there, and shipping evidence-shaped material
+      // in a non-evidentiary export is exactly what the class split forbids.
+      if (!workingCopy) entries.unshift({ name: 'export-entry.json', data: appended.line })
       writeFileSync(options.outputPath, createStoredZip(entries))
     } catch (err) {
       rollbackManifestEntry(caseDir, appended.anchorBytes)
       throw err
     }
   } else {
-    writeFileSync(options.outputPath, html, 'utf-8')
+    onProgress?.('Generating report...', 80)
+    writeFileSync(options.outputPath, buildHtmlReport(data, options), 'utf-8')
   }
   onProgress?.('Complete', 100)
+}
+
+// Per-package facts that ride beside ExportData (which is the report
+// renderer's shape and deliberately not widened here): the Case fields the
+// Certification and the Working Copy marker state, and the notes packaged as
+// content. `notes` null means excluded; [] means included-but-none.
+interface PackageMeta {
+  caseNumber?: string
+  isDemo: boolean
+  purposeOrAuthority?: string
+  notes: Note[] | null
 }
 
 /**
@@ -472,7 +522,8 @@ function buildEvidenceZip(
   caseId: string,
   data: ExportData,
   reportHtml: string,
-  manifest: ManifestSnapshot
+  manifest: ManifestSnapshot,
+  meta: PackageMeta
 ): EvidenceZipResult {
   const { entries, artifacts, add } = createArtifactAccumulator()
 
@@ -505,6 +556,8 @@ function buildEvidenceZip(
     }
   }
 
+  const publicKeyPem = getPublicKeyPem()
+
   add('manifest.jsonl', manifestJsonl)
   add('report.html', reportHtml)
   add(
@@ -512,6 +565,16 @@ function buildEvidenceZip(
     buildCertification(
       {
         caseName: data.caseName,
+        caseNumber: meta.caseNumber,
+        isDemo: meta.isDemo,
+        purposeOrAuthority: meta.purposeOrAuthority,
+        manifestHead: data.manifestHead,
+        signingKeyFingerprint: sha256(Buffer.from(publicKeyPem, 'utf-8')),
+        contents: {
+          captureCount: data.captures.length,
+          screenshotCount: data.screenshots.size,
+          noteCount: meta.notes?.length ?? 0
+        },
         exportTimestamp: data.exportTimestamp,
         installationId: data.installationId,
         operatorName: data.operatorName,
@@ -524,8 +587,15 @@ function buildEvidenceZip(
       resolveToolVersion()
     )
   )
-  add('signing-public-key.pem', getPublicKeyPem())
+  add('signing-public-key.pem', publicKeyPem)
   add('VERIFY.md', VERIFY_RUNBOOK)
+  // Operator notes as package content (#399): written through add() so the
+  // file participates in packageHash and the artifact index like every other
+  // packaged document. Written even when the case has none — "0 notes existed"
+  // must stay distinguishable from "notes were excluded" (the Court exhibit).
+  if (meta.notes !== null) {
+    add('notes.md', buildNotesMarkdown(data.caseName, data.exportTimestamp, meta.notes))
+  }
 
   // Anchor and chain-building material ship as separate files (#579): a single
   // bundle that mixes the token-carried cross-signed root with the self-signed
@@ -614,6 +684,10 @@ function buildEvidenceZip(
       id: caseId,
       name: data.caseName,
       description: data.caseDescription ?? null,
+      // Case number and demo status (#399/#405): informational — the schema is
+      // non-strict, so older verifiers strip rather than reject them.
+      caseNumber: meta.caseNumber ?? null,
+      isDemo: meta.isDemo,
       dateRange: data.dateRange
     },
     operator: {
@@ -622,7 +696,6 @@ function buildEvidenceZip(
       role: data.operatorRole,
       organization: data.operatorOrganization
     },
-    investigatorName: data.investigatorName,
     warnings: {
       unstampedCaptureCount: data.preflight.unstampedCaptureCount,
       pendingCaptureCount: data.preflight.pendingCaptureCount,
@@ -656,26 +729,168 @@ function buildEvidenceZip(
     data: JSON.stringify(evidence, null, 2)
   })
 
-  // Recipe owned by packageHash() in manifest.ts. evidence.json itself is
+  // Recipe owned by packageHash() in @shared/verify/packageHash. evidence.json itself is
   // excluded from `artifacts` (it is unshifted above, not run through `add`),
   // which is what keeps packageHash independent of the entry it informs.
-  const packageHash = computePackageHash(artifacts)
+  return {
+    entries,
+    packageHash: computePackageHash(artifacts),
+    verificationResult: foldVerificationResult(data)
+  }
+}
 
+// overallValid means every capture has a passing verification. An empty
+// verification set (e.g. auditTrail-excluded exports and Working Copies) must
+// NOT report true: [].every(...) is true, but no verification ran, so the
+// package is unverified.
+function foldVerificationResult(data: ExportData): ExportVerificationResult {
   const captureCount = data.captures.length
   const verifiedCount = data.verifications.filter((v) => v.status === 'verified').length
-
-  // overallValid means every capture has a passing verification. An empty
-  // verification set (e.g. auditTrail-excluded exports) must NOT report true:
-  // [].every(...) is true, but no verification ran, so the package is unverified.
-  const verificationResult: ExportVerificationResult = {
+  return {
     overallValid: captureCount > 0 && verifiedCount === captureCount,
     captureCount,
     verifiedCount,
     tamperedCount: data.verifications.filter((v) => v.status === 'tampered').length,
     missingCount: data.verifications.filter((v) => v.status === 'missing').length
   }
+}
 
-  return { entries, packageHash, verificationResult }
+const WORKING_COPY_STATEMENT =
+  'This is a non-evidentiary Working Copy export produced by Birdbrain. It is not an ' +
+  'evidence package: it contains no certification, no signed manifest, no signing key and ' +
+  'no verification materials, and it cannot be verified.'
+
+/**
+ * The Working Copy zip (#399, ADR-0010): page archives, the operator-facing
+ * screenshots, operator notes, and the WORKING-COPY.json marker that names the
+ * class — nothing else. No manifest.jsonl, no report, no certification, no
+ * signing key, no evidence.json, no VERIFY.md and no TSA material: every one
+ * of those is evidentiary-shaped, and shipping any of them would blur the two
+ * classes back together.
+ *
+ * The marker doubles as the human-readable index (path + sha256 per file), is
+ * unshifted like evidence.json — outside `artifacts` and outside packageHash —
+ * and is what the standalone verifier keys its "not a verifiable object"
+ * outcome on.
+ */
+function buildWorkingCopyZip(
+  caseId: string,
+  data: ExportData,
+  meta: PackageMeta
+): EvidenceZipResult {
+  const { entries, artifacts, add } = createArtifactAccumulator()
+
+  const captureIndex = data.captures.map((capture) => {
+    const mhtml = defaultCaptureStore.readArtifact(capture.caseId, capture.id, 'mhtml')
+    const pagePath = `pages/${capture.id}.mhtml`
+    if (mhtml) add(pagePath, mhtml)
+
+    // The operator-facing copy — annotation-burned when the option says so —
+    // keyed by capture id. Content addressing and ingest-hash matching are
+    // evidence-package concepts; this class ships what the operator works with.
+    const screenshotBase64 = data.screenshots.get(capture.id)
+    const screenshotPath = screenshotBase64 ? `screenshots/${capture.id}.png` : null
+    if (screenshotBase64 && screenshotPath) {
+      add(screenshotPath, Buffer.from(screenshotBase64, 'base64'))
+    }
+
+    return {
+      id: capture.id,
+      title: capture.title,
+      url: capture.url,
+      capturedAt: capture.timestamp,
+      pagePath: mhtml ? pagePath : null,
+      screenshotPath
+    }
+  })
+
+  if (meta.notes !== null) {
+    add('notes.md', buildNotesMarkdown(data.caseName, data.exportTimestamp, meta.notes))
+  }
+
+  const marker = {
+    exportClass: 'working-copy' as const,
+    statement: WORKING_COPY_STATEMENT,
+    generatedBy: 'Birdbrain',
+    toolVersion: data.toolVersion,
+    exportedAt: data.exportTimestamp,
+    case: {
+      id: caseId,
+      name: data.caseName,
+      caseNumber: meta.caseNumber ?? null,
+      isDemo: meta.isDemo,
+      ...(meta.isDemo
+        ? {
+            demoStatement:
+              'This case is the demonstration case seeded by Birdbrain. Its captures are ' +
+              'fixture data supplied with the tool, not evidence collected by the operator.'
+          }
+        : {})
+    },
+    operator: {
+      installationId: data.installationId,
+      name: data.operatorName,
+      role: data.operatorRole,
+      organization: data.operatorOrganization
+    },
+    purposeOrAuthority: meta.purposeOrAuthority ?? null,
+    contents: {
+      captureCount: data.captures.length,
+      screenshotCount: data.screenshots.size,
+      noteCount: meta.notes?.length ?? 0
+    },
+    captures: captureIndex,
+    artifacts
+  }
+
+  // Unshifted, not add()ed, exactly like evidence.json: the marker indexes the
+  // artifacts, so packageHash must stay independent of it.
+  entries.unshift({ name: WORKING_COPY_MARKER_FILENAME, data: JSON.stringify(marker, null, 2) })
+
+  return {
+    entries,
+    packageHash: computePackageHash(artifacts),
+    verificationResult: foldVerificationResult(data)
+  }
+}
+
+/**
+ * Operator notes rendered as one Markdown document (#399). Notes are operator
+ * work product: the header says so, and says what integrity cover the file has
+ * (packageHash + the artifact index) and has not (the capture manifest chain).
+ */
+export function buildNotesMarkdown(caseName: string, exportedAt: string, notes: Note[]): string {
+  const oneLine = (s: string): string => s.replace(/\s+/g, ' ').trim()
+  const head = [
+    `# Operator notes — ${oneLine(caseName)}`,
+    '',
+    `Exported ${exportedAt}. ${notes.length} note${notes.length === 1 ? '' : 's'}.`,
+    '',
+    'Operator work product: these notes were written by the operator in Birdbrain. They are',
+    'not captured page content and are not anchored in the capture manifest chain.'
+  ]
+  const sections = notes.map((note) => {
+    const facts = [
+      `- Created: ${note.createdAt}`,
+      `- Updated: ${note.updatedAt}`,
+      ...(note.captureId ? [`- Attached to capture: ${note.captureId}`] : []),
+      ...(note.sourceUrl ? [`- Source URL: ${note.sourceUrl}`] : [])
+    ]
+    // The blank line before '---' matters: a rule directly under a text line
+    // would turn that line into a setext heading.
+    return [
+      '',
+      '',
+      '---',
+      '',
+      `## ${oneLine(note.title) || 'Untitled note'}`,
+      '',
+      ...facts,
+      '',
+      note.body.trim() || '_(no text)_'
+    ].join('\n')
+  })
+  return head.join('\n') + sections.join('') + '\n'
 }
 
 /**

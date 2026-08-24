@@ -14,6 +14,7 @@ import { join } from 'path'
 import { createHash } from 'crypto'
 import { MANIFEST_FILENAME, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import { canonicalStringify, verifyManifestChainText } from '@shared/verify'
+import type { PackagedArtifact } from '@shared/verify/packageHash'
 import type { ChainVerifyResult, CaptureChainEntry } from '@shared/verify'
 import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
 import type {
@@ -179,29 +180,13 @@ export function readManifestSnapshot(caseDir: string): ManifestSnapshot {
 
 // A file packaged into an export (evidence .zip or .birdbrain archive), as
 // recorded in the package's artifact index.
-export interface PackagedArtifact {
-  path: string
-  sha256: string
-  sizeBytes: number
-}
-
-// THE packageHash recipe — the single authoritative statement of it. Every
-// producer (evidence export, case-archive export) and checker (archive
-// inspect) calls this function; do not restate the recipe elsewhere.
-//
-// packageHash commits to every packaged file's content via the artifact list:
-// sort the artifacts by path (for determinism), then
-// sha256(canonicalStringify(sortedArtifacts)). It deliberately does NOT hash
-// the final zip: the hash feeds a signed manifest entry that ships inside that
-// very zip, so hashing the zip would be circular. The package's own index file
-// (evidence.json / package.json), which carries this hash, is likewise
-// excluded from the artifact list.
-export function packageHash(artifacts: PackagedArtifact[]): string {
-  const sorted = [...artifacts].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
-  return createHash('sha256')
-    .update(Buffer.from(canonicalStringify(sorted), 'utf-8'))
-    .digest('hex')
-}
+// The artifact index type and THE packageHash recipe both live in
+// @shared/verify/packageHash so the standalone verifier can recompute the hash
+// to bind evidence.json's artifact list to the signed export entry (#836).
+// Re-exported here so every existing producer keeps importing them from
+// manifest.ts, which owns packaging.
+export type { PackagedArtifact } from '@shared/verify/packageHash'
+export { packageHash } from '@shared/verify/packageHash'
 
 export interface ArtifactAccumulator {
   // Zip entries in add() order, ready for createStoredZip.
@@ -306,6 +291,11 @@ export type ManifestEntryInput =
       // — and chain hashes — are unchanged.
       scope?: 'selection'
       captureIds?: string[]
+      // Export class (#399, ADR-0010): a Working Copy export is recorded on the
+      // chain — the audit trail must not go silent for a non-evidentiary
+      // extraction — but marked as one. OMITTED (never 'evidence'/null) on
+      // evidence exports so their entries' canonical bodies are unchanged.
+      exportClass?: 'working-copy'
     }
   | {
       // Signed audit record of a case-archive export (.birdbrain). `packageHash`

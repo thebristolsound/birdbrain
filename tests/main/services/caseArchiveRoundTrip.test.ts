@@ -1,8 +1,10 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { initDatabase, closeDatabase, withTransaction } from '@main/services/db/core'
+import { initDatabase, closeDatabase, getDb, withTransaction } from '@main/services/db/core'
 import type { ImportCtx } from '@main/services/db/core'
 import {
   createCase,
+  getCase,
+  updateCase,
   collectCaseRow,
   importCaseRow,
   getAutoCapturePolicy,
@@ -85,6 +87,12 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
       exclusions: ['*.bank.com', '/\\.gov(\\.|\\/|$)/i'],
       mode: 'override'
     })
+    // A case number and the demo flag (#399/#405), set for the same reason the
+    // policy above is non-default: left NULL/0, the verbatim case-row
+    // comparison passes even if importCaseRow silently drops the columns — and
+    // a re-imported demo case would present as an ordinary case.
+    updateCase({ id: c.id, caseNumber: 'CPS 2026/114' })
+    getDb().prepare('UPDATE cases SET is_demo = 1 WHERE id = ?').run(c.id)
 
     // Two captures with full provenance: cap2 supersedes cap1, non-default
     // method, consent suppression, TLS chain, verification + trusted time.
@@ -349,6 +357,10 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
       exclusions: ['*.bank.com', '/\\.gov(\\.|\\/|$)/i'],
       mode: 'override'
     })
+    // The case number survives and the demo case still identifies itself as
+    // one after the round trip (#399/#405).
+    expect(getCase(NEW_CASE)?.caseNumber).toBe('CPS 2026/114')
+    expect(getCase(NEW_CASE)?.isDemo).toBe(true)
   })
 
   // A pre-v30 archive has no exclusion keys on its case row. It must import as
@@ -370,6 +382,10 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
     })
 
     expect(getAutoCapturePolicy(NEW_CASE)).toEqual({ exclusions: [], mode: 'stack' })
+    // Pre-v31 rows also carry no case_number/is_demo keys (#399): they import
+    // as never-numbered and not-a-demo rather than throwing.
+    expect(getCase(NEW_CASE)?.caseNumber).toBeUndefined()
+    expect(getCase(NEW_CASE)?.isDemo).toBe(false)
   })
 
   it('old-epoch archive rows (missing method/supersedes/consent columns) import with DDL defaults', async () => {

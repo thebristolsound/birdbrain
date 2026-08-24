@@ -592,9 +592,9 @@ test.describe('README screenshots', () => {
     await page.getByRole('button', { name: /export/i }).first().click()
     await page.getByRole('menuitem', { name: /export evidence report/i }).click()
     await page.waitForTimeout(800)
-    const investigatorInput = page.getByPlaceholder(/your name/i)
-    if (await investigatorInput.isVisible().catch(() => false)) {
-      await investigatorInput.fill('A. Investigator')
+    const purposeInput = page.getByPlaceholder(/Disclosure under/i)
+    if (await purposeInput.isVisible().catch(() => false)) {
+      await purposeInput.fill('Disclosure under CPS request 2026/114')
     }
     await shootBothThemes(page, 'screenshot-export-dialog')
     await page.keyboard.press('Escape')
@@ -643,8 +643,14 @@ test.describe('README screenshots', () => {
       }
       return w.birdbrain.export.generateReport(caseId, {
         format: 'html',
-        include: { captures: true, screenshots: true, auditTrail: true, annotations: 'burned' },
-        investigatorName: 'A. Investigator',
+        exportClass: 'evidence',
+        include: {
+          captures: true,
+          screenshots: true,
+          auditTrail: true,
+          notes: false,
+          annotations: 'burned'
+        },
         outputPath: ''
       })
     }, caseId)

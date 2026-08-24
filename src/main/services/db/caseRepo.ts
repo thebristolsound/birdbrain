@@ -35,11 +35,16 @@ export function updateCase(params: UpdateCaseParams): Case | undefined {
   const now = new Date().toISOString()
   getDb()
     .prepare(
-      'UPDATE cases SET name = ?, description = ?, archived = ?, updated_at = ? WHERE id = ?'
+      'UPDATE cases SET name = ?, description = ?, case_number = ?, archived = ?, updated_at = ? WHERE id = ?'
     )
     .run(
       params.name ?? existing.name,
       params.description ?? existing.description ?? null,
+      // A blank submission clears to NULL rather than storing '': an empty
+      // case number is "never assigned", not a value (#399).
+      params.caseNumber !== undefined
+        ? params.caseNumber.trim() || null
+        : existing.caseNumber ?? null,
       params.archived !== undefined ? (params.archived ? 1 : 0) : existing.archived ? 1 : 0,
       now,
       params.id
@@ -126,6 +131,8 @@ function rowToCase(row: Record<string, unknown>): Case {
     name: row.name as string,
     description: (row.description as string) || undefined,
     type: (row.type as Case['type']) || 'custom',
+    caseNumber: (row.case_number as string) || undefined,
+    isDemo: row.is_demo === 1,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
     archived: row.archived === 1
@@ -149,8 +156,9 @@ export function importCaseRow(caseRow: Record<string, unknown>, ctx: ImportCtx):
   getDb()
     .prepare(
       `INSERT INTO cases
-         (id, name, description, type, created_at, updated_at, archived, exclusions, exclusion_mode)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         (id, name, description, type, created_at, updated_at, archived, exclusions,
+          exclusion_mode, case_number, is_demo)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       ctx.newCaseId,
@@ -165,6 +173,11 @@ export function importCaseRow(caseRow: Record<string, unknown>, ctx: ImportCtx):
       // case that never set one reads as. The list travels with the case so a
       // re-imported case enforces the policy it was exported under (#400).
       caseRow.exclusions ?? null,
-      caseRow.exclusion_mode ?? null
+      caseRow.exclusion_mode ?? null,
+      // Same pattern for the #399 columns: a pre-v31 archive imports as
+      // never-numbered and not-a-demo, and a demo case survives the round trip
+      // still identifying itself as one (#405).
+      caseRow.case_number ?? null,
+      caseRow.is_demo ?? 0
     )
 }

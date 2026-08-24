@@ -6,10 +6,10 @@ import { queryKeys } from '@renderer/lib/api/keys'
 // The preflight is a plain read of case state — how many captures carry RFC
 // 3161 trusted time — rendered as a warning above the export button, so it
 // takes the cacheable-read shape rather than a one-shot command.
-export const exportPreflightQueryOptions = (caseId: string) =>
+export const exportPreflightQueryOptions = (caseId: string, captureIds?: string[]) =>
   queryOptions({
-    queryKey: queryKeys.exportPreflight(caseId),
-    queryFn: () => window.birdbrain.export.preflight(caseId),
+    queryKey: queryKeys.exportPreflight(caseId, captureIds),
+    queryFn: () => window.birdbrain.export.preflight(caseId, captureIds),
     enabled: !!caseId
   })
 

@@ -1143,6 +1143,25 @@ describe('ipcHandlers — export', () => {
     expect(done).toEqual({ canceled: false, filePath: target })
   })
 
+  it('names the class in the save dialog for both export classes (#399)', async () => {
+    generateReport.mockResolvedValue(undefined)
+
+    await invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, { format: 'zip', exportClass: 'evidence' })
+    expect(showSaveDialog).toHaveBeenLastCalledWith({
+      defaultPath: 'evidence.zip',
+      filters: [{ name: 'Evidence Package', extensions: ['zip'] }]
+    })
+
+    await invoke(IPC_CHANNELS.EXPORT_GENERATE, caseId, {
+      format: 'zip',
+      exportClass: 'working-copy'
+    })
+    expect(showSaveDialog).toHaveBeenLastCalledWith({
+      defaultPath: 'working-copy.zip',
+      filters: [{ name: 'Working Copy (non-evidentiary)', extensions: ['zip'] }]
+    })
+  })
+
   it('forwards onProgress to the renderer via event.sender.send', async () => {
     const target = join(userDataPath, 'evidence.zip')
     showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: target })

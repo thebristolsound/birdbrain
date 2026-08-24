@@ -781,7 +781,9 @@ export function registerIpcHandlers(deps: {
   })
 
   // Export
-  handle(IPC_CHANNELS.EXPORT_PREFLIGHT, (_, caseId: string) => getExportPreflight(caseId))
+  handle(IPC_CHANNELS.EXPORT_PREFLIGHT, (_, caseId: string, captureIds?: string[]) =>
+    getExportPreflight(caseId, captureIds)
+  )
 
   handle(
     IPC_CHANNELS.EXPORT_GENERATE,

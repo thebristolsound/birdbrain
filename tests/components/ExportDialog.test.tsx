@@ -141,7 +141,7 @@ describe('ExportDialog', () => {
     expect(
       await screen.findByText(/2 captures will export without RFC 3161 trusted time/)
     ).toBeDefined()
-    expect(preflight).toHaveBeenCalledWith('case-1')
+    expect(preflight).toHaveBeenCalledWith('case-1', undefined)
   })
 
   it('exports the Full evidence bundle preset by default', async () => {

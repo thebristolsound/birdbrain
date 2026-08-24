@@ -116,7 +116,7 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
   // A failed preflight leaves `data` undefined, which reads the same as "no
   // warning to show" — the same silent fallback the mount effect had, minus
   // the alive flag, since an unmounted query cannot write to state.
-  const { data: preflight } = useQuery(exportPreflightQueryOptions(caseId))
+  const { data: preflight } = useQuery(exportPreflightQueryOptions(caseId, selectedCaptureIds))
   // For the demonstration-case notice (#405): a demo case must say so before
   // the operator exports it. A failed read shows no notice, same as preflight.
   const { data: caseData } = useQuery(caseQueryOptions(caseId))

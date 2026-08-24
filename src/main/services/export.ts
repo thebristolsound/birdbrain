@@ -246,8 +246,13 @@ export function resolveUnreconciledChainCaptures(
  * one. generateReport deliberately does not call this — it resolves once from
  * the snapshot it packages.
  */
-export function getExportPreflight(caseId: string): ExportPreflight {
-  const captures = captureRepo.listCaptures(caseId)
+export function getExportPreflight(caseId: string, captureIds?: string[]): ExportPreflight {
+  // Scoped to the selection when the dialog was opened from the selection
+  // toolbar: an unstamped capture the operator did not select is not going to
+  // export, so counting it would warn about evidence the package will not
+  // contain (PR #842 review).
+  const all = captureRepo.listCaptures(caseId)
+  const captures = captureIds ? all.filter((c) => captureIds.includes(c.id)) : all
   return resolveExportTrustedTime(captures, buildTrustedTimeIndex(join(getStorageRoot(), caseId)))
     .preflight
 }

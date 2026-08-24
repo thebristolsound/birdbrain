@@ -931,6 +931,39 @@ describe('export', () => {
     expect(content).toContain('Local clock — token pending')
   })
 
+  it('counts only the selection when preflight is scoped to selected captures', async () => {
+    // The dialog opened from the selection toolbar must not warn about
+    // unstamped captures the operator did not select: they are not going to
+    // export (PR #842 review).
+    const { capture: selected } = await ingest(
+      caseId,
+      '<html><body>Selected</body></html>',
+      'https://example.com/selected',
+      'S'
+    )
+    await ingest(
+      caseId,
+      '<html><body>Unselected</body></html>',
+      'https://example.com/unselected',
+      'U'
+    )
+
+    expect(getExportPreflight(caseId)).toMatchObject({
+      captureCount: 2,
+      unstampedCaptureCount: 2
+    })
+    expect(getExportPreflight(caseId, [selected.id])).toMatchObject({
+      captureCount: 1,
+      unstampedCaptureCount: 1
+    })
+    // An empty selection is still a selection: it counts nothing, rather than
+    // falling back to the whole case.
+    expect(getExportPreflight(caseId, [])).toMatchObject({
+      captureCount: 0,
+      unstampedCaptureCount: 0
+    })
+  })
+
   it('reports un-stamped captures in preflight and the HTML summary without blocking export', async () => {
     await ingest(caseId, '<html><body>Needs trusted time</body></html>', 'https://example.com', 'T')
 

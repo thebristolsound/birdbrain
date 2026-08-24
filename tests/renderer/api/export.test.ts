@@ -27,7 +27,28 @@ describe('exportPreflightQueryOptions', () => {
     expect(opts.queryKey).toEqual(queryKeys.exportPreflight('case1'))
     expect(opts.enabled).toBe(true)
     await expect(opts.queryFn?.({} as never)).resolves.toEqual(summary)
-    expect(preflight).toHaveBeenCalledWith('case1')
+    expect(preflight).toHaveBeenCalledWith('case1', undefined)
+  })
+
+  it('forwards a selection so the counts describe what will export', async () => {
+    // Scoped preflight (PR #842 review): the dialog opened from the selection
+    // toolbar must not warn about captures outside the selection. The key
+    // carries the selection too, or two scopes would share one cache entry.
+    const preflight = vi.fn(async () => ({
+      captureCount: 1,
+      stampedCaptureCount: 0,
+      unstampedCaptureCount: 1,
+      pendingCaptureCount: 1,
+      noneCaptureCount: 0
+    }))
+    fakeBridge({ export: { preflight } })
+
+    const opts = exportPreflightQueryOptions('case1', ['cap-a'])
+
+    expect(opts.queryKey).toEqual(queryKeys.exportPreflight('case1', ['cap-a']))
+    expect(opts.queryKey).not.toEqual(queryKeys.exportPreflight('case1'))
+    await opts.queryFn?.({} as never)
+    expect(preflight).toHaveBeenCalledWith('case1', ['cap-a'])
   })
 
   it('stays disabled without a case', () => {

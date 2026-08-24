@@ -718,7 +718,7 @@ export interface IpcInvokeContract {
   'settings:getIdentity': { args: []; result: OperatorIdentity }
   'settings:chooseStoragePath': { args: []; result: string | null }
 
-  'export:preflight': { args: [caseId: string]; result: ExportPreflight }
+  'export:preflight': { args: [caseId: string, captureIds?: string[]]; result: ExportPreflight }
   'export:generate': { args: [caseId: string, options: ExportOptions]; result: ExportResult }
 
   'wayback:lookup': { args: [captureId: string]; result: WaybackLookupResult }

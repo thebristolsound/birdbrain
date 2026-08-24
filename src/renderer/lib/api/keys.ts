@@ -21,6 +21,7 @@ export const queryKeys = {
   tagCountForCase: (caseId: string) => ['tags', 'caseCount', caseId] as const,
   tagUsageCounts: (caseId: string) => ['tags', 'usageCounts', caseId] as const,
   tagCaptureMatrix: (caseId: string) => ['tags', 'captureMatrix', caseId] as const,
+  tagsForNote: (noteId: string) => ['tags', 'note', noteId] as const,
   selectors: (caseId: string) => ['selectors', caseId] as const,
   selectorMatchCounts: (caseId: string) => ['selectors', 'matchCounts', caseId] as const,
   selectorCoverage: (caseId: string) => ['selectors', 'coverage', caseId] as const,

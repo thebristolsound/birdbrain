@@ -82,7 +82,14 @@ export function useInlineNoteEditor({
     }
   }, [effectiveLatest, boundNoteId, value])
 
-  const flush = useCallback(async (): Promise<void> => {
+  /**
+   * Returns the id of the note the editor is bound to once the write settles,
+   * or null when there is nothing to bind to (a blank editor with no note).
+   * The id is what the selection Tag action needs (#391) — reading
+   * `boundNoteId` after awaiting would give the render-time value, which for a
+   * just-created note is still null.
+   */
+  const flush = useCallback(async (): Promise<string | null> => {
     if (debounceRef.current !== null) {
       window.clearTimeout(debounceRef.current)
       debounceRef.current = null
@@ -90,19 +97,19 @@ export function useInlineNoteEditor({
     const current = value
     // Existing note: persist whatever the user has, even empty (no silent delete).
     if (boundNoteId) {
-      if (current === lastServerBodyRef.current) return
+      if (current === lastServerBodyRef.current) return boundNoteId
       const updated = await onUpdate({ id: boundNoteId, bodyDoc: current })
       lastServerBodyRef.current = updated ? noteDocString(updated) : current
       if (updated?.updatedAt) {
         lastServerUpdatedRef.current = updated.updatedAt
       }
-      return
+      return boundNoteId
     }
     // No note: blank blur is a no-op.
-    if (isEmptyNoteDocString(current)) return
+    if (isEmptyNoteDocString(current)) return null
     if (createInFlightRef.current) {
-      await createInFlightRef.current
-      return
+      const inFlight = await createInFlightRef.current
+      return inFlight.id
     }
     const createPromise = onCreate({ title: captureTitle, bodyDoc: current })
     createInFlightRef.current = createPromise
@@ -112,6 +119,7 @@ export function useInlineNoteEditor({
       lastBoundIdRef.current = created.id
       lastServerBodyRef.current = noteDocString(created)
       lastServerUpdatedRef.current = created.updatedAt
+      return created.id
     } finally {
       createInFlightRef.current = null
     }

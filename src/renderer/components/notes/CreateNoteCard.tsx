@@ -14,21 +14,39 @@ interface CreateNoteCardProps {
 }
 
 export function CreateNoteCard({ caseId, isOpen, onToggle, onCreated }: CreateNoteCardProps) {
-  const { create } = useNotesMutations(caseId)
+  const { create, update } = useNotesMutations(caseId)
   const [title, setTitle] = useState('')
   const [bodyDoc, setBodyDoc] = useState<string | null>(null)
-  const editor = useNoteEditor({ caseId, onChange: setBodyDoc, testId: 'create-note-body' })
+  // Set once the draft has been written to the database ahead of the operator
+  // pressing Save — which the Tag action forces, since a tag cannot attach to
+  // a note that does not exist (#391, ruling R15). From then on this card is
+  // editing a real note, so Save updates rather than creating a second one.
+  const [draftNoteId, setDraftNoteId] = useState<string | null>(null)
+  const editor = useNoteEditor({
+    caseId,
+    noteId: draftNoteId ?? undefined,
+    onChange: setBodyDoc,
+    testId: 'create-note-body'
+  })
   const hasBody = editor ? !editor.isEmpty : false
+
+  async function persistDraft(): Promise<string> {
+    const doc = bodyDoc ?? JSON.stringify(EMPTY_NOTE_DOC)
+    if (draftNoteId) {
+      await update.mutateAsync({ id: draftNoteId, title: title.trim(), bodyDoc: doc })
+      return draftNoteId
+    }
+    const created = await create.mutateAsync({ caseId, title: title.trim(), bodyDoc: doc })
+    setDraftNoteId(created.id)
+    return created.id
+  }
 
   async function handleSubmit() {
     if (!title.trim() && !hasBody) return
-    await create.mutateAsync({
-      caseId,
-      title: title.trim(),
-      bodyDoc: bodyDoc ?? JSON.stringify(EMPTY_NOTE_DOC)
-    })
+    await persistDraft()
     setTitle('')
     setBodyDoc(null)
+    setDraftNoteId(null)
     editor?.commands.clearContent()
     onCreated?.()
   }
@@ -65,6 +83,7 @@ export function CreateNoteCard({ caseId, isOpen, onToggle, onCreated }: CreateNo
         <NoteEditor
           editor={editor}
           placeholder="Start writing — type @ to link a capture, # for a selector or tag."
+          selectionActions={{ caseId, resolveNoteId: persistDraft }}
         />
       </div>
       <div className="flex items-center justify-end gap-2">

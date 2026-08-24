@@ -115,6 +115,69 @@ describe('useInlineNoteEditor', () => {
     expect(result.current.boundNoteId).toBe('new-note')
   })
 
+  // #391: the selection Tag action needs the id of the note it is about to
+  // tag, and reading `boundNoteId` after awaiting gives the render-time value —
+  // still null for a note this very call created.
+  it('returns the id of the note it created', async () => {
+    const created = note('new-note', 'hello', '2026-02-02T00:00:00Z')
+    const onCreate = vi.fn().mockResolvedValue(created)
+    const { result } = renderHook(() =>
+      useInlineNoteEditor({
+        notes: [],
+        captureId: 'cap-1',
+        captureTitle,
+        onCreate,
+        onUpdate: vi.fn()
+      })
+    )
+    act(() => result.current.setValue(doc('hello')))
+    let flushed: string | null = null
+    await act(async () => {
+      flushed = await result.current.flush()
+    })
+    expect(flushed).toBe('new-note')
+  })
+
+  it('returns the bound note id whether or not the flush had anything to write', async () => {
+    const notes = [note('a', 'hi', '2026-02-01T00:00:00Z')]
+    const onUpdate = vi.fn().mockResolvedValue(note('a', 'edited', '2026-02-03T00:00:00Z'))
+    const { result } = renderHook(() =>
+      useInlineNoteEditor({ notes, captureId: 'cap-1', captureTitle, onCreate: vi.fn(), onUpdate })
+    )
+
+    let clean: string | null = null
+    await act(async () => {
+      clean = await result.current.flush()
+    })
+    expect(clean).toBe('a')
+    expect(onUpdate).not.toHaveBeenCalled()
+
+    act(() => result.current.setValue(doc('edited')))
+    let dirty: string | null = null
+    await act(async () => {
+      dirty = await result.current.flush()
+    })
+    expect(dirty).toBe('a')
+    expect(onUpdate).toHaveBeenCalled()
+  })
+
+  it('returns null when there is no note and nothing to save', async () => {
+    const { result } = renderHook(() =>
+      useInlineNoteEditor({
+        notes: [],
+        captureId: 'cap-1',
+        captureTitle,
+        onCreate: vi.fn(),
+        onUpdate: vi.fn()
+      })
+    )
+    let flushed: string | null = 'unset'
+    await act(async () => {
+      flushed = await result.current.flush()
+    })
+    expect(flushed).toBeNull()
+  })
+
   it('gates duplicate creates while initial create is in-flight', async () => {
     const created = note('new-note', 'hello', '2026-02-02T00:00:00Z')
     let resolveCreate: (n: Note) => void = () => {}
@@ -135,11 +198,15 @@ describe('useInlineNoteEditor', () => {
     const secondFlush = result.current.flush()
     expect(onCreate).toHaveBeenCalledTimes(1)
 
+    let ids: Array<string | null> = []
     await act(async () => {
       resolveCreate(created)
-      await Promise.all([firstFlush, secondFlush])
+      ids = await Promise.all([firstFlush, secondFlush])
     })
     expect(result.current.boundNoteId).toBe('new-note')
+    // Both callers learn the id, including the one that only waited on the
+    // in-flight create (#391).
+    expect(ids).toEqual(['new-note', 'new-note'])
   })
 
   it('saving an existing note with cleared body persists the empty document', async () => {

@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { EditorContent, type Editor } from '@tiptap/react'
 import {
   Bold,
@@ -9,6 +10,11 @@ import {
   Quote,
   type LucideIcon
 } from 'lucide-react'
+import { useNoteSelection } from '@renderer/components/notes/selection/useNoteSelection'
+import {
+  NoteSelectionOverlay,
+  type NoteSelectionContext
+} from '@renderer/components/notes/selection/NoteSelectionOverlay'
 
 interface ToolbarAction {
   label: string
@@ -70,6 +76,11 @@ interface NoteEditorProps {
   showToolbar?: boolean
   onBlur?: () => void
   onKeyDown?: (e: React.KeyboardEvent) => void
+  /**
+   * Enables the selection-to-Selector/Tag action bar (#391). Omitted where the
+   * editor has no case context to write into.
+   */
+  selectionActions?: NoteSelectionContext
 }
 
 export function NoteEditor({
@@ -78,8 +89,12 @@ export function NoteEditor({
   minHeightClass = 'min-h-24',
   showToolbar = true,
   onBlur,
-  onKeyDown
+  onKeyDown,
+  selectionActions
 }: NoteEditorProps) {
+  const bodyRef = useRef<HTMLDivElement | null>(null)
+  const { selection, onSelectionEnd, openConfirm, dismiss } = useNoteSelection(bodyRef)
+
   if (!editor) {
     return <div className={`rounded-lg border border-border bg-canvas ${minHeightClass}`} />
   }
@@ -115,13 +130,29 @@ export function NoteEditor({
         </div>
       ) : null}
 
-      <div data-tour="noteeditor" className="relative" onBlur={onBlur} onKeyDown={onKeyDown}>
+      <div
+        ref={bodyRef}
+        data-tour="noteeditor"
+        className="relative"
+        onBlur={onBlur}
+        onKeyDown={onKeyDown}
+        onMouseUp={selectionActions ? onSelectionEnd : undefined}
+        onKeyUp={selectionActions ? onSelectionEnd : undefined}
+      >
         {isEmpty ? (
           <p className="pointer-events-none absolute left-3 top-2 text-sm text-text-muted">
             {placeholder}
           </p>
         ) : null}
         <EditorContent editor={editor} className={`note-prose px-3 py-2 ${minHeightClass}`} />
+        {selectionActions && selection ? (
+          <NoteSelectionOverlay
+            {...selectionActions}
+            selection={selection}
+            onChoose={openConfirm}
+            onDismiss={dismiss}
+          />
+        ) : null}
       </div>
     </div>
   )

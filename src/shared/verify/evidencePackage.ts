@@ -11,6 +11,7 @@ import type { ManifestEntry } from '@shared/schemas'
 import { parseTimestampToken } from '@shared/verify/timestampToken'
 import { verifyManifestChainText } from '@shared/verify/manifestChain'
 import { canonicalStringify } from '@shared/verify/canonicalJson'
+import { packageHash } from '@shared/verify/packageHash'
 import { verifyEntrySignature } from '@shared/verify/signature'
 
 // The standalone package verifier (#122 §7). This is the ONLY fs-touching
@@ -136,6 +137,15 @@ function validateExportEntry(
   if ((entry.scope === 'selection') !== (entry.captureIds !== undefined)) {
     return { reason: 'export-entry.json scope and captureIds are inconsistent' }
   }
+  // A Working Copy is non-evidentiary by its own signed statement (#399,
+  // ADR-0010), so its entry cannot stand as an evidence package's scope proof
+  // — otherwise a genuine signed working-copy entry from the same case, which
+  // continues the same chain head, would satisfy every check above and let the
+  // package pass (#851). Historical working-copy entries INSIDE the bundled
+  // manifest stay valid: this rejects the role, not the record.
+  if (entry.exportClass === 'working-copy') {
+    return { reason: 'export-entry.json declares a working-copy export, not an evidence package' }
+  }
   return { entry }
 }
 
@@ -239,6 +249,8 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   // every unselected capture rather than passing with its absences
   // unexplained.
   let selectionIds: Set<string> | undefined
+  // The signed statement of what the package contained when it was sealed.
+  let signedPackageHash: string | undefined
   const exportEntryPath = join(dir, 'export-entry.json')
   if (existsSync(exportEntryPath)) {
     // existsSync also passes for a directory or a file this process cannot
@@ -256,6 +268,7 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
       } else {
         add('export entry', 'pass')
         const { scope, captureIds } = validated.entry
+        signedPackageHash = validated.entry.packageHash
         if (scope === 'selection' && captureIds !== undefined) {
           selectionIds = new Set(captureIds)
         }
@@ -497,6 +510,28 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
       }
     }
     if (sweepOk) add('evidence.json artifact sweep', 'pass')
+
+    // Binds the artifact index to the package's signed statement of itself
+    // (#836). The sweep above proves each listed file matches its row; this
+    // proves the ROW SET is the one that was sealed. Without it a tamperer can
+    // edit or drop a packaged file AND its row in the unsigned evidence.json
+    // and both checks stay silent — the gap that left notes.md (#399), which
+    // has no manifest entry of its own, anchored only by a hash nothing
+    // recomputed. Runs only when the package ships a validated export entry:
+    // pre-scope packages (#398) carry no such statement, and their absence is
+    // already handled unscoped above, so they are unaffected.
+    if (signedPackageHash !== undefined) {
+      const recomputed = packageHash(evidence.artifacts)
+      if (recomputed === signedPackageHash) {
+        add('package hash', 'pass')
+      } else {
+        add(
+          'package hash',
+          'fail',
+          "evidence.json's artifact index does not match the packageHash in the signed export entry"
+        )
+      }
+    }
   }
 
   const pass = !checks.some((c) => c.status === 'fail')

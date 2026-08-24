@@ -285,7 +285,10 @@ export interface ExtensionTagApplyResult {
   captureId: string
   /** True when the route ingested the supplied payload rather than attaching to an existing Capture. */
   captured: boolean
-  /** 'none' when the route attached to an existing Capture: it acquired nothing. */
+  /**
+   * 'none' whenever nothing was saved: on an attach to an existing Capture,
+   * which acquires nothing, and on an ingest that carried no screenshot.
+   */
   screenshotStatus: ScreenshotStatus
   /** Why the screenshot was dropped; absent when none was. */
   screenshotWarning?: string

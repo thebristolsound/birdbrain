@@ -26,8 +26,12 @@ import {
   addTagToCapture,
   collectTagsForCase,
   collectCaptureTagsForCase,
+  collectNoteTagsForCase,
+  getTagsForNote,
+  addTagToNote,
   importTagRows,
-  importCaptureTagRows
+  importCaptureTagRows,
+  importNoteTagRows
 } from '@main/services/db/tagRepo'
 import {
   createSelector,
@@ -148,7 +152,7 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
     createSelector({ caseId: c.id, pattern: 'legacy', isRegex: false })
 
     // Rich body, so the deep column comparison below covers body_doc too.
-    createNote({
+    const note = createNote({
       caseId: c.id,
       captureId: cap1.id,
       title: 'N',
@@ -157,6 +161,14 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
         content: [{ type: 'paragraph', content: [{ type: 'text', text: 'note body' }] }]
       })
     })
+    // Note-level tags (#391). Two of them, deliberately: `tag` is also on a
+    // capture, so it would survive the round trip through capture_tags alone,
+    // while `noteOnlyTag` reaches the archive ONLY through note_tags — with
+    // collectTagsForCase left un-unioned, the note_tags row would cite a tag
+    // absent from data.json and the import would fail its foreign key.
+    const noteOnlyTag = createTag({ name: 'Analyst note', color: '#0f0' })
+    addTagToNote({ noteId: note.id, tagId: tag.id })
+    addTagToNote({ noteId: note.id, tagId: noteOnlyTag.id })
 
     insertExtractedData(cap1.id, c.id, 'https://a.example', [
       { category: 'contact', subcategory: 'email', value: 'a@example.com' }
@@ -231,6 +243,7 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
       captures: collectCapturesForCase(c.id),
       tags: collectTagsForCase(c.id),
       captureTags: collectCaptureTagsForCase(c.id),
+      noteTags: collectNoteTagsForCase(c.id),
       selectors: collectSelectorsForCase(c.id),
       selectorMatches: collectSelectorMatchesForCase(c.id),
       notes: collectNotesForCase(c.id),
@@ -258,6 +271,8 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
       importExtractedDataRows(src.extractedData, ctx)
       importWaybackRefRows(src.captureArchiveRefs, ctx)
       importNoteRows(src.notes, ctx)
+      // After the notes, whose rows note_tags has a foreign key onto (#391).
+      importNoteTagRows(src.noteTags, ctx)
     })
 
     // Captures: field-for-field modulo id/case_id/supersedes remap.
@@ -311,6 +326,15 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
         }))
         .sort(byId)
     )
+    // Note tags (#391): both links survive with the note id remapped, and the
+    // note-only tag came across with them.
+    expect(collectNoteTagsForCase(NEW_CASE)).toEqual(
+      src.noteTags.map((r) => ({ ...r, note_id: mapId(r.note_id as string) }))
+    )
+    expect(getTagsForNote(mapId(note.id)).map((t) => t.name).sort()).toEqual([
+      'Analyst note',
+      'Evidence'
+    ])
     expect(collectCaptureFavoritesForCase(NEW_CASE)).toEqual(
       src.captureFavorites.map((r) => ({ ...r, capture_id: mapId(r.capture_id as string) }))
     )

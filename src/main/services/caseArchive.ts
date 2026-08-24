@@ -50,6 +50,14 @@ import type {
   CaseArchiveCounts
 } from '@shared/types'
 
+// 4 since note tags (#391, schema v32): data.json carries a `noteTags` table.
+// A pre-v32 Birdbrain reading one has no `note_tags` table to import it into,
+// so every tag an investigator raised from a note would be silently dropped on
+// the way in — the note keeps its text and loses the classification. The
+// `schemaVersion >` gate in inspectCaseArchive turns that into the clean
+// "update Birdbrain" refusal instead. Reading in the other direction still
+// works: an archive written before this bump has no `noteTags` key and imports
+// as a case whose notes carry no tags, which is what it is.
 // 3 since note Mentions (#389): a note's body_doc may carry Mention inline
 // nodes. A pre-Mention Birdbrain's parseNoteDoc rejects the unknown node type,
 // so importing a mention-bearing Case Archive there would fail mid-transaction
@@ -61,13 +69,15 @@ import type {
 // anchor_json, which a pre-v27 import would silently drop. Bump this whenever a
 // Case Archive gains data an older release would silently discard or reject
 // opaquely.
-export const CASE_ARCHIVE_SCHEMA_VERSION = 3
+export const CASE_ARCHIVE_SCHEMA_VERSION = 4
 
 export interface CaseArchiveData {
   case: Record<string, unknown>
   captures: Record<string, unknown>[]
   tags: Record<string, unknown>[]
   captureTags: Record<string, unknown>[]
+  /** Absent on archives written before schemaVersion 4 (#391). */
+  noteTags?: Record<string, unknown>[]
   selectors: Record<string, unknown>[]
   selectorMatches: Record<string, unknown>[]
   notes: Record<string, unknown>[]
@@ -109,6 +119,7 @@ export function collectCaseData(caseId: string): CaseArchiveData {
     captures: captureRepo.collectCapturesForCase(caseId),
     tags: tagRepo.collectTagsForCase(caseId),
     captureTags: tagRepo.collectCaptureTagsForCase(caseId),
+    noteTags: tagRepo.collectNoteTagsForCase(caseId),
     selectors: selectorRepo.collectSelectorsForCase(caseId),
     selectorMatches: selectorRepo.collectSelectorMatchesForCase(caseId),
     notes: noteRepo.collectNotesForCase(caseId),
@@ -330,8 +341,11 @@ export function inspectCaseArchive(archivePath: string): ArchiveInspectReport {
 // The id-keyed tables that could collide with an existing local row on import
 // live in db/core as ID_PROBE_TABLES, so this remap loop and hasRowWithId's SQL
 // allowlist share one definition. `annotations`/`capture_favorites` are keyed
-// by `capture_id` and `capture_tags`/`selector_matches` by their FKs, so they
-// follow the capture/selector/tag remapping automatically — they are NOT there.
+// by `capture_id` and `capture_tags`/`note_tags`/`selector_matches` by their
+// FKs, so they follow the capture/note/selector/tag remapping automatically —
+// they are NOT there. `note_tags` in particular has no `id` column at all, so
+// listing it would make hasRowWithId's `WHERE id = ?` a SQL error rather than
+// a probe.
 
 // Imports a .birdbrain case archive as a NEW case: re-verifies it, allocates a
 // fresh case id, remaps any colliding row ids, stages the files + manifest off
@@ -523,4 +537,7 @@ function insertImportedRows(
   extractedDataRepo.importExtractedDataRows(data.extractedData, ctx)
   waybackRefRepo.importWaybackRefRows(data.captureArchiveRefs, ctx)
   noteRepo.importNoteRows(data.notes, ctx)
+  // Strictly after the notes, whose rows note_tags has a foreign key onto. An
+  // archive written before schemaVersion 4 carries no key at all (#391).
+  tagRepo.importNoteTagRows(data.noteTags ?? [], ctx)
 }

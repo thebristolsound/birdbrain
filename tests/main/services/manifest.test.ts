@@ -111,6 +111,18 @@ describe('manifest append', () => {
     expect(statSync(join(tempDir, 'manifest.jsonl')).size).toBe(anchor)
   })
 
+  // #398: the returned line is what the evidence export packages as
+  // export-entry.json, so it must be the appended bytes, not a re-serialization.
+  it('returns the exact appended line, byte-identical to the file tail', () => {
+    const before = statSync(join(tempDir, 'manifest.jsonl')).size
+    const result = appendManifestEntry(tempDir, { ...baseEntry, captureId: 'cap-1' })
+    const raw = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8')
+    expect(result.line).toBe(raw.slice(before))
+    expect(result.line.endsWith('\n')).toBe(true)
+    const parsed = JSON.parse(result.line) as Record<string, unknown>
+    expect(parsed.entryHash).toBe(result.entryHash)
+  })
+
   it('entryHash matches SHA-256 of canonical-JSON body', () => {
     const body = {
       ...baseEntry,

@@ -193,6 +193,46 @@ describe('verifyManifestChain (app) vs verifyManifestChainText (core)', () => {
     expect(core.captureEntriesByIndex.has(3)).toBe(false)
   })
 
+  // #398: the export entry's optional scope fields. A scoped entry must chain
+  // and verify like any other; a case-scoped (unscoped) entry must not write
+  // the keys at all — present-means-selection is what keeps case-scoped
+  // entries byte-identical to pre-scope ones, so a chain mixing both shapes is
+  // the exact state every upgraded installation will hold.
+  it('verifies a chain mixing scoped and unscoped export entries, writing scope keys only when scoped', () => {
+    const exportBase = {
+      type: 'export' as const,
+      caseId: 'case-1',
+      timestamp: '2026-08-24T12:00:00.000Z',
+      operatorId: 'op-1',
+      operatorName: 'Casey Operator',
+      toolVersion: '0.4.0',
+      packageHash: 'd'.repeat(64),
+      verificationResult: {
+        overallValid: true,
+        captureCount: 1,
+        verifiedCount: 1,
+        tamperedCount: 0,
+        missingCount: 0
+      }
+    }
+    appendManifestEntry(caseDir, exportBase)
+    appendManifestEntry(caseDir, { ...exportBase, scope: 'selection', captureIds: ['cap-1'] })
+
+    const app = verifyManifestChain(caseDir)
+    const core = coreResult()
+    expect(app.valid).toBe(true)
+    expect(core).toEqual(app)
+
+    const lines = readFileSync(manifestPath, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim())
+    const unscopedLine = lines.at(-2)!
+    const scopedLine = lines.at(-1)!
+    expect(unscopedLine).not.toContain('"scope"')
+    expect(unscopedLine).not.toContain('"captureIds"')
+    expect(JSON.parse(scopedLine)).toMatchObject({ scope: 'selection', captureIds: ['cap-1'] })
+  })
+
   // #X-1: a signature-free v1 entry that FOLLOWS a signed v2 entry is a
   // downgrade forgery — its hash links recompute without any private key, so
   // without the guard the tampered chain would re-verify as valid.

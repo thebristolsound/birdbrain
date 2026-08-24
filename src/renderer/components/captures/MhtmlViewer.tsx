@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { captureMhtmlUrlQueryOptions } from '@renderer/lib/queries'
+import { MHTML_PARTITION } from '@shared/constants'
 
 interface Props {
   captureId: string
@@ -43,7 +44,7 @@ export function MhtmlViewer({ captureId }: Props) {
     <webview
       ref={ref as unknown as React.RefObject<HTMLElement>}
       src={fileUrl}
-      partition="mhtml-sandbox"
+      partition={MHTML_PARTITION}
       webpreferences="javascript=no,contextIsolation=yes,sandbox=yes"
       style={{ width: '100%', height: '100%', background: 'white' }}
     />

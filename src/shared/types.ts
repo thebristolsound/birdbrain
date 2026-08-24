@@ -178,6 +178,13 @@ export interface WaybackRef {
   pinnedAt: string // when the user pinned it
 }
 
+// A pinned reference read across a whole case, carrying the capture time it
+// corroborates so a caller can state the interval without loading the captures
+// (the export dialog's pinned-snapshots block, #401).
+export interface CaseWaybackRef extends WaybackRef {
+  captureTimestamp: string
+}
+
 export interface Tag {
   id: string
   name: string
@@ -480,6 +487,10 @@ export const LOG_CODES = [
   'openrouter.retry',
   'openrouter.retries_exhausted',
   'timestampWorker.stamp_failed',
+  // A <webview> was refused at attach because its partition or its src fell
+  // outside the policy (#401). Both guests the app mounts are inside it, so this
+  // entry means a bug or an attempt, and either is worth having in the log.
+  'app.webview_attach_refused',
   // Pre-migration snapshots (#413). The creation entry is the only durable
   // record that an upgrade was recoverable; the prune entry is the only place
   // a snapshot directory that has stopped bounding itself shows up.

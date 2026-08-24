@@ -100,6 +100,9 @@ export const IPC_CHANNELS = {
   TAGS_USAGE_COUNTS_FOR_CASE: 'tags:usageCountsForCase',
   TAGS_CAPTURE_MATRIX: 'tags:captureMatrix',
   TAGS_ADD_TO_CAPTURES: 'tags:addToCaptures',
+  TAGS_APPLY_TO_NOTE: 'tags:applyToNote',
+  TAGS_REMOVE_FROM_NOTE: 'tags:removeFromNote',
+  TAGS_GET_FOR_NOTE: 'tags:getForNote',
 
   // Session (renderer-side session control; the extension drives HTTP)
   SESSION_SNAPSHOT: 'session:snapshot',
@@ -336,12 +339,45 @@ export interface CaptureTagParams {
   tagId: string
 }
 
+export interface NoteTagParams {
+  noteId: string
+  tagId: string
+}
+
+/**
+ * Apply a tag to a note by NAME rather than by id (#391): the selection flow
+ * derives a name from the passage and has no way to know whether that tag
+ * already exists. Main resolves it create-or-reuse (ruling R15), so the
+ * renderer never races two lookups against a UNIQUE constraint.
+ */
+export interface ApplyTagToNoteParams {
+  noteId: string
+  name: string
+}
+
+/**
+ * `captureId` is the capture the tag ALSO landed on (ruling R15), or undefined
+ * when the note is anchored to nothing. It is reported rather than assumed so
+ * the renderer's confirmation says what actually happened instead of what the
+ * caller hoped for.
+ */
+export interface ApplyTagToNoteResult {
+  tag: Tag
+  captureId?: string
+}
+
 export interface CreateSelectorParams {
   caseId: string
   pattern: string
   isRegex?: boolean
   label?: string
   origin?: SelectorOrigin
+  /**
+   * Whether the selector watches future captures. Omitted means enabled, which
+   * is the DDL default every pre-#391 call site relied on; the note selection
+   * flow passes it explicitly because its confirm popover offers the choice.
+   */
+  enabled?: boolean
 }
 
 export interface UpdateSelectorParams {
@@ -668,6 +704,9 @@ export interface IpcInvokeContract {
     args: [payload: CaptureBatchPayload & { tagId: string }]
     result: BatchCountResult
   }
+  'tags:applyToNote': { args: [params: ApplyTagToNoteParams]; result: ApplyTagToNoteResult }
+  'tags:removeFromNote': { args: [params: NoteTagParams]; result: void }
+  'tags:getForNote': { args: [noteId: string]; result: Tag[] }
 
   'selectors:list': { args: [caseId: string]; result: Selector[] }
   'selectors:get': { args: [id: string]; result: Selector | undefined }

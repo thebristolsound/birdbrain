@@ -43,3 +43,10 @@ e110997ac02e43a5d988737180b5c137bcfddbd0:docs/superpowers/plans/2026-03-18-captu
 # #703 and the pre-merge commit on its branch.
 a447ef03d1ed557433f5c36a1bfdb03d99dd926e:docs/design-handoff/2026-08-21-birdbrain-standalone/Birdbrain-standalone.html:generic-api-key:384
 8496383ab885be6e1444273135f760a7e260a06a:docs/design-handoff/2026-08-21-birdbrain-standalone/Birdbrain-standalone.html:generic-api-key:384
+#
+# The #398 frozen pre-scope fixture package: a known-answer verification
+# fixture whose manifest carries a synthetic RFC 3161 timestamp token pointing
+# at tsa.example.com. Deliberately fabricated test data, not a credential.
+# The squash merge to main will re-introduce the same line and need its own
+# fingerprint entry, per the standalone-mock precedent above.
+cd5a25c266ba99b515ddaeb39c16a05ce954080b:tests/shared/verify/fixtures/pre-scope-package/manifest.jsonl:generic-api-key:3

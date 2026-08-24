@@ -379,9 +379,17 @@ describe('report citation invariants', () => {
   describe('pinned archive.org references', () => {
     it('renders them as corroboration and says what they do not establish', async () => {
       const { capture } = await ingest('<html>p</html>', 'https://example.com/p', 'P', await png())
+      // Pinned newest-first, as the repo returns them; the exhibit reads oldest
+      // first, so the second reference must precede the first in the document.
+      pinSnapshot(capture.id, '20250601120000', 'https://example.com/p')
       pinSnapshot(capture.id, '20250101120000', 'https://example.com/p')
       const entries = await exportZip(FULL, 'wayback-pinned')
       const report = entries.get('report.html')!.toString('utf-8')
+
+      expect(report.indexOf('2025-01-01T12:00:00Z')).toBeLessThan(
+        report.indexOf('2025-06-01T12:00:00Z')
+      )
+      expect(report).toContain('The operator pinned 2 archive.org snapshots')
 
       expect(report).toContain(
         'Corroboration only — archive.org references, not bound to the capture'

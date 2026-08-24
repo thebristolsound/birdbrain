@@ -3,6 +3,9 @@ import type { Capture } from '@shared/types'
 import {
   computeDisplayedCaptures,
   countActiveFilters,
+  describeNarrowings,
+  isNarrowed,
+  matchesQuery,
   sortCaptures,
   type CaptureListFilters
 } from '@renderer/components/captures/captureListModel'
@@ -29,6 +32,7 @@ function cap(over: Partial<Capture>): Capture {
 }
 
 const NO_FILTERS: CaptureListFilters = {
+  query: '',
   sortBy: 'newest',
   formatFilter: 'all',
   dateFilter: 'all',
@@ -87,8 +91,12 @@ describe('countActiveFilters', () => {
     expect(countActiveFilters({ ...NO_FILTERS, dateFilter: '7days' })).toBe(1)
     expect(countActiveFilters({ ...NO_FILTERS, favoritesOnly: true })).toBe(1)
     expect(countActiveFilters({ ...NO_FILTERS, sortBy: 'url-az' })).toBe(0)
+    // The badge must keep meaning exactly what the Filter menu shows, and the
+    // menu has no query field.
+    expect(countActiveFilters({ ...NO_FILTERS, query: 'acme' })).toBe(0)
     expect(
       countActiveFilters({
+        query: '',
         sortBy: 'oldest',
         formatFilter: 'mhtml',
         dateFilter: 'today',
@@ -197,6 +205,7 @@ describe('computeDisplayedCaptures', () => {
         filteredCaptureIds: ['keepA', 'keepB', 'wrongFormat', 'notFavorite', 'tooOld'],
         favorites: new Set(['keepA', 'keepB', 'wrongFormat', 'tooOld', 'notSelected']),
         filters: {
+          query: '',
           sortBy: 'title-az',
           formatFilter: 'mhtml',
           dateFilter: '7days',
@@ -206,5 +215,169 @@ describe('computeDisplayedCaptures', () => {
       NOW
     )
     expect(out.map((c) => c.id)).toEqual(['keepA', 'keepB'])
+  })
+})
+
+describe('matchesQuery', () => {
+  const target = cap({ id: 'q', title: 'Acme Holdings', url: 'https://corp.example.com/about' })
+
+  it('matches everything when the query is empty or whitespace', () => {
+    expect(matchesQuery(target, '')).toBe(true)
+    expect(matchesQuery(target, '   ')).toBe(true)
+  })
+
+  it('matches a case-insensitive substring of the title', () => {
+    expect(matchesQuery(target, 'acme')).toBe(true)
+    expect(matchesQuery(target, 'HOLD')).toBe(true)
+  })
+
+  it('matches a case-insensitive substring of the url', () => {
+    expect(matchesQuery(target, 'corp.example')).toBe(true)
+    expect(matchesQuery(target, '/ABOUT')).toBe(true)
+  })
+
+  it('trims surrounding whitespace before matching', () => {
+    expect(matchesQuery(target, '  acme  ')).toBe(true)
+  })
+
+  it('rejects a substring present in neither title nor url', () => {
+    expect(matchesQuery(target, 'zebra')).toBe(false)
+  })
+
+  it('tolerates an empty title', () => {
+    const untitled = cap({ id: 'u', title: '', url: 'https://example.com/x' })
+    expect(matchesQuery(untitled, 'example')).toBe(true)
+    expect(matchesQuery(untitled, 'zebra')).toBe(false)
+  })
+})
+
+describe('describeNarrowings', () => {
+  it('is empty when nothing narrows the list', () => {
+    const input = { filters: NO_FILTERS, selectorFilterCount: 0 }
+    expect(describeNarrowings(input)).toEqual([])
+    expect(isNarrowed(input)).toBe(false)
+  })
+
+  it('names the query, ignoring surrounding whitespace', () => {
+    expect(
+      describeNarrowings({ filters: { ...NO_FILTERS, query: '  acme ' }, selectorFilterCount: 0 })
+    ).toEqual(['Search "acme"'])
+    expect(isNarrowed({ filters: { ...NO_FILTERS, query: '   ' }, selectorFilterCount: 0 })).toBe(
+      false
+    )
+  })
+
+  it('pluralizes the selector-filter count', () => {
+    expect(describeNarrowings({ filters: NO_FILTERS, selectorFilterCount: 1 })).toEqual([
+      '1 selector filter'
+    ])
+    expect(describeNarrowings({ filters: NO_FILTERS, selectorFilterCount: 3 })).toEqual([
+      '3 selector filters'
+    ])
+  })
+
+  it('names the menu filters with their menu labels', () => {
+    expect(
+      describeNarrowings({
+        filters: { ...NO_FILTERS, formatFilter: 'mhtml' },
+        selectorFilterCount: 0
+      })
+    ).toEqual(['MHTML'])
+    expect(
+      describeNarrowings({
+        filters: { ...NO_FILTERS, dateFilter: '7days' },
+        selectorFilterCount: 0
+      })
+    ).toEqual(['Last 7 days'])
+    expect(
+      describeNarrowings({
+        filters: { ...NO_FILTERS, favoritesOnly: true },
+        selectorFilterCount: 0
+      })
+    ).toEqual(['Favorites only'])
+  })
+
+  it('names every active narrowing at once, and sort is not one', () => {
+    const input = {
+      filters: {
+        query: 'acme',
+        sortBy: 'url-az' as const,
+        formatFilter: 'html' as const,
+        dateFilter: 'today' as const,
+        favoritesOnly: true
+      },
+      selectorFilterCount: 2
+    }
+    expect(describeNarrowings(input)).toEqual([
+      'Search "acme"',
+      '2 selector filters',
+      'HTML',
+      'Today',
+      'Favorites only'
+    ])
+    expect(isNarrowed(input)).toBe(true)
+    expect(
+      isNarrowed({ filters: { ...NO_FILTERS, sortBy: 'oldest' }, selectorFilterCount: 0 })
+    ).toBe(false)
+  })
+})
+
+describe('computeDisplayedCaptures query filter', () => {
+  const captures = [
+    cap({ id: 'title', title: 'Acme quarterly', url: 'https://one.example.com' }),
+    cap({ id: 'url', title: 'Unrelated', url: 'https://acme.example.com/news' }),
+    cap({ id: 'neither', title: 'Unrelated', url: 'https://two.example.com' })
+  ]
+
+  it('keeps captures matching on title or url and drops the rest', () => {
+    const out = computeDisplayedCaptures(
+      { ...BASE, captures, filters: { ...NO_FILTERS, query: 'ACME' } },
+      NOW
+    )
+    expect(out.map((c) => c.id).sort()).toEqual(['title', 'url'])
+  })
+
+  it('returns nothing when no capture matches', () => {
+    expect(
+      computeDisplayedCaptures(
+        { ...BASE, captures, filters: { ...NO_FILTERS, query: 'zebra' } },
+        NOW
+      )
+    ).toEqual([])
+  })
+
+  it('leaves the list untouched for a whitespace-only query', () => {
+    expect(
+      computeDisplayedCaptures({ ...BASE, captures, filters: { ...NO_FILTERS, query: ' ' } }, NOW)
+    ).toHaveLength(3)
+  })
+
+  it('intersects the query with the selector filter conjunctively', () => {
+    const out = computeDisplayedCaptures(
+      {
+        ...BASE,
+        captures,
+        filteredCaptureIds: ['url', 'neither'],
+        filters: { ...NO_FILTERS, query: 'acme' }
+      },
+      NOW
+    )
+    expect(out.map((c) => c.id)).toEqual(['url'])
+  })
+
+  it('intersects the query with the menu filters conjunctively', () => {
+    const mixed = [
+      cap({ id: 'keep', title: 'Acme', format: 'mhtml' }),
+      cap({ id: 'wrongFormat', title: 'Acme', format: 'html' })
+    ]
+    const out = computeDisplayedCaptures(
+      {
+        ...BASE,
+        captures: mixed,
+        filters: { ...NO_FILTERS, query: 'acme', formatFilter: 'mhtml' }
+      },
+      NOW
+    )
+    expect(out.map((c) => c.id)).toEqual(['keep'])
   })
 })

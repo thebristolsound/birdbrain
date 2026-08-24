@@ -44,6 +44,12 @@ capture server never sees, enforces the identical rule rather than a second copy
 rename-detection-off rule catches the move itself and nothing after, and this file is now the
 single place that answer is computed, so a later edit touching only it would otherwise match no
 entry.
+`src/shared/urlCanonicalize.ts` added to Acquisition (#392) — the canonical URL identity the
+extension attach routes (tag apply, note create, URL lookup) resolve against. It decides which
+Capture a Tag or Note binds to, and whether an attach request acquires new bytes at all (no
+canonical match means the supplied payload is ingested), so it shapes what enters a case the same
+way `urlPatterns.ts` does; the #227 argument applies unchanged. Shared so the extension and the
+server agree on the rules by construction rather than by convention.
 
 ## List format
 
@@ -170,6 +176,7 @@ carve-out that caused it.
 | `extension/manifest.json` | blocking | Acquisition permissions; ships in the release zip |
 | `src/main/services/captureServer.ts` | blocking | Ingest endpoint: upload validation, case routing, ingest-time selector matching |
 | `src/shared/urlPatterns.ts` | blocking | The ignored-URL matcher both sides run: it decides what never enters a case at all, and names the rule recorded as the reason for the absence |
+| `src/shared/urlCanonicalize.ts` | blocking | Canonical URL identity for the extension attach routes: decides which Capture a Tag or Note binds to, and whether an attach request ingests its payload or binds to an existing Capture |
 | `src/main/services/exclusionPolicy.ts` | blocking | Resolves the per-case exclusion list into the answer the acquisition routes check before ingest, so it decides what those routes refuse. Not every route asks: the pipeline self-test (`POST /api/captures/test`) is a documented exception, so read the call sites rather than assuming coverage is total |
 | `src/main/services/serverToken.ts` | blocking | Authenticates ingest; weakening admits spoofed captures into the evidence chain |
 | `src/main/services/session.ts` | blocking | Active-case state deciding which case a capture is filed under |

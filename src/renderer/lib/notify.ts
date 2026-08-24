@@ -127,6 +127,8 @@ const CODE_LABELS: Record<LogCode, string> = {
   'app.installation_id': 'Installation identified',
   // --- appended: labels for the real console.* call sites Task 1 migrated ---
   'captureServer.selector_create_failed': "Couldn't create the selector",
+  'captureServer.tag_apply_failed': "Couldn't apply the tag",
+  'captureServer.note_create_failed': "Couldn't create the note",
   'captureLifecycle.tls_refetch_failed': "Couldn't verify the site's certificate",
   'captureLifecycle.selector_match_failed': "Couldn't check this capture against selectors",
   'captureLifecycle.reprocess_failed': "Couldn't reprocess this capture",

@@ -7,6 +7,10 @@ export function listTags(): Tag[] {
   return getDb().prepare('SELECT * FROM tags ORDER BY name').all() as Tag[]
 }
 
+export function getTag(id: string): Tag | undefined {
+  return getDb().prepare('SELECT * FROM tags WHERE id = ?').get(id) as Tag | undefined
+}
+
 export function createTag(params: CreateTagParams): Tag {
   const id = uuid()
   getDb()
@@ -145,6 +149,13 @@ export function collectCaptureTagsForCase(caseId: string): Record<string, unknow
        WHERE c.case_id = ?`
     )
     .all(caseId) as Record<string, unknown>[]
+}
+
+export function findTagIdByNameExact(name: string): string | undefined {
+  const hit = getDb().prepare('SELECT id FROM tags WHERE name = ?').get(name) as
+    | { id: string }
+    | undefined
+  return hit?.id
 }
 
 export function findTagIdByNameInsensitive(name: string): string | undefined {

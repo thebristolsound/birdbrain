@@ -10,7 +10,13 @@ import {
   DEFAULT_UI_DENSITY,
   UI_DENSITIES
 } from '@shared/types'
-import type { ActiveCaseSelectors, BirdbrainSettings, Selector, SelectorMatch } from '@shared/types'
+import type {
+  ActiveCaseSelectors,
+  BirdbrainSettings,
+  Note,
+  Selector,
+  SelectorMatch
+} from '@shared/types'
 
 // Shared Zod schemas for Birdbrain's trust boundaries.
 //
@@ -200,6 +206,105 @@ export const SelectorCreateSchema = z.object({
 
 export type SelectorCreate = z.infer<typeof SelectorCreateSchema>
 
+// --- Capture server: extension write endpoints (#392) ----------------------
+
+// Stricter than CaptureUploadSchema's url field on purpose: birdbrain:// is a
+// pipeline-test sentinel, and an annotation can only ever bind to a page.
+const HttpUrlField = z
+  .string()
+  .min(1)
+  .max(8192)
+  .refine(
+    (u) => {
+      try {
+        return ['http:', 'https:'].includes(new URL(u).protocol)
+      } catch {
+        return false
+      }
+    },
+    { message: 'URL must use http or https' }
+  )
+
+// The shared shape of the two attach routes (POST /api/tags/apply and
+// POST /api/notes): caseId + url identify the Capture to attach to, and the
+// remaining fields are the optional auto-capture payload — the same multipart
+// shape POST /api/captures takes (R2), minus `source` (an attach capture is
+// always operator-witnessed) and with `mhtml` optional: absent means "attach
+// only", and the route refuses rather than acquiring bytes some other way.
+const ExtensionAttachBaseSchema = z.object({
+  caseId: z.string().min(1),
+  url: HttpUrlField,
+  title: z.string().optional().default(''),
+  timestamp: z.string().optional().default(''),
+  textContent: z.string().optional().default(''),
+  extensionVersion: z.string().optional().default(''),
+  browserVersion: z.string().optional().default(''),
+  userAgent: z.string().optional().default(''),
+  httpStatus: z.coerce.number().catch(0),
+  headers: HeadersFieldSchema,
+  mhtml: FormFileSchema.optional(),
+  screenshot: z.unknown().optional()
+})
+
+export type ExtensionAttachBase = z.infer<typeof ExtensionAttachBaseSchema>
+
+export const ExtensionTagApplySchema = ExtensionAttachBaseSchema.extend({
+  tagName: z.string().trim().min(1).max(200)
+})
+
+export type ExtensionTagApply = z.infer<typeof ExtensionTagApplySchema>
+
+export const ExtensionNoteCreateSchema = ExtensionAttachBaseSchema.extend({
+  noteTitle: z.string().optional().default(''),
+  noteText: z.string().trim().min(1).max(100_000)
+})
+
+export type ExtensionNoteCreate = z.infer<typeof ExtensionNoteCreateSchema>
+
+// POST /api/captures/lookup — a read carried as a POST on purpose: the token
+// guard fires on POST only, so a GET here would answer any local process
+// without a token and leak whether a case holds a URL (R23, #817).
+export const UrlLookupSchema = z.object({
+  caseId: z.string().min(1),
+  url: HttpUrlField
+})
+
+export type UrlLookup = z.infer<typeof UrlLookupSchema>
+
+/** POST /api/captures/lookup — success body. */
+export interface UrlLookupResult {
+  found: boolean
+  /** What the url resolved to under @shared/urlCanonicalize's rules. */
+  canonicalUrl: string
+  capture: { id: string; url: string; title: string; timestamp: string } | null
+}
+
+/** POST /api/tags/apply — success body. */
+export interface ExtensionTagApplyResult {
+  status: 'ok'
+  captureId: string
+  /** True when the route ingested the supplied payload rather than attaching to an existing Capture. */
+  captured: boolean
+  /**
+   * 'none' whenever nothing was saved: on an attach to an existing Capture,
+   * which acquires nothing, and on an ingest that carried no screenshot.
+   */
+  screenshotStatus: ScreenshotStatus
+  /** Why the screenshot was dropped; absent when none was. */
+  screenshotWarning?: string
+  tag: { id: string; name: string }
+}
+
+/** POST /api/notes — success body. */
+export interface ExtensionNoteCreateResult {
+  status: 'ok'
+  captureId: string
+  captured: boolean
+  screenshotStatus: ScreenshotStatus
+  screenshotWarning?: string
+  note: Note
+}
+
 // --- Zod → HTTP error formatting ------------------------------------------
 
 // Maps the first Zod issue to an error string that matches the shapes the
@@ -223,6 +328,20 @@ export function formatSelectorCreateError(err: z.ZodError): string {
   const path = first.path.join('.')
   if (path === 'caseId') return 'Missing required field: caseId'
   if (path === 'pattern') return 'Missing or empty required field: pattern'
+  return first.message || `Invalid field: ${path}`
+}
+
+// One formatter for the three #392 routes: they share the base shape, and the
+// lookup's two fields are a subset of it.
+export function formatExtensionAttachError(err: z.ZodError): string {
+  const first = err.issues[0]
+  if (!first) return 'Invalid request'
+  const path = first.path.join('.')
+  if (path === 'caseId') return 'Missing required field: caseId'
+  if (path === 'url') return 'Missing or invalid required field: url'
+  if (path === 'tagName') return 'Missing or empty required field: tagName'
+  if (path === 'noteText') return 'Missing or empty required field: noteText'
+  if (path === 'mhtml') return 'Invalid field: mhtml (file)'
   return first.message || `Invalid field: ${path}`
 }
 

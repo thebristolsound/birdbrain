@@ -38,6 +38,17 @@ export function getCapturesByIds(ids: string[]): Capture[] {
   return rows.map(rowToCapture)
 }
 
+// URL-resolution candidates for the extension attach routes (#392). Canonical
+// matching is a JS rule (@shared/urlCanonicalize), so the rows come out raw
+// and the resolution happens in the caller.
+export function listCaptureUrlCandidates(
+  caseId: string
+): Array<{ id: string; url: string; title: string; timestamp: string }> {
+  return getDb()
+    .prepare('SELECT id, url, title, timestamp FROM captures WHERE case_id = ?')
+    .all(caseId) as Array<{ id: string; url: string; title: string; timestamp: string }>
+}
+
 export interface InsertCaptureParams {
   caseId: string
   url: string

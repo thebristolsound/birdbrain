@@ -50,3 +50,9 @@ a447ef03d1ed557433f5c36a1bfdb03d99dd926e:docs/design-handoff/2026-08-21-birdbrai
 # The squash merge to main will re-introduce the same line and need its own
 # fingerprint entry, per the standalone-mock precedent above.
 cd5a25c266ba99b515ddaeb39c16a05ce954080b:tests/shared/verify/fixtures/pre-scope-package/manifest.jsonl:generic-api-key:3
+#
+# The squash merge of #838 re-introduced the pre-scope fixture manifest at a
+# new sha, as the block above predicted. Same synthetic tsaToken, same line,
+# not a credential. The branch entry above is inert now that the source
+# branch is deleted, and stays for history.
+911859d698f1b66c9993e9fe617b4fc0f74bf4ad:tests/shared/verify/fixtures/pre-scope-package/manifest.jsonl:generic-api-key:3

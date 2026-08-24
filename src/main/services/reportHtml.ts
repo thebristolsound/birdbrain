@@ -108,7 +108,6 @@ export interface ReportData {
   caseName: string
   caseDescription?: string
   dateRange: { first: string; last: string } | null
-  investigatorName: string
   exportTimestamp: string
   captures: Capture[]
   verifications: HashVerification[]
@@ -466,7 +465,6 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
 
   <p class="eyebrow spaced">Custody</p>
   <div class="field-grid rule-top">
-    ${field('Investigator (self-asserted)', esc(data.investigatorName))}
     ${field('Operator (self-asserted)', esc(operatorLine(data)))}
     ${field('Installation identifier', mono(esc(data.installationId)))}
     ${field('Tool / hash algorithm', `Birdbrain ${esc(data.toolVersion)} · SHA-256`)}

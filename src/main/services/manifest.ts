@@ -306,6 +306,11 @@ export type ManifestEntryInput =
       // — and chain hashes — are unchanged.
       scope?: 'selection'
       captureIds?: string[]
+      // Export class (#399, ADR-0010): a Working Copy export is recorded on the
+      // chain — the audit trail must not go silent for a non-evidentiary
+      // extraction — but marked as one. OMITTED (never 'evidence'/null) on
+      // evidence exports so their entries' canonical bodies are unchanged.
+      exportClass?: 'working-copy'
     }
   | {
       // Signed audit record of a case-archive export (.birdbrain). `packageHash`

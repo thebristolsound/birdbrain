@@ -127,8 +127,8 @@ describe('exported evidence bundle verifies under openssl ts -verify', () => {
       const outputPath = join(tempDir, 'evidence.zip')
       const options: ExportOptions = {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
-        investigatorName: 'Test User',
+        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
         outputPath
       }
       await generateReport(caseId, options, captureLifecycle)

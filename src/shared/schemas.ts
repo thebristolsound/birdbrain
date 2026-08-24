@@ -389,6 +389,11 @@ const ManifestExportEntrySchema = z
     // breaking every legacy export entry ('Entry hash mismatch').
     scope: z.literal('selection').optional(),
     captureIds: z.array(z.string()).optional(),
+    // Export class (#399, ADR-0010). Present-means-working-copy: an evidence
+    // export OMITS the key — never null, never 'evidence' — under the same
+    // omit-when-absent discipline as `scope` above, and for the same reasons
+    // it must stay `.optional()` with NO `.default()`.
+    exportClass: z.literal('working-copy').optional(),
     index: z.number().int().nonnegative(),
     prevHash: z.string(),
     schemaVersion: z.number().int().min(2).max(MANIFEST_SCHEMA_VERSION),
@@ -514,6 +519,23 @@ export const EvidencePackageSchema = z.object({
 })
 
 export type EvidencePackage = z.infer<typeof EvidencePackageSchema>
+
+// --- Working Copy marker (WORKING-COPY.json) ------------------------------
+
+// A Working Copy export (#399, ADR-0010) self-identifies through this marker at
+// the package root. It is UNSIGNED and confers nothing: the verifier reads it
+// only when `manifest.jsonl` is absent, to report "not a verifiable object"
+// instead of FAIL — a present manifest is always verified, so a planted marker
+// can never silence a chain. Defined here (not in constants.ts) because the
+// standalone verifier may import only @shared/verify/** and @shared/schemas.
+export const WORKING_COPY_MARKER_FILENAME = 'WORKING-COPY.json'
+
+// Deliberately non-strict, pinning only what the verifier branches on: future
+// informational keys must not turn an honest marker unreadable for
+// already-distributed verifier binaries.
+export const WorkingCopyMarkerSchema = z.object({
+  exportClass: z.literal('working-copy')
+})
 
 // --- Settings file --------------------------------------------------------
 

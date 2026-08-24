@@ -179,7 +179,7 @@ describe('report citation invariants', () => {
     const outputPath = join(tempDir, `${name}.zip`)
     await generateReport(
       caseId,
-      { format: 'zip', include, investigatorName: 'Test', outputPath },
+      { format: 'zip', include, exportClass: 'evidence', outputPath },
       captureLifecycle
     )
     return readStoredZipEntries(outputPath)
@@ -189,6 +189,7 @@ describe('report citation invariants', () => {
     captures: true,
     screenshots: true,
     auditTrail: true,
+    notes: false,
     annotations: 'burned'
   }
 

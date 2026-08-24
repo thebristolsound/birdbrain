@@ -8,6 +8,29 @@ import type { TrustedTimeResult } from '@shared/verify'
 // without constructing the full export pipeline.
 export interface CertificationInput {
   caseName: string
+  /** Operator-assigned case number (#399); rendered 'not stated' when absent. */
+  caseNumber?: string
+  /**
+   * Demonstration case (#405): when true the certification carries a prominent
+   * statement that the case is seeded fixture data, not collected evidence.
+   */
+  isDemo: boolean
+  /** Free-text purpose-or-authority from the export dialog (#399). */
+  purposeOrAuthority?: string
+  /**
+   * Manifest chain head this package was built against — the same single
+   * snapshot the report and evidence.json cite. Null when the manifest was
+   * empty or unreadable.
+   */
+  manifestHead: { index: number; entryHash: string } | null
+  /** SHA-256 (hex) of the bundled signing-public-key.pem bytes. */
+  signingKeyFingerprint: string
+  /** What this package actually contains, counted from what was packaged. */
+  contents: {
+    captureCount: number
+    screenshotCount: number
+    noteCount: number
+  }
   exportTimestamp: string
   installationId: string
   operatorName: string
@@ -61,6 +84,12 @@ export interface CertificationFields {
   captures: CertificationCaptureRow[]
   exportTimestamp: string
   caseName: string
+  caseNumber?: string
+  isDemo: boolean
+  purposeOrAuthority?: string
+  manifestHead: { index: number; entryHash: string } | null
+  signingKeyFingerprint: string
+  contentsSummary: string
 }
 
 const LAWYER_TBD_MARKER = '[LEGAL WORDING TO BE SUPPLIED BY COUNSEL]'
@@ -117,8 +146,25 @@ export function buildCertificationFields(
     },
     captures,
     exportTimestamp: data.exportTimestamp,
-    caseName: data.caseName
+    caseName: data.caseName,
+    caseNumber: data.caseNumber,
+    isDemo: data.isDemo,
+    purposeOrAuthority: data.purposeOrAuthority,
+    manifestHead: data.manifestHead,
+    signingKeyFingerprint: data.signingKeyFingerprint,
+    contentsSummary: buildContentsSummary(data.contents)
   }
+}
+
+// Always all three counts, zeros included: "0 operator notes" on a Court
+// exhibit states the exclusion plainly rather than hiding it.
+function buildContentsSummary(contents: CertificationInput['contents']): string {
+  const plural = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? '' : 's'}`
+  return [
+    plural(contents.captureCount, 'capture'),
+    plural(contents.screenshotCount, 'screenshot'),
+    plural(contents.noteCount, 'operator note')
+  ].join(', ')
 }
 
 export function buildCertification(data: CertificationInput, toolVersion: string): string {
@@ -219,6 +265,36 @@ function renderCertificationHtml(fields: CertificationFields): string {
     rule must be supplied by counsel. This document is scaffolding: it records the tool, the
     process and the certifier, and asserts nothing about the legal sufficiency of that record.</p>
   </div>
+  ${
+    fields.isDemo
+      ? `<div class="alert">
+    <p class="alert-title">Demonstration case</p>
+    <p>This case is the demonstration case seeded by ${esc(fields.toolName)}. Its captures are
+    <strong>fixture data</strong> supplied with the tool, not evidence collected by the operator.
+    This export must not be presented as collected evidence.</p>
+  </div>`
+      : ''
+  }
+
+  <p class="eyebrow spaced">Package</p>
+  <div class="field-grid rule-top">
+    <div class="field"><div class="field-label">Case number (self-asserted)</div>
+      <div class="field-value">${fields.caseNumber ? esc(fields.caseNumber) : 'not stated'}</div></div>
+    <div class="field"><div class="field-label">Contents</div>
+      <div class="field-value">${esc(fields.contentsSummary)}</div></div>
+    <div class="field wide"><div class="field-label">Manifest head at export</div>
+      <div class="field-value">${
+        fields.manifestHead
+          ? `<span class="mono break">entry #${fields.manifestHead.index} · ${esc(
+              fields.manifestHead.entryHash
+            )}</span>`
+          : 'not available — the case manifest could not be read at export time'
+      }</div></div>
+    <div class="field wide"><div class="field-label">Signing key (SHA-256 of signing-public-key.pem)</div>
+      <div class="field-value"><span class="mono break">${esc(
+        fields.signingKeyFingerprint
+      )}</span></div></div>
+  </div>
 
   <p class="eyebrow spaced">Capturing tool</p>
   <div class="field-grid rule-top">
@@ -275,6 +351,10 @@ function renderCertificationHtml(fields: CertificationFields): string {
       )}</span></div></div>
     <div class="field wide"><div class="field-label">Export generated</div>
       <div class="field-value"><span class="mono">${isoUtc(fields.exportTimestamp)}</span></div></div>
+    <div class="field wide"><div class="field-label">Purpose or authority (self-asserted)</div>
+      <div class="field-value">${
+        fields.purposeOrAuthority ? esc(fields.purposeOrAuthority) : 'not stated'
+      }</div></div>
   </div>
 
   <div class="alert">

@@ -1,7 +1,12 @@
 import { createHash } from 'crypto'
 import { existsSync, readFileSync, readdirSync, realpathSync } from 'fs'
 import { join, resolve, sep } from 'path'
-import { EvidencePackageSchema, ManifestEntrySchema } from '@shared/schemas'
+import {
+  EvidencePackageSchema,
+  ManifestEntrySchema,
+  WORKING_COPY_MARKER_FILENAME,
+  WorkingCopyMarkerSchema
+} from '@shared/schemas'
 import type { ManifestEntry } from '@shared/schemas'
 import { parseTimestampToken } from '@shared/verify/timestampToken'
 import { verifyManifestChainText } from '@shared/verify/manifestChain'
@@ -41,6 +46,15 @@ export interface PackageVerifyResult {
   // EVERY check and collects ALL failures — it never short-circuits.
   pass: boolean
   checks: PackageCheck[]
+  /**
+   * Third outcome (#399, ADR-0010): the directory is a self-identified Working
+   * Copy — a non-evidentiary export with no manifest to verify — so the honest
+   * report is "not a verifiable object", not FAIL. `pass` stays false: this
+   * outcome confers no integrity claim whatsoever. Only ever set when
+   * manifest.jsonl is ABSENT — a present manifest is always verified, so a
+   * planted marker can never silence a chain.
+   */
+  notVerifiable?: { reason: string }
 }
 
 function sha256File(path: string): string {
@@ -145,6 +159,34 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   const publicKeyPath = join(dir, 'signing-public-key.pem')
 
   if (!existsSync(manifestPath)) {
+    // Working Copy detection (#399), gated on the manifest's ABSENCE: the
+    // marker is unsigned and confers nothing, so when a manifest exists it is
+    // verified regardless of any marker — a tamperer cannot downgrade a
+    // failing package to "not verifiable" without also removing the manifest,
+    // which the marker-less branch below still reports as FAIL.
+    const markerPath = join(dir, WORKING_COPY_MARKER_FILENAME)
+    if (existsSync(markerPath)) {
+      let marker: unknown
+      try {
+        marker = JSON.parse(readFileSync(markerPath, 'utf-8'))
+      } catch {
+        marker = undefined
+      }
+      if (WorkingCopyMarkerSchema.safeParse(marker).success) {
+        return {
+          pass: false,
+          checks,
+          notVerifiable: {
+            reason:
+              `${WORKING_COPY_MARKER_FILENAME} identifies this as a Birdbrain Working Copy — ` +
+              'a non-evidentiary export with no manifest, no signing key and no ' +
+              'certification. There is nothing to verify.'
+          }
+        }
+      }
+      // An unreadable or wrong-class marker is no marker of ours: fall through
+      // to the missing-manifest FAIL rather than inventing a verdict from it.
+    }
     add('manifest present', 'fail', 'manifest.jsonl missing from package')
     return { pass: false, checks }
   }

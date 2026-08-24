@@ -787,10 +787,14 @@ export function registerIpcHandlers(deps: {
     IPC_CHANNELS.EXPORT_GENERATE,
     async (event, caseId: string, options: ExportOptions): Promise<ExportResult> => {
       const isZip = options.format === 'zip'
+      // The save dialog is the last text the operator reads before the file
+      // lands on disk, so it names the class (#399).
+      const isWorkingCopy = options.exportClass === 'working-copy'
       const { canceled, filePath } = await dialog.showSaveDialog({
-        defaultPath: options.outputPath || (isZip ? 'evidence.zip' : 'report.html'),
+        defaultPath:
+          options.outputPath || (isZip ? (isWorkingCopy ? 'working-copy.zip' : 'evidence.zip') : 'report.html'),
         filters: isZip
-          ? [{ name: 'Evidence Package', extensions: ['zip'] }]
+          ? [{ name: isWorkingCopy ? 'Working Copy (non-evidentiary)' : 'Evidence Package', extensions: ['zip'] }]
           : [{ name: 'HTML', extensions: ['html'] }]
       })
       if (canceled || !filePath) return { canceled: true }

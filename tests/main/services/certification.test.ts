@@ -4,8 +4,10 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
 import { createHash } from 'crypto'
-import { initDatabase, closeDatabase } from '@main/services/db/core'
-import { createCase } from '@main/services/db/caseRepo'
+import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
+import { createCase, updateCase } from '@main/services/db/caseRepo'
+import { createNote } from '@main/services/db/noteRepo'
+import { getPublicKeyPem } from '@main/services/signingKey'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
 import { appendManifestEntry, initManifest } from '@main/services/manifest'
 import {
@@ -62,10 +64,19 @@ async function ingest(caseId: string, payload: string, url: string, title: strin
   })
 }
 
+// The package-level fields a direct buildCertification call must supply since
+// #399; the trusted-time tests using this spread do not read any of them.
+const DIRECT_INPUT_EXTRAS = {
+  isDemo: false,
+  manifestHead: null,
+  signingKeyFingerprint: 'f'.repeat(64),
+  contents: { captureCount: 1, screenshotCount: 0, noteCount: 0 }
+}
+
 const ZIP_OPTIONS: ExportOptions = {
   format: 'zip',
-  include: { captures: true, screenshots: false, auditTrail: true, annotations: 'none' },
-  investigatorName: 'Test User',
+  include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+  exportClass: 'evidence',
   outputPath: ''
 }
 
@@ -379,6 +390,7 @@ describe('certification', () => {
     const html = buildCertification(
       {
         caseName: 'Cert Case',
+        ...DIRECT_INPUT_EXTRAS,
         exportTimestamp: '2026-04-05T13:00:00.000Z',
         installationId: 'install-1',
         operatorName: 'Det. Smith',
@@ -418,6 +430,7 @@ describe('certification', () => {
     const html = buildCertification(
       {
         caseName: 'Cert Case',
+        ...DIRECT_INPUT_EXTRAS,
         exportTimestamp: '2026-04-05T13:00:00.000Z',
         installationId: 'install-1',
         operatorName: 'Det. Smith',
@@ -444,5 +457,97 @@ describe('certification', () => {
     expect(html).toMatch(/1\s+remaining\s+capture\s+\(1\s+pending,\s+0\s+none\)/i)
     expect(html).toContain('tsa.example.com')
     expect(html).toContain('2026-04-05T12:01:00Z')
+  })
+
+  describe('extended certification (#399)', () => {
+    async function exportCert(overrides: Partial<ExportOptions> = {}): Promise<string> {
+      const entries = await exportZip(overrides)
+      return entries.get('certification.html')!.toString('utf-8')
+    }
+
+    it('renders case number, contents, manifest head and the signing key fingerprint', async () => {
+      updateCase({ id: caseId, caseNumber: 'CPS 2026/114' })
+      await ingest(caseId, '<html><body>One</body></html>', 'https://example.com/1', 'One')
+      createNote({ caseId, title: 'N', body: 'note body' })
+
+      const cert = await exportCert({
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: true,
+          annotations: 'none'
+        },
+        purposeOrAuthority: 'Disclosure under CPS request 2026/114'
+      })
+
+      expect(cert).toContain('Case number (self-asserted)')
+      expect(cert).toContain('CPS 2026/114')
+      expect(cert).toContain('1 capture, 0 screenshots, 1 operator note')
+      // The head cited is the same single snapshot the package was built from.
+      expect(cert).toMatch(/Manifest head at export[\s\S]*?entry #\d+ · [0-9a-f]{64}/)
+      expect(cert).toContain('Signing key (SHA-256 of signing-public-key.pem)')
+      expect(cert).toContain(
+        createHash('sha256').update(Buffer.from(getPublicKeyPem(), 'utf-8')).digest('hex')
+      )
+      expect(cert).toContain('Purpose or authority (self-asserted)')
+      expect(cert).toContain('Disclosure under CPS request 2026/114')
+    })
+
+    it("renders 'not stated' for an absent case number and purpose", async () => {
+      await ingest(caseId, '<html><body>One</body></html>', 'https://example.com/1', 'One')
+
+      const cert = await exportCert()
+
+      // Two 'not stated' cells beyond the existing role/organisation ones —
+      // absent values are stated as absent, never rendered as empty cells.
+      expect(cert).toMatch(/Case number \(self-asserted\)<\/div>\s*<div class="field-value">not stated/)
+      expect(cert).toMatch(
+        /Purpose or authority \(self-asserted\)<\/div>\s*<div class="field-value">not stated/
+      )
+    })
+
+    it('states the demonstration case prominently, and only for a demo case', async () => {
+      getDb().prepare('UPDATE cases SET is_demo = 1 WHERE id = ?').run(caseId)
+      await ingest(caseId, '<html><body>Demo</body></html>', 'https://example.com/d', 'Demo')
+
+      const demoCert = await exportCert()
+      expect(demoCert).toContain('Demonstration case')
+      expect(demoCert).toContain('fixture data')
+      expect(demoCert).toContain('must not be presented as collected evidence')
+
+      getDb().prepare('UPDATE cases SET is_demo = 0 WHERE id = ?').run(caseId)
+      const plainCert = await exportCert()
+      expect(plainCert).not.toContain('Demonstration case')
+      expect(plainCert).not.toContain('fixture data')
+    })
+
+    it('uses Operator vocabulary only — never Examiner, never analyst', async () => {
+      await ingest(caseId, '<html><body>One</body></html>', 'https://example.com/1', 'One')
+
+      const cert = await exportCert({
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: true,
+          annotations: 'none'
+        }
+      })
+
+      expect(cert).not.toMatch(/examiner/i)
+      expect(cert).not.toMatch(/analyst/i)
+      expect(cert).not.toMatch(/investigator/i)
+    })
+
+    it('counts excluded notes as zero in the contents summary', async () => {
+      await ingest(caseId, '<html><body>One</body></html>', 'https://example.com/1', 'One')
+      createNote({ caseId, title: 'N', body: 'excluded from this export' })
+
+      const cert = await exportCert()
+
+      // ZIP_OPTIONS has notes off: the summary states the exclusion plainly.
+      expect(cert).toContain('1 capture, 0 screenshots, 0 operator notes')
+    })
   })
 })

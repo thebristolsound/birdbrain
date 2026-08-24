@@ -627,15 +627,30 @@ export interface OpenRouterModel {
   pricing: { prompt: string; completion: string }
 }
 
+// The two semantically distinct export classes (#399, ADR-0010). An
+// 'evidence' export is the verifiable package: full Manifest, Certification,
+// signing key, evidence.json. A 'working-copy' is a clearly-labelled
+// non-evidentiary export that ships none of those — the standalone verifier
+// reports it as not a verifiable object rather than FAIL.
+export const EXPORT_CLASSES = ['evidence', 'working-copy'] as const
+export type ExportClass = (typeof EXPORT_CLASSES)[number]
+
 export interface ExportOptions {
   format: 'html' | 'pdf' | 'zip'
+  exportClass: ExportClass
   include: {
     captures: boolean
     screenshots: boolean
     auditTrail: boolean
+    // Operator notes as package content (#399): notes.md in the zip. The
+    // Court-exhibit preset is this flag off; extracted text and selector hits
+    // deliberately did NOT become package content (maintainer ruling R4).
+    notes: boolean
     annotations: 'none' | 'burned'
   }
-  investigatorName: string
+  // Free-text purpose-or-authority statement rendered on the Certification
+  // (e.g. "Disclosure under CPS request 2026/114"). Absent renders 'not stated'.
+  purposeOrAuthority?: string
   outputPath: string
   // Selection scope (#398, ADR-0009): when present, only these captures are
   // exported as artifacts; the Manifest chain still ships complete. Absent

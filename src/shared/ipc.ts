@@ -7,6 +7,7 @@ import type {
   AnnotationShape,
   AnnotationsBundle,
   ArchiveInspectReport,
+  CaseWaybackRef,
   WaybackRef,
   BirdbrainSettings,
   BugReportInput,
@@ -153,6 +154,7 @@ export const IPC_CHANNELS = {
   // Wayback Machine corroboration
   WAYBACK_LOOKUP: 'wayback:lookup',
   WAYBACK_LIST: 'wayback:list',
+  WAYBACK_LIST_FOR_CASE: 'wayback:listForCase',
   WAYBACK_PIN: 'wayback:pin',
   WAYBACK_UNPIN: 'wayback:unpin',
 
@@ -723,6 +725,7 @@ export interface IpcInvokeContract {
 
   'wayback:lookup': { args: [captureId: string]; result: WaybackLookupResult }
   'wayback:list': { args: [captureId: string]; result: WaybackRef[] }
+  'wayback:listForCase': { args: [caseId: string]; result: CaseWaybackRef[] }
   'wayback:pin': { args: [params: PinWaybackSnapshotParams]; result: WaybackRef }
   'wayback:unpin': { args: [refId: string]; result: boolean }
 

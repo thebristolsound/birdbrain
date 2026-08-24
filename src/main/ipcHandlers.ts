@@ -592,6 +592,10 @@ export function registerIpcHandlers(deps: {
     waybackRefRepo.listWaybackRefs(captureId)
   )
 
+  handle(IPC_CHANNELS.WAYBACK_LIST_FOR_CASE, (_, caseId: string) =>
+    waybackRefRepo.listWaybackRefsForCase(caseId)
+  )
+
   handle(IPC_CHANNELS.WAYBACK_PIN, async (_, params: PinWaybackSnapshotParams) => {
     const capture = captureRepo.getCapture(params.captureId)
     if (!capture) throw new IpcFailure('Capture not found', 'NOT_FOUND')

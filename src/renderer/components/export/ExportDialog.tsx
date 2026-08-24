@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronDown, ShieldCheck, TriangleAlert } from 'lucide-react'
+import { Archive, ChevronDown, ShieldCheck, TriangleAlert } from 'lucide-react'
 import type { ExportClass, ExportOptions } from '@shared/types'
 import { safeFilename } from '@shared/safeFilename'
 import { presets } from '@renderer/lib/motion'
@@ -11,6 +11,8 @@ import { ExportProgress } from '@renderer/components/export/ExportProgress'
 import { ExportComplete } from '@renderer/components/export/ExportComplete'
 import { exportPreflightQueryOptions, useExportMutations } from '@renderer/lib/api/export'
 import { caseQueryOptions } from '@renderer/lib/api/cases'
+import { waybackCasePinsQueryOptions } from '@renderer/lib/api/wayback'
+import { formatSnapshotDelta } from '@shared/wayback'
 
 interface ExportDialogProps {
   caseId: string
@@ -121,6 +123,13 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
   // the operator exports it. A failed read shows no notice, same as preflight.
   const { data: caseData } = useQuery(caseQueryOptions(caseId))
   const isDemo = caseData?.isDemo ?? false
+  // Pinned archive.org references that will ship in the report as corroboration
+  // (#401). Scoped with the capture selection, since a pin on a capture the
+  // operator did not select will not be in the package.
+  const { data: casePins } = useQuery(waybackCasePinsQueryOptions(caseId))
+  const pinnedRefs = (casePins ?? []).filter(
+    (ref) => !selectedCaptureIds || selectedCaptureIds.includes(ref.captureId)
+  )
 
   const { generate } = useExportMutations()
 
@@ -397,6 +406,37 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
                     and appends a signed export entry to the case audit trail. The Certification
                     is signed by the Operator.
                   </span>
+                </div>
+              )}
+
+              {/* Pinned Wayback snapshots: what the report will carry as
+                  corroboration references, stated before the operator exports
+                  rather than discovered in the document afterwards. */}
+              {pinnedRefs.length > 0 && (
+                <div className="mb-4" data-testid="export-pinned-wayback">
+                  <Label className="mb-2">Pinned Wayback snapshots</Label>
+                  <div className="flex flex-col overflow-hidden rounded-md border border-border">
+                    {pinnedRefs.map((ref) => (
+                      <div
+                        key={ref.id}
+                        data-testid="export-pinned-wayback-row"
+                        className="flex items-center gap-2 border-b border-border px-3 py-2 last:border-b-0"
+                      >
+                        <Archive className="h-3 w-3 shrink-0 text-text-muted" />
+                        <span className="shrink-0 text-xs tabular-nums text-text-secondary">
+                          {new Date(ref.snapshotTimestamp).toISOString().replace('T', ' ').slice(0, 16)}{' '}
+                          UTC
+                        </span>
+                        <span className="ml-auto min-w-0 truncate text-[11px] text-text-faint">
+                          {formatSnapshotDelta(ref.snapshotTimestamp, ref.captureTimestamp) ?? ''}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-text-muted">
+                    Included in the report as archive.org references, labelled corroboration only.
+                    The snapshots themselves are not downloaded or packaged.
+                  </p>
                 </div>
               )}
 

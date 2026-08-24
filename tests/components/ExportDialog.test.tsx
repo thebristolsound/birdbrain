@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, waitFor, act, within } from '@testing-library/react'
 import type { Case, ExportOptions, ExportPreflight } from '@shared/types'
 import type { ExportProgressEvent, ExportResult } from '@shared/ipc'
 
@@ -101,6 +101,7 @@ describe('ExportDialog', () => {
   let showItemInFolder: ReturnType<typeof vi.fn>
   let openPath: ReturnType<typeof vi.fn>
   let onExportProgress: ReturnType<typeof vi.fn>
+  let listCasePins: ReturnType<typeof vi.fn>
   let progressCb: ((event: ExportProgressEvent) => void) | null
 
   beforeEach(() => {
@@ -123,16 +124,75 @@ describe('ExportDialog', () => {
       progressCb = cb
       return vi.fn()
     })
+    listCasePins = vi.fn().mockResolvedValue([])
     fakeBridge({
       export: { preflight, generateReport },
       cases: { get: getCase },
       shell: { showItemInFolder, openPath },
+      wayback: { listForCase: listCasePins },
       onExportProgress
     })
   })
 
   afterEach(() => {
     cleanup()
+  })
+
+
+  // Pinned Wayback references (#401): corroboration the package's report will
+  // carry, stated before the operator exports rather than discovered in the
+  // document afterwards.
+  const PINS = [
+    {
+      id: 'ref-1',
+      captureId: 'cap-1',
+      snapshotTimestamp: '2026-07-01T09:30:00.000Z',
+      snapshotUrl: 'https://web.archive.org/web/20260701093000/https://example.com/',
+      originalUrl: 'https://example.com/',
+      checkedAt: '2026-08-01T00:00:00.000Z',
+      pinnedAt: '2026-08-01T00:01:00.000Z',
+      captureTimestamp: '2026-07-03T09:30:00.000Z'
+    },
+    {
+      id: 'ref-2',
+      captureId: 'cap-2',
+      snapshotTimestamp: '2026-06-01T09:30:00.000Z',
+      snapshotUrl: 'https://web.archive.org/web/20260601093000/https://example.com/b',
+      originalUrl: 'https://example.com/b',
+      checkedAt: '2026-08-01T00:00:00.000Z',
+      pinnedAt: '2026-08-01T00:01:00.000Z',
+      captureTimestamp: '2026-06-01T09:30:00.000Z'
+    }
+  ]
+
+  it('lists the pinned Wayback snapshots the report will carry', async () => {
+    listCasePins.mockResolvedValue(PINS)
+    renderDialog()
+
+    const block = await screen.findByTestId('export-pinned-wayback')
+    expect(within(block).getAllByTestId('export-pinned-wayback-row')).toHaveLength(2)
+    expect(block.textContent).toContain('2026-07-01 09:30 UTC')
+    expect(block.textContent).toContain('2d before capture')
+    expect(block.textContent).toContain('labelled corroboration only')
+    // The boundary, stated in the dialog: a pin is a reference, not content.
+    expect(block.textContent).toContain('not downloaded or packaged')
+  })
+
+  it('shows only the pins belonging to a scoped selection', async () => {
+    listCasePins.mockResolvedValue(PINS)
+    renderDialog(vi.fn(), ['cap-2'])
+
+    const block = await screen.findByTestId('export-pinned-wayback')
+    const rows = within(block).getAllByTestId('export-pinned-wayback-row')
+    expect(rows).toHaveLength(1)
+    expect(rows[0].textContent).toContain('2026-06-01 09:30 UTC')
+  })
+
+  it('renders no pinned-snapshot block when the case has none', async () => {
+    renderDialog()
+
+    await screen.findByTestId('export-scope-row')
+    expect(screen.queryByTestId('export-pinned-wayback')).toBeNull()
   })
 
   it('shows the un-stamped capture warning before export', async () => {

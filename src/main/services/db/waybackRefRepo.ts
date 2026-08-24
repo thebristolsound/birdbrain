@@ -8,7 +8,7 @@
 // archive and not the `archived` soft-delete flag.
 
 import { v4 as uuid } from 'uuid'
-import type { WaybackRef, WaybackSnapshot } from '@shared/types'
+import type { CaseWaybackRef, WaybackRef, WaybackSnapshot } from '@shared/types'
 import { getDb, type ImportCtx } from '@main/services/db/core'
 
 export function createWaybackRef(params: {
@@ -54,6 +54,28 @@ export function listWaybackRefs(captureId: string): WaybackRef[] {
     )
     .all(captureId) as Array<Record<string, unknown>>
   return rows.map(rowToWaybackRef)
+}
+
+/**
+ * Every pinned reference in a case, newest snapshot first, each carrying the
+ * timestamp of the capture it hangs off. One read for surfaces that show pins
+ * across captures — the export dialog and the export itself — rather than one
+ * query per capture.
+ */
+export function listWaybackRefsForCase(caseId: string): CaseWaybackRef[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT ar.*, c.timestamp AS capture_timestamp
+       FROM capture_archive_refs ar
+       JOIN captures c ON c.id = ar.capture_id
+       WHERE c.case_id = ?
+       ORDER BY ar.snapshot_timestamp DESC`
+    )
+    .all(caseId) as Array<Record<string, unknown>>
+  return rows.map((row) => ({
+    ...rowToWaybackRef(row),
+    captureTimestamp: row.capture_timestamp as string
+  }))
 }
 
 export function deleteWaybackRef(id: string): boolean {

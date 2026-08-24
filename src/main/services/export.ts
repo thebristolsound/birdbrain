@@ -4,6 +4,7 @@ import { join } from 'path'
 import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
 import * as noteRepo from '@main/services/db/noteRepo'
+import * as waybackRefRepo from '@main/services/db/waybackRefRepo'
 import { getStorageRoot } from '@main/services/storage'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
@@ -315,6 +316,14 @@ export async function generateReport(
     entrySignatureByCaptureId: new Map(),
     unreconciledChainCaptureIds: [],
     tsaTrustAnchorBundled: getTsaTrustBundle(settings.tsaUrl).bundled,
+    // Pinned archive.org references, read per exported capture (#401). Scoped
+    // with the captures, so a pin on a capture outside the selection does not
+    // appear in a package that does not contain the exhibit it hangs off.
+    // Corroboration only: nothing is fetched from archive.org here, and no
+    // artefact is added to the package.
+    waybackRefsByCaptureId: new Map(
+      captures.map((capture) => [capture.id, waybackRefRepo.listWaybackRefs(capture.id)])
+    ),
     selectionScope: scoped
       ? { selectedCaptureCount: captures.length, caseCaptureCount: allCaptures.length }
       : null

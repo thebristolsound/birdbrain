@@ -149,12 +149,7 @@ export function CaptureSelectionBar({
       <span className="flex-1" />
       <button
         onClick={() => setShowExport(true)}
-        // "Export case", not "Export selection": the export dialog is still
-        // case-scoped — the backend accepts a capture-id scope since #398, but
-        // the dialog's Scope row lands with #399. The tooltip is the only text
-        // the operator reads before handing an evidence package over, so it
-        // names the scope the action actually has.
-        title="Export case"
+        title="Export selection"
         className={`${ICON_BTN} text-text-secondary`}
       >
         <Download className="h-[13px] w-[13px]" strokeWidth={1.9} />
@@ -228,11 +223,15 @@ export function CaptureSelectionBar({
         <X className="h-3 w-3" strokeWidth={2.2} />
       </button>
       {showExport && (
-        // Case-scoped for now: selection scope arrives with the export ticket
-        // (#396 issue body). The guard attribute keeps the list's Escape
-        // handler from clearing the selection while the dialog is up.
+        // The guard attribute keeps the list's Escape handler from clearing
+        // the selection while the dialog is up.
         <div data-selection-escape-guard="">
-          <ExportDialog caseId={caseId} caseName={caseName} onClose={() => setShowExport(false)} />
+          <ExportDialog
+            caseId={caseId}
+            caseName={caseName}
+            selectedCaptureIds={selectedIds}
+            onClose={() => setShowExport(false)}
+          />
         </div>
       )}
     </motion.div>

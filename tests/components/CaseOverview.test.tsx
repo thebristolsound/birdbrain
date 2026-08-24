@@ -20,6 +20,7 @@ const CASE: Case = {
   id: 'case1',
   name: 'Acme investigation',
   description: 'A case',
+  isDemo: false,
   archived: false,
   createdAt: '2026-08-01T00:00:00.000Z',
   updatedAt: '2026-08-01T00:00:00.000Z'

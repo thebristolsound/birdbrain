@@ -202,13 +202,17 @@ describe('CaptureSelectionBar', () => {
     expect(onDeleteSelection).toHaveBeenCalledWith(SELECTED)
   })
 
-  it('opens the export dialog case-scoped', async () => {
+  it('opens the export dialog scoped to the selection (#399)', async () => {
     renderBar()
-    fireEvent.click(screen.getByTitle('Export case'))
+    fireEvent.click(screen.getByTitle('Export selection'))
     expect(await screen.findByTestId('export-dialog-stub')).toBeDefined()
     await waitFor(() =>
       expect(exportDialogProps).toHaveBeenCalledWith(
-        expect.objectContaining({ caseId: 'case1', caseName: 'Nightjar' })
+        expect.objectContaining({
+          caseId: 'case1',
+          caseName: 'Nightjar',
+          selectedCaptureIds: SELECTED
+        })
       )
     )
   })

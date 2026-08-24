@@ -44,8 +44,15 @@ describe('generateExportMutationOptions', () => {
     // that had drifted from the ExportOptions contract this test claims to pin.
     const options = {
       format: 'zip',
-      include: { captures: true, screenshots: true, auditTrail: true, annotations: 'burned' },
-      investigatorName: 'Investigator',
+      exportClass: 'evidence',
+      include: {
+        captures: true,
+        screenshots: true,
+        auditTrail: true,
+        notes: true,
+        annotations: 'burned'
+      },
+      purposeOrAuthority: 'Disclosure under CPS request 2026/114',
       outputPath: 'case_evidence.zip'
     } satisfies ExportOptions
 

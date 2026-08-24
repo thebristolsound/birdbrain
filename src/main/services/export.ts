@@ -729,7 +729,7 @@ function buildEvidenceZip(
     data: JSON.stringify(evidence, null, 2)
   })
 
-  // Recipe owned by packageHash() in manifest.ts. evidence.json itself is
+  // Recipe owned by packageHash() in @shared/verify/packageHash. evidence.json itself is
   // excluded from `artifacts` (it is unshifted above, not run through `add`),
   // which is what keeps packageHash independent of the entry it informs.
   return {

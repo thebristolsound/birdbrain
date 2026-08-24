@@ -129,7 +129,7 @@ function sha256(buf: Buffer): string {
 // snapshot (data.json), the case's live signed manifest, every on-disk
 // capture file, and a package.json header whose packageHash commits to all
 // of it. Mirrors the evidence-export pipeline in export.ts: same shared
-// accumulator + packageHash recipe (owned by manifest.ts), same operator-name
+// accumulator + packageHash recipe (owned by @shared/verify/packageHash), same operator-name
 // gate, same orphan-cleanup ordering on manifest-append failure.
 export async function exportCaseArchive(
   caseId: string,

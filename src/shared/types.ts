@@ -9,6 +9,18 @@ export interface Case {
   name: string
   description?: string
   type?: 'crypto' | 'malware' | 'fraud' | 'custom'
+  /**
+   * Operator-assigned case/reference number (#399). Absent when never set —
+   * the repo stores NULL, never '', because an empty string would be a claim
+   * nobody made. Rendered on the Certification as 'not stated' when absent.
+   */
+  caseNumber?: string
+  /**
+   * True only for the seeded demonstration case (#405). Exports of a demo case
+   * state it in the export dialog and the Certification so fixture data is
+   * never handed over as evidence by accident.
+   */
+  isDemo: boolean
   createdAt: string
   updatedAt: string
   archived: boolean

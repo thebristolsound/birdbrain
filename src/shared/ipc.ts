@@ -308,6 +308,8 @@ export interface UpdateCaseParams {
   id: string
   name?: string
   description?: string
+  // Whitespace-only clears to NULL in the repo — absent means "leave as is".
+  caseNumber?: string
   archived?: boolean
 }
 

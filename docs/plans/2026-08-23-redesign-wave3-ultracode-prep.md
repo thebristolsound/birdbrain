@@ -235,6 +235,34 @@ covering happy path, auth failure, capture failure and duplicate-URL resolution 
 selection and both export classes (#399), open-panel/pin/compare (#401), the full case tour
 including the delete ending (#405).
 
+## Model and effort per phase
+
+Ruled 2026-08-23. Waves 1 and 2 set neither, so every agent inherited the session model at default
+effort. That is the gap this section closes.
+
+**Phase 1, understand: uniform `high` effort, session model.** All thirteen readers and the
+synthesizer. The alternative considered was tiering by expected difficulty, with `low` for the
+already-ruled small tickets (#702, #704, #695, #708) and `high` for the unknowns (#803, #398, #392).
+Rejected: the tiering depends on my guess about which tickets are easy, and #699 is this morning's
+evidence that such a guess can be wrong in the expensive direction. Uniform `high` costs more and
+cannot under-resource a reader I misjudged.
+
+**Phase 2, implement: session model, effort not yet decided.** Decide it when phase 1's output shows which
+tickets are actually hard rather than which ones look it.
+
+**Phase 3, review: `fable` for the adversarial verify stage.**
+
+The reason is the only measured model finding this repository has.
+`docs/plans/2026-08-16-codex-doc-curator.md` records an A/B (n=3x3) in which Opus invented an
+unsupported claim twice and Fable never did, which is why the doc curator runs Opus as author and
+Fable as reviewer. A fabricated finding on an evidence-affecting pull request costs a real review
+round, so the failure mode matches the job.
+
+**State the caveat wherever this is cited:** that A/B measured prose editing under hard numeric
+limits, not code review. Carrying it across is a reasonable bet, not an established result. Five of
+this wave's thirteen tickets are evidence-affecting, so if Fable's verify output turns out worse
+here, that is worth recording as a second data point rather than quietly reverting.
+
 ## Suggested workflow shape
 
 Same three phases as waves 1 and 2, one Workflow call per phase, results read between them.

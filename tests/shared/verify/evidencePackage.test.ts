@@ -765,6 +765,20 @@ describe('verifyEvidencePackage', () => {
       writeFileSync(p, JSON.stringify({ ...entry, entryHash, signature: signEntryHash(entryHash) }))
     }
 
+    it('FAILs without crashing when export-entry.json is unreadable (a directory)', () => {
+      // existsSync passes for a directory, and readFileSync then throws EISDIR;
+      // verification must complete and record the failure, not abort (#838).
+      const p = join(selDir, 'export-entry.json')
+      rmSync(p)
+      mkdirSync(p)
+      const result = verifyEvidencePackage(selDir)
+      expect(result.pass).toBe(false)
+      expect(hasReason(result, 'export-entry.json unreadable')).toBe(true)
+      // The rest of the run still executed: with no trusted scope, the
+      // unselected capture's absence FAILs as usual.
+      expect(hasReason(result, `capture ${captureB}: content file missing`)).toBe(true)
+    })
+
     it('FAILs when export-entry.json is not valid JSON', () => {
       writeFileSync(join(selDir, 'export-entry.json'), 'not-json{')
       const result = verifyEvidencePackage(selDir)

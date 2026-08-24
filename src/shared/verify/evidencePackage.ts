@@ -199,18 +199,24 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   let selectionIds: Set<string> | undefined
   const exportEntryPath = join(dir, 'export-entry.json')
   if (existsSync(exportEntryPath)) {
-    const validated = validateExportEntry(
-      readFileSync(exportEntryPath, 'utf-8'),
-      entries,
-      publicKeyPem
-    )
-    if ('reason' in validated) {
-      add('export entry', 'fail', validated.reason)
-    } else {
-      add('export entry', 'pass')
-      const { scope, captureIds } = validated.entry
-      if (scope === 'selection' && captureIds !== undefined) {
-        selectionIds = new Set(captureIds)
+    // existsSync also passes for a directory or a file this process cannot
+    // read; a throwing read must fail this check, not abort verification.
+    let rawEntry: string | undefined
+    try {
+      rawEntry = readFileSync(exportEntryPath, 'utf-8')
+    } catch (err) {
+      add('export entry', 'fail', `export-entry.json unreadable: ${(err as Error).message}`)
+    }
+    if (rawEntry !== undefined) {
+      const validated = validateExportEntry(rawEntry, entries, publicKeyPem)
+      if ('reason' in validated) {
+        add('export entry', 'fail', validated.reason)
+      } else {
+        add('export entry', 'pass')
+        const { scope, captureIds } = validated.entry
+        if (scope === 'selection' && captureIds !== undefined) {
+          selectionIds = new Set(captureIds)
+        }
       }
     }
   }

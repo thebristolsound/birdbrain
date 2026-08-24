@@ -78,13 +78,13 @@ async function stubSaveDialog(electronApp: ElectronApplication, filePath: string
 }
 
 async function openExportDialog(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Export' }).click()
+  await page.getByRole('button', { name: 'Export', exact: true }).click()
   await page.getByRole('menuitem', { name: 'Export evidence report' }).click()
   await expect(page.getByRole('heading', { name: 'Export case' })).toBeVisible()
 }
 
 async function runExport(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Export', exact: true }).click()
+  await page.getByTestId('export-submit').click()
   await expect(page.getByText('Export complete')).toBeVisible({ timeout: 15000 })
   await page.getByRole('button', { name: 'Done' }).click()
 }
@@ -102,7 +102,7 @@ test.describe('Export dialog: presets and the two export classes', () => {
     const workingPath = join(tempDir, 'working.zip')
 
     try {
-      const caseId = await createCase(page, 'Export Classes Case')
+      const caseId = await createCase(page, 'Two Classes Case')
       await seedCapture(page, caseId, 'https://example.com/one', 'Class Capture')
 
       // A note, so the Notes toggle has real content to include or exclude.

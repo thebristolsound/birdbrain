@@ -432,7 +432,7 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
                 <Button variant="ghost" size="sm" onClick={onClose}>
                   Cancel
                 </Button>
-                <Button size="sm" onClick={handleExport}>
+                <Button size="sm" data-testid="export-submit" onClick={handleExport}>
                   {exportError ? 'Try again' : 'Export'}
                 </Button>
               </div>

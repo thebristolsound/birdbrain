@@ -47,10 +47,13 @@ export interface CaptureUrlCandidate {
  * The Capture a URL resolves to among `candidates`, or null.
  *
  * Deterministic when several captures share the canonical URL: the most
- * recent wins — the page state the operator saw last — with equal timestamps
- * broken by the lexicographically greater id. Timestamps are compared as
- * strings; every producer writes ISO-8601 UTC, and even a malformed one still
- * yields a total order, so the answer is stable for any input.
+ * recent wins — the page state the operator saw last — with ties broken by
+ * the lexicographically greater id. Recency compares parsed instants, not
+ * strings: the wire schema leaves the timestamp unconstrained, so an offset
+ * form like `2026-01-01T00:30:00+01:00` must not out-rank a later `Z`
+ * instant lexically. A timestamp that does not parse loses to one that does,
+ * and two unparseable ones fall back to string order, so the answer is still
+ * total and stable for any input.
  */
 export function resolveCaptureForUrl<T extends CaptureUrlCandidate>(
   url: string,
@@ -60,13 +63,19 @@ export function resolveCaptureForUrl<T extends CaptureUrlCandidate>(
   let best: T | null = null
   for (const candidate of candidates) {
     if (canonicalizeUrl(candidate.url) !== target) continue
-    if (
-      best === null ||
-      candidate.timestamp > best.timestamp ||
-      (candidate.timestamp === best.timestamp && candidate.id > best.id)
-    ) {
-      best = candidate
-    }
+    if (best === null || moreRecent(candidate, best)) best = candidate
   }
   return best
+}
+
+/** Whether `a` out-ranks `b`: later instant, then string order, then id. */
+function moreRecent(a: CaptureUrlCandidate, b: CaptureUrlCandidate): boolean {
+  const instantA = Date.parse(a.timestamp)
+  const instantB = Date.parse(b.timestamp)
+  const parsesA = !Number.isNaN(instantA)
+  const parsesB = !Number.isNaN(instantB)
+  if (parsesA !== parsesB) return parsesA
+  if (parsesA && parsesB && instantA !== instantB) return instantA > instantB
+  if (!parsesA && a.timestamp !== b.timestamp) return a.timestamp > b.timestamp
+  return a.id > b.id
 }

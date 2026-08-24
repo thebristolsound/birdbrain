@@ -89,6 +89,38 @@ describe('resolveCaptureForUrl', () => {
     expect(resolveCaptureForUrl('https://example.com/page', reversed)?.id).toBe('bbb')
   })
 
+  it('orders offset timestamps by instant, not by string', () => {
+    // Lexically the +01:00 string compares greater; as an instant it is half
+    // an hour older than the Z one.
+    const offset = candidate('aaa', 'https://example.com/page', '2026-01-01T00:30:00+01:00')
+    const utc = candidate('bbb', 'https://example.com/page', '2026-01-01T00:00:00Z')
+    expect(resolveCaptureForUrl('https://example.com/page', [offset, utc])?.id).toBe('bbb')
+    expect(resolveCaptureForUrl('https://example.com/page', [utc, offset])?.id).toBe('bbb')
+  })
+
+  it('an unparseable timestamp loses to a parseable one, whatever the string order', () => {
+    const junk = candidate('zzz', 'https://example.com/page', 'zzz-not-a-date')
+    const real = candidate('aaa', 'https://example.com/page', '2026-01-01T00:00:00Z')
+    expect(resolveCaptureForUrl('https://example.com/page', [junk, real])?.id).toBe('aaa')
+    expect(resolveCaptureForUrl('https://example.com/page', [real, junk])?.id).toBe('aaa')
+  })
+
+  it('two unparseable timestamps fall back to string order', () => {
+    // The smaller id carries the string-greater junk, proving the string
+    // decides before the id tiebreak.
+    const later = candidate('aaa', 'https://example.com/page', 'junk-later')
+    const earlier = candidate('zzz', 'https://example.com/page', 'junk-earlier')
+    expect(resolveCaptureForUrl('https://example.com/page', [later, earlier])?.id).toBe('aaa')
+    expect(resolveCaptureForUrl('https://example.com/page', [earlier, later])?.id).toBe('aaa')
+  })
+
+  it('equal instants spelled differently fall to the id tiebreak', () => {
+    const offset = candidate('aaa', 'https://example.com/page', '2026-01-01T01:00:00+01:00')
+    const utc = candidate('bbb', 'https://example.com/page', '2026-01-01T00:00:00Z')
+    expect(resolveCaptureForUrl('https://example.com/page', [offset, utc])?.id).toBe('bbb')
+    expect(resolveCaptureForUrl('https://example.com/page', [utc, offset])?.id).toBe('bbb')
+  })
+
   it('preserves extra fields on the winning candidate', () => {
     const candidates = [
       {

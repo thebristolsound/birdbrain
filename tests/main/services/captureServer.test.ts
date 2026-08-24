@@ -1924,6 +1924,71 @@ describe('captureServer', () => {
       })
     })
 
+    describe('concurrent attach requests (#835 review)', () => {
+      it('serializes same-URL requests so a race never ingests twice', async () => {
+        const testCase = createCase({ name: 'Race Case' })
+        await activateCase(testCase.id)
+        // Rebind the server to a lifecycle whose ingest blocks on a gate, so
+        // the first request is provably inside ingest — past its candidate
+        // lookup — while the second arrives. Unserialized, the second passes
+        // its own lookup too and ingest runs twice.
+        await stopCaptureServer()
+        const port = nextPort++
+        baseUrl = `http://127.0.0.1:${port}`
+        const selectorLifecycle = createSelectorLifecycle({ emitRematched: () => {} })
+        const realLifecycle = createCaptureLifecycle({ selectorLifecycle })
+        let release!: () => void
+        const gate = new Promise<void>((resolve) => {
+          release = resolve
+        })
+        let ingestEntries = 0
+        const gatedLifecycle = {
+          ...realLifecycle,
+          ingest: async (args: Parameters<typeof realLifecycle.ingest>[0]) => {
+            ingestEntries++
+            await gate
+            return realLifecycle.ingest(args)
+          }
+        }
+        await startCaptureServer(
+          { selectorLifecycle, captureLifecycle: gatedLifecycle, token: TEST_TOKEN, sessionService },
+          port
+        )
+
+        const first = postAttach(
+          '/api/tags/apply',
+          { caseId: testCase.id, url: PAGE_URL, tagName: 'Evidence' },
+          '<html>tagged page</html>'
+        )
+        await vi.waitFor(() => expect(ingestEntries).toBe(1))
+        const second = postAttach(
+          '/api/notes',
+          { caseId: testCase.id, url: PAGE_URL, noteTitle: 'Note', noteText: 'seen live' },
+          '<html>noted page</html>'
+        )
+        // Long enough for the second request to reach the server and, were
+        // the chain missing, enter ingest as a second entry.
+        await new Promise((resolve) => setTimeout(resolve, 150))
+        release()
+        const [tagRes, noteRes] = await Promise.all([first, second])
+        const tagData = await readJson(tagRes)
+        const noteData = await readJson(noteRes)
+
+        expect(tagRes.status).toBe(200)
+        expect(noteRes.status).toBe(200)
+        expect(ingestEntries).toBe(1)
+        expect(tagData.captured).toBe(true)
+        expect(noteData.captured).toBe(false)
+        expect(noteData.captureId).toBe(tagData.captureId)
+        const captures = listCaptures(testCase.id)
+        expect(captures).toHaveLength(1)
+        expect(captures[0].id).toBe(tagData.captureId)
+        expect(getTagsForCapture(tagData.captureId).map((t) => t.name)).toEqual(['Evidence'])
+        expect(listNotes(testCase.id)).toHaveLength(1)
+        expect(listNotes(testCase.id)[0].captureId).toBe(tagData.captureId)
+      })
+    })
+
     describe('POST /api/notes', () => {
       it('creates a note on the existing capture, born on the document schema', async () => {
         const testCase = createCase({ name: 'Note Case' })

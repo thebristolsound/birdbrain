@@ -517,7 +517,28 @@ function createApp(deps: CaptureServerDeps): Hono {
   type AttachTarget =
     { ok: true; captureId: string; captured: boolean } | { ok: false; response: Response }
 
-  async function resolveOrIngestCapture(
+  // Concurrent attach requests for one case + canonical URL are chained, not
+  // raced: the candidate lookup and the ingest below are separated by awaits,
+  // so two simultaneous requests for the same uncaptured URL could each
+  // observe "no capture" and acquire twice, splitting their annotations
+  // across duplicate captures. The second request runs only after the first
+  // settles, and its own lookup then finds that ingest's capture (PR #835
+  // review). Different URLs never wait on each other.
+  const attachChains = new Map<string, Promise<unknown>>()
+
+  function resolveOrIngestCapture(c: Context, input: ExtensionAttachBase): Promise<AttachTarget> {
+    const key = `${input.caseId}\n${canonicalizeUrl(input.url)}`
+    const run = (attachChains.get(key) ?? Promise.resolve()).then(() =>
+      resolveOrIngestCaptureNow(c, input)
+    )
+    const tail: Promise<unknown> = run.catch(() => undefined).finally(() => {
+      if (attachChains.get(key) === tail) attachChains.delete(key)
+    })
+    attachChains.set(key, tail)
+    return run
+  }
+
+  async function resolveOrIngestCaptureNow(
     c: Context,
     input: ExtensionAttachBase
   ): Promise<AttachTarget> {

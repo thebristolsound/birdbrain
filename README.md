@@ -52,8 +52,9 @@ timestamp token from an RFC 3161 authority, DigiCert by default.
 certificates, and `VERIFY.md`, a runbook that reproduces the whole check with `sha256sum`,
 `openssl`, and `jq` alone.
 
-**Organize.** Group captures into cases. Tag them, write rich-text notes with `@` mentions and
-derived backlinks, and draw shapes and numbered pins on screenshots. Birdbrain burns annotations
+**Organize.** Group captures into cases and tag them. Write rich-text notes that link to a capture
+or another note with `@`, or to a selector or tag with `#`, and Birdbrain derives a backlink index
+from those links. Draw shapes and numbered pins on screenshots. Birdbrain burns the annotations
 into the exported report and leaves the stored original untouched.
 
 **Find.** Search a case's captures, notes, and extracted indicators with SQLite FTS5. Define text
@@ -127,8 +128,9 @@ capture content off your machine.
 Birdbrain is beta software. What it cannot do yet:
 
 - **Search is per-case.** There is no cross-case search.
-- **Capture is page-level and manual.** No element selection, no region screenshots, no video, and
-  no capture-on-visit. The extension's passive capture paths are turned off in the shipped build.
+- **Capture is page-level and manual.** No element selection, no region screenshots, and no video.
+  The extension does not save pages automatically as you browse. That path exists in the code but
+  is turned off in the shipped build.
 - **One user, one machine.** No shared cases and no team sync. A case moves between machines only
   as a `.birdbrain` archive you carry yourself.
 - **Timestamping is asynchronous and always on.** A capture stays `pending` until the timestamp

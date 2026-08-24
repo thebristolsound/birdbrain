@@ -191,3 +191,6 @@ install's
 [Dd]ispatchable
 [Cc]anonicaliz(e|es|ed|ing)
 [Aa]dvisor(y|ies)
+[Mm]iddleware
+[Tt]eardown
+[Tt]ypeahead

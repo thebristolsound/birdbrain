@@ -1720,6 +1720,29 @@ describe('captureServer', () => {
         expect(listCaptures(testCase.id)).toHaveLength(1)
       })
 
+      it('prefers the exactly-named tag when case variants coexist', async () => {
+        const testCase = createCase({ name: 'Tag Case' })
+        await activateCase(testCase.id)
+        // `tags.name` is case-sensitive and the IPC path permits both, so the
+        // insensitive lookup alone could attach either identity (#835 review).
+        const lower = createTag({ name: 'evidence' })
+        const upper = createTag({ name: 'Evidence' })
+        const stored = await readJson(
+          await postCapture({ source: 'manual', caseId: testCase.id, url: PAGE_URL })
+        )
+        const res = await postAttach('/api/tags/apply', {
+          caseId: testCase.id,
+          url: PAGE_URL,
+          tagName: 'Evidence'
+        })
+        const data = await readJson(res)
+        expect(data.tag.id).toBe(upper.id)
+        expect(data.tag.name).toBe('Evidence')
+        expect(getTagsForCapture(stored.captureId).map((t) => t.id)).toEqual([upper.id])
+        expect(listTags()).toHaveLength(2)
+        expect(lower.id).not.toBe(upper.id)
+      })
+
       it('reports the screenshot outcome on both attach paths', async () => {
         const testCase = createCase({ name: 'Shot Case' })
         await activateCase(testCase.id)

@@ -725,9 +725,15 @@ function createApp(deps: CaptureServerDeps): Hono {
       const target = await resolveOrIngestCapture(c, input)
       if (!target.ok) return target.response
       try {
-        const existingId = tagRepo.findTagIdByNameInsensitive(input.tagName)
-        const existingTag = existingId ? tagRepo.getTag(existingId) : undefined
-        const applied = existingTag ?? tagRepo.createTag({ name: input.tagName })
+        // Exact name wins before the case-insensitive fallback: `tags.name` is
+        // case-sensitive, so `Evidence` and `evidence` can both exist (the IPC
+        // path permits it) and the insensitive lookup could return either,
+        // attaching a tag with a different identity and colour than the one
+        // the request named (PR #835 review).
+        const exactId = tagRepo.findTagIdByNameExact(input.tagName)
+        const foundId = exactId ?? tagRepo.findTagIdByNameInsensitive(input.tagName)
+        const found = foundId ? tagRepo.getTag(foundId) : undefined
+        const applied = found ?? tagRepo.createTag({ name: input.tagName })
         tagRepo.addTagToCapture({ captureId: target.captureId, tagId: applied.id })
         return c.json({
           status: 'ok',

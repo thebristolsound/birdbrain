@@ -151,6 +151,13 @@ export function collectCaptureTagsForCase(caseId: string): Record<string, unknow
     .all(caseId) as Record<string, unknown>[]
 }
 
+export function findTagIdByNameExact(name: string): string | undefined {
+  const hit = getDb().prepare('SELECT id FROM tags WHERE name = ?').get(name) as
+    | { id: string }
+    | undefined
+  return hit?.id
+}
+
 export function findTagIdByNameInsensitive(name: string): string | undefined {
   const hit = getDb().prepare('SELECT id FROM tags WHERE lower(name) = lower(?)').get(name) as
     | { id: string }

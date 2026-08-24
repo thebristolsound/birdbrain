@@ -36,6 +36,7 @@ import {
   type ExtensionAttachBase,
   type ExtensionNoteCreateResult,
   type ExtensionTagApplyResult,
+  type ScreenshotStatus,
   type SelectorCreateResult,
   type UrlLookupResult
 } from '@shared/schemas'
@@ -515,7 +516,14 @@ function createApp(deps: CaptureServerDeps): Hono {
   // no-orphan criterion structural rather than defended: a failed ingest
   // returns a refusal here and no attach code ever runs.
   type AttachTarget =
-    { ok: true; captureId: string; captured: boolean } | { ok: false; response: Response }
+    | {
+        ok: true
+        captureId: string
+        captured: boolean
+        screenshotStatus: ScreenshotStatus
+        screenshotWarning?: string
+      }
+    | { ok: false; response: Response }
 
   // Concurrent attach requests for one case + canonical URL are chained, not
   // raced: the candidate lookup and the ingest below are separated by awaits,
@@ -557,7 +565,10 @@ function createApp(deps: CaptureServerDeps): Hono {
     if (caseData.archived) return fail(c.json({ error: 'Case is archived' }, 400))
 
     const existing = resolveCaptureForUrl(url, captureRepo.listCaptureUrlCandidates(caseId))
-    if (existing) return { ok: true, captureId: existing.id, captured: false }
+    if (existing) {
+      // Nothing was acquired on this path, so no screenshot could be dropped.
+      return { ok: true, captureId: existing.id, captured: false, screenshotStatus: 'none' }
+    }
 
     const mhtmlField = input.mhtml
     if (!mhtmlField) {
@@ -603,10 +614,14 @@ function createApp(deps: CaptureServerDeps): Hono {
 
     const screenshotField = input.screenshot
     let screenshotBuffer: Buffer | undefined
+    let screenshotDropReason: string | undefined
     if (screenshotField instanceof File || screenshotField instanceof Blob) {
       if (screenshotField.size <= MAX_SCREENSHOT_SIZE) {
         screenshotBuffer = Buffer.from(await screenshotField.arrayBuffer())
       } else {
+        // Same wording as POST /api/captures: a silently missing artifact
+        // would let the extension report a clean capture that lost one.
+        screenshotDropReason = `Screenshot too large: ${(screenshotField.size / (1024 * 1024)).toFixed(1)}MB exceeds ${MAX_SCREENSHOT_SIZE / (1024 * 1024)}MB limit`
         logger.warn('captureServer', 'capture.screenshot_dropped', {
           reason: tag('too_large', 'screenshotDropReason'),
           bytes: screenshotField.size
@@ -645,9 +660,16 @@ function createApp(deps: CaptureServerDeps): Hono {
         source: 'manual',
         url,
         timestamp: new Date().toISOString(),
-        durationMs: Date.now() - startTime
+        durationMs: Date.now() - startTime,
+        screenshotWarning: screenshotDropReason
       })
-      return { ok: true, captureId: capture.id, captured: true }
+      return {
+        ok: true,
+        captureId: capture.id,
+        captured: true,
+        screenshotStatus: screenshotDropReason ? 'dropped' : screenshotBuffer ? 'saved' : 'none',
+        screenshotWarning: screenshotDropReason
+      }
     } catch (err) {
       logger.error('captureServer', 'capture.failed', undefined, err)
       emitCaptureEvent({
@@ -711,6 +733,8 @@ function createApp(deps: CaptureServerDeps): Hono {
           status: 'ok',
           captureId: target.captureId,
           captured: target.captured,
+          screenshotStatus: target.screenshotStatus,
+          screenshotWarning: target.screenshotWarning,
           tag: { id: applied.id, name: applied.name }
         } satisfies ExtensionTagApplyResult)
       } catch (err) {
@@ -751,6 +775,8 @@ function createApp(deps: CaptureServerDeps): Hono {
           status: 'ok',
           captureId: target.captureId,
           captured: target.captured,
+          screenshotStatus: target.screenshotStatus,
+          screenshotWarning: target.screenshotWarning,
           note
         } satisfies ExtensionNoteCreateResult)
       } catch (err) {

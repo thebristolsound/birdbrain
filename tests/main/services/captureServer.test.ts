@@ -1720,6 +1720,39 @@ describe('captureServer', () => {
         expect(listCaptures(testCase.id)).toHaveLength(1)
       })
 
+      it('reports the screenshot outcome on both attach paths', async () => {
+        const testCase = createCase({ name: 'Shot Case' })
+        await activateCase(testCase.id)
+        // Auto-capture carrying an oversized screenshot: stored, but the
+        // caller is told the artifact was dropped rather than getting an
+        // unqualified success (#835 review).
+        const oversized = new Blob([new Uint8Array(MAX_SCREENSHOT_SIZE + 1)], { type: 'image/png' })
+        const dropped = await readJson(
+          await postAttach(
+            '/api/tags/apply',
+            { caseId: testCase.id, url: PAGE_URL, tagName: 'Evidence' },
+            '<html>page</html>',
+            oversized
+          )
+        )
+        expect(dropped.captured).toBe(true)
+        expect(dropped.screenshotStatus).toBe('dropped')
+        expect(dropped.screenshotWarning).toContain('exceeds')
+
+        // Attaching to that existing capture acquires nothing at all.
+        const note = await readJson(
+          await postAttach('/api/notes', {
+            caseId: testCase.id,
+            url: PAGE_URL,
+            noteTitle: 'Note',
+            noteText: 'attached'
+          })
+        )
+        expect(note.captured).toBe(false)
+        expect(note.screenshotStatus).toBe('none')
+        expect(note.screenshotWarning).toBeUndefined()
+      })
+
       it('reuses an existing tag by case-insensitive name', async () => {
         const testCase = createCase({ name: 'Tag Case' })
         await activateCase(testCase.id)

@@ -7,6 +7,10 @@ export function listTags(): Tag[] {
   return getDb().prepare('SELECT * FROM tags ORDER BY name').all() as Tag[]
 }
 
+export function getTag(id: string): Tag | undefined {
+  return getDb().prepare('SELECT * FROM tags WHERE id = ?').get(id) as Tag | undefined
+}
+
 export function createTag(params: CreateTagParams): Tag {
   const id = uuid()
   getDb()

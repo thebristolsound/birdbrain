@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import { serve } from '@hono/node-server'
 import { cors } from 'hono/cors'
 import { bodyLimit } from 'hono/body-limit'
@@ -10,7 +11,9 @@ import { IPC_CHANNELS } from '@shared/ipc'
 import { sendEvent } from '@main/ipcWrap'
 import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
+import * as noteRepo from '@main/services/db/noteRepo'
 import * as selectorRepo from '@main/services/db/selectorRepo'
+import * as tagRepo from '@main/services/db/tagRepo'
 import { getSettings } from '@main/services/settings'
 import { ingestMhtmlCapture } from '@main/services/captureLifecycle'
 import { getInstallationId } from '@main/services/installationId'
@@ -18,16 +21,26 @@ import { getServerToken } from '@main/services/serverToken'
 import type { CaptureEvent } from '@shared/types'
 import {
   CaptureUploadSchema,
+  ExtensionNoteCreateSchema,
+  ExtensionTagApplySchema,
   SelectorCreateSchema,
+  UrlLookupSchema,
   formatCaptureUploadError,
+  formatExtensionAttachError,
   formatSelectorCreateError,
   type ActiveSelectorsResult,
   type CaptureServerCase,
   type CaptureServerStatus,
   type CaptureUploadResult,
   type CaptureUploadSource,
-  type SelectorCreateResult
+  type ExtensionAttachBase,
+  type ExtensionNoteCreateResult,
+  type ExtensionTagApplyResult,
+  type SelectorCreateResult,
+  type UrlLookupResult
 } from '@shared/schemas'
+import { canonicalizeUrl, resolveCaptureForUrl } from '@shared/urlCanonicalize'
+import { plainTextToNoteDoc } from '@shared/noteDoc'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { createSessionService, type SessionService } from '@main/services/session'
@@ -491,6 +504,237 @@ function createApp(deps: CaptureServerDeps): Hono {
       } catch (err) {
         logger.error('captureServer', 'captureServer.selector_create_failed', undefined, err)
         return c.json({ error: 'Failed to create selector' }, 500)
+      }
+    }
+  )
+
+  // Auto-capture-then-attach (#392, R2): resolve the Capture a Tag or Note
+  // binds to, ingesting the supplied payload first when the case holds no
+  // capture of the canonicalized URL. The attach itself happens in the caller,
+  // strictly after this returns ok — that ordering is what makes the
+  // no-orphan criterion structural rather than defended: a failed ingest
+  // returns a refusal here and no attach code ever runs.
+  type AttachTarget =
+    { ok: true; captureId: string; captured: boolean } | { ok: false; response: Response }
+
+  async function resolveOrIngestCapture(
+    c: Context,
+    input: ExtensionAttachBase
+  ): Promise<AttachTarget> {
+    const { caseId, url } = input
+    const fail = (response: Response): AttachTarget => ({ ok: false, response })
+
+    // Same active-case discipline as POST /api/selectors: these are
+    // extension-only surfaces and the extension annotates the active case.
+    const { activeCaseId } = sessionService.snapshot()
+    if (!activeCaseId) return fail(c.json({ error: 'No active case selected' }, 400))
+    if (caseId !== activeCaseId) {
+      return fail(c.json({ error: 'caseId does not match active case' }, 400))
+    }
+    const caseData = caseRepo.getCase(caseId)
+    if (!caseData) return fail(c.json({ error: 'Case not found' }, 404))
+    if (caseData.archived) return fail(c.json({ error: 'Case is archived' }, 400))
+
+    const existing = resolveCaptureForUrl(url, captureRepo.listCaptureUrlCandidates(caseId))
+    if (existing) return { ok: true, captureId: existing.id, captured: false }
+
+    const mhtmlField = input.mhtml
+    if (!mhtmlField) {
+      return fail(
+        c.json({ error: 'No capture of this URL in the case; retry with an MHTML payload' }, 422)
+      )
+    }
+
+    const operatorName = getSettings().operatorName?.trim() ?? ''
+    if (!operatorName) {
+      emitCaptureEvent({
+        type: 'failed',
+        source: 'manual',
+        url,
+        timestamp: new Date().toISOString(),
+        error: 'Operator name required'
+      })
+      return fail(c.json({ error: OPERATOR_NAME_REQUIRED_MSG }, 400))
+    }
+
+    // Checked on the ingest branch only: attaching to a capture the case
+    // already holds acquires nothing, while this branch is a real acquisition
+    // route and must refuse what the case excludes (#400).
+    const blocked = isUrlBlacklisted(url, effectiveIgnorePatternsForCase(caseId))
+    if (blocked) {
+      emitCaptureEvent({
+        type: 'skipped',
+        source: 'manual',
+        url,
+        timestamp: new Date().toISOString(),
+        skipReason: blockedSkipReason(blocked)
+      })
+      return fail(c.json({ error: 'URL blocked by ignored pattern', pattern: blocked }, 403))
+    }
+
+    const startTime = Date.now()
+    emitCaptureEvent({
+      type: 'received',
+      source: 'manual',
+      url,
+      timestamp: new Date().toISOString()
+    })
+
+    const screenshotField = input.screenshot
+    let screenshotBuffer: Buffer | undefined
+    if (screenshotField instanceof File || screenshotField instanceof Blob) {
+      if (screenshotField.size <= MAX_SCREENSHOT_SIZE) {
+        screenshotBuffer = Buffer.from(await screenshotField.arrayBuffer())
+      } else {
+        logger.warn('captureServer', 'capture.screenshot_dropped', {
+          reason: tag('too_large', 'screenshotDropReason'),
+          bytes: screenshotField.size
+        })
+      }
+    }
+
+    try {
+      // No `method` passed, same as POST /api/captures: the row defaults to
+      // 'extension', which is honest — the bytes came from the operator's own
+      // browser tab (R2), never from a hidden window.
+      const { capture } = await captureLifecycle.ingest({
+        caseId,
+        url,
+        title: input.title || url,
+        timestamp: input.timestamp || new Date().toISOString(),
+        stream: mhtmlField.stream(),
+        textContent: input.textContent,
+        headers: input.headers ?? {},
+        browserVersion: input.browserVersion,
+        userAgent: input.userAgent,
+        httpStatus: input.httpStatus,
+        extensionVersion: input.extensionVersion,
+        operatorId: getInstallationId(),
+        operatorName,
+        toolVersion: getToolVersion(),
+        screenshot: screenshotBuffer
+      })
+
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        sendEvent(mainWindow.webContents, IPC_CHANNELS.NEW_CAPTURE, capture)
+      }
+      emitCaptureEvent({
+        type: 'stored',
+        captureId: capture.id,
+        source: 'manual',
+        url,
+        timestamp: new Date().toISOString(),
+        durationMs: Date.now() - startTime
+      })
+      return { ok: true, captureId: capture.id, captured: true }
+    } catch (err) {
+      logger.error('captureServer', 'capture.failed', undefined, err)
+      emitCaptureEvent({
+        type: 'failed',
+        source: 'manual',
+        url,
+        timestamp: new Date().toISOString(),
+        error: String(err)
+      })
+      return fail(c.json({ error: 'Failed to capture page; nothing was attached' }, 500))
+    }
+  }
+
+  // Whether a case already holds a Capture of a URL (#392). A read carried as
+  // a POST on purpose: the token guard above fires on POST only, so a GET
+  // here would answer any local process without a token and leak whether a
+  // case holds a URL (R23, #817).
+  app.post(
+    '/api/captures/lookup',
+    zValidator('json', UrlLookupSchema, (result, c) => {
+      if (!result.success) {
+        return c.json({ error: formatExtensionAttachError(result.error) }, 400)
+      }
+      return undefined
+    }),
+    (c) => {
+      const { caseId, url } = c.req.valid('json')
+      if (!caseRepo.getCase(caseId)) {
+        return c.json({ error: 'Case not found' }, 404)
+      }
+      const hit = resolveCaptureForUrl(url, captureRepo.listCaptureUrlCandidates(caseId))
+      return c.json({
+        found: hit !== null,
+        canonicalUrl: canonicalizeUrl(url),
+        capture: hit
+      } satisfies UrlLookupResult)
+    }
+  )
+
+  // Apply a Tag to the Capture of a URL, auto-capturing first when the case
+  // holds none (#392). Find-or-create by case-insensitive name, matching the
+  // archive importer's merge rule; re-applying is a no-op (INSERT OR IGNORE).
+  app.post(
+    '/api/tags/apply',
+    zValidator('form', ExtensionTagApplySchema, (result, c) => {
+      if (!result.success) {
+        return c.json({ error: formatExtensionAttachError(result.error) }, 400)
+      }
+      return undefined
+    }),
+    async (c) => {
+      const input = c.req.valid('form')
+      const target = await resolveOrIngestCapture(c, input)
+      if (!target.ok) return target.response
+      try {
+        const existingId = tagRepo.findTagIdByNameInsensitive(input.tagName)
+        const existingTag = existingId ? tagRepo.getTag(existingId) : undefined
+        const applied = existingTag ?? tagRepo.createTag({ name: input.tagName })
+        tagRepo.addTagToCapture({ captureId: target.captureId, tagId: applied.id })
+        return c.json({
+          status: 'ok',
+          captureId: target.captureId,
+          captured: target.captured,
+          tag: { id: applied.id, name: applied.name }
+        } satisfies ExtensionTagApplyResult)
+      } catch (err) {
+        logger.error('captureServer', 'captureServer.tag_apply_failed', undefined, err)
+        // The capture (pre-existing or just ingested) is real evidence either
+        // way, so name it — the caller must not retry with a fresh payload.
+        return c.json({ error: 'Failed to apply tag', captureId: target.captureId }, 500)
+      }
+    }
+  )
+
+  // Create a Note on the Capture of a URL, auto-capturing first when the case
+  // holds none (#392).
+  app.post(
+    '/api/notes',
+    zValidator('form', ExtensionNoteCreateSchema, (result, c) => {
+      if (!result.success) {
+        return c.json({ error: formatExtensionAttachError(result.error) }, 400)
+      }
+      return undefined
+    }),
+    async (c) => {
+      const input = c.req.valid('form')
+      const target = await resolveOrIngestCapture(c, input)
+      if (!target.ok) return target.response
+      try {
+        // Born on the Mention-capable document schema (#389): body_doc is the
+        // stored document and the plain body column is derived from it by
+        // createNote, never written directly.
+        const note = noteRepo.createNote({
+          caseId: input.caseId,
+          captureId: target.captureId,
+          title: input.noteTitle,
+          bodyDoc: JSON.stringify(plainTextToNoteDoc(input.noteText)),
+          sourceUrl: input.url
+        })
+        return c.json({
+          status: 'ok',
+          captureId: target.captureId,
+          captured: target.captured,
+          note
+        } satisfies ExtensionNoteCreateResult)
+      } catch (err) {
+        logger.error('captureServer', 'captureServer.note_create_failed', undefined, err)
+        return c.json({ error: 'Failed to create note', captureId: target.captureId }, 500)
       }
     }
   )

@@ -448,6 +448,8 @@ export const LOG_CODES = [
   'react.render_error',
   // --- appended: real call sites with no pinned-code fit ---
   'captureServer.selector_create_failed',
+  'captureServer.tag_apply_failed',
+  'captureServer.note_create_failed',
   'captureLifecycle.tls_refetch_failed',
   'captureLifecycle.selector_match_failed',
   'captureLifecycle.reprocess_failed',

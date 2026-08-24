@@ -5,6 +5,8 @@ import { tmpdir } from 'os'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
 import { createCase, setAutoCapturePolicy, updateCase } from '@main/services/db/caseRepo'
 import { listCaptures } from '@main/services/db/captureRepo'
+import { createTag, getTagsForCapture, listTags } from '@main/services/db/tagRepo'
+import { listNotes } from '@main/services/db/noteRepo'
 import {
   createSelector,
   listSelectors,
@@ -62,7 +64,10 @@ describe('captureServer', () => {
     baseUrl = `http://127.0.0.1:${port}`
     const selectorLifecycle = createSelectorLifecycle({ emitRematched: () => {} })
     const captureLifecycle = createCaptureLifecycle({ selectorLifecycle })
-    await startCaptureServer({ selectorLifecycle, captureLifecycle, token: TEST_TOKEN, sessionService }, port)
+    await startCaptureServer(
+      { selectorLifecycle, captureLifecycle, token: TEST_TOKEN, sessionService },
+      port
+    )
   })
 
   afterEach(async () => {
@@ -1604,6 +1609,390 @@ describe('captureServer', () => {
         req.end()
       })
       expect(status).toBe(403)
+    })
+  })
+
+  describe('extension write endpoints (#392)', () => {
+    const PAGE_URL = 'https://example.com/page'
+
+    function activateCase(id: string): Promise<Response> {
+      return serverPost(`/api/cases/${id}/activate`)
+    }
+
+    function postAttach(
+      path: string,
+      fields: Record<string, string>,
+      mhtmlContent?: string,
+      screenshot?: Blob
+    ): Promise<Response> {
+      const form = new FormData()
+      for (const [k, v] of Object.entries(fields)) form.append(k, v)
+      if (mhtmlContent !== undefined) {
+        form.append('mhtml', new Blob([mhtmlContent], { type: 'multipart/related' }), 'page.mhtml')
+      }
+      if (screenshot !== undefined) {
+        form.append('screenshot', screenshot, 'screenshot.png')
+      }
+      return fetch(`${baseUrl}${path}`, {
+        method: 'POST',
+        body: form,
+        headers: { 'X-Birdbrain-Token': TEST_TOKEN }
+      })
+    }
+
+    function postLookup(body: unknown): Promise<Response> {
+      return serverPost('/api/captures/lookup', {
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+    }
+
+    // The token guard fires on POST only and Hono runs middleware only for
+    // routes registered after it, so this pins that every new route inherits
+    // the guard (R23) — a route registered above the app.use block would
+    // answer 200 here and nothing else would catch it.
+    it('answers 401 on every new route without a valid token', async () => {
+      for (const path of ['/api/captures/lookup', '/api/tags/apply', '/api/notes']) {
+        const missing = await fetch(`${baseUrl}${path}`, { method: 'POST' })
+        expect(missing.status).toBe(401)
+        const wrong = await fetch(`${baseUrl}${path}`, {
+          method: 'POST',
+          headers: { 'X-Birdbrain-Token': 'not-the-right-token' }
+        })
+        expect(wrong.status).toBe(401)
+      }
+    })
+
+    describe('POST /api/captures/lookup', () => {
+      it('returns 404 for an unknown case', async () => {
+        const res = await postLookup({ caseId: 'nope', url: PAGE_URL })
+        expect(res.status).toBe(404)
+      })
+
+      it('rejects a non-http(s) url', async () => {
+        const testCase = createCase({ name: 'Lookup Case' })
+        const res = await postLookup({ caseId: testCase.id, url: 'ftp://example.com/x' })
+        expect(res.status).toBe(400)
+        expect((await readJson(res)).error).toContain('url')
+      })
+
+      it('reports found=false when the case holds no capture of the URL', async () => {
+        const testCase = createCase({ name: 'Lookup Case' })
+        const res = await postLookup({ caseId: testCase.id, url: PAGE_URL })
+        const data = await readJson(res)
+        expect(res.status).toBe(200)
+        expect(data.found).toBe(false)
+        expect(data.capture).toBeNull()
+        expect(data.canonicalUrl).toBe(PAGE_URL)
+      })
+
+      it('finds a capture across fragment and trailing-slash differences', async () => {
+        const testCase = createCase({ name: 'Lookup Case' })
+        const stored = await readJson(
+          await postCapture({ source: 'manual', caseId: testCase.id, url: `${PAGE_URL}/` })
+        )
+        const res = await postLookup({ caseId: testCase.id, url: `${PAGE_URL}#section` })
+        const data = await readJson(res)
+        expect(data.found).toBe(true)
+        expect(data.capture.id).toBe(stored.captureId)
+        expect(data.canonicalUrl).toBe(PAGE_URL)
+      })
+    })
+
+    describe('POST /api/tags/apply', () => {
+      it('attaches to the existing capture without ingesting again', async () => {
+        const testCase = createCase({ name: 'Tag Case' })
+        await activateCase(testCase.id)
+        const stored = await readJson(
+          await postCapture({ source: 'manual', caseId: testCase.id, url: `${PAGE_URL}/` })
+        )
+        const res = await postAttach('/api/tags/apply', {
+          caseId: testCase.id,
+          url: `${PAGE_URL}#section`,
+          tagName: 'Evidence'
+        })
+        const data = await readJson(res)
+        expect(res.status).toBe(200)
+        expect(data.status).toBe('ok')
+        expect(data.captured).toBe(false)
+        expect(data.captureId).toBe(stored.captureId)
+        expect(getTagsForCapture(stored.captureId).map((t) => t.name)).toEqual(['Evidence'])
+        expect(listCaptures(testCase.id)).toHaveLength(1)
+      })
+
+      it('reuses an existing tag by case-insensitive name', async () => {
+        const testCase = createCase({ name: 'Tag Case' })
+        await activateCase(testCase.id)
+        const existing = createTag({ name: 'Evidence' })
+        const stored = await readJson(
+          await postCapture({ source: 'manual', caseId: testCase.id, url: PAGE_URL })
+        )
+        const res = await postAttach('/api/tags/apply', {
+          caseId: testCase.id,
+          url: PAGE_URL,
+          tagName: 'evidence'
+        })
+        const data = await readJson(res)
+        expect(data.tag.id).toBe(existing.id)
+        expect(data.tag.name).toBe('Evidence')
+        expect(listTags()).toHaveLength(1)
+        expect(getTagsForCapture(stored.captureId)).toHaveLength(1)
+      })
+
+      it('auto-captures the supplied payload first when no capture exists', async () => {
+        const testCase = createCase({ name: 'Tag Case' })
+        await activateCase(testCase.id)
+        const res = await postAttach(
+          '/api/tags/apply',
+          { caseId: testCase.id, url: PAGE_URL, tagName: 'Evidence', title: 'Example Page' },
+          '<html>tagged page</html>'
+        )
+        const data = await readJson(res)
+        expect(res.status).toBe(200)
+        expect(data.captured).toBe(true)
+        const captures = listCaptures(testCase.id)
+        expect(captures).toHaveLength(1)
+        expect(captures[0].id).toBe(data.captureId)
+        expect(captures[0].url).toBe(PAGE_URL)
+        // Operator-witnessed, honestly (R2): the row defaults to 'extension'.
+        expect(captures[0].method).toBe('extension')
+        expect(getTagsForCapture(data.captureId).map((t) => t.name)).toEqual(['Evidence'])
+      })
+
+      it('refuses without a payload when no capture exists, leaving no orphan', async () => {
+        const testCase = createCase({ name: 'Tag Case' })
+        await activateCase(testCase.id)
+        const res = await postAttach('/api/tags/apply', {
+          caseId: testCase.id,
+          url: PAGE_URL,
+          tagName: 'Evidence'
+        })
+        expect(res.status).toBe(422)
+        expect(listTags()).toHaveLength(0)
+        expect(listCaptures(testCase.id)).toHaveLength(0)
+      })
+
+      it('saves a size-conformant screenshot with the auto-capture', async () => {
+        const testCase = createCase({ name: 'Tag Case' })
+        await activateCase(testCase.id)
+        const res = await postAttach(
+          '/api/tags/apply',
+          { caseId: testCase.id, url: PAGE_URL, tagName: 'Evidence' },
+          '<html>page</html>',
+          new Blob([new Uint8Array(64)], { type: 'image/png' })
+        )
+        expect(res.status).toBe(200)
+        const captures = listCaptures(testCase.id)
+        expect(captures).toHaveLength(1)
+        expect(captures[0].screenshotPath).toBeTruthy()
+      })
+
+      it('drops an oversized screenshot but keeps the auto-capture', async () => {
+        const testCase = createCase({ name: 'Tag Case' })
+        await activateCase(testCase.id)
+        const res = await postAttach(
+          '/api/tags/apply',
+          { caseId: testCase.id, url: PAGE_URL, tagName: 'Evidence' },
+          '<html>page</html>',
+          new Blob([new Uint8Array(MAX_SCREENSHOT_SIZE + 1)], { type: 'image/png' })
+        )
+        expect(res.status).toBe(200)
+        const captures = listCaptures(testCase.id)
+        expect(captures).toHaveLength(1)
+        expect(captures[0].screenshotPath).toBeFalsy()
+      })
+
+      it('resolves several captures of one URL to the most recent', async () => {
+        const testCase = createCase({ name: 'Tag Case' })
+        await activateCase(testCase.id)
+        await readJson(
+          await postCapture({
+            source: 'manual',
+            caseId: testCase.id,
+            url: PAGE_URL,
+            timestamp: '2026-01-01T00:00:00.000Z'
+          })
+        )
+        const newer = await readJson(
+          await postCapture({
+            source: 'manual',
+            caseId: testCase.id,
+            url: `${PAGE_URL}/`,
+            timestamp: '2026-02-01T00:00:00.000Z'
+          })
+        )
+        const res = await postAttach('/api/tags/apply', {
+          caseId: testCase.id,
+          url: PAGE_URL,
+          tagName: 'Evidence'
+        })
+        const data = await readJson(res)
+        expect(data.captureId).toBe(newer.captureId)
+        expect(getTagsForCapture(newer.captureId)).toHaveLength(1)
+      })
+
+      it('refuses an auto-capture of an excluded URL (#400)', async () => {
+        updateSettings({ ignoredUrlPatterns: ['blocked-site.com'] })
+        const testCase = createCase({ name: 'Tag Case' })
+        await activateCase(testCase.id)
+        const res = await postAttach(
+          '/api/tags/apply',
+          { caseId: testCase.id, url: 'https://blocked-site.com/x', tagName: 'Evidence' },
+          '<html>blocked</html>'
+        )
+        expect(res.status).toBe(403)
+        expect(listCaptures(testCase.id)).toHaveLength(0)
+        expect(listTags()).toHaveLength(0)
+      })
+
+      it('requires an operator name before an auto-capture, leaving no orphan', async () => {
+        updateSettings({ operatorName: '' })
+        const testCase = createCase({ name: 'Tag Case' })
+        await activateCase(testCase.id)
+        const res = await postAttach(
+          '/api/tags/apply',
+          { caseId: testCase.id, url: PAGE_URL, tagName: 'Evidence' },
+          '<html>page</html>'
+        )
+        expect(res.status).toBe(400)
+        expect(listCaptures(testCase.id)).toHaveLength(0)
+        expect(listTags()).toHaveLength(0)
+      })
+
+      it('requires an active case, and the matching one', async () => {
+        const testCase = createCase({ name: 'Tag Case' })
+        const noActive = await postAttach('/api/tags/apply', {
+          caseId: testCase.id,
+          url: PAGE_URL,
+          tagName: 'Evidence'
+        })
+        expect(noActive.status).toBe(400)
+        expect((await readJson(noActive)).error).toBe('No active case selected')
+
+        const other = createCase({ name: 'Other Case' })
+        await activateCase(other.id)
+        const mismatch = await postAttach('/api/tags/apply', {
+          caseId: testCase.id,
+          url: PAGE_URL,
+          tagName: 'Evidence'
+        })
+        expect(mismatch.status).toBe(400)
+        expect((await readJson(mismatch)).error).toBe('caseId does not match active case')
+      })
+
+      it('rejects a missing tagName with a field-specific error', async () => {
+        const testCase = createCase({ name: 'Tag Case' })
+        await activateCase(testCase.id)
+        const res = await postAttach('/api/tags/apply', { caseId: testCase.id, url: PAGE_URL })
+        expect(res.status).toBe(400)
+        expect((await readJson(res)).error).toBe('Missing or empty required field: tagName')
+      })
+
+      it('reports a failed ingest and attaches nothing', async () => {
+        const testCase = createCase({ name: 'Fail Case' })
+        await activateCase(testCase.id)
+        // Rebind the server to a lifecycle whose ingest throws — the injection
+        // seam the server already exposes for exactly this kind of test.
+        await stopCaptureServer()
+        const port = nextPort++
+        baseUrl = `http://127.0.0.1:${port}`
+        const selectorLifecycle = createSelectorLifecycle({ emitRematched: () => {} })
+        const failingLifecycle = {
+          ...createCaptureLifecycle({ selectorLifecycle }),
+          ingest: async () => {
+            throw new Error('ingest exploded')
+          }
+        }
+        await startCaptureServer(
+          {
+            selectorLifecycle,
+            captureLifecycle: failingLifecycle,
+            token: TEST_TOKEN,
+            sessionService
+          },
+          port
+        )
+        const res = await postAttach(
+          '/api/tags/apply',
+          { caseId: testCase.id, url: PAGE_URL, tagName: 'Evidence' },
+          '<html>page</html>'
+        )
+        expect(res.status).toBe(500)
+        expect((await readJson(res)).error).toBe('Failed to capture page; nothing was attached')
+        expect(listCaptures(testCase.id)).toHaveLength(0)
+        expect(listTags()).toHaveLength(0)
+      })
+    })
+
+    describe('POST /api/notes', () => {
+      it('creates a note on the existing capture, born on the document schema', async () => {
+        const testCase = createCase({ name: 'Note Case' })
+        await activateCase(testCase.id)
+        const stored = await readJson(
+          await postCapture({ source: 'manual', caseId: testCase.id, url: `${PAGE_URL}/` })
+        )
+        const res = await postAttach('/api/notes', {
+          caseId: testCase.id,
+          url: `${PAGE_URL}#quote`,
+          noteTitle: 'From the page',
+          noteText: 'first line\nsecond line'
+        })
+        const data = await readJson(res)
+        expect(res.status).toBe(200)
+        expect(data.captured).toBe(false)
+        expect(data.captureId).toBe(stored.captureId)
+        const notes = listNotes(testCase.id)
+        expect(notes).toHaveLength(1)
+        expect(notes[0].id).toBe(data.note.id)
+        expect(notes[0].title).toBe('From the page')
+        expect(notes[0].captureId).toBe(stored.captureId)
+        expect(notes[0].sourceUrl).toBe(`${PAGE_URL}#quote`)
+        // Born Mention-capable (#389): body_doc holds the document and the
+        // plain body is derived from it, block-per-line.
+        expect(notes[0].bodyDoc).toBeDefined()
+        expect(JSON.parse(notes[0].bodyDoc!).type).toBe('doc')
+        expect(notes[0].body).toBe('first line\nsecond line')
+      })
+
+      it('auto-captures the supplied payload first when no capture exists', async () => {
+        const testCase = createCase({ name: 'Note Case' })
+        await activateCase(testCase.id)
+        const res = await postAttach(
+          '/api/notes',
+          { caseId: testCase.id, url: PAGE_URL, noteText: 'observed content' },
+          '<html>noted page</html>'
+        )
+        const data = await readJson(res)
+        expect(res.status).toBe(200)
+        expect(data.captured).toBe(true)
+        const captures = listCaptures(testCase.id)
+        expect(captures).toHaveLength(1)
+        expect(captures[0].id).toBe(data.captureId)
+        const notes = listNotes(testCase.id)
+        expect(notes).toHaveLength(1)
+        expect(notes[0].captureId).toBe(data.captureId)
+      })
+
+      it('refuses without a payload when no capture exists, leaving no orphan', async () => {
+        const testCase = createCase({ name: 'Note Case' })
+        await activateCase(testCase.id)
+        const res = await postAttach('/api/notes', {
+          caseId: testCase.id,
+          url: PAGE_URL,
+          noteText: 'orphan-to-be'
+        })
+        expect(res.status).toBe(422)
+        expect(listNotes(testCase.id)).toHaveLength(0)
+        expect(listCaptures(testCase.id)).toHaveLength(0)
+      })
+
+      it('rejects a missing noteText with a field-specific error', async () => {
+        const testCase = createCase({ name: 'Note Case' })
+        await activateCase(testCase.id)
+        const res = await postAttach('/api/notes', { caseId: testCase.id, url: PAGE_URL })
+        expect(res.status).toBe(400)
+        expect((await readJson(res)).error).toBe('Missing or empty required field: noteText')
+      })
     })
   })
 })

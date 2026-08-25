@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { captureHtmlUrlQueryOptions } from '@renderer/lib/queries'
+import { captureHtmlUrlQueryOptions } from '@renderer/lib/api/captures'
 import { LEGACY_HTML_PARTITION } from '@shared/constants'
 
 interface Props {

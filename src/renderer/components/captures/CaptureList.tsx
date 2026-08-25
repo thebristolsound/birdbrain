@@ -7,7 +7,8 @@ import {
   Check,
   ChevronLeft,
   LayoutGrid,
-  List as ListIcon
+  List as ListIcon,
+  Search
 } from 'lucide-react'
 import { useQuery, useQueries } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'motion/react'
@@ -70,8 +71,6 @@ export function CaptureList({
   } = useQuery(capturesQueryOptions(caseId))
   const selectedCaptureId = useAppStore((s) => s.selectedCaptureId)
   const filteredCaptureIds = useAppStore((s) => s.filteredCaptureIds)
-  const activeSelectorFilters = useAppStore((s) => s.activeSelectorFilters)
-  const clearSelectorFilters = useAppStore((s) => s.clearSelectorFilters)
   const { favorites, toggleFavorite } = useFavorites(caseId)
   // Rows carry relative times; one interval here keeps every row current
   // instead of each owning its own.
@@ -94,7 +93,11 @@ export function CaptureList({
   const {
     filters,
     activeFilterCount,
-    clearAllFilters,
+    narrowings,
+    isNarrowed,
+    clearNarrowing,
+    query,
+    setQuery,
     sortBy,
     setSortBy,
     formatFilter,
@@ -169,11 +172,20 @@ export function CaptureList({
 
   return (
     <aside className="flex h-full flex-1 flex-col bg-surface min-w-0">
-      {/* Header: collapse, sort/filter, view toggle, capture menu.
-          The design puts a per-list search input above this row; that is #695,
-          so the header stays a single row rather than reserving a hole. */}
+      {/* Header row 1: per-list search, collapse, capture menu. */}
       <div className="border-b p-2 border-border">
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1 min-w-0">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-text-muted" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search captures…"
+              aria-label="Filter captures in this list"
+              data-testid="capture-list-search"
+              className="w-full rounded border border-border-strong bg-canvas py-1.5 pl-7 pr-2.5 text-xs text-text-primary outline-none placeholder:text-text-faint"
+            />
+          </div>
           <button
             onClick={onCollapse}
             title="Collapse list"
@@ -182,6 +194,10 @@ export function CaptureList({
           >
             <ChevronLeft className="h-3.5 w-3.5" />
           </button>
+          <CaptureMenu caseId={caseId} />
+        </div>
+        {/* Header row 2: sort, filter, view toggle. */}
+        <div className="mt-1 flex items-center gap-1">
           <div className="flex min-w-0 gap-1">
             {/* Sort dropdown */}
             <div ref={sortRef} className="relative">
@@ -292,13 +308,14 @@ export function CaptureList({
                     />
                     Favorites only
                   </button>
-                  {/* Clear all */}
-                  {activeFilterCount > 0 && (
+                  {/* Clear all: the same handler as the strip and the empty state,
+                      so it clears every narrowing rather than only this menu's. */}
+                  {isNarrowed && (
                     <>
                       <div className="my-1 border-t border-border" />
                       <button
                         onClick={() => {
-                          clearAllFilters()
+                          clearNarrowing()
                           setShowFilterMenu(false)
                         }}
                         className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-red-400 hover:bg-elevated"
@@ -339,17 +356,22 @@ export function CaptureList({
               <ListIcon className="h-3 w-3" />
             </button>
           </div>
-          <CaptureMenu caseId={caseId} />
         </div>
-        {/* Selector filter indicator */}
-        {activeSelectorFilters.length > 0 && (
-          <div className="mt-1.5 flex items-center gap-1 rounded-md border border-accent/20 bg-accent-subtle px-2 py-1 text-[11px] text-accent">
-            <Crosshair className="h-3 w-3" />
-            <span>
-              {activeSelectorFilters.length} selector filter
-              {activeSelectorFilters.length !== 1 ? 's' : ''} active
-            </span>
-            <button onClick={clearSelectorFilters} className="ml-auto hover:text-accent">
+        {/* Narrowing strip: names every narrowing hiding rows, with one control
+            that clears all of them. */}
+        {isNarrowed && (
+          <div
+            data-testid="capture-list-narrowing"
+            className="mt-1.5 flex items-center gap-1 rounded-md border border-accent/20 bg-accent-subtle px-2 py-1 text-[11px] text-accent"
+          >
+            <Crosshair className="h-3 w-3 shrink-0" />
+            <span className="truncate">{narrowings.join(' · ')}</span>
+            <button
+              onClick={clearNarrowing}
+              aria-label="Clear all narrowing"
+              title="Clear search, selector filters and filters"
+              className="ml-auto shrink-0 hover:text-accent"
+            >
               <X className="h-3 w-3" />
             </button>
           </div>
@@ -400,9 +422,19 @@ export function CaptureList({
           ))}
         </AnimatePresence>
         {displayedCaptures.length === 0 &&
-          (filteredCaptureIds || activeFilterCount > 0 ? (
-            <div className="px-3 py-4 text-center text-xs text-text-faint">
-              No captures match the active filters
+          (isNarrowed ? (
+            <div
+              data-testid="capture-list-narrowed-empty"
+              className="flex flex-1 flex-col items-center justify-center gap-2.5 px-5 py-8 text-center"
+            >
+              <div className="text-xs font-semibold text-text-secondary">No captures match</div>
+              <p className="max-w-[220px] text-[11px] leading-relaxed text-text-faint">
+                {captures.length} capture{captures.length !== 1 ? 's' : ''} in this case
+                {captures.length !== 1 ? ' are' : ' is'} hidden by {narrowings.join(' · ')}.
+              </p>
+              <Button variant="outline" size="sm" onClick={clearNarrowing}>
+                Clear filters
+              </Button>
             </div>
           ) : (
             <CaptureListEmptyState />

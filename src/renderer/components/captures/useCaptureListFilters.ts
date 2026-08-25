@@ -1,36 +1,55 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import {
   countActiveFilters,
+  describeNarrowings,
   type CaptureListFilters,
   type DateFilter,
   type FormatFilter,
   type SortOption
 } from '@renderer/components/captures/captureListModel'
+import { useAppStore } from '@renderer/stores/appStore'
 
 export function useCaptureListFilters() {
+  // The query is list-local: it narrows what is already on screen, unlike
+  // SearchBar, which runs a case-wide FTS query through the store.
+  const [query, setQuery] = useState('')
   const [sortBy, setSortBy] = useState<SortOption>('newest')
   const [formatFilter, setFormatFilter] = useState<FormatFilter>('all')
   const [dateFilter, setDateFilter] = useState<DateFilter>('all')
   const [favoritesOnly, setFavoritesOnly] = useState(false)
+  const activeSelectorFilters = useAppStore((s) => s.activeSelectorFilters)
+  const clearSelectorFilters = useAppStore((s) => s.clearSelectorFilters)
 
   // Memoized so consumers can use `filters` as a useMemo/useEffect dependency:
   // a fresh object literal here would defeat any memo keyed on it.
   const filters: CaptureListFilters = useMemo(
-    () => ({ sortBy, formatFilter, dateFilter, favoritesOnly }),
-    [sortBy, formatFilter, dateFilter, favoritesOnly]
+    () => ({ query, sortBy, formatFilter, dateFilter, favoritesOnly }),
+    [query, sortBy, formatFilter, dateFilter, favoritesOnly]
   )
   const activeFilterCount = countActiveFilters(filters)
+  const narrowings = useMemo(
+    () => describeNarrowings({ filters, selectorFilterCount: activeSelectorFilters.length }),
+    [filters, activeSelectorFilters]
+  )
 
-  function clearAllFilters() {
+  // One handler behind every clear affordance, so the operator can never clear
+  // one narrowing and be left staring at a list still hidden by another.
+  const clearNarrowing = useCallback(() => {
+    setQuery('')
     setFormatFilter('all')
     setDateFilter('all')
     setFavoritesOnly(false)
-  }
+    clearSelectorFilters()
+  }, [clearSelectorFilters])
 
   return {
     filters,
     activeFilterCount,
-    clearAllFilters,
+    narrowings,
+    isNarrowed: narrowings.length > 0,
+    clearNarrowing,
+    query,
+    setQuery,
     sortBy,
     setSortBy,
     formatFilter,

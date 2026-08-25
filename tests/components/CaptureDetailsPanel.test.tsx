@@ -38,6 +38,7 @@ const capture: Capture = {
 }
 
 let onCopyUrl: ReturnType<typeof vi.fn>
+let onCopyHash: ReturnType<typeof vi.fn>
 let onDuplicate: ReturnType<typeof vi.fn>
 
 function renderPanel(props: { isDuplicating?: boolean } = {}) {
@@ -52,6 +53,7 @@ function renderPanel(props: { isDuplicating?: boolean } = {}) {
       onCollapse={vi.fn()}
       onOpenExternal={vi.fn()}
       onCopyUrl={onCopyUrl}
+      onCopyHash={onCopyHash}
       onDuplicate={onDuplicate}
       isDuplicating={props.isDuplicating ?? false}
       onDelete={vi.fn()}
@@ -64,6 +66,7 @@ function renderPanel(props: { isDuplicating?: boolean } = {}) {
 beforeEach(() => {
   stubMatchMedia(false)
   onCopyUrl = vi.fn()
+  onCopyHash = vi.fn()
   onDuplicate = vi.fn()
   fakeBridge({
     notes: { list: vi.fn(async () => []) },
@@ -99,6 +102,33 @@ describe('CaptureDetailsPanel actions menu', () => {
 
     expect(screen.queryByTestId('capture-details-copy-url-btn')).toBeNull()
     expect(onCopyUrl).not.toHaveBeenCalled()
+  })
+
+  // #826. The second of the mock's two copy actions, and the one with no
+  // keyboard route: the menu item is the whole inline surface for it.
+  it('offers Copy SHA-256, and closes the menu on use', async () => {
+    renderPanel()
+
+    fireEvent.click(await screen.findByTestId('capture-details-actions-btn'))
+    const item = screen.getByTestId('capture-details-copy-hash-btn')
+    expect(item.textContent).toContain('Copy SHA-256')
+    // The inverse of the Copy URL property above: an accelerator hint here
+    // would teach a keystroke nothing listens for.
+    expect(item.textContent).not.toMatch(/Ctrl|⌘/)
+
+    fireEvent.click(item)
+
+    expect(onCopyHash).toHaveBeenCalledOnce()
+    expect(onCopyUrl).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('capture-details-copy-hash-btn')).toBeNull()
+  })
+
+  it('keeps Copy SHA-256 out of the way until the menu is opened', async () => {
+    renderPanel()
+    await screen.findByTestId('capture-details-actions-btn')
+
+    expect(screen.queryByTestId('capture-details-copy-hash-btn')).toBeNull()
+    expect(onCopyHash).not.toHaveBeenCalled()
   })
 
   it('offers Duplicate and closes the menu on use (#827)', async () => {
@@ -137,6 +167,7 @@ describe('CaptureDetailsPanel provenance line', () => {
         onCollapse={vi.fn()}
         onOpenExternal={vi.fn()}
         onCopyUrl={onCopyUrl}
+        onCopyHash={onCopyHash}
         onDuplicate={onDuplicate}
         isDuplicating={false}
         onDelete={vi.fn()}

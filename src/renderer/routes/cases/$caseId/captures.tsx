@@ -27,6 +27,7 @@ import {
   useCaptureView
 } from '@renderer/components/captures/useCaptureView'
 import { useCopyCaptureUrl } from '@renderer/components/captures/useCopyCaptureUrl'
+import { useCopyCaptureHash } from '@renderer/components/captures/useCopyCaptureHash'
 import { useDuplicateCapture } from '@renderer/components/captures/useDuplicateCapture'
 import { AddNoteModal } from '@renderer/components/notes/AddNoteModal'
 import {
@@ -161,6 +162,10 @@ export function CapturesRoute() {
   // two separate call sites (docked and overlay). A listener living inside it
   // would follow the column rather than the screen.
   const handleCopyUrl = useCopyCaptureUrl(selectedCapture)
+  // Bound alongside it so both copy actions read the one capture the operator is
+  // looking at, and one binding serves both panel call sites. Not for the
+  // listener reason above: this hook registers no accelerator.
+  const handleCopyHash = useCopyCaptureHash(selectedCapture)
 
   // Mounted here for the same reason, and once: a second mount would give the
   // menu item a second mutation, and one click two duplicates.
@@ -347,6 +352,7 @@ export function CapturesRoute() {
                   onCollapse={toggleUserPref}
                   onOpenExternal={handleOpenExternal}
                   onCopyUrl={handleCopyUrl}
+                  onCopyHash={handleCopyHash}
                   onDuplicate={handleDuplicate}
                   isDuplicating={isDuplicating}
                   onDelete={() => setShowDeleteConfirm(true)}
@@ -393,6 +399,7 @@ export function CapturesRoute() {
             onCollapse={() => setForcedPanelOpen(false)}
             onOpenExternal={handleOpenExternal}
             onCopyUrl={handleCopyUrl}
+            onCopyHash={handleCopyHash}
             onDuplicate={handleDuplicate}
             isDuplicating={isDuplicating}
             onDelete={() => setShowDeleteConfirm(true)}

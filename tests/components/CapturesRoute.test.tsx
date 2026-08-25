@@ -41,17 +41,20 @@ vi.mock('@renderer/components/captures/CaptureDetailsPanel', () => ({
   CaptureDetailsPanel: ({
     onOpenExternal,
     onCopyUrl,
+    onCopyHash,
     onDuplicate,
     onDelete
   }: {
     onOpenExternal: () => void
     onCopyUrl: () => void
+    onCopyHash: () => void
     onDuplicate: () => void
     onDelete: () => void
   }) => (
     <>
       <button onClick={onOpenExternal}>panel: open externally</button>
       <button onClick={onCopyUrl}>panel: copy url</button>
+      <button onClick={onCopyHash}>panel: copy hash</button>
       <button onClick={onDuplicate}>panel: duplicate</button>
       <button onClick={onDelete}>panel: delete</button>
     </>
@@ -84,7 +87,10 @@ const capture: Capture = {
   caseId: 'case1',
   url: 'https://example.com/evidence',
   title: 'Example',
-  hash: 'h',
+  // A real digest rather than a stand-in, and in uppercase hex: the route hands
+  // the stored value straight to the clipboard, so any normalisation introduced
+  // in that wiring shows up here as well as in useCopyCaptureHash's own tests.
+  hash: 'E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855',
   timestamp: '2026-08-01T12:00:00.000Z',
   createdAt: '2026-08-01T12:00:01.000Z',
   format: 'mhtml',
@@ -106,6 +112,7 @@ const OPEN_CONTROL = 'rail: open externally'
 const EXPAND_CONTROL = 'rail: expand'
 const DELETE_CONTROL = 'panel: delete'
 const COPY_URL_CONTROL = 'panel: copy url'
+const COPY_HASH_CONTROL = 'panel: copy hash'
 const DUPLICATE_CONTROL = 'panel: duplicate'
 
 let openExternal: ReturnType<typeof vi.fn>
@@ -245,6 +252,34 @@ describe('CapturesRoute', () => {
 
       await waitFor(() => expect(screen.getByText(BATCH_CONTROL)).toBeDefined())
       expect(writeText).not.toHaveBeenCalled()
+    })
+  })
+
+  // #826. The menu item is the only route to this one, so the wiring from the
+  // selected capture through to the clipboard is what these pin.
+  describe('copy SHA-256', () => {
+    it("copies the selected capture's digest from the actions menu", async () => {
+      renderRouteWide()
+
+      fireEvent.click(await screen.findByText(COPY_HASH_CONTROL))
+
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith(capture.hash))
+      // Verbatim end to end, not just inside the hook: the fixture is uppercase
+      // hex, so a normalising step anywhere in this path would show here.
+      expect(writeText.mock.calls[0][0]).toBe(
+        'E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855'
+      )
+    })
+
+    // The route renders the panel from two call sites, and at this viewport the
+    // overlay one is what the rail's expand control mounts.
+    it('copies it from the overlay panel the rail expands into', async () => {
+      renderRoute()
+
+      fireEvent.click(await screen.findByText(EXPAND_CONTROL))
+      fireEvent.click(await screen.findByText(COPY_HASH_CONTROL))
+
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith(capture.hash))
     })
   })
 

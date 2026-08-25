@@ -5,6 +5,7 @@ import {
   Star,
   Copy,
   CopyPlus,
+  Hash,
   ExternalLink,
   Trash2,
   Globe,
@@ -47,6 +48,7 @@ interface Props {
   onCollapse: () => void
   onOpenExternal: () => void
   onCopyUrl: () => void
+  onCopyHash: () => void
   onDuplicate: () => void
   isDuplicating: boolean
   onDelete: () => void
@@ -59,6 +61,7 @@ export function CaptureDetailsPanel({
   onCollapse,
   onOpenExternal,
   onCopyUrl,
+  onCopyHash,
   onDuplicate,
   isDuplicating,
   onDelete,
@@ -299,6 +302,18 @@ export function CaptureDetailsPanel({
                         modifiers, and this is the spelling the app already uses
                         for Ctrl+K in the top bar. */}
                     <span className="ml-auto text-[10px] text-text-faint">Ctrl+C</span>
+                  </button>
+                  <button
+                    role="menuitem"
+                    data-testid="capture-details-copy-hash-btn"
+                    onClick={() => {
+                      setMenuOpen(false)
+                      onCopyHash()
+                    }}
+                    className={menuItemClass}
+                  >
+                    <Hash className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+                    Copy SHA-256
                   </button>
                   <button
                     role="menuitem"

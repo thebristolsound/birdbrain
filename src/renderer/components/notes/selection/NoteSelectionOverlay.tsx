@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { classifySelection, selectionToTagName } from '@shared/selectionKind'
-import { createSelector } from '@renderer/lib/api/selectors'
+import { useSelectorsMutations } from '@renderer/lib/api/selectors'
 import { useTagsMutations } from '@renderer/lib/api/tags'
 import { notify } from '@renderer/lib/notify'
 import {
@@ -51,6 +51,11 @@ export function NoteSelectionOverlay({
   onDismiss
 }: Props) {
   const { applyToNote } = useTagsMutations(caseId)
+  // The mutation hook rather than the bare wrapper: its call sites elsewhere
+  // refresh their own lists, but nothing here owns the Signals screen, and a
+  // selector created from a note has to be visible there without waiting out
+  // the 30s staleTime.
+  const { create: createSelector } = useSelectorsMutations(caseId)
   const [watch, setWatch] = useState(true)
   const [pending, setPending] = useState(false)
 
@@ -60,7 +65,7 @@ export function NoteSelectionOverlay({
     try {
       if (selection.mode === 'selector') {
         const { value } = classifySelection(selection.text)
-        await createSelector({
+        await createSelector.mutateAsync({
           caseId,
           pattern: value,
           isRegex: false,

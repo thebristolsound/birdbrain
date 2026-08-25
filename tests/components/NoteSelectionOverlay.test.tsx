@@ -18,6 +18,7 @@ import {
 import { NoteSelectionOverlay } from '@renderer/components/notes/selection/NoteSelectionOverlay'
 import type { NoteSelectionState } from '@renderer/components/notes/selection/useNoteSelection'
 import { RETRO_MAX_CAPTURES } from '@shared/constants'
+import { queryKeys } from '@renderer/lib/api/keys'
 import { fakeBridge } from '../renderer/fakeBridge'
 
 function wrap(children: ReactNode) {
@@ -170,6 +171,36 @@ describe('NoteSelectionOverlay', () => {
     // overlay writes no match rows itself.
     expect(notifySuccess).toHaveBeenCalledWith('Selector created — meridian-trust.com')
     await waitFor(() => expect(onDismiss).toHaveBeenCalled())
+  })
+
+  it('refreshes the selector lists the new selector belongs in', async () => {
+    const create = vi.fn(async () => ({ id: 's1' }))
+    fakeBridge({ selectors: { create } })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+
+    render(
+      <QueryClientProvider client={client}>
+        <NoteSelectionOverlay
+          caseId="case1"
+          resolveNoteId={async () => 'note1'}
+          selection={confirmState()}
+          onChoose={vi.fn()}
+          onDismiss={vi.fn()}
+        />
+      </QueryClientProvider>
+    )
+    fireEvent.click(screen.getByTestId('note-selection-confirm-submit'))
+
+    await waitFor(() => expect(create).toHaveBeenCalled())
+    // Nothing here owns the Signals screen, so without this the write is
+    // invisible there for staleTime (30s) after the toast says it happened.
+    const invalidated = () => invalidate.mock.calls.map(([arg]) => JSON.stringify(arg?.queryKey))
+    await waitFor(() =>
+      expect(invalidated()).toContain(JSON.stringify(queryKeys.selectors('case1')))
+    )
+    expect(invalidated()).toContain(JSON.stringify(queryKeys.selectorCaptureMatrix('case1')))
+    expect(invalidated()).toContain(JSON.stringify(queryKeys.selectorCoverage('case1')))
   })
 
   it('passes an unticked Watch through as enabled: false', async () => {

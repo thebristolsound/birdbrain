@@ -716,28 +716,38 @@ describe('withCaptureEntry', () => {
     expect(readCaptureEntryAt(tempDir, 7)).toBeUndefined()
   })
 
-  it('KAT: a pre-#827 capture entry keeps its exact chain hash', () => {
-    // Frozen from the canonical body a capture entry had before duplication
-    // provenance existed: the hex below is what `canonicalStringify` + SHA-256
-    // produce for exactly these fields. #827 adds two optional fields to this
-    // entry type, and this is the assertion that catches the version of that
-    // change which writes them unconditionally — every package exported before
-    // it would then fail to verify.
-    const body = {
-      type: 'capture',
-      captureId: 'cap-kat',
-      caseId: 'case-kat',
-      url: 'https://example.com/kat',
-      timestamp: '2026-04-05T12:00:00.000Z',
-      contentHash: 'a'.repeat(64),
-      sizeBytes: 1234,
-      operatorId: 'op-kat',
-      operatorName: 'Operator',
-      toolVersion: '1.0.0',
-      index: 0,
-      prevHash: '',
-      schemaVersion: 2
-    }
+  it('KAT: the writer still produces the exact pre-#827 chain hash for a pre-#827 entry', async () => {
+    // The hex is frozen from before duplication provenance existed: the entry
+    // the writer produced for exactly these fields hashed to it then, and must
+    // hash to it now. The entry is produced by `withCaptureEntry` — not
+    // re-stated as a literal — so this fails on any change to what a plain
+    // capture entry contains, including the #827 regression of writing
+    // duplicateOfCaptureId/duplicatedAt unconditionally: every package
+    // exported before such a change would stop verifying.
+    const written = await withCaptureEntry(
+      tempDir,
+      {
+        captureId: 'cap-kat',
+        caseId: 'case-kat',
+        url: 'https://example.com/kat',
+        timestamp: '2026-04-05T12:00:00.000Z',
+        contentHash: 'a'.repeat(64),
+        sizeBytes: 1234,
+        operatorId: 'op-kat',
+        operatorName: 'Operator',
+        toolVersion: '1.0.0'
+      },
+      (r) => r
+    )
+    expect(written.entryHash).toBe(
+      'c076682228ff6f44fafd46ae08d4bb1081ce9b7fbfeda53620228a8cdde8d238'
+    )
+    // The same hex from the stored line, recomputed the way a verifier does —
+    // pinning the derivation as well as the writer.
+    const entry = JSON.parse(readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim())
+    const { signature: _sig, entryHash, ...body } = entry
+    void _sig
+    expect(entryHash).toBe(written.entryHash)
     expect(createHash('sha256').update(canonicalStringify(body)).digest('hex')).toBe(
       'c076682228ff6f44fafd46ae08d4bb1081ce9b7fbfeda53620228a8cdde8d238'
     )

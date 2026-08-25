@@ -281,47 +281,52 @@ describe('createCaptureLifecycle.duplicate (#827)', () => {
     expect(strays).toEqual([])
   })
 
-  it('refuses, and cleans up, when a copied sidecar does not hash to its anchored value', async () => {
-    // The same window, for the screenshot: the source's entry anchors a
-    // screenshotHash, so a copy that lands different bytes must not be signed
-    // over — the entry would describe a file the duplicate does not have.
-    const realStore = createCaptureStore({ getRoot: () => join(tempDir, 'captures') })
-    const corruptPngStore: CaptureStore = {
-      ...realStore,
-      copyArtifacts: async (cid, sourceId, targetId) => {
-        const copied = await realStore.copyArtifacts(cid, sourceId, targetId)
-        const { abs, rel } = realStore.artifactPaths(cid, targetId, 'png')
-        writeFileSync(abs, 'corrupted-screenshot')
-        return {
-          ...copied,
-          artifacts: {
-            ...copied.artifacts,
-            png: {
-              rel,
-              hash: createHash('sha256').update(Buffer.from('corrupted-screenshot')).digest('hex'),
-              sizeBytes: 'corrupted-screenshot'.length
+  it.each(['png', 'txt'] as const)(
+    'refuses, and cleans up, when the copied %s sidecar does not hash to its anchored value',
+    async (type) => {
+      // The same window, for each sidecar: the source's entry anchors its hash,
+      // so a copy that lands different bytes must not be signed over — the
+      // entry would describe a file the duplicate does not have.
+      const realStore = createCaptureStore({ getRoot: () => join(tempDir, 'captures') })
+      const corruptStore: CaptureStore = {
+        ...realStore,
+        copyArtifacts: async (cid, sourceId, targetId) => {
+          const copied = await realStore.copyArtifacts(cid, sourceId, targetId)
+          const { abs, rel } = realStore.artifactPaths(cid, targetId, type)
+          writeFileSync(abs, 'corrupted-sidecar')
+          return {
+            ...copied,
+            artifacts: {
+              ...copied.artifacts,
+              [type]: {
+                rel,
+                hash: createHash('sha256').update(Buffer.from('corrupted-sidecar')).digest('hex'),
+                sizeBytes: 'corrupted-sidecar'.length
+              }
             }
           }
         }
       }
+      const lifecycleWithCorruptSidecar = createCaptureLifecycle({
+        selectorLifecycle: {
+          runActiveSelectorsForCapture: vi.fn()
+        } as unknown as SelectorLifecycle,
+        store: corruptStore
+      })
+      const before = manifestLines().length
+
+      const result = await lifecycleWithCorruptSidecar.duplicate(source.id)
+
+      expect(result).toEqual({ status: 'rejected', reason: 'copy_mismatch' })
+      expect(manifestLines()).toHaveLength(before)
+      expect(listCaptures(caseId)).toHaveLength(1)
+      const { readdirSync } = await import('fs')
+      const strays = readdirSync(join(tempDir, 'captures', caseId)).filter(
+        (f) => !f.startsWith(source.id) && f !== 'manifest.jsonl'
+      )
+      expect(strays).toEqual([])
     }
-    const lifecycleWithCorruptPng = createCaptureLifecycle({
-      selectorLifecycle: { runActiveSelectorsForCapture: vi.fn() } as unknown as SelectorLifecycle,
-      store: corruptPngStore
-    })
-    const before = manifestLines().length
-
-    const result = await lifecycleWithCorruptPng.duplicate(source.id)
-
-    expect(result).toEqual({ status: 'rejected', reason: 'copy_mismatch' })
-    expect(manifestLines()).toHaveLength(before)
-    expect(listCaptures(caseId)).toHaveLength(1)
-    const { readdirSync } = await import('fs')
-    const strays = readdirSync(join(tempDir, 'captures', caseId)).filter(
-      (f) => !f.startsWith(source.id) && f !== 'manifest.jsonl'
-    )
-    expect(strays).toEqual([])
-  })
+  )
 
   it('anchors for the copy only what the source entry anchors — unanchored sidecars gain none', async () => {
     // A chain-era capture from before sidecar anchoring (#118): its signed

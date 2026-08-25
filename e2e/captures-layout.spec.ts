@@ -3,7 +3,8 @@ import { test, expect } from './fixtures/electronApp'
 type Page = import('@playwright/test').Page
 
 // The three-column Captures rework (#397): the tab set, the drag-resizable
-// columns and their bounds, the 40px rails, and the full-bleed Wayback tab.
+// columns and their bounds, the 40px rails, and the Wayback tab's own layout
+// (compare panes plus the archive.org slide-out, #401).
 
 async function seedCapture(page: Page, caseId: string, token: string, slug: string) {
   const result = await page.evaluate(
@@ -121,9 +122,13 @@ test.describe('Captures three-column layout', () => {
     await expect(rows).toHaveCount(2)
     await expect(rail).toHaveCount(0)
 
-    // 4. Wayback is full-bleed: no list, no details, no list rail.
+    // 4. Wayback takes the width: no list, no details, no list rail — the
+    //    compare panes plus the 436px archive.org slide-out instead (#401). The
+    //    lookup control kept its testid when it moved into the panel header.
     await page.getByRole('tab', { name: 'Wayback', exact: true }).click()
+    await expect(page.getByTestId('wayback-panel')).toBeVisible()
     await expect(page.getByTestId('wayback-lookup-btn')).toBeVisible()
+    await expect(page.getByTestId('wayback-compare')).toBeVisible()
     await expect(rows).toHaveCount(0)
     await expect(page.getByTestId('capture-list-rail')).toHaveCount(0)
     await expect(page.getByTestId('capture-details-aside')).toHaveCount(0)

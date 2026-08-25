@@ -13,6 +13,7 @@ import { CaptureViewer } from '@renderer/components/captures/CaptureViewer'
 import { CaptureDetailsPanel } from '@renderer/components/captures/CaptureDetailsPanel'
 import { CaptureDetailsRail } from '@renderer/components/captures/CaptureDetailsRail'
 import { CaptureListRail } from '@renderer/components/captures/CaptureListRail'
+import { WaybackPanel } from '@renderer/components/captures/WaybackPanel'
 import {
   capturePanelIds,
   visibleCaptureColumns,
@@ -160,9 +161,10 @@ export function CapturesRoute() {
   // would follow the column rather than the screen.
   const handleCopyUrl = useCopyCaptureUrl(selectedCapture)
 
-  // The Wayback tab is full-bleed, but only once there is something to show it
-  // for — without this guard, deselecting from that tab would leave the
-  // operator on an empty viewer with no list to pick a row from.
+  // The Wayback tab takes the width (compare panes plus the archive.org
+  // slide-out), but only once there is something to show it for — without this
+  // guard, deselecting from that tab would leave the operator on an empty viewer
+  // with no list to pick a row from.
   const waybackActive = activeViewerTab === 'wayback' && selectedCapture !== null
 
   const columns = useMemo(
@@ -345,6 +347,15 @@ export function CapturesRoute() {
           </>
         )}
       </Group>
+      {/* The archive.org slide-out sits outside the Group beside the viewer, as
+          the rails do: it is fixed 436px chrome with no separator, and it is
+          bound to the Wayback tab rather than toggled on its own. */}
+      {columns.waybackPanel && selectedCapture && (
+        <WaybackPanel
+          capture={selectedCapture}
+          onClose={() => useAppStore.getState().setActiveViewerTab('screenshot')}
+        />
+      )}
       {columns.details === 'rail' && selectedCapture && (
         <aside
           data-testid="capture-details-aside"

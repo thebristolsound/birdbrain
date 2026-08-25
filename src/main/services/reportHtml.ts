@@ -39,9 +39,11 @@ import type {
   ExportOptions,
   ExportPreflight,
   HashVerification,
-  TrustedTime
+  TrustedTime,
+  WaybackRef
 } from '@shared/types'
 import type { TrustedTimeResult } from '@shared/verify'
+import { formatSnapshotDelta } from '@shared/wayback'
 import {
   TRUSTED_TIME_UNRECORDED_STAMPED_AT,
   trustedTimeAttestingParty,
@@ -164,6 +166,14 @@ export interface ReportData {
    */
   tsaTrustAnchorBundled: boolean
   /**
+   * Pinned archive.org references, keyed by capture id (#401). Corroboration
+   * only, and deliberately references rather than content: nothing here was
+   * retrieved, hashed or packaged by Birdbrain, and a pin never converts a
+   * replayed snapshot into a Capture (ADR-0002). Empty or absent for a capture
+   * the operator pinned nothing to, which renders no block at all.
+   */
+  waybackRefsByCaptureId: Map<string, WaybackRef[]>
+  /**
    * Selection scope (#398, ADR-0009): set when the operator exported a
    * selection rather than the whole case. The custody module states that the
    * Manifest covers the whole Case while the artifacts cover the selection, so
@@ -242,6 +252,8 @@ interface ExhibitView {
    * runs no verification still knows perfectly well whether it packaged the file.
    */
   pageArchiveMissing: boolean
+  /** Pinned archive.org references for this capture, oldest snapshot first. */
+  waybackRefs: WaybackRef[]
 }
 
 /**
@@ -289,7 +301,10 @@ function buildExhibits(data: ReportData, options: ExportOptions): ExhibitView[] 
       packaged,
       // Only a package can be missing a packaged file. A standalone HTML export
       // bundles nothing, so absence there is not a gap to report.
-      pageArchiveMissing: isPackage && packaged.pageArchive === null
+      pageArchiveMissing: isPackage && packaged.pageArchive === null,
+      waybackRefs: [...(data.waybackRefsByCaptureId.get(capture.id) ?? [])].sort((a, b) =>
+        a.snapshotTimestamp.localeCompare(b.snapshotTimestamp)
+      )
     }
   })
 }
@@ -1000,6 +1015,48 @@ function renderExhibit(e: ExhibitView, total: number): string {
       }</p></div>`
       : ''
 
+  // Pinned archive.org references (#401). This is corroboration in exactly the
+  // sense the scope section already defines: obtained from a third party after
+  // storage, not bound to the captured transaction. What it establishes is
+  // narrower still than the TLS block above — Birdbrain never retrieved the
+  // archived page, so the reference attests to a listing, not to content.
+  const waybackCorroboration =
+    e.waybackRefs.length > 0
+      ? `<div class="note">
+      <p class="note-title">Corroboration only — archive.org references, not bound to the capture</p>
+      <p>The operator pinned ${e.waybackRefs.length} archive.org snapshot${
+        e.waybackRefs.length === 1 ? '' : 's'
+      } of this URL as corroboration. ${
+        e.waybackRefs.length === 1 ? 'It was' : 'They were'
+      } recorded by the Internet Archive, independently of this capture and at the
+      time${e.waybackRefs.length === 1 ? '' : 's'} stated below. Birdbrain did not
+      retrieve, hash or package the archived content: what follows is a reference to
+      a third party's record, and this package contains no copy of it. A pinned
+      reference establishes that archive.org listed a snapshot at the stated time
+      when the operator looked the URL up. It does not establish what the archived
+      page contained, nor that the archived page is the page reproduced in this
+      exhibit.</p>
+      <ul>${e.waybackRefs
+        .map((ref) => {
+          const delta = formatSnapshotDelta(ref.snapshotTimestamp, e.capture.timestamp)
+          const facts = [
+            // Escaped like every other value here despite being typed a number:
+            // the type is a repo cast over a SQLite column, and INTEGER affinity
+            // keeps non-numeric text as TEXT. The repo now coerces on read, so
+            // this is the second line and not the only one.
+            ref.statusCode !== undefined ? `HTTP ${esc(String(ref.statusCode))}` : null,
+            ref.mimeType ? esc(ref.mimeType) : null,
+            `looked up ${isoUtc(ref.checkedAt)}`
+          ].filter((fact): fact is string => fact !== null)
+          return `<li><span class="mono">${isoUtc(ref.snapshotTimestamp)}</span>${
+            delta ? ` — ${esc(delta)}` : ''
+          }<br><span class="mono">${esc(ref.snapshotUrl)}</span><br><span class="sub">${facts.join(
+            ' · '
+          )}</span></li>`
+        })
+        .join('')}</ul></div>`
+      : ''
+
   const missingBanner = e.pageArchiveMissing
     ? `<div class="alert">
     <p class="alert-title">Stored page archive not available</p>
@@ -1109,6 +1166,7 @@ function renderExhibit(e: ExhibitView, total: number): string {
       ${image}
       ${legend}
       ${corroboration}
+      ${waybackCorroboration}
     </div>
   </div>
 </section>`

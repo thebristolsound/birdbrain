@@ -791,6 +791,70 @@ describe('ipcHandlers — tags', () => {
     expectOk(await invoke(IPC_CHANNELS.TAGS_REMOVE_FROM_CAPTURE, { captureId, tagId: tag.id }))
     expectOk(await invoke(IPC_CHANNELS.TAGS_DELETE, tag.id))
   })
+
+  // #391 note-level tags. Driven at the IPC boundary rather than through
+  // noteTags directly because both translations live in ipcHandlers.ts: the
+  // payload rejection and NoteNotFoundError -> IpcFailure. A renderer that
+  // branches on either code is reading this handler, not the service.
+  it('applies, reads and removes a note tag, and reports both failure paths', async () => {
+    const note = expectOk<{ id: string }>(
+      await invoke(IPC_CHANNELS.NOTES_CREATE, { caseId, content: 'wire transfer to Meridian' })
+    )
+
+    const applied = expectOk<{ tag: { id: string; name: string }; captureId?: string }>(
+      await invoke(IPC_CHANNELS.TAGS_APPLY_TO_NOTE, { noteId: note.id, name: 'wire-transfer' })
+    )
+    expect(applied.tag.name).toBe('wire-transfer')
+    // Unanchored note, so R15's capture half must not have run.
+    expect(applied.captureId).toBeUndefined()
+
+    const forNote = expectOk<{ id: string }[]>(
+      await invoke(IPC_CHANNELS.TAGS_GET_FOR_NOTE, note.id)
+    )
+    expect(forNote.map((t) => t.id)).toEqual([applied.tag.id])
+
+    expectOk(
+      await invoke(IPC_CHANNELS.TAGS_REMOVE_FROM_NOTE, { noteId: note.id, tagId: applied.tag.id })
+    )
+    expect(expectOk(await invoke(IPC_CHANNELS.TAGS_GET_FOR_NOTE, note.id))).toEqual([])
+
+    const blank = (await invoke(IPC_CHANNELS.TAGS_APPLY_TO_NOTE, {
+      noteId: note.id,
+      name: '   '
+    })) as { ok: boolean; code?: string }
+    expect(blank.ok).toBe(false)
+    expect(blank.code).toBe('INVALID_NOTE_TAG_PAYLOAD')
+
+    const missing = (await invoke(IPC_CHANNELS.TAGS_APPLY_TO_NOTE, {
+      noteId: 'no-such-note',
+      name: 'x'
+    })) as { ok: boolean; code?: string }
+    expect(missing.ok).toBe(false)
+    expect(missing.code).toBe('NOTE_NOT_FOUND')
+  })
+
+  // The other half of R15, and the reason the result carries captureId at all:
+  // the renderer's confirmation says which capture was tagged, so the handler
+  // has to report it rather than let the caller assume.
+  it('also tags the anchored capture and names it in the result', async () => {
+    const note = expectOk<{ id: string }>(
+      await invoke(IPC_CHANNELS.NOTES_CREATE, {
+        caseId,
+        content: 'on this page',
+        anchor: JSON.stringify({ kind: 'capture', captureId })
+      })
+    )
+
+    const applied = expectOk<{ tag: { id: string }; captureId?: string }>(
+      await invoke(IPC_CHANNELS.TAGS_APPLY_TO_NOTE, { noteId: note.id, name: 'anchored' })
+    )
+    expect(applied.captureId).toBe(captureId)
+
+    const forCapture = expectOk<{ id: string }[]>(
+      await invoke(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, captureId)
+    )
+    expect(forCapture.some((t) => t.id === applied.tag.id)).toBe(true)
+  })
 })
 
 describe('ipcHandlers — selectors', () => {
@@ -1928,6 +1992,19 @@ describe('archive handlers', () => {
     expect(refs).toHaveLength(1)
     expect(refs[0].snapshotUrl).toBe(snapshot.snapshotUrl)
     expect(refs[0].checkedAt).toBe('2026-06-30T00:00:00.000Z')
+
+    // The case-wide read the export dialog uses: same pins, each carrying the
+    // capture time it corroborates.
+    const listForCase = registered.get('wayback:listForCase')!
+    const caseRefs = expectOk<Array<WaybackRefRow & { captureTimestamp: string }>>(
+      (await listForCase({} as never, c.id)) as {
+        ok: boolean
+        data?: Array<WaybackRefRow & { captureTimestamp: string }>
+      }
+    )
+    expect(caseRefs).toHaveLength(1)
+    expect(caseRefs[0].snapshotUrl).toBe(snapshot.snapshotUrl)
+    expect(caseRefs[0].captureTimestamp).toBe('2020-01-15T12:00:00.000Z')
 
     const unpin = registered.get('wayback:unpin')!
     const removed = (await unpin({} as never, pinned.data.id)) as { ok: boolean; data: boolean }

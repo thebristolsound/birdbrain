@@ -475,6 +475,16 @@ export function CaptureDetailsPanel({
           editor={noteEditor}
           placeholder="Add a quick note…"
           minHeightClass="min-h-20"
+          selectionActions={{
+            caseId,
+            // The inline editor autosaves, so the note may not exist yet when
+            // the Tag action fires; flushing first is what gives it one (#391).
+            resolveNoteId: async () => {
+              const id = await inline.flush()
+              if (!id) throw new Error('Write the note before tagging it')
+              return id
+            }
+          }}
           onBlur={() => void inline.flush()}
           onKeyDown={(e) => {
             // An Escape the editor already handled — dismissing the Mention

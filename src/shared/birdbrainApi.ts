@@ -26,6 +26,7 @@ import type {
   CaptureAnnotations,
   AnnotationPin,
   OperatorIdentity,
+  CaseWaybackRef,
   WaybackRef,
   WaybackLookupResult,
   ArchiveInspectReport,
@@ -45,6 +46,9 @@ import type {
   CreateTagParams,
   UpdateTagParams,
   CaptureTagParams,
+  NoteTagParams,
+  ApplyTagToNoteParams,
+  ApplyTagToNoteResult,
   CreateSelectorParams,
   UpdateSelectorParams,
   CreateNoteParams,
@@ -132,6 +136,9 @@ export interface BirdbrainAPI {
     usageCountsForCase(caseId: string): Promise<Record<string, number>>
     captureMatrix(caseId: string, limit: number): Promise<Record<string, string[]>>
     addToCaptures(payload: CaptureBatchPayload & { tagId: string }): Promise<BatchCountResult>
+    applyToNote(params: ApplyTagToNoteParams): Promise<ApplyTagToNoteResult>
+    removeFromNote(params: NoteTagParams): Promise<void>
+    getForNote(noteId: string): Promise<Tag[]>
   }
   selectors: {
     list(caseId: string): Promise<Selector[]>
@@ -163,6 +170,7 @@ export interface BirdbrainAPI {
   wayback: {
     lookup(captureId: string): Promise<WaybackLookupResult>
     list(captureId: string): Promise<WaybackRef[]>
+    listForCase(caseId: string): Promise<CaseWaybackRef[]>
     pin(params: PinWaybackSnapshotParams): Promise<WaybackRef>
     unpin(refId: string): Promise<boolean>
   }

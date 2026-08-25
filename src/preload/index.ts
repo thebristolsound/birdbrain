@@ -99,7 +99,10 @@ const birdbrain = {
     countForCase: bridge(IPC_CHANNELS.TAGS_COUNT_FOR_CASE),
     usageCountsForCase: bridge(IPC_CHANNELS.TAGS_USAGE_COUNTS_FOR_CASE),
     captureMatrix: bridge(IPC_CHANNELS.TAGS_CAPTURE_MATRIX),
-    addToCaptures: bridge(IPC_CHANNELS.TAGS_ADD_TO_CAPTURES)
+    addToCaptures: bridge(IPC_CHANNELS.TAGS_ADD_TO_CAPTURES),
+    applyToNote: bridge(IPC_CHANNELS.TAGS_APPLY_TO_NOTE),
+    removeFromNote: bridge(IPC_CHANNELS.TAGS_REMOVE_FROM_NOTE),
+    getForNote: bridge(IPC_CHANNELS.TAGS_GET_FOR_NOTE)
   },
   selectors: {
     list: bridge(IPC_CHANNELS.SELECTORS_LIST),
@@ -131,6 +134,7 @@ const birdbrain = {
   wayback: {
     lookup: bridge(IPC_CHANNELS.WAYBACK_LOOKUP),
     list: bridge(IPC_CHANNELS.WAYBACK_LIST),
+    listForCase: bridge(IPC_CHANNELS.WAYBACK_LIST_FOR_CASE),
     pin: bridge(IPC_CHANNELS.WAYBACK_PIN),
     unpin: bridge(IPC_CHANNELS.WAYBACK_UNPIN)
   },

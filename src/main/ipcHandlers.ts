@@ -11,6 +11,8 @@ import type {
   CreateTagParams,
   UpdateTagParams,
   CaptureTagParams,
+  NoteTagParams,
+  ApplyTagToNoteParams,
   CreateSelectorParams,
   UpdateSelectorParams,
   CreateNoteParams,
@@ -50,6 +52,7 @@ import * as noteReferenceRepo from '@main/services/db/noteReferenceRepo'
 import * as waybackRefRepo from '@main/services/db/waybackRefRepo'
 import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
 import * as annotations from '@main/services/annotations'
+import { applyTagToNote, NoteNotFoundError } from '@main/services/noteTags'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import { renderCapturePdf } from '@main/services/pdfExport'
 import { getThumbnail } from '@main/services/thumbnails'
@@ -427,6 +430,27 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.TAGS_CAPTURE_MATRIX, (_, caseId: string, limit: number) =>
     tagRepo.getTagCaptureMatrix(caseId, limit)
   )
+  // Note-level tags (#391). A payload channel, so it gets the same shape check
+  // the other payload channels get: a missing noteId would otherwise reach the
+  // repo and come back as a foreign-key error the renderer cannot interpret.
+  handle(IPC_CHANNELS.TAGS_APPLY_TO_NOTE, (_, params: ApplyTagToNoteParams) => {
+    const p = params as Partial<ApplyTagToNoteParams> | null | undefined
+    if (!p || typeof p.noteId !== 'string' || typeof p.name !== 'string' || !p.name.trim()) {
+      throw new IpcFailure('Invalid note tag payload', 'INVALID_NOTE_TAG_PAYLOAD')
+    }
+    try {
+      return applyTagToNote({ noteId: p.noteId, name: p.name })
+    } catch (err) {
+      if (err instanceof NoteNotFoundError) {
+        throw new IpcFailure(err.message, 'NOTE_NOT_FOUND')
+      }
+      throw err
+    }
+  })
+  handle(IPC_CHANNELS.TAGS_REMOVE_FROM_NOTE, (_, params: NoteTagParams) => {
+    tagRepo.removeTagFromNote(params)
+  })
+  handle(IPC_CHANNELS.TAGS_GET_FOR_NOTE, (_, noteId: string) => tagRepo.getTagsForNote(noteId))
   handle(IPC_CHANNELS.TAGS_ADD_TO_CAPTURES, (_, payload) => {
     const { caseId, captureIds } = validateBatchPayload(payload)
     if (typeof payload.tagId !== 'string') {
@@ -590,6 +614,10 @@ export function registerIpcHandlers(deps: {
 
   handle(IPC_CHANNELS.WAYBACK_LIST, (_, captureId: string) =>
     waybackRefRepo.listWaybackRefs(captureId)
+  )
+
+  handle(IPC_CHANNELS.WAYBACK_LIST_FOR_CASE, (_, caseId: string) =>
+    waybackRefRepo.listWaybackRefsForCase(caseId)
   )
 
   handle(IPC_CHANNELS.WAYBACK_PIN, async (_, params: PinWaybackSnapshotParams) => {

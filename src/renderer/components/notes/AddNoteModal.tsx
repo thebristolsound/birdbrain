@@ -35,15 +35,24 @@ export function AddNoteModal({
   prefillTitle,
   prefillBody
 }: AddNoteModalProps) {
-  const { create } = useNotesMutations(caseId)
+  const { create, update } = useNotesMutations(caseId)
   const [title, setTitle] = useState('')
   const [bodyDoc, setBodyDoc] = useState<string | null>(null)
-  const editor = useNoteEditor({ caseId, onChange: setBodyDoc, testId: 'add-note-body' })
+  // See CreateNoteCard: the Tag action writes the draft out early, and from
+  // then on Save updates that note instead of creating a second one (#391).
+  const [draftNoteId, setDraftNoteId] = useState<string | null>(null)
+  const editor = useNoteEditor({
+    caseId,
+    noteId: draftNoteId ?? undefined,
+    onChange: setBodyDoc,
+    testId: 'add-note-body'
+  })
   const hasBody = editor ? !editor.isEmpty : false
 
   useEffect(() => {
     if (!open || !editor) return
     setTitle(prefillTitle ?? captureTitle)
+    setDraftNoteId(null)
     // Prefilled text (a selected passage, say) arrives as plain text; lift it
     // into document form so the investigator can format from there.
     const doc = prefillBody ? plainTextToNoteDoc(prefillBody) : EMPTY_NOTE_DOC
@@ -51,15 +60,26 @@ export function AddNoteModal({
     setBodyDoc(JSON.stringify(doc))
   }, [open, editor, captureTitle, prefillTitle, prefillBody])
 
-  async function handleSave() {
-    if (!title.trim() && !hasBody) return
-    await create.mutateAsync({
+  async function persistDraft(): Promise<string> {
+    const doc = bodyDoc ?? JSON.stringify(EMPTY_NOTE_DOC)
+    if (draftNoteId) {
+      await update.mutateAsync({ id: draftNoteId, title: title.trim(), bodyDoc: doc })
+      return draftNoteId
+    }
+    const created = await create.mutateAsync({
       caseId,
       captureId,
       title: title.trim(),
-      bodyDoc: bodyDoc ?? JSON.stringify(EMPTY_NOTE_DOC),
+      bodyDoc: doc,
       sourceUrl: captureUrl
     })
+    setDraftNoteId(created.id)
+    return created.id
+  }
+
+  async function handleSave() {
+    if (!title.trim() && !hasBody) return
+    await persistDraft()
     onClose()
   }
 
@@ -86,6 +106,7 @@ export function AddNoteModal({
             editor={editor}
             minHeightClass="min-h-32"
             placeholder="Start writing — type @ to link a capture, # for a selector or tag."
+            selectionActions={{ caseId, resolveNoteId: persistDraft }}
           />
         </div>
         <div className="mb-3 truncate text-[11px] text-text-muted">Linked to: {captureUrl}</div>

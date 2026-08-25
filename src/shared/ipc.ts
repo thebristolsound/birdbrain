@@ -7,6 +7,7 @@ import type {
   AnnotationShape,
   AnnotationsBundle,
   ArchiveInspectReport,
+  CaseWaybackRef,
   WaybackRef,
   BirdbrainSettings,
   BugReportInput,
@@ -100,6 +101,9 @@ export const IPC_CHANNELS = {
   TAGS_USAGE_COUNTS_FOR_CASE: 'tags:usageCountsForCase',
   TAGS_CAPTURE_MATRIX: 'tags:captureMatrix',
   TAGS_ADD_TO_CAPTURES: 'tags:addToCaptures',
+  TAGS_APPLY_TO_NOTE: 'tags:applyToNote',
+  TAGS_REMOVE_FROM_NOTE: 'tags:removeFromNote',
+  TAGS_GET_FOR_NOTE: 'tags:getForNote',
 
   // Session (renderer-side session control; the extension drives HTTP)
   SESSION_SNAPSHOT: 'session:snapshot',
@@ -153,6 +157,7 @@ export const IPC_CHANNELS = {
   // Wayback Machine corroboration
   WAYBACK_LOOKUP: 'wayback:lookup',
   WAYBACK_LIST: 'wayback:list',
+  WAYBACK_LIST_FOR_CASE: 'wayback:listForCase',
   WAYBACK_PIN: 'wayback:pin',
   WAYBACK_UNPIN: 'wayback:unpin',
 
@@ -336,12 +341,46 @@ export interface CaptureTagParams {
   tagId: string
 }
 
+export interface NoteTagParams {
+  noteId: string
+  tagId: string
+}
+
+/**
+ * Apply a tag to a note by NAME rather than by id (#391): the selection flow
+ * derives a name from the passage and has no way to know whether that tag
+ * already exists. Main resolves it create-or-reuse (ruling R15), so the
+ * renderer never races two lookups against a UNIQUE constraint.
+ */
+export interface ApplyTagToNoteParams {
+  noteId: string
+  name: string
+}
+
+/**
+ * `captureId` is the capture the tag ALSO landed on (ruling R15), or undefined
+ * when the note is anchored to nothing, or when its anchored capture has since
+ * been deleted. It is reported rather than assumed so the renderer's
+ * confirmation says what actually happened instead of what the caller hoped
+ * for.
+ */
+export interface ApplyTagToNoteResult {
+  tag: Tag
+  captureId?: string
+}
+
 export interface CreateSelectorParams {
   caseId: string
   pattern: string
   isRegex?: boolean
   label?: string
   origin?: SelectorOrigin
+  /**
+   * Whether the selector watches future captures. Omitted means enabled, which
+   * is the DDL default every pre-#391 call site relied on; the note selection
+   * flow passes it explicitly because its confirm popover offers the choice.
+   */
+  enabled?: boolean
 }
 
 export interface UpdateSelectorParams {
@@ -668,6 +707,9 @@ export interface IpcInvokeContract {
     args: [payload: CaptureBatchPayload & { tagId: string }]
     result: BatchCountResult
   }
+  'tags:applyToNote': { args: [params: ApplyTagToNoteParams]; result: ApplyTagToNoteResult }
+  'tags:removeFromNote': { args: [params: NoteTagParams]; result: void }
+  'tags:getForNote': { args: [noteId: string]; result: Tag[] }
 
   'selectors:list': { args: [caseId: string]; result: Selector[] }
   'selectors:get': { args: [id: string]; result: Selector | undefined }
@@ -723,6 +765,7 @@ export interface IpcInvokeContract {
 
   'wayback:lookup': { args: [captureId: string]; result: WaybackLookupResult }
   'wayback:list': { args: [captureId: string]; result: WaybackRef[] }
+  'wayback:listForCase': { args: [caseId: string]; result: CaseWaybackRef[] }
   'wayback:pin': { args: [params: PinWaybackSnapshotParams]; result: WaybackRef }
   'wayback:unpin': { args: [refId: string]; result: boolean }
 

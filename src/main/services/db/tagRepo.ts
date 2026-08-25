@@ -1,6 +1,6 @@
 import { v4 as uuid } from 'uuid'
 import type { Tag } from '@shared/types'
-import type { CreateTagParams, UpdateTagParams, CaptureTagParams } from '@shared/ipc'
+import type { CreateTagParams, UpdateTagParams, CaptureTagParams, NoteTagParams } from '@shared/ipc'
 import { getDb, type ImportCtx } from '@main/services/db/core'
 
 export function listTags(): Tag[] {
@@ -62,6 +62,49 @@ export function removeTagFromCapture(params: CaptureTagParams): void {
   getDb()
     .prepare('DELETE FROM capture_tags WHERE capture_id = ? AND tag_id = ?')
     .run(params.captureId, params.tagId)
+}
+
+/**
+ * Create-or-reuse by name (#391, ruling R15). `tags.name` is NOT NULL UNIQUE
+ * and `createTag` is a bare INSERT, so a caller that names an existing tag
+ * gets a constraint failure rather than the tag it asked for (#811).
+ *
+ * The exact-name lookup runs before the case-insensitive one for the reason
+ * PR #835's review gave for the extension path: `Evidence` and `evidence` can
+ * both exist, and the insensitive query could return either — attaching a tag
+ * with a different identity and colour than the one the operator named.
+ */
+export function findOrCreateTagByName(name: string): Tag {
+  const exactId = findTagIdByNameExact(name)
+  const foundId = exactId ?? findTagIdByNameInsensitive(name)
+  const found = foundId ? getTag(foundId) : undefined
+  return found ?? createTag({ name })
+}
+
+// Note-level tags (#391). INSERT OR IGNORE for the same reason
+// addTagToCapture uses it: applying a tag a note already carries is a no-op,
+// not an error the operator has to read.
+export function addTagToNote(params: NoteTagParams): void {
+  getDb()
+    .prepare('INSERT OR IGNORE INTO note_tags (note_id, tag_id) VALUES (?, ?)')
+    .run(params.noteId, params.tagId)
+}
+
+export function removeTagFromNote(params: NoteTagParams): void {
+  getDb()
+    .prepare('DELETE FROM note_tags WHERE note_id = ? AND tag_id = ?')
+    .run(params.noteId, params.tagId)
+}
+
+export function getTagsForNote(noteId: string): Tag[] {
+  return getDb()
+    .prepare(
+      `SELECT t.* FROM tags t
+       JOIN note_tags nt ON t.id = nt.tag_id
+       WHERE nt.note_id = ?
+       ORDER BY t.name`
+    )
+    .all(noteId) as Tag[]
 }
 
 export function getTagsForCapture(captureId: string): Tag[] {
@@ -130,13 +173,32 @@ export function getTagCaptureMatrix(caseId: string, limit: number): Record<strin
 
 // --- Archive bulk ops ---
 
+// Every tag the case reaches, by either relation. The note_tags half is not
+// optional (#391): a tag carried only by a note would otherwise be absent from
+// data.json while note_tags cited it, so the import would either fail its
+// foreign key or bind the note to whatever local tag already held that id.
 export function collectTagsForCase(caseId: string): Record<string, unknown>[] {
   return getDb()
     .prepare(
       `SELECT DISTINCT t.* FROM tags t
        JOIN capture_tags ct ON ct.tag_id = t.id
        JOIN captures c ON c.id = ct.capture_id
-       WHERE c.case_id = ?`
+       WHERE c.case_id = ?
+       UNION
+       SELECT DISTINCT t.* FROM tags t
+       JOIN note_tags nt ON nt.tag_id = t.id
+       JOIN notes n ON n.id = nt.note_id
+       WHERE n.case_id = ?`
+    )
+    .all(caseId, caseId) as Record<string, unknown>[]
+}
+
+export function collectNoteTagsForCase(caseId: string): Record<string, unknown>[] {
+  return getDb()
+    .prepare(
+      `SELECT nt.* FROM note_tags nt
+       JOIN notes n ON n.id = nt.note_id
+       WHERE n.case_id = ?`
     )
     .all(caseId) as Record<string, unknown>[]
 }
@@ -183,5 +245,14 @@ export function importCaptureTagRows(rows: Record<string, unknown>[], ctx: Impor
   )
   for (const ct of rows) {
     insert.run(ctx.mapId(ct.capture_id as string), ctx.mapTag(ct.tag_id as string))
+  }
+}
+
+// Must run AFTER importNoteRows: note_tags has a foreign key onto notes and
+// `foreign_keys = ON` is set for every connection.
+export function importNoteTagRows(rows: Record<string, unknown>[], ctx: ImportCtx): void {
+  const insert = getDb().prepare('INSERT OR IGNORE INTO note_tags (note_id, tag_id) VALUES (?, ?)')
+  for (const nt of rows) {
+    insert.run(ctx.mapId(nt.note_id as string), ctx.mapTag(nt.tag_id as string))
   }
 }

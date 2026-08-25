@@ -1,4 +1,6 @@
-import { app, BrowserWindow, dialog, shell } from 'electron'
+// `session` is aliased because the whenReady block below binds a local `session` to
+// the sessionLog record, which would shadow it there.
+import { app, BrowserWindow, dialog, shell, session as electronSession } from 'electron'
 import { join, resolve } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
@@ -14,6 +16,16 @@ import {
 import { registerIpcHandlers } from '@main/ipcHandlers'
 import { resolveWindowSize, MIN_WINDOW_SIZE } from '@main/windowSize'
 import { revealWhenReady } from '@main/windowReveal'
+import {
+  allowWebviewPermission,
+  decideWebviewAttach,
+  decideWebviewDownload,
+  decideWebviewNavigation,
+  decideWebviewRequest,
+  resolveAttachPartition,
+  sanitizeWebviewPreferences,
+  WEBVIEW_PARTITIONS
+} from '@main/webviewPolicy'
 import { initSettings, getSettings } from '@main/services/settings'
 import { initInstallationId, getInstallationId } from '@main/services/installationId'
 import { initSigningKey, SigningKeyUnacknowledgedError } from '@main/services/signingKey'
@@ -136,7 +148,59 @@ app.on('child-process-gone', (_event, details) => {
   flushSync()
 })
 
+// Once per process, not once per window. `fromPartition` returns the same
+// long-lived Session for a given name, and `will-download` is an emitter
+// subscription rather than a setter — so a second createWindow() (the macOS
+// `activate` path) would stack a duplicate listener on a Session that is
+// already hardened.
+let webviewSessionsHardened = false
+
+// Denies permissions, downloads and off-allow-list requests on every partition a
+// webview may run on. Runs before the window exists, so no guest can attach ahead
+// of its own session's handlers. Both permission handlers are set: a request
+// handler alone leaves the synchronous check path (which Chromium consults for
+// already-granted permissions) at its default.
+function hardenWebviewSessions(): void {
+  if (webviewSessionsHardened) return
+  webviewSessionsHardened = true
+  for (const partition of WEBVIEW_PARTITIONS) {
+    const guestSession = electronSession.fromPartition(partition)
+    guestSession.setPermissionRequestHandler((_contents, permission, callback) => {
+      callback(allowWebviewPermission(partition, permission))
+    })
+    guestSession.setPermissionCheckHandler((_contents, permission) =>
+      allowWebviewPermission(partition, permission)
+    )
+    // Through the policy rather than an inline preventDefault: the decision is
+    // the module's to make, and a hardcoded call here would leave the download
+    // known-answer test answering about a function the app never runs.
+    guestSession.on('will-download', (event) => {
+      if (decideWebviewDownload() === 'block') event.preventDefault()
+    })
+    // Every request the guest issues, not only the navigations `will-navigate`
+    // sees (#886, #810). No filter argument, so subresources are in scope: that
+    // is the whole gap, since an <img>, a font or a fetch from script raises no
+    // navigation event. Denials are deliberately not logged — one replay page
+    // can issue hundreds and the fact worth keeping is the allow-list, which is
+    // written down in webviewPolicy.ts rather than inferred from a log.
+    guestSession.webRequest.onBeforeRequest((details, callback) => {
+      callback({ cancel: decideWebviewRequest({ partition, url: details.url }) === 'block' })
+    })
+  }
+}
+
+// Which of our partitions this guest is running on, identified by its Session —
+// `fromPartition` returns the same instance for the same name, so this is an
+// identity test rather than a string the guest could have influenced after attach.
+function webviewPartitionOf(contents: Electron.WebContents): string | null {
+  for (const partition of WEBVIEW_PARTITIONS) {
+    if (contents.session === electronSession.fromPartition(partition)) return partition
+  }
+  return null
+}
+
 function createWindow(): BrowserWindow {
+  hardenWebviewSessions()
   const { width, height } = resolveWindowSize(process.env.BIRDBRAIN_WINDOW_SIZE, !app.isPackaged)
   const win = new BrowserWindow({
     width,
@@ -174,6 +238,29 @@ function createWindow(): BrowserWindow {
       sendEvent(win.webContents, IPC_CHANNELS.DEEP_LINK_NAVIGATE, pendingNavigate)
       pendingNavigate = null
     }
+  })
+
+  // Nothing attaches as a guest without a partition this app recognises and a `src`
+  // inside that partition's allow-list, and every guest gets its webPreferences
+  // rewritten on the way in — the renderer's attributes are a request, not the
+  // setting. Electron reads the object it handed us, so the sanitizer mutates.
+  win.webContents.on('will-attach-webview', (event, webPreferences, params) => {
+    const partition = resolveAttachPartition(
+      params as unknown as Record<string, unknown>,
+      webPreferences as unknown as Record<string, unknown>
+    )
+    const decision = decideWebviewAttach({ partition, src: params.src })
+    if (!decision.allowed) {
+      // Code only, no context: the refusal reason is one of two closed values and
+      // neither is worth a new entry in the log context-key allowlist.
+      logger.warn('app', 'app.webview_attach_refused')
+      event.preventDefault()
+      return
+    }
+    sanitizeWebviewPreferences(
+      webPreferences as unknown as Record<string, unknown>,
+      decision.policy
+    )
   })
 
   win.webContents.setWindowOpenHandler((details) => {
@@ -231,19 +318,26 @@ function registerProtocolClient(): void {
   }
 }
 
-// Enforce security on all web contents (defense-in-depth for webviews)
+// Navigation policy for every webview guest. Partition-aware since #401: the MHTML
+// evidence viewer gets exactly one file:// load and nothing after it, while the
+// Wayback replay pane may follow archive.org's own redirects but never leaves the
+// replay prefix. A guest on any other partition navigates nowhere.
 app.on('web-contents-created', (_event, contents) => {
-  if (contents.getType() === 'webview') {
-    // Allow the initial file:// load, block all subsequent navigations
-    let initialLoadDone = false
-    contents.on('will-navigate', (event, url) => {
-      if (!initialLoadDone && url.startsWith('file://')) {
-        initialLoadDone = true
-        return
-      }
-      event.preventDefault()
-    })
+  if (contents.getType() !== 'webview') return
+  const partition = webviewPartitionOf(contents)
+  let initialLoadDone = false
+  const guard = (event: Electron.Event, url: string): void => {
+    if (decideWebviewNavigation({ partition, url, initialLoadDone }) === 'allow') {
+      initialLoadDone = true
+      return
+    }
+    event.preventDefault()
   }
+  contents.on('will-navigate', guard)
+  // Server-side redirects do not raise will-navigate, and archive.org replay URLs
+  // redirect to the nearest snapshot as a matter of course.
+  contents.on('will-redirect', guard)
+  contents.setWindowOpenHandler(() => ({ action: 'deny' }))
 })
 
 // A single-instance lock is required so a deep link launched while the app is

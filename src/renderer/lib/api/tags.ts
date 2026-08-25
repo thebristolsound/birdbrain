@@ -108,5 +108,23 @@ export function useTagsMutations(caseId?: string) {
     meta: { action: 'add tag to captures' }
   })
 
-  return { create, update, remove, addToCapture, removeFromCapture, addToCaptures }
+  // Note-level tag apply (#391). Named by string, not by id: main resolves
+  // create-or-reuse, so the renderer never has to decide whether the tag it is
+  // about to name already exists. The capture invalidation is conditional on
+  // what main reports it actually did — an unanchored note touches no capture.
+  const applyToNote = useMutation({
+    mutationFn: ({ noteId, name }: { noteId: string; name: string }) =>
+      window.birdbrain.tags.applyToNote({ noteId, name }),
+    onSuccess: (data, vars) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.tagsForNote(vars.noteId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.tags })
+      if (data.captureId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.tagsForCapture(data.captureId) })
+      }
+      invalidateTagCounts()
+    },
+    meta: { action: 'apply tag to note' }
+  })
+
+  return { create, update, remove, addToCapture, removeFromCapture, addToCaptures, applyToNote }
 }

@@ -8,7 +8,7 @@
 // archive and not the `archived` soft-delete flag.
 
 import { v4 as uuid } from 'uuid'
-import type { WaybackRef, WaybackSnapshot } from '@shared/types'
+import type { CaseWaybackRef, WaybackRef, WaybackSnapshot } from '@shared/types'
 import { getDb, type ImportCtx } from '@main/services/db/core'
 
 export function createWaybackRef(params: {
@@ -42,8 +42,7 @@ export function createWaybackRef(params: {
 
 export function getWaybackRef(id: string): WaybackRef | undefined {
   const row = getDb().prepare('SELECT * FROM capture_archive_refs WHERE id = ?').get(id) as
-    | Record<string, unknown>
-    | undefined
+    Record<string, unknown> | undefined
   return row ? rowToWaybackRef(row) : undefined
 }
 
@@ -56,9 +55,44 @@ export function listWaybackRefs(captureId: string): WaybackRef[] {
   return rows.map(rowToWaybackRef)
 }
 
+/**
+ * Every pinned reference in a case, newest snapshot first, each carrying the
+ * timestamp of the capture it hangs off. One read for surfaces that show pins
+ * across captures — the export dialog and the export itself — rather than one
+ * query per capture.
+ */
+export function listWaybackRefsForCase(caseId: string): CaseWaybackRef[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT ar.*, c.timestamp AS capture_timestamp
+       FROM capture_archive_refs ar
+       JOIN captures c ON c.id = ar.capture_id
+       WHERE c.case_id = ?
+       ORDER BY ar.snapshot_timestamp DESC`
+    )
+    .all(caseId) as Array<Record<string, unknown>>
+  return rows.map((row) => ({
+    ...rowToWaybackRef(row),
+    captureTimestamp: row.capture_timestamp as string
+  }))
+}
+
 export function deleteWaybackRef(id: string): boolean {
   const result = getDb().prepare('DELETE FROM capture_archive_refs WHERE id = ?').run(id)
   return result.changes > 0
+}
+
+/**
+ * The CDX HTTP status, or nothing. `status_code` is declared INTEGER, but SQLite
+ * affinity stores a non-numeric string as TEXT, so a row written by a path that
+ * never validated it — a Case Archive import, or the generic table editor
+ * in Settings → Database — can carry arbitrary text under a column the rest of the
+ * app reads as a number. Dropped rather than surfaced: a value that is not a
+ * number is not an HTTP status, and every consumer already renders a reference
+ * that has none (the CDX row may legitimately omit it).
+ */
+function toStatusCode(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
 function rowToWaybackRef(row: Record<string, unknown>): WaybackRef {
@@ -69,7 +103,7 @@ function rowToWaybackRef(row: Record<string, unknown>): WaybackRef {
     snapshotUrl: row.snapshot_url as string,
     originalUrl: row.original_url as string,
     digest: (row.digest as string) || undefined,
-    statusCode: (row.status_code as number) ?? undefined,
+    statusCode: toStatusCode(row.status_code),
     mimeType: (row.mime_type as string) || undefined,
     checkedAt: row.checked_at as string,
     pinnedAt: row.pinned_at as string

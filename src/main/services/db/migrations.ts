@@ -659,4 +659,35 @@ export function runMigrations(db: Database.Database): void {
       db.pragma('user_version = 31')
     })()
   }
+
+  if (version < 32) {
+    db.transaction(() => {
+      // Note-level tags (#391, ruling R9 of 2026-08-24). A tag raised from a
+      // passage of a Note attaches to the Note itself, and additionally to the
+      // Note's Capture when it is anchored to one — so the relation the app
+      // lacked has to exist before the action can be honest about what it did.
+      //
+      // Shaped on `capture_tags` (v1) deliberately: a composite primary key
+      // over the two foreign keys, no surrogate id, both sides cascading. That
+      // makes re-tagging idempotent via INSERT OR IGNORE, deleting a note or a
+      // tag clean up after itself, and keeps the table out of
+      // `ID_PROBE_TABLES` — like `capture_tags`, it has no id of its own to
+      // collide on and follows the note/tag remapping on archive import.
+      //
+      // The index mirrors `idx_capture_tags_tag_id` (v8): the PK already
+      // serves note_id lookups, and the tag_id direction is what a
+      // "which notes carry this tag" read needs.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS note_tags (
+          note_id TEXT NOT NULL,
+          tag_id TEXT NOT NULL,
+          PRIMARY KEY (note_id, tag_id),
+          FOREIGN KEY (note_id) REFERENCES notes(id) ON DELETE CASCADE,
+          FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_note_tags_tag_id ON note_tags(tag_id);
+      `)
+      db.pragma('user_version = 32')
+    })()
+  }
 }

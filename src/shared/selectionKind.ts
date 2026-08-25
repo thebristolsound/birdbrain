@@ -73,10 +73,19 @@ export function classifySelection(raw: string): ClassifiedSelection {
   const text = normalizeSelection(raw).replace(/[.,;:]+$/, '')
 
   if (/^https?:\/\/\S+$/i.test(text)) {
+    // Cut at the first of `/`, `?` or `#` rather than `/` alone: a URL with a
+    // query and no path carries the query into the value otherwise, and a
+    // tracking parameter is the one URL rather than the host. Userinfo is a
+    // credential, so it goes too. The port stays — `host:8443` is a
+    // different service, not the same host.
+    const authority = text.replace(/^https?:\/\//i, '').split(/[/?#]/)[0]
     return {
-      value: text.replace(/^https?:\/\//i, '').split('/')[0],
+      value: authority.slice(authority.lastIndexOf('@') + 1),
       kind: 'domain',
-      note: 'Path stripped — matches any URL on this host.'
+      // A Selector is a case-insensitive substring test over a capture's
+      // extracted text (selectorRepo.selectorMatchesText), never over its URL,
+      // so this cannot promise to match every URL on the host.
+      note: 'Path stripped — watches for this host anywhere in a page.'
     }
   }
   if (/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(text)) return { value: text, kind: 'email', note: '' }

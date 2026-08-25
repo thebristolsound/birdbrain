@@ -28,15 +28,47 @@ const KNOWN_ANSWERS: Array<{
     input: 'https://cracked-forum.example.net/threads/88213',
     value: 'cracked-forum.example.net',
     kind: 'domain',
-    note: 'Path stripped — matches any URL on this host.'
+    note: 'Path stripped — watches for this host anywhere in a page.'
   },
   {
     input: 'HTTP://Meridian-Trust-Secure.com/login?a=1',
     value: 'Meridian-Trust-Secure.com',
     kind: 'domain',
-    note: 'Path stripped — matches any URL on this host.'
+    note: 'Path stripped — watches for this host anywhere in a page.'
   },
-  { input: 'accounts@meridian-trust.com', value: 'accounts@meridian-trust.com', kind: 'email', note: '' },
+  // A tracking parameter with no path in front of it is what a plain split
+  // on '/' let through: the value kept the query and the note became false
+  // about it.
+  {
+    input: 'https://meridian-trust-secure.com?utm_source=mail',
+    value: 'meridian-trust-secure.com',
+    kind: 'domain',
+    note: 'Path stripped — watches for this host anywhere in a page.'
+  },
+  {
+    input: 'https://meridian-trust-secure.com#refund',
+    value: 'meridian-trust-secure.com',
+    kind: 'domain',
+    note: 'Path stripped — watches for this host anywhere in a page.'
+  },
+  {
+    input: 'https://operator:hunter2@meridian-trust-secure.com/inbox',
+    value: 'meridian-trust-secure.com',
+    kind: 'domain',
+    note: 'Path stripped — watches for this host anywhere in a page.'
+  },
+  {
+    input: 'https://meridian-trust-secure.com:8443/inbox',
+    value: 'meridian-trust-secure.com:8443',
+    kind: 'domain',
+    note: 'Path stripped — watches for this host anywhere in a page.'
+  },
+  {
+    input: 'accounts@meridian-trust.com',
+    value: 'accounts@meridian-trust.com',
+    kind: 'email',
+    note: ''
+  },
   {
     input: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq',
     value: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq',

@@ -168,9 +168,29 @@ describe('applyTagToNote', () => {
 
   it('names the missing note rather than failing on a foreign key', () => {
     expect(() => applyTagToNote({ noteId: 'no-such-note', name: 'x' })).toThrow(NoteNotFoundError)
-    // The whole thing is one transaction, so the tag it would have created is
-    // rolled back with it — a failed apply must not leave a tag behind.
+    // This one throws before the first write, so it says nothing about the
+    // transaction; the rollback proper is the next test.
     expect(listTags()).toEqual([])
+  })
+
+  it('rolls the note half back when the capture half fails', () => {
+    // The only failure that lands mid-transaction, after a tag row and its note
+    // link already exist: an anchor is stored as JSON on the note and nothing
+    // checks the capture it cites, so capture_tags' foreign key is the first
+    // thing to notice. A half-applied tag would claim on getTagsForNote what
+    // getTagsForCapture denies, which is why the whole apply is one transaction.
+    const note = createNote({
+      caseId,
+      title: 'N',
+      body: 'text',
+      anchor: JSON.stringify({ kind: 'capture', captureId: 'deleted-capture' })
+    })
+
+    expect(() => applyTagToNote({ noteId: note.id, name: 'half-applied' })).toThrow(
+      /FOREIGN KEY/i
+    )
+    expect(listTags()).toEqual([])
+    expect(getTagsForNote(note.id)).toEqual([])
   })
 })
 

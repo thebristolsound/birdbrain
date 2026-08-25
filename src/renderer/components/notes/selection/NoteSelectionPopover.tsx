@@ -1,5 +1,6 @@
 import { Crosshair, Tag as TagIcon, Check } from 'lucide-react'
 import { classifySelection, selectionToTagName } from '@shared/selectionKind'
+import { RETRO_MAX_CAPTURES } from '@shared/constants'
 import {
   SELECTION_POPOVER_WIDTH,
   type SelectionOverlayPosition
@@ -156,13 +157,16 @@ export function NoteSelectionConfirm({
             onToggle={onToggleWatch}
           />
           {/* Checked and disabled because it is a statement, not a choice:
-              selectorLifecycle backfills every new selector over the most
-              recent captures unconditionally, and an unticked box would
-              describe behaviour the app does not have (#391, ruling R17). */}
+              selectorLifecycle backfills every new selector unconditionally,
+              and an unticked box would describe behaviour the app does not
+              have (#391, ruling R17). The bound is stated rather than implied
+              — the backfill stops at RETRO_MAX_CAPTURES, so on a larger case
+              an empty match list is not evidence the term is absent from the
+              captures below the cut. */}
           <CheckboxRow
             checked
             disabled
-            label="Backfill — always runs on existing captures"
+            label={`Backfill — always runs, over the ${RETRO_MAX_CAPTURES} most recent captures`}
             testId="note-selection-backfill"
           />
         </>

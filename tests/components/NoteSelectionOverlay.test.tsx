@@ -17,6 +17,7 @@ import {
 } from '@renderer/components/notes/selection/NoteSelectionPopover'
 import { NoteSelectionOverlay } from '@renderer/components/notes/selection/NoteSelectionOverlay'
 import type { NoteSelectionState } from '@renderer/components/notes/selection/useNoteSelection'
+import { RETRO_MAX_CAPTURES } from '@shared/constants'
 import { fakeBridge } from '../renderer/fakeBridge'
 
 function wrap(children: ReactNode) {
@@ -89,14 +90,18 @@ describe('NoteSelectionConfirm', () => {
     expect(screen.getByText(/Path stripped/)).toBeTruthy()
   })
 
-  it('renders Backfill checked and disabled, because it always runs', () => {
+  it('renders Backfill checked and disabled, and states the bound it runs to', () => {
     // selectorLifecycle backfills every new selector unconditionally, so an
-    // unticked box would describe behaviour the app does not have (R17).
+    // unticked box would describe behaviour the app does not have (R17) — but
+    // it stops at RETRO_MAX_CAPTURES, and copy that implied otherwise would let
+    // an empty match list read as evidence about captures below the cut.
     renderConfirm()
     const backfill = screen.getByTestId('note-selection-backfill') as HTMLInputElement
     expect(backfill.checked).toBe(true)
     expect(backfill.disabled).toBe(true)
-    expect(screen.getByText(/Backfill — always runs/)).toBeTruthy()
+    expect(
+      screen.getByText(`Backfill — always runs, over the ${RETRO_MAX_CAPTURES} most recent captures`)
+    ).toBeTruthy()
   })
 
   it('lets Watch be turned off', () => {

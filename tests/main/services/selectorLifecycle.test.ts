@@ -11,7 +11,8 @@ import {
   listSelectors
 } from '@main/services/db/selectorRepo'
 import { initStorage } from '@main/services/storage'
-import { createSelectorLifecycle, RETRO_MAX_CAPTURES } from '@main/services/selectorLifecycle'
+import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
+import { RETRO_MAX_CAPTURES } from '@shared/constants'
 import type { SelectorRematchedEvent } from '@shared/ipc'
 
 function writeTxt(root: string, caseId: string, captureId: string, text: string): void {

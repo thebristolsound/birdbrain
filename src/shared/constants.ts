@@ -46,6 +46,13 @@ export const MAX_RECENT_ACTIVITY_LIMIT = 50
 // query stays the same size whatever the case holds.
 export const SIGNAL_COVERAGE_CAPTURES = 24
 
+// How many of the most recent captures a newly created selector is backfilled
+// over (selectorLifecycle). Shared rather than main-only because the note
+// editor's Selector popover states the bound to the operator, and a coverage
+// claim that drifts from the code behind it is worse than no claim (#391).
+// Only a semantics change on an existing selector rescans without this bound.
+export const RETRO_MAX_CAPTURES = 500
+
 // Audit manifest filename, written alongside captures in each case directory.
 export const MANIFEST_FILENAME = 'manifest.jsonl'
 

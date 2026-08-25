@@ -26,6 +26,7 @@ import type {
   CaptureAnnotations,
   AnnotationPin,
   OperatorIdentity,
+  CaseWaybackRef,
   WaybackRef,
   WaybackLookupResult,
   ArchiveInspectReport,
@@ -169,6 +170,7 @@ export interface BirdbrainAPI {
   wayback: {
     lookup(captureId: string): Promise<WaybackLookupResult>
     list(captureId: string): Promise<WaybackRef[]>
+    listForCase(caseId: string): Promise<CaseWaybackRef[]>
     pin(params: PinWaybackSnapshotParams): Promise<WaybackRef>
     unpin(refId: string): Promise<boolean>
   }

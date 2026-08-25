@@ -134,6 +134,7 @@ const birdbrain = {
   wayback: {
     lookup: bridge(IPC_CHANNELS.WAYBACK_LOOKUP),
     list: bridge(IPC_CHANNELS.WAYBACK_LIST),
+    listForCase: bridge(IPC_CHANNELS.WAYBACK_LIST_FOR_CASE),
     pin: bridge(IPC_CHANNELS.WAYBACK_PIN),
     unpin: bridge(IPC_CHANNELS.WAYBACK_UNPIN)
   },

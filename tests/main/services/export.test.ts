@@ -12,6 +12,8 @@ import { insertCapture, listCaptures, setCaptureTrustedTime } from '@main/servic
 import { initStorage, ensureCaseDir } from '@main/services/storage'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import * as manifest from '@main/services/manifest'
+import * as waybackRefRepo from '@main/services/db/waybackRefRepo'
+import { createWaybackRef } from '@main/services/db/waybackRefRepo'
 import {
   appendManifestEntry,
   getManifestHead,
@@ -625,6 +627,61 @@ describe('export', () => {
     expect(report).toContain('Selection-scoped export')
     expect(report).toContain('export-entry.json')
     expect(report).toContain('1 of the')
+  })
+
+  it('loads pinned Wayback references per exported capture, and only those in scope', async () => {
+    const { capture: selected } = await ingest(
+      caseId,
+      '<html><body>Selected</body></html>',
+      'https://example.com/selected',
+      'Selected'
+    )
+    const { capture: unselected } = await ingest(
+      caseId,
+      '<html><body>Unselected</body></html>',
+      'https://example.com/unselected',
+      'Unselected'
+    )
+    // One pin on each capture, distinguishable in the rendered report.
+    for (const [capture, cdx] of [
+      [selected, '20250101000000'],
+      [unselected, '20240202000000']
+    ] as const) {
+      createWaybackRef({
+        captureId: capture.id,
+        snapshot: {
+          timestamp: `${cdx.slice(0, 4)}-${cdx.slice(4, 6)}-${cdx.slice(6, 8)}T00:00:00.000Z`,
+          snapshotUrl: `https://web.archive.org/web/${cdx}/${capture.url}`,
+          originalUrl: capture.url,
+          statusCode: 200,
+          mimeType: 'text/html'
+        },
+        checkedAt: '2026-04-06T09:00:00.000Z'
+      })
+    }
+
+    const listSpy = vi.spyOn(waybackRefRepo, 'listWaybackRefs')
+    const outputPath = join(tempDir, 'wayback-scope.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+        exportClass: 'evidence',
+        outputPath,
+        captureIds: [selected.id]
+      },
+      captureLifecycle
+    )
+
+    // Read per capture from the repo, not inferred from the lookup or the URL.
+    expect(listSpy.mock.calls).toEqual([[selected.id]])
+    listSpy.mockRestore()
+
+    const report = readStoredZipEntries(outputPath).get('report.html')!.toString('utf-8')
+    expect(report).toContain('https://web.archive.org/web/20250101000000/')
+    // The unselected capture's pin has no exhibit to hang off in this package.
+    expect(report).not.toContain('20240202000000')
   })
 
   it('states the selection scope in a standalone HTML export without package-only copy', async () => {

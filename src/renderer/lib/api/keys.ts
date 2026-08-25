@@ -45,6 +45,7 @@ export const queryKeys = {
   annotations: (captureId: string) => ['annotations', captureId] as const,
   waybackLookup: (captureId: string) => ['wayback', 'lookup', captureId] as const,
   waybackPins: (captureId: string) => ['wayback', 'pins', captureId] as const,
+  waybackCasePins: (caseId: string) => ['wayback', 'casePins', caseId] as const,
   settings: ['settings'] as const,
   identity: ['identity'] as const,
   openRouterModels: ['openRouterModels'] as const,

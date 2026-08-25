@@ -20,8 +20,8 @@ vi.mock('@renderer/components/captures/MhtmlViewer', () => ({
 vi.mock('@renderer/components/captures/CaptureDownloadMenu', () => ({
   CaptureDownloadMenu: () => null
 }))
-vi.mock('@renderer/components/captures/WaybackTab', () => ({
-  WaybackTab: () => <div data-testid="wayback-tab-stub" />
+vi.mock('@renderer/components/captures/WaybackCompare', () => ({
+  WaybackCompare: () => <div data-testid="wayback-compare-stub" />
 }))
 
 import { CaptureViewer } from '@renderer/components/captures/CaptureViewer'
@@ -88,7 +88,7 @@ describe('CaptureViewer tabs', () => {
     renderViewer()
     fireEvent.click(await screen.findByRole('tab', { name: 'Wayback' }))
 
-    expect(await screen.findByTestId('wayback-tab-stub')).toBeDefined()
+    expect(await screen.findByTestId('wayback-compare-stub')).toBeDefined()
     // Wayback reads archive.org, not the capture directory.
     await waitFor(() => expect(getContent).not.toHaveBeenCalledWith('cap1', 'html'))
   })

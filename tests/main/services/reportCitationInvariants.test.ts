@@ -35,6 +35,7 @@ import {
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { generateReport } from '@main/services/export'
 import { saveAnnotations } from '@main/services/annotations'
+import { createWaybackRef, importWaybackRefRows } from '@main/services/db/waybackRefRepo'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
@@ -64,8 +65,20 @@ function readStoredZipEntries(path: string): Map<string, Buffer> {
  * filenames: the methodology and verification sections legitimately mention the
  * bare directories `pages/`, `screenshots/` and `timestamps/` in prose, and
  * naming a directory is not a claim that a particular file is present.
+ *
+ * The pattern is applied to the document with absolute URLs removed rather than
+ * being loosened (#401). Pinned archive.org references embed the archived page's
+ * own URL, and a page archived from `https://example.com/pages/index.html` is
+ * not a claim about this package's `pages/` directory — but a lookbehind wide
+ * enough to reject that shape (`(?<![\w/.-])`) also stops matching a genuine
+ * citation that happens to follow `/`, `.` or `-`, which would weaken the
+ * property silently. Stripping the URLs removes the false positive at its source
+ * and leaves the word boundary intact.
  */
 const ARTIFACT_CITATION = /\b(?:pages|screenshots|timestamps)\/[A-Za-z0-9._-]+\.[A-Za-z0-9]+/g
+
+/** Absolute URLs, which are references to somewhere else and never citations. */
+const ABSOLUTE_URL = /https?:\/\/[^\s"'<>]+/g
 
 /**
  * Companion files. Named as a closed set rather than scraped, because a
@@ -84,7 +97,8 @@ const COMPANION_FILES = [
 ]
 
 function citedArtifacts(html: string): string[] {
-  return [...new Set(html.match(ARTIFACT_CITATION) ?? [])]
+  const withoutUrls = html.replace(ABSOLUTE_URL, ' ')
+  return [...new Set(withoutUrls.match(ARTIFACT_CITATION) ?? [])]
 }
 
 function citedCompanions(html: string): string[] {
@@ -172,6 +186,34 @@ describe('report citation invariants', () => {
       operatorId: 'op',
       operatorName: '',
       toolVersion: '0.1.0'
+    })
+  }
+
+  /**
+   * A pinned corroboration reference, written exactly as the IPC handler writes
+   * one — through the repo, from a snapshot shaped like a CDX row. `mimeType`
+   * and `statusCode` are left off deliberately in one call below: the repo
+   * returns undefined for a NULL column and the report must render anyway.
+   */
+  function pinSnapshot(
+    captureId: string,
+    cdxTimestamp: string,
+    originalUrl: string,
+    extra: { statusCode?: number; mimeType?: string } = { statusCode: 200, mimeType: 'text/html' }
+  ) {
+    const iso = `${cdxTimestamp.slice(0, 4)}-${cdxTimestamp.slice(4, 6)}-${cdxTimestamp.slice(
+      6,
+      8
+    )}T${cdxTimestamp.slice(8, 10)}:${cdxTimestamp.slice(10, 12)}:${cdxTimestamp.slice(12, 14)}.000Z`
+    return createWaybackRef({
+      captureId,
+      snapshot: {
+        timestamp: iso,
+        snapshotUrl: `https://web.archive.org/web/${cdxTimestamp}/${originalUrl}`,
+        originalUrl,
+        ...extra
+      },
+      checkedAt: '2026-04-06T09:00:00.000Z'
     })
   }
 
@@ -287,6 +329,32 @@ describe('report citation invariants', () => {
       name: 'case with no captures',
       include: FULL,
       setup: async () => {}
+    },
+    {
+      name: 'capture with pinned archive.org references',
+      include: FULL,
+      setup: async () => {
+        const { capture } = await ingest(
+          '<html>h</html>',
+          'https://example.com/h',
+          'H',
+          await png()
+        )
+        pinSnapshot(capture.id, '20250101000000', 'https://example.com/h')
+      }
+    },
+    {
+      name: 'pinned reference whose archived URL mimics a package path',
+      include: FULL,
+      setup: async () => {
+        const { capture } = await ingest(
+          '<html>i</html>',
+          'https://example.com/pages/index.html',
+          'I',
+          await png()
+        )
+        pinSnapshot(capture.id, '20250101000000', 'https://example.com/pages/index.html')
+      }
     }
   ]
 
@@ -304,6 +372,163 @@ describe('report citation invariants', () => {
       assertEveryCitationResolves('certification.html', certification!.toString('utf-8'), entries)
     })
   }
+
+  /**
+   * Known-answer coverage of the pinned-reference rendering (#401), the method
+   * this change adds to the report. Each assertion is an answer that must not
+   * move without someone deciding it should: what the report says a pinned
+   * reference does and does not establish, that a package with no pins is
+   * unchanged, and that pinning adds nothing to the package.
+   */
+  describe('pinned archive.org references', () => {
+    it('renders them as corroboration and says what they do not establish', async () => {
+      const { capture } = await ingest('<html>p</html>', 'https://example.com/p', 'P', await png())
+      // Pinned newest-first, as the repo returns them; the exhibit reads oldest
+      // first, so the second reference must precede the first in the document.
+      pinSnapshot(capture.id, '20250601120000', 'https://example.com/p')
+      pinSnapshot(capture.id, '20250101120000', 'https://example.com/p')
+      const entries = await exportZip(FULL, 'wayback-pinned')
+      const report = entries.get('report.html')!.toString('utf-8')
+
+      expect(report.indexOf('2025-01-01T12:00:00Z')).toBeLessThan(
+        report.indexOf('2025-06-01T12:00:00Z')
+      )
+      expect(report).toContain('The operator pinned 2 archive.org snapshots')
+
+      expect(report).toContain(
+        'Corroboration only — archive.org references, not bound to the capture'
+      )
+      expect(report).toContain(
+        'https://web.archive.org/web/20250101120000/https://example.com/p'
+      )
+      expect(report).toContain('2025-01-01T12:00:00Z')
+      // The interval to the capture, stated in words rather than left signed.
+      expect(report).toMatch(/\d+d( \d+h)? before capture/)
+      // What it establishes, and the two things it does not.
+      expect(report).toContain('archive.org listed a snapshot at the stated time')
+      expect(report).toContain('does not establish what the archived')
+      expect(report).toContain('Birdbrain did not')
+    })
+
+    it('renders a reference whose CDX row carried no status or content type', async () => {
+      const { capture } = await ingest('<html>q</html>', 'https://example.com/q', 'Q', await png())
+      pinSnapshot(capture.id, '20250101120000', 'https://example.com/q', {})
+      const entries = await exportZip(FULL, 'wayback-sparse')
+      const report = entries.get('report.html')!.toString('utf-8')
+
+      expect(report).toContain(
+        'Corroboration only — archive.org references, not bound to the capture'
+      )
+      expect(report).toContain('looked up 2026-04-06T09:00:00Z')
+      expect(report).not.toContain('HTTP undefined')
+    })
+
+    it('cannot carry a hostile status code from an imported archive as markup', async () => {
+      // The reachable hostile path, end to end: a `.birdbrain` archive is parsed
+      // with a bare cast and no schema, `importWaybackRefRows` binds whatever
+      // `status_code` it carried, and SQLite INTEGER affinity keeps non-numeric
+      // text as TEXT. The known answer is that nothing an archive author wrote
+      // into that column reaches report.html as markup.
+      const hostile = '"><script>alert(1)</script>'
+      const { capture } = await ingest('<html>x</html>', 'https://example.com/x', 'X', await png())
+      importWaybackRefRows(
+        [
+          {
+            id: 'hostile-ref',
+            capture_id: capture.id,
+            snapshot_timestamp: '2025-01-01T12:00:00.000Z',
+            snapshot_url: 'https://web.archive.org/web/20250101120000/https://example.com/x',
+            original_url: 'https://example.com/x',
+            digest: null,
+            status_code: hostile,
+            mime_type: 'text/html',
+            checked_at: '2026-04-06T09:00:00.000Z',
+            pinned_at: '2026-04-06T09:00:00.000Z'
+          }
+        ],
+        { newCaseId: caseId, mapId: (id) => id, mapTag: (id) => id, getText: () => '' }
+      )
+
+      const entries = await exportZip(FULL, 'wayback-hostile-status')
+      const report = entries.get('report.html')!.toString('utf-8')
+
+      // The reference still renders — the package is not silently short a pin.
+      expect(report).toContain(
+        'Corroboration only — archive.org references, not bound to the capture'
+      )
+      expect(report).toContain('https://web.archive.org/web/20250101120000/https://example.com/x')
+      // But the status is gone rather than rendered, escaped or otherwise: a
+      // value that is not a number is not an HTTP status.
+      expect(report).not.toContain('<script>alert(1)</script>')
+      expect(report).not.toContain(hostile)
+      expect(report).not.toContain('&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;')
+      expect(report).not.toContain('HTTP undefined')
+      // The only "HTTP" left is the capture's own HTTP status row.
+      expect(report).not.toMatch(/HTTP (?!status\b)/)
+    })
+
+    it('leaves a package with no pins exactly as it was', async () => {
+      // The backward case in its testable form: nothing about the report or the
+      // package changes for a case that has pinned nothing, so packages produced
+      // before this change are still the packages this code produces.
+      await ingest('<html>r</html>', 'https://example.com/r', 'R', await png())
+      const entries = await exportZip(FULL, 'wayback-none')
+      const report = entries.get('report.html')!.toString('utf-8')
+
+      expect(report).not.toContain('archive.org references')
+      expect(report).not.toContain('web.archive.org')
+    })
+
+    it('adds no file to the package — a pin is a reference, never content', async () => {
+      const { capture } = await ingest('<html>s</html>', 'https://example.com/s', 'S', await png())
+      const before = await exportZip(FULL, 'wayback-before')
+      pinSnapshot(capture.id, '20250101120000', 'https://example.com/s')
+      const after = await exportZip(FULL, 'wayback-after')
+
+      expect([...after.keys()].sort()).toEqual([...before.keys()].sort())
+
+      // And pinning appended nothing to the chain, so an existing package's
+      // verification is untouched. The one entry the second package's manifest
+      // has that the first's does not is the first export's own export entry —
+      // appended by exporting, not by pinning.
+      const entriesOf = (zip: Map<string, Buffer>) =>
+        zip
+          .get('manifest.jsonl')!
+          .toString('utf-8')
+          .trim()
+          .split('\n')
+          .map((line) => JSON.parse(line) as { type: string })
+      const beforeEntries = entriesOf(before)
+      const afterEntries = entriesOf(after)
+      expect(afterEntries.slice(0, beforeEntries.length)).toEqual(beforeEntries)
+      expect(afterEntries.slice(beforeEntries.length).map((entry) => entry.type)).toEqual([
+        'export'
+      ])
+    })
+
+    it('does not read an external reference as a claim about a packaged path', async () => {
+      // The report now carries archive.org URLs that embed the archived page's
+      // own path. One of those can look exactly like a package citation, and the
+      // property must neither trip on it nor stop seeing the real citation.
+      const { capture } = await ingest(
+        '<html>t</html>',
+        'https://example.com/screenshots/t.png',
+        'T',
+        await png()
+      )
+      pinSnapshot(capture.id, '20250101120000', 'https://example.com/screenshots/t.png')
+      const entries = await exportZip(FULL, 'wayback-lookalike')
+      const report = entries.get('report.html')!.toString('utf-8')
+
+      expect(report).toContain('https://web.archive.org/web/20250101120000/https://example.com/screenshots/t.png')
+      assertEveryCitationResolves('report.html', report, entries)
+      // Anti-vacuity: the genuine packaged paths are still being detected.
+      const cited = citedArtifacts(report)
+      expect(cited.some((path) => path.startsWith('pages/'))).toBe(true)
+      expect(cited.some((path) => path.startsWith('screenshots/'))).toBe(true)
+      expect(cited).not.toContain('screenshots/t.png')
+    })
+  })
 
   it('detects a dangling citation when one is introduced', async () => {
     // Guards the guard: if the matcher stopped recognising artefact citations,

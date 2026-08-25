@@ -12,7 +12,7 @@ import { CaptureViewerToolbar } from '@renderer/components/captures/CaptureViewe
 import { CaptureDownloadMenu } from '@renderer/components/captures/CaptureDownloadMenu'
 import { BrowserChromeFrame } from '@renderer/components/captures/BrowserChromeFrame'
 import { AnnotationToolsTooltip } from '@renderer/components/captures/AnnotationToolsTooltip'
-import { WaybackTab } from '@renderer/components/captures/WaybackTab'
+import { WaybackCompare } from '@renderer/components/captures/WaybackCompare'
 import { useAnnotationEditor } from '@renderer/components/captures/annotation/useAnnotationEditor'
 import { useZoomPan } from '@renderer/components/captures/annotation/useZoomPan'
 import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
@@ -256,7 +256,7 @@ export function CaptureViewer() {
               <div className="p-4 text-text-muted">No HTML available</div>
             )
           ) : null}
-          {activeTab === 'wayback' && <WaybackTab capture={capture} />}
+          {activeTab === 'wayback' && <WaybackCompare capture={capture} />}
           {activeTab === 'text' &&
             (content ? (
               <div className="h-full overflow-y-auto p-4">

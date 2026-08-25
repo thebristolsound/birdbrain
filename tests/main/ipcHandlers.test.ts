@@ -1993,6 +1993,19 @@ describe('archive handlers', () => {
     expect(refs[0].snapshotUrl).toBe(snapshot.snapshotUrl)
     expect(refs[0].checkedAt).toBe('2026-06-30T00:00:00.000Z')
 
+    // The case-wide read the export dialog uses: same pins, each carrying the
+    // capture time it corroborates.
+    const listForCase = registered.get('wayback:listForCase')!
+    const caseRefs = expectOk<Array<WaybackRefRow & { captureTimestamp: string }>>(
+      (await listForCase({} as never, c.id)) as {
+        ok: boolean
+        data?: Array<WaybackRefRow & { captureTimestamp: string }>
+      }
+    )
+    expect(caseRefs).toHaveLength(1)
+    expect(caseRefs[0].snapshotUrl).toBe(snapshot.snapshotUrl)
+    expect(caseRefs[0].captureTimestamp).toBe('2020-01-15T12:00:00.000Z')
+
     const unpin = registered.get('wayback:unpin')!
     const removed = (await unpin({} as never, pinned.data.id)) as { ok: boolean; data: boolean }
     expect(removed.ok).toBe(true)

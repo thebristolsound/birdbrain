@@ -188,6 +188,22 @@ describe('ExportDialog', () => {
     expect(rows[0].textContent).toContain('2026-06-01 09:30 UTC')
   })
 
+  it('drops the pinned-snapshot block under Working copy — there is no report', async () => {
+    listCasePins.mockResolvedValue(PINS)
+    renderDialog()
+
+    await screen.findByTestId('export-pinned-wayback')
+    fireEvent.click(screen.getByLabelText(/Working copy/))
+
+    // The pins are unchanged; what changed is that this class carries no report
+    // for them to be "included in", so the promise must not be on screen.
+    expect(screen.queryByTestId('export-pinned-wayback')).toBeNull()
+    expect(screen.getByTestId('export-working-copy-notice')).toBeDefined()
+
+    fireEvent.click(screen.getByLabelText(/Full evidence bundle/))
+    expect(await screen.findByTestId('export-pinned-wayback')).toBeDefined()
+  })
+
   it('renders no pinned-snapshot block when the case has none', async () => {
     renderDialog()
 

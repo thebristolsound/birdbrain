@@ -411,8 +411,11 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
 
               {/* Pinned Wayback snapshots: what the report will carry as
                   corroboration references, stated before the operator exports
-                  rather than discovered in the document afterwards. */}
-              {pinnedRefs.length > 0 && (
+                  rather than discovered in the document afterwards. Evidence
+                  Package only — a Working Copy is built by buildWorkingCopyZip
+                  and has no report to carry them, so promising one here would
+                  describe a document the operator is not about to get (#399). */}
+              {!workingCopy && pinnedRefs.length > 0 && (
                 <div className="mb-4" data-testid="export-pinned-wayback">
                   <Label className="mb-2">Pinned Wayback snapshots</Label>
                   <div className="flex flex-col overflow-hidden rounded-md border border-border">

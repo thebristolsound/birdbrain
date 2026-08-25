@@ -19,6 +19,7 @@ import { revealWhenReady } from '@main/windowReveal'
 import {
   allowWebviewPermission,
   decideWebviewAttach,
+  decideWebviewDownload,
   decideWebviewNavigation,
   resolveAttachPartition,
   sanitizeWebviewPreferences,
@@ -146,12 +147,21 @@ app.on('child-process-gone', (_event, details) => {
   flushSync()
 })
 
+// Once per process, not once per window. `fromPartition` returns the same
+// long-lived Session for a given name, and `will-download` is an emitter
+// subscription rather than a setter — so a second createWindow() (the macOS
+// `activate` path) would stack a duplicate listener on a Session that is
+// already hardened.
+let webviewSessionsHardened = false
+
 // Denies permissions and downloads on every partition a webview may run on. Runs
 // before the window exists, so no guest can attach ahead of its own session's
 // handlers. Both handlers are set: a request handler alone leaves the synchronous
 // check path (which Chromium consults for already-granted permissions) at its
 // default.
 function hardenWebviewSessions(): void {
+  if (webviewSessionsHardened) return
+  webviewSessionsHardened = true
   for (const partition of WEBVIEW_PARTITIONS) {
     const guestSession = electronSession.fromPartition(partition)
     guestSession.setPermissionRequestHandler((_contents, permission, callback) => {
@@ -160,8 +170,11 @@ function hardenWebviewSessions(): void {
     guestSession.setPermissionCheckHandler((_contents, permission) =>
       allowWebviewPermission(partition, permission)
     )
+    // Through the policy rather than an inline preventDefault: the decision is
+    // the module's to make, and a hardcoded call here would leave the download
+    // known-answer test answering about a function the app never runs.
     guestSession.on('will-download', (event) => {
-      event.preventDefault()
+      if (decideWebviewDownload() === 'block') event.preventDefault()
     })
   }
 }

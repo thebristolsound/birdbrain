@@ -356,6 +356,13 @@ only when `coverage-final.json` came from `pnpm test:coverage` on the same tree 
 both after any edit (#508). Interactive sessions are not covered by this carve-out, and it must
 not be copied to the global CLAUDE.md or other repos.
 
+**PR bodies are computed at head (ADR-0018).** Write the `## Verification` block last, from a
+run at the head sha under review, exit codes captured; any push makes it stale and it gets
+regenerated before requesting review. Any body figure a command can compute (file lists, counts,
+coverage rows) comes from running the command at head, never from memory of an earlier run. When
+a review round's only blocking findings are body defects on an unchanged sha, fix and re-verify
+the body in the same round with no new code pass.
+
 The gates in `docs/adr/0005-unattended-agents-on-the-evidence-path.md` still apply, as amended by
 `docs/adr/0014-tier-the-evidence-backstop-and-widen-the-dispatch-slot.md`: WIP of three concurrent
 agent PRs with every branch cut from `main` and never from another cycle's branch,
@@ -363,3 +370,41 @@ agent PRs with every branch cut from `main` and never from another cycle's branc
 merge on all required checks green plus an `agent/pre-pass` success verdict, and the give-up path
 (comment findings on the issue, relabel `needs-info`/`ready-for-human`, vacate the slot) whenever
 the issue fails the ready-for-agent bar at intake or mid-work.
+
+### Interactive sessions: standing approvals (project-local carve-out)
+
+Three global wait-for-input rules are overridden in this repo. The rationale and amendment target
+for each is its ADR; a maintainer veto of any auto-taken decision amends that ADR. Do not copy
+this section to the global CLAUDE.md or other repos.
+
+- **Recommended-option picks** (ADR-0015): when the decision is in the ADR-0015 class list
+  (naming, placement, pattern-following approach, test shape, installed-API usage, mechanical
+  sequencing, toolchain-settled style) and the recommendation is groundable in a repo doc, an
+  ADR, an existing pattern, or the toolchain, take it without asking and log it under "Decisions
+  taken" in the end-of-turn summary. Still ask for: new dependencies, destructive or
+  irreversible actions, spend or external publishing, scope expansion, blocking-tier evidence
+  paths, conflicts between documented rules, and taste-only calls.
+- **Plan approval** (ADR-0016): post the plan, then execute in the same turn when it adds no
+  dependencies, touches no blocking-tier file, has no schema migration or data deletion, is
+  reversible with git alone, stays inside the ADR-0015 classes, and changes at most 10 files.
+  Otherwise wait as before and name the tripped criterion.
+- **Completion confirmation** (ADR-0017): report complete on a green full verify block at head
+  (the background-jobs verify block) with exit codes captured and real output shown; name any check you
+  could not run and wait on that specific check, not on general confirmation. Merging stays
+  human.
+- **Doc-draft preservation** (ADR-0019): any session that creates or edits a file destined for a
+  tracked path (`docs/**`, `CLAUDE.md`, `CONTEXT.md`, `website/content/**`, `.vale/**`) commits
+  it before the turn ends: on the session's own branch, or on a `drafts/YYYY-MM-DD-<slug>`
+  branch cut from `main` when the checked-out branch belongs to another effort. WIP commits are
+  preservation, not ratification; pushing still waits to be asked. Worktrees share the object
+  store, so a commit that was never pushed survives a purge and an untracked file does not.
+
+### Interaction defaults
+
+- `AskUserQuestion` calls carry at most two questions; split a bigger ask into consecutive
+  calls.
+- A research or gap-analysis request ends at the report. Plan approval is a separate, later ask;
+  do not start implementing because the report was well received.
+- When a decision is deferred to the maintainer, restate the actual question in the message that
+  defers it. Never reference an earlier question by position or as "your call" without restating
+  it.

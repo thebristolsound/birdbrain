@@ -408,3 +408,45 @@ describe('permissions and downloads', () => {
     expect(decideWebviewDownload()).toBe('block')
   })
 })
+
+// The legacy partition lists `file:///`, not `file://`, and this is what that third
+// slash buys. `captures:getHtmlUrl` builds the guest's src with `pathToFileURL`, which
+// only ever emits the empty-authority form, so nothing this app produces needs the
+// wider prefix — while `file://host/share/x` is a network fetch wearing a local scheme,
+// on the one content class an investigated site chooses the bytes of.
+//
+// Not asserted here, deliberately: `file:////evil.test/share/x.png` satisfies
+// `file:///` and is still allowed on this branch. It is closed inside `matchesPrefix`
+// by #904/#926 for every partition at once, so asserting `block` would be red until
+// that lands and asserting `allow` would be red the moment it does. #949 tracks
+// driving all of these from `WEBVIEW_PARTITIONS` so a partition cannot be added
+// without its row.
+describe('the legacy HTML partition’s local-file narrowing', () => {
+  it.each([
+    ['file://evil.test/share/beacon.png', 'a remote authority wearing the local scheme'],
+    ['file://192.0.2.5/s/x.css', 'the same, addressed by IP'],
+    ['file://user:pw@evil.test/share/x.png', 'an authority `URL` refuses to parse at all']
+  ])('refuses %s on every decision surface (%s)', (url) => {
+    expect(decideWebviewRequest({ partition: LEGACY_HTML_PARTITION, url })).toBe('block')
+    expect(
+      decideWebviewNavigation({ partition: LEGACY_HTML_PARTITION, url, initialLoadDone: false })
+    ).toBe('block')
+    expect(decideWebviewAttach({ partition: LEGACY_HTML_PARTITION, src: url })).toEqual({
+      allowed: false,
+      reason: 'src-not-allowed'
+    })
+  })
+
+  it('still admits the artefact form pathToFileURL produces', () => {
+    // The counterweight: narrowing the prefix must not deny the one load that needs it.
+    const url = 'file:///c/case/cap.html'
+    expect(decideWebviewRequest({ partition: LEGACY_HTML_PARTITION, url })).toBe('allow')
+    expect(
+      decideWebviewNavigation({ partition: LEGACY_HTML_PARTITION, url, initialLoadDone: false })
+    ).toBe('allow')
+    expect(decideWebviewAttach({ partition: LEGACY_HTML_PARTITION, src: url })).toEqual({
+      allowed: true,
+      policy: webviewPolicyFor(LEGACY_HTML_PARTITION)
+    })
+  })
+})

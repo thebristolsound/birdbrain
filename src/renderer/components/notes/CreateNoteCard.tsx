@@ -41,14 +41,27 @@ export function CreateNoteCard({ caseId, isOpen, onToggle, onCreated }: CreateNo
     return created.id
   }
 
-  async function handleSubmit() {
-    if (!title.trim() && !hasBody) return
-    await persistDraft()
+  function resetDraft() {
     setTitle('')
     setBodyDoc(null)
     setDraftNoteId(null)
     editor?.commands.clearContent()
+  }
+
+  async function handleSubmit() {
+    if (!title.trim() && !hasBody) return
+    await persistDraft()
+    resetDraft()
     onCreated?.()
+  }
+
+  // The card is never unmounted, so closing it has to do what unmounting would.
+  // A note the Tag action already wrote out keeps its tag and stays saved; what
+  // must not survive is draftNoteId, or reopening "New note" would silently
+  // overwrite that note on Save instead of creating a new one (#391).
+  function handleClose() {
+    resetDraft()
+    onToggle()
   }
 
   if (!isOpen) {
@@ -68,7 +81,7 @@ export function CreateNoteCard({ caseId, isOpen, onToggle, onCreated }: CreateNo
     <div className="rounded-2xl border border-border bg-surface p-4">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="font-display text-sm font-semibold text-text-primary">New note</h3>
-        <Button variant="ghost" size="icon-sm" onClick={onToggle}>
+        <Button variant="ghost" size="icon-sm" onClick={handleClose}>
           <X className="h-3.5 w-3.5" />
         </Button>
       </div>
@@ -87,7 +100,7 @@ export function CreateNoteCard({ caseId, isOpen, onToggle, onCreated }: CreateNo
         />
       </div>
       <div className="flex items-center justify-end gap-2">
-        <Button variant="ghost" size="sm" onClick={onToggle}>
+        <Button variant="ghost" size="sm" onClick={handleClose}>
           Cancel
         </Button>
         <Button

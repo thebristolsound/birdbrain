@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { useState } from 'react'
 import type { ReactNode } from 'react'
 import type { Note } from '@shared/types'
 
@@ -80,6 +81,23 @@ async function tagTheSelection(): Promise<void> {
   })
 }
 
+/**
+ * NotesOverview renders the card whether it is open or not, so closing it is a
+ * prop flip rather than an unmount — which is the state the draft lifecycle has
+ * to survive.
+ */
+function ToggleHarness() {
+  const [open, setOpen] = useState(true)
+  return (
+    <CreateNoteCard
+      caseId={CASE_ID}
+      isOpen={open}
+      onToggle={() => setOpen((v) => !v)}
+      onCreated={() => setOpen(false)}
+    />
+  )
+}
+
 beforeEach(() => {
   vi.restoreAllMocks()
 })
@@ -108,6 +126,41 @@ describe('CreateNoteCard draft tagging (#391)', () => {
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'note-1', title: 'Wire transfer' })
     )
+  })
+
+  it('cancelling the draft does not leave Save pointed at the note it wrote out', async () => {
+    const { create, update } = stubBridge()
+    wrap(<ToggleHarness />)
+    fireEvent.change(screen.getByTestId('create-note-title'), {
+      target: { value: 'Wire transfer' }
+    })
+
+    selectInEditor('wire transfer')
+    await tagTheSelection()
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+
+    fireEvent.click(screen.getByText('Cancel'))
+    fireEvent.click(screen.getByTestId('notes-new-button'))
+    fireEvent.change(screen.getByTestId('create-note-title'), { target: { value: 'Second' } })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('create-note-submit'))
+    })
+
+    // The tagged note keeps the body it was saved with; this is a new note.
+    expect(update).not.toHaveBeenCalled()
+    expect(create).toHaveBeenCalledTimes(2)
+    expect(create).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Second' }))
+  })
+
+  it('abandons the cancelled draft rather than resuming it on reopen', async () => {
+    stubBridge()
+    wrap(<ToggleHarness />)
+    fireEvent.change(screen.getByTestId('create-note-title'), { target: { value: 'Abandoned' } })
+
+    fireEvent.click(screen.getByText('Cancel'))
+    fireEvent.click(screen.getByTestId('notes-new-button'))
+
+    expect((screen.getByTestId('create-note-title') as HTMLInputElement).value).toBe('')
   })
 
   it('still creates on Save when nothing was tagged', async () => {

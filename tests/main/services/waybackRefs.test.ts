@@ -172,6 +172,17 @@ describe('untrusted status_code', () => {
     const cap = makeCapture(c.id)
     importRef(cap.id, HOSTILE)
 
+    // Kept deliberately, against CodeRabbit's suggestion to drop it as an
+    // internal detail. The coercion only earns its place if INTEGER affinity
+    // really does store the markup verbatim, so this is the known answer the
+    // rest of the case rests on: without it, an import-side normalisation
+    // added later would leave this test green with toStatusCode never run.
+    const stored = getDb()
+      .prepare('SELECT status_code AS code, typeof(status_code) AS ty FROM capture_archive_refs')
+      .get() as { code: unknown; ty: string }
+    expect(stored.ty).toBe('text')
+    expect(stored.code).toBe(HOSTILE)
+
     expect(listWaybackRefs(cap.id)[0].statusCode).toBeUndefined()
     expect(listWaybackRefsForCase(c.id)[0].statusCode).toBeUndefined()
   })

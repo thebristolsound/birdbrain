@@ -375,6 +375,25 @@ describe('createCaptureLifecycle.duplicate (#827)', () => {
     expect(imported.method).toBe('duplicate')
   })
 
+  it('resolves the trusted-time mirror from the manifest, by content hash', async () => {
+    const { listPendingTimestampCaptures } = await import('@main/services/db/captureRepo')
+    const result = await lifecycle.duplicate(source.id)
+    if (result.status !== 'duplicated') throw new Error('expected a duplicate')
+
+    // The source is a v2 capture with no token yet, and the duplicate carries
+    // its content hash, so both resolve to the same axis value. No separate
+    // hand-off to the timestamp worker is made for the copy; the mirror is
+    // reconciled from the manifest, which is what puts it in the retry queue.
+    expect(getCapture(result.capture.id)!.trustedTimeStatus).toBe('pending')
+    expect(getCapture(source.id)!.trustedTimeStatus).toBe('pending')
+    const queued = listPendingTimestampCaptures().map((c) => c.id)
+    expect(queued).toContain(result.capture.id)
+    // Whichever row the worker stamps, the token anchors the shared content
+    // hash — so it dates the original observation for both rows, and neither
+    // gains a claim the other lacks.
+    expect(result.capture.hash).toBe(source.hash)
+  })
+
   it('leaves the source untouched, including its manifest entry', async () => {
     const entryBefore = manifestLines()[0]
     // The verification cache and the trusted-time mirror are rebuildable

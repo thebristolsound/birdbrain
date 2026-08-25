@@ -53,10 +53,13 @@ means.
 
 ## Accepted consequences
 
-- **Trusted time is inherited by content hash, not re-stamped.** Any RFC 3161 token over the
-  source's content hash already anchors these bytes, so no second stamp is queued. A source still
-  awaiting its stamp leaves the duplicate reading `none` until the stamp lands and either row is next
-  reconciled; the manifest stays authoritative throughout.
+- **Trusted time is inherited by content hash.** A duplicate makes no separate request of the
+  timestamp worker: any RFC 3161 token over the source's content hash already anchors these bytes,
+  and a second request would ask the TSA to date the same observation twice. The copy's mirror is
+  reconciled from the manifest, so it reads whatever the shared hash resolves to — `rfc3161` when a
+  token exists, `pending` while the source is eligible and unstamped. A `pending` duplicate is in the
+  retry queue like any other pending row, and whichever of the two the worker stamps, the resulting
+  entry anchors both, because the axis is keyed by content hash.
 - **A later selector backfill matches duplicates like any other row.** That is a property of having
   two rows, not of this change.
 - **Duplicating a duplicate links to the row it was copied from**, not to the ultimate origin.

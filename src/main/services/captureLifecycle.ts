@@ -792,11 +792,15 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
               })
           )
 
-          // No second timestamp is queued. The duplicate's content hash is the
-          // source's, so any RFC 3161 token over that hash already anchors
-          // these bytes; the mirror is resolved from the manifest instead. A
-          // source still awaiting its stamp leaves the duplicate at 'none'
-          // until the stamp lands and either row is next reconciled.
+          // No separate hand-off to the timestamp worker: the duplicate's
+          // content hash is the source's, so a token over that hash already
+          // anchors these bytes and a second request would ask the TSA to date
+          // the same observation twice. The mirror is resolved from the
+          // manifest instead, which gives the copy whatever axis value the
+          // shared hash has — 'rfc3161' when a token exists, 'pending' while
+          // the source is still eligible and unstamped, which does put the copy
+          // in the retry queue. Whichever row is stamped, the entry anchors
+          // both.
           reconcileCaptureTrustedTime(capture)
           return { status: 'duplicated', capture: captureRepo.getCapture(duplicateId) ?? capture }
         } catch (err) {

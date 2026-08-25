@@ -124,9 +124,9 @@ describe('copyCaptureHash', () => {
     expect(notifySuccess).not.toHaveBeenCalled()
     expect(notifyError).toHaveBeenCalledOnce()
     const [message, opts] = notifyError.mock.calls[0]
-    // Exact literal with nothing interpolated: notify.error also writes a
-    // durable log entry, and the digest identifies a specific piece of
-    // evidence. Same contract as the copy-URL failure.
+    // A fixed literal, not a template: notify keys its toast id off the message
+    // so repeats collapse onto one, and interpolating the digest would stack a
+    // separate toast per capture instead.
     expect(message).toBe("Couldn't copy the SHA-256 to your clipboard")
     expect(opts.cause).toBe(cause)
   })

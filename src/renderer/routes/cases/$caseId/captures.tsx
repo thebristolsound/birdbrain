@@ -161,8 +161,9 @@ export function CapturesRoute() {
   // two separate call sites (docked and overlay). A listener living inside it
   // would follow the column rather than the screen.
   const handleCopyUrl = useCopyCaptureUrl(selectedCapture)
-  // Bound here for the same reason, and so both copy actions read the one
-  // capture the operator is looking at rather than each panel's own copy.
+  // Bound alongside it so both copy actions read the one capture the operator is
+  // looking at, and one binding serves both panel call sites. Not for the
+  // listener reason above: this hook registers no accelerator.
   const handleCopyHash = useCopyCaptureHash(selectedCapture)
 
   // The Wayback tab takes the width (compare panes plus the archive.org

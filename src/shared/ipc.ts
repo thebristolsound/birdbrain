@@ -357,9 +357,10 @@ export interface ApplyTagToNoteParams {
 
 /**
  * `captureId` is the capture the tag ALSO landed on (ruling R15), or undefined
- * when the note is anchored to nothing. It is reported rather than assumed so
- * the renderer's confirmation says what actually happened instead of what the
- * caller hoped for.
+ * when the note is anchored to nothing, or when its anchored capture has since
+ * been deleted. It is reported rather than assumed so the renderer's
+ * confirmation says what actually happened instead of what the caller hoped
+ * for.
  */
 export interface ApplyTagToNoteResult {
   tag: Tag

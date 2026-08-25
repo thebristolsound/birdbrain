@@ -1,3 +1,4 @@
+import * as captureRepo from '@main/services/db/captureRepo'
 import { withTransaction } from '@main/services/db/core'
 import * as noteRepo from '@main/services/db/noteRepo'
 import * as tagRepo from '@main/services/db/tagRepo'
@@ -48,9 +49,15 @@ export function applyTagToNote(params: ApplyTagToNoteParams): ApplyTagToNoteResu
     const tag = tagRepo.findOrCreateTagByName(name)
     tagRepo.addTagToNote({ noteId: note.id, tagId: tag.id })
 
+    // An anchor keeps naming its capture after that capture is deleted — the
+    // `capture-missing` gap is deliberate — so the id can be dead. Inserting a
+    // dead id fails capture_tags' foreign key and rolls the note's own tag back
+    // with it, which would leave a surviving note unable to be tagged at all.
+    // The note half is valid on its own, so fall back to it.
     const captureId = captureForNote(note)
-    if (captureId) tagRepo.addTagToCapture({ captureId, tagId: tag.id })
+    const capture = captureId ? captureRepo.getCapture(captureId) : undefined
+    if (capture) tagRepo.addTagToCapture({ captureId: capture.id, tagId: tag.id })
 
-    return { tag, captureId }
+    return { tag, captureId: capture?.id }
   })
 }

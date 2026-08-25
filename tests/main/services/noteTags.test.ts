@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { initDatabase, closeDatabase, getDb, LATEST_SCHEMA_VERSION } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
-import { insertCapture } from '@main/services/db/captureRepo'
+import * as captureRepo from '@main/services/db/captureRepo'
+import { deleteCapture, insertCapture } from '@main/services/db/captureRepo'
 import { createNote, deleteNote } from '@main/services/db/noteRepo'
 import {
   createTag,
@@ -32,7 +33,10 @@ beforeEach(async () => {
   }).id
 })
 
-afterEach(() => closeDatabase())
+afterEach(() => {
+  vi.restoreAllMocks()
+  closeDatabase()
+})
 
 describe('note_tags schema (v32)', () => {
   it('creates the table at the latest schema version with both cascades', () => {
@@ -173,22 +177,42 @@ describe('applyTagToNote', () => {
     expect(listTags()).toEqual([])
   })
 
-  it('rolls the note half back when the capture half fails', () => {
-    // The only failure that lands mid-transaction, after a tag row and its note
-    // link already exist: an anchor is stored as JSON on the note and nothing
-    // checks the capture it cites, so capture_tags' foreign key is the first
-    // thing to notice. A half-applied tag would claim on getTagsForNote what
-    // getTagsForCapture denies, which is why the whole apply is one transaction.
+  it('tags the note only when the capture its anchor names has been deleted', () => {
+    // An anchor is stored as JSON on the note, so deleting the capture it cites
+    // leaves that id behind on purpose — the note survives as a visible
+    // `capture-missing` gap. Handing the dead id to capture_tags fails its
+    // foreign key, and since the whole apply is one transaction the note's own
+    // tag rolls back with it, leaving a valid note that cannot be tagged at all.
     const note = createNote({
       caseId,
       title: 'N',
       body: 'text',
-      anchor: JSON.stringify({ kind: 'capture', captureId: 'deleted-capture' })
+      anchor: JSON.stringify({ kind: 'capture', captureId })
+    })
+    deleteCapture(captureId)
+
+    const result = applyTagToNote({ noteId: note.id, name: 'orphaned' })
+    expect(result.captureId).toBeUndefined()
+    expect(getTagsForNote(note.id).map((t) => t.name)).toEqual(['orphaned'])
+    expect(listTags()).toHaveLength(1)
+  })
+
+  it('rolls the note half back when the capture half fails', () => {
+    // The existence check above closes the ordinary deleted-capture path, so
+    // what is left is the window it cannot close: the capture goes away between
+    // the check and the insert. Forced here, but it is the reason the apply
+    // stays one transaction — a half-applied tag would claim on getTagsForNote
+    // what getTagsForCapture denies, and the tag row and its note link are both
+    // already written by the time capture_tags' foreign key notices.
+    const note = createNote({ caseId, captureId, title: 'N', body: 'text' })
+    const realGetCapture = captureRepo.getCapture
+    vi.spyOn(captureRepo, 'getCapture').mockImplementation((id: string) => {
+      const capture = realGetCapture(id)
+      getDb().prepare('DELETE FROM captures WHERE id = ?').run(id)
+      return capture
     })
 
-    expect(() => applyTagToNote({ noteId: note.id, name: 'half-applied' })).toThrow(
-      /FOREIGN KEY/i
-    )
+    expect(() => applyTagToNote({ noteId: note.id, name: 'half-applied' })).toThrow(/FOREIGN KEY/i)
     expect(listTags()).toEqual([])
     expect(getTagsForNote(note.id)).toEqual([])
   })

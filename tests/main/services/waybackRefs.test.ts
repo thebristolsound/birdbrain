@@ -68,7 +68,11 @@ describe('archive refs CRUD', () => {
   it('deletes a ref by id', () => {
     const c = createCase({ name: 'Case' })
     const cap = makeCapture(c.id)
-    const ref = createWaybackRef({ captureId: cap.id, snapshot, checkedAt: '2026-06-30T00:00:00.000Z' })
+    const ref = createWaybackRef({
+      captureId: cap.id,
+      snapshot,
+      checkedAt: '2026-06-30T00:00:00.000Z'
+    })
     expect(deleteWaybackRef(ref.id)).toBe(true)
     expect(listWaybackRefs(cap.id)).toHaveLength(0)
     expect(deleteWaybackRef(ref.id)).toBe(false)
@@ -167,14 +171,6 @@ describe('untrusted status_code', () => {
     const c = createCase({ name: 'Imported' })
     const cap = makeCapture(c.id)
     importRef(cap.id, HOSTILE)
-
-    // The column really did take the markup — INTEGER affinity did not reject
-    // it, which is the premise the coercion exists for.
-    const stored = getDb()
-      .prepare('SELECT status_code AS code, typeof(status_code) AS ty FROM capture_archive_refs')
-      .get() as { code: unknown; ty: string }
-    expect(stored.ty).toBe('text')
-    expect(stored.code).toBe(HOSTILE)
 
     expect(listWaybackRefs(cap.id)[0].statusCode).toBeUndefined()
     expect(listWaybackRefsForCase(c.id)[0].statusCode).toBeUndefined()

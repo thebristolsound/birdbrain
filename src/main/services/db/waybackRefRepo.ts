@@ -42,8 +42,7 @@ export function createWaybackRef(params: {
 
 export function getWaybackRef(id: string): WaybackRef | undefined {
   const row = getDb().prepare('SELECT * FROM capture_archive_refs WHERE id = ?').get(id) as
-    | Record<string, unknown>
-    | undefined
+    Record<string, unknown> | undefined
   return row ? rowToWaybackRef(row) : undefined
 }
 
@@ -86,7 +85,7 @@ export function deleteWaybackRef(id: string): boolean {
 /**
  * The CDX HTTP status, or nothing. `status_code` is declared INTEGER, but SQLite
  * affinity stores a non-numeric string as TEXT, so a row written by a path that
- * never validated it — a `.birdbrain` archive import, or the generic table editor
+ * never validated it — a Case Archive import, or the generic table editor
  * in Settings → Database — can carry arbitrary text under a column the rest of the
  * app reads as a number. Dropped rather than surfaced: a value that is not a
  * number is not an HTTP status, and every consumer already renders a reference

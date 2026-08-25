@@ -300,10 +300,19 @@ describe('decideWebviewRequest', () => {
 
   // #906. A pre-v11 `format: 'html'` capture is a bare HTML file that still points
   // at the live origins it was taken from, so the subresource kinds below are the
-  // literal contents of a legacy capture rather than a generic denial list. Each
-  // one went out before this partition existed: the mount was an
-  // `<iframe sandbox="" srcDoc>`, and `sandbox=""` governs scripts, forms and
-  // popups but no fetch at all.
+  // literal contents of a legacy capture rather than a generic denial list.
+  //
+  // None of them went out before this partition existed, and the reason is worth
+  // writing down because it is not the one #906 assumed. The old mount was an
+  // `<iframe sandbox="" srcDoc>`, and `sandbox=""` governs scripts, forms and popups
+  // but no fetch at all — so the frame denied nothing. What denied them was
+  // src/renderer/index.html's CSP, under which a srcdoc document's opaque origin
+  // matches no source expression; measured 0 in both the dev `http://` and packaged
+  // `file://` shapes, and 9 for the same document with that CSP removed. That is one
+  // unreferenced line of HTML, maintained for the app's own assets, with no test and
+  // no comment recording that an evidence pane depended on it. These cases are the
+  // dependency replaced by something owned: the answers below are decided in
+  // webviewPolicy.ts and fail here if it is loosened.
   it.each([
     ['https://cdn.example.test/logo.png', 'an <img> the archived page referenced'],
     ['https://cdn.example.test/site.css', 'a <link rel=stylesheet>'],

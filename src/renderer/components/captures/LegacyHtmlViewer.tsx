@@ -11,14 +11,17 @@ interface Props {
 
 // Renders a pre-v11 `format: 'html'` capture via an Electron <webview> with
 // JavaScript disabled, on a partition whose policy allows no request host at all
-// (#906). It replaced an `<iframe sandbox="" srcDoc={content}>`: `sandbox=""` stops
-// scripts, forms and popups but governs no subresource fetch, so an `<img>` or
-// stylesheet the archived page references was a live request the moment the frame
-// mounted — disclosing the investigation, and mixing today's bytes into the pane
-// that presents the stored record. The guest session's onBeforeRequest filter
-// (hardenWebviewSessions in src/main/index.ts) is the control now: it sits in the
-// main process, so nothing the renderer or the archived document does reaches past
-// it.
+// (#906). It replaced an `<iframe sandbox="" srcDoc={content}>`, which denied those
+// subresource fetches by accident rather than by design: `sandbox=""` stops scripts,
+// forms and popups and governs no fetch at all. Shipped builds issued none of them —
+// measured 0, in both the dev `http://` and packaged `file://` shapes — but what
+// stopped them was src/renderer/index.html's CSP plus the srcdoc frame's own opaque
+// origin, two controls that name neither this viewer nor this guarantee and that
+// nothing tests. Remove the CSP from that harness and the same document issues nine.
+// The guest session's onBeforeRequest filter (hardenWebviewSessions in
+// src/main/index.ts) is the control now: it sits in the main process, so nothing the
+// renderer or the archived document does reaches past it, and webviewPolicy.ts states
+// the denial where the other two evidence partitions state theirs.
 export function LegacyHtmlViewer({ captureId, emptyLabel = 'No HTML available' }: Props) {
   const { data: fileUrl, error } = useQuery(captureHtmlUrlQueryOptions(captureId))
   const ref = useRef<HTMLElement | null>(null)

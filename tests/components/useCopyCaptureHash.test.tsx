@@ -24,6 +24,10 @@ const DIGEST = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 // one. Spelled out rather than derived from DIGEST so the expected string is
 // the fixture, not a second copy of the transformation under test.
 const UPPER_DIGEST = 'E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855'
+// The same digest as a storage defect would leave it, padded. A clean digest is
+// invariant under `trim()`, which is why the vectors above cannot catch one —
+// only a padded fixture tells a verbatim read from a defensive one.
+const PADDED_DIGEST = ` ${DIGEST}\n`
 
 const capture: Capture = {
   id: 'cap1',
@@ -97,9 +101,9 @@ describe('copyCaptureHash', () => {
     // hygiene, and it silently repairs the display of a stored value that is
     // wrong. The operator would then paste a digest the database does not hold
     // and never see the storage defect that produced it.
-    await copyCaptureHash(` ${DIGEST}\n`)
+    await copyCaptureHash(PADDED_DIGEST)
 
-    expect(copied()).toBe(` ${DIGEST}\n`)
+    expect(copied()).toBe(PADDED_DIGEST)
   })
 
   it('copies the bare digest, with no label or algorithm prefix around it', async () => {
@@ -144,6 +148,17 @@ describe('useCopyCaptureHash', () => {
     await act(async () => result.current())
 
     expect(copied()).toBe(UPPER_DIGEST)
+  })
+
+  it('reads capture.hash byte for byte at the hook boundary, without trimming it', async () => {
+    // Pinned here and not only on copyCaptureHash: this is the boundary the
+    // menu item calls through, and `capture?.hash` is where the value arrives
+    // from outside, so it is where a defensive trim would be added.
+    const { result } = renderHook(() => useCopyCaptureHash({ ...capture, hash: PADDED_DIGEST }))
+
+    await act(async () => result.current())
+
+    expect(copied()).toBe(PADDED_DIGEST)
   })
 
   it('does nothing at all with no capture selected', () => {

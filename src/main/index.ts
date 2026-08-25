@@ -21,6 +21,7 @@ import {
   decideWebviewAttach,
   decideWebviewDownload,
   decideWebviewNavigation,
+  decideWebviewRequest,
   resolveAttachPartition,
   sanitizeWebviewPreferences,
   WEBVIEW_PARTITIONS
@@ -154,11 +155,11 @@ app.on('child-process-gone', (_event, details) => {
 // already hardened.
 let webviewSessionsHardened = false
 
-// Denies permissions and downloads on every partition a webview may run on. Runs
-// before the window exists, so no guest can attach ahead of its own session's
-// handlers. Both handlers are set: a request handler alone leaves the synchronous
-// check path (which Chromium consults for already-granted permissions) at its
-// default.
+// Denies permissions, downloads and off-allow-list requests on every partition a
+// webview may run on. Runs before the window exists, so no guest can attach ahead
+// of its own session's handlers. Both permission handlers are set: a request
+// handler alone leaves the synchronous check path (which Chromium consults for
+// already-granted permissions) at its default.
 function hardenWebviewSessions(): void {
   if (webviewSessionsHardened) return
   webviewSessionsHardened = true
@@ -175,6 +176,15 @@ function hardenWebviewSessions(): void {
     // known-answer test answering about a function the app never runs.
     guestSession.on('will-download', (event) => {
       if (decideWebviewDownload() === 'block') event.preventDefault()
+    })
+    // Every request the guest issues, not only the navigations `will-navigate`
+    // sees (#886, #810). No filter argument, so subresources are in scope: that
+    // is the whole gap, since an <img>, a font or a fetch from script raises no
+    // navigation event. Denials are deliberately not logged — one replay page
+    // can issue hundreds and the fact worth keeping is the allow-list, which is
+    // written down in webviewPolicy.ts rather than inferred from a log.
+    guestSession.webRequest.onBeforeRequest((details, callback) => {
+      callback({ cancel: decideWebviewRequest({ partition, url: details.url }) === 'block' })
     })
   }
 }

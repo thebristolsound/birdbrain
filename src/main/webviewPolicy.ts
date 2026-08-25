@@ -35,6 +35,15 @@ export interface WebviewPartitionPolicy {
    * arrived at by a handler forgetting to deny.
    */
   allowedPermissions: readonly string[]
+  /**
+   * Hosts a guest on this partition may address, subresources included — an
+   * `<img>`, a stylesheet, a font, a beacon, a `fetch` from script. Matched as an
+   * exact hostname on an `https` URL: never a suffix, so `web.archive.org.evil.test`
+   * is a different host, and never a licence for the scheme, so plaintext `http`
+   * and WebSocket requests are outside it whatever the name. Empty means the guest
+   * reaches no network at all.
+   */
+  allowedRequestHosts: readonly string[]
 }
 
 const MHTML_POLICY: WebviewPartitionPolicy = {
@@ -42,7 +51,13 @@ const MHTML_POLICY: WebviewPartitionPolicy = {
   allowedPrefixes: ['file://'],
   allowSubsequentNavigation: false,
   javascript: false,
-  allowedPermissions: []
+  allowedPermissions: [],
+  // Empty, and that is the whole point (#810): rendering stored evidence must not
+  // reach the network. An MHTML carries its subresources inline, so a request that
+  // leaves the machine is a resource the archive did not contain — and fetching it
+  // would both show the reader something that is not in the artefact and tell its
+  // origin that the operator is looking at this page, now.
+  allowedRequestHosts: []
 }
 
 const WAYBACK_POLICY: WebviewPartitionPolicy = {
@@ -54,8 +69,26 @@ const WAYBACK_POLICY: WebviewPartitionPolicy = {
   allowedPrefixes: [WAYBACK_REPLAY_PREFIX],
   allowSubsequentNavigation: true,
   javascript: true,
-  allowedPermissions: []
+  allowedPermissions: [],
+  // One host, because one host is all this repository names: WAYBACK_REPLAY_PREFIX
+  // and the CDX endpoint (waybackMachine.ts) both point at web.archive.org and
+  // nothing in src/ addresses another. A replay rewrites the archived page's own
+  // subresource URLs back through this host, so the archived content renders from
+  // it; anything the page reaches for at runtime that was NOT rewritten is by
+  // definition a live third party, which is exactly the request #886 exists to
+  // stop. Bare archive.org and analytics.archive.org are deliberately absent: they
+  // carry the replay's donation banner and its analytics beacon, neither of which
+  // is the archived page, and both of which are a request the operator did not ask
+  // to make. Widening this is a one-line edit with a known-answer test beside it,
+  // not something to reach for the moment a replay looks less polished.
+  allowedRequestHosts: ['web.archive.org']
 }
+
+// Schemes that resolve without leaving the machine, so they disclose nothing on
+// any partition: `data:` and `blob:` are the guest's own bytes, `about:` is
+// Chromium's own blank document. Blocking them would break a guest without
+// closing anything.
+const NON_NETWORK_SCHEMES: readonly string[] = ['data:', 'blob:', 'about:']
 
 const POLICIES: Record<string, WebviewPartitionPolicy> = {
   [MHTML_PARTITION]: MHTML_POLICY,
@@ -154,6 +187,38 @@ export function decideWebviewNavigation(input: {
   return 'allow'
 }
 
+export type WebviewRequestDecision = 'allow' | 'block'
+
+/**
+ * Whether a request a guest issues is allowed to leave. This is the control the
+ * navigation guard cannot be (#886, #810): a subresource — an `<img>`, a
+ * stylesheet, a font, a beacon, a `fetch` or `XHR` from script — raises no
+ * `will-navigate`, is not a permission request, and so went out unfiltered.
+ *
+ * Denies by default. A request passes only when it addresses a host the partition
+ * allows, or sits inside the partition's own URL allow-list, which is what carries
+ * the evidence viewer's `file://` artefact. `allowedPrefixes` is consulted rather
+ * than duplicated so a partition's URL surface stays declared in one place; on the
+ * Wayback side it is subsumed by the host match, since the replay prefix is on the
+ * allowed host — but a replay also loads its own toolbar from paths outside that
+ * prefix, which is why the host is the operative test and the prefix alone would
+ * not do.
+ */
+export function decideWebviewRequest(input: {
+  partition: string | null | undefined
+  url: string | null | undefined
+}): WebviewRequestDecision {
+  const policy = webviewPolicyFor(input.partition)
+  if (!policy) return 'block'
+  const { url } = input
+  if (typeof url !== 'string' || url.length === 0) return 'block'
+  if (NON_NETWORK_SCHEMES.some((scheme) => url.startsWith(scheme))) return 'allow'
+  if (matchesPrefix(policy, url)) return 'allow'
+  const host = requestHost(url)
+  if (host === null) return 'block'
+  return policy.allowedRequestHosts.includes(host) ? 'allow' : 'block'
+}
+
 /**
  * Permission decision for a guest session. Denies everything, because neither
  * partition grants anything: nothing rendered in a webview — an evidence
@@ -183,4 +248,24 @@ export function decideWebviewDownload(): WebviewDownloadDecision {
 function matchesPrefix(policy: WebviewPartitionPolicy, url: string | null | undefined): boolean {
   if (typeof url !== 'string' || url.length === 0) return false
   return policy.allowedPrefixes.some((prefix) => url.startsWith(prefix))
+}
+
+/**
+ * The hostname an `https` request addresses, or null for anything else. Parsing
+ * rather than string-matching is the point: `URL` settles where the authority ends,
+ * so a name embedded in a path, a userinfo segment or a query cannot pass itself off
+ * as the host. Any other scheme yields null and is denied — a `file://` subresource
+ * has already been decided by the prefix test above, and `http`/`ws`/`wss` to an
+ * allowed name is still a request no partition here needs.
+ */
+function requestHost(url: string): string | null {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return null
+  }
+  // `URL` lower-cases an ASCII hostname and resolves its punycode, so the exact
+  // comparison at the call site is doing so against a normalised name.
+  return parsed.protocol === 'https:' ? parsed.hostname : null
 }

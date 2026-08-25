@@ -6,6 +6,11 @@
  * only thing standing between "the replay pane loads archive.org" and "the MHTML
  * evidence viewer will follow a link out of the artefact it was handed". Each
  * case below is an answer that must not change silently.
+ *
+ * `decideWebviewRequest` (#886, #810) is the same discriminator applied to every
+ * request a guest issues rather than only its navigations, so the same wrong answer
+ * has a second, wider way to arrive: an evidence viewer that fetches, or a replay
+ * pane that reaches a host the operator never asked it to contact.
  */
 import { describe, it, expect } from 'vitest'
 import {
@@ -13,6 +18,7 @@ import {
   decideWebviewAttach,
   decideWebviewDownload,
   decideWebviewNavigation,
+  decideWebviewRequest,
   MHTML_PARTITION,
   resolveAttachPartition,
   sanitizeWebviewPreferences,
@@ -201,6 +207,93 @@ describe('decideWebviewNavigation', () => {
     expect(
       decideWebviewNavigation({ partition: WAYBACK_PARTITION, url: null, initialLoadDone: false })
     ).toBe('block')
+  })
+})
+
+describe('decideWebviewRequest', () => {
+  it('writes each partition’s allowed request hosts down rather than implying them', () => {
+    // The list is the control. If it is ever widened, it is widened here, in a
+    // diff, beside this answer — not arrived at by a filter forgetting to deny.
+    expect(webviewPolicyFor(WAYBACK_PARTITION)?.allowedRequestHosts).toEqual(['web.archive.org'])
+    expect(webviewPolicyFor(MHTML_PARTITION)?.allowedRequestHosts).toEqual([])
+  })
+
+  it.each([
+    [REPLAY_URL, 'the replay document itself'],
+    [
+      `${WAYBACK_REPLAY_PREFIX}20200114000000im_/https://example.com/logo.png`,
+      'an archived subresource, rewritten back through the archive'
+    ],
+    [
+      'https://web.archive.org/_static/js/bundle-playback.js',
+      'the replay’s own toolbar asset, on the host but outside the replay prefix'
+    ],
+    [
+      'https://WEB.ARCHIVE.ORG/web/20200114000000/https://example.com/',
+      'the host in a case the prefix test alone would miss'
+    ]
+  ])('allows %s on the replay partition (%s)', (url) => {
+    expect(decideWebviewRequest({ partition: WAYBACK_PARTITION, url })).toBe('allow')
+  })
+
+  it.each([
+    ['https://tracker.example.test/beacon.gif?id=7', 'the phone-home this exists to stop'],
+    ['https://fonts.example.test/inter.woff2', 'a font the archived page reached for live'],
+    ['https://web.archive.org.evil.test/web/1/x', 'a suffix lookalike, not the host'],
+    ['https://evil.test/?to=https://web.archive.org/web/', 'the host name sitting in a query'],
+    ['https://web.archive.org@evil.test/beacon.gif', 'the host name sitting in userinfo'],
+    ['http://web.archive.org/web/1/https://example.com/', 'plaintext http to the allowed host'],
+    ['wss://web.archive.org/socket', 'a WebSocket to the allowed host'],
+    ['file:///etc/passwd', 'a local file from the remote partition'],
+    ['not a url', 'something that does not parse'],
+    ['', 'no url at all']
+  ])('blocks %s on the replay partition (%s)', (url) => {
+    expect(decideWebviewRequest({ partition: WAYBACK_PARTITION, url })).toBe('block')
+  })
+
+  it('lets the evidence viewer read its artefact and nothing off the machine', () => {
+    expect(
+      decideWebviewRequest({ partition: MHTML_PARTITION, url: 'file:///c/a.mhtml' })
+    ).toBe('allow')
+    expect(
+      decideWebviewRequest({ partition: MHTML_PARTITION, url: 'https://cdn.example.test/s.css' })
+    ).toBe('block')
+    expect(
+      decideWebviewRequest({ partition: MHTML_PARTITION, url: 'https://tracker.example.test/p.gif' })
+    ).toBe('block')
+  })
+
+  it('blocks the archive host itself on the evidence viewer partition', () => {
+    // The load-bearing case, in request form: the discriminator is the only thing
+    // keeping the replay pane's allow-list off the partition that renders evidence.
+    expect(decideWebviewRequest({ partition: MHTML_PARTITION, url: REPLAY_URL })).toBe('block')
+    expect(
+      decideWebviewRequest({
+        partition: MHTML_PARTITION,
+        url: 'https://web.archive.org/_static/js/bundle-playback.js'
+      })
+    ).toBe('block')
+  })
+
+  it.each(['data:image/gif;base64,R0lGODlhAQABAAAAACw=', 'blob:null/2b6c-9f0e', 'about:blank'])(
+    'allows %s on both partitions, since it never leaves the machine',
+    (url) => {
+      for (const partition of WEBVIEW_PARTITIONS) {
+        expect(decideWebviewRequest({ partition, url })).toBe('allow')
+      }
+    }
+  )
+
+  it('blocks everything on a partition it does not know, including a local scheme', () => {
+    for (const url of [REPLAY_URL, 'file:///c/a.mhtml', 'about:blank']) {
+      expect(decideWebviewRequest({ partition: 'guest', url })).toBe('block')
+      expect(decideWebviewRequest({ partition: null, url })).toBe('block')
+    }
+  })
+
+  it('blocks an absent url on a partition it does know', () => {
+    expect(decideWebviewRequest({ partition: WAYBACK_PARTITION, url: null })).toBe('block')
+    expect(decideWebviewRequest({ partition: MHTML_PARTITION, url: undefined })).toBe('block')
   })
 })
 

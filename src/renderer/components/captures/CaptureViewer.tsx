@@ -5,6 +5,7 @@ import { useAppStore, type CaptureViewerTab } from '@renderer/stores/appStore'
 import { capturesQueryOptions, captureContentQueryOptions } from '@renderer/lib/queries'
 import { ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react'
 import { MhtmlViewer } from '@renderer/components/captures/MhtmlViewer'
+import { LegacyHtmlViewer } from '@renderer/components/captures/LegacyHtmlViewer'
 import { AnnotationEditor } from '@renderer/components/captures/annotation/AnnotationEditor'
 import { CapturesGettingStarted } from '@renderer/components/captures/CapturesGettingStarted'
 import { Button } from '@renderer/components/ui'
@@ -50,9 +51,10 @@ export function CaptureViewer() {
           ? 'txt'
           : null
 
-  // Only fetch content if we have a capture, content type, and it's not MHTML page view
-  const shouldFetchContent =
-    selectedCaptureId && contentType && !(capture?.format === 'mhtml' && activeTab === 'page')
+  // Only fetch content if we have a capture and a content type. Page is excluded
+  // for both formats now (#906): each renders its artifact in a guest that loads it
+  // by file URL, so pulling the bytes across IPC as a string would be for nothing.
+  const shouldFetchContent = selectedCaptureId && contentType && activeTab !== 'page'
 
   const { data: content } = useQuery({
     ...captureContentQueryOptions(selectedCaptureId || '', contentType || 'html'),
@@ -240,21 +242,14 @@ export function CaptureViewer() {
                 </p>
               </div>
             ))}
-          {activeTab === 'page' && capture.format === 'mhtml' ? (
+          {activeTab === 'page' ? (
             <div className="h-full w-full overflow-hidden">
-              <MhtmlViewer captureId={capture.id} />
+              {capture.format === 'mhtml' ? (
+                <MhtmlViewer captureId={capture.id} />
+              ) : (
+                <LegacyHtmlViewer captureId={capture.id} />
+              )}
             </div>
-          ) : activeTab === 'page' ? (
-            content ? (
-              <iframe
-                sandbox=""
-                srcDoc={content}
-                className="h-full w-full border-0 bg-white"
-                title="Archived page"
-              />
-            ) : (
-              <div className="p-4 text-text-muted">No HTML available</div>
-            )
           ) : null}
           {activeTab === 'wayback' && <WaybackCompare capture={capture} />}
           {activeTab === 'text' &&

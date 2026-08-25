@@ -19,6 +19,7 @@ import {
   decideWebviewDownload,
   decideWebviewNavigation,
   decideWebviewRequest,
+  LEGACY_HTML_PARTITION,
   MHTML_PARTITION,
   resolveAttachPartition,
   sanitizeWebviewPreferences,
@@ -52,9 +53,14 @@ const REMOTE_FILE_URLS: readonly string[] = [
 ]
 
 describe('webviewPolicyFor', () => {
-  it('knows exactly the two partitions the app mounts', () => {
-    expect(WEBVIEW_PARTITIONS).toEqual([MHTML_PARTITION, WAYBACK_PARTITION])
+  it('knows exactly the three partitions the app mounts', () => {
+    expect(WEBVIEW_PARTITIONS).toEqual([
+      MHTML_PARTITION,
+      LEGACY_HTML_PARTITION,
+      WAYBACK_PARTITION
+    ])
     expect(webviewPolicyFor(MHTML_PARTITION)?.partition).toBe(MHTML_PARTITION)
+    expect(webviewPolicyFor(LEGACY_HTML_PARTITION)?.partition).toBe(LEGACY_HTML_PARTITION)
     expect(webviewPolicyFor(WAYBACK_PARTITION)?.partition).toBe(WAYBACK_PARTITION)
   })
 
@@ -65,8 +71,9 @@ describe('webviewPolicyFor', () => {
     }
   })
 
-  it('keeps JavaScript off for the evidence viewer and on for the replay pane', () => {
+  it('keeps JavaScript off for both evidence viewers and on for the replay pane', () => {
     expect(webviewPolicyFor(MHTML_PARTITION)?.javascript).toBe(false)
+    expect(webviewPolicyFor(LEGACY_HTML_PARTITION)?.javascript).toBe(false)
     expect(webviewPolicyFor(WAYBACK_PARTITION)?.javascript).toBe(true)
   })
 })
@@ -108,14 +115,29 @@ describe('decideWebviewAttach', () => {
     })
   })
 
-  it('refuses a remote src on the evidence viewer partition', () => {
-    // The load-bearing case: a wrong discriminator here would let the MHTML
-    // viewer load the network.
-    expect(decideWebviewAttach({ partition: MHTML_PARTITION, src: REPLAY_URL })).toEqual({
-      allowed: false,
-      reason: 'src-not-allowed'
+  it('admits a file:// artefact on the legacy HTML partition', () => {
+    const decision = decideWebviewAttach({
+      partition: LEGACY_HTML_PARTITION,
+      src: 'file:///c/case/cap.html'
     })
+    expect(decision.allowed).toBe(true)
   })
+
+  it.each([MHTML_PARTITION, LEGACY_HTML_PARTITION])(
+    'refuses a remote src on the %s evidence viewer partition',
+    (partition) => {
+      // The load-bearing case: a wrong discriminator here would let an evidence
+      // viewer load the network.
+      expect(decideWebviewAttach({ partition, src: REPLAY_URL })).toEqual({
+        allowed: false,
+        reason: 'src-not-allowed'
+      })
+      expect(decideWebviewAttach({ partition, src: 'https://example.com/page.html' })).toEqual({
+        allowed: false,
+        reason: 'src-not-allowed'
+      })
+    }
+  )
 
   it('refuses any partition it does not know, whatever the src', () => {
     expect(decideWebviewAttach({ partition: 'guest', src: REPLAY_URL })).toEqual({
@@ -263,6 +285,7 @@ describe('decideWebviewRequest', () => {
     // diff, beside this answer — not arrived at by a filter forgetting to deny.
     expect(webviewPolicyFor(WAYBACK_PARTITION)?.allowedRequestHosts).toEqual(['web.archive.org'])
     expect(webviewPolicyFor(MHTML_PARTITION)?.allowedRequestHosts).toEqual([])
+    expect(webviewPolicyFor(LEGACY_HTML_PARTITION)?.allowedRequestHosts).toEqual([])
   })
 
   it.each([
@@ -345,6 +368,67 @@ describe('decideWebviewRequest', () => {
     ).toBe('block')
   })
 
+  // #906. A pre-v11 `format: 'html'` capture is a bare HTML file that still points
+  // at the live origins it was taken from, so the subresource kinds below are the
+  // literal contents of a legacy capture rather than a generic denial list.
+  //
+  // None of them went out before this partition existed, and the reason is worth
+  // writing down because it is not the one #906 assumed. The old mount was an
+  // `<iframe sandbox="" srcDoc>`, and `sandbox=""` governs scripts, forms and popups
+  // but no fetch at all — so the frame denied nothing. What denied them was
+  // src/renderer/index.html's CSP, under which a srcdoc document's opaque origin
+  // matches no source expression; measured 0 in both the dev `http://` and packaged
+  // `file://` shapes, and 9 for the same document with that CSP removed. That is one
+  // unreferenced line of HTML, maintained for the app's own assets, with no test and
+  // no comment recording that an evidence pane depended on it. These cases are the
+  // dependency replaced by something owned: the answers below are decided in
+  // webviewPolicy.ts and fail here if it is loosened.
+  it.each([
+    ['https://cdn.example.test/logo.png', 'an <img> the archived page referenced'],
+    ['https://cdn.example.test/site.css', 'a <link rel=stylesheet>'],
+    ['https://fonts.example.test/inter.woff2', 'a web font'],
+    ['https://ads.example.test/frame.html', 'a nested <iframe>'],
+    ['https://media.example.test/clip.mp4', 'a <video> source'],
+    ['https://cdn.example.test/app.js', 'a <script> the page would load'],
+    ['https://tracker.example.test/p.gif?id=7', 'a tracking pixel, the disclosure itself'],
+    ['http://cdn.example.test/logo.png', 'the same image over plaintext http'],
+    [REPLAY_URL, 'the archive host, allowed only on the replay partition'],
+    ['not a url', 'something that does not parse'],
+    ['', 'no url at all']
+  ])('blocks %s on the legacy HTML partition (%s)', (url) => {
+    expect(decideWebviewRequest({ partition: LEGACY_HTML_PARTITION, url })).toBe('block')
+  })
+
+  it('lets the legacy HTML viewer read its own artefact off disk', () => {
+    expect(
+      decideWebviewRequest({ partition: LEGACY_HTML_PARTITION, url: 'file:///c/case/cap.html' })
+    ).toBe('allow')
+  })
+
+  it('holds the legacy HTML guest on the one file it was handed', () => {
+    expect(
+      decideWebviewNavigation({
+        partition: LEGACY_HTML_PARTITION,
+        url: 'file:///c/case/cap.html',
+        initialLoadDone: false
+      })
+    ).toBe('allow')
+    expect(
+      decideWebviewNavigation({
+        partition: LEGACY_HTML_PARTITION,
+        url: 'file:///c/case/cap.html',
+        initialLoadDone: true
+      })
+    ).toBe('block')
+    expect(
+      decideWebviewNavigation({
+        partition: LEGACY_HTML_PARTITION,
+        url: 'https://example.com/',
+        initialLoadDone: false
+      })
+    ).toBe('block')
+  })
+
   it.each(['data:image/gif;base64,R0lGODlhAQABAAAAACw=', 'blob:null/2b6c-9f0e', 'about:blank'])(
     'allows %s on both partitions, since it never leaves the machine',
     (url) => {
@@ -392,5 +476,54 @@ describe('permissions and downloads', () => {
 
   it('always blocks a download', () => {
     expect(decideWebviewDownload()).toBe('block')
+  })
+})
+
+// The legacy partition lists `file:///`, not `file://`, and this is what that third
+// slash buys: `file://host/share/x` is a network fetch wearing a local scheme, on the
+// one content class an investigated site chooses the bytes of.
+//
+// It is not free, and the cost is the case below it. `captures:getHtmlUrl` builds the
+// guest's src with `pathToFileURL`, which emits the empty-authority form for a local
+// storage root and an authority form for a Windows UNC one — so an operator whose
+// `storagePath` is `\\nas\share` gets an artefact URL this prefix denies. That is the
+// ruled-correct answer today (#923: no way to tell the operator's file server from a
+// host written into a captured page, so both are refused), recorded in #953, with #929
+// covering the operator-facing message. The `file://nas/…` answer is stable across
+// #926 and #953 asks for it to be pinned there.
+//
+// Not asserted here, deliberately: `file:////evil.test/share/x.png` satisfies
+// `file:///` and is still allowed on this branch. It is closed inside `matchesPrefix`
+// by #904/#926 for every partition at once, so asserting `block` would be red until
+// that lands and asserting `allow` would be red the moment it does. #949 tracks
+// driving all of these from `WEBVIEW_PARTITIONS` so a partition cannot be added
+// without its row.
+describe('the legacy HTML partition’s local-file narrowing', () => {
+  it.each([
+    ['file://evil.test/share/beacon.png', 'a remote authority wearing the local scheme'],
+    ['file://192.0.2.5/s/x.css', 'the same, addressed by IP'],
+    ['file://user:pw@evil.test/share/x.png', 'an authority `URL` refuses to parse at all']
+  ])('refuses %s on every decision surface (%s)', (url) => {
+    expect(decideWebviewRequest({ partition: LEGACY_HTML_PARTITION, url })).toBe('block')
+    expect(
+      decideWebviewNavigation({ partition: LEGACY_HTML_PARTITION, url, initialLoadDone: false })
+    ).toBe('block')
+    expect(decideWebviewAttach({ partition: LEGACY_HTML_PARTITION, src: url })).toEqual({
+      allowed: false,
+      reason: 'src-not-allowed'
+    })
+  })
+
+  it('still admits the artefact form a local storage root produces', () => {
+    // The counterweight: narrowing the prefix must not deny the one load that needs it.
+    const url = 'file:///c/case/cap.html'
+    expect(decideWebviewRequest({ partition: LEGACY_HTML_PARTITION, url })).toBe('allow')
+    expect(
+      decideWebviewNavigation({ partition: LEGACY_HTML_PARTITION, url, initialLoadDone: false })
+    ).toBe('allow')
+    expect(decideWebviewAttach({ partition: LEGACY_HTML_PARTITION, src: url })).toEqual({
+      allowed: true,
+      policy: webviewPolicyFor(LEGACY_HTML_PARTITION)
+    })
   })
 })

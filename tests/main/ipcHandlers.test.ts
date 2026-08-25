@@ -8,10 +8,12 @@ import {
   rmSync,
   statSync,
   truncateSync,
+  unlinkSync,
   writeFileSync
 } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import { pathToFileURL } from 'url'
 import type { IpcMainInvokeEvent } from 'electron'
 
 // --- Module mocks -----------------------------------------------------------
@@ -443,6 +445,30 @@ describe('ipcHandlers — captures', () => {
 
   it('returns null mhtml url when capture has no mhtml path', async () => {
     expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_MHTML_URL, captureId))).toBeNull()
+  })
+
+  // #906. The legacy viewer is a <webview> that loads the artefact by file URL, so
+  // this channel answers for the same file captures:getContent reads — resolved
+  // through artifactPaths, not through the capture row's htmlPath column, which
+  // this seed capture does not set.
+  it('returns the pre-v11 html artefact as a file url', async () => {
+    const url = expectOk<string | null>(await invoke(IPC_CHANNELS.CAPTURES_GET_HTML_URL, captureId))
+    const expected = pathToFileURL(
+      defaultCaptureStore.artifactPaths(caseId, captureId, 'html').abs
+    ).toString()
+    expect(url).toBe(expected)
+  })
+
+  it('returns null html url for an unknown capture and for one with no file on disk', async () => {
+    expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_HTML_URL, 'missing'))).toBeNull()
+    const abs = defaultCaptureStore.artifactPaths(caseId, captureId, 'html').abs
+    const bytes = readFileSync(abs)
+    unlinkSync(abs)
+    try {
+      expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_HTML_URL, captureId))).toBeNull()
+    } finally {
+      writeFileSync(abs, bytes)
+    }
   })
 
   it('opens external http(s) urls and rejects other protocols', async () => {

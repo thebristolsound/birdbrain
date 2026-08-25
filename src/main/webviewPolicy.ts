@@ -2,21 +2,26 @@
 // unit-testable without an Electron window — the same reason resolveWindowSize and
 // revealWhenReady were extracted.
 //
-// Two guests can be live at once on the Captures screen (#401): the MHTML evidence
-// viewer and the Wayback replay pane in the side-by-side compare. They need opposite
-// policies — one loads a local file with JavaScript off, the other loads remote
-// archive.org content with JavaScript on — so every decision below is taken *per
-// partition*. The partition is the discriminator, and a wrong one would silently
-// loosen the evidence viewer, which is why this module refuses anything it does not
-// recognise rather than falling through to a default.
+// Three guests can be live at once on the Captures screen (#401, #906): the MHTML
+// evidence viewer, the pre-v11 HTML evidence viewer, and the Wayback replay pane in
+// the side-by-side compare. They need opposite policies — two load a local file with
+// JavaScript off, the third loads remote archive.org content with JavaScript on — so
+// every decision below is taken *per partition*. The partition is the discriminator,
+// and a wrong one would silently loosen an evidence viewer, which is why this module
+// refuses anything it does not recognise rather than falling through to a default.
 
 // The partition names and the replay prefix live in @shared/constants so the
 // renderer's <webview> attributes and this policy read the same strings. Replay
 // pages redirect to the nearest snapshot and their own toolbar navigates, so
 // subsequent navigation is permitted for Wayback — but only inside that prefix.
-import { MHTML_PARTITION, WAYBACK_PARTITION, WAYBACK_REPLAY_PREFIX } from '@shared/constants'
+import {
+  LEGACY_HTML_PARTITION,
+  MHTML_PARTITION,
+  WAYBACK_PARTITION,
+  WAYBACK_REPLAY_PREFIX
+} from '@shared/constants'
 
-export { MHTML_PARTITION, WAYBACK_PARTITION, WAYBACK_REPLAY_PREFIX }
+export { LEGACY_HTML_PARTITION, MHTML_PARTITION, WAYBACK_PARTITION, WAYBACK_REPLAY_PREFIX }
 
 export interface WebviewPartitionPolicy {
   partition: string
@@ -64,6 +69,47 @@ const MHTML_POLICY: WebviewPartitionPolicy = {
   allowedRequestHosts: []
 }
 
+const LEGACY_HTML_POLICY: WebviewPartitionPolicy = {
+  partition: LEGACY_HTML_PARTITION,
+  // Three slashes, not two, and the third one is the control. Exactly one load on
+  // this partition needs the `file:` scheme at all: the guest's own top-level
+  // document, whose `src` is what `captures:getHtmlUrl` returned for the stored
+  // `page.html`. `file://` would additionally admit `file://evil.test/share/x.png`,
+  // an authority this policy has no reason to reach and which is a network request
+  // wearing a local scheme; on the one content class that is attacker-chosen (a page
+  // captured from the web, its references never rewritten) that is not a theoretical
+  // shape — #941 observed the fetch on Windows.
+  //
+  // What this costs is recorded rather than assumed away. `captures:getHtmlUrl`
+  // builds the src with `pathToFileURL`, and that emits the empty-authority form for
+  // a local storage root but an *authority* form for a Windows UNC one:
+  // `pathToFileURL('\\\\nas\\share\\cap.html', { windows: true })` is
+  // `file://nas/share/cap.html` on the repo's pinned Node, which this prefix denies.
+  // `storagePath` is an unvalidated string set from a directory picker, so that root
+  // is reachable. Denying it is the ruled-correct answer today (#923): with no way
+  // to tell the operator's own file server from a host written into a captured page,
+  // both are refused. #953 records that UNC roots stop working, #923 is the future
+  // work deriving the one allowed authority from `storagePath`, and #929 covers
+  // telling the operator instead of showing a blank pane.
+  //
+  // Narrowed here rather than in `matchesPrefix` because the general remote-`file:`
+  // refusal belongs to #904/#926, which fixes it for every partition at once: the
+  // four-slash form `file:////evil.test/share/x.png` still satisfies this prefix and
+  // is closed by that change, not by this one.
+  allowedPrefixes: ['file:///'],
+  allowSubsequentNavigation: false,
+  javascript: false,
+  allowedPermissions: [],
+  // Empty for the same reason as MHTML, and for one more (#906). A pre-v11
+  // `format: 'html'` capture is a bare HTML file: unlike an MHTML it does *not*
+  // carry its subresources, so every `<img>`, stylesheet, font and nested frame in
+  // it still points at the live origin it came from. Rendering it with any network
+  // reach at all would fetch today's bytes and present them inside the pane that
+  // says "your capture" — the stored record and live content, undistinguished. That
+  // is why this is denial rather than an allow-list with one entry in it.
+  allowedRequestHosts: []
+}
+
 const WAYBACK_POLICY: WebviewPartitionPolicy = {
   partition: WAYBACK_PARTITION,
   // JavaScript is on (maintainer ruling R3 on #401): archive.org replays render
@@ -96,11 +142,16 @@ const NON_NETWORK_SCHEMES: readonly string[] = ['data:', 'blob:', 'about:']
 
 const POLICIES: Record<string, WebviewPartitionPolicy> = {
   [MHTML_PARTITION]: MHTML_POLICY,
+  [LEGACY_HTML_PARTITION]: LEGACY_HTML_POLICY,
   [WAYBACK_PARTITION]: WAYBACK_POLICY
 }
 
 /** Every partition a webview is allowed to run on, for session-level hardening. */
-export const WEBVIEW_PARTITIONS: readonly string[] = [MHTML_PARTITION, WAYBACK_PARTITION]
+export const WEBVIEW_PARTITIONS: readonly string[] = [
+  MHTML_PARTITION,
+  LEGACY_HTML_PARTITION,
+  WAYBACK_PARTITION
+]
 
 /** The policy for a partition, or null when the partition is not one of ours. */
 export function webviewPolicyFor(partition: string | null | undefined): WebviewPartitionPolicy | null {

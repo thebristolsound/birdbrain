@@ -36,6 +36,13 @@ export const captureMhtmlUrlQueryOptions = (captureId: string) =>
     enabled: !!captureId
   })
 
+export const captureHtmlUrlQueryOptions = (captureId: string) =>
+  queryOptions({
+    queryKey: queryKeys.captureHtmlUrl(captureId),
+    queryFn: () => window.birdbrain.captures.getHtmlUrl(captureId),
+    enabled: !!captureId
+  })
+
 export const captureMatchingSelectorsQueryOptions = (captureId: string) =>
   queryOptions({
     queryKey: queryKeys.captureMatchingSelectors(captureId),

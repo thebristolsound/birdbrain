@@ -66,16 +66,19 @@ function readStoredZipEntries(path: string): Map<string, Buffer> {
  * bare directories `pages/`, `screenshots/` and `timestamps/` in prose, and
  * naming a directory is not a claim that a particular file is present.
  *
- * The leading lookbehind excludes a path segment inside a URL (#401). Pinned
- * archive.org references embed the archived page's own URL, and a page archived
- * from `https://example.com/pages/index.html` is not a claim about this
- * package's `pages/` directory. Without it the property produces a false
- * positive on an external reference the package deliberately does not contain —
- * the one shape the report is now guaranteed to carry. Genuine citations are
- * emitted inside an element (`<code>pages/…` / `<span class="mono">pages/…`), so
- * the character before them is `>` and they still match.
+ * The pattern is applied to the document with absolute URLs removed rather than
+ * being loosened (#401). Pinned archive.org references embed the archived page's
+ * own URL, and a page archived from `https://example.com/pages/index.html` is
+ * not a claim about this package's `pages/` directory — but a lookbehind wide
+ * enough to reject that shape (`(?<![\w/.-])`) also stops matching a genuine
+ * citation that happens to follow `/`, `.` or `-`, which would weaken the
+ * property silently. Stripping the URLs removes the false positive at its source
+ * and leaves the word boundary intact.
  */
-const ARTIFACT_CITATION = /(?<![\w/.-])(?:pages|screenshots|timestamps)\/[A-Za-z0-9._-]+\.[A-Za-z0-9]+/g
+const ARTIFACT_CITATION = /\b(?:pages|screenshots|timestamps)\/[A-Za-z0-9._-]+\.[A-Za-z0-9]+/g
+
+/** Absolute URLs, which are references to somewhere else and never citations. */
+const ABSOLUTE_URL = /https?:\/\/[^\s"'<>]+/g
 
 /**
  * Companion files. Named as a closed set rather than scraped, because a
@@ -94,7 +97,8 @@ const COMPANION_FILES = [
 ]
 
 function citedArtifacts(html: string): string[] {
-  return [...new Set(html.match(ARTIFACT_CITATION) ?? [])]
+  const withoutUrls = html.replace(ABSOLUTE_URL, ' ')
+  return [...new Set(withoutUrls.match(ARTIFACT_CITATION) ?? [])]
 }
 
 function citedCompanions(html: string): string[] {

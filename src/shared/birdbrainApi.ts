@@ -116,7 +116,6 @@ export interface BirdbrainAPI {
     listFavorites(caseId: string): Promise<string[]>
     verify(captureId: string): Promise<HashVerification>
     getMhtmlUrl(captureId: string): Promise<string | null>
-    getHtmlUrl(captureId: string): Promise<string | null>
     deleteMany(payload: CaptureBatchPayload): Promise<BatchDeleteResult>
     setFavoriteMany(payload: CaptureBatchPayload & { favorite: boolean }): Promise<BatchCountResult>
   }

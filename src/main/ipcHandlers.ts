@@ -730,19 +730,6 @@ export function registerIpcHandlers(deps: {
     return pathToFileURL(abs).toString()
   })
 
-  // The pre-v11 `format: 'html'` artefact, as a file URL for the legacy viewer's
-  // guest (#906). Resolved through artifactPaths rather than capture.htmlPath so it
-  // answers for exactly the file captures:getContent reads: a row whose htmlPath is
-  // unset or stale still has its bytes at the store's deterministic location, and
-  // gating on the column would blank a capture that renders today.
-  handle(IPC_CHANNELS.CAPTURES_GET_HTML_URL, (_, captureId: string): string | null => {
-    const capture = captureRepo.getCapture(captureId)
-    if (!capture) return null
-    const { abs } = defaultCaptureStore.artifactPaths(capture.caseId, captureId, 'html')
-    if (!existsSync(abs)) return null
-    return pathToFileURL(abs).toString()
-  })
-
   handle(IPC_CHANNELS.CAPTURES_VERIFY, (_, captureId: string) => captureLifecycle.verify(captureId))
 
   // Recapture

@@ -4,7 +4,7 @@ import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/re
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { Capture } from '@shared/types'
-import { LEGACY_HTML_PARTITION, WAYBACK_PARTITION } from '@shared/constants'
+import { WAYBACK_PARTITION } from '@shared/constants'
 import { useAppStore } from '@renderer/stores/appStore'
 import { fakeBridge } from '../renderer/fakeBridge'
 
@@ -36,8 +36,6 @@ const capture: Capture = {
   method: 'extension'
 }
 
-const LEGACY_FILE_URL = 'file:///store/case1/cap1.html'
-
 let openExternal: ReturnType<typeof vi.fn>
 
 function renderCompare(subject: Capture = capture) {
@@ -59,7 +57,7 @@ function select(captureId = 'cap1') {
 beforeEach(() => {
   openExternal = vi.fn().mockResolvedValue(undefined)
   fakeBridge({
-    captures: { openExternal, getHtmlUrl: vi.fn().mockResolvedValue(LEGACY_FILE_URL) }
+    captures: { openExternal, getContent: vi.fn().mockResolvedValue('<html>legacy</html>') }
   })
   useAppStore.getState().setWaybackSelection(null)
 })
@@ -142,24 +140,17 @@ describe('WaybackCompare', () => {
     expect(opts.cause).toBe(cause)
   })
 
-  // #906. This mount is the earlier of the two the fix covers: it renders when the
-  // operator opens the Wayback tab, before any archive.org lookup is requested, so
-  // an `<iframe sandbox="" srcDoc>` here disclosed to third parties ahead of the
-  // one disclosure the panel asks consent for.
-  it('renders a pre-v11 HTML capture in a no-network guest, not a sandboxed frame', async () => {
+  it('falls back to the sandboxed frame for a pre-v11 HTML capture', async () => {
     select()
-    const { container } = renderCompare({ ...capture, format: 'html' })
+    renderCompare({ ...capture, format: 'html' })
 
-    const guest = await screen.findByTestId('legacy-html-viewer')
-    expect(guest.getAttribute('src')).toBe(LEGACY_FILE_URL)
-    expect(guest.getAttribute('partition')).toBe(LEGACY_HTML_PARTITION)
-    expect(guest.getAttribute('webpreferences')).toContain('javascript=no')
-    expect(container.querySelector('iframe')).toBeNull()
+    const frame = await screen.findByTitle('Stored capture')
+    expect(frame.getAttribute('sandbox')).toBe('')
     expect(screen.queryByTestId('mhtml-viewer-stub')).toBeNull()
   })
 
   it('says so when a legacy capture has no stored page to show', async () => {
-    fakeBridge({ captures: { openExternal, getHtmlUrl: vi.fn().mockResolvedValue(null) } })
+    fakeBridge({ captures: { openExternal, getContent: vi.fn().mockResolvedValue(null) } })
     renderCompare({ ...capture, format: 'html' })
 
     expect(await screen.findByText('No stored page archive available')).toBeDefined()

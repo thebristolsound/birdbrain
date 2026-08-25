@@ -87,10 +87,6 @@ export const DEFAULT_ANALYSIS_SYSTEM_PROMPT =
 // default.
 export const MHTML_PARTITION = 'mhtml-sandbox'
 export const WAYBACK_PARTITION = 'wayback-replay'
-// Pre-v11 `format: 'html'` captures (#906). Its own partition rather than a second
-// tenant on the MHTML one: the two artefacts are stored and read differently and a
-// future divergence in either policy should not have to be untangled first.
-export const LEGACY_HTML_PARTITION = 'legacy-html-sandbox'
 
 // The only URL prefix a Wayback replay guest may load or navigate to.
 export const WAYBACK_REPLAY_PREFIX = 'https://web.archive.org/web/'

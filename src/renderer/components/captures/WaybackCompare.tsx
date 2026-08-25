@@ -1,10 +1,11 @@
+import { useQuery } from '@tanstack/react-query'
 import { Archive, ExternalLink, TriangleAlert } from 'lucide-react'
 import type { Capture } from '@shared/types'
+import { captureContentQueryOptions } from '@renderer/lib/api/captures'
 import { openCaptureExternal } from '@renderer/lib/api/system'
 import { notify } from '@renderer/lib/notify'
 import { useAppStore } from '@renderer/stores/appStore'
 import { MhtmlViewer } from '@renderer/components/captures/MhtmlViewer'
-import { LegacyHtmlViewer } from '@renderer/components/captures/LegacyHtmlViewer'
 import { WaybackReplayView } from '@renderer/components/captures/WaybackReplayView'
 import { formatUtcDate, formatUtcTime } from '@renderer/components/captures/waybackPanelModel'
 import { formatSnapshotDelta } from '@shared/wayback'
@@ -114,14 +115,26 @@ export function WaybackCompare({ capture }: Props) {
   )
 }
 
-// The stored side of the comparison. Both formats go through an evidence viewer on
-// a no-network partition: MHTML through MhtmlViewer, the pre-v11 HTML format through
-// LegacyHtmlViewer, which replaced the Page tab's sandboxed srcDoc frame in #906.
-// The timing is what made this mount the worse of the two: it renders when the
-// operator opens the Wayback tab, before they have asked for any archive.org
-// lookup, so a subresource fetched from it would be a disclosure the panel's own
-// consent model says has not happened yet.
+// The stored side of the comparison. MHTML goes through the evidence viewer
+// unchanged; the pre-v11 HTML format keeps the Page tab's sandboxed srcDoc frame so
+// a legacy capture is not simply blank here.
 function CapturePane({ capture }: { capture: Capture }) {
-  if (capture.format === 'mhtml') return <MhtmlViewer captureId={capture.id} />
-  return <LegacyHtmlViewer captureId={capture.id} emptyLabel="No stored page archive available" />
+  const isMhtml = capture.format === 'mhtml'
+  const { data: content } = useQuery({
+    ...captureContentQueryOptions(capture.id, 'html'),
+    enabled: !isMhtml
+  })
+
+  if (isMhtml) return <MhtmlViewer captureId={capture.id} />
+  if (!content) {
+    return <div className="p-4 text-xs text-text-muted">No stored page archive available</div>
+  }
+  return (
+    <iframe
+      sandbox=""
+      srcDoc={content}
+      className="h-full w-full border-0 bg-white"
+      title="Stored capture"
+    />
+  )
 }

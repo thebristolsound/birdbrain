@@ -343,8 +343,8 @@ source file a piece of copy is read from, and questions only the maintainer can 
 whether the auto-capture mode control returns and where the locked switch should then point.
 
 **Items that arrived after this snapshot's cutoff.** #708 stays open as the standing intake queue.
-Five further divergences were queued on it after 2026-08-24, marked there for the next snapshot;
-they are not in this one.
+Further divergences were queued on it after 2026-08-24, marked there for the next snapshot; they are
+not in this one.
 
 ## Sources
 

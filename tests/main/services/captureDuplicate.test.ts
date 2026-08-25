@@ -281,6 +281,109 @@ describe('createCaptureLifecycle.duplicate (#827)', () => {
     expect(strays).toEqual([])
   })
 
+  it('refuses, and cleans up, when a copied sidecar does not hash to its anchored value', async () => {
+    // The same window, for the screenshot: the source's entry anchors a
+    // screenshotHash, so a copy that lands different bytes must not be signed
+    // over — the entry would describe a file the duplicate does not have.
+    const realStore = createCaptureStore({ getRoot: () => join(tempDir, 'captures') })
+    const corruptPngStore: CaptureStore = {
+      ...realStore,
+      copyArtifacts: async (cid, sourceId, targetId) => {
+        const copied = await realStore.copyArtifacts(cid, sourceId, targetId)
+        const { abs, rel } = realStore.artifactPaths(cid, targetId, 'png')
+        writeFileSync(abs, 'corrupted-screenshot')
+        return {
+          ...copied,
+          artifacts: {
+            ...copied.artifacts,
+            png: {
+              rel,
+              hash: createHash('sha256').update(Buffer.from('corrupted-screenshot')).digest('hex'),
+              sizeBytes: 'corrupted-screenshot'.length
+            }
+          }
+        }
+      }
+    }
+    const lifecycleWithCorruptPng = createCaptureLifecycle({
+      selectorLifecycle: { runActiveSelectorsForCapture: vi.fn() } as unknown as SelectorLifecycle,
+      store: corruptPngStore
+    })
+    const before = manifestLines().length
+
+    const result = await lifecycleWithCorruptPng.duplicate(source.id)
+
+    expect(result).toEqual({ status: 'rejected', reason: 'copy_mismatch' })
+    expect(manifestLines()).toHaveLength(before)
+    expect(listCaptures(caseId)).toHaveLength(1)
+    const { readdirSync } = await import('fs')
+    const strays = readdirSync(join(tempDir, 'captures', caseId)).filter(
+      (f) => !f.startsWith(source.id) && f !== 'manifest.jsonl'
+    )
+    expect(strays).toEqual([])
+  })
+
+  it('anchors for the copy only what the source entry anchors — unanchored sidecars gain none', async () => {
+    // A chain-era capture from before sidecar anchoring (#118): its signed
+    // entry records no screenshotHash/textHash, so verify skips its sidecar
+    // files entirely — including a tampered one. Anchoring a freshly computed
+    // hash over the copy would hand those unchecked bytes the first chain
+    // anchor they ever had; the copy must stay exactly as unanchored as its
+    // source.
+    const preId = 'pre-sidecar-capture'
+    const bytes = 'pre-sidecar-anchoring capture'
+    const contentHash = createHash('sha256').update(Buffer.from(bytes)).digest('hex')
+    writeFileSync(join(caseDir, `${preId}.mhtml`), bytes)
+    writeFileSync(join(caseDir, `${preId}.png`), 'screenshot nobody ever anchored')
+    const { withCaptureEntry } = await import('@main/services/manifest')
+    const pre = await withCaptureEntry(
+      caseDir,
+      {
+        captureId: preId,
+        caseId,
+        url: 'https://example.com/pre-118',
+        timestamp: '2026-01-01T00:00:00.000Z',
+        contentHash,
+        sizeBytes: bytes.length,
+        operatorId: 'op-old',
+        operatorName: 'Old Operator',
+        toolVersion: '0.0.9'
+      },
+      (m) =>
+        insertCapture({
+          id: preId,
+          caseId,
+          url: 'https://example.com/pre-118',
+          title: 'Pre-sidecar-anchoring',
+          hash: contentHash,
+          timestamp: '2026-01-01T00:00:00.000Z',
+          format: 'mhtml',
+          mhtmlPath: join(caseId, `${preId}.mhtml`),
+          screenshotPath: join(caseId, `${preId}.png`),
+          manifestIndex: m.index,
+          prevHash: m.prevHash,
+          entryHash: m.entryHash
+        })
+    )
+
+    const result = await lifecycle.duplicate(pre.id)
+
+    expect(result.status).toBe('duplicated')
+    if (result.status !== 'duplicated') return
+    const entry = manifestLines().at(-1)!
+    // OMITTED, not re-computed: the screenshot file is copied so the duplicate
+    // stays usable, but its bytes are anchored by nothing, same as the source.
+    expect('screenshotHash' in entry).toBe(false)
+    expect('textHash' in entry).toBe(false)
+    expect(result.capture.screenshotHash).toBeUndefined()
+    expect(result.capture.textHash).toBeUndefined()
+    expect(existsSync(join(tempDir, 'captures', result.capture.screenshotPath!))).toBe(true)
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+    await expect(lifecycle.verify(result.capture.id)).resolves.toMatchObject({
+      status: 'verified'
+    })
+  })
+
   it('rolls back the entry and removes the copy when the row insert fails', async () => {
     const captureRepo = await import('@main/services/db/captureRepo')
     const boom = new Error('insert failed')

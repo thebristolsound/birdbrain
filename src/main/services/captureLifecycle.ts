@@ -727,6 +727,22 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
             store.deleteArtifacts(source.caseId, duplicateId)
             return { status: 'rejected', reason: 'copy_mismatch' }
           }
+          // Sidecars get the same treatment as the MHTML: each copy is checked
+          // against the hash the source's SIGNED entry recorded, and only those
+          // recorded hashes are re-anchored. A source entry from before sidecar
+          // anchoring (#118) records none — verify skipped its files, so
+          // anchoring a freshly computed hash here would give possibly-tampered
+          // bytes the first chain anchor they ever had. The files are still
+          // copied (the duplicate stays usable); they stay exactly as
+          // unanchored as the source's.
+          if (sourceEntry.screenshotHash && artifacts.png?.hash !== sourceEntry.screenshotHash) {
+            store.deleteArtifacts(source.caseId, duplicateId)
+            return { status: 'rejected', reason: 'copy_mismatch' }
+          }
+          if (sourceEntry.textHash && artifacts.txt?.hash !== sourceEntry.textHash) {
+            store.deleteArtifacts(source.caseId, duplicateId)
+            return { status: 'rejected', reason: 'copy_mismatch' }
+          }
 
           const duplicatedAt = new Date().toISOString()
           const capture = await withCaptureEntry(
@@ -741,8 +757,8 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
               url: sourceEntry.url,
               timestamp: sourceEntry.timestamp,
               contentHash: mhtml.hash,
-              screenshotHash: artifacts.png?.hash,
-              textHash: artifacts.txt?.hash,
+              screenshotHash: sourceEntry.screenshotHash,
+              textHash: sourceEntry.textHash,
               headers: sourceEntry.headers,
               tls: sourceEntry.tls,
               method: 'duplicate',
@@ -770,8 +786,10 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
                 format: 'mhtml',
                 mhtmlPath: mhtml.rel,
                 screenshotPath: artifacts.png?.rel,
-                screenshotHash: artifacts.png?.hash,
-                textHash: artifacts.txt?.hash,
+                // The row mirrors the entry, so it too states only what the
+                // chain anchors.
+                screenshotHash: sourceEntry.screenshotHash,
+                textHash: sourceEntry.textHash,
                 tlsCertChain: sourceEntry.tls ? JSON.stringify(sourceEntry.tls) : undefined,
                 sizeBytes: mhtml.sizeBytes,
                 manifestIndex: manifestResult.index,

@@ -37,6 +37,12 @@ Point by point:
 - **Re-anchored from the chain, not from the row.** Settings → Database can hand-edit the `captures`
   table. Every field the new entry re-states is read from the source's signed entry, so an edited
   mirror cannot be re-signed into the chain.
+- **Sidecars stay exactly as anchored as the source's.** The copied screenshot and extracted text
+  are compared to the hashes the source's signed entry records (a mismatch refuses the whole copy),
+  and only those recorded hashes are re-anchored. An entry from before sidecar anchoring records
+  none: verification never checked those files, so the copy anchors nothing for them either. The
+  files are still copied, and the duplicate stays usable; what a duplicate must never do is hand
+  unchecked bytes the first chain anchor they ever had.
 
 ## What is not copied, and why
 

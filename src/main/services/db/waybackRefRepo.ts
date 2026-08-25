@@ -83,6 +83,19 @@ export function deleteWaybackRef(id: string): boolean {
   return result.changes > 0
 }
 
+/**
+ * The CDX HTTP status, or nothing. `status_code` is declared INTEGER, but SQLite
+ * affinity stores a non-numeric string as TEXT, so a row written by a path that
+ * never validated it — a `.birdbrain` archive import, or the generic table editor
+ * in Settings → Database — can carry arbitrary text under a column the rest of the
+ * app reads as a number. Dropped rather than surfaced: a value that is not a
+ * number is not an HTTP status, and every consumer already renders a reference
+ * that has none (the CDX row may legitimately omit it).
+ */
+function toStatusCode(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
 function rowToWaybackRef(row: Record<string, unknown>): WaybackRef {
   return {
     id: row.id as string,
@@ -91,7 +104,7 @@ function rowToWaybackRef(row: Record<string, unknown>): WaybackRef {
     snapshotUrl: row.snapshot_url as string,
     originalUrl: row.original_url as string,
     digest: (row.digest as string) || undefined,
-    statusCode: (row.status_code as number) ?? undefined,
+    statusCode: toStatusCode(row.status_code),
     mimeType: (row.mime_type as string) || undefined,
     checkedAt: row.checked_at as string,
     pinnedAt: row.pinned_at as string

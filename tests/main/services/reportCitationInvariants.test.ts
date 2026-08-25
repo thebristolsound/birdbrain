@@ -35,7 +35,7 @@ import {
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { generateReport } from '@main/services/export'
 import { saveAnnotations } from '@main/services/annotations'
-import { createWaybackRef } from '@main/services/db/waybackRefRepo'
+import { createWaybackRef, importWaybackRefRows } from '@main/services/db/waybackRefRepo'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
@@ -417,6 +417,50 @@ describe('report citation invariants', () => {
       )
       expect(report).toContain('looked up 2026-04-06T09:00:00Z')
       expect(report).not.toContain('HTTP undefined')
+    })
+
+    it('cannot carry a hostile status code from an imported archive as markup', async () => {
+      // The reachable hostile path, end to end: a `.birdbrain` archive is parsed
+      // with a bare cast and no schema, `importWaybackRefRows` binds whatever
+      // `status_code` it carried, and SQLite INTEGER affinity keeps non-numeric
+      // text as TEXT. The known answer is that nothing an archive author wrote
+      // into that column reaches report.html as markup.
+      const hostile = '"><script>alert(1)</script>'
+      const { capture } = await ingest('<html>x</html>', 'https://example.com/x', 'X', await png())
+      importWaybackRefRows(
+        [
+          {
+            id: 'hostile-ref',
+            capture_id: capture.id,
+            snapshot_timestamp: '2025-01-01T12:00:00.000Z',
+            snapshot_url: 'https://web.archive.org/web/20250101120000/https://example.com/x',
+            original_url: 'https://example.com/x',
+            digest: null,
+            status_code: hostile,
+            mime_type: 'text/html',
+            checked_at: '2026-04-06T09:00:00.000Z',
+            pinned_at: '2026-04-06T09:00:00.000Z'
+          }
+        ],
+        { newCaseId: caseId, mapId: (id) => id, mapTag: (id) => id, getText: () => '' }
+      )
+
+      const entries = await exportZip(FULL, 'wayback-hostile-status')
+      const report = entries.get('report.html')!.toString('utf-8')
+
+      // The reference still renders — the package is not silently short a pin.
+      expect(report).toContain(
+        'Corroboration only — archive.org references, not bound to the capture'
+      )
+      expect(report).toContain('https://web.archive.org/web/20250101120000/https://example.com/x')
+      // But the status is gone rather than rendered, escaped or otherwise: a
+      // value that is not a number is not an HTTP status.
+      expect(report).not.toContain('<script>alert(1)</script>')
+      expect(report).not.toContain(hostile)
+      expect(report).not.toContain('&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;')
+      expect(report).not.toContain('HTTP undefined')
+      // The only "HTTP" left is the capture's own HTTP status row.
+      expect(report).not.toMatch(/HTTP (?!status\b)/)
     })
 
     it('leaves a package with no pins exactly as it was', async () => {

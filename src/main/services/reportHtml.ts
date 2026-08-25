@@ -1040,7 +1040,11 @@ function renderExhibit(e: ExhibitView, total: number): string {
         .map((ref) => {
           const delta = formatSnapshotDelta(ref.snapshotTimestamp, e.capture.timestamp)
           const facts = [
-            ref.statusCode !== undefined ? `HTTP ${ref.statusCode}` : null,
+            // Escaped like every other value here despite being typed a number:
+            // the type is a repo cast over a SQLite column, and INTEGER affinity
+            // keeps non-numeric text as TEXT. The repo now coerces on read, so
+            // this is the second line and not the only one.
+            ref.statusCode !== undefined ? `HTTP ${esc(String(ref.statusCode))}` : null,
             ref.mimeType ? esc(ref.mimeType) : null,
             `looked up ${isoUtc(ref.checkedAt)}`
           ].filter((fact): fact is string => fact !== null)

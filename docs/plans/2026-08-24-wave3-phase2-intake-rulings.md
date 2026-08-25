@@ -26,7 +26,7 @@ readiness lists, and the reader notes every ruling below grounds against).
 
 ## The rulings
 
-Numbered R1–R23. Where a ruling **overrides** phase 1's recommendation it says so; four do.
+Numbered R1–R23. Where a ruling **overrides** phase 1's recommendation it says so; three do.
 "Q*n*" references the blocking-question numbering in the phase-1 notes.
 
 ### Track A — export and evidence
@@ -60,7 +60,7 @@ policy. A wrong discriminator silently loosens the MHTML evidence viewer; this i
 highest-risk edit. Related: #810.
 
 **R22 (#401) — the compare panel's left pane is the LIVE MHTML webview**, not the stored
-screenshot. **Overrides** the recommendation. Consequence accepted with it: two live guests in
+screenshot. **Confirms** the recommendation. Consequence accepted with it: two live guests in
 one panel under two partitions with different policies, so `webviewPolicy.ts` must discriminate
 correctly between the `mhtml-sandbox` partition (javascript off, `file://` once) and the Wayback
 partition (javascript on, archive.org prefix only) — the exact case the partition-aware rewrite
@@ -224,7 +224,7 @@ issue-body edit), a label to set (verify by direct label read,
 `gh api repos/thebristolsound/birdbrain/issues/<n>/labels`, never the search index), or a ticket
 to file. Comment style: head with `## Ruling, 2026-08-24 (wave-3 phase 2 intake)`, state the
 ruling declaratively, ground it in file:line facts from the phase-1 notes, and **name the
-override explicitly wherever a ruling contradicts phase 1's recommendation** (R5, R14, R9, R22) —
+override explicitly wherever a ruling contradicts phase 1's recommendation** (R5, R14, R9) —
 future readers will find the notes recommending otherwise, and the comment must out-rank them.
 
 ### Recorder A — track A (#398, #399, #401, #405, #771)

@@ -492,18 +492,49 @@ describe('permissions and downloads', () => {
 // covering the operator-facing message. The `file://nas/…` answer is stable across
 // #926 and #953 asks for it to be pinned there.
 //
-// Not asserted here, deliberately: `file:////evil.test/share/x.png` satisfies
-// `file:///` and is still allowed on this branch. It is closed inside `matchesPrefix`
-// by #904/#926 for every partition at once, so asserting `block` would be red until
-// that lands and asserting `allow` would be red the moment it does. #949 tracks
-// driving all of these from `WEBVIEW_PARTITIONS` so a partition cannot be added
-// without its row.
+// `file:////evil.test/share/x.png` is asserted below rather than left out. It was
+// left out while #904/#926 was unmerged, because `block` was red until that landed
+// and `allow` would have gone red the moment it did; #926 landed in `ec349380`, so
+// `isRemoteFileUrl` now refuses it on every partition and `block` is the stable
+// answer. It does not belong to the prefix — reverting the prefix leaves it `block` —
+// which is why the falsifier for the narrowing is the `localhost` case, not this one.
+// #949 tracks driving all of these from `WEBVIEW_PARTITIONS` so a partition cannot be
+// added without its row.
 describe('the legacy HTML partition’s local-file narrowing', () => {
   it.each([
     ['file://evil.test/share/beacon.png', 'a remote authority wearing the local scheme'],
     ['file://192.0.2.5/s/x.css', 'the same, addressed by IP'],
-    ['file://user:pw@evil.test/share/x.png', 'an authority `URL` refuses to parse at all']
+    ['file://user:pw@evil.test/share/x.png', 'an authority `URL` refuses to parse at all'],
+    ['file:////evil.test/share/x.png', 'the same target with the authority left in the path']
   ])('refuses %s on every decision surface (%s)', (url) => {
+    expect(decideWebviewRequest({ partition: LEGACY_HTML_PARTITION, url })).toBe('block')
+    expect(
+      decideWebviewNavigation({ partition: LEGACY_HTML_PARTITION, url, initialLoadDone: false })
+    ).toBe('block')
+    expect(decideWebviewAttach({ partition: LEGACY_HTML_PARTITION, src: url })).toEqual({
+      allowed: false,
+      reason: 'src-not-allowed'
+    })
+  })
+
+  // The one shape the third slash still decides on its own, and therefore the test
+  // that fails if the narrowing is reverted: every other remote-authority string is
+  // refused by `isRemoteFileUrl` before the prefix list is read, so every case above
+  // stays green with `allowedPrefixes: ['file://']`. `URL` normalises this authority
+  // away to the empty one, so the string reaches the prefix test still carrying
+  // `localhost` while parsing as local — `file:///` does not match it and `file://`
+  // does. #939's round-four pass measured Chromium handing this form to the decision
+  // points unchanged, unlike `file:////…`, which it collapses first.
+  //
+  // `mhtml-sandbox` answers `allow` for the same string (#926 asserts that), and the
+  // two partitions disagreeing is deliberate: `pathToFileURL` never emits this form,
+  // so nothing in the app reaches either answer, and the legacy partition is the one
+  // whose content an investigated site chooses.
+  it.each([
+    'file://localhost/tmp/cap.html',
+    'file://LOCALHOST/tmp/cap.html',
+    'file://localhost/C:/case/cap.html'
+  ])('refuses %s, the authority the narrowing alone decides', (url) => {
     expect(decideWebviewRequest({ partition: LEGACY_HTML_PARTITION, url })).toBe('block')
     expect(
       decideWebviewNavigation({ partition: LEGACY_HTML_PARTITION, url, initialLoadDone: false })

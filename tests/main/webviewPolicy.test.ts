@@ -30,6 +30,27 @@ import {
 
 const REPLAY_URL = `${WAYBACK_REPLAY_PREFIX}20200114000000/https://example.com/`
 
+/**
+ * A `file:` URL is local only when its authority is empty (#904). Each of these
+ * satisfied `url.startsWith('file://')` and so was allowed on `mhtml-sandbox`, whose
+ * `allowedRequestHosts` is empty precisely so that nothing leaves the machine. On
+ * Windows every one of them is a UNC path, which Chromium fetches over SMB and which
+ * Windows authenticates to automatically — so the leak is the operator's account name
+ * and a crackable NTLMv2 response, not only the fact that they are reading this page.
+ *
+ * The five entries are three syntaxes for one authority, not three defects: the plain
+ * form (in a name, an address and an upper-cased variant), the four-slash one that
+ * parses to an empty host with the target left in the path, and the credentialled one
+ * that `URL` refuses to parse at all while Chromium's own parser reads a host out of it.
+ */
+const REMOTE_FILE_URLS: readonly string[] = [
+  'file://evil.test/share/beacon.png',
+  'file://192.0.2.5/s/x.css',
+  'file://EVIL.TEST/share/x.png',
+  'file:////evil.test/share/x.png',
+  'file://user:pw@evil.test/share/x.png'
+]
+
 describe('webviewPolicyFor', () => {
   it('knows exactly the two partitions the app mounts', () => {
     expect(WEBVIEW_PARTITIONS).toEqual([MHTML_PARTITION, WAYBACK_PARTITION])
@@ -104,6 +125,14 @@ describe('decideWebviewAttach', () => {
     expect(decideWebviewAttach({ partition: undefined, src: 'file:///a.mhtml' })).toEqual({
       allowed: false,
       reason: 'unknown-partition'
+    })
+  })
+
+  it.each(REMOTE_FILE_URLS)('refuses %s as a src on the evidence viewer partition', (src) => {
+    // #904 reaches attach as well as request, because both consult matchesPrefix.
+    expect(decideWebviewAttach({ partition: MHTML_PARTITION, src })).toEqual({
+      allowed: false,
+      reason: 'src-not-allowed'
     })
   })
 })
@@ -200,6 +229,24 @@ describe('decideWebviewNavigation', () => {
     ).toBe('block')
   })
 
+  it.each(REMOTE_FILE_URLS)('blocks a first navigation to %s (#904)', (url) => {
+    // `initialLoadDone: false` is the one navigation the evidence viewer is allowed,
+    // so this is the case the one-load rule would otherwise wave through.
+    expect(
+      decideWebviewNavigation({ partition: MHTML_PARTITION, url, initialLoadDone: false })
+    ).toBe('block')
+  })
+
+  it('still allows the local artefact form the evidence viewer depends on', () => {
+    // The counterweight: the fix must not deny `file:///`, which a naive reorder of
+    // the host test in front of the prefix test would have done.
+    for (const url of ['file:///local/path/artifact.mhtml', 'file://localhost/tmp/a.mhtml']) {
+      expect(
+        decideWebviewNavigation({ partition: MHTML_PARTITION, url, initialLoadDone: false })
+      ).toBe('allow')
+    }
+  })
+
   it('blocks everything on an unknown partition or a missing url', () => {
     expect(
       decideWebviewNavigation({ partition: null, url: REPLAY_URL, initialLoadDone: false })
@@ -261,6 +308,29 @@ describe('decideWebviewRequest', () => {
     expect(
       decideWebviewRequest({ partition: MHTML_PARTITION, url: 'https://tracker.example.test/p.gif' })
     ).toBe('block')
+  })
+
+  it.each(REMOTE_FILE_URLS)('blocks %s on the evidence viewer partition (#904)', (url) => {
+    // The filed defect in its request form: `mhtml-sandbox` allows no request host at
+    // all, and each of these reached `allow` through the `file://` prefix instead.
+    expect(decideWebviewRequest({ partition: MHTML_PARTITION, url })).toBe('block')
+  })
+
+  it.each(REMOTE_FILE_URLS)('blocks %s on the replay partition too (#904)', (url) => {
+    // "Denied on every partition" is the acceptance criterion, so it is asserted on
+    // the partition that never listed `file://` as well as on the one that did.
+    expect(decideWebviewRequest({ partition: WAYBACK_PARTITION, url })).toBe('block')
+  })
+
+  it('still allows the local artefact form the evidence viewer depends on', () => {
+    for (const url of ['file:///local/path/artifact.mhtml', 'file:///c/a.mhtml']) {
+      expect(decideWebviewRequest({ partition: MHTML_PARTITION, url })).toBe('allow')
+    }
+    // `URL` normalises this authority away to the empty one, so it is the local form
+    // already and needs no exception in the policy.
+    expect(
+      decideWebviewRequest({ partition: MHTML_PARTITION, url: 'file://localhost/tmp/a.mhtml' })
+    ).toBe('allow')
   })
 
   it('blocks the archive host itself on the evidence viewer partition', () => {

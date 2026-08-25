@@ -138,7 +138,6 @@ describe('ExportDialog', () => {
     cleanup()
   })
 
-
   // Pinned Wayback references (#401): corroboration the package's report will
   // carry, stated before the operator exports rather than discovered in the
   // document afterwards.

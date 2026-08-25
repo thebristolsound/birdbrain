@@ -148,7 +148,7 @@ const CODE_LABELS: Record<LogCode, string> = {
   'openrouter.retry': 'Retrying the AI request',
   'openrouter.retries_exhausted': 'AI request failed after several retries',
   'timestampWorker.stamp_failed': "Couldn't get a trusted timestamp for this capture",
-  'app.webview_attach_refused': 'A page view was blocked by the app\'s security policy',
+  'app.webview_attach_refused': "A page view was blocked by the app's security policy",
   'db.snapshot_created': 'Saved a database snapshot before upgrading',
   'db.snapshot_prune_failed': "Couldn't remove an old database snapshot",
   'db.snapshot_restore_failed': "Couldn't restore the database snapshot",

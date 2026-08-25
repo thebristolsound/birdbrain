@@ -99,3 +99,6 @@ docs/reference/
 
 # Vale: third-party style package, fetched with `vale sync`
 .vale/styles/Google/
+
+# Claude Code usage insights reports
+report-*.html

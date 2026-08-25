@@ -383,7 +383,8 @@ this section to the global CLAUDE.md or other repos.
   ADR, an existing pattern, or the toolchain, take it without asking and log it under "Decisions
   taken" in the end-of-turn summary. Still ask for: new dependencies, destructive or
   irreversible actions, spend or external publishing, scope expansion, blocking-tier evidence
-  paths, conflicts between documented rules, and taste-only calls.
+  paths, conflicts between documented rules, product or UX decisions with no repo precedent,
+  and taste-only calls.
 - **Plan approval** (ADR-0016): post the plan, then execute in the same turn when it adds no
   dependencies, touches no blocking-tier file, has no schema migration or data deletion, is
   reversible with git alone, stays inside the ADR-0015 classes, and changes at most 10 files.

@@ -74,7 +74,8 @@ shape, and shape was never the defect.
 
 **Drop the Verification section and point at CI.** CI does not run `coverage:diff` semantics
 against the working tree the agent claims to have verified, and ADR-0011 finding 6 is the case
-where green CI plus an unexamined claim still lied. The block is the claim being checkable.
+where the unexamined claim lied in the other direction: implementer and reviewer both reported
+green on PR #423, which CI had already rejected. The block is the claim being checkable.
 
 ## Related
 

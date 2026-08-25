@@ -117,6 +117,14 @@ describe('CaptureItem — detailed view', () => {
       'Background recapture'
     )
   })
+
+  it('marks duplicates in the meta row, so two identical rows are told apart (#827)', () => {
+    renderItem({ capture: { ...capture, method: 'duplicate', duplicateOfCaptureId: 'cap0' } })
+    expect(screen.getByTestId('duplicate-thumb-badge').getAttribute('title')).toBe(
+      'Duplicate of another capture'
+    )
+    expect(screen.queryByTestId('recapture-thumb-badge')).toBeNull()
+  })
 })
 
 describe('CaptureItem — list view', () => {

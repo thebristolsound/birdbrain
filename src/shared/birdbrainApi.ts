@@ -82,7 +82,8 @@ import type {
   SessionStateEvent,
   CaptureBatchPayload,
   BatchDeleteResult,
-  BatchCountResult
+  BatchCountResult,
+  DuplicateCaptureResult
 } from '@shared/ipc'
 
 export interface BirdbrainAPI {
@@ -117,6 +118,7 @@ export interface BirdbrainAPI {
     verify(captureId: string): Promise<HashVerification>
     getMhtmlUrl(captureId: string): Promise<string | null>
     deleteMany(payload: CaptureBatchPayload): Promise<BatchDeleteResult>
+    duplicate(captureId: string): Promise<DuplicateCaptureResult>
     setFavoriteMany(payload: CaptureBatchPayload & { favorite: boolean }): Promise<BatchCountResult>
   }
   recapture: {

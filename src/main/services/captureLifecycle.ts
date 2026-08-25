@@ -11,6 +11,7 @@ import { readExtractionHtml } from '@main/services/extraction/extractionSource'
 import { getInstallationId } from '@main/services/installationId'
 import {
   getManifestHead,
+  readCaptureEntryAt,
   verifyManifestChain,
   withCaptureEntry,
   withDeletionEntry,
@@ -23,7 +24,7 @@ import { getSettings } from '@main/services/settings'
 import { fetchCertChain as defaultFetchCertChain } from '@main/services/tlsCertChain'
 import type { TlsCertChainResult } from '@main/services/tlsCertChain'
 import type { Capture, CaptureMethod, ConsentSuppression, HashVerification } from '@shared/types'
-import type { BatchDeleteOutcome, BatchDeleteResult } from '@shared/ipc'
+import type { BatchDeleteOutcome, BatchDeleteResult, DuplicateCaptureResult } from '@shared/ipc'
 import { logger } from '@main/services/logger'
 import { ident } from '@main/services/logSafe'
 
@@ -83,6 +84,12 @@ export interface CaptureLifecycle {
   // id fails the whole call before any write. Contract:
   // docs/specs/2026-08-19-batch-ops-interface-brief.md.
   deleteMany: (caseId: string, captureIds: string[]) => Promise<BatchDeleteResult>
+  // Byte copy of an existing capture into a second row of the same case (#827).
+  // The copy observed nothing itself, so it gets its own artifacts, its own
+  // signed manifest entry marked `method: 'duplicate'`, and a link back to what
+  // it was copied from — never a second row over the source's bytes. Refusals
+  // are outcomes, not throws; see DuplicateCaptureRefusal.
+  duplicate: (captureId: string) => Promise<DuplicateCaptureResult>
   verify: (captureId: string) => Promise<HashVerification>
   reprocessCase: (caseId: string) => Promise<{ processed: number }>
 }
@@ -668,6 +675,139 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
           failedIds,
           ...(haltedAt !== undefined ? { haltedAt } : {}),
           manifest: { baseIndex, committedEntries }
+        }
+      })
+    },
+
+    async duplicate(captureId) {
+      const probe = captureRepo.getCapture(captureId)
+      if (!probe) return { status: 'rejected', reason: 'not_found' }
+      // The gate the capture server applies to every ingest
+      // (captureServer.ts:302). A signed entry naming no operator would be a
+      // weaker record than any capture this app can produce, and the duplicate
+      // is signed by whoever asks for it, not by the source's operator.
+      const operatorName = getSettings().operatorName?.trim() ?? ''
+      if (!operatorName) return { status: 'rejected', reason: 'operator_name_required' }
+
+      // Under the case slot for the same reason deletes are: this appends to
+      // the case's one manifest file and rolls back by truncation.
+      return withCaseSlot(probe.caseId, async () => {
+        const source = captureRepo.getCapture(captureId)
+        if (!source) return { status: 'rejected', reason: 'not_found' }
+
+        // One gate covering legacy, missing, tampered and chain-broken sources.
+        // Copying any of those would mint a fresh, internally consistent,
+        // signed entry for bytes that no longer stand up — the duplicate would
+        // verify while the thing it was taken from does not.
+        const verification = await verifyCapture(captureId, store)
+        if (verification.status !== 'verified') {
+          return { status: 'rejected', reason: 'not_verified', detail: verification.status }
+        }
+
+        const caseDir = store.caseDir(source.caseId)
+        // Re-anchor from the SIGNED entry, never from the captures row: the row
+        // mirrors these fields but Settings → Database can hand-edit it, and
+        // re-signing an edited mirror would launder it onto the chain.
+        const sourceEntry =
+          source.manifestIndex !== undefined
+            ? readCaptureEntryAt(caseDir, source.manifestIndex)
+            : undefined
+        if (!sourceEntry) {
+          return { status: 'rejected', reason: 'not_verified', detail: 'entry-unreadable' }
+        }
+
+        const duplicateId = randomUUID()
+        try {
+          const { artifacts } = await store.copyArtifacts(source.caseId, source.id, duplicateId)
+          const mhtml = artifacts.mhtml
+          // copyArtifacts hashes the destination file, so this compares what
+          // landed against what the chain anchors — closing the window between
+          // the verify above and the copy.
+          if (!mhtml || mhtml.hash !== sourceEntry.contentHash) {
+            store.deleteArtifacts(source.caseId, duplicateId)
+            return { status: 'rejected', reason: 'copy_mismatch' }
+          }
+
+          const duplicatedAt = new Date().toISOString()
+          const capture = await withCaptureEntry(
+            caseDir,
+            {
+              captureId: duplicateId,
+              caseId: source.caseId,
+              // `url` and `timestamp` describe the observation the bytes came
+              // from, which is the source's — dating them to now would claim
+              // the page was seen again. When the copy was made is
+              // `duplicatedAt`; who made it is `operatorId`/`operatorName`.
+              url: sourceEntry.url,
+              timestamp: sourceEntry.timestamp,
+              contentHash: mhtml.hash,
+              screenshotHash: artifacts.png?.hash,
+              textHash: artifacts.txt?.hash,
+              headers: sourceEntry.headers,
+              tls: sourceEntry.tls,
+              method: 'duplicate',
+              duplicateOfCaptureId: source.id,
+              duplicatedAt,
+              consentSuppression: sourceEntry.consentSuppression,
+              sizeBytes: mhtml.sizeBytes,
+              operatorId: getInstallationId(),
+              operatorName,
+              toolVersion: getToolVersion()
+            },
+            (manifestResult) =>
+              captureRepo.insertCapture({
+                id: duplicateId,
+                caseId: source.caseId,
+                url: sourceEntry.url,
+                title: source.title,
+                hash: mhtml.hash,
+                timestamp: sourceEntry.timestamp,
+                headers: sourceEntry.headers ? JSON.stringify(sourceEntry.headers) : undefined,
+                // The extracted text mirrors the .txt sidecar this copy just
+                // took and anchored, so the duplicate is searchable exactly as
+                // far as its own artifacts reach.
+                textContent: captureRepo.getCaptureTextContent(source.id) ?? undefined,
+                format: 'mhtml',
+                mhtmlPath: mhtml.rel,
+                screenshotPath: artifacts.png?.rel,
+                screenshotHash: artifacts.png?.hash,
+                textHash: artifacts.txt?.hash,
+                tlsCertChain: sourceEntry.tls ? JSON.stringify(sourceEntry.tls) : undefined,
+                sizeBytes: mhtml.sizeBytes,
+                manifestIndex: manifestResult.index,
+                prevHash: manifestResult.prevHash,
+                entryHash: manifestResult.entryHash,
+                // The tool that made the copy, not the one that made the
+                // capture: this is the entry's own provenance.
+                toolVersion: getToolVersion(),
+                extensionVersion: source.extensionVersion,
+                browserVersion: source.browserVersion,
+                userAgent: source.userAgent,
+                httpStatus: source.httpStatus,
+                operatorId: getInstallationId(),
+                operatorName,
+                method: 'duplicate',
+                duplicateOfCaptureId: source.id,
+                consentSuppression: sourceEntry.consentSuppression
+              })
+          )
+
+          // No second timestamp is queued. The duplicate's content hash is the
+          // source's, so any RFC 3161 token over that hash already anchors
+          // these bytes; the mirror is resolved from the manifest instead. A
+          // source still awaiting its stamp leaves the duplicate at 'none'
+          // until the stamp lands and either row is next reconciled.
+          reconcileCaptureTrustedTime(capture)
+          return { status: 'duplicated', capture: captureRepo.getCapture(duplicateId) ?? capture }
+        } catch (err) {
+          // The manifest seam has already rolled its own entry back; the copied
+          // files are namespaced by the new id, so the source is untouched.
+          try {
+            store.deleteArtifacts(source.caseId, duplicateId)
+          } catch {
+            /* ignore */
+          }
+          throw err
         }
       })
     },

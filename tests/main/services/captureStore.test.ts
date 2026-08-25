@@ -207,6 +207,55 @@ describe('captureStore', () => {
       expect(() => store.deleteArtifacts('case-none', 'cap-none')).not.toThrow()
     })
   })
+
+  describe('copyArtifacts (#827)', () => {
+    it('copies every artifact plus the thumbnail onto the new id, byte for byte', async () => {
+      const dir = join(tempDir, 'case-1')
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(join(dir, 'cap-1.mhtml'), 'mhtml bytes')
+      writeFileSync(join(dir, 'cap-1.png'), 'png bytes')
+      writeFileSync(join(dir, 'cap-1.txt'), 'text bytes')
+      writeFileSync(join(dir, 'cap-1_thumb.jpg'), 'thumb bytes')
+
+      const copied = await store.copyArtifacts('case-1', 'cap-1', 'cap-2')
+
+      expect(copied.thumbnail).toBe(true)
+      expect(readFileSync(join(dir, 'cap-2.mhtml'), 'utf-8')).toBe('mhtml bytes')
+      expect(readFileSync(join(dir, 'cap-2.png'), 'utf-8')).toBe('png bytes')
+      expect(readFileSync(join(dir, 'cap-2.txt'), 'utf-8')).toBe('text bytes')
+      expect(readFileSync(join(dir, 'cap-2_thumb.jpg'), 'utf-8')).toBe('thumb bytes')
+      // The source keeps its own files: this is a copy, not a move.
+      expect(existsSync(join(dir, 'cap-1.mhtml'))).toBe(true)
+    })
+
+    it('reports the digest and size of the bytes that landed, not of the source', async () => {
+      const dir = join(tempDir, 'case-1')
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(join(dir, 'cap-1.mhtml'), 'mhtml bytes')
+
+      const { artifacts } = await store.copyArtifacts('case-1', 'cap-1', 'cap-2')
+
+      // Read back from the destination file, so a short or failed write can
+      // never be anchored into a manifest entry as if it were intact.
+      const onDisk = readFileSync(join(dir, 'cap-2.mhtml'))
+      expect(artifacts.mhtml?.hash).toBe(createHash('sha256').update(onDisk).digest('hex'))
+      expect(artifacts.mhtml?.sizeBytes).toBe(onDisk.length)
+      expect(artifacts.mhtml?.rel).toBe(join('case-1', 'cap-2.mhtml'))
+    })
+
+    it('omits artifact types the source does not have, and reports no thumbnail', async () => {
+      const dir = join(tempDir, 'case-1')
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(join(dir, 'cap-1.mhtml'), 'mhtml bytes')
+
+      const copied = await store.copyArtifacts('case-1', 'cap-1', 'cap-2')
+
+      expect(copied.artifacts.png).toBeUndefined()
+      expect(copied.artifacts.txt).toBeUndefined()
+      expect(copied.thumbnail).toBe(false)
+      expect(existsSync(join(dir, 'cap-2.png'))).toBe(false)
+    })
+  })
 })
 
 describe('parseArtifactFilename', () => {

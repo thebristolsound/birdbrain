@@ -1,8 +1,11 @@
 import {
+  copyFileSync,
+  createReadStream,
   createWriteStream,
   existsSync,
   mkdirSync,
   readFileSync,
+  statSync,
   unlinkSync,
   writeFileSync,
   type WriteStream
@@ -44,6 +47,23 @@ export interface MhtmlWriteResult {
   sizeBytes: number
 }
 
+// One artifact copied onto a second capture id (#827). `hash` and `sizeBytes`
+// describe the bytes that LANDED at the destination, read back from disk, so a
+// caller can anchor them without trusting the source row's recorded values.
+export interface CopiedArtifact {
+  rel: string
+  hash: string
+  sizeBytes: number
+}
+
+export interface CopiedArtifacts {
+  // Keyed by artifact type; a type the source capture does not have is absent.
+  artifacts: Partial<Record<CaptureArtifactType, CopiedArtifact>>
+  // The thumbnail is a derived preview with no hash of its own, so it is
+  // reported as copied-or-not rather than as an artifact.
+  thumbnail: boolean
+}
+
 export interface CaptureStore {
   caseDir: (caseId: string) => string
   artifactPaths: (caseId: string, captureId: string, type: CaptureArtifactType) => ArtifactPaths
@@ -60,6 +80,11 @@ export interface CaptureStore {
   readArtifact: (caseId: string, captureId: string, type: CaptureArtifactType) => Buffer | null
   readThumbnail: (caseId: string, captureId: string) => Buffer | null
   writeThumbnail: (caseId: string, captureId: string, jpeg: Buffer) => void
+  copyArtifacts: (
+    caseId: string,
+    sourceCaptureId: string,
+    targetCaptureId: string
+  ) => Promise<CopiedArtifacts>
   deleteArtifacts: (caseId: string, captureId: string) => void
 }
 
@@ -223,6 +248,61 @@ export function createCaptureStore(deps: { getRoot: () => string }): CaptureStor
     writeFileSync(thumbnailPaths(caseId, captureId).abs, jpeg)
   }
 
+  // Streams the destination back to compute its digest, rather than hashing the
+  // buffer that was written: it is the file on disk a later verify will read,
+  // and an MHTML runs to MAX_MHTML_SIZE, which is not a buffer worth holding.
+  async function hashFile(path: string): Promise<string> {
+    const hasher = createHash('sha256')
+    await new Promise<void>((resolve, reject) => {
+      const rs = createReadStream(path)
+      rs.on('data', (chunk) => hasher.update(chunk))
+      rs.on('end', () => resolve())
+      rs.on('error', reject)
+    })
+    return hasher.digest('hex')
+  }
+
+  async function copyArtifact(
+    caseId: string,
+    sourceCaptureId: string,
+    targetCaptureId: string,
+    type: CaptureArtifactType
+  ): Promise<CopiedArtifact | undefined> {
+    const source = artifactPaths(caseId, sourceCaptureId, type)
+    if (!existsSync(source.abs)) return undefined
+    ensureDir(caseId)
+    const target = artifactPaths(caseId, targetCaptureId, type)
+    copyFileSync(source.abs, target.abs)
+    return {
+      rel: target.rel,
+      hash: await hashFile(target.abs),
+      sizeBytes: statSync(target.abs).size
+    }
+  }
+
+  // Byte-for-byte copy of every artifact a capture owns onto a second capture
+  // id in the same case (#827). The two captures never share a file: the copy
+  // is what makes the duplicate independently verifiable and independently
+  // deletable.
+  async function copyArtifacts(
+    caseId: string,
+    sourceCaptureId: string,
+    targetCaptureId: string
+  ): Promise<CopiedArtifacts> {
+    const artifacts: Partial<Record<CaptureArtifactType, CopiedArtifact>> = {}
+    for (const type of CAPTURE_ARTIFACT_TYPES) {
+      const copied = await copyArtifact(caseId, sourceCaptureId, targetCaptureId, type)
+      if (copied) artifacts[type] = copied
+    }
+    const sourceThumb = thumbnailPaths(caseId, sourceCaptureId).abs
+    const thumbnail = existsSync(sourceThumb)
+    if (thumbnail) {
+      ensureDir(caseId)
+      copyFileSync(sourceThumb, thumbnailPaths(caseId, targetCaptureId).abs)
+    }
+    return { artifacts, thumbnail }
+  }
+
   function deleteArtifacts(caseId: string, captureId: string): void {
     for (const type of CAPTURE_ARTIFACT_TYPES) {
       const { abs } = artifactPaths(caseId, captureId, type)
@@ -247,6 +327,7 @@ export function createCaptureStore(deps: { getRoot: () => string }): CaptureStor
     readArtifact,
     readThumbnail,
     writeThumbnail,
+    copyArtifacts,
     deleteArtifacts
   }
 }

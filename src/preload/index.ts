@@ -81,6 +81,7 @@ const birdbrain = {
     verify: bridge(IPC_CHANNELS.CAPTURES_VERIFY),
     getMhtmlUrl: bridge(IPC_CHANNELS.CAPTURES_GET_MHTML_URL),
     deleteMany: bridge(IPC_CHANNELS.CAPTURES_DELETE_MANY),
+    duplicate: bridge(IPC_CHANNELS.CAPTURES_DUPLICATE),
     setFavoriteMany: bridge(IPC_CHANNELS.CAPTURES_SET_FAVORITE_MANY)
   },
   recapture: {

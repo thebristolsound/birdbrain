@@ -69,6 +69,41 @@ afterEach(() => {
   useAppStore.getState().setActiveViewerTab('screenshot')
 })
 
+describe('CaptureViewer provenance chrome (#827)', () => {
+  it('badges a duplicate and links back to the capture it was copied from', async () => {
+    const source = { ...capture, id: 'cap0', timestamp: '2026-07-01T09:00:00.000Z' }
+    const duplicate = { ...capture, method: 'duplicate' as const, duplicateOfCaptureId: 'cap0' }
+    fakeBridge({
+      captures: { list: vi.fn(async () => [duplicate, source]), getContent }
+    })
+    renderViewer()
+
+    expect((await screen.findByTestId('method-badge')).textContent).toBe('Duplicate')
+    const link = await screen.findByTestId('duplicate-link-source')
+    expect(link.textContent).toContain('Duplicate of')
+
+    fireEvent.click(link)
+    expect(useAppStore.getState().selectedCaptureId).toBe('cap0')
+  })
+
+  it('still badges a duplicate whose source has been deleted', async () => {
+    const duplicate = { ...capture, method: 'duplicate' as const, duplicateOfCaptureId: 'gone' }
+    fakeBridge({ captures: { list: vi.fn(async () => [duplicate]), getContent } })
+    renderViewer()
+
+    // The badge comes from the row's own method, so a missing source cannot
+    // make the copy read as an ordinary capture.
+    expect((await screen.findByTestId('method-badge')).textContent).toBe('Duplicate')
+    expect(screen.queryByTestId('duplicate-link-source')).toBeNull()
+  })
+
+  it('leaves an ordinary extension capture unbadged', async () => {
+    renderViewer()
+    await screen.findAllByRole('tab')
+    expect(screen.queryByTestId('method-badge')).toBeNull()
+  })
+})
+
 describe('CaptureViewer tabs', () => {
   it('offers exactly Screenshot, Page, Text and Wayback', async () => {
     renderViewer()

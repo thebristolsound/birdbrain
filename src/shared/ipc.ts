@@ -82,6 +82,7 @@ export const IPC_CHANNELS = {
   CAPTURES_VERIFY: 'captures:verify',
   CAPTURES_GET_MHTML_URL: 'captures:getMhtmlUrl',
   CAPTURES_DELETE_MANY: 'captures:deleteMany',
+  CAPTURES_DUPLICATE: 'captures:duplicate',
   CAPTURES_SET_FAVORITE_MANY: 'captures:setFavoriteMany',
 
   // Recapture
@@ -594,6 +595,28 @@ export interface BatchCountResult {
   affected: number
 }
 
+// Why a duplicate was refused (#827). Refusal is an outcome, not a fault: each
+// reason names something the operator can act on, and none of them leaves a
+// partial capture behind.
+// - not_found: the source row is gone (another window deleted it).
+// - operator_name_required: the same gate ingest applies — a signed entry with
+//   no operator named is a weaker record than any capture the app can produce.
+// - not_verified: the source does not currently verify (`detail` carries the
+//   HashVerification status). Duplicating a legacy, missing, tampered or
+//   chain-broken capture would mint a fresh, internally consistent entry for
+//   bytes that no longer stand up — laundering.
+// - copy_mismatch: the copy on disk does not hash to the source's content hash,
+//   so the source changed between verification and copy. Nothing is written.
+export type DuplicateCaptureRefusal =
+  | 'not_found'
+  | 'operator_name_required'
+  | 'not_verified'
+  | 'copy_mismatch'
+
+export type DuplicateCaptureResult =
+  | { status: 'duplicated'; capture: Capture }
+  | { status: 'rejected'; reason: DuplicateCaptureRefusal; detail?: string }
+
 // --- Recapture (background capture queue) ---
 
 export interface RecaptureQueueStatus {
@@ -684,6 +707,7 @@ export interface IpcInvokeContract {
   'captures:testPipeline': { args: []; result: SelfTestResult }
   'captures:testHttp': { args: []; result: SelfTestResult }
   'captures:deleteMany': { args: [payload: CaptureBatchPayload]; result: BatchDeleteResult }
+  'captures:duplicate': { args: [captureId: string]; result: DuplicateCaptureResult }
   'captures:setFavoriteMany': {
     args: [payload: CaptureBatchPayload & { favorite: boolean }]
     result: BatchCountResult

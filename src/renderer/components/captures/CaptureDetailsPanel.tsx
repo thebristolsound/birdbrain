@@ -4,6 +4,7 @@ import { motion } from 'motion/react'
 import {
   Star,
   Copy,
+  CopyPlus,
   ExternalLink,
   Trash2,
   Globe,
@@ -38,6 +39,7 @@ import { NoteEditor } from '@renderer/components/notes/NoteEditor'
 import { useNoteEditor } from '@renderer/components/notes/useNoteEditor'
 import { getProvenanceColor } from '@renderer/components/captures/getProvenanceColor'
 import { ForensicsTab } from '@renderer/components/captures/ForensicsTab'
+import { CAPTURE_METHOD_LABELS } from '@renderer/components/captures/captureMethodLabel'
 
 interface Props {
   capture: Capture
@@ -45,6 +47,8 @@ interface Props {
   onCollapse: () => void
   onOpenExternal: () => void
   onCopyUrl: () => void
+  onDuplicate: () => void
+  isDuplicating: boolean
   onDelete: () => void
   onOpenAddNote: () => void
 }
@@ -55,6 +59,8 @@ export function CaptureDetailsPanel({
   onCollapse,
   onOpenExternal,
   onCopyUrl,
+  onDuplicate,
+  isDuplicating,
   onDelete,
   onOpenAddNote
 }: Props) {
@@ -308,6 +314,19 @@ export function CaptureDetailsPanel({
                     />
                     {isRecapturing ? 'Recapturing…' : 'Recapture current page'}
                   </button>
+                  <button
+                    role="menuitem"
+                    data-testid="capture-details-duplicate-btn"
+                    disabled={isDuplicating}
+                    onClick={() => {
+                      setMenuOpen(false)
+                      onDuplicate()
+                    }}
+                    className={menuItemClass}
+                  >
+                    <CopyPlus className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+                    {isDuplicating ? 'Duplicating…' : 'Duplicate'}
+                  </button>
                   <div className="my-1 border-t border-border" />
                   <button
                     role="menuitem"
@@ -367,7 +386,7 @@ export function CaptureDetailsPanel({
               {[
                 formatRelativeTime(capture.timestamp),
                 capture.format === 'mhtml' ? 'MHTML Archive' : 'HTML Page',
-                capture.method === 'background' ? 'Background' : ''
+                CAPTURE_METHOD_LABELS[capture.method] ?? ''
               ]
                 .filter(Boolean)
                 .join(' · ')}

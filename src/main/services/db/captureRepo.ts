@@ -78,6 +78,7 @@ export interface InsertCaptureParams {
   operatorName?: string
   method?: CaptureMethod
   supersedesCaptureId?: string
+  duplicateOfCaptureId?: string
   consentSuppression?: ConsentSuppression
 }
 
@@ -117,7 +118,8 @@ export const CAPTURE_COLUMNS: ReadonlyArray<{ column: string; default: unknown }
   { column: 'tls_cert_chain', default: null },
   { column: 'method', default: 'extension' },
   { column: 'supersedes_capture_id', default: null },
-  { column: 'consent_suppression', default: null }
+  { column: 'consent_suppression', default: null },
+  { column: 'duplicate_of_capture_id', default: null }
 ]
 
 const CAPTURE_INSERT_SQL = `INSERT INTO captures (${CAPTURE_COLUMNS.map((c) => c.column).join(
@@ -162,7 +164,8 @@ export const insertCapture = function (params: InsertCaptureParams & { id?: stri
     tls_cert_chain: params.tlsCertChain ?? null,
     method: params.method ?? null,
     supersedes_capture_id: params.supersedesCaptureId ?? null,
-    consent_suppression: params.consentSuppression ?? null
+    consent_suppression: params.consentSuppression ?? null,
+    duplicate_of_capture_id: params.duplicateOfCaptureId ?? null
   }
 
   const run = d.transaction(() => {
@@ -360,6 +363,7 @@ function rowToCapture(row: Record<string, unknown>): Capture {
     format: ((row.format as string) || 'html') as CaptureFormat,
     method: ((row.method as string) || 'extension') as CaptureMethod,
     supersedesCaptureId: (row.supersedes_capture_id as string) || undefined,
+    duplicateOfCaptureId: (row.duplicate_of_capture_id as string) || undefined,
     consentSuppression: (row.consent_suppression as ConsentSuppression) || undefined,
     mhtmlPath: (row.mhtml_path as string) || undefined,
     screenshotHash: (row.screenshot_hash as string) || undefined,
@@ -402,8 +406,9 @@ export function collectCaptureFavoritesForCase(caseId: string): Record<string, u
 }
 
 // Rows come from a (possibly old-epoch) archive: missing keys fall back to the
-// drift-tested CAPTURE_COLUMNS defaults. id/case_id/supersedes_capture_id are
-// remapped; every capture gets a capture_texts row via ctx.getText.
+// drift-tested CAPTURE_COLUMNS defaults. id/case_id/supersedes_capture_id/
+// duplicate_of_capture_id are remapped; every capture gets a capture_texts row
+// via ctx.getText.
 export function importCaptureRows(rows: Record<string, unknown>[], ctx: ImportCtx): void {
   const d = getDb()
   const insertCap = d.prepare(CAPTURE_INSERT_SQL)
@@ -418,6 +423,11 @@ export function importCaptureRows(rows: Record<string, unknown>[], ctx: ImportCt
         if (c.column === 'case_id') return ctx.newCaseId
         if (c.column === 'supersedes_capture_id') {
           return cap.supersedes_capture_id ? ctx.mapId(cap.supersedes_capture_id as string) : null
+        }
+        if (c.column === 'duplicate_of_capture_id') {
+          return cap.duplicate_of_capture_id
+            ? ctx.mapId(cap.duplicate_of_capture_id as string)
+            : null
         }
         return cap[c.column] ?? c.default ?? null
       })

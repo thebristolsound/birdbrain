@@ -41,15 +41,18 @@ vi.mock('@renderer/components/captures/CaptureDetailsPanel', () => ({
   CaptureDetailsPanel: ({
     onOpenExternal,
     onCopyUrl,
+    onDuplicate,
     onDelete
   }: {
     onOpenExternal: () => void
     onCopyUrl: () => void
+    onDuplicate: () => void
     onDelete: () => void
   }) => (
     <>
       <button onClick={onOpenExternal}>panel: open externally</button>
       <button onClick={onCopyUrl}>panel: copy url</button>
+      <button onClick={onDuplicate}>panel: duplicate</button>
       <button onClick={onDelete}>panel: delete</button>
     </>
   )
@@ -88,6 +91,13 @@ const capture: Capture = {
   method: 'extension'
 }
 
+const duplicateOf: Capture = {
+  ...capture,
+  id: 'cap2',
+  method: 'duplicate',
+  duplicateOfCaptureId: 'cap1'
+}
+
 // jsdom's viewport is 1024px wide, under the route's 1100px collapse
 // threshold, so the rail is the variant that mounts here.
 const OPEN_CONTROL = 'rail: open externally'
@@ -96,9 +106,11 @@ const OPEN_CONTROL = 'rail: open externally'
 const EXPAND_CONTROL = 'rail: expand'
 const DELETE_CONTROL = 'panel: delete'
 const COPY_URL_CONTROL = 'panel: copy url'
+const DUPLICATE_CONTROL = 'panel: duplicate'
 
 let openExternal: ReturnType<typeof vi.fn>
 let deleteMany: ReturnType<typeof vi.fn>
+let duplicate: ReturnType<typeof vi.fn>
 let writeText: ReturnType<typeof vi.fn>
 // Held so the assertion can be on identity: the handler must pass the original
 // rejection through as `cause`, not a rewrapped stand-in.
@@ -152,10 +164,11 @@ beforeEach(() => {
     throw cause
   })
   deleteMany = vi.fn(async () => cleanDeleteResult(['cap1', 'cap2']))
+  duplicate = vi.fn(async () => ({ status: 'duplicated' as const, capture: duplicateOf }))
   writeText = vi.fn(async () => undefined)
   Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
   fakeBridge({
-    captures: { list: vi.fn(async () => [capture]), openExternal, deleteMany },
+    captures: { list: vi.fn(async () => [capture]), openExternal, deleteMany, duplicate },
     settings: { get: vi.fn(async () => ({ detailsPanelCollapsed: false })) }
   })
   useAppStore.getState().setSelectedCaptureId(capture.id)
@@ -232,6 +245,28 @@ describe('CapturesRoute', () => {
 
       await waitFor(() => expect(screen.getByText(BATCH_CONTROL)).toBeDefined())
       expect(writeText).not.toHaveBeenCalled()
+    })
+  })
+
+  // #827. The route owns the mutation for the same reason it owns the copy-URL
+  // accelerator: the panel is rendered from two call sites and is absent
+  // whenever the details column is a rail.
+  describe('duplicate', () => {
+    it('duplicates the selected capture from the actions menu', async () => {
+      renderRouteWide()
+
+      fireEvent.click(await screen.findByText(DUPLICATE_CONTROL))
+
+      await waitFor(() => expect(duplicate).toHaveBeenCalledWith('cap1'))
+      expect(duplicate).toHaveBeenCalledOnce()
+    })
+
+    it('duplicates nothing when no capture is selected', async () => {
+      useAppStore.getState().setSelectedCaptureId(null)
+      renderRouteWide()
+
+      await waitFor(() => expect(screen.queryByText(DUPLICATE_CONTROL)).toBeNull())
+      expect(duplicate).not.toHaveBeenCalled()
     })
   })
 

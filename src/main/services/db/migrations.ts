@@ -690,4 +690,22 @@ export function runMigrations(db: Database.Database): void {
       db.pragma('user_version = 32')
     })()
   }
+
+  if (version < 33) {
+    db.transaction(() => {
+      // Duplication provenance (#827). Follows the v23 recapture precedent
+      // exactly — `supersedes_capture_id` is the same shape of link — because a
+      // duplicate is the same kind of fact: this row's bytes came from that
+      // row, and the pair must stay legible after either one is opened.
+      //
+      // Nullable with no default: NULL means the capture is not a duplicate,
+      // which is true of every row that existed before this migration. A
+      // backfilled value would be a claim nobody made.
+      //
+      // No index: read through the existing SELECT * paths, and a case holds
+      // captures in the thousands, not the millions.
+      db.exec(`ALTER TABLE captures ADD COLUMN duplicate_of_capture_id TEXT;`)
+      db.pragma('user_version = 33')
+    })()
+  }
 }

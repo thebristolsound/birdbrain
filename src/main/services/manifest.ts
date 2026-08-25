@@ -13,6 +13,8 @@ import {
 import { join } from 'path'
 import { createHash } from 'crypto'
 import { MANIFEST_FILENAME, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
+import { ManifestEntrySchema } from '@shared/schemas'
+import type { ManifestEntry } from '@shared/schemas'
 import { canonicalStringify, verifyManifestChainText } from '@shared/verify'
 import type { PackagedArtifact } from '@shared/verify/packageHash'
 import type { ChainVerifyResult, CaptureChainEntry } from '@shared/verify'
@@ -178,6 +180,32 @@ export function readManifestSnapshot(caseDir: string): ManifestSnapshot {
   return { jsonl, entries, head: head(entries) }
 }
 
+// One signed capture entry, as recorded on the chain.
+export type ManifestCaptureEntry = Extract<ManifestEntry, { type: 'capture' }>
+
+// Reads the capture entry recorded at `index`, or undefined when the line at
+// that position is missing, unparseable, not a capture entry, or carries a
+// different index than the position it sits at.
+//
+// For callers that need a capture's ORIGINAL anchored facts (#827 duplication
+// re-anchors url/timestamp/headers/tls into a fresh entry): the `captures` row
+// mirrors those fields but is hand-editable through Settings → Database, and
+// re-signing an edited mirror would launder it into the chain. Verify the chain
+// first — a value read from an unverified manifest is worth no more than the
+// mirror.
+export function readCaptureEntryAt(
+  caseDir: string,
+  index: number
+): ManifestCaptureEntry | undefined {
+  const raw = readManifestSnapshot(caseDir).entries[index]
+  if (raw === undefined) return undefined
+  const parsed = ManifestEntrySchema.safeParse(raw)
+  if (!parsed.success || parsed.data.type !== 'capture' || parsed.data.index !== index) {
+    return undefined
+  }
+  return parsed.data
+}
+
 // A file packaged into an export (evidence .zip or .birdbrain archive), as
 // recorded in the package's artifact index.
 // The artifact index type and THE packageHash recipe both live in
@@ -240,6 +268,13 @@ export type ManifestEntryInput =
       // absent to preserve legacy canonical bodies.
       method?: CaptureMethod
       supersedesCaptureId?: string
+      // Duplication provenance (#827). `duplicateOfCaptureId` names the capture
+      // whose stored bytes were copied and `duplicatedAt` when the copy was
+      // made — the entry's own `timestamp` still describes when the page was
+      // observed, which the copy did not do. OMITTED when absent so every
+      // pre-existing entry's canonical body — and chain hash — is unchanged.
+      duplicateOfCaptureId?: string
+      duplicatedAt?: string
       // Consent-overlay suppression active in the rendering session. OMITTED
       // when absent so pre-existing entries' canonical bodies — and chain
       // hashes — are unchanged.
@@ -473,6 +508,10 @@ export interface CaptureEntryContext {
   // absent to preserve legacy canonical bodies.
   method?: CaptureMethod
   supersedesCaptureId?: string
+  // Duplication provenance (#827); omitted from the manifest body when absent
+  // to preserve legacy canonical bodies.
+  duplicateOfCaptureId?: string
+  duplicatedAt?: string
   // Consent-overlay suppression provenance; omitted from the manifest body when
   // absent to preserve legacy canonical bodies.
   consentSuppression?: ConsentSuppression
@@ -508,6 +547,10 @@ export async function withCaptureEntry<T>(
       ...(ctx.supersedesCaptureId !== undefined
         ? { supersedesCaptureId: ctx.supersedesCaptureId }
         : {}),
+      ...(ctx.duplicateOfCaptureId !== undefined
+        ? { duplicateOfCaptureId: ctx.duplicateOfCaptureId }
+        : {}),
+      ...(ctx.duplicatedAt !== undefined ? { duplicatedAt: ctx.duplicatedAt } : {}),
       ...(ctx.consentSuppression !== undefined
         ? { consentSuppression: ctx.consentSuppression }
         : {}),

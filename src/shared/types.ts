@@ -48,8 +48,11 @@ export interface CaseAutoCapturePolicy {
 export type CaptureFormat = 'html' | 'mhtml'
 
 // How the capture was produced (#recapture). 'extension' = operator-witnessed
-// via the Chrome extension; 'background' = silent hidden-window recapture.
-export const CAPTURE_METHODS = ['extension', 'background'] as const
+// via the Chrome extension; 'background' = silent hidden-window recapture;
+// 'duplicate' = a byte copy of another capture in the same case (#827), which
+// observed nothing itself and must never be read as a second sighting of the
+// page.
+export const CAPTURE_METHODS = ['extension', 'background', 'duplicate'] as const
 export type CaptureMethod = (typeof CAPTURE_METHODS)[number]
 
 // How consent/cookie-notice overlays were neutralized during a background
@@ -111,6 +114,12 @@ export interface Capture {
   // Set when this capture was created by "Recapture" of an existing capture.
   // The original is never touched — linked sibling, both fully visible.
   supersedesCaptureId?: string
+  // Set when this capture was created by duplicating an existing capture
+  // (#827). Mirrors `duplicateOfCaptureId` on the manifest entry, but unlike
+  // the entry — which records the source id as it stood in the installation
+  // that wrote it — this column is remapped on archive import, so it is the
+  // link that survives a case moving between installations.
+  duplicateOfCaptureId?: string
   // Consent-overlay suppression active while the page rendered; mirrors the
   // value anchored in the manifest capture entry. undefined = none.
   consentSuppression?: ConsentSuppression

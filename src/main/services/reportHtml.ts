@@ -981,6 +981,7 @@ function renderExhibit(e: ExhibitView, total: number): string {
   add('Manifest entry', c.manifestIndex !== undefined ? `#${c.manifestIndex}` : undefined)
   add('Consent overlay', c.consentSuppression ? `suppressed (${c.consentSuppression})` : undefined)
   add('Supersedes', c.supersedesCaptureId)
+  add('Duplicate of', c.duplicateOfCaptureId)
 
   // Every path here comes from what the package actually contains. Nothing is
   // inferred from the capture record, so the report cannot send a reviewer

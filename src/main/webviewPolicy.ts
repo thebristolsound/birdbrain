@@ -70,12 +70,24 @@ const LEGACY_HTML_POLICY: WebviewPartitionPolicy = {
   // Three slashes, not two, and the third one is the control. Exactly one load on
   // this partition needs the `file:` scheme at all: the guest's own top-level
   // document, whose `src` is what `captures:getHtmlUrl` returned for the stored
-  // `page.html`. That handler builds it with `pathToFileURL`, which only ever emits
-  // the empty-authority form — so `file:///` admits the artefact and nothing wider.
-  // `file://` would additionally admit `file://evil.test/share/x.png`, an authority
-  // this policy has no reason to reach and which is a network request wearing a
-  // local scheme; on the one content class that is attacker-chosen (a page captured
-  // from the web, its references never rewritten) that is not a theoretical shape.
+  // `page.html`. `file://` would additionally admit `file://evil.test/share/x.png`,
+  // an authority this policy has no reason to reach and which is a network request
+  // wearing a local scheme; on the one content class that is attacker-chosen (a page
+  // captured from the web, its references never rewritten) that is not a theoretical
+  // shape — #941 observed the fetch on Windows.
+  //
+  // What this costs is recorded rather than assumed away. `captures:getHtmlUrl`
+  // builds the src with `pathToFileURL`, and that emits the empty-authority form for
+  // a local storage root but an *authority* form for a Windows UNC one:
+  // `pathToFileURL('\\\\nas\\share\\cap.html', { windows: true })` is
+  // `file://nas/share/cap.html` on the repo's pinned Node, which this prefix denies.
+  // `storagePath` is an unvalidated string set from a directory picker, so that root
+  // is reachable. Denying it is the ruled-correct answer today (#923): with no way
+  // to tell the operator's own file server from a host written into a captured page,
+  // both are refused. #953 records that UNC roots stop working, #923 is the future
+  // work deriving the one allowed authority from `storagePath`, and #929 covers
+  // telling the operator instead of showing a blank pane.
+  //
   // Narrowed here rather than in `matchesPrefix` because the general remote-`file:`
   // refusal belongs to #904/#926, which fixes it for every partition at once: the
   // four-slash form `file:////evil.test/share/x.png` still satisfies this prefix and

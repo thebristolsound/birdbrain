@@ -410,10 +410,17 @@ describe('permissions and downloads', () => {
 })
 
 // The legacy partition lists `file:///`, not `file://`, and this is what that third
-// slash buys. `captures:getHtmlUrl` builds the guest's src with `pathToFileURL`, which
-// only ever emits the empty-authority form, so nothing this app produces needs the
-// wider prefix — while `file://host/share/x` is a network fetch wearing a local scheme,
-// on the one content class an investigated site chooses the bytes of.
+// slash buys: `file://host/share/x` is a network fetch wearing a local scheme, on the
+// one content class an investigated site chooses the bytes of.
+//
+// It is not free, and the cost is the case below it. `captures:getHtmlUrl` builds the
+// guest's src with `pathToFileURL`, which emits the empty-authority form for a local
+// storage root and an authority form for a Windows UNC one — so an operator whose
+// `storagePath` is `\\nas\share` gets an artefact URL this prefix denies. That is the
+// ruled-correct answer today (#923: no way to tell the operator's file server from a
+// host written into a captured page, so both are refused), recorded in #953, with #929
+// covering the operator-facing message. The `file://nas/…` answer is stable across
+// #926 and #953 asks for it to be pinned there.
 //
 // Not asserted here, deliberately: `file:////evil.test/share/x.png` satisfies
 // `file:///` and is still allowed on this branch. It is closed inside `matchesPrefix`
@@ -437,7 +444,7 @@ describe('the legacy HTML partition’s local-file narrowing', () => {
     })
   })
 
-  it('still admits the artefact form pathToFileURL produces', () => {
+  it('still admits the artefact form a local storage root produces', () => {
     // The counterweight: narrowing the prefix must not deny the one load that needs it.
     const url = 'file:///c/case/cap.html'
     expect(decideWebviewRequest({ partition: LEGACY_HTML_PARTITION, url })).toBe('allow')

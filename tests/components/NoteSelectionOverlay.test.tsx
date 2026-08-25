@@ -118,7 +118,9 @@ describe('NoteSelectionConfirm', () => {
   it('shows the derived tag name and where it lands in tag mode', () => {
     renderConfirm({ mode: 'tag', text: 'Meridian Trust' })
     expect(screen.getByTestId('note-selection-value').textContent).toBe('meridian-trust')
-    expect(screen.getByText(/Applies to this note/)).toBeTruthy()
+    // Confirming writes the draft out (R15), so the copy has to say so — the
+    // Cancel that follows no longer un-does it.
+    expect(screen.getByText(/Applies to this note.*An unsaved note is saved first/s)).toBeTruthy()
     // Watch and Backfill are selector concepts; a tag has neither.
     expect(screen.queryByTestId('note-selection-watch')).toBeNull()
     expect(screen.queryByTestId('note-selection-backfill')).toBeNull()

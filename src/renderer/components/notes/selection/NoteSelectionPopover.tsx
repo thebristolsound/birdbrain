@@ -172,7 +172,8 @@ export function NoteSelectionConfirm({
         </>
       ) : (
         <p className="px-3 pb-1.5 text-[11px] leading-relaxed text-text-muted">
-          Applies to this note, and to its capture when the note has one.
+          Applies to this note, and to its capture when the note has one. An unsaved note is saved
+          first — a tag cannot attach to a note that does not exist.
         </p>
       )}
 

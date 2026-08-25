@@ -26,6 +26,8 @@ import {
   useCaptureListCollapsed,
   useCaptureView
 } from '@renderer/components/captures/useCaptureView'
+import { useCopyCaptureUrl } from '@renderer/components/captures/useCopyCaptureUrl'
+import { useCopyCaptureHash } from '@renderer/components/captures/useCopyCaptureHash'
 import { AddNoteModal } from '@renderer/components/notes/AddNoteModal'
 import {
   Button,
@@ -153,6 +155,16 @@ export function CapturesRoute() {
     () => captures.find((c) => c.id === selectedCaptureId) ?? null,
     [captures, selectedCaptureId]
   )
+
+  // Mounted on the surface, not inside the details panel: the panel is absent
+  // whenever the details column is a rail or hidden, and it is rendered from
+  // two separate call sites (docked and overlay). A listener living inside it
+  // would follow the column rather than the screen.
+  const handleCopyUrl = useCopyCaptureUrl(selectedCapture)
+  // Bound alongside it so both copy actions read the one capture the operator is
+  // looking at, and one binding serves both panel call sites. Not for the
+  // listener reason above: this hook registers no accelerator.
+  const handleCopyHash = useCopyCaptureHash(selectedCapture)
 
   // The Wayback tab takes the width (compare panes plus the archive.org
   // slide-out), but only once there is something to show it for — without this
@@ -331,6 +343,8 @@ export function CapturesRoute() {
                   caseId={caseId}
                   onCollapse={toggleUserPref}
                   onOpenExternal={handleOpenExternal}
+                  onCopyUrl={handleCopyUrl}
+                  onCopyHash={handleCopyHash}
                   onDelete={() => setShowDeleteConfirm(true)}
                   onOpenAddNote={() => setShowAddNote(true)}
                 />
@@ -374,6 +388,8 @@ export function CapturesRoute() {
             caseId={caseId}
             onCollapse={() => setForcedPanelOpen(false)}
             onOpenExternal={handleOpenExternal}
+            onCopyUrl={handleCopyUrl}
+            onCopyHash={handleCopyHash}
             onDelete={() => setShowDeleteConfirm(true)}
             onOpenAddNote={() => setShowAddNote(true)}
           />

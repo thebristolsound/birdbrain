@@ -25,7 +25,11 @@ export { LEGACY_HTML_PARTITION, MHTML_PARTITION, WAYBACK_PARTITION, WAYBACK_REPL
 
 export interface WebviewPartitionPolicy {
   partition: string
-  /** URL prefixes a guest on this partition may load or navigate to. */
+  /**
+   * URL prefixes a guest on this partition may load or navigate to. A `file://`
+   * entry names the *local* file scheme only: the remote-authority form is refused
+   * by `matchesPrefix` before the list is consulted (#904).
+   */
   allowedPrefixes: readonly string[]
   /**
    * Whether the guest may navigate after its first load. False keeps the evidence
@@ -248,7 +252,7 @@ export type WebviewRequestDecision = 'allow' | 'block'
  *
  * Denies by default. A request passes only when it addresses a host the partition
  * allows, or sits inside the partition's own URL allow-list, which is what carries
- * the evidence viewer's `file://` artefact. `allowedPrefixes` is consulted rather
+ * the evidence viewer's local `file:///` artefact. `allowedPrefixes` is consulted rather
  * than duplicated so a partition's URL surface stays declared in one place; on the
  * Wayback side it is subsumed by the host match, since the replay prefix is on the
  * allowed host — but a replay also loads its own toolbar from paths outside that
@@ -296,18 +300,70 @@ export function decideWebviewDownload(): WebviewDownloadDecision {
   return 'block'
 }
 
+/**
+ * Whether a URL sits inside the partition's declared surface — the gate every
+ * `allow` in this module passes through for anything that is not `https`.
+ *
+ * The remote-`file:` refusal lives here rather than at the three call sites (#904).
+ * `matchesPrefix` is the only gate through which a `file:` URL can reach an `allow`
+ * anywhere in this module: the other two allow paths in `decideWebviewRequest` are
+ * locked to `data:`/`blob:`/`about:` and to `https:` respectively. So one refusal
+ * covers attach, navigation and request at once, and a decision function added later
+ * that consults the allow-list inherits it rather than having to remember it. It is
+ * not a policy smuggled into a match, either: the `file://` entry on the evidence
+ * viewer's list has always meant the local file scheme, and `startsWith` cannot say
+ * so, because `file://` is a prefix of the remote form too.
+ *
+ * Reordering the host test in front of the prefix test in `decideWebviewRequest`
+ * would not do instead: `requestHost` returns null for every non-`https` scheme, so
+ * it would deny the legitimate `file:///` artefact along with the remote one.
+ */
 function matchesPrefix(policy: WebviewPartitionPolicy, url: string | null | undefined): boolean {
   if (typeof url !== 'string' || url.length === 0) return false
+  if (isRemoteFileUrl(url)) return false
   return policy.allowedPrefixes.some((prefix) => url.startsWith(prefix))
+}
+
+/**
+ * Whether a `file:` URL would fetch from somewhere other than this machine. Only the
+ * empty-authority form `file:///path` is local; `file://host/share/x` is a remote
+ * fetch wearing a local scheme. On Windows that is a UNC path, so Chromium opens an
+ * SMB connection and the OS authenticates to it unasked, handing the operator's
+ * account name and an offline-crackable NTLMv2 response to whoever chose the URL —
+ * a credential disclosure rather than only a phone-home, and `package:win` ships.
+ *
+ * Three shapes carry the same authority and all three are refused:
+ * - `file://evil.test/share/x.png` — the authority in its plain form.
+ * - `file:////evil.test/share/x.png` — `URL` reads the host as empty and leaves
+ *   `//evil.test/…` in the path, which Windows resolves as that same UNC target.
+ * - `file://user:pw@evil.test/x` — `URL` refuses to parse a `file:` URL carrying
+ *   credentials, and Chromium's parser is not `URL`. A `file:` string this module
+ *   cannot resolve is one it cannot vouch for, so it is denied rather than waved
+ *   through on a `startsWith` that does not care whether it parsed.
+ *
+ * `file://localhost/tmp/x` needs no exception: `URL` normalises that authority away
+ * to the empty one, so it arrives here already in the local form.
+ */
+function isRemoteFileUrl(url: string): boolean {
+  if (!/^file:/i.test(url)) return false
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return true
+  }
+  return parsed.hostname.length > 0 || parsed.pathname.startsWith('//')
 }
 
 /**
  * The hostname an `https` request addresses, or null for anything else. Parsing
  * rather than string-matching is the point: `URL` settles where the authority ends,
  * so a name embedded in a path, a userinfo segment or a query cannot pass itself off
- * as the host. Any other scheme yields null and is denied — a `file://` subresource
- * has already been decided by the prefix test above, and `http`/`ws`/`wss` to an
- * allowed name is still a request no partition here needs.
+ * as the host. Any other scheme yields null and is denied — a `file:` subresource has
+ * already been settled above, either matched as the local form or refused as a remote
+ * authority (#904; the prefix test alone could not tell those apart, which is the bug
+ * this sentence used to describe as safe), and `http`/`ws`/`wss` to an allowed name is
+ * still a request no partition here needs.
  */
 function requestHost(url: string): string | null {
   let parsed: URL

@@ -8,6 +8,7 @@ import { exportSelectorMatches } from '@renderer/lib/api/selectors'
 import { useForegroundMatchPreview } from '@renderer/components/selectors/useForegroundMatchPreview'
 import { ORIGIN_ICON, ORIGIN_LABEL } from '@renderer/components/selectors/selectorOrigin'
 import { useTagsMutations } from '@renderer/lib/api/tags'
+import { MergeTagDialog } from '@renderer/components/signals/MergeTagDialog'
 import {
   signalCountLabel,
   TAG_PALETTE,
@@ -21,6 +22,8 @@ interface SignalDetailRailProps {
   captures: Capture[]
   totalCaptures: number
   onToggleEnabled: (signal: Signal) => void
+  /** A tag merge deleted the selected tag; the surviving tag's id follows. */
+  onMerged?: (targetId: string) => void
 }
 
 const BLOCK_LABEL = 'mb-1.5 text-[10px] font-semibold uppercase tracking-[.05em] text-text-faint'
@@ -41,12 +44,14 @@ export function SignalDetailRail({
   signal,
   captures,
   totalCaptures,
-  onToggleEnabled
+  onToggleEnabled,
+  onMerged
 }: SignalDetailRailProps) {
   const navigate = useNavigate()
   const addSelectorFilter = useAppStore((s) => s.addSelectorFilter)
   const { update: updateTag } = useTagsMutations(caseId)
   const [exporting, setExporting] = useState(false)
+  const [mergeOpen, setMergeOpen] = useState(false)
   const { previews, run, reset } = useForegroundMatchPreview(caseId, {
     maxCaptures: 5,
     maxMatchesPerCapture: 10
@@ -281,8 +286,32 @@ export function SignalDetailRail({
               {exporting ? 'Exporting…' : 'Export CSV'}
             </button>
           )}
+          {/* Tags only (#828): the merge-tags inline route. The dialog holds
+              the target pick and the confirm; this button only opens it. */}
+          {!isSelector && (
+            <button
+              type="button"
+              data-testid="signal-merge-tag"
+              onClick={() => setMergeOpen(true)}
+              className="h-7 flex-1 rounded border border-border-strong text-xs font-medium text-text-primary hover:bg-elevated"
+            >
+              Merge into…
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Mounted only while open: the dialog fetches the tag list on mount,
+          and every tag selection would otherwise fire that query for a dialog
+          nobody asked for. */}
+      {!isSelector && mergeOpen && (
+        <MergeTagDialog
+          open={mergeOpen}
+          onOpenChange={setMergeOpen}
+          source={{ id: signal.id, name: signal.name }}
+          onMerged={onMerged}
+        />
+      )}
     </aside>
   )
 }

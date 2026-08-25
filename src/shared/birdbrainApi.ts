@@ -49,6 +49,8 @@ import type {
   NoteTagParams,
   ApplyTagToNoteParams,
   ApplyTagToNoteResult,
+  MergeTagsParams,
+  MergeTagsResult,
   CreateSelectorParams,
   UpdateSelectorParams,
   CreateNoteParams,
@@ -139,6 +141,7 @@ export interface BirdbrainAPI {
     applyToNote(params: ApplyTagToNoteParams): Promise<ApplyTagToNoteResult>
     removeFromNote(params: NoteTagParams): Promise<void>
     getForNote(noteId: string): Promise<Tag[]>
+    merge(params: MergeTagsParams): Promise<MergeTagsResult>
   }
   selectors: {
     list(caseId: string): Promise<Selector[]>

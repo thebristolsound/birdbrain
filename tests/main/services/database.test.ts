@@ -33,7 +33,10 @@ import {
   getTagCountForCase,
   getTagUsageCountsForCase,
   getTagCaptureMatrix,
-  addTagToCaptures
+  addTagToCaptures,
+  addTagToNote,
+  getTagsForNote,
+  mergeTags
 } from '@main/services/db/tagRepo'
 import {
   getSelectorCoverage,
@@ -389,6 +392,131 @@ describe('database', () => {
       // A missing tag fails the whole batch: neither capture gains a dangling row.
       expect(() => addTagToCaptures([a.id, b.id], 'no-such-tag')).toThrow()
       expect(getTagsForCapture(a.id)).toHaveLength(1)
+    })
+  })
+
+  // Known-answer suite for the merge (#828): a fixed seed, one merge, and the
+  // exact final rows asserted — including the dedupe collision the join
+  // tables' primary keys would turn into a constraint error under a plain
+  // UPDATE, and the leftover source rows ON DELETE CASCADE must clear.
+  describe('mergeTags (#828)', () => {
+    function seed() {
+      const c = createCase({ name: 'Merge case' })
+      const a = insertCapture({
+        caseId: c.id,
+        url: 'https://a.com',
+        title: 'A',
+        hash: 'h1',
+        timestamp: 't'
+      })
+      const b = insertCapture({
+        caseId: c.id,
+        url: 'https://b.com',
+        title: 'B',
+        hash: 'h2',
+        timestamp: 't'
+      })
+      const n1 = createNote({ caseId: c.id, title: 'N1', body: 'one' })
+      const n2 = createNote({ caseId: c.id, title: 'N2', body: 'two' })
+      const source = createTag({ name: 'osint', color: '#ef4444' })
+      const target = createTag({ name: 'evidence', color: '#22c55e' })
+      const bystander = createTag({ name: 'other', color: '#3b82f6' })
+      // Capture B and note N2 already carry the target: the collision rows.
+      addTagToCapture({ captureId: a.id, tagId: source.id })
+      addTagToCapture({ captureId: b.id, tagId: source.id })
+      addTagToCapture({ captureId: b.id, tagId: target.id })
+      addTagToCapture({ captureId: a.id, tagId: bystander.id })
+      addTagToNote({ noteId: n1.id, tagId: source.id })
+      addTagToNote({ noteId: n2.id, tagId: source.id })
+      addTagToNote({ noteId: n2.id, tagId: target.id })
+      return { a, b, n1, n2, source, target, bystander }
+    }
+
+    it('re-points capture and note links, dedupes collisions and deletes the source', () => {
+      const { a, b, n1, n2, source, target, bystander } = seed()
+
+      const result = mergeTags({ sourceId: source.id, targetId: target.id })
+
+      // The survivor keeps its own identity, name and colour.
+      expect(result).toEqual({
+        target: { id: target.id, name: 'evidence', color: '#22c55e' },
+        captureLinks: 2,
+        noteLinks: 2
+      })
+
+      // Exact final join rows: one row per (capture, tag) — the collision on B
+      // collapsed to a single row rather than violating the primary key.
+      const captureRows = getDb()
+        .prepare('SELECT capture_id, tag_id FROM capture_tags ORDER BY capture_id, tag_id')
+        .all()
+      expect(captureRows).toEqual(
+        [
+          { capture_id: a.id, tag_id: target.id },
+          { capture_id: a.id, tag_id: bystander.id },
+          { capture_id: b.id, tag_id: target.id }
+        ].sort((x, y) =>
+          x.capture_id === y.capture_id
+            ? x.tag_id.localeCompare(y.tag_id)
+            : x.capture_id.localeCompare(y.capture_id)
+        )
+      )
+      const noteRows = getDb()
+        .prepare('SELECT note_id, tag_id FROM note_tags ORDER BY note_id, tag_id')
+        .all()
+      expect(noteRows).toEqual(
+        [
+          { note_id: n1.id, tag_id: target.id },
+          { note_id: n2.id, tag_id: target.id }
+        ].sort((x, y) => x.note_id.localeCompare(y.note_id))
+      )
+
+      // The source tag is gone; the survivor and the bystander remain.
+      expect(listTags().map((t) => t.name)).toEqual(['evidence', 'other'])
+      expect(getTagsForNote(n1.id).map((t) => t.id)).toEqual([target.id])
+      expect(getTagsForNote(n2.id).map((t) => t.id)).toEqual([target.id])
+    })
+
+    // Load-bearing, not defensive: without the guard the inserts would no-op
+    // and the delete would destroy the tag and every link it holds.
+    it('refuses a self-merge and leaves every row standing', () => {
+      const { a, source } = seed()
+
+      expect(mergeTags({ sourceId: source.id, targetId: source.id })).toBeUndefined()
+
+      expect(listTags().map((t) => t.name)).toEqual(['evidence', 'osint', 'other'])
+      expect(getTagsForCapture(a.id).map((t) => t.name)).toEqual(['osint', 'other'])
+    })
+
+    it('returns undefined without writing when either tag is missing', () => {
+      const { a, source, target } = seed()
+
+      expect(mergeTags({ sourceId: 'no-such-tag', targetId: target.id })).toBeUndefined()
+      expect(mergeTags({ sourceId: source.id, targetId: 'no-such-tag' })).toBeUndefined()
+
+      expect(listTags()).toHaveLength(3)
+      expect(getTagsForCapture(a.id).map((t) => t.name)).toEqual(['osint', 'other'])
+    })
+
+    // Tags are app-global (no case_id column), so a merge invoked from one
+    // case's Signals screen rewrites links in every case that used the source.
+    // Pinned so the reach is a recorded fact rather than a surprise.
+    it('reaches captures in other cases', () => {
+      const { source, target } = seed()
+      const elsewhere = createCase({ name: 'Other case' })
+      const far = insertCapture({
+        caseId: elsewhere.id,
+        url: 'https://far.com',
+        title: 'Far',
+        hash: 'h3',
+        timestamp: 't'
+      })
+      addTagToCapture({ captureId: far.id, tagId: source.id })
+
+      const result = mergeTags({ sourceId: source.id, targetId: target.id })
+
+      expect(getTagsForCapture(far.id).map((t) => t.id)).toEqual([target.id])
+      // The reported totals are global for the same reason.
+      expect(result?.captureLinks).toBe(3)
     })
   })
 

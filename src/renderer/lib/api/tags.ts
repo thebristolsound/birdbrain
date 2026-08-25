@@ -1,5 +1,10 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { BatchCountResult, CreateTagParams, UpdateTagParams } from '@shared/ipc'
+import type {
+  BatchCountResult,
+  CreateTagParams,
+  MergeTagsParams,
+  UpdateTagParams
+} from '@shared/ipc'
 import { queryKeys } from '@renderer/lib/api/keys'
 import { SIGNAL_COVERAGE_CAPTURES } from '@shared/constants'
 
@@ -126,5 +131,24 @@ export function useTagsMutations(caseId?: string) {
     meta: { action: 'apply tag to note' }
   })
 
-  return { create, update, remove, addToCapture, removeFromCapture, addToCaptures, applyToNote }
+  // Merge source into target (#828). One prefix invalidation: every tag query
+  // key starts with 'tags' (list, per-capture, per-note, counts, matrix), and
+  // a merge is app-global — it can touch any capture or note in any case — so
+  // scoping tighter would mean enumerating rows only main knows it rewrote.
+  const merge = useMutation({
+    mutationFn: (params: MergeTagsParams) => window.birdbrain.tags.merge(params),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.tags }),
+    meta: { action: 'merge tags' }
+  })
+
+  return {
+    create,
+    update,
+    remove,
+    addToCapture,
+    removeFromCapture,
+    addToCaptures,
+    applyToNote,
+    merge
+  }
 }

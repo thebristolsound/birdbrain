@@ -855,6 +855,62 @@ describe('ipcHandlers — tags', () => {
     )
     expect(forCapture.some((t) => t.id === applied.tag.id)).toBe(true)
   })
+
+  // #828 merge. Driven at the IPC boundary because the three refusals live in
+  // the handler — shape, self-merge, missing tag — and a renderer branching on
+  // their codes is reading this handler, not the repo.
+  it('merges one tag into another and reports the survivor with its totals', async () => {
+    const source = expectOk<{ id: string }>(
+      await invoke(IPC_CHANNELS.TAGS_CREATE, { name: 'src-828' })
+    )
+    const target = expectOk<{ id: string }>(
+      await invoke(IPC_CHANNELS.TAGS_CREATE, { name: 'dst-828', color: '#22c55e' })
+    )
+    expectOk(await invoke(IPC_CHANNELS.TAGS_ADD_TO_CAPTURE, { captureId, tagId: source.id }))
+
+    const merged = expectOk<{ target: { id: string }; captureLinks: number; noteLinks: number }>(
+      await invoke(IPC_CHANNELS.TAGS_MERGE, { sourceId: source.id, targetId: target.id })
+    )
+    expect(merged.target.id).toBe(target.id)
+    expect(merged.captureLinks).toBe(1)
+    expect(merged.noteLinks).toBe(0)
+
+    const forCapture = expectOk<{ id: string }[]>(
+      await invoke(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, captureId)
+    )
+    expect(forCapture.map((t) => t.id)).toEqual([target.id])
+    const list = expectOk<{ id: string }[]>(await invoke(IPC_CHANNELS.TAGS_LIST))
+    expect(list.some((t) => t.id === source.id)).toBe(false)
+  })
+
+  it('refuses a malformed, self-targeted or missing-tag merge with distinct codes', async () => {
+    const tag = expectOk<{ id: string }>(await invoke(IPC_CHANNELS.TAGS_CREATE, { name: 'keep-828' }))
+
+    const malformed = (await invoke(IPC_CHANNELS.TAGS_MERGE, { sourceId: tag.id })) as {
+      ok: boolean
+      code?: string
+    }
+    expect(malformed.ok).toBe(false)
+    expect(malformed.code).toBe('INVALID_MERGE_PAYLOAD')
+
+    const self = (await invoke(IPC_CHANNELS.TAGS_MERGE, {
+      sourceId: tag.id,
+      targetId: tag.id
+    })) as { ok: boolean; code?: string }
+    expect(self.ok).toBe(false)
+    expect(self.code).toBe('TAG_MERGE_SELF')
+
+    const missing = (await invoke(IPC_CHANNELS.TAGS_MERGE, {
+      sourceId: tag.id,
+      targetId: 'no-such-tag'
+    })) as { ok: boolean; code?: string }
+    expect(missing.ok).toBe(false)
+    expect(missing.code).toBe('TAG_NOT_FOUND')
+
+    // Every refusal left the tag standing.
+    const list = expectOk<{ id: string }[]>(await invoke(IPC_CHANNELS.TAGS_LIST))
+    expect(list.some((t) => t.id === tag.id)).toBe(true)
+  })
 })
 
 describe('ipcHandlers — selectors', () => {

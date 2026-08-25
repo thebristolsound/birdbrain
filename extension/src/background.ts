@@ -2,15 +2,26 @@ import {
   getStatus,
   sendMhtmlCapture,
   getActiveSelectors,
-  createSelector
+  createSelector,
+  lookupCaptureByUrl,
+  applyTagToUrl,
+  createNoteOnUrl,
+  type AttachCapturePayload
 } from '@extension/utils/api'
 import { normalizeResponseHeaders } from '@extension/utils/headers'
 import { removeInjectedBirdbrainUi } from '@extension/captureHygiene'
 import { CaptureUiSuppressionError, createCaptureSuppression } from '@extension/captureSuppression'
 import { MAX_SCREENSHOT_BITMAP_BYTES } from '@shared/constants'
 import { matchIgnoredUrl } from '@shared/urlPatterns'
+import { selectionToTagName } from '@shared/selectionKind'
 import type { ActiveSelectorsResult, SelectorMatchInfo } from '@shared/schemas'
-import type { ManualCaptureResponse, PopupBlock, PopupPageStatus } from '@extension/messages'
+import type {
+  ManualCaptureResponse,
+  PopupBlock,
+  PopupPageStatus,
+  SelectionActionKind,
+  SelectionActionResponse
+} from '@extension/messages'
 
 function captureMhtml(tabId: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
@@ -179,7 +190,10 @@ function isCapturingTab(tabId: number): boolean {
 // worker memory and nothing more: MV3 evicts the worker and they go with it,
 // which is why the popup treats a miss as "not seen here" rather than as
 // "never captured" (there is no capture lookup by URL — see #392).
-const lastCaptureByTab = new Map<number, { url: string; at: number; manifestIndex: number | null }>()
+const lastCaptureByTab = new Map<
+  number,
+  { url: string; at: number; manifestIndex: number | null }
+>()
 const selectorSummaryByTab = new Map<number, { url: string; selectors: number; hits: number }>()
 
 // Capture-UI suppression (#379, #386): the single suppress/restore boundary
@@ -190,6 +204,14 @@ const selectorSummaryByTab = new Map<number, { url: string; selectors: number; h
 const captureSuppression = createCaptureSuppression({
   suppress: prepareTabForCapture,
   restore: async (tabId) => {
+    // Release the page-side latch (#393) before re-injecting anything, and
+    // only when no capture on the tab is still collecting frames: the first
+    // of two concurrent captures to settle must not un-latch the page while
+    // the second is mid-frame. Safe self-reference — this effect only runs
+    // after createCaptureSuppression has returned.
+    if (!captureSuppression.isCollectingFrames(tabId)) {
+      await chrome.tabs.sendMessage(tabId, { type: 'RELEASE_CAPTURE_UI' }).catch(() => {})
+    }
     await restoreSelectorHighlights(tabId)
     // A capture that settled while another was mid-frame had its toast held
     // back; the tab may be idle now that this one has released its slot.
@@ -470,6 +492,47 @@ chrome.runtime.onInstalled.addListener(() => {
   })
 })
 
+// The one-click Selector path (R8): create from the selected text, then
+// re-fetch selectors and re-highlight the page. Shared by the context menu and
+// the in-page selection bar so the two stay one behavior; each caller renders
+// the outcome its own way (toast versus inline bar).
+async function createSelectorFromSelection(
+  tabId: number,
+  url: string,
+  caseId: string,
+  pattern: string
+): Promise<void> {
+  // Derive label from page hostname
+  let label: string | undefined
+  try {
+    label = `from ${new URL(url).hostname}`
+  } catch {
+    // Invalid URL, skip label
+  }
+
+  await createSelector({ caseId, pattern, label })
+
+  // Re-fetch selectors and rehighlight current page
+  try {
+    activeSelectors = await getActiveSelectors()
+    checkSelectorsOnTab(tabId, url)
+  } catch {
+    // Non-critical — highlights will appear on next page load
+  }
+}
+
+function selectorFailureMessage(err: unknown): string {
+  let message = 'Failed to create selector'
+  if (err && typeof err === 'object' && 'status' in err) {
+    const apiErr = err as { status: number; detail: string }
+    if (apiErr.status === 400) message = `Selector rejected: ${apiErr.detail}`
+    else if (apiErr.status === 404) message = 'Case not found'
+  } else if (err instanceof TypeError) {
+    message = "Can't reach Birdbrain — is it running?"
+  }
+  return message
+}
+
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === SELECTOR_CONTEXT_MENU_ID) {
     if (!tab?.id || !tab.url) return
@@ -478,14 +541,6 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 
     const selectedText = info.selectionText?.trim()
     if (!selectedText) return
-
-    // Derive label from page hostname
-    let label: string | undefined
-    try {
-      label = `from ${new URL(tab.url).hostname}`
-    } catch {
-      // Invalid URL, skip label
-    }
 
     sendToastWhenCaptureIdle(tab.id, {
       type: 'SHOW_CAPTURE_TOAST',
@@ -498,43 +553,20 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       message: 'Creating selector...'
     })
     try {
-      await createSelector({
-        caseId: activeCaseId,
-        pattern: selectedText,
-        label
-      })
+      await createSelectorFromSelection(tab.id, tab.url, activeCaseId, selectedText)
 
       sendToastWhenCaptureIdle(tab.id, {
         type: 'UPDATE_CAPTURE_TOAST',
         status: 'success',
         message: 'Selector created'
       })
-
-      // Re-fetch selectors and rehighlight current page
-      try {
-        activeSelectors = await getActiveSelectors()
-        if (tab.url) {
-          checkSelectorsOnTab(tab.id, tab.url)
-        }
-      } catch {
-        // Non-critical — highlights will appear on next page load
-      }
     } catch (err) {
       console.error('[Birdbrain] Create selector failed:', err)
-
-      let message = 'Failed to create selector'
-      if (err && typeof err === 'object' && 'status' in err) {
-        const apiErr = err as { status: number; detail: string }
-        if (apiErr.status === 400) message = `Selector rejected: ${apiErr.detail}`
-        else if (apiErr.status === 404) message = 'Case not found'
-      } else if (err instanceof TypeError) {
-        message = "Can't reach Birdbrain — is it running?"
-      }
 
       sendToastWhenCaptureIdle(tab.id, {
         type: 'UPDATE_CAPTURE_TOAST',
         status: 'error',
-        message
+        message: selectorFailureMessage(err)
       })
     }
     return
@@ -788,6 +820,139 @@ async function manualCaptureTab(
   }
 }
 
+// --- In-page selection bar actions (#393) ----------------------------------
+
+// Maps an attach-route failure to the operator-facing line the bar renders
+// verbatim. ApiError details are already written for the operator ('Failed to
+// capture page; nothing was attached', 'Operator name required', ...), so
+// they pass through.
+function selectionAttachFailureMessage(err: unknown): string {
+  if (err instanceof CaptureUiSuppressionError) {
+    return 'Aborted: Birdbrain UI could not be removed from the page'
+  }
+  if (err && typeof err === 'object' && 'status' in err) {
+    const apiErr = err as { status: number; detail: string }
+    return apiErr.detail || 'Request failed'
+  }
+  if (err instanceof TypeError) return "Can't reach Birdbrain — is it running?"
+  return 'Action failed'
+}
+
+function quoteNoteTitle(pageTitle: string, url: string): string {
+  return `Quote - ${pageTitle.trim() || url}`.slice(0, 160)
+}
+
+async function handleSelectionAction(
+  tabId: number,
+  url: string,
+  action: SelectionActionKind,
+  rawText: string
+): Promise<SelectionActionResponse> {
+  const caseId = activeCaseId
+  if (!connected || !caseId) {
+    // The bar disables itself on this state, but it may have gone stale
+    // between its render and the click; the answer of record is taken now.
+    return { ok: false, error: 'Not connected to Birdbrain with an active case' }
+  }
+  const text = rawText.trim()
+  if (!text) return { ok: false, error: 'Nothing selected' }
+
+  if (action === 'selector') {
+    try {
+      await createSelectorFromSelection(tabId, url, caseId, text)
+      return { ok: true, detail: 'Selector created', captured: false }
+    } catch (err) {
+      console.error('[Birdbrain] Selection bar selector failed:', err)
+      return { ok: false, error: selectorFailureMessage(err) }
+    }
+  }
+
+  // Tag and Quote ride the auto-capture-then-attach endpoints (#392): a
+  // failed capture is a refusal on the server and no attach ever runs, so an
+  // error here means nothing was created.
+  const attach = async (
+    payload: AttachCapturePayload,
+    pageTitle: string
+  ): Promise<SelectionActionResponse> => {
+    if (action === 'tag') {
+      const result = await applyTagToUrl({
+        caseId,
+        url,
+        tagName: selectionToTagName(text),
+        payload
+      })
+      return { ok: true, detail: `Tagged "${result.tag.name}"`, captured: result.captured }
+    }
+    const result = await createNoteOnUrl({
+      caseId,
+      url,
+      noteTitle: quoteNoteTitle(pageTitle, url),
+      noteText: text,
+      payload
+    })
+    return { ok: true, detail: 'Quote saved to case notes', captured: result.captured }
+  }
+
+  try {
+    const lookup = await lookupCaptureByUrl({ caseId, url })
+    if (lookup.found) {
+      // Attaching to an existing Capture acquires nothing, so no suppression
+      // bracket opens and the bar keeps showing its own progress state.
+      const tab = await chrome.tabs.get(tabId)
+      return await attach({}, tab.title || '')
+    }
+
+    // Courtesy pre-check, on the ingest branch only to match the server
+    // (attaching to an existing capture of an excluded URL is allowed): skip
+    // the capture work a 403 would discard. The server stays the enforcement
+    // point either way.
+    const blocked = blockedCaptureReason(url)
+    if (blocked) {
+      return {
+        ok: false,
+        error: blocked.pattern
+          ? `URL excluded by pattern: ${blocked.pattern}`
+          : 'This URL cannot be captured'
+      }
+    }
+
+    // The case holds no capture of this URL, so the extension supplies the
+    // bytes (R2) — collected inside the same suppression bracket every
+    // capture runs in, or the bar and the rest of the injected UI would be
+    // serialised into the MHTML and rendered in the screenshot (#386). The
+    // attach POST stays inside the bracket, mirroring manualCaptureTab.
+    return await captureSuppression.withSuppression(tabId, async ({ collectFrames }) => {
+      const { frames } = await collectFrames(() =>
+        Promise.all([
+          captureMhtml(tabId),
+          chrome.tabs.get(tabId),
+          getPlainTextFromTab(tabId),
+          captureScreenshotsEnabled ? captureFullPageScreenshot(tabId) : Promise.resolve(undefined)
+        ])
+      )
+      const [mhtmlBlob, tab, textContent, screenshot] = frames
+      return attach(
+        {
+          title: tab.title || url,
+          timestamp: new Date().toISOString(),
+          textContent,
+          mhtml: mhtmlBlob,
+          screenshot,
+          browserVersion: getBrowserVersion(),
+          userAgent: getUserAgentString(),
+          extensionVersion: getExtensionVersion(),
+          httpStatus: 200,
+          headers: getHeadersForCapture(tabId, url)
+        },
+        tab.title || ''
+      )
+    })
+  } catch (err) {
+    console.error('[Birdbrain] Selection bar action failed:', err)
+    return { ok: false, error: selectionAttachFailureMessage(err) }
+  }
+}
+
 /*
 async function handleSelectorCapture(tabId: number, url: string, caseId: string): Promise<void> {
   if (!shouldSelectorCapture(caseId, url)) return
@@ -976,13 +1141,33 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
 
+  if (message.type === 'SELECTION_ACTION') {
+    // The tab of record is the sender's own: the bar can only act on the page
+    // it is mounted in, never on a tab id it names.
+    const tabId = sender.tab?.id
+    const url = sender.tab?.url
+    if (tabId == null || !url) {
+      sendResponse({
+        ok: false,
+        error: 'No tab for this request'
+      } satisfies SelectionActionResponse)
+      return true
+    }
+    handleSelectionAction(tabId, url, message.action, String(message.text ?? '')).then(sendResponse)
+    return true
+  }
+
   if (message.type === 'MANUAL_CAPTURE' && typeof message.tabId === 'number' && message.caseId) {
     // Refused before the tab is even read: with no rules loaded the pre-filter
     // cannot decide, and starting anyway would send a capture the operator may
     // have excluded. The popup asks the operator to retry rather than silently
     // capturing or silently doing nothing.
     if (!ignoreRulesLoaded) {
-      sendResponse({ started: false, blocked: null, notReady: true } satisfies ManualCaptureResponse)
+      sendResponse({
+        started: false,
+        blocked: null,
+        notReady: true
+      } satisfies ManualCaptureResponse)
       return true
     }
     chrome.tabs.get(message.tabId, (tab) => {
@@ -1005,7 +1190,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return
       }
       manualCaptureTab(message.tabId, url, message.caseId)
-      sendResponse({ started: true, blocked: null, notReady: false } satisfies ManualCaptureResponse)
+      sendResponse({
+        started: true,
+        blocked: null,
+        notReady: false
+      } satisfies ManualCaptureResponse)
     })
     return true
   }

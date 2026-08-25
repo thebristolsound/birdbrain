@@ -8,8 +8,12 @@ import type {
   CaptureServerStatus,
   CaptureUploadResult,
   CaptureUploadSource,
+  ExtensionNoteCreateResult,
+  ExtensionTagApplyResult,
   SelectorCreateResult,
-  SelectorMatchInfo
+  SelectorMatchInfo,
+  UrlLookup,
+  UrlLookupResult
 } from '@shared/schemas'
 
 /** Mirrors CAPTURE_SERVER_PORT. Exported so the options page displays the one
@@ -242,6 +246,81 @@ export async function createSelector(params: {
     method: 'POST',
     body: JSON.stringify(params)
   })
+}
+
+/**
+ * Whether the case already holds a Capture of `url` (#392). Carried as a POST
+ * on purpose — the server's token guard fires on POST only (R23, #817).
+ */
+export async function lookupCaptureByUrl(params: UrlLookup): Promise<UrlLookupResult> {
+  return request('/api/captures/lookup', {
+    method: 'POST',
+    body: JSON.stringify(params)
+  })
+}
+
+/**
+ * The optional auto-capture payload of the two attach routes (#392): the same
+ * multipart shape POST /api/captures takes, minus `source`, with `mhtml`
+ * optional — absent means "attach to an existing Capture only", and the server
+ * refuses with 422 rather than acquiring bytes some other way.
+ */
+export interface AttachCapturePayload {
+  title?: string
+  timestamp?: string
+  textContent?: string
+  mhtml?: Blob
+  screenshot?: Blob
+  browserVersion?: string
+  userAgent?: string
+  extensionVersion?: string
+  httpStatus?: number
+  headers?: Record<string, string>
+}
+
+function buildAttachForm(caseId: string, url: string, payload: AttachCapturePayload): FormData {
+  const form = new FormData()
+  form.append('caseId', caseId)
+  form.append('url', url)
+  if (payload.title) form.append('title', payload.title)
+  if (payload.timestamp) form.append('timestamp', payload.timestamp)
+  if (payload.textContent) form.append('textContent', payload.textContent)
+  if (payload.browserVersion) form.append('browserVersion', payload.browserVersion)
+  if (payload.userAgent) form.append('userAgent', payload.userAgent)
+  if (payload.extensionVersion) form.append('extensionVersion', payload.extensionVersion)
+  if (payload.httpStatus !== undefined) form.append('httpStatus', String(payload.httpStatus))
+  if (payload.headers && Object.keys(payload.headers).length > 0) {
+    form.append('headers', JSON.stringify(payload.headers))
+  }
+  if (payload.screenshot) form.append('screenshot', payload.screenshot, 'screenshot.png')
+  if (payload.mhtml) form.append('mhtml', payload.mhtml, 'capture.mhtml')
+  return form
+}
+
+/** Apply a Tag to the Capture of `url`, auto-capturing first when none exists (#392). */
+export async function applyTagToUrl(params: {
+  caseId: string
+  url: string
+  tagName: string
+  payload: AttachCapturePayload
+}): Promise<ExtensionTagApplyResult> {
+  const form = buildAttachForm(params.caseId, params.url, params.payload)
+  form.append('tagName', params.tagName)
+  return request('/api/tags/apply', { method: 'POST', body: form })
+}
+
+/** Create a Note on the Capture of `url`, auto-capturing first when none exists (#392). */
+export async function createNoteOnUrl(params: {
+  caseId: string
+  url: string
+  noteTitle?: string
+  noteText: string
+  payload: AttachCapturePayload
+}): Promise<ExtensionNoteCreateResult> {
+  const form = buildAttachForm(params.caseId, params.url, params.payload)
+  if (params.noteTitle) form.append('noteTitle', params.noteTitle)
+  form.append('noteText', params.noteText)
+  return request('/api/notes', { method: 'POST', body: form })
 }
 
 export async function checkConnection(): Promise<boolean> {

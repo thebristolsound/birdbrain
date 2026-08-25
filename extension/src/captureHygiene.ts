@@ -2,6 +2,9 @@
 // must stay self-contained and may not close over module state.
 export function removeInjectedBirdbrainUi(): void {
   document.getElementById('birdbrain-capture-toast')?.remove()
+  // The in-page selection bar host (#393) — kept in step by hand with
+  // selectionBar.ts, per the captureSuppression.ts header.
+  document.getElementById('birdbrain-selection-bar')?.remove()
   document.querySelectorAll('mark.birdbrain-selector-highlight').forEach((mark) => {
     const parent = mark.parentNode
     mark.replaceWith(...Array.from(mark.childNodes))

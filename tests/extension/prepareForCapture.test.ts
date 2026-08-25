@@ -4,9 +4,11 @@
 // serialisable DOM must be identical to the page before any Birdbrain UI was
 // injected — this is the DOM that pageCapture.saveAsMHTML archives and that the
 // screenshot passes render.
-import { describe, it, expect, beforeAll, vi } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest'
 import { showToast, updateToast } from '../../extension/src/toast'
 import { removeInjectedBirdbrainUi } from '../../extension/src/captureHygiene'
+import { releaseCaptureUiSuppression } from '../../extension/src/captureSuppression'
+import { SELECTION_BAR_ID } from '../../extension/src/selectionBar'
 import type { ActiveCaseSelectors } from '@shared/types'
 import type { SelectorMatchInfo } from '@shared/schemas'
 
@@ -67,6 +69,26 @@ function setPageHtml(html: string): void {
   })
 }
 
+// Raises the real selection bar (#393) through its live mouseup path, so the
+// known answer covers the bar's actual host markup rather than a stand-in
+async function raiseSelectionBar(): Promise<void> {
+  sendMessageMock.mockImplementation(async (message: { type: string }) => {
+    if (message.type === 'GET_STATE') return { connected: true, activeCaseId: 'case-1' }
+    return {}
+  })
+  const p = document.querySelector('p')!
+  const range = document.createRange()
+  range.selectNodeContents(p)
+  const selection = window.getSelection()!
+  selection.removeAllRanges()
+  selection.addRange(range)
+  document.dispatchEvent(new MouseEvent('mouseup'))
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(document.getElementById(SELECTION_BAR_ID)).not.toBeNull()
+  window.getSelection()?.removeAllRanges()
+}
+
 // Minimal stand-ins for the browser APIs the screenshot path needs: jsdom has
 // no OffscreenCanvas, no scrolling and no layout, so the stitching step is given
 // just enough to run with zero collected slices.
@@ -101,12 +123,33 @@ beforeAll(async () => {
     vi.stubGlobal('requestAnimationFrame', () => 0)
   }
   stubScreenshotEnvironment()
+  // jsdom's Range does not implement getBoundingClientRect; the bar's
+  // placement needs one
+  Range.prototype.getBoundingClientRect = () =>
+    ({
+      top: 100,
+      bottom: 120,
+      left: 40,
+      right: 200,
+      width: 160,
+      height: 20,
+      x: 40,
+      y: 100,
+      toJSON: () => ({})
+    }) as DOMRect
   // Side-effecting import: registers the content script's onMessage listener
   await import('../../extension/src/content')
 })
 
+beforeEach(() => {
+  // The suppression latch (#393) is module state a previous test's strip
+  // leaves raised; every test here starts with the page un-suppressed
+  releaseCaptureUiSuppression()
+  sendMessageMock.mockReset()
+})
+
 describe('PREPARE_FOR_CAPTURE (#379)', () => {
-  it('strips toast and highlights so the serialised DOM matches the pre-injection page', () => {
+  it('strips toast, highlights and selection bar so the serialised DOM matches the pre-injection page', async () => {
     setPageHtml(PAGE_HTML)
     const baseline = document.documentElement.outerHTML
 
@@ -118,14 +161,16 @@ describe('PREPARE_FOR_CAPTURE (#379)', () => {
     expect(document.querySelectorAll('mark.birdbrain-selector-highlight').length).toBeGreaterThan(0)
     expect(document.querySelectorAll('style[data-birdbrain-highlight]').length).toBeGreaterThan(0)
 
-    // Inject the real capture toast
+    // Inject the real capture toast and raise the real selection bar (#393)
     showToast({ status: 'capturing' })
     expect(document.getElementById('birdbrain-capture-toast')).not.toBeNull()
+    await raiseSelectionBar()
 
     const responses = dispatch({ type: 'PREPARE_FOR_CAPTURE' })
     expect(responses).toContainEqual({ ok: true })
 
     expect(document.getElementById('birdbrain-capture-toast')).toBeNull()
+    expect(document.getElementById(SELECTION_BAR_ID)).toBeNull()
     expect(document.querySelectorAll('mark.birdbrain-selector-highlight').length).toBe(0)
     expect(document.querySelectorAll('style[data-birdbrain-highlight]').length).toBe(0)
     // The randomized style container host carries a birdbrain- id prefix; only
@@ -174,11 +219,12 @@ describe('PREPARE_FOR_CAPTURE (#379)', () => {
     host.remove()
   })
 
-  it('supports direct cleanup when an orphaned content script cannot receive messages', () => {
+  it('supports direct cleanup when an orphaned content script cannot receive messages', async () => {
     setPageHtml(PAGE_HTML)
     const baseline = document.documentElement.outerHTML
     dispatch({ type: 'CHECK_SELECTORS', selectors: SELECTOR_GROUPS })
     showToast({ status: 'capturing' })
+    await raiseSelectionBar()
 
     removeInjectedBirdbrainUi()
 
@@ -240,6 +286,12 @@ describe('screenshot paths suppress before any frame (#386)', () => {
         framesSeen.push(document.documentElement.outerHTML)
         showToast({ status: 'capturing' })
         expect(document.getElementById('birdbrain-capture-toast')).not.toBeNull()
+        // An orphaned content script's selection bar: the live bar is latched
+        // out mid-capture, but a stale script that never saw the strip could
+        // still hold its host in the DOM when a slice comes due
+        const orphanBar = document.createElement('div')
+        orphanBar.id = SELECTION_BAR_ID
+        document.body.appendChild(orphanBar)
       }
       return {}
     })
@@ -250,6 +302,7 @@ describe('screenshot paths suppress before any frame (#386)', () => {
     expect(framesSeen.length).toBeGreaterThan(1)
     for (const dom of framesSeen) {
       expect(dom).not.toContain('birdbrain-capture-toast')
+      expect(dom).not.toContain(SELECTION_BAR_ID)
       expect(dom).toBe(baseline)
     }
   })

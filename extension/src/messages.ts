@@ -1,9 +1,10 @@
-// The popup ↔ background message payloads.
+// The popup/content ↔ background message payloads.
 //
-// Type-only, and deliberately so: both halves ship in the same extension
+// Type-only, and deliberately so: all halves ship in the same extension
 // bundle, so this is a compile-time contract rather than a wire format. It
 // lives outside popup/ because the background service worker is the side that
-// produces every value in it — the popup only renders what it is told.
+// produces every value in it — the popup and the content script only render
+// what they are told.
 
 /** Which rule refused a URL: the built-in scheme list, or an operator pattern. */
 export type PopupBlockReason = 'default' | 'user'
@@ -46,6 +47,39 @@ export interface PopupPageStatus {
    * the popup must not offer a capture.
    */
   rulesLoaded: boolean
+}
+
+// --- In-page selection bar (#393) ------------------------------------------
+
+/** The three actions the in-page selection bar offers. */
+export type SelectionActionKind = 'selector' | 'tag' | 'quote'
+
+/** Content → background: run one selection-bar action on the sender's tab. */
+export interface SelectionActionRequest {
+  type: 'SELECTION_ACTION'
+  action: SelectionActionKind
+  /** The selected passage, as the page handed it over. */
+  text: string
+}
+
+/**
+ * The background's answer to a SELECTION_ACTION request. `detail` and `error`
+ * are operator-facing strings the bar renders verbatim; on `ok: false` the
+ * server guarantees nothing was created or attached.
+ */
+export type SelectionActionResponse =
+  | {
+      ok: true
+      detail: string
+      /** True when the action auto-captured the page before attaching (#392). */
+      captured: boolean
+    }
+  | { ok: false; error: string }
+
+/** The slice of GET_STATE the selection bar gates its actions on. */
+export interface SelectionBarState {
+  connected: boolean
+  activeCaseId: string | null
 }
 
 /** The background's answer to a popup MANUAL_CAPTURE request. */

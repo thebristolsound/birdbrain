@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { motion } from 'motion/react'
 import {
   Star,
+  Copy,
   ExternalLink,
   Trash2,
   Globe,
@@ -43,6 +44,7 @@ interface Props {
   caseId: string
   onCollapse: () => void
   onOpenExternal: () => void
+  onCopyUrl: () => void
   onDelete: () => void
   onOpenAddNote: () => void
 }
@@ -52,6 +54,7 @@ export function CaptureDetailsPanel({
   caseId,
   onCollapse,
   onOpenExternal,
+  onCopyUrl,
   onDelete,
   onOpenAddNote
 }: Props) {
@@ -274,6 +277,22 @@ export function CaptureDetailsPanel({
                   >
                     <ExternalLink className="h-3.5 w-3.5 shrink-0 text-text-muted" />
                     Open URL
+                  </button>
+                  <button
+                    role="menuitem"
+                    data-testid="capture-details-copy-url-btn"
+                    onClick={() => {
+                      setMenuOpen(false)
+                      onCopyUrl()
+                    }}
+                    className={menuItemClass}
+                  >
+                    <Copy className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+                    Copy URL
+                    {/* Ctrl, not ⌘, on every platform: the handler accepts both
+                        modifiers, and this is the spelling the app already uses
+                        for Ctrl+K in the top bar. */}
+                    <span className="ml-auto text-[10px] text-text-faint">Ctrl+C</span>
                   </button>
                   <button
                     role="menuitem"

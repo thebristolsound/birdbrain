@@ -40,13 +40,16 @@ vi.mock('@renderer/components/notes/AddNoteModal', () => ({
 vi.mock('@renderer/components/captures/CaptureDetailsPanel', () => ({
   CaptureDetailsPanel: ({
     onOpenExternal,
+    onCopyUrl,
     onDelete
   }: {
     onOpenExternal: () => void
+    onCopyUrl: () => void
     onDelete: () => void
   }) => (
     <>
       <button onClick={onOpenExternal}>panel: open externally</button>
+      <button onClick={onCopyUrl}>panel: copy url</button>
       <button onClick={onDelete}>panel: delete</button>
     </>
   )
@@ -92,9 +95,11 @@ const OPEN_CONTROL = 'rail: open externally'
 // what mounts — so the overlay panel has to be opened first.
 const EXPAND_CONTROL = 'rail: expand'
 const DELETE_CONTROL = 'panel: delete'
+const COPY_URL_CONTROL = 'panel: copy url'
 
 let openExternal: ReturnType<typeof vi.fn>
 let deleteMany: ReturnType<typeof vi.fn>
+let writeText: ReturnType<typeof vi.fn>
 // Held so the assertion can be on identity: the handler must pass the original
 // rejection through as `cause`, not a rewrapped stand-in.
 let cause: Error
@@ -147,6 +152,8 @@ beforeEach(() => {
     throw cause
   })
   deleteMany = vi.fn(async () => cleanDeleteResult(['cap1', 'cap2']))
+  writeText = vi.fn(async () => undefined)
+  Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
   fakeBridge({
     captures: { list: vi.fn(async () => [capture]), openExternal, deleteMany },
     settings: { get: vi.fn(async () => ({ detailsPanelCollapsed: false })) }
@@ -187,6 +194,45 @@ describe('CapturesRoute', () => {
 
     await waitFor(() => expect(openExternal).toHaveBeenCalledOnce())
     expect(notifyError).not.toHaveBeenCalled()
+  })
+
+  // #825. Copy URL is one capability reached two ways, and the route is what
+  // binds both to the capture the operator is looking at.
+  describe('copy URL', () => {
+    it("copies the selected capture's URL from the actions menu", async () => {
+      renderRouteWide()
+
+      fireEvent.click(await screen.findByText(COPY_URL_CONTROL))
+
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith('https://example.com/evidence'))
+    })
+
+    // The accelerator is mounted on the route rather than on the panel
+    // precisely so it survives this layout: jsdom is 1024px wide, so the
+    // details column is its 40px rail and the menu item is not on screen.
+    it('copies it on ctrl+C even with the details panel collapsed to its rail', async () => {
+      renderRoute()
+      await screen.findByText(OPEN_CONTROL)
+      expect(screen.queryByText(COPY_URL_CONTROL)).toBeNull()
+
+      document.body.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'c', ctrlKey: true, bubbles: true, cancelable: true })
+      )
+
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith('https://example.com/evidence'))
+    })
+
+    it('copies nothing when no capture is selected', async () => {
+      useAppStore.getState().setSelectedCaptureId(null)
+      renderRoute()
+
+      document.body.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'c', ctrlKey: true, bubbles: true, cancelable: true })
+      )
+
+      await waitFor(() => expect(screen.getByText(BATCH_CONTROL)).toBeDefined())
+      expect(writeText).not.toHaveBeenCalled()
+    })
   })
 
   // #582. The old copy said deletion "will permanently remove the capture and its

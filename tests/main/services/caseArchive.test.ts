@@ -11,7 +11,14 @@ import {
   listCaptures,
   searchCaptures
 } from '@main/services/db/captureRepo'
-import { createTag, addTagToCapture, listTags, getTagsForCapture } from '@main/services/db/tagRepo'
+import {
+  createTag,
+  addTagToCapture,
+  addTagToNote,
+  listTags,
+  getTagsForCapture,
+  getTagsForNote
+} from '@main/services/db/tagRepo'
 import { createSelector, listSelectors } from '@main/services/db/selectorRepo'
 import { createNote, listNotes } from '@main/services/db/noteRepo'
 import { referencesForNote } from '@main/services/db/noteReferenceRepo'
@@ -198,15 +205,17 @@ describe('caseArchive export', () => {
     rmSync(tempDir, { recursive: true, force: true })
   })
 
-  // Pinned as a literal, deliberately, and only here. #400 adds two columns to
-  // the case row, and the constant's own doc comment says to bump whenever an
-  // archive gains data an older release would silently discard — which a
-  // pre-v30 release importing an exclusion list would do, since importCaseRow
-  // uses an explicit column list. The maintainer ruled no bump (2026-08-19),
-  // so this pin makes any future bump a deliberate act rather than drift, and
-  // records that the tension was seen rather than missed.
-  it('keeps CASE_ARCHIVE_SCHEMA_VERSION at 3 across the #400 case columns', () => {
-    expect(CASE_ARCHIVE_SCHEMA_VERSION).toBe(3)
+  // Pinned as a literal, deliberately, and only here, so a bump is an act
+  // rather than drift.
+  //
+  // 4 since #391: data.json carries a `noteTags` table, and a pre-v32
+  // Birdbrain has no `note_tags` table to import it into — every tag raised
+  // from a note would be silently dropped, which is exactly what the
+  // constant's doc comment says to bump for. Contrast #400, where the
+  // maintainer ruled no bump on 2026-08-19 for two added case columns; that
+  // tension was recorded here and is preserved by this comment.
+  it('keeps CASE_ARCHIVE_SCHEMA_VERSION at 4 since the #391 note_tags table', () => {
+    expect(CASE_ARCHIVE_SCHEMA_VERSION).toBe(4)
   })
 
   it('exports a .birdbrain archive with header, data, manifest, and files', async () => {
@@ -503,6 +512,8 @@ describe('caseArchive import', () => {
   let originalCaptureIds: string[]
   let originalHashes: string[]
   let mentionNoteId: string
+  let plainNoteId: string
+  const noteOnlyTagName = 'Analyst note'
   const taggedCaptureUrl = 'https://example.com/mhtml'
   // Single FTS5 token (no hyphens — those parse as column filters in MATCH).
   const distinctiveText = 'distinctivetextfromtxtsidecar'
@@ -631,6 +642,14 @@ describe('caseArchive import', () => {
 
     toggleFavorite(mhtmlCaptureId)
 
+    // Note-level tags (#391). `Evidence` also hangs off a capture, so it would
+    // reach the archive through capture_tags regardless; the note-only tag is
+    // carried by nothing but this note, which is the case that fails if
+    // collectTagsForCase ignores the note_tags relation.
+    plainNoteId = plainNote.id
+    addTagToNote({ noteId: plainNote.id, tagId: tag.id })
+    addTagToNote({ noteId: plainNote.id, tagId: createTag({ name: noteOnlyTagName }).id })
+
     const now = new Date().toISOString()
     getDb()
       .prepare(
@@ -719,6 +738,49 @@ describe('caseArchive import', () => {
       true
     )
     void first
+  })
+
+  // #391 known-answer: export a case whose note carries two tags — one shared
+  // with a capture, one reachable only through note_tags — and import it back
+  // into the database that still holds the source rows, so every note id
+  // collides and both tags merge by name. The imported note must carry the
+  // same two tags, resolved to the LOCAL merged tag rows.
+  it('carries note tags through import with note ids remapped and tags merged by name', async () => {
+    const before = getTagsForNote(plainNoteId).map((t) => t.name).sort()
+    expect(before).toEqual(['Analyst note', 'Evidence'])
+
+    const { newCaseId } = await importCaseArchive(archivePath)
+
+    const importedNote = listNotes(newCaseId).find((n) => n.title === 'Note 1')!
+    expect(importedNote.id).not.toBe(plainNoteId) // remapped: the source row still holds that id
+    const importedTags = getTagsForNote(importedNote.id)
+    expect(importedTags.map((t) => t.name).sort()).toEqual(['Analyst note', 'Evidence'])
+    // Merged, not duplicated: the imported links point at the local tag rows.
+    expect(importedTags.map((t) => t.id).sort()).toEqual(
+      getTagsForNote(plainNoteId)
+        .map((t) => t.id)
+        .sort()
+    )
+    expect(listTags().filter((t) => t.name === noteOnlyTagName)).toHaveLength(1)
+  })
+
+  // A .birdbrain written before schemaVersion 4 has no `noteTags` key at all.
+  // It must import as a case whose notes carry no tags — which is what it is —
+  // rather than throwing on the missing table.
+  it('imports a pre-noteTags archive as a case whose notes carry no tags', async () => {
+    const entries = readStoredZip(readFileSync(archivePath))
+    const data = JSON.parse(entries.get('data.json')!.toString('utf-8')) as Record<string, unknown>
+    delete data.noteTags
+    entries.set('data.json', Buffer.from(JSON.stringify(data, null, 2)))
+    const rebuilt = [...entries.entries()].map(([name, buf]) => ({ name, data: buf }))
+    writeFileSync(archivePath, createStoredZip(rebuilt))
+
+    // The rewrite invalidates the recorded artifact hash, so this is an
+    // override-tamper import; the assertion is about the missing key, not the
+    // verification result.
+    const { newCaseId } = await importCaseArchive(archivePath, { overrideTamper: true })
+    const importedNote = listNotes(newCaseId).find((n) => n.title === 'Note 1')!
+    expect(getTagsForNote(importedNote.id)).toEqual([])
   })
 
   it('merges tags by name instead of duplicating', async () => {

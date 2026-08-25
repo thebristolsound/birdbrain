@@ -14,23 +14,54 @@ interface CreateNoteCardProps {
 }
 
 export function CreateNoteCard({ caseId, isOpen, onToggle, onCreated }: CreateNoteCardProps) {
-  const { create } = useNotesMutations(caseId)
+  const { create, update } = useNotesMutations(caseId)
   const [title, setTitle] = useState('')
   const [bodyDoc, setBodyDoc] = useState<string | null>(null)
-  const editor = useNoteEditor({ caseId, onChange: setBodyDoc, testId: 'create-note-body' })
+  // Set once the draft has been written to the database ahead of the operator
+  // pressing Save — which the Tag action forces, since a tag cannot attach to
+  // a note that does not exist (#391, ruling R15). From then on this card is
+  // editing a real note, so Save updates rather than creating a second one.
+  const [draftNoteId, setDraftNoteId] = useState<string | null>(null)
+  const editor = useNoteEditor({
+    caseId,
+    noteId: draftNoteId ?? undefined,
+    onChange: setBodyDoc,
+    testId: 'create-note-body'
+  })
   const hasBody = editor ? !editor.isEmpty : false
+
+  async function persistDraft(): Promise<string> {
+    const doc = bodyDoc ?? JSON.stringify(EMPTY_NOTE_DOC)
+    if (draftNoteId) {
+      await update.mutateAsync({ id: draftNoteId, title: title.trim(), bodyDoc: doc })
+      return draftNoteId
+    }
+    const created = await create.mutateAsync({ caseId, title: title.trim(), bodyDoc: doc })
+    setDraftNoteId(created.id)
+    return created.id
+  }
+
+  function resetDraft() {
+    setTitle('')
+    setBodyDoc(null)
+    setDraftNoteId(null)
+    editor?.commands.clearContent()
+  }
 
   async function handleSubmit() {
     if (!title.trim() && !hasBody) return
-    await create.mutateAsync({
-      caseId,
-      title: title.trim(),
-      bodyDoc: bodyDoc ?? JSON.stringify(EMPTY_NOTE_DOC)
-    })
-    setTitle('')
-    setBodyDoc(null)
-    editor?.commands.clearContent()
+    await persistDraft()
+    resetDraft()
     onCreated?.()
+  }
+
+  // The card is never unmounted, so closing it has to do what unmounting would.
+  // A note the Tag action already wrote out keeps its tag and stays saved; what
+  // must not survive is draftNoteId, or reopening "New note" would silently
+  // overwrite that note on Save instead of creating a new one (#391).
+  function handleClose() {
+    resetDraft()
+    onToggle()
   }
 
   if (!isOpen) {
@@ -50,7 +81,7 @@ export function CreateNoteCard({ caseId, isOpen, onToggle, onCreated }: CreateNo
     <div className="rounded-2xl border border-border bg-surface p-4">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="font-display text-sm font-semibold text-text-primary">New note</h3>
-        <Button variant="ghost" size="icon-sm" onClick={onToggle}>
+        <Button variant="ghost" size="icon-sm" onClick={handleClose}>
           <X className="h-3.5 w-3.5" />
         </Button>
       </div>
@@ -65,10 +96,11 @@ export function CreateNoteCard({ caseId, isOpen, onToggle, onCreated }: CreateNo
         <NoteEditor
           editor={editor}
           placeholder="Start writing — type @ to link a capture, # for a selector or tag."
+          selectionActions={{ caseId, resolveNoteId: persistDraft }}
         />
       </div>
       <div className="flex items-center justify-end gap-2">
-        <Button variant="ghost" size="sm" onClick={onToggle}>
+        <Button variant="ghost" size="sm" onClick={handleClose}>
           Cancel
         </Button>
         <Button

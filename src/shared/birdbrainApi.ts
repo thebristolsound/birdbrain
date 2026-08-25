@@ -45,6 +45,9 @@ import type {
   CreateTagParams,
   UpdateTagParams,
   CaptureTagParams,
+  NoteTagParams,
+  ApplyTagToNoteParams,
+  ApplyTagToNoteResult,
   CreateSelectorParams,
   UpdateSelectorParams,
   CreateNoteParams,
@@ -132,6 +135,9 @@ export interface BirdbrainAPI {
     usageCountsForCase(caseId: string): Promise<Record<string, number>>
     captureMatrix(caseId: string, limit: number): Promise<Record<string, string[]>>
     addToCaptures(payload: CaptureBatchPayload & { tagId: string }): Promise<BatchCountResult>
+    applyToNote(params: ApplyTagToNoteParams): Promise<ApplyTagToNoteResult>
+    removeFromNote(params: NoteTagParams): Promise<void>
+    getForNote(noteId: string): Promise<Tag[]>
   }
   selectors: {
     list(caseId: string): Promise<Selector[]>

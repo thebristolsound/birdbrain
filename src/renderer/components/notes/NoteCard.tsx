@@ -73,6 +73,7 @@ function NoteCardEditor({ note, caseId, isPending, onSave, onCancel }: NoteCardE
       <NoteEditor
         editor={editor}
         placeholder="Start writing — type @ to link a capture, # for a selector or tag."
+        selectionActions={{ caseId, resolveNoteId: async () => note.id }}
       />
       <div className="flex items-center justify-end gap-2">
         <Button variant="ghost" size="xs" onClick={onCancel} className="gap-1" type="button">

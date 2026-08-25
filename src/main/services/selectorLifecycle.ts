@@ -10,10 +10,10 @@ import type {
   SelectorRematchedStatus
 } from '@shared/ipc'
 import { logger } from '@main/services/logger'
+// Lives in @shared because the note editor states the bound in operator-facing
+// copy (#391); tests read it from there too rather than hardcoding 500.
+import { RETRO_MAX_CAPTURES } from '@shared/constants'
 
-// Exported so tests can drive the boundary case (>RETRO_MAX_CAPTURES) without
-// hardcoding the number.
-export const RETRO_MAX_CAPTURES = 500
 const RETRO_CHUNK_SIZE = 50
 
 export interface SelectorLifecycleDeps {

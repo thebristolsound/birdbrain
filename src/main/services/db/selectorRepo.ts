@@ -24,14 +24,17 @@ export function createSelector(params: CreateSelectorParams): Selector {
   const now = new Date().toISOString()
   getDb()
     .prepare(
-      `INSERT INTO selectors (id, case_id, pattern, is_regex, label, origin, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO selectors (id, case_id, pattern, is_regex, enabled, label, origin, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       id,
       params.caseId,
       params.pattern,
       params.isRegex ? 1 : 0,
+      // Written explicitly rather than left to the column default, so an
+      // omitted `enabled` and an explicit `true` produce the same row (#391).
+      params.enabled === false ? 0 : 1,
       params.label ?? null,
       originOrNull(params.origin),
       now

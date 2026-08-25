@@ -313,6 +313,29 @@ describe('capture suppression round trip (#386)', () => {
     expect(barMessage()).toBe('Capture failed')
   })
 
+  it('re-arms the auto-hide of a restored result chip', async () => {
+    selectParagraph()
+    await mouseUp()
+    actionResponse = { ok: true, detail: 'Selector created', captured: false }
+    await clickAction('selector')
+    expect(barMessage()).toBe('Selector created')
+
+    // The strip clears the pending auto-hide along with the host; the restored
+    // chip must not persist forever
+    vi.useFakeTimers()
+    try {
+      dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+      expect(bar()).toBeNull()
+      dispatch({ type: 'RELEASE_CAPTURE_UI' })
+      expect(barMessage()).toBe('Selector created')
+
+      vi.advanceTimersByTime(3000)
+      expect(bar()).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('is removed by the orphaned-content-script fallback strip', async () => {
     selectParagraph()
     await mouseUp()

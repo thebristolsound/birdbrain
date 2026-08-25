@@ -361,6 +361,10 @@ export function initSelectionBar(): void {
   // capture on the tab is collecting frames, put back what was stripped —
   // including after a failed capture, whose restore path also releases.
   onCaptureUiSuppressionReleased(() => {
-    if (state.phase !== 'hidden') render()
+    if (state.phase === 'hidden') return
+    render()
+    // A restored result chip re-arms its auto-hide: the strip cleared the
+    // pending timer along with the host.
+    if (state.phase === 'done') scheduleHide(state.ok ? SUCCESS_HIDE_MS : ERROR_HIDE_MS)
   })
 }

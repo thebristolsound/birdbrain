@@ -19,6 +19,7 @@ import {
   decideWebviewDownload,
   decideWebviewNavigation,
   decideWebviewRequest,
+  LEGACY_HTML_PARTITION,
   MHTML_PARTITION,
   resolveAttachPartition,
   sanitizeWebviewPreferences,
@@ -31,9 +32,14 @@ import {
 const REPLAY_URL = `${WAYBACK_REPLAY_PREFIX}20200114000000/https://example.com/`
 
 describe('webviewPolicyFor', () => {
-  it('knows exactly the two partitions the app mounts', () => {
-    expect(WEBVIEW_PARTITIONS).toEqual([MHTML_PARTITION, WAYBACK_PARTITION])
+  it('knows exactly the three partitions the app mounts', () => {
+    expect(WEBVIEW_PARTITIONS).toEqual([
+      MHTML_PARTITION,
+      LEGACY_HTML_PARTITION,
+      WAYBACK_PARTITION
+    ])
     expect(webviewPolicyFor(MHTML_PARTITION)?.partition).toBe(MHTML_PARTITION)
+    expect(webviewPolicyFor(LEGACY_HTML_PARTITION)?.partition).toBe(LEGACY_HTML_PARTITION)
     expect(webviewPolicyFor(WAYBACK_PARTITION)?.partition).toBe(WAYBACK_PARTITION)
   })
 
@@ -44,8 +50,9 @@ describe('webviewPolicyFor', () => {
     }
   })
 
-  it('keeps JavaScript off for the evidence viewer and on for the replay pane', () => {
+  it('keeps JavaScript off for both evidence viewers and on for the replay pane', () => {
     expect(webviewPolicyFor(MHTML_PARTITION)?.javascript).toBe(false)
+    expect(webviewPolicyFor(LEGACY_HTML_PARTITION)?.javascript).toBe(false)
     expect(webviewPolicyFor(WAYBACK_PARTITION)?.javascript).toBe(true)
   })
 })
@@ -87,14 +94,29 @@ describe('decideWebviewAttach', () => {
     })
   })
 
-  it('refuses a remote src on the evidence viewer partition', () => {
-    // The load-bearing case: a wrong discriminator here would let the MHTML
-    // viewer load the network.
-    expect(decideWebviewAttach({ partition: MHTML_PARTITION, src: REPLAY_URL })).toEqual({
-      allowed: false,
-      reason: 'src-not-allowed'
+  it('admits a file:// artefact on the legacy HTML partition', () => {
+    const decision = decideWebviewAttach({
+      partition: LEGACY_HTML_PARTITION,
+      src: 'file:///c/case/cap.html'
     })
+    expect(decision.allowed).toBe(true)
   })
+
+  it.each([MHTML_PARTITION, LEGACY_HTML_PARTITION])(
+    'refuses a remote src on the %s evidence viewer partition',
+    (partition) => {
+      // The load-bearing case: a wrong discriminator here would let an evidence
+      // viewer load the network.
+      expect(decideWebviewAttach({ partition, src: REPLAY_URL })).toEqual({
+        allowed: false,
+        reason: 'src-not-allowed'
+      })
+      expect(decideWebviewAttach({ partition, src: 'https://example.com/page.html' })).toEqual({
+        allowed: false,
+        reason: 'src-not-allowed'
+      })
+    }
+  )
 
   it('refuses any partition it does not know, whatever the src', () => {
     expect(decideWebviewAttach({ partition: 'guest', src: REPLAY_URL })).toEqual({
@@ -216,6 +238,7 @@ describe('decideWebviewRequest', () => {
     // diff, beside this answer — not arrived at by a filter forgetting to deny.
     expect(webviewPolicyFor(WAYBACK_PARTITION)?.allowedRequestHosts).toEqual(['web.archive.org'])
     expect(webviewPolicyFor(MHTML_PARTITION)?.allowedRequestHosts).toEqual([])
+    expect(webviewPolicyFor(LEGACY_HTML_PARTITION)?.allowedRequestHosts).toEqual([])
   })
 
   it.each([
@@ -271,6 +294,58 @@ describe('decideWebviewRequest', () => {
       decideWebviewRequest({
         partition: MHTML_PARTITION,
         url: 'https://web.archive.org/_static/js/bundle-playback.js'
+      })
+    ).toBe('block')
+  })
+
+  // #906. A pre-v11 `format: 'html'` capture is a bare HTML file that still points
+  // at the live origins it was taken from, so the subresource kinds below are the
+  // literal contents of a legacy capture rather than a generic denial list. Each
+  // one went out before this partition existed: the mount was an
+  // `<iframe sandbox="" srcDoc>`, and `sandbox=""` governs scripts, forms and
+  // popups but no fetch at all.
+  it.each([
+    ['https://cdn.example.test/logo.png', 'an <img> the archived page referenced'],
+    ['https://cdn.example.test/site.css', 'a <link rel=stylesheet>'],
+    ['https://fonts.example.test/inter.woff2', 'a web font'],
+    ['https://ads.example.test/frame.html', 'a nested <iframe>'],
+    ['https://media.example.test/clip.mp4', 'a <video> source'],
+    ['https://cdn.example.test/app.js', 'a <script> the page would load'],
+    ['https://tracker.example.test/p.gif?id=7', 'a tracking pixel, the disclosure itself'],
+    ['http://cdn.example.test/logo.png', 'the same image over plaintext http'],
+    [REPLAY_URL, 'the archive host, allowed only on the replay partition'],
+    ['not a url', 'something that does not parse'],
+    ['', 'no url at all']
+  ])('blocks %s on the legacy HTML partition (%s)', (url) => {
+    expect(decideWebviewRequest({ partition: LEGACY_HTML_PARTITION, url })).toBe('block')
+  })
+
+  it('lets the legacy HTML viewer read its own artefact off disk', () => {
+    expect(
+      decideWebviewRequest({ partition: LEGACY_HTML_PARTITION, url: 'file:///c/case/cap.html' })
+    ).toBe('allow')
+  })
+
+  it('holds the legacy HTML guest on the one file it was handed', () => {
+    expect(
+      decideWebviewNavigation({
+        partition: LEGACY_HTML_PARTITION,
+        url: 'file:///c/case/cap.html',
+        initialLoadDone: false
+      })
+    ).toBe('allow')
+    expect(
+      decideWebviewNavigation({
+        partition: LEGACY_HTML_PARTITION,
+        url: 'file:///c/case/cap.html',
+        initialLoadDone: true
+      })
+    ).toBe('block')
+    expect(
+      decideWebviewNavigation({
+        partition: LEGACY_HTML_PARTITION,
+        url: 'https://example.com/',
+        initialLoadDone: false
       })
     ).toBe('block')
   })

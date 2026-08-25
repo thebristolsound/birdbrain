@@ -4,6 +4,7 @@ import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/re
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { Capture } from '@shared/types'
+import { LEGACY_HTML_PARTITION } from '@shared/constants'
 
 vi.mock('@tanstack/react-router', () => ({
   useParams: () => ({ caseId: 'case1' })
@@ -42,7 +43,10 @@ const capture: Capture = {
   method: 'extension'
 }
 
+const LEGACY_FILE_URL = 'file:///store/case1/cap1.html'
+
 let getContent: ReturnType<typeof vi.fn>
+let getHtmlUrl: ReturnType<typeof vi.fn>
 
 function renderViewer() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -56,8 +60,9 @@ beforeEach(() => {
   stubMatchMedia(false)
   stubResizeObserver()
   getContent = vi.fn(async () => null)
+  getHtmlUrl = vi.fn(async () => LEGACY_FILE_URL)
   fakeBridge({
-    captures: { list: vi.fn(async () => [capture]), getContent }
+    captures: { list: vi.fn(async () => [capture]), getContent, getHtmlUrl }
   })
   useAppStore.getState().setSelectedCaptureId(capture.id)
   useAppStore.getState().setActiveViewerTab('screenshot')
@@ -122,5 +127,34 @@ describe('CaptureViewer tabs', () => {
     fireEvent.click(await screen.findByRole('tab', { name: 'Page' }))
 
     expect(await screen.findByTestId('mhtml-viewer-stub')).toBeDefined()
+  })
+
+  // #906. The Page tab used to render a pre-v11 capture through an
+  // `<iframe sandbox="" srcDoc={content}>`, which stops scripts but governs no
+  // subresource fetch. It is a guest on a partition with an empty request
+  // allow-list now, and the bytes are read off disk by URL rather than carried
+  // across IPC as a string.
+  it('renders a pre-v11 HTML capture in a no-network guest on the Page tab', async () => {
+    const legacy: Capture = { ...capture, format: 'html' }
+    fakeBridge({ captures: { list: vi.fn(async () => [legacy]), getContent, getHtmlUrl } })
+    const { container } = renderViewer()
+    fireEvent.click(await screen.findByRole('tab', { name: 'Page' }))
+
+    const guest = await screen.findByTestId('legacy-html-viewer')
+    expect(guest.getAttribute('src')).toBe(LEGACY_FILE_URL)
+    expect(guest.getAttribute('partition')).toBe(LEGACY_HTML_PARTITION)
+    expect(guest.getAttribute('webpreferences')).toContain('javascript=no')
+    expect(container.querySelector('iframe')).toBeNull()
+    await waitFor(() => expect(getContent).not.toHaveBeenCalledWith('cap1', 'html'))
+  })
+
+  it('says so when a pre-v11 HTML capture has no stored artifact', async () => {
+    const legacy: Capture = { ...capture, format: 'html' }
+    getHtmlUrl = vi.fn(async () => null)
+    fakeBridge({ captures: { list: vi.fn(async () => [legacy]), getContent, getHtmlUrl } })
+    renderViewer()
+    fireEvent.click(await screen.findByRole('tab', { name: 'Page' }))
+
+    expect(await screen.findByText('No HTML available')).toBeDefined()
   })
 })

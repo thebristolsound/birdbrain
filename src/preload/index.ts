@@ -80,6 +80,7 @@ const birdbrain = {
     listFavorites: bridge(IPC_CHANNELS.CAPTURES_LIST_FAVORITES),
     verify: bridge(IPC_CHANNELS.CAPTURES_VERIFY),
     getMhtmlUrl: bridge(IPC_CHANNELS.CAPTURES_GET_MHTML_URL),
+    getHtmlUrl: bridge(IPC_CHANNELS.CAPTURES_GET_HTML_URL),
     deleteMany: bridge(IPC_CHANNELS.CAPTURES_DELETE_MANY),
     setFavoriteMany: bridge(IPC_CHANNELS.CAPTURES_SET_FAVORITE_MANY)
   },

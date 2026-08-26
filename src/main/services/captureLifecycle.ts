@@ -1,6 +1,7 @@
 import { app } from 'electron'
-import { createReadStream } from 'fs'
+import { createReadStream, readFileSync } from 'fs'
 import { createHash, randomUUID } from 'crypto'
+import { join } from 'path'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import type { CaptureStore } from '@main/services/captureStore'
 import * as captureRepo from '@main/services/db/captureRepo'
@@ -17,7 +18,11 @@ import {
   withDeletionEntry,
   ManifestRollback
 } from '@main/services/manifest'
-import type { CaptureChainEntry } from '@main/services/manifest'
+import type {
+  CaptureChainEntry,
+  ManifestCaptureEntry,
+  ManifestImportEntry
+} from '@main/services/manifest'
 import { reconcileCaptureTrustedTime } from '@main/services/trustedTime'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { getSettings } from '@main/services/settings'
@@ -25,6 +30,8 @@ import { fetchCertChain as defaultFetchCertChain } from '@main/services/tlsCertC
 import type { TlsCertChainResult } from '@main/services/tlsCertChain'
 import type { Capture, CaptureMethod, ConsentSuppression, HashVerification } from '@shared/types'
 import type { BatchDeleteOutcome, BatchDeleteResult, DuplicateCaptureResult } from '@shared/ipc'
+import { IMPORT_ID_MAP_FILENAME } from '@shared/constants'
+import { canonicalStringify } from '@shared/verify'
 import { logger } from '@main/services/logger'
 import { ident } from '@main/services/logSafe'
 
@@ -456,6 +463,63 @@ export async function verifyCapture(
   return result
 }
 
+// Whether the signed entry at a row's `manifestIndex` is the entry for THAT
+// row (#827). Direct equality is the native case. A case that arrived by
+// archive import is the reason this is not just equality: the manifest is
+// immutable, so its capture entries keep the source installation's case id and
+// capture ids, while import mints a fresh case id and remaps any capture id
+// that collided with a local row. Both are resolved through the case's own
+// signed custody records — the `import` entries in the same verified manifest
+// read, and the id map they anchor by hash.
+function entryDescribesRow(
+  entry: ManifestCaptureEntry,
+  row: { id: string; caseId: string },
+  imports: ManifestImportEntry[],
+  caseDir: string
+): boolean {
+  const custodyCaseIds = new Set<string>([row.caseId])
+  for (const imported of imports) {
+    custodyCaseIds.add(imported.caseId)
+    custodyCaseIds.add(imported.sourceCaseId)
+  }
+  if (!custodyCaseIds.has(entry.caseId)) return false
+  if (entry.captureId === row.id) return true
+  // Only an id-collision remap can leave the entry naming a different capture,
+  // and only the map this case's own import entry anchors may say so.
+  return readAnchoredIdMap(caseDir, row.caseId, imports)?.[entry.captureId] === row.id
+}
+
+// The id-collision remap archive import wrote into this case directory, read
+// back ONLY when its digest matches the `idMapSha256` the import's signed entry
+// anchors — an unanchored file in the case directory must not be able to point
+// a row at another capture's entry. Undefined (so the binding fails closed)
+// when this case did not arrive by import, when the file is absent or
+// unparseable, or when it does not hash to what the chain recorded. Note it
+// records ONE hop: the map for an earlier import is not carried in the archive,
+// so a row remapped before this case's own import stays unresolvable.
+function readAnchoredIdMap(
+  caseDir: string,
+  caseId: string,
+  imports: ManifestImportEntry[]
+): Record<string, unknown> | undefined {
+  const custody = imports.find((imported) => imported.caseId === caseId)
+  if (!custody) return undefined
+  let payload: unknown
+  try {
+    payload = JSON.parse(readFileSync(join(caseDir, IMPORT_ID_MAP_FILENAME), 'utf-8'))
+  } catch {
+    return undefined
+  }
+  const digest = createHash('sha256')
+    .update(Buffer.from(canonicalStringify(payload), 'utf-8'))
+    .digest('hex')
+  if (digest !== custody.idMapSha256) return undefined
+  if (typeof payload !== 'object' || payload === null || !('remapped' in payload)) return undefined
+  const { remapped } = payload
+  if (typeof remapped !== 'object' || remapped === null) return undefined
+  return { ...remapped }
+}
+
 export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifecycle {
   const store = deps.store ?? defaultCaptureStore
 
@@ -708,19 +772,20 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
         // Re-anchor from the SIGNED entry, never from the captures row: the row
         // mirrors these fields but Settings → Database can hand-edit it, and
         // re-signing an edited mirror would launder it onto the chain.
-        const sourceEntry =
+        const entryRead =
           source.manifestIndex !== undefined
             ? readCaptureEntryAt(caseDir, source.manifestIndex)
             : undefined
-        if (!sourceEntry) {
+        if (!entryRead) {
           return { status: 'rejected', reason: 'not_verified', detail: 'entry-unreadable' }
         }
+        const { entry: sourceEntry, imports } = entryRead
         // The row's manifestIndex is as hand-editable as the fields above, and
         // duplicates share content hashes by design — so an edited index can
         // land on a DIFFERENT capture's same-hash entry, whose url/timestamp/
         // headers/tls would then be re-signed as this source's provenance.
         // Bind the entry to the row it must describe.
-        if (sourceEntry.captureId !== source.id || sourceEntry.caseId !== source.caseId) {
+        if (!entryDescribesRow(sourceEntry, source, imports, caseDir)) {
           return { status: 'rejected', reason: 'not_verified', detail: 'entry-mismatch' }
         }
 

@@ -43,7 +43,7 @@ import { createStoredZip } from '@main/services/zip'
 import { readStoredZip } from '@main/services/zipRead'
 import { canonicalStringify } from '@shared/verify'
 import { resolveToolVersion } from '@main/services/certification'
-import { MANIFEST_FILENAME } from '@shared/constants'
+import { IMPORT_ID_MAP_FILENAME, MANIFEST_FILENAME } from '@shared/constants'
 import type {
   ArchiveInspectReport,
   ArchiveVerificationResult,
@@ -440,7 +440,7 @@ export async function importCaseArchive(
       join(stagingDir, MANIFEST_FILENAME),
       entries.get(MANIFEST_FILENAME) ?? Buffer.alloc(0)
     )
-    writeFileSync(join(stagingDir, 'import-id-map.json'), JSON.stringify(idMapPayload, null, 2))
+    writeFileSync(join(stagingDir, IMPORT_ID_MAP_FILENAME), JSON.stringify(idMapPayload, null, 2))
 
     // Step 5: append the signed import entry to the STAGED manifest — it
     // continues the source chain (getManifestHead reads the staged file).

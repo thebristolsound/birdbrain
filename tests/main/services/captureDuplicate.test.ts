@@ -15,7 +15,10 @@ import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
+import { initSigningKey, resetSigningKey } from '@main/services/signingKey'
+import { exportCaseArchive, importCaseArchive } from '@main/services/caseArchive'
 import { initSettings, updateSettings } from '@main/services/settings'
+import { IMPORT_ID_MAP_FILENAME } from '@shared/constants'
 import { ManifestEntrySchema } from '@shared/schemas'
 import type { Capture } from '@shared/types'
 
@@ -605,5 +608,167 @@ describe('createCaptureLifecycle.duplicate (#827)', () => {
 
     expect(manifestLines()[0]).toEqual(entryBefore)
     expect(evidential(source.id)).toEqual(rowBefore)
+  })
+})
+
+// A case that arrived by archive import is the case the entry-to-row binding
+// has to survive: the manifest is immutable, so every capture entry it brought
+// with it still names the SOURCE installation's case id and capture ids, while
+// import mints a fresh case id and remaps any capture id that collided with a
+// local row. Refusing those is refusing to duplicate imported evidence at all —
+// the exchange path this app exists to support.
+describe('createCaptureLifecycle.duplicate on an imported case (#827)', () => {
+  let tempDir: string
+  let sourceCaseId: string
+  let lifecycle: CaptureLifecycle
+  let source: Capture
+  let archivePath: string
+
+  const importedCaseDir = (caseId: string): string => join(tempDir, 'captures', caseId)
+
+  function manifestLinesFor(caseId: string): Record<string, unknown>[] {
+    return readFileSync(join(importedCaseDir(caseId), 'manifest.jsonl'), 'utf-8')
+      .split('\n')
+      .filter((line) => line.trim().length > 0)
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+  }
+
+  beforeEach(async () => {
+    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-duplicate-import-'))
+    initStorage(join(tempDir, 'captures'))
+    await initDatabase(':memory:')
+    initSettings(tempDir)
+    updateSettings({ operatorName: 'Test Operator' })
+    resetInstallationId()
+    initInstallationId(tempDir)
+    resetSigningKey()
+    initSigningKey(tempDir, { confirmUnprotectedKey: () => true })
+    sourceCaseId = createCase({ name: 'Exported' }).id
+    ensureCaseDir(sourceCaseId)
+    initManifest(join(tempDir, 'captures', sourceCaseId))
+    lifecycle = createCaptureLifecycle({
+      selectorLifecycle: { runActiveSelectorsForCapture: vi.fn() } as unknown as SelectorLifecycle
+    })
+    const ingested = await lifecycle.ingest({
+      caseId: sourceCaseId,
+      url: 'https://example.com/evidence',
+      title: 'Evidence',
+      timestamp: '2026-04-05T12:00:00.000Z',
+      stream: Readable.from([Buffer.from(MHTML_BODY)]) as unknown as ReadableStream<Uint8Array>,
+      textContent: TEXT,
+      headers: { server: 'nginx' },
+      browserVersion: 'Chrome/120',
+      userAgent: 'Mozilla/5.0',
+      httpStatus: 200,
+      extensionVersion: '0.1.0',
+      operatorId: 'op-source',
+      operatorName: 'Original Operator',
+      toolVersion: '0.1.0',
+      screenshot: SCREENSHOT
+    })
+    source = ingested.capture
+    archivePath = join(tempDir, 'case.birdbrain')
+    await exportCaseArchive(sourceCaseId, archivePath)
+  })
+
+  afterEach(() => {
+    closeDatabase()
+    resetInstallationId()
+    resetSigningKey()
+    rmSync(tempDir, { recursive: true, force: true })
+    vi.restoreAllMocks()
+  })
+
+  async function importArchive(): Promise<{ caseId: string; capture: Capture }> {
+    const { newCaseId } = await importCaseArchive(archivePath)
+    return { caseId: newCaseId, capture: listCaptures(newCaseId)[0] }
+  }
+
+  it('duplicates an imported capture whose entry still names the source case', async () => {
+    // Ids are free here (the source case is gone), so the row keeps its
+    // original id and the ONLY difference is the case id the entry carries.
+    const { getDb } = await import('@main/services/db/core')
+    getDb().prepare('DELETE FROM cases WHERE id = ?').run(sourceCaseId)
+    const { caseId, capture } = await importArchive()
+    expect(capture.id).toBe(source.id)
+    expect(caseId).not.toBe(sourceCaseId)
+    await expect(lifecycle.verify(capture.id)).resolves.toMatchObject({ status: 'verified' })
+
+    const result = await lifecycle.duplicate(capture.id)
+
+    expect(result.status).toBe('duplicated')
+    if (result.status !== 'duplicated') return
+    // The copy belongs to the case it was made in, and stands up on its own.
+    expect(result.capture.caseId).toBe(caseId)
+    expect(result.capture.duplicateOfCaptureId).toBe(capture.id)
+    expect(manifestLinesFor(caseId).at(-1)!.caseId).toBe(caseId)
+    expect(verifyManifestChain(importedCaseDir(caseId)).valid).toBe(true)
+    await expect(lifecycle.verify(result.capture.id)).resolves.toMatchObject({
+      status: 'verified'
+    })
+  })
+
+  it('duplicates an imported capture whose row id the import remapped', async () => {
+    // The source case is still here, so every id collides and import allocates
+    // new ones. The entry names the old id; only the id map the import entry
+    // anchors by hash can say those are the same capture.
+    const { caseId, capture } = await importArchive()
+    expect(capture.id).not.toBe(source.id)
+
+    const result = await lifecycle.duplicate(capture.id)
+
+    expect(result.status).toBe('duplicated')
+    if (result.status !== 'duplicated') return
+    expect(result.capture.duplicateOfCaptureId).toBe(capture.id)
+    expect(verifyManifestChain(importedCaseDir(caseId)).valid).toBe(true)
+    await expect(lifecycle.verify(result.capture.id)).resolves.toMatchObject({
+      status: 'verified'
+    })
+  })
+
+  it('still refuses an index repointed at a same-hash sibling inside an imported case', async () => {
+    // Resolving imported ids must not cost the binding its teeth: within the
+    // imported case, an edited index landing on a sibling's same-hash entry is
+    // refused exactly as it is in a native case.
+    const { getDb } = await import('@main/services/db/core')
+    const { caseId, capture } = await importArchive()
+    const first = await lifecycle.duplicate(capture.id)
+    if (first.status !== 'duplicated') throw new Error('expected a duplicate')
+    getDb()
+      .prepare('UPDATE captures SET manifest_index = ? WHERE id = ?')
+      .run(first.capture.manifestIndex, capture.id)
+    const before = manifestLinesFor(caseId).length
+
+    const result = await lifecycle.duplicate(capture.id)
+
+    expect(result).toEqual({
+      status: 'rejected',
+      reason: 'not_verified',
+      detail: 'entry-mismatch'
+    })
+    expect(manifestLinesFor(caseId)).toHaveLength(before)
+  })
+
+  it('refuses when the id map does not hash to what the import entry anchors', async () => {
+    // The map is a plain file in the case directory. It is trusted only because
+    // the signed import entry records its digest — rewritten, it says nothing,
+    // and a remapped row falls back to failing closed.
+    const { caseId, capture } = await importArchive()
+    const mapPath = join(importedCaseDir(caseId), IMPORT_ID_MAP_FILENAME)
+    const map = JSON.parse(readFileSync(mapPath, 'utf-8')) as {
+      remapped: Record<string, string>
+    }
+    map.remapped['00000000-0000-4000-8000-000000000000'] = capture.id
+    writeFileSync(mapPath, JSON.stringify(map, null, 2))
+    const before = manifestLinesFor(caseId).length
+
+    const result = await lifecycle.duplicate(capture.id)
+
+    expect(result).toEqual({
+      status: 'rejected',
+      reason: 'not_verified',
+      detail: 'entry-mismatch'
+    })
+    expect(manifestLinesFor(caseId)).toHaveLength(before)
   })
 })

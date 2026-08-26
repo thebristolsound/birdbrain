@@ -709,7 +709,7 @@ describe('withCaptureEntry', () => {
       toolVersion: baseCtx.toolVersion
     })
 
-    expect(readCaptureEntryAt(tempDir, 0)?.captureId).toBe(baseCtx.captureId)
+    expect(readCaptureEntryAt(tempDir, 0)?.entry.captureId).toBe(baseCtx.captureId)
     // A deletion entry is not a capture entry: a caller asking for anchored
     // capture facts must get nothing rather than a wrong-shaped object.
     expect(readCaptureEntryAt(tempDir, 1)).toBeUndefined()
@@ -719,7 +719,7 @@ describe('withCaptureEntry', () => {
   it('readCaptureEntryAt verifies the chain over the same snapshot it reads (#827)', async () => {
     const { readCaptureEntryAt } = await import('@main/services/manifest')
     await withCaptureEntry(tempDir, baseCtx, () => undefined)
-    expect(readCaptureEntryAt(tempDir, 0)?.url).toBe(baseCtx.url)
+    expect(readCaptureEntryAt(tempDir, 0)?.entry.url).toBe(baseCtx.url)
 
     // Rewrite the entry in place without re-chaining: still schema-valid, but
     // the recorded entryHash no longer matches. A caller's earlier chain

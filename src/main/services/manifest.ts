@@ -183,9 +183,24 @@ export function readManifestSnapshot(caseDir: string): ManifestSnapshot {
 // One signed capture entry, as recorded on the chain.
 export type ManifestCaptureEntry = Extract<ManifestEntry, { type: 'capture' }>
 
-// Reads the capture entry recorded at `index`, or undefined when the chain
-// does not verify, the line at that position is missing, unparseable, not a
-// capture entry, or carries a different index than the position it sits at.
+// One signed genesis-of-custody entry, appended when a case arrives by archive
+// import.
+export type ManifestImportEntry = Extract<ManifestEntry, { type: 'import' }>
+
+export interface CaptureEntryAtIndex {
+  entry: ManifestCaptureEntry
+  // Every `import` entry in the SAME verified read. An imported case keeps the
+  // source installation's ids on the entries it brought with it, so a caller
+  // binding one of those entries to a local row needs the custody records to
+  // resolve them — and needs them authenticated by the same chain check, not by
+  // a second unverified read.
+  imports: ManifestImportEntry[]
+}
+
+// Reads the capture entry recorded at `index` together with the case's custody
+// records, or undefined when the chain does not verify, the line at that
+// position is missing, unparseable, not a capture entry, or carries a different
+// index than the position it sits at.
 //
 // For callers that need a capture's ORIGINAL anchored facts (#827 duplication
 // re-anchors url/timestamp/headers/tls into a fresh entry): the `captures` row
@@ -197,7 +212,7 @@ export type ManifestCaptureEntry = Extract<ManifestEntry, { type: 'capture' }>
 export function readCaptureEntryAt(
   caseDir: string,
   index: number
-): ManifestCaptureEntry | undefined {
+): CaptureEntryAtIndex | undefined {
   const snapshot = readManifestSnapshot(caseDir)
   const raw = snapshot.entries[index]
   if (raw === undefined) return undefined
@@ -209,7 +224,13 @@ export function readCaptureEntryAt(
   if (!parsed.success || parsed.data.type !== 'capture' || parsed.data.index !== index) {
     return undefined
   }
-  return parsed.data
+  const imports: ManifestImportEntry[] = []
+  for (const line of snapshot.entries) {
+    if (line.type !== 'import') continue
+    const parsedImport = ManifestEntrySchema.safeParse(line)
+    if (parsedImport.success && parsedImport.data.type === 'import') imports.push(parsedImport.data)
+  }
+  return { entry: parsed.data, imports }
 }
 
 // A file packaged into an export (evidence .zip or .birdbrain archive), as

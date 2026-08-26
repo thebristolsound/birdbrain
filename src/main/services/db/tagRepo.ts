@@ -1,6 +1,13 @@
 import { v4 as uuid } from 'uuid'
 import type { Tag } from '@shared/types'
-import type { CreateTagParams, UpdateTagParams, CaptureTagParams, NoteTagParams } from '@shared/ipc'
+import type {
+  CreateTagParams,
+  UpdateTagParams,
+  CaptureTagParams,
+  NoteTagParams,
+  MergeTagsParams,
+  MergeTagsResult
+} from '@shared/ipc'
 import { getDb, type ImportCtx } from '@main/services/db/core'
 
 export function listTags(): Tag[] {
@@ -54,6 +61,52 @@ export function addTagToCaptures(captureIds: string[], tagId: string): number {
     )
     for (const id of captureIds) insert.run(id, tagId)
     return captureIds.length
+  })
+  return run()
+}
+
+/**
+ * Merge one tag into another (#828): re-point every capture_tags and note_tags
+ * row from source to target, then delete the source, in one transaction.
+ * INSERT OR IGNORE carries the re-point past rows whose capture or note
+ * already holds the target — the join tables' primary keys make a plain UPDATE
+ * fail on exactly those — and deleting the source afterwards lets ON DELETE
+ * CASCADE clear the duplicate rows the IGNORE skipped. Never a
+ * create-then-copy shape (#811): both tags must already exist, so the UNIQUE
+ * name constraint is never in play and no write precedes the lookups.
+ *
+ * The self-merge guard is load-bearing, not defensive: without it the inserts
+ * would no-op and the delete would destroy the tag and every link it holds.
+ *
+ * note_references rows citing the source are deliberately left to dangle:
+ * that index is derived from note body docs, which still cite the source id,
+ * and a Mention of a merged-away tag resolves as a broken reference at read
+ * time — the same outcome deleteTag already produces.
+ *
+ * Returns undefined when either tag is missing or source === target.
+ */
+export function mergeTags(params: MergeTagsParams): MergeTagsResult | undefined {
+  const { sourceId, targetId } = params
+  if (sourceId === targetId) return undefined
+  const d = getDb()
+  const run = d.transaction((): MergeTagsResult | undefined => {
+    const source = d.prepare('SELECT * FROM tags WHERE id = ?').get(sourceId) as Tag | undefined
+    const target = d.prepare('SELECT * FROM tags WHERE id = ?').get(targetId) as Tag | undefined
+    if (!source || !target) return undefined
+    d.prepare(
+      `INSERT OR IGNORE INTO capture_tags (capture_id, tag_id)
+       SELECT capture_id, ? FROM capture_tags WHERE tag_id = ?`
+    ).run(targetId, sourceId)
+    d.prepare(
+      `INSERT OR IGNORE INTO note_tags (note_id, tag_id)
+       SELECT note_id, ? FROM note_tags WHERE tag_id = ?`
+    ).run(targetId, sourceId)
+    d.prepare('DELETE FROM tags WHERE id = ?').run(sourceId)
+    const count = (table: string): number =>
+      (d.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE tag_id = ?`).get(targetId) as {
+        n: number
+      }).n
+    return { target, captureLinks: count('capture_tags'), noteLinks: count('note_tags') }
   })
   return run()
 }

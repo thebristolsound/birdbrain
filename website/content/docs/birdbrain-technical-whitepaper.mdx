@@ -35,7 +35,7 @@ The specific failure mode Birdbrain targets is evidentiary: a screenshot of a sc
 3. **Trusted time.** Proof of *when* the content existed, anchored outside the operator's control.
 4. **Independent verifiability.** A skeptical third party must be able to check all of the above without trusting the tool or the operator.
 
-Birdbrain's design treats these as first-class requirements and builds the investigation UX around them, on a local-first architecture with no accounts, no server, and no telemetry.
+Birdbrain's design treats these four properties as requirements and builds the investigation UX around them, on a local-first architecture with no accounts, no server, and no telemetry.
 
 ---
 
@@ -129,7 +129,7 @@ On disk, artifacts live under `{storageRoot}/{caseId}/{captureId}.{mhtml|png|txt
 
 ## 4. The forensic integrity layer
 
-This is the system's core intellectual property.
+This is the layer the evidence claims rest on.
 
 ### 4.1 Streaming hash on ingest
 
@@ -175,7 +175,7 @@ A standalone verifier binary (`build:verifier`, assembled with `postject`, sugge
 
 ### 5.1 Why this stack
 
-- **Electron** is close to mandatory for this product: MHTML rendering, a persistent local server, native file storage, OS keychain access, and a webview for sandboxed evidence display. The team runs current Electron (39.x) and pays attention to its security model rather than fighting it.
+- **Electron** is close to mandatory for this product: MHTML rendering, a persistent local server, native file storage, OS keychain access, and a webview for sandboxed evidence display. The app tracks current Electron (42.x) with the security model enabled rather than overridden.
 - **better-sqlite3 (synchronous) + WAL** trades theoretical event-loop purity for transactional simplicity. For a single-user desktop app with sub-millisecond local queries, synchronous SQLite inside the main process is the pragmatic choice, and native transactions (`withTransaction`) keep multi-table writes atomic.
 - **Hono for the loopback server** is a minimal, typed, middleware-composable router; the entire security posture (Host guard → body limit → CORS → token auth) reads as an ordered middleware stack in one file.
 - **React Query + Zustand split**: all persistent data flows through React Query keyed factories with explicit invalidation; Zustand carries only ephemeral UI state. The discipline is visible in details like the recapture mutation deliberately not invalidating caches because completion arrives over an event channel.
@@ -223,7 +223,7 @@ The capture server binds to 127.0.0.1 only and defends in depth:
 
 ### 6.4 Secrets and privacy
 
-The signing private key is encrypted with OS-level `safeStorage`, falling back to plaintext where the OS facility is unavailable (documented limitation, primarily headless Linux). The server token file is written with `0o600`. Privacy posture is unusually clean for the category: no telemetry, no crash reporting, no analytics; the installation UUID exists for provenance labeling, not tracking; Wayback lookups require explicit user action precisely to avoid leaking investigation targets.
+The signing private key is encrypted with OS-level `safeStorage`, falling back to plaintext where the OS facility is unavailable (documented limitation, primarily headless Linux). The server token file is written with `0o600`. The privacy posture: no telemetry, no crash reporting, no analytics; the installation UUID exists for provenance labeling, not tracking; Wayback lookups require explicit user action precisely to avoid leaking investigation targets.
 
 ### 6.5 Supply chain and disclosure
 
@@ -266,7 +266,7 @@ Operational maturity instead shows up in CI and tests:
 
 ## 10. Implementation highlights
 
-Details a code reviewer would flag as unusually good:
+Details worth a reviewer's attention:
 
 1. **The manifest rollback seam** (`withManifestEntry` / `withCaptureEntry` / `withDeletionEntry`): append-first with byte-offset truncation on failure is a simple, auditable way to keep an append-only log consistent with side effects, without a WAL of its own.
 2. **Build-time CSP enforcement**: failing the production build if `'unsafe-inline'` survives in `script-src` is a rare pattern that turns a silent security regression into a red build.
@@ -296,7 +296,7 @@ Code organization follows the process boundary cleanly: `src/main/services/` (on
 Grounded in code structure, explicit code comments, and documented limitations rather than any stated plan:
 
 1. **Code signing and notarization.** The single highest-leverage item; it unblocks macOS auto-update (the gate is already written) and removes install friction.
-2. **Style CSP tightening.** Eliminate `'unsafe-inline'` for styles; the script-src pipeline shows the team knows how to enforce it at build time.
+2. **Style CSP tightening.** Eliminate `'unsafe-inline'` for styles; the script-src pipeline already demonstrates build-time enforcement.
 3. **safeStorage fallback hardening.** Refuse to persist secrets in plaintext, or require explicit operator acknowledgment on platforms without OS key storage.
 4. **CSV formula-injection prefixing.** Small, cheap, and closes the one injection path the escaping layer currently leaves open.
 5. **Local diagnostic logging.** A rotating on-disk log would fix the supportability gap without touching the no-telemetry stance.
@@ -308,6 +308,6 @@ Grounded in code structure, explicit code comments, and documented limitations r
 
 ## 13. Conclusion
 
-Birdbrain is a focused answer to a real evidentiary problem: it makes web captures that a skeptical third party can verify with standard tools, and it wraps that core in a genuinely usable investigation workspace. The architecture is disciplined where it counts (a narrow, typed IPC surface; a defense-in-depth loopback boundary; an append-only signed chain with rollback semantics; 90 % test coverage enforced exactly on the forensic core) and pragmatic elsewhere (synchronous SQLite, no server infrastructure at all).
+Birdbrain addresses a specific evidentiary problem: web captures that a skeptical third party can check with standard tools, wrapped in an investigation workspace. The architecture concentrates its rigor where the evidence claims live (a narrow, typed IPC layer; a defense-in-depth loopback boundary; an append-only signed chain with rollback semantics; 90 % test coverage enforced on the forensic core) and stays pragmatic elsewhere (synchronous SQLite, no server infrastructure at all).
 
-The honest limitations are the ones the project itself documents: unsigned binaries, a style-CSP concession, and plaintext fallback for secrets on platforms without OS key storage. None undermine the central design claim. The codebase demonstrates that chain-of-custody guarantees fit inside a modern Electron/React application without enterprise tooling: the threat model is written down, the trust boundaries are few and inspectable, the verification story deliberately removes the tool itself from the trust path, and the seams (services, typed channels, the shared verify core) are clean enough that the next feature has an obvious place to live.
+The limitations are the ones the project itself documents: unsigned binaries, a style-CSP concession, and plaintext fallback for secrets on platforms without OS key storage. The property the design is built around survives them: the threat model is written down, the trust boundaries are few and inspectable, and verification deliberately removes the tool itself from the trust path.

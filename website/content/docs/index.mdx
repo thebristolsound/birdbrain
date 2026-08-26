@@ -9,9 +9,16 @@ extracted page text, sent to the desktop app over `127.0.0.1` and stored locally
 archives. There is no cloud account and no telemetry; captures stay on your machine unless you
 export them.
 
-Every capture is fingerprinted with SHA-256, timestamped, and chained to the previous capture in
-a per-case manifest. You can verify the chain in the app, or export a self-contained HTML report
-that is readable in any browser and verifiable without Birdbrain installed.
+Birdbrain hashes each capture's stored bytes with SHA-256 and appends a signed entry to a
+per-case, hash-chained manifest. It also requests an RFC 3161 timestamp token for the content
+hash; a capture holds `pending` trusted time until the timestamp authority answers, including
+while you are offline. You can check the manifest chain in the app, or export an evidence
+package whose `VERIFY.md` runbook reproduces the whole check with `sha256sum`, `openssl`, and
+`jq` — no Birdbrain install required.
+
+Birdbrain is beta software and no court has tested the evidence workflow. The
+[threat model](./threat-model.mdx) states what the integrity controls defend against and what
+they deliberately do not; read it before relying on the evidence claims.
 
 ## Where to start
 

@@ -322,6 +322,8 @@ describe('concurrent manual captures on one tab (#379)', () => {
       ).length
     const baselineErrors = errorToasts()
 
+    const baselineRelease = sentOfTypeTo('RELEASE_CAPTURE_UI', TAB.id)
+
     dispatch({ type: 'MANUAL_CAPTURE', tabId: TAB.id, caseId: 'case-a' })
     await flush()
     dispatch({ type: 'MANUAL_CAPTURE', tabId: TAB.id, caseId: 'case-b' })
@@ -336,6 +338,9 @@ describe('concurrent manual captures on one tab (#379)', () => {
     uploadRejecters[upBase](new Error('server exploded'))
     await flush()
     expect(errorToasts()).toBe(baselineErrors)
+    // A's restore ran while B was mid-frame: the page-side suppression latch
+    // (#393) must not be released under B's frames
+    expect(sentOfTypeTo('RELEASE_CAPTURE_UI', TAB.id)).toBe(baselineRelease)
 
     // B finishes: the tab goes idle and A's failure finally reaches the operator
     mhtmlCallbacks[cbBase + 1](new Blob(['mhtml-b']))
@@ -343,6 +348,9 @@ describe('concurrent manual captures on one tab (#379)', () => {
     uploadResolvers[upBase + 1](UPLOAD_RESULT)
     await flush()
     expect(errorToasts()).toBe(baselineErrors + 1)
+    // ...and only now, with no capture on the tab collecting frames, is the
+    // latch released
+    expect(sentOfTypeTo('RELEASE_CAPTURE_UI', TAB.id)).toBe(baselineRelease + 1)
   })
 
   it('skips highlight restore when the tab navigated to an ignored URL mid-capture', async () => {

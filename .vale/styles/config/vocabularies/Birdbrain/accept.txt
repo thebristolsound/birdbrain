@@ -271,3 +271,6 @@ Diataxis
 iSpec
 Vonage
 [Rr]ulebook
+[Gg]roundable
+Maltego
+[Ww]ayfinder

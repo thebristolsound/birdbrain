@@ -1,9 +1,10 @@
-// The popup ↔ background message payloads.
+// The popup/content ↔ background message payloads.
 //
-// Type-only, and deliberately so: both halves ship in the same extension
+// Type-only, and deliberately so: all halves ship in the same extension
 // bundle, so this is a compile-time contract rather than a wire format. It
 // lives outside popup/ because the background service worker is the side that
-// produces every value in it — the popup only renders what it is told.
+// produces every value in it — the popup and the content script only render
+// what they are told.
 
 /** Which rule refused a URL: the built-in scheme list, or an operator pattern. */
 export type PopupBlockReason = 'default' | 'user'
@@ -46,6 +47,53 @@ export interface PopupPageStatus {
    * the popup must not offer a capture.
    */
   rulesLoaded: boolean
+}
+
+// --- In-page selection bar (#393) ------------------------------------------
+
+/** The three actions the in-page selection bar offers. */
+export type SelectionActionKind = 'selector' | 'tag' | 'quote'
+
+/** Content → background: run one selection-bar action on the sender's tab. */
+export interface SelectionActionRequest {
+  type: 'SELECTION_ACTION'
+  action: SelectionActionKind
+  /** The selected passage, as the page handed it over. */
+  text: string
+}
+
+/**
+ * The background's answer to a SELECTION_ACTION request. `detail` and `error`
+ * are operator-facing strings the bar renders verbatim.
+ *
+ * A failure is usually a refusal that acquired nothing — the attach routes
+ * capture and attach in one transaction and refuse before acquiring on every
+ * rejection they can foresee. The one exception is the 500 those routes raise
+ * when a Capture was resolved or freshly ingested and the Tag or Note
+ * creation then failed: the server names that Capture, and the id is carried
+ * here rather than dropped, so the bar can tell the operator it exists. The
+ * operator-facing account of whether that capture was fresh rides `error`
+ * (worded by the background from the server's `captured` flag). `captureId`
+ * absent is the assertion that nothing was created.
+ */
+export type SelectionActionResponse =
+  | {
+      ok: true
+      detail: string
+      /** True when the action auto-captured the page before attaching (#392). */
+      captured: boolean
+    }
+  | {
+      ok: false
+      error: string
+      /** The Capture stored before the attach failed; absent when none was. */
+      captureId?: string
+    }
+
+/** The slice of GET_STATE the selection bar gates its actions on. */
+export interface SelectionBarState {
+  connected: boolean
+  activeCaseId: string | null
 }
 
 /** The background's answer to a popup MANUAL_CAPTURE request. */

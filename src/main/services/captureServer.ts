@@ -747,7 +747,12 @@ function createApp(deps: CaptureServerDeps): Hono {
         logger.error('captureServer', 'captureServer.tag_apply_failed', undefined, err)
         // The capture (pre-existing or just ingested) is real evidence either
         // way, so name it — the caller must not retry with a fresh payload.
-        return c.json({ error: 'Failed to apply tag', captureId: target.captureId }, 500)
+        // `captured` says which of the two it was: the extension records and
+        // reports a fresh capture differently from one the case already held.
+        return c.json(
+          { error: 'Failed to apply tag', captureId: target.captureId, captured: target.captured },
+          500
+        )
       }
     }
   )
@@ -787,7 +792,10 @@ function createApp(deps: CaptureServerDeps): Hono {
         } satisfies ExtensionNoteCreateResult)
       } catch (err) {
         logger.error('captureServer', 'captureServer.note_create_failed', undefined, err)
-        return c.json({ error: 'Failed to create note', captureId: target.captureId }, 500)
+        return c.json(
+          { error: 'Failed to create note', captureId: target.captureId, captured: target.captured },
+          500
+        )
       }
     }
   )

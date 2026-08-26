@@ -24,7 +24,7 @@ Hosted evidence platforms answer these questions by holding your material on the
 
 ## What Birdbrain is
 
-Birdbrain is an open-source (MIT) desktop application for Windows, macOS, and Linux, paired with a Chromium browser extension. You browse; the extension captures pages as MHTML (the full page with its resources in one file), plus a screenshot, the extracted text, and response headers. The desktop app files each capture into a case on your own disk.
+Birdbrain is an open-source (MIT) desktop application for Windows and Linux (macOS builds are produced on request), paired with a Chromium browser extension. You browse; the extension captures pages as MHTML (the full page with its resources in one file), plus a screenshot, the extracted text, and response headers. The desktop app files each capture into a case on your own disk.
 
 Under every capture sits an integrity layer:
 
@@ -33,7 +33,7 @@ Under every capture sits an integrity layer:
 - Captures can receive RFC 3161 trusted timestamps: an external authority attests that a given hash existed no later than a given time, without ever seeing the content.
 - Exports produce a self-contained evidence package that a journalist, lawyer, or hostile reviewer can verify with standard tools (`sha256sum`, `jq`, `openssl`) by following an included runbook. They do not need Birdbrain, an account, or your cooperation to check it.
 
-The everyday tooling sits on top: cases, search, tags, notes, screenshot annotation, pattern watchlists that flag or auto-capture pages containing terms you care about, and extraction of indicators like domains, wallet addresses, and email addresses from captured text.
+The everyday tooling sits on top: cases, search, tags, notes, screenshot annotation, pattern watchlists that highlight and flag pages containing terms you care about (automatic capture on a match is turned off in the shipped build), and extraction of indicators like domains, wallet addresses, and email addresses from captured text.
 
 ## The privacy properties that matter to you
 
@@ -43,7 +43,7 @@ The everyday tooling sits on top: cases, search, tags, notes, screenshot annotat
 
 **Open formats, no lock-in.** MHTML files open in any Chromium browser. The Manifest is plain-text JSON lines. The database is standard SQLite. If the project dies tomorrow, your evidence remains readable and verifiable with commodity tools.
 
-**Auditable.** The entire codebase is public. The verification logic is deliberately small, free of app dependencies, and reproducible by hand from the runbook, so you are not asked to trust the tool that produced the evidence.
+**Verifiable without trusting the tool.** The verification procedure is deliberately small, free of app dependencies, and reproducible by hand from the runbook with standard tools, so an evidence package stands on its own rather than on trust in Birdbrain. The code is MIT-licensed.
 
 **Works offline.** Capture, storage, search, and verification run without a network connection. Only the optional supporting features below need one.
 
@@ -53,7 +53,7 @@ For your threat model, this is the section that matters. Every outbound connecti
 
 | Connection | What is sent | When | Your control |
 |---|---|---|---|
-| Timestamp authority (default: DigiCert) | A content hash only, never content. The TSA does see your IP address and the timing of your captures. | Automatically after each capture | Point it at a TSA you prefer in settings, or accept captures without trusted timestamps |
+| Timestamp authority (default: DigiCert) | A content hash only, never content. The TSA does see your IP address and the timing of your captures. | Automatically after each capture | Point it at a TSA you prefer in settings. Timestamping cannot be turned off; a capture that cannot reach the authority stays `pending` |
 | The captured site itself | A follow-up TLS connection to record the site's current certificate as corroboration | Automatically at capture time | Not currently toggleable; see the network-identity warning below |
 | Wayback Machine (archive.org) | The URL you ask it to look up or pin | Only when you explicitly click | Never click it for sensitive targets |
 | GitHub | Ordinary release-check traffic | Periodic update checks | Disable automatic update checks in settings |
@@ -93,7 +93,7 @@ What you give up without a server: simultaneous editing, central assignment, and
 Candor is the project's stated policy, so here is the list:
 
 - **A compromised computer.** If your machine has malware or an attacker with your login, no application-level integrity scheme saves you. The evidence chain proves tampering happened *after* capture; it cannot make a hostile machine trustworthy *during* capture.
-- **Yourself, mostly.** A person who controls the machine can discard everything and fabricate a fresh, internally consistent history. External timestamps are the main constraint. They make it impossible to backdate fabrications, which is precisely why you should timestamp promptly and export early. Give copies of evidence packages to people outside the blast radius.
+- **Yourself, mostly.** A person who controls the machine can discard everything and fabricate a fresh, internally consistent history. External timestamps are the main constraint: a fabrication cannot carry a trusted time earlier than the moment it was actually stamped, which is precisely why you should timestamp promptly and export early. Give copies of evidence packages to people outside the blast radius.
 - **Legal admissibility.** The tool produces strong technical provenance. Whether a specific court accepts it is a question for a lawyer in your jurisdiction, not a promise software can make.
 - **Content truth.** A perfect capture of a lie is still a lie. Birdbrain proves what a page said and when you captured it, not that the page was accurate.
 - **Beta reality.** This is beta software from a small open-source project. Formats may change between versions; test upgrades on a copy, keep backups, and pin a working version during a critical investigation.
@@ -113,7 +113,7 @@ Candor is the project's stated policy, so here is the list:
 
 ## Sustainability and exit
 
-Adopting any tool is a bet on its future, and small-project bets deserve sober terms. Birdbrain is MIT-licensed and currently maintained by a small team, in beta. The mitigations are structural rather than promissory: your data lives in open formats you can read without the app, the verification procedure works with standard command-line tools documented in every export, and the code is public and forkable. The worst realistic outcome of project abandonment is that you stop getting updates, not that you lose access to your evidence or the ability to prove its integrity.
+Adopting any tool is a bet on its future, and small-project bets deserve sober terms. Birdbrain is MIT-licensed, solo-maintained, and in beta. The mitigations are structural rather than promissory: your data lives in open formats you can read without the app, the verification procedure works with standard command-line tools documented in every export, and the MIT license permits anyone holding the code to maintain and redistribute it. The worst realistic outcome of project abandonment is that you stop getting updates, not that you lose access to your evidence or the ability to prove its integrity.
 
 ## Conclusion
 

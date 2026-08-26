@@ -13,6 +13,7 @@ import type {
   CaptureTagParams,
   NoteTagParams,
   ApplyTagToNoteParams,
+  MergeTagsParams,
   CreateSelectorParams,
   UpdateSelectorParams,
   CreateNoteParams,
@@ -458,6 +459,24 @@ export function registerIpcHandlers(deps: {
     }
     const ids = snapshotSameCase(caseId, captureIds).map((c) => c.id)
     return { affected: tagRepo.addTagToCaptures(ids, payload.tagId) }
+  })
+  // Merge tags (#828). A payload channel, so it gets the shape check; the
+  // self-merge refusal is here as well as in the repo because the two failures
+  // deserve different messages — the repo's undefined cannot say which
+  // precondition broke.
+  handle(IPC_CHANNELS.TAGS_MERGE, (_, params: MergeTagsParams) => {
+    const p = params as Partial<MergeTagsParams> | null | undefined
+    if (!p || typeof p.sourceId !== 'string' || typeof p.targetId !== 'string') {
+      throw new IpcFailure('Invalid merge payload', 'INVALID_MERGE_PAYLOAD')
+    }
+    if (p.sourceId === p.targetId) {
+      throw new IpcFailure('Cannot merge a tag into itself', 'TAG_MERGE_SELF')
+    }
+    const result = tagRepo.mergeTags({ sourceId: p.sourceId, targetId: p.targetId })
+    if (!result) {
+      throw new IpcFailure('Source or target tag not found', 'TAG_NOT_FOUND')
+    }
+    return result
   })
 
   // Selectors

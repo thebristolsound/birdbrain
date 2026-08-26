@@ -105,6 +105,7 @@ export const IPC_CHANNELS = {
   TAGS_APPLY_TO_NOTE: 'tags:applyToNote',
   TAGS_REMOVE_FROM_NOTE: 'tags:removeFromNote',
   TAGS_GET_FOR_NOTE: 'tags:getForNote',
+  TAGS_MERGE: 'tags:merge',
 
   // Session (renderer-side session control; the extension drives HTTP)
   SESSION_SNAPSHOT: 'session:snapshot',
@@ -368,6 +369,30 @@ export interface ApplyTagToNoteParams {
 export interface ApplyTagToNoteResult {
   tag: Tag
   captureId?: string
+}
+
+/**
+ * Merge tag `sourceId` into tag `targetId` (#828): every capture and note
+ * carrying the source ends up carrying the target, and the source is deleted,
+ * in one transaction. Tags are app-global — the table has no case_id — so the
+ * merge reaches every case that used the source tag, not only the one it was
+ * invoked from.
+ */
+export interface MergeTagsParams {
+  sourceId: string
+  targetId: string
+}
+
+/**
+ * `captureLinks`/`noteLinks` are the target's POST-merge totals across all
+ * cases, for the same app-global reason. They are not counts for the invoking
+ * case, and the renderer must not present them as such next to the Signals
+ * screen's per-case numbers.
+ */
+export interface MergeTagsResult {
+  target: Tag
+  captureLinks: number
+  noteLinks: number
 }
 
 export interface CreateSelectorParams {
@@ -712,6 +737,7 @@ export interface IpcInvokeContract {
   'tags:applyToNote': { args: [params: ApplyTagToNoteParams]; result: ApplyTagToNoteResult }
   'tags:removeFromNote': { args: [params: NoteTagParams]; result: void }
   'tags:getForNote': { args: [noteId: string]; result: Tag[] }
+  'tags:merge': { args: [params: MergeTagsParams]; result: MergeTagsResult }
 
   'selectors:list': { args: [caseId: string]; result: Selector[] }
   'selectors:get': { args: [id: string]; result: Selector | undefined }

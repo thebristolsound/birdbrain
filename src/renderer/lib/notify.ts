@@ -134,6 +134,8 @@ const CODE_LABELS: Record<LogCode, string> = {
   'captureLifecycle.reprocess_failed': "Couldn't reprocess this capture",
   'captureLifecycle.duplicate_reconcile_failed':
     "The duplicate was created, but its trusted-time status couldn't be refreshed",
+  'captureLifecycle.duplicate_cleanup_failed':
+    "The duplicate failed, and its copied files couldn't be removed",
   'backgroundRenderer.trim_failed': "Couldn't trim the screenshot",
   'backgroundRenderer.consent_blocker_disable_failed': "Couldn't turn off the cookie-notice blocker",
   'backgroundRenderer.consent_blocker_enable_failed': "Couldn't turn on the cookie-notice blocker",

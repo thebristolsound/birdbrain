@@ -926,8 +926,17 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
           if (!committed) {
             try {
               store.deleteArtifacts(source.caseId, duplicateId)
-            } catch {
-              /* ignore */
+            } catch (cleanupErr) {
+              // The original failure is what the caller must see, so a failed
+              // cleanup is logged rather than thrown over it — but it is logged:
+              // the copies it left behind are unreferenced bytes in the case
+              // directory, and silence is what makes them unattributable later.
+              logger.error(
+                'captureLifecycle',
+                'captureLifecycle.duplicate_cleanup_failed',
+                { captureId: ident(duplicateId) },
+                cleanupErr
+              )
             }
           }
           throw err

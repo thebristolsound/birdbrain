@@ -485,6 +485,10 @@ export const LOG_CODES = [
   // duplicate itself succeeded — the mirror self-heals on the next read — so
   // the log line is the only trace the reconcile was skipped.
   'captureLifecycle.duplicate_reconcile_failed',
+  // Removing a failed duplicate's copied artifacts threw (#827). The duplicate
+  // failed either way; this records that its copies may still be on disk,
+  // unreferenced by any row.
+  'captureLifecycle.duplicate_cleanup_failed',
   'backgroundRenderer.trim_failed',
   'backgroundRenderer.consent_blocker_disable_failed',
   'backgroundRenderer.consent_blocker_enable_failed',

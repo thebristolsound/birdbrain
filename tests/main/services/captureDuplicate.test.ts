@@ -17,6 +17,7 @@ import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { initSigningKey, resetSigningKey } from '@main/services/signingKey'
 import { exportCaseArchive, importCaseArchive } from '@main/services/caseArchive'
+import { logger } from '@main/services/logger'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { IMPORT_ID_MAP_FILENAME } from '@shared/constants'
 import { ManifestEntrySchema } from '@shared/schemas'
@@ -430,6 +431,40 @@ describe('createCaptureLifecycle.duplicate (#827)', () => {
       (f) => !f.startsWith(source.id) && f !== 'manifest.jsonl'
     )
     expect(strays).toEqual([])
+  })
+
+  it('logs, rather than swallows, a cleanup that fails after a pre-commit failure', async () => {
+    // The original failure is what the caller must see, so the cleanup error
+    // cannot be thrown over it — but the copies it failed to remove are
+    // unreferenced bytes in the case directory, and an unlogged one is
+    // unattributable when an orphan scan finds it later.
+    const captureRepo = await import('@main/services/db/captureRepo')
+    const boom = new Error('insert failed')
+    const cleanupBoom = new Error('unlink failed')
+    vi.spyOn(captureRepo, 'insertCapture').mockImplementation(() => {
+      throw boom
+    })
+    const realStore = createCaptureStore({ getRoot: () => join(tempDir, 'captures') })
+    const unremovableStore: CaptureStore = {
+      ...realStore,
+      deleteArtifacts: () => {
+        throw cleanupBoom
+      }
+    }
+    const errorSpy = vi.spyOn(logger, 'error').mockReturnValue('')
+    const lifecycleWithFailingCleanup = createCaptureLifecycle({
+      selectorLifecycle: { runActiveSelectorsForCapture: vi.fn() } as unknown as SelectorLifecycle,
+      store: unremovableStore
+    })
+
+    await expect(lifecycleWithFailingCleanup.duplicate(source.id)).rejects.toThrow(boom)
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      'captureLifecycle',
+      'captureLifecycle.duplicate_cleanup_failed',
+      expect.anything(),
+      cleanupBoom
+    )
   })
 
   it("refuses when the row's manifestIndex points at another capture's same-hash entry", async () => {

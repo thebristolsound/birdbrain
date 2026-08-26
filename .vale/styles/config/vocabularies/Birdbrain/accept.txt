@@ -264,3 +264,6 @@ Birdbrain's
 [Cc]ryptocurrency
 [Tt]imestamp(s|ed|ing)?
 [Ww]hitepapers?
+[Gg]roundable
+Maltego
+[Ww]ayfinder

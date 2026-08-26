@@ -57,15 +57,17 @@ env:
     /etc/apt/apt-mirrors.txt 2>/dev/null || true
 
 # Draft PRs are gated at the `changes` job below, which every other job needs — a
-# skipped `changes` skips all five. A draft is not asking to merge, and the author has
+# skipped `changes` skips all six. A draft is not asking to merge, and the author has
 # already run the same gates locally (lint, typecheck, test, coverage:diff, build).
 #
 # `agent-pr` is exempt and must stay exempt: the dispatch routine polls `gh pr checks`
-# on a draft agent PR and will not start the reviewer pre-pass until the five ci.yml
+# on a draft agent PR and will not start the reviewer pre-pass until the six ci.yml
 # jobs report a conclusion (.claude/skills/dispatch/SKILL.md, "Wait for CI first").
-# Skipping CI there would strand that loop. The label is applied at `gh pr create`
-# time, so the `opened` event already carries it — which is why `labeled` is not in
-# the trigger types above; adding it would run the full matrix on every label change.
+# Skipping CI there would strand that loop. (`skipped` is itself a conclusion, which is
+# why `docs-build` skipping on a PR that touches no docs does not.) The label is applied
+# at `gh pr create` time, so the `opened` event already carries it — which is why
+# `labeled` is not in the trigger types above; adding it would run the full matrix on
+# every label change.
 #
 # `agent-authored` is exempt for the same reason. It is the off-slot marker (#561):
 # an agent PR that does not hold the strict-serial slot never carries `agent-pr`, so
@@ -73,9 +75,10 @@ env:
 # and no reviewer waiting on it. Both labels mean an agent wrote the diff, which is
 # what this exemption is actually about.
 jobs:
-  # Answers one question for the five jobs below: did this change touch anything the
-  # root toolchain builds? Six recent PRs changed only markdown and each paid the full
+  # Answers two questions for the six jobs below. `code`: did this change touch anything
+  # the root toolchain builds? Six recent PRs changed only markdown and each paid the full
   # five-job matrix; one branch paid it seven times. Costs ~1 minute to avoid ~16.
+  # `website`: does the docs site need compiling? — see `docs-build` at the end of the file.
   #
   # A workflow-level `paths-ignore:` would be simpler and wrong: the five contexts are
   # required by the `master` ruleset, and a workflow that never runs never reports them,
@@ -94,6 +97,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       code: ${{ steps.filter.outputs.code }}
+      website: ${{ steps.filter.outputs.website }}
     steps:
       # The second checkout in this file that keeps its credentials, for the same
       # reason as `test`: the filter step runs `git fetch` and this repo is private,
@@ -120,6 +124,17 @@ jobs:
           else
             echo 'code=false' >> "$GITHUB_OUTPUT"
             echo '::notice::No code paths changed — lint, typecheck, test, build and e2e are skipped.'
+          fi
+          # This file is in the docs-site list for the same reason .github/workflows is
+          # absent from the code list above: `docs-build` is defined here, so a change to
+          # it must run it. Without that, the job's first real execution would be on some
+          # later website/ PR, and an environment fault in it would fail a change that had
+          # nothing to do with it.
+          if printf '%s\n' "$changed" | grep -qE '^(website/|\.github/workflows/ci\.yml$)'; then
+            echo 'website=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'website=false' >> "$GITHUB_OUTPUT"
+            echo '::notice::Nothing under website/ changed — docs-build is skipped.'
           fi
 
   lint:
@@ -298,3 +313,71 @@ jobs:
 
       - name: Run E2E tests
         run: xvfb-run --auto-servernum npx playwright test
+
+  # Compiles the docs site on PRs that change it. Nothing else does: docs.yml builds
+  # website/ only on push to main and workflow_dispatch, so an MDX break passes every PR
+  # check, merges, and surfaces on main after the deploy has already been attempted
+  # (#450). It is easy to hit, because MDX reads a bare `{...}` in prose as a JSX
+  # expression: `{a b}` does not parse and fails compilation, `{source}` parses and then
+  # fails prerender with "source is not defined". Both exit non-zero, and prose editing
+  # is both the likeliest way to reach them and the class of change least likely to
+  # attract build scrutiny.
+  #
+  # A job here rather than a `pull_request` trigger on docs.yml. That workflow holds
+  # `concurrency: group: pages, cancel-in-progress: false`, so PR builds would queue
+  # behind live Pages deploys, and its build job exists to feed an artifact the deploy
+  # job consumes. A workflow-level `paths:` filter is the other rejected option, for the
+  # reason already recorded on `changes`: a workflow that never runs reports no context,
+  # so requiring it would leave every unrelated PR unmergeable. A job skipped by `if:`
+  # still reports `skipped`, which the ruleset accepts.
+  #
+  # Should this be a required check? Yes — recommended, and applying it is the
+  # maintainer's action, because the required-contexts list lives in the `master`
+  # ruleset and not in this repository. Two reasons. ADR-0014 lets a non-evidence agent
+  # PR merge on required checks green plus a pre-pass verdict, so leaving this advisory
+  # keeps the failure mode above open for the highest-volume class of author. And the
+  # skip makes requiring it free: the PRs that touch nothing under website/ report
+  # `skipped`, not pending. Until the context is added to the ruleset this job is
+  # advisory, and a red run has to be read rather than enforced.
+  #
+  # Runs on `pull_request` only, unlike the five jobs above. On push to main docs.yml
+  # already builds the same site before deploying it; building it twice adds no signal.
+  docs-build:
+    runs-on: ubuntu-latest
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.website == 'true'
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: website/pnpm-lock.yaml
+
+      # Every step below runs from inside website/, and has to. It is a deliberately
+      # isolated sub-project with its own lockfile and its own pnpm-workspace.yaml, which
+      # makes it a workspace root — the repo-root `pnpm install` never reaches it, and a
+      # pnpm command run from the root would apply the root workspace's `overrides` and
+      # `onlyBuiltDependencies` rather than the site's own. Same shape as docs.yml's
+      # build job, which is what actually deploys this.
+      - name: Install
+        run: pnpm install --frozen-lockfile
+        working-directory: website
+
+      # `next build` type-checks what it compiles; this checks the whole project with
+      # `tsc --noEmit`, after generating the .source collections and route types the
+      # check needs. It is the command a site author runs locally, and until now no
+      # workflow ran it at all.
+      - name: Typecheck
+        run: pnpm types:check
+        working-directory: website
+
+      - name: Build static export
+        run: pnpm build
+        working-directory: website

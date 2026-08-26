@@ -7,11 +7,11 @@ description: 'Product fit, onboarding, contribution areas, and governance. Start
 
 ## Executive summary
 
-Birdbrain is an open-source, local-first desktop application for capturing, organizing, verifying, and exporting web evidence. It combines an Electron desktop app with a companion Chromium extension so investigators can preserve web pages as MHTML, screenshots, extracted text, metadata, annotations, and provenance inside named Cases. Each Capture is tied into a per-Case Manifest using SHA-256 hashes, chain links, local signatures, and optional RFC 3161 trusted timestamps.
+Birdbrain is an open-source, local-first desktop application for capturing, organizing, verifying, and exporting web evidence. It combines an Electron desktop app with a companion Chromium extension so investigators can preserve web pages as MHTML, screenshots, extracted text, metadata, annotations, and provenance inside named Cases. Each Capture is tied into a per-Case Manifest using SHA-256 hashes, chain links, local signatures, and asynchronous RFC 3161 trusted timestamps.
 
-Web evidence is fragile. Pages change, disappear, personalize, or render differently across browsers and locations. Many investigative tools either depend on hosted platforms, require enterprise licensing, or obscure the evidence workflow behind proprietary systems. Birdbrain takes the opposite path: evidence stays on the Operator's machine by default, formats are inspectable, exports are portable, and the code is available under the MIT license.
+Web evidence is fragile. Pages change, disappear, personalize, or render differently across browsers and locations. Many investigative tools either depend on hosted platforms, require enterprise licensing, or obscure the evidence workflow behind proprietary systems. Birdbrain takes the opposite path: evidence stays on the Operator's machine by default, formats are inspectable, exports are portable, and the code is MIT-licensed.
 
-For adopters, Birdbrain is best understood as a capable evidence workstation, not a hosted case-management system. It is appropriate for investigators and small teams that value local custody and verifiable exports. For contributors, the project offers meaningful work across capture fidelity, verification, export, search, UI, release trust, testing, and privacy-preserving diagnostics.
+For adopters, Birdbrain is best understood as an evidence workstation, not a hosted case-management system. It is appropriate for investigators and small teams that value local custody and verifiable exports. For contributors, the project offers meaningful work across capture fidelity, verification, export, search, UI, release trust, testing, and privacy-preserving diagnostics.
 
 ## Problem and vision
 
@@ -27,7 +27,7 @@ Investigators also face practical constraints:
 - General note-taking and screenshot tools do not model evidence verification.
 - Proprietary formats can make long-term access and independent review harder.
 
-Birdbrain exists to keep a serious capture-and-prove workflow available in a local, inspectable, open-source application.
+Birdbrain exists to keep a capture-and-prove workflow available in a local, MIT-licensed application with inspectable formats.
 
 ### Long-term vision
 
@@ -523,7 +523,7 @@ Birdbrain is a strong fit when a team needs:
 
 - local evidence custody;
 - browser-based web capture;
-- inspectable open-source implementation;
+- an MIT-licensed implementation with inspectable data formats;
 - per-Case organization;
 - search, annotation, tags, notes, and indicator extraction;
 - portable export;
@@ -589,7 +589,7 @@ A future compatibility policy should define supported archive schema versions, v
 
 ## Community and governance
 
-Birdbrain appears to be a solo-maintained open-source project. The README directs users to GitHub issues for bugs and feature requests and asks contributors to open an issue before non-trivial PRs. `SECURITY.md` asks researchers to use GitHub private vulnerability reporting or a fallback email for exploitable vulnerabilities.
+Birdbrain is a solo-maintained project. The README directs users to GitHub issues for bugs and feature requests and asks contributors to open an issue before non-trivial PRs. `SECURITY.md` asks researchers to use GitHub private vulnerability reporting or a fallback email for exploitable vulnerabilities.
 
 The governance model should remain lightweight while the project is beta, but a few norms are worth making explicit:
 
@@ -644,6 +644,6 @@ The most valuable community input will come from real investigative workflows:
 
 Birdbrain is a focused open-source application with a coherent architecture: capture web evidence locally, preserve source artifacts, bind them to a verifiable Manifest, separate integrity from trusted time, and export evidence in forms that can be reviewed outside the app.
 
-For adopters, Birdbrain is not a hosted investigation platform or a legal guarantee. It is a local evidence workstation with unusually transparent custody mechanics, useful investigative workflows, and clear limits.
+For adopters, Birdbrain is not a hosted investigation platform or a legal guarantee. It is a local evidence workstation whose custody mechanics are documented and independently checkable, with clear limits.
 
 For contributors, the project offers meaningful work at multiple levels. Documentation, tests, UI polish, diagnostics, extraction improvements, release hardening, verifier work, and capture-pipeline improvements can all raise trust in the tool. The best contributions will preserve Birdbrain's central discipline: source evidence remains distinct from derived analysis, and lifecycle modules own forensic invariants.

@@ -753,6 +753,14 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
           }
 
           const duplicatedAt = new Date().toISOString()
+          // The duplicate's search text comes from ITS OWN copied .txt bytes,
+          // never the source's `capture_texts` mirror: the mirror is editable
+          // state that can drift from the artifact, and a source with indexed
+          // text but no sidecar would make the copy searchable for bytes it
+          // does not own. Searchable exactly as far as its own artifacts reach.
+          const copiedText = artifacts.txt
+            ? store.readArtifact(source.caseId, duplicateId, 'txt')?.toString('utf-8')
+            : undefined
           const capture = await withCaptureEntry(
             caseDir,
             {
@@ -787,10 +795,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
                 hash: mhtml.hash,
                 timestamp: sourceEntry.timestamp,
                 headers: sourceEntry.headers ? JSON.stringify(sourceEntry.headers) : undefined,
-                // The extracted text mirrors the .txt sidecar this copy just
-                // took and anchored, so the duplicate is searchable exactly as
-                // far as its own artifacts reach.
-                textContent: captureRepo.getCaptureTextContent(source.id) ?? undefined,
+                textContent: copiedText,
                 format: 'mhtml',
                 mhtmlPath: mhtml.rel,
                 screenshotPath: artifacts.png?.rel,

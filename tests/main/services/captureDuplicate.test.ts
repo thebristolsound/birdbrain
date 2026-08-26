@@ -432,6 +432,22 @@ describe('createCaptureLifecycle.duplicate (#827)', () => {
     expect(manifestLines()).toHaveLength(before)
   })
 
+  it("indexes the copy's own .txt bytes, never the source's editable text mirror", async () => {
+    // `capture_texts` is a hand-editable mirror; the copied .txt artifact is
+    // what the duplicate's entry anchors. A drifted mirror must not make the
+    // copy searchable for bytes it does not own.
+    const { getDb } = await import('@main/services/db/core')
+    getDb()
+      .prepare('UPDATE capture_texts SET content = ? WHERE capture_id = ?')
+      .run('drifted mirror text', source.id)
+
+    const result = await lifecycle.duplicate(source.id)
+    if (result.status !== 'duplicated') throw new Error('expected a duplicate')
+
+    const { getCaptureTextContent } = await import('@main/services/db/captureRepo')
+    expect(getCaptureTextContent(result.capture.id)).toBe(TEXT)
+  })
+
   it('refuses a legacy html capture, which has no entry to copy provenance from', async () => {
     const legacy = insertCapture({
       caseId,

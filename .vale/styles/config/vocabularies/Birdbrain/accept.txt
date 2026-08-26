@@ -276,6 +276,7 @@ Maltego
 [Ww]ayfinder
 
 ; Added 2026-08-26 for the wave-4 prep and intake documents
+Cmd
 Ctrl
 [Hh]otfix
 [Mm]isdispatch
@@ -284,3 +285,4 @@ Ctrl
 [Ss]ubagent(s)?
 [Uu]nruled
 [Uu]nscored
+[Uu]ntagging

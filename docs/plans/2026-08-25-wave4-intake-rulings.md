@@ -1,10 +1,11 @@
-# Wave 4 intake: rulings W1-W15
+# Wave 4 intake: rulings W1-W26
 
-Written 2026-08-25, in the intake session that followed the fourteen-reader phase-1 pass. The
-plan this amends is `docs/plans/2026-08-25-wave4-ultracode-prep.md`; phase 1 raised forty-eight
-blocking questions in six themes and this session settled the ones that gate the most work.
+Opened 2026-08-25 in the intake session that followed the fourteen-reader phase-1 pass, and
+finished 2026-08-26. The plan this amends is `docs/plans/2026-08-25-wave4-ultracode-prep.md`;
+phase 1 raised forty-eight blocking questions in six themes. Round 1 (W1-W15) settled the ones
+that gate the most work; round 2 (W16-W26) settled the rest.
 
-Numbered W1-W15 to keep them distinct from wave 3's R1-R23, which still bind. Where a ruling
+Numbered W1-W26 to keep them distinct from wave 3's R1-R23, which still bind. Where a ruling
 below contradicts the prep document, the ruling wins; where a ruling comment posted on an issue
 contradicts both, the comment wins.
 
@@ -128,22 +129,76 @@ can close them, so the dispatcher performs them directly and they take no slot.
 and `--d-head` is now read by nothing, filed as #990. #944's requested hook-boundary case is on
 `main` at `tests/components/useCopyCaptureHash.test.tsx:153-163`.
 
-## Still unruled
+## Round 2, ruled 2026-08-26
 
-The intake settled what gates the most work. These remain open and want a second, shorter
-session before the tickets they belong to are dispatched.
+The maintainer answered the remaining intake questions in one pass. W16 through W26 are their
+rulings, not takings, and they close every question the first round left open except the two
+outstanding inputs recorded at the end.
 
-- **#675** - what `matched_at` do selector matches imported from an archive written at
-  `CASE_ARCHIVE_SCHEMA_VERSION` 4 or earlier carry, and are null rows excluded from the feed?
-  Evidence-consequential, so it is not a taking.
-- **#803** - the a-d split still needs writing, now against a scope with Parts removed by W1 and
-  `snapshot` rows added by W4.
-- **#830** - which drill-down items ship per kind, and whether exporting a single capture is a new
-  capability at all given the selection bar already produces a package at one selected capture.
-- **#405** - who authors the checked-in demo fixture archive and from what content, and whether
-  the tour's delete step removes the case directory or only the row.
-- **#922** - where the Notes context rail mounts, and what signal Suggested uses.
-- **#902** - Ctrl everywhere, or a platform-aware modifier. A product call with prior art both ways.
-- **#963** - build the shared in-flight capture guard, or close it as deferred.
-- **#967** - whether `selectionBar.ts` joins the blocking tier of the evidence path list, which
-  edits the gate itself.
+**W16 (#675) - imported selector matches carry a null `matched_at` and stay out of the feed.**
+Matches restored from an archive written at `CASE_ARCHIVE_SCHEMA_VERSION` 4 or earlier have no
+recorded match time, so the column carries null rather than a substitute, and the recent-activity
+feed excludes null rows. Inheriting the capture's `created_at` or the import time would put a
+fabricated instant on the evidence path, which is the thing the feed exists to report honestly.
+An imported case therefore shows an empty feed until new matches occur, and that is correct.
+
+**W17 (#830) - per-entity export covers notes, selectors, and tags. Capture export is dropped.**
+The selection bar already produces a scoped evidence package when exactly one capture is
+selected, so a fourth kind would be a second code path building the same artifact, with a
+standing obligation to keep the two identical. The ticket shrinks to three kinds and the
+drill-down items follow per kind from W3's evidence-package shape.
+
+**W18 (#405) - an agent captures the demo fixture from a site list the maintainer supplies.**
+The taste call and the work split. The maintainer names the sites; an agent captures them,
+exports the archive, and checks it in. **The list is an outstanding input and #405 cannot start
+without it.**
+
+**W19 (#405) - the tour's delete step removes the case directory as well as the row, for the
+demo case only.** `cases:delete` deletes the database row and leaves the case directory on disk
+(`src/main/services/db/caseRepo.ts:55`, and `src/main/ipcHandlers.ts:173` wires nothing else),
+which is the right default for real evidence. A demo case is disposable, so completing the tour
+leaves nothing behind. This does not change `cases:delete` itself.
+
+**W20 (#922) - the Notes context rail mounts only when a note is selected.** All three blocks are
+per-note, so there is nothing honest to render without one. No permanent empty column.
+
+**W21 (#922) - Suggested is driven by shared tags and shared mention targets.** Both are already
+indexed, `note_references` covers mentions, so it is one query and nothing is inferred. It is a
+weak recommendation and an honest one. The block ships rather than being omitted, so no
+divergence goes to #708.
+
+**W22 (#902) - accelerator hints become platform-aware.** Hints render Cmd on macOS and Ctrl
+elsewhere, from one helper. Every handler already accepts `ctrlKey || metaKey`, so this is a
+display change. It overturns the prior decision recorded in the comment at
+`src/renderer/components/captures/CaptureDetailsPanel.tsx:301`, which is deleted rather than
+left contradicting the code.
+
+**W23 (#665) - the batch-tag picker ships all four gaps.** Create-from-picker, multi-tag apply,
+which tags the selection already carries in part versus in full, and batch untagging. Two IPC additions,
+one of them a `removeFromCaptures` counterpart to `addToCaptures`. This is the only version in
+which the selection bar's Tag action is finished, and a smaller version means designing the same
+popover twice.
+
+**W24 (#963) - build the shared in-flight guard, in batch 4.** The ticket records that nothing
+corrupts, since per-tab suppression holds the latch and the server chains attach requests per
+case and URL, so this is wasted capture work. It is cheap to remove while the selection-bar code
+is already open.
+
+**W25 (#967) - `extension/src/selectionBar.ts` joins the blocking tier.** It injects DOM that can
+land inside captured bytes, which is the class the assessment puts `toast.ts` on the blocking
+tier for (`docs/specs/2026-07-31-evidence-affecting-paths-assessment.md:169`). Same failure mode,
+same treatment. The consequence is that batch 4 needs human review and cannot auto-merge.
+
+**W26 (#803) - the agent drafts the a-d split and the maintainer vetoes.** Written against the
+scope W1 and W4 left, with the Parts tab and its MIME dependency already moved to #991. The
+split is mechanical sequencing once the scope questions are settled, so it costs a read rather
+than a drafting session.
+
+## Outstanding inputs
+
+Not questions any more. Two things the maintainer owes before the tickets they gate can start.
+
+- **#405 needs the site list** (W18). Nothing else blocks it.
+- **PR #961's ADR-0007 override record needs the maintainer's dispositions.** The agent drafts
+  the record with the finding and the underlying defect (#1006) written up; the dispositions
+  themselves are not an agent's to write.

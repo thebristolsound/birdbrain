@@ -170,12 +170,12 @@ dispatch, not during it.
   `tests/components/useCopyCaptureHash.test.tsx:153-163`, and #952's own body concedes it. Close
   as done.
 
-### The intake owes forty-eight rulings
+### The intake's forty-eight rulings are settled
 
-That is not a number to answer conversationally, and wave 3's precedent is explicit: rulings come
-before readers can say anything useful, and its phase-2 intake settled twenty-three in one
-session. Wave 4's questions cluster into six themes, which is the shape the intake session should
-take rather than a flat list.
+**Closed 2026-08-26.** `docs/plans/2026-08-25-wave4-intake-rulings.md` holds W1-W26, and every
+ruling is posted as a comment on its issue, where it outranks both that document and this one.
+Round 1 settled W1-W15 on 2026-08-25; round 2 settled W16-W26 the next day. The six themes below
+are kept as the record of what was asked and why.
 
 1. **Rescan and match semantics (#829, #675).** Is a rescan additive or clear-then-rescan, bounded
    at `RETRO_MAX_CAPTURES` or unbounded, available on a selector that is turned off? The clear-first shape
@@ -216,7 +216,7 @@ re-read against the review fallout the merges produced before either is dispatch
 | 1. Docs corrections | #679, #908 | wave-1 notes' 18 `/tmp` citations; the corrections brief's "six V2 prose documents" | none | now |
 | 2. Renderer polish plus a KAT axis | #688, #864, #952 | Dashboard/RecentActivityFeed/NotesOverview, CaptureList empty state, `useCopyCaptureHash` field provenance | none | now |
 | 3. #852 alone | #852 | extension tag/note writes leave React Query caches stale | blocking | now (#955 and #958 merged) |
-| 4. Selection-bar follow-ups | #962, #968, #963 when ruled in, plus the #961 fallout: #992, #993, #994, #1002, #1003, #1006, #1007, #1008, #1009 | `extension/src/background.ts`, `selectionBar.ts` | blocking | now (#961 merged) |
+| 4. Selection-bar follow-ups | #962, #968, #963 (ruled in by W24), plus the #961 fallout: #992, #993, #994, #1002, #1003, #1006, #1007, #1008, #1009 | `extension/src/background.ts`, `selectionBar.ts` | blocking, and W25 puts `selectionBar.ts` on the tier explicitly | now (#961 merged) |
 | 5. Duplicate-capture follow-ups | #970, #971, plus the #958 fallout: #998, #999, #1000, #1001, #1015, #1017 | `captureLifecycle.ts`, the duplicate KAT, the design doc, `certification.ts`, `lib/api/captures.ts` | blocking | now (#958 merged) |
 | 6. #957 alone | #957 | tag-delete confirmation reusing the merge-dialog copy | none while it stays out of `tagRepo.ts` | now (#955 merged) |
 
@@ -299,12 +299,15 @@ builds.
 - **Three issues were filed by the reader pass** (#984, #985, #987) under the maintainer's
   GitHub identity, because workflow subagents inherit the session's `gh` credentials. The findings
   are sound; the provenance is not what the pipeline intends. Tracked as #989.
-- **Two process gaps opened on 2026-08-26 and both bind wave 4.** #1016: nothing claims a fix
-  round on an already-open PR, so two sessions worked PR #958's round 3 in parallel and one hour
-  of implementation was thrown away. Until that claim exists, wave 4 dispatches from one session
-  only. #1013: `mentionSuggestion.test.tsx` throws an unhandled `getClientRects` error that fails
-  `pnpm test:coverage`, which is inside the verify block every wave-4 PR must pass, so it will
-  fail loops at random until it is fixed. Dispatch it early.
+- **Two process gaps bind wave 4, and the maintainer ruled the order on 2026-08-26.** #1013 goes
+  first: `mentionSuggestion.test.tsx` throws an unhandled `getClientRects` error that fails
+  `pnpm test:coverage`, which is inside the verify block every wave-4 PR must pass, so any work
+  started before it fails loops at random. #521 goes second: the dispatch routine takes no claim
+  on the occupied-slot path, which is how two sessions worked PR #958's round 3 in parallel and
+  threw away an hour of Opus implementation. It is built before track B dispatches, because one
+  cycle spent on it returns the other two of the three slots. #1016 filed the same defect on
+  2026-08-26 and is closed in favour of #521, which filed it on 2026-08-17 with the fuller
+  acceptance criteria.
 - **PR #961 merged over a `failure` pre-pass verdict with no ADR-0007 override record.** The
   deferred finding is that the Evidence impact section overclaimed the navigation guard, and the
   underlying defect is filed as #1006. The record itself is still owed, and it needs the

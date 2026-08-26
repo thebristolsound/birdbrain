@@ -65,9 +65,11 @@ Birdbrain's readers include people documenting things that powerful people would
 documented, and a wrong claim about what the tool protects is not a cosmetic error. Two rules are
 absolute:
 
-- State what a mechanism proves *and* what it does not. A verified hash chain shows the manifest
-  was not edited without the installation's signing key; it does not show the captured page was
-  genuine.
+- State what a mechanism proves *and* what it does not. A verified hash chain with signed (v2+)
+  entries shows the manifest was not edited without the installation's signing key. It does not
+  constrain the Operator, who holds that key and can mint an internally consistent chain; it does
+  not cover legacy all-v1 manifests, whose entries predate signing and verify without one; and it
+  does not show the captured page was genuine.
 - No unqualified assurance words. "Tamper-proof", "court-admissible", "forensically sound", and
   "verified" never stand alone — name the standard and version, or describe the concrete property
   instead.

@@ -222,6 +222,38 @@ process and tooling rather than product, and #967 in particular edits the eviden
 One label gap to fix before batch 1 dispatches: #899, #908 and #708 carry `documentation` and
 `redesign` but not `ready-for-agent`.
 
+## Model and effort
+
+**Ruled 2026-08-25 by the maintainer, on cost.** Opus is the ceiling for every agent this wave
+runs: implementers, reviewers, planning readers, and the dispatcher itself. Fable is used only as
+an advisor, meaning the interactive `advisor` consult, and never as a fleet model. A fleet stage
+pointed at a quota-exhausted model fails the run rather than degrading, which is the reason this
+is a hard rule and not a preference. No `Agent` or
+`Workflow` call in wave 4 passes a model override to raise a stage past the session model.
+
+**This reverses the wave-3 plan's phase-3 guidance**, which set `fable` for the adversarial verify
+stage on the strength of the doc-curator A/B in
+`docs/plans/2026-08-16-codex-doc-curator.md` (n=3x3, Opus invented an unsupported claim twice,
+Fable never did). That reasoning was never wrong; it is outranked by the monthly budget, and the
+A/B measured prose editing under numeric limits rather than code review, which the wave-3
+document itself flagged as a bet rather than a result.
+
+The exposure the reversal accepts is real and worth naming rather than glossing: the fabricated
+finding is the failure mode Fable was chosen to avoid, and wave 4 carries eleven blocking-tier
+tickets. Two things reduce it. Every pre-pass verdict names the sha it read and lists what it did
+not check, so a reviewer's claims can be checked rather than trusted. And #986 records the harder
+lesson from wave 3, that a single Opus reviewer approved #961 over an evidence-attribution defect
+a separate Codex round then caught, which says the instrument needs a second reporter more than it
+needs a more expensive one.
+
+**Effort is `max` throughout, and that is a reliability rule before it is a quality one.** Wave 3
+tiered effort and this wave does not, because the tiering was a savings argument and the saving is
+no longer the binding constraint. The binding constraint is that a stage which routes to a model
+whose monthly quota is spent does not degrade, it fails, and it fails partway through a run that
+has already spent its budget getting there. Opus at `max` is the ceiling and the floor for every
+substantive stage: implementation, review, and any future reader pass. Nothing in wave 4 reaches
+past it.
+
 ## Track shape
 
 Three slots, and the constraint is not agent throughput. Eleven of fourteen reports are

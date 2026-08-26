@@ -784,6 +784,24 @@ describe('createCaptureLifecycle.duplicate on an imported case (#827)', () => {
     expect(manifestLinesFor(caseId)).toHaveLength(before)
   })
 
+  it('refuses a remapped row when the id map is gone from the case directory', async () => {
+    // Nothing recreates the map, and the chain cannot say what a missing file
+    // used to contain — so a row whose id the import changed becomes
+    // unresolvable, and the binding refuses rather than assuming.
+    const { caseId, capture } = await importArchive()
+    rmSync(join(importedCaseDir(caseId), IMPORT_ID_MAP_FILENAME))
+    const before = manifestLinesFor(caseId).length
+
+    const result = await lifecycle.duplicate(capture.id)
+
+    expect(result).toEqual({
+      status: 'rejected',
+      reason: 'not_verified',
+      detail: 'entry-mismatch'
+    })
+    expect(manifestLinesFor(caseId)).toHaveLength(before)
+  })
+
   it('refuses when the id map does not hash to what the import entry anchors', async () => {
     // The map is a plain file in the case directory. It is trusted only because
     // the signed import entry records its digest — rewritten, it says nothing,

@@ -16,16 +16,22 @@ absorbs that residue. Its completion test is not "the board is empty" but "no op
 
 ## Program state
 
-Verified against `origin/main` at `e4d16e3b` on 2026-08-25.
+Re-verified against `origin/main` at `06eb76e5` on 2026-08-26. The first pass was written
+against `e4d16e3b` on 2026-08-25, before the three wave-3 PRs merged; every figure below moved.
 
-- `LATEST_SCHEMA_VERSION` is **32** (`src/main/services/db/core.ts:6`). PR #958 adds v33.
-- `CASE_ARCHIVE_SCHEMA_VERSION` is **4** (`src/main/services/caseArchive.ts:72`). The wave-3
-  document said 3; it was bumped during that wave.
-- **Three wave-3 PRs are open and unmerged**, all evidence-affecting, all awaiting maintainer
-  review: #955 (closes #828, merge tags), #958 (closes #827, duplicate capture, carries the v33
-  migration), #961 (closes #393, extension in-page selection bar).
-- 348 issues are open in total, 207 of them `ready-for-agent`. Only 30 carry `redesign`. The
+- `LATEST_SCHEMA_VERSION` is **33** (`src/main/services/db/core.ts:6`). PR #958 took v33 on merge.
+- `CASE_ARCHIVE_SCHEMA_VERSION` is **5** (`src/main/services/caseArchive.ts:80`). PR #958 bumped
+  it from 4 so an older reader cannot mistake a duplicate entry for a tampered chain.
+- **All three wave-3 PRs merged on 2026-08-26**: #955 (closed #828, merge tags), #958 (closed
+  #827, duplicate capture), #961 (closed #393, extension in-page selection bar). Nothing from
+  wave 3 is queued at the human review gate, and all three dispatch slots are free.
+- 368 issues are open in total, 208 of them `ready-for-agent`. Only 25 carry `redesign`. The
   backlog outside this programme is a separate problem and this document does not address it.
+- **The three merges filed roughly twenty-five new issues between them**, review fallout that
+  postdates this document's intake list and sits in no batch below. The intake session absorbs
+  them: #992-#994 and #1002-#1009 are batch-4 territory, #998-#1001, #1015 and #1017 are batch-5
+  territory, and #1013 is a test flake that fails `pnpm test:coverage` and therefore every
+  wave-4 verify loop until it is fixed.
 
 ### Rulings that carry forward
 
@@ -35,7 +41,7 @@ conflict. The four that shape wave 4 most:
 
 - **R16, migration numbers are assigned by merge order.** Migrations are append-only, so whichever
   branch merges first takes the next version and bumps `LATEST_SCHEMA_VERSION`. **No number in
-  this document is a pin.** With #958 unmerged and carrying v33, any wave-4 ticket needing schema
+  this document is a pin.** With #958 merged and holding v33, any wave-4 ticket needing schema
   takes "the next version at merge" and nothing else.
 - **R13, capability tickets land as small independent PRs**, and #701's registry absorbs late
   arrivals at near-zero cost. That is why the registry does not gate the inline routes.
@@ -200,20 +206,31 @@ take rather than a flat list.
 
 ### Batches for the small fixes
 
-The maintainer ruled these into grouped PRs. Verified against `origin/main`; two members were
-dropped as dead (preceding section) and several cannot start until their parent PR merges.
+The maintainer ruled these into grouped PRs. Verified against `origin/main` at `06eb76e5`; two
+members were dropped as dead (preceding section). **Every "after PR #N" block cleared on
+2026-08-26**, so all six batches are dispatchable, and batches 4 and 5 need their membership
+re-read against the review fallout the merges produced before either is dispatched.
 
 | Batch | Members | Shared ground | Evidence tier | Ready when |
 | --- | --- | --- | --- | --- |
 | 1. Docs corrections | #679, #908 | wave-1 notes' 18 `/tmp` citations; the corrections brief's "six V2 prose documents" | none | now |
 | 2. Renderer polish plus a KAT axis | #688, #864, #952 | Dashboard/RecentActivityFeed/NotesOverview, CaptureList empty state, `useCopyCaptureHash` field provenance | none | now |
-| 3. #852 alone | #852 | extension tag/note writes leave React Query caches stale | blocking | after #955 and #958 (shared `ipc.ts`, `preload/index.ts`) |
-| 4. Selection-bar follow-ups | #962, #968, and #963 when ruled in | `extension/src/background.ts`, `selectionBar.ts` | blocking | after PR #961 |
-| 5. Duplicate-capture follow-ups | #970, #971, #972 | `captureLifecycle.ts`, the duplicate KAT, the design doc | blocking | after PR #958 |
-| 6. #957 alone | #957 | tag-delete confirmation reusing the merge-dialog copy | none while it stays out of `tagRepo.ts` | after PR #955 |
+| 3. #852 alone | #852 | extension tag/note writes leave React Query caches stale | blocking | now (#955 and #958 merged) |
+| 4. Selection-bar follow-ups | #962, #968, #963 when ruled in, plus the #961 fallout: #992, #993, #994, #1002, #1003, #1006, #1007, #1008, #1009 | `extension/src/background.ts`, `selectionBar.ts` | blocking | now (#961 merged) |
+| 5. Duplicate-capture follow-ups | #970, #971, plus the #958 fallout: #998, #999, #1000, #1001, #1015, #1017 | `captureLifecycle.ts`, the duplicate KAT, the design doc, `certification.ts`, `lib/api/captures.ts` | blocking | now (#958 merged) |
+| 6. #957 alone | #957 | tag-delete confirmation reusing the merge-dialog copy | none while it stays out of `tagRepo.ts` | now (#955 merged) |
 
-Scope #952 to `useCopyCaptureHash.test.tsx` only: `CapturesRoute.test.tsx` is rewritten by PR
-#958, and touching both is a merge conflict nobody needs.
+**Batch 4 and batch 5 are too large to dispatch as written.** Each now names nine and eight
+issues against one or two files, which is a merge conflict with itself, and #992 is a security
+finding that should not wait behind eight cosmetic ones. Splitting them is intake work, not a
+call this document makes.
+
+#972 left batch 5: PR #958 fixed it before merge and it is closed. #1000 is in batch 5 by subject
+but the schema tightening it asks for is verifier-visible and spans both the `duplicate` and
+`background` method families, so it likely wants its own PR rather than a seat in a grouped one.
+
+Scope #952 to `useCopyCaptureHash.test.tsx` only: `CapturesRoute.test.tsx` was rewritten by PR
+#958, so re-read that file before touching either.
 
 **Not batched, and why.** #956 stays deferred to #701's Radix adoption, since fixing it by hand is
 work #701 deletes. #899 and #708 close by posting GitHub comments rather than by any diff, so no
@@ -265,8 +282,8 @@ at that gate. The tracks exist to keep non-evidence work flowing while evidence 
 - **Track B, renderer and non-evidence.** #701 (which absorbs #952's axis and closes #944 as
   already-done), #704, then batches 1 and 2. This is the track that fills slots while track A
   waits, and it is the only track that can auto-merge.
-- **Track C, follow-ups behind the open PRs.** Batches 4, 5 and 6 unblock the moment #961, #958
-  and #955 merge, in that order. Batch 3 waits for two of them.
+- **Track C, follow-ups behind the wave-3 PRs.** Unblocked as of 2026-08-26: #961, #958 and #955
+  all merged, so batches 3, 4, 5 and 6 are dispatchable. Batches 4 and 5 need splitting first.
 
 Merge order is not fixed beyond the tracks, because it depends on rulings the intake has not made.
 **#405 goes last and alone**, unchanged from wave 3: it spotlights screens the rest of the wave
@@ -281,4 +298,14 @@ builds.
   largest unknown, `very-large`, evidence-affecting, and six of its questions are unanswered.
 - **Three issues were filed by the reader pass** (#984, #985, #987) under the maintainer's
   GitHub identity, because workflow subagents inherit the session's `gh` credentials. The findings
-  are sound; the provenance is not what the pipeline intends.
+  are sound; the provenance is not what the pipeline intends. Tracked as #989.
+- **Two process gaps opened on 2026-08-26 and both bind wave 4.** #1016: nothing claims a fix
+  round on an already-open PR, so two sessions worked PR #958's round 3 in parallel and one hour
+  of implementation was thrown away. Until that claim exists, wave 4 dispatches from one session
+  only. #1013: `mentionSuggestion.test.tsx` throws an unhandled `getClientRects` error that fails
+  `pnpm test:coverage`, which is inside the verify block every wave-4 PR must pass, so it will
+  fail loops at random until it is fixed. Dispatch it early.
+- **PR #961 merged over a `failure` pre-pass verdict with no ADR-0007 override record.** The
+  deferred finding is that the Evidence impact section overclaimed the navigation guard, and the
+  underlying defect is filed as #1006. The record itself is still owed, and it needs the
+  maintainer's dispositions rather than an agent's.

@@ -274,3 +274,13 @@ Vonage
 [Gg]roundable
 Maltego
 [Ww]ayfinder
+
+; Added 2026-08-26 for the wave-4 prep and intake documents
+Ctrl
+[Hh]otfix
+[Mm]isdispatch
+[Oo]verclaim(s|ed|ing)?
+[Rr]epoint(s|ed|ing)?
+[Ss]ubagent(s)?
+[Uu]nruled
+[Uu]nscored

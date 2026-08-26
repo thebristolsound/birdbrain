@@ -8,8 +8,8 @@
 // in the capture suppression protocol on both sides (#386): it registers a
 // teardown so every strip removes it, and it consults the page-side latch
 // before every injection so a mouseup that fires mid-capture cannot put it
-// back between the strip and the frames. The host id is mirrored by hand in
-// captureHygiene.ts's removeInjectedBirdbrainUi.
+// back between the strip and the frames. The host marker attribute is
+// mirrored by hand in captureHygiene.ts's removeInjectedBirdbrainUi.
 
 import {
   isCaptureUiSuppressed,
@@ -20,6 +20,21 @@ import { isActionableSelection, normalizeSelection } from '@shared/selectionKind
 import type { SelectionActionKind, SelectionActionResponse, SelectionBarState } from './messages'
 
 export const SELECTION_BAR_ID = 'birdbrain-selection-bar'
+
+/**
+ * How the bar host is recognised as extension-owned.
+ *
+ * The id alone is not ownership: a page is free to carry an element with any
+ * id, and every lookup here also feeds a removal that runs before MHTML and
+ * screenshot collection — so matching on the id would delete a page-owned
+ * node out of the evidence. The attribute is set only by `render()` below,
+ * which is the one place a host is created. A page can still forge it; that
+ * is the same residual limit `captureHygiene.ts` documents for the highlight
+ * style nodes, and there is no in-page proof of ownership better than this.
+ */
+export const SELECTION_BAR_MARKER = 'data-birdbrain-ui'
+export const SELECTION_BAR_MARKER_VALUE = 'selection-bar'
+export const SELECTION_BAR_SELECTOR = `div[${SELECTION_BAR_MARKER}="${SELECTION_BAR_MARKER_VALUE}"]`
 
 const SUCCESS_HIDE_MS = 2500
 const ERROR_HIDE_MS = 6000
@@ -136,7 +151,7 @@ function scheduleHide(ms: number): void {
 }
 
 function removeHost(): void {
-  document.getElementById(SELECTION_BAR_ID)?.remove()
+  document.querySelector(SELECTION_BAR_SELECTOR)?.remove()
 }
 
 function barMarkup(current: BarState): string {
@@ -193,10 +208,11 @@ function render(): void {
     return
   }
 
-  let host = document.getElementById(SELECTION_BAR_ID)
+  let host = document.querySelector<HTMLElement>(SELECTION_BAR_SELECTOR)
   if (!host) {
     host = document.createElement('div')
     host.id = SELECTION_BAR_ID
+    host.setAttribute(SELECTION_BAR_MARKER, SELECTION_BAR_MARKER_VALUE)
     host.attachShadow({ mode: 'open' })
     document.body.appendChild(host)
   }
@@ -272,7 +288,7 @@ async function showFromSelection(): Promise<void> {
   }
   if (isCaptureUiSuppressed()) return
 
-  const rect = selection.getRangeAt(0).getBoundingClientRect()
+  const text = normalizeSelection(raw)
   const barState = await queryBarState()
   // Fail closed on an unreachable worker: no bar at all, not a disabled one.
   if (barState === null) return
@@ -280,12 +296,23 @@ async function showFromSelection(): Promise<void> {
   if (isCaptureUiSuppressed()) return
   if (isBusy()) return
 
+  // Re-read the selection too. Waking the MV3 service worker can take long
+  // enough for the operator to collapse or replace it, and this continuation
+  // is not cancelled by the later mouseup (the bar is not yet `ready`, so
+  // that one is not suppressed either) — so without this the bar would raise
+  // against text the operator is no longer looking at, and a click would
+  // create a selector, tag or quote from it. A changed selection is dropped
+  // rather than adopted: the mouseup that produced it runs its own pass.
+  const settled = window.getSelection()
+  if (!settled || settled.rangeCount === 0 || settled.isCollapsed) return
+  if (normalizeSelection(settled.toString()) !== text) return
+
   const enabled = barState.connected && barState.activeCaseId !== null
-  const { x, y } = barPosition(rect)
+  const { x, y } = barPosition(settled.getRangeAt(0).getBoundingClientRect())
   clearHideTimeout()
   state = {
     phase: 'ready',
-    text: normalizeSelection(raw),
+    text,
     x,
     y,
     enabled,
@@ -331,7 +358,15 @@ async function runAction(action: SelectionActionKind): Promise<void> {
 
 function onMouseUp(event: MouseEvent): void {
   // Clicks on the bar itself are handled by its own buttons.
-  if (event.composedPath().some((t) => t instanceof HTMLElement && t.id === SELECTION_BAR_ID)) {
+  if (
+    event
+      .composedPath()
+      .some(
+        (t) =>
+          t instanceof HTMLElement &&
+          t.getAttribute(SELECTION_BAR_MARKER) === SELECTION_BAR_MARKER_VALUE
+      )
+  ) {
     return
   }
   // Let the browser settle the selection this mouseup produced first.
@@ -354,8 +389,13 @@ function teardownForCapture(): void {
 }
 
 export function initSelectionBar(): void {
-  document.addEventListener('mouseup', onMouseUp)
-  document.addEventListener('keydown', onKeyDown)
+  // Capture phase on purpose: a page whose editor calls stopPropagation() on
+  // mouseup or keydown would otherwise suppress the bar, and its Escape
+  // dismissal, entirely — on the pages most worth investigating. Neither
+  // listener calls preventDefault or stopPropagation, so running ahead of the
+  // page's own handlers changes nothing the page can observe.
+  document.addEventListener('mouseup', onMouseUp, true)
+  document.addEventListener('keydown', onKeyDown, true)
   registerCaptureUiTeardown(teardownForCapture)
   // The restore half of the round trip (#386): once the background says no
   // capture on the tab is collecting frames, put back what was stripped —

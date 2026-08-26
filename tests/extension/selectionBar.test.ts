@@ -11,7 +11,7 @@ import {
   releaseCaptureUiSuppression
 } from '../../extension/src/captureSuppression'
 import { removeInjectedBirdbrainUi } from '../../extension/src/captureHygiene'
-import { SELECTION_BAR_ID } from '../../extension/src/selectionBar'
+import { SELECTION_BAR_ID, SELECTION_BAR_SELECTOR } from '../../extension/src/selectionBar'
 import type { SelectionActionResponse } from '@extension/messages'
 
 type SendResponse = (response?: unknown) => void
@@ -64,8 +64,10 @@ async function mouseUp(): Promise<void> {
   await flushTimers()
 }
 
+// Looked up the way ownership is decided — by the marker render() sets, never
+// by the id a page is free to carry.
 function bar(): HTMLElement | null {
-  return document.getElementById(SELECTION_BAR_ID)
+  return document.querySelector<HTMLElement>(SELECTION_BAR_SELECTOR)
 }
 
 function barButtons(): HTMLButtonElement[] {
@@ -351,6 +353,96 @@ describe('capture suppression round trip (#386)', () => {
     expect(bar()).not.toBeNull()
 
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    expect(bar()).toBeNull()
+  })
+})
+
+describe('the bar is the page\'s guest, not its owner', () => {
+  it('never adopts or removes a page-owned element carrying the bar id', async () => {
+    // An id is not ownership. Adopting the node would break the bar (no shadow
+    // root to render into) and the strip that runs before every MHTML and
+    // screenshot frame would delete a page element out of the evidence.
+    setPageHtml(
+      '<main><p>Report abuse to evil@example.com immediately.</p>' +
+        `<div id="${SELECTION_BAR_ID}">Page-owned, not ours</div></main>`
+    )
+    const decoy = document.querySelector<HTMLElement>('main > div')!
+    selectParagraph()
+    await mouseUp()
+
+    expect(bar()).not.toBeNull()
+    expect(bar()).not.toBe(decoy)
+    expect(decoy.shadowRoot).toBeNull()
+
+    removeInjectedBirdbrainUi()
+    expect(bar()).toBeNull()
+    expect(document.body.contains(decoy)).toBe(true)
+    expect(decoy.textContent).toBe('Page-owned, not ours')
+  })
+
+  it('raises the bar on a page that stops mouseup propagation', async () => {
+    // Custom editors routinely swallow mouseup, and they are exactly the pages
+    // worth investigating; a bubble-phase listener would never run there.
+    document.querySelector('main')!.addEventListener('mouseup', (e) => e.stopPropagation())
+    selectParagraph()
+    document.querySelector('p')!.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    await flushTimers()
+
+    expect(barButtons().map((b) => b.dataset.action)).toEqual(['selector', 'tag', 'quote'])
+  })
+})
+
+describe('a slow service worker cannot strand the bar on stale text', () => {
+  it('renders nothing when the selection collapsed during the state query', async () => {
+    let resolveState: ((value: unknown) => void) | null = null
+    sendMessageMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveState = resolve
+        })
+    )
+
+    selectParagraph()
+    document.dispatchEvent(new MouseEvent('mouseup'))
+    await flushTimers()
+    expect(bar()).toBeNull()
+
+    clearSelection()
+    resolveState!({ connected: true, activeCaseId: 'case-1' })
+    await flushTimers()
+
+    expect(bar()).toBeNull()
+  })
+
+  it('renders nothing when the selection was replaced during the state query', async () => {
+    setPageHtml(
+      '<main><p>Report abuse to evil@example.com immediately.</p>' +
+        '<p id="second">A different passage entirely.</p></main>'
+    )
+    let resolveState: ((value: unknown) => void) | null = null
+    sendMessageMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveState = resolve
+        })
+    )
+
+    selectParagraph()
+    document.dispatchEvent(new MouseEvent('mouseup'))
+    await flushTimers()
+
+    // The operator moved on before the worker answered
+    const range = document.createRange()
+    range.selectNodeContents(document.getElementById('second')!)
+    const selection = window.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+
+    resolveState!({ connected: true, activeCaseId: 'case-1' })
+    await flushTimers()
+
+    // Dropped, not adopted: the mouseup that produced the new selection runs
+    // its own pass rather than this continuation inheriting it
     expect(bar()).toBeNull()
   })
 })

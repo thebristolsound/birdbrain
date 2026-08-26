@@ -8,7 +8,12 @@ import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest'
 import { showToast, updateToast } from '../../extension/src/toast'
 import { removeInjectedBirdbrainUi } from '../../extension/src/captureHygiene'
 import { releaseCaptureUiSuppression } from '../../extension/src/captureSuppression'
-import { SELECTION_BAR_ID } from '../../extension/src/selectionBar'
+import {
+  SELECTION_BAR_ID,
+  SELECTION_BAR_MARKER,
+  SELECTION_BAR_MARKER_VALUE,
+  SELECTION_BAR_SELECTOR
+} from '../../extension/src/selectionBar'
 import type { ActiveCaseSelectors } from '@shared/types'
 import type { SelectorMatchInfo } from '@shared/schemas'
 
@@ -85,7 +90,7 @@ async function raiseSelectionBar(): Promise<void> {
   document.dispatchEvent(new MouseEvent('mouseup'))
   await new Promise((resolve) => setTimeout(resolve, 0))
   await new Promise((resolve) => setTimeout(resolve, 0))
-  expect(document.getElementById(SELECTION_BAR_ID)).not.toBeNull()
+  expect(document.querySelector(SELECTION_BAR_SELECTOR)).not.toBeNull()
   window.getSelection()?.removeAllRanges()
 }
 
@@ -170,7 +175,7 @@ describe('PREPARE_FOR_CAPTURE (#379)', () => {
     expect(responses).toContainEqual({ ok: true })
 
     expect(document.getElementById('birdbrain-capture-toast')).toBeNull()
-    expect(document.getElementById(SELECTION_BAR_ID)).toBeNull()
+    expect(document.querySelector(SELECTION_BAR_SELECTOR)).toBeNull()
     expect(document.querySelectorAll('mark.birdbrain-selector-highlight').length).toBe(0)
     expect(document.querySelectorAll('style[data-birdbrain-highlight]').length).toBe(0)
     // The randomized style container host carries a birdbrain- id prefix; only
@@ -178,6 +183,37 @@ describe('PREPARE_FOR_CAPTURE (#379)', () => {
     const remaining = Array.from(document.querySelectorAll('[id^="birdbrain-"]'), (n) => n.id)
     expect(remaining).toEqual(['birdbrain-styles-page'])
     // Known answer: what saveAsMHTML would serialise is the original page
+    expect(document.documentElement.outerHTML).toBe(baseline)
+  })
+
+  it('leaves a page-owned element carrying the bar id in the serialised DOM', async () => {
+    // The strip runs before saveAsMHTML and before every screenshot slice, so
+    // matching the bar host on its id alone would delete a page's own element
+    // out of the record the capture exists to preserve. Ownership is the
+    // marker attribute render() sets, and nothing else carries it.
+    setPageHtml(
+      '<main><p>Report abuse to evil@example.com immediately.</p>' +
+        `<div id="${SELECTION_BAR_ID}">Page-owned, not ours</div></main>`
+    )
+    const baseline = document.documentElement.outerHTML
+
+    showToast({ status: 'capturing' })
+    await raiseSelectionBar()
+    expect(document.querySelector(SELECTION_BAR_SELECTOR)).not.toBeNull()
+
+    expect(dispatch({ type: 'PREPARE_FOR_CAPTURE' })).toContainEqual({ ok: true })
+
+    // Known answer: the extension's own bar is gone, the page's node is not,
+    // and what saveAsMHTML would serialise is the original page
+    expect(document.querySelector(SELECTION_BAR_SELECTOR)).toBeNull()
+    expect(document.documentElement.outerHTML).toBe(baseline)
+
+    // The executeScript fallback an orphaned script gets is held to the same
+    // answer — it is a separate hand-maintained list, not the same code path.
+    // The latch the strip raised has to come down first, or nothing re-raises.
+    releaseCaptureUiSuppression()
+    await raiseSelectionBar()
+    removeInjectedBirdbrainUi()
     expect(document.documentElement.outerHTML).toBe(baseline)
   })
 
@@ -291,6 +327,7 @@ describe('screenshot paths suppress before any frame (#386)', () => {
         // still hold its host in the DOM when a slice comes due
         const orphanBar = document.createElement('div')
         orphanBar.id = SELECTION_BAR_ID
+        orphanBar.setAttribute(SELECTION_BAR_MARKER, SELECTION_BAR_MARKER_VALUE)
         document.body.appendChild(orphanBar)
       }
       return {}

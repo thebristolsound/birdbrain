@@ -420,6 +420,12 @@ const ManifestCaptureEntrySchema = z
     tls: TlsCertChainResultSchema.optional(),
     method: z.enum(CAPTURE_METHODS).optional(),
     supersedesCaptureId: z.string().optional(),
+    // Duplication provenance (#827), carried by entries whose method is
+    // 'duplicate': the capture whose bytes were copied, and when the copy was
+    // made. Both optional and omitted from every other entry, so legacy and
+    // ordinary capture bodies — and their chain hashes — are unchanged.
+    duplicateOfCaptureId: z.string().optional(),
+    duplicatedAt: z.string().optional(),
     consentSuppression: z.enum(CONSENT_SUPPRESSIONS).optional(),
     sizeBytes: z.number(),
     operatorId: z.string(),

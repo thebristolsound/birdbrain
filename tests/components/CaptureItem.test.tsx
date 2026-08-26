@@ -117,6 +117,22 @@ describe('CaptureItem — detailed view', () => {
       'Background recapture'
     )
   })
+
+  it('marks duplicates in the meta row, so two identical rows are told apart (#827)', () => {
+    renderItem({ capture: { ...capture, method: 'duplicate', duplicateOfCaptureId: 'cap0' } })
+    expect(screen.getByTestId('duplicate-thumb-badge').getAttribute('title')).toBe(
+      'Duplicate of another capture'
+    )
+    expect(screen.queryByTestId('recapture-thumb-badge')).toBeNull()
+  })
+
+  it('names the duplicate marker in the accessibility tree, not just on hover (#827)', () => {
+    renderItem({ capture: { ...capture, method: 'duplicate', duplicateOfCaptureId: 'cap0' } })
+    // A screen reader must be able to tell a byte copy from a second sighting:
+    // the badge carries visually hidden text, and the icon stays decorative.
+    expect(screen.getByText('Duplicate of another capture')).not.toBeNull()
+    expect(screen.getByTestId('duplicate-thumb-badge').getAttribute('aria-hidden')).toBeNull()
+  })
 })
 
 describe('CaptureItem — list view', () => {
@@ -142,6 +158,19 @@ describe('CaptureItem — list view', () => {
     cleanup()
     const favourited = renderItem({ view: 'list', isFavorite: true })
     expect(favourited.container.querySelectorAll('svg.fill-amber-400')).toHaveLength(1)
+  })
+
+  it('still marks a duplicate in the compact row, with accessible text (#827)', () => {
+    renderItem({
+      view: 'list',
+      capture: { ...capture, method: 'duplicate', duplicateOfCaptureId: 'cap0' }
+    })
+    // The compact view drops the thumbnail and meta row, but a byte copy must
+    // never read as a second sighting in ANY view — the marker stays.
+    expect(screen.getByTestId('duplicate-list-badge').getAttribute('title')).toBe(
+      'Duplicate of another capture'
+    )
+    expect(screen.getByText('Duplicate of another capture')).not.toBeNull()
   })
 })
 

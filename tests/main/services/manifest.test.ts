@@ -655,6 +655,120 @@ describe('withCaptureEntry', () => {
     expect(ManifestEntrySchema.safeParse(entry).success).toBe(true)
     expect(verifyManifestChain(tempDir).valid).toBe(true)
   })
+
+  it('omits duplicateOfCaptureId and duplicatedAt when absent (#827 grandfathering)', async () => {
+    await withCaptureEntry(tempDir, baseCtx, () => undefined)
+    const lines = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim().split('\n')
+    const entry = JSON.parse(lines[0])
+    // OMITTED, not '' / null: every entry written before #827 must canonicalize
+    // to the same bytes it did then, or its chain hash moves and packages
+    // exported earlier stop verifying.
+    expect('duplicateOfCaptureId' in entry).toBe(false)
+    expect('duplicatedAt' in entry).toBe(false)
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
+  })
+
+  it('anchors duplicateOfCaptureId and duplicatedAt in the entry body when present (#827)', async () => {
+    await withCaptureEntry(
+      tempDir,
+      {
+        ...baseCtx,
+        captureId: 'cap-2',
+        method: 'duplicate',
+        duplicateOfCaptureId: 'cap-1',
+        duplicatedAt: '2026-08-25T09:00:00.000Z'
+      },
+      () => undefined
+    )
+    const lines = readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim().split('\n')
+    const entry = JSON.parse(lines[0])
+    expect(entry.method).toBe('duplicate')
+    expect(entry.duplicateOfCaptureId).toBe('cap-1')
+    expect(entry.duplicatedAt).toBe('2026-08-25T09:00:00.000Z')
+    // The new fields are inside the signed body, so a reader who strips them
+    // gets a different entryHash — the derivation cannot be edited away.
+    const body = { ...entry }
+    delete body.signature
+    delete body.entryHash
+    expect(createHash('sha256').update(canonicalStringify(body)).digest('hex')).toBe(entry.entryHash)
+    expect(ManifestEntrySchema.safeParse(entry).success).toBe(true)
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
+  })
+
+  it('readCaptureEntryAt returns the capture entry at an index, and nothing else (#827)', async () => {
+    const { readCaptureEntryAt } = await import('@main/services/manifest')
+    await withCaptureEntry(tempDir, baseCtx, () => undefined)
+    appendManifestEntry(tempDir, {
+      type: 'deletion',
+      captureId: baseCtx.captureId,
+      caseId: baseCtx.caseId,
+      timestamp: '2026-08-25T09:00:00.000Z',
+      contentHash: baseCtx.contentHash,
+      operatorId: baseCtx.operatorId,
+      operatorName: baseCtx.operatorName,
+      toolVersion: baseCtx.toolVersion
+    })
+
+    expect(readCaptureEntryAt(tempDir, 0)?.entry.captureId).toBe(baseCtx.captureId)
+    // A deletion entry is not a capture entry: a caller asking for anchored
+    // capture facts must get nothing rather than a wrong-shaped object.
+    expect(readCaptureEntryAt(tempDir, 1)).toBeUndefined()
+    expect(readCaptureEntryAt(tempDir, 7)).toBeUndefined()
+  })
+
+  it('readCaptureEntryAt verifies the chain over the same snapshot it reads (#827)', async () => {
+    const { readCaptureEntryAt } = await import('@main/services/manifest')
+    await withCaptureEntry(tempDir, baseCtx, () => undefined)
+    expect(readCaptureEntryAt(tempDir, 0)?.entry.url).toBe(baseCtx.url)
+
+    // Rewrite the entry in place without re-chaining: still schema-valid, but
+    // the recorded entryHash no longer matches. A caller's earlier chain
+    // verification read different bytes, so the anchored-facts reader must
+    // verify the exact snapshot it hands values out of — a rewrite between the
+    // two reads yields nothing rather than unauthenticated url/timestamp.
+    const path = join(tempDir, 'manifest.jsonl')
+    const entry = JSON.parse(readFileSync(path, 'utf-8').trim()) as Record<string, unknown>
+    entry.url = 'https://attacker.example/'
+    writeFileSync(path, JSON.stringify(entry) + '\n')
+    expect(readCaptureEntryAt(tempDir, 0)).toBeUndefined()
+  })
+
+  it('KAT: the writer still produces the exact pre-#827 chain hash for a pre-#827 entry', async () => {
+    // The hex is frozen from before duplication provenance existed: the entry
+    // the writer produced for exactly these fields hashed to it then, and must
+    // hash to it now. The entry is produced by `withCaptureEntry` — not
+    // re-stated as a literal — so this fails on any change to what a plain
+    // capture entry contains, including the #827 regression of writing
+    // duplicateOfCaptureId/duplicatedAt unconditionally: every package
+    // exported before such a change would stop verifying.
+    const written = await withCaptureEntry(
+      tempDir,
+      {
+        captureId: 'cap-kat',
+        caseId: 'case-kat',
+        url: 'https://example.com/kat',
+        timestamp: '2026-04-05T12:00:00.000Z',
+        contentHash: 'a'.repeat(64),
+        sizeBytes: 1234,
+        operatorId: 'op-kat',
+        operatorName: 'Operator',
+        toolVersion: '1.0.0'
+      },
+      (r) => r
+    )
+    expect(written.entryHash).toBe(
+      'c076682228ff6f44fafd46ae08d4bb1081ce9b7fbfeda53620228a8cdde8d238'
+    )
+    // The same hex from the stored line, recomputed the way a verifier does —
+    // pinning the derivation as well as the writer.
+    const entry = JSON.parse(readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim())
+    const { signature: _sig, entryHash, ...body } = entry
+    void _sig
+    expect(entryHash).toBe(written.entryHash)
+    expect(createHash('sha256').update(canonicalStringify(body)).digest('hex')).toBe(
+      'c076682228ff6f44fafd46ae08d4bb1081ce9b7fbfeda53620228a8cdde8d238'
+    )
+  })
 })
 
 describe('manifest schema v2 + grandfathering', () => {

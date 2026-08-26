@@ -40,8 +40,11 @@ afterEach(() => {
 
 describe('note_tags schema (v32)', () => {
   it('creates the table at the latest schema version with both cascades', () => {
-    expect(LATEST_SCHEMA_VERSION).toBe(32)
-    expect(getDb().pragma('user_version', { simple: true })).toBe(32)
+    // v32 is where note_tags was introduced, not where the schema stops: a
+    // later migration (v33, #827) makes an equality here fail for a reason that
+    // has nothing to do with this table.
+    expect(LATEST_SCHEMA_VERSION).toBeGreaterThanOrEqual(32)
+    expect(getDb().pragma('user_version', { simple: true })).toBe(LATEST_SCHEMA_VERSION)
     const columns = getDb().pragma('table_info(note_tags)') as Array<{ name: string; pk: number }>
     expect(columns.map((c) => c.name)).toEqual(['note_id', 'tag_id'])
     // Composite primary key over both foreign keys, like capture_tags: no

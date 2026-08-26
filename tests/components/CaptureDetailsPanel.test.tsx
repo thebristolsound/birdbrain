@@ -39,8 +39,9 @@ const capture: Capture = {
 
 let onCopyUrl: ReturnType<typeof vi.fn>
 let onCopyHash: ReturnType<typeof vi.fn>
+let onDuplicate: ReturnType<typeof vi.fn>
 
-function renderPanel() {
+function renderPanel(props: { isDuplicating?: boolean } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
@@ -53,6 +54,8 @@ function renderPanel() {
       onOpenExternal={vi.fn()}
       onCopyUrl={onCopyUrl}
       onCopyHash={onCopyHash}
+      onDuplicate={onDuplicate}
+      isDuplicating={props.isDuplicating ?? false}
       onDelete={vi.fn()}
       onOpenAddNote={vi.fn()}
     />,
@@ -64,6 +67,7 @@ beforeEach(() => {
   stubMatchMedia(false)
   onCopyUrl = vi.fn()
   onCopyHash = vi.fn()
+  onDuplicate = vi.fn()
   fakeBridge({
     notes: { list: vi.fn(async () => []) },
     tags: { list: vi.fn(async () => []), getForCapture: vi.fn(async () => []) },
@@ -125,5 +129,57 @@ describe('CaptureDetailsPanel actions menu', () => {
 
     expect(screen.queryByTestId('capture-details-copy-hash-btn')).toBeNull()
     expect(onCopyHash).not.toHaveBeenCalled()
+  })
+
+  it('offers Duplicate and closes the menu on use (#827)', async () => {
+    renderPanel()
+
+    fireEvent.click(await screen.findByTestId('capture-details-actions-btn'))
+    const item = screen.getByTestId('capture-details-duplicate-btn')
+    expect(item.textContent).toContain('Duplicate')
+
+    fireEvent.click(item)
+
+    expect(onDuplicate).toHaveBeenCalledOnce()
+    expect(screen.queryByTestId('capture-details-duplicate-btn')).toBeNull()
+  })
+
+  it('disables Duplicate while one is in flight, so a second click cannot fire', async () => {
+    renderPanel({ isDuplicating: true })
+
+    fireEvent.click(await screen.findByTestId('capture-details-actions-btn'))
+    const item = screen.getByTestId('capture-details-duplicate-btn')
+    expect((item as HTMLButtonElement).disabled).toBe(true)
+    expect(item.textContent).toContain('Duplicating')
+
+    fireEvent.click(item)
+    expect(onDuplicate).not.toHaveBeenCalled()
+  })
+})
+
+describe('CaptureDetailsPanel provenance line', () => {
+  it('names the method for a duplicate, so it cannot read as an ordinary capture', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <CaptureDetailsPanel
+        capture={{ ...capture, method: 'duplicate', duplicateOfCaptureId: 'cap0' }}
+        caseId="case1"
+        onCollapse={vi.fn()}
+        onOpenExternal={vi.fn()}
+        onCopyUrl={onCopyUrl}
+        onCopyHash={onCopyHash}
+        onDuplicate={onDuplicate}
+        isDuplicating={false}
+        onDelete={vi.fn()}
+        onOpenAddNote={vi.fn()}
+      />,
+      {
+        wrapper: ({ children }: { children: ReactNode }) => (
+          <QueryClientProvider client={client}>{children}</QueryClientProvider>
+        )
+      }
+    )
+
+    expect(await screen.findByText(/Duplicate/)).toBeTruthy()
   })
 })

@@ -1,4 +1,4 @@
-import { Star, Check, RefreshCcw, Clock } from 'lucide-react'
+import { Star, Check, CopyPlus, RefreshCcw, Clock } from 'lucide-react'
 import type { Capture, Selector } from '@shared/types'
 import { useCaptureThumbnail } from '@renderer/hooks/useCaptureThumbnail'
 import { getProvenanceColor } from '@renderer/components/captures/getProvenanceColor'
@@ -163,6 +163,16 @@ export function CaptureItem({
         {isFavorite && (
           <Star aria-hidden="true" className="h-2.5 w-2.5 shrink-0 fill-amber-400 text-amber-400" />
         )}
+        {capture.method === 'duplicate' && (
+          <span
+            data-testid="duplicate-list-badge"
+            title="Duplicate of another capture"
+            className="shrink-0 leading-none"
+          >
+            <CopyPlus aria-hidden="true" className="h-2.5 w-2.5 text-text-faint" />
+            <span className="sr-only">Duplicate of another capture</span>
+          </span>
+        )}
         <span className="w-24 shrink-0 truncate text-right text-[10px] text-text-faint">
           {hostname}
         </span>
@@ -249,6 +259,19 @@ export function CaptureItem({
               className="shrink-0 leading-none"
             >
               <RefreshCcw className="h-[11px] w-[11px] text-text-faint" />
+            </span>
+          )}
+          {capture.method === 'duplicate' && (
+            // Not aria-hidden, unlike the recapture badge above: this marker is
+            // what keeps a byte copy from reading as a second sighting, so it
+            // must reach the accessibility tree too.
+            <span
+              data-testid="duplicate-thumb-badge"
+              title="Duplicate of another capture"
+              className="shrink-0 leading-none"
+            >
+              <CopyPlus aria-hidden="true" className="h-[11px] w-[11px] text-text-faint" />
+              <span className="sr-only">Duplicate of another capture</span>
             </span>
           )}
           <span className="shrink-0 text-[10px] text-text-faint" title={fullTimestamp}>

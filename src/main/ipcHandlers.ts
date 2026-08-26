@@ -284,6 +284,7 @@ export function registerIpcHandlers(deps: {
       throw err
     }
   })
+  handle(IPC_CHANNELS.CAPTURES_DUPLICATE, (_, id: string) => captureLifecycle.duplicate(id))
   handle(IPC_CHANNELS.CAPTURES_SET_FAVORITE_MANY, (_, payload) => {
     const { caseId, captureIds } = validateBatchPayload(payload)
     if (typeof payload.favorite !== 'boolean') {

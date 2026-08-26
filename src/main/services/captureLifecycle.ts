@@ -1,6 +1,7 @@
 import { app } from 'electron'
-import { createReadStream } from 'fs'
+import { createReadStream, readFileSync } from 'fs'
 import { createHash, randomUUID } from 'crypto'
+import { join } from 'path'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import type { CaptureStore } from '@main/services/captureStore'
 import * as captureRepo from '@main/services/db/captureRepo'
@@ -11,19 +12,26 @@ import { readExtractionHtml } from '@main/services/extraction/extractionSource'
 import { getInstallationId } from '@main/services/installationId'
 import {
   getManifestHead,
+  readCaptureEntryAt,
   verifyManifestChain,
   withCaptureEntry,
   withDeletionEntry,
   ManifestRollback
 } from '@main/services/manifest'
-import type { CaptureChainEntry } from '@main/services/manifest'
+import type {
+  CaptureChainEntry,
+  ManifestCaptureEntry,
+  ManifestImportEntry
+} from '@main/services/manifest'
 import { reconcileCaptureTrustedTime } from '@main/services/trustedTime'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { getSettings } from '@main/services/settings'
 import { fetchCertChain as defaultFetchCertChain } from '@main/services/tlsCertChain'
 import type { TlsCertChainResult } from '@main/services/tlsCertChain'
 import type { Capture, CaptureMethod, ConsentSuppression, HashVerification } from '@shared/types'
-import type { BatchDeleteOutcome, BatchDeleteResult } from '@shared/ipc'
+import type { BatchDeleteOutcome, BatchDeleteResult, DuplicateCaptureResult } from '@shared/ipc'
+import { IMPORT_ID_MAP_FILENAME } from '@shared/constants'
+import { canonicalStringify } from '@shared/verify'
 import { logger } from '@main/services/logger'
 import { ident } from '@main/services/logSafe'
 
@@ -83,6 +91,12 @@ export interface CaptureLifecycle {
   // id fails the whole call before any write. Contract:
   // docs/specs/2026-08-19-batch-ops-interface-brief.md.
   deleteMany: (caseId: string, captureIds: string[]) => Promise<BatchDeleteResult>
+  // Byte copy of an existing capture into a second row of the same case (#827).
+  // The copy observed nothing itself, so it gets its own artifacts, its own
+  // signed manifest entry marked `method: 'duplicate'`, and a link back to what
+  // it was copied from — never a second row over the source's bytes. Refusals
+  // are outcomes, not throws; see DuplicateCaptureRefusal.
+  duplicate: (captureId: string) => Promise<DuplicateCaptureResult>
   verify: (captureId: string) => Promise<HashVerification>
   reprocessCase: (caseId: string) => Promise<{ processed: number }>
 }
@@ -449,6 +463,63 @@ export async function verifyCapture(
   return result
 }
 
+// Whether the signed entry at a row's `manifestIndex` is the entry for THAT
+// row (#827). Direct equality is the native case. A case that arrived by
+// archive import is the reason this is not just equality: the manifest is
+// immutable, so its capture entries keep the source installation's case id and
+// capture ids, while import mints a fresh case id and remaps any capture id
+// that collided with a local row. Both are resolved through the case's own
+// signed custody records — the `import` entries in the same verified manifest
+// read, and the id map they anchor by hash.
+function entryDescribesRow(
+  entry: ManifestCaptureEntry,
+  row: { id: string; caseId: string },
+  imports: ManifestImportEntry[],
+  caseDir: string
+): boolean {
+  const custodyCaseIds = new Set<string>([row.caseId])
+  for (const imported of imports) {
+    custodyCaseIds.add(imported.caseId)
+    custodyCaseIds.add(imported.sourceCaseId)
+  }
+  if (!custodyCaseIds.has(entry.caseId)) return false
+  if (entry.captureId === row.id) return true
+  // Only an id-collision remap can leave the entry naming a different capture,
+  // and only the map this case's own import entry anchors may say so.
+  return readAnchoredIdMap(caseDir, row.caseId, imports)?.[entry.captureId] === row.id
+}
+
+// The id-collision remap archive import wrote into this case directory, read
+// back ONLY when its digest matches the `idMapSha256` the import's signed entry
+// anchors — an unanchored file in the case directory must not be able to point
+// a row at another capture's entry. Undefined (so the binding fails closed)
+// when this case did not arrive by import, when the file is absent or
+// unparseable, or when it does not hash to what the chain recorded. Note it
+// records ONE hop: the map for an earlier import is not carried in the archive,
+// so a row remapped before this case's own import stays unresolvable.
+function readAnchoredIdMap(
+  caseDir: string,
+  caseId: string,
+  imports: ManifestImportEntry[]
+): Record<string, unknown> | undefined {
+  const custody = imports.find((imported) => imported.caseId === caseId)
+  if (!custody) return undefined
+  let payload: unknown
+  try {
+    payload = JSON.parse(readFileSync(join(caseDir, IMPORT_ID_MAP_FILENAME), 'utf-8'))
+  } catch {
+    return undefined
+  }
+  const digest = createHash('sha256')
+    .update(Buffer.from(canonicalStringify(payload), 'utf-8'))
+    .digest('hex')
+  if (digest !== custody.idMapSha256) return undefined
+  if (typeof payload !== 'object' || payload === null || !('remapped' in payload)) return undefined
+  const { remapped } = payload
+  if (typeof remapped !== 'object' || remapped === null) return undefined
+  return { ...remapped }
+}
+
 export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifecycle {
   const store = deps.store ?? defaultCaptureStore
 
@@ -668,6 +739,207 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
           failedIds,
           ...(haltedAt !== undefined ? { haltedAt } : {}),
           manifest: { baseIndex, committedEntries }
+        }
+      })
+    },
+
+    async duplicate(captureId) {
+      const probe = captureRepo.getCapture(captureId)
+      if (!probe) return { status: 'rejected', reason: 'not_found' }
+      // The gate the capture server applies to every ingest
+      // (captureServer.ts:302). A signed entry naming no operator would be a
+      // weaker record than any capture this app can produce, and the duplicate
+      // is signed by whoever asks for it, not by the source's operator.
+      const operatorName = getSettings().operatorName?.trim() ?? ''
+      if (!operatorName) return { status: 'rejected', reason: 'operator_name_required' }
+
+      // Under the case slot for the same reason deletes are: this appends to
+      // the case's one manifest file and rolls back by truncation.
+      return withCaseSlot(probe.caseId, async () => {
+        const source = captureRepo.getCapture(captureId)
+        if (!source) return { status: 'rejected', reason: 'not_found' }
+
+        // One gate covering legacy, missing, tampered and chain-broken sources.
+        // Copying any of those would mint a fresh, internally consistent,
+        // signed entry for bytes that no longer stand up — the duplicate would
+        // verify while the thing it was taken from does not.
+        const verification = await verifyCapture(captureId, store)
+        if (verification.status !== 'verified') {
+          return { status: 'rejected', reason: 'not_verified', detail: verification.status }
+        }
+
+        const caseDir = store.caseDir(source.caseId)
+        // Re-anchor from the SIGNED entry, never from the captures row: the row
+        // mirrors these fields but Settings → Database can hand-edit it, and
+        // re-signing an edited mirror would launder it onto the chain.
+        const entryRead =
+          source.manifestIndex !== undefined
+            ? readCaptureEntryAt(caseDir, source.manifestIndex)
+            : undefined
+        if (!entryRead) {
+          return { status: 'rejected', reason: 'not_verified', detail: 'entry-unreadable' }
+        }
+        const { entry: sourceEntry, imports } = entryRead
+        // The row's manifestIndex is as hand-editable as the fields above, and
+        // duplicates share content hashes by design — so an edited index can
+        // land on a DIFFERENT capture's same-hash entry, whose url/timestamp/
+        // headers/tls would then be re-signed as this source's provenance.
+        // Bind the entry to the row it must describe.
+        if (!entryDescribesRow(sourceEntry, source, imports, caseDir)) {
+          return { status: 'rejected', reason: 'not_verified', detail: 'entry-mismatch' }
+        }
+
+        const duplicateId = randomUUID()
+        // Flipped when withCaptureEntry commits: past that point the entry and
+        // row are permanent, and the catch below must not delete files a
+        // committed record points at.
+        let committed = false
+        try {
+          const { artifacts } = await store.copyArtifacts(source.caseId, source.id, duplicateId)
+          const mhtml = artifacts.mhtml
+          // copyArtifacts hashes the destination file, so this compares what
+          // landed against what the chain anchors — closing the window between
+          // the verify above and the copy.
+          if (!mhtml || mhtml.hash !== sourceEntry.contentHash) {
+            store.deleteArtifacts(source.caseId, duplicateId)
+            return { status: 'rejected', reason: 'copy_mismatch' }
+          }
+          // Sidecars get the same treatment as the MHTML: each copy is checked
+          // against the hash the source's SIGNED entry recorded, and only those
+          // recorded hashes are re-anchored. A source entry from before sidecar
+          // anchoring (#118) records none — verify skipped its files, so
+          // anchoring a freshly computed hash here would give possibly-tampered
+          // bytes the first chain anchor they ever had. The files are still
+          // copied (the duplicate stays usable); they stay exactly as
+          // unanchored as the source's.
+          if (sourceEntry.screenshotHash && artifacts.png?.hash !== sourceEntry.screenshotHash) {
+            store.deleteArtifacts(source.caseId, duplicateId)
+            return { status: 'rejected', reason: 'copy_mismatch' }
+          }
+          if (sourceEntry.textHash && artifacts.txt?.hash !== sourceEntry.textHash) {
+            store.deleteArtifacts(source.caseId, duplicateId)
+            return { status: 'rejected', reason: 'copy_mismatch' }
+          }
+
+          const duplicatedAt = new Date().toISOString()
+          // The duplicate's search text comes from ITS OWN copied .txt bytes,
+          // never the source's `capture_texts` mirror: the mirror is editable
+          // state that can drift from the artifact, and a source with indexed
+          // text but no sidecar would make the copy searchable for bytes it
+          // does not own. Searchable exactly as far as its own artifacts reach.
+          const copiedText = artifacts.txt
+            ? store.readArtifact(source.caseId, duplicateId, 'txt')?.toString('utf-8')
+            : undefined
+          const capture = await withCaptureEntry(
+            caseDir,
+            {
+              captureId: duplicateId,
+              caseId: source.caseId,
+              // `url` and `timestamp` describe the observation the bytes came
+              // from, which is the source's — dating them to now would claim
+              // the page was seen again. When the copy was made is
+              // `duplicatedAt`; who made it is `operatorId`/`operatorName`.
+              url: sourceEntry.url,
+              timestamp: sourceEntry.timestamp,
+              contentHash: mhtml.hash,
+              screenshotHash: sourceEntry.screenshotHash,
+              textHash: sourceEntry.textHash,
+              headers: sourceEntry.headers,
+              tls: sourceEntry.tls,
+              method: 'duplicate',
+              duplicateOfCaptureId: source.id,
+              duplicatedAt,
+              consentSuppression: sourceEntry.consentSuppression,
+              sizeBytes: mhtml.sizeBytes,
+              operatorId: getInstallationId(),
+              operatorName,
+              toolVersion: getToolVersion()
+            },
+            (manifestResult) =>
+              captureRepo.insertCapture({
+                id: duplicateId,
+                caseId: source.caseId,
+                url: sourceEntry.url,
+                title: source.title,
+                hash: mhtml.hash,
+                timestamp: sourceEntry.timestamp,
+                headers: sourceEntry.headers ? JSON.stringify(sourceEntry.headers) : undefined,
+                textContent: copiedText,
+                format: 'mhtml',
+                mhtmlPath: mhtml.rel,
+                screenshotPath: artifacts.png?.rel,
+                // The row mirrors the entry, so it too states only what the
+                // chain anchors.
+                screenshotHash: sourceEntry.screenshotHash,
+                textHash: sourceEntry.textHash,
+                tlsCertChain: sourceEntry.tls ? JSON.stringify(sourceEntry.tls) : undefined,
+                sizeBytes: mhtml.sizeBytes,
+                manifestIndex: manifestResult.index,
+                prevHash: manifestResult.prevHash,
+                entryHash: manifestResult.entryHash,
+                // The tool that made the copy, not the one that made the
+                // capture: this is the entry's own provenance.
+                toolVersion: getToolVersion(),
+                extensionVersion: source.extensionVersion,
+                browserVersion: source.browserVersion,
+                userAgent: source.userAgent,
+                httpStatus: source.httpStatus,
+                operatorId: getInstallationId(),
+                operatorName,
+                method: 'duplicate',
+                duplicateOfCaptureId: source.id,
+                consentSuppression: sourceEntry.consentSuppression
+              })
+          )
+
+          committed = true
+
+          // No separate hand-off to the timestamp worker: the duplicate's
+          // content hash is the source's, so a token over that hash already
+          // anchors these bytes and a second request would ask the TSA to date
+          // the same observation twice. The mirror is resolved from the
+          // manifest instead, which gives the copy whatever axis value the
+          // shared hash has — 'rfc3161' when a token exists, 'pending' while
+          // the source is still eligible and unstamped, which does put the copy
+          // in the retry queue. Whichever row is stamped, the entry anchors
+          // both.
+          try {
+            reconcileCaptureTrustedTime(capture)
+          } catch (reconcileErr) {
+            // Rebuildable mirror only — it self-heals on the next read
+            // (computeVerification reconciles), so a failure here must not
+            // fail a duplicate whose entry, row and files are committed.
+            logger.error(
+              'captureLifecycle',
+              'captureLifecycle.duplicate_reconcile_failed',
+              { captureId: ident(duplicateId) },
+              reconcileErr
+            )
+          }
+          return { status: 'duplicated', capture: captureRepo.getCapture(duplicateId) ?? capture }
+        } catch (err) {
+          // Pre-commit only: the manifest seam has already rolled its own entry
+          // back, and the copied files are namespaced by the new id, so the
+          // source is untouched. Past the commit the entry and row are
+          // permanent, and deleting the files would strand a committed capture
+          // without its evidence.
+          if (!committed) {
+            try {
+              store.deleteArtifacts(source.caseId, duplicateId)
+            } catch (cleanupErr) {
+              // The original failure is what the caller must see, so a failed
+              // cleanup is logged rather than thrown over it — but it is logged:
+              // the copies it left behind are unreferenced bytes in the case
+              // directory, and silence is what makes them unattributable later.
+              logger.error(
+                'captureLifecycle',
+                'captureLifecycle.duplicate_cleanup_failed',
+                { captureId: ident(duplicateId) },
+                cleanupErr
+              )
+            }
+          }
+          throw err
         }
       })
     },

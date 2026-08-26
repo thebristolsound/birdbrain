@@ -17,6 +17,7 @@ import { WaybackCompare } from '@renderer/components/captures/WaybackCompare'
 import { useAnnotationEditor } from '@renderer/components/captures/annotation/useAnnotationEditor'
 import { useZoomPan } from '@renderer/components/captures/annotation/useZoomPan'
 import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
+import { CAPTURE_METHOD_LABELS } from '@renderer/components/captures/captureMethodLabel'
 
 // Source is gone: Page *is* the MHTML, so the two tabs rendered the same
 // artifact twice. The raw file is still one click away in the download menu.
@@ -104,6 +105,12 @@ export function CaptureViewer() {
     ? captures.find((c) => c.id === capture.supersedesCaptureId)
     : undefined
   const recaptureOf = captures.find((c) => c.supersedesCaptureId === capture.id)
+  // Lenient like the recapture links above it: the source may have been
+  // deleted, and the duplicate stays legible as a duplicate either way — the
+  // badge comes from its own method, not from finding the row.
+  const duplicateOf = capture.duplicateOfCaptureId
+    ? captures.find((c) => c.id === capture.duplicateOfCaptureId)
+    : undefined
 
   return (
     <main className="flex flex-1 flex-col overflow-hidden bg-canvas">
@@ -121,13 +128,22 @@ export function CaptureViewer() {
           <span className="truncate text-sm font-medium text-text-primary">
             {capture.title || hostname}
           </span>
-          {capture.method === 'background' && (
+          {CAPTURE_METHOD_LABELS[capture.method] && (
             <span
               data-testid="method-badge"
               className="shrink-0 rounded-lg bg-surface px-2 py-0.5 text-[11px] text-text-muted"
             >
-              Background
+              {CAPTURE_METHOD_LABELS[capture.method]}
             </span>
+          )}
+          {duplicateOf && (
+            <button
+              data-testid="duplicate-link-source"
+              className="shrink-0 truncate text-xs text-accent underline underline-offset-2"
+              onClick={() => useAppStore.getState().setSelectedCaptureId(duplicateOf.id)}
+            >
+              ← Duplicate of {new Date(duplicateOf.timestamp).toLocaleString()}
+            </button>
           )}
           {supersededOriginal && (
             <button

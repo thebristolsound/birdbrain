@@ -1,6 +1,6 @@
 import { queryOptions, useIsMutating, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Capture } from '@shared/types'
-import type { BatchCountResult, BatchDeleteResult } from '@shared/ipc'
+import type { BatchCountResult, BatchDeleteResult, DuplicateCaptureResult } from '@shared/ipc'
 import { queryKeys } from '@renderer/lib/api/keys'
 
 export const capturesQueryOptions = (caseId: string) =>
@@ -118,6 +118,19 @@ export function useCapturesMutations(caseId: string) {
     meta: { action: 'delete captures' }
   })
 
+  // #827. A refusal (`status: 'rejected'`) is a resolved result, not a throw,
+  // so the mutation succeeds either way and the caller reads the outcome. Only
+  // a real duplicate changes the list, so only that invalidates.
+  const duplicate = useMutation<DuplicateCaptureResult, unknown, string>({
+    mutationFn: (captureId) => window.birdbrain.captures.duplicate(captureId),
+    onSuccess: (result) => {
+      if (result.status !== 'duplicated') return
+      queryClient.invalidateQueries({ queryKey: queryKeys.captures(caseId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.captureCounts })
+    },
+    meta: { action: 'duplicate the capture' }
+  })
+
   const setFavoriteMany = useMutation<
     BatchCountResult,
     unknown,
@@ -132,7 +145,7 @@ export function useCapturesMutations(caseId: string) {
     meta: { action: 'set favorites' }
   })
 
-  return { remove, toggleFavorite, removeMany, setFavoriteMany }
+  return { remove, toggleFavorite, removeMany, duplicate, setFavoriteMany }
 }
 
 // Shared by ProvenanceBadge, ForensicsTab and CaptureDetailsPanel, all three

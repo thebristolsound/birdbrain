@@ -56,6 +56,12 @@ export const RETRO_MAX_CAPTURES = 500
 // Audit manifest filename, written alongside captures in each case directory.
 export const MANIFEST_FILENAME = 'manifest.jsonl'
 
+// Id-collision remap written into a case directory by archive import, and
+// anchored by its `idMapSha256` in that import's signed manifest entry. Named
+// here rather than in caseArchive because duplication reads it back to resolve
+// a source installation's entry ids onto the local rows (#827).
+export const IMPORT_ID_MAP_FILENAME = 'import-id-map.json'
+
 // Bump whenever the manifest entry schema changes (e.g. new required fields).
 export const MANIFEST_SCHEMA_VERSION = 2
 

@@ -28,6 +28,7 @@ import {
 } from '@renderer/components/captures/useCaptureView'
 import { useCopyCaptureUrl } from '@renderer/components/captures/useCopyCaptureUrl'
 import { useCopyCaptureHash } from '@renderer/components/captures/useCopyCaptureHash'
+import { useDuplicateCapture } from '@renderer/components/captures/useDuplicateCapture'
 import { AddNoteModal } from '@renderer/components/notes/AddNoteModal'
 import {
   Button,
@@ -165,6 +166,13 @@ export function CapturesRoute() {
   // looking at, and one binding serves both panel call sites. Not for the
   // listener reason above: this hook registers no accelerator.
   const handleCopyHash = useCopyCaptureHash(selectedCapture)
+
+  // Mounted here for the same reason, and once: a second mount would give the
+  // menu item a second mutation, and one click two duplicates.
+  const { duplicate: handleDuplicate, isPending: isDuplicating } = useDuplicateCapture(
+    selectedCapture,
+    caseId
+  )
 
   // The Wayback tab takes the width (compare panes plus the archive.org
   // slide-out), but only once there is something to show it for — without this
@@ -345,6 +353,8 @@ export function CapturesRoute() {
                   onOpenExternal={handleOpenExternal}
                   onCopyUrl={handleCopyUrl}
                   onCopyHash={handleCopyHash}
+                  onDuplicate={handleDuplicate}
+                  isDuplicating={isDuplicating}
                   onDelete={() => setShowDeleteConfirm(true)}
                   onOpenAddNote={() => setShowAddNote(true)}
                 />
@@ -390,6 +400,8 @@ export function CapturesRoute() {
             onOpenExternal={handleOpenExternal}
             onCopyUrl={handleCopyUrl}
             onCopyHash={handleCopyHash}
+            onDuplicate={handleDuplicate}
+            isDuplicating={isDuplicating}
             onDelete={() => setShowDeleteConfirm(true)}
             onOpenAddNote={() => setShowAddNote(true)}
           />

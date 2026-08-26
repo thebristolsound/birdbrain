@@ -372,6 +372,8 @@ interface CaptureEvent {
   skipReason?: string        // 'skipped'
   durationMs?: number        // 'stored'
   screenshotWarning?: string // 'stored' with a dropped screenshot
+  warning?: string           // General warning for any event type
+  supersedesCaptureId?: string // Capture being superseded by a recapture job
 }
 ```
 

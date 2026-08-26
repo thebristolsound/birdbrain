@@ -62,7 +62,7 @@ Shapes and pinned comments on capture screenshots; burned into exports.
 
 ### Chain-of-custody verification
 
-The per-capture hash chain (SHA-256, previous/entry hash, manifest index) checked in the app.
+The per-case manifest hash chain (SHA-256, previous/entry hash, manifest index) checked in the app.
 
 ![Chain of custody](/assets/screenshot-verify.png)
 
@@ -117,11 +117,10 @@ Capture preferences, storage, appearance, operator identity, database admin, and
 
 ## Regenerating this tour
 
-The series comes from a Playwright script against the seeded demo case. Rebuild the app, then run:
+The series comes from a Playwright script against the seeded demo case. Rebuild the app, then run from the repository root:
 
 ```bash
 README_SHOTS=1 npx playwright test e2e/readme-screenshots.spec.ts
 ```
 
-Output lands in `test-results/readme/` with light and dark variants of every shot;
-the dark variants are copied into `website/public/assets/`.
+Output lands in `test-results/readme/` with light and dark variants of every shot. The light variants are referenced directly; manually copy the dark variants (e.g., `screenshot-case-dark.png`) into `website/public/assets/` to update the dark-mode versions on the site.

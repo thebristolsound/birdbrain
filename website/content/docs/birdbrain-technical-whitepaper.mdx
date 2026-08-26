@@ -175,7 +175,7 @@ A standalone verifier binary (`build:verifier`, assembled with `postject`, sugge
 
 ### 5.1 Why this stack
 
-- **Electron** is close to mandatory for this product: MHTML rendering, a persistent local server, native file storage, OS keychain access, and a webview for sandboxed evidence display. The app tracks current Electron (39.x) with the security model enabled rather than overridden.
+- **Electron** is close to mandatory for this product: MHTML rendering, a persistent local server, native file storage, OS keychain access, and a webview for sandboxed evidence display. The app tracks current Electron (42.x) with the security model enabled rather than overridden.
 - **better-sqlite3 (synchronous) + WAL** trades theoretical event-loop purity for transactional simplicity. For a single-user desktop app with sub-millisecond local queries, synchronous SQLite inside the main process is the pragmatic choice, and native transactions (`withTransaction`) keep multi-table writes atomic.
 - **Hono for the loopback server** is a minimal, typed, middleware-composable router; the entire security posture (Host guard → body limit → CORS → token auth) reads as an ordered middleware stack in one file.
 - **React Query + Zustand split**: all persistent data flows through React Query keyed factories with explicit invalidation; Zustand carries only ephemeral UI state. The discipline is visible in details like the recapture mutation deliberately not invalidating caches because completion arrives over an event channel.

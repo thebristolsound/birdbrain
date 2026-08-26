@@ -62,7 +62,7 @@ credential, not evidence, so its at-rest state appears in Settings →
 Diagnostics only. The signing key gets the gate because a plaintext signing key
 changes what the manifest signature can be said to prove.
 
-**The RFC 3161 token is the independent anchor that closes this gap.** Because an
+**The RFC 3161 token is the independent anchor that constrains this gap.** Because an
 external TSA issues the timestamp over the content hash, it establishes that
 the captured bytes existed no later than the stamped time, a fact the operator
 cannot back-date or forge, regardless of their control over the local machine.

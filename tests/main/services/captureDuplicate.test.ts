@@ -409,6 +409,29 @@ describe('createCaptureLifecycle.duplicate (#827)', () => {
     expect(strays).toEqual([])
   })
 
+  it("refuses when the row's manifestIndex points at another capture's same-hash entry", async () => {
+    // Duplicates share content hashes by design, and verification binds
+    // manifestIndex by content hash — so a hand-edited index can land on a
+    // sibling's entry and still verify. The entry must also name the row it is
+    // being read for, or the sibling's url/timestamp/headers would be re-signed
+    // as this source's provenance.
+    const first = await lifecycle.duplicate(source.id)
+    if (first.status !== 'duplicated') throw new Error('expected a duplicate')
+
+    const { getDb } = await import('@main/services/db/core')
+    getDb().prepare('UPDATE captures SET manifest_index = ? WHERE id = ?').run(1, source.id)
+    const before = manifestLines().length
+
+    const result = await lifecycle.duplicate(source.id)
+
+    expect(result).toEqual({
+      status: 'rejected',
+      reason: 'not_verified',
+      detail: 'entry-mismatch'
+    })
+    expect(manifestLines()).toHaveLength(before)
+  })
+
   it('refuses a legacy html capture, which has no entry to copy provenance from', async () => {
     const legacy = insertCapture({
       caseId,

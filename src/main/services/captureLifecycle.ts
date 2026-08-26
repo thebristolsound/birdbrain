@@ -715,6 +715,14 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
         if (!sourceEntry) {
           return { status: 'rejected', reason: 'not_verified', detail: 'entry-unreadable' }
         }
+        // The row's manifestIndex is as hand-editable as the fields above, and
+        // duplicates share content hashes by design — so an edited index can
+        // land on a DIFFERENT capture's same-hash entry, whose url/timestamp/
+        // headers/tls would then be re-signed as this source's provenance.
+        // Bind the entry to the row it must describe.
+        if (sourceEntry.captureId !== source.id || sourceEntry.caseId !== source.caseId) {
+          return { status: 'rejected', reason: 'not_verified', detail: 'entry-mismatch' }
+        }
 
         const duplicateId = randomUUID()
         try {

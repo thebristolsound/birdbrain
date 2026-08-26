@@ -832,15 +832,29 @@ function selectionAttachFailureMessage(err: unknown): string {
     return 'Aborted: Birdbrain UI could not be removed from the page'
   }
   if (err && typeof err === 'object' && 'status' in err) {
-    const apiErr = err as { status: number; detail: string; captureId?: string | null }
+    const apiErr = err as {
+      status: number
+      detail: string
+      captureId?: string | null
+      captured?: boolean | null
+    }
     const detail = apiErr.detail || 'Request failed'
-    // The one failure that is not a clean refusal: the route stored the
-    // capture and then could not create the Tag or Note. Saying only that the
-    // action failed would tell the operator the case is unchanged when it
-    // holds new evidence.
-    return apiErr.captureId
-      ? `${detail} — the page was captured, but nothing was attached to it`
-      : detail
+    // The one failure that is not a clean refusal: the route resolved or
+    // stored a capture and then could not create the Tag or Note. Saying only
+    // that the action failed would tell the operator the case is unchanged
+    // when it holds evidence — but "the page was captured" is claimed only
+    // when the route says this failure ingested it. A pre-existing capture is
+    // old evidence, and a body that does not say gets the agnostic wording.
+    if (apiErr.captureId) {
+      const clause =
+        apiErr.captured === true
+          ? 'the page was captured, but nothing was attached to it'
+          : apiErr.captured === false
+            ? "the case already held this page's capture; nothing was attached to it"
+            : 'a capture of this page exists in the case, but nothing was attached to it'
+      return `${detail} — ${clause}`
+    }
+    return detail
   }
   if (err instanceof TypeError) return "Can't reach Birdbrain — is it running?"
   return 'Action failed'
@@ -1025,8 +1039,15 @@ async function handleSelectionAction(
         ? (err as { captureId: string }).captureId
         : null
     // The capture the failed route did store is real evidence in the case, so
-    // it is both reported to the operator and noted in the page-status map.
-    if (captureId) recordSelectionCapture(tabId, url, true)
+    // it is both reported to the operator and noted in the page-status map —
+    // but the routes also name a capture the case already held, which is not
+    // "captured just now". Only a failure the server marks as having ingested
+    // the capture stamps the map; an unmarked body stamps nothing, since a
+    // stale absence there costs one duplicate offer while a false freshness
+    // misdates evidence to the operator.
+    const captured =
+      err && typeof err === 'object' && (err as { captured?: unknown }).captured === true
+    if (captureId && captured) recordSelectionCapture(tabId, url, true)
     return {
       ok: false,
       error: selectionAttachFailureMessage(err),

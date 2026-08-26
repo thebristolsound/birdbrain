@@ -69,10 +69,12 @@ export interface SelectionActionRequest {
  * A failure is usually a refusal that acquired nothing — the attach routes
  * capture and attach in one transaction and refuse before acquiring on every
  * rejection they can foresee. The one exception is the 500 those routes raise
- * when the ingest succeeded and the Tag or Note creation did not: the server
- * returns the stored Capture's id, and it is carried here rather than dropped,
- * so the bar can tell the operator a capture exists. `captureId` absent is the
- * assertion that nothing was created.
+ * when a Capture was resolved or freshly ingested and the Tag or Note
+ * creation then failed: the server names that Capture, and the id is carried
+ * here rather than dropped, so the bar can tell the operator it exists. The
+ * operator-facing account of whether that capture was fresh rides `error`
+ * (worded by the background from the server's `captured` flag). `captureId`
+ * absent is the assertion that nothing was created.
  */
 export type SelectionActionResponse =
   | {

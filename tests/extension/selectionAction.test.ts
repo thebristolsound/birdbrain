@@ -54,10 +54,13 @@ let tabAfterFrames: typeof TAB = TAB
 // one page and the post-settle re-read another.
 let tabGetQueue: (typeof TAB)[] = []
 
-function dispatchWithResponse(message: unknown): Promise<unknown> {
+// `senderTab` lets a test act from its own tab id: lastCaptureByTab persists
+// across tests, so stamped/not-stamped assertions need a tab no other test
+// has written to.
+function dispatchWithResponse(message: unknown, senderTab: typeof TAB = TAB): Promise<unknown> {
   return new Promise((resolve) => {
     for (const listener of runtimeListeners) {
-      listener(message, { id: EXTENSION_ID, tab: TAB }, resolve)
+      listener(message, { id: EXTENSION_ID, tab: senderTab }, resolve)
     }
   })
 }
@@ -432,26 +435,92 @@ describe('SELECTION_ACTION: tag and quote ride the #392 attach endpoints', () =>
     })
   })
 
-  it('reports the Capture the failed attach had already stored', async () => {
+  it('reports the Capture the failed attach freshly stored, and stamps the page status', async () => {
     // The one failure that is not a clean refusal: #392 returns the stored
-    // capture id on the 500 whose ingest succeeded and whose tag did not.
+    // capture id on the 500 whose ingest succeeded and whose tag did not,
+    // with `captured: true` saying the ingest was this request's own.
+    const senderTab = { ...TAB, id: 41 }
     vi.mocked(applyTagToUrl).mockRejectedValueOnce({
       status: 500,
       detail: 'Failed to apply tag',
-      captureId: 'cap-stored'
+      captureId: 'cap-stored',
+      captured: true
     })
 
-    const response = (await dispatchWithResponse({
-      type: 'SELECTION_ACTION',
-      action: 'tag',
-      text: 'evil@example.com'
-    })) as SelectionActionResponse
+    const response = (await dispatchWithResponse(
+      { type: 'SELECTION_ACTION', action: 'tag', text: 'evil@example.com' },
+      senderTab
+    )) as SelectionActionResponse
 
     expect(response).toEqual({
       ok: false,
       error: 'Failed to apply tag — the page was captured, but nothing was attached to it',
       captureId: 'cap-stored'
     })
+    const status = (await dispatchWithResponse({
+      type: 'GET_PAGE_STATUS',
+      tabId: senderTab.id
+    })) as PopupPageStatus
+    expect(status.lastCapture).not.toBeNull()
+  })
+
+  it('does not call a pre-existing capture fresh when the attach to it fails', async () => {
+    // The same 500 also names a capture the case already held (the resolve
+    // branch). That is old evidence: the wording must not claim the page was
+    // captured, and the popup's "Captured just now" line must not be stamped.
+    const senderTab = { ...TAB, id: 42 }
+    vi.mocked(applyTagToUrl).mockRejectedValueOnce({
+      status: 500,
+      detail: 'Failed to apply tag',
+      captureId: 'cap-old',
+      captured: false
+    })
+
+    const response = (await dispatchWithResponse(
+      { type: 'SELECTION_ACTION', action: 'tag', text: 'evil@example.com' },
+      senderTab
+    )) as SelectionActionResponse
+
+    expect(response).toEqual({
+      ok: false,
+      error:
+        "Failed to apply tag — the case already held this page's capture; nothing was attached to it",
+      captureId: 'cap-old'
+    })
+    const status = (await dispatchWithResponse({
+      type: 'GET_PAGE_STATUS',
+      tabId: senderTab.id
+    })) as PopupPageStatus
+    expect(status.lastCapture).toBeNull()
+  })
+
+  it('claims no freshness when the error body does not say, and stamps nothing', async () => {
+    // A body without the `captured` flag leaves freshness unknown. The cost of
+    // not stamping is one duplicate capture offer; a false "just now" would
+    // misdate evidence to the operator, so unknown reads as not-fresh.
+    const senderTab = { ...TAB, id: 43 }
+    vi.mocked(applyTagToUrl).mockRejectedValueOnce({
+      status: 500,
+      detail: 'Failed to apply tag',
+      captureId: 'cap-unknown'
+    })
+
+    const response = (await dispatchWithResponse(
+      { type: 'SELECTION_ACTION', action: 'tag', text: 'evil@example.com' },
+      senderTab
+    )) as SelectionActionResponse
+
+    expect(response).toEqual({
+      ok: false,
+      error:
+        'Failed to apply tag — a capture of this page exists in the case, but nothing was attached to it',
+      captureId: 'cap-unknown'
+    })
+    const status = (await dispatchWithResponse({
+      type: 'GET_PAGE_STATUS',
+      tabId: senderTab.id
+    })) as PopupPageStatus
+    expect(status.lastCapture).toBeNull()
   })
 
   it('notes an attach-ingested capture in the popup page status (#962)', async () => {

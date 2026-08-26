@@ -37,11 +37,26 @@ export class ApiError extends Error {
    * every other failure, and on any body that does not carry the field.
    */
   captureId: string | null
-  constructor(status: number, statusText: string, detail: string, captureId: string | null = null) {
+  /**
+   * Whether the capture named by `captureId` was ingested by the failed
+   * request itself, or already existed in the case. The distinction decides
+   * what the operator is told and whether the popup's page-status map may
+   * stamp a fresh capture time. Null when the body does not say — a caller
+   * must not treat null as fresh.
+   */
+  captured: boolean | null
+  constructor(
+    status: number,
+    statusText: string,
+    detail: string,
+    captureId: string | null = null,
+    captured: boolean | null = null
+  ) {
     super(`Request failed: ${status} ${statusText}`)
     this.status = status
     this.detail = detail
     this.captureId = captureId
+    this.captured = captured
   }
 }
 
@@ -88,14 +103,16 @@ async function throwIfNotOk(res: Response): Promise<void> {
   if (res.ok) return
   let detail = res.statusText
   let captureId: string | null = null
+  let captured: boolean | null = null
   try {
-    const body = (await res.json()) as { error?: string; captureId?: string }
+    const body = (await res.json()) as { error?: string; captureId?: string; captured?: boolean }
     detail = body.error || detail
     captureId = typeof body.captureId === 'string' ? body.captureId : null
+    captured = typeof body.captured === 'boolean' ? body.captured : null
   } catch {
     //
   }
-  throw new ApiError(res.status, res.statusText, detail, captureId)
+  throw new ApiError(res.status, res.statusText, detail, captureId, captured)
 }
 
 export interface StatusOptions {

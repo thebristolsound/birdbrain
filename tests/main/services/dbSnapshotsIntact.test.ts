@@ -20,9 +20,14 @@ import { isIntactDatabase } from '@main/services/db/dbSnapshots'
 function writeMultiPageDb(path: string): void {
   const db = new Database(path)
   try {
+    // One transaction instead of 140 autocommit ones: each autocommit fsyncs,
+    // which put this fixture at ~4.6s under coverage against the 5s default
+    // test timeout (#446). The committed file is byte-for-byte the same size.
+    db.exec('BEGIN')
     for (let i = 0; i < 40; i++) db.exec(`CREATE TABLE t${i} (a TEXT, b TEXT)`)
     const insert = db.prepare(`INSERT INTO t0 VALUES (?, ?)`)
     for (let i = 0; i < 100; i++) insert.run('x'.repeat(300), String(i))
+    db.exec('COMMIT')
   } finally {
     db.close()
   }

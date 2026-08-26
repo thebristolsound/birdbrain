@@ -36,6 +36,12 @@ head sha under review, with exit codes captured at the command. Any push invalid
 it is regenerated before review is requested, every time. A block describing any other tree
 state is a blocking body defect by definition, with no argument about how close it is.
 
+*Amended by [ADR-0021](0021-a-verdict-survives-a-sha-that-changes-no-authored-content.md):
+"any push" is narrowed to any push that changes authored content. A new head whose
+`git diff <base>...<head>` is byte-identical to the reviewed sha's carries the block forward with
+an annotation naming the sha it was measured at, rather than regenerating it. The clean
+back-merge is the case; a hand-resolved conflict changes the diff and reviews normally.*
+
 ### Derive, do not recall
 
 Any figure in the body that a command can compute at head - changed-file lists and counts,
@@ -79,6 +85,7 @@ green on PR #423, which CI had already rejected. The block is the claim being ch
 
 ## Related
 
+- ADR-0021 - narrows the preceding invalidation clause to authored-content changes.
 - ADR-0011 - finding 6, the false success claim; the failure class body accuracy guards.
 - #508 - coverage figures describe the working tree; re-run after any edit.
 - #857, #856 - the round records this ADR is measured from.

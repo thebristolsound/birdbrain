@@ -5,325 +5,279 @@ description: 'The core ingestion path, from the Chrome extension through the loc
 
 ## 1. Overview
 
-The capture pipeline is the core data ingestion path in Birdbrain. It captures web pages from a Chrome extension, transmits them over HTTP to a local Hono server running inside the Electron main process, stores the content on disk, records metadata in SQLite, runs post-capture analysis, and pushes real-time events to the renderer for observability.
+The capture pipeline is the core data ingestion path in Birdbrain. The Chrome extension collects
+a page as MHTML plus a screenshot, extracted text, and response headers, and posts it over HTTP
+to a Hono server bound to `127.0.0.1:19845` inside the Electron main process. The Capture
+Lifecycle then hashes the content while streaming it to disk, appends a signed entry to the
+per-case manifest, records the capture in SQLite, schedules post-capture work, and pushes
+real-time events to the renderer.
 
-The pipeline handles three capture sources (auto, manual, selector) through a single unified endpoint. All sources share the same storage, hashing, database insertion, and post-capture extraction logic, differing only in their validation rules and how they are triggered.
+MHTML is the only format the extension produces. Captures with `format: 'html'` exist only as
+read-only legacy rows from before the MHTML migration; they have no manifest entry and no ingest
+path.
+
+**Current build status.** The wire protocol defines three capture sources (`auto`, `manual`,
+`selector`), and the server validates all three. In the shipped extension, session auto-capture
+and selector-triggered auto-capture are disabled by a hotfix in `extension/src/background.ts`
+(the code paths exist but are commented out); the README states the same limitation. Manual
+capture — the popup capture button and the right-click context menu — is the live extension
+path. The desktop app's background recapture is a separate acquisition path that renders a URL
+in a hidden window and feeds the same lifecycle ingest.
 
 ### Key components
 
 | Component | Location | Role |
 |-----------|----------|------|
-| Chrome extension background | `extension/src/background.ts` | Capture orchestration, dedup, connection management |
-| Content script | `extension/src/content.ts` | Page extraction (freeze-dry), selector matching, highlighting |
-| Extension HTTP client | `extension/src/utils/api.ts` | Typed API client for the Hono server |
-| Toast system | `extension/src/toast.ts` | In-page user feedback via Shadow DOM toasts |
-| Capture server | `src/main/services/captureServer.ts` | Hono HTTP server with unified capture endpoint |
-| File storage | `src/main/services/storage.ts` | Writes HTML, PNG, and TXT files to disk |
-| Hash service | `src/main/services/hash.ts` | SHA-256 content hashing and verification |
-| IPC channels | `src/shared/ipc.ts` | Typed channel definitions for Electron IPC |
-| Preload bridge | `src/preload/index.ts` | Exposes IPC to renderer via `contextBridge` |
-| Zustand store | `src/renderer/stores/appStore.ts` | Capture events state (ring buffer, stats) |
-| Server status hook | `src/renderer/hooks/useServerStatus.ts` | Subscribes to IPC events, updates store |
+| Extension background worker | `extension/src/background.ts` | Capture orchestration, suppression boundary, connection state |
+| Content script | `extension/src/content.ts` | Text extraction, selector matching, full-page screenshot stitching |
+| Capture-UI suppression | `extension/src/captureSuppression.ts`, `captureHygiene.ts` | Keeps Birdbrain's injected UI out of evidence |
+| Toast system | `extension/src/toast.ts` | In-page feedback via Shadow DOM |
+| Extension HTTP client | `extension/src/utils/api.ts` | Typed client for the loopback server |
+| Capture server | `src/main/services/captureServer.ts` | Hono server: capture, selector, attach, and self-test routes |
+| Capture Lifecycle | `src/main/services/captureLifecycle.ts` | Ingest, verify, delete — the forensic-bearing path |
+| Capture Store | `src/main/services/captureStore.ts` | On-disk artifact layout, streaming hash-on-write |
+| Manifest service | `src/main/services/manifest.ts` | Hash-chained, signed `manifest.jsonl` with write-ahead rollback |
+| Exclusion policy | `src/main/services/exclusionPolicy.ts`, `src/shared/urlPatterns.ts` | Global and per-case ignored-URL matching |
+| IPC channels / preload | `src/shared/ipc.ts`, `src/preload/index.ts` | Typed events to the renderer |
+| Zustand store | `src/renderer/stores/appStore.ts` | Capture-event ring buffer and stats |
 | Health dashboard | `src/renderer/components/status/CaptureHealth.tsx` | Pipeline observability UI |
-| Shared types | `src/shared/types.ts` | `CaptureEvent`, `CaptureSource`, `Capture`, etc. |
 
-## 2. Architecture diagram
-
-### Full capture flow
-
-```
-Chrome Extension                    Electron Main Process                 Renderer
-================                    =====================                 ========
-
- background.ts                       captureServer.ts (Hono)              appStore.ts
- +-----------+                       +------------------+                 +-----------+
- |           |  POST /api/captures   |                  |  IPC:           |           |
- | captureTab|--------------------->| Unified Endpoint  |  NEW_CAPTURE   | Zustand   |
- | manual    |                      |                  |---------------->| Store     |
- | selector  |                      | 1. Validate      |                 |           |
- |           |                      | 2. Blacklist     |  IPC:           | capture   |
- |           |                      | 3. Source rules  |  CAPTURE_       | Events[]  |
- |           |  JSON response       | 4. Hash          |  ACTIVITY      | capture   |
- |           |<---------------------| 5. Save files    |---------------->| Stats     |
- |           |                      | 6. DB insert     |                 |           |
- +-----------+                      | 7. IPC notify    |                 +-----------+
-       ^                            | 8. Post-capture  |                       |
-       |                            +------------------+                       v
- content.ts                               |                            CaptureHealth.tsx
- +-----------+                             |                            +-----------+
- | freeze-dry|                      storage.ts    database.ts           | Activity  |
- | text      |                      +--------+    +----------+          | list      |
- | selectors |                      | HTML   |    | captures |          | Stats     |
- +-----------+                      | PNG    |    | entities |          | Test btns |
-                                    | TXT    |    +----------+          +-----------+
-                                    +--------+
-```
-
-### Event flow for observability
-
-```
-captureServer.ts                  preload/index.ts              appStore.ts           CaptureHealth.tsx
-     |                                  |                           |                       |
-     | emitCaptureEvent()               |                           |                       |
-     |---IPC:CAPTURE_ACTIVITY---------->|                           |                       |
-     |                                  |--onCaptureActivity()----->|                       |
-     |                                  |                           |--addCaptureEvent()    |
-     |                                  |                           |   (ring buffer, 50)   |
-     |                                  |                           |                       |
-     |                                  |                           |---re-render---------->|
-     |                                  |                           |                       |
-```
-
-## 3. Capture sources
-
-### Auto capture
-
-Auto capture is session-based. It fires automatically when a page finishes loading while a capture session is active.
-
-**Trigger:** `chrome.tabs.onUpdated` listener in `extension/src/background.ts` (line 363). When `changeInfo.status === 'complete'`, the `shouldCapture()` function checks:
-
-1. Session is active and extension is connected
-2. URL is not in the default ignore list (`DEFAULT_IGNORE`)
-3. URL is not matched by user-configured ignored patterns
-4. URL has not been captured in the last 60 seconds (client-side dedup via `dedupeMap`)
-
-**Behavior:**
-- The server infers the case ID from `state.activeCaseId`; the extension does not send a `caseId`
-- The server increments `state.captureCount` for auto captures only
-- The extension updates its badge count after each successful auto capture
-- No toast feedback is shown for auto captures (they happen silently in the background)
+## 2. Capture sources
 
 ### Manual capture
 
-Manual capture is session-independent. It can be triggered at any time the extension is connected to the server, regardless of whether a session is active.
+Manual capture is the extension's live path. Triggers:
 
-**Triggers:**
-- Context menu: "Capture with Birdbrain" right-click menu item (`extension/src/background.ts`, line 115)
-- Popup: `MANUAL_CAPTURE` message from the extension popup (`extension/src/background.ts`, line 421)
+- The capture button in the extension popup (`MANUAL_CAPTURE` message to the background worker).
+- The right-click menu: **Birdbrain -> Capture Full Page** and **Capture Full Page (Scrolling)**.
 
-**Behavior:**
-- Requires an explicit `caseId` in the request body
-- The server validates the case exists and is not archived
-- Shows a toast on the page: "Capturing..." while in progress, then updates to success/degraded/error
-- Extraction (freeze-dry) and screenshot run in parallel via `Promise.all` (`extension/src/background.ts`, line 221)
-- Reports the `degraded` flag to distinguish freeze-dry success from fallback
+Behavior:
 
-### Selector capture
+- Requires an explicit `caseId`; the server validates that the case exists and is not archived.
+- The background worker re-reads the tab's URL at capture time (the tab may have navigated since
+  the popup rendered) and refuses to start until the ignore rules have loaded from the server —
+  with no rules it cannot know whether the operator excluded the page.
+- An in-flight guard keyed by tab and case prevents double submission.
+- A toast on the page reports the outcome: success, degraded (screenshot dropped), or error.
 
-Selector capture fires when page text matches user-defined patterns (selectors) associated with cases. It operates in two modes controlled by `autoCaptureMode`:
+### Auto and selector capture (disabled)
 
-**Trigger:** `checkSelectorsOnTab()` in `extension/src/background.ts` (line 310), called on page load completion when the session is active and selectors exist.
+When enabled, auto capture fires on page-load completion during an active session (case inferred
+from the server's active case), and selector capture fires when page text matches a case's
+Selectors, in `auto` or `notify` mode. Both paths are currently commented out in the background
+worker. Selector *matching* still runs: matches highlight on the page, update the toolbar badge,
+and are reported in the popup — they just do not trigger captures.
 
-**Modes:**
-- **`auto`**: Automatically captures the page for each case with matching selectors
-- **`notify`**: Shows a Chrome notification listing the matches; the user can then manually capture
+The server-side validation for all three sources remains live, so re-enabling the paths is an
+extension-side change.
 
-**Behavior:**
-- Requires `caseId` and `matchedSelectors` in the request body
-- Has its own dedup map (`selectorDedupeMap`) keyed by `caseId:url`
-- Matches are grouped by case, so a single page can trigger captures for multiple cases
-- The content script highlights matching text on the page and shows a sidebar with match details
+### Recapture
 
-### Source comparison
+Recapture is app-initiated: a fresh background capture of an existing capture's URL, rendered in
+a hidden window and stored as a linked sibling that supersedes the original (`method:
+'background'`, `supersedesCaptureId`). It reuses the same lifecycle ingest described below and is
+otherwise out of scope for this page.
 
-| Aspect | Auto | Manual | Selector |
-|--------|------|--------|----------|
-| Session required | Yes | No | Session must be active (for selector fetching) |
-| Case ID | Inferred from active case | Explicit in request | Explicit in request |
-| Dedup | 60s client-side per URL | None | 60s client-side per caseId:URL |
-| Toast feedback | None | Yes (full lifecycle) | None |
-| Screenshot | Yes | Yes (parallel) | Yes |
-| Archived case check | No (active case assumed valid) | Yes | Yes |
+## 3. The capture endpoint
 
-## 4. The unified capture endpoint
+### `POST /api/captures`
 
-### Endpoint: `POST /api/captures`
+One multipart/form-data endpoint for all sources, validated by `CaptureUploadSchema`
+(`src/shared/schemas.ts`). Principal fields:
 
-Defined in `src/main/services/captureServer.ts`, line 254. All three capture sources hit this single endpoint, discriminated by the `source` field.
+| Field | Notes |
+|-------|-------|
+| `source` | `auto`, `manual`, or `selector` — the wire union; `recapture` never arrives here |
+| `caseId` | Required for `manual` and `selector`; inferred from the active case for `auto` |
+| `url`, `title`, `timestamp` | Page identity as the extension observed it |
+| `mhtml` | The MHTML file part — required |
+| `screenshot` | Optional PNG file part |
+| `textContent` | `document.body.innerText` at capture time |
+| `headers` | Main-frame response headers, when the cached set still matches the URL |
+| `browserVersion`, `userAgent`, `extensionVersion`, `httpStatus` | Provenance fields |
 
-### Request body
+### Middleware stack, in order
 
-```typescript
-{
-  source: 'auto' | 'manual' | 'selector'
-  caseId?: string        // required for manual/selector
-  url: string            // required
-  title: string
-  html: string           // required
-  screenshot?: string    // base64-encoded PNG
-  timestamp: string
-  textContent?: string
-  headers?: Record<string, string>
-  matchedSelectors?: SelectorMatchInfo[]  // required for selector
-}
-```
+1. **Host-header guard.** Any request whose `Host` is not a loopback literal is rejected before
+   the body is read — the DNS-rebinding defense.
+2. **Body limit.** 250 MB across the request.
+3. **CORS.** Only `chrome-extension://` and localhost origins are granted.
+4. **Token auth.** Every POST requires `X-Birdbrain-Token`, the per-installation secret. GET
+   endpoints are unauthenticated by design and disclosed as such in SECURITY.md.
 
-### Validation pipeline
+### Validation order inside the handler
 
-The endpoint processes requests in a strict order:
-
-**Step 1: Common validation** (line 265):
-```
-if (!url || !html) → 400 "Missing required fields: url, html"
-```
-
-**Step 2: URL blacklist** (line 270):
-The server checks the URL against `settings.ignoredUrlPatterns` using `isUrlBlacklisted()`. This is a defense-in-depth check. The extension also filters URLs client-side, but the server enforces it independently.
-
-```
-if blacklisted → 403 "URL blocked by ignored pattern"
-   + emits CaptureEvent { type: 'skipped', skipReason: "Blacklisted: {pattern}" }
-```
-
-**Step 3: Source-specific validation** (line 278):
-
-| Source | Validation |
-|--------|-----------|
-| `auto` | `state.sessionActive` must be true (400), `state.activeCaseId` must exist (400) |
-| `manual` | `body.caseId` required (400), case must exist (404), case must not be archived (400) |
-| `selector` | `body.caseId` required (400), `matchedSelectors` required (400), case must exist (404), case must not be archived (400) |
-| Unknown | 400 `"Invalid source: {source}"` |
-
-**Step 4: Shared pipeline** (line 319 onward):
-
-1. Emit `received` event
-2. Compute SHA-256 hash of the HTML content
-3. Decode base64 screenshot to Buffer (if present)
-4. Generate a UUID for the capture (`crypto.randomUUID()`)
-5. Save files to disk via `saveCapture()`
-6. Insert capture record into SQLite via `db.insertCapture()`
-7. Increment `state.captureCount` (auto source only)
-8. Schedule post-capture work via `setImmediate()`
-9. Send `NEW_CAPTURE` IPC event to the renderer
-10. Emit `stored` event with duration measurement
-11. Return `{ captureId, hash, status: 'ok', source }`
-
-**Step 5: Error handling** (line 355):
-
-On any exception in the shared pipeline:
-- Logs the error to console
-- Emits a `failed` CaptureEvent
-- Returns 500 "Failed to process capture"
+1. **Operator-name gate.** If no operator name is configured in Settings, the capture is refused
+   (400) and a `failed` event is emitted. Nothing is stored without an attributable operator.
+2. **Case resolution.** For `auto`: an active session and active case must exist. For `manual`
+   and `selector`: the named case must exist and not be archived. Case resolution runs *before*
+   the exclusion check because exclusions are per-case — the case's policy cannot be known until
+   the case is.
+3. **Exclusion check.** The URL is matched against the case's effective ignored-URL patterns
+   (global list plus the case's exclusions, or the case's alone in `override` mode). A match
+   answers 403 naming the pattern and emits a `skipped` event.
+4. **Manual dedup.** A manual capture of the same case and URL within the dedup window (5
+   seconds, `MANUAL_DEDUPE_WINDOW_MS`) answers 409 and emits a `skipped` event.
+5. **Screenshot size policy.** A screenshot part over 100 MB (`MAX_SCREENSHOT_SIZE`) is dropped
+   rather than failing the capture; the response and the `stored` event carry the warning, and
+   the extension shows a degraded toast. A silently missing artifact would let a clean-looking
+   capture lose one.
+6. **Ingest.** The MHTML stream is handed to the Capture Lifecycle (section 5).
 
 ### Response
 
 ```typescript
-{ captureId: string, hash: string, status: 'ok', source: string }
+{
+  captureId: string
+  hash: string             // SHA-256 of the stored MHTML bytes
+  manifestIndex: number
+  status: 'ok'
+  source: string
+  screenshotStatus: 'saved' | 'dropped' | 'none'
+  screenshotWarning?: string
+}
 ```
 
-## 5. Page extraction
+On any ingest exception the server logs, emits a `failed` event, and answers 500.
 
-Page extraction runs in the content script (`extension/src/content.ts`) and is triggered by the `EXTRACT_PAGE` message from the background script.
+## 4. What the extension collects
 
-### freeze-dry
+Inside the suppression boundary (below), a manual capture collects in parallel:
 
-The [`freeze-dry`](https://github.com/nicktomlin/freeze-dry) library serializes the live DOM into a self-contained HTML string. It inlines CSS, images, fonts, and other resources as data URIs, producing a snapshot that can be rendered offline without any external dependencies.
+- **MHTML** via `chrome.pageCapture.saveAsMHTML` — the browser-rendered page with its
+  subresources in one file.
+- **Tab metadata** (title) via `chrome.tabs.get`.
+- **Plain text** — `document.body.innerText`, executed in the page via `chrome.scripting`.
+- **A screenshot**, when the `captureScreenshots` setting allows: the full-page path stitches
+  viewport slices on an `OffscreenCanvas` in the content script; the scrolling variant first
+  scrolls to trigger lazy-loaded content (with a 120-second budget); each falls back to the next
+  simpler path, ending at a single viewport shot. A hard byte budget bounds the bitmap.
 
-Configuration (line 265):
-```typescript
-freezeDry(document, {
-  timeout: 10000,   // 10-second timeout to prevent hangs on complex pages
-  addMetadata: true  // adds freeze-dry metadata to the output
-})
-```
-
-### Degraded fallback
-
-If freeze-dry fails (throws an error), the content script falls back to raw `document.documentElement.outerHTML` and sets `degraded: true` in the response (line 272-278). This ensures a capture always succeeds, even if it lacks inlined resources.
-
-The `degraded` flag propagates to the background script, which uses it to show an amber "Captured (basic snapshot)" toast instead of the green "Page captured" toast for manual captures.
-
-### Text content extraction
-
-Alongside the HTML, the content script extracts `document.body.innerText` as plain text (line 263). This text content is:
-- Saved as a `.txt` file alongside the HTML
-- Used for entity extraction (regex pattern matching)
-- Used for selector matching (pattern detection)
-
-### Screenshot capture
-
-The background script captures screenshots via the Chrome extension API:
-
-```typescript
-chrome.tabs.captureVisibleTab({ format: 'png' })
-```
-
-The result is a data URI that gets stripped of its `data:image/png;base64,` prefix before being sent to the server. Screenshot capture can fail silently (e.g., on restricted pages like `chrome://` URLs), in which case the capture proceeds without a screenshot.
+**Response headers** are cached per tab from `chrome.webRequest.onHeadersReceived` (main frame
+only) and attached only when the cached URL still matches the captured URL — no headers rather
+than the wrong page's headers. The cache is cleared on navigation start and tab close.
 
 ### Capture-UI suppression
 
-Birdbrain injects UI into the page it captures: the progress toast (`extension/src/toast.ts`) and selector highlights (`extension/src/content.ts`). Both would otherwise be rendered into screenshot frames and serialised into the archived MHTML, putting tool chrome inside evidence.
+Birdbrain injects UI into the page it captures: the progress toast (`extension/src/toast.ts`) and
+selector highlights (`extension/src/content.ts`). Both would otherwise be rendered into
+screenshot frames and serialised into the archived MHTML, putting tool chrome inside evidence.
 
-The suppression protocol (`extension/src/captureSuppression.ts`) is one suppress/restore boundary around every capture:
+The suppression protocol (`extension/src/captureSuppression.ts`) is one suppress/restore boundary
+around every capture:
 
-- Each piece of in-page UI registers a teardown (`registerCaptureUiTeardown`). One `suppressCaptureUi()` call removes all of it; new in-page UI registers there rather than being added to each capture path. It must also be added to `removeInjectedBirdbrainUi()` (`extension/src/captureHygiene.ts`), the background's fallback strip for a tab whose content script is orphaned or cannot clear itself: that function is serialised into the page by `chrome.scripting.executeScript` and cannot reach the registry, so the two lists are kept in step by hand.
-- The background wraps a capture in `withSuppression()`: it strips the UI before any frame or DOM snapshot is taken, refuses to inject UI into the tab while any capture on it is still collecting frames, holding toasts for delivery once the tab is idle rather than dropping them, and restores the highlights when the capture settles, including when it fails, so a failed capture never leaves the page stripped.
-- Every screenshot path re-runs suppression immediately before each frame it takes: viewport, full-page, scrolling, and the fallbacks between them. The full-page path re-suppresses before every viewport slice, not once per capture.
-- A path that cannot clear the page aborts the whole capture rather than the screenshot alone. The MHTML is collected inside the same bracket and is a snapshot of that same uncleaned page, so storing it as an ordinary screenshot-less capture would keep evidence that cannot be shown clean while telling the operator nothing.
+- Each piece of in-page UI registers a teardown (`registerCaptureUiTeardown`). One
+  `suppressCaptureUi()` call removes all of it; new in-page UI registers there rather than being
+  added to each capture path. It must also be added to `removeInjectedBirdbrainUi()`
+  (`extension/src/captureHygiene.ts`), the background's fallback strip for a tab whose content
+  script is orphaned or cannot clear itself: that function is serialised into the page by
+  `chrome.scripting.executeScript` and cannot reach the registry, so the two lists are kept in
+  step by hand.
+- The background wraps a capture in `withSuppression()`: it strips the UI before any frame or DOM
+  snapshot is taken, refuses to inject UI into the tab while any capture on it is still
+  collecting frames, holding toasts for delivery once the tab is idle rather than dropping them,
+  and restores the highlights when the capture settles, including when it fails, so a failed
+  capture never leaves the page stripped.
+- Every screenshot path re-runs suppression immediately before each frame it takes: viewport,
+  full-page, scrolling, and the fallbacks between them. The full-page path re-suppresses before
+  every viewport slice, not once per capture.
+- A path that cannot clear the page aborts the whole capture rather than the screenshot alone.
+  The MHTML is collected inside the same bracket and is a snapshot of that same uncleaned page,
+  so storing it as an ordinary screenshot-less capture would keep evidence that cannot be shown
+  clean while telling the operator nothing.
 
-What this establishes and what it does not: a screenshot produced by these paths is of a page from which Birdbrain's own injected nodes had been removed immediately before each frame was taken. The archived MHTML carries a slightly weaker claim of the same kind. It is a snapshot of a page that was stripped when the capture bracket opened, and into which Birdbrain injected nothing while the capture was collecting; there is no strip at the instant `pageCapture.saveAsMHTML` serialises, because that API gives the extension no such hook. Neither is a statement about page content the site itself renders, about anything injected by other extensions, or about the page's state before or after the capture window.
+What this establishes and what it does not: a screenshot produced by these paths is of a page
+from which Birdbrain's own injected nodes had been removed immediately before each frame was
+taken. The archived MHTML carries a slightly weaker claim of the same kind. It is a snapshot of a
+page that was stripped when the capture bracket opened, and into which Birdbrain injected nothing
+while the capture was collecting; there is no strip at the instant `pageCapture.saveAsMHTML`
+serialises, because that API gives the extension no such hook. Neither is a statement about page
+content the site itself renders, about anything injected by other extensions, or about the page's
+state before or after the capture window.
 
-### Parallel extraction (manual capture)
+### Toast feedback
 
-For manual captures, freeze-dry and screenshot run in parallel via `Promise.all` (`extension/src/background.ts`, line 221):
+| Status | Message | Notes |
+|--------|---------|-------|
+| `capturing` | "Capturing page..." | Shown once frames are collected; held while any capture on the tab is still collecting |
+| `success` | "Page captured" | |
+| `degraded` | "Captured (screenshot too large)" | The capture stored; the oversized screenshot was dropped |
+| `error` | Mapped from the failure | 400 -> "Capture rejected: (detail)", 403 -> "URL is blacklisted", 404 -> "Case not found", 500 -> "Server error - check Birdbrain app", network -> "Can't reach Birdbrain - is it running?", suppression failure -> "Capture aborted: Birdbrain UI could not be removed from the page" |
 
-```typescript
-const [pageData, rawScreenshot] = await Promise.all([
-  chrome.tabs.sendMessage(tabId, { type: 'EXTRACT_PAGE' }),
-  chrome.tabs.captureVisibleTab({ format: 'png' }).catch(() => undefined)
-])
-```
+Outcome toasts are held, not dropped, while another capture on the tab is collecting frames — how
+a capture ended is the operator's only signal that it succeeded.
 
-This minimizes total capture latency. For auto captures, the extraction and screenshot are sequential (lines 178-189).
+## 5. Ingest: the Capture Lifecycle
 
-## 6. Storage and integrity
+`ingestMhtmlCapture` (`src/main/services/captureLifecycle.ts`) is the forensic-bearing path.
 
-### File organization
+1. **Stream-write and hash.** `writeMhtmlStream` (Capture Store) writes the MHTML to disk in a
+   single pass while feeding a SHA-256 hasher, enforcing the 200 MB cap (`MAX_MHTML_SIZE`) and
+   unlinking partial files on overflow or error. The hash covers exactly the bytes on disk.
+2. **Content-address the sidecars.** The screenshot and extracted-text digests are computed
+   *before* the manifest entry is appended, so the same hex binds the signed manifest body and
+   the database mirror. Absent artifacts are omitted (`undefined`, never `null` or empty) so
+   legacy entry bodies stay byte-stable.
+3. **Anchor the headers.** Captured response headers are embedded in the signed entry when
+   present.
+4. **TLS corroboration re-fetch.** For HTTPS URLs, the main process re-connects to the origin
+   after storage and records the certificate chain served *at that moment*. This is corroboration
+   only — it binds nothing about the captured transaction (ADR-0002) — and it is fail-soft: a
+   re-fetch problem can never fail the capture.
+5. **The write-ahead manifest seam.** `withCaptureEntry` appends the signed entry, then runs the
+   side effects — write the `.txt` and `.png` sidecars, insert the database row. Any failure
+   re-throws: the seam truncates the manifest back to its pre-append offset and the store deletes
+   the written artifacts. The manifest never records a capture that did not land.
+6. **The database row** duplicates the chain-linkage fields (`manifestIndex`, `prevHash`,
+   `entryHash`) so the database and manifest can be cross-checked against each other during
+   verification.
 
-Capture files live under a configurable storage root directory, organized by case ID:
+After ingest returns, two things happen off the request path:
+
+- The capture id is handed to the **RFC 3161 timestamp worker** without blocking; the capture's
+  trusted time stays `pending` until a token lands.
+- `setImmediate` schedules **post-capture work**: selector matching
+  (`selectorLifecycle.runActiveSelectorsForCapture`) against the extracted text, then **data
+  extraction** into `extracted_data` (the indicator categories behind the Data Explorer).
+  Extraction runs synchronously on the main process and is timed as a slow operation for
+  Settings -> Diagnostics; a failure in either task is logged and never fails the capture.
+
+### Storage layout
 
 ```
 {storageRoot}/
   {caseId}/
-    {captureId}.html   -- freeze-dried (or raw fallback) HTML
-    {captureId}.png    -- viewport screenshot (if available)
-    {captureId}.txt    -- plain text content (if available)
+    manifest.jsonl            -- signed, hash-chained audit log (one per case)
+    {captureId}.mhtml         -- the captured page
+    {captureId}.png           -- screenshot (when taken)
+    {captureId}.txt           -- extracted plain text (when present)
+    {captureId}_thumb.jpg     -- derived thumbnail
 ```
 
-The `saveCapture()` function in `src/main/services/storage.ts` (line 26) handles directory creation and file writes:
-- Creates the case directory if it does not exist (`mkdirSync` with `recursive: true`)
-- Writes HTML as UTF-8 text
-- Writes screenshot as raw binary (from a Node.js `Buffer`)
-- Writes text content as UTF-8 text
-- Returns relative paths (e.g., `{caseId}/{captureId}.html`) for storage in the database
+The database stores relative paths; the Capture Store (`captureStore.ts`) owns the layout, and
+everything — ingest, verify, delete, extraction, thumbnailing, orphan scanning — goes through it.
 
-### SHA-256 hash computation
+## 6. Verification
 
-The server hashes every capture's HTML content with SHA-256 (`src/main/services/hash.ts`):
+`verifyCapture` re-establishes a capture's standing from primary material:
 
-```typescript
-export function hashContent(content: string): string {
-  return createHash('sha256').update(content, 'utf-8').digest('hex')
-}
-```
+1. Stream the MHTML from disk and recompute SHA-256.
+2. Verify the whole manifest chain for the case.
+3. **Anchoring check.** A valid chain can still be truncated — removing trailing entries leaves a
+   shorter, internally valid chain — so verification confirms this capture's content hash is
+   anchored at its recorded manifest index before trusting the stored-hash comparison.
+4. **Sidecar binding.** Screenshot and text digests are recomputed against the hashes recorded in
+   the *signed manifest entry*, never against the database mirror, which is a cache an attacker
+   could edit alongside the file.
+5. Status is one of `verified`, `tampered`, `missing`, `chain-broken`, or `legacy` (pre-MHTML
+   rows, which have no manifest entry and are grandfathered rather than judged).
 
-The hash is:
-- Computed at capture time from the HTML string
-- Stored in the `captures` table `hash` column
-- Returned to the extension in the capture response
-- Used by the test pipeline to verify round-trip integrity
+Trusted time is resolved separately and attached to every result: `rfc3161`, `pending`, or
+`none`. It is orthogonal to integrity — a byte-perfect capture is integrity-verified whether or
+not a timestamp token exists. The result is persisted so the UI shows the *last* verification
+run; the displayed state is not a live check, and **Re-verify** produces a current one.
 
-### Hash verification
-
-The `verifyHash()` function allows checking whether stored content matches its expected hash:
-
-```typescript
-export function verifyHash(content: string, expectedHash: string): boolean {
-  return hashContent(content) === expectedHash
-}
-```
-
-This supports the integrity verification feature used in evidence export and the `HashVerification` type in `src/shared/types.ts` (line 124), which reports `verified`, `tampered`, or `missing` status per capture.
+## 7. Deletion
 
 ### Deletion is not redaction
 
@@ -343,19 +297,23 @@ everything ever captured into it, and the remedy for a sensitive URL is a new ca
 delete. Redaction proper, a URL commitment scheme that lets an entry be verified without
 disclosing what it points at, is tracked separately.
 
+Deletion is write-ahead like ingest: the signed `deletion` entry is appended first, then files
+are unlinked and the row removed, with the manifest rolled back if the side effects fail. Deletes
+within one case are serialised through a per-case queue, because a rollback is a truncation and
+two interleaved deletes could truncate each other's entries. Batch deletion commits a prefix: one
+ordinary entry per capture, in order, halting at the first failure. Non-operator deletions (the
+pipeline self-test's cleanup) record a `reason` on the entry so a chain reader can tell them from
+an operator deleting evidence.
+
 ### Unreconciled deletions
 
-Deleting a capture is write-ahead: the signed `deletion` entry is appended and flushed to disk
-*before* the files are unlinked and the database row is removed, so the manifest can never record
-a removal that did not happen. The cost of that ordering is a narrow window. If the app is killed
-between the flush and the row delete, the manifest holds a valid, fully-formed deletion entry
-while `captures` still holds the row.
-
-Nothing about the chain is wrong in that state, so chain verification reports it as valid — which
-is why **Settings → Diagnostics → Unreconciled deletions** exists. It re-verifies the chain of
-every case it can read and joins the deletion entries against live capture rows in that same case,
-listing any entry the database has not caught up with. Cases it could not read are named
-separately, and nothing is claimed about them. Archived cases are not scanned at all.
+The write-ahead ordering leaves a narrow window: if the app is killed between the manifest flush
+and the row delete, the manifest holds a valid deletion entry while `captures` still holds the
+row. Nothing about the chain is wrong in that state, so chain verification reports it as valid —
+which is why **Settings -> Diagnostics -> Unreconciled deletions** exists. It re-verifies the
+chain of every case it can read and joins the deletion entries against live capture rows, listing
+any entry the database has not caught up with. Cases it could not read are named separately, and
+nothing is claimed about them. Archived cases are not scanned at all.
 
 What a finding establishes is bounded, and the panel says so: the chain verifies, and the row is
 still present. Whether the capture's files are still on disk is **not** part of the claim — the
@@ -367,330 +325,140 @@ to **delete the capture again from its case**. That appends a fresh signed delet
 removes the row; it succeeds whether or not the files survived, because each unlink is guarded by
 an existence check. The stale entry stays in the chain, as append-only requires.
 
-An evidence package exported from an unreconciled case already fails verification: `evidence.json`
-lists a capture the signed manifest records as deleted, which the standalone verifier reports as
-an `evidence.json coverage` failure naming the capture and saying the chain records it as deleted.
+An evidence package exported from an unreconciled case already fails verification:
+`evidence.json` lists a capture the signed manifest records as deleted, which the standalone
+verifier reports as an `evidence.json coverage` failure naming the capture and saying the chain
+records it as deleted.
 
 The verifier stops there and does not call it an interrupted delete, because it cannot tell one
 from the other. An `evidence.json` edited to re-add a capture that was legitimately deleted
 produces the same failure on the same branch, and naming a crash would hand that edit an innocent
 explanation.
 
-## 7. Observability
+## 8. URL filtering
 
-### CaptureEvent types
+Both sides consult the same pattern grammar (`src/shared/urlPatterns.ts`): regex literals in
+`/slashes/`, globs with `*`/`?`, and plain substrings.
 
-Defined in `src/shared/types.ts` (line 176):
+- **The server enforces.** The effective list for a case is the operator's global
+  `ignoredUrlPatterns` combined with the case's own exclusions, or the case's alone in
+  `override` mode (`exclusionPolicy.ts`). Operator-supplied regexes are evaluated inside a
+  `node:vm` sandbox with a 200 ms budget, so a pathological pattern fails closed as a no-match
+  instead of stalling the app. The exclusion list blocks every capture route into a case,
+  manual included.
+- **The extension pre-filters.** It mirrors the effective list from the status poll and skips
+  blocked URLs client-side — advisory only; the server remains the enforcement point. Until the
+  first successful poll loads the rules, manual capture refuses to start rather than guessing.
+- **A hardcoded default list** in the extension skips browser-internal schemes (`chrome://`,
+  `about:`, `data:`, `file:`, and the capture server itself) before anything is sent.
+
+The pipeline self-test route is the one producer the exclusion list deliberately does not cover:
+its URL is a fixed sentinel and its body a literal, so no operator-supplied content enters the
+case, and a broad pattern like `/./` must not be able to break the operator's only proof that the
+pipeline works.
+
+## 9. Observability
+
+### Capture events
 
 ```typescript
-export interface CaptureEvent {
-  type: 'received' | 'stored' | 'failed' | 'skipped' | 'extraction_done'
+interface CaptureEvent {
+  type: 'received' | 'stored' | 'failed' | 'skipped'
   captureId?: string
   source: CaptureSource
   url: string
   timestamp: string
-  error?: string       // only for 'failed'
-  skipReason?: string  // only for 'skipped'
-  durationMs?: number  // only for 'stored'
+  error?: string             // 'failed'
+  skipReason?: string        // 'skipped'
+  durationMs?: number        // 'stored'
+  screenshotWarning?: string // 'stored' with a dropped screenshot
 }
 ```
 
-| Event type | Meaning | Emitted when |
-|-----------|---------|-------------|
-| `received` | Capture request accepted for processing | After source-specific validation passes |
-| `stored` | Files written and DB record created | After `saveCapture()` + `insertCapture()` succeed |
-| `failed` | Capture processing failed | On any exception in the shared pipeline |
-| `skipped` | Capture rejected before processing | URL matches a blacklist pattern |
-| `extraction_done` | Post-capture analysis complete | After entity extraction and selector matching finish |
+| Event | Emitted when |
+|-------|--------------|
+| `received` | The request passed validation and ingest is starting |
+| `stored` | The lifecycle completed: manifest entry, files, and row all landed |
+| `failed` | Any exception in the pipeline, or the operator-name gate refused |
+| `skipped` | An exclusion pattern matched, or manual dedup caught a duplicate |
 
-### Event flow
+Events flow over the `CAPTURE_ACTIVITY` IPC channel through the preload bridge into the Zustand
+store, which keeps a ring buffer of the 50 most recent events (aggregate success/fail/skip
+counters accumulate independently). The `CaptureHealth` component in the top bar renders the
+counters, connection and session state, the last error, the activity list, and the two self-test
+buttons. A separate `NEW_CAPTURE` event carries the full capture row so the renderer prepends it
+to the list without a refetch.
 
-```
-captureServer.ts          Electron IPC          preload/index.ts      useServerStatus.ts     appStore.ts
-      |                        |                       |                      |                    |
-      |--emitCaptureEvent()--->|                       |                      |                    |
-      |  mainWindow.webContents|                       |                      |                    |
-      |  .send(CAPTURE_ACTIVITY|                       |                      |                    |
-      |        , event)        |                       |                      |                    |
-      |                        |--ipcRenderer.on()---->|                      |                    |
-      |                        |                       |--onCaptureActivity-->|                    |
-      |                        |                       |   (callback)        |--addCaptureEvent-->|
-      |                        |                       |                      |                    |
-```
+### Self-tests
 
-The `emitCaptureEvent()` function (`src/main/services/captureServer.ts`, line 139) sends events via the `CAPTURE_ACTIVITY` IPC channel. The preload bridge (`src/preload/index.ts`, line 132) exposes `onCaptureActivity()` which the `useServerStatus` hook subscribes to. The hook calls `addCaptureEvent()` on the Zustand store.
+- **Test Pipeline** (`POST /api/captures/test`): ingests a fixed literal body under the sentinel
+  URL `birdbrain://pipeline-test` through the real lifecycle — manifest entry, files, row — then
+  deletes it through the lifecycle, appending a matching `deletion` entry with reason
+  `pipeline-test`. The residue is bounded and honest: on the happy path the chain gains a
+  capture/deletion pair; cleanup is best-effort, so a matched pair is the normal case, not a
+  guarantee.
+- **Test HTTP** (`captures:testHttp` IPC): a `fetch` of `GET /api/status` from the main process,
+  proving the listener independently of the extension.
 
-### Health dashboard
+## 10. Connection management
 
-The `CaptureHealth` component (`src/renderer/components/status/CaptureHealth.tsx`) is mounted in the `TopBar` (`src/renderer/components/layout/TopBar.tsx`) and provides:
-
-**Trigger button**: A pill-shaped button showing success count and failure count. Color-coded:
-- Emerald: captures succeeding, no failures
-- Red: failures detected
-- Slate: no activity yet
-
-**Popover panel** (toggled on click):
-1. **Status indicators**: Extension connection state, session recording state
-2. **Aggregate stats**: `{N}ok / {N}fail / {N}skip`
-3. **Last error**: Most recent failure message and timestamp (if any)
-4. **Activity list**: Scrollable list of last 50 events, each showing:
-   - Status icon (green check, red X, amber warning, blue spinner, indigo zap)
-   - Truncated URL (40 chars)
-   - Source type, timestamp, duration (for `stored` events)
-   - Error message (for `failed` events)
-   - Skip reason (for `skipped` events)
-5. **Test buttons**: "Test Pipeline" and "Test HTTP" (see Section 12)
-
-### Extension toast feedback
-
-The toast system (`extension/src/toast.ts`) renders feedback directly on the captured page using Shadow DOM isolation (to avoid style conflicts with page CSS).
-
-**Toast lifecycle for manual captures:**
-
-1. Background sends `SHOW_CAPTURE_TOAST`; the content script shows a spinner and "Capturing page..."
-2. After capture completes, background sends `UPDATE_CAPTURE_TOAST` with the outcome:
-
-| Status | Icon | Message | Auto-dismiss |
-|--------|------|---------|-------------|
-| `capturing` | Spinner | "Capturing page..." | No (stays until update) |
-| `success` | Checkmark | "Page captured" | 3 seconds |
-| `degraded` | Warning | "Captured (basic snapshot)" | 5 seconds |
-| `error` | X mark | "Capture failed" (or custom message) | 5 seconds |
-| `skipped` | Info | "Already captured" | 2 seconds |
-
-### Error categorization
-
-When a manual capture fails, the background script categorizes the error by HTTP status (`extension/src/background.ts`, line 252):
-
-| HTTP status | User-facing message |
-|-------------|-------------------|
-| 400 | `"Capture rejected: {server detail}"` |
-| 403 | "URL is blacklisted" |
-| 404 | "Case not found" |
-| 500 | "Server error -- check Birdbrain app" |
-| `TypeError` (network) | "Can't reach Birdbrain -- is it running?" |
-
-The `ApiError` class in `extension/src/utils/api.ts` (line 3) carries the HTTP `status` and parsed error `detail` from the server response body.
-
-## 8. Post-capture processing
-
-After storing a capture, the server schedules asynchronous work via `schedulePostCaptureWork()` (`src/main/services/captureServer.ts`, line 115):
-
-```typescript
-function schedulePostCaptureWork(
-  captureId: string,
-  caseId: string,
-  source: CaptureSource,
-  url: string,
-  textContent: string | undefined
-): void {
-  setImmediate(() => {
-    // 1. Rule-based entity extraction
-    // 2. Selector matching
-    // 3. Emit extraction_done event
-  })
-}
-```
-
-### Rule-based entity extraction
-
-`runRuleBasedExtraction()` (line 75):
-
-1. Skips if `textContent` is empty/whitespace
-2. Loads enabled entity types from settings (cached after first load in `cachedEnabledEntityTypes`)
-3. Calls `extractEntitiesRuleBased(textContent, enabledTypes)` for regex and NLP extraction
-4. Batch-inserts discovered entities into the `entities` table via `db.insertEntitiesBatch()`
-5. Sends an `EXTRACTION_COMPLETE` IPC event to the renderer with the entity count
-6. Errors are caught and logged, never propagated; extraction failure does not fail the capture
-
-### Selector matching
-
-After entity extraction, the server runs `db.matchSelectorsForCapture(captureId, caseId, textContent)` (line 124). This checks the capture's text content against all active selectors for the case and records matches in the database.
-
-### Scheduling via `setImmediate`
-
-Post-capture work uses `setImmediate()` rather than `await` for two reasons:
-1. The HTTP response returns immediately after storage; the client does not wait for extraction
-2. Extraction errors cannot cause the capture to appear failed
-
-Each task (extraction, selector matching) is wrapped in its own try/catch so that a failure in one does not prevent the other from running. After both complete, an `extraction_done` event is emitted.
-
-## 9. Connection management
-
-### Extension to server connection
-
-The Chrome extension maintains a connection to the Hono server through status polling.
-
-**Polling interval** (`extension/src/background.ts`, line 97):
-```typescript
-setInterval(() => { checkStatus() }, connected ? 30_000 : 5_000)
-```
-
-- When disconnected: polls every 5 seconds (aggressive reconnect)
-- When connected: polls every 30 seconds (keepalive)
-- Initial check runs immediately on extension load
-
-**Status endpoint**: `GET /api/status` returns server state including `running`, `activeCase`, `sessionActive`, `captureCount`, `autoCaptureMode`, `cases`, and `ignoredUrlPatterns`.
-
-### Server-side connection tracking
-
-The server tracks when the extension was last seen via `state.extensionLastSeen` (updated on every `/api/status` hit). A 5-second interval check (`startExtensionConnectionCheck()`, line 478) detects disconnection:
-
-```
-if (Date.now() - extensionLastSeen > 10000) → extension disconnected
-```
-
-When connection state changes, the server sends `EXTENSION_CONNECTION` IPC events to the renderer.
+- The extension polls `GET /api/status` on a `chrome.alarms` schedule of 30 seconds — the MV3
+  minimum for a repeating alarm — plus once at worker startup, and immediately after the popup
+  switches the active case (so highlights and cached counts never lag a case switch by a poll
+  interval).
+- The server counts a poll from an extension origin as a heartbeat and reports the extension
+  connected or disconnected to the renderer as that heartbeat appears and lapses.
+- The status response carries what the extension mirrors: active case, session state, capture
+  count, the effective ignored-URL patterns, and the screenshot toggle. The per-installation
+  token is included only for extension and origin-less callers, never for web origins.
 
 ### Badge states
 
-The extension icon and badge reflect connection state (`extension/src/background.ts`, line 381):
+| State | Badge |
+|-------|-------|
+| Disconnected | `!` on gray |
+| Connected, idle | empty |
+| Session active | capture count on red |
+| Selector matches on page | match count on blue |
 
-| State | Icon | Badge text | Badge color |
-|-------|------|-----------|-------------|
-| `disconnected` | Default | `!` | Gray (#6b7280) |
-| `connected` | Default | (empty) | -- |
-| `active` (session recording) | Active variant | Capture count | Red (#ef4444) |
-| Selector match | -- | Match count | Blue (#3b82f6) |
+## 11. Extension attach routes
 
-## 10. Design decisions
+Three further POST routes serve the extension's annotate-from-the-browser features. All follow
+the same active-case discipline as selector creation: the request's `caseId` must match the
+server's active case.
 
-### Why a unified endpoint over separate endpoints
+- `POST /api/captures/lookup` — whether the case already holds a capture of a URL (canonicalized
+  comparison). A read carried as a POST on purpose: the token guard fires on POST only, and a GET
+  would answer any local process without a token.
+- `POST /api/tags/apply` and `POST /api/notes` — apply a tag or create a note against the capture
+  of a URL, *auto-capturing first* when the case holds none (the request carries an MHTML payload
+  for that path). The resolve-or-ingest step is serialised per case and URL so two concurrent
+  attaches cannot each observe "no capture" and ingest duplicates. The attach runs strictly after
+  a successful resolve, so a failed ingest attaches nothing.
 
-The previous design had three nearly-identical endpoints (`/api/captures`, `/api/captures/manual`, `/api/captures/selector`) duplicating ~80% of their logic. The unified endpoint with a `source` discriminator:
+## 12. Design decisions
 
-- Eliminates code duplication for the shared pipeline (hash, storage, DB, events)
-- Makes it impossible for source-specific endpoints to drift out of sync
-- Simplifies the extension API from 4 capture functions to 1
-- Makes the validation rules per source explicit in a single decision tree
+### One endpoint, discriminated by source
 
-### Why single-phase capture over two-phase
+An earlier design had three near-identical capture endpoints duplicating most of their logic. The
+unified endpoint keeps the shared pipeline (hash, storage, manifest, events) in one place, makes
+the per-source validation rules one explicit decision tree, and cannot drift between sources.
 
-The previous two-phase manual capture showed "Captured!" immediately (Phase 1: raw HTML), then ran freeze-dry in the background (Phase 2). Phase 2 failures were silent. The user saw success but got a degraded capture.
+### Dedup on both sides, for different reasons
 
-The single-phase design:
-- Waits for freeze-dry (with 10s timeout) before responding
-- Reports actual outcome: success, degraded, or failure
-- Eliminates the `PATCH /api/captures/:id/html` endpoint and `EXTRACT_PAGE_FAST` content script handler
-- Trade-off: manual capture latency increases from ~100ms to ~500ms-2s, but feedback is honest
+The server enforces a short manual-capture dedup window (5 seconds per case and URL, answering
+409) because double-clicks and repeated context-menu hits are operator slips the server should
+absorb. The disabled auto-capture path carries its own client-side dedup map so that, when
+enabled, the extension avoids the HTTP round trip entirely for recently captured URLs.
 
-### Why client-side dedup instead of server-side
+### Fire-and-forget post-capture work
 
-Auto-capture deduplication (60-second window per URL) runs in the extension's `background.ts` via `dedupeMap`. The server does not perform dedup because:
+Selector matching and data extraction run via `setImmediate` after the response is sent: the
+extension should not wait on them, and a failure in either must not make a stored capture look
+failed. Each task is independently guarded and logged.
 
-- The extension already knows recent URLs it has captured, so no HTTP round-trip is needed for dedup checks
-- Server-side dedup would require maintaining URL state or querying the database on every request
-- The server never emits a `skipped` event for dedup; the extension simply does not send the request
-- Selector captures have their own dedup keyed by `caseId:url` (different URLs can match the same selectors for different cases)
+### A ring buffer for activity
 
-### Why fire-and-forget for entity extraction
-
-Post-capture entity extraction runs via `setImmediate()` and its results are not included in the HTTP response because:
-
-- Extraction can take variable time depending on text length and enabled entity types
-- A failed extraction should not invalidate a successful capture
-- The renderer is notified asynchronously via `EXTRACTION_COMPLETE` IPC when extraction finishes
-- The `extraction_done` CaptureEvent provides observability into extraction completion
-
-### Why a ring buffer (50 events) for the activity list
-
-The Zustand store caps capture events at 50 (`appStore.ts`, line 106):
-
-```typescript
-const events = [event, ...s.captureEvents].slice(0, 50)
-```
-
-- Prevents unbounded memory growth during long recording sessions
-- 50 events provides sufficient recent history for debugging
-- Events are prepended (newest first) for display in the health dashboard
-- Aggregate stats (`successCount`, `failCount`, `skipCount`) accumulate independently and are not lost when events rotate out
-
-## 11. URL filtering
-
-### Blacklist pattern types
-
-The `isUrlBlacklisted()` function in `src/main/services/captureServer.ts` (line 56) and the equivalent `isIgnoredByUser()` in `extension/src/background.ts` (line 139) support three pattern formats:
-
-1. **Regex**: Patterns wrapped in `/` delimiters (e.g., `/^https:\/\/mail\.google\.com/i`). Parsed with `new RegExp()`.
-2. **Glob**: Patterns containing `*` or `?` wildcards (e.g., `*.google.com/mail/*`). Converted to regex via `globToRegex()`.
-3. **Literal substring**: Plain strings (e.g., `facebook.com`). Matched via `url.includes(pattern)`.
-
-### Default ignore patterns (extension)
-
-The extension has hardcoded patterns in `DEFAULT_IGNORE` (`extension/src/background.ts`, line 9):
-
-```typescript
-const DEFAULT_IGNORE = [
-  /^chrome:\/\//,
-  /^chrome-extension:\/\//,
-  /^about:/,
-  /^devtools:/,
-  /^data:/,
-  /^file:/,
-  /localhost:19845/     // the capture server itself
-]
-```
-
-The extension applies these client-side before sending any request. They filter out browser internal pages and prevent recursive captures of the Birdbrain server.
-
-### User-configured patterns
-
-Users can add custom ignored URL patterns via settings (`BirdbrainSettings.ignoredUrlPatterns`). These are:
-
-1. Fetched by the extension on every status poll and stored in `userIgnoredPatterns`
-2. Applied client-side in the extension via `isIgnoredByUser()` before sending captures
-3. Applied server-side in `isUrlBlacklisted()` as a defense-in-depth check. If the extension is out of date or a direct HTTP request bypasses the extension, the server still rejects blacklisted URLs
-
-### Dual-layer filtering
-
-URL filtering happens at two layers:
-
-```
-Extension (client-side)                    Server (defense-in-depth)
-========================                   =========================
-DEFAULT_IGNORE (regex)                     settings.ignoredUrlPatterns
-+ userIgnoredPatterns                      via isUrlBlacklisted()
-via shouldCapture() / isIgnoredByUser()    → 403 with pattern name
-→ request never sent                       + CaptureEvent { type: 'skipped' }
-```
-
-## 12. Testing
-
-### Test pipeline endpoint
-
-`POST /api/captures/test` (`src/main/services/captureServer.ts`, line 369)
-
-This endpoint exercises the full capture pipeline without requiring the Chrome extension:
-
-1. Finds the first available case in the database (fails if no cases exist)
-2. Creates test HTML: `<html><body>Birdbrain pipeline test {timestamp}</body></html>`
-3. Computes SHA-256 hash of the test HTML
-4. Emits a `received` CaptureEvent
-5. Saves the test capture to disk via `saveCapture()`
-6. Inserts it into the database via `db.insertCapture()`
-7. Reads it back and verifies the hash matches
-8. Emits a `stored` CaptureEvent
-9. **Cleans up**: deletes the test capture from the database in a `finally` block
-
-Returns: `{ success: boolean, durationMs: number, error?: string }`
-
-### HTTP test
-
-The HTTP test (`captures:testHttp` IPC channel, `src/main/ipcHandlers.ts`, line 94) verifies the Hono server is reachable by making a `fetch()` call to `GET /api/status` from the main process. This tests the HTTP listener independently of the extension.
-
-### Health dashboard test buttons
-
-Both tests are accessible from the `CaptureHealth` popover:
-
-- **"Test Pipeline"**: Invokes `window.birdbrain.testPipeline()` -> IPC `captures:testPipeline` -> `POST /api/captures/test` on the local server
-- **"Test HTTP"**: Invokes `window.birdbrain.testHttp()` -> IPC `captures:testHttp` -> `GET /api/status` on the local server
-
-Results display inline: `"Pipeline OK -- verified in {N}ms"` (green) or `"Pipeline FAILED: {error}"` (red).
-
-### Unit test coverage
-
-The capture server endpoint is covered by tests in `tests/main/services/captureServer.test.ts`. Key test scenarios include:
-- Unified endpoint validation per source type
-- URL blacklist rejection
-- Event emission at each pipeline stage
-- Test endpoint round-trip verification
+The renderer keeps the 50 most recent capture events — enough recent history to debug a session
+without unbounded growth — while aggregate counters accumulate independently, so rotation never
+under-reports totals.

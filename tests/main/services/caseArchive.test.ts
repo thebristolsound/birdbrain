@@ -208,14 +208,18 @@ describe('caseArchive export', () => {
   // Pinned as a literal, deliberately, and only here, so a bump is an act
   // rather than drift.
   //
+  // 5 since #827: duplicate provenance travels in the archive, and a pre-#827
+  // Birdbrain hits both bump arms — its strict manifest schema reports the
+  // `method: 'duplicate'` entry as failed verification (a false tamper
+  // reading), and an override import silently drops duplicate_of_capture_id.
   // 4 since #391: data.json carries a `noteTags` table, and a pre-v32
   // Birdbrain has no `note_tags` table to import it into — every tag raised
   // from a note would be silently dropped, which is exactly what the
   // constant's doc comment says to bump for. Contrast #400, where the
   // maintainer ruled no bump on 2026-08-19 for two added case columns; that
   // tension was recorded here and is preserved by this comment.
-  it('keeps CASE_ARCHIVE_SCHEMA_VERSION at 4 since the #391 note_tags table', () => {
-    expect(CASE_ARCHIVE_SCHEMA_VERSION).toBe(4)
+  it('keeps CASE_ARCHIVE_SCHEMA_VERSION at 5 since #827 duplicate provenance', () => {
+    expect(CASE_ARCHIVE_SCHEMA_VERSION).toBe(5)
   })
 
   it('exports a .birdbrain archive with header, data, manifest, and files', async () => {

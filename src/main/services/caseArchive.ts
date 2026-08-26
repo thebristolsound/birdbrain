@@ -50,6 +50,14 @@ import type {
   CaseArchiveCounts
 } from '@shared/types'
 
+// 5 since duplicate provenance (#827, schema v33): the manifest may carry
+// capture entries with `method: 'duplicate'` and captures rows may carry
+// `duplicate_of_capture_id`. A pre-#827 Birdbrain hits BOTH arms of the bump
+// criterion below: its strict `ManifestEntrySchema` enum rejects the method
+// value, so inspectCaseArchive reports a valid archive as failed verification
+// (a false tamper reading), and an override import feeds a CAPTURE_COLUMNS map
+// without the column, silently dropping the provenance link. The gate turns
+// both into the clean "update Birdbrain" refusal.
 // 4 since note tags (#391, schema v32): data.json carries a `noteTags` table.
 // A pre-v32 Birdbrain reading one has no `note_tags` table to import it into,
 // so every tag an investigator raised from a note would be silently dropped on
@@ -69,7 +77,7 @@ import type {
 // anchor_json, which a pre-v27 import would silently drop. Bump this whenever a
 // Case Archive gains data an older release would silently discard or reject
 // opaquely.
-export const CASE_ARCHIVE_SCHEMA_VERSION = 4
+export const CASE_ARCHIVE_SCHEMA_VERSION = 5
 
 export interface CaseArchiveData {
   case: Record<string, unknown>

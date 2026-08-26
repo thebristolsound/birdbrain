@@ -1,5 +1,4 @@
 import {
-  copyFileSync,
   createReadStream,
   createWriteStream,
   existsSync,
@@ -10,7 +9,7 @@ import {
   writeFileSync,
   type WriteStream
 } from 'fs'
-import { unlink } from 'fs/promises'
+import { copyFile, unlink } from 'fs/promises'
 import { join } from 'path'
 import { createHash } from 'crypto'
 import { finished } from 'stream/promises'
@@ -272,7 +271,9 @@ export function createCaptureStore(deps: { getRoot: () => string }): CaptureStor
     if (!existsSync(source.abs)) return undefined
     ensureDir(caseId)
     const target = artifactPaths(caseId, targetCaptureId, type)
-    copyFileSync(source.abs, target.abs)
+    // Async on purpose: an MHTML runs to MAX_MHTML_SIZE, and a synchronous copy
+    // would block the main process (UI and capture server) for the duration.
+    await copyFile(source.abs, target.abs)
     return {
       rel: target.rel,
       hash: await hashFile(target.abs),
@@ -298,7 +299,7 @@ export function createCaptureStore(deps: { getRoot: () => string }): CaptureStor
     const thumbnail = existsSync(sourceThumb)
     if (thumbnail) {
       ensureDir(caseId)
-      copyFileSync(sourceThumb, thumbnailPaths(caseId, targetCaptureId).abs)
+      await copyFile(sourceThumb, thumbnailPaths(caseId, targetCaptureId).abs)
     }
     return { artifacts, thumbnail }
   }

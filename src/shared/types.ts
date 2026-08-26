@@ -481,6 +481,10 @@ export const LOG_CODES = [
   'captureLifecycle.tls_refetch_failed',
   'captureLifecycle.selector_match_failed',
   'captureLifecycle.reprocess_failed',
+  // A duplicate's post-commit trusted-time mirror write failed (#827). The
+  // duplicate itself succeeded — the mirror self-heals on the next read — so
+  // the log line is the only trace the reconcile was skipped.
+  'captureLifecycle.duplicate_reconcile_failed',
   'backgroundRenderer.trim_failed',
   'backgroundRenderer.consent_blocker_disable_failed',
   'backgroundRenderer.consent_blocker_enable_failed',

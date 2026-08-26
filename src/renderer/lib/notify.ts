@@ -132,6 +132,8 @@ const CODE_LABELS: Record<LogCode, string> = {
   'captureLifecycle.tls_refetch_failed': "Couldn't verify the site's certificate",
   'captureLifecycle.selector_match_failed': "Couldn't check this capture against selectors",
   'captureLifecycle.reprocess_failed': "Couldn't reprocess this capture",
+  'captureLifecycle.duplicate_reconcile_failed':
+    "The duplicate was created, but its trusted-time status couldn't be refreshed",
   'backgroundRenderer.trim_failed': "Couldn't trim the screenshot",
   'backgroundRenderer.consent_blocker_disable_failed': "Couldn't turn off the cookie-notice blocker",
   'backgroundRenderer.consent_blocker_enable_failed': "Couldn't turn on the cookie-notice blocker",

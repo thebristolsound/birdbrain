@@ -27,6 +27,26 @@ vi.mock('@main/services/tlsCertChain', async (importOriginal) => {
   return { ...actual, fetchCertChain: vi.fn(async () => null) }
 })
 
+// Lets one test fail the post-commit trusted-time mirror write for the
+// duplicate row only (the verify path reconciles the source row and must keep
+// working). Delegates to the real implementation whenever the flag is off.
+const reconcileControl = vi.hoisted(() => ({ failOnDuplicateRows: false }))
+vi.mock('@main/services/trustedTime', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@main/services/trustedTime')>()
+  const reconcileCaptureTrustedTime = (capture: {
+    id: string
+    caseId: string
+    hash: string
+    method?: string
+  }) => {
+    if (reconcileControl.failOnDuplicateRows && capture.method === 'duplicate') {
+      throw new Error('mirror write failed')
+    }
+    return actual.reconcileCaptureTrustedTime(capture)
+  }
+  return { ...actual, reconcileCaptureTrustedTime }
+})
+
 const MHTML_BODY = 'From: <Saved by Chrome>\nContent-Type: multipart/related\n\nduplicate me'
 const SCREENSHOT = Buffer.from('PNG-screenshot-bytes')
 const TEXT = 'a phrase only this page carries'
@@ -446,6 +466,29 @@ describe('createCaptureLifecycle.duplicate (#827)', () => {
 
     const { getCaptureTextContent } = await import('@main/services/db/captureRepo')
     expect(getCaptureTextContent(result.capture.id)).toBe(TEXT)
+  })
+
+  it('keeps the committed entry, row and files when the post-commit mirror write fails', async () => {
+    // reconcileCaptureTrustedTime runs AFTER withCaptureEntry commits. A
+    // failure there must not reach the artifact cleanup: the entry and row are
+    // permanent by then, and deleting the files would strand a committed
+    // capture without its evidence. The mirror is rebuildable — it self-heals
+    // on the next read — so the duplicate still reports success.
+    reconcileControl.failOnDuplicateRows = true
+    const result = await lifecycle.duplicate(source.id).finally(() => {
+      reconcileControl.failOnDuplicateRows = false
+    })
+
+    expect(result.status).toBe('duplicated')
+    if (result.status !== 'duplicated') return
+    expect(manifestLines()).toHaveLength(2)
+    expect(getCapture(result.capture.id)).toBeDefined()
+    expect(existsSync(join(tempDir, 'captures', result.capture.mhtmlPath!))).toBe(true)
+    // The skipped mirror write self-heals: verify reconciles on read.
+    await expect(lifecycle.verify(result.capture.id)).resolves.toMatchObject({
+      status: 'verified',
+      trustedTime: 'pending'
+    })
   })
 
   it('refuses a legacy html capture, which has no entry to copy provenance from', async () => {

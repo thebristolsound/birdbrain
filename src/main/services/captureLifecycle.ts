@@ -725,6 +725,10 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
         }
 
         const duplicateId = randomUUID()
+        // Flipped when withCaptureEntry commits: past that point the entry and
+        // row are permanent, and the catch below must not delete files a
+        // committed record points at.
+        let committed = false
         try {
           const { artifacts } = await store.copyArtifacts(source.caseId, source.id, duplicateId)
           const mhtml = artifacts.mhtml
@@ -823,6 +827,8 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
               })
           )
 
+          committed = true
+
           // No separate hand-off to the timestamp worker: the duplicate's
           // content hash is the source's, so a token over that hash already
           // anchors these bytes and a second request would ask the TSA to date
@@ -832,15 +838,32 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
           // the source is still eligible and unstamped, which does put the copy
           // in the retry queue. Whichever row is stamped, the entry anchors
           // both.
-          reconcileCaptureTrustedTime(capture)
+          try {
+            reconcileCaptureTrustedTime(capture)
+          } catch (reconcileErr) {
+            // Rebuildable mirror only — it self-heals on the next read
+            // (computeVerification reconciles), so a failure here must not
+            // fail a duplicate whose entry, row and files are committed.
+            logger.error(
+              'captureLifecycle',
+              'captureLifecycle.duplicate_reconcile_failed',
+              { captureId: ident(duplicateId) },
+              reconcileErr
+            )
+          }
           return { status: 'duplicated', capture: captureRepo.getCapture(duplicateId) ?? capture }
         } catch (err) {
-          // The manifest seam has already rolled its own entry back; the copied
-          // files are namespaced by the new id, so the source is untouched.
-          try {
-            store.deleteArtifacts(source.caseId, duplicateId)
-          } catch {
-            /* ignore */
+          // Pre-commit only: the manifest seam has already rolled its own entry
+          // back, and the copied files are namespaced by the new id, so the
+          // source is untouched. Past the commit the entry and row are
+          // permanent, and deleting the files would strand a committed capture
+          // without its evidence.
+          if (!committed) {
+            try {
+              store.deleteArtifacts(source.caseId, duplicateId)
+            } catch {
+              /* ignore */
+            }
           }
           throw err
         }

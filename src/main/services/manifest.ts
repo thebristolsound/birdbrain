@@ -183,22 +183,28 @@ export function readManifestSnapshot(caseDir: string): ManifestSnapshot {
 // One signed capture entry, as recorded on the chain.
 export type ManifestCaptureEntry = Extract<ManifestEntry, { type: 'capture' }>
 
-// Reads the capture entry recorded at `index`, or undefined when the line at
-// that position is missing, unparseable, not a capture entry, or carries a
-// different index than the position it sits at.
+// Reads the capture entry recorded at `index`, or undefined when the chain
+// does not verify, the line at that position is missing, unparseable, not a
+// capture entry, or carries a different index than the position it sits at.
 //
 // For callers that need a capture's ORIGINAL anchored facts (#827 duplication
 // re-anchors url/timestamp/headers/tls into a fresh entry): the `captures` row
 // mirrors those fields but is hand-editable through Settings → Database, and
-// re-signing an edited mirror would launder it into the chain. Verify the chain
-// first — a value read from an unverified manifest is worth no more than the
-// mirror.
+// re-signing an edited mirror would launder it into the chain. The chain is
+// verified over the SAME snapshot the entry is read from — one read, like
+// deletionReconciliation — so a caller's earlier verification of a separate
+// read cannot vouch for values a rewrite slipped in between the two reads.
 export function readCaptureEntryAt(
   caseDir: string,
   index: number
 ): ManifestCaptureEntry | undefined {
-  const raw = readManifestSnapshot(caseDir).entries[index]
+  const snapshot = readManifestSnapshot(caseDir)
+  const raw = snapshot.entries[index]
   if (raw === undefined) return undefined
+  const chain = verifyManifestChainText(snapshot.jsonl.toString('utf-8'), {
+    publicKeyPem: getPublicKeyPem()
+  })
+  if (!chain.valid) return undefined
   const parsed = ManifestEntrySchema.safeParse(raw)
   if (!parsed.success || parsed.data.type !== 'capture' || parsed.data.index !== index) {
     return undefined

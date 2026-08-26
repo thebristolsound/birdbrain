@@ -716,6 +716,23 @@ describe('withCaptureEntry', () => {
     expect(readCaptureEntryAt(tempDir, 7)).toBeUndefined()
   })
 
+  it('readCaptureEntryAt verifies the chain over the same snapshot it reads (#827)', async () => {
+    const { readCaptureEntryAt } = await import('@main/services/manifest')
+    await withCaptureEntry(tempDir, baseCtx, () => undefined)
+    expect(readCaptureEntryAt(tempDir, 0)?.url).toBe(baseCtx.url)
+
+    // Rewrite the entry in place without re-chaining: still schema-valid, but
+    // the recorded entryHash no longer matches. A caller's earlier chain
+    // verification read different bytes, so the anchored-facts reader must
+    // verify the exact snapshot it hands values out of — a rewrite between the
+    // two reads yields nothing rather than unauthenticated url/timestamp.
+    const path = join(tempDir, 'manifest.jsonl')
+    const entry = JSON.parse(readFileSync(path, 'utf-8').trim()) as Record<string, unknown>
+    entry.url = 'https://attacker.example/'
+    writeFileSync(path, JSON.stringify(entry) + '\n')
+    expect(readCaptureEntryAt(tempDir, 0)).toBeUndefined()
+  })
+
   it('KAT: the writer still produces the exact pre-#827 chain hash for a pre-#827 entry', async () => {
     // The hex is frozen from before duplication provenance existed: the entry
     // the writer produced for exactly these fields hashed to it then, and must

@@ -35,6 +35,7 @@
     "tests/extension",
     "tests/hooks",
     "tests/lib",
-    "tests/renderer"
+    "tests/renderer",
+    "tests/setup/jsdom"
   ]
 }

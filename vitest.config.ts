@@ -133,7 +133,8 @@ export default defineConfig({
             'tests/components/**/*.test.tsx',
             'tests/renderer/**/*.test.ts',
             'tests/hooks/**/*.test.ts'
-          ]
+          ],
+          setupFiles: ['./tests/setup/jsdom/layout.ts']
         }
       }
     ]

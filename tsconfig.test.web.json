@@ -17,7 +17,7 @@
 // against the DOM lib is the false-positive case tsconfig.test.node.json's
 // header describes.
 //
-// The five directory entries mirror tsconfig.test.node.json's exclude list and
+// The six directory entries mirror tsconfig.test.node.json's exclude list and
 // spell out each non-JSX extension tsc compiles (.ts/.mts/.cts, and so their
 // .d.* forms); .ts alone would leave a stray .mts here in no project at all.
 {
@@ -51,6 +51,9 @@
     "tests/lib/**/*.cts",
     "tests/renderer/**/*.ts",
     "tests/renderer/**/*.mts",
-    "tests/renderer/**/*.cts"
+    "tests/renderer/**/*.cts",
+    "tests/setup/jsdom/**/*.ts",
+    "tests/setup/jsdom/**/*.mts",
+    "tests/setup/jsdom/**/*.cts"
   ]
 }

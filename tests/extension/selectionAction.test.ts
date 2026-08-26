@@ -12,7 +12,7 @@ import type {
   ExtensionTagApplyResult,
   UrlLookupResult
 } from '@shared/schemas'
-import type { SelectionActionResponse } from '@extension/messages'
+import type { PopupPageStatus, SelectionActionResponse } from '@extension/messages'
 
 vi.mock('@extension/utils/api', () => ({
   getStatus: vi.fn(),
@@ -46,6 +46,9 @@ const events: string[] = []
 
 let prepareResponse: Record<string, unknown> = { ok: true }
 let mhtmlFails = false
+// What chrome.tabs.get answers once the frames are in — the navigation cases
+// re-point it so the collected bytes belong to a page other than the sender's.
+let tabAfterFrames: typeof TAB = TAB
 
 function dispatchWithResponse(message: unknown): Promise<unknown> {
   return new Promise((resolve) => {
@@ -153,7 +156,12 @@ beforeAll(async () => {
       onRemoved: { addListener: () => {} },
       onUpdated: { addListener: () => {} },
       query: (_query: unknown, callback: (tabs: unknown[]) => void) => callback([]),
-      get: () => Promise.resolve(TAB),
+      // Both call shapes: the capture paths await the promise, GET_PAGE_STATUS
+      // passes a callback
+      get: (_tabId?: unknown, callback?: (tab: unknown) => void) => {
+        if (callback) return callback(tabAfterFrames)
+        return Promise.resolve(tabAfterFrames)
+      },
       captureVisibleTab: () => {
         events.push('captureVisibleTab')
         return Promise.resolve('data:image/png;base64,BBBB')
@@ -204,6 +212,7 @@ beforeEach(() => {
   events.length = 0
   prepareResponse = { ok: true }
   mhtmlFails = false
+  tabAfterFrames = TAB
   vi.mocked(createSelector).mockClear()
   vi.mocked(getActiveSelectors).mockClear()
   vi.mocked(lookupCaptureByUrl).mockClear()
@@ -336,6 +345,107 @@ describe('SELECTION_ACTION: tag and quote ride the #392 attach endpoints', () =>
       error: 'Failed to capture page; nothing was attached'
     })
     expect(events).toContain('RELEASE_CAPTURE_UI')
+  })
+
+  it('refuses to attach when the tab navigated while the page was being captured', async () => {
+    // The frames describe whatever the tab shows now; `url` came from the
+    // sender. Attaching across that gap would store one page's bytes under
+    // another page's URL, so the action is refused rather than corrected.
+    tabAfterFrames = { ...TAB, url: 'https://example.test/somewhere-else', title: 'Elsewhere' }
+
+    const response = (await dispatchWithResponse({
+      type: 'SELECTION_ACTION',
+      action: 'tag',
+      text: 'evil@example.com'
+    })) as SelectionActionResponse
+
+    expect(response).toEqual({
+      ok: false,
+      error: 'The page navigated while it was being captured; nothing was attached'
+    })
+    expect(vi.mocked(applyTagToUrl)).not.toHaveBeenCalled()
+    expect(vi.mocked(createNoteOnUrl)).not.toHaveBeenCalled()
+    // The refusal is inside the bracket, so the latch still comes down
+    expect(events).toContain('RELEASE_CAPTURE_UI')
+  })
+
+  it('attaches when only the fragment moved: the same page under the lookup rule', async () => {
+    // The comparison is the server's own canonical identity, not string
+    // equality — an in-page anchor click must not read as a navigation.
+    tabAfterFrames = { ...TAB, url: 'https://example.test/page#section-3' }
+
+    const response = (await dispatchWithResponse({
+      type: 'SELECTION_ACTION',
+      action: 'tag',
+      text: 'evil@example.com'
+    })) as SelectionActionResponse
+
+    expect(response.ok).toBe(true)
+    expect(vi.mocked(applyTagToUrl)).toHaveBeenCalled()
+  })
+
+  it('says so inline when the server dropped an oversized screenshot', async () => {
+    // The manual path shows this as a degraded toast; the bar has no toast, so
+    // a silent success would hide a capture that landed without its frame.
+    vi.mocked(applyTagToUrl).mockResolvedValueOnce({
+      ...TAG_RESULT,
+      screenshotStatus: 'dropped',
+      screenshotWarning: 'Screenshot too large (12 MB); capture stored without it'
+    })
+
+    const response = (await dispatchWithResponse({
+      type: 'SELECTION_ACTION',
+      action: 'tag',
+      text: 'evil@example.com'
+    })) as SelectionActionResponse
+
+    expect(response).toEqual({
+      ok: true,
+      detail:
+        'Tagged "evil-example-com" — Screenshot too large (12 MB); capture stored without it',
+      captured: true
+    })
+  })
+
+  it('reports the Capture the failed attach had already stored', async () => {
+    // The one failure that is not a clean refusal: #392 returns the stored
+    // capture id on the 500 whose ingest succeeded and whose tag did not.
+    vi.mocked(applyTagToUrl).mockRejectedValueOnce({
+      status: 500,
+      detail: 'Failed to apply tag',
+      captureId: 'cap-stored'
+    })
+
+    const response = (await dispatchWithResponse({
+      type: 'SELECTION_ACTION',
+      action: 'tag',
+      text: 'evil@example.com'
+    })) as SelectionActionResponse
+
+    expect(response).toEqual({
+      ok: false,
+      error: 'Failed to apply tag — the page was captured, but nothing was attached to it',
+      captureId: 'cap-stored'
+    })
+  })
+
+  it('notes an attach-ingested capture in the popup page status (#962)', async () => {
+    // Only manualCaptureTab used to write this map, so a page Tag or Quote had
+    // just captured still read as never seen and invited a duplicate capture.
+    await dispatchWithResponse({
+      type: 'SELECTION_ACTION',
+      action: 'quote',
+      text: 'The quoted passage.'
+    })
+
+    const status = (await dispatchWithResponse({
+      type: 'GET_PAGE_STATUS',
+      tabId: TAB.id
+    })) as PopupPageStatus
+
+    expect(status.lastCapture).not.toBeNull()
+    // The attach routes return no manifest index, so the field is honestly null
+    expect(status.lastCapture?.manifestIndex).toBeNull()
   })
 
   it('refuses an excluded URL on the ingest branch without capturing anything', async () => {

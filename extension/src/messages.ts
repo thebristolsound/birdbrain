@@ -64,8 +64,15 @@ export interface SelectionActionRequest {
 
 /**
  * The background's answer to a SELECTION_ACTION request. `detail` and `error`
- * are operator-facing strings the bar renders verbatim; on `ok: false` the
- * server guarantees nothing was created or attached.
+ * are operator-facing strings the bar renders verbatim.
+ *
+ * A failure is usually a refusal that acquired nothing — the attach routes
+ * capture and attach in one transaction and refuse before acquiring on every
+ * rejection they can foresee. The one exception is the 500 those routes raise
+ * when the ingest succeeded and the Tag or Note creation did not: the server
+ * returns the stored Capture's id, and it is carried here rather than dropped,
+ * so the bar can tell the operator a capture exists. `captureId` absent is the
+ * assertion that nothing was created.
  */
 export type SelectionActionResponse =
   | {
@@ -74,7 +81,12 @@ export type SelectionActionResponse =
       /** True when the action auto-captured the page before attaching (#392). */
       captured: boolean
     }
-  | { ok: false; error: string }
+  | {
+      ok: false
+      error: string
+      /** The Capture stored before the attach failed; absent when none was. */
+      captureId?: string
+    }
 
 /** The slice of GET_STATE the selection bar gates its actions on. */
 export interface SelectionBarState {

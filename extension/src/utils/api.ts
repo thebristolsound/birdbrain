@@ -28,10 +28,20 @@ let refreshPromise: Promise<string | null> | null = null
 export class ApiError extends Error {
   status: number
   detail: string
-  constructor(status: number, statusText: string, detail: string) {
+  /**
+   * The Capture the failed route had already stored, when it reports one.
+   *
+   * The two attach routes (#392) return it on the 500 whose ingest succeeded
+   * and whose Tag or Note creation did not, so a caller can tell that partial
+   * outcome from the far more common refusal that acquired nothing. Null on
+   * every other failure, and on any body that does not carry the field.
+   */
+  captureId: string | null
+  constructor(status: number, statusText: string, detail: string, captureId: string | null = null) {
     super(`Request failed: ${status} ${statusText}`)
     this.status = status
     this.detail = detail
+    this.captureId = captureId
   }
 }
 
@@ -77,12 +87,15 @@ export function getServerToken(): string | null {
 async function throwIfNotOk(res: Response): Promise<void> {
   if (res.ok) return
   let detail = res.statusText
+  let captureId: string | null = null
   try {
-    detail = ((await res.json()) as { error?: string }).error || detail
+    const body = (await res.json()) as { error?: string; captureId?: string }
+    detail = body.error || detail
+    captureId = typeof body.captureId === 'string' ? body.captureId : null
   } catch {
     //
   }
-  throw new ApiError(res.status, res.statusText, detail)
+  throw new ApiError(res.status, res.statusText, detail, captureId)
 }
 
 export interface StatusOptions {

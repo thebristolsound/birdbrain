@@ -14,7 +14,8 @@ import { CaptureUiSuppressionError, createCaptureSuppression } from '@extension/
 import { MAX_SCREENSHOT_BITMAP_BYTES } from '@shared/constants'
 import { matchIgnoredUrl } from '@shared/urlPatterns'
 import { selectionToTagName } from '@shared/selectionKind'
-import type { ActiveSelectorsResult, SelectorMatchInfo } from '@shared/schemas'
+import { canonicalizeUrl } from '@shared/urlCanonicalize'
+import type { ActiveSelectorsResult, ScreenshotStatus, SelectorMatchInfo } from '@shared/schemas'
 import type {
   ManualCaptureResponse,
   PopupBlock,
@@ -831,8 +832,15 @@ function selectionAttachFailureMessage(err: unknown): string {
     return 'Aborted: Birdbrain UI could not be removed from the page'
   }
   if (err && typeof err === 'object' && 'status' in err) {
-    const apiErr = err as { status: number; detail: string }
-    return apiErr.detail || 'Request failed'
+    const apiErr = err as { status: number; detail: string; captureId?: string | null }
+    const detail = apiErr.detail || 'Request failed'
+    // The one failure that is not a clean refusal: the route stored the
+    // capture and then could not create the Tag or Note. Saying only that the
+    // action failed would tell the operator the case is unchanged when it
+    // holds new evidence.
+    return apiErr.captureId
+      ? `${detail} — the page was captured, but nothing was attached to it`
+      : detail
   }
   if (err instanceof TypeError) return "Can't reach Birdbrain — is it running?"
   return 'Action failed'
@@ -840,6 +848,31 @@ function selectionAttachFailureMessage(err: unknown): string {
 
 function quoteNoteTitle(pageTitle: string, url: string): string {
   return `Quote - ${pageTitle.trim() || url}`.slice(0, 160)
+}
+
+// The manual path reports a dropped screenshot as a 'degraded' toast. The bar
+// has no toast, so the same fact rides its inline result — without it a
+// capture lands short of a frame and reads as an unqualified success.
+function attachDetail(
+  base: string,
+  result: { screenshotStatus: ScreenshotStatus; screenshotWarning?: string }
+): string {
+  if (result.screenshotStatus !== 'dropped') return base
+  return `${base} — ${result.screenshotWarning || 'screenshot too large'}`
+}
+
+/**
+ * Note an attach-ingested capture in the popup's page-status map (#962).
+ *
+ * Until this, only `manualCaptureTab` wrote to it, so a page Tag or Quote had
+ * just captured still reported as never seen and invited a duplicate manual
+ * capture. The attach routes return no manifest index, so that field stays
+ * null — the map backs one popup line and carries no evidence claim either
+ * way, with the app remaining the authority on what was stored.
+ */
+function recordSelectionCapture(tabId: number, url: string, captured: boolean): void {
+  if (!captured) return
+  lastCaptureByTab.set(tabId, { url, at: Date.now(), manifestIndex: null })
 }
 
 async function handleSelectionAction(
@@ -881,7 +914,12 @@ async function handleSelectionAction(
         tagName: selectionToTagName(text),
         payload
       })
-      return { ok: true, detail: `Tagged "${result.tag.name}"`, captured: result.captured }
+      recordSelectionCapture(tabId, url, result.captured)
+      return {
+        ok: true,
+        detail: attachDetail(`Tagged "${result.tag.name}"`, result),
+        captured: result.captured
+      }
     }
     const result = await createNoteOnUrl({
       caseId,
@@ -890,7 +928,12 @@ async function handleSelectionAction(
       noteText: text,
       payload
     })
-    return { ok: true, detail: 'Quote saved to case notes', captured: result.captured }
+    recordSelectionCapture(tabId, url, result.captured)
+    return {
+      ok: true,
+      detail: attachDetail('Quote saved to case notes', result),
+      captured: result.captured
+    }
   }
 
   try {
@@ -931,6 +974,20 @@ async function handleSelectionAction(
         ])
       )
       const [mhtmlBlob, tab, textContent, screenshot] = frames
+
+      // The frames describe whatever the tab is showing now, while `url` came
+      // from the sender at message time. If the tab navigated in between, the
+      // attach would store one page's bytes under another page's URL — an
+      // evidence-attribution error, not a UI glitch, so it is refused rather
+      // than corrected. Compared canonically, so a fragment-only move stays
+      // the same page under exactly the identity rule the lookup used.
+      if (canonicalizeUrl(tab.url ?? '') !== canonicalizeUrl(url)) {
+        return {
+          ok: false,
+          error: 'The page navigated while it was being captured; nothing was attached'
+        }
+      }
+
       return attach(
         {
           title: tab.title || url,
@@ -949,7 +1006,23 @@ async function handleSelectionAction(
     })
   } catch (err) {
     console.error('[Birdbrain] Selection bar action failed:', err)
-    return { ok: false, error: selectionAttachFailureMessage(err) }
+    // Duck-typed like the `'status' in err` checks above rather than an
+    // ApiError instanceof: the same reason those are, and it keeps this
+    // reading true for any error shape carrying the field.
+    const captureId =
+      err &&
+      typeof err === 'object' &&
+      typeof (err as { captureId?: unknown }).captureId === 'string'
+        ? (err as { captureId: string }).captureId
+        : null
+    // The capture the failed route did store is real evidence in the case, so
+    // it is both reported to the operator and noted in the page-status map.
+    if (captureId) recordSelectionCapture(tabId, url, true)
+    return {
+      ok: false,
+      error: selectionAttachFailureMessage(err),
+      ...(captureId ? { captureId } : {})
+    }
   }
 }
 

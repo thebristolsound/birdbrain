@@ -264,6 +264,13 @@ Birdbrain's
 [Cc]ryptocurrency
 [Tt]imestamp(s|ed|ing)?
 [Ww]hitepapers?
+
+; Added 2026-08-25 for the technical-writing guides brief
+Diataxis
+[Dd]enylist(s|ed|ing)?
+iSpec
+Vonage
+[Rr]ulebook
 [Gg]roundable
 Maltego
 [Ww]ayfinder

@@ -21,7 +21,7 @@ Write in the register [`README.md`](../../README.md) already uses: plain, specif
 
 This is the part that matters most, and it comes from the assurance baseline in [`CONTEXT.md`](../../CONTEXT.md) and [ADR-0004](../adr/0004-adopt-osint-assurance-baseline.md).
 
-- **State what a mechanism proves, and what it does not.** A verified hash chain shows that nobody edited the manifest *without the installation's signing key*. It does not constrain the Operator, who holds that key and can mint an internally consistent chain — `SECURITY.md` says so outright. It does not show the page was genuine. And the RFC 3161 token anchors a capture's content hash, not the manifest head, so it dates the content rather than proving the chain around it is intact. Write both halves.
+- **State what a mechanism proves, and what it does not.** A verified hash chain with signed (v2+) entries shows that nobody edited the manifest *without the installation's signing key* — legacy all-v1 manifests predate signing, so their entries verify without one (`src/shared/verify/manifestChain.ts`). It does not constrain the Operator, who holds that key and can mint an internally consistent chain — `SECURITY.md` says so outright. It does not show the page was genuine. And the RFC 3161 token anchors a capture's content hash, not the manifest head, so it dates the content rather than proving the chain around it is intact. Write both halves.
 - **No unqualified assurance words.** "Court-admissible", "tamper-proof", "forensically sound", "compliant", "verified" — none of these stand alone. Name the standard and its version, or describe the concrete property instead.
 - **Document limitations next to the capability, not in a footnote.** `SECURITY.md` pre-declares unsigned artifacts, the `unsafe-inline` CSP, and the `safeStorage` plaintext fallback. Follow that pattern.
 - **Do not describe unshipped behaviour in the present tense.** A spec describes a design; reference docs describe what the code does today. If a page documents something behind a flag or unmerged, say so.
@@ -49,7 +49,36 @@ The failure mode to avoid is copy that sounds authoritative and says nothing. Co
 - **Say where data goes.** For anything touching capture, storage, export, or AI, name the destination — disk path, loopback port, or external host.
 - **Avoid "AI-powered" as a description.** Name the provider, the model, and what gets sent. Birdbrain's analysis calls OpenRouter with an operator-chosen model and sends capture text; say that, not "AI-powered analysis".
 
-Style mechanics: sentence-case headings, straight quotes and ASCII apostrophes, backticks for paths, commands, and identifiers, and code fences tagged with a language. Em dashes are house style — `README.md`, `SECURITY.md`, and `CLAUDE.md` all use them.
+## Mechanics
+
+Adopted 2026-08-25 from the corporate rule-catalog tradition — Microsoft, Google, Kubernetes, GitLab — via the [writing-guides brief](../specs/2026-08-25-technical-writing-guides-brief.md) (Guide A there). Vale with the Google package enforces part of this on `*.md`; the rest is review criteria.
+
+- **Voice.** Second person, active voice, present tense. Name the actor; passive only when the actor is unknown, irrelevant, or naming it would read as blame. No "there is" / "there are" openers.
+- **Order.** Condition before instruction: "If the build fails, check the log." Prerequisites before step 1, never inside the steps. One action per step; a step may add one sentence of result.
+- **Titles.** Sentence case, no end punctuation. Procedure titles start with an imperative, not a gerund — "Create a case", not "Creating a case".
+- **Words.** The plain word over the fancy one ("use", not "utilize"; "because", not "since" unless time is meant). "For example" and "that is", not `e.g.` / `i.e.`. No idioms. No "easily" or "simply" — the reader who is stuck feels lied to. Expand an acronym on first use per page.
+- **Inclusive terms.** Allowlist/denylist, main/replica, placeholder rather than dummy, and singular "they" for a hypothetical person — or rewrite to drop the pronoun.
+- **Formatting.** Serial comma. American spelling. Bold for UI elements; code font for code, commands, filenames, and paths; italics for a new term on first use. Placeholders in angle brackets, defined in the surrounding text. Numbered lists only for sequences.
+- **Links and images.** Link text describes the destination — never "click here". Every image has alt text; prefer text to a screenshot when either would do.
+- **House style stays.** Em dashes are house style (`README.md`, `SECURITY.md`, and `CLAUDE.md` all use them), along with straight quotes, ASCII apostrophes, and code fences tagged with a language.
+
+## Structure for published pages
+
+Pages under `website/content/docs/` follow [Diataxis](https://diataxis.fr/): decide which of four types a page is before writing it, and do not mix types in one page. Two questions place it — is the reader acting or understanding, and studying or working?
+
+| The reader is | Studying    | Working      |
+| ------------- | ----------- | ------------ |
+| Acting        | Tutorial    | How-to guide |
+| Understanding | Explanation | Reference    |
+
+- **Tutorial** — a lesson; the writer owns the reader's success. Every step visibly works and says what the reader will see. Keep inline explanation minimal and link out for depth. This is the one type where warmth does real work, because a learner who feels stupid stops.
+- **How-to guide** — a competent user mid-task. The title names the goal as the user would phrase it. Assume competence, branch where reality branches, and keep the tone brisk and imperative.
+- **Reference** — facts, structured to mirror the product, each fact stated once in a predictable place. No steps, no opinions. The mechanics above bind hardest here.
+- **Explanation** — context and why. The only type where alternatives, history, trade-offs, and hedged language belong.
+
+When an existing page resists improvement, the usual cause is content sitting in two cells at once. Fix one page at a time — Diataxis itself warns against planning a grand reorganization.
+
+The public mirror of this standard is [`website/content/docs/writing-style.mdx`](../../website/content/docs/writing-style.mdx); keep the two in step when either changes.
 
 ## Document types
 

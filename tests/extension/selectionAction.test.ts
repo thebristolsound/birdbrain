@@ -49,6 +49,10 @@ let mhtmlFails = false
 // What chrome.tabs.get answers once the frames are in — the navigation cases
 // re-point it so the collected bytes belong to a page other than the sender's.
 let tabAfterFrames: typeof TAB = TAB
+// Answers promise-shape tabs.get reads in order before falling back to
+// tabAfterFrames, so a test can hand the concurrent frame-collection sample
+// one page and the post-settle re-read another.
+let tabGetQueue: (typeof TAB)[] = []
 
 function dispatchWithResponse(message: unknown): Promise<unknown> {
   return new Promise((resolve) => {
@@ -160,7 +164,7 @@ beforeAll(async () => {
       // passes a callback
       get: (_tabId?: unknown, callback?: (tab: unknown) => void) => {
         if (callback) return callback(tabAfterFrames)
-        return Promise.resolve(tabAfterFrames)
+        return Promise.resolve(tabGetQueue.length > 0 ? tabGetQueue.shift() : tabAfterFrames)
       },
       captureVisibleTab: () => {
         events.push('captureVisibleTab')
@@ -213,6 +217,7 @@ beforeEach(() => {
   prepareResponse = { ok: true }
   mhtmlFails = false
   tabAfterFrames = TAB
+  tabGetQueue = []
   vi.mocked(createSelector).mockClear()
   vi.mocked(getActiveSelectors).mockClear()
   vi.mocked(lookupCaptureByUrl).mockClear()
@@ -366,6 +371,26 @@ describe('SELECTION_ACTION: tag and quote ride the #392 attach endpoints', () =>
     expect(vi.mocked(applyTagToUrl)).not.toHaveBeenCalled()
     expect(vi.mocked(createNoteOnUrl)).not.toHaveBeenCalled()
     // The refusal is inside the bracket, so the latch still comes down
+    expect(events).toContain('RELEASE_CAPTURE_UI')
+  })
+
+  it('refuses when the navigation lands after the concurrent tab read, before frames settle', async () => {
+    // The tabs.get inside the frame Promise.all resolves at t=0 while the
+    // MHTML and a long screenshot stitch keep running; only the fresh re-read
+    // taken after every frame settled can see a navigation in that window.
+    tabGetQueue = [TAB, { ...TAB, url: 'https://example.test/somewhere-else', title: 'Elsewhere' }]
+
+    const response = (await dispatchWithResponse({
+      type: 'SELECTION_ACTION',
+      action: 'tag',
+      text: 'evil@example.com'
+    })) as SelectionActionResponse
+
+    expect(response).toEqual({
+      ok: false,
+      error: 'The page navigated while it was being captured; nothing was attached'
+    })
+    expect(vi.mocked(applyTagToUrl)).not.toHaveBeenCalled()
     expect(events).toContain('RELEASE_CAPTURE_UI')
   })
 

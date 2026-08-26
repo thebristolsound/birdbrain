@@ -975,13 +975,22 @@ async function handleSelectionAction(
       )
       const [mhtmlBlob, tab, textContent, screenshot] = frames
 
-      // The frames describe whatever the tab is showing now, while `url` came
-      // from the sender at message time. If the tab navigated in between, the
-      // attach would store one page's bytes under another page's URL — an
-      // evidence-attribution error, not a UI glitch, so it is refused rather
-      // than corrected. Compared canonically, so a fragment-only move stays
+      // The frames describe whatever the tab was showing while they were
+      // taken, while `url` came from the sender at message time. If the tab
+      // navigated in between, the attach would store one page's bytes under
+      // another page's URL — an evidence-attribution error, not a UI glitch,
+      // so it is refused rather than corrected. Two samples: `tab` resolved
+      // concurrently with the frames, so alone it reads t=0 while the MHTML
+      // and a long screenshot stitch keep running; `settledTab` is read fresh
+      // after every frame settled, closing the collection window. A navigation
+      // that lands and reverts between the two samples is the residual no URL
+      // sampling can see. Compared canonically, so a fragment-only move stays
       // the same page under exactly the identity rule the lookup used.
-      if (canonicalizeUrl(tab.url ?? '') !== canonicalizeUrl(url)) {
+      const settledTab = await chrome.tabs.get(tabId)
+      if (
+        canonicalizeUrl(tab.url ?? '') !== canonicalizeUrl(url) ||
+        canonicalizeUrl(settledTab.url ?? '') !== canonicalizeUrl(url)
+      ) {
         return {
           ok: false,
           error: 'The page navigated while it was being captured; nothing was attached'

@@ -33,7 +33,7 @@ Under every capture sits an integrity layer:
 - Captures can receive RFC 3161 trusted timestamps: an external authority attests that a given hash existed no later than a given time, without ever seeing the content.
 - Exports produce a self-contained evidence package that a journalist, lawyer, or hostile reviewer can verify with standard tools (`sha256sum`, `jq`, `openssl`) by following an included runbook. They do not need Birdbrain, an account, or your cooperation to check it.
 
-The everyday tooling sits on top: cases, search, tags, notes, screenshot annotation, pattern watchlists that flag or auto-capture pages containing terms you care about, and extraction of indicators like domains, wallet addresses, and email addresses from captured text.
+The everyday tooling sits on top: cases, search, tags, notes, screenshot annotation, pattern watchlists that highlight and flag pages containing terms you care about (automatic capture on a match is turned off in the shipped build), and extraction of indicators like domains, wallet addresses, and email addresses from captured text.
 
 ## The privacy properties that matter to you
 

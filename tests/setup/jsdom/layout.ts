@@ -1,7 +1,8 @@
 // jsdom has no layout engine, and it is inconsistent about which half of the
-// measurement API it stubs. Element gets getClientRects() and
-// getBoundingClientRect() returning zeroes; Range gets neither, so measuring a
-// text range throws TypeError rather than reading a zero box.
+// measurement API it stubs. Element gets both members — getClientRects()
+// returns an empty list, getBoundingClientRect() a zeroed rect — while Range
+// gets neither, so measuring a text range throws TypeError rather than reading
+// a zero box.
 //
 // ProseMirror measures text ranges. singleRect() calls target.getClientRects()
 // on a Range built by its own textRange() helper, reached through TipTap's
@@ -15,10 +16,16 @@
 // getBoundingClientRect() when getClientRects() returns nothing, so stubbing
 // only the first moves the throw one line down.
 //
-// Zeroes are the honest answer. jsdom returns zeroes for elements, and a test
-// that needs real geometry stubs it locally the way OnboardingTour.test.tsx and
-// useNoteSelection.test.ts already do. Both stubs are installed only if absent,
-// so a local stub set before this file runs is left alone.
+// An empty list and a zero box are the honest answers: they are what jsdom
+// already gives an element. Both assignments are unconditional, because vitest
+// evaluates setup files before any test module body — the members are always
+// absent when this runs, and a test that needs real geometry just assigns over
+// them afterwards. An `only if absent` guard here would be dead code, and worse
+// would model a pattern that silently no-ops when copied into a test file.
+//
+// Nothing in the suite conflicts today: the local geometry stubs in
+// OnboardingTour.test.tsx and useNoteSelection.test.ts patch Element instances
+// and a fake Selection object, never Range.prototype.
 
 const zeroRect = (): DOMRect => ({
   x: 0,
@@ -35,10 +42,5 @@ const zeroRect = (): DOMRect => ({
 const emptyRectList = (): DOMRectList =>
   Object.assign([] as DOMRect[], { item: () => null }) as unknown as DOMRectList
 
-if (typeof Range.prototype.getClientRects !== 'function') {
-  Range.prototype.getClientRects = emptyRectList
-}
-
-if (typeof Range.prototype.getBoundingClientRect !== 'function') {
-  Range.prototype.getBoundingClientRect = zeroRect
-}
+Range.prototype.getClientRects = emptyRectList
+Range.prototype.getBoundingClientRect = zeroRect

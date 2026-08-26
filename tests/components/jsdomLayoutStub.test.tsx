@@ -6,6 +6,11 @@ import { describe, it, expect } from 'vitest'
 // box, and it throws as an unhandled error that fails the run with nothing
 // reported red (#1013). Delete the setup file or drop it from vitest.config.ts
 // and these fail, which is the point: the stub has no other caller to notice.
+//
+// The .tsx extension is load-bearing despite the absence of JSX: the jsdom
+// project collects tests/components/**/*.test.tsx, so a rename to .test.ts
+// would move this file to the node project, where Range is not defined and the
+// setup file under test never runs.
 
 describe('jsdom Range measurement stub', () => {
   const rangeOverText = () => {
@@ -36,10 +41,11 @@ describe('jsdom Range measurement stub', () => {
     expect(box.right).toBe(0)
   })
 
-  // The exact shape of prosemirror-view's singleRect(): read the list, and when
-  // it yields nothing fall through to the bounding box. Both members are
-  // exercised in one call, which is why stubbing only getClientRects would move
-  // the throw rather than remove it.
+  // prosemirror-view's singleRect() (dist/index.cjs:486-493) with its bias
+  // branch collapsed to the bias >= 0 case: read the list, and when it yields
+  // nothing fall through to the bounding box. Both members are exercised in one
+  // call, which is why stubbing only getClientRects would move the throw rather
+  // than remove it.
   it('survives a prosemirror-shaped measurement of a text range', () => {
     const singleRect = (target: Range) => {
       const rects = target.getClientRects()

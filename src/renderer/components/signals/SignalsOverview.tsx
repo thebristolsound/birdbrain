@@ -321,6 +321,10 @@ export function SignalsOverview() {
           onToggleEnabled={(signal) => {
             void updateSelector({ id: signal.id, enabled: !signal.enabled }).then(refreshSelectors)
           }}
+          // A merge deletes the selected tag; selecting the survivor keeps the
+          // rail on the tag the operator's links now live under, instead of
+          // falling back to whatever happens to be first in the list.
+          onMerged={setSelectedId}
         />
       </div>
     </div>

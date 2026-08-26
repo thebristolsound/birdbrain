@@ -13,6 +13,17 @@
 //                  function is serialised into the page by executeScript, so it
 //                  cannot reach this registry; the two are separate on purpose
 //                  and have to be kept in step by hand.
+//                  The strip is paired with a latch (#393): suppressCaptureUi()
+//                  raises it, and it stays up until the background's restore
+//                  effect sends RELEASE_CAPTURE_UI once no capture on the tab
+//                  is collecting frames. The registry alone only removes what
+//                  is injected at the instant of the strip; UI raised by a page
+//                  gesture (the selection bar's mouseup) would otherwise
+//                  re-inject itself between the strip and the frames. Such UI
+//                  consults isCaptureUiSuppressed() before every injection. The
+//                  latch has no timeout on purpose: a release that never
+//                  arrives fails closed — no bar until reload — rather than
+//                  reopening #386 mid-capture.
 //   Orchestration — createCaptureSuppression(), the bracket the background wraps
 //                  every capture in: suppress before frames, hold suppression
 //                  for as long as any capture on the tab is collecting frames,
@@ -24,6 +35,42 @@
 type CaptureUiTeardown = () => void
 
 const teardowns = new Set<CaptureUiTeardown>()
+
+// The page-side latch (#393). True from the first strip of a capture bracket
+// until the background's release message; while true, nothing may inject UI.
+let uiSuppressionInForce = false
+const releaseListeners = new Set<() => void>()
+
+/** Whether a capture bracket is open on this page — injection must wait. */
+export function isCaptureUiSuppressed(): boolean {
+  return uiSuppressionInForce
+}
+
+/**
+ * Clears the latch and tells subscribers the page may carry UI again. Called
+ * from the RELEASE_CAPTURE_UI handler; the background sends that message from
+ * its restore effect only once no capture on the tab is collecting frames.
+ */
+export function releaseCaptureUiSuppression(): void {
+  if (!uiSuppressionInForce) return
+  uiSuppressionInForce = false
+  for (const listener of releaseListeners) {
+    try {
+      listener()
+    } catch (err) {
+      // One subscriber that throws must not keep the rest suppressed.
+      console.warn('[Birdbrain] Suppression release listener failed:', err)
+    }
+  }
+}
+
+/** Subscribe to the latch clearing. Returns the unsubscribe function. */
+export function onCaptureUiSuppressionReleased(listener: () => void): () => void {
+  releaseListeners.add(listener)
+  return () => {
+    releaseListeners.delete(listener)
+  }
+}
 
 /**
  * Registers in-page UI to be torn down before any capture frame is taken.
@@ -44,6 +91,9 @@ export function registerCaptureUiTeardown(teardown: CaptureUiTeardown): () => vo
  * proven clean, and the caller must not treat suppression as successful.
  */
 export function suppressCaptureUi(): unknown[] {
+  // Latch before stripping: a gesture handler that fires between the strip and
+  // the frames must already see the page as suppressed.
+  uiSuppressionInForce = true
   const failures: unknown[] = []
   for (const teardown of teardowns) {
     try {

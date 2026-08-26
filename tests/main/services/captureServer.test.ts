@@ -6,7 +6,9 @@ import { initDatabase, closeDatabase } from '@main/services/db/core'
 import { createCase, setAutoCapturePolicy, updateCase } from '@main/services/db/caseRepo'
 import { listCaptures } from '@main/services/db/captureRepo'
 import { createTag, getTagsForCapture, listTags } from '@main/services/db/tagRepo'
+import * as tagRepo from '@main/services/db/tagRepo'
 import { listNotes } from '@main/services/db/noteRepo'
+import * as noteRepo from '@main/services/db/noteRepo'
 import {
   createSelector,
   listSelectors,
@@ -1815,6 +1817,33 @@ describe('captureServer', () => {
         expect(getTagsForCapture(data.captureId).map((t) => t.name)).toEqual(['Evidence'])
       })
 
+      it('says on the 500 whether the failed apply had freshly ingested the capture', async () => {
+        const testCase = createCase({ name: 'Tag Case' })
+        await activateCase(testCase.id)
+        // The 500 names real evidence either way; `captured` is what lets the
+        // extension distinguish "captured just now" from a capture the case
+        // already held (#961 review).
+        const spy = vi.spyOn(tagRepo, 'addTagToCapture').mockImplementation(() => {
+          throw new Error('tag apply exploded')
+        })
+        try {
+          const res = await postAttach(
+            '/api/tags/apply',
+            { caseId: testCase.id, url: PAGE_URL, tagName: 'Evidence' },
+            '<html>tagged page</html>'
+          )
+          expect(res.status).toBe(500)
+          const data = await readJson(res)
+          expect(data.error).toBe('Failed to apply tag')
+          expect(data.captured).toBe(true)
+          const captures = listCaptures(testCase.id)
+          expect(captures).toHaveLength(1)
+          expect(data.captureId).toBe(captures[0].id)
+        } finally {
+          spy.mockRestore()
+        }
+      })
+
       it('refuses without a payload when no capture exists, leaving no orphan', async () => {
         const testCase = createCase({ name: 'Tag Case' })
         await activateCase(testCase.id)
@@ -2092,6 +2121,34 @@ describe('captureServer', () => {
         const notes = listNotes(testCase.id)
         expect(notes).toHaveLength(1)
         expect(notes[0].captureId).toBe(data.captureId)
+      })
+
+      it('marks the pre-existing capture as not captured on the 500 a failed note raises', async () => {
+        const testCase = createCase({ name: 'Note Case' })
+        await activateCase(testCase.id)
+        const stored = await readJson(
+          await postCapture({ source: 'manual', caseId: testCase.id, url: PAGE_URL })
+        )
+        // The resolve branch acquired nothing: the named capture is old
+        // evidence, and `captured: false` is what keeps the extension from
+        // reporting it as captured just now (#961 review).
+        const spy = vi.spyOn(noteRepo, 'createNote').mockImplementation(() => {
+          throw new Error('note create exploded')
+        })
+        try {
+          const res = await postAttach('/api/notes', {
+            caseId: testCase.id,
+            url: PAGE_URL,
+            noteText: 'never lands'
+          })
+          expect(res.status).toBe(500)
+          const data = await readJson(res)
+          expect(data.error).toBe('Failed to create note')
+          expect(data.captured).toBe(false)
+          expect(data.captureId).toBe(stored.captureId)
+        } finally {
+          spy.mockRestore()
+        }
       })
 
       it('refuses without a payload when no capture exists, leaving no orphan', async () => {

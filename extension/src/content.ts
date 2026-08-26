@@ -6,9 +6,11 @@ import { showToast, updateToast } from './toast'
 import {
   CaptureUiSuppressionError,
   registerCaptureUiTeardown,
+  releaseCaptureUiSuppression,
   suppressCaptureUi,
   suppressCaptureUiOrThrow
 } from './captureSuppression'
+import { initSelectionBar } from './selectionBar'
 // Selector groups arrive from the background script exactly as the capture
 // server sent them, and matches go back out on the capture's matchedSelectors
 // field — both are the shared wire contract, not content-script-local shapes.
@@ -559,6 +561,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return
   }
 
+  // The release half of the suppression latch (#393): the background sends
+  // this from its restore effect once no capture on the tab is collecting
+  // frames, and gesture-raised UI (the selection bar) may show again.
+  if (message.type === 'RELEASE_CAPTURE_UI') {
+    releaseCaptureUiSuppression()
+    sendResponse({ ok: true })
+    return
+  }
+
   if (message.type === 'CHECK_SELECTORS') {
     const selectors = message.selectors as ActiveCaseSelectors[]
     const text = document.body?.innerText || ''
@@ -582,3 +593,5 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   return true // Keep channel open for async response
 })
+
+initSelectionBar()

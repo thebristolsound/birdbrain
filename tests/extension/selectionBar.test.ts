@@ -338,6 +338,44 @@ describe('capture suppression round trip (#386)', () => {
     }
   })
 
+  it('does not restore a ready bar whose selection collapsed during the capture', async () => {
+    selectParagraph()
+    await mouseUp()
+    expect(bar()).not.toBeNull()
+
+    dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+    expect(bar()).toBeNull()
+
+    // The operator clicked elsewhere while the latch was up: the retained
+    // ready state is an offer against text no longer selected, and restoring
+    // it would invite an action on it.
+    clearSelection()
+    dispatch({ type: 'RELEASE_CAPTURE_UI' })
+    expect(bar()).toBeNull()
+  })
+
+  it('does not restore a ready bar whose selection was replaced during the capture', async () => {
+    setPageHtml(
+      '<main><p>Report abuse to evil@example.com immediately.</p>' +
+        '<p id="second">A different passage entirely.</p></main>'
+    )
+    selectParagraph()
+    await mouseUp()
+    expect(bar()).not.toBeNull()
+
+    dispatch({ type: 'PREPARE_FOR_CAPTURE' })
+    const range = document.createRange()
+    range.selectNodeContents(document.getElementById('second')!)
+    const selection = window.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+
+    // Dropped, not adopted: the release restores nothing, and the mouseup
+    // that produced the new selection runs its own pass.
+    dispatch({ type: 'RELEASE_CAPTURE_UI' })
+    expect(bar()).toBeNull()
+  })
+
   it('is removed by the orphaned-content-script fallback strip', async () => {
     selectParagraph()
     await mouseUp()

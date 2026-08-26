@@ -402,6 +402,24 @@ export function initSelectionBar(): void {
   // including after a failed capture, whose restore path also releases.
   onCaptureUiSuppressionReleased(() => {
     if (state.phase === 'hidden') return
+    // A ready bar is an offer against one specific selection. The capture may
+    // have outlived it — the operator can collapse or replace the selection
+    // while the latch is up — and restoring the retained bar then invites a
+    // click that creates a selector, tag or quote from text no longer on
+    // screen. Progress and results ('busy'/'done') restore unconditionally:
+    // they describe an action already taken, not one on offer.
+    if (state.phase === 'ready') {
+      const selection = window.getSelection()
+      if (
+        !selection ||
+        selection.rangeCount === 0 ||
+        selection.isCollapsed ||
+        normalizeSelection(selection.toString()) !== state.text
+      ) {
+        hide()
+        return
+      }
+    }
     render()
     // A restored result chip re-arms its auto-hide: the strip cleared the
     // pending timer along with the host.

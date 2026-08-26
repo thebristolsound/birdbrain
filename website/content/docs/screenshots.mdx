@@ -4,15 +4,7 @@ description: 'A screen-by-screen tour of Birdbrain, from onboarding through capt
 ---
 
 A screen-by-screen tour of Birdbrain, generated from a seeded demo investigation
-("Velvet Fox storefront takedown", all content fictional). To regenerate the full
-series, rebuild and run:
-
-```
-README_SHOTS=1 npx playwright test e2e/readme-screenshots.spec.ts
-```
-
-Output lands in `test-results/readme/` with light and dark variants of every shot;
-the dark variants are copied into `website/public/assets/`.
+("Velvet Fox storefront takedown", all content fictional).
 
 ## First run
 
@@ -70,7 +62,7 @@ Shapes and pinned comments on capture screenshots; burned into exports.
 
 ### Chain-of-custody verification
 
-Per-capture hash chain (SHA-256, previous/entry hash, manifest index) verified in-app.
+The per-capture hash chain (SHA-256, previous/entry hash, manifest index) checked in the app.
 
 ![Chain of custody](/assets/screenshot-verify.png)
 
@@ -112,7 +104,8 @@ Choose what the evidence report includes.
 
 ### Exported report
 
-Self-contained HTML report, verifiable without Birdbrain.
+A self-contained HTML report that any browser reads, checkable with the evidence package's
+included runbook and standard tools, without Birdbrain installed.
 
 ![Exported report](/assets/screenshot-export.png)
 
@@ -121,3 +114,14 @@ Self-contained HTML report, verifiable without Birdbrain.
 Capture preferences, storage, appearance, operator identity, database admin, and updates.
 
 ![Settings](/assets/screenshot-settings.png)
+
+## Regenerating this tour
+
+The series comes from a Playwright script against the seeded demo case. Rebuild the app, then run:
+
+```bash
+README_SHOTS=1 npx playwright test e2e/readme-screenshots.spec.ts
+```
+
+Output lands in `test-results/readme/` with light and dark variants of every shot;
+the dark variants are copied into `website/public/assets/`.

@@ -302,18 +302,51 @@ gh api repos/thebristolsound/birdbrain/issues/<n>/labels --jq '[.[].name]'
 
 ### Un-draft before the final check read, never after
 
-Conditions 2 and 3 survive the un-draft. Condition 1 does not. So establish the two that survive
-first, take the PR out of draft, wait for what that starts, and read the checks last.
+Condition 1 is the only one the un-draft disturbs, so it is the only one that has to be established
+after it. The rest of the order exists to keep conditions 2 and 3 attached to the sha you actually
+merge.
 
-1. Establish conditions 2 and 3.
-2. Pin the head sha: `gh api repos/thebristolsound/birdbrain/pulls/<n> --jq .head.sha`.
-3. Take the PR out of draft, through the write path (`agh pr ready <n>` locally).
-4. Poll `gh pr checks <n>` until every check has a **conclusion** — not until they are green.
-   A run still in flight and a run that has failed read differently, and only a concluded check
-   tells you which of the two you are looking at.
-5. Re-read head. If it moved while you were polling, the checks you just read describe a tree
-   that is no longer the one you would merge: go back to step 2.
-6. Establish condition 1 against that re-run, then merge.
+1. Pin the head sha, and count the `CI` runs already on it:
+
+   ```shell
+   gh api repos/thebristolsound/birdbrain/pulls/<n> --jq .head.sha
+   gh api "repos/thebristolsound/birdbrain/actions/runs?head_sha=<sha>&per_page=100" \
+     --jq '[.workflow_runs[] | select(.name=="CI")] | length'
+   ```
+
+2. Establish conditions 2 and 3 **against that pinned sha**, not against "the PR".
+3. Take the PR out of draft, through the write path — `agh pr ready <n>` locally. `agh` is the
+   machine-token wrapper defined at the top of this file, not a separate tool; bare `gh` would
+   author the write as the maintainer.
+4. **Wait for the run the un-draft started, not the one already there.** Re-run the count from
+   step 1 until it increases, then poll that new run until its `status` is `completed`. Asking
+   only "has everything concluded?" can be answered by the run you are trying to replace: its
+   checks concluded minutes ago, and on #996 the new run did not exist until three seconds after
+   `ready_for_review`. Give up at 30 minutes — `ci.yml` caps its longest jobs at 20 (`:190`
+   `test`, `:279` `e2e`) behind a 5-minute `changes` (`:97`), so a run still going at 30 is stuck.
+5. Read the checks — `gh pr checks <n> --json name,state,bucket` — classified exactly as section 5
+   classifies them: exit 0 and exit 8 are readable, any other non-zero exit is not, and an
+   unreadable read counts against the merge. Only the five contexts condition 1 names decide it.
+   `agent/pre-pass` and CodeRabbit are not required contexts and must not hold this poll open.
+6. Re-read head. **If it moved, stop and report. Do not merge.** Nothing should be pushing to the
+   branch during a merge sequence, so a move here is the unexpected move the one-writer rule
+   already calls a collision (`:111-115`).
+7. Establish condition 1 from the step-5 read, then merge.
+
+**There is deliberately no back-edge.** Sending a moved head back to the pin and carrying on would
+carry conditions 2 and 3 across the move: `agent/pre-pass` must be `success` *on this head sha*,
+and condition 3 scores *the diff*, so a new commit invalidates both, and a push adding a
+blocking-tier path would merge with no human review. Sending it back to the top of the list instead
+would close that hole, but a head that moves mid-merge is a collision under ADR-0006 whatever it
+turns out to contain, so the contract stops rather than loops.
+
+**Whenever you reach the end without merging** — the step-4 give-up, the step-6 collision, or a
+condition 1 that is not green — **convert the PR back to draft first: `agh pr ready --undo <n>`.**
+The un-draft is not free. `.claude/agents/birdbrain-reviewer.md:110-115` makes a ready-for-review
+agent PR arriving at a pre-pass a blocking finding and "not a state you should ever find in front
+of you", so leaving it un-drafted spends a blocking finding of the next fix round on a state you
+created. The undo itself starts nothing — `converted_to_draft` is not one of `ci.yml`'s trigger
+types — and the next push re-runs CI as normal under the agent-label exemption.
 
 **Why step 4 cannot be optimised away.** The un-draft fires `ready_for_review`, which is one of
 `ci.yml`'s `pull_request` trigger types, so CI starts over on the same sha and the five required
@@ -324,12 +357,13 @@ contexts and the un-draft you just performed reset them.
 
 **On an agent PR the re-run is redundant coverage, and that is still not a reason to skip the
 wait.** `ci.yml`'s `changes` job exempts `agent-pr` and `agent-authored` from the draft skip
-(`.github/workflows/ci.yml:92-96`), so a correctly labelled agent draft has been running the full
-matrix on every push since it opened, and the `ready_for_review` run repeats work that already
-passed. That trigger earns its place on *unlabelled* drafts, which do spend their draft life
-uncovered. Do not follow the observation to the conclusion that the wait is skippable here:
-redundant or not, the re-run resets the contexts, and the contexts are the only thing the merge
-call looks at.
+(`.github/workflows/ci.yml:92-96`), so a correctly labelled agent draft has been treated exactly as
+a non-draft on every push since it opened — the full matrix when the `changes` filter scores
+`code=true`, and the same five `skipping` results a non-draft would get when it does not. Either
+way the `ready_for_review` run repeats a verdict already on the sha. That trigger earns its place
+on *unlabelled* drafts, which do spend their draft life uncovered. Do not follow the observation to
+the conclusion that the wait is skippable here: redundant or not, the re-run resets the contexts,
+and the contexts are the only thing the merge call looks at.
 
 Reproduced on PR #996 at head `6d467366`. CI run 1381 took all six jobs green from 05:09:03 to
 05:16:10 while the PR was still a draft; `ready_for_review` at 05:31:51 started run 1384 three
@@ -338,9 +372,7 @@ seconds later; the merge attempted straight after the un-draft was refused; the 
 
 If all four hold: merge with the repository's normal squash strategy, delete the branch, and note
 the merge in the end-of-cycle report with the four conditions as you found them. If any does not,
-do not merge, and say which one failed — including that the PR is now out of draft, which is a
-state the reorder makes reachable. Leaving it there costs nothing: a PR that is not a draft
-satisfies `ci.yml`'s `changes` gate on its own, so the fix round's pushes are covered either way.
+do not merge, say which one failed, and apply the undo above.
 
 **Evidence-affecting PRs never take this path.** Neither does any PR whose final pre-pass verdict
 was `request changes`, even if a later push turned CI green: that needs a fresh `success` verdict

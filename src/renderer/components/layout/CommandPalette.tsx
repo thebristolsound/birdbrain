@@ -84,6 +84,14 @@ export function CommandPalette() {
           {...presets.overlay}
         >
           <motion.div
+            // No title element to point aria-labelledby at, so the name is a
+            // literal, as in WelcomeCard and NoteSelectionPopover. The role is
+            // kept for the whole exit animation like ui/dialog.tsx: nothing
+            // queries [role="dialog"] any more, and Escape guards read
+            // `commandPaletteOpen`, which setOpen(false) flips first (#686).
+            role="dialog"
+            aria-modal="true"
+            aria-label="Command palette"
             className="h-fit w-full max-w-lg rounded-xl neu-overlay"
             onClick={(e) => e.stopPropagation()}
             {...presets.modal}

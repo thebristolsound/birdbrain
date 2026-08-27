@@ -303,50 +303,84 @@ gh api repos/thebristolsound/birdbrain/issues/<n>/labels --jq '[.[].name]'
 ### Un-draft before the final check read, never after
 
 Condition 1 is the only one the un-draft disturbs, so it is the only one that has to be established
-after it. The rest of the order exists to keep conditions 2 and 3 attached to the sha you actually
-merge.
+after it. The rest of the order exists to keep every condition attached to what you actually merge.
+For condition 2 and the diff limb of condition 3 that thing is the pinned sha. For condition 3's
+two label limbs it is not a sha at all — a label can be added without moving the head — so those
+two are re-read at the end rather than pinned at the start.
 
-1. Pin the head sha, and count the `CI` runs already on it:
+1. Pin the head sha into a variable and count the `CI` runs already on it. Reuse the variable; do
+   not re-read head between here and step 6, and do not proceed on an empty answer:
 
    ```shell
-   gh api repos/thebristolsound/birdbrain/pulls/<n> --jq .head.sha
-   gh api "repos/thebristolsound/birdbrain/actions/runs?head_sha=<sha>&per_page=100" \
-     --jq '[.workflow_runs[] | select(.name=="CI")] | length'
+   head=$(gh api repos/thebristolsound/birdbrain/pulls/<n> --jq .head.sha)
+   [ -n "$head" ] || echo "HEAD UNREADABLE — stop, do not un-draft"
+   runs=$(gh api "repos/thebristolsound/birdbrain/actions/runs?head_sha=$head&per_page=100" \
+     --jq '[.workflow_runs[] | select(.name=="CI")] | length')
+   [ -n "$runs" ] || echo "RUN COUNT UNREADABLE — stop, do not un-draft"
    ```
 
-2. Establish conditions 2 and 3 **against that pinned sha**, not against "the PR".
+2. Establish conditions 2 and 3 against `$head`, one read per limb and no inference between them:
+   the `agent/pre-pass` status on `$head`; the PR's labels; the linked issue's labels (both with
+   the `issues/<n>/labels` read above); and the blocking-tier score of
+   `git diff --name-only origin/main..."$head"`. Read the pre-pass status by whichever mechanism
+   this environment allows — commit statuses are 403 for the `GH_TOKEN` identity on the web
+   (`docs/agents/github-access.md:66-68`). **A read that exits non-zero, or returns empty where a
+   value was expected, ends the sequence here.** A missing answer is not a satisfied condition, and
+   at this point nothing has been written yet, so stopping is free.
 3. Take the PR out of draft, through the write path — `agh pr ready <n>` locally. `agh` is the
    machine-token wrapper defined at the top of this file, not a separate tool; bare `gh` would
    author the write as the maintainer.
 4. **Wait for the run the un-draft started, not the one already there.** Re-run the count from
-   step 1 until it increases, then poll that new run until its `status` is `completed`. Asking
-   only "has everything concluded?" can be answered by the run you are trying to replace: its
-   checks concluded minutes ago, and on #996 the new run did not exist until three seconds after
-   `ready_for_review`. Give up at 30 minutes — `ci.yml` caps its longest jobs at 20 (`:190`
-   `test`, `:279` `e2e`) behind a 5-minute `changes` (`:97`), so a run still going at 30 is stuck.
+   step 1 until it exceeds `$runs`, then poll that new run until its `status` is `completed`.
+   Asking only "has everything concluded?" can be answered by the run you are trying to replace:
+   its checks concluded minutes ago, and on #996 the new run did not exist until three seconds
+   after `ready_for_review`. Give up at 45 minutes and take the non-merge exit below. `ci.yml` caps
+   execution at 20 minutes for `test` (`:190`) and `e2e` (`:279`) behind a 5-minute `changes`
+   (`:97`), so 25 is the worst healthy case; the rest of the budget is runner queue time, which
+   `timeout-minutes` does not count and which a busy pool can add to a run that is perfectly fine.
 5. Read the checks — `gh pr checks <n> --json name,state,bucket` — classified exactly as section 5
-   classifies them: exit 0 and exit 8 are readable, any other non-zero exit is not, and an
-   unreadable read counts against the merge. Only the five contexts condition 1 names decide it.
-   `agent/pre-pass` and CodeRabbit are not required contexts and must not hold this poll open.
-6. Re-read head. **If it moved, stop and report. Do not merge.** Nothing should be pushing to the
-   branch during a merge sequence, so a move here is the unexpected move the one-writer rule
-   already calls a collision (`:111-115`).
-7. Establish condition 1 from the step-5 read, then merge.
+   classifies them, and an unreadable read counts against the merge. Only the five contexts
+   condition 1 names decide it. `agent/pre-pass` and CodeRabbit are not required contexts and must
+   not hold this poll open.
+6. Re-read three things, in this order: the head sha, the PR's labels, and the linked issue's
+   labels. **If the head has moved from `$head`, or either label set now carries
+   `evidence-affecting`, stop and report. Do not merge.** A moved head is the unexpected move the
+   one-writer rule already calls a collision (`:111-115`). A label is not, and that is exactly why
+   it is re-read: it moves no sha, so a maintainer marking the PR evidence-affecting while you
+   waited would otherwise pass unnoticed straight into a merge, and that is the outcome `:108`
+   calls absolute.
+7. Establish condition 1 from the step-5 read, then merge **bound to the pinned sha**:
+   `agh pr merge <n> --squash --delete-branch --match-head-commit "$head"`. The flag makes GitHub
+   refuse the merge if the head moved between step 6 and the call; without it the one irreversible
+   action in the sequence is the only step not tied to a sha.
 
 **There is deliberately no back-edge.** Sending a moved head back to the pin and carrying on would
 carry conditions 2 and 3 across the move: `agent/pre-pass` must be `success` *on this head sha*,
-and condition 3 scores *the diff*, so a new commit invalidates both, and a push adding a
-blocking-tier path would merge with no human review. Sending it back to the top of the list instead
-would close that hole, but a head that moves mid-merge is a collision under ADR-0006 whatever it
-turns out to contain, so the contract stops rather than loops.
+and condition 3's diff limb scores *the diff*, so a new commit invalidates both, and a push adding
+a blocking-tier path would merge with no human review. Sending it back to the top of the list
+instead would close that hole, but a head that moves mid-merge is a collision under ADR-0006
+whatever it turns out to contain, so the contract stops rather than loops.
 
-**Whenever you reach the end without merging** — the step-4 give-up, the step-6 collision, or a
-condition 1 that is not green — **convert the PR back to draft first: `agh pr ready --undo <n>`.**
-The un-draft is not free. `.claude/agents/birdbrain-reviewer.md:110-115` makes a ready-for-review
-agent PR arriving at a pre-pass a blocking finding and "not a state you should ever find in front
-of you", so leaving it un-drafted spends a blocking finding of the next fix round on a state you
-created. The undo itself starts nothing — `converted_to_draft` is not one of `ci.yml`'s trigger
-types — and the next push re-runs CI as normal under the agent-label exemption.
+**Whenever you reach the end without merging** — the step-4 give-up, a step-6 stop, or a condition
+1 that is not green — **convert the PR back to draft before you report, and confirm it took.** The
+undo's exit status alone does not prove the PR moved, and a silent failure leaves precisely the
+state this exit exists to prevent:
+
+```shell
+agh pr ready --undo <n>
+gh api repos/thebristolsound/birdbrain/pulls/<n> --jq .draft   # must now report true
+```
+
+If either command fails, or the second does not report `true`, report the PR number and say it was
+left out of draft. Do not report the exit as clean. This matters because the un-draft is not free:
+`.claude/agents/birdbrain-reviewer.md:110-115` makes a ready-for-review agent PR arriving at a
+pre-pass a blocking finding and "not a state you should ever find in front of you", so leaving it
+un-drafted spends a blocking finding of the next fix round on a state you created. The undo itself
+starts nothing — `converted_to_draft` is not one of `ci.yml`'s trigger types — and the next push
+re-runs CI as normal under the agent-label exemption.
+
+**This exit applies from step 3 onward only.** Conditions 2 and 3 fail at step 2, before the
+un-draft, and a PR that is still a draft has nothing to undo.
 
 **Why step 4 cannot be optimised away.** The un-draft fires `ready_for_review`, which is one of
 `ci.yml`'s `pull_request` trigger types, so CI starts over on the same sha and the five required
@@ -370,9 +404,9 @@ Reproduced on PR #996 at head `6d467366`. CI run 1381 took all six jobs green fr
 seconds later; the merge attempted straight after the un-draft was refused; the merge landed at
 05:40:15, 69 seconds after run 1384 concluded.
 
-If all four hold: merge with the repository's normal squash strategy, delete the branch, and note
-the merge in the end-of-cycle report with the four conditions as you found them. If any does not,
-do not merge, say which one failed, and apply the undo above.
+If all four hold, step 7 merges and you note it in the end-of-cycle report with the four conditions
+as you found them. If any does not, do not merge, say which one failed, and take the non-merge exit
+above if you had already reached step 3.
 
 **Evidence-affecting PRs never take this path.** Neither does any PR whose final pre-pass verdict
 was `request changes`, even if a later push turned CI green: that needs a fresh `success` verdict

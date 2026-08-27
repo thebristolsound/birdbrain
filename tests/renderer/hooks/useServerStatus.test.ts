@@ -196,6 +196,11 @@ describe('useServerStatus', () => {
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: queryKeys.selectorMatchingCapturesAll('case-3')
     })
+    // The matrix backs the coverage strip and the Signals rail's "Appears in"
+    // list; without it those showed pre-rescan membership beside a moved count.
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: queryKeys.selectorCaptureMatrix('case-3')
+    })
   })
 
   it('routes deep links to settings or dashboard', () => {

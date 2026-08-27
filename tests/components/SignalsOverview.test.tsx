@@ -225,18 +225,30 @@ describe('SignalsOverview', () => {
     await waitFor(() => expect(update).toHaveBeenCalledWith({ id: 's1', isRegex: true }))
   })
 
-  it('deletes a selector and a tag from their rows', async () => {
+  // #957 AC6: a selector belongs to one case, so it keeps the unguarded
+  // delete the tag rows lost. The dialog assertion is the pin — without it
+  // this passes whether or not a confirm step leaked onto selectors.
+  it('deletes a selector from its row with no confirmation', async () => {
     const removeSelector = vi.fn(async () => true)
-    const removeTag = vi.fn(async () => true)
-    install({ selectors: { delete: removeSelector }, tags: { delete: removeTag } })
+    install({ selectors: { delete: removeSelector } })
     renderScreen()
     await screen.findByTestId('signal-row-s1')
 
     fireEvent.click(screen.getByLabelText('Delete Acme mentions'))
-    fireEvent.click(screen.getByLabelText('Delete evidence'))
 
     await waitFor(() => expect(removeSelector).toHaveBeenCalledWith('s1'))
-    await waitFor(() => expect(removeTag).toHaveBeenCalledWith('t1'))
+    expect(screen.queryByTestId('delete-tag-dialog')).toBeNull()
+  })
+
+  it('deletes a selector from the keyboard with no confirmation', async () => {
+    const removeSelector = vi.fn(async () => true)
+    install({ selectors: { delete: removeSelector } })
+    renderScreen()
+
+    fireEvent.keyDown(await screen.findByTestId('signal-row-s1'), { key: 'Backspace' })
+
+    await waitFor(() => expect(removeSelector).toHaveBeenCalledWith('s1'))
+    expect(screen.queryByTestId('delete-tag-dialog')).toBeNull()
   })
 
   it('renames a selector by its pattern and a tag by its name', async () => {
@@ -307,5 +319,79 @@ describe('SignalsOverview', () => {
     renderScreen()
 
     expect(await screen.findByTestId('create-selector-card')).toBeTruthy()
+  })
+})
+
+// #957. Tags are app-global, so deleting one drops its capture and note links
+// in cases the operator is not looking at. Both ways into the delete are
+// covered because they are one prop on the row and a regression could reroute
+// either of them past the dialog.
+describe('SignalsOverview tag delete confirmation', () => {
+  async function openConfirm(
+    via: 'button' | 'keyboard',
+    key: 'Backspace' | 'Delete' = 'Backspace'
+  ) {
+    renderScreen()
+    const row = await screen.findByTestId('signal-row-t1')
+    if (via === 'button') fireEvent.click(screen.getByLabelText('Delete evidence'))
+    else fireEvent.keyDown(row, { key })
+    return screen.getByTestId('delete-tag-dialog')
+  }
+
+  it('asks before deleting from the row button, and deletes on confirm', async () => {
+    const removeTag = vi.fn(async () => true)
+    install({ tags: { delete: removeTag } })
+    await openConfirm('button')
+
+    expect(removeTag).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByTestId('delete-tag-confirm'))
+
+    await waitFor(() => expect(removeTag).toHaveBeenCalledWith('t1'))
+  })
+
+  it('deletes nothing when the row button confirmation is cancelled', async () => {
+    const removeTag = vi.fn(async () => true)
+    install({ tags: { delete: removeTag } })
+    await openConfirm('button')
+
+    fireEvent.click(screen.getByTestId('delete-tag-cancel'))
+
+    // The IPC call is the assertion, not the surviving row: the row is still
+    // drawn from a cached list either way, so it would sit there for a beat
+    // even if the delete had gone through.
+    await waitFor(() => expect(screen.queryByTestId('delete-tag-dialog')).toBeNull())
+    expect(removeTag).not.toHaveBeenCalled()
+    expect(screen.getByTestId('signal-row-t1')).toBeTruthy()
+  })
+
+  it('asks before deleting from Backspace on a focused row, and deletes on confirm', async () => {
+    const removeTag = vi.fn(async () => true)
+    install({ tags: { delete: removeTag } })
+    await openConfirm('keyboard', 'Backspace')
+
+    expect(removeTag).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByTestId('delete-tag-confirm'))
+
+    await waitFor(() => expect(removeTag).toHaveBeenCalledWith('t1'))
+  })
+
+  it('deletes nothing when the Delete-key confirmation is cancelled', async () => {
+    const removeTag = vi.fn(async () => true)
+    install({ tags: { delete: removeTag } })
+    await openConfirm('keyboard', 'Delete')
+
+    fireEvent.click(screen.getByTestId('delete-tag-cancel'))
+
+    await waitFor(() => expect(screen.queryByTestId('delete-tag-dialog')).toBeNull())
+    expect(removeTag).not.toHaveBeenCalled()
+    expect(screen.getByTestId('signal-row-t1')).toBeTruthy()
+  })
+
+  it('names the tag the row asked about', async () => {
+    await openConfirm('button')
+
+    expect(screen.getByText(/Delete ‘evidence’\?/)).toBeTruthy()
   })
 })

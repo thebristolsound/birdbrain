@@ -118,6 +118,11 @@ export function NoteSelectionConfirm({
     <div
       {...{ [SELECTION_UI_ATTR]: '1' }}
       data-testid="note-selection-confirm"
+      // Reachable from the captures route through the details panel's inline
+      // note editor, where the Escape guard used to defer to this via a
+      // [role="dialog"] query. That query is gone (#686); this is the opt-in
+      // that replaces it.
+      data-selection-escape-guard=""
       role="dialog"
       aria-label={mode === 'selector' ? 'Create selector' : 'Apply tag'}
       style={{ left: x, top: y, width: SELECTION_POPOVER_WIDTH }}

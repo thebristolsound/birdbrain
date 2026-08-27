@@ -129,10 +129,16 @@ describe('NoteSelectionConfirm', () => {
   it('cancels on Escape as well as on the button', () => {
     const onCancel = vi.fn()
     renderConfirm({ onCancel })
-    fireEvent.keyDown(screen.getByTestId('note-selection-confirm'), { key: 'Escape' })
+    const confirm = screen.getByTestId('note-selection-confirm')
+    fireEvent.keyDown(confirm, { key: 'Escape' })
     expect(onCancel).toHaveBeenCalledTimes(1)
     fireEvent.click(screen.getByTestId('note-selection-cancel'))
     expect(onCancel).toHaveBeenCalledTimes(2)
+    // Escape belongs to this popover while it is up, including when the note
+    // editor is the captures details panel's inline one. It says so by
+    // attribute now that the capture guard no longer queries role="dialog"
+    // (#686).
+    expect(confirm.hasAttribute('data-selection-escape-guard')).toBe(true)
   })
 
   it('disables the confirm button while a write is in flight', () => {

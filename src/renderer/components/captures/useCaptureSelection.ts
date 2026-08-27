@@ -80,14 +80,18 @@ export function useCaptureSelection(displayedIds: string[]) {
       }
       if (e.key === 'Escape') {
         if (inEditable) return
-        // Open dialogs and the bar's own overlays own Escape while they are
-        // up; the guard attribute lets non-dialog overlays opt in.
-        if (document.querySelector('[role="dialog"], [data-selection-escape-guard]')) return
-        // The command palette is checked by state rather than by the DOM query
-        // above, because it renders no role="dialog". Reading the store makes
-        // the precedence independent of listener registration order; see the
-        // note on the listener below.
-        if (useAppStore.getState().commandPaletteOpen) return
+        // Open dialogs and the command palette own Escape while they are up,
+        // and both are read from the store rather than from the DOM. A
+        // `[role="dialog"]` query cannot answer this: the role survives the
+        // close for the length of the dialog's exit animation, which left this
+        // guard armed for ~150ms after the dialog had gone (#686). Reading the
+        // store also makes the precedence independent of listener registration
+        // order; see the note on the listener below.
+        const { openDialogCount, commandPaletteOpen } = useAppStore.getState()
+        if (openDialogCount > 0 || commandPaletteOpen) return
+        // Non-dialog overlays — the bar's own tag popover, the note-selection
+        // popover, the tour card — opt in with the guard attribute.
+        if (document.querySelector('[data-selection-escape-guard]')) return
         if (useAppStore.getState().selectedCaptureIds.size > 0) clearCaptureSelection()
       }
     }

@@ -315,11 +315,12 @@ export function SignalDetailRail({
           )}
         </div>
 
-        {/* Selectors only (#829): create-time backfill sees the recent captures
-            only, so anything captured since is unmatched until this runs. Never
-            disabled for a turned-off selector — matching does not consult
-            `enabled`, so the pass would run either way and greying it would
-            imply otherwise. */}
+        {/* Selectors only (#829). Ingest already matches enabled selectors as
+            captures arrive, so this is for the gaps that leaves: captures older
+            than the create-time window, captures taken while the selector was
+            off, and captures whose text arrived later. Never disabled for a
+            turned-off selector — matching does not consult `enabled`, so the
+            pass would run either way and greying it would imply otherwise. */}
         {isSelector && (
           <div>
             <button

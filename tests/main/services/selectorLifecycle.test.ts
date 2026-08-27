@@ -6,6 +6,7 @@ import { initDatabase, closeDatabase } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
 import { insertCapture } from '@main/services/db/captureRepo'
 import {
+  getSelector,
   getSelectorMatchCounts,
   getCapturesMatchingSelectors,
   listSelectors
@@ -435,7 +436,13 @@ describe('selectorLifecycle', () => {
 
     // Known-answer test for the evidence-affecting method. Fixed inputs, a
     // stated expected set of selector_matches rows, checked before and after.
-    it('matches captures that landed after the selector was created', async () => {
+    //
+    // The fixture inserts through captureRepo directly, bypassing
+    // captureLifecycle.ingest, so the second capture reaches rescanSelector
+    // unmatched. That is deliberately not the state ingest leaves for an enabled
+    // selector with text — ingest matches those as they arrive. It stands in for
+    // the gaps ingest does leave, which the tests below pin one at a time.
+    it('matches a capture the create-time pass did not cover', async () => {
       const c = createCase({ name: 'C' })
       const before = insertCapture({
         caseId: c.id,
@@ -540,6 +547,10 @@ describe('selectorLifecycle', () => {
       const sel = lifecycle.createSelector({ caseId: c.id, pattern: 'alpha' })
       await waitFor(events, 1)
       lifecycle.updateSelector({ id: sel.id, enabled: false })
+      // Pin the precondition. Without it this passes vacuously if updateSelector
+      // ever stops persisting `enabled` — the whole point is that the pass runs
+      // on a selector that really is off.
+      expect(getSelector(sel.id)?.enabled).toBe(false)
       expect(getCapturesMatchingSelectors(c.id, [sel.id])).toEqual([])
 
       // Text arrives only now, so nothing could have matched before.

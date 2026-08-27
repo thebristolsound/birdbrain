@@ -14,6 +14,11 @@ export function WelcomeCard({ onStart, onSkip }: WelcomeCardProps) {
       <motion.div
         {...presets.modal}
         data-testid="tour-welcome"
+        // The captures Escape guard used to defer to this card via a
+        // [role="dialog"] query; that query is gone (#686), so the opt-in
+        // attribute keeps the tour from having its selection cleared out from
+        // under it.
+        data-selection-escape-guard=""
         // Not aria-modal: the backdrop is pointer-events-none and the page
         // underneath stays usable on purpose, so claiming modality would tell
         // assistive tech the opposite of what the tour does. There is no focus

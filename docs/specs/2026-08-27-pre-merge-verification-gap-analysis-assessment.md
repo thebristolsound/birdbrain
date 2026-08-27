@@ -58,7 +58,7 @@ per-pull-request concurrency cancellation, every action pinned to a full commit 
 
 | Job | What it enforces |
 | --- | --- |
-| `lint` | `pnpm lint` — ESLint 9 flat config, typescript-eslint recommended |
+| `lint` | `pnpm lint` — ESLint 9 flat config, `typescript-eslint` recommended |
 | `typecheck` | `pnpm typecheck` — six tsconfig projects, including `tests/` and `e2e/` |
 | `test` | `pnpm test:coverage` under `BIRDBRAIN_REQUIRE_OPENSSL=1`, then `scripts/diff-coverage.mjs` |
 | `build` | `pnpm build` and `pnpm build:extension` |
@@ -72,7 +72,7 @@ separately fails a pull request under 90% of changed lines covered.
 
 `.github/workflows/security.yml` runs three jobs on every push and pull request:
 
-- **Secret scan** — gitleaks over `--log-opts="--all"`, so every commit on every ref is scanned. The
+- **Secret scan** — Gitleaks over `--log-opts="--all"`, so every commit on every ref is scanned. The
   binary is verified against a recorded SHA-256 before it is executed, because a release tag is not
   immutable. False positives are allowlisted by fingerprint in `.gitleaksignore`.
 - **Dependency audit** — `scripts/audit-check.mjs` audits both dependency trees and fails on any high
@@ -221,7 +221,7 @@ diff-coverage gate expect. #863 already reports that the `xvfb-run` requirement 
 **Required checks omit the entire security workflow.** *(Highest-impact gap in this audit.)*
 The ruleset requires `lint`, `typecheck`, `test`, `build`, and `e2e`. It does not require
 `Secret scan (full history)`, `Dependency audit`, `Registry publish guard`, or `docs-build`. All four
-run on every pull request and all four are advisory: a gitleaks hit, a new critical advisory, an
+run on every pull request and all four are advisory: a Gitleaks hit, a new critical advisory, an
 expired audit exception, or a broken MDX page produces a red badge that nothing stops anyone merging
 past. The `docs-build` job's own comment already recommends requiring it and notes that the change is
 the maintainer's, because the required-contexts list is in the ruleset rather than the repository.
@@ -251,7 +251,7 @@ Electron configuration — and CodeRabbit is advisory by design (`request_change
 CodeQL's JavaScript/TypeScript pack includes Electron-specific queries. *Effort: Low.* Suggested path:
 `.github/workflows/codeql.yml`.
 
-**npm dependency updates are unautomated on a stale rationale.**
+**npm dependency updates have no automation, on a rationale that no longer holds.**
 `.github/dependabot.yml` covers `github-actions` only, and its stated reason for excluding the npm
 ecosystems — that `security.yml` tolerates advisories `continue-on-error` — no longer holds; that job
 is enforcing. Filed as **#1049** during this audit. The practical effect is that npm remediation is
@@ -270,7 +270,7 @@ wire-contract version constant in `src/shared/constants.ts`, checked at pairing 
 serialized schema snapshot test under `tests/shared/`.
 
 **No migration lint or replay check.**
-Append-only-ness and the `LATEST_SCHEMA_VERSION` bump are enforced by CodeRabbit prose instructions
+The append-only rule and the `LATEST_SCHEMA_VERSION` bump are enforced by CodeRabbit prose instructions
 only — an advisory reviewer, on a repository where 33 migration blocks now exist. A test that replays
 a fixture database through every historical version exists for exactly one hop (v24 to v25). *Effort:
 Medium.* Suggested path: `scripts/check-migrations.mjs` (asserts no existing `if (version < N)` block
@@ -381,8 +381,8 @@ The pre-migration snapshot is a genuine and well-designed rollback, and for a lo
 database it is a better fit than a generic expand-and-contract policy. Two narrower gaps remain: there
 is no written convention that a migration dropping or renaming a column ships at least one release
 after the code stops reading it, and `initDatabase` returns early when `user_version` is already at or
-ahead of `LATEST_SCHEMA_VERSION` rather than refusing to open a database from a future version. A user
-who reinstalls an older build therefore runs new-schema data through old code silently. *Effort: Low.*
+ahead of `LATEST_SCHEMA_VERSION` rather than refusing to open a database from a future version. A user who
+installs an older build over a newer one therefore runs new-schema data through old code silently. *Effort: Low.*
 Suggested path: a version guard in `src/main/services/db/core.ts` plus a convention paragraph in the
 architecture or invariants document.
 
@@ -414,8 +414,8 @@ Add `Secret scan (full history)`, `Dependency audit`, `Registry publish guard`, 
 `required_status_checks`, and set `strict_required_status_checks_policy` to `true`.
 
 No code, no new tooling, no added merge latency — these jobs already run on every pull request. It
-converts three security gates and one build gate from "someone notices the red badge" into "cannot
-merge", and it closes the stale-base window at the same time. `docs-build` is safe to require because
+converts three security gates and one build gate from a badge someone has to notice into a merge
+that cannot happen, and it closes the stale-base window at the same time. `docs-build` is safe to require because
 it reports `skipped` on pull requests that touch nothing under `website/`, which the ruleset accepts —
 a property `ci.yml` was deliberately designed to have.
 

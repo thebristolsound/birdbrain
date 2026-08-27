@@ -321,7 +321,7 @@ export function CaptureList({
                         className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-red-400 hover:bg-elevated"
                       >
                         <X className="h-3 w-3 shrink-0" />
-                        Clear all filters
+                        Clear search and filters
                       </button>
                     </>
                   )}
@@ -421,8 +421,11 @@ export function CaptureList({
             </motion.div>
           ))}
         </AnimatePresence>
+        {/* A case with no captures at all gets the first-run guidance whatever is
+            typed in the list search: nothing is being hidden, and the narrowed
+            copy would both say so falsely and displace the onboarding state. */}
         {displayedCaptures.length === 0 &&
-          (isNarrowed ? (
+          (isNarrowed && captures.length > 0 ? (
             <div
               data-testid="capture-list-narrowed-empty"
               className="flex flex-1 flex-col items-center justify-center gap-2.5 px-5 py-8 text-center"

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { Case } from '@shared/types'
@@ -48,12 +48,24 @@ describe('the command palette panel', () => {
   })
 
   // The role belongs to the panel, not the click-catching overlay: naming the
-  // overlay would put the dimmed backdrop inside the dialog boundary.
-  it('puts the role on the panel that holds the search input', () => {
+  // overlay would put the dimmed backdrop inside the dialog boundary. `contains`
+  // cannot express that on its own, since the backdrop is an ancestor of
+  // everything the panel holds and satisfies it identically. The dismiss
+  // behaviour is what separates the two nodes.
+  it('puts the role on the panel, not on the backdrop that dismisses it', () => {
     useAppStore.setState({ commandPaletteOpen: true })
-    render(<CommandPalette />, { wrapper: Wrapper })
+    const { container } = render(<CommandPalette />, { wrapper: Wrapper })
+    const backdrop = container.firstElementChild
+    if (!backdrop) throw new Error('the palette rendered no backdrop')
     const panel = screen.getByRole('dialog')
+
+    expect(panel.parentElement).toBe(backdrop)
     expect(panel.contains(screen.getByPlaceholderText('Switch investigation...'))).toBe(true)
+
+    fireEvent.click(panel)
+    expect(useAppStore.getState().commandPaletteOpen).toBe(true)
+    fireEvent.click(backdrop)
+    expect(useAppStore.getState().commandPaletteOpen).toBe(false)
   })
 
   it('exposes no dialog at all while closed', () => {

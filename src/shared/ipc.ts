@@ -215,6 +215,7 @@ export const IPC_CHANNELS = {
   NEW_CAPTURE: 'event:newCapture',
   SESSION_STATE_CHANGED: 'event:sessionStateChanged',
   EXTENSION_CONNECTION: 'event:extensionConnection',
+  EXTENSION_ATTACH: 'event:extensionAttach',
   SELECTOR_REMATCHED: 'event:selector:rematched',
   DEEP_LINK_NAVIGATE: 'event:deepLinkNavigate',
   ARCHIVE_PROGRESS: 'event:archiveProgress',
@@ -300,6 +301,20 @@ export interface SelectorRematchedEvent {
   selectorIds: string[]
   caseId: string
   status: SelectorRematchedStatus
+}
+
+// What the extension attach routes wrote, pushed after the write commits
+// (#852). Those routes go straight to the repos, so a renderer looking at the
+// case never learns the row exists — this names what changed so the caches the
+// write bypassed can be refetched. `kind` is what was attached, not how: both
+// routes may have ingested a capture first, and that arrives separately as
+// NEW_CAPTURE.
+export type ExtensionAttachKind = 'tag' | 'note'
+
+export interface ExtensionAttachEvent {
+  kind: ExtensionAttachKind
+  caseId: string
+  captureId: string
 }
 
 // Deep-link (birdbrain://) navigation targets pushed from main to the renderer
@@ -917,6 +932,7 @@ export interface IpcEventContract {
   'event:newCapture': Capture
   'event:sessionStateChanged': SessionStateEvent
   'event:extensionConnection': ExtensionConnectionEvent
+  'event:extensionAttach': ExtensionAttachEvent
   'event:captureActivity': CaptureEvent
   'event:selector:rematched': SelectorRematchedEvent
   'event:deepLinkNavigate': DeepLinkTarget

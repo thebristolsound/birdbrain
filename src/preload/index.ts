@@ -240,6 +240,8 @@ const birdbrain = {
 
   onExtensionConnection: subscribe(IPC_CHANNELS.EXTENSION_CONNECTION),
 
+  onExtensionAttach: subscribe(IPC_CHANNELS.EXTENSION_ATTACH),
+
   onCaptureActivity: subscribe(IPC_CHANNELS.CAPTURE_ACTIVITY),
 
   onLogEntry: subscribe(IPC_CHANNELS.LOG_ENTRY),

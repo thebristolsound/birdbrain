@@ -278,8 +278,10 @@ ADR-0014 lets a non-evidence agent PR merge without a human. **All four conditio
 each must be established by a command whose exit status you checked.** An unreadable answer counts
 against the merge.
 
-1. **Every required check on `main` is green.** Read the combined status and the check runs for the
-   PR head sha. A `pending` is not a green, and a check that never reported is not a green either.
+1. **Every required check on `main` is green.** The `master` ruleset requires five contexts —
+   `lint`, `typecheck`, `test`, `build` and `e2e`. Read the combined status and the check runs for
+   the PR head sha. A `pending` is not a green, an `expected` is not a green, and a check that
+   never reported is not a green either.
 2. **`agent/pre-pass` reports `success`.** The context must exist on *this* head sha. A verdict
    posted against an earlier sha says nothing about the current one; section 4's pin-the-sha rule
    is the same rule.
@@ -287,8 +289,9 @@ against the merge.
    carries none, and its diff hits no **blocking**-tier entry in
    `docs/specs/2026-07-31-evidence-affecting-paths-assessment.md`. An advisory-tier hit does not
    block the merge; it wants a one-line disposition in your report.
-4. **It is not a draft**, or you take it out of draft as the first step of merging. An agent PR
-   opens as a draft, so this is normally an action rather than a check.
+4. **It is not a draft.** An agent PR opens as a draft, so this one is an action you take rather
+   than a state you find — and performing it invalidates condition 1 at that moment, which is why
+   the order below is fixed rather than a suggestion.
 
 Read the label with a direct label read, never the search index: the label-filtered issue search
 lags by seconds and is not authoritative for a decision.
@@ -297,9 +300,47 @@ lags by seconds and is not authoritative for a decision.
 gh api repos/thebristolsound/birdbrain/issues/<n>/labels --jq '[.[].name]'
 ```
 
-If all four hold: mark ready for review, merge with the repository's normal squash strategy, delete
-the branch, and note the merge in the end-of-cycle report with the four conditions as you found
-them. If any does not, do not merge, and say which one failed.
+### Un-draft before the final check read, never after
+
+Conditions 2 and 3 survive the un-draft. Condition 1 does not. So establish the two that survive
+first, take the PR out of draft, wait for what that starts, and read the checks last.
+
+1. Establish conditions 2 and 3.
+2. Pin the head sha: `gh api repos/thebristolsound/birdbrain/pulls/<n> --jq .head.sha`.
+3. Take the PR out of draft, through the write path (`agh pr ready <n>` locally).
+4. Poll `gh pr checks <n>` until every check has a **conclusion** — not until they are green.
+   A run still in flight and a run that has failed read differently, and only a concluded check
+   tells you which of the two you are looking at.
+5. Re-read head. If it moved while you were polling, the checks you just read describe a tree
+   that is no longer the one you would merge: go back to step 2.
+6. Establish condition 1 against that re-run, then merge.
+
+**Why step 4 cannot be optimised away.** The un-draft fires `ready_for_review`, which is one of
+`ci.yml`'s `pull_request` trigger types, so CI starts over on the same sha and the five required
+contexts stop being satisfied. GitHub then refuses the merge — `405`, "Repository rule violations
+found", "5 of 5 required status checks are expected" — however green those contexts were a second
+earlier. The poll is not there to obtain coverage. It is there because the merge call reads the
+contexts and the un-draft you just performed reset them.
+
+**On an agent PR the re-run is redundant coverage, and that is still not a reason to skip the
+wait.** `ci.yml`'s `changes` job exempts `agent-pr` and `agent-authored` from the draft skip
+(`.github/workflows/ci.yml:92-96`), so a correctly labelled agent draft has been running the full
+matrix on every push since it opened, and the `ready_for_review` run repeats work that already
+passed. That trigger earns its place on *unlabelled* drafts, which do spend their draft life
+uncovered. Do not follow the observation to the conclusion that the wait is skippable here:
+redundant or not, the re-run resets the contexts, and the contexts are the only thing the merge
+call looks at.
+
+Reproduced on PR #996 at head `6d467366`. CI run 1381 took all six jobs green from 05:09:03 to
+05:16:10 while the PR was still a draft; `ready_for_review` at 05:31:51 started run 1384 three
+seconds later; the merge attempted straight after the un-draft was refused; the merge landed at
+05:40:15, 69 seconds after run 1384 concluded.
+
+If all four hold: merge with the repository's normal squash strategy, delete the branch, and note
+the merge in the end-of-cycle report with the four conditions as you found them. If any does not,
+do not merge, and say which one failed — including that the PR is now out of draft, which is a
+state the reorder makes reachable. Leaving it there costs nothing: a PR that is not a draft
+satisfies `ci.yml`'s `changes` gate on its own, so the fix round's pushes are covered either way.
 
 **Evidence-affecting PRs never take this path.** Neither does any PR whose final pre-pass verdict
 was `request changes`, even if a later push turned CI green: that needs a fresh `success` verdict

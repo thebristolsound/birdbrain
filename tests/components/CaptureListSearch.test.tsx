@@ -74,6 +74,19 @@ function type(value: string) {
   fireEvent.change(searchInput(), { target: { value } })
 }
 
+// Re-points the bridge at a case with no captures at all. Must run before
+// renderList, since the list issues its query on mount.
+function emptyCase() {
+  fakeBridge({
+    captures: {
+      list: vi.fn(async () => []),
+      listFavorites: vi.fn(async () => []),
+      getMatchingSelectors: vi.fn(async () => []),
+      getThumbnail: vi.fn(async () => null)
+    }
+  })
+}
+
 beforeEach(() => {
   stubMatchMedia()
   fakeBridge({
@@ -152,17 +165,52 @@ describe('CaptureList per-list search', () => {
   })
 
   it('still shows the first-run empty state when the case has no captures at all', async () => {
-    fakeBridge({
-      captures: {
-        list: vi.fn(async () => []),
-        listFavorites: vi.fn(async () => []),
-        getMatchingSelectors: vi.fn(async () => []),
-        getThumbnail: vi.fn(async () => null)
-      }
-    })
+    emptyCase()
     renderList()
     expect(await screen.findByTestId('capture-list-empty-state')).toBeDefined()
     expect(screen.queryByTestId('capture-list-narrowed-empty')).toBeNull()
+  })
+
+  it('keeps the first-run empty state on an empty case once a query is typed', async () => {
+    // The narrowed branch would otherwise claim "0 captures in this case are
+    // hidden by Search ..." on a case that has none, and displace the
+    // getting-started guidance for the first operator who touches the box.
+    emptyCase()
+    renderList()
+    await screen.findByTestId('capture-list-empty-state')
+
+    type('zebra')
+
+    expect(screen.getByTestId('capture-list-empty-state')).toBeDefined()
+    expect(screen.queryByTestId('capture-list-narrowed-empty')).toBeNull()
+    expect(screen.queryByText(/hidden by/)).toBeNull()
+  })
+
+  it('keeps the first-run empty state on an empty case under a menu filter', async () => {
+    // Same branch, reached from the Filter menu rather than the search box:
+    // the guard is on the case being empty, not on which narrowing is active.
+    emptyCase()
+    renderList()
+    await screen.findByTestId('capture-list-empty-state')
+
+    fireEvent.click(screen.getByRole('button', { name: /^Filter$/ }))
+    fireEvent.click(screen.getByText('Favorites only'))
+
+    expect(screen.getByTestId('capture-list-empty-state')).toBeDefined()
+    expect(screen.queryByTestId('capture-list-narrowed-empty')).toBeNull()
+  })
+
+  it('still names the narrowing on a case that does have hidden captures', async () => {
+    // The guard must not swallow the narrowed state wholesale: with captures
+    // loaded, a zero-match query still has to say what is hiding them.
+    renderList()
+    await titles()
+    type('zebra')
+
+    await settledTitles(0)
+    const empty = await screen.findByTestId('capture-list-narrowed-empty')
+    expect(empty.textContent).toContain('3 captures in this case are hidden')
+    expect(screen.queryByTestId('capture-list-empty-state')).toBeNull()
   })
 
   it('leaves the Filter badge menu-scoped when only a query is active', async () => {
@@ -225,11 +273,14 @@ describe('CaptureList clear affordances', () => {
     type('acme')
 
     fireEvent.click(screen.getByRole('button', { name: /^Filter$/ }))
-    fireEvent.click(screen.getByText('Clear all filters'))
+    // The label names the query too: this one item clears it alongside the
+    // menu's own filters, and an operator must not lose a typed search to a
+    // control that only said "filters".
+    fireEvent.click(screen.getByText('Clear search and filters'))
 
     expect(searchInput()).toHaveProperty('value', '')
     await settledTitles(3)
-    expect(screen.queryByText('Clear all filters')).toBeNull()
+    expect(screen.queryByText('Clear search and filters')).toBeNull()
   })
 
   it('clears everything from the narrowed empty state button', async () => {

@@ -66,7 +66,7 @@ The notes doc mostly held up. Across six PRs and roughly forty corrections, four
 
 **#673 and #677 (minor, prose only).** #673 repeats the notes doc's "the prototype's always-Stop" framing; `Birdbrain.dc.html:7111` actually reads `capturing ? 'Stop capture' : 'Stop session'`. #677's pixel-truth claim against `screenshots/01-dashboard.png` is unreproducible because the screenshot script was discarded. Neither affects shipped behaviour.
 
-**#668 (minor, refinement only).** The PR body cites the committed V1 ruling as lines 99-107 when the sentence is at 105-106; the cited range contains the sentence, and the baseline itself classed this as a refinement rather than an error. Notably, #668 did not propagate the notes doc's `/tmp/bb-handoff-2026-08/...` bundle paths -- it re-read the bundle from `origin/prototype/design-handoff-2026-08` and cites the branch in the shipped comment. That was the one correction that bore on the artifact, and it was taken.
+**#668 (minor, refinement only).** The PR body cites the committed V1 ruling as lines 99-107 when the sentence is at 105-106; the cited range contains the sentence, and the baseline itself classed this as a refinement rather than an error. Notably, #668 did not propagate the notes doc's ephemeral extraction-directory bundle paths (rewritten as branch citations by #679) -- it re-read the bundle from `origin/prototype/design-handoff-2026-08` and cites the branch in the shipped comment. That was the one correction that bore on the artifact, and it was taken.
 
 ## Blockers pushed through
 

@@ -135,6 +135,7 @@ export const IPC_CHANNELS = {
   SELECTORS_GET: 'selectors:get',
   SELECTORS_CREATE: 'selectors:create',
   SELECTORS_UPDATE: 'selectors:update',
+  SELECTORS_RESCAN: 'selectors:rescan',
   SELECTORS_DELETE: 'selectors:delete',
   SELECTORS_LIST_ACTIVE: 'selectors:listActive',
   SELECTORS_MATCH_COUNTS: 'selectors:matchCounts',
@@ -782,6 +783,10 @@ export interface IpcInvokeContract {
   'selectors:get': { args: [id: string]; result: Selector | undefined }
   'selectors:create': { args: [params: CreateSelectorParams]; result: Selector }
   'selectors:update': { args: [params: UpdateSelectorParams]; result: Selector | undefined }
+  // true once the backfill pass is scheduled — not once it has finished. The
+  // pass completing is the `event:selector:rematched` push; false means the id
+  // was unknown, so no pass was scheduled and no event will ever arrive.
+  'selectors:rescan': { args: [id: string]; result: boolean }
   'selectors:delete': { args: [id: string]; result: boolean }
   'selectors:listActive': { args: []; result: ActiveCaseSelectors[] }
   'selectors:matchCounts': { args: [caseId: string]; result: Record<string, number> }

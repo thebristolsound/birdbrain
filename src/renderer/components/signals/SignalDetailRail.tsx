@@ -10,6 +10,10 @@ import { ORIGIN_ICON, ORIGIN_LABEL } from '@renderer/components/selectors/select
 import { useTagsMutations } from '@renderer/lib/api/tags'
 import { MergeTagDialog } from '@renderer/components/signals/MergeTagDialog'
 import {
+  useSelectorRescan,
+  type SelectorRescanStatus
+} from '@renderer/components/signals/useSelectorRescan'
+import {
   signalCountLabel,
   TAG_PALETTE,
   type Signal
@@ -27,6 +31,13 @@ interface SignalDetailRailProps {
 }
 
 const BLOCK_LABEL = 'mb-1.5 text-[10px] font-semibold uppercase tracking-[.05em] text-text-faint'
+
+const RESCAN_LABEL: Record<SelectorRescanStatus, string> = {
+  idle: 'Rescan all captures',
+  running: 'Rescanning…',
+  done: 'Rescan complete',
+  error: 'Rescan failed'
+}
 
 function hostOf(url: string): string {
   try {
@@ -56,6 +67,7 @@ export function SignalDetailRail({
     maxCaptures: 5,
     maxMatchesPerCapture: 10
   })
+  const { status: rescanStatus, run: runRescan, reset: resetRescan } = useSelectorRescan(caseId)
 
   const isSelector = signal?.kind === 'selector'
   // Keyed on primitives rather than on the signal object: the list is rebuilt
@@ -70,6 +82,9 @@ export function SignalDetailRail({
   // example would attribute a hit to a selector that no longer makes it.
   useEffect(() => {
     reset()
+    // A finished rescan belongs to the selector it ran for; carrying its outcome
+    // onto the next selection would claim a pass that never touched it.
+    resetRescan()
     if (selectorId) void run(pattern, patternIsRegex, selectorId)
   }, [selectorId, pattern, patternIsRegex])
 
@@ -299,6 +314,29 @@ export function SignalDetailRail({
             </button>
           )}
         </div>
+
+        {/* Selectors only (#829): create-time backfill sees the recent captures
+            only, so anything captured since is unmatched until this runs. Never
+            disabled for a turned-off selector — matching does not consult
+            `enabled`, so the pass would run either way and greying it would
+            imply otherwise. */}
+        {isSelector && (
+          <div>
+            <button
+              type="button"
+              data-testid="signal-rescan"
+              onClick={() => runRescan(signal.id)}
+              disabled={rescanStatus === 'running'}
+              className="h-7 w-full rounded border border-border-strong text-xs font-medium text-text-primary hover:bg-elevated disabled:opacity-50"
+            >
+              {RESCAN_LABEL[rescanStatus]}
+            </button>
+            <p className="mt-1.5 text-[10px] leading-relaxed text-text-faint">
+              Adds matches found in captures this selector has not been run against. Existing
+              matches are never removed.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Mounted only while open: the dialog fetches the tag list on mount,

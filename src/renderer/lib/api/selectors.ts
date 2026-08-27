@@ -109,5 +109,14 @@ export function useSelectorsMutations(caseId: string) {
     meta: { action: 'create selectors' }
   })
 
-  return { create, update, remove, bulkCreate }
+  // Operator-invoked backfill (#829). No invalidation here, deliberately: the
+  // resolve only means the pass was scheduled, so refetching now would read
+  // pre-rescan counts. The SELECTOR_REMATCHED event carries the refresh once
+  // rows are actually written, the same shape useRecaptureMutations.enqueue uses.
+  const rescan = useMutation({
+    mutationFn: (id: string) => window.birdbrain.selectors.rescan(id),
+    meta: { action: 'rescan selector' }
+  })
+
+  return { create, update, remove, bulkCreate, rescan }
 }

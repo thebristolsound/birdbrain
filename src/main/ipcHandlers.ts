@@ -492,6 +492,7 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.SELECTORS_UPDATE, (_, params: UpdateSelectorParams) =>
     selectorLifecycle.updateSelector(params)
   )
+  handle(IPC_CHANNELS.SELECTORS_RESCAN, (_, id: string) => selectorLifecycle.rescanSelector(id))
   handle(IPC_CHANNELS.SELECTORS_DELETE, (_, id: string) => selectorRepo.deleteSelector(id))
   handle(IPC_CHANNELS.SELECTORS_LIST_ACTIVE, () => {
     const { activeCaseId } = sessionService.snapshot()

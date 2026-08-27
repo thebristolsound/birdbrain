@@ -424,6 +424,156 @@ describe('selectorLifecycle', () => {
     })
   })
 
+  describe('rescanSelector (#829)', () => {
+    it('returns false for an unknown selector id and schedules nothing', async () => {
+      expect(lifecycle.rescanSelector('does-not-exist')).toBe(false)
+
+      await new Promise<void>((r) => setImmediate(r))
+      await new Promise<void>((r) => setImmediate(r))
+      expect(events).toEqual([])
+    })
+
+    // Known-answer test for the evidence-affecting method. Fixed inputs, a
+    // stated expected set of selector_matches rows, checked before and after.
+    it('matches captures that landed after the selector was created', async () => {
+      const c = createCase({ name: 'C' })
+      const before = insertCapture({
+        caseId: c.id,
+        url: 'https://before',
+        title: 'Before',
+        hash: 'h1',
+        timestamp: '2026-01-01T00:00:00.000Z'
+      })
+      writeTxt(tempDir, c.id, before.id, 'alpha appears here')
+
+      const sel = lifecycle.createSelector({ caseId: c.id, pattern: 'alpha' })
+      await waitFor(events, 1)
+      expect(getCapturesMatchingSelectors(c.id, [sel.id])).toEqual([before.id])
+
+      // A capture the create-time pass never saw.
+      const after = insertCapture({
+        caseId: c.id,
+        url: 'https://after',
+        title: 'After',
+        hash: 'h2',
+        timestamp: '2026-01-02T00:00:00.000Z'
+      })
+      writeTxt(tempDir, c.id, after.id, 'alpha again, later')
+      expect(getCapturesMatchingSelectors(c.id, [sel.id])).toEqual([before.id])
+
+      expect(lifecycle.rescanSelector(sel.id)).toBe(true)
+      await waitFor(events, 2)
+
+      expect(events[1]).toEqual({ selectorIds: [sel.id], caseId: c.id, status: 'done' })
+      expect(getCapturesMatchingSelectors(c.id, [sel.id]).sort()).toEqual(
+        [before.id, after.id].sort()
+      )
+      expect(getSelectorMatchCounts(c.id)[sel.id]).toBe(2)
+    })
+
+    // Ruling W2. The clear-first shape updateSelector uses would drop this row,
+    // because the capture's text no longer loads; those rows ride in archives.
+    it('leaves a match standing when its capture text can no longer be read', async () => {
+      const c = createCase({ name: 'C' })
+      const cap = insertCapture({
+        caseId: c.id,
+        url: 'https://a',
+        title: 'A',
+        hash: 'h1',
+        timestamp: '2026-01-01T00:00:00.000Z'
+      })
+      writeTxt(tempDir, c.id, cap.id, 'alpha here')
+
+      const sel = lifecycle.createSelector({ caseId: c.id, pattern: 'alpha' })
+      await waitFor(events, 1)
+      expect(getCapturesMatchingSelectors(c.id, [sel.id])).toEqual([cap.id])
+
+      rmSync(join(tempDir, c.id, `${cap.id}.txt`))
+
+      lifecycle.rescanSelector(sel.id)
+      await waitFor(events, 2)
+
+      expect(getCapturesMatchingSelectors(c.id, [sel.id])).toEqual([cap.id])
+    })
+
+    // Ruling W10: the create-time cap does not apply, so captures past it match.
+    it('scans every capture in the case, not just the recent window', async () => {
+      const c = createCase({ name: 'C' })
+      const total = RETRO_MAX_CAPTURES + 10
+      const beyondCap: string[] = []
+
+      // listCaptures is most-recent-first, so i=0..9 sit beyond the cap.
+      for (let i = 0; i < total; i++) {
+        const cap = insertCapture({
+          caseId: c.id,
+          url: `https://a${i}`,
+          title: `A${i}`,
+          hash: `h${i}`,
+          timestamp: new Date(2026, 0, 1, 0, 0, i).toISOString()
+        })
+        if (i < 5) beyondCap.push(cap.id)
+        writeTxt(tempDir, c.id, cap.id, i < 5 ? 'has alpha here' : 'nothing')
+      }
+
+      const sel = lifecycle.createSelector({ caseId: c.id, pattern: 'alpha' })
+      await waitFor(events, 1)
+      expect(getCapturesMatchingSelectors(c.id, [sel.id])).toEqual([])
+
+      lifecycle.rescanSelector(sel.id)
+      await waitFor(events, 2)
+
+      expect(getCapturesMatchingSelectors(c.id, [sel.id]).sort()).toEqual(beyondCap.sort())
+    })
+
+    // Ruling W11: matchSelectorAgainstCaptures does not consult `enabled`, and
+    // create-time backfill already behaves this way.
+    it('runs on a selector that is turned off', async () => {
+      const c = createCase({ name: 'C' })
+      const cap = insertCapture({
+        caseId: c.id,
+        url: 'https://a',
+        title: 'A',
+        hash: 'h1',
+        timestamp: '2026-01-01T00:00:00.000Z'
+      })
+
+      const sel = lifecycle.createSelector({ caseId: c.id, pattern: 'alpha' })
+      await waitFor(events, 1)
+      lifecycle.updateSelector({ id: sel.id, enabled: false })
+      expect(getCapturesMatchingSelectors(c.id, [sel.id])).toEqual([])
+
+      // Text arrives only now, so nothing could have matched before.
+      writeTxt(tempDir, c.id, cap.id, 'alpha here')
+
+      expect(lifecycle.rescanSelector(sel.id)).toBe(true)
+      await waitFor(events, 2)
+
+      expect(getCapturesMatchingSelectors(c.id, [sel.id])).toEqual([cap.id])
+    })
+
+    it('is idempotent — a second pass over the same text adds no rows', async () => {
+      const c = createCase({ name: 'C' })
+      const cap = insertCapture({
+        caseId: c.id,
+        url: 'https://a',
+        title: 'A',
+        hash: 'h1',
+        timestamp: '2026-01-01T00:00:00.000Z'
+      })
+      writeTxt(tempDir, c.id, cap.id, 'alpha here')
+
+      const sel = lifecycle.createSelector({ caseId: c.id, pattern: 'alpha' })
+      await waitFor(events, 1)
+
+      lifecycle.rescanSelector(sel.id)
+      await waitFor(events, 2)
+      lifecycle.rescanSelector(sel.id)
+      await waitFor(events, 3)
+
+      expect(getSelectorMatchCounts(c.id)[sel.id]).toBe(1)
+    })
+  })
+
   describe('chunked retroactive matching', () => {
     it('processes more than one chunk worth of captures', async () => {
       const c = createCase({ name: 'C' })

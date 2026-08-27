@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { Capture, SelectorOrigin } from '@shared/types'
+import type { SelectorRematchedEvent } from '@shared/ipc'
 import { SignalDetailRail } from '@renderer/components/signals/SignalDetailRail'
 import type { Signal } from '@renderer/components/signals/signalsModel'
 import { useAppStore } from '@renderer/stores/appStore'
@@ -69,27 +70,50 @@ function renderRail(signal: Signal | null, overrides: Partial<Capture[]> = []) {
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
   }
-  render(
+  const rail = (next: Signal | null) => (
     <SignalDetailRail
       caseId="case-1"
-      signal={signal}
+      signal={next}
       captures={overrides.length ? (overrides as Capture[]) : captures}
       totalCaptures={4}
       onToggleEnabled={onToggleEnabled}
       onMerged={onMerged}
-    />,
-    { wrapper: Wrapper }
+    />
   )
-  return { onToggleEnabled, onMerged }
+  const view = render(rail(signal), { wrapper: Wrapper })
+  return {
+    onToggleEnabled,
+    onMerged,
+    rerenderWith: (next: Signal | null) => view.rerender(rail(next))
+  }
+}
+
+// The rescan pass reports completion on event:selector:rematched, so the tests
+// need to push that event themselves rather than wait on the mutation.
+let rematched: Array<(event: SelectorRematchedEvent) => void>
+let rescan: ReturnType<typeof vi.fn>
+
+function emitRematched(event: SelectorRematchedEvent): void {
+  for (const handler of rematched) handler(event)
 }
 
 beforeEach(() => {
   navigate.mockClear()
   useAppStore.getState().clearSelectorFilters()
+  rematched = []
+  rescan = vi.fn(async () => true)
   fakeBridge({
     captures: { list: vi.fn(async () => captures), getContent: vi.fn(async () => null) },
-    selectors: { matchingCaptures: vi.fn(async () => []), exportMatches: vi.fn(async () => ({ exported: true })) },
-    tags: { update: vi.fn(async () => tagSignal) }
+    selectors: {
+      matchingCaptures: vi.fn(async () => []),
+      exportMatches: vi.fn(async () => ({ exported: true })),
+      rescan
+    },
+    tags: { update: vi.fn(async () => tagSignal) },
+    onSelectorRematched: (callback: (event: SelectorRematchedEvent) => void) => {
+      rematched.push(callback)
+      return () => {}
+    }
   })
 })
 
@@ -243,6 +267,122 @@ describe('SignalDetailRail actions', () => {
     fireEvent.click(screen.getByRole('switch'))
 
     expect(onToggleEnabled).toHaveBeenCalledWith(selectorSignal)
+  })
+})
+
+describe('SignalDetailRail rescan (#829)', () => {
+  const label = () => screen.getByTestId('signal-rescan').textContent
+
+  it('offers the rescan for a selector and not for a tag', () => {
+    renderRail(selectorSignal)
+    expect(label()).toBe('Rescan all captures')
+
+    cleanup()
+    renderRail(tagSignal)
+    expect(screen.queryByTestId('signal-rescan')).toBeNull()
+  })
+
+  // Ruling W2 is invisible unless the screen says so: an operator would
+  // otherwise read "rescan" as a refresh that retires stale matches.
+  it('states that the pass only adds matches', () => {
+    renderRail(selectorSignal)
+
+    expect(screen.getByText(/Existing matches are never removed/)).toBeTruthy()
+  })
+
+  // Ruling W11. Matching does not consult `enabled`, so the pass runs either
+  // way; greying the button would tell the operator otherwise.
+  it('stays available on a selector that is turned off', () => {
+    renderRail({ ...selectorSignal, enabled: false })
+
+    expect(screen.getByTestId('signal-rescan')).toHaveProperty('disabled', false)
+  })
+
+  it('asks main to rescan the selected selector and waits for the pass', async () => {
+    renderRail(selectorSignal)
+
+    fireEvent.click(screen.getByTestId('signal-rescan'))
+
+    // The busy state is set in the click handler; the mutation itself runs a
+    // microtask later, so only the invoke needs waiting on.
+    expect(label()).toBe('Rescanning…')
+    expect(screen.getByTestId('signal-rescan')).toHaveProperty('disabled', true)
+    await waitFor(() => expect(rescan).toHaveBeenCalledWith('s1'))
+    // Scheduling is not completion: the button stays busy until the event lands.
+    expect(label()).toBe('Rescanning…')
+  })
+
+  it('reports completion when the rematched event names this selector', () => {
+    renderRail(selectorSignal)
+    fireEvent.click(screen.getByTestId('signal-rescan'))
+
+    act(() => emitRematched({ selectorIds: ['s1'], caseId: 'case-1', status: 'done' }))
+
+    expect(label()).toBe('Rescan complete')
+  })
+
+  it('keeps waiting when the event is for a different selector', () => {
+    renderRail(selectorSignal)
+    fireEvent.click(screen.getByTestId('signal-rescan'))
+
+    act(() => emitRematched({ selectorIds: ['s2'], caseId: 'case-1', status: 'done' }))
+
+    expect(label()).toBe('Rescanning…')
+  })
+
+  // A pass that failed part-way may still have written rows, so it is not
+  // reported as a clean completion.
+  it('reports a failed pass rather than calling it done', () => {
+    renderRail(selectorSignal)
+    fireEvent.click(screen.getByTestId('signal-rescan'))
+
+    act(() => emitRematched({ selectorIds: ['s1'], caseId: 'case-1', status: 'error' }))
+
+    expect(label()).toBe('Rescan failed')
+  })
+
+  // false means main found no such selector, so no event will ever arrive to
+  // clear the busy state.
+  it('does not sit busy forever when no pass was scheduled', async () => {
+    rescan.mockResolvedValueOnce(false)
+    renderRail(selectorSignal)
+
+    fireEvent.click(screen.getByTestId('signal-rescan'))
+
+    await waitFor(() => expect(label()).toBe('Rescan failed'))
+  })
+
+  it('reports a rejected invoke as a failure', async () => {
+    rescan.mockRejectedValueOnce(new Error('ipc down'))
+    renderRail(selectorSignal)
+
+    fireEvent.click(screen.getByTestId('signal-rescan'))
+
+    await waitFor(() => expect(label()).toBe('Rescan failed'))
+  })
+
+  // The outcome belongs to the selector it ran for; carrying it across would
+  // claim a pass that never touched the newly selected one.
+  it('clears the outcome when the selection moves to another selector', () => {
+    const { rerenderWith } = renderRail(selectorSignal)
+    fireEvent.click(screen.getByTestId('signal-rescan'))
+    act(() => emitRematched({ selectorIds: ['s1'], caseId: 'case-1', status: 'done' }))
+    expect(label()).toBe('Rescan complete')
+
+    act(() => {
+      rerenderWith({ ...selectorSignal, id: 's2', name: 'other', sub: 'other' })
+    })
+
+    expect(label()).toBe('Rescan all captures')
+  })
+
+  // The event fires for create and update passes too; nothing is pending then.
+  it('ignores a rematched event when no rescan is outstanding', () => {
+    renderRail(selectorSignal)
+
+    act(() => emitRematched({ selectorIds: ['s1'], caseId: 'case-1', status: 'done' }))
+
+    expect(label()).toBe('Rescan all captures')
   })
 })
 

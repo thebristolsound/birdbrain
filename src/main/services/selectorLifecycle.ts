@@ -24,6 +24,7 @@ export interface SelectorLifecycle {
   createSelector: (params: CreateSelectorParams) => Selector
   bulkCreateSelectors: (params: BulkCreateSelectorsParams) => Selector[]
   updateSelector: (params: UpdateSelectorParams) => Selector | undefined
+  rescanSelector: (id: string) => boolean
   runActiveSelectorsForCapture: (captureId: string, caseId: string, textContent: string) => void
 }
 
@@ -128,6 +129,25 @@ export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLi
       }
 
       return updated
+    },
+    // Operator-invoked backfill (#829). Create-time backfill only ever sees the
+    // RETRO_MAX_CAPTURES most recent captures, so anything that landed after a
+    // selector was created is unmatched until this runs.
+    //
+    // Additive, never clear-then-rescan (ruling W2): matchSelectorAgainstCaptures
+    // is INSERT OR IGNORE, so this pass can only add rows. The clear-first shape
+    // updateSelector uses would delete every match and then skip any capture
+    // whose text will not load, silently dropping rows that ride inside case
+    // archives. The accepted cost is that a stale match cannot be retired here.
+    //
+    // Unbounded (W10) because reaching those later captures is the whole point,
+    // and not gated on `enabled` (W11) because matchSelectorAgainstCaptures does
+    // not check it either — create-time backfill already behaves this way.
+    rescanSelector(id) {
+      const selector = selectorRepo.getSelector(id)
+      if (!selector) return false
+      scheduleRetroactiveMatch([selector], selector.caseId, { unbounded: true })
+      return true
     },
     runActiveSelectorsForCapture(captureId, caseId, textContent) {
       selectorRepo.matchSelectorsForCapture(captureId, caseId, textContent)

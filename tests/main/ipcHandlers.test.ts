@@ -972,6 +972,19 @@ describe('ipcHandlers — selectors', () => {
     expectOk(await invoke(IPC_CHANNELS.SELECTORS_DELETE, sel.id))
   })
 
+  // #829. The channel answers once the pass is scheduled, so the boolean is the
+  // whole contract: true for a selector that exists, false for one that does not.
+  it('schedules a rescan for a known selector and refuses an unknown id', async () => {
+    const sel = expectOk<{ id: string }>(
+      await invoke(IPC_CHANNELS.SELECTORS_CREATE, { caseId, pattern: 'rescan-me', isRegex: false })
+    )
+
+    expect(expectOk<boolean>(await invoke(IPC_CHANNELS.SELECTORS_RESCAN, sel.id))).toBe(true)
+    expect(expectOk<boolean>(await invoke(IPC_CHANNELS.SELECTORS_RESCAN, 'no-such-selector'))).toBe(
+      false
+    )
+  })
+
   it('exports selector matches to csv, honouring the save dialog', async () => {
     const cancelled = expectOk<{ exported: boolean }>(
       await invoke(IPC_CHANNELS.SELECTORS_EXPORT_MATCHES, caseId)

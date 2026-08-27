@@ -163,6 +163,11 @@ its release step: remove the label with a note, and count the slot once, not twi
   report-only, and it re-fires every empty-queue cycle until the record appears. Then dispatch
   (section 3).
 
+**A cycle claim is not a slot marker and does not change occupancy.** Section 2's cycle claim is
+a comment on a linked issue with no label, so none of the preceding queries see it. That is
+deliberate: the slot is already held by the open `agent-pr` PR, and a cycle claim that also
+counted would report an occupancy of two for one piece of work.
+
 **Branches are cut from `main`, never from another cycle's branch** (ADR-0014). Three concurrent
 cycles make stacking possible for the first time, and a stacked PR is how redesign wave 2 produced
 a branch that could not rebase and ran no CI at all (#763, #769). If a dispatched issue genuinely
@@ -197,6 +202,75 @@ comments. Classify:
   reviewer pre-pass (section 4).
 (Closed and merged PRs never reach this section — an open-PR query cannot return them; their
 hygiene checks run from section 1's empty-queue branch.)
+
+### Claim the cycle before spawning anything
+
+Section 3 claims a slot before dispatching a *new* issue. Nothing claims a cycle on a PR that
+already exists, so two sessions classifying the same open `agent-pr` PR both reach the same
+conclusion and both act on it. That is not a coincidence to design around; it is the routine
+working as intended, deterministically, in two places at once. On 2026-08-17 only write ordering
+kept two cycles off PR #517, and on 2026-08-26 two sessions ran PR #958's round 3 in parallel and
+threw away roughly an hour of Opus (#521, #1016).
+
+**Two actions need a claim, and only these two:** spawning `birdbrain-reviewer` (section 4), and
+dispatching `birdbrain-implementer` for a feedback round. Each runs for minutes, costs real
+tokens, and ends in a write a duplicate would double-post. Classifying a PR as "awaiting human
+review" claims nothing, because it writes nothing. Merging under section 2a claims nothing
+either: GitHub serialises the merge, a second merge call against an already-merged PR fails
+rather than repeating it, and neither a reviewer nor an implementer is spawned.
+
+**The claim lives on the linked issue, not on the PR.** Two reasons, both load-bearing. A comment
+on the PR lands in the timeline a human reads and can wake CodeRabbit, which is what section 4's
+reply storm rule exists to prevent. And a commit status is not an option at all: a status binds to
+a sha, and the claimed cycle's central act is a push that moves the sha, so the claim would
+evaporate in exactly the post-push, pre-verdict window where the race bites hardest.
+
+**Resolve the linked issue from two independent sources and require them to agree.** The first
+line of an agent PR body is `Closes #N`, and the branch is `agent/<n>-<slug>`:
+
+```shell
+agh api repos/thebristolsound/birdbrain/pulls/<n> \
+  --jq '{first_line: (.body | split("\n")[0]), head: .head.ref}'
+```
+
+Take `N` from the first line only. A body can name `Closes #M` again further down (PR #961
+dispositions #962 that way), so a match taken from anywhere in the body picks up the wrong number.
+If the two sources disagree, or neither resolves, **do not act on the PR this cycle**: say it
+cannot be claimed, give both readings, and move to the next PR. A cycle with nowhere to put its
+claim cannot be made safe, and falling back to a claim on the PR reintroduces the noise this
+design avoids.
+
+**The protocol is ADR-0006's, applied to a second site.** In this order:
+
+0. Read the linked issue's recent comments for a cycle claim naming this PR with no release
+   comment after it. 4 hours old or younger, a peer's cycle is in flight: report "PR #N: cycle
+   claimed, cycle in progress" and move to the next PR. Older than 4 hours, the claim is stale;
+   note that you cleared it and carry on. The 4-hour basis is section 1's, unchanged.
+1. Post the claim comment on the linked issue via the write path (locally
+   `agh issue comment <n> --body ...`), first line exactly `Cycle claim: PR #<pr>`, then which of
+   the two actions you are claiming. **The comment is the claim** (ADR-0006): its server-assigned
+   `created_at` is the claim's timestamp and its comment `id` the final tie-break. That first line
+   is what separates it from a section 3 dispatch claim, which can sit on the same issue and means
+   something else.
+2. **No label.** ADR-0006 makes the label the claim's discoverable index rather than the claim,
+   and `agent-wip` is already spoken for: section 1 counts it as a slot marker and strips it from
+   an issue whose PR is open, reading that pair as a missed release. A cycle claim is not a slot
+   claim. The `agent-pr` PR already holds the slot, and counting it twice would report a phantom
+   occupancy.
+3. Settle. Re-read the linked issue's comments. Among cycle claims naming this PR with no release
+   after them, the earliest `created_at` wins; a same-second tie breaks to the lower comment `id`.
+   If you lost, post a one-line withdrawal and move to the next PR without spawning anything.
+
+**Release at end of cycle**, before you write the section 5 report: post a one-line comment on the
+same issue whose first line is `Cycle release: PR #<pr>`. Release on every exit path that took a
+claim, including the give-up path and a pre-pass ending `request changes`. An unreleased claim
+costs a peer four hours.
+
+**A seeded `agent/pre-pass` pending is never a claim.** `pre-pass-gate.yml` posts one on every
+agent PR at open, so its presence says only that the workflow ran. Neither is the `pending` a
+dispatcher posts before spawning the reviewer, even though the creator differs: every dispatcher
+writes as the same machine account (ADR-0012), so no session can tell its own status from a
+peer's. Read the claim comment. It is the only claim.
 
 ## 2a. Auto-merge — the one merge you may perform
 
@@ -375,6 +449,10 @@ not dispatch a second issue in the same cycle.
 
 Run `birdbrain-reviewer` on the PR after you open it and after every feedback-response push.
 Skip only if the current head commit already has a pre-pass comment.
+
+**Take the cycle claim first** (section 2). The reviewer is one of the two actions that needs one,
+and the `pending` status below is not a substitute: it is a signal to humans, not a lock between
+sessions.
 
 ### The verdict is a commit status, not just a comment
 
@@ -567,9 +645,12 @@ Two questions worth asking out loud when the check fires, because they were the 
 
 ## 5. End-of-cycle report
 
+**Release every cycle claim you took before writing the report** (section 2), on every exit path.
+
 Finish every invocation with a short report: occupancy found out of three and which PRs or claims
-hold it, action taken per PR (merged #N / dispatched #N / addressed feedback on PR #N / exited idle
-/ violation found), pre-pass verdict if one ran, the CI state of every head sha you touched, and
+hold it, every cycle claim you took, lost or cleared as stale, action taken per PR (merged #N /
+dispatched #N / addressed feedback on PR #N / exited idle / violation found), pre-pass verdict if
+one ran, the CI state of every head sha you touched, and
 anything a human must do next.
 
 A cycle now touches up to three PRs, so report them as a list rather than one narrative. If you

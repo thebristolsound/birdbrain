@@ -193,3 +193,57 @@ describe('CaptureViewer tabs', () => {
     expect(await screen.findByText('No HTML available')).toBeDefined()
   })
 })
+
+// #704. The Page tab renders a stored copy inside a guest that looks like a
+// live browser, so it says which it is. Mounted in the viewer shell rather than
+// inside either guest component, which is also why the MhtmlViewer mock at the
+// top of this file does not hide it.
+describe('CaptureViewer archived-copy banner (#704)', () => {
+  it('states that the MHTML Page tab is an archived copy, and when it was captured', async () => {
+    renderViewer()
+    fireEvent.click(await screen.findByRole('tab', { name: 'Page' }))
+
+    const banner = await screen.findByTestId('archived-copy-banner')
+    expect(banner.textContent).toContain('Archived copy')
+    // UTC-pinned, so this reads the same on every machine and in CI.
+    expect(banner.textContent).toContain('Captured Sat, Aug 1, 2026, 12:00 PM UTC')
+  })
+
+  it('states the same on a pre-v11 HTML capture, without claiming MHTML', async () => {
+    const legacy: Capture = { ...capture, format: 'html' }
+    fakeBridge({ captures: { list: vi.fn(async () => [legacy]), getContent, getHtmlUrl } })
+    renderViewer()
+    fireEvent.click(await screen.findByRole('tab', { name: 'Page' }))
+
+    const banner = await screen.findByTestId('archived-copy-banner')
+    expect(banner.textContent).toContain('Archived copy')
+    expect(banner.textContent).toContain('Captured Sat, Aug 1, 2026, 12:00 PM UTC')
+    // The claim holds for a capture that has no page.mhtml, so the copy must not
+    // name one. Scoped to the banner — the tab body legitimately may.
+    expect(banner.textContent).not.toMatch(/mhtml/i)
+    expect(await screen.findByTestId('legacy-html-viewer')).toBeDefined()
+  })
+
+  it('carries no claim the viewer does not make: no hash, no network posture', async () => {
+    renderViewer()
+    fireEvent.click(await screen.findByRole('tab', { name: 'Page' }))
+
+    const banner = await screen.findByTestId('archived-copy-banner')
+    expect(banner.textContent).not.toMatch(/sha256/i)
+    expect(banner.textContent).not.toMatch(/network/i)
+    expect(banner.textContent).not.toMatch(/script/i)
+  })
+
+  it('stays off the tabs that cannot be mistaken for a live page', async () => {
+    renderViewer()
+    await screen.findAllByRole('tab')
+    expect(screen.queryByTestId('archived-copy-banner')).toBeNull()
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Text' }))
+    expect(screen.queryByTestId('archived-copy-banner')).toBeNull()
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Wayback' }))
+    await screen.findByTestId('wayback-compare-stub')
+    expect(screen.queryByTestId('archived-copy-banner')).toBeNull()
+  })
+})

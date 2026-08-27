@@ -28,6 +28,19 @@ const UPPER_DIGEST = 'E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B78
 // invariant under `trim()`, which is why the vectors above cannot catch one —
 // only a padded fixture tells a verbatim read from a defensive one.
 const PADDED_DIGEST = ` ${DIGEST}\n`
+// SHA-256 of 'tampered'. Stands for the digest verify recomputed from the bytes
+// on disk: `captureRepo.setCaptureVerification` writes `result.computedHash`
+// into `last_verified_hash`, so it equals `hash` only while the artifact is
+// intact and differs from it by definition once the artifact is not.
+const VERIFIED_DIGEST = 'd121be3103007b41edf96f8262925f8c7d61894afe9a041843b631f69445bc57'
+// The sidecar and hash-chain digests a Capture also carries. Real SHA-256s
+// (of 'screenshot', 'text', 'prev', 'entry') rather than placeholders, so a
+// read of the wrong field copies something shaped exactly like the right
+// answer and has to be caught by value.
+const SCREENSHOT_DIGEST = '4441146b0fe1d5c6845af126ba5ce6003ea77d6b4cb04d14114f86a925c5dbca'
+const TEXT_DIGEST = '982d9e3eb996f559e633f4d194def3761d909f5a3b647d1a851fead67c32c9d1'
+const PREV_DIGEST = '84fd9bac333ad79154348296204fa7f8c537a96e08983e5f73b3f5aca8e8edf7'
+const ENTRY_DIGEST = '923fe53966c6cd9343e11af776cd4b05be315ea4b200b02e4d5dfb0f929b73bf'
 
 const capture: Capture = {
   id: 'cap1',
@@ -38,7 +51,20 @@ const capture: Capture = {
   timestamp: '2026-08-01T12:00:00.000Z',
   createdAt: '2026-08-01T12:00:01.000Z',
   format: 'mhtml',
-  method: 'extension'
+  method: 'extension',
+  // Every other digest field populated, each with a distinct value. Vectors
+  // that vary the *value* of `hash` cannot see a read of the wrong *field*:
+  // with these left undefined, `capture?.lastVerifiedHash ?? capture?.hash`
+  // copies the right string for the wrong reason and the whole file stays
+  // green (#952). Populated, a wrong-field read fails here by construction
+  // rather than only in the one case that names the field.
+  lastVerifiedHash: VERIFIED_DIGEST,
+  lastVerifiedAt: '2026-08-02T09:00:00.000Z',
+  lastVerifiedStatus: 'tampered',
+  screenshotHash: SCREENSHOT_DIGEST,
+  textHash: TEXT_DIGEST,
+  prevHash: PREV_DIGEST,
+  entryHash: ENTRY_DIGEST
 }
 
 let writeText: ReturnType<typeof vi.fn>
@@ -159,6 +185,37 @@ describe('useCopyCaptureHash', () => {
     await act(async () => result.current())
 
     expect(copied()).toBe(PADDED_DIGEST)
+  })
+
+  it('copies the stored digest, not the one verify recomputed from the bytes', async () => {
+    // The fixture is a tampered capture: `hash` is what the manifest anchors,
+    // `lastVerifiedHash` is what the file on disk now digests to. Copying the
+    // latter under a "Copied SHA-256" toast hands the operator a string that
+    // verifies against the altered artifact and does not match the manifest —
+    // the inverse of what they believe they are pasting into a report.
+    const { result } = renderHook(() => useCopyCaptureHash(capture))
+
+    await act(async () => result.current())
+
+    expect(copied()).toBe(DIGEST)
+    expect(copied()).not.toBe(VERIFIED_DIGEST)
+  })
+
+  it.each([
+    ['lastVerifiedHash', VERIFIED_DIGEST],
+    ['screenshotHash', SCREENSHOT_DIGEST],
+    ['textHash', TEXT_DIGEST],
+    ['prevHash', PREV_DIGEST],
+    ['entryHash', ENTRY_DIGEST]
+  ])('reads the capture content digest, never capture.%s', async (_field, sibling) => {
+    // Named one field per case so a wrong-field read says which field, rather
+    // than only that some digest other than `hash` reached the clipboard.
+    const { result } = renderHook(() => useCopyCaptureHash(capture))
+
+    await act(async () => result.current())
+
+    expect(copied()).not.toBe(sibling)
+    expect(copied()).toBe(DIGEST)
   })
 
   it('does nothing at all with no capture selected', () => {

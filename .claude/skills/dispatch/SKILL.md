@@ -315,7 +315,9 @@ after it.
 If the head sha moves at any point after step 1, stop and report; do not merge. Nothing should be
 pushing to the branch during a merge sequence, so a move is the unexpected move the one-writer rule
 already calls a collision (`:111-115`), and conditions 2 and 3 were established against a commit
-that is no longer there.
+that is no longer there. Section 5's pinned-head protocol is what detects it: read the head
+either side of the `gh pr checks` call, and never tie conclusions to a sha you did not observe
+both before and after.
 
 **Condition 3 is not re-read before the merge, and this poll widens the gap that leaves.** A label
 added to the PR or to its linked issue while you wait moves no sha, so nothing in this sequence

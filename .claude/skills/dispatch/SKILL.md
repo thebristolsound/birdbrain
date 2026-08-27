@@ -563,6 +563,27 @@ Capture the head sha **before** spawning the reviewer, pass that sha to it expli
 **re-read head immediately before posting the report.** If it moved, discard the verdict and
 re-run against the new head; do not post a verdict naming a sha that is no longer head.
 
+**Unless the move changed no authored content (ADR-0021).** Before discarding a verdict, hash
+both three-dot diffs; equal hashes mean the head moved without changing what the PR contributes,
+which is what a clean back-merge of `main` looks like:
+
+```shell
+git diff origin/main...<reviewed-sha> | sha256sum
+git diff origin/main...<new-head>    | sha256sum
+```
+
+Equal - **carry the verdict forward, do not re-run the reviewer**: confirm every required check
+is green at the new head with the pinned-sha protocol (a non-green or unreadable check ends the
+carry-forward and the PR waits), post the `agent/pre-pass` status on the new sha carrying the
+original verdict with a description naming the sha it was reviewed at, comment the carry-forward
+stating both shas and the equal hashes, and annotate the body's `## Verification` block with the
+sha it was measured at rather than regenerating it. Unequal - review as normal, scoped to what
+changed; a hand-resolved conflict is authored work and lands here.
+
+A branch is updated from `main` only when GitHub says it needs to be (`mergeable: false`, or a
+`mergeable_state` of `dirty`). The ruleset is non-strict, so being behind `main` is not a reason
+to back-merge, and the dispatcher never does it to a branch it does not own.
+
 Also on #423: CodeRabbit reviewed `c7fdc56` at 03:52:26, a `main` merge landed at 03:53:18
 (`55ebe53`), and the pre-pass posted at 04:02:43 still naming `c7fdc56` — nine minutes after
 that sha stopped being head. It had reviewed a tree that no longer existed, and its completion

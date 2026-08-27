@@ -108,9 +108,14 @@ describe('auto-fire', () => {
   it('raises the welcome card on a fresh install', async () => {
     install(settingsFixture({ isFreshInstall: true }))
     renderTour()
-    expect(await screen.findByTestId('tour-welcome')).toBeTruthy()
+    const card = await screen.findByTestId('tour-welcome')
+    expect(card).toBeTruthy()
     expect(screen.getByText('Welcome to Birdbrain')).toBeTruthy()
     expect(screen.getByText('replays this tour anytime')).toBeTruthy()
+    // The card can sit over the captures route, where Escape otherwise clears
+    // the capture selection. It opts out by attribute since the guard stopped
+    // reading role="dialog" from the DOM (#686).
+    expect(card.hasAttribute('data-selection-escape-guard')).toBe(true)
   })
 
   it('does not re-fire a chapter already recorded complete', async () => {

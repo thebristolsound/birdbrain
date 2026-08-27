@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { renderHook, act, cleanup } from '@testing-library/react'
+import { useState } from 'react'
+import { renderHook, act, cleanup, render } from '@testing-library/react'
 import { useCaptureSelection } from '@renderer/components/captures/useCaptureSelection'
+import { Dialog, DialogContent } from '@renderer/components/ui'
 import { useAppStore } from '@renderer/stores/appStore'
 
 const ORDER = ['cap-1', 'cap-2', 'cap-3', 'cap-4']
@@ -20,7 +22,8 @@ beforeEach(() => {
   useAppStore.setState({
     selectedCaptureId: null,
     selectedCaptureIds: new Set(),
-    selectionAnchorId: null
+    selectionAnchorId: null,
+    openDialogCount: 0
   })
 })
 
@@ -179,14 +182,14 @@ describe('useCaptureSelection', () => {
     useAppStore.setState({ selectedCaptureIds: new Set(['cap-1']) })
     renderHook(() => useCaptureSelection(ORDER))
 
-    const dialog = document.createElement('div')
-    dialog.setAttribute('role', 'dialog')
-    document.body.appendChild(dialog)
+    // Registration count, not a DOM query for role="dialog": the role outlives
+    // the close by the length of the exit animation (#686).
+    useAppStore.setState({ openDialogCount: 1 })
     act(() => {
       press('Escape')
     })
     expect(state().selectedCaptureIds.size).toBe(1)
-    dialog.remove()
+    useAppStore.setState({ openDialogCount: 0 })
 
     const guarded = document.createElement('div')
     guarded.setAttribute('data-selection-escape-guard', '')
@@ -202,4 +205,55 @@ describe('useCaptureSelection', () => {
     })
     expect(state().selectedCaptureIds.size).toBe(0)
   })
+
+  it('Escape clears the selection while a just-closed dialog is still animating out', () => {
+    useAppStore.setState({ selectedCaptureIds: new Set(['cap-1']) })
+    const { rerender } = render(<SelectionWithDialog dialogOpen />)
+
+    rerender(<SelectionWithDialog dialogOpen={false} />)
+
+    // AnimatePresence keeps the content mounted for the exit animation, so the
+    // role attribute is still queryable here. That is the whole point: the
+    // dialog is logically closed and the guard must already be disarmed (#686).
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull()
+    act(() => {
+      press('Escape')
+    })
+    expect(state().selectedCaptureIds.size).toBe(0)
+  })
+
+  it('one Escape closes the open dialog without also clearing the selection', () => {
+    useAppStore.setState({ selectedCaptureIds: new Set(['cap-1']) })
+    render(<SelectionWithDialog dialogOpen />)
+
+    act(() => {
+      press('Escape')
+    })
+
+    // The dialog's own close and the selection clear are both window listeners
+    // for this one keydown; the registration outlives the dispatch, so the
+    // press does one thing. This is the precedence contract #687 inherits.
+    expect(state().openDialogCount).toBe(0)
+    expect(state().selectedCaptureIds.size).toBe(1)
+
+    act(() => {
+      press('Escape')
+    })
+    expect(state().selectedCaptureIds.size).toBe(0)
+  })
 })
+
+function SelectionWithDialog({ dialogOpen }: { dialogOpen: boolean }) {
+  const [open, setOpen] = useState(dialogOpen)
+  useCaptureSelection(ORDER)
+
+  // The prop drives the dialog on a rerender, so a test can close it from the
+  // outside; Escape closes it from the inside through Dialog's own listener.
+  const isOpen = dialogOpen && open
+
+  return (
+    <Dialog open={isOpen} onOpenChange={setOpen}>
+      <DialogContent onClose={() => setOpen(false)}>confirm</DialogContent>
+    </Dialog>
+  )
+}

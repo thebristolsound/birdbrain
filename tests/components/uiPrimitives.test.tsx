@@ -1,11 +1,20 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
-import { Badge, CardPanel, CardTitle, Dialog, SectionLabel } from '@renderer/components/ui'
+import {
+  Badge,
+  CardPanel,
+  CardTitle,
+  Dialog,
+  DialogContent,
+  SectionLabel
+} from '@renderer/components/ui'
+import { useAppStore } from '@renderer/stores/appStore'
 
 describe('design-system primitives', () => {
   afterEach(() => {
     cleanup()
+    useAppStore.setState({ openDialogCount: 0 })
   })
 
   describe('SectionLabel', () => {
@@ -113,6 +122,67 @@ describe('design-system primitives', () => {
       window.dispatchEvent(event)
 
       expect(onOpenChange).not.toHaveBeenCalled()
+    })
+
+    // AnimatePresence keeps the content mounted for the exit animation, so
+    // role="dialog" outlives the close by ~150ms and a DOM query for it is not
+    // a truthful "a dialog is up" signal. The registration is, and it has to
+    // track `open` rather than the unmount (#686).
+    it('registers while open and releases on close, before the exit animation ends', () => {
+      const { rerender } = render(
+        <Dialog open onOpenChange={() => {}}>
+          <DialogContent onClose={() => {}}>body</DialogContent>
+        </Dialog>
+      )
+      expect(useAppStore.getState().openDialogCount).toBe(1)
+
+      rerender(
+        <Dialog open={false} onOpenChange={() => {}}>
+          <DialogContent onClose={() => {}}>body</DialogContent>
+        </Dialog>
+      )
+
+      expect(document.querySelector('[role="dialog"]')).not.toBeNull()
+      expect(useAppStore.getState().openDialogCount).toBe(0)
+    })
+
+    it('counts nested dialogs so closing the inner one leaves the outer registered', () => {
+      const { rerender } = render(
+        <>
+          <Dialog open onOpenChange={() => {}}>
+            <p>outer</p>
+          </Dialog>
+          <Dialog open onOpenChange={() => {}}>
+            <p>inner</p>
+          </Dialog>
+        </>
+      )
+      expect(useAppStore.getState().openDialogCount).toBe(2)
+
+      rerender(
+        <>
+          <Dialog open onOpenChange={() => {}}>
+            <p>outer</p>
+          </Dialog>
+          <Dialog open={false} onOpenChange={() => {}}>
+            <p>inner</p>
+          </Dialog>
+        </>
+      )
+      expect(useAppStore.getState().openDialogCount).toBe(1)
+    })
+
+    it('releases the registration when an open dialog unmounts', () => {
+      const { unmount } = render(
+        <Dialog open onOpenChange={() => {}}>
+          <p>body</p>
+        </Dialog>
+      )
+      expect(useAppStore.getState().openDialogCount).toBe(1)
+
+      unmount()
+
+      expect(useAppStore.getState().openDialogCount).toBe(0)
     })
   })
 })

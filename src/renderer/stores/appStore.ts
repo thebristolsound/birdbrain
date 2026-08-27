@@ -44,6 +44,11 @@ interface AppState {
     lastError?: { message: string; timestamp: string }
   }
   commandPaletteOpen: boolean
+  // How many Dialogs are logically open. A count rather than a boolean because
+  // dialogs nest, and the inner one closing must not disarm the outer. It is
+  // what keyboard guards read: `role="dialog"` survives the close for the
+  // length of the exit animation, so the DOM cannot answer this (#686).
+  openDialogCount: number
   panelCollapsedForced: boolean
   activeViewerTab: CaptureViewerTab
   // Which archive.org snapshot the Wayback compare shows on the right (#401).
@@ -57,6 +62,8 @@ interface AppState {
   setConnectedToExtension: (connected: boolean) => void
   setCommandPaletteOpen: (open: boolean) => void
   toggleCommandPalette: () => void
+  registerOpenDialog: () => void
+  unregisterOpenDialog: () => void
   setPanelCollapsedForced: (forced: boolean) => void
   setActiveViewerTab: (tab: CaptureViewerTab) => void
   setWaybackSelection: (selection: WaybackSelection | null) => void
@@ -94,6 +101,7 @@ export const useAppStore = create<AppState>((set) => ({
   captureEvents: [],
   captureStats: { successCount: 0, failCount: 0, skipCount: 0 },
   commandPaletteOpen: false,
+  openDialogCount: 0,
   panelCollapsedForced: false,
   activeViewerTab: 'screenshot',
   waybackSelection: null,
@@ -102,6 +110,10 @@ export const useAppStore = create<AppState>((set) => ({
   setConnectedToExtension: (connected) => set({ connectedToExtension: connected }),
   setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
   toggleCommandPalette: () => set((s) => ({ commandPaletteOpen: !s.commandPaletteOpen })),
+  registerOpenDialog: () => set((s) => ({ openDialogCount: s.openDialogCount + 1 })),
+  // Clamped: an unbalanced release would otherwise drive the count negative and
+  // leave every later guard reading "no dialog" while one is up.
+  unregisterOpenDialog: () => set((s) => ({ openDialogCount: Math.max(0, s.openDialogCount - 1) })),
   setPanelCollapsedForced: (forced) => set({ panelCollapsedForced: forced }),
   setActiveViewerTab: (tab) => set({ activeViewerTab: tab }),
   setWaybackSelection: (selection) => set({ waybackSelection: selection }),

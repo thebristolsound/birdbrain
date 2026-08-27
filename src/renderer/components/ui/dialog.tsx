@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, type ComponentPropsWithoutRef, type ReactNode } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { presets } from '@renderer/lib/motion/presets'
+import { useAppStore } from '@renderer/stores/appStore'
 import { cn } from '@renderer/lib/utils'
 
 interface DialogProps {
@@ -22,6 +23,19 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
   }, [open, onOpenChange])
+
+  // AnimatePresence keeps the content mounted for the exit animation, so the
+  // element carrying role="dialog" outlives `open` by roughly 150ms. Anything
+  // asking "is a dialog up?" therefore cannot ask the DOM. This registration
+  // is the answer instead, and it is deliberately keyed on `open` alone — the
+  // same dependency as the Escape-to-close listener above, so the guard other
+  // components read is armed exactly while this dialog owns Escape (#686).
+  useEffect(() => {
+    if (!open) return
+    const { registerOpenDialog, unregisterOpenDialog } = useAppStore.getState()
+    registerOpenDialog()
+    return unregisterOpenDialog
+  }, [open])
 
   return <AnimatePresence>{open && children}</AnimatePresence>
 }
@@ -51,6 +65,10 @@ const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
       <DialogOverlay onClose={onClose} />
       <div className="fixed inset-0 z-50 flex items-center justify-center">
         <motion.div
+          // Kept for the whole exit animation on purpose: while the node is on
+          // screen it is still a dialog, and dropping the role mid-exit would
+          // tell assistive tech the opposite of what is rendered. Code asking
+          // whether a dialog is open reads `openDialogCount` instead (#686).
           role="dialog"
           aria-modal="true"
           className={cn('neu-overlay rounded-2xl p-6 w-full max-w-md', className)}

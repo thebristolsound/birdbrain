@@ -3,7 +3,7 @@ import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useAppStore, type CaptureViewerTab } from '@renderer/stores/appStore'
 import { capturesQueryOptions, captureContentQueryOptions } from '@renderer/lib/queries'
-import { ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react'
+import { Archive, ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react'
 import { MhtmlViewer } from '@renderer/components/captures/MhtmlViewer'
 import { LegacyHtmlViewer } from '@renderer/components/captures/LegacyHtmlViewer'
 import { AnnotationEditor } from '@renderer/components/captures/annotation/AnnotationEditor'
@@ -18,6 +18,7 @@ import { useAnnotationEditor } from '@renderer/components/captures/annotation/us
 import { useZoomPan } from '@renderer/components/captures/annotation/useZoomPan'
 import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
 import { CAPTURE_METHOD_LABELS } from '@renderer/components/captures/captureMethodLabel'
+import { formatCaptureTimestampFull } from '@renderer/lib/formatRelativeTime'
 
 // Source is gone: Page *is* the MHTML, so the two tabs rendered the same
 // artifact twice. The raw file is still one click away in the download menu.
@@ -259,12 +260,15 @@ export function CaptureViewer() {
               </div>
             ))}
           {activeTab === 'page' ? (
-            <div className="h-full w-full overflow-hidden">
-              {capture.format === 'mhtml' ? (
-                <MhtmlViewer captureId={capture.id} />
-              ) : (
-                <LegacyHtmlViewer captureId={capture.id} />
-              )}
+            <div className="flex h-full w-full flex-col overflow-hidden">
+              <ArchivedCopyBanner timestamp={capture.timestamp} />
+              <div className="min-h-0 flex-1 overflow-hidden">
+                {capture.format === 'mhtml' ? (
+                  <MhtmlViewer captureId={capture.id} />
+                ) : (
+                  <LegacyHtmlViewer captureId={capture.id} />
+                )}
+              </div>
             </div>
           ) : null}
           {activeTab === 'wayback' && <WaybackCompare capture={capture} />}
@@ -281,6 +285,35 @@ export function CaptureViewer() {
         </ErrorBoundary>
       </div>
     </main>
+  )
+}
+
+/**
+ * Says that the Page tab is a stored copy, and when it was taken (#704).
+ *
+ * The two claims are the two the tab cannot make for itself: the guest below
+ * renders like a browser, so nothing on screen distinguishes an archived page
+ * from a live one. Both hold for every format, which is why the copy does not
+ * vary — a pre-v11 capture has no page.mhtml and the banner must not name one.
+ *
+ * Deliberately no more than that. Integrity is `ProvenanceBadge`'s to state and
+ * the viewer's security posture is the viewer's, so neither can drift out of
+ * step with this bar by being restated here.
+ */
+function ArchivedCopyBanner({ timestamp }: { timestamp: string }) {
+  return (
+    <div
+      data-testid="archived-copy-banner"
+      className="flex shrink-0 items-center gap-2.5 border-b border-border bg-surface px-3.5 py-1.5"
+    >
+      <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-500">
+        <Archive className="h-2.5 w-2.5" strokeWidth={2.4} />
+        Archived copy
+      </span>
+      <span className="min-w-0 flex-1 truncate text-xs text-text-muted">
+        Captured {formatCaptureTimestampFull(timestamp)}
+      </span>
+    </div>
   )
 }
 

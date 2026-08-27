@@ -38,8 +38,24 @@ test.describe('Tags on the Signals screen', () => {
     await tagInput.press('Enter')
     await expect(tagList).toContainText('reviewed')
 
-    // Delete the first tag from its row.
+    // Delete the first tag from its row. Tags are app-global, so the delete
+    // asks first (#957): the dialog assertion is the pin — without it this
+    // spec passes whether or not the confirmation is still in the path.
     await page.getByLabel('Delete important').click()
+    const confirmDialog = page.getByTestId('delete-tag-dialog')
+    await expect(confirmDialog).toBeVisible()
+    await expect(confirmDialog).toContainText('in every case, not only this one')
+
+    // Cancel deletes nothing. The re-open below is what proves that rather
+    // than the surviving row: had cancel deleted, the row would go and the
+    // click would find no button.
+    await page.getByTestId('delete-tag-cancel').click()
+    await expect(confirmDialog).toBeHidden()
+    await expect(tagList).toContainText('important')
+
+    await page.getByLabel('Delete important').click()
+    await expect(confirmDialog).toBeVisible()
+    await page.getByTestId('delete-tag-confirm').click()
     await expect(tagList).not.toContainText('important')
     await expect(tagList).toContainText('reviewed')
   })

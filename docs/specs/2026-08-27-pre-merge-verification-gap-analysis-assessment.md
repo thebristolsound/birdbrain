@@ -70,6 +70,17 @@ statements on `src/main/services/*.ts` and `src/shared/**/*.ts`, per-file gates 
 `ipcWrap.ts`, 90% on the React Query data layer, and a global ratchet — and `scripts/diff-coverage.mjs`
 separately fails a pull request under 90% of changed lines covered.
 
+One limit of that second gate is worth stating, because it is easy to read as stronger than it is.
+`diff-coverage.mjs` scores only files vitest instruments, and `vitest.config.ts:35` excludes
+`extension/**` from the coverage `include`. A changed source file with no coverage entry is named
+under `NOT SCORED` rather than counted, and `passed = !scored || pct >= args.min`
+(`scripts/diff-coverage.mjs:173`) means a pull request touching only uninstrumented files passes the
+gate having been scored on nothing. The script is explicit about this — the comment at
+`scripts/diff-coverage.mjs:168-170` cites #673, where about 1,300 lines of extension code shipped
+behind a "PASS — 100.00%", and `scripts/diff-coverage.mjs:146-150` cites #684 for the naming
+behaviour that replaced the silent skip. So extension changes clear diff coverage by construction,
+and the E2E suite plus review are what actually cover them.
+
 `.github/workflows/security.yml` runs three jobs on every push and pull request:
 
 - **Secret scan** — Gitleaks over `--log-opts="--all"`, so every commit on every ref is scanned. The

@@ -26,6 +26,7 @@ import { AutoCaptureCard } from '@renderer/components/signals/AutoCaptureCard'
 import { AddSelectorRow } from '@renderer/components/signals/AddSelectorRow'
 import { AddTagRow } from '@renderer/components/signals/AddTagRow'
 import { BulkImportDrawer } from '@renderer/components/signals/BulkImportDrawer'
+import { DeleteTagDialog } from '@renderer/components/signals/DeleteTagDialog'
 import { SignalRow } from '@renderer/components/signals/SignalRow'
 import { SignalDetailRail } from '@renderer/components/signals/SignalDetailRail'
 import {
@@ -65,7 +66,7 @@ export function SignalsOverview() {
   const { data: tagMatrix = {} } = useQuery(tagCaptureMatrixQueryOptions(caseId))
   const { data: captures = [] } = useQuery(capturesQueryOptions(caseId))
 
-  const { create: createTag, update: updateTag, remove: removeTag } = useTagsMutations(caseId)
+  const { create: createTag, update: updateTag } = useTagsMutations(caseId)
   const { create: createSelectorMutation } = useSelectorsMutations(caseId)
 
   // A Mention chip names its target in the store before it navigates (#716).
@@ -77,6 +78,11 @@ export function SignalsOverview() {
     () => useAppStore.getState().selectedSignalId
   )
   const [bulkOpen, setBulkOpen] = useState(false)
+  // The tag a delete is waiting on confirmation for (#957). Naming one is not
+  // consent: nothing is written until DeleteTagDialog's own button.
+  const [pendingTagDelete, setPendingTagDelete] = useState<{ id: string; name: string } | null>(
+    null
+  )
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
   const rowRefs = useRef(new Map<string, HTMLDivElement>())
@@ -192,7 +198,9 @@ export function SignalsOverview() {
           else void handleRenameSelector(signal, value)
         }}
         onDelete={() => {
-          if (signal.kind === 'tag') removeTag.mutate(signal.id)
+          // Tags are app-global, so this reaches every case and asks first
+          // (#957). A selector belongs to this case and is unchanged.
+          if (signal.kind === 'tag') setPendingTagDelete({ id: signal.id, name: signal.name })
           else void deleteSelector(signal.id).then(refreshSelectors)
         }}
       />
@@ -327,6 +335,18 @@ export function SignalsOverview() {
           onMerged={setSelectedId}
         />
       </div>
+
+      {/* Mounted only while a delete is pending, so the dialog holds no state
+          between two different tags. */}
+      {pendingTagDelete && (
+        <DeleteTagDialog
+          open
+          onOpenChange={(next) => {
+            if (!next) setPendingTagDelete(null)
+          }}
+          tag={pendingTagDelete}
+        />
+      )}
     </div>
   )
 }

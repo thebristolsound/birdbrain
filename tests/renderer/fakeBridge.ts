@@ -40,6 +40,7 @@ const EVENTS = [
   'onNewCapture',
   'onSessionStateChanged',
   'onExtensionConnection',
+  'onExtensionAttach',
   'onCaptureActivity',
   'onLogEntry',
   'onSelectorRematched',

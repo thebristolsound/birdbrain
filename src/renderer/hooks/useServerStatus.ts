@@ -2,6 +2,8 @@ import { useEffect } from 'react'
 import { useAppStore } from '@renderer/stores/appStore'
 import { queryClient } from '@renderer/lib/queryClient'
 import { queryKeys } from '@renderer/lib/queries'
+import { invalidateAfterTagApply } from '@renderer/lib/api/tags'
+import { invalidateNoteQueries } from '@renderer/lib/api/notes'
 import { router } from '@renderer/router'
 import type { Capture } from '@shared/types'
 
@@ -41,6 +43,18 @@ export function useServerStatus() {
       queryClient.invalidateQueries({ queryKey: queryKeys.recentActivityAll })
     })
 
+    // The extension attach routes write Tags and Notes through the repos, so
+    // no mutation hook ran and nothing else tells an open case its data moved
+    // (#852). Refetch rather than seed from the payload: what the operator
+    // reads then comes from the database, not from this event's account of
+    // what was written.
+    const unsubExtensionAttach = window.birdbrain.onExtensionAttach(
+      ({ kind, caseId, captureId }) => {
+        if (kind === 'tag') invalidateAfterTagApply(queryClient, captureId)
+        else invalidateNoteQueries(queryClient, caseId)
+      }
+    )
+
     const unsubSelectorRematched = window.birdbrain.onSelectorRematched(({ caseId }) => {
       // Invalidate on both 'done' and 'error': retroactive matching can insert
       // partial results before failing, so caches are stale either way.
@@ -59,6 +73,7 @@ export function useServerStatus() {
       unsubSession()
       unsubCapture()
       unsubNewCapture()
+      unsubExtensionAttach()
       unsubSelectorRematched()
       unsubDeepLink()
     }

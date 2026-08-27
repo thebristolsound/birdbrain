@@ -1,4 +1,4 @@
-import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
+import { queryOptions, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import type {
   BatchCountResult,
   CreateTagParams,
@@ -43,14 +43,32 @@ export const tagCaptureMatrixQueryOptions = (caseId: string) =>
     enabled: !!caseId
   })
 
+// Every count derived from tag membership: the Signals coverage strip and both
+// count badges. Module-level so the extension-attach listener invalidates the
+// same list the mutations do rather than a copy of it (#852).
+export function invalidateTagCounts(client: QueryClient): void {
+  client.invalidateQueries({ queryKey: ['tags', 'usageCounts'] })
+  client.invalidateQueries({ queryKey: ['tags', 'caseCount'] })
+  client.invalidateQueries({ queryKey: ['tags', 'captureMatrix'] })
+}
+
+// What an extension `POST /api/tags/apply` stales in an open case (#852). The
+// route is find-or-create then attach, so it is the `create` and `addToCapture`
+// mutations' key sets together — those are the writes it performs, and this
+// mirrors them deliberately. Note that under React Query's prefix matching the
+// `queryKeys.tags` line already subsumes the other two; that is #876's finding
+// about the tag key shape, open and repo-wide, so this states the intent the
+// mutations state and changes with them when #876 restructures the keys.
+export function invalidateAfterTagApply(client: QueryClient, captureId: string): void {
+  client.invalidateQueries({ queryKey: queryKeys.tags })
+  client.invalidateQueries({ queryKey: queryKeys.tagsForCapture(captureId) })
+  invalidateTagCounts(client)
+}
+
 export function useTagsMutations(caseId?: string) {
   const queryClient = useQueryClient()
 
-  const invalidateTagCounts = () => {
-    queryClient.invalidateQueries({ queryKey: ['tags', 'usageCounts'] })
-    queryClient.invalidateQueries({ queryKey: ['tags', 'caseCount'] })
-    queryClient.invalidateQueries({ queryKey: ['tags', 'captureMatrix'] })
-  }
+  const invalidateCounts = () => invalidateTagCounts(queryClient)
 
   const create = useMutation({
     mutationFn: (params: CreateTagParams) => window.birdbrain.tags.create(params),
@@ -68,7 +86,7 @@ export function useTagsMutations(caseId?: string) {
     mutationFn: (id: string) => window.birdbrain.tags.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tags })
-      invalidateTagCounts()
+      invalidateCounts()
     },
     meta: { action: 'delete tag' }
   })
@@ -78,7 +96,7 @@ export function useTagsMutations(caseId?: string) {
       window.birdbrain.tags.addToCapture({ captureId, tagId }),
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tagsForCapture(vars.captureId) })
-      invalidateTagCounts()
+      invalidateCounts()
     },
     meta: { action: 'add tag to capture' }
   })
@@ -88,7 +106,7 @@ export function useTagsMutations(caseId?: string) {
       window.birdbrain.tags.removeFromCapture({ captureId, tagId }),
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.tagsForCapture(vars.captureId) })
-      invalidateTagCounts()
+      invalidateCounts()
     },
     meta: { action: 'remove tag from capture' }
   })
@@ -108,7 +126,7 @@ export function useTagsMutations(caseId?: string) {
       for (const id of vars.captureIds) {
         queryClient.invalidateQueries({ queryKey: queryKeys.tagsForCapture(id) })
       }
-      invalidateTagCounts()
+      invalidateCounts()
     },
     meta: { action: 'add tag to captures' }
   })
@@ -126,7 +144,7 @@ export function useTagsMutations(caseId?: string) {
       if (data.captureId) {
         queryClient.invalidateQueries({ queryKey: queryKeys.tagsForCapture(data.captureId) })
       }
-      invalidateTagCounts()
+      invalidateCounts()
     },
     meta: { action: 'apply tag to note' }
   })

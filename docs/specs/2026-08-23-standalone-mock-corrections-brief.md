@@ -181,12 +181,15 @@ them until the spike answers.**
 
 The 2026-08-21 bundle contains only `Birdbrain-standalone.html` and a README. The repository's
 handoff index points readers at a round-trip protocol in each bundle's `ENGINEERING_REVIEW.md`, and
-for this bundle that pointer resolves to nothing. The six V2 prose documents live only on the
-unmerged `prototype/design-handoff-2026-08` branch, and three of them (`ENGINEERING_REVIEW.md`,
-`github.md`, `style_sync_patch/SCREEN_NOTES.md`) also sit on `main` inside the superseded 2026-08-10
-bundle with different content, so a reader who searches the repository finds the older text with no
-signal that it is stale. The repository-side half is tracked at #818. **Confirm which prose
-documents are current for the standalone bundle, and where the round trip is meant to land.**
+for this bundle that pointer resolves to nothing. Under its 'What this file does not carry' heading,
+the 2026-08-21 bundle README routes readers to six V2 prose documents: `HANDOFF.md`, `MOTION.md`,
+`IMPLEMENTATION_GUIDE.md`, `ENGINEERING_REVIEW.md`, `style_sync_patch/SCREEN_NOTES.md` and
+`github.md`. All six are current only on the unmerged `prototype/design-handoff-2026-08` branch, and
+three of them (`ENGINEERING_REVIEW.md`, `github.md`, `style_sync_patch/SCREEN_NOTES.md`) also sit on
+`main` inside the superseded 2026-08-10 bundle with different content, so a reader who searches the
+repository finds the older text with no signal that it is stale. The repository-side half is
+tracked at #818. **Confirm which prose documents are current for the standalone bundle, and where
+the round trip is meant to land.**
 
 ## Recorded deviations, no response wanted (29)
 

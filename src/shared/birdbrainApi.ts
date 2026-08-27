@@ -71,6 +71,7 @@ import type {
   SaveAnnotationsParams,
   UpsertAnnotationPinParams,
   SelectorRematchedEvent,
+  ExtensionAttachEvent,
   DeepLinkTarget,
   ExportProgressEvent,
   ExportResult,
@@ -267,6 +268,7 @@ export interface BirdbrainAPI {
     }) => void
   ): () => void
   onExtensionConnection(callback: (data: { connected: boolean }) => void): () => void
+  onExtensionAttach(callback: (event: ExtensionAttachEvent) => void): () => void
   onCaptureActivity(callback: (event: CaptureEvent) => void): () => void
   onLogEntry(callback: (entry: LogEntry) => void): () => void
   onSelectorRematched(callback: (event: SelectorRematchedEvent) => void): () => void

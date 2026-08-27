@@ -19,6 +19,7 @@ import { ingestMhtmlCapture } from '@main/services/captureLifecycle'
 import { getInstallationId } from '@main/services/installationId'
 import { getServerToken } from '@main/services/serverToken'
 import type { CaptureEvent } from '@shared/types'
+import type { ExtensionAttachEvent } from '@shared/ipc'
 import {
   CaptureUploadSchema,
   ExtensionNoteCreateSchema,
@@ -102,6 +103,16 @@ export function setMainWindow(win: BrowserWindow): void {
 function emitCaptureEvent(event: CaptureEvent): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
     sendEvent(mainWindow.webContents, IPC_CHANNELS.CAPTURE_ACTIVITY, event)
+  }
+}
+
+// Announces a committed extension attach write (#852). Called after the repo
+// write returns, never before: the renderer treats this as "the case on disk
+// has changed, re-read it", so emitting it for a write that then threw would
+// make it a claim about state that does not exist.
+function emitExtensionAttach(event: ExtensionAttachEvent): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    sendEvent(mainWindow.webContents, IPC_CHANNELS.EXTENSION_ATTACH, event)
   }
 }
 
@@ -735,6 +746,7 @@ function createApp(deps: CaptureServerDeps): Hono {
         const found = foundId ? tagRepo.getTag(foundId) : undefined
         const applied = found ?? tagRepo.createTag({ name: input.tagName })
         tagRepo.addTagToCapture({ captureId: target.captureId, tagId: applied.id })
+        emitExtensionAttach({ kind: 'tag', caseId: input.caseId, captureId: target.captureId })
         return c.json({
           status: 'ok',
           captureId: target.captureId,
@@ -782,6 +794,7 @@ function createApp(deps: CaptureServerDeps): Hono {
           bodyDoc: JSON.stringify(plainTextToNoteDoc(input.noteText)),
           sourceUrl: input.url
         })
+        emitExtensionAttach({ kind: 'note', caseId: input.caseId, captureId: target.captureId })
         return c.json({
           status: 'ok',
           captureId: target.captureId,

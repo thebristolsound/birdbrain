@@ -441,7 +441,9 @@ describe('selectorLifecycle', () => {
     // captureLifecycle.ingest, so the second capture reaches rescanSelector
     // unmatched. That is deliberately not the state ingest leaves for an enabled
     // selector with text — ingest matches those as they arrive. It stands in for
-    // the gaps ingest does leave, which the tests below pin one at a time.
+    // the captures ingest does not reach. Only the create-time window gap has a
+    // dedicated test below; the others are captureLifecycle's behaviour and are
+    // pinned there, not here.
     it('matches a capture the create-time pass did not cover', async () => {
       const c = createCase({ name: 'C' })
       const before = insertCapture({

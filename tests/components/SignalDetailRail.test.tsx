@@ -376,6 +376,38 @@ describe('SignalDetailRail rescan (#829)', () => {
     expect(label()).toBe('Rescan all captures')
   })
 
+  // A run the operator moved on from must not report itself against whatever
+  // selector is on screen now — that would be a false claim about an
+  // evidence-completeness action nobody asked for.
+  it('does not paint a superseded run onto the selector now shown', async () => {
+    let settleFirst: (scheduled: boolean) => void = () => {}
+    rescan.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          settleFirst = resolve
+        })
+    )
+    const { rerenderWith } = renderRail(selectorSignal)
+    fireEvent.click(screen.getByTestId('signal-rescan'))
+    // The deferred resolver exists only once React Query has called mutationFn;
+    // settling before that would settle nothing and prove nothing.
+    await waitFor(() => expect(rescan).toHaveBeenCalledWith('s1'))
+    expect(label()).toBe('Rescanning…')
+
+    act(() => {
+      rerenderWith({ ...selectorSignal, id: 's2', name: 'other', sub: 'other' })
+    })
+    expect(label()).toBe('Rescan all captures')
+
+    // s1 comes back "no such selector" after the operator has moved on.
+    await act(async () => {
+      settleFirst(false)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    expect(label()).toBe('Rescan all captures')
+  })
+
   // The event fires for create and update passes too; nothing is pending then.
   it('ignores a rematched event when no rescan is outstanding', () => {
     renderRail(selectorSignal)

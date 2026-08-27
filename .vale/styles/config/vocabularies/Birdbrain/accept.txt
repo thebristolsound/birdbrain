@@ -286,3 +286,10 @@ Ctrl
 [Uu]nruled
 [Uu]nscored
 [Uu]ntagging
+
+; Added 2026-08-27 for the pre-merge verification gap analysis
+[Aa]ccessor(s)?
+[Bb]ackoff
+[Bb]enchmark(s|ed|ing)?
+[Ii]dempotency
+[Vv]endored

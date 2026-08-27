@@ -22,6 +22,8 @@ import { CaptureListEmptyState } from '@renderer/components/captures/CaptureList
 import { CaptureMenu } from '@renderer/components/captures/CaptureMenu'
 import { CaptureSelectionBar } from '@renderer/components/captures/CaptureSelectionBar'
 import { useCaptureSelection } from '@renderer/components/captures/useCaptureSelection'
+import { useCaptureContextMenu } from '@renderer/components/captures/useCaptureContextMenu'
+import { EntityContextMenu } from '@renderer/components/contextmenu/EntityContextMenu'
 import {
   computeDisplayedCaptures,
   SORT_OPTIONS,
@@ -41,6 +43,12 @@ interface CaptureListProps {
   // The route owns the batch-delete confirm/result dialogs so they survive
   // the bar unmounting once the selection empties.
   onDeleteSelection: (ids: string[]) => void
+  // The other two route-owned actions a row's context menu reaches: opening a
+  // capture's page in the browser, and the note composer. Both live on the
+  // route because both are also the details panel's, and a row menu must not
+  // grow a second copy of either (#701).
+  onOpenExternal: (url: string) => void
+  onQuoteIntoNote: (captureId: string) => void
 }
 
 function useClickOutside(ref: React.RefObject<HTMLElement | null>, onClose: () => void) {
@@ -60,7 +68,9 @@ export function CaptureList({
   view,
   onChangeView,
   onCollapse,
-  onDeleteSelection
+  onDeleteSelection,
+  onOpenExternal,
+  onQuoteIntoNote
 }: CaptureListProps) {
   const {
     data: captures = [],
@@ -135,6 +145,16 @@ export function CaptureList({
     toggleSelectAll,
     clearSelection
   } = useCaptureSelection(displayedIds)
+
+  const buildMenuTarget = useCaptureContextMenu({
+    caseId,
+    visibleSelectedIds,
+    favorites,
+    onToggleFavorite: (id) => void toggleFavorite(id),
+    onDeleteSelection,
+    onOpenExternal,
+    onQuoteIntoNote
+  })
 
   if (isLoading) {
     return (
@@ -405,19 +425,24 @@ export function CaptureList({
                 delay: firstPaintRef.current && i < STAGGER_VISIBLE_CAP ? i * STAGGER_INTERVAL : 0
               }}
             >
-              <CaptureItem
-                capture={cap}
-                view={view}
-                nowMs={nowMs}
-                isSelected={cap.id === selectedCaptureId}
-                isMultiSelected={selectedCaptureIds.has(cap.id)}
-                showCheckbox={selectionActive}
-                onClick={(e) => handleRowClick(cap.id, e)}
-                onToggleMultiSelect={(e) => handleCheckboxClick(cap.id, e)}
-                isFavorite={favorites.has(cap.id)}
-                onToggleFavorite={() => toggleFavorite(cap.id)}
-                matchingSelectors={matchingSelectorsMap.get(cap.id)}
-              />
+              {/* Inside the animated element, not around it: AnimatePresence
+                  reads its direct children for the exit animation, and a menu
+                  wrapper between them would take the row's place. */}
+              <EntityContextMenu target={buildMenuTarget(cap)}>
+                <CaptureItem
+                  capture={cap}
+                  view={view}
+                  nowMs={nowMs}
+                  isSelected={cap.id === selectedCaptureId}
+                  isMultiSelected={selectedCaptureIds.has(cap.id)}
+                  showCheckbox={selectionActive}
+                  onClick={(e) => handleRowClick(cap.id, e)}
+                  onToggleMultiSelect={(e) => handleCheckboxClick(cap.id, e)}
+                  isFavorite={favorites.has(cap.id)}
+                  onToggleFavorite={() => toggleFavorite(cap.id)}
+                  matchingSelectors={matchingSelectorsMap.get(cap.id)}
+                />
+              </EntityContextMenu>
             </motion.div>
           ))}
         </AnimatePresence>

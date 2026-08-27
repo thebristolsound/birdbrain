@@ -70,6 +70,8 @@ function renderList() {
       onChangeView={vi.fn()}
       onCollapse={vi.fn()}
       onDeleteSelection={onDeleteSelection}
+      onOpenExternal={vi.fn()}
+      onQuoteIntoNote={vi.fn()}
     />,
     { wrapper: Wrapper }
   )

@@ -114,8 +114,9 @@ exits immediately unless `CLAUDE_CODE_REMOTE=true`, by design. So:
   moved unexpectedly is a collision: stop and report it, do not merge or overwrite. This is
   the rule that covers the case the slot labels cannot see — two agents on one branch (#357).
 - **Process-doc changes do not run through this pipeline.** A diff confined to `.claude/**`,
-  `docs/**` and root-level `*.md` is the operating manual, not the product and not the evidence
-  path. It gets no adversarial pre-pass, no section 2a merge and no ADR-0018 body recomputation.
+  `docs/**` and root-level `*.md` is the operating manual. It is not the product, and it is not
+  on the evidence path. It gets no adversarial pre-pass, no section 2a merge and no ADR-0018
+  body recomputation.
   The implementer writes it, you open the PR, and the maintainer reads and merges it. Do not
   spawn `birdbrain-reviewer` at one, and label it `agent-authored` without `agent-pr`, so it
   takes no slot.
@@ -125,7 +126,7 @@ exits immediately unless `CLAUDE_CODE_REMOTE=true`, by design. So:
   review prose across five rounds. All five ended `request changes`, and the fifth landed on the
   two edits the maintainer had personally scoped. Seventeen open issues target section 2a alone,
   nearly all of them findings produced by rounds against section 2a. A reviewer aimed at prose
-  that describes a reviewer does not converge — it generates.
+  that describes a reviewer generates findings rather than converging on them.
 
   **A mixed diff is not a process-doc change.** Anything also touching `src/**`, `extension/**`,
   `tests/**`, `e2e/**`, `scripts/**` or `.github/**` takes the normal path in full. Check this by

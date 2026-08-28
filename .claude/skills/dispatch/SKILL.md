@@ -309,15 +309,13 @@ after it.
 2. Take the PR out of draft, through the write path — `agh pr ready <n>` locally. `agh` is the
    machine-token wrapper defined at the top of this file, not a separate tool; bare `gh` would
    author the write as the maintainer.
-3. Poll `gh pr checks <n>` until every check has a conclusion.
+3. Poll `gh pr checks <n>` until a run created after the un-draft has concluded, not merely until
+   every check has a conclusion. The un-draft does not delete the draft-era run's check runs, so
+   "every check has concluded" is already true in the seconds before the new run exists, and a
+   poll that exits there establishes condition 1 from the run the un-draft was meant to supersede.
+   Give up at 30 minutes and report: `ci.yml` caps its longest jobs at 20 minutes (`:190` `test`,
+   `:279` `e2e`) behind a 5-minute `changes` (`:97`), so a run still going at 30 is stuck.
 4. Establish condition 1 from that read, then merge.
-
-If the head sha moves at any point after step 1, stop and report; do not merge. Nothing should be
-pushing to the branch during a merge sequence, so a move is the unexpected move the one-writer rule
-already calls a collision (`:111-115`), and conditions 2 and 3 were established against a commit
-that is no longer there. Section 5's pinned-head protocol is what detects it: read the head
-either side of the `gh pr checks` call, and never tie conclusions to a sha you did not observe
-both before and after.
 
 **Condition 3 is not re-read before the merge, and this poll widens the gap that leaves.** A label
 added to the PR or to its linked issue while you wait moves no sha, so nothing in this sequence
@@ -343,7 +341,8 @@ and the contexts are the only thing the merge call looks at.
 Reproduced on PR #996 at head `6d467366`. CI run 1381 took all six jobs green from 05:09:03 to
 05:16:10 while the PR was still a draft; `ready_for_review` at 05:31:51 started run 1384 three
 seconds later; the merge attempted straight after the un-draft was refused; the merge landed at
-05:40:15, 69 seconds after run 1384 concluded.
+05:40:15, 69 seconds after run 1384 concluded. Those three seconds are the window step 3's poll
+must not exit inside.
 
 If all four hold: merge with the repository's normal squash strategy, delete the branch, and note
 the merge in the end-of-cycle report with the four conditions as you found them. If any does not,

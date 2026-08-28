@@ -10,6 +10,8 @@
 //   - a Node major other than 20: Electron's postinstall breaks silently on
 //     24, and a non-interactive shell does not activate mise (CLAUDE.md "Run
 //     everything on Node 20").
+// A block left by an earlier run is removed before either check, so a refusal
+// never leaves an older block at the documented path to paste.
 //
 // Steps, in order. Every step runs even after an earlier failure, so a failing
 // run still produces a complete, honest block (success-only emission would
@@ -20,7 +22,10 @@
 //   pnpm build
 //   pnpm build:extension      only when the diff against the base touches extension/
 //   pnpm test:coverage
-//   pnpm coverage:diff        run as `node scripts/diff-coverage.mjs --json --base <ref>`
+//   pnpm coverage:diff        run as `node scripts/diff-coverage.mjs --json --base <merge-base sha>`
+//
+// COVERAGE_DIFF_MIN is stripped from the child environment: preflight is the
+// local equivalent of CI's 90% diff-coverage gate, so the floor is not negotiable.
 //
 // The block is written to .preflight/verification.md (gitignored) and belongs
 // in the PR body only: a committed block moves HEAD and is stale by construction.
@@ -28,8 +33,8 @@
 // Usage: node scripts/preflight.mjs [--base <ref>] [--out <path>]
 
 import { execFileSync, spawn } from 'node:child_process'
-import { mkdirSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 export const BLOCK_VERSION = 1
@@ -74,6 +79,14 @@ export const dirtyTreeProblem = (cwd = process.cwd()) => {
 }
 
 export const touchesExtension = (paths) => paths.some((path) => path.startsWith('extension/'))
+
+// The environment every step runs under. COVERAGE_DIFF_MIN is dropped because
+// diff-coverage.mjs reads it after its arguments and would lower the floor.
+export const childEnv = (parent) => {
+  const env = { ...parent, BIRDBRAIN_REQUIRE_OPENSSL: '1' }
+  delete env.COVERAGE_DIFF_MIN
+  return env
+}
 
 // Vitest's closing summary line, e.g. "      Tests  2094 passed | 3 skipped (2097)".
 export const parseVitestSummary = (output) => {
@@ -142,8 +155,11 @@ const describeDiffCoverage = (output) => {
 
 // Stream the child's output to the terminal and keep a copy for the summary.
 const runStep = (command, args, { cwd, env }) =>
-  new Promise((resolve) => {
-    const child = spawn(command, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] })
+  new Promise((settle) => {
+    // Corepack's Windows pnpm is a .cmd shim, which Node only spawns through a
+    // shell (audit-check.mjs does the same). The arguments are fixed literals.
+    const shell = command === 'pnpm' && process.platform === 'win32'
+    const child = spawn(command, args, { cwd, env, shell, stdio: ['ignore', 'pipe', 'pipe'] })
     let output = ''
     const tee = (stream, sink) => {
       stream.on('data', (chunk) => {
@@ -153,14 +169,19 @@ const runStep = (command, args, { cwd, env }) =>
     }
     tee(child.stdout, process.stdout)
     tee(child.stderr, process.stderr)
-    child.on('error', (error) => resolve({ exitCode: 1, output: `${output}${error.message}\n` }))
-    child.on('close', (code) => resolve({ exitCode: code ?? 1, output }))
+    child.on('error', (error) => settle({ exitCode: 1, output: `${output}${error.message}\n` }))
+    child.on('close', (code) => settle({ exitCode: code ?? 1, output }))
   })
 
 const main = async () => {
   const cwd = process.cwd()
   const args = parseArgs(process.argv.slice(2))
+  const outPath = resolve(cwd, args.out)
   const nodeVersion = process.versions.node
+
+  // Clear any earlier block first: a refusal must not leave a pasteable block
+  // for a sha this run never checked.
+  rmSync(outPath, { force: true })
 
   const problems = [dirtyTreeProblem(cwd), nodeVersionProblem(nodeVersion)].filter(Boolean)
   if (problems.length > 0) {
@@ -180,7 +201,7 @@ const main = async () => {
     )
   }
   const changed = git(cwd, 'diff', '--name-only', mergeBase, 'HEAD').split('\n').filter(Boolean)
-  const env = { ...process.env, BIRDBRAIN_REQUIRE_OPENSSL: '1' }
+  const env = childEnv(process.env)
   const steps = []
 
   const run = async (command, argv, display, describe) => {
@@ -208,9 +229,11 @@ const main = async () => {
     })
   }
   await run('pnpm', ['test:coverage'], 'pnpm test:coverage', describeCoverage)
+  // The resolved sha, not the ref: origin/main can move while the steps run
+  // (another worktree's fetch), and the block names this merge base.
   await run(
     process.execPath,
-    [join('scripts', 'diff-coverage.mjs'), '--json', '--base', args.base],
+    [join('scripts', 'diff-coverage.mjs'), '--json', '--base', mergeBase],
     'pnpm coverage:diff',
     describeDiffCoverage
   )
@@ -228,7 +251,6 @@ const main = async () => {
   }
 
   const block = formatVerificationBlock({ sha, nodeVersion, base: args.base, mergeBase, steps })
-  const outPath = join(cwd, args.out)
   mkdirSync(dirname(outPath), { recursive: true })
   writeFileSync(outPath, block)
   console.log(`\n${block}`)

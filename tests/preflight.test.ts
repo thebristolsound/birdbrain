@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { execFileSync, spawnSync } from 'child_process'
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
 import {
   BLOCK_VERSION,
   DEFAULT_OUT,
+  childEnv,
   dirtyTreeProblem,
   formatVerificationBlock,
   nodeVersionProblem,
@@ -181,6 +182,17 @@ describe('touchesExtension', () => {
   })
 })
 
+describe('childEnv', () => {
+  it('requires OpenSSL and drops the diff-coverage floor override', () => {
+    const env = childEnv({ PATH: '/usr/bin', COVERAGE_DIFF_MIN: '0', COVERAGE_DIFF_BASE: 'main' })
+    expect(env).toEqual({
+      PATH: '/usr/bin',
+      COVERAGE_DIFF_BASE: 'main',
+      BIRDBRAIN_REQUIRE_OPENSSL: '1'
+    })
+  })
+})
+
 describe('nodeVersionProblem', () => {
   it('accepts any 20.x', () => {
     expect(nodeVersionProblem('20.20.2')).toBeNull()
@@ -211,8 +223,11 @@ describe('dirtyTreeProblem', () => {
 })
 
 describe('pnpm preflight on a dirty tree', () => {
-  it('exits 2 before running any step and writes no block', () => {
+  it('exits 2 before running any step and removes any earlier block', () => {
     writeFileSync(join(repo, 'a.txt'), 'changed\n')
+    const stale = join(repo, DEFAULT_OUT)
+    mkdirSync(join(repo, '.preflight'))
+    writeFileSync(stale, '<!-- preflight v1 sha=old status=pass -->\n')
     const result = spawnSync(process.execPath, [SCRIPT], {
       cwd: repo,
       encoding: 'utf8',
@@ -222,6 +237,25 @@ describe('pnpm preflight on a dirty tree', () => {
     expect(result.stderr).toContain('preflight: refusing to run, the working tree is dirty')
     expect(result.stderr).toContain(' M a.txt')
     expect(result.stdout).not.toContain('preflight: pnpm lint')
-    expect(existsSync(join(repo, DEFAULT_OUT))).toBe(false)
+    expect(existsSync(stale)).toBe(false)
+  })
+
+  it('honours an absolute --out path when clearing the earlier block', () => {
+    writeFileSync(join(repo, 'a.txt'), 'changed\n')
+    const elsewhere = mkdtempSync(join(tmpdir(), 'preflight-out-'))
+    const stale = join(elsewhere, 'verification.md')
+    writeFileSync(stale, '<!-- preflight v1 sha=old status=pass -->\n')
+    try {
+      const result = spawnSync(process.execPath, [SCRIPT, '--out', stale], {
+        cwd: repo,
+        encoding: 'utf8',
+        env: gitEnv
+      })
+      expect(result.status).toBe(2)
+      expect(existsSync(stale)).toBe(false)
+      expect(existsSync(join(repo, stale))).toBe(false)
+    } finally {
+      rmSync(elsewhere, { recursive: true, force: true })
+    }
   })
 })

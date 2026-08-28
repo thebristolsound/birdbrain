@@ -127,7 +127,11 @@ export function CapturesRoute() {
   const { collapsed: listCollapsed, setCollapsed: setListCollapsed } = useCaptureListCollapsed()
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-  const [showAddNote, setShowAddNote] = useState(false)
+  // The capture the note composer is open for, rather than a bare boolean: a
+  // row's context menu can start a note against a capture that is not the
+  // selected one (#701), and binding the modal to the selection would compose
+  // the note against the wrong page.
+  const [addNoteCaptureId, setAddNoteCaptureId] = useState<string | null>(null)
   // Batch delete (#396): the selection bar hands its ids up here, so the
   // confirm and result dialogs outlive the bar once the selection empties.
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[] | null>(null)
@@ -271,14 +275,20 @@ export function CapturesRoute() {
     }
   }
 
-  async function handleOpenExternal() {
-    if (!selectedCapture) return
+  // Takes the URL rather than reading the selection: the details panel passes
+  // the capture it is showing, a row's context menu the row under the pointer.
+  async function handleOpenExternal(url: string) {
     try {
-      await openCaptureExternal(selectedCapture.url)
+      await openCaptureExternal(url)
     } catch (cause) {
       notify.error("Couldn't open the link in your browser", { cause })
     }
   }
+
+  const addNoteCapture = useMemo(
+    () => captures.find((c) => c.id === addNoteCaptureId) ?? null,
+    [captures, addNoteCaptureId]
+  )
 
   return (
     <div className="relative flex h-full flex-1 overflow-hidden">
@@ -318,6 +328,8 @@ export function CapturesRoute() {
                 onChangeView={setView}
                 onCollapse={() => setListCollapsed(true)}
                 onDeleteSelection={setPendingDeleteIds}
+                onOpenExternal={(url) => void handleOpenExternal(url)}
+                onQuoteIntoNote={setAddNoteCaptureId}
               />
             </Panel>
             <Separator id="capture-list-separator" className={SEPARATOR_CLASS} />
@@ -350,13 +362,13 @@ export function CapturesRoute() {
                   capture={selectedCapture}
                   caseId={caseId}
                   onCollapse={toggleUserPref}
-                  onOpenExternal={handleOpenExternal}
+                  onOpenExternal={() => void handleOpenExternal(selectedCapture.url)}
                   onCopyUrl={handleCopyUrl}
                   onCopyHash={handleCopyHash}
                   onDuplicate={handleDuplicate}
                   isDuplicating={isDuplicating}
                   onDelete={() => setShowDeleteConfirm(true)}
-                  onOpenAddNote={() => setShowAddNote(true)}
+                  onOpenAddNote={() => setAddNoteCaptureId(selectedCapture.id)}
                 />
               </aside>
             </Panel>
@@ -382,7 +394,7 @@ export function CapturesRoute() {
             caseId={caseId}
             forced={panelCollapsedForced}
             onExpand={panelCollapsedForced ? () => setForcedPanelOpen(true) : toggleUserPref}
-            onOpenExternal={handleOpenExternal}
+            onOpenExternal={() => void handleOpenExternal(selectedCapture.url)}
           />
         </aside>
       )}
@@ -397,13 +409,13 @@ export function CapturesRoute() {
             capture={selectedCapture}
             caseId={caseId}
             onCollapse={() => setForcedPanelOpen(false)}
-            onOpenExternal={handleOpenExternal}
+            onOpenExternal={() => void handleOpenExternal(selectedCapture.url)}
             onCopyUrl={handleCopyUrl}
             onCopyHash={handleCopyHash}
             onDuplicate={handleDuplicate}
             isDuplicating={isDuplicating}
             onDelete={() => setShowDeleteConfirm(true)}
-            onOpenAddNote={() => setShowAddNote(true)}
+            onOpenAddNote={() => setAddNoteCaptureId(selectedCapture.id)}
           />
         </div>
       )}
@@ -518,14 +530,14 @@ export function CapturesRoute() {
           )}
         </DialogContent>
       </Dialog>
-      {selectedCapture && (
+      {addNoteCapture && (
         <AddNoteModal
-          open={showAddNote}
+          open
           caseId={caseId}
-          captureId={selectedCapture.id}
-          captureTitle={selectedCapture.title || ''}
-          captureUrl={selectedCapture.url}
-          onClose={() => setShowAddNote(false)}
+          captureId={addNoteCapture.id}
+          captureTitle={addNoteCapture.title || ''}
+          captureUrl={addNoteCapture.url}
+          onClose={() => setAddNoteCaptureId(null)}
         />
       )}
     </div>

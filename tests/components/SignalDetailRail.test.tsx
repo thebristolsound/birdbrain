@@ -64,7 +64,7 @@ const tagSignal: Signal = {
 
 function renderRail(signal: Signal | null, overrides: Partial<Capture[]> = []) {
   const onToggleEnabled = vi.fn()
-  const onMerged = vi.fn()
+  const onMerge = vi.fn()
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
@@ -76,11 +76,11 @@ function renderRail(signal: Signal | null, overrides: Partial<Capture[]> = []) {
       captures={overrides.length ? (overrides as Capture[]) : captures}
       totalCaptures={4}
       onToggleEnabled={onToggleEnabled}
-      onMerged={onMerged}
+      onMerge={onMerge}
     />,
     { wrapper: Wrapper }
   )
-  return { onToggleEnabled, onMerged }
+  return { onToggleEnabled, onMerge }
 }
 
 beforeEach(() => {
@@ -247,11 +247,6 @@ describe('SignalDetailRail actions', () => {
 })
 
 describe('SignalDetailRail merge (#828)', () => {
-  const allTags = [
-    { id: 't1', name: 'evidence', color: '#22c55e' },
-    { id: 't2', name: 'finance', color: '#3b82f6' }
-  ]
-
   it('offers Merge into… for a tag and not for a selector', () => {
     renderRail(tagSignal)
     expect(screen.getByTestId('signal-merge-tag')).toBeTruthy()
@@ -261,37 +256,16 @@ describe('SignalDetailRail merge (#828)', () => {
     expect(screen.queryByTestId('signal-merge-tag')).toBeNull()
   })
 
-  it('opens the merge dialog for the selected tag with the other tags as targets', async () => {
-    fakeBridge({
-      captures: { list: vi.fn(async () => captures), getContent: vi.fn(async () => null) },
-      selectors: { matchingCaptures: vi.fn(async () => []) },
-      tags: { update: vi.fn(async () => tagSignal), list: vi.fn(async () => allTags) }
-    })
-    renderRail(tagSignal)
+  // The dialog moved up to SignalsOverview when a tag row's context menu
+  // gained its own Merge into… item (#701): two routes, one dialog. What the
+  // rail owes is the source tag, and the whole tag rather than its id — the
+  // dialog names it in its prompt.
+  it('hands the selected tag up rather than opening the dialog itself', () => {
+    const { onMerge } = renderRail(tagSignal)
+
+    fireEvent.click(screen.getByTestId('signal-merge-tag'))
+
+    expect(onMerge).toHaveBeenCalledWith(tagSignal)
     expect(screen.queryByTestId('merge-tag-dialog')).toBeNull()
-
-    fireEvent.click(screen.getByTestId('signal-merge-tag'))
-
-    expect(await screen.findByTestId('merge-tag-dialog')).toBeTruthy()
-    // The selected tag t1 is the source, so only t2 is offered.
-    expect(await screen.findByTestId('merge-target-t2')).toBeTruthy()
-    expect(screen.queryByTestId('merge-target-t1')).toBeNull()
-  })
-
-  it('reports the survivor upward after a merge committed from the rail', async () => {
-    const merge = vi.fn(async () => ({ target: allTags[1], captureLinks: 1, noteLinks: 0 }))
-    fakeBridge({
-      captures: { list: vi.fn(async () => captures), getContent: vi.fn(async () => null) },
-      selectors: { matchingCaptures: vi.fn(async () => []) },
-      tags: { update: vi.fn(async () => tagSignal), list: vi.fn(async () => allTags), merge }
-    })
-    const { onMerged } = renderRail(tagSignal)
-
-    fireEvent.click(screen.getByTestId('signal-merge-tag'))
-    fireEvent.click(await screen.findByTestId('merge-target-t2'))
-    fireEvent.click(screen.getByTestId('merge-tag-commit'))
-
-    await waitFor(() => expect(merge).toHaveBeenCalledWith({ sourceId: 't1', targetId: 't2' }))
-    await waitFor(() => expect(onMerged).toHaveBeenCalledWith('t2'))
   })
 })

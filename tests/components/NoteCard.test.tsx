@@ -33,12 +33,19 @@ let openExternal: ReturnType<typeof vi.fn>
 // rejection through as `cause`, not a rewrapped stand-in.
 let cause: Error
 
-function renderCard(selected = false) {
+function renderCard(selected = false, override: Note = note) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
   }
-  return render(<NoteCard note={note} caseId="case1" selected={selected} />, { wrapper: Wrapper })
+  return render(<NoteCard note={override} caseId="case1" selected={selected} />, {
+    wrapper: Wrapper
+  })
+}
+
+async function openCardMenu() {
+  fireEvent.contextMenu(screen.getByTestId('note-card-note1'))
+  return screen.findByRole('menu')
 }
 
 beforeEach(() => {
@@ -90,5 +97,58 @@ describe('NoteCard', () => {
 
     await waitFor(() => expect(openExternal).toHaveBeenCalledOnce())
     expect(notifyError).not.toHaveBeenCalled()
+  })
+})
+
+// #701. The card is its own adoption point, so every menu item lands on the
+// control beside it rather than on a second implementation.
+describe('NoteCard context menu', () => {
+  it('names the note and offers only what the card can already do', async () => {
+    renderCard()
+    const menu = await openCardMenu()
+
+    expect(menu.getAttribute('aria-label')).toBe('Note actions: A note')
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      'Edit note',
+      'Open source URL',
+      'Delete note…'
+    ])
+  })
+
+  it('opens the same editor the pencil does', async () => {
+    renderCard()
+    await openCardMenu()
+
+    fireEvent.click(screen.getByTestId('context-menu-item-note-edit'))
+
+    expect(await screen.findByTestId('note-title-input')).toBeTruthy()
+  })
+
+  // Delete goes through the card's own confirm step, not straight to the
+  // mutation: a right-click is easy to land on the wrong row.
+  it('arms the delete confirmation rather than deleting', async () => {
+    renderCard()
+    await openCardMenu()
+
+    fireEvent.click(screen.getByTestId('context-menu-item-note-delete'))
+
+    expect(await screen.findByTestId('note-confirm-delete')).toBeTruthy()
+  })
+
+  it('opens the source URL through the card’s own handler', async () => {
+    openExternal.mockResolvedValue(undefined)
+    renderCard()
+    await openCardMenu()
+
+    fireEvent.click(screen.getByTestId('context-menu-item-note-open-source'))
+
+    await waitFor(() => expect(openExternal).toHaveBeenCalledWith('https://example.com/thread/42'))
+  })
+
+  it('leaves the item out for a note written against no page', async () => {
+    renderCard(false, { ...note, sourceUrl: undefined })
+    await openCardMenu()
+
+    expect(screen.queryByTestId('context-menu-item-note-open-source')).toBeNull()
   })
 })

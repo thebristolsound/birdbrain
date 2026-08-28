@@ -20,6 +20,7 @@ import {
   useTagsMutations
 } from '@renderer/lib/api/tags'
 import { queryKeys } from '@renderer/lib/api/keys'
+import { notify } from '@renderer/lib/notify'
 import { useAppStore } from '@renderer/stores/appStore'
 import { CreateSelectorCard } from '@renderer/components/selectors/CreateSelectorCard'
 import { AutoCaptureCard } from '@renderer/components/signals/AutoCaptureCard'
@@ -190,8 +191,11 @@ export function SignalsOverview() {
   async function exportSignalMatches(signal: Signal) {
     try {
       await exportSelectorMatches(caseId, signal.id)
-    } catch (err) {
-      console.error('Export selector matches failed:', err)
+    } catch (cause) {
+      // The export is not a mutation, so nothing else reports it: without this
+      // a failed write is indistinguishable from a file the operator never
+      // finds.
+      notify.error("Couldn't export the selector's matches", { cause })
     }
   }
 

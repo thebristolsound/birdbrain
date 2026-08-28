@@ -7,9 +7,17 @@ import type { Capture, Selector, Tag } from '@shared/types'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { useAppStore } from '@renderer/stores/appStore'
 
+// One spy for the whole file, so a test can assert where a menu action sent
+// the operator rather than only what it wrote to the store.
+const navigate = vi.hoisted(() => vi.fn())
 vi.mock('@tanstack/react-router', () => ({
   useParams: () => ({ caseId: 'case-1' }),
-  useNavigate: () => vi.fn()
+  useNavigate: () => navigate
+}))
+
+const notifyError = vi.hoisted(() => vi.fn())
+vi.mock('@renderer/lib/notify', () => ({
+  notify: { success: vi.fn(), error: notifyError, warn: vi.fn(), info: vi.fn() }
 }))
 
 // The rail has its own test file and drags in the Foreground Match Preview's
@@ -101,6 +109,8 @@ function renderScreen() {
 
 beforeEach(() => {
   install()
+  navigate.mockReset()
+  notifyError.mockReset()
 })
 
 afterEach(() => {
@@ -436,7 +446,10 @@ describe('SignalsOverview row context menus', () => {
     await waitFor(() => expect(updateTag).toHaveBeenCalledWith({ id: 't1', color: '#3b82f6' }))
   })
 
-  it('filters the captures by a selector picked from its row menu', async () => {
+  // Both halves matter to the operator: the filter alone leaves them on
+  // Signals looking at nothing, and the navigation alone lands them on an
+  // unfiltered list.
+  it('filters the captures by a selector picked from its row menu, and goes there', async () => {
     renderScreen()
 
     fireEvent.contextMenu(await screen.findByTestId('signal-row-s1'))
@@ -444,6 +457,10 @@ describe('SignalsOverview row context menus', () => {
     fireEvent.click(screen.getByTestId('context-menu-item-selector-show-matches'))
 
     expect(useAppStore.getState().activeSelectorFilters).toContain('s1')
+    expect(navigate).toHaveBeenCalledWith({
+      to: '/cases/$caseId/captures',
+      params: { caseId: 'case-1' }
+    })
   })
 
   it('exports one selector’s matches from its row menu', async () => {
@@ -456,5 +473,23 @@ describe('SignalsOverview row context menus', () => {
     fireEvent.click(screen.getByTestId('context-menu-item-selector-export'))
 
     await waitFor(() => expect(exportMatches).toHaveBeenCalledWith('case-1', 's1'))
+    expect(notifyError).not.toHaveBeenCalled()
+  })
+
+  // The export is not a mutation, so the mutation cache's onError never sees
+  // it: without the toast a failed write looks exactly like a successful one.
+  it('tells the operator when a selector’s export fails', async () => {
+    const exportMatches = vi.fn(async () => {
+      throw new Error('no disk')
+    })
+    install({ selectors: { exportMatches } })
+    renderScreen()
+
+    fireEvent.contextMenu(await screen.findByTestId('signal-row-s1'))
+    await screen.findByRole('menu')
+    fireEvent.click(screen.getByTestId('context-menu-item-selector-export'))
+
+    await waitFor(() => expect(notifyError).toHaveBeenCalled())
+    expect(String(notifyError.mock.calls[0][0])).toContain('export')
   })
 })

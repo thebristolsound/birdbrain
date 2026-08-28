@@ -150,7 +150,9 @@ export function CaptureList({
     caseId,
     visibleSelectedIds,
     favorites,
-    onToggleFavorite: (id) => void toggleFavorite(id),
+    // The rejection is already reported by the mutation cache's onError; the
+    // catch is only so a failed toggle is not also an unhandled rejection.
+    onToggleFavorite: (id) => void toggleFavorite(id).catch(() => undefined),
     onDeleteSelection,
     onOpenExternal,
     onQuoteIntoNote

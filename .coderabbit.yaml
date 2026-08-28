@@ -207,32 +207,43 @@ reviews:
 
     - path: ".claude/**"
       instructions: |
-        - These are contracts executed unattended, with no human to catch an ambiguous step.
-          Flag any instruction whose outcome the agent cannot verify from the text — a probe
-          with no stated failure branch, or a decision with no rule for the empty result.
+        - These are contracts executed unattended. Review them for defects that would make an
+          agent take a wrong action, not for prose that could be worded more precisely. A step
+          you would tighten is not a finding; a step that produces a wrong action is. Prose
+          about a review process is still prose — do not audit it as if it were code.
         - Shell commands in a contract are load-bearing. Flag a count or decision derived
           through a pipe whose exit status is unchecked (`| tail -1` swallows a `gh` failure),
           `gh api --jq` given `-r`, or `gh issue comment` given `-q` — all three fail rather
           than error visibly.
         - The label-filtered issue search (`issues?labels=…`) reads GitHub's search index and
           lags a direct label read. Flag it used as authoritative for a dispatch decision.
-        - Gates from `docs/adr/0005-unattended-agents-on-the-evidence-path.md` and ADR-0006:
-          agents never merge, subagents never post their own comments or relabel, one open
-          agent PR at a time. Flag a step that hands a subagent the write path.
+        - Subagents never post their own comments and never relabel (ADR-0006). Flag a step
+          that hands a subagent the write path.
+        - The merge and concurrency gates come from
+          `docs/adr/0014-tier-the-evidence-backstop-and-widen-the-dispatch-slot.md`, which
+          amends ADR-0005: three concurrent agent PRs, and a non-evidence agent PR may merge
+          with no human on all required checks green plus an `agent/pre-pass` success verdict.
+          Read ADR-0014 before asserting any merge or slot rule — ADR-0005 read alone says
+          agents never merge and allows one open agent PR, and both of those are superseded.
+        - Evidence-affecting PRs never auto-merge under any policy. Flag a step that would
+          merge one, or that would treat an unreadable check state as passing.
         - `.claude/hooks/*.sh` runs under bash while the agent tool shell is zsh. Flag
           shell-specific syntax whose behaviour differs between them.
         - In `.claude/settings.json`, flag a new permission entry that broadens write or
           network access beyond what the change needs.
 
   # ---------------------------------------------------------------------------
-  # When reviews run. Drafts included, and pausing disabled, so every pushed
-  # commit gets incremental feedback while a PR is still being built up.
+  # When reviews run. Drafts are included so feedback arrives while a PR is
+  # still being built up, but review pauses after four reviewed commits.
+  # Unbounded incremental review is what turned PR #1062 — 48 net lines of one
+  # markdown file — into 7 commits, 6 reviews and 22 review comments. A branch
+  # that has taken four rounds needs a human, not a fifth round.
   # ---------------------------------------------------------------------------
   auto_review:
     enabled: true
     drafts: true
     auto_incremental_review: true
-    auto_pause_after_reviewed_commits: 0
+    auto_pause_after_reviewed_commits: 4
     base_branches:
       - "main"
     ignore_title_keywords:

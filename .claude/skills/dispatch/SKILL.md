@@ -113,6 +113,25 @@ exits immediately unless `CLAUDE_CODE_REMOTE=true`, by design. So:
   push fast-forwards the remote head it last saw; force-push is never used. A remote head that
   moved unexpectedly is a collision: stop and report it, do not merge or overwrite. This is
   the rule that covers the case the slot labels cannot see — two agents on one branch (#357).
+- **Process-doc changes do not run through this pipeline.** A diff confined to `.claude/**`,
+  `docs/**` and root-level `*.md` is the operating manual. It is not the product, and it is not
+  on the evidence path. It gets no adversarial pre-pass, no section 2a merge and no ADR-0018
+  body recomputation.
+  The implementer writes it, you open the PR, and the maintainer reads and merges it. Do not
+  spawn `birdbrain-reviewer` at one, and label it `agent-authored` without `agent-pr`, so it
+  takes no slot.
+
+  The machinery was calibrated for code, and prose defeats it. PR #1062 changed 48 net lines of
+  one markdown file and drew 7 commits, 6 reviews, 22 review comments and 75,409 characters of
+  review prose across five rounds. All five ended `request changes`, and the fifth landed on the
+  two edits the maintainer had personally scoped. Seventeen open issues target section 2a alone,
+  nearly all of them findings produced by rounds against section 2a. A reviewer aimed at prose
+  that describes a reviewer generates findings rather than converging on them.
+
+  **A mixed diff is not a process-doc change.** Anything also touching `src/**`, `extension/**`,
+  `tests/**`, `e2e/**`, `scripts/**` or `.github/**` takes the normal path in full. Check this by
+  reading the file list, not by reading the title:
+  `gh api repos/thebristolsound/birdbrain/pulls/<n>/files --jq '[.[].filename]'`.
 
 ## 1. Slot check
 
@@ -277,6 +296,10 @@ peer's. Read the claim comment. It is the only claim.
 ADR-0014 lets a non-evidence agent PR merge without a human. **All four conditions must hold, and
 each must be established by a command whose exit status you checked.** An unreadable answer counts
 against the merge.
+
+**Process-doc changes never take this path either.** They carry no `agent-pr` label, so they are
+not in the set this section iterates, and they merge by human hand. If you find one labelled
+`agent-pr`, that is the mislabel, not an invitation to merge it.
 
 1. **Every required check on `main` is green.** Read the combined status and the check runs for the
    PR head sha. A `pending` is not a green, and a check that never reported is not a green either.
@@ -448,7 +471,10 @@ not dispatch a second issue in the same cycle.
 ## 4. Reviewer pre-pass — after every agent push, and after CI reports
 
 Run `birdbrain-reviewer` on the PR after you open it and after every feedback-response push.
-Skip only if the current head commit already has a pre-pass comment.
+Skip if the current head commit already has a pre-pass comment, and skip entirely for a
+process-doc change as defined in "Session rules" — post `agent/pre-pass` `success` with the
+description `Process-doc change: human review, no adversarial pre-pass.` so the sha is not left
+without a status, and move on.
 
 **Take the cycle claim first** (section 2). The reviewer is one of the two actions that needs one,
 and the `pending` status below is not a substitute: it is a signal to humans, not a lock between

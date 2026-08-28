@@ -47,6 +47,10 @@ function renderRow(signal: Signal = selectorSignal, overrides: Record<string, un
     onToggleRegex: vi.fn(),
     onRename: vi.fn(),
     onDelete: vi.fn(),
+    onShowMatches: vi.fn(),
+    onExportMatches: vi.fn(),
+    onSetColor: vi.fn(),
+    onMerge: vi.fn(),
     onFocusSibling: vi.fn(),
     registerRow: vi.fn()
   }
@@ -191,19 +195,89 @@ describe('SignalRow rendering', () => {
     expect(onToggleRegex).toHaveBeenCalledOnce()
   })
 
-  // #701 owns right-click menus and the maintainer ruled that wave 2 leaves no
-  // hooks for them. A placeholder handler here would be exactly such a hook.
-  it('attaches no context-menu handler', () => {
-    const onContextMenu = vi.fn()
+  // Replaces the wave-2 assertion that the row attached no context-menu
+  // handler. That was the ruling then; #701 reversed it in wave 3 and these
+  // are the terms it reversed it on.
+  it('opens a selector menu on right-click, and none before', async () => {
     renderRow()
-    const row = screen.getByTestId('signal-row-s1')
-    row.addEventListener('contextmenu', onContextMenu)
-
-    fireEvent.contextMenu(row)
-
-    // The listener the test added fires; what matters is that the row itself
-    // does nothing — no menu markup appears.
-    expect(onContextMenu).toHaveBeenCalledOnce()
     expect(screen.queryByRole('menu')).toBeNull()
+
+    fireEvent.contextMenu(screen.getByTestId('signal-row-s1'))
+
+    const menu = await screen.findByRole('menu')
+    expect(menu.getAttribute('aria-label')).toBe('Selector actions: acme')
+  })
+
+  it('runs the selector actions the row cannot reach on its own', async () => {
+    const { onShowMatches, onExportMatches } = renderRow()
+    fireEvent.contextMenu(screen.getByTestId('signal-row-s1'))
+    await screen.findByRole('menu')
+
+    fireEvent.click(screen.getByTestId('context-menu-item-selector-show-matches'))
+    expect(onShowMatches).toHaveBeenCalledOnce()
+
+    fireEvent.contextMenu(screen.getByTestId('signal-row-s1'))
+    await screen.findByRole('menu')
+    fireEvent.click(screen.getByTestId('context-menu-item-selector-export'))
+    expect(onExportMatches).toHaveBeenCalledOnce()
+  })
+
+  it('starts the inline rename from the menu, same as Enter does', async () => {
+    const { onRename } = renderRow()
+    fireEvent.contextMenu(screen.getByTestId('signal-row-s1'))
+    await screen.findByRole('menu')
+
+    fireEvent.click(screen.getByTestId('context-menu-item-selector-edit'))
+
+    const input = await screen.findByLabelText('Edit selector pattern')
+    fireEvent.change(input, { target: { value: 'acme corp' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(onRename).toHaveBeenCalledWith('acme corp')
+  })
+
+  it('gives a tag row the tag action set, not the selector one', async () => {
+    const { onSetColor, onMerge } = renderRow(tagSignal)
+    fireEvent.contextMenu(screen.getByTestId('signal-row-t1'))
+
+    const menu = await screen.findByRole('menu')
+    expect(menu.getAttribute('aria-label')).toBe('Tag actions: evidence')
+    expect(screen.queryByTestId('context-menu-item-selector-toggle')).toBeNull()
+
+    fireEvent.click(screen.getByTestId('context-menu-item-tag-merge'))
+    expect(onMerge).toHaveBeenCalledOnce()
+
+    fireEvent.contextMenu(screen.getByTestId('signal-row-t1'))
+    await screen.findByRole('menu')
+    // The colour submenu opens on pointer, so drive it from the keyboard.
+    fireEvent.keyDown(screen.getByTestId('context-menu-item-tag-color'), { key: 'Enter' })
+    fireEvent.click(await screen.findByText('Blue'))
+    expect(onSetColor).toHaveBeenCalledWith('#3b82f6')
+  })
+
+  it('names the tag colour the row already has as the current one', async () => {
+    renderRow(tagSignal)
+    fireEvent.contextMenu(screen.getByTestId('signal-row-t1'))
+    await screen.findByRole('menu')
+
+    fireEvent.keyDown(screen.getByTestId('context-menu-item-tag-color'), { key: 'Enter' })
+
+    // tagSignal is #22c55e, the palette's green.
+    expect(await screen.findByText('Green (current)')).toBeTruthy()
+    expect(screen.getByText('Blue')).toBeTruthy()
+  })
+
+  // Ruling 3: the menu is an accelerator, so nothing may appear in it that the
+  // app cannot reach another way. These four are the ones the mock offers and
+  // the app has no route for, and each is a live divergence rather than an
+  // oversight — see the registry's own notes.
+  it('offers no action the app has no inline route for', async () => {
+    renderRow()
+    fireEvent.contextMenu(screen.getByTestId('signal-row-s1'))
+    await screen.findByRole('menu')
+
+    expect(screen.queryByText('Duplicate')).toBeNull()
+    expect(screen.queryByText('Copy pattern')).toBeNull()
+    expect(screen.queryByText('Backfill existing captures')).toBeNull()
+    expect(screen.queryByText('Export…')).toBeNull()
   })
 })

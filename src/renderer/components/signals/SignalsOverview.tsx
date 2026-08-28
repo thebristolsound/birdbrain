@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useParams } from '@tanstack/react-router'
+import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Download, ListPlus } from 'lucide-react'
 import { SIGNAL_COVERAGE_CAPTURES } from '@shared/constants'
@@ -20,6 +20,7 @@ import {
   useTagsMutations
 } from '@renderer/lib/api/tags'
 import { queryKeys } from '@renderer/lib/api/keys'
+import { notify } from '@renderer/lib/notify'
 import { useAppStore } from '@renderer/stores/appStore'
 import { CreateSelectorCard } from '@renderer/components/selectors/CreateSelectorCard'
 import { AutoCaptureCard } from '@renderer/components/signals/AutoCaptureCard'
@@ -27,6 +28,7 @@ import { AddSelectorRow } from '@renderer/components/signals/AddSelectorRow'
 import { AddTagRow } from '@renderer/components/signals/AddTagRow'
 import { BulkImportDrawer } from '@renderer/components/signals/BulkImportDrawer'
 import { DeleteTagDialog } from '@renderer/components/signals/DeleteTagDialog'
+import { MergeTagDialog } from '@renderer/components/signals/MergeTagDialog'
 import { SignalRow } from '@renderer/components/signals/SignalRow'
 import { SignalDetailRail } from '@renderer/components/signals/SignalDetailRail'
 import {
@@ -57,6 +59,8 @@ const KEYBOARD_LEGEND = [
 export function SignalsOverview() {
   const { caseId } = useParams({ from: '/cases/$caseId/signals' })
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const addSelectorFilter = useAppStore((s) => s.addSelectorFilter)
 
   const { data: selectors = [] } = useQuery(selectorsQueryOptions(caseId))
   const { data: matchCounts = {} } = useQuery(selectorMatchCountsQueryOptions(caseId))
@@ -83,6 +87,10 @@ export function SignalsOverview() {
   const [pendingTagDelete, setPendingTagDelete] = useState<{ id: string; name: string } | null>(
     null
   )
+  // The tag a merge was started from, by the detail rail's button or by a row's
+  // context menu. One dialog for both routes, mounted here rather than in the
+  // rail, so the two cannot drift apart.
+  const [mergeSource, setMergeSource] = useState<{ id: string; name: string } | null>(null)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
   const rowRefs = useRef(new Map<string, HTMLDivElement>())
@@ -172,6 +180,25 @@ export function SignalsOverview() {
     }
   }
 
+  // The two selector actions a row's context menu offers that the row itself
+  // cannot reach: both are the detail rail's buttons, called with the
+  // right-clicked selector rather than the selected one.
+  function showSelectorMatches(signal: Signal) {
+    addSelectorFilter(signal.id)
+    navigate({ to: '/cases/$caseId/captures', params: { caseId } })
+  }
+
+  async function exportSignalMatches(signal: Signal) {
+    try {
+      await exportSelectorMatches(caseId, signal.id)
+    } catch (cause) {
+      // The export is not a mutation, so nothing else reports it: without this
+      // a failed write is indistinguishable from a file the operator never
+      // finds.
+      notify.error("Couldn't export the selector's matches", { cause })
+    }
+  }
+
   function renderRows(list: Signal[], emptyCopy: string) {
     if (list.length === 0) {
       return <div className="px-0.5 py-2.5 text-[11px] text-text-faint">{emptyCopy}</div>
@@ -203,6 +230,10 @@ export function SignalsOverview() {
           if (signal.kind === 'tag') setPendingTagDelete({ id: signal.id, name: signal.name })
           else void deleteSelector(signal.id).then(refreshSelectors)
         }}
+        onShowMatches={() => showSelectorMatches(signal)}
+        onExportMatches={() => void exportSignalMatches(signal)}
+        onSetColor={(color) => updateTag.mutate({ id: signal.id, color })}
+        onMerge={() => setMergeSource({ id: signal.id, name: signal.name })}
       />
     ))
   }
@@ -329,10 +360,7 @@ export function SignalsOverview() {
           onToggleEnabled={(signal) => {
             void updateSelector({ id: signal.id, enabled: !signal.enabled }).then(refreshSelectors)
           }}
-          // A merge deletes the selected tag; selecting the survivor keeps the
-          // rail on the tag the operator's links now live under, instead of
-          // falling back to whatever happens to be first in the list.
-          onMerged={setSelectedId}
+          onMerge={(signal) => setMergeSource({ id: signal.id, name: signal.name })}
         />
       </div>
 
@@ -345,6 +373,21 @@ export function SignalsOverview() {
             if (!next) setPendingTagDelete(null)
           }}
           tag={pendingTagDelete}
+        />
+      )}
+
+      {/* Mounted only while open, for the same reason and because the dialog
+          fetches the tag list when it mounts. A merge deletes the source tag;
+          selecting the survivor keeps the rail on the tag the operator's links
+          now live under, instead of falling back to whatever is first. */}
+      {mergeSource && (
+        <MergeTagDialog
+          open
+          onOpenChange={(next) => {
+            if (!next) setMergeSource(null)
+          }}
+          source={mergeSource}
+          onMerged={setSelectedId}
         />
       )}
     </div>

@@ -26,6 +26,36 @@ export function duplicateRefusalMessage(
 }
 
 /**
+ * Duplicate any capture in the case by id (#827).
+ *
+ * Split out of the hook below when the capture row's context menu became a
+ * second route (#701): a right-click acts on the row under the pointer, which
+ * is not necessarily the selected one, and the refusal handling above must stay
+ * in one place rather than be restated per call site.
+ */
+export function useDuplicateCaptureById(caseId: string): {
+  duplicate: (captureId: string) => void
+  isPending: boolean
+} {
+  const { duplicate } = useCapturesMutations(caseId)
+  const { mutate } = duplicate
+
+  const run = useCallback(
+    (captureId: string) => {
+      mutate(captureId, {
+        onSuccess: (result) => {
+          if (result.status === 'duplicated') notify.success('Duplicated capture')
+          else notify.warn(duplicateRefusalMessage(result))
+        }
+      })
+    },
+    [mutate]
+  )
+
+  return { duplicate: run, isPending: duplicate.isPending }
+}
+
+/**
  * The capture actions menu's Duplicate route (#827).
  *
  * Mounted on the captures surface rather than inside the details panel, for the
@@ -40,19 +70,12 @@ export function useDuplicateCapture(
   capture: Capture | null,
   caseId: string
 ): { duplicate: () => void; isPending: boolean } {
-  const { duplicate } = useCapturesMutations(caseId)
+  const { duplicate, isPending } = useDuplicateCaptureById(caseId)
   const captureId = capture?.id
-  const { mutate } = duplicate
 
   const run = useCallback(() => {
-    if (!captureId) return
-    mutate(captureId, {
-      onSuccess: (result) => {
-        if (result.status === 'duplicated') notify.success('Duplicated capture')
-        else notify.warn(duplicateRefusalMessage(result))
-      }
-    })
-  }, [captureId, mutate])
+    if (captureId) duplicate(captureId)
+  }, [captureId, duplicate])
 
-  return { duplicate: run, isPending: duplicate.isPending }
+  return { duplicate: run, isPending }
 }

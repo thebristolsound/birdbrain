@@ -6,6 +6,8 @@ import { openCaptureExternal } from '@renderer/lib/api/system'
 import { notify } from '@renderer/lib/notify'
 import type { Note } from '@shared/types'
 import { Button, Input } from '@renderer/components/ui'
+import { EntityContextMenu } from '@renderer/components/contextmenu/EntityContextMenu'
+import type { EntityMenuTarget } from '@renderer/components/contextmenu/entityMenu'
 import { NoteBody } from '@renderer/components/notes/NoteBody'
 import { NoteEditor } from '@renderer/components/notes/NoteEditor'
 import { useNoteEditor } from '@renderer/components/notes/useNoteEditor'
@@ -131,103 +133,120 @@ export function NoteCard({ note, caseId, selected = false }: NoteCardProps) {
   const displayTitle = note.title || '(Untitled note)'
   const thumbSrc = thumbnail ? `data:image/jpeg;base64,${thumbnail}` : null
 
-  return (
-    <div
-      key={note.id}
-      data-testid={`note-card-${note.id}`}
-      aria-current={selected ? 'true' : undefined}
-      className={`flex gap-3 rounded-2xl border bg-surface p-4 ${
-        selected ? 'border-accent/60 ring-1 ring-accent/30' : 'border-border'
-      }`}
-    >
-      <div className="shrink-0">
-        {thumbSrc ? (
-          <img
-            src={thumbSrc}
-            alt=""
-            className="h-20 w-28 rounded-lg border border-border object-cover"
-          />
-        ) : (
-          <div className="flex h-20 w-28 items-center justify-center rounded-lg border border-border bg-elevated text-text-muted">
-            <StickyNote className="h-5 w-5" />
-          </div>
-        )}
-      </div>
+  // The card owns every action its menu offers, so it is its own adoption
+  // point (#701): edit and delete are its own state, and Open source URL is
+  // the same handler its inline link uses.
+  const menuTarget: EntityMenuTarget = {
+    kind: 'note',
+    noteId: note.id,
+    title: displayTitle,
+    sourceUrl: note.sourceUrl ?? null,
+    actions: {
+      edit: () => setIsEditing(true),
+      openSourceUrl: () => void handleOpenUrl(),
+      remove: () => setConfirmDelete(true)
+    }
+  }
 
-      <div className="min-w-0 flex-1">
-        {isEditing ? (
-          <NoteCardEditor
-            key={`edit-${note.id}`}
-            note={note}
-            caseId={caseId}
-            isPending={update.isPending}
-            onSave={handleSave}
-            onCancel={handleCancel}
-          />
-        ) : (
-          <>
-            <div className="flex items-start gap-2">
-              <h3 className="flex-1 truncate font-display text-sm font-semibold text-text-primary">
-                {displayTitle}
-              </h3>
-              <div className="flex shrink-0 items-center gap-1">
-                <Button
-                  data-testid="note-edit"
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => setIsEditing(true)}
-                  title="Edit note"
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                </Button>
-                {confirmDelete ? (
-                  <>
-                    <Button
-                      data-testid="note-confirm-delete"
-                      variant="destructive"
-                      size="xs"
-                      onClick={handleDelete}
-                    >
-                      Confirm
-                    </Button>
-                    <Button variant="ghost" size="xs" onClick={() => setConfirmDelete(false)}>
-                      Cancel
-                    </Button>
-                  </>
-                ) : (
+  return (
+    <EntityContextMenu target={menuTarget}>
+      <div
+        key={note.id}
+        data-testid={`note-card-${note.id}`}
+        aria-current={selected ? 'true' : undefined}
+        className={`flex gap-3 rounded-2xl border bg-surface p-4 ${
+          selected ? 'border-accent/60 ring-1 ring-accent/30' : 'border-border'
+        }`}
+      >
+        <div className="shrink-0">
+          {thumbSrc ? (
+            <img
+              src={thumbSrc}
+              alt=""
+              className="h-20 w-28 rounded-lg border border-border object-cover"
+            />
+          ) : (
+            <div className="flex h-20 w-28 items-center justify-center rounded-lg border border-border bg-elevated text-text-muted">
+              <StickyNote className="h-5 w-5" />
+            </div>
+          )}
+        </div>
+
+        <div className="min-w-0 flex-1">
+          {isEditing ? (
+            <NoteCardEditor
+              key={`edit-${note.id}`}
+              note={note}
+              caseId={caseId}
+              isPending={update.isPending}
+              onSave={handleSave}
+              onCancel={handleCancel}
+            />
+          ) : (
+            <>
+              <div className="flex items-start gap-2">
+                <h3 className="flex-1 truncate font-display text-sm font-semibold text-text-primary">
+                  {displayTitle}
+                </h3>
+                <div className="flex shrink-0 items-center gap-1">
                   <Button
-                    data-testid="note-delete"
+                    data-testid="note-edit"
                     variant="ghost"
                     size="icon-sm"
-                    onClick={() => setConfirmDelete(true)}
-                    title="Delete note"
+                    onClick={() => setIsEditing(true)}
+                    title="Edit note"
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Pencil className="h-3.5 w-3.5" />
                   </Button>
+                  {confirmDelete ? (
+                    <>
+                      <Button
+                        data-testid="note-confirm-delete"
+                        variant="destructive"
+                        size="xs"
+                        onClick={handleDelete}
+                      >
+                        Confirm
+                      </Button>
+                      <Button variant="ghost" size="xs" onClick={() => setConfirmDelete(false)}>
+                        Cancel
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      data-testid="note-delete"
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => setConfirmDelete(true)}
+                      title="Delete note"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-0.5 flex items-center gap-2 text-[11px] text-text-muted">
+                <span>{formatRelative(note.createdAt)}</span>
+                {note.sourceUrl && (
+                  <>
+                    <span className="text-text-faint">·</span>
+                    <button
+                      onClick={handleOpenUrl}
+                      className="flex items-center gap-1 truncate hover:text-text-primary"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      <span className="truncate">{note.sourceUrl}</span>
+                    </button>
+                  </>
                 )}
               </div>
-            </div>
 
-            <div className="mt-0.5 flex items-center gap-2 text-[11px] text-text-muted">
-              <span>{formatRelative(note.createdAt)}</span>
-              {note.sourceUrl && (
-                <>
-                  <span className="text-text-faint">·</span>
-                  <button
-                    onClick={handleOpenUrl}
-                    className="flex items-center gap-1 truncate hover:text-text-primary"
-                  >
-                    <ExternalLink className="h-3 w-3" />
-                    <span className="truncate">{note.sourceUrl}</span>
-                  </button>
-                </>
-              )}
-            </div>
-
-            <NoteBody note={note} className="mt-2" resolveMention={resolveMention} />
-          </>
-        )}
+              <NoteBody note={note} className="mt-2" resolveMention={resolveMention} />
+            </>
+          )}
+        </div>
       </div>
-    </div>
+    </EntityContextMenu>
   )
 }

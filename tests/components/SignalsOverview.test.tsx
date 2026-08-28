@@ -7,9 +7,17 @@ import type { Capture, Selector, Tag } from '@shared/types'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { useAppStore } from '@renderer/stores/appStore'
 
+// One spy for the whole file, so a test can assert where a menu action sent
+// the operator rather than only what it wrote to the store.
+const navigate = vi.hoisted(() => vi.fn())
 vi.mock('@tanstack/react-router', () => ({
   useParams: () => ({ caseId: 'case-1' }),
-  useNavigate: () => vi.fn()
+  useNavigate: () => navigate
+}))
+
+const notifyError = vi.hoisted(() => vi.fn())
+vi.mock('@renderer/lib/notify', () => ({
+  notify: { success: vi.fn(), error: notifyError, warn: vi.fn(), info: vi.fn() }
 }))
 
 // The rail has its own test file and drags in the Foreground Match Preview's
@@ -101,6 +109,8 @@ function renderScreen() {
 
 beforeEach(() => {
   install()
+  navigate.mockReset()
+  notifyError.mockReset()
 })
 
 afterEach(() => {
@@ -393,5 +403,93 @@ describe('SignalsOverview tag delete confirmation', () => {
     await openConfirm('button')
 
     expect(screen.getByText(/Delete ‘evidence’\?/)).toBeTruthy()
+  })
+})
+
+// #701 gave a tag row its own Merge into… item, so the dialog moved up here
+// from the detail rail. One dialog, two routes into it.
+describe('SignalsOverview row context menus', () => {
+  const allTags: Tag[] = [
+    { id: 't1', name: 'evidence', color: '#22c55e' },
+    { id: 't2', name: 'finance', color: '#3b82f6' }
+  ]
+
+  it('opens the merge dialog for the right-clicked tag and reports the survivor', async () => {
+    const merge = vi.fn(async () => ({ target: allTags[1], captureLinks: 1, noteLinks: 0 }))
+    install({ tags: { list: vi.fn(async () => allTags), merge } })
+    renderScreen()
+
+    fireEvent.contextMenu(await screen.findByTestId('signal-row-t1'))
+    await screen.findByRole('menu')
+    fireEvent.click(screen.getByTestId('context-menu-item-tag-merge'))
+
+    expect(await screen.findByTestId('merge-tag-dialog')).toBeTruthy()
+    // t1 is the source, so only t2 is offered as a target.
+    fireEvent.click(await screen.findByTestId('merge-target-t2'))
+    fireEvent.click(screen.getByTestId('merge-tag-commit'))
+
+    await waitFor(() => expect(merge).toHaveBeenCalledWith({ sourceId: 't1', targetId: 't2' }))
+    // The rail follows the survivor rather than falling back to the first row.
+    await waitFor(() => expect(screen.getByTestId('rail').textContent).toBe('finance'))
+  })
+
+  it('recolours a tag from the row menu, through the same mutation the rail uses', async () => {
+    const updateTag = vi.fn(async () => allTags[0])
+    install({ tags: { list: vi.fn(async () => allTags), update: updateTag } })
+    renderScreen()
+
+    fireEvent.contextMenu(await screen.findByTestId('signal-row-t1'))
+    await screen.findByRole('menu')
+    fireEvent.keyDown(screen.getByTestId('context-menu-item-tag-color'), { key: 'Enter' })
+    fireEvent.click(await screen.findByText('Blue'))
+
+    await waitFor(() => expect(updateTag).toHaveBeenCalledWith({ id: 't1', color: '#3b82f6' }))
+  })
+
+  // Both halves matter to the operator: the filter alone leaves them on
+  // Signals looking at nothing, and the navigation alone lands them on an
+  // unfiltered list.
+  it('filters the captures by a selector picked from its row menu, and goes there', async () => {
+    renderScreen()
+
+    fireEvent.contextMenu(await screen.findByTestId('signal-row-s1'))
+    await screen.findByRole('menu')
+    fireEvent.click(screen.getByTestId('context-menu-item-selector-show-matches'))
+
+    expect(useAppStore.getState().activeSelectorFilters).toContain('s1')
+    expect(navigate).toHaveBeenCalledWith({
+      to: '/cases/$caseId/captures',
+      params: { caseId: 'case-1' }
+    })
+  })
+
+  it('exports one selector’s matches from its row menu', async () => {
+    const exportMatches = vi.fn(async () => ({ exported: true }))
+    install({ selectors: { exportMatches } })
+    renderScreen()
+
+    fireEvent.contextMenu(await screen.findByTestId('signal-row-s1'))
+    await screen.findByRole('menu')
+    fireEvent.click(screen.getByTestId('context-menu-item-selector-export'))
+
+    await waitFor(() => expect(exportMatches).toHaveBeenCalledWith('case-1', 's1'))
+    expect(notifyError).not.toHaveBeenCalled()
+  })
+
+  // The export is not a mutation, so the mutation cache's onError never sees
+  // it: without the toast a failed write looks exactly like a successful one.
+  it('tells the operator when a selector’s export fails', async () => {
+    const exportMatches = vi.fn(async () => {
+      throw new Error('no disk')
+    })
+    install({ selectors: { exportMatches } })
+    renderScreen()
+
+    fireEvent.contextMenu(await screen.findByTestId('signal-row-s1'))
+    await screen.findByRole('menu')
+    fireEvent.click(screen.getByTestId('context-menu-item-selector-export'))
+
+    await waitFor(() => expect(notifyError).toHaveBeenCalled())
+    expect(String(notifyError.mock.calls[0][0])).toContain('export')
   })
 })

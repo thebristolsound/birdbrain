@@ -332,10 +332,11 @@ Single-context layout: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/ag
 
 Unattended/background agent jobs working a `ready-for-agent` issue in this repo are opted out
 of the global wait-for-confirmation rules: do not pause for mid-task approval and do not wait
-for the user to confirm completion. Instead, verify the work (`pnpm lint`, `pnpm typecheck`,
-`BIRDBRAIN_REQUIRE_OPENSSL=1 pnpm test`, `pnpm build`, plus `pnpm build:extension` when
-`extension/` changed, **plus `pnpm test:coverage` and `pnpm coverage:diff`**), then finish by
-opening a **draft PR** with the standard attribution line. Exception: if a dispatcher
+for the user to confirm completion. Instead, commit and verify the work with `pnpm preflight`
+(it refuses a dirty tree and a non-20.x Node, runs lint, typecheck, unit tests, build, the
+extension build when `extension/` changed, coverage thresholds and diff coverage, and writes a
+sha-stamped block to `.preflight/verification.md`), then finish by opening a **draft PR** with
+the standard attribution line. Exception: if a dispatcher
 spawned you, push the branch and hand off instead. PR opening stays with the dispatcher so
 one identity authors every PR entering the slot (ADR-0012).
 
@@ -348,19 +349,19 @@ on it. Wave 1 batch 1 shipped five such PRs, four evidence-affecting, and a hand
 found twelve blocking defects behind the green badges. `gh pr create --label` is not atomic,
 so verify with `gh api repos/{owner}/{repo}/issues/<n>/labels` rather than asserting it.
 
-Those last two are the ones that catch what the others cannot. CI's job named `test` runs the
-suite *and then* `scripts/diff-coverage.mjs`, which fails the PR below 90% of changed lines
+The coverage steps are the ones that catch what the others cannot. CI's job named `test` runs
+the suite *and then* `scripts/diff-coverage.mjs`, which fails the PR below 90% of changed lines
 covered — a threshold `pnpm test` never evaluates, since it omits `--coverage`. Without them
 the loop reports green on a PR CI rejects, and the red arrives after the agent has claimed
-success. `coverage:diff` scores the **working tree** (tracked edits plus untracked files)
-against the merge base, so it matches what CI computes for the commit you are about to push
-only when `coverage-final.json` came from `pnpm test:coverage` on the same tree state — re-run
-both after any edit (#508). Interactive sessions are not covered by this carve-out, and it must
-not be copied to the global CLAUDE.md or other repos.
+success. `coverage:diff` scores the **working tree** against the merge base, which is why
+preflight insists on a clean tree: there the score equals the committed diff CI measures
+(#508). Interactive sessions are not covered by this carve-out, and it must not be copied to
+the global CLAUDE.md or other repos.
 
-**PR bodies are computed at head (ADR-0018).** Write the `## Verification` block last, from a
-run at the head sha under review, exit codes captured; any push makes it stale and it gets
-regenerated before requesting review. Any body figure a command can compute (file lists, counts,
+**PR bodies are computed at head (ADR-0018).** The `## Verification` block is the
+`.preflight/verification.md` that `pnpm preflight` wrote at the head sha under review, pasted
+verbatim and never committed; any push makes it stale and it gets regenerated before
+requesting review. Any body figure a command can compute (file lists, counts,
 coverage rows) comes from running the command at head, never from memory of an earlier run. When
 a review round's only blocking findings are body defects on an unchanged sha, fix and re-verify
 the body in the same round with no new code pass.

@@ -45,35 +45,28 @@ this file only adds the duties CLAUDE.md does not cover.
 
 ## Verify loop — run it, report real output
 
-Before opening the PR, run and pass:
+Before opening the PR, commit your work and run `pnpm preflight`. It refuses a dirty tree and
+a Node other than 20.x, then runs the whole loop — lint, typecheck, unit tests, build, the
+extension build when `extension/` changed, coverage thresholds, and diff coverage against
+`origin/main` — and writes a sha-stamped block to `.preflight/verification.md`. The command
+expansion is documented once, in the header of `scripts/preflight.mjs`. Paste the file's
+contents verbatim as the PR body's `## Verification` section. Never commit it: the commit
+would move HEAD and make the stamp stale.
 
-```
-pnpm lint
-pnpm typecheck
-BIRDBRAIN_REQUIRE_OPENSSL=1 pnpm test
-pnpm build            # plus pnpm build:extension if you touched extension/
-pnpm test:coverage    # thresholds only evaluate with --coverage; pnpm test omits it
-pnpm coverage:diff    # gate: 90% of the lines this PR changed
-```
+**The coverage steps are the ones the rest of the loop cannot stand in for.** CI's job named
+`test` runs the suite *and then* `scripts/diff-coverage.mjs` (`.github/workflows/ci.yml`),
+which fails the PR when under 90% of the changed lines are covered — a threshold plain
+`pnpm test` never evaluates, because it does not pass `--coverage`. A loop without them is
+green on a PR that CI rejects, and the failure surfaces as "the test job failed" long after
+you have reported success. This happened on PR #423: 1879 tests passing, 72.62% diff coverage,
+red. Renderer components are the usual shortfall — a new `.tsx` with no test contributes its
+whole line count to the denominator. Preflight runs both on a clean tree, so the working-tree
+scoring of `coverage:diff` (#508) equals the committed diff CI measures.
 
-**The last two are not optional, and they are the ones the first four cannot stand in for.**
-CI's job named `test` runs the suite *and then* `scripts/diff-coverage.mjs`
-(`.github/workflows/ci.yml`), which fails the PR when under 90% of the changed lines are
-covered — a threshold `pnpm test` never evaluates, because it does not pass `--coverage`. A
-loop of the first four commands is green on a PR that CI rejects, and the failure surfaces as
-"the test job failed" long after you have reported success. This happened on PR #423: 1879
-tests passing, 72.62% diff coverage, red. Renderer components are the usual shortfall — a new
-`.tsx` with no test contributes its whole line count to the denominator.
-
-`coverage:diff` scores the working tree — tracked edits plus untracked files — against the
-merge base, not the committed diff, because that is what `test:coverage` measured. Its number
-matches CI's for the commit you are about to push only when `coverage-final.json` came from a
-`test:coverage` run on the same tree state: run the two back to back after your last edit, and
-re-run both after any further change (#508).
-
-Never claim something works without having run it. If a test fails, fix the code; modify the
-test only if it is demonstrably wrong, and say why in the PR. Report actual command output in
-the PR's verification section — not a summary of what you expected.
+A failing step still produces the block, with that step marked failed and a nonzero exit. Fix
+the code, commit, and re-run; any push after the block was generated makes it stale
+(ADR-0018). If a test fails, fix the code; modify the test only if it is demonstrably wrong,
+and say why in the PR. Never claim something works without having run it.
 
 To run a single test file, use `pnpm test <path>` — no `--`. With the literal `--`
 (`pnpm test -- <path>`) the path is not taken as a filter and the full suite runs, and

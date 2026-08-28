@@ -42,6 +42,7 @@ function captureTarget(overrides: Partial<CaptureMenuTarget> = {}): CaptureMenuT
     targetIds: ['cap-a'],
     inSelection: false,
     isFavorite: false,
+    allFavorite: false,
     tags: [{ id: 't1', name: 'evidence', color: '#22c55e' }],
     actions: captureActions(),
     ...overrides
@@ -201,6 +202,18 @@ describe('capture menu, multi-selection (R20)', () => {
       'Recapture 3 captures',
       'Delete 3 captures…'
     ])
+  })
+
+  // The action toggles, so a selection that is already favourited must not be
+  // offered as "Favorite 3 captures" and then unfavourited.
+  it('offers to unfavourite a selection where every row is already a favourite', () => {
+    const all = captureTarget({
+      targetIds: ['cap-a', 'cap-b', 'cap-c'],
+      inSelection: true,
+      allFavorite: true
+    })
+    expect(labels(captureMenuEntries(all))).toContain('Unfavorite 3 captures')
+    expect(labels(captureMenuEntries(multi()))).toContain('Favorite 3 captures')
   })
 
   it('says two captures rather than 2 capture', () => {

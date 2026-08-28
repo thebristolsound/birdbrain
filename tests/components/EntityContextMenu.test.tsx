@@ -181,6 +181,7 @@ describe('EntityContextMenu submenus', () => {
       targetIds: ['cap-a'],
       inSelection: false,
       isFavorite: false,
+      allFavorite: false,
       tags: [],
       actions: {
         open: vi.fn(),

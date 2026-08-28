@@ -100,6 +100,12 @@ export interface CaptureMenuTarget {
   /** Whether the right-clicked row is currently in the multi-selection. */
   inSelection: boolean
   isFavorite: boolean
+  /**
+   * Whether every capture in `targetIds` is already a favourite. The multi
+   * target's toggle unfavourites in exactly that case, so the label reads from
+   * this rather than from `isFavorite`, which describes one row.
+   */
+  allFavorite: boolean
   /** Tags available to apply, for the "Add tag" submenu. */
   tags: TagOption[]
   actions: CaptureMenuActions
@@ -176,19 +182,23 @@ function captureNoun(n: number): string {
  * Selection-aware per ruling R20: a right-click inside a multi-selection acts
  * on the whole selection with pluralized labels, a right-click on a row outside
  * it acts on that row alone. The two sets are not the same list with different
- * labels — the multi set is exactly the selection bar's actions, because the
- * bar is the inline route those items accelerate, and single-target items
- * (copy this URL, copy this digest, open this page) have no defined meaning
- * over three rows.
+ * labels — single-target items (copy this URL, copy this digest, open this
+ * page) have no defined meaning over three rows.
+ *
+ * The multi set follows the selection bar, which is the inline route those
+ * items accelerate, without being item-for-item the same list. It omits the
+ * bar's Export button for the reason below, and it adds "Remove from
+ * selection", whose inline route is Ctrl+click on the row rather than anything
+ * the bar offers.
  *
  * Absent from the mock's thirteen, each because the app has no route to
  * accelerate: Rename (captures are not renameable), Create selector from…, and
- * Export… (per-entity evidence export is #830 and has not landed; the multi
- * set's inline route is the selection bar, which exports through the same
- * dialog #830 will reach for one row).
+ * Export… (per-entity evidence export is #830 and has not landed; a selection
+ * still exports from the bar, through the same dialog #830 will reach for one
+ * row).
  */
 export function captureMenuEntries(target: CaptureMenuTarget): MenuEntry[] {
-  const { actions, targetIds, inSelection, isFavorite, tags } = target
+  const { actions, targetIds, inSelection, isFavorite, allFavorite, tags } = target
   const count = targetIds.length
 
   if (count > 1) {
@@ -211,7 +221,7 @@ export function captureMenuEntries(target: CaptureMenuTarget): MenuEntry[] {
       tagSubmenu(tags, actions.addTag, `Add tag to ${noun}`, true),
       {
         id: 'capture-favorite',
-        label: `Favorite ${noun}`,
+        label: allFavorite ? `Unfavorite ${noun}` : `Favorite ${noun}`,
         icon: Star,
         run: actions.toggleFavorite
       },

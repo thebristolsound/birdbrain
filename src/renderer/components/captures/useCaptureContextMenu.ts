@@ -64,6 +64,10 @@ export function useCaptureContextMenu({
     (capture: Capture): CaptureMenuTarget => {
       const inSelection = visibleSelectedIds.includes(capture.id)
       const targetIds = inSelection ? visibleSelectedIds : [capture.id]
+      // The selection bar's rule, not a second one: favourite the lot unless
+      // every row already is, in which case unfavourite them. Read once, so the
+      // menu's label and the mutation it runs cannot disagree.
+      const allFavorite = targetIds.every((id) => favorites.has(id))
 
       return {
         kind: 'capture',
@@ -72,6 +76,7 @@ export function useCaptureContextMenu({
         targetIds,
         inSelection,
         isFavorite: favorites.has(capture.id),
+        allFavorite,
         tags: tags.map((tag) => ({ id: tag.id, name: tag.name, color: tag.color ?? null })),
         actions: {
           open: () => {
@@ -100,17 +105,14 @@ export function useCaptureContextMenu({
               onToggleFavorite(capture.id)
               return
             }
-            // The selection bar's rule, not a second one: favourite the lot
-            // unless every row already is, in which case unfavourite them.
-            const favorite = !targetIds.every((id) => favorites.has(id))
             setFavoriteMany.mutate(
-              { captureIds: targetIds, favorite },
+              { captureIds: targetIds, favorite: !allFavorite },
               {
                 onSuccess: ({ affected }) =>
                   notify.success(
-                    favorite
-                      ? `Favorited ${pluralCaptures(affected)}`
-                      : `Unfavorited ${pluralCaptures(affected)}`
+                    allFavorite
+                      ? `Unfavorited ${pluralCaptures(affected)}`
+                      : `Favorited ${pluralCaptures(affected)}`
                   )
               }
             )

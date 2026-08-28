@@ -52,6 +52,9 @@ let setFavoriteMany: ReturnType<typeof vi.fn>
 let enqueueCaptures: ReturnType<typeof vi.fn>
 let duplicate: ReturnType<typeof vi.fn>
 let toggleFavorite: ReturnType<typeof vi.fn>
+// Read by the bridge stub at call time, so a test can start from a selection
+// that is already favourited.
+let favoriteIds: string[]
 let writeText: ReturnType<typeof vi.fn>
 
 function renderList() {
@@ -98,6 +101,7 @@ beforeEach(() => {
   enqueueCaptures = vi.fn(async () => ({ accepted: 2, rejected: [] }))
   duplicate = vi.fn(async () => ({ status: 'duplicated', capture: CAPTURES[0] }))
   toggleFavorite = vi.fn(async () => true)
+  favoriteIds = []
   writeText = vi.fn(async () => undefined)
   Object.defineProperty(navigator, 'clipboard', {
     value: { writeText },
@@ -106,7 +110,7 @@ beforeEach(() => {
   fakeBridge({
     captures: {
       list: vi.fn(async () => CAPTURES),
-      listFavorites: vi.fn(async () => []),
+      listFavorites: vi.fn(async () => favoriteIds),
       getMatchingSelectors: vi.fn(async () => []),
       getThumbnail: vi.fn(async () => null),
       toggleFavorite,
@@ -290,6 +294,31 @@ describe('capture row context menu, selection-aware (R20)', () => {
         captureIds: ['cap-a', 'cap-b']
       })
     )
+  })
+
+  // The item toggles, so the label has to say which way it will go: over a
+  // selection that is already favourited it unfavourites, and an operator who
+  // read "Favorite 2 captures" would have clicked to do the opposite.
+  it('offers to unfavourite a selection where every row is already a favourite', async () => {
+    favoriteIds = ['cap-a', 'cap-b']
+    renderList()
+    const list = await selectTwo()
+
+    fireEvent.contextMenu(list[0])
+    await screen.findByRole('menu')
+    expect(screen.getByTestId('context-menu-item-capture-favorite').textContent).toContain(
+      'Unfavorite 2 captures'
+    )
+
+    fireEvent.click(screen.getByTestId('context-menu-item-capture-favorite'))
+    await waitFor(() =>
+      expect(setFavoriteMany).toHaveBeenCalledWith({
+        caseId: 'case1',
+        captureIds: ['cap-a', 'cap-b'],
+        favorite: false
+      })
+    )
+    await waitFor(() => expect(notifySuccess).toHaveBeenCalledWith('Unfavorited 2 captures'))
   })
 
   it('tags the whole selection and counts it in the confirmation', async () => {

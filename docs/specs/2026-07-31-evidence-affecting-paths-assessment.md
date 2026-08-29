@@ -197,7 +197,6 @@ independent of the Operator who holds it.
 
 | Path | Tier | Why |
 |---|---|---|
-| `src/main/services/hash.ts` | blocking | SHA-256 hashing/verification primitives |
 | `src/main/services/manifest.ts` | blocking | Hash-chained, signed audit manifest append/verify. The chain detects edits made without the installation-local signing key; it is not an Operator-independent guarantee |
 | `src/main/services/signingKey.ts` | blocking | Manifest signing keypair generation/storage/signing — the key the chain's assurance is bounded by |
 | `src/main/services/timestamp.ts` | blocking | RFC 3161 `TimeStampReq` construction (message imprint = the capture's `contentHash`) and TSA round-trip. The token dates the content; it does not prove manifest-chain integrity |

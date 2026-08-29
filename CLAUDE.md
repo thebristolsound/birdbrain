@@ -39,7 +39,7 @@ Electron + React 19 + TanStack Router + React Query + Chrome Extension + SQLite 
 
 ```
 src/main/services/           # Main-process services: captureServer, captureStore, storage, export, pdfExport,
-                             #   settings, hash, manifest, captureLifecycle, selectorLifecycle, recapture,
+                             #   settings, manifest, captureLifecycle, selectorLifecycle, recapture,
                              #   annotations, caseArchive, zip/zipRead, timestamp/trustedTime/tsaTrust,
                              #   signingKey, certification, waybackMachine, diagnostics, updater, deepLink,
                              #   noteAnchorResolver, logSafe

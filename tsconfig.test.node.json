@@ -29,7 +29,14 @@
       "@shared/*": ["./src/shared/*"]
     }
   },
-  "include": ["tests/**/*.ts", "tests/**/*.mts", "tests/**/*.cts"],
+  "include": [
+    "tests/**/*.ts",
+    "tests/**/*.mts",
+    "tests/**/*.cts",
+    "src/packages/**/tests/**/*.ts",
+    "src/packages/**/tests/**/*.mts",
+    "src/packages/**/tests/**/*.cts"
+  ],
   "exclude": [
     "tests/components",
     "tests/extension",

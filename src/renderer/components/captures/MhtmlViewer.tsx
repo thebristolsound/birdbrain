@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { captureMhtmlUrlQueryOptions } from '@renderer/lib/queries'
+import { useGuestFrameSize } from '@renderer/components/captures/useGuestFrameSize'
 import { MHTML_PARTITION } from '@shared/constants'
 
 interface Props {
@@ -11,6 +12,7 @@ interface Props {
 export function MhtmlViewer({ captureId }: Props) {
   const { data: fileUrl, error } = useQuery(captureMhtmlUrlQueryOptions(captureId))
   const ref = useRef<HTMLElement | null>(null)
+  const frame = useGuestFrameSize()
 
   // Defense-in-depth: block navigation + disable link clicks via CSS injection
   useEffect(() => {
@@ -38,15 +40,28 @@ export function MhtmlViewer({ captureId }: Props) {
   }
 
   return (
-    // Intentionally omit `nodeintegration` and `allowpopups` — both default to
-    // disabled in Electron, and passing them as string "false" historically
-    // *enabled* the features because HTML attribute presence = true.
-    <webview
-      ref={ref as unknown as React.RefObject<HTMLElement>}
-      src={fileUrl}
-      partition={MHTML_PARTITION}
-      webpreferences="javascript=no,contextIsolation=yes,sandbox=yes"
-      style={{ width: '100%', height: '100%', background: 'white' }}
-    />
+    // The guest is sized to its layout viewport rather than to the pane, and the pane
+    // scrolls it — see useGuestFrameSize for why the two differ (#465). `min-*: 100%`
+    // keeps the frame covering the pane if a resize is ever read late, so the fallback
+    // is a page rendered at the old width rather than a strip of empty pane.
+    <div data-testid="mhtml-viewer-scroll" className="h-full w-full overflow-auto">
+      {/* Intentionally omit `nodeintegration` and `allowpopups` — both default to
+          disabled in Electron, and passing them as string "false" historically
+          *enabled* the features because HTML attribute presence = true. */}
+      <webview
+        data-testid="mhtml-viewer"
+        ref={ref as unknown as React.RefObject<HTMLElement>}
+        src={fileUrl}
+        partition={MHTML_PARTITION}
+        webpreferences="javascript=no,contextIsolation=yes,sandbox=yes"
+        style={{
+          width: `${frame.width}px`,
+          height: `${frame.height}px`,
+          minWidth: '100%',
+          minHeight: '100%',
+          background: 'white'
+        }}
+      />
+    </div>
   )
 }

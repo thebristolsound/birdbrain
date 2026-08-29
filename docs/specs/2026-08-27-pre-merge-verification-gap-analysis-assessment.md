@@ -70,6 +70,29 @@ statements on `src/main/services/*.ts` and `src/shared/**/*.ts`, per-file gates 
 `ipcWrap.ts`, 90% on the React Query data layer, and a global ratchet — and `scripts/diff-coverage.mjs`
 separately fails a pull request under 90% of changed lines covered.
 
+One limit of that second gate is worth stating, because it is easy to read as stronger than it is.
+`diff-coverage.mjs` scores only the files vitest instruments, and instrumentation is an allowlist,
+not a blocklist: `vitest.config.ts:25` sets `include` to `src/main/**`, `src/shared/**` and
+`src/renderer/**`. Everything outside those three trees is unscorable — `extension/**`,
+`src/preload/**`, `scripts/**`, and `src/verifier/**`, which the path inventory rates blocking tier
+(`docs/specs/2026-07-31-evidence-affecting-paths-assessment.md:210`). Most changed files with no
+coverage entry are collected and named under `NOT SCORED` rather than counted, but `isSourceLike`
+(`scripts/diff-coverage.mjs:116-121`) drops `tests/`, `e2e/` and `scripts/` before that accounting,
+so a change confined to the gate script itself is skipped in silence. Either way,
+`passed = !scored || pct >= args.min` (`scripts/diff-coverage.mjs:173`) means a pull request
+touching only uninstrumented files clears the gate having been scored on nothing. The comment at
+`scripts/diff-coverage.mjs:168-170` cites #673, where about 1,300 lines of extension code shipped
+behind a `PASS — 100.00%`, and `scripts/diff-coverage.mjs:147-150` cites #684 for the naming
+behaviour that replaced the silent skip.
+
+What covers extension code instead is worth stating precisely, because the obvious answer is wrong.
+It is unit-tested — 11 files under `tests/extension/`, running in the node project
+(`vitest.config.ts:112-115`) — but not coverage-instrumented, so the gate cannot fail on it. The
+E2E suite does not cover it at all: `e2e/fixtures/electronApp.ts:68` launches Electron with
+`args: ['.', '--user-data-dir=…']` and no `--load-extension`, and `e2e/mhtml-capture.spec.ts:6`
+says the path it drives bypasses the extension. The unscorable-path gap is #1059; the silent
+`scripts/` skip is #1060.
+
 `.github/workflows/security.yml` runs three jobs on every push and pull request:
 
 - **Secret scan** — Gitleaks over `--log-opts="--all"`, so every commit on every ref is scanned. The

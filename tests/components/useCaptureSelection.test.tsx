@@ -168,7 +168,8 @@ describe('useCaptureSelection', () => {
     useAppStore.setState({ selectedCaptureIds: new Set(['cap-1']), commandPaletteOpen: true })
     // No competing listener and no preventDefault: if precedence depended on
     // registration order or on the DOM dialog query, this would clear. The
-    // palette renders no role="dialog", so state is the only honest signal.
+    // palette does carry role="dialog" since #687, but it outlives the close
+    // animation, so state is still the only honest signal.
     renderHook(() => useCaptureSelection(ORDER))
 
     act(() => {

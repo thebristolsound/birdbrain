@@ -38,6 +38,26 @@ export const TAG_PALETTE = [
   '#f97316'
 ] as const
 
+/**
+ * The palette with a name against each swatch, for surfaces that must say a
+ * colour rather than draw one — the row context menu's "Change color" submenu,
+ * where a hex string would be the item's accessible name (#701).
+ *
+ * The names are the Tailwind names of these exact values (`amber-500`,
+ * `red-500`, …), which is where the palette came from; they are not invented
+ * here.
+ */
+export const TAG_PALETTE_LABELS: { value: string; label: string }[] = [
+  { value: '#f59e0b', label: 'Amber' },
+  { value: '#ef4444', label: 'Red' },
+  { value: '#22c55e', label: 'Green' },
+  { value: '#3b82f6', label: 'Blue' },
+  { value: '#a855f7', label: 'Purple' },
+  { value: '#ec4899', label: 'Pink' },
+  { value: '#14b8a6', label: 'Teal' },
+  { value: '#f97316', label: 'Orange' }
+]
+
 /** The colour a new tag gets, cycling through the palette by tag count. */
 export function nextTagColor(existingCount: number): string {
   return TAG_PALETTE[existingCount % TAG_PALETTE.length]

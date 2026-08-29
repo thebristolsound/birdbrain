@@ -2,7 +2,9 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { X } from 'lucide-react'
 import type { Capture } from '@shared/types'
 import { CoverageStrip } from '@renderer/components/signals/CoverageStrip'
-import type { Signal } from '@renderer/components/signals/signalsModel'
+import { EntityContextMenu } from '@renderer/components/contextmenu/EntityContextMenu'
+import type { EntityMenuTarget } from '@renderer/components/contextmenu/entityMenu'
+import { TAG_PALETTE_LABELS, type Signal } from '@renderer/components/signals/signalsModel'
 
 interface SignalRowProps {
   signal: Signal
@@ -13,6 +15,14 @@ interface SignalRowProps {
   onToggleRegex: () => void
   onRename: (value: string) => void
   onDelete: () => void
+  /** Selectors only: filter the captures list by this selector and go there. */
+  onShowMatches: () => void
+  /** Selectors only: write this selector's matches out as CSV. */
+  onExportMatches: () => void
+  /** Tags only: recolour the tag from the shared palette. */
+  onSetColor: (color: string) => void
+  /** Tags only: open the merge dialog with this tag as the source. */
+  onMerge: () => void
   /** Move focus to the row above/below, or out of the list at the top. */
   onFocusSibling: (direction: -1 | 1) => void
   registerRow: (element: HTMLDivElement | null) => void
@@ -22,8 +32,10 @@ interface SignalRowProps {
 // object to the operator — a thing this case is watching for — and differ only
 // in what can be switched.
 //
-// No onContextMenu: right-click menus are #701 and the maintainer ruled that
-// wave 2 leaves no hooks for them, so there is no placeholder prop here either.
+// Wave 2 deliberately left no context-menu hooks here; #701 added them in wave
+// 3 against the final layout. The row is its own adoption point because it owns
+// the rename edit state its menu opens; everything the menu cannot reach from
+// here arrives as a prop.
 export function SignalRow({
   signal,
   captures,
@@ -33,6 +45,10 @@ export function SignalRow({
   onToggleRegex,
   onRename,
   onDelete,
+  onShowMatches,
+  onExportMatches,
+  onSetColor,
+  onMerge,
   onFocusSibling,
   registerRow
 }: SignalRowProps) {
@@ -79,132 +95,170 @@ export function SignalRow({
     }
   }
 
-  return (
-    <div
-      ref={registerRow}
-      role="button"
-      tabIndex={0}
-      data-testid={`signal-row-${signal.id}`}
-      data-selected={selected ? 'true' : 'false'}
-      onClick={onSelect}
-      onDoubleClick={beginEdit}
-      onKeyDown={handleKey}
-      className={[
-        'group flex cursor-pointer items-center gap-3 rounded px-[10px] py-2 transition-colors',
-        'outline-none focus:border-accent focus:bg-accent-subtle',
-        selected ? 'border border-accent/35 bg-accent-subtle' : 'border border-transparent'
-      ].join(' ')}
-    >
-      {isSelector ? (
-        <button
-          type="button"
-          role="switch"
-          aria-checked={signal.enabled}
-          aria-label={`Enable ${signal.name}`}
-          onClick={(event) => {
-            event.stopPropagation()
-            onToggleEnabled()
-          }}
-          className={[
-            'relative inline-flex h-4 w-[30px] shrink-0 items-center rounded-full transition-colors',
-            signal.enabled ? 'bg-accent' : 'bg-text-faint'
-          ].join(' ')}
-        >
-          <span
-            className={[
-              'inline-block h-3 w-3 rounded-full bg-white transition-transform',
-              signal.enabled ? 'translate-x-[16px]' : 'translate-x-[2px]'
-            ].join(' ')}
-          />
-        </button>
-      ) : (
-        <span className="flex w-[30px] shrink-0 justify-center">
-          <span
-            className="h-[9px] w-[9px] rounded-full"
-            style={{ background: signal.color }}
-            data-testid="signal-color-dot"
-          />
-        </span>
-      )}
-
-      {editing ? (
-        <input
-          ref={inputRef}
-          value={draft}
-          aria-label={isSelector ? 'Edit selector pattern' : 'Edit tag name'}
-          onChange={(event) => setDraft(event.target.value)}
-          onClick={(event) => event.stopPropagation()}
-          onBlur={commit}
-          onKeyDown={(event) => {
-            event.stopPropagation()
-            if (event.key === 'Escape') setEditing(false)
-            if (event.key === 'Enter') commit()
-          }}
-          className="min-w-0 flex-1 rounded border border-accent bg-canvas px-2 py-1 font-mono text-xs text-text-primary outline-none"
-        />
-      ) : (
-        <div
-          className={`min-w-0 flex-1 ${isSelector && !signal.enabled ? 'opacity-40' : ''}`}
-          data-testid="signal-name-block"
-        >
-          <div className="truncate text-xs font-semibold text-text-primary">{signal.name}</div>
-          {signal.sub && (
-            <div className="mt-px truncate font-mono text-[10px] text-text-faint">{signal.sub}</div>
-          )}
-        </div>
-      )}
-
-      {isSelector && (
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation()
-            onToggleRegex()
-          }}
-          title={
-            signal.isRegex ? 'Regex pattern — click for exact text' : 'Exact text — click for regex'
-          }
-          className={[
-            'shrink-0 rounded px-1.5 py-px font-mono text-[10px] font-semibold leading-4',
-            signal.isRegex
-              ? 'border border-accent/30 bg-accent-subtle text-accent'
-              : 'border border-border text-text-faint'
-          ].join(' ')}
-        >
-          {signal.isRegex ? '.*' : 'Aa'}
-        </button>
-      )}
-
-      <CoverageStrip
-        captures={captures}
-        captureIds={signal.captureIds}
-        fill={
-          signal.kind === 'tag' ? (signal.color ?? 'var(--color-accent)') : 'var(--color-accent)'
+  // Right-clicking a row does not select it, matching the design: the menu
+  // states its own target in its header, and stealing the selection would move
+  // the detail rail off whatever the operator was reading.
+  const menuTarget: EntityMenuTarget = isSelector
+    ? {
+        kind: 'selector',
+        selectorId: signal.id,
+        label: signal.name,
+        enabled: signal.enabled,
+        matchCount: signal.count,
+        actions: {
+          editPattern: beginEdit,
+          toggleEnabled: onToggleEnabled,
+          showMatches: onShowMatches,
+          exportMatches: onExportMatches,
+          remove: onDelete
         }
-        label={signal.name}
-      />
+      }
+    : {
+        kind: 'tag',
+        tagId: signal.id,
+        name: signal.name,
+        color: signal.color ?? null,
+        palette: TAG_PALETTE_LABELS,
+        actions: {
+          rename: beginEdit,
+          setColor: onSetColor,
+          merge: onMerge,
+          remove: onDelete
+        }
+      }
 
-      <span
-        data-testid="signal-count"
-        className={`w-7 shrink-0 text-right text-xs tabular-nums ${
-          isSelector ? 'text-accent' : 'text-text-muted'
-        }`}
+  return (
+    <EntityContextMenu target={menuTarget}>
+      <div
+        ref={registerRow}
+        role="button"
+        tabIndex={0}
+        data-testid={`signal-row-${signal.id}`}
+        data-selected={selected ? 'true' : 'false'}
+        onClick={onSelect}
+        onDoubleClick={beginEdit}
+        onKeyDown={handleKey}
+        className={[
+          'group flex cursor-pointer items-center gap-3 rounded px-[10px] py-2 transition-colors',
+          'outline-none focus:border-accent focus:bg-accent-subtle',
+          selected ? 'border border-accent/35 bg-accent-subtle' : 'border border-transparent'
+        ].join(' ')}
       >
-        {signal.count}
-      </span>
+        {isSelector ? (
+          <button
+            type="button"
+            role="switch"
+            aria-checked={signal.enabled}
+            aria-label={`Enable ${signal.name}`}
+            onClick={(event) => {
+              event.stopPropagation()
+              onToggleEnabled()
+            }}
+            className={[
+              'relative inline-flex h-4 w-[30px] shrink-0 items-center rounded-full transition-colors',
+              signal.enabled ? 'bg-accent' : 'bg-text-faint'
+            ].join(' ')}
+          >
+            <span
+              className={[
+                'inline-block h-3 w-3 rounded-full bg-white transition-transform',
+                signal.enabled ? 'translate-x-[16px]' : 'translate-x-[2px]'
+              ].join(' ')}
+            />
+          </button>
+        ) : (
+          <span className="flex w-[30px] shrink-0 justify-center">
+            <span
+              className="h-[9px] w-[9px] rounded-full"
+              style={{ background: signal.color }}
+              data-testid="signal-color-dot"
+            />
+          </span>
+        )}
 
-      <button
-        type="button"
-        onClick={(event) => {
-          event.stopPropagation()
-          onDelete()
-        }}
-        title={isSelector ? 'Delete selector' : 'Delete tag'}
-        aria-label={`Delete ${signal.name}`}
-        className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-text-faint opacity-0 transition-opacity hover:bg-red-500/10 hover:text-red-400 focus:opacity-100 group-hover:opacity-100"
-      >
-        <X className="h-3 w-3" strokeWidth={2} />
-      </button>
-    </div>
+        {editing ? (
+          <input
+            ref={inputRef}
+            value={draft}
+            aria-label={isSelector ? 'Edit selector pattern' : 'Edit tag name'}
+            onChange={(event) => setDraft(event.target.value)}
+            onClick={(event) => event.stopPropagation()}
+            onBlur={commit}
+            onKeyDown={(event) => {
+              event.stopPropagation()
+              if (event.key === 'Escape') setEditing(false)
+              if (event.key === 'Enter') commit()
+            }}
+            className="min-w-0 flex-1 rounded border border-accent bg-canvas px-2 py-1 font-mono text-xs text-text-primary outline-none"
+          />
+        ) : (
+          <div
+            className={`min-w-0 flex-1 ${isSelector && !signal.enabled ? 'opacity-40' : ''}`}
+            data-testid="signal-name-block"
+          >
+            <div className="truncate text-xs font-semibold text-text-primary">{signal.name}</div>
+            {signal.sub && (
+              <div className="mt-px truncate font-mono text-[10px] text-text-faint">
+                {signal.sub}
+              </div>
+            )}
+          </div>
+        )}
+
+        {isSelector && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              onToggleRegex()
+            }}
+            title={
+              signal.isRegex
+                ? 'Regex pattern — click for exact text'
+                : 'Exact text — click for regex'
+            }
+            className={[
+              'shrink-0 rounded px-1.5 py-px font-mono text-[10px] font-semibold leading-4',
+              signal.isRegex
+                ? 'border border-accent/30 bg-accent-subtle text-accent'
+                : 'border border-border text-text-faint'
+            ].join(' ')}
+          >
+            {signal.isRegex ? '.*' : 'Aa'}
+          </button>
+        )}
+
+        <CoverageStrip
+          captures={captures}
+          captureIds={signal.captureIds}
+          fill={
+            signal.kind === 'tag' ? (signal.color ?? 'var(--color-accent)') : 'var(--color-accent)'
+          }
+          label={signal.name}
+        />
+
+        <span
+          data-testid="signal-count"
+          className={`w-7 shrink-0 text-right text-xs tabular-nums ${
+            isSelector ? 'text-accent' : 'text-text-muted'
+          }`}
+        >
+          {signal.count}
+        </span>
+
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            onDelete()
+          }}
+          title={isSelector ? 'Delete selector' : 'Delete tag'}
+          aria-label={`Delete ${signal.name}`}
+          className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-text-faint opacity-0 transition-opacity hover:bg-red-500/10 hover:text-red-400 focus:opacity-100 group-hover:opacity-100"
+        >
+          <X className="h-3 w-3" strokeWidth={2} />
+        </button>
+      </div>
+    </EntityContextMenu>
   )
 }

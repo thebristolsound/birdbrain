@@ -10,5 +10,6 @@
       "@shared/*": ["./src/shared/*"]
     }
   },
-  "include": ["src/main/**/*", "src/preload/**/*", "src/shared/**/*"]
+  "include": ["src/main/**/*", "src/preload/**/*", "src/shared/**/*", "src/packages/**/*"],
+  "exclude": ["src/packages/**/tests/**"]
 }

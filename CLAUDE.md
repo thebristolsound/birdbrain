@@ -13,6 +13,7 @@ Open source web investigation & capture tool. Electron desktop app with a compan
 - `pnpm test:watch` - Run tests in watch mode
 - `pnpm test:coverage` / `pnpm coverage:report` / `pnpm coverage:all` - Coverage run and reports
 - `pnpm lint` - ESLint (.ts, .tsx)
+- `pnpm lint:boundaries` - dependency-cruiser: packages under `src/packages/` are importable only through their root files
 - `pnpm typecheck` - Typecheck all six tsconfig projects: `src` main/preload/shared, `src` renderer, extension, then `tests/` (node flavour and web flavour) and `e2e/`. Tests are inside the gate — see "Testing" below
 - `pnpm format` - Prettier format src/ and extension/
 - `pnpm rebuild:electron` - Rebuild native deps (better-sqlite3)
@@ -39,7 +40,7 @@ Electron + React 19 + TanStack Router + React Query + Chrome Extension + SQLite 
 
 ```
 src/main/services/           # Main-process services: captureServer, captureStore, storage, export, pdfExport,
-                             #   settings, hash, manifest, captureLifecycle, selectorLifecycle, recapture,
+                             #   settings, manifest, captureLifecycle, selectorLifecycle, recapture,
                              #   annotations, caseArchive, zip/zipRead, timestamp/trustedTime/tsaTrust,
                              #   signingKey, certification, waybackMachine, diagnostics, updater, deepLink,
                              #   noteAnchorResolver, logSafe
@@ -56,6 +57,7 @@ src/shared/noteDoc.ts        # Rich-text note document model + body derivation
 src/shared/noteAnchor.ts     # Note anchor model + text-anchor resolution
 src/shared/verify/           # Evidence-package verification (canonicalJson, manifestChain, signature, timestampToken)
 src/verifier/cli.ts          # Standalone verifier CLI entry point
+src/packages/                # Deep-module packages (entry points at the root, lib/ and tests/ private)
 src/renderer/routes/         # TanStack Router route definitions (root tree plus captures route module)
 src/renderer/stores/         # Zustand store (appStore.ts)
 src/renderer/hooks/          # React hooks for theme, search, filters, viewport, favorites, session restore, server status, etc.
@@ -66,6 +68,8 @@ tests/                       # Vitest unit tests
 e2e/                         # Playwright E2E tests
 docs/                        # Local working notes — see docs/README.md for layout (reference/, specs/, plans/, archive/)
 ```
+
+Packages are deep modules - see [src/packages/README.md](./src/packages/README.md) before adding or importing one.
 
 ### Path aliases
 

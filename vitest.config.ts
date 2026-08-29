@@ -15,14 +15,19 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['tests/**/*.test.{ts,tsx}'],
+    include: ['tests/**/*.test.{ts,tsx}', 'src/packages/**/tests/**/*.test.ts'],
     coverage: {
       provider: 'v8',
       // 'json' emits coverage-final.json (per-statement hit counts), which
       // scripts/diff-coverage.mjs needs to score only the lines a PR changed.
       reporter: ['text', 'html', 'json-summary', 'json'],
       reportsDirectory: 'coverage',
-      include: ['src/main/**/*.ts', 'src/shared/**/*.ts', 'src/renderer/**/*.{ts,tsx}'],
+      include: [
+        'src/main/**/*.ts',
+        'src/shared/**/*.ts',
+        'src/renderer/**/*.{ts,tsx}',
+        'src/packages/**/*.ts'
+      ],
       exclude: [
         '**/*.d.ts',
         '**/types.ts',
@@ -111,7 +116,7 @@ export default defineConfig({
         test: {
           name: 'node',
           environment: 'node',
-          include: ['tests/**/*.test.ts'],
+          include: ['tests/**/*.test.ts', 'src/packages/**/tests/**/*.test.ts'],
           exclude: ['tests/renderer/**', 'tests/hooks/**'],
           setupFiles: ['./tests/setup/signing-key.ts']
         }

@@ -46,9 +46,36 @@ describe('MhtmlViewer', () => {
     expect(guest.getAttribute('src')).toBe(FILE_URL)
     expect(guest.getAttribute('partition')).toBe(MHTML_PARTITION)
     expect(guest.getAttribute('webpreferences')).toContain('javascript=no')
+    expect(guest.getAttribute('webpreferences')).toContain('sandbox=yes')
     // Presence is truth for these two, so absence is the posture.
     expect(guest.getAttribute('nodeintegration')).toBeNull()
     expect(guest.getAttribute('allowpopups')).toBeNull()
+  })
+
+  // Re-parenting the element under a scroll container is the kind of edit that can
+  // quietly drop the listeners this viewer's posture rests on, so both are asserted
+  // against the element as mounted.
+  it('refuses a navigation the guest attempts anyway', async () => {
+    renderViewer()
+    const guest = await screen.findByTestId('mhtml-viewer')
+
+    for (const type of ['will-navigate', 'new-window']) {
+      const event = new Event(type, { cancelable: true })
+      fireEvent(guest, event)
+      expect(event.defaultPrevented).toBe(true)
+    }
+  })
+
+  it('disables links in the guest once it is ready', async () => {
+    renderViewer()
+    const guest = await screen.findByTestId('mhtml-viewer')
+    const insertCSS = vi.fn()
+    Object.assign(guest, { insertCSS })
+
+    fireEvent(guest, new Event('dom-ready'))
+
+    expect(insertCSS).toHaveBeenCalledOnce()
+    expect(insertCSS.mock.calls[0][0]).toContain('pointer-events: none')
   })
 
   it('sizes the frame to the window rather than to the pane, and lets the pane scroll', async () => {

@@ -1,6 +1,6 @@
 # Agent posting controls: commit messages, PR bodies, comments
 
-Date: 2026-08-29. Status: agreed in a grilling session, awaiting the go to build.
+Date: 2026-08-29. Status: built on branch `t3code/agent-message-controls`; recorded as ADR-0022.
 
 ## Problem
 

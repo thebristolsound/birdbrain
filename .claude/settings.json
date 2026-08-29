@@ -63,7 +63,14 @@
       "Bash(git show HEAD)",
       "Bash(git blame:*)",
       "Bash(gh api repos/thebristolsound/birdbrain/:*)",
-      "Bash(gh api /user:*)"
+      "Bash(gh api /user:*)",
+      "Bash(pnpm typecheck)",
+      "Bash(pnpm typecheck *)",
+      "Bash(pnpm coverage:diff)",
+      "Bash(pnpm coverage:diff *)",
+      "Bash(pnpm test tests/*)",
+      "Bash(vale *)",
+      "Bash(npx prettier --check *)"
     ]
   }
 }

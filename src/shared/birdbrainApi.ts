@@ -152,6 +152,7 @@ export interface BirdbrainAPI {
     get(id: string): Promise<Selector | undefined>
     create(params: CreateSelectorParams): Promise<Selector>
     update(params: UpdateSelectorParams): Promise<Selector | undefined>
+    rescan(id: string): Promise<boolean>
     delete(id: string): Promise<boolean>
     listActive(): Promise<ActiveCaseSelectors[]>
     matchCounts(caseId: string): Promise<Record<string, number>>

@@ -112,6 +112,7 @@ const birdbrain = {
     get: bridge(IPC_CHANNELS.SELECTORS_GET),
     create: bridge(IPC_CHANNELS.SELECTORS_CREATE),
     update: bridge(IPC_CHANNELS.SELECTORS_UPDATE),
+    rescan: bridge(IPC_CHANNELS.SELECTORS_RESCAN),
     delete: bridge(IPC_CHANNELS.SELECTORS_DELETE),
     listActive: bridge(IPC_CHANNELS.SELECTORS_LIST_ACTIVE),
     matchCounts: bridge(IPC_CHANNELS.SELECTORS_MATCH_COUNTS),

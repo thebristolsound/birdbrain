@@ -61,6 +61,10 @@ export function useServerStatus() {
       queryClient.invalidateQueries({ queryKey: queryKeys.selectorMatchCounts(caseId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.selectorCoverage(caseId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.selectorMatchingCapturesAll(caseId) })
+      // The matrix backs the coverage strip and the rail's "Appears in" list
+      // (#829). Leaving it out showed pre-rescan membership beside a count the
+      // three keys above had already moved.
+      queryClient.invalidateQueries({ queryKey: queryKeys.selectorCaptureMatrix(caseId) })
     })
 
     // Deep links (birdbrain://) from the extension popup route the window here.

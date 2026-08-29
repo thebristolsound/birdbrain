@@ -24,6 +24,7 @@ export interface SelectorLifecycle {
   createSelector: (params: CreateSelectorParams) => Selector
   bulkCreateSelectors: (params: BulkCreateSelectorsParams) => Selector[]
   updateSelector: (params: UpdateSelectorParams) => Selector | undefined
+  rescanSelector: (id: string) => boolean
   runActiveSelectorsForCapture: (captureId: string, caseId: string, textContent: string) => void
 }
 
@@ -128,6 +129,32 @@ export function createSelectorLifecycle(deps: SelectorLifecycleDeps): SelectorLi
       }
 
       return updated
+    },
+    // Operator-invoked backfill (#829). Ingest already matches enabled selectors
+    // against each new capture — captureLifecycle.runPostCaptureWork calls
+    // runActiveSelectorsForCapture whenever textContent is present — so ordinary
+    // post-creation captures are matched without this. This covers the captures
+    // that path does not reach. The main ones, not an exhaustive list: captures
+    // older than the RETRO_MAX_CAPTURES window create-time backfill scanned;
+    // captures ingested while the selector was disabled (matchSelectorsForCapture
+    // skips disabled selectors); captures whose text was unavailable at ingest;
+    // and duplicates, which carry copied text but never run post-capture work at
+    // all (#1082).
+    //
+    // Additive, never clear-then-rescan (ruling W2): matchSelectorAgainstCaptures
+    // is INSERT OR IGNORE, so this pass can only add rows. The clear-first shape
+    // updateSelector uses would delete every match and then skip any capture
+    // whose text will not load, silently dropping rows that ride inside case
+    // archives. The accepted cost is that a stale match cannot be retired here.
+    //
+    // Unbounded (W10) because reaching those later captures is the whole point,
+    // and not gated on `enabled` (W11) because matchSelectorAgainstCaptures does
+    // not check it either — create-time backfill already behaves this way.
+    rescanSelector(id) {
+      const selector = selectorRepo.getSelector(id)
+      if (!selector) return false
+      scheduleRetroactiveMatch([selector], selector.caseId, { unbounded: true })
+      return true
     },
     runActiveSelectorsForCapture(captureId, caseId, textContent) {
       selectorRepo.matchSelectorsForCapture(captureId, caseId, textContent)

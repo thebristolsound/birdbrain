@@ -68,6 +68,9 @@ coverage/
 .claude/skills/*
 !.claude/skills/dispatch/
 !.claude/skills/override-record/
+!.claude/skills/post-commit-message/
+!.claude/skills/post-pr-body/
+!.claude/skills/post-comment/
 !.claude/hooks/
 .codex
 .cursor

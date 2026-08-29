@@ -639,6 +639,10 @@ describe('ipcHandlers — captures', () => {
     // nothing — least of all the production constant.
     await startCaptureServer({ selectorLifecycle, captureLifecycle, sessionService }, 0)
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    // Matched by URL, not by call index: the ingest the pipeline test performs
+    // may grow its own outbound requests, and a positional [0]/[1] would then
+    // fail on the shift rather than on the port.
+    const requestedUrls = (): string[] => fetchSpy.mock.calls.map(([input]) => String(input))
     try {
       const port = getCaptureServerPort()
       expect(port).not.toBeNull()
@@ -646,12 +650,15 @@ describe('ipcHandlers — captures', () => {
 
       const http = expectOk<SelfTestResult>(await invoke(IPC_CHANNELS.CAPTURES_TEST_HTTP))
       expect(http.success).toBe(true)
-      expect(String(fetchSpy.mock.calls[0][0])).toBe(`http://127.0.0.1:${port}/api/status`)
+      expect(requestedUrls()).toContain(`http://127.0.0.1:${port}/api/status`)
 
       settings.updateSettings({ operatorName: 'Test Operator' })
       const pipeline = expectOk<SelfTestResult>(await invoke(IPC_CHANNELS.CAPTURES_TEST_PIPELINE))
       expect(pipeline.success).toBe(true)
-      expect(String(fetchSpy.mock.calls[1][0])).toBe(`http://127.0.0.1:${port}/api/captures/test`)
+      expect(requestedUrls()).toContain(`http://127.0.0.1:${port}/api/captures/test`)
+      // The regression this file exists to catch: nothing was aimed at the
+      // constant, whoever else answers there.
+      expect(requestedUrls().filter((u) => u.includes(`:${CAPTURE_SERVER_PORT}/`))).toEqual([])
     } finally {
       fetchSpy.mockRestore()
       await stopCaptureServer()

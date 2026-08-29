@@ -9,6 +9,12 @@ interface Props {
 }
 
 // Renders MHTML via an Electron <webview> with JavaScript disabled.
+//
+// Two surfaces mount it: the Page tab's mhtml branch in CaptureViewer, and the Wayback
+// tab's stored-capture pane via CapturePane in WaybackCompare (asserted there by
+// tests/components/WaybackCompare.test.tsx). A change to the frame or to the guest's
+// posture here changes both, and the Wayback one sits beside a live archive.org guest
+// still sized `100%` (#1126) — so the two panes of that comparison are not alike.
 export function MhtmlViewer({ captureId }: Props) {
   const { data: fileUrl, error } = useQuery(captureMhtmlUrlQueryOptions(captureId))
   const ref = useRef<HTMLElement | null>(null)
@@ -42,8 +48,10 @@ export function MhtmlViewer({ captureId }: Props) {
   return (
     // The guest is sized to its layout viewport rather than to the pane, and the pane
     // scrolls it — see useGuestFrameSize for why the two differ (#465). `min-*: 100%`
-    // keeps the frame covering the pane if a resize is ever read late, so the fallback
-    // is a page rendered at the old width rather than a strip of empty pane.
+    // does one thing only: it stops the element being smaller than the pane, so a window
+    // narrower than the pane leaves no strip of empty pane beside the page. It is not a
+    // fallback for a stale measurement — the guest lays out against the *current* window
+    // whatever size the element is, so an element read late still clips.
     <div data-testid="mhtml-viewer-scroll" className="h-full w-full overflow-auto">
       {/* Intentionally omit `nodeintegration` and `allowpopups` — both default to
           disabled in Electron, and passing them as string "false" historically

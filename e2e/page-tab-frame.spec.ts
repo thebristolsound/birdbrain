@@ -6,8 +6,15 @@ type Page = import('@playwright/test').Page
 // Electron sizes a `<webview>`'s widget from the element's box but lays the guest's
 // document out against the embedder window's viewport, so a frame sized to the pane
 // painted the rest of the archived page outside its own element, where an
-// overflow-hidden pane clipped it and nothing could scroll to it. jsdom has no guest
-// and no layout, so it can only keep the shape of the fix, not its effect.
+// overflow-hidden pane clipped it and nothing could scroll to it.
+//
+// What this adds over the jsdom test is real layout: the frame's measured box, the
+// pane's real scroll extent, and both across a details-column collapse. What it does
+// not do is observe a pixel the guest rendered — the guest runs with `javascript=no`,
+// so no `evaluate` can run inside it, and reaching its pixels would take a
+// main-process `webContents.capturePage()` probe on the guest plus an image check.
+// Until that exists, the assertions below are geometry, close to a restatement of the
+// two style properties the fix changed.
 
 // An archived page that fills its viewport, so any mismatch between the guest's layout
 // viewport and its widget shows up as content nobody can reach.

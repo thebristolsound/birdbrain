@@ -27,7 +27,7 @@ Each rule is an `error` in `.dependency-cruiser.cjs`.
 
 **Tests through the entry points.** Files under `<name>/tests/` import any package's entry points and their own `tests/` fixtures, but never a file below the root of any package, not even their own. If a test needs to reach past the interface, the interface is the wrong shape. Nothing outside `tests/` imports a `tests/` folder.
 
-**No cycles.** No dependency cycles anywhere under `src/`. Because the config reads the root `tsconfig.json`, `@main/*` imports are not resolved and a cycle through one of them is not detected; `@renderer/*` and `@shared/*` are.
+**No cycles.** No runtime import cycles anywhere the cruise reaches; a cycle closed only by `import type` edges is allowed, since it is erased at compile time. The cruise resolves `@main/*`, `@renderer/*`, `@shared/*` and `@extension/*` through `tsconfig.boundaries.json`; an alias missing from that file leaves its edges unresolved and invisible to every rule, so add new aliases there too.
 
 ## Entry points, not barrels
 
@@ -39,4 +39,4 @@ The public surface is every root file, so expose several small entry points (`in
 pnpm lint:boundaries
 ```
 
-The command cruises everything under `src/` and exits non-zero on any violation. The output names the rule and the offending import. The tests for a package live beside it and run with the rest of the suite: `pnpm test src/packages/<name>/tests`.
+The command cruises `src/`, `extension/src/`, `tests/` and `e2e/` (every first-party importer) and exits non-zero on any violation. The output names the rule and the offending import. The tests for a package live beside it and run with the rest of the suite: `pnpm test src/packages/<name>/tests`.

@@ -13,7 +13,7 @@ Open source web investigation & capture tool. Electron desktop app with a compan
 - `pnpm test:watch` - Run tests in watch mode
 - `pnpm test:coverage` / `pnpm coverage:report` / `pnpm coverage:all` - Coverage run and reports
 - `pnpm lint` - ESLint (.ts, .tsx)
-- `pnpm lint:boundaries` - dependency-cruiser: packages under `src/packages/` are importable only through their root files
+- `pnpm lint:boundaries` - dependency-cruiser over `src/`, `extension/src/`, `tests/` and `e2e/`: packages under `src/packages/` are importable only through their root files, and no import cycles
 - `pnpm typecheck` - Typecheck all six tsconfig projects: `src` main/preload/shared, `src` renderer, extension, then `tests/` (node flavour and web flavour) and `e2e/`. Tests are inside the gate — see "Testing" below
 - `pnpm format` - Prettier format src/ and extension/
 - `pnpm rebuild:electron` - Rebuild native deps (better-sqlite3)

@@ -17,6 +17,7 @@
 // run still produces a complete, honest block (success-only emission would
 // recreate the incentive to claim success):
 //   pnpm lint
+//   pnpm lint:boundaries
 //   pnpm typecheck
 //   BIRDBRAIN_REQUIRE_OPENSSL=1 pnpm test
 //   pnpm build
@@ -216,6 +217,7 @@ const main = async () => {
   }
 
   await run('pnpm', ['lint'], 'pnpm lint')
+  await run('pnpm', ['lint:boundaries'], 'pnpm lint:boundaries')
   await run('pnpm', ['typecheck'], 'pnpm typecheck')
   await run('pnpm', ['test'], 'BIRDBRAIN_REQUIRE_OPENSSL=1 pnpm test', describeVitest)
   await run('pnpm', ['build'], 'pnpm build')

@@ -1,4 +1,11 @@
 {
+  "attribution": {
+    "commit": "",
+    "pr": "",
+    "sessionUrl": false
+  },
+  "includeGitInstructions": false,
+  "outputStyle": "Plain Technical",
   "hooks": {
     "SessionStart": [
       {

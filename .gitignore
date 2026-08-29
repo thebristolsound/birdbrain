@@ -59,6 +59,7 @@ coverage/
 .agents
 .claude/*
 !.claude/settings.json
+!.claude/output-styles/
 !.claude/agents/
 .claude/agents/*
 !.claude/agents/birdbrain-implementer.md

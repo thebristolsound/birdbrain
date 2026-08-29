@@ -105,10 +105,11 @@ const SELF_TEST_TIMEOUT_MS = 2000
 // The self-tests report on *this process's* capture server, so they resolve the
 // port from the live listener and refuse to probe at all when there is none.
 // Probing the CAPTURE_SERVER_PORT constant instead meant any HTTP responder on
-// 19845 was read as our server: with a second Birdbrain running — or, under
-// WSL2, one running on the Windows host, whose listener is invisible to `ss`
-// inside the distro — a stopped server self-reported healthy against a foreign
-// process, and the pipeline test POSTed a test capture into it (#462).
+// 19845 was read as our server: with a second Birdbrain running — under WSL2,
+// one on the Windows host, whose listener is invisible to `ss` inside the
+// distro — a stopped server reported the http self-test healthy against that
+// foreign process, /api/status being unauthenticated, and aimed the pipeline
+// test's POST at it (#462).
 const SERVER_NOT_RUNNING_MSG = 'Capture server is not running'
 
 // Reveal/open is limited to files THIS process authored (export outputs). A

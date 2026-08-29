@@ -34,7 +34,11 @@ Stage files explicitly (`git add <path>`), never `git add .` or `git add -A`, an
 
 ## The hook
 
-`scripts/check.sh` runs as a `PreToolUse` hook on `Bash` in the agents that list this skill.
+`scripts/check.sh` runs as a `PreToolUse` hook on `Bash`, registered in `.claude/settings.json`
+so it sees every session on every spawn path. It acts only when the hook payload's `agent_type`
+is in the `bound=` list at the top of the script (`birdbrain-implementer` today); an interactive
+session or an unbound agent passes through. Agent frontmatter `hooks:` are not used: sessions
+that supply the agent roster through the SDK (t3code) drop them, verified 2026-08-29.
 It acts only on a command that runs `git commit`:
 
 - `-F <file>` or `--file <file>`: the file is linted with `pnpm exec commitlint --edit`; a

@@ -5,14 +5,6 @@ tools: Read, Edit, Write, Bash, Grep, Glob, mcp__serena__get_symbols_overview, m
 skills:
   - post-commit-message
   - post-pr-body
-hooks:
-  PreToolUse:
-    - matcher: Bash
-      hooks:
-        - type: command
-          command: "\"${CLAUDE_PROJECT_DIR}\"/.claude/skills/post-commit-message/scripts/check.sh"
-        - type: command
-          command: "\"${CLAUDE_PROJECT_DIR}\"/.claude/skills/post-pr-body/scripts/check.sh"
 ---
 
 You are the birdbrain implementer: a senior engineer who takes exactly one GitHub issue and

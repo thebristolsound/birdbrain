@@ -17,7 +17,8 @@ expect() {
 }
 
 hook() {
-  node -e 'process.stdout.write(JSON.stringify({tool_name:"Bash",cwd:process.argv[1],tool_input:{command:process.argv[2]}}))' "$fx" "$1" \
+  # $1 command, $2 agent_type (default: the bound agent; "" for an interactive session)
+  node -e 'const a=process.argv[3]; process.stdout.write(JSON.stringify({tool_name:"Bash",cwd:process.argv[1],...(a?{agent_type:a}:{}),tool_input:{command:process.argv[2]}}))' "$fx" "$1" "${2-birdbrain-implementer}" \
     | "$check" >/dev/null 2>&1
   echo $?
 }
@@ -45,6 +46,8 @@ expect 2 "$(hook "gh pr edit 12 -b 'inline'")" "hook blocks -b"
 expect 0 "$(hook "gh api repos/o/r/pulls/12 --jq .draft")" "hook ignores a pulls read"
 expect 0 "$(hook "gh api repos/o/r/pulls -X POST --input pass-filled.json")" "hook allows a passing api payload"
 expect 2 "$(hook "gh api repos/o/r/pulls -X POST --input fail-payload.json")" "hook blocks a failing api payload"
+expect 0 "$(hook "gh pr create --draft --title t --body 'inline'" "")" "hook passes through an interactive session"
+expect 0 "$(hook "gh pr create --draft --title t --body 'inline'" "birdbrain-reviewer")" "hook passes through an unbound agent"
 
 echo "$fails failure(s)"
 [ "$fails" -eq 0 ]

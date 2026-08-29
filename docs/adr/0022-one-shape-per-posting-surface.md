@@ -72,10 +72,18 @@ the attribution setting being ignored on one path.
 
 ### Enforcement starts on one agent
 
-`birdbrain-implementer` loads `post-commit-message` and `post-pr-body` at start and carries
-their hooks. The reviewer and dispatcher write comments against `post-comment` by instruction
-and run its check by hand. Interactive sessions are bound by prose only. The hooks widen to the
-other roles and to `settings.json` once the implementer hooks have held for a few PRs.
+`birdbrain-implementer` loads `post-commit-message` and `post-pr-body` at start. Their hooks
+are registered in `.claude/settings.json` and each `check.sh` acts only when the payload's
+`agent_type` is in its `bound=` list, so binding a surface to another agent is a one-word
+change in that script. The reviewer and dispatcher write comments against `post-comment` by
+instruction and run its check by hand. Interactive sessions are bound by prose only. The
+binding widens to the other roles once the implementer hooks have held for a few PRs.
+
+The hooks were first placed in the agent's frontmatter. A probe on 2026-08-29 showed that a
+subagent spawned from a t3code session (`entrypoint: sdk-ts`) runs without them, while the
+same agent spawned from a plain `claude` session, or run with `--agent`, gets them. A
+`settings.json` hook reached the subagent on both paths, and its payload carries `agent_type`
+(Claude Code 2.1.69), which is what the gate reads.
 
 ## Consequences
 
@@ -89,6 +97,9 @@ other roles and to `settings.json` once the implementer hooks have held for a fe
 - Whether `claude -p` (the doc-curator runner) applies `outputStyle`, and whether `BLANK`
   suppresses GitHub's squash-time co-author trailer, are unverified and get checked on the next
   run of each.
+- Every session in the repository runs the two hooks on every `Bash` call. The cost is one
+  `node` start per call for the gate; the linters run only for a bound agent's commit or PR
+  write.
 
 ## Alternatives rejected
 

@@ -48,10 +48,13 @@ Every decision below was put to the maintainer and accepted with the recommended
 8. **Unit of enforcement: one skill per surface.** `.claude/skills/post-commit-message/`,
    `.claude/skills/post-pr-body/` and `.claude/skills/post-comment/`, each holding `SKILL.md`
    (the rule), `template.md` and `scripts/check.sh` (the linter). The hook that runs the
-   linter lives in the agent's frontmatter (`hooks: PreToolUse`, matcher `Bash`), because a
-   skill's own `hooks:` is only documented to fire when the skill is invoked, not loaded at
-   agent start. An agent adopts a surface by listing the skill under `skills:` and adding the
-   hook. The dispatch skill references `post-comment` for the comments it posts.
+   linter was planned for the agent's frontmatter (`hooks: PreToolUse`, matcher `Bash`),
+   because a skill's own `hooks:` is only documented to fire when the skill is invoked, not
+   loaded at agent start. **Amended at build time (2026-08-29):** the frontmatter hook does not
+   fire for a subagent spawned from a t3code session, so the hook is registered in
+   `.claude/settings.json` and each `check.sh` gates on the payload's `agent_type` against a
+   `bound=` list. An agent adopts a surface by listing the skill under `skills:` and being
+   named in `bound=`. The dispatch skill references `post-comment` for the comments it posts.
 9. **First surface and agent:** PR body on `birdbrain-implementer`, with commit messages on
    the same agent because `commitlint` makes that nearly free. The reviewer and dispatcher adopt
    `post-comment` by reference (prose) in this change; their hooks come in a later iteration
@@ -87,7 +90,10 @@ Every decision below was put to the maintainer and accepted with the recommended
   when a branch has a second author. Whether `BLANK` suppresses the latter is unverified.
 - Claude Code 2.1.251 is installed; the `attribution` setting exists since 2.0.62.
 - Agent frontmatter supports `hooks:` scoped to the subagent's lifetime and `skills:` preload.
-  Skills bundle `template.md` and `scripts/` addressable as `${CLAUDE_SKILL_DIR}`.
+  Skills bundle `template.md` and `scripts/` addressable as `${CLAUDE_SKILL_DIR}`. Verified
+  2026-08-29: the frontmatter hooks fire under plain `claude` (Agent tool and `--agent`) and
+  not under a t3code session; a `settings.json` `PreToolUse` hook fires on both, with
+  `agent_type` in its payload.
 - No off-the-shelf tool lints PR body section structure locally; GitHub has no required-section
   feature. `commitlint` (v21.2.2, 2026-08-13) lints a message file before any commit exists.
 - The output style exists only at `~/.claude/output-styles/`; cloud sessions and runners read
@@ -104,8 +110,8 @@ Grouped as the commits they become, in order.
 3. `feat(skills)`: the three skill directories, each with `SKILL.md`, `template.md`,
    `scripts/check.sh` and a `scripts/test-check.sh` that runs the linter over pass and fail
    fixtures.
-4. `docs(agents)`: `.claude/agents/birdbrain-implementer.md` (frontmatter `skills:` and
-   `hooks:`; the duplicated commit and PR-body prose replaced by a pointer; rule 4 widened),
+4. `docs(agents)`: `.claude/agents/birdbrain-implementer.md` (frontmatter `skills:`; the
+   duplicated commit and PR-body prose replaced by a pointer; rule 4 widened),
    `.claude/agents/birdbrain-reviewer.md` (pointer to `post-comment`),
    `.claude/skills/dispatch/SKILL.md` (merge call with subject and body, full report off the
    PR, reply shape, pointer to `post-comment`), `CLAUDE.md` (pointer lines only).
@@ -125,7 +131,7 @@ after the go, and recorded in the ADR with the before and after values.
   rejects PR #1117's body (walkthrough sections, over the cap) and accepts the template filled
   in; the comment linter rejects a 21-line verdict and accepts a 20-line one.
 - The hook fires inside the implementer: a dry spawn with a deliberately bad commit message is
-  blocked with the linter output on `stderr`.
+  blocked with the linter output on `stderr`. (This step is what found the frontmatter gap.)
 - `gh api repos/thebristolsound/birdbrain --jq '{squash_merge_commit_title,
   squash_merge_commit_message}'` shows `PR_TITLE` and `BLANK`.
 

@@ -133,6 +133,13 @@ exits immediately unless `CLAUDE_CODE_REMOTE=true`, by design. So:
   reading the file list, not by reading the title:
   `gh api repos/thebristolsound/birdbrain/pulls/<n>/files --jq '[.[].filename]'`.
 
+- **Every comment you post has a shape.** `.claude/skills/post-comment/SKILL.md` names the
+  kinds (cycle claim and release, pre-pass verdict, review reply, give-up, anything else),
+  their line caps, and the rule that a comment names only what you did and saw. Write the
+  comment to a file, run `.claude/skills/post-comment/scripts/check.sh <file>`, then post it
+  with `--body-file` or `--input`; never `--body`. The same skill's template is the one the
+  reviewer's verdict and the implementer's replies are written against.
+
 ## 1. Slot check
 
 There are **three slots** (ADR-0014). Each is held by one of **two markers**, counted together
@@ -214,8 +221,10 @@ comments. Classify:
   happening — it returns them as text keyed to the comment or thread ids they answer, and
   **you** post them via the write path (locally `gh api .../issues/<n>/comments -X POST
   --input <file>`, or `.../pulls/<n>/comments/<id>/replies` for an inline thread; on the web
-  `mcp__github__add_issue_comment` or `add_reply_to_pull_request_comment`). Your read of that
-  text before posting is the editorial pass; a subagent that posts directly has bypassed it,
+  `mcp__github__add_issue_comment` or `add_reply_to_pull_request_comment`). Each reply is one
+  line in the `post-comment` reply shape, `applied <sha>` or `not applied: <one sentence>`,
+  and `.claude/skills/post-comment/scripts/check.sh <file>` runs on each file before it is
+  posted. Your read of that text before posting is the editorial pass; a subagent that posts directly has bypassed it,
   which is a reportable contract violation even when the content was fine — and it lands under
   the wrong identity, since only the dispatcher holds the machine token. Then run the
   reviewer pre-pass (section 4).
@@ -320,9 +329,17 @@ lags by seconds and is not authoritative for a decision.
 gh api repos/thebristolsound/birdbrain/issues/<n>/labels --jq '[.[].name]'
 ```
 
-If all four hold: mark ready for review, merge with the repository's normal squash strategy, delete
-the branch, and note the merge in the end-of-cycle report with the four conditions as you found
-them. If any does not, do not merge, and say which one failed.
+If all four hold: mark ready for review, then merge with an explicit subject and body. The
+repository's squash settings are `PR_TITLE` and `BLANK`, so a merge that supplies neither lands
+on `main` with an empty message. Write the PR body's `## Summary` section (the text between that
+heading and `## Changes`) to a file, then:
+
+```shell
+agh pr merge <n> --squash --delete-branch --subject "<PR title> (#<n>)" --body-file <file>
+```
+
+Note the merge in the end-of-cycle report with the four conditions as you found them. If any
+does not hold, do not merge, and say which one failed.
 
 **Evidence-affecting PRs never take this path.** Neither does any PR whose final pre-pass verdict
 was `request changes`, even if a later push turned CI green: that needs a fresh `success` verdict
@@ -455,7 +472,9 @@ implementer reports the gate fired. If the implementer's label determination loo
 so in your report — do not silently substitute your own judgement for its stated reasoning.
 
 **The give-up path needs you too.** The implementer cannot comment or relabel, so it returns
-its blockers as text and stops. Via the write path, you post them to the issue, swap
+its blockers as text and stops. Via the write path, you post them to the issue in the
+`post-comment` give-up shape (`Give-up: <clause>` first, then `**What:**`, `**Where:**`,
+`**Reproduce:**`, checked with `.claude/skills/post-comment/scripts/check.sh <file>`), swap
 `ready-for-agent` to `needs-info` (or `ready-for-human`), and remove `agent-wip`:
 
 - Locally: `agh issue comment <n> --body-file <path>`, then `agh issue edit <n>` with
@@ -633,11 +652,11 @@ full six-command loop each round and the diff kept growing. A rising curve is a 
 just a cost: it means the change is accreting rather than converging. Read it alongside the
 convergence check below.
 
-Post the reviewer's report as a **PR comment** via the write path (not as a formal review — see
-above), formatted:
+Post the reviewer's verdict as a **PR comment** via the write path (not as a formal review — see
+above), in the pre-pass verdict shape from `.claude/skills/post-comment/template.md`:
 
 ```
-**Reviewer pre-pass (<head-sha>): <verdict>** — <k> of <n> reporters in on this sha
+**Reviewer pre-pass (<head-sha>): <verdict>** - <k> of <n> reporters in on this sha
 
 | # | severity | file:line | finding |
 |---|---|---|---|
@@ -645,10 +664,14 @@ above), formatted:
 
 <at most 5 rows. Anything further goes in the linked full report, not here.>
 
-Full report: <path or gist url>
+Full report: <gist url>
 ```
 
-where `<verdict>` is `approve for human review` or `request changes`.
+where `<verdict>` is `approve for human review` or `request changes`. Run
+`.claude/skills/post-comment/scripts/check.sh <file>` on the comment file before posting it.
+**The full report never goes on the PR**: publish the reviewer's report file as a gist (or
+leave it at a path the maintainer can read) and link it. On #1125 the full report was posted
+as a second PR comment; that is the pattern this rule ends.
 
 **Hard cap: 20 lines.** A pre-pass comment that does not fit is not a thorough pre-pass, it is
 an unread one — the average verdict on PR #423 ran 1,100 words across 14 comments, and 221,867

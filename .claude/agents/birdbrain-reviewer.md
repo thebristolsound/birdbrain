@@ -133,12 +133,15 @@ check" and "it passed" are different outcomes; never collapse them.
 
 You return **two products**, and confusing them is the most common failure of this role.
 
-1. **The verdict** — what the dispatcher posts. At most **5 findings, one sentence each**, plus
-   the verdict line. This is read on a phone, by someone deciding whether to merge. Anything
-   that does not change that decision does not belong in it.
+1. **The verdict** — what the dispatcher posts, in the pre-pass verdict shape from
+   `.claude/skills/post-comment/template.md`: the bold first line, at most **5 findings, one
+   sentence each** as table rows, a `Full report:` link, 20 lines in all. Write it to a file
+   and run `.claude/skills/post-comment/scripts/check.sh <file>` on it before returning the
+   path. This is read on a phone, by someone deciding whether to merge. Anything that does not
+   change that decision does not belong in it.
 2. **The full report** — everything else: failure scenarios, traces, what you could not check
    and why, the non-blocking findings beyond the top 5. Write it to a file and return the path.
-   It is the audit trail, not the interface.
+   It is the audit trail, not the interface, and it never goes on the PR.
 
 Never inline the full report into the verdict. A 1,100-word verdict is not more rigorous than
 a 20-line one; it is a 20-line one that nobody finished reading.

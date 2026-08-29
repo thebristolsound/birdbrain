@@ -93,11 +93,13 @@ const allChannels = Object.values(IPC_CHANNELS)
 const invokeChannels = allChannels.filter((channel) => !channel.startsWith('event:'))
 const eventChannels = allChannels.filter((channel) => channel.startsWith('event:'))
 
-// These leaves intentionally sit at the bridge root. The path check below gates
-// only the invokes among them: expectedBridgePath returns an event's bare method
-// name, so a root-placed event always matches and is exempt by design (#338).
-// Listing the invokes keeps any new root-level invoke a reviewed contract
-// decision; the `on*` entries are descriptive only and are not gated here.
+// These leaves intentionally sit at the bridge root. Two checks below read this
+// list. The path check gates only the invokes among them: expectedBridgePath
+// returns an event's bare method name, so a root-placed event always matches its
+// derived path and stays exempt from path derivation by design (#338). The
+// root-placement check gates every entry by membership instead, so adding a
+// root-level leaf of either kind means editing this list — which is what makes
+// it a reviewed contract decision.
 const ROOT_LEVEL_LEAVES = new Set([
   'search',
   'testPipeline',
@@ -107,6 +109,8 @@ const ROOT_LEVEL_LEAVES = new Set([
   'onNewCapture',
   'onSessionStateChanged',
   'onExtensionConnection',
+  // Landed at the root in #1038, while the allowlist still gated invokes only.
+  'onExtensionAttach',
   'onCaptureActivity',
   'onLogEntry',
   'onSelectorRematched',
@@ -176,6 +180,17 @@ describe('preload bridge', () => {
           `(expected birdbrain.${expectedBridgePath(leaf)})`
       )
     expect(mismatches).toEqual([])
+  })
+
+  // Membership, not path derivation: a leaf with no dot in its path sits at the
+  // root, and events reach the check above already matching. This is the only
+  // thing that fails when a new root-placed `on*` leaf appears unlisted.
+  it('places a leaf at the bridge root only when the allowlist names it', () => {
+    const unlisted = leaves
+      .filter((leaf) => !leaf.path.includes('.'))
+      .filter((leaf) => !ROOT_LEVEL_LEAVES.has(leaf.path))
+      .map((leaf) => `birdbrain.${leaf.path} -> ${leaf.channel}`)
+    expect(unlisted).toEqual([])
   })
 
   // Pinning the method name separately keeps failures local and readable when

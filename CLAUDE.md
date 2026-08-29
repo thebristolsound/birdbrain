@@ -412,7 +412,9 @@ text to a file, run the skill's `scripts/check.sh <file>`, then pass the file (`
 `bound=`, blocks the inline forms (agent frontmatter `hooks:` do not fire in SDK-driven sessions
 such as t3code). Squash merges land
 with the PR title and the body's Summary section (`squash_merge_commit_message = BLANK`, ADR-0022),
-so branch commit bodies are short and the Summary is the permanent record. Attribution trailers
+so branch commit bodies are short and the Summary is the permanent record. Merges go through
+`.claude/skills/merge-pr/scripts/merge.sh <n>` (`--cli agh` for the dispatcher), which composes
+that message, merges against the reviewed sha, and reads back the result. Attribution trailers
 and the platform PR footer are off in `.claude/settings.json`; `includeGitInstructions` is off
 there too, so the skills are the only commit and PR instructions an agent receives.
 

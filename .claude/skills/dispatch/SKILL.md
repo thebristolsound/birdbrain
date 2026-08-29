@@ -275,7 +275,7 @@ design avoids.
    claimed, cycle in progress" and move to the next PR. Older than 4 hours, the claim is stale;
    note that you cleared it and carry on. The 4-hour basis is section 1's, unchanged.
 1. Post the claim comment on the linked issue via the write path (locally
-   `agh issue comment <n> --body ...`), first line exactly `Cycle claim: PR #<pr>`, then which of
+   `agh issue comment <n> --body-file <file>`), first line exactly `Cycle claim: PR #<pr>`, then which of
    the two actions you are claiming. **The comment is the claim** (ADR-0006): its server-assigned
    `created_at` is the claim's timestamp and its comment `id` the final tie-break. That first line
    is what separates it from a section 3 dispatch claim, which can sit on the same issue and means
@@ -329,14 +329,16 @@ lags by seconds and is not authoritative for a decision.
 gh api repos/thebristolsound/birdbrain/issues/<n>/labels --jq '[.[].name]'
 ```
 
-If all four hold: mark ready for review, then merge with an explicit subject and body. The
-repository's squash settings are `PR_TITLE` and `BLANK`, so a merge that supplies neither lands
-on `main` with an empty message. Write the PR body's `## Summary` section (the text between that
-heading and `## Changes`) to a file, then:
+If all four hold, merge through the `merge-pr` skill, which marks the PR ready, composes the
+squash subject (`<PR title> (#<n>)`) and body (the PR's `## Summary`), merges against the head
+sha you reviewed, and reads back the merge commit, branch deletion and issue closure:
 
 ```shell
-agh pr merge <n> --squash --delete-branch --subject "<PR title> (#<n>)" --body-file <file>
+.claude/skills/merge-pr/scripts/merge.sh <n> --cli agh
 ```
+
+It re-checks conditions 3 and 4 mechanically and refuses an evidence-affecting PR under `agh`;
+conditions 1 and 2 remain yours. Never call `pr merge` directly.
 
 Note the merge in the end-of-cycle report with the four conditions as you found them. If any
 does not hold, do not merge, and say which one failed.
@@ -392,7 +394,7 @@ upstream is putting it back.
    another cycle. Note it, drop this candidate, and take the next eligible issue; with three
    slots a claimed candidate no longer ends the invocation. Older → note it as stale and continue.
 1. Post a claim comment on the chosen issue via the write path (locally
-   `agh issue comment <n> --body ...`) — e.g. "Dispatch slot claimed for this issue; a cycle
+   `agh issue comment <n> --body-file <file>`) — e.g. "Dispatch slot claimed for this issue; a cycle
    is starting." **The comment is the claim** (ADR-0006): its server-assigned `created_at` is
    the claim's timestamp and its comment `id` the final tie-break.
 2. Apply the `agent-wip` label via the write path. The label is the claim's discoverable

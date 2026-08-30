@@ -57,22 +57,22 @@ cap, not a raise, so it stays inside the rule.
 | #688 | triaged 08-22 | none | correct | now, after #1032 left it behind |
 | #902 | W22 | none | correct | now |
 | #922 | W20, W21 | advisory | correct | now |
-| #682 + #813 | W6, one PR | blocking (`background.ts`) | **gap**: no `evidence-affecting` | now |
-| #918 | W7 | blocking (`db/**`) | **gap** | after AC3 is corrected (see below) |
-| #665 | W23 | blocking (`db/**`, IPC spine) | **gap** | after #918 merges |
-| #675 | W16 | blocking (migration) | **gap** | now |
-| #824 | W8 | blocking (`background.ts`) | **gap** | now; the #829 dependency cleared in #1068 |
+| #682 + #813 | W6, one PR | blocking (`background.ts`) | labelled 08-30 | now |
+| #918 | W7 | blocking (`db/**`) | labelled 08-30 | now; AC3 corrected 08-30 |
+| #665 | W23 | blocking (`db/**`, IPC spine) | labelled 08-30 | after #918 merges |
+| #675 | W16 | blocking (migration) | labelled 08-30 | now |
+| #824 | W8 | blocking (`background.ts`) | labelled 08-30 | now; the #829 dependency cleared in #1068 |
 | #698 | W5 | blocking, labelled | correct | now; data deletion, human review |
-| #708 | W14 | none | correct | dispatcher closes by comment, no slot |
-| #803 | W1, W26, X1-X32 | blocking, labelled | corrected 08-30 | after ADR-0023/0024 land and the round-1 questions are re-asked (X11) |
+| #708 | W14 | none | correct | stays open as the design-side collection point (noted 08-30); no slot |
+| #803 | W1, W26, X1-X40 | blocking, labelled | six sub-tickets #1146-#1151, 08-30 | after PR #1145 lands; #1146 first and alone |
 | #830 | W3, W17 | blocking, labelled | correct | after #985 is ruled and merged |
-| #985 | none | blocking | `ready-for-human` | maintainer ruling on scope |
-| #405 | R7, R12, W18, W19 | blocking, labelled | `needs-info` | site list and the #771 ruling |
-| #991 | W1 | blocking | `ready-for-human` | two maintainer rulings, or an explicit deferral |
-| #987 | none | none | `ready-for-human` | maintainer call |
+| #985 | ruled 08-30 | blocking, labelled | `ready-for-agent` | now |
+| #405 | R7, R12, W18, W19, #771 ruled 08-30 | blocking, labelled | `ready-for-agent` | last and alone |
+| #991 | W1 | blocking | deferred out of wave 4 on 08-30, `redesign` dropped | not in this round |
+| #987 | none | none | closed 08-30 | done by hand |
 
-**The label gaps are the first intake chore.** Phase 1 on 2026-08-25 reported #682, #813, #918,
-#665, #675 and #824 as blocking tier, and none carries `evidence-affecting` today. The dispatch
+**The label gaps were the first intake chore, closed 2026-08-30.** Phase 1 on 2026-08-25 reported #682, #813, #918,
+#665, #675 and #824 as blocking tier, and none carried `evidence-affecting` until then. The dispatch
 skill keys the human-review gate on that label, so a PR opened from any of them would report as a
 non-evidence PR and become eligible for auto-merge. Apply the label at intake, before any of them
 dispatches, and let the phase-1 reader confirm the tier rather than set it.
@@ -84,10 +84,9 @@ dispatches, and let the phase-1 reader confirm the tier rather than set it.
 correction. #824 fires the tier anyway through `background.ts`, so the label is right either way;
 the point is that #967 is owed before W25 is true in the gate's own terms.
 
-**#918's third acceptance criterion cites a control that does not exist.** The W7 ruling comment
-already records it: "#749's disabled state" is not on `origin/main`
-(`SignalDetailRail.tsx:263`). Rewrite the criterion against what the rail renders today before
-the ticket dispatches, or the implementer spends a round discovering it.
+**#918's third acceptance criterion cited a control that does not exist; rewritten 2026-08-30.** The W7 ruling comment
+already recorded it: "#749's disabled state" was not on `origin/main`. The criterion now
+describes the navigate-only branch the rail renders at `0dd57d00`.
 
 ## Conflict map
 
@@ -165,20 +164,20 @@ Interactive, no fleet. Everything here is a comment, a label, or a maintainer an
 2. Done 2026-08-30: the six sub-tickets of X40 are filed against ADR-0023 and ADR-0024 with
    `ready-for-agent` and `evidence-affecting`, chained by native issue dependencies, and #803
    itself has lost `ready-for-agent`. The numbers are on #803's ruling comment.
-3. Apply `evidence-affecting` to #682, #813, #918, #665, #675 and #824.
-4. Correct #918's third acceptance criterion.
-5. Close #708 by comment per W14, or record why it stays open. It carries no code.
-6. Resolve PR #1125's `failure` verdict or close it, so all three slots are free when track A
-   starts. It is not a redesign ticket; it only holds a slot.
+3. Done 2026-08-30: `evidence-affecting` applied to #682, #813, #918, #665, #675 and #824.
+4. Done 2026-08-30: #918's third acceptance criterion corrected.
+5. Done 2026-08-30: #708 stays open as the design-side collection point, recorded by comment.
+6. PR #1125 is at human review after two pre-pass rounds and holds a slot until the maintainer
+   merges or closes it. It is not a redesign ticket.
 
 ### Phase 1: re-ground the tickets
 
 One `Workflow` call, `wave4-round2-reground`, one reader per dispatch unit, Opus at `max`, every
-`agent()` call passing `model: 'opus'`. Eleven readers, under the fifteen-agent guideline:
+`agent()` call passing `model: 'opus'`. Ten readers (reader 1 dropped), under the fifteen-agent guideline:
 
 | Reader | Tickets |
 | --- | --- |
-| 1 | `803a` (and a read of `803b`-d for conflicts only) |
+| 1 | dropped 08-30: the six track-A tickets were written against head that day and need no re-ground |
 | 2 | #1033, #688 |
 | 3 | #902 |
 | 4 | #682, #813 |
@@ -229,23 +228,21 @@ the visible queue without shortening the tail.
 
 ## Outstanding inputs
 
-Not questions for a reader. Five things the maintainer owes, each stated in full so no session
-has to reconstruct it.
+Not questions for a reader. Five things the maintainer owed, each stated in full so no session
+has to reconstruct it; all five are settled as of 2026-08-30.
 
 1. **#803: settled 2026-08-30.** The split question and the extracted-data question were both
    already answered by R21 (the indicators view survives inside the new screen), and the
    Exhibit model rulings X1-X32 supersede the split. What remains is re-cutting the sub-tickets
    against ADR-0023 and ADR-0024, which is intake work, not an input.
-2. **#985: how is a selection-scoped export's `notes.md` scoped?** The candidates are notes
-   anchored to a selected capture only, notes anchored to a selected capture plus unanchored
-   case notes, or a dialog option. #830 does not open until this is ruled and merged.
-3. **#405: the demo-fixture site list (W18), and the #771 ruling.** The #771 question, from its
-   2026-08-29 triage: when a running tour chapter is displaced by another chapter starting over
-   it, is the displaced chapter recorded complete even if it never got past its first card?
-   Consistency with the 2026-08-21 Skip ruling argues yes.
-4. **#991: a hand-rolled streaming MIME walker or a dependency, and whether a part carries a
-   `SHA-256` over raw or decoded bytes.** Or an explicit deferral out of wave 4, recorded on the
-   issue and by dropping the `redesign` label, since the completion test counts it.
-5. **#987: does the off-by-seven citation fix in the evidence assessment go to an agent, or does
-   the maintainer make it by hand?** It edits the gate's own document, which is why it was
-   triaged `ready-for-human`.
+2. **#985: ruled 2026-08-30.** A selection-scoped export ships only the notes anchored to a
+   selected capture; unanchored case notes are omitted and the report states the count left
+   out. #830 opens after #985 merges.
+3. **#405: both received 2026-08-30.** The three-site list is on the issue, and #771 is ruled:
+   a displaced chapter is recorded complete, consistent with the 2026-08-21 Skip ruling. #405 is
+   `ready-for-agent` and dispatches last and alone.
+4. **#991: deferred out of wave 4 on 2026-08-30.** The MIME-walker and part-hash rulings move
+   to the Exhibit model's `document` kind; `redesign` is dropped so the completion test no
+   longer counts it.
+5. **#987: done by hand on 2026-08-30 and closed.** It was two issue-body edits (#829 and
+   #830), not a repository change; the anchors were re-derived at `0dd57d00`.

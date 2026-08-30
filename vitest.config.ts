@@ -15,7 +15,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['tests/**/*.test.{ts,tsx}', 'src/packages/**/tests/**/*.test.ts'],
+    include: ['tests/**/*.test.{ts,tsx}', 'src/packages/**/tests/**/*.test.{ts,mts,cts,tsx}'],
     coverage: {
       provider: 'v8',
       // 'json' emits coverage-final.json (per-statement hit counts), which
@@ -26,7 +26,7 @@ export default defineConfig({
         'src/main/**/*.ts',
         'src/shared/**/*.ts',
         'src/renderer/**/*.{ts,tsx}',
-        'src/packages/**/*.ts'
+        'src/packages/**/*.{ts,mts,cts}'
       ],
       exclude: [
         '**/*.d.ts',
@@ -35,6 +35,7 @@ export default defineConfig({
         'src/preload/**',
         'src/renderer/main.tsx',
         'src/renderer/routeTree.gen.ts',
+        'src/packages/**/tests/**',
         'tests/**',
         'e2e/**',
         'extension/**',
@@ -116,7 +117,7 @@ export default defineConfig({
         test: {
           name: 'node',
           environment: 'node',
-          include: ['tests/**/*.test.ts', 'src/packages/**/tests/**/*.test.ts'],
+          include: ['tests/**/*.test.ts', 'src/packages/**/tests/**/*.test.{ts,mts,cts}'],
           exclude: ['tests/renderer/**', 'tests/hooks/**'],
           setupFiles: ['./tests/setup/signing-key.ts']
         }
@@ -137,7 +138,8 @@ export default defineConfig({
           include: [
             'tests/components/**/*.test.tsx',
             'tests/renderer/**/*.test.ts',
-            'tests/hooks/**/*.test.ts'
+            'tests/hooks/**/*.test.ts',
+            'src/packages/**/tests/**/*.test.tsx'
           ],
           setupFiles: ['./tests/setup/jsdom/layout.ts']
         }

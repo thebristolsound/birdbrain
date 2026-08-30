@@ -159,6 +159,13 @@ describe('isSourceLike', () => {
     expect(isSourceLike('src/renderer/env.d.ts')).toBe(false)
   })
 
+  it('does not name co-located package tests, which coverage excludes like tests/', () => {
+    expect(isSourceLike('src/packages/example/tests/example.test.ts')).toBe(false)
+    expect(isSourceLike('src/packages/example/tests/fixtures/sample.ts')).toBe(false)
+    expect(isSourceLike('src/packages/example/index.ts')).toBe(true)
+    expect(isSourceLike('src/packages/example/lib/impl.ts')).toBe(true)
+  })
+
   it('excludes every declaration-file variant, not just .d.ts', () => {
     expect(isSourceLike('src/shared/shim.d.mts')).toBe(false)
     expect(isSourceLike('src/shared/shim.d.cts')).toBe(false)

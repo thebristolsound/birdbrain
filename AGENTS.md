@@ -9,11 +9,13 @@ Open source web investigation & capture tool. Electron desktop app with a compan
 - `pnpm build:extension` - Build the Chrome extension
 - `pnpm dev:extension` - Build Chrome extension in watch mode (background and popup bundles only; does not watch/rebuild the content script IIFE build)
 - `pnpm build:verifier` - Build the standalone verifier binary (`scripts/build-verifier.mjs`)
-- `pnpm test` - Run tests (vitest, via Electron runtime)
+- `pnpm test` - Run tests (vitest, via Electron runtime). Single file: `pnpm test <path>` — no `--` (`pnpm test -- <path>` does not filter and runs the full suite)
 - `pnpm test:watch` - Run tests in watch mode
 - `pnpm test:coverage` / `pnpm coverage:report` / `pnpm coverage:all` - Coverage run and reports
 - `pnpm lint` - ESLint (.ts, .tsx)
-- `pnpm typecheck` - Typecheck all six tsconfig projects: `src` main/preload/shared, `src` renderer, extension, then `tests/` (node flavour and web flavour) and `e2e/`
+- `pnpm lint:boundaries` - dependency-cruiser over `src/`, `extension/src/`, `tests/` and `e2e/`: packages under `src/packages/` are importable only through their root files, and no import cycles
+- `pnpm lint:agents-md` - `AGENTS.md` must be byte-identical to `CLAUDE.md`. Edit `CLAUDE.md`, then copy it over `AGENTS.md` (a symlink is not used: `core.symlinks=false` checkouts turn it into a one-line file)
+- `pnpm typecheck` - Typecheck all six tsconfig projects: `src` main/preload/shared, `src` renderer, extension, then `tests/` (node flavour and web flavour) and `e2e/`. Tests are inside the gate — see "Testing" below
 - `pnpm format` - Prettier format src/ and extension/
 - `pnpm rebuild:electron` - Rebuild native deps (better-sqlite3)
 - `pnpm test:e2e` - Run E2E tests (Playwright + Electron, runs `pnpm build` first)
@@ -39,7 +41,7 @@ Electron + React 19 + TanStack Router + React Query + Chrome Extension + SQLite 
 
 ```
 src/main/services/           # Main-process services: captureServer, captureStore, storage, export, pdfExport,
-                             #   settings, hash, manifest, captureLifecycle, selectorLifecycle, recapture,
+                             #   settings, manifest, captureLifecycle, selectorLifecycle, recapture,
                              #   annotations, caseArchive, zip/zipRead, timestamp/trustedTime/tsaTrust,
                              #   signingKey, certification, waybackMachine, diagnostics, updater, deepLink,
                              #   noteAnchorResolver, logSafe
@@ -56,6 +58,7 @@ src/shared/noteDoc.ts        # Rich-text note document model + body derivation
 src/shared/noteAnchor.ts     # Note anchor model + text-anchor resolution
 src/shared/verify/           # Evidence-package verification (canonicalJson, manifestChain, signature, timestampToken)
 src/verifier/cli.ts          # Standalone verifier CLI entry point
+src/packages/                # Deep-module packages (entry points at the root, lib/ and tests/ private)
 src/renderer/routes/         # TanStack Router route definitions (root tree plus captures route module)
 src/renderer/stores/         # Zustand store (appStore.ts)
 src/renderer/hooks/          # React hooks for theme, search, filters, viewport, favorites, session restore, server status, etc.
@@ -66,6 +69,8 @@ tests/                       # Vitest unit tests
 e2e/                         # Playwright E2E tests
 docs/                        # Local working notes — see docs/README.md for layout (reference/, specs/, plans/, archive/)
 ```
+
+Packages are deep modules - see [src/packages/README.md](./src/packages/README.md) before adding or importing one.
 
 ### Path aliases
 
@@ -105,7 +110,8 @@ Root layout in `__root.tsx` renders TopBar, optional case Sidebar, main content 
 React Query (`@tanstack/react-query`) manages all server state. Configuration in `src/renderer/lib/`:
 
 - `queryClient.ts` - retry=false, staleTime=30s, refetchOnWindowFocus=false
-- `queries.ts` - Query key factory, typed query options, and domain-specific mutation hooks (useCasesMutations, useCapturesMutations, etc.) with automatic cache invalidation
+- `api/` - The query layer, one module per IPC domain: `keys.ts` holds the query key factory, and each domain module holds its typed query options and mutation hooks (useCasesMutations, useCapturesMutations, etc.) with automatic cache invalidation
+- `queries.ts` - A re-export barrel over `api/` while call sites migrate (#229); import from the domain module in new code. Deleted once the migration lands
 
 ### State management
 
@@ -122,7 +128,7 @@ SQLite via better-sqlite3. The data-access layer lives in `src/main/services/db/
 
 - `core.ts` - Owns the connection. `initDatabase()` opens the file, sets the pragmas (`journal_mode = WAL`, `foreign_keys = ON`, `busy_timeout`), then runs migrations. Also exports `getDb()`, `closeDatabase()`, `withTransaction()`, the `ImportCtx` archive-import context, and `ID_PROBE_TABLES` / `hasRowWithId()` for archive-import id collision remapping.
 - `migrations.ts` - The whole schema history in one `runMigrations(db)` function: a sequence of `if (version < N)` blocks, each running its DDL inside a transaction that ends by setting `db.pragma('user_version = N')`. New schema changes append a new block and bump `LATEST_SCHEMA_VERSION` in `core.ts` — that constant is the single source of truth for the current version, so read it rather than counting blocks.
-- Per-domain repos - `caseRepo.ts`, `captureRepo.ts`, `tagRepo.ts`, `selectorRepo.ts`, `noteRepo.ts`, `extractedDataRepo.ts`, `waybackRefRepo.ts`. Each owns the SQL for its aggregate.
+- Per-domain repos - `caseRepo.ts`, `captureRepo.ts`, `tagRepo.ts`, `selectorRepo.ts`, `noteRepo.ts`, `noteReferenceRepo.ts`, `extractedDataRepo.ts`, `waybackRefRepo.ts`. Each owns the SQL for its aggregate. `noteReferenceRepo.ts` owns the note Mention references index (`note_references`) — derived state, rewritten inside the transaction of every note-body write, never a source of truth.
 - `dbAdmin.ts` - Generic table browse/edit, vacuum, FTS rebuild, orphan cleanup, backup/restore, CSV export (backs Settings → Database).
 - `diagnosticsRepo.ts` - Read-only DB facts for Settings → Diagnostics, including the live `user_version` alongside `LATEST_SCHEMA_VERSION`.
 
@@ -141,7 +147,7 @@ Light/dark theme support using CSS custom properties and Tailwind v4:
 
 ### Capture server
 
-Hono HTTP server (`src/main/services/captureServer.ts`) on port 19845 receives captures from the Chrome extension. Supports both HTML and MHTML forensic capture formats. Captures are stored as files on disk organized by case directory with SHA-256 hash verification and hash-chained audit manifests.
+Hono HTTP server (`src/main/services/captureServer.ts`) on port 19845 receives captures from the Chrome extension. MHTML is the only format the extension produces; `format: 'html'` is a read-only legacy value for pre-v11 captures. Captures are stored as files on disk organized by case directory with SHA-256 hash verification and hash-chained audit manifests.
 
 ### Chrome extension
 
@@ -210,6 +216,8 @@ Long-lived reference docs moved out of `docs/reference/` into `website/content/d
 
 **Override for agentic tooling:** When a skill or agent specifies a different default path (e.g. Superpowers' `docs/superpowers/specs/` and `docs/superpowers/plans/`), treat the canonical paths above as the user-preference override. Write specs to `docs/specs/` and plans to `docs/plans/`. The legacy `docs/superpowers/` tree is frozen — do not add new files there.
 
+**Prose linting.** `.vale.ini` at the repo root is the project's Vale config; it overrides any global one for files under this repo. Project vocabulary lives in `.vale/styles/config/vocabularies/Birdbrain/accept.txt` so birdbrain terms are not accepted in unrelated projects. Run `vale sync` once per clone to fetch the Google package (gitignored). Only `*.md` is linted — `.mdx` needs `mdx2vast`, which is not installed. A doc you write should pass `vale <file>` with zero errors; residual warnings for this project's own vocabulary are expected.
+
 ## Documentation site
 
 `website/` is the public docs site — Next.js 16 + Fumadocs UI/MDX, statically exported and published to GitHub Pages at <https://thebristolsound.github.io/birdbrain/> by `.github/workflows/docs.yml`.
@@ -267,6 +275,16 @@ from either is silently dropped from that site's sidebar.
 - **Unit tests** (`tests/`) - Vitest running via Electron runtime (`ELECTRON_RUN_AS_NODE=1`). Config in `vitest.config.ts` (node environment, globals enabled). Covers database, services, store, types.
 - **E2E tests** (`e2e/`) - Playwright with Electron. Config in `playwright.config.ts` (30s timeout, 1 worker, trace on-first-retry). Requires `pnpm build` first (handled by `pretest:e2e` script).
 
+**`tests/` and `e2e/` are typechecked (#337).** `pnpm typecheck` runs six projects: the three `src`/extension ones, then `tsconfig.test.node.json`, `tsconfig.test.web.json` and `e2e/tsconfig.json`. The two test projects split on **lib flavour, not on the Vitest project split**: the node one mirrors `tsconfig.node.json` (no DOM lib) and covers the tests exercising main/preload/shared/verifier; the web one mirrors `tsconfig.web.json` plus `chrome` typings and covers `tests/components`, `tests/renderer`, `tests/hooks`, `tests/lib`, `tests/extension` and every `.tsx` under `tests/`. Mixing the two libs in one project is not a shortcut — DOM's `BodyInit` rejects a `Buffer`, so a combined project invents a `TS2769` in `src/main/services/timestamp.ts` against code `tsconfig.node.json` already checks clean, and chasing it means editing production code to satisfy a lib it never runs under. That false positive is the load-bearing argument. The `Response.json()` difference (DOM returns `any`, undici returns `unknown`) is the weaker one: the node project does surface ~80 more `TS18046` errors in `tests/main/services/captureServer.test.ts`, but they are then discarded by one `Record<string, any>` helper in that file, so the split does not currently recover them.
+
+The includes are fail-closed by construction: the node project takes everything under `tests/` and excludes the DOM directories, the web project takes every `.tsx` wherever it sits plus those directories, and each spells out `.ts`/`.mts`/`.cts` rather than `.ts` alone. A new test directory or a stray `.mts` therefore lands in a project rather than in the gap between two hand-maintained lists. `e2e/tsconfig.json` lists the same extensions plus `.tsx`. **Two gaps under `tests/` and `e2e/`.** No project sets `allowJs`, so `.js`/`.mjs`/`.cjs`/`.jsx` is compiled by nothing. And `skipLibCheck` is true in all six projects (five inherit `tsconfig.json:8`; `extension/tsconfig.json:8` sets its own), so `.d.ts` bodies sit in the program unchecked — a `tests/**/*.d.ts` shim looks gated and is not.
+
+`eslint.config.js` still sets no `parserOptions.project`, so **linting** remains untyped — that is a separate change and a separate issue if it is wanted. `src/renderer/env.d.ts` is listed explicitly in the web test project: an ambient `.d.ts` that nothing imports is otherwise not in the program, and every `window.birdbrain` access becomes a phantom error.
+
+A type-level assertion in `tests/` is now live, so `expectTypeOf` is available for a known-answer test rather than only a runtime probe. Note that the mutation-option objects under `src/renderer/lib/api/` are plain literals rather than React Query's `UseMutationOptions`, so their `onSuccess`/`onSettled` callbacks are typed with only the parameters they declare — a test that simulates React Query's four-argument call will not compile.
+
+**`tests/components/**/*.test.tsx` run in the jsdom Vitest project**, not the Electron node one; the node project's `tests/**/*.test.ts` include glob does not match `.test.tsx`. A `// @vitest-environment jsdom` directive in a component test is therefore valid and may be kept for clarity — it is not an invalid override of the Electron environment.
+
 ## Code style
 
 - No semicolons
@@ -279,11 +297,33 @@ from either is silently dropped from that site's sidebar.
 - ESLint 9 flat config with TypeScript ESLint + Prettier
 - Prefer semantic theme tokens over raw color values in components (exceptions: overlays, status/severity colors)
 
+## Code navigation (Serena)
+
+Serena (MCP, `--context claude-code --project-from-cwd`) is the code-navigation layer. For symbol
+work use its tools and trust the results — `get_symbols_overview` for a file's shape, `find_symbol`
+(with `include_body`) to read one symbol, `find_referencing_symbols` for callers, `rename_symbol` /
+`replace_symbol_body` for cross-file edits. `Grep` is for literal text (strings, config, TODOs);
+do not re-read files to confirm a Serena answer. Skip Serena for one-line lookups — it costs more
+than a plain read there.
+
+`.serena/memories/` and `.serena/project.yml` are committed (`.gitignore` keeps `cache/` and
+`project.local.yml` local) so every worktree shares them. Memories hold navigation facts only —
+`mem:core` is the entry point; conventions belong in this file, domain language in `CONTEXT.md`.
+The language-server cache is per worktree, so the first symbolic call in a fresh worktree is slow.
+
 ## Agent skills
 
 ### Issue tracker
 
 Issues live as GitHub Issues in `thebristolsound/birdbrain`, accessed via the `gh` CLI. External PRs are not a triage surface. See `docs/agents/issue-tracker.md`.
+
+Two `gh` traps that produce wrong numbers rather than errors. **`gh api --jq` rejects `-r`**, and **`gh issue comment` has no `-q`** — in both cases the command fails, and a pipeline that ends in `| tail -1` swallows the failure and reports success. Never derive a count through a pipe whose exit status you have not checked. Separately, **the label-filtered issue search (`issues?labels=…`) reads GitHub's search index and lags a direct label read by seconds** — verified twice on 2026-08-14 — so never treat it as authoritative for a decision; read `issues/<n>/labels` for that.
+
+**Every defect you notice gets filed before you finish, whatever its severity and whether or not it is in scope.** Noticing is not tracking. A defect named in a PR body, a review comment, or a chat report and left unfiled is gone the moment that context ends, and it puts the filing burden on the maintainer — who was told about it precisely because they were not the one who found it. This applies to out-of-scope findings especially: file separately rather than widening the diff, and say in the issue why it was kept out of the change that found it.
+
+Never end a report by observing that something is untracked. File it, choose labels with your own judgement, and report it as filed with the number. If a defect is too small to deserve acceptance criteria, it is still large enough for a one-line issue.
+
+The same rule covers the inverse failure: **do not write that something "is filed" until it is.** On 2026-08-15 a gate document merged to `main` asserting a `workflow_dispatch` ticket had been "filed separately" when none existed — the intent to file never executed, and the false claim shipped. File first, then reference the number you actually got back.
 
 ### Triage labels
 
@@ -297,14 +337,83 @@ Single-context layout: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/ag
 
 Unattended/background agent jobs working a `ready-for-agent` issue in this repo are opted out
 of the global wait-for-confirmation rules: do not pause for mid-task approval and do not wait
-for the user to confirm completion. Instead, verify the work (`pnpm lint`, `pnpm typecheck`,
-`BIRDBRAIN_REQUIRE_OPENSSL=1 pnpm test`, `pnpm build`, plus `pnpm build:extension` when
-`extension/` changed), then finish by opening a **draft PR** with the standard attribution
-line. Interactive sessions are not covered by this carve-out, and it must not be copied to the
-global CLAUDE.md or other repos.
+for the user to confirm completion. Instead, commit and verify the work with `pnpm preflight`
+(it refuses a dirty tree and a non-20.x Node, runs lint, typecheck, unit tests, build, the
+extension build when `extension/` changed, coverage thresholds and diff coverage, and writes a
+sha-stamped block to `.preflight/verification.md`), then finish by opening a **draft PR** with
+the standard attribution line. Exception: if a dispatcher
+spawned you, push the branch and hand off instead. PR opening stays with the dispatcher so
+one identity authors every PR entering the slot (ADR-0012).
 
-The gates in `docs/adr/0005-unattended-agents-on-the-evidence-path.md` still apply in full:
-strict-serial WIP (max one open agent PR), human review on every agent PR through the pilot,
-evidence-affecting PRs never auto-merge, and the give-up path (comment findings on the issue, relabel
-`needs-info`/`ready-for-human`, vacate the slot) whenever the issue fails the ready-for-agent
-bar at intake or mid-work.
+**Label it, or the gates cannot see it.** `agent-authored` always, `agent-pr` as well only if
+the PR takes a dispatch slot, `evidence-affecting` when the gate fired at the **blocking** tier
+(the path list is tiered since ADR-0014; an advisory-tier hit is not a label).
+`pre-pass-gate.yml` and `ci.yml`'s draft exemption both key on those labels, so an unlabelled
+agent PR reports `agent/pre-pass success — "Not an agent PR"` and no reviewer is ever waiting
+on it. Wave 1 batch 1 shipped five such PRs, four evidence-affecting, and a hand-run pre-pass
+found twelve blocking defects behind the green badges. `gh pr create --label` is not atomic,
+so verify with `gh api repos/{owner}/{repo}/issues/<n>/labels` rather than asserting it.
+
+The coverage steps are the ones that catch what the others cannot. CI's job named `test` runs
+the suite *and then* `scripts/diff-coverage.mjs`, which fails the PR below 90% of changed lines
+covered — a threshold `pnpm test` never evaluates, since it omits `--coverage`. Without them
+the loop reports green on a PR CI rejects, and the red arrives after the agent has claimed
+success. `coverage:diff` scores the **working tree** against the merge base, which is why
+preflight insists on a clean tree: there the score equals the committed diff CI measures
+(#508). Interactive sessions are not covered by this carve-out, and it must not be copied to
+the global CLAUDE.md or other repos.
+
+**PR bodies are computed at head (ADR-0018).** The `## Verification` block is the
+`.preflight/verification.md` that `pnpm preflight` wrote at the head sha under review, pasted
+verbatim and never committed; any push makes it stale and it gets regenerated before
+requesting review. Any body figure a command can compute (file lists, counts,
+coverage rows) comes from running the command at head, never from memory of an earlier run. When
+a review round's only blocking findings are body defects on an unchanged sha, fix and re-verify
+the body in the same round with no new code pass.
+
+The gates in `docs/adr/0005-unattended-agents-on-the-evidence-path.md` still apply, as amended by
+`docs/adr/0014-tier-the-evidence-backstop-and-widen-the-dispatch-slot.md`: WIP of three concurrent
+agent PRs with every branch cut from `main` and never from another cycle's branch,
+`evidence-affecting` PRs never auto-merge and always get human review, non-evidence agent PRs may
+merge on all required checks green plus an `agent/pre-pass` success verdict, and the give-up path
+(comment findings on the issue, relabel `needs-info`/`ready-for-human`, vacate the slot) whenever
+the issue fails the ready-for-agent bar at intake or mid-work.
+
+### Interactive sessions: standing approvals (project-local carve-out)
+
+Three global wait-for-input rules are overridden in this repo. The rationale and amendment target
+for each is its ADR; a maintainer veto of any auto-taken decision amends that ADR. Do not copy
+this section to the global CLAUDE.md or other repos.
+
+- **Recommended-option picks** (ADR-0015): when the decision is in the ADR-0015 class list
+  (naming, placement, pattern-following approach, test shape, installed-API usage, mechanical
+  sequencing, toolchain-settled style) and the recommendation is groundable in a repo doc, an
+  ADR, an existing pattern, or the toolchain, take it without asking and log it under "Decisions
+  taken" in the end-of-turn summary. Still ask for: new dependencies, destructive or
+  irreversible actions, spend or external publishing, scope expansion, blocking-tier evidence
+  paths, conflicts between documented rules, product or UX decisions with no repo precedent,
+  and taste-only calls.
+- **Plan approval** (ADR-0016): post the plan, then execute in the same turn when it adds no
+  dependencies, touches no blocking-tier file, has no schema migration or data deletion, is
+  reversible with git alone, stays inside the ADR-0015 classes, and changes at most 10 files.
+  Otherwise wait as before and name the tripped criterion.
+- **Completion confirmation** (ADR-0017): report complete on a green full verify block at head
+  (the background-jobs verify block) with exit codes captured and real output shown; name any check you
+  could not run and wait on that specific check, not on general confirmation. Merging stays
+  human.
+- **Doc-draft preservation** (ADR-0019): any session that creates or edits a file destined for a
+  tracked path (`docs/**`, `CLAUDE.md`, `CONTEXT.md`, `website/content/**`, `.vale/**`) commits
+  it before the turn ends: on the session's own branch, or on a `drafts/YYYY-MM-DD-<slug>`
+  branch cut from `main` when the checked-out branch belongs to another effort. WIP commits are
+  preservation, not ratification; pushing still waits to be asked. Worktrees share the object
+  store, so a commit that was never pushed survives a purge and an untracked file does not.
+
+### Interaction defaults
+
+- `AskUserQuestion` calls carry at most two questions; split a bigger ask into consecutive
+  calls.
+- A research or gap-analysis request ends at the report. Plan approval is a separate, later ask;
+  do not start implementing because the report was well received.
+- When a decision is deferred to the maintainer, restate the actual question in the message that
+  defers it. Never reference an earlier question by position or as "your call" without restating
+  it.

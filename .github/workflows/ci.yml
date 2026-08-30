@@ -164,6 +164,8 @@ jobs:
 
       - run: pnpm lint:boundaries
 
+      - run: pnpm lint:agents-md
+
   typecheck:
     runs-on: ubuntu-latest
     needs: changes

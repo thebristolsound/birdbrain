@@ -407,6 +407,21 @@ this section to the global CLAUDE.md or other repos.
   preservation, not ratification; pushing still waits to be asked. Worktrees share the object
   store, so a commit that was never pushed survives a purge and an untracked file does not.
 
+### Posting surfaces
+
+Commit messages, PR bodies and issue or PR comments each have one shape, held with its linter
+in a skill: `.claude/skills/post-commit-message/`, `post-pr-body/`, `post-comment/`. Write the
+text to a file, run the skill's `scripts/check.sh <file>`, then pass the file (`git commit -F`,
+`--body-file`, `--input`); a `settings.json` hook, gated to the agents each `check.sh` names in
+`bound=`, blocks the inline forms (agent frontmatter `hooks:` do not fire in SDK-driven sessions
+such as t3code). Squash merges land
+with the PR title and the body's Summary section (`squash_merge_commit_message = BLANK`, ADR-0022),
+so branch commit bodies are short and the Summary is the permanent record. Merges go through
+`.claude/skills/merge-pr/scripts/merge.sh <n>` (`--cli agh` for the dispatcher), which composes
+that message, merges against the reviewed sha, and reads back the result. Attribution trailers
+and the platform PR footer are off in `.claude/settings.json`; `includeGitInstructions` is off
+there too, so the skills are the only commit and PR instructions an agent receives.
+
 ### Interaction defaults
 
 - `AskUserQuestion` calls carry at most two questions; split a bigger ask into consecutive

@@ -1,0 +1,5 @@
+fix(signals): refresh the selector matrix on a rematched event
+
+The rematched listener invalidated three caches but not the matrix
+that backs the coverage strip, so the strip showed stale membership
+beside counts that had already moved.

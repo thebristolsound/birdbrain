@@ -20,7 +20,8 @@ reviews:
   # Solo-maintained repo: a blocking "changes requested" review would stall every PR.
   request_changes_workflow: false
 
-  high_level_summary: true
+  # Off: the PR body Summary section is the one summary a PR carries (post-pr-body skill).
+  high_level_summary: false
   review_status: true
   review_details: true
 

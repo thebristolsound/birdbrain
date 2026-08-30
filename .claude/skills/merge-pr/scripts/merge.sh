@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+# Squash-merge one PR the way ADR-0022 expects, then read back what landed.
+#   merge.sh <pr-number> [--cli gh|agh] [--dry-run]
+# --cli agh runs every GitHub write as the machine account (ADR-0012); the dispatcher uses it.
+# --dry-run stops after composing the subject and body.
+set -u
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+root="${CLAUDE_PROJECT_DIR:-$(git -C "$here" rev-parse --show-toplevel)}"
+body_check="$root/.claude/skills/post-pr-body/scripts/check.sh"
+
+n="" cli="gh" dry=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --cli) cli="$2"; shift 2 ;;
+    --cli=*) cli="${1#--cli=}"; shift ;;
+    --dry-run) dry=1; shift ;;
+    -*) echo "merge-pr: unknown flag $1" >&2; exit 2 ;;
+    *) n="$1"; shift ;;
+  esac
+done
+[ -n "$n" ] || { echo "usage: merge.sh <pr-number> [--cli gh|agh] [--dry-run]" >&2; exit 2; }
+case "$cli" in gh|agh) ;; *) echo "merge-pr: --cli must be gh or agh" >&2; exit 2 ;; esac
+if [ "$cli" = "agh" ]; then
+  # agh is a shell function on the maintainer's machine (docs/agents/github-access.md); a script
+  # has to define it from the same token and prove the identity before any write (ADR-0012).
+  [ -n "${BIRDBRAIN_AGENT_GH_TOKEN:-}" ] || { echo "merge-pr: BIRDBRAIN_AGENT_GH_TOKEN is not set; see docs/agents/github-access.md" >&2; exit 2; }
+  agh() { GH_TOKEN="$BIRDBRAIN_AGENT_GH_TOKEN" gh "$@"; }
+  login="$(agh api user --jq .login)"
+  [ "$login" = "${BIRDBRAIN_AGENT_GH_LOGIN:-birdbrain-agent}" ] || { echo "merge-pr: agh authenticates as '$login', not the machine account" >&2; exit 2; }
+fi
+
+fail() { echo "merge-pr: refused: $*" >&2; exit 1; }
+say() { echo "merge-pr: $*"; }
+
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+
+# 1. The PR as it is now (REST, not GraphQL: docs/agents/github-access.md).
+"$cli" api "repos/{owner}/{repo}/pulls/$n" > "$work/pr.json" || fail "cannot read PR #$n"
+field() { node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); const v=process.argv[2].split(".").reduce((o,k)=>o==null?o:o[k], j); process.stdout.write(v==null?"":(typeof v==="object"?JSON.stringify(v):String(v)))' "$work/pr.json" "$1"; }
+state="$(field state)"; draft="$(field draft)"; title="$(field title)"; head_ref="$(field head.ref)"
+head_sha="$(field head.sha)"; base_ref="$(field base.ref)"; merged="$(field merged)"
+head_repo="$(field head.repo.full_name)"; base_repo="$(field base.repo.full_name)"
+node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); process.stdout.write(j.body||"")' "$work/pr.json" > "$work/body.md"
+labels="$(node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); process.stdout.write(j.labels.map(l=>l.name).join(" "))' "$work/pr.json")"
+
+[ "$state" = "open" ] || fail "PR #$n is $state (merged=$merged)"
+[ "$base_ref" = "main" ] || fail "base is $base_ref, not main"
+say "PR #$n  $title"
+say "head $head_ref @ ${head_sha:0:12}  draft=$draft  labels: ${labels:-none}"
+
+# 2. Checks at head: every check run completed, none failed.
+"$cli" api "repos/{owner}/{repo}/commits/$head_sha/check-runs?per_page=100" > "$work/checks.json" || fail "cannot read check runs"
+bad_checks="$(node -e '
+const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))
+const ok=new Set(["success","skipped","neutral"])
+const bad=j.check_runs.filter(c=>c.status!=="completed"||!ok.has(c.conclusion)).map(c=>`${c.name}=${c.status}/${c.conclusion}`)
+process.stdout.write(bad.join(" "))' "$work/checks.json")"
+[ -z "$bad_checks" ] || fail "checks not green at head: $bad_checks"
+runs="$(node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).total_count))' "$work/checks.json")"
+if [ "$runs" -eq 0 ]; then
+  # CI skips a draft unless it carries the agent labels (ci.yml); marking it ready starts the run.
+  if [ "$draft" = "true" ]; then
+    if [ "$dry" -eq 1 ]; then
+      say "draft with no check runs: a real run marks it ready, waits for CI, and stops here"
+    else
+      "$cli" pr ready "$n" || fail "could not mark ready"
+      fail "no check runs at head ${head_sha:0:12}; the PR is now ready for review and CI is starting. Re-run once it is green"
+    fi
+  else
+    fail "no check runs at head ${head_sha:0:12}; CI has not run on this commit, so nothing is green"
+  fi
+else
+  say "checks green at head ($runs runs)"
+fi
+
+# 3. The body passes the PR body shape (the linter tolerates a cloud-proxy footer after the
+# attribution line). Under gh the author may be human, so the attribution line is optional.
+any_author=""; [ "$cli" = "gh" ] && any_author="--any-author"
+# shellcheck disable=SC2086
+"$body_check" $any_author "$work/body.md" || fail "the body does not pass post-pr-body; fix it with '$cli pr edit $n --body-file <file>' first"
+say "body passes post-pr-body"
+
+# 4. Evidence-affecting: the machine account never merges one (ADR-0005, ADR-0014).
+# Only a "Closes" first line names issues; "No issue: follow-up to #N" closes nothing.
+closes=""
+case "$(head -1 "$work/body.md")" in
+  Closes\ *) closes="$(head -1 "$work/body.md" | grep -oE '#[0-9]+' | tr -d '#' | tr '\n' ' ')" ;;
+esac
+evidence=""
+case " $labels " in *" evidence-affecting "*) evidence="PR label" ;; esac
+for i in $closes; do
+  # Captured first so an API failure refuses rather than reading as "no label".
+  issue_labels="$("$cli" api "repos/{owner}/{repo}/issues/$i/labels" --jq '.[].name')" || fail "cannot read the labels of issue #$i"
+  if printf '%s\n' "$issue_labels" | grep -qx 'evidence-affecting'; then
+    evidence="${evidence:+$evidence, }issue #$i label"
+  fi
+done
+if [ -n "$evidence" ]; then
+  [ "$cli" = "agh" ] && fail "evidence-affecting ($evidence): human review and a human merge only"
+  say "evidence-affecting ($evidence): merging as the human reviewer"
+fi
+
+# 5. Subject and body for the squash commit.
+node "$here/compose.mjs" "$work/body.md" "$title" "$n" "$work" > "$work/composed.txt" || fail "cannot compose the merge message"
+say "merge message:"; sed 's/^/    /' "$work/composed.txt"
+if [ "$dry" -eq 1 ]; then say "dry run: stopping before 'pr ready' and 'pr merge'"; exit 0; fi
+
+# 6. Merge. --match-head-commit refuses if the head moved since step 1. No --delete-branch:
+#    gh would also try to switch the local branch, which fails inside a worktree; the repository's
+#    delete_branch_on_merge removes the remote branch and step 8 handles the local one.
+if [ "$draft" = "true" ]; then "$cli" pr ready "$n" || fail "could not mark ready"; fi
+"$cli" pr merge "$n" --squash --match-head-commit "$head_sha" --subject "$(cat "$work/subject.txt")" --body-file "$work/body.txt" \
+  || fail "merge command failed; read the PR before retrying"
+
+# 7. Read back what landed rather than asserting it.
+"$cli" api "repos/{owner}/{repo}/pulls/$n" > "$work/after.json"
+merge_sha="$(node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); process.stdout.write(j.merged?j.merge_commit_sha:"")' "$work/after.json")"
+[ -n "$merge_sha" ] || fail "PR #$n does not report merged after the merge command"
+git -C "$root" fetch -q origin main
+say "merged as $(git -C "$root" log -1 --format='%h %s' "$merge_sha")"
+if [ "$head_repo" != "$base_repo" ]; then
+  say "head branch lives in $head_repo, not this repository; leaving it to its owner"
+elif git -C "$root" ls-remote --exit-code --heads origin "$head_ref" >/dev/null 2>&1; then
+  "$cli" api -X DELETE "repos/{owner}/{repo}/git/refs/heads/$head_ref" && say "remote branch $head_ref deleted" || say "WARN remote branch $head_ref still exists"
+else
+  say "remote branch $head_ref deleted"
+fi
+for i in $closes; do
+  st="$("$cli" api "repos/{owner}/{repo}/issues/$i" --jq .state)"
+  [ "$st" = "closed" ] && say "issue #$i closed" || say "WARN issue #$i is $st; GitHub closes it on merge to the default branch, re-read in a moment"
+done
+
+# 8. Local cleanup: prune, and drop the branch unless a worktree still holds it.
+git -C "$root" fetch -q --prune origin
+if git -C "$root" show-ref --verify --quiet "refs/heads/$head_ref"; then
+  holder="$(git -C "$root" worktree list --porcelain | awk -v b="refs/heads/$head_ref" '$1=="worktree"{w=$2} $1=="branch"&&$2==b{print w}')"
+  if [ -n "$holder" ]; then
+    say "local branch $head_ref is checked out in $holder; run 'git branch -d $head_ref' after that worktree is removed"
+  else
+    # A squash leaves no ancestry, so -d refuses; the forced delete is safe only when the local
+    # tip is the sha that was just merged.
+    local_tip="$(git -C "$root" rev-parse "refs/heads/$head_ref")"
+    if [ "$local_tip" = "$head_sha" ]; then
+      git -C "$root" branch -D "$head_ref" >/dev/null && say "local branch $head_ref deleted" || say "WARN could not delete local branch $head_ref"
+    else
+      say "WARN local branch $head_ref is at ${local_tip:0:12}, not the merged ${head_sha:0:12}; leaving it"
+    fi
+  fi
+else
+  say "no local branch $head_ref"
+fi
+say "done"

@@ -14,7 +14,7 @@ Open source web investigation & capture tool. Electron desktop app with a compan
 - `pnpm test:coverage` / `pnpm coverage:report` / `pnpm coverage:all` - Coverage run and reports
 - `pnpm lint` - ESLint (.ts, .tsx)
 - `pnpm lint:boundaries` - dependency-cruiser over `src/`, `extension/src/`, `tests/` and `e2e/`: packages under `src/packages/` are importable only through their root files, and no import cycles
-- `pnpm lint:agents-md` - `AGENTS.md` must be byte-identical to `CLAUDE.md`. Edit `CLAUDE.md`, then copy it over `AGENTS.md` (a symlink is not used: `core.symlinks=false` checkouts turn it into a one-line file)
+- `pnpm lint:agents-md` - **advisory, never fails**. Reports lines held by `CLAUDE.md` and not `AGENTS.md` or the reverse, as a CI warning annotation. The two are normally the same document: edit `CLAUDE.md`, then copy it over `AGENTS.md` (a symlink is not used: `core.symlinks=false` checkouts turn it into a one-line file). Drift is not an error because `CLAUDE.md` is expected to carry Claude-specific overrides that have no meaning in `AGENTS.md`; the check cannot tell those from an oversight, so it reports and leaves the judgement to you
 - `pnpm typecheck` - Typecheck all six tsconfig projects: `src` main/preload/shared, `src` renderer, extension, then `tests/` (node flavour and web flavour) and `e2e/`. Tests are inside the gate — see "Testing" below
 - `pnpm format` - Prettier format src/ and extension/
 - `pnpm rebuild:electron` - Rebuild native deps (better-sqlite3)
@@ -407,6 +407,21 @@ this section to the global CLAUDE.md or other repos.
   branch cut from `main` when the checked-out branch belongs to another effort. WIP commits are
   preservation, not ratification; pushing still waits to be asked. Worktrees share the object
   store, so a commit that was never pushed survives a purge and an untracked file does not.
+
+### Posting surfaces
+
+Commit messages, PR bodies and issue or PR comments each have one shape, held with its linter
+in a skill: `.claude/skills/post-commit-message/`, `post-pr-body/`, `post-comment/`. Write the
+text to a file, run the skill's `scripts/check.sh <file>`, then pass the file (`git commit -F`,
+`--body-file`, `--input`); a `settings.json` hook, gated to the agents each `check.sh` names in
+`bound=`, blocks the inline forms (agent frontmatter `hooks:` do not fire in SDK-driven sessions
+such as t3code). Squash merges land
+with the PR title and the body's Summary section (`squash_merge_commit_message = BLANK`, ADR-0022),
+so branch commit bodies are short and the Summary is the permanent record. Merges go through
+`.claude/skills/merge-pr/scripts/merge.sh <n>` (`--cli agh` for the dispatcher), which composes
+that message, merges against the reviewed sha, and reads back the result. Attribution trailers
+and the platform PR footer are off in `.claude/settings.json`; `includeGitInstructions` is off
+there too, so the skills are the only commit and PR instructions an agent receives.
 
 ### Interaction defaults
 

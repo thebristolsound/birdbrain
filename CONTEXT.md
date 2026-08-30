@@ -75,6 +75,26 @@ for query paths, and `captures_fts` is a derived index over it, maintained by tr
 written directly. Healing a suspect database copy (`rebuildFts`) re-reads the sidecars.
 _Avoid_: text content, FTS content.
 
+**Exhibit**:
+One unit of acquired evidence in a Case, anchored in the Manifest: a Capture, an uploaded file, a saved image, an imported document. Every Exhibit has a kind (what it is) and an origin (how it arrived), and an Exhibit Number once committed.
+_Avoid_: artifact, evidence file, item, attachment (as the general term).
+
+**Derived File**:
+A file Birdbrain computes from an Exhibit (its extracted text, thumbnail, EXIF data, document metadata), anchored to that Exhibit through a Derivation. Never evidence on its own.
+_Avoid_: sidecar (as the general term), derivative, output.
+
+**Derivation**:
+The record of how a Derived File was produced: which Exhibit, which computation, which tool version, when. What lets an investigation graph be rebuilt from the chain.
+_Avoid_: transform, processing step, extraction record.
+
+**Exhibit Number**:
+The sequential per-Case reference an Exhibit receives when it is committed, never reused, recorded in its Manifest Entry so a citation such as "Exhibit 7" is verifiable.
+_Avoid_: exhibit id, reference number, label.
+
+**Staging Pool**:
+A Case's write-once holding area for files that have arrived but are not yet evidence. A pooled file is hashed but not anchored; only an explicit commit makes it an Exhibit.
+_Avoid_: scratch area, inbox, drafts, uploads folder.
+
 ### Provenance and integrity
 
 **Manifest**:

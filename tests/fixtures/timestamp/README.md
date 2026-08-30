@@ -53,3 +53,43 @@ carried by the embedded responder certificate
 (`CN=DigiCert SHA256 RSA4096 Timestamp Responder 2025 1`). `parseTimestampToken`
 falls back to that certificate's subject CN, which is what this fixture's parse
 test asserts.
+
+## Tokens from other authorities (#1142)
+
+Three further **real** responses, taken from the
+Bellingcat [auto-archiver](https://github.com/bellingcat/auto-archiver) test corpus
+(`tests/data/timestamping` at commit `5a56b80`, MIT licence, copyright Bellingcat).
+They exist so the verify-core parser is proven against token layouts other than
+DigiCert's, and so a strict-DER-clean authority is on hand for the second-authority
+question in #587. `timestampTokenAuthorities.test.ts` pins their parse results.
+Upstream file names are given below, since these were renamed on the way in.
+
+| File | Upstream name | What it is |
+| --- | --- | --- |
+| `identrust-response.tsr` | `valid_timestamp.tsr` | IdenTrust `TimeStampResp` from `http://timestamp.identrust.com`. Responder `CN=TrustID Timestamp Authority`, issued by `CN=TrustID Timestamping CA 3`; the `IdenTrust Commercial Root CA 1` anchor is not embedded. |
+| `identrust-response-2.tsr` | `rfc3161-client-issue-104.tsr` | A second IdenTrust response, over a different message, and with a different serial. Upstream keeps it as the reproduction for trailofbits/rfc3161-client#104. |
+| `sinpe-response.tsr` | `self_signed.tsr` | A response from `TSA SINPE v3` (subject `O=BANCO CENTRAL DE COSTA RICA`), chained to a national-government root that no bundled trust store carries. Despite the upstream name it is not self-signed; its root is unbundled. |
+
+All three imprint with `SHA-512`, not `SHA-256`. The stamped message for
+`identrust-response.tsr` and `sinpe-response.tsr` is the 64-character ASCII text
+`4b7b4e39f12b8c725e6e603e6d4422500316df94211070682ef10260ff5759ef`, so the
+expected imprint is `sha512` of that string, which the test derives rather than
+stores. Upstream kept no record of the message behind `identrust-response-2.tsr`, so
+the test pins that one's imprint as a literal instead. No `.tsq` was kept upstream either, so the
+`openssl ts -verify -queryfile` path in the preceding section does not apply;
+`openssl ts -reply -in <file> -text` still prints each one, and `-token_out`
+extracts the bare token.
+
+Why these matter to #1142: DigiCert's responses carry BER-ordered `SET`s that
+strict-DER parsers reject; IdenTrust's do not. Having both in the corpus lets a
+test show which property the in-app parser actually enforces.
+
+### What these fixtures do not cover
+
+One thread of trailofbits/rfc3161-client#104 is a client that assumed the signer
+certificate is the first one embedded in the response, which is wrong because
+RFC 5652 leaves the `certificates` SET unordered. The fixture named after that
+issue does not itself demonstrate the fault: in all three responses here the
+responder certificate is encoded first, verified by reading the raw DER. The
+out-of-order case is therefore constructed in the test, by re-encoding
+`identrust-response.tsr` with its two certificates reversed.

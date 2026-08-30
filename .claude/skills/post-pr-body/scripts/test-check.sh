@@ -30,6 +30,9 @@ done
 for f in "$fx"/fail-*.md; do
   "$check" "$f" >/dev/null 2>&1; expect 1 $? "direct $(basename "$f")"
 done
+"$check" --any-author "$fx/fail-no-attribution.md" >/dev/null 2>&1; expect 0 $? "direct --any-author accepts a body without the attribution line"
+"$check" --any-author "$fx/fail-attribution-not-last.md" >/dev/null 2>&1; expect 1 $? "direct --any-author still wants the line last when present"
+"$check" --any-author "$fx/fail-footer-authored.md" >/dev/null 2>&1; expect 1 $? "direct --any-author still rejects an authored footer"
 
 # The 1117 body must fail on the cap and the section rule specifically.
 out="$(node "$here/lint-body.mjs" "$fx/fail-1117-walkthrough.md")"
@@ -46,6 +49,19 @@ expect 2 "$(hook "gh pr edit 12 -b 'inline'")" "hook blocks -b"
 expect 0 "$(hook "gh api repos/o/r/pulls/12 --jq .draft")" "hook ignores a pulls read"
 expect 0 "$(hook "gh api repos/o/r/pulls -X POST --input pass-filled.json")" "hook allows a passing api payload"
 expect 2 "$(hook "gh api repos/o/r/pulls -X POST --input fail-payload.json")" "hook blocks a failing api payload"
+expect 2 "$(hook "gh pr create --draft --title t --fill")" "hook blocks --fill on create"
+expect 2 "$(hook "gh pr create --draft --title t")" "hook blocks a create with no body file"
+expect 2 "$(hook "gh pr create --web")" "hook blocks --web on create"
+expect 0 "$(hook "gh pr create --draft --body-file pass-footer-platform.md")" "hook tolerates the platform footer after the attribution line"
+expect 2 "$(hook "gh pr create --draft --body-file fail-no-attribution.md")" "hook requires the attribution line"
+expect 0 "$(hook "gh api repos/o/r/pulls --input pass-filled.json")" "hook allows an implicit POST with a passing payload"
+expect 2 "$(hook "gh api repos/o/r/pulls --input fail-payload.json")" "hook blocks an implicit POST with a failing payload"
+expect 2 "$(hook "gh api repos/o/r/pulls/12 -X PATCH --input fail-payload.json")" "hook blocks a PATCH with a failing payload"
+expect 2 "$(hook "gh api repos/o/r/pulls -f title=t -f body='inline' -f head=b -f base=main")" "hook blocks a raw body field"
+expect 2 "$(hook "gh api repos/o/r/pulls/12 -X PATCH --raw-field body=inline")" "hook blocks --raw-field body on an edit"
+expect 2 "$(hook "gh api repos/o/r/pulls -F body=@pass-filled.md -f title=t")" "hook blocks -F body=@file"
+expect 0 "$(hook "gh api repos/o/r/pulls/12 -X PATCH -f state=closed")" "hook allows a PATCH without a body"
+expect 0 "$(hook "gh api repos/o/r/pulls/12/reviews -X POST -f event=APPROVE")" "hook ignores a review post"
 expect 0 "$(hook "gh pr create --draft --title t --body 'inline'" "")" "hook passes through an interactive session"
 expect 0 "$(hook "gh pr create --draft --title t --body 'inline'" "birdbrain-reviewer")" "hook passes through an unbound agent"
 

@@ -5,6 +5,9 @@
 # Hook exit codes: 0 allows the command, 2 blocks it and feeds stderr back to the agent.
 set -u
 
+# Agents this hook binds, space-separated. Widen it one agent at a time (ADR-0022).
+bound="birdbrain-implementer"
+
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 lint() {
@@ -29,16 +32,21 @@ if [ $# -ge 1 ]; then
 fi
 
 input="$(cat)"
-read -r cwd cmd < <(printf '%s' "$input" | node -e '
+read -r agent cwd cmd < <(printf '%s' "$input" | node -e '
   let s = ""
   process.stdin.on("data", (d) => (s += d)).on("end", () => {
     let j = {}
     try { j = JSON.parse(s) } catch {}
+    const agent = j.agent_type || "-"
     const cwd = j.cwd || process.cwd()
     const cmd = (j.tool_input && j.tool_input.command) || ""
-    process.stdout.write(cwd + " " + Buffer.from(cmd).toString("base64") + "\n")
+    process.stdout.write(agent + " " + cwd + " " + Buffer.from(cmd).toString("base64") + "\n")
   })')
 cmd="$(printf '%s' "$cmd" | base64 -d)"
+
+# The hook is registered in .claude/settings.json, so it sees every session; it acts only for
+# the agents named in $bound (the payload's agent_type). Interactive sessions pass through.
+case " $bound " in *" $agent "*) ;; *) exit 0 ;; esac
 
 is_comment_write=0
 if printf '%s' "$cmd" | grep -Eq '(^|[;&|(]|[[:space:]])a?gh[[:space:]]+(issue|pr)[[:space:]]+comment([[:space:]]|$)'; then

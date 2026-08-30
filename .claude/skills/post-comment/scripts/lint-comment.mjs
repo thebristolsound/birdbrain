@@ -31,7 +31,7 @@ const KINDS = [
   },
   {
     name: 'review reply',
-    first: /^(applied [0-9a-f]{7,40}\b.*|not applied: \S.*)$/,
+    first: /^(applied [0-9a-f]{7,40}|not applied: \S.*)$/,
     cap: 1,
     check(lines, findings) {
       const first = lines[0].trim()
@@ -58,6 +58,8 @@ const KINDS = [
 
 // A pre-pass verdict starting with a bold `**...**` line whose verdict word is wrong.
 const VERDICT_LOOKALIKE = /^\*\*Reviewer pre-pass/
+// An applied reply that carries more than the sha.
+const APPLIED_LOOKALIKE = /^applied\b/i
 
 export function lintComment(raw) {
   const findings = []
@@ -75,6 +77,9 @@ export function lintComment(raw) {
   const kind = KINDS.find((k) => k.first.test(first))
   if (!kind && VERDICT_LOOKALIKE.test(first)) {
     findings.push('a pre-pass verdict first line is "**Reviewer pre-pass (<sha>): approve for human review**" or "...: request changes**"')
+  }
+  if (!kind && APPLIED_LOOKALIKE.test(first)) {
+    findings.push('an applied reply is "applied <sha>" and nothing else; anything more goes in a "not applied: <one sentence>" reply or the PR')
   }
   const cap = kind ? kind.cap : GENERIC_CAP
   const nonBlank = all.filter((l) => l.trim() !== '')

@@ -26,10 +26,13 @@ authenticates as the machine account.
 1. The PR is open and its base is `main`.
 2. At least one check run exists at the head commit and every one completed without failure.
    A commit CI never ran on is refused, not treated as green.
-3. The body passes `post-pr-body` (a cloud-proxy footer after the attribution line is
-   tolerated). A body that fails is fixed with `pr edit <n> --body-file <file>` first.
-4. `evidence-affecting`, on the PR or its linked issue: refused under `agh` (ADR-0005,
-   ADR-0014); under `gh` it proceeds, because the maintainer running it is the human review.
+3. The body passes `post-pr-body` (the linter tolerates a cloud-proxy footer after the
+   attribution line). Under `gh` the check runs with `--any-author`, so a human-written body
+   without the attribution line passes; under `agh` the line is required. A body that fails is
+   fixed with `pr edit <n> --body-file <file>` first.
+4. `evidence-affecting`, on the PR or an issue named on its `Closes` line: refused under
+   `agh` (ADR-0005, ADR-0014); under `gh` it proceeds, because the maintainer running it is the
+   human review. A label read that fails refuses the merge rather than reading as "no label."
 
 The dispatcher's other conditions (a `success` pre-pass verdict on this sha, slot state, the
 blocking-tier path list) stay the dispatcher's to establish; the script does not read them.
@@ -42,9 +45,12 @@ blocking-tier path list) stay the dispatcher's to establish; the script does not
 - Takes the PR out of draft, then `pr merge --squash --match-head-commit <sha>`: a head that
   moved since the checks were read makes the merge refuse.
 - Reads back: the merge commit on `main`, the remote branch (deleted by the repository setting,
-  or deleted here), and the state of every issue on the `Closes` line.
-- Locally: `git fetch --prune`, then `git branch -d` unless a worktree still holds the branch,
-  in which case it says which one. Worktrees are never removed; t3code owns them.
+  or deleted here; a branch in a fork is left to its owner), and the state of every issue on
+  the `Closes` line.
+- Locally: `git fetch --prune`, then deletes the branch when its tip is the sha that was merged
+  (a squash leaves no ancestry, so the plain `-d` would refuse). A branch a worktree still
+  holds, or whose tip moved, is reported and left alone. Worktrees are never removed; t3code
+  owns them.
 
 It does not pass `--delete-branch` to `gh`: that flag also switches the local branch, which
 fails inside a worktree after the merge has already happened.

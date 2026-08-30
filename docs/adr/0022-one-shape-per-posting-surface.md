@@ -51,7 +51,9 @@ Verification. A comment's first line names its kind, and each kind has a line ca
 full report never goes on the PR.
 
 The PR body shape is the same for humans and agents: `.github/pull_request_template.md` is a
-copy of the skill's template.
+copy of the skill's template. The one difference is the attribution line: an agent ends with
+it, a human omits it, and the `--any-author` mode of the linter (what `merge-pr` runs under
+`gh`) accepts both.
 
 ### The squash-merge commit is composed, not concatenated
 

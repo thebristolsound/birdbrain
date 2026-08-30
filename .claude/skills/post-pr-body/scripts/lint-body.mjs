@@ -1,6 +1,8 @@
 #!/usr/bin/env node
-// Lints a PR body against ../template.md. Usage: lint-body.mjs <file>
+// Lints a PR body against ../template.md. Usage: lint-body.mjs [--any-author] <file>
 // The file is Markdown, or JSON with a `body` string (a `gh api --input` payload).
+// --any-author accepts a body without the attribution line (a human-written PR); the merge
+// path uses it. The line, when present, must still be last.
 // Prints one finding per line and exits 1 on any finding.
 import { readFileSync } from 'node:fs'
 
@@ -15,6 +17,8 @@ const IMPACT_FIELDS = [
   'Known-answer test'
 ]
 const PREFLIGHT_MARKER = /^<!-- preflight v\d+ sha=[0-9a-f]{40} status=\w+ -->$/
+// The footer a cloud-proxy session appends after the body it was given (ADR-0022).
+const PLATFORM_FOOTER = /^_?Generated (with|by) \[Claude Code\]\([^)]*\)_?$/
 const FORBIDDEN = [
   [/co-authored-by/i, 'a Co-authored-by trailer'],
   [/Generated (with|by) \[Claude Code\]/, 'the platform attribution footer (the attribution line is the only one you author)'],
@@ -28,6 +32,19 @@ function stripComments(text) {
   )
 }
 
+// A platform footer directly after the attribution line was appended by the platform, not
+// authored; drop it so the rest of the body is judged as written.
+function dropPlatformFooter(text) {
+  const lines = text.split('\n')
+  let i = lines.length - 1
+  while (i >= 0 && lines[i].trim() === '') i--
+  if (i < 1 || !PLATFORM_FOOTER.test(lines[i].trim())) return text
+  let j = i - 1
+  while (j >= 0 && lines[j].trim() === '') j--
+  if (j < 0 || lines[j].trim() !== ATTRIBUTION) return text
+  return lines.slice(0, j + 1).join('\n') + '\n'
+}
+
 function countSentences(text) {
   const prose = text
     .replace(/`[^`]*`/g, '')
@@ -36,11 +53,13 @@ function countSentences(text) {
   return (prose.match(/[.!?](?=\s|$)/g) || []).length
 }
 
-export function lintBody(raw) {
+export function lintBody(raw, { anyAuthor = false } = {}) {
   const findings = []
-  const text = raw.replace(/\r\n/g, '\n')
+  const text = dropPlatformFooter(raw.replace(/\r\n/g, '\n'))
   const lines = text.split('\n')
   const visible = stripComments(text).split('\n')
+  // A line that stripping emptied was a template prompt; it is not authored text.
+  const fromComment = lines.map((l, i) => l.trim() !== '' && visible[i].trim() === '')
 
   for (const [re, what] of FORBIDDEN) {
     if (re.test(text)) findings.push(`body contains ${what}`)
@@ -110,7 +129,9 @@ export function lintBody(raw) {
 
   const vStart = start('## Verification')
   if (vStart >= 0) {
-    const above = visible.slice(0, vStart).filter((l) => !PREFLIGHT_MARKER.test(l.trim()))
+    const above = visible
+      .slice(0, vStart)
+      .filter((l, i) => !fromComment[i] && !PREFLIGHT_MARKER.test(l.trim()))
     if (above.length > MAX_LINES_ABOVE_VERIFICATION) {
       findings.push(`${above.length} lines above ## Verification; the cap is ${MAX_LINES_ABOVE_VERIFICATION}`)
     }
@@ -124,8 +145,11 @@ export function lintBody(raw) {
     }
   }
 
-  const last = [...lines].reverse().find((l) => l.trim() !== '') || ''
-  if (last.trim() !== ATTRIBUTION) {
+  const last = ([...visible].reverse().find((l) => l.trim() !== '') || '').trim()
+  const hasAttribution = visible.some((l) => l.trim() === ATTRIBUTION)
+  if (hasAttribution && last !== ATTRIBUTION) {
+    findings.push(`"${ATTRIBUTION}" must be the last line`)
+  } else if (!hasAttribution && !anyAuthor) {
     findings.push(`the last line must be exactly "${ATTRIBUTION}"`)
   }
 
@@ -146,12 +170,14 @@ function bodyFromFile(path) {
 }
 
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop())) {
-  const file = process.argv[2]
+  const args = process.argv.slice(2)
+  const anyAuthor = args.includes('--any-author')
+  const file = args.find((a) => !a.startsWith('--'))
   if (!file) {
-    console.error('usage: lint-body.mjs <file>')
+    console.error('usage: lint-body.mjs [--any-author] <file>')
     process.exit(2)
   }
-  const findings = lintBody(bodyFromFile(file))
+  const findings = lintBody(bodyFromFile(file), { anyAuthor })
   for (const f of findings) console.log(`- ${f}`)
   process.exit(findings.length ? 1 : 0)
 }

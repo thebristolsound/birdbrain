@@ -144,5 +144,15 @@ test.describe('Page tab guest frame', () => {
     const collapsed = await readFrame(page)
     expect(collapsed.frameWidth).toBe(collapsed.windowWidth)
     expect(collapsed.frameHeight).toBe(collapsed.windowHeight)
+    // The scroll extent survives the collapse: the wider pane has less left to scroll,
+    // but every laid-out pixel is still inside the frame and still reachable.
+    expect(collapsed.scrollWidth).toBeGreaterThanOrEqual(collapsed.windowWidth)
+    expect(collapsed.scrollWidth).toBeGreaterThan(collapsed.paneWidth)
+    const collapsedMaxScrollLeft = await page.evaluate(() => {
+      const pane = document.querySelector('[data-testid="mhtml-viewer-scroll"]') as HTMLElement
+      pane.scrollLeft = pane.scrollWidth
+      return pane.scrollLeft
+    })
+    expect(collapsedMaxScrollLeft).toBe(collapsed.scrollWidth - collapsed.paneWidth)
   })
 })

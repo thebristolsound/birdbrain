@@ -82,6 +82,11 @@ const OPERATOR_NAME_REQUIRED_MSG =
   'Operator name required. Configure your name in Birdbrain settings before capturing.'
 
 let server: Server | null = null
+// The port this process is actually listening on, which is not always
+// CAPTURE_SERVER_PORT: tests start the server on a port they own, and a
+// listener elsewhere on the machine can hold the default. Null whenever the
+// server is not running (#462).
+let listeningPort: number | null = null
 let mainWindow: BrowserWindow | null = null
 
 // Fallback for callers that don't inject one (the test suite). It has no
@@ -914,6 +919,17 @@ function createApp(deps: CaptureServerDeps): Hono {
   return app
 }
 
+/**
+ * The port this process's capture server is listening on, or null when it is
+ * not running. Callers that need to reach our own server must resolve the port
+ * through this rather than through CAPTURE_SERVER_PORT — the constant says
+ * where we would like to listen, not whether we are, nor whose process answers
+ * there (#462).
+ */
+export function getCaptureServerPort(): number | null {
+  return server ? listeningPort : null
+}
+
 export function startCaptureServer(
   deps: CaptureServerDeps,
   port: number = CAPTURE_SERVER_PORT
@@ -927,7 +943,10 @@ export function startCaptureServer(
         port,
         hostname: '127.0.0.1'
       },
-      () => {
+      (info) => {
+        // Read the bound port back rather than echoing the request, so a
+        // caller that asked for port 0 gets the ephemeral port it actually got.
+        listeningPort = info.port
         resolve()
       }
     ) as unknown as Server
@@ -940,9 +959,11 @@ export function stopCaptureServer(): Promise<void> {
       server.closeAllConnections()
       server.close(() => {
         server = null
+        listeningPort = null
         resolve()
       })
     } else {
+      listeningPort = null
       resolve()
     }
   })

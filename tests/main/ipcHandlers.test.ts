@@ -117,7 +117,7 @@ vi.mock('@main/services/waybackMachine', async (importActual) => {
 // --- Real services ----------------------------------------------------------
 import { IPC_CHANNELS } from '@shared/ipc'
 import { MAX_BATCH_CAPTURE_IDS } from '@shared/constants'
-import type { BatchCountResult, BatchDeleteResult } from '@shared/ipc'
+import type { BatchCountResult, BatchDeleteResult, SelfTestResult } from '@shared/ipc'
 import { registerIpcHandlers } from '@main/ipcHandlers'
 import type {
   BugReportResult,
@@ -152,6 +152,12 @@ import { initServerToken } from '@main/services/serverToken'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSessionService, type SessionService } from '@main/services/session'
+import {
+  CAPTURE_SERVER_PORT,
+  getCaptureServerPort,
+  startCaptureServer,
+  stopCaptureServer
+} from '@main/services/captureServer'
 import { appendManifestEntry, initManifest } from '@main/services/manifest'
 import { buildPdfMetadataRows } from '@main/services/pdfExport'
 import type { TrustedTimeResult } from '@shared/verify/trustedTime'
@@ -598,22 +604,70 @@ describe('ipcHandlers — captures', () => {
     expect(expectOk<Capture[]>(await invoke(IPC_CHANNELS.CAPTURES_LIST, caseId))).toHaveLength(0)
   })
 
-  // Both handlers wait out a 2s AbortSignal against a port nothing answers, so
-  // this test's own worst case is 4s — under the default 5s budget by less
-  // than a second, and it goes over whenever the suite is busy enough. Give it
-  // room for the wait it is designed to make.
-  it(
-    'reports failure for the http/pipeline self-tests when the server is down',
-    async () => {
-      const http = expectOk<{ success: boolean }>(await invoke(IPC_CHANNELS.CAPTURES_TEST_HTTP))
+  // #462. This test used to assert that nothing answers CAPTURE_SERVER_PORT,
+  // which is not a property the suite controls: no test file binds 19845 (the
+  // three that start the server allocate from 19846, 19960 and 19990), so the
+  // binder was always a process outside the suite — on WSL2, a Birdbrain
+  // running on the Windows host, forwarded onto the distro's 127.0.0.1 and
+  // invisible to `ss` inside it. It also cost two 2s AbortSignal waits, ~4041ms
+  // against the 5s default, because that loopback drops SYNs to unbound ports
+  // rather than refusing them. Both modes are gone: the handlers resolve the
+  // port from the live listener and never probe when there is none.
+  it('reports failure for the http/pipeline self-tests when the server is down', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    try {
+      const http = expectOk<SelfTestResult>(await invoke(IPC_CHANNELS.CAPTURES_TEST_HTTP))
       expect(http.success).toBe(false)
-      const pipeline = expectOk<{ success: boolean }>(
-        await invoke(IPC_CHANNELS.CAPTURES_TEST_PIPELINE)
-      )
+      expect(http.error).toBe('Capture server is not running')
+
+      const pipeline = expectOk<SelfTestResult>(await invoke(IPC_CHANNELS.CAPTURES_TEST_PIPELINE))
       expect(pipeline.success).toBe(false)
-    },
-    15000
-  )
+      expect(pipeline.error).toBe('Capture server is not running')
+
+      // The load-bearing assertion: no request left the process, so no listener
+      // anywhere on the machine can turn this into a pass or a timeout.
+      expect(fetchSpy).not.toHaveBeenCalled()
+    } finally {
+      fetchSpy.mockRestore()
+    }
+  })
+
+  it('runs the self-tests against the port the server actually bound', async () => {
+    const selectorLifecycle = createSelectorLifecycle({ emitRematched: vi.fn() })
+    const captureLifecycle = createCaptureLifecycle({ selectorLifecycle })
+    // Port 0 lets the OS pick, so this test owns its port and contends for
+    // nothing — least of all the production constant.
+    await startCaptureServer({ selectorLifecycle, captureLifecycle, sessionService }, 0)
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    // Matched by URL, not by call index: the ingest the pipeline test performs
+    // may grow its own outbound requests, and a positional [0]/[1] would then
+    // fail on the shift rather than on the port.
+    const requestedUrls = (): string[] => fetchSpy.mock.calls.map(([input]) => String(input))
+    try {
+      const port = getCaptureServerPort()
+      expect(port).not.toBeNull()
+      expect(port).not.toBe(CAPTURE_SERVER_PORT)
+
+      const http = expectOk<SelfTestResult>(await invoke(IPC_CHANNELS.CAPTURES_TEST_HTTP))
+      expect(http.success).toBe(true)
+      expect(requestedUrls()).toContain(`http://127.0.0.1:${port}/api/status`)
+
+      settings.updateSettings({ operatorName: 'Test Operator' })
+      const pipeline = expectOk<SelfTestResult>(await invoke(IPC_CHANNELS.CAPTURES_TEST_PIPELINE))
+      expect(pipeline.success).toBe(true)
+      expect(requestedUrls()).toContain(`http://127.0.0.1:${port}/api/captures/test`)
+      // The regression this file exists to catch: nothing was aimed at the
+      // constant, whoever else answers there.
+      expect(requestedUrls().filter((u) => u.includes(`:${CAPTURE_SERVER_PORT}/`))).toEqual([])
+    } finally {
+      fetchSpy.mockRestore()
+      await stopCaptureServer()
+    }
+    expect(getCaptureServerPort()).toBeNull()
+    // Stopping again is a no-op rather than a throw, and leaves the port unset.
+    await stopCaptureServer()
+    expect(getCaptureServerPort()).toBeNull()
+  })
 })
 
 describe('ipcHandlers — batch operations (#394)', () => {

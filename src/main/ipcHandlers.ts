@@ -70,7 +70,7 @@ import { getExtensionPath, extensionPathExists } from '@main/services/extensionP
 import { lookupSnapshots, isPersistableSnapshot } from '@main/services/waybackMachine'
 import { buildCsv } from '@main/services/csvEscape'
 import { getInstallationId } from '@main/services/installationId'
-import { CAPTURE_SERVER_PORT } from '@main/services/captureServer'
+import { getCaptureServerPort } from '@main/services/captureServer'
 import { getServerToken } from '@main/services/serverToken'
 import { getStorageRoot } from '@main/services/storage'
 import { resolveTrustedTime } from '@main/services/trustedTime'
@@ -101,6 +101,19 @@ import type {
 // loopback drops (rather than refuses) SYNs to unbound ports — e.g. WSL2 — hangs
 // long enough to blow past test/UI deadlines.
 const SELF_TEST_TIMEOUT_MS = 2000
+
+// The self-tests report on *this process's* capture server, so they resolve the
+// port from the live listener and refuse to probe at all when there is none.
+// Probing the CAPTURE_SERVER_PORT constant instead meant any HTTP responder on
+// 19845 was read as our server. Reaching that misread takes a process that
+// registers these handlers with no server of its own — in the app there is
+// none, because startup awaits startCaptureServer before any window exists and
+// a startup failure exits; it is the unit-test process, which is where #462 was
+// observed: a Birdbrain on the WSL2 Windows host, its listener invisible to
+// `ss` inside the distro, answered the unauthenticated /api/status and took the
+// pipeline test's POST. Resolving the port removes the dependency on that
+// ordering rather than relying on it.
+const SERVER_NOT_RUNNING_MSG = 'Capture server is not running'
 
 // Reveal/open is limited to files THIS process authored (export outputs). A
 // renderer — even a compromised one — can't hand shell.openPath an arbitrary
@@ -377,8 +390,12 @@ export function registerIpcHandlers(deps: {
 
   // Capture pipeline test
   handle(IPC_CHANNELS.CAPTURES_TEST_PIPELINE, async () => {
+    const port = getCaptureServerPort()
+    if (port === null) {
+      return { success: false, durationMs: 0, error: SERVER_NOT_RUNNING_MSG }
+    }
     try {
-      const res = await fetch(`http://127.0.0.1:${CAPTURE_SERVER_PORT}/api/captures/test`, {
+      const res = await fetch(`http://127.0.0.1:${port}/api/captures/test`, {
         method: 'POST',
         headers: { 'X-Birdbrain-Token': getServerToken() },
         signal: AbortSignal.timeout(SELF_TEST_TIMEOUT_MS)
@@ -394,8 +411,12 @@ export function registerIpcHandlers(deps: {
   // HTTP test (verifies Hono server is reachable)
   handle(IPC_CHANNELS.CAPTURES_TEST_HTTP, async () => {
     const start = Date.now()
+    const port = getCaptureServerPort()
+    if (port === null) {
+      return { success: false, durationMs: Date.now() - start, error: SERVER_NOT_RUNNING_MSG }
+    }
     try {
-      const res = await fetch(`http://127.0.0.1:${CAPTURE_SERVER_PORT}/api/status`, {
+      const res = await fetch(`http://127.0.0.1:${port}/api/status`, {
         signal: AbortSignal.timeout(SELF_TEST_TIMEOUT_MS)
       })
       const ok = res.ok

@@ -113,11 +113,15 @@ export const executableChangedLines = (lines, hits) => {
 const SOURCE_LIKE = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/
 // `.d.mts` and `.d.cts` are declarations too, and `SOURCE_LIKE` matches their tails.
 const DECLARATION = /\.d\.(ts|mts|cts)$/
+// Co-located package tests: vitest.config.ts excludes them from instrumentation, so a
+// changed one is absent from coverage-final.json for the same reason tests/ is.
+const PACKAGE_TESTS = /^src\/packages\/[^/]+\/tests\//
 export const isSourceLike = (path) =>
   SOURCE_LIKE.test(path) &&
   !path.startsWith('tests/') &&
   !path.startsWith('e2e/') &&
   !path.startsWith('scripts/') &&
+  !PACKAGE_TESTS.test(path) &&
   !DECLARATION.test(path)
 
 const main = async () => {

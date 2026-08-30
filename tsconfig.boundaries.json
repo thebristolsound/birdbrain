@@ -1,0 +1,19 @@
+// Alias map for `pnpm lint:boundaries` (dependency-cruiser reads exactly one tsconfig, and
+// `tsConfig.fileName` in .dependency-cruiser.cjs points here). It is never passed to tsc: the
+// per-process projects each carry only the aliases their code may use, so no single one of them
+// resolves every import the cruise walks (@main/* is in tsconfig.node.json, @renderer/* in
+// tsconfig.web.json, @extension/* in extension/tsconfig.json and the Vitest config). An alias
+// this file does not list leaves its edge unresolved, and an unresolved edge is invisible to
+// every boundary and cycle rule.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@main/*": ["./src/main/*"],
+      "@renderer/*": ["./src/renderer/*"],
+      "@shared/*": ["./src/shared/*"],
+      "@extension/*": ["./extension/src/*"]
+    }
+  },
+  "include": []
+}

@@ -9,6 +9,7 @@ Gitleaks
 [Gg]ridcast
 Hono
 Hunchly
+Bellingcat
 jsdom
 Konva
 [Ll]ucide

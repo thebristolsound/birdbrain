@@ -131,11 +131,11 @@ run its chain without waiting on another slot's merge.
 
 - **Track A, the data screen.** *Amended 2026-08-30.* The 2026-08-27 a-d split is superseded by
   the Exhibit model (ADR-0023, ADR-0024, rulings in `docs/plans/2026-08-30-exhibit-model-rulings.md`).
-  `803a` becomes the inventory and Staging Pool read path over the model, with Captures and
-  attachments as the populated kinds and the verifier's schema-3 change landing first; the
-  browser parts follow once the round-1 questions are re-asked against the ADRs (X11). Every part
-  stays blocking tier. Track A does not dispatch in this round until the sub-tickets are
-  re-cut, so tracks B and C start first.
+  The round-1 questions were re-asked on 2026-08-30 (X11, round 5), and the ticket is six
+  sub-tickets (X40): `803v` verifier and schema 3 first and alone, then `803a` model and read
+  path, then `803p` the Staging Pool beside `803b` shell and tree, then `803c` tabs and Results,
+  then `803d` menus. Every part stays blocking tier. Track A does not dispatch until the ADRs land
+  on `main`, so tracks B and C start first.
 - **Track B, tags, and the selection bar.** #1033, then #918, then #665, then #824. One
   auto-merge followed by three human reviews.
 - **Track C, shell, notes, dashboard, and the AI removal.** #902, then #682/#813, then #688, then
@@ -162,9 +162,9 @@ Interactive, no fleet. Everything here is a comment, a label, or a maintainer an
 
 1. Collect the five maintainer inputs listed in the "Outstanding inputs" section. The run can start with
    two of them still open (#405's list and #991), because neither gates a track.
-2. Re-cut `803a` through `803d` as sub-tickets against ADR-0023 and ADR-0024 (the 08-27 split is
-   superseded), once the round-1 questions have been re-asked (X11). Each carries `ready-for-agent` and `evidence-affecting` in the create
-   call, and #803 itself loses `ready-for-agent` so the dispatcher cannot pick up the parent.
+2. Done 2026-08-30: the six sub-tickets of X40 are filed against ADR-0023 and ADR-0024 with
+   `ready-for-agent` and `evidence-affecting`, chained by native issue dependencies, and #803
+   itself has lost `ready-for-agent`. The numbers are on #803's ruling comment.
 3. Apply `evidence-affecting` to #682, #813, #918, #665, #675 and #824.
 4. Correct #918's third acceptance criterion.
 5. Close #708 by comment per W14, or record why it stays open. It carries no code.

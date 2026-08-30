@@ -7,10 +7,11 @@ ingestion, Google Docs import, and Maltego-class depth), and the rounds below se
 model. The decisions are recorded as ADR-0023 (the Exhibit model) and ADR-0024 (the Staging
 Pool); this document is the trail of what was asked, what was answered, and on what grounds.
 
-Numbered X1-X32 to keep them distinct from wave 3's R1-R23 and wave 4's W1-W26, which still
+Numbered X1-X40 to keep them distinct from wave 3's R1-R23 and wave 4's W1-W26, which still
 bind where they do not conflict. Where a ruling below contradicts an earlier ruling, the later
 one wins and the conflict is named. Rulings X28-X32 were taken by the agent under ADR-0015 and
-are open to veto.
+are open to veto. Round 5 is the X11 re-ask of the 2026-08-29 round-1 questions, held on
+2026-08-30 after the ADRs were written.
 
 ## Round 2: the model
 
@@ -143,6 +144,71 @@ implementation plan; #803's track gains the pool plus upload as the first pooled
 the model. Grounds: an empty Staging group is a placeholder, which the ticket forbids, and upload
 is the smallest pooled kind.
 
+## Round 5: the round-1 questions, re-asked against the ADRs
+
+Five round-1 questions were settled by the ADRs and were listed for veto rather than re-asked;
+none was vetoed. Q1 (purpose) is X8. Q8 (search) is R21: name, Exhibit, kind, and hash only, no
+page text. Q9 (Wayback rows) is the W4 retraction. Q10 (Properties tab) is recorded size carrying the
+recorded-at-ingest label, no Remote address, the real relative path, Collector from the four version
+fields, plus kind, origin, and Exhibit Number, and for a Derived File its parent and derivation.
+Q12 (Reprocess) stays inside the Indicators view header with whole-case semantics and no per-file
+re-extract.
+
+**X33 (Q2 restated) - the tree groups Data Sources by kind, and Derived Files are child rows of
+their Exhibit.** One subgroup per kind (Captures and Attachments first; Images and Documents when
+their kind ships), one node per Exhibit, no `raw` or `derived` folders. Staging is its own
+top-level group beside Data Sources; Views and Results stay. Grounds: per-kind subgroups mirror
+the storage layout (X4), and the per-kind count is the first thing an operator asks for.
+
+**X34 (new) - legacy thumbnails are regenerated and anchored by the migration.** The migration
+regenerates each thumbnail from its anchored screenshot and writes a `derivation` entry dated at
+migration, with the migration as the tool. A Capture whose screenshot is missing or fails
+verification gets no entry, and its thumbnail row carries the not-anchored label. Grounds: hashing the
+bytes found on disk would anchor a swapped file, and leaving legacy thumbnails unanchored leaves a
+permanent two-class inventory.
+
+**X35 (new) - schema shape.** A new `exhibits` table is the identity and numbering row (id, Case,
+kind, origin, Exhibit Number, Content Hash, path, size, committed time, and Manifest sequence).
+Captures keep the `captures` table and get an `exhibits` row with the same id, written by the
+`renumber` migration. A `derived_files` table (parent, derivation, tool version, hash, path, and
+time) holds Derived Files; `textHash` and `screenshotHash` stay on `captures`. Pooled files live
+in a `staging_files` table and never in `exhibits`. Grounds: kind and origin columns on
+`captures` would make every Capture column nullable for the kinds that lack it, and the
+inventory query would become a per-kind special case.
+
+**X36 (Q4 restated) - one `manifest:snapshot(caseId)` channel.** It returns the parsed entries
+typed by the schema-3 union (`exhibit`, `derivation`, and `renumber` added to the six), the
+`verifyManifestChain` verdict, and the signer's public-key fingerprint. The renderer never
+computes chain state.
+
+**X37 (Q5 restated) - three integrity buckets over every anchored row, with a verify-all
+action.** Verified; tampered, missing, or chain-broken; and unverified, over Exhibits and Derived
+Files alike, with `Verify all` running a per-Exhibit verify in sequence. Verify for a kind lands
+with the kind: the model ticket carries `exhibits:verify` delegating to the existing Capture path,
+and the pool ticket extends it to attachments. Pooled rows are excluded (X16).
+
+**X38 (Q6 restated) - backed menu items only, plus the pool actions.** Exhibit or Derived File
+row: `Open in viewer`, `Copy SHA-256`, `Copy relative path`, `Verify`. Node: Show only this, Expand or
+Collapse below, Verify. Ledger entry: Show target, Copy entry hash, Copy previous hash. Staged
+row: `Commit`, `Discard` (confirmed), and `Copy SHA-256` carrying the not-anchored label. Group
+action: `Upload`.
+The `shell:showItemInFolder` allowlist is not widened; that stays a separate security ruling.
+
+**X39 (Q7 restated) - Results nodes.** Keyword Hits has one child per Selector and filters the
+table to matched Exhibits with no snippet; the Extracted Text node becomes "Indicators" (R21's
+view); nothing from pooled content appears (X15).
+
+**X40 (Q11 restated) - six sub-tickets.** `803v` verifier and schema 3 (entry types, the
+"verifier too old" outcome, generalized `deletion` and `timestamp`, KATs), first and alone.
+`803a` model and read path (the X35 tables, the `renumber` and thumbnail migrations,
+`exhibits:inventory` with the pooled/anchored discriminator, `manifest:snapshot`,
+`exhibits:verify`), with Captures the only populated kind. `803p` the Staging Pool (storage,
+upload as `attachment`, commit, discard, the archive `staged` flag, verify for attachments).
+`803b` shell, tree, table, search, and the Staging group. `803c` tabs, Results nodes, the
+Indicators move, and Reprocess. `803d` menus. All blocking tier; `803p` may run beside `803b`.
+Grounds: a schema-3 chain must not exist before distributed verifiers can read it, which is the
+case for `803v` alone, and the pool beside the model makes `803a` one review too large to hold.
+
 ## Decisions the agent took
 
 **X28 - two ADRs, not one.** 0023 for the model, 0024 for the pool, so either can be vetoed alone.
@@ -176,5 +242,5 @@ not model data.
 
 ## Outstanding
 
-Nothing gates the ADRs. The #405 site list and the #985 ruling remain owed from the round-2
+Nothing gates the ADRs, and nothing gates the six sub-tickets except the ADRs landing on `main`. The #405 site list and the #985 ruling remain owed from the round-2
 plan and are unrelated to this model.

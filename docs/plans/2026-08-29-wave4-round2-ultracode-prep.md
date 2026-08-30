@@ -64,7 +64,7 @@ cap, not a raise, so it stays inside the rule.
 | #824 | W8 | blocking (`background.ts`) | labelled 08-30 | now; the #829 dependency cleared in #1068 |
 | #698 | W5 | blocking, labelled | correct | now; data deletion, human review |
 | #708 | W14 | none | correct | stays open as the design-side collection point (noted 08-30); no slot |
-| #803 | W1, W26, X1-X40 | blocking, labelled | six sub-tickets #1146-#1151, 08-30 | after PR #1145 lands; #1146 first and alone |
+| #803 | W1, W26, X1-X44 | blocking, labelled | seven sub-tickets #1146-#1151 and #1156, 08-30 | after PR #1145 lands; #1146 first and alone |
 | #830 | W3, W17 | blocking, labelled | correct | after #985 is ruled and merged |
 | #985 | ruled 08-30 | blocking, labelled | `ready-for-agent` | now |
 | #405 | R7, R12, W18, W19, #771 ruled 08-30 | blocking, labelled | `ready-for-agent` | last and alone |
@@ -133,7 +133,7 @@ run its chain without waiting on another slot's merge.
   The round-1 questions were re-asked on 2026-08-30 (X11, round 5), and the ticket is six
   sub-tickets (X40): `803v` verifier and schema 3 first and alone, then `803a` model and read
   path, then `803p` the Staging Pool beside `803b` shell and tree, then `803c` tabs and Results,
-  then `803d` menus. Every part stays blocking tier. Track A does not dispatch until the ADRs land
+  then `803d` menus, then `803e` exports over every kind. Every part stays blocking tier. Track A does not dispatch until the ADRs land
   on `main`, so tracks B and C start first.
 - **Track B, tags, and the selection bar.** #1033, then #918, then #665, then #824. One
   auto-merge followed by three human reviews.
@@ -161,7 +161,7 @@ Interactive, no fleet. Everything here is a comment, a label, or a maintainer an
 
 1. Collect the five maintainer inputs listed in the "Outstanding inputs" section. The run can start with
    two of them still open (#405's list and #991), because neither gates a track.
-2. Done 2026-08-30: the six sub-tickets of X40 are filed against ADR-0023 and ADR-0024 with
+2. Done 2026-08-30: the seven sub-tickets of X40 and X44 are filed against ADR-0023 and ADR-0024 with
    `ready-for-agent` and `evidence-affecting`, chained by native issue dependencies, and #803
    itself has lost `ready-for-agent`. The numbers are on #803's ruling comment.
 3. Done 2026-08-30: `evidence-affecting` applied to #682, #813, #918, #665, #675 and #824.

@@ -12,9 +12,10 @@ for each unwanted file is noise, not custody.
 
 **We decided** that each Case has a **Staging Pool**: a write-once holding area for files that
 have arrived but are not yet evidence. Only an explicit **commit** ingests a pooled file as an
-Exhibit and writes its Manifest Entry. Captures of every method and archive imports commit
-directly, as they do today, because a Capture's evidentiary value is that it was taken at a
-stated moment and a gap between that moment and its entry would weaken it. Everything new pools:
+Exhibit and writes its Manifest Entry. Captures of every method commit directly, as they do
+today, because a Capture's evidentiary value is that it was taken at a stated moment and a gap
+between that moment and its entry would weaken it. An archive import restores what the archive
+declares: already-anchored entries as anchored, and entries flagged `staged` to the pool. Everything new pools:
 manual uploads, right-click image saves, document imports, Drive imports, and any future
 scrape-all.
 

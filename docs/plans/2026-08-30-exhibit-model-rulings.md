@@ -7,9 +7,9 @@ ingestion, Google Docs import, and Maltego-class depth), and the rounds below se
 model. The decisions are recorded as ADR-0023 (the Exhibit model) and ADR-0024 (the Staging
 Pool); this document is the trail of what was asked, what was answered, and on what grounds.
 
-Numbered X1-X40 to keep them distinct from wave 3's R1-R23 and wave 4's W1-W26, which still
+Numbered X1-X44 to keep them distinct from wave 3's R1-R23 and wave 4's W1-W26, which still
 bind where they do not conflict. Where a ruling below contradicts an earlier ruling, the later
-one wins and the conflict is named. Rulings X28-X32 were taken by the agent under ADR-0015 and
+one wins and the conflict is named. Rulings X28-X32 and X41-X44 were taken by the agent under ADR-0015 and
 are open to veto. Round 5 is the X11 re-ask of the 2026-08-29 round-1 questions, held on
 2026-08-30 after the ADRs were written.
 
@@ -59,7 +59,7 @@ derivative processing, immutability, permission scoping); round 3 took each in t
 
 **X10 (R11) - graph-reconstructable, not graph-native.** Every Derived File and Extracted Datum
 records what produced it; no Entity or Link tables; the Link Map stays a projection. Enrichment
-becomes a future origin `transform:<name>` whose outputs are anchored Derived Files. Grounds: the
+outputs are anchored Derived Files whose derivation is named `transform:<name>` (amended by X42). Grounds: the
 2026-08-12 Maltego research (`docs/specs/2026-08-12-maltego-graph-node-research.md`) shows
 Maltego's depth is Entities with merge rules, first-class links, Transforms and Machines, and its
 documented gap is provenance; a graph-native model now is a second product.
@@ -168,18 +168,22 @@ bytes found on disk would anchor a swapped file, and leaving legacy thumbnails u
 permanent two-class inventory.
 
 **X35 (new) - schema shape.** A new `exhibits` table is the identity and numbering row (id, Case,
-kind, origin, Exhibit Number, Content Hash, path, size, committed time, and Manifest sequence).
+kind, origin, Exhibit Number, name, Content Hash, path, size, committed time, and Manifest
+sequence); `name` is the original or display name, recorded, never derived from the path.
 Captures keep the `captures` table and get an `exhibits` row with the same id, written by the
 `renumber` migration. A `derived_files` table (parent, derivation, tool version, hash, path, and
 time) holds Derived Files; `textHash` and `screenshotHash` stay on `captures`. Pooled files live
-in a `staging_files` table and never in `exhibits`. Grounds: kind and origin columns on
+in a `staging_files` table, with the same `name` column, and never in `exhibits`. An
+`exhibit_tags` relation replaces `capture_tags` by migration so Tags reach every kind. Grounds: kind and origin columns on
 `captures` would make every Capture column nullable for the kinds that lack it, and the
 inventory query would become a per-kind special case.
 
 **X36 (Q4 restated) - one `manifest:snapshot(caseId)` channel.** It returns the parsed entries
 typed by the schema-3 union (`exhibit`, `derivation`, and `renumber` added to the six), the
-`verifyManifestChain` verdict, and the signer's public-key fingerprint. The renderer never
-computes chain state.
+`verifyManifestChain` verdict, and one signer fingerprint per signing segment: an imported
+Case's chain is verified with the embedded source key before each `import` boundary and the
+local key after it, so a single fingerprint would describe it wrongly. The renderer never computes
+chain state.
 
 **X37 (Q5 restated) - three integrity buckets over every anchored row, with a verify-all
 action.** Verified; tampered, missing, or chain-broken; and unverified, over Exhibits and Derived
@@ -198,16 +202,51 @@ The `shell:showItemInFolder` allowlist is not widened; that stays a separate sec
 table to matched Exhibits with no snippet; the Extracted Text node becomes "Indicators" (R21's
 view); nothing from pooled content appears (X15).
 
-**X40 (Q11 restated) - six sub-tickets.** `803v` verifier and schema 3 (entry types, the
+**X40 (Q11 restated, amended by X44) - seven sub-tickets.** `803v` verifier and schema 3 (entry types, the
 "verifier too old" outcome, generalized `deletion` and `timestamp`, KATs), first and alone.
 `803a` model and read path (the X35 tables, the `renumber` and thumbnail migrations,
 `exhibits:inventory` with the pooled/anchored discriminator, `manifest:snapshot`,
 `exhibits:verify`), with Captures the only populated kind. `803p` the Staging Pool (storage,
 upload as `attachment`, commit, discard, the archive `staged` flag, verify for attachments).
 `803b` shell, tree, table, search, and the Staging group. `803c` tabs, Results nodes, the
-Indicators move, and Reprocess. `803d` menus. All blocking tier; `803p` may run beside `803b`.
+Indicators move, and Reprocess. `803d` menus. `803e` exports, verifier, report, and
+Certification over every kind (X44). All blocking tier; `803p` may run beside `803b`.
 Grounds: a schema-3 chain must not exist before distributed verifiers can read it, which is the
 case for `803v` alone, and the pool beside the model makes `803a` one review too large to hold.
+
+## Round 6: review of PR #1145
+
+Codex reviewed the ADR pull request on 2026-08-30 and found four model gaps and three wording
+gaps. The wording gaps (stale distributed verifiers, archive imports of `staged` entries, the
+`name` column, the per-segment signer, Exhibit-wide Tags) are corrected in place above and in
+the ADRs. The four gaps below needed a decision; each was taken under ADR-0015 as pattern
+following or mechanical sequencing and is open to veto.
+
+**X41 - legacy Captures without a Manifest Entry.** Pre-v11 `html` Captures have no
+`manifestIndex` (`captureLifecycle.ts:336-337`). They are numbered after every anchored
+Capture, in capture order, and the `renumber` entry lists them as unanchored; the number is a
+citation aid and never an anchoring claim, and the inventory shows those rows unanchored.
+
+**X42 - transforms are derivations, not origins.** A transform's output is a Derived File whose
+derivation is named `transform:<name>`; `transform:<name>` leaves the origin list. Amends X10.
+Grounds: one provenance model, and the X35 tables cannot carry an origin on a Derived File.
+
+**X43 - kind is chosen at commit from the detected type.** `document` for PDF, `image` for
+raster images, `attachment` otherwise, because kind is permanent once anchored and a PDF
+committed as `attachment` would have to be reclassified against its own entry. Derivations for
+`document` and `image` arrive with their tickets; in `803p` those kinds commit with no Derived
+Files.
+
+**X44 - a seventh sub-ticket, `803e`, owns exports over every kind.** Evidence Packages,
+Working Copies, the standalone verifier, the report, and the Certification enumerate Captures
+only today. `803e` extends them to every Exhibit kind and its Derived Files; until it lands,
+`803p` refuses an Evidence Package export from a Case holding a committed non-Capture Exhibit,
+naming the ticket. Grounds: ADR-0023 chose to anchor rather than to keep evidence out of the
+package, and a silent omission would be the dishonest third option.
+
+The `CONTEXT.md` finding (mark Derived File anchoring as planned) was not applied: the glossary
+defines the model and carries no implementation state; the ADR's consequences and X34 carry the
+transition.
 
 ## Decisions the agent took
 
@@ -238,7 +277,7 @@ not model data.
   screen) is retracted: pinned Wayback refs store no bytes, so there is no Exhibit for the menu
   to attach to; the kind stays unowned and is recorded on #708.
 - **New:** a `ready-for-human` spec ticket for the Google Drive origin (X22); a small docs ticket
-  for the Vale debt in the two committed Maltego research documents.
+  for the Vale debt in the two committed Maltego research documents; `803e` (X44).
 
 ## Outstanding
 

@@ -18,7 +18,7 @@
 // recreate the incentive to claim success):
 //   pnpm lint
 //   pnpm lint:boundaries
-//   pnpm lint:agents-md
+//   pnpm lint:agents-md      advisory: reports drift between the two files, never fails
 //   pnpm typecheck
 //   BIRDBRAIN_REQUIRE_OPENSSL=1 pnpm test
 //   pnpm build
@@ -127,6 +127,14 @@ export const formatVerificationBlock = ({ sha, nodeVersion, base, mergeBase, ste
   return lines.join('\n') + '\n'
 }
 
+// lint:agents-md is advisory and always exits 0, so the row would otherwise read
+// a bare pass whether or not the two files drifted. Report what it found.
+const describeAgentsMd = (output) => {
+  const prefix = 'lint:agents-md: '
+  const line = output.split('\n').find((candidate) => candidate.startsWith(prefix))
+  return line ? line.slice(prefix.length) : 'no lint:agents-md summary found in output'
+}
+
 const describeVitest = (output) => {
   const parsed = parseVitestSummary(output)
   return parsed ? `${parsed.summary} (${parsed.total})` : 'no Vitest summary found in output'
@@ -219,7 +227,7 @@ const main = async () => {
 
   await run('pnpm', ['lint'], 'pnpm lint')
   await run('pnpm', ['lint:boundaries'], 'pnpm lint:boundaries')
-  await run('pnpm', ['lint:agents-md'], 'pnpm lint:agents-md')
+  await run('pnpm', ['lint:agents-md'], 'pnpm lint:agents-md', describeAgentsMd)
   await run('pnpm', ['typecheck'], 'pnpm typecheck')
   await run('pnpm', ['test'], 'BIRDBRAIN_REQUIRE_OPENSSL=1 pnpm test', describeVitest)
   await run('pnpm', ['build'], 'pnpm build')

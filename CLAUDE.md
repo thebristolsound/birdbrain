@@ -14,7 +14,7 @@ Open source web investigation & capture tool. Electron desktop app with a compan
 - `pnpm test:coverage` / `pnpm coverage:report` / `pnpm coverage:all` - Coverage run and reports
 - `pnpm lint` - ESLint (.ts, .tsx)
 - `pnpm lint:boundaries` - dependency-cruiser over `src/`, `extension/src/`, `tests/` and `e2e/`: packages under `src/packages/` are importable only through their root files, and no import cycles
-- `pnpm lint:agents-md` - `AGENTS.md` must be byte-identical to `CLAUDE.md`. Edit `CLAUDE.md`, then copy it over `AGENTS.md` (a symlink is not used: `core.symlinks=false` checkouts turn it into a one-line file)
+- `pnpm lint:agents-md` - **advisory, never fails**. Reports lines held by `CLAUDE.md` and not `AGENTS.md` or the reverse, as a CI warning annotation. The two are normally the same document: edit `CLAUDE.md`, then copy it over `AGENTS.md` (a symlink is not used: `core.symlinks=false` checkouts turn it into a one-line file). Drift is not an error because `CLAUDE.md` is expected to carry Claude-specific overrides that have no meaning in `AGENTS.md`; the check cannot tell those from an oversight, so it reports and leaves the judgement to you
 - `pnpm typecheck` - Typecheck all six tsconfig projects: `src` main/preload/shared, `src` renderer, extension, then `tests/` (node flavour and web flavour) and `e2e/`. Tests are inside the gate — see "Testing" below
 - `pnpm format` - Prettier format src/ and extension/
 - `pnpm rebuild:electron` - Rebuild native deps (better-sqlite3)

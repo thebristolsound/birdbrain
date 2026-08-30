@@ -64,7 +64,7 @@ cap, not a raise, so it stays inside the rule.
 | #824 | W8 | blocking (`background.ts`) | **gap** | now; the #829 dependency cleared in #1068 |
 | #698 | W5 | blocking, labelled | correct | now; data deletion, human review |
 | #708 | W14 | none | correct | dispatcher closes by comment, no slot |
-| #803 | W1, W4, W26 | blocking, labelled | correct | split veto and one product ruling |
+| #803 | W1, W26, X1-X32 | blocking, labelled | corrected 08-30 | after ADR-0023/0024 land and the round-1 questions are re-asked (X11) |
 | #830 | W3, W17 | blocking, labelled | correct | after #985 is ruled and merged |
 | #985 | none | blocking | `ready-for-human` | maintainer ruling on scope |
 | #405 | R7, R12, W18, W19 | blocking, labelled | `needs-info` | site list and the #771 ruling |
@@ -129,9 +129,13 @@ constraint is the maintainer's review queue, not agent throughput. Only four tic
 auto-merge (#1033, #688, #902, #922). The tracks are cut by file contention so each slot can
 run its chain without waiting on another slot's merge.
 
-- **Track A, the data screen.** `803a`, then `803b`, then `803c`, then `803d`. Four human reviews for one
-  ticket, as the split comment says. `803a` can dispatch the moment the split is accepted and the
-  sub-tickets exist; `803b` needs the extracted-data ruling as well.
+- **Track A, the data screen.** *Amended 2026-08-30.* The 2026-08-27 a-d split is superseded by
+  the Exhibit model (ADR-0023, ADR-0024, rulings in `docs/plans/2026-08-30-exhibit-model-rulings.md`).
+  `803a` becomes the inventory and Staging Pool read path over the model, with Captures and
+  attachments as the populated kinds and the verifier's schema-3 change landing first; the
+  browser parts follow once the round-1 questions are re-asked against the ADRs (X11). Every part
+  stays blocking tier. Track A does not dispatch in this round until the sub-tickets are
+  re-cut, so tracks B and C start first.
 - **Track B, tags, and the selection bar.** #1033, then #918, then #665, then #824. One
   auto-merge followed by three human reviews.
 - **Track C, shell, notes, dashboard, and the AI removal.** #902, then #682/#813, then #688, then
@@ -158,8 +162,8 @@ Interactive, no fleet. Everything here is a comment, a label, or a maintainer an
 
 1. Collect the five maintainer inputs listed in the "Outstanding inputs" section. The run can start with
    two of them still open (#405's list and #991), because neither gates a track.
-2. File `803a` through `803d` as sub-tickets with the split comment's scope copied into each, once
-   the split is accepted. Each carries `ready-for-agent` and `evidence-affecting` in the create
+2. Re-cut `803a` through `803d` as sub-tickets against ADR-0023 and ADR-0024 (the 08-27 split is
+   superseded), once the round-1 questions have been re-asked (X11). Each carries `ready-for-agent` and `evidence-affecting` in the create
    call, and #803 itself loses `ready-for-agent` so the dispatcher cannot pick up the parent.
 3. Apply `evidence-affecting` to #682, #813, #918, #665, #675 and #824.
 4. Correct #918's third acceptance criterion.
@@ -228,11 +232,10 @@ the visible queue without shortening the tail.
 Not questions for a reader. Five things the maintainer owes, each stated in full so no session
 has to reconstruct it.
 
-1. **#803: does the a-d split posted on 2026-08-27 stand, with `part` dropped from the menu
-   criterion?** And the product question that split raised: does category-and-subcategory
-   browsing of extracted data survive anywhere in the app after the Data screen becomes an
-   artifact browser, or does the Extracted Text results node replace it? `803b` cannot dispatch
-   without the second answer.
+1. **#803: settled 2026-08-30.** The split question and the extracted-data question were both
+   already answered by R21 (the indicators view survives inside the new screen), and the
+   Exhibit model rulings X1-X32 supersede the split. What remains is re-cutting the sub-tickets
+   against ADR-0023 and ADR-0024, which is intake work, not an input.
 2. **#985: how is a selection-scoped export's `notes.md` scoped?** The candidates are notes
    anchored to a selected capture only, notes anchored to a selected capture plus unanchored
    case notes, or a dialog option. #830 does not open until this is ruled and merged.

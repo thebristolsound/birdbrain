@@ -247,6 +247,37 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
     expect(proc.stdout).toContain('outside the signed export selection')
   })
 
+  // X25 through the BUILT binary: an entry from a newer schema is a fourth
+  // outcome with its own exit code, never the tamper verdict on the line below.
+  // The future entry is appended to the frozen fixture's chain — the screen runs
+  // before signature verification, so an unsigned line is enough to stand in for
+  // a genuinely newer writer.
+  it('exits 3 with a verifier-too-old report on a package holding a newer entry type', () => {
+    const futureDir = mkdtempSync(join(tmpdir(), 'bb-binfuture-'))
+    for (const [name, bytes] of readStoredZipEntries(join(tempDir, 'evidence.zip'))) {
+      const out = join(futureDir, name)
+      mkdirSync(dirname(out), { recursive: true })
+      writeFileSync(out, bytes)
+    }
+    const manifestPath = join(futureDir, 'manifest.jsonl')
+    const future = JSON.stringify({
+      type: 'exhibit',
+      caseId: 'from-a-later-build',
+      schemaVersion: 4,
+      index: 99,
+      prevHash: '',
+      entryHash: 'f'.repeat(64)
+    })
+    writeFileSync(manifestPath, readFileSync(manifestPath, 'utf-8') + future + '\n')
+
+    const proc = spawnSync(binaryPath, [futureDir], { encoding: 'utf-8' })
+    expect(proc.status, proc.stdout + proc.stderr).toBe(3)
+    expect(proc.stdout).toContain('RESULT: VERIFIER TOO OLD')
+    expect(proc.stdout).toContain('supports up to schema version')
+    expect(proc.stdout).not.toContain('RESULT: FAIL')
+    rmSync(futureDir, { recursive: true, force: true })
+  })
+
   it('exits 1 with a FAIL report on a tampered package', () => {
     const tamperDir = mkdtempSync(join(tmpdir(), 'bb-bintamper-'))
     // Copy the good package then mutate one MHTML byte.

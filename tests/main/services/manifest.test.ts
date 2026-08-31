@@ -4,7 +4,7 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { initManifest, getManifestHead } from '@main/services/manifest'
 import { appendManifestEntry, rollbackManifestEntry } from '@main/services/manifest'
-import { verifyManifestChain } from '@main/services/manifest'
+import { verifyManifestChain, MIN_READER_SCHEMA_VERSION } from '@main/services/manifest'
 import { withDeletionEntry, withCaptureEntry, ManifestRollback } from '@main/services/manifest'
 import type { AppendResult } from '@main/services/manifest'
 import { createHash } from 'crypto'
@@ -129,7 +129,7 @@ describe('manifest append', () => {
       captureId: 'cap-1',
       index: 0,
       prevHash: '',
-      schemaVersion: MANIFEST_SCHEMA_VERSION
+      schemaVersion: MIN_READER_SCHEMA_VERSION.capture
     }
     const expected = createHash('sha256').update(canonicalStringify(body)).digest('hex')
     const result = appendManifestEntry(tempDir, { ...baseEntry, captureId: 'cap-1' })
@@ -800,8 +800,11 @@ describe('manifest schema v2 + grandfathering', () => {
     return entryHash
   }
 
-  it('bumps MANIFEST_SCHEMA_VERSION to 2', () => {
-    expect(MANIFEST_SCHEMA_VERSION).toBe(2)
+  it('reads up to MANIFEST_SCHEMA_VERSION 3', () => {
+    // Bumped to 3 by the Exhibit model (ADR-0023): this build READS the
+    // `exhibit`, `derivation` and `renumber` entry types. What it WRITES is a
+    // separate question, pinned by MIN_READER_SCHEMA_VERSION below.
+    expect(MANIFEST_SCHEMA_VERSION).toBe(3)
   })
 
   it('verifies a legacy v1 entry on chain + entryHash only (no signature)', () => {
@@ -862,7 +865,7 @@ describe('manifest schema v2 + grandfathering', () => {
     expect(verifyManifestChain(tempDir).valid).toBe(true)
   })
 
-  it('writes per-entry schemaVersion equal to MANIFEST_SCHEMA_VERSION on append', () => {
+  it('writes per-entry schemaVersion at the type’s minimum reader version on append', () => {
     appendManifestEntry(tempDir, {
       type: 'capture',
       captureId: 'cap-1',
@@ -876,7 +879,12 @@ describe('manifest schema v2 + grandfathering', () => {
       toolVersion: '0.1.0'
     })
     const entry = JSON.parse(readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim())
-    expect(entry.schemaVersion).toBe(MANIFEST_SCHEMA_VERSION)
+    // NOT MANIFEST_SCHEMA_VERSION, which is the highest version this build can
+    // READ. A capture entry's shape is unchanged by schema 3, so it is stamped
+    // 2 and a verifier already in a recipient's hands keeps reading it (X25).
+    expect(entry.schemaVersion).toBe(MIN_READER_SCHEMA_VERSION.capture)
+    expect(entry.schemaVersion).toBe(2)
+    expect(entry.schemaVersion).toBeLessThanOrEqual(MANIFEST_SCHEMA_VERSION)
   })
 
   it('excludes signature from entryHash so re-signing a v2 entry still verifies', () => {
@@ -1246,7 +1254,7 @@ describe('manifest export audit entry (#124)', () => {
     expect(entry.prevHash).toBe(head.prevHash)
     expect(entry.packageHash).toBe(exportEntry.packageHash)
     expect(entry.verificationResult).toEqual(exportEntry.verificationResult)
-    expect(entry.schemaVersion).toBe(MANIFEST_SCHEMA_VERSION)
+    expect(entry.schemaVersion).toBe(MIN_READER_SCHEMA_VERSION.export)
     expect(typeof entry.signature).toBe('string')
     expect(verifyEntrySignature(result.entryHash, entry.signature as string)).toBe(true)
     expect(verifyManifestChain(tempDir).valid).toBe(true)

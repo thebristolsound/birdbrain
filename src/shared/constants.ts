@@ -62,8 +62,18 @@ export const MANIFEST_FILENAME = 'manifest.jsonl'
 // a source installation's entry ids onto the local rows (#827).
 export const IMPORT_ID_MAP_FILENAME = 'import-id-map.json'
 
-// Bump whenever the manifest entry schema changes (e.g. new required fields).
-export const MANIFEST_SCHEMA_VERSION = 2
+// The highest manifest entry schema version this build can READ. Bump whenever
+// the manifest entry schema changes (a new entry type, a new required field).
+// v3 adds the `exhibit`, `derivation` and `renumber` entry types and the
+// "verifier too old" outcome (ADR-0023, X25).
+//
+// A per-entry `schemaVersion` is the MINIMUM reader version that entry needs,
+// NOT this constant: appendManifestEntry stamps each entry from the per-type
+// map in manifest.ts, so a build that reads 3 keeps writing 2 on the entry
+// shapes a schema-2 verifier can still read. That separation is what lets this
+// reader ship before anything writes a v3 entry — a distributed verifier must
+// never meet a version it cannot read before it has had the chance to update.
+export const MANIFEST_SCHEMA_VERSION = 3
 
 // Default RFC 3161 trusted-timestamp authority (#120, decision D6/#112).
 // DigiCert's unauthenticated endpoint: no account/API key, and its root is

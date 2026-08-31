@@ -361,12 +361,21 @@ export function formatExtensionAttachError(err: z.ZodError): string {
 // type so legacy v1 chains round-trip unchanged; signature *creation* and
 // *cryptographic verification* are out of scope here (see #117), as is
 // timestamp *creation* / RFC 3161 (see #120) and screenshot/text hashing
-// (see #118). Mixed-version chains are normal — never retro-sign legacy
-// entries.
+// (see #118). v3 adds the `exhibit`, `derivation` and `renumber` entry types
+// (ADR-0023) and generalizes `deletion` and `timestamp` to any Exhibit;
+// `capture` entries are unchanged. Mixed-version chains are normal — never
+// retro-sign legacy entries.
 
 // Bounded integer: rejects negatives, floats, NaN, and unknown-future versions
-// (e.g. a v3 entry parsed by a v2 verifier). Auto-tightens on every version bump.
+// (e.g. a v4 entry parsed by a v3 verifier). Auto-tightens on every version bump.
+// A version ABOVE the bound is not reported as a malformed shape: verify-core
+// screens for it first and reports "verifier too old" (manifestChain.ts, X25).
 const schemaVersionField = z.number().int().min(1).max(MANIFEST_SCHEMA_VERSION)
+
+// The v3 entry types (ADR-0023) have no v1/v2 form, so they are pinned at 3 —
+// the same discipline as the v2-only types below, and it makes them signed by
+// construction (verify-core enforces signatures from v2 up).
+const schemaVersion3Field = z.number().int().min(3).max(MANIFEST_SCHEMA_VERSION)
 
 // Corroboration-only TLS cert chain re-fetched from the origin AFTER the capture
 // is stored (#123, ADR-0002). NOT bound to the captured transaction — it records
@@ -439,6 +448,12 @@ const ManifestCaptureEntrySchema = z
   })
   .strict()
 
+// Deletion of an anchored Exhibit. `captureId` and `contentHash` accept ANY
+// Exhibit id and Content Hash from schema v3 on, not only a Capture's
+// (ADR-0023, X29) — a Capture is one kind of Exhibit and its Exhibit id IS its
+// capture id, so the field keeps its name: renaming it would fork the shape and
+// break the canonical bodies (and therefore the chain hashes) of every deletion
+// entry already written.
 const ManifestDeletionEntrySchema = z
   .object({
     type: z.literal('deletion'),
@@ -458,9 +473,14 @@ const ManifestDeletionEntrySchema = z
   })
   .strict()
 
-// Append-only timestamp anchor introduced in schema v2. References a capture
+// Append-only timestamp anchor introduced in schema v2. References an anchored
 // entry's contentHash; the trusted-time token (RFC 3161) is attached later by
 // #120 — this schema only lets the entry round-trip and keep the chain valid.
+// From v3 the referenced hash is ANY Exhibit's Content Hash, not only a
+// Capture's (ADR-0023, X26): committing an Exhibit runs the same RFC 3161 path
+// as ingesting a Capture, so Trusted Time is uniform across kinds. The field
+// keeps its `captureContentHash` name for the same hash-stability reason as the
+// deletion entry above.
 const ManifestTimestampEntrySchema = z
   .object({
     type: z.literal('timestamp'),
@@ -585,16 +605,136 @@ const ManifestImportEntrySchema = z
   })
   .strict()
 
+// --- Schema v3: Exhibits (ADR-0023) ---------------------------------------
+//
+// An Exhibit is the unit of evidence and a Capture is one kind of Exhibit, so
+// `capture` entries are untouched (X24) — `textHash` and `screenshotHash`
+// included — and this entry anchors every Exhibit that is NOT a Capture.
+//
+// `kind` and `origin` are open strings, deliberately NOT enums. A verifier's
+// vocabulary must not decide whether a chain verifies: an entry naming a kind
+// this build has never heard of is an entry from a newer writer, and rejecting
+// its shape would report a valid chain as broken — the false accusation X25
+// exists to prevent. The hash and signature cover the string either way, so
+// integrity is unaffected. The writer's vocabulary is fixed at commit-time by
+// the app (X43), not here.
+const ManifestExhibitEntrySchema = z
+  .object({
+    type: z.literal('exhibit'),
+    exhibitId: z.string(),
+    caseId: z.string(),
+    kind: z.string().min(1),
+    origin: z.string().min(1),
+    name: z.string(),
+    // Sequential per-Case integer assigned at commit and never reused (X18).
+    // Recorded here so a citation ("Exhibit 7") is verifiable from the chain.
+    exhibitNumber: z.number().int().positive(),
+    // Case-directory-relative path of the stored bytes.
+    path: z.string(),
+    contentHash: z.string(),
+    sizeBytes: z.number(),
+    timestamp: z.string(),
+    operatorId: z.string(),
+    operatorName: z.string(),
+    toolVersion: z.string(),
+    index: z.number().int().nonnegative(),
+    prevHash: z.string(),
+    schemaVersion: schemaVersion3Field,
+    signature: z.string().optional(),
+    entryHash: z.string()
+  })
+  .strict()
+
+// One Derived File computed from an Exhibit (X17): extracted text, a thumbnail,
+// a PDF metadata sidecar, an enrichment transform's output (`transform:<name>`,
+// X42). A Manifest Entry cannot be amended once written, so a derivation that
+// runs after its parent's ingest has nowhere in the parent's entry to be
+// anchored and gets its own entry — which is also what makes one shape cover
+// derivations computed at ingest and years later alike.
+const ManifestDerivationEntrySchema = z
+  .object({
+    type: z.literal('derivation'),
+    caseId: z.string(),
+    // The Exhibit this was computed from, bound by BOTH its id and the Content
+    // Hash the derivation ran over: the id alone would not say which bytes.
+    parentExhibitId: z.string(),
+    parentContentHash: z.string(),
+    // Open string for the same reason `kind` is (see above).
+    derivation: z.string().min(1),
+    // Version of the tool that produced the output — the app's own version when
+    // the derivation is computed in-app, an external tool's when it is not
+    // (X23). Distinct from the entry-wide `toolVersion`, which always records
+    // the Birdbrain build that wrote the entry.
+    derivationToolVersion: z.string(),
+    outputHash: z.string(),
+    outputPath: z.string(),
+    timestamp: z.string(),
+    operatorId: z.string(),
+    operatorName: z.string(),
+    toolVersion: z.string(),
+    index: z.number().int().nonnegative(),
+    prevHash: z.string(),
+    schemaVersion: schemaVersion3Field,
+    signature: z.string().optional(),
+    entryHash: z.string()
+  })
+  .strict()
+
+// One assignment in the one-time renumber (X18). `manifestIndex` present means
+// the Capture is anchored by the entry at that index; OMITTED means it has no
+// Manifest Entry at all — a pre-v11 `html` Capture, numbered after every
+// anchored Capture in capture order (X41). Present-means-anchored keeps the
+// unanchored case explicit in the chain: the number is a citation aid there and
+// never an anchoring claim.
+const ManifestRenumberAssignmentSchema = z
+  .object({
+    exhibitId: z.string(),
+    exhibitNumber: z.number().int().positive(),
+    manifestIndex: z.number().int().nonnegative().optional()
+  })
+  .strict()
+
+// The one-time assignment of Exhibit Numbers to Captures that predate them
+// (X18). Written once per Case by the migration, so the assignment is itself in
+// the chain and a citation cannot be re-derived differently later.
+const ManifestRenumberEntrySchema = z
+  .object({
+    type: z.literal('renumber'),
+    caseId: z.string(),
+    assignments: z.array(ManifestRenumberAssignmentSchema),
+    timestamp: z.string(),
+    operatorId: z.string(),
+    operatorName: z.string(),
+    toolVersion: z.string(),
+    index: z.number().int().nonnegative(),
+    prevHash: z.string(),
+    schemaVersion: schemaVersion3Field,
+    signature: z.string().optional(),
+    entryHash: z.string()
+  })
+  .strict()
+
 export const ManifestEntrySchema = z.discriminatedUnion('type', [
   ManifestCaptureEntrySchema,
   ManifestDeletionEntrySchema,
   ManifestTimestampEntrySchema,
   ManifestExportEntrySchema,
   ManifestArchiveExportEntrySchema,
-  ManifestImportEntrySchema
+  ManifestImportEntrySchema,
+  ManifestExhibitEntrySchema,
+  ManifestDerivationEntrySchema,
+  ManifestRenumberEntrySchema
 ])
 
 export type ManifestEntry = z.infer<typeof ManifestEntrySchema>
+
+// Every entry type THIS build knows, derived from the union above so the two
+// can never drift. Verify-core screens an entry's `type` against this set
+// before parsing it, so a type from a newer writer is reported as "verifier too
+// old" instead of failing the strict parse as a malformed shape (X25).
+export const MANIFEST_ENTRY_TYPES: ReadonlySet<string> = new Set(
+  [...ManifestEntrySchema.optionsMap.keys()].filter((key): key is string => typeof key === 'string')
+)
 
 // --- Evidence package index (evidence.json) -------------------------------
 

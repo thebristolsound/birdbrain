@@ -9,7 +9,7 @@ import {
 } from '@shared/schemas'
 import type { ManifestEntry } from '@shared/schemas'
 import { parseTimestampToken } from '@shared/verify/timestampToken'
-import { verifyManifestChainText } from '@shared/verify/manifestChain'
+import { describeUnsupportedEntry, verifyManifestChainText } from '@shared/verify/manifestChain'
 import { canonicalStringify } from '@shared/verify/canonicalJson'
 import { packageHash } from '@shared/verify/packageHash'
 import { verifyEntrySignature } from '@shared/verify/signature'
@@ -56,6 +56,14 @@ export interface PackageVerifyResult {
    * planted marker can never silence a chain.
    */
   notVerifiable?: { reason: string }
+  /**
+   * Fourth outcome (ADR-0023, X25): the manifest holds an entry from a newer
+   * schema than this verifier was built for, so this build cannot say whether
+   * the chain is intact. `pass` stays false — no integrity claim is made — but
+   * this is NOT a tamper verdict, and a caller must not render it as one. The
+   * remedy is a newer verifier, and the reason names the version needed.
+   */
+  unsupported?: { reason: string }
 }
 
 function sha256File(path: string): string {
@@ -210,6 +218,17 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
 
   // §7.1 chain verification (root of trust).
   const chain = verifyManifestChainText(manifestJsonl, { publicKeyPem })
+  // An entry from a newer schema stops verification here, before any further
+  // check runs. Continuing would derive the active-capture set from the entries
+  // BELOW the unreadable one and then report every capture above it as missing
+  // from the package and absent from the manifest — a page of tamper-shaped
+  // FAILs produced by this verifier's age, which is the false accusation X25
+  // exists to prevent.
+  if (chain.unsupported) {
+    const reason = describeUnsupportedEntry(chain.unsupported)
+    add('manifest chain', 'skip', reason)
+    return { pass: false, checks, unsupported: { reason } }
+  }
   if (chain.valid) {
     add('manifest chain', 'pass')
   } else {

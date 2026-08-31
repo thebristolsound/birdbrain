@@ -26,6 +26,7 @@ import { useCaptureContextMenu } from '@renderer/components/captures/useCaptureC
 import { EntityContextMenu } from '@renderer/components/contextmenu/EntityContextMenu'
 import {
   computeDisplayedCaptures,
+  CLEAR_NARROWING_LABEL,
   SORT_OPTIONS,
   FORMAT_OPTIONS,
   DATE_OPTIONS
@@ -277,7 +278,10 @@ export function CaptureList({
                 )}
               </button>
               {showFilterMenu && (
-                <div className="absolute left-0 top-full z-50 mt-1 w-48 rounded-lg border border-border bg-card py-1 shadow-lg">
+                <div
+                  data-testid="capture-list-filter-menu"
+                  className="absolute left-0 top-full z-50 mt-1 w-48 rounded-lg border border-border bg-card py-1 shadow-lg"
+                >
                   {/* Format section */}
                   <div className="px-3 py-1 text-[10px] font-medium uppercase tracking-wider text-text-faint">
                     Format
@@ -343,7 +347,7 @@ export function CaptureList({
                         className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-red-400 hover:bg-elevated"
                       >
                         <X className="h-3 w-3 shrink-0" />
-                        Clear search and filters
+                        {CLEAR_NARROWING_LABEL}
                       </button>
                     </>
                   )}
@@ -390,8 +394,8 @@ export function CaptureList({
             <span className="truncate">{narrowings.join(' · ')}</span>
             <button
               onClick={clearNarrowing}
-              aria-label="Clear all narrowing"
-              title="Clear search, selector filters and filters"
+              aria-label={CLEAR_NARROWING_LABEL}
+              title={CLEAR_NARROWING_LABEL}
               className="ml-auto shrink-0 hover:text-accent"
             >
               <X className="h-3 w-3" />
@@ -463,7 +467,7 @@ export function CaptureList({
                 {captures.length !== 1 ? ' are' : ' is'} hidden by {narrowings.join(' · ')}.
               </p>
               <Button variant="outline" size="sm" onClick={clearNarrowing}>
-                Clear filters
+                {CLEAR_NARROWING_LABEL}
               </Button>
             </div>
           ) : (

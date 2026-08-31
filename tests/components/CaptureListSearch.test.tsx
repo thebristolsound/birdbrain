@@ -12,6 +12,7 @@ vi.mock('@renderer/components/captures/CaptureMenu', () => ({
 }))
 
 import { CaptureList } from '@renderer/components/captures/CaptureList'
+import { CLEAR_NARROWING_LABEL } from '@renderer/components/captures/captureListModel'
 import { useAppStore } from '@renderer/stores/appStore'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { stubMatchMedia } from './matchMediaStub'
@@ -258,7 +259,8 @@ describe('CaptureList narrowing strip', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Filter$/ }))
     fireEvent.click(screen.getByText('Favorites only'))
 
-    fireEvent.click(screen.getByLabelText('Clear all narrowing'))
+    const strip = screen.getByTestId('capture-list-narrowing')
+    fireEvent.click(within(strip).getByRole('button', { name: CLEAR_NARROWING_LABEL }))
 
     expect(searchInput()).toHaveProperty('value', '')
     expect(useAppStore.getState().activeSelectorFilters).toEqual([])
@@ -278,11 +280,12 @@ describe('CaptureList clear affordances', () => {
     // The label names the query too: this one item clears it alongside the
     // menu's own filters, and an operator must not lose a typed search to a
     // control that only said "filters".
-    fireEvent.click(screen.getByText('Clear search and filters'))
+    const menu = screen.getByTestId('capture-list-filter-menu')
+    fireEvent.click(within(menu).getByRole('button', { name: CLEAR_NARROWING_LABEL }))
 
     expect(searchInput()).toHaveProperty('value', '')
     await settledTitles(3)
-    expect(screen.queryByText('Clear search and filters')).toBeNull()
+    expect(screen.queryByText(CLEAR_NARROWING_LABEL)).toBeNull()
   })
 
   it('clears everything from the narrowed empty state button', async () => {
@@ -292,10 +295,35 @@ describe('CaptureList clear affordances', () => {
     type('zebra')
 
     const empty = screen.getByTestId('capture-list-narrowed-empty')
-    fireEvent.click(within(empty).getByText('Clear filters'))
+    fireEvent.click(within(empty).getByRole('button', { name: CLEAR_NARROWING_LABEL }))
 
     expect(searchInput()).toHaveProperty('value', '')
     expect(useAppStore.getState().activeSelectorFilters).toEqual([])
     await settledTitles(3)
+  })
+
+  it('gives all three controls on the one handler the same accessible name', async () => {
+    // The three drifted apart once already (#1033): a dropdown item saying
+    // "Clear search and filters", a strip button labelled "Clear all narrowing"
+    // and an empty-state button saying only "Clear filters", all clearing the
+    // same five narrowings. Assert them together so a future divergence fails.
+    useAppStore.setState({ activeSelectorFilters: ['sel-1'], filteredCaptureIds: ['cap-b'] })
+    renderList()
+    await titles()
+    type('zebra')
+    await settledTitles(0)
+    fireEvent.click(screen.getByRole('button', { name: /^Filter$/ }))
+
+    const menu = screen.getByTestId('capture-list-filter-menu')
+    const strip = screen.getByTestId('capture-list-narrowing')
+    const empty = screen.getByTestId('capture-list-narrowed-empty')
+    expect(within(menu).getByRole('button', { name: CLEAR_NARROWING_LABEL })).toBeDefined()
+    expect(within(empty).getByRole('button', { name: CLEAR_NARROWING_LABEL })).toBeDefined()
+
+    // The strip's tooltip is the third wording that diverged, and it is not part
+    // of the accessible name, so assert it against the same constant.
+    const stripButton = within(strip).getByRole('button', { name: CLEAR_NARROWING_LABEL })
+    expect(stripButton.getAttribute('title')).toBe(CLEAR_NARROWING_LABEL)
+    expect(screen.getAllByRole('button', { name: CLEAR_NARROWING_LABEL })).toHaveLength(3)
   })
 })

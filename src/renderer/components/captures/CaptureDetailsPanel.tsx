@@ -32,6 +32,7 @@ import { useReduceMotion } from '@renderer/hooks/useReduceMotion'
 import { useTimeTick } from '@renderer/hooks/useTimeTick'
 import { presets } from '@renderer/lib/motion/presets'
 import { formatRelativeTime } from '@renderer/lib/formatRelativeTime'
+import { accelerator } from '@renderer/lib/accelerator'
 import { TagBadge } from '@renderer/components/tags/TagBadge'
 import { TagEditorPopover } from '@renderer/components/captures/TagEditorPopover'
 import { useCaptureTagEditor } from '@renderer/components/captures/useCaptureTagEditor'
@@ -298,10 +299,7 @@ export function CaptureDetailsPanel({
                   >
                     <Copy className="h-3.5 w-3.5 shrink-0 text-text-muted" />
                     Copy URL
-                    {/* Ctrl, not ⌘, on every platform: the handler accepts both
-                        modifiers, and this is the spelling the app already uses
-                        for Ctrl+K in the top bar. */}
-                    <span className="ml-auto text-[10px] text-text-faint">Ctrl+C</span>
+                    <span className="ml-auto text-[10px] text-text-faint">{accelerator('C')}</span>
                   </button>
                   <button
                     role="menuitem"

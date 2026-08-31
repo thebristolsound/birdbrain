@@ -1,6 +1,7 @@
 import { motion } from 'motion/react'
 import { presets } from '@renderer/lib/motion'
 import logoImg from '@renderer/assets/logo.png'
+import { accelerator } from '@renderer/lib/accelerator'
 
 interface WelcomeCardProps {
   onStart: () => void
@@ -37,7 +38,7 @@ export function WelcomeCard({ onStart, onSkip }: WelcomeCardProps) {
         </div>
         <div className="mb-4 flex items-center gap-1.5">
           <span className="shrink-0 whitespace-nowrap rounded border border-border-strong bg-canvas px-[5px] py-px font-mono text-[10px] text-text-muted">
-            Ctrl K
+            {accelerator('K', { join: ' ' })}
           </span>
           <span className="text-[11px] text-text-faint">replays this tour anytime</span>
         </div>

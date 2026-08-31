@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'fs'
+import { chmodSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { createHash } from 'crypto'
@@ -20,7 +20,9 @@ import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { createSessionService, type SessionService } from '@main/services/session'
 import { readEntries, verifyManifestChain } from '@main/services/manifest'
+import { disposeLogger, initLogger, readRecentEntries } from '@main/services/logger'
 import {
+  createPipelineSelfTestSandbox,
   PIPELINE_SELF_TEST_URL,
   type PipelineSelfTestSandbox
 } from '@main/services/pipelineSelfTest'
@@ -49,6 +51,10 @@ const observed: SandboxObservation[] = []
 // Injects an ingest failure so the cleanup path can be tested where it matters
 // (AC4). Every other test in this file runs the unmocked ingest.
 let failIngest = false
+
+// Runs between the sandbox being fully built and its teardown — the only point
+// from outside the route at which teardown can be made to fail.
+let breakTeardown: ((sandbox: PipelineSelfTestSandbox) => void) | null = null
 
 vi.mock('@main/services/captureLifecycle', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@main/services/captureLifecycle')>()
@@ -79,6 +85,7 @@ vi.mock('@main/services/pipelineSelfTest', async (importOriginal) => {
             chainValid: verifyManifestChain(caseDir).valid,
             captureRows: listCaptures(sandbox.caseId).length
           })
+          breakTeardown?.(sandbox)
           sandbox.dispose()
         }
       }
@@ -97,6 +104,13 @@ const readJson = async (res: Response): Promise<JsonBody> => (await res.json()) 
 const sha256 = (path: string): string =>
   createHash('sha256').update(readFileSync(path)).digest('hex')
 
+// The durable log is the end of the path a teardown failure travels: the same
+// entry the renderer receives over LOG_ENTRY and toasts (notify.ts).
+const cleanupFailures = (): number =>
+  readRecentEntries(50).filter(
+    (e) => e.level === 'error' && e.code === 'captureServer.self_test_cleanup_failed'
+  ).length
+
 describe('capture-pipeline self-test sandbox (#614)', () => {
   let tempDir: string
   let baseUrl: string
@@ -107,7 +121,9 @@ describe('capture-pipeline self-test sandbox (#614)', () => {
     observed.length = 0
     sent.length = 0
     failIngest = false
+    breakTeardown = null
     tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-selftest-'))
+    initLogger(tempDir, 'pipeline-self-test-session')
     await initDatabase(':memory:')
     initStorage(join(tempDir, 'captures'))
     initSettings(tempDir)
@@ -134,6 +150,7 @@ describe('capture-pipeline self-test sandbox (#614)', () => {
   afterEach(async () => {
     await stopCaptureServer()
     closeDatabase()
+    disposeLogger()
     rmSync(tempDir, { recursive: true, force: true })
   })
 
@@ -247,6 +264,63 @@ describe('capture-pipeline self-test sandbox (#614)', () => {
     expect(existsSync(sandbox.root)).toBe(false)
     expect(getCase(sandbox.caseId)).toBeUndefined()
     expect(listCases()).toHaveLength(0)
+  })
+
+  // Teardown failure, case row half. The route's own result stands, the
+  // operator is told, and the root is kept: while the sandbox case is still in
+  // the database its capture row must keep pointing at files that exist.
+  it('keeps the sandbox root and reports it when the case row cannot be deleted', async () => {
+    breakTeardown = () => closeDatabase()
+
+    const data = await readJson(await runSelfTest())
+    expect(data.success).toBe(true)
+
+    const [sandbox] = observed
+    expect(existsSync(sandbox.root)).toBe(true)
+    expect(existsSync(join(sandbox.root, sandbox.caseId, MANIFEST_FILENAME))).toBe(true)
+    expect(cleanupFailures()).toBe(1)
+
+    rmSync(sandbox.root, { recursive: true, force: true })
+  })
+
+  // Teardown failure, directory half. Reachable only where the process cannot
+  // write its own temp directory, so it is skipped for root.
+  it.skipIf(process.getuid?.() === 0)(
+    'reports a sandbox root it cannot remove, having already removed the case row',
+    async () => {
+      breakTeardown = (sandbox) => chmodSync(sandbox.root, 0o500)
+
+      const data = await readJson(await runSelfTest())
+      expect(data.success).toBe(true)
+
+      const [sandbox] = observed
+      expect(getCase(sandbox.caseId)).toBeUndefined()
+      expect(listCases()).toHaveLength(0)
+      expect(existsSync(sandbox.root)).toBe(true)
+      expect(cleanupFailures()).toBe(1)
+
+      chmodSync(sandbox.root, 0o700)
+      rmSync(sandbox.root, { recursive: true, force: true })
+    }
+  )
+
+  // The one failure with no sandbox for the route's `finally` to dispose, so
+  // the directory has to be taken back here or a failing database leaks one per
+  // click. TMPDIR is redirected to make the absence provable rather than
+  // inferred from a shared directory other tests also write to.
+  it('removes the temp root when the sandbox case row cannot be created', () => {
+    const tmpRoot = mkdtempSync(join(tmpdir(), 'birdbrain-selftest-tmp-'))
+    const previousTmpdir = process.env.TMPDIR
+    process.env.TMPDIR = tmpRoot
+    try {
+      closeDatabase()
+      expect(() => createPipelineSelfTestSandbox()).toThrow('Database not initialized')
+      expect(readdirSync(tmpRoot)).toEqual([])
+    } finally {
+      if (previousTmpdir === undefined) delete process.env.TMPDIR
+      else process.env.TMPDIR = previousTmpdir
+      rmSync(tmpRoot, { recursive: true, force: true })
+    }
   })
 
   // AC5. Same two events, same sentinel URL, as before #614.

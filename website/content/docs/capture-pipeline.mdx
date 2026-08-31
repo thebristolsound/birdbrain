@@ -301,9 +301,11 @@ Deletion is write-ahead like ingest: the signed `deletion` entry is appended fir
 are unlinked and the row removed, with the manifest rolled back if the side effects fail. Deletes
 within one case are serialised through a per-case queue, because a rollback is a truncation and
 two interleaved deletes could truncate each other's entries. Batch deletion commits a prefix: one
-ordinary entry per capture, in order, halting at the first failure. Non-operator deletions (the
-pipeline self-test's cleanup) record a `reason` on the entry so a chain reader can tell them from
-an operator deleting evidence.
+ordinary entry per capture, in order, halting at the first failure. A deletion entry can also
+carry a `reason`, so that a deletion Birdbrain performed on its own account is distinguishable
+from an operator deleting evidence. Nothing in the app records one today — the only route into
+deletion is the operator's, and the pipeline self-test no longer deletes anything from a case.
+Chains written before that change carry the self-test's cleanups with the reason `pipeline-test`.
 
 ### Unreconciled deletions
 
@@ -353,9 +355,9 @@ Both sides consult the same pattern grammar (`src/shared/urlPatterns.ts`): regex
   `about:`, `data:`, `file:`, and the capture server itself) before anything is sent.
 
 The pipeline self-test route is the one producer the exclusion list deliberately does not cover:
-its URL is a fixed sentinel and its body a literal, so no operator-supplied content enters the
-case, and a broad pattern like `/./` must not be able to break the operator's only proof that the
-pipeline works.
+its URL is a fixed sentinel and its body a literal, so no operator-supplied content reaches it,
+it writes into a throwaway sandbox rather than a case, and a broad pattern like `/./` must not be
+able to break the operator's only proof that the pipeline works.
 
 ## 9. Observability
 
@@ -394,13 +396,21 @@ to the list without a refetch.
 ### Self-tests
 
 - **Test Pipeline** (`POST /api/captures/test`): ingests a fixed literal body under the sentinel
-  URL `birdbrain://pipeline-test` through the real lifecycle — manifest entry, files, row — then
-  deletes it through the lifecycle, appending a matching `deletion` entry with reason
-  `pipeline-test`. The residue is bounded and honest: on the happy path the chain gains a
-  capture/deletion pair; cleanup is best-effort, so a matched pair is the normal case, not a
-  guarantee.
+  URL `birdbrain://pipeline-test` through the production ingest — manifest entry, files, row —
+  into a throwaway sandbox, which is a temporary storage root carrying its own manifest plus a
+  case row created for that one request. Both are torn down when the request ends, so no
+  investigation's chain gains an entry and no capture row outlives the run. Teardown is
+  best-effort and reports a failure to the operator rather than swallowing it; what survives one
+  is either the temporary directory alone, or the sandbox case with it — a case named
+  `Birdbrain pipeline self-test (temporary)` that is safe to delete like any other. Because the
+  sandbox root is a temporary directory, a green result does not prove the configured storage
+  volume is writable.
 - **Test HTTP** (`captures:testHttp` IPC): a `fetch` of `GET /api/status` from the main process,
   proving the listener independently of the extension.
+
+Chains written before the sandbox landed hold what the earlier self-test put in the first case in
+the list: a `capture` entry with a matching `deletion` entry carrying the reason `pipeline-test`,
+or, where that best-effort cleanup failed, a `capture` entry with no deletion beside it.
 
 ## 10. Connection management
 

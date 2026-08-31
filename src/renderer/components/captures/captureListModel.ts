@@ -24,6 +24,13 @@ export const DATE_OPTIONS: { value: DateFilter; label: string }[] = [
   { value: '30days', label: 'Last 30 days' }
 ]
 
+// One wording for every control wired to `clearNarrowing`. Three controls shared
+// that handler and named it three different ways (#1033); a shared constant is
+// what stops them drifting apart again. "All filters" covers both the Filter
+// menu's own filters and the selector filters, which the strip and the narrowed
+// empty state enumerate beside the control anyway.
+export const CLEAR_NARROWING_LABEL = 'Clear search and all filters'
+
 const DATE_CUTOFFS_MS: Record<Exclude<DateFilter, 'all'>, number> = {
   today: 24 * 60 * 60 * 1000,
   '7days': 7 * 24 * 60 * 60 * 1000,

@@ -386,6 +386,21 @@ describe('manifest schema 3 — the verifier-too-old outcome', () => {
     expect(chain.reason).toContain('verifier too old')
   })
 
+  it('reports an unknown type that states no schema version at all', () => {
+    // A newer writer that renamed or dropped the field is still a newer writer.
+    // The message says so rather than naming a version nobody stated.
+    const chain = verify(
+      buildChain([CAPTURE_BODY, { type: 'exhibit-bundle', caseId: CASE_ID, ...OPERATOR }])
+    )
+    expect(chain.unsupported).toEqual({
+      index: 1,
+      entryType: 'exhibit-bundle',
+      supportedSchemaVersion: 3
+    })
+    expect(chain.reason).toContain('states no schema version')
+    expect(chain.reason).toContain('verifier too old')
+  })
+
   it('still calls a non-object line a malformed shape, not a newer schema', () => {
     // The screen reads `type` and `schemaVersion` off an object. A scalar or an
     // array carries neither and is simply malformed — reporting it as "verifier

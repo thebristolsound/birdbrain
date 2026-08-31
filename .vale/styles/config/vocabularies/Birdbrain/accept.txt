@@ -360,10 +360,12 @@ TLDs
 [Ww]ebshop
 
 ; Tokens whose upper- and lower-case forms both occur, so Vale.Terms must accept
-; either; a bracketed entry would make the unlisted case an error.
-(?i)blockchain
-(?i)html
-(?i)imap
-(?i)mx
-(?i)ns
-(?i)www
+; either; a bracketed entry would make the unlisted case an error. The \b anchors
+; are load-bearing: Vale applies an entry as an unanchored substring when granting
+; a capitalization exception, so a bare `ns` also exempts "Constraints" everywhere.
+(?i)\bblockchain\b
+(?i)\bhtml\b
+(?i)\bimap\b
+(?i)\bmx\b
+(?i)\bns\b
+(?i)\bwww\b

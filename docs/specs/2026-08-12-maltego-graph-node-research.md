@@ -173,7 +173,7 @@ for the upcoming design work rather than assuming which constraint wins.
 
 ## Questions to carry into brainstorming
 
-1. What is the Link Map's promised answer: "what does this Note reference," "how is this Case organized," or "what investigation subjects are related"? Those are different graphs.
+1. What is the Link Map's promised answer: "what does this Note reference," "how is this Case organized," or "what investigation subjects are related?" Those are different graphs.
 2. Are all edges derived from existing durable records, or could an Operator author a relationship directly? If both exist, how are origin and editability represented?
 3. Should a Mention's reverse Backlink be drawn as a second edge, or is it a query/view over one directed reference? Maltego's direction model shows the analytical value of direction, but not the right answer for Birdbrain's derived Backlink semantics.
 4. When a Case has more than 20 Notes, which wins: the 20-node ceiling or the requirement to retain all Notes? Beyond that edge case, how should the UI distinguish filtering, focus, ghosting, and truncation so they cannot be mistaken for one another?

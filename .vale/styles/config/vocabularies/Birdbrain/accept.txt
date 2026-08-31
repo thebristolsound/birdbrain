@@ -55,7 +55,8 @@ APIs
 [Cc]onfig
 [Cc]ron
 [Cc]rossfade
-CTAs
+; CTAs = calls to action; CTAS = Maltego's on-prem Standard Transforms add-on
+CTA[sS]
 [Dd]ebounce(d|s)?
 [Dd]edup
 [Dd]edupe
@@ -296,3 +297,73 @@ Ctrl
 [Bb]enchmark(s|ed|ing)?
 [Ii]dempotency
 [Vv]endored
+
+; Added 2026-08-30 for the Maltego research documents
+
+; Products, vendors and data sources named in the research
+Bing
+Censys
+[Cc]omms
+[Cc]yber
+Darkside
+[Dd]arkweb
+Dijk
+Epieos
+Farsight
+Freezingdata
+Freshdesk
+Gephi
+Hotmail
+Intezer
+Jumpstart
+Linode
+Odnoklassniki
+OAuth
+Orbis
+Pipl
+Quicklookup
+Shodan
+Splunk
+URLhaus
+Weibo
+Wirecard
+yEd
+ZETAlytics
+
+; Maltego and OSINT domain vocabulary
+[Ff]ootprinting
+[Nn]etblock(s)?
+[Vv]iewlet(s)?
+CSVs
+IPs
+POIs
+TLDs
+
+; General technical vocabulary these documents use
+[Cc]rypto
+[Dd]ockable
+[Dd]raggable
+[Ee]ditability
+[Ff]avicon
+[Ff]ullscreen
+[Gg]eo
+[Ii]nspectable
+[Mm]iddlewares
+[Mm]inimap
+[Nn]amespacing
+[Oo]rgs
+[Oo]verridable
+[Qq]ueryable
+[Rr]elayout
+[Vv]ersionable
+[Ww]ebmail
+[Ww]ebshop
+
+; Tokens whose upper- and lower-case forms both occur, so Vale.Terms must accept
+; either; a bracketed entry would make the unlisted case an error.
+(?i)blockchain
+(?i)html
+(?i)imap
+(?i)mx
+(?i)ns
+(?i)www

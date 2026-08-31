@@ -152,9 +152,9 @@ export function exclusionSummary(count: number, mode: AutoCaptureExclusionMode):
  * (#766), and the string is deliberately not qualified for it: it captures no
  * page. Its URL is a fixed `birdbrain://pipeline-test` sentinel that fetches
  * nothing, so the promise the operator relies on — that a page they excluded
- * never enters the case — holds absolutely. Hedging it to cover a diagnostic
- * would trade that promise for doubt and tell the operator nothing they can act
- * on; the exemption and its residue are documented at the call site instead.
+ * never enters the case — holds absolutely. Since #614 the self-test ingests
+ * into a throwaway sandbox rather than a real case, so it leaves no residue to
+ * qualify the string for either. The exemption is documented at the call site.
  */
 export function exclusionFooter(mode: AutoCaptureExclusionMode, globalCount: number): string {
   const entries = `${globalCount} ${globalCount === 1 ? 'entry' : 'entries'}`

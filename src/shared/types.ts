@@ -478,6 +478,10 @@ export const LOG_CODES = [
   'captureServer.selector_create_failed',
   'captureServer.tag_apply_failed',
   'captureServer.note_create_failed',
+  // The capture-pipeline self-test failed to tear its sandbox down (#614).
+  // Nothing left behind is evidence — the sandbox holds only the sentinel — so
+  // the route reports its own result and this is the record that residue exists.
+  'captureServer.self_test_cleanup_failed',
   'captureLifecycle.tls_refetch_failed',
   'captureLifecycle.selector_match_failed',
   'captureLifecycle.reprocess_failed',

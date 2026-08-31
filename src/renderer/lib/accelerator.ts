@@ -2,14 +2,19 @@
  * How a keyboard hint spells the platform's primary accelerator modifier
  * (#902).
  *
- * Display only. Every handler behind these hints already tests
+ * Display only. Where the app binds the chord, its handler already tests
  * `ctrlKey || metaKey`, so the same chord fires on every platform and only its
- * label moves — macOS names ⌘, everywhere else names Ctrl.
+ * label moves — macOS names ⌘, everywhere else names Ctrl. The two Ctrl+N
+ * hints (`onboarding/tourSteps.ts`, `dashboard/HeroSection.tsx`) are the
+ * exception: nothing binds that chord on any platform (#911), so this renames
+ * a hint that stays dead until it does.
  *
  * The join differs with the label. macOS sets the glyph flush against the key
  * the way its own menus do (⌘K); a word-spelled modifier needs a visible
  * separator (Ctrl+K), and the sites that already read `Ctrl F` or `Ctrl-click`
- * keep their own.
+ * keep their own. Flush is for a single label: the dashboard hero renders the
+ * modifier as its own key cap beside the key's, so those two keep the ` + `
+ * between them rather than butting two borders together.
  */
 
 const MAC_LABEL = '⌘'

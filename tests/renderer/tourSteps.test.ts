@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterEach } from 'vitest'
+import { MAC_PLATFORM, restorePlatform, stubPlatform } from './platformStub'
 import {
   ALL_CHAPTERS,
   completionAfter,
@@ -258,5 +259,28 @@ describe('completionAfter', () => {
 describe('chapter identifiers', () => {
   it('are exactly the three the settings key records', () => {
     expect(ALL_CHAPTERS).toEqual<TourChapter[]>(['intro', 'ext', 'case'])
+  })
+})
+
+// #902. The tour teaches the same accelerators the chrome hints do, so the two
+// cannot be allowed to name different modifiers on the same machine.
+describe('accelerator hints', () => {
+  afterEach(restorePlatform)
+
+  function kbdOf(chapter: TourChapter): string[] {
+    return tourSteps(chapter)
+      .map((step) => step.kbd)
+      .filter((kbd): kbd is string => kbd !== undefined)
+  }
+
+  it('names Ctrl off macOS', () => {
+    expect(kbdOf('intro')).toEqual(['Ctrl N'])
+    expect(kbdOf('case')).toEqual(['Ctrl K', '@ #'])
+  })
+
+  it('names the Command glyph on macOS, leaving the non-modifier hint alone', () => {
+    stubPlatform(MAC_PLATFORM)
+    expect(kbdOf('intro')).toEqual(['⌘N'])
+    expect(kbdOf('case')).toEqual(['⌘K', '@ #'])
   })
 })

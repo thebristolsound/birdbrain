@@ -3,6 +3,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { Search, StickyNote } from 'lucide-react'
 import { useAppStore } from '@renderer/stores/appStore'
 import { useSearch } from '@renderer/hooks/useSearch'
+import { accelerator } from '@renderer/lib/accelerator'
 
 interface SearchBarProps {
   caseId: string
@@ -78,7 +79,7 @@ export function SearchBar({ caseId }: SearchBarProps) {
           </button>
         ) : (
           <span className="shrink-0 rounded border border-border-strong bg-surface px-1.5 py-0.5 font-mono text-[10px] text-text-faint">
-            Ctrl F
+            {accelerator('F', { join: ' ' })}
           </span>
         )}
       </div>

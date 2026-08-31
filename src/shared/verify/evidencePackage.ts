@@ -44,7 +44,11 @@ export interface PackageCheck {
 
 export interface PackageVerifyResult {
   // True iff no check has status 'fail' ('skip' is allowed). The verifier runs
-  // EVERY check and collects ALL failures — it never short-circuits.
+  // EVERY check and collects ALL failures rather than short-circuiting on the
+  // first — with the two exceptions below (`notVerifiable`, `unsupported`),
+  // which end verification before the checks they would poison can run and are
+  // reported as outcomes of their own. Both return `pass: false` with no failed
+  // check: false because nothing was verified, not because something failed.
   pass: boolean
   checks: PackageCheck[]
   /**
@@ -62,6 +66,9 @@ export interface PackageVerifyResult {
    * the chain is intact. `pass` stays false — no integrity claim is made — but
    * this is NOT a tamper verdict, and a caller must not render it as one. The
    * remedy is a newer verifier, and the reason names the version needed.
+   * Verify-core sets it only once the entries below the unreadable one have
+   * verified and that entry's own linkage, hash and signature hold, so this
+   * outcome cannot be bought by editing a manifest.
    */
   unsupported?: { reason: string }
 }
@@ -430,6 +437,32 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
           }
         }
       }
+    }
+  }
+
+  // §7.3b Exhibit entries (ADR-0023). This build READS `exhibit` and
+  // `derivation` entries — that is what schema 3 bought — but binds no bytes to
+  // them: the exporter that ships Exhibit files and lists them, and the
+  // verification that hashes them against these entries, are `803e` (#1156).
+  // Saying nothing would let a PASS from this build read as "everything the
+  // chain anchors was verified" over a package whose Exhibits it never looked
+  // at, which is X44's dishonest third option. A SKIP and not a FAIL: the
+  // package is not at fault for being newer than the verifier, and a tamper
+  // verdict on that ground is the false accusation X25 forbids.
+  for (const entry of entries) {
+    if (entry.type === 'exhibit') {
+      add(
+        `exhibit ${entry.exhibitId}`,
+        'skip',
+        `Exhibit ${entry.exhibitNumber} (${entry.kind}) at ${entry.path}: this verifier does not ` +
+          'bind Exhibit bytes to the chain — 803e (#1156) adds it'
+      )
+    } else if (entry.type === 'derivation') {
+      add(
+        `derivation ${entry.derivation} of ${entry.parentExhibitId}`,
+        'skip',
+        'this verifier does not bind Derived File bytes to the chain — 803e (#1156) adds it'
+      )
     }
   }
 

@@ -113,10 +113,13 @@ function printReport(dir: string, result: PackageVerifyResult): void {
   if (result.unsupported) {
     process.stdout.write(`RESULT: VERIFIER TOO OLD — ${result.unsupported.reason}\n`)
     process.stdout.write(
-      '\nThis is NOT a tamper verdict and NOT a failure of the package: this build\n' +
-        'cannot read part of the manifest, so it makes no integrity claim either way.\n' +
-        'Obtain the verifier from the Birdbrain release named in the package README\n' +
-        '(or later) and re-run.\n'
+      '\nThis is NOT a tamper verdict, and it is NOT a clean bill of health: this\n' +
+        'build cannot read part of the manifest, so it makes no integrity claim\n' +
+        'about the package either way. What it does say is narrower: the entries\n' +
+        'below the unreadable one verified, and that entry sits where the chain\n' +
+        'says it does with a hash and signature that hold. Obtain the verifier\n' +
+        'from the Birdbrain release named in the package README (or later) and\n' +
+        're-run.\n'
     )
     return
   }

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { createHash } from 'crypto'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { createHash, createSign, generateKeyPairSync } from 'crypto'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import {
@@ -17,20 +17,26 @@ import { MANIFEST_FILENAME, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 
 // Known-answer tests for manifest schema 3 (ADR-0023, rulings X17/X18/X24/X25).
 //
-// Four answers are frozen here, and each one is a claim a recipient relies on:
+// Six answers are frozen here, and each one is a claim a recipient relies on:
 //   1. schema-2 entries canonicalize and hash to the SAME bytes after the bump,
 //      so every package already in the world still verifies (the digests below
 //      were computed before this change and must never be regenerated);
 //   2. the three new entry types parse and a chain containing each verifies;
 //   3. an entry this build cannot read reports "verifier too old" and NEVER a
 //      tamper verdict — the false accusation X25 exists to prevent;
-//   4. `deletion` and `timestamp` bind any Exhibit, not only a Capture.
+//   4. `deletion` and `timestamp` bind any Exhibit, not only a Capture;
+//   5. that verdict is not for sale: an entry claiming a newer schema is still
+//      reported as tampering unless it links, hashes and verifies as a genuine
+//      newer writer's entry does;
+//   6. an Exhibit or Derived File this build cannot bind to bytes is reported
+//      as a SKIP naming the ticket that binds it, never passed over in silence.
 //
 // If a frozen digest fails, the canonical body of that entry type changed and
 // every chain already written with it is now unverifiable — that is the finding,
 // not the test.
 
 const CASE_ID = '0196f7a2-aaaa-bbbb-cccc-000000000002'
+const CAPTURE_ID = '0196f7a2-aaaa-bbbb-cccc-000000000001'
 const OPERATOR = {
   operatorId: 'op-1',
   operatorName: 'Casey Operator',
@@ -41,7 +47,7 @@ const OPERATOR = {
 // change: index 0, no prevHash, signature and entryHash excluded from the body.
 const CAPTURE_BODY = {
   type: 'capture',
-  captureId: '0196f7a2-aaaa-bbbb-cccc-000000000001',
+  captureId: CAPTURE_ID,
   caseId: CASE_ID,
   url: 'https://example.com/page',
   timestamp: '2026-06-01T12:00:00.000Z',
@@ -443,5 +449,195 @@ describe('manifest schema 3 — the verifier-too-old outcome', () => {
     expect(result.pass).toBe(false)
     expect(result.unsupported).toBeUndefined()
     expect(result.checks.some((check) => check.status === 'fail')).toBe(true)
+  })
+})
+
+describe('manifest schema 3 — the too-old verdict is not for sale', () => {
+  // The outcome above carries an exculpation ("not a tamper verdict"), so the
+  // price of reaching it has to be the case's signing key. Every case here is a
+  // manifest edit that claims a newer schema, and every one is still reported as
+  // the tamper verdict this build would have given before the outcome existed.
+
+  it('reports a tampered entry that also claims a newer schema as tampering', () => {
+    // Edit an entry and bump its schemaVersion out of range in the same line:
+    // the entry's own hash is checked before the too-old verdict is reported, so
+    // the bump buys nothing.
+    const lines = buildChain([CAPTURE_BODY, EXHIBIT_BODY]).trim().split('\n')
+    lines[1] = lines[1]
+      .replace('witness-statement.pdf', 'other-statement.pdf')
+      .replace('"schemaVersion":3', '"schemaVersion":99')
+    const chain = verify(lines.join('\n') + '\n')
+    expect(chain.valid).toBe(false)
+    expect(chain.unsupported).toBeUndefined()
+    expect(chain.brokenAt).toBe(1)
+    expect(chain.reason).toBe('Entry hash mismatch')
+  })
+
+  it('reports a planted future entry with a recomputed hash but no signature', () => {
+    // Recomputing an entry hash needs no key, so the hash check alone would let
+    // anyone append a line and silence the verifier. The signature is what makes
+    // the verdict unreachable without the key.
+    const chain = buildChain([CAPTURE_BODY])
+    const lines = chain.trim().split('\n')
+    const head = JSON.parse(lines[lines.length - 1]) as { index: number; entryHash: string }
+    const body = {
+      type: 'exhibit-bundle',
+      caseId: CASE_ID,
+      ...OPERATOR,
+      schemaVersion: 4,
+      index: head.index + 1,
+      prevHash: head.entryHash
+    }
+    const planted = JSON.stringify({ ...body, entryHash: entryHashOf(body) })
+    const result = verify(chain + planted + '\n')
+    expect(result.unsupported).toBeUndefined()
+    expect(result.brokenAt).toBe(1)
+    expect(result.reason).toBe('Invalid signature')
+  })
+
+  it('reports a future entry that does not continue the chain as tampering', () => {
+    const lines = buildChain([CAPTURE_BODY, { ...EXHIBIT_BODY, schemaVersion: 4 }])
+      .trim()
+      .split('\n')
+    const head = JSON.parse(lines[0]) as { entryHash: string }
+    lines[1] = lines[1].replace(`"prevHash":"${head.entryHash}"`, `"prevHash":"${'0'.repeat(64)}"`)
+    const chain = verify(lines.join('\n') + '\n')
+    expect(chain.unsupported).toBeUndefined()
+    expect(chain.brokenAt).toBe(1)
+    expect(chain.reason).toBe('Chain link broken')
+  })
+
+  it('does not report the lines below an unreadable entry', () => {
+    // The other side of the same rule: once this build has met an entry it
+    // cannot read, the verdict is decided AT that entry. A malformed line
+    // further down is not a finding this build is in a position to make, and it
+    // must not turn "verifier too old" into a tamper verdict either.
+    const chain = buildChain([CAPTURE_BODY, { ...EXHIBIT_BODY, schemaVersion: 4 }])
+    const result = verify(chain + 'not json at all\n{"type":"capture"}\n')
+    expect(result.brokenAt).toBeUndefined()
+    expect(result.unsupported?.index).toBe(1)
+    expect(result.reason).toContain('verifier too old')
+  })
+
+  it('keeps an imported segment verifying under an import entry from a newer schema', () => {
+    // The other half of the same change: entries are now verified BEFORE the
+    // too-old verdict, so the key that covers them has to be resolved even when
+    // the import boundary itself is unreadable. Without reading the source key
+    // off that raw line, every source entry would report 'Invalid signature' —
+    // the false accusation X25 exists to prevent.
+    const source = generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+      publicKeyEncoding: { type: 'spki', format: 'pem' },
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
+    })
+    const sourceBody = { ...CAPTURE_BODY, index: 0, prevHash: '' }
+    const sourceHash = entryHashOf(sourceBody)
+    const sourceLine = JSON.stringify({
+      ...sourceBody,
+      entryHash: sourceHash,
+      signature: createSign('sha256').update(sourceHash).sign(source.privateKey, 'base64')
+    })
+    const importBody = {
+      type: 'import',
+      caseId: CASE_ID,
+      sourceCaseId: 'case-src',
+      sourceInstallationId: 'inst-a',
+      sourcePublicKeyPem: source.publicKey,
+      packageHash: 'a'.repeat(64),
+      idMapSha256: 'b'.repeat(64),
+      somethingNew: 'from a later schema',
+      timestamp: '2026-06-01T12:20:00.000Z',
+      ...OPERATOR,
+      index: 1,
+      prevHash: sourceHash,
+      schemaVersion: 4
+    }
+    const importHash = entryHashOf(importBody)
+    const importLine = JSON.stringify({
+      ...importBody,
+      entryHash: importHash,
+      signature: signEntryHash(importHash)
+    })
+    const chain = verify([sourceLine, importLine].join('\n') + '\n')
+    expect(chain.brokenAt).toBeUndefined()
+    expect(chain.reason).toContain('verifier too old')
+    expect(chain.unsupported?.index).toBe(1)
+    expect(chain.unsupported?.schemaVersionSeen).toBe(4)
+  })
+})
+
+describe('manifest schema 3 — Exhibit entries a package verifier cannot bind', () => {
+  let pkgDir: string
+
+  beforeEach(() => {
+    pkgDir = mkdtempSync(join(tmpdir(), 'birdbrain-schema3-pkg-'))
+  })
+
+  afterEach(() => {
+    rmSync(pkgDir, { recursive: true, force: true })
+  })
+
+  it('reports an unbound Exhibit and Derived File as a SKIP naming 803e', () => {
+    // This build reads `exhibit` and `derivation` entries and binds no bytes to
+    // them — 803e (#1156) is what ships and verifies Exhibit files. A silent
+    // PASS over a package holding them would read as "everything the chain
+    // anchors was verified" (X44's dishonest third option), so each one is named
+    // in the report. A SKIP and not a FAIL: the package is not at fault for
+    // being newer than the verifier (X25).
+    const mhtml = Buffer.from('<html><body>packaged</body></html>')
+    const contentHash = createHash('sha256').update(mhtml).digest('hex')
+    const capture = {
+      type: 'capture',
+      captureId: CAPTURE_ID,
+      caseId: CASE_ID,
+      url: 'https://example.com/page',
+      timestamp: '2026-06-01T12:00:00.000Z',
+      contentHash,
+      sizeBytes: mhtml.length,
+      ...OPERATOR,
+      schemaVersion: 2
+    }
+    const jsonl = buildChain([capture, EXHIBIT_BODY, DERIVATION_BODY])
+    const lines = jsonl.trim().split('\n')
+    const head = JSON.parse(lines[lines.length - 1]) as { index: number; entryHash: string }
+    writeFileSync(join(pkgDir, 'manifest.jsonl'), jsonl, 'utf-8')
+    writeFileSync(join(pkgDir, 'signing-public-key.pem'), getPublicKeyPem(), 'utf-8')
+    mkdirSync(join(pkgDir, 'pages'), { recursive: true })
+    writeFileSync(join(pkgDir, 'pages', `${CAPTURE_ID}.mhtml`), mhtml)
+    writeFileSync(
+      join(pkgDir, 'evidence.json'),
+      JSON.stringify({
+        schemaVersion: 1,
+        verificationMaterials: {
+          manifestPath: 'manifest.jsonl',
+          manifestHeadIndex: head.index,
+          manifestHeadHash: head.entryHash,
+          signingPublicKeyPath: 'signing-public-key.pem'
+        },
+        captures: [
+          {
+            id: CAPTURE_ID,
+            mhtmlPath: `pages/${CAPTURE_ID}.mhtml`,
+            mhtmlSha256: contentHash,
+            timestampTokenPaths: []
+          }
+        ],
+        artifacts: []
+      }),
+      'utf-8'
+    )
+
+    const result = verifyEvidencePackage(pkgDir)
+    const exhibit = result.checks.find((check) => check.name === `exhibit ${EXHIBIT_ID}`)
+    expect(exhibit?.status).toBe('skip')
+    expect(exhibit?.reason).toContain('Exhibit 7')
+    expect(exhibit?.reason).toContain('803e')
+    const derivation = result.checks.find((check) => check.name.startsWith('derivation '))
+    expect(derivation?.status).toBe('skip')
+    expect(derivation?.reason).toContain('803e')
+    // The rest of the package is intact, so the verdict stays PASS: what changed
+    // is that the PASS now says out loud which anchored items it did not bind.
+    expect(result.checks.filter((check) => check.status === 'fail')).toEqual([])
+    expect(result.pass).toBe(true)
   })
 })

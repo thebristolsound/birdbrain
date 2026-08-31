@@ -59,6 +59,12 @@ function kbdText(container: HTMLElement): string[] {
   return Array.from(container.querySelectorAll('kbd')).map((k) => k.textContent)
 }
 
+/** The hero's hint line as rendered: the key caps and the text between them. */
+function heroHint(container: HTMLElement): string {
+  const paragraphs = container.querySelectorAll('p')
+  return paragraphs[paragraphs.length - 1].textContent ?? ''
+}
+
 beforeEach(() => {
   stubMatchMedia(false)
   fakeBridge({
@@ -100,16 +106,24 @@ describe('the search chip', () => {
   })
 })
 
+// Two key caps rather than one label, so the hero keeps its ` + ` on both
+// platforms — the flush convention is for a modifier inside a single label
+// (accelerator.ts). Reading the caps alone would leave that separator unasserted.
 describe('the dashboard hero shortcuts', () => {
   it('names Ctrl off macOS', () => {
     const { container } = renderHero()
     expect(kbdText(container)).toEqual(['Ctrl', 'N', 'Ctrl', 'K'])
+    expect(heroHint(container)).toContain('Ctrl + N')
+    expect(heroHint(container)).toContain('Ctrl + K')
   })
 
-  it('names the Command glyph on macOS', () => {
+  it('names the Command glyph on macOS, keeping the separator between the caps', () => {
     stubPlatform(MAC_PLATFORM)
     const { container } = renderHero()
     expect(kbdText(container)).toEqual(['⌘', 'N', '⌘', 'K'])
+    expect(heroHint(container)).toContain('⌘ + N')
+    expect(heroHint(container)).toContain('⌘ + K')
+    expect(heroHint(container)).not.toContain('⌘N')
   })
 })
 

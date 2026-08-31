@@ -145,6 +145,7 @@ describe('capture menu, single target', () => {
     const entries = captureMenuEntries(captureTarget())
     expect(actionById(entries, 'capture-open').shortcut).toBe('Enter')
     expect(actionById(entries, 'capture-copy-url').shortcut).toBe('Ctrl+C')
+    expect(actionById(entries, 'capture-toggle-selection').shortcut).toBe('Ctrl+click')
     // Copy SHA-256 has no accelerator: Ctrl+C already belongs to Copy URL.
     expect(actionById(entries, 'capture-copy-hash').shortcut).toBeUndefined()
     // Deleting a capture is dialog-confirmed and has no Delete-key route.
@@ -215,6 +216,11 @@ describe('capture menu, multi-selection (R20)', () => {
     })
     expect(labels(captureMenuEntries(all))).toContain('Unfavorite 3 captures')
     expect(labels(captureMenuEntries(multi()))).toContain('Favorite 3 captures')
+  })
+
+  // The off-macOS form of the click chord, which the macOS block below renames.
+  it('keeps the Ctrl click hint on the entry that leaves the selection', () => {
+    expect(actionById(captureMenuEntries(multi()), 'capture-deselect').shortcut).toBe('Ctrl+click')
   })
 
   it('says two captures rather than 2 capture', () => {

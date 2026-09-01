@@ -146,6 +146,7 @@ export interface BirdbrainAPI {
     removeFromNote(params: NoteTagParams): Promise<void>
     getForNote(noteId: string): Promise<Tag[]>
     merge(params: MergeTagsParams): Promise<MergeTagsResult>
+    capturesWithAnyTag(caseId: string, tagIds: string[]): Promise<string[]>
   }
   selectors: {
     list(caseId: string): Promise<Selector[]>

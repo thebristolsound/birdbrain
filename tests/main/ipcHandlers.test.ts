@@ -872,6 +872,23 @@ describe('ipcHandlers — tags', () => {
     expectOk(await invoke(IPC_CHANNELS.TAGS_DELETE, tag.id))
   })
 
+  // The capture list's tag filter reads through this channel (#918). Driven at
+  // the boundary because the renderer writes the result straight into the app
+  // store: an argument order swapped here would narrow the list to nothing.
+  it('answers which captures carry any of the given tags', async () => {
+    const tag = expectOk<{ id: string }>(await invoke(IPC_CHANNELS.TAGS_CREATE, { name: 'filter' }))
+    expectOk(await invoke(IPC_CHANNELS.TAGS_ADD_TO_CAPTURE, { captureId, tagId: tag.id }))
+
+    expect(
+      expectOk<string[]>(await invoke(IPC_CHANNELS.TAGS_CAPTURES_WITH_ANY_TAG, caseId, [tag.id]))
+    ).toEqual([captureId])
+    expect(
+      expectOk<string[]>(await invoke(IPC_CHANNELS.TAGS_CAPTURES_WITH_ANY_TAG, caseId, []))
+    ).toEqual([])
+
+    expectOk(await invoke(IPC_CHANNELS.TAGS_DELETE, tag.id))
+  })
+
   // #391 note-level tags. Driven at the IPC boundary rather than through
   // noteTags directly because both translations live in ipcHandlers.ts: the
   // payload rejection and NoteNotFoundError -> IpcFailure. A renderer that

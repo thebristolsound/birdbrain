@@ -305,7 +305,8 @@ ordinary entry per capture, in order, halting at the first failure. A deletion e
 carry a `reason`, so that a deletion Birdbrain performed on its own account is distinguishable
 from an operator deleting evidence. Nothing in the app records one today — the only route into
 deletion is the operator's, and the pipeline self-test no longer deletes anything from a case.
-Chains written before that change carry the self-test's cleanups with the reason `pipeline-test`.
+Only chains written while it did delete carry that reason; older ones hold the self-test's
+capture entry with no deletion beside it, which the Self-tests section below sets out.
 
 ### Unreconciled deletions
 
@@ -412,7 +413,7 @@ to the list without a refetch.
   proving the listener independently of the extension.
 
 Chains written before the sandbox landed hold what the self-test of the day put in the first case
-in the list, and there are two eras of it. The earliest self-test deleted the capture row and its
+in the list, and there are two eras of it. The earlier of the two deleted the capture row and its
 artifacts directly and recorded no deletion at all, so those chains hold a bare `capture` entry as
 a matter of course rather than through any failure — these are the entries the export's
 unreconciled-entry disclosure was written to explain. A later self-test routed its cleanup through

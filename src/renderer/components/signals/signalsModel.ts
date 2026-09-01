@@ -154,9 +154,10 @@ export function exclusionSummary(count: number, mode: AutoCaptureExclusionMode):
  * nothing, so the promise the operator relies on — that a page they excluded
  * never enters the case — holds absolutely. Since #614 the self-test ingests
  * into a throwaway sandbox rather than a real case, so no residue of it can
- * reach a case the list speaks about: what a failed teardown leaves is the
- * sandbox case, which is not one of them. The exemption is documented at the
- * call site.
+ * reach an investigation. A failed teardown can leave the sandbox case, which
+ * is an ordinary case and renders this footer too — the promise holds there
+ * for the same reason it holds anywhere: the sentinel fetches nothing, so no
+ * page ever entered. The exemption is documented at the call site.
  */
 export function exclusionFooter(mode: AutoCaptureExclusionMode, globalCount: number): string {
   const entries = `${globalCount} ${globalCount === 1 ? 'entry' : 'entries'}`

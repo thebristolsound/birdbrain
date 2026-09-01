@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { MAC_PLATFORM, restorePlatform, stubPlatform } from '../renderer/platformStub'
 import {
   captureMenuEntries,
   entityMenuEntries,
@@ -144,6 +145,7 @@ describe('capture menu, single target', () => {
     const entries = captureMenuEntries(captureTarget())
     expect(actionById(entries, 'capture-open').shortcut).toBe('Enter')
     expect(actionById(entries, 'capture-copy-url').shortcut).toBe('Ctrl+C')
+    expect(actionById(entries, 'capture-toggle-selection').shortcut).toBe('Ctrl+click')
     // Copy SHA-256 has no accelerator: Ctrl+C already belongs to Copy URL.
     expect(actionById(entries, 'capture-copy-hash').shortcut).toBeUndefined()
     // Deleting a capture is dialog-confirmed and has no Delete-key route.
@@ -214,6 +216,11 @@ describe('capture menu, multi-selection (R20)', () => {
     })
     expect(labels(captureMenuEntries(all))).toContain('Unfavorite 3 captures')
     expect(labels(captureMenuEntries(multi()))).toContain('Favorite 3 captures')
+  })
+
+  // The off-macOS form of the click chord, which the macOS block below renames.
+  it('keeps the Ctrl click hint on the entry that leaves the selection', () => {
+    expect(actionById(captureMenuEntries(multi()), 'capture-deselect').shortcut).toBe('Ctrl+click')
   })
 
   it('says two captures rather than 2 capture', () => {
@@ -328,5 +335,29 @@ describe('the registry dispatch and headers', () => {
   it('tells a submenu from an action', () => {
     const entries = captureMenuEntries(captureTarget())
     expect(entries.filter(isSubmenu).map((entry) => entry.id)).toEqual(['capture-add-tag'])
+  })
+})
+
+// #902. The handlers behind these hints all test `ctrlKey || metaKey`, so the
+// menu names the modifier the operator's own platform uses. The Ctrl forms are
+// pinned above; these are the same entries read on macOS.
+describe('accelerator hints on macOS', () => {
+  afterEach(restorePlatform)
+
+  it('sets the Command glyph flush against a key and hyphenates a click chord', () => {
+    stubPlatform(MAC_PLATFORM)
+    const entries = captureMenuEntries(captureTarget())
+    expect(actionById(entries, 'capture-copy-url').shortcut).toBe('⌘C')
+    expect(actionById(entries, 'capture-toggle-selection').shortcut).toBe('⌘-click')
+    // Unchanged by the platform: neither is a modifier chord.
+    expect(actionById(entries, 'capture-open').shortcut).toBe('Enter')
+    expect(actionById(entries, 'capture-copy-hash').shortcut).toBeUndefined()
+  })
+
+  it('renames the multi-selection entry and the header it sits under', () => {
+    stubPlatform(MAC_PLATFORM)
+    const multi = captureTarget({ targetIds: ['cap-a', 'cap-b'], inSelection: true })
+    expect(actionById(captureMenuEntries(multi), 'capture-deselect').shortcut).toBe('⌘-click')
+    expect(entityMenuHeader(multi).subtitle).toBe('⌘-click to change the selection')
   })
 })

@@ -5,8 +5,12 @@
  * Deliberately free of React and of `document`: the step list, the counters,
  * the forward-only jump scan, the auto-fire rule and the completion write are
  * all pure functions here, so they are tested directly rather than through a
- * rendered tour.
+ * rendered tour. The one environment read is the accelerator label (#902),
+ * which is why the chapter lists are built per call rather than frozen at
+ * import.
  */
+
+import { accelerator } from '@renderer/lib/accelerator'
 
 export type TourChapter = 'intro' | 'ext' | 'case'
 
@@ -60,7 +64,7 @@ function extStep(chapter: 'intro' | 'ext'): TourStep {
   }
 }
 
-const CASE_STEPS: TourStep[] = [
+const caseSteps = (): TourStep[] => [
   {
     screen: 'Captures',
     route: 'captures',
@@ -82,7 +86,7 @@ const CASE_STEPS: TourStep[] = [
     body:
       'Everything you see is scoped to this investigation. Click the name to switch cases or ' +
       'start a new one.',
-    kbd: 'Ctrl K',
+    kbd: accelerator('K', { join: ' ' }),
     kbdNote: 'opens the switcher anywhere'
   },
   {
@@ -146,7 +150,7 @@ const CASE_STEPS: TourStep[] = [
   }
 ]
 
-const INTRO_STEPS: TourStep[] = [
+const introSteps = (): TourStep[] => [
   { welcome: true },
   {
     target: 'newcase',
@@ -154,7 +158,7 @@ const INTRO_STEPS: TourStep[] = [
     title: 'Everything lives in a case',
     body:
       'Start one per investigation — captures, selectors, notes, and exports stay scoped to it.',
-    kbd: 'Ctrl N',
+    kbd: accelerator('N', { join: ' ' }),
     kbdNote: 'starts one from anywhere'
   },
   extStep('intro')
@@ -162,8 +166,8 @@ const INTRO_STEPS: TourStep[] = [
 
 export function tourSteps(chapter: TourChapter): TourStep[] {
   if (chapter === 'ext') return [extStep('ext')]
-  if (chapter === 'intro') return INTRO_STEPS
-  return CASE_STEPS
+  if (chapter === 'intro') return introSteps()
+  return caseSteps()
 }
 
 /** Steps that render a coach mark, i.e. everything the mark counter counts. */

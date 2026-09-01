@@ -22,6 +22,7 @@ import {
   X
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { accelerator } from '@renderer/lib/accelerator'
 
 /**
  * The per-kind context-menu registry (#701).
@@ -208,7 +209,7 @@ export function captureMenuEntries(target: CaptureMenuTarget): MenuEntry[] {
         id: 'capture-deselect',
         label: 'Remove from selection',
         icon: SquareMinus,
-        shortcut: 'Ctrl+click',
+        shortcut: accelerator('click', { macJoin: '-' }),
         run: actions.toggleSelection
       },
       {
@@ -254,7 +255,7 @@ export function captureMenuEntries(target: CaptureMenuTarget): MenuEntry[] {
       id: 'capture-toggle-selection',
       label: inSelection ? 'Remove from selection' : 'Add to selection',
       icon: inSelection ? SquareMinus : SquarePlus,
-      shortcut: 'Ctrl+click',
+      shortcut: accelerator('click', { macJoin: '-' }),
       run: actions.toggleSelection
     },
     {
@@ -268,7 +269,7 @@ export function captureMenuEntries(target: CaptureMenuTarget): MenuEntry[] {
       id: 'capture-copy-url',
       label: 'Copy URL',
       icon: Clipboard,
-      shortcut: 'Ctrl+C',
+      shortcut: accelerator('C'),
       run: actions.copyUrl
     },
     {
@@ -497,7 +498,7 @@ export function entityMenuHeader(target: EntityMenuTarget): MenuHeader {
         return {
           icon: Eye,
           title: `${captureNoun(count)} selected`,
-          subtitle: 'Ctrl-click to change the selection',
+          subtitle: `${accelerator('click', { join: '-', macJoin: '-' })} to change the selection`,
           ariaLabel: `Actions for ${captureNoun(count)}`
         }
       }

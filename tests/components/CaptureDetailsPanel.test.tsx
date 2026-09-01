@@ -24,6 +24,7 @@ vi.mock('@renderer/components/notes/useNoteEditor', () => ({
 import { CaptureDetailsPanel } from '@renderer/components/captures/CaptureDetailsPanel'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { stubMatchMedia } from './matchMediaStub'
+import { MAC_PLATFORM, restorePlatform, stubPlatform } from '../renderer/platformStub'
 
 const capture: Capture = {
   id: 'cap1',
@@ -77,6 +78,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  restorePlatform()
 })
 
 describe('CaptureDetailsPanel actions menu', () => {
@@ -94,6 +96,18 @@ describe('CaptureDetailsPanel actions menu', () => {
 
     expect(onCopyUrl).toHaveBeenCalledOnce()
     expect(screen.queryByTestId('capture-details-copy-url-btn')).toBeNull()
+  })
+
+  // #902. Same accelerator, named the way the operator's platform names it.
+  it('spells that accelerator with the Command glyph on macOS', async () => {
+    stubPlatform(MAC_PLATFORM)
+    renderPanel()
+
+    fireEvent.click(await screen.findByTestId('capture-details-actions-btn'))
+    const item = screen.getByTestId('capture-details-copy-url-btn')
+
+    expect(item.textContent).toContain('⌘C')
+    expect(item.textContent).not.toContain('Ctrl')
   })
 
   it('keeps Copy URL out of the way until the menu is opened', async () => {

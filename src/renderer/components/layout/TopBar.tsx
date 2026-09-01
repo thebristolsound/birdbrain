@@ -5,6 +5,7 @@ import { useMatchRoute, useNavigate, useRouter } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '@renderer/stores/appStore'
 import { caseQueryOptions } from '@renderer/lib/queries'
+import { accelerator } from '@renderer/lib/accelerator'
 import { SearchBar } from '@renderer/components/search/SearchBar'
 import { SessionControls } from '@renderer/components/status/SessionControls'
 import { ConnectionStatus } from '@renderer/components/status/ConnectionStatus'
@@ -89,7 +90,7 @@ export function TopBar() {
             data-tour="caseswitcher"
             onClick={() => setCommandPaletteOpen(true)}
             className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 hover:bg-elevated transition-colors"
-            title="Switch investigation (Ctrl+K)"
+            title={`Switch investigation (${accelerator('K')})`}
           >
             <span className="max-w-[220px] truncate font-display text-xs font-bold text-text-primary">
               {activeCase?.name ?? ''}

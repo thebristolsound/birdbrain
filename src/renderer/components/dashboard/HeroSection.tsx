@@ -1,5 +1,6 @@
 import { PlusCircle, FolderOpen, Archive } from 'lucide-react'
 import logoImg from '@renderer/assets/logo.png'
+import { modifierLabel } from '@renderer/lib/accelerator'
 
 interface HeroSectionProps {
   onNewInvestigation: () => void
@@ -52,7 +53,7 @@ export function HeroSection({ onNewInvestigation, onOpenRecent, onImportCase }: 
 
         <p className="text-[11px] text-text-faint">
           <kbd className="px-1.5 py-0.5 rounded border border-border-strong bg-surface font-mono text-[10px] font-medium text-text-muted">
-            Ctrl
+            {modifierLabel()}
           </kbd>
           {' + '}
           <kbd className="px-1.5 py-0.5 rounded border border-border-strong bg-surface font-mono text-[10px] font-medium text-text-muted">
@@ -60,7 +61,7 @@ export function HeroSection({ onNewInvestigation, onOpenRecent, onImportCase }: 
           </kbd>
           <span className="ml-1.5">to create · </span>
           <kbd className="px-1.5 py-0.5 rounded border border-border-strong bg-surface font-mono text-[10px] font-medium text-text-muted">
-            Ctrl
+            {modifierLabel()}
           </kbd>
           {' + '}
           <kbd className="px-1.5 py-0.5 rounded border border-border-strong bg-surface font-mono text-[10px] font-medium text-text-muted">

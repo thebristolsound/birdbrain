@@ -234,11 +234,25 @@ export function verifyManifestChainText(
   // is what keeps an imported segment under an unreadable boundary from
   // reporting 'Invalid signature' (the false accusation X25 forbids) without
   // ever trusting an unverified line. A failure in any phase is the tamper
-  // verdict this build gave before the too-old outcome existed. The one chain
-  // shape this build cannot exculpate is an unreadable entry whose own key
-  // sits beyond it (a newer writer inside an imported segment): with no
-  // verified path to the trust anchor it reports broken, because the only
-  // alternative is taking the tamperer's word for the key.
+  // verdict this build gave before the too-old outcome existed.
+  //
+  // SCOPE, NOT NECESSITY (#1199). Two chain shapes still report broken on a
+  // genuine chain, and neither is forced by soundness: (1) an unreadable entry
+  // whose own key sits beyond it — a newer writer inside an imported segment;
+  // (2) an unreadable `import` boundary whose pem this build cannot extract,
+  // because a newer schema renamed the field or encoded the key in a form
+  // verifyEntrySignature fail-closes on, which leaves the segment before it
+  // resolved to the local key and accused at a genuine entry. A sound
+  // alternative exists for both under the forward-compat assumptions phase B
+  // already makes: keep the keyless walk going THROUGH unreadable lines to the
+  // next boundary with an extractable pem, verify that boundary under its own
+  // resolved key — transitively anchored to the locally-signed tail, the
+  // SECURITY NOTE argument below — and only then use its pem for the segment
+  // before it; where no such boundary exists, decline to verify against a key
+  // known to be the wrong one rather than accuse under it. #1199 carries that
+  // design. Out of scope here, not impossible: every type this build writes is
+  // stamped schemaVersion 2, so neither shape exists before a writer from a
+  // schema this build cannot read produces one.
   if (tooNew) {
     // Phase A — keyless integrity of the preceding entries. Mirrors the
     // index/linkage/hash/downgrade checks of the verified path below.
@@ -266,7 +280,9 @@ export function verifyManifestChainText(
     if (failure) return broken(tooNew.info.index, failure)
     // Phase C — the preceding entries' signatures. The unreadable entry's pem
     // is verified data now: phase B bound it, via the entry hash the local key
-    // signed, to the writer the chain trusts.
+    // signed, to the writer the chain trusts. When the pem is not extractable
+    // the segment falls back to the local key and is accused under it — shape
+    // (2) above, disclosed and tracked in #1199, not fixed here.
     const anchored = [...boundaries]
     if (tooNew.raw.type === 'import' && typeof tooNew.raw.sourcePublicKeyPem === 'string') {
       anchored.push({ index: tooNew.info.index, pem: tooNew.raw.sourcePublicKeyPem })

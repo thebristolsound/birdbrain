@@ -450,9 +450,12 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   // at, which is X44's dishonest third option. A SKIP and not a FAIL: the
   // package is not at fault for being newer than the verifier, and a tamper
   // verdict on that ground is the false accusation X25 forbids. `entries` is
-  // break-scoped (see above), so a chain that fails before an `exhibit` entry
-  // names nothing here — the chain FAIL is the verdict there, and no SKIP is
-  // owed for entries nothing verified.
+  // PARSE-scoped, not brokenAt-scoped: parseManifestEntries stops at the first
+  // line it cannot read, so a chain that FAILs on a signature, hash or linkage
+  // with every line parseable still lists its Exhibit entries here and emits
+  // their SKIPs inside a FAIL report. Rows for entries nothing verified, not a
+  // claim about them — `pass` is false regardless. The scoping itself, and the
+  // comment at the `entries` declaration that still says otherwise, are #691.
   for (const entry of entries) {
     if (entry.type === 'exhibit') {
       add(

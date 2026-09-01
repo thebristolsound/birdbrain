@@ -267,20 +267,19 @@ describe('capture-pipeline self-test sandbox (#614)', () => {
   })
 
   // Teardown failure, case row half. The route's own result stands, the
-  // operator is told, and the root is kept: while the sandbox case is still in
-  // the database its capture row must keep pointing at files that exist.
-  it('keeps the sandbox root and reports it when the case row cannot be deleted', async () => {
+  // operator is told, and the directory half still runs — `dispose` attempts
+  // both whatever the other did. Closing an in-memory database takes the case
+  // row with the connection, so what this pins is that independence and the
+  // report, not the state of a case that outlives the failure.
+  it('removes the sandbox root and reports it when the case row cannot be deleted', async () => {
     breakTeardown = () => closeDatabase()
 
     const data = await readJson(await runSelfTest())
     expect(data.success).toBe(true)
 
     const [sandbox] = observed
-    expect(existsSync(sandbox.root)).toBe(true)
-    expect(existsSync(join(sandbox.root, sandbox.caseId, MANIFEST_FILENAME))).toBe(true)
+    expect(existsSync(sandbox.root)).toBe(false)
     expect(cleanupFailures()).toBe(1)
-
-    rmSync(sandbox.root, { recursive: true, force: true })
   })
 
   // Teardown failure, directory half. Reachable only where the process cannot

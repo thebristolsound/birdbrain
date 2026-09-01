@@ -356,8 +356,8 @@ Both sides consult the same pattern grammar (`src/shared/urlPatterns.ts`): regex
 
 The pipeline self-test route is the one producer the exclusion list deliberately does not cover:
 its URL is a fixed sentinel and its body a literal, so no operator-supplied content reaches it,
-it writes into a throwaway sandbox rather than a case, and a broad pattern like `/./` must not be
-able to break the operator's only proof that the pipeline works.
+it writes into a throwaway sandbox rather than an investigation, and a broad pattern like `/./`
+must not be able to break the operator's only proof that the pipeline works.
 
 ## 9. Observability
 
@@ -398,12 +398,15 @@ to the list without a refetch.
 - **Test Pipeline** (`POST /api/captures/test`): ingests a fixed literal body under the sentinel
   URL `birdbrain://pipeline-test` through the production ingest — manifest entry, files, row —
   into a throwaway sandbox, which is a temporary storage root carrying its own manifest plus a
-  case row created for that one request. Both are torn down when the request ends, so no
-  investigation's chain gains an entry and no capture row outlives the run. Teardown is
-  best-effort and reports a failure to the operator rather than swallowing it; what survives one
-  is either the temporary directory alone, or the sandbox case with it — a case named
-  `Birdbrain pipeline self-test (temporary)` that is safe to delete like any other. Because the
-  sandbox root is a temporary directory, a green result does not prove the configured storage
+  case row created for that one request. No investigation's chain gains an entry and no
+  investigation gains a capture row, whatever happens next. The sandbox itself is torn down when
+  the request ends, best-effort in two independent halves that report a failure to the operator
+  rather than swallowing it, so a failed teardown — or a process killed mid-run — can leave the
+  case row, the temporary directory, or both. A leftover case is named
+  `Birdbrain pipeline self-test (temporary)` and is safe to delete like any other; until it is
+  deleted, its sentinel capture verifies as missing, because a capture row's files are resolved
+  against the configured storage root and the sandbox's files were never written there. Because
+  the sandbox root is a temporary directory, a green result does not prove the configured storage
   volume is writable.
 - **Test HTTP** (`captures:testHttp` IPC): a `fetch` of `GET /api/status` from the main process,
   proving the listener independently of the extension.

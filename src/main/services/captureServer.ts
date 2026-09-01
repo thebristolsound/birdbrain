@@ -853,7 +853,9 @@ function createApp(deps: CaptureServerDeps): Hono {
       // retained sentinel URL in an append-only chain the operator never chose.
       // Nothing about the diagnostic needs a real case: it acquires nothing, so
       // the only case that can hold it is one that holds nothing else. The
-      // sandbox is torn down on every path, including the throw below.
+      // sandbox's `dispose` runs from the `finally` below on every path the
+      // process survives, including the throw, and attempts both halves
+      // whatever the other did.
       //
       // It is also the one producer the per-case exclusion list is deliberately
       // not applied to (#400, #766). Every acquisition route is checked — the
@@ -862,8 +864,10 @@ function createApp(deps: CaptureServerDeps): Hono {
       // body is a literal, so no page content and no operator-supplied URL
       // enters any case. What a check would buy is the ability for a broad
       // pattern like `/./` to break the operator's only proof that the capture
-      // pipeline works, which is the worse failure for a diagnostic. That
-      // argument no longer has residue to weigh against it.
+      // pipeline works, which is the worse failure for a diagnostic. The
+      // residue that argument used to weigh against — signed entries in an
+      // investigation's chain — is gone; what a failed teardown can leave is
+      // the sandbox itself.
       //
       // The ingest itself is the production one, storage root apart: a
       // regression in it still fails the diagnostic.

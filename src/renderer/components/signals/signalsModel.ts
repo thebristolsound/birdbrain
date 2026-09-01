@@ -153,8 +153,10 @@ export function exclusionSummary(count: number, mode: AutoCaptureExclusionMode):
  * page. Its URL is a fixed `birdbrain://pipeline-test` sentinel that fetches
  * nothing, so the promise the operator relies on — that a page they excluded
  * never enters the case — holds absolutely. Since #614 the self-test ingests
- * into a throwaway sandbox rather than a real case, so it leaves no residue to
- * qualify the string for either. The exemption is documented at the call site.
+ * into a throwaway sandbox rather than a real case, so no residue of it can
+ * reach a case the list speaks about: what a failed teardown leaves is the
+ * sandbox case, which is not one of them. The exemption is documented at the
+ * call site.
  */
 export function exclusionFooter(mode: AutoCaptureExclusionMode, globalCount: number): string {
   const entries = `${globalCount} ${globalCount === 1 ? 'entry' : 'entries'}`

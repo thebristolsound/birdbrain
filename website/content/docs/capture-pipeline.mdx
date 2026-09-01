@@ -411,9 +411,13 @@ to the list without a refetch.
 - **Test HTTP** (`captures:testHttp` IPC): a `fetch` of `GET /api/status` from the main process,
   proving the listener independently of the extension.
 
-Chains written before the sandbox landed hold what the earlier self-test put in the first case in
-the list: a `capture` entry with a matching `deletion` entry carrying the reason `pipeline-test`,
-or, where that best-effort cleanup failed, a `capture` entry with no deletion beside it.
+Chains written before the sandbox landed hold what the self-test of the day put in the first case
+in the list, and there are two eras of it. The earliest self-test deleted the capture row and its
+artifacts directly and recorded no deletion at all, so those chains hold a bare `capture` entry as
+a matter of course rather than through any failure — these are the entries the export's
+unreconciled-entry disclosure was written to explain. A later self-test routed its cleanup through
+the deletion path with the reason `pipeline-test`, so those chains hold a matching `capture` and
+`deletion` pair, or a bare `capture` entry where that cleanup failed.
 
 ## 10. Connection management
 

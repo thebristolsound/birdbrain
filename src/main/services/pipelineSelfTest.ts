@@ -30,8 +30,8 @@ const SANDBOX_CASE_NAME = 'Birdbrain pipeline self-test (temporary)'
  * and a case for the capture row to belong to. Neither is an investigation, so
  * the self-test leaves every real investigation's manifest byte-identical and
  * no capture row in any investigation, and `dispose` — which runs from a
- * `finally`, so on every path the process survives — takes the sandbox itself
- * away afterwards.
+ * `finally`, so on every path the process survives — attempts to take the
+ * sandbox itself away afterwards, best-effort in two independent halves.
  *
  * The case row is a real row while it exists — with `foreign_keys = ON` a
  * capture has no other way to be inserted — but it is created by this function,

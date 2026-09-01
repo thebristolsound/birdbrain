@@ -1,7 +1,12 @@
 import { describe, it, expect, vi } from 'vitest'
 import { QueryClient } from '@tanstack/react-query'
-import { invalidateAfterTagApply, invalidateTagCounts } from '@renderer/lib/api/tags'
+import {
+  invalidateAfterTagApply,
+  invalidateTagCounts,
+  listCaptureIdsWithAnyTag
+} from '@renderer/lib/api/tags'
 import { queryKeys } from '@renderer/lib/api/keys'
+import { fakeBridge } from '../fakeBridge'
 
 // The invalidation lists the tag mutations and the extension-attach listener
 // share (#852). Asserted here, beside the mutations, so the two callers cannot
@@ -48,5 +53,15 @@ describe('tag cache invalidation', () => {
     invalidateAfterTagApply(client, 'cap-1')
 
     expect(keys()).not.toContainEqual(queryKeys.tagsForCapture('cap-2'))
+  })
+})
+
+describe('listCaptureIdsWithAnyTag (#918)', () => {
+  it('asks main for the captures carrying any of the given tags', async () => {
+    const capturesWithAnyTag = vi.fn(async () => ['c1', 'c2'])
+    fakeBridge({ tags: { capturesWithAnyTag } })
+
+    await expect(listCaptureIdsWithAnyTag('case1', ['t1', 't2'])).resolves.toEqual(['c1', 'c2'])
+    expect(capturesWithAnyTag).toHaveBeenCalledWith('case1', ['t1', 't2'])
   })
 })

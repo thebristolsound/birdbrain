@@ -224,6 +224,40 @@ export function getTagCaptureMatrix(caseId: string, limit: number): Record<strin
   return matrix
 }
 
+/**
+ * Every capture in the case carrying ANY of the given tags (#918). Backs the
+ * capture list's tag filter, which is multi-select: picking a second tag widens
+ * the result, matching `getCapturesMatchingSelectors` and the selector filter
+ * it mirrors.
+ *
+ * Deliberately unbounded, unlike `getTagCaptureMatrix` above. That query's
+ * LIMIT exists so the Signals coverage strip stays a fixed size; a filter
+ * inheriting it would answer "which captures carry this tag" with only the
+ * recent ones and give the operator no sign it had dropped the rest.
+ *
+ * The join onto `captures` is load-bearing: tags are app-global, so without it
+ * a tag also applied in another case would drag that case's captures in.
+ *
+ * Ordered newest-first with the id as a tiebreak, so the same case and tag set
+ * always produce the same sequence rather than whatever the join emits.
+ */
+export function getCapturesWithAnyTag(caseId: string, tagIds: string[]): string[] {
+  if (tagIds.length === 0) return []
+
+  const placeholders = tagIds.map(() => '?').join(',')
+  const rows = getDb()
+    .prepare(
+      `SELECT DISTINCT ct.capture_id, c.timestamp
+       FROM capture_tags ct
+       JOIN captures c ON c.id = ct.capture_id
+       WHERE c.case_id = ? AND ct.tag_id IN (${placeholders})
+       ORDER BY c.timestamp DESC, ct.capture_id`
+    )
+    .all(caseId, ...tagIds) as Array<{ capture_id: string }>
+
+  return rows.map((r) => r.capture_id)
+}
+
 // --- Archive bulk ops ---
 
 // Every tag the case reaches, by either relation. The note_tags half is not

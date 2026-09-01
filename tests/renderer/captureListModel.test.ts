@@ -41,6 +41,7 @@ const NO_FILTERS: CaptureListFilters = {
 
 const BASE = {
   filteredCaptureIds: null,
+  tagFilteredCaptureIds: null,
   favorites: new Set<string>(),
   filters: NO_FILTERS
 }
@@ -83,26 +84,36 @@ describe('sortCaptures', () => {
 
 describe('countActiveFilters', () => {
   it('is zero when nothing is active', () => {
-    expect(countActiveFilters(NO_FILTERS)).toBe(0)
+    expect(countActiveFilters(NO_FILTERS, 0)).toBe(0)
   })
 
   it('counts format, date, and favorites independently (sort is not a filter)', () => {
-    expect(countActiveFilters({ ...NO_FILTERS, formatFilter: 'html' })).toBe(1)
-    expect(countActiveFilters({ ...NO_FILTERS, dateFilter: '7days' })).toBe(1)
-    expect(countActiveFilters({ ...NO_FILTERS, favoritesOnly: true })).toBe(1)
-    expect(countActiveFilters({ ...NO_FILTERS, sortBy: 'url-az' })).toBe(0)
+    expect(countActiveFilters({ ...NO_FILTERS, formatFilter: 'html' }, 0)).toBe(1)
+    expect(countActiveFilters({ ...NO_FILTERS, dateFilter: '7days' }, 0)).toBe(1)
+    expect(countActiveFilters({ ...NO_FILTERS, favoritesOnly: true }, 0)).toBe(1)
+    expect(countActiveFilters({ ...NO_FILTERS, sortBy: 'url-az' }, 0)).toBe(0)
     // The badge must keep meaning exactly what the Filter menu shows, and the
     // menu has no query field.
-    expect(countActiveFilters({ ...NO_FILTERS, query: 'acme' })).toBe(0)
+    expect(countActiveFilters({ ...NO_FILTERS, query: 'acme' }, 0)).toBe(0)
     expect(
-      countActiveFilters({
-        query: '',
-        sortBy: 'oldest',
-        formatFilter: 'mhtml',
-        dateFilter: 'today',
-        favoritesOnly: true
-      })
+      countActiveFilters(
+        {
+          query: '',
+          sortBy: 'oldest',
+          formatFilter: 'mhtml',
+          dateFilter: 'today',
+          favoritesOnly: true
+        },
+        0
+      )
     ).toBe(3)
+  })
+
+  // The menu grew a Tags section (#918), so each picked tag is one more tick
+  // the badge has to account for.
+  it('adds one per active tag filter, which the menu now shows', () => {
+    expect(countActiveFilters(NO_FILTERS, 2)).toBe(2)
+    expect(countActiveFilters({ ...NO_FILTERS, favoritesOnly: true }, 1)).toBe(2)
   })
 })
 
@@ -203,6 +214,7 @@ describe('computeDisplayedCaptures', () => {
       {
         captures,
         filteredCaptureIds: ['keepA', 'keepB', 'wrongFormat', 'notFavorite', 'tooOld'],
+        tagFilteredCaptureIds: null,
         favorites: new Set(['keepA', 'keepB', 'wrongFormat', 'tooOld', 'notSelected']),
         filters: {
           query: '',
@@ -253,46 +265,57 @@ describe('matchesQuery', () => {
 
 describe('describeNarrowings', () => {
   it('is empty when nothing narrows the list', () => {
-    const input = { filters: NO_FILTERS, selectorFilterCount: 0 }
+    const input = { filters: NO_FILTERS, selectorFilterCount: 0, tagFilterCount: 0 }
     expect(describeNarrowings(input)).toEqual([])
     expect(isNarrowed(input)).toBe(false)
   })
 
   it('names the query, ignoring surrounding whitespace', () => {
     expect(
-      describeNarrowings({ filters: { ...NO_FILTERS, query: '  acme ' }, selectorFilterCount: 0 })
+      describeNarrowings({
+        filters: { ...NO_FILTERS, query: '  acme ' },
+        selectorFilterCount: 0,
+        tagFilterCount: 0
+      })
     ).toEqual(['Search "acme"'])
-    expect(isNarrowed({ filters: { ...NO_FILTERS, query: '   ' }, selectorFilterCount: 0 })).toBe(
-      false
-    )
+    expect(
+      isNarrowed({
+        filters: { ...NO_FILTERS, query: '   ' },
+        selectorFilterCount: 0,
+        tagFilterCount: 0
+      })
+    ).toBe(false)
   })
 
   it('pluralizes the selector-filter count', () => {
-    expect(describeNarrowings({ filters: NO_FILTERS, selectorFilterCount: 1 })).toEqual([
-      '1 selector filter'
-    ])
-    expect(describeNarrowings({ filters: NO_FILTERS, selectorFilterCount: 3 })).toEqual([
-      '3 selector filters'
-    ])
+    expect(
+      describeNarrowings({ filters: NO_FILTERS, selectorFilterCount: 1, tagFilterCount: 0 })
+    ).toEqual(['1 selector filter'])
+    expect(
+      describeNarrowings({ filters: NO_FILTERS, selectorFilterCount: 3, tagFilterCount: 0 })
+    ).toEqual(['3 selector filters'])
   })
 
   it('names the menu filters with their menu labels', () => {
     expect(
       describeNarrowings({
         filters: { ...NO_FILTERS, formatFilter: 'mhtml' },
-        selectorFilterCount: 0
+        selectorFilterCount: 0,
+        tagFilterCount: 0
       })
     ).toEqual(['MHTML'])
     expect(
       describeNarrowings({
         filters: { ...NO_FILTERS, dateFilter: '7days' },
-        selectorFilterCount: 0
+        selectorFilterCount: 0,
+        tagFilterCount: 0
       })
     ).toEqual(['Last 7 days'])
     expect(
       describeNarrowings({
         filters: { ...NO_FILTERS, favoritesOnly: true },
-        selectorFilterCount: 0
+        selectorFilterCount: 0,
+        tagFilterCount: 0
       })
     ).toEqual(['Favorites only'])
   })
@@ -306,19 +329,96 @@ describe('describeNarrowings', () => {
         dateFilter: 'today' as const,
         favoritesOnly: true
       },
-      selectorFilterCount: 2
+      selectorFilterCount: 2,
+      tagFilterCount: 2
     }
     expect(describeNarrowings(input)).toEqual([
       'Search "acme"',
       '2 selector filters',
+      '2 tag filters (any)',
       'HTML',
       'Today',
       'Favorites only'
     ])
     expect(isNarrowed(input)).toBe(true)
     expect(
-      isNarrowed({ filters: { ...NO_FILTERS, sortBy: 'oldest' }, selectorFilterCount: 0 })
+      isNarrowed({
+        filters: { ...NO_FILTERS, sortBy: 'oldest' },
+        selectorFilterCount: 0,
+        tagFilterCount: 0
+      })
     ).toBe(false)
+  })
+
+  // "(any)" past one tag, because that is where the union becomes a claim: the
+  // operator must not read two ticked tags as "carries both".
+  it('states the union only once more than one tag is picked', () => {
+    const named = (tagFilterCount: number) =>
+      describeNarrowings({ filters: NO_FILTERS, selectorFilterCount: 0, tagFilterCount })
+    expect(named(1)).toEqual(['1 tag filter'])
+    expect(named(3)).toEqual(['3 tag filters (any)'])
+    expect(named(0)).toEqual([])
+  })
+
+  it('counts a tag filter as a narrowing on its own', () => {
+    expect(isNarrowed({ filters: NO_FILTERS, selectorFilterCount: 0, tagFilterCount: 1 })).toBe(
+      true
+    )
+  })
+})
+
+describe('computeDisplayedCaptures tag filter (#918)', () => {
+  const captures = [cap({ id: '1' }), cap({ id: '2' }), cap({ id: '3' })]
+
+  it('keeps only the captures the tag filter covers', () => {
+    const out = computeDisplayedCaptures(
+      { ...BASE, captures, tagFilteredCaptureIds: ['1', '3'] },
+      NOW
+    )
+    expect(out.map((c) => c.id).sort()).toEqual(['1', '3'])
+  })
+
+  it('treats null as no tag filter and an empty list as nothing matched', () => {
+    expect(
+      computeDisplayedCaptures({ ...BASE, captures, tagFilteredCaptureIds: null }, NOW)
+    ).toHaveLength(3)
+    expect(computeDisplayedCaptures({ ...BASE, captures, tagFilteredCaptureIds: [] }, NOW)).toEqual(
+      []
+    )
+  })
+
+  // The union lives in the tag list itself; against the other narrowings the
+  // tag filter intersects like everything else.
+  it('intersects with the selector filter rather than widening it', () => {
+    const out = computeDisplayedCaptures(
+      {
+        ...BASE,
+        captures,
+        filteredCaptureIds: ['1', '2'],
+        tagFilteredCaptureIds: ['2', '3']
+      },
+      NOW
+    )
+    expect(out.map((c) => c.id)).toEqual(['2'])
+  })
+
+  it('intersects with the menu filters and the query too', () => {
+    const mixed = [
+      cap({ id: 'keep', title: 'Acme brief', format: 'mhtml' }),
+      cap({ id: 'wrongQuery', title: 'Unrelated', format: 'mhtml' }),
+      cap({ id: 'wrongFormat', title: 'Acme memo', format: 'html' }),
+      cap({ id: 'untagged', title: 'Acme note', format: 'mhtml' })
+    ]
+    const out = computeDisplayedCaptures(
+      {
+        ...BASE,
+        captures: mixed,
+        tagFilteredCaptureIds: ['keep', 'wrongQuery', 'wrongFormat'],
+        filters: { ...NO_FILTERS, query: 'acme', formatFilter: 'mhtml' }
+      },
+      NOW
+    )
+    expect(out.map((c) => c.id)).toEqual(['keep'])
   })
 })
 

@@ -117,6 +117,8 @@ afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
   useAppStore.getState().setSelectedSignalId(null)
+  useAppStore.getState().clearSelectorFilters()
+  useAppStore.getState().clearTagFilters()
 })
 
 describe('SignalsOverview', () => {
@@ -457,6 +459,23 @@ describe('SignalsOverview row context menus', () => {
     fireEvent.click(screen.getByTestId('context-menu-item-selector-show-matches'))
 
     expect(useAppStore.getState().activeSelectorFilters).toContain('s1')
+    expect(navigate).toHaveBeenCalledWith({
+      to: '/cases/$caseId/captures',
+      params: { caseId: 'case-1' }
+    })
+  })
+
+  // The tag half of the same contract (#918). It writes the tag slot, not the
+  // selector one, so the two narrowings compose instead of overwriting.
+  it('filters the captures by a tag picked from its row menu, and goes there', async () => {
+    renderScreen()
+
+    fireEvent.contextMenu(await screen.findByTestId('signal-row-t1'))
+    await screen.findByRole('menu')
+    fireEvent.click(screen.getByTestId('context-menu-item-tag-filter-captures'))
+
+    expect(useAppStore.getState().activeTagFilters).toContain('t1')
+    expect(useAppStore.getState().activeSelectorFilters).not.toContain('t1')
     expect(navigate).toHaveBeenCalledWith({
       to: '/cases/$caseId/captures',
       params: { caseId: 'case-1' }

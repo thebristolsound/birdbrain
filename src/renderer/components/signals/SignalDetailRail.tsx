@@ -62,6 +62,7 @@ export function SignalDetailRail({
 }: SignalDetailRailProps) {
   const navigate = useNavigate()
   const addSelectorFilter = useAppStore((s) => s.addSelectorFilter)
+  const addTagFilter = useAppStore((s) => s.addTagFilter)
   const { update: updateTag } = useTagsMutations(caseId)
   const [exporting, setExporting] = useState(false)
   const { previews, run, reset } = useForegroundMatchPreview(caseId, {
@@ -278,10 +279,15 @@ export function SignalDetailRail({
         </div>
 
         <div className="flex gap-2">
+          {/* Both kinds narrow now (#918). Until the tag branch existed this
+              button navigated for a tag and applied nothing, which read as a
+              filter that had run and matched everything. */}
           <button
             type="button"
+            data-testid="signal-filter-in-captures"
             onClick={() => {
               if (isSelector) addSelectorFilter(signal.id)
+              else addTagFilter(signal.id)
               navigate({ to: '/cases/$caseId/captures', params: { caseId } })
             }}
             className="h-7 flex-1 rounded border border-border-strong text-xs font-medium text-text-primary hover:bg-elevated"

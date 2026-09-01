@@ -49,6 +49,7 @@ function renderRow(signal: Signal = selectorSignal, overrides: Record<string, un
     onDelete: vi.fn(),
     onShowMatches: vi.fn(),
     onExportMatches: vi.fn(),
+    onFilterCaptures: vi.fn(),
     onSetColor: vi.fn(),
     onMerge: vi.fn(),
     onFocusSibling: vi.fn(),
@@ -252,6 +253,18 @@ describe('SignalRow rendering', () => {
     fireEvent.keyDown(screen.getByTestId('context-menu-item-tag-color'), { key: 'Enter' })
     fireEvent.click(await screen.findByText('Blue'))
     expect(onSetColor).toHaveBeenCalledWith('#3b82f6')
+  })
+
+  it('routes the tag menu filter item to the capture-list narrowing (#918)', async () => {
+    const { onFilterCaptures, onShowMatches } = renderRow(tagSignal)
+    fireEvent.contextMenu(screen.getByTestId('signal-row-t1'))
+    await screen.findByRole('menu')
+
+    fireEvent.click(screen.getByTestId('context-menu-item-tag-filter-captures'))
+    expect(onFilterCaptures).toHaveBeenCalledOnce()
+    // The selector route stays the selector's: the two menus name the action
+    // differently and a tag has no matches to show.
+    expect(onShowMatches).not.toHaveBeenCalled()
   })
 
   it('names the tag colour the row already has as the current one', async () => {

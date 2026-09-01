@@ -66,8 +66,9 @@ export interface PackageVerifyResult {
    * the chain is intact. `pass` stays false — no integrity claim is made — but
    * this is NOT a tamper verdict, and a caller must not render it as one. The
    * remedy is a newer verifier, and the reason names the version needed.
-   * Verify-core sets it only once the entries below the unreadable one have
-   * verified and that entry's own linkage, hash and signature hold, so this
+   * Verify-core sets it only once the entries preceding the unreadable one
+   * have verified and that entry's own linkage, hash and signature under the
+   * package signing key hold — nothing at or after it is read — so this
    * outcome cannot be bought by editing a manifest.
    */
   unsupported?: { reason: string }
@@ -227,10 +228,10 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   const chain = verifyManifestChainText(manifestJsonl, { publicKeyPem })
   // An entry from a newer schema stops verification here, before any further
   // check runs. Continuing would derive the active-capture set from the entries
-  // BELOW the unreadable one and then report every capture above it as missing
-  // from the package and absent from the manifest — a page of tamper-shaped
-  // FAILs produced by this verifier's age, which is the false accusation X25
-  // exists to prevent.
+  // preceding the unreadable one and then report every capture recorded at or
+  // after it as missing from the package and absent from the manifest — a page
+  // of tamper-shaped FAILs produced by this verifier's age, which is the false
+  // accusation X25 exists to prevent.
   if (chain.unsupported) {
     const reason = describeUnsupportedEntry(chain.unsupported)
     add('manifest chain', 'skip', reason)
@@ -448,7 +449,10 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   // chain anchors was verified" over a package whose Exhibits it never looked
   // at, which is X44's dishonest third option. A SKIP and not a FAIL: the
   // package is not at fault for being newer than the verifier, and a tamper
-  // verdict on that ground is the false accusation X25 forbids.
+  // verdict on that ground is the false accusation X25 forbids. `entries` is
+  // break-scoped (see above), so a chain that fails before an `exhibit` entry
+  // names nothing here — the chain FAIL is the verdict there, and no SKIP is
+  // owed for entries nothing verified.
   for (const entry of entries) {
     if (entry.type === 'exhibit') {
       add(

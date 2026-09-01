@@ -507,6 +507,150 @@ describe('manifest schema 3 — the too-old verdict is not for sale', () => {
     expect(chain.reason).toBe('Chain link broken')
   })
 
+  it('reports a forged manifest self-keyed by a planted import line as tampering', () => {
+    // The invariant: nothing an unverified line says may influence a verdict.
+    // A two-line manifest — an unreadable entry signed with a key the forger
+    // generated, then an import line embedding that key's pem — must not buy
+    // the too-old exculpation: the line after the unreadable entry is never
+    // read, so the unreadable entry verifies under the case key alone, and the
+    // forger's signature fails it.
+    const forger = generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+      publicKeyEncoding: { type: 'spki', format: 'pem' },
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
+    })
+    const body = {
+      type: 'exhibit-bundle',
+      caseId: CASE_ID,
+      ...OPERATOR,
+      schemaVersion: 99,
+      index: 0,
+      prevHash: ''
+    }
+    const entryHash = entryHashOf(body)
+    const forgedLine = JSON.stringify({
+      ...body,
+      entryHash,
+      signature: createSign('sha256').update(entryHash).sign(forger.privateKey, 'base64')
+    })
+    const importLine = JSON.stringify({
+      type: 'import',
+      schemaVersion: 99,
+      sourcePublicKeyPem: forger.publicKey
+    })
+    const chain = verify([forgedLine, importLine].join('\n') + '\n')
+    expect(chain.unsupported).toBeUndefined()
+    expect(chain.brokenAt).toBe(0)
+    expect(chain.reason).toBe('Invalid signature')
+  })
+
+  it('reports an appended unreadable import line as broken there, accusing no genuine entry', () => {
+    // The inverse harm: an unsigned unreadable import line appended to a
+    // genuine chain must not re-key the entries preceding it — that would
+    // report 'Invalid signature' on an untouched, correctly signed entry, the
+    // false accusation X25 forbids. The genuine entries verify, and the verdict
+    // lands on the appended line, which sits nowhere the chain vouches for.
+    const appended = JSON.stringify({
+      type: 'import',
+      schemaVersion: 99,
+      sourcePublicKeyPem: 'not the case key'
+    })
+    const chain = verify(buildChain([CAPTURE_BODY, EXHIBIT_BODY]) + appended + '\n')
+    expect(chain.unsupported).toBeUndefined()
+    expect(chain.brokenAt).toBe(2)
+    expect(chain.reason).toBe('Index mismatch')
+  })
+
+  it('does not re-key the preceding entries from a line after the unreadable one', () => {
+    // A genuine chain ending in a genuine unreadable entry, with a forged
+    // import line appended after it. Nothing at or after the unreadable entry
+    // is read, so the forged pem influences nothing: the verdict stays
+    // too-old, decided at the genuine unreadable entry.
+    const chain = buildChain([CAPTURE_BODY, { ...EXHIBIT_BODY, schemaVersion: 4 }])
+    const appended = JSON.stringify({
+      type: 'import',
+      schemaVersion: 99,
+      sourcePublicKeyPem: 'a pem the forger chose'
+    })
+    const result = verify(chain + appended + '\n')
+    expect(result.brokenAt).toBeUndefined()
+    expect(result.unsupported?.index).toBe(1)
+    expect(result.reason).toContain('verifier too old')
+  })
+
+  it('reports a tamper before the unreadable entry, phase by phase', () => {
+    // Every keyless check preceding the unreadable entry still fires: the
+    // too-old verdict is decided only after the whole prefix holds. One case
+    // per phase-A check, plus the phase-C signature check on a prefix entry.
+    const unreadable = { ...EXHIBIT_BODY, schemaVersion: 4 }
+
+    // Index mismatch: the first entry claims a position it does not occupy.
+    const misplacedBody = { ...CAPTURE_BODY, index: 5, prevHash: '' }
+    const misplacedHash = entryHashOf(misplacedBody)
+    const misplaced = JSON.stringify({
+      ...misplacedBody,
+      entryHash: misplacedHash,
+      signature: signEntryHash(misplacedHash)
+    })
+    const unreadableAfter = (prevHash: string, index: number): string => {
+      const body = { ...unreadable, index, prevHash }
+      const entryHash = entryHashOf(body)
+      return JSON.stringify({ ...body, entryHash, signature: signEntryHash(entryHash) })
+    }
+    const indexCase = verify([misplaced, unreadableAfter(misplacedHash, 1)].join('\n') + '\n')
+    expect(indexCase.unsupported).toBeUndefined()
+    expect(indexCase.brokenAt).toBe(0)
+    expect(indexCase.reason).toBe('Index mismatch')
+
+    // Chain link broken: the second entry does not link to the first.
+    const first = buildChain([CAPTURE_BODY]).trim()
+    const mislinkedBody = { ...EXHIBIT_BODY, index: 1, prevHash: '0'.repeat(64) }
+    const mislinkedHash = entryHashOf(mislinkedBody)
+    const mislinked = JSON.stringify({
+      ...mislinkedBody,
+      entryHash: mislinkedHash,
+      signature: signEntryHash(mislinkedHash)
+    })
+    const linkCase = verify([first, mislinked, unreadableAfter(mislinkedHash, 2)].join('\n') + '\n')
+    expect(linkCase.unsupported).toBeUndefined()
+    expect(linkCase.brokenAt).toBe(1)
+    expect(linkCase.reason).toBe('Chain link broken')
+
+    // Entry hash mismatch: a readable entry edited after signing.
+    const editedLines = buildChain([CAPTURE_BODY, EXHIBIT_BODY, unreadable]).trim().split('\n')
+    editedLines[0] = editedLines[0].replace('example.com/page', 'evil.example/page')
+    const hashCase = verify(editedLines.join('\n') + '\n')
+    expect(hashCase.unsupported).toBeUndefined()
+    expect(hashCase.brokenAt).toBe(0)
+    expect(hashCase.reason).toBe('Entry hash mismatch')
+
+    // Schema version downgrade: a v1 entry after a signed v2 entry.
+    const downgradeCase = verify(
+      buildChain([CAPTURE_BODY, { ...CAPTURE_BODY, schemaVersion: 1 }, unreadable])
+    )
+    expect(downgradeCase.unsupported).toBeUndefined()
+    expect(downgradeCase.brokenAt).toBe(1)
+    expect(downgradeCase.reason).toBe('Schema version downgrade')
+
+    // Phase C: a preceding entry signed by no key the chain anchors.
+    const stranger = generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+      publicKeyEncoding: { type: 'spki', format: 'pem' },
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
+    })
+    const strangerBody = { ...CAPTURE_BODY, index: 0, prevHash: '' }
+    const strangerHash = entryHashOf(strangerBody)
+    const strangerLine = JSON.stringify({
+      ...strangerBody,
+      entryHash: strangerHash,
+      signature: createSign('sha256').update(strangerHash).sign(stranger.privateKey, 'base64')
+    })
+    const sigCase = verify([strangerLine, unreadableAfter(strangerHash, 1)].join('\n') + '\n')
+    expect(sigCase.unsupported).toBeUndefined()
+    expect(sigCase.brokenAt).toBe(0)
+    expect(sigCase.reason).toBe('Invalid signature')
+  })
+
   it('does not report the lines below an unreadable entry', () => {
     // The other side of the same rule: once this build has met an entry it
     // cannot read, the verdict is decided AT that entry. A malformed line
@@ -520,10 +664,12 @@ describe('manifest schema 3 — the too-old verdict is not for sale', () => {
   })
 
   it('keeps an imported segment verifying under an import entry from a newer schema', () => {
-    // The other half of the same change: entries are now verified BEFORE the
-    // too-old verdict, so the key that covers them has to be resolved even when
-    // the import boundary itself is unreadable. Without reading the source key
-    // off that raw line, every source entry would report 'Invalid signature' —
+    // The other half of the same change: entries are verified BEFORE the
+    // too-old verdict, so the key that covers an imported segment has to be
+    // resolved even when the import boundary itself is unreadable. The source
+    // key is taken off the boundary only AFTER the boundary verifies under the
+    // case's own key — verified data, not an unverified line's word — and with
+    // it the source entries verify instead of reporting 'Invalid signature',
     // the false accusation X25 exists to prevent.
     const source = generateKeyPairSync('rsa', {
       modulusLength: 2048,

@@ -116,8 +116,9 @@ function printReport(dir: string, result: PackageVerifyResult): void {
       '\nThis is NOT a tamper verdict, and it is NOT a clean bill of health: this\n' +
         'build cannot read part of the manifest, so it makes no integrity claim\n' +
         'about the package either way. What it does say is narrower: the entries\n' +
-        'below the unreadable one verified, and that entry sits where the chain\n' +
-        'says it does with a hash and signature that hold. Obtain the verifier\n' +
+        'preceding the unreadable one verified, that entry sits where the chain\n' +
+        'says it does with a hash and a signature under the package signing key\n' +
+        'that hold, and nothing at or after it was read. Obtain the verifier\n' +
         'from the Birdbrain release named in the package README (or later) and\n' +
         're-run.\n'
     )

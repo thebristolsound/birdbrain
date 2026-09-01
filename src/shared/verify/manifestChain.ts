@@ -61,7 +61,7 @@ export function describeUnsupportedEntry(entry: UnsupportedEntry): string {
 // put through the checks in `verifyUnreadableEntry` below before the too-old
 // verdict is reported. Editing an entry to claim a newer schema therefore buys
 // no exculpation: the edit fails its own hash, and planting a fresh line fails
-// its signature, so both report as tampering exactly as they did before.
+// its signature under the local key, so both report as tampering as before.
 function detectUnsupportedEntry(raw: unknown, index: number): UnsupportedEntry | undefined {
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return undefined
   const { type, schemaVersion } = raw as { type?: unknown; schemaVersion?: unknown }
@@ -84,12 +84,15 @@ function detectUnsupportedEntry(raw: unknown, index: number): UnsupportedEntry |
 // What a "verifier too old" verdict has to survive. These four checks are the
 // ones that do NOT depend on knowing an entry's fields — its position, its link
 // into the chain, the hash over its own canonical body, and a signature over
-// that hash by the segment's key — so this build can run them on an entry it
-// cannot otherwise read. Every one holds for an entry a newer Birdbrain wrote,
+// that hash by the LOCAL key (`opts.publicKeyPem`, the trust anchor the caller
+// was handed) — so this build can run them on an entry it cannot otherwise
+// read. Every one holds for an entry a newer Birdbrain wrote into this chain,
 // and none can be forged without the signing key, which is what keeps the
 // exculpation the too-old outcome carries out of a tamperer's reach: an edited
 // entry fails its hash and a planted one fails its signature, and both are
-// reported as the tamper verdicts they were before this outcome existed.
+// reported as the tamper verdicts they were before this outcome existed. The
+// key is never one read from the manifest itself: a key an unverified line
+// supplies could be the tamperer's own (the invariant stated at `tooNew`).
 //
 // The signature is required with NO v1 grandfathering, unlike the readable path
 // below: an entry this build cannot read is never a legacy v1 entry — every v1
@@ -118,10 +121,12 @@ export interface ChainVerifyResult {
   // (X25). `valid` is false — nothing here was verified — but the chain is not
   // reported as broken or tampered, because this verifier cannot read it well
   // enough to say either way. Callers rendering a verdict must treat this as a
-  // fourth outcome, not as a failure. Only ever set once every entry BELOW the
-  // unreadable one has verified and the unreadable entry's own index, linkage,
-  // hash and signature hold: a chain that fails any of those is reported broken,
-  // whatever version its entries claim.
+  // fourth outcome, not as a failure. Only ever set once every entry PRECEDING
+  // the unreadable one has verified and the unreadable entry's own index,
+  // linkage, hash and signature under the local key hold: a chain that fails
+  // any of those is reported broken, whatever version its entries claim.
+  // Nothing at or after the unreadable entry is read, and the outcome claims
+  // nothing about those lines.
   unsupported?: UnsupportedEntry
   // Per-capture trusted-time axis keyed by contentHash, resolved from the
   // verified entries (#161). Empty when the chain is broken — no entry past the
@@ -185,18 +190,18 @@ export function verifyManifestChainText(
   const parsedEntries: ManifestEntry[] = []
   const boundaries: Array<{ index: number; pem: string }> = []
   // The FIRST entry this build cannot read, kept with the raw object it came
-  // from. The verdict is DECIDED at this entry, in pass 2 and not here: lines
-  // above it are verified normally, the entry itself is put through
-  // verifyUnreadableEntry, and only then is "verifier too old" reported. Lines
-  // BELOW it are scanned from here on for import boundaries alone — their shape
-  // is not this build's to report once it has met an entry it cannot read.
+  // from. Scanning STOPS at this entry. INVARIANT: nothing an unverified line
+  // says may influence a verdict — so no line after this one is read at all,
+  // not even for import boundaries, and the verdict is decided by the phased
+  // checks below pass 1, never here. A malformed line further down is not this
+  // build's to report once it has met an entry it cannot read, and a key
+  // embedded further down is not one it may verify anything against.
   let tooNew: { info: UnsupportedEntry; raw: Record<string, unknown> } | undefined
   for (let i = 0; i < lines.length; i++) {
     let parsed: unknown
     try {
       parsed = JSON.parse(lines[i])
     } catch {
-      if (tooNew) continue
       return broken(i, 'Invalid JSON')
     }
     // Screened BEFORE the strict parse: an entry from a newer schema must be
@@ -204,29 +209,78 @@ export function verifyManifestChainText(
     const unsupported = detectUnsupportedEntry(parsed, i)
     if (unsupported) {
       // Non-objects never reach here: detectUnsupportedEntry screens them out.
-      const raw = parsed as Record<string, unknown>
-      if (!tooNew) tooNew = { info: unsupported, raw }
-      // An `import` entry from a newer schema cannot be read as a whole, but the
-      // key its segment was signed with is still legible, and taking it is what
-      // stops every entry BELOW that boundary from reporting as 'Invalid
-      // signature' when a newer writer appears inside an imported segment — the
-      // false accusation X25 exists to prevent. It confers no trust of its own:
-      // the boundary entry still has to verify like any other (SECURITY NOTE on
-      // `keyFor` below).
-      if (raw.type === 'import' && typeof raw.sourcePublicKeyPem === 'string') {
-        boundaries.push({ index: i, pem: raw.sourcePublicKeyPem })
-      }
-      continue
+      tooNew = { info: unsupported, raw: parsed as Record<string, unknown> }
+      break
     }
     const schemaResult = ManifestEntrySchema.safeParse(parsed)
     if (!schemaResult.success) {
-      if (tooNew) continue
       return broken(i, 'Invalid entry shape')
     }
-    if (!tooNew) parsedEntries.push(schemaResult.data)
+    parsedEntries.push(schemaResult.data)
     if (schemaResult.data.type === 'import') {
       boundaries.push({ index: i, pem: schemaResult.data.sourcePublicKeyPem })
     }
+  }
+
+  // The chain ends, for this build, at the first entry it cannot read. Three
+  // phases decide the verdict, ordered so the invariant above holds: (A) the
+  // keyless checks — index, linkage, recomputed hash, downgrade guard — over
+  // every entry preceding the unreadable one; (B) the unreadable entry itself,
+  // which must sit where the chain says it does and carry a hash and a
+  // signature under the LOCAL key, never a key read from the manifest; (C) the
+  // preceding entries' signatures, for which the unreadable entry's embedded
+  // sourcePublicKeyPem — when it is an `import` boundary — is now usable,
+  // because phase B proved the local key signed the bytes that carry it. That
+  // is what keeps an imported segment under an unreadable boundary from
+  // reporting 'Invalid signature' (the false accusation X25 forbids) without
+  // ever trusting an unverified line. A failure in any phase is the tamper
+  // verdict this build gave before the too-old outcome existed. The one chain
+  // shape this build cannot exculpate is an unreadable entry whose own key
+  // sits beyond it (a newer writer inside an imported segment): with no
+  // verified path to the trust anchor it reports broken, because the only
+  // alternative is taking the tamperer's word for the key.
+  if (tooNew) {
+    // Phase A — keyless integrity of the preceding entries. Mirrors the
+    // index/linkage/hash/downgrade checks of the verified path below.
+    let prev = ''
+    let sawSigned = false
+    for (let i = 0; i < parsedEntries.length; i++) {
+      const entry = parsedEntries[i]
+      if (entry.index !== i) return broken(i, 'Index mismatch')
+      if (entry.prevHash !== prev) return broken(i, 'Chain link broken')
+      const body: Record<string, unknown> = { ...entry }
+      delete body.entryHash
+      delete body.signature
+      const recomputed = createHash('sha256').update(canonicalStringify(body)).digest('hex')
+      if (recomputed !== entry.entryHash) return broken(i, 'Entry hash mismatch')
+      if (sawSigned && entry.schemaVersion < 2) return broken(i, 'Schema version downgrade')
+      if (entry.schemaVersion >= 2) sawSigned = true
+      prev = entry.entryHash
+    }
+    // Phase B — the unreadable entry, under the local key only.
+    const failure = verifyUnreadableEntry(
+      tooNew.raw,
+      { index: tooNew.info.index, prevHash: prev },
+      opts.publicKeyPem
+    )
+    if (failure) return broken(tooNew.info.index, failure)
+    // Phase C — the preceding entries' signatures. The unreadable entry's pem
+    // is verified data now: phase B bound it, via the entry hash the local key
+    // signed, to the writer the chain trusts.
+    const anchored = [...boundaries]
+    if (tooNew.raw.type === 'import' && typeof tooNew.raw.sourcePublicKeyPem === 'string') {
+      anchored.push({ index: tooNew.info.index, pem: tooNew.raw.sourcePublicKeyPem })
+    }
+    for (let i = 0; i < parsedEntries.length; i++) {
+      const entry = parsedEntries[i]
+      // v1 entries are grandfathered, exactly as in the verified path below.
+      if (entry.schemaVersion < 2) continue
+      const pem = anchored.find((b) => b.index > i)?.pem ?? opts.publicKeyPem
+      if (!(entry.signature && verifyEntrySignature(entry.entryHash, entry.signature, pem))) {
+        return broken(i, 'Invalid signature')
+      }
+    }
+    return tooOld(tooNew.info)
   }
 
   // KEY RULE: an `import` entry's embedded key covers everything strictly
@@ -295,20 +349,6 @@ export function verifyManifestChainText(
     verifiedEntries.push(parsedEntries[i])
     expectedPrev = entryHash
     expectedIndex++
-  }
-  // The entry this build cannot read, reached with everything below it
-  // verified. It is reported as "verifier too old" only if it sits where the
-  // chain says it does and carries the hash and signature a genuine newer
-  // writer would have given it; otherwise the chain is broken here and is
-  // reported as broken, which is what this build would have said before the
-  // fourth outcome existed.
-  if (tooNew) {
-    const failure = verifyUnreadableEntry(
-      tooNew.raw,
-      { index: expectedIndex, prevHash: expectedPrev },
-      keyFor(tooNew.info.index)
-    )
-    return failure ? broken(tooNew.info.index, failure) : tooOld(tooNew.info)
   }
   // Integrity-verified. Resolve the per-capture trusted-time axis from the
   // verified entries (#161) — the single source of truth shared with the app.

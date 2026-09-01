@@ -82,7 +82,10 @@ export interface CaptureLifecycle {
   ingest: (params: IngestParams) => Promise<IngestResult>
   // `reason` is recorded on the manifest deletion entry. Pass it whenever the
   // deletion is not an operator deleting evidence — a chain reader has no other
-  // way to tell a self-test cleanup from a real removal (#580).
+  // way to tell such a deletion from a real removal (#580). No caller passes one
+  // since the pipeline self-test stopped deleting from a case (#614). Only chains
+  // written while it did — between #580 and #614 — carry its `pipeline-test`;
+  // older ones hold its capture entry with no deletion at all.
   delete: (captureId: string, reason?: string) => Promise<boolean>
   // Batch delete over a same-case id set (#394). Prefix-commit over the manifest
   // chain: one ordinary deletion entry per capture, in order, until the first

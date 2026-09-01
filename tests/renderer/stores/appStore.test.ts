@@ -14,6 +14,8 @@ describe('appStore', () => {
       searchQuery: '',
       activeSelectorFilters: [],
       filteredCaptureIds: null,
+      activeTagFilters: [],
+      tagFilteredCaptureIds: null,
       captureEvents: [],
       captureStats: { successCount: 0, failCount: 0, skipCount: 0 }
     })
@@ -220,6 +222,70 @@ describe('appStore', () => {
       useAppStore.getState().clearSelectorFilters()
       expect(useAppStore.getState().activeSelectorFilters).toEqual([])
       expect(useAppStore.getState().filteredCaptureIds).toBeNull()
+    })
+  })
+
+  describe('tag filters (#918)', () => {
+    it('adds a tag filter, and never twice', () => {
+      useAppStore.getState().addTagFilter('tag-1')
+      useAppStore.getState().addTagFilter('tag-1')
+      expect(useAppStore.getState().activeTagFilters).toEqual(['tag-1'])
+    })
+
+    it('removes one tag filter and leaves the rest', () => {
+      useAppStore.getState().addTagFilter('tag-1')
+      useAppStore.getState().addTagFilter('tag-2')
+      useAppStore.getState().removeTagFilter('tag-1')
+      expect(useAppStore.getState().activeTagFilters).toEqual(['tag-2'])
+    })
+
+    it('clears the resolved ids when the last tag filter goes', () => {
+      useAppStore.getState().addTagFilter('tag-1')
+      useAppStore.getState().addTagFilter('tag-2')
+      useAppStore.getState().setTagFilteredCaptureIds(['cap-1'])
+
+      useAppStore.getState().removeTagFilter('tag-1')
+      expect(useAppStore.getState().tagFilteredCaptureIds).toEqual(['cap-1'])
+
+      useAppStore.getState().removeTagFilter('tag-2')
+      expect(useAppStore.getState().tagFilteredCaptureIds).toBeNull()
+    })
+
+    it('clears all tag filters', () => {
+      useAppStore.getState().addTagFilter('tag-1')
+      useAppStore.getState().setTagFilteredCaptureIds(['cap-1'])
+      useAppStore.getState().clearTagFilters()
+      expect(useAppStore.getState().activeTagFilters).toEqual([])
+      expect(useAppStore.getState().tagFilteredCaptureIds).toBeNull()
+    })
+
+    // The reason the tag filter has its own slot. Both selector paths null
+    // `filteredCaptureIds` whenever the selector list empties, and the selector
+    // hook does it on every mount; a shared slot would silently drop a tag
+    // narrowing the strip is still naming.
+    it('survives every selector-filter path that nulls the selector slot', () => {
+      useAppStore.getState().addTagFilter('tag-1')
+      useAppStore.getState().setTagFilteredCaptureIds(['cap-1'])
+      useAppStore.getState().addSelectorFilter('sel-1')
+      useAppStore.getState().setFilteredCaptureIds(['cap-1', 'cap-2'])
+
+      useAppStore.getState().removeSelectorFilter('sel-1')
+      expect(useAppStore.getState().filteredCaptureIds).toBeNull()
+      expect(useAppStore.getState().tagFilteredCaptureIds).toEqual(['cap-1'])
+
+      useAppStore.getState().clearSelectorFilters()
+      expect(useAppStore.getState().activeTagFilters).toEqual(['tag-1'])
+      expect(useAppStore.getState().tagFilteredCaptureIds).toEqual(['cap-1'])
+    })
+
+    it('leaves the selector filter alone when the tag filter is cleared', () => {
+      useAppStore.getState().addSelectorFilter('sel-1')
+      useAppStore.getState().setFilteredCaptureIds(['cap-1'])
+      useAppStore.getState().addTagFilter('tag-1')
+
+      useAppStore.getState().clearTagFilters()
+      expect(useAppStore.getState().activeSelectorFilters).toEqual(['sel-1'])
+      expect(useAppStore.getState().filteredCaptureIds).toEqual(['cap-1'])
     })
   })
 

@@ -5,6 +5,7 @@ import { casesQueryOptions } from '@renderer/lib/api/cases'
 import { useSessionMutations } from '@renderer/lib/api/session'
 import { useSettingsMutations } from '@renderer/lib/api/settings'
 import { useSelectorFilters } from '@renderer/hooks/useSelectorFilters'
+import { useTagFilters } from '@renderer/hooks/useTagFilters'
 import { useAppStore } from '@renderer/stores/appStore'
 import type { BirdbrainSettings } from '@shared/types'
 import { Skeleton } from '@renderer/components/ui'
@@ -17,13 +18,17 @@ export function CaseWorkspace() {
   const { update } = useSettingsMutations()
 
   useSelectorFilters(caseId)
+  useTagFilters(caseId)
 
-  // Clear per-case UI state when switching cases
+  // Clear per-case UI state when switching cases. Tag filters go with the rest
+  // even though tags are app-global: carrying one across would narrow the new
+  // case by a tag the operator picked while looking at another.
   useEffect(() => {
     const store = useAppStore.getState()
     store.setSelectedCaptureId(null)
     store.clearCaptureSelection()
     store.clearSelectorFilters()
+    store.clearTagFilters()
   }, [caseId])
 
   // Activate case in the session service + persist session state

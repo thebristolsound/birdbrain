@@ -150,9 +150,11 @@ export function exclusionSummary(count: number, mode: AutoCaptureExclusionMode):
  *
  * The pipeline self-test (`POST /api/captures/test`) is exempt from the list
  * (#766), and the string is deliberately not qualified for it: it captures no
- * page. Its URL is a fixed `birdbrain://pipeline-test` sentinel that fetches
- * nothing, so the promise the operator relies on — that a page they excluded
- * never enters the case — holds absolutely. Since #614 the self-test ingests
+ * page. The list matches URLs, and a catch-all pattern does match the fixed
+ * `birdbrain://pipeline-test` sentinel — `captureServer.test.ts` pins `/./`
+ * matching it — but that sentinel fetches nothing, so the promise the operator
+ * relies on is about pages and not URL strings: a page they excluded never
+ * enters the case, and that holds absolutely. Since #614 the self-test ingests
  * into a throwaway sandbox rather than a real case, so no residue of it can
  * reach an investigation. A failed teardown can leave the sandbox case, which
  * is an ordinary case and renders this footer too — the promise holds there

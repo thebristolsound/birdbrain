@@ -4,6 +4,10 @@
 
 **Date:** 2026-08-23
 
+**Amended 2026-09-01 by [ADR-0025](0025-the-evidence-label-serves-two-purposes.md):** the section
+"The exit bar keys on the blocking tier" is withdrawn with ADR-0011 clause 2, which has had no
+reader since the #310 pilot verdict. The tiers, the slot count and the auto-merge conditions stand.
+
 Amends [ADR-0005](0005-unattended-agents-on-the-evidence-path.md) (flow control, back gate,
 mechanical backstop) and [ADR-0006](0006-claim-the-dispatch-slot-at-dispatch-time.md) (the slot is
 claimed at dispatch time). The claim protocol ADR-0006 defines stands unchanged; what changes is how

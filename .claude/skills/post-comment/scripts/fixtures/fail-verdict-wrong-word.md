@@ -1,4 +1,4 @@
-**Reviewer pre-pass (bae47d99): needs work** - 2 of 2 reporters in on this sha
+**Reviewer pre-pass (bae47d99): needs work**
 
 | # | severity | file:line | finding |
 |---|---|---|---|

@@ -234,15 +234,18 @@ reviews:
           network access beyond what the change needs.
 
   # ---------------------------------------------------------------------------
-  # When reviews run. Drafts are included so feedback arrives while a PR is
-  # still being built up, but review pauses after four reviewed commits.
-  # Unbounded incremental review is what turned PR #1062 — 48 net lines of one
-  # markdown file — into 7 commits, 6 reviews and 22 review comments. A branch
-  # that has taken four rounds needs a human, not a fifth round.
+  # When reviews run. Drafts are excluded (ADR-0025): the draft phase of an agent
+  # PR belongs to the reviewer pre-pass, and the dispatcher marks the PR ready on
+  # an approve verdict, which is when a human reads it and when this review is
+  # useful. Reviewing drafts previously silenced CodeRabbit on exactly the PRs
+  # that needed a second reader: the pause below tripped on long pre-pass loops
+  # before the PR was ever ready. The pause stays for ready PRs — unbounded
+  # incremental review is what turned PR #1062 (48 net lines of one markdown
+  # file) into 7 commits, 6 reviews and 22 review comments.
   # ---------------------------------------------------------------------------
   auto_review:
     enabled: true
-    drafts: true
+    drafts: false
     auto_incremental_review: true
     auto_pause_after_reviewed_commits: 4
     base_branches:

@@ -44,20 +44,25 @@ export const tagCaptureMatrixQueryOptions = (caseId: string) =>
   })
 
 // The ids of every capture in the case carrying any of these tags (#918),
-// backing the capture list's tag filter. Not a queryOptions surface, for the
-// reason the selector equivalent is not one either: `useTagFilters` owns the
-// result's lifetime and publishes it into the app store.
-export function listCaptureIdsWithAnyTag(caseId: string, tagIds: string[]): Promise<string[]> {
-  return window.birdbrain.tags.capturesWithAnyTag(caseId, tagIds)
-}
+// backing the capture list's tag filter. A query rather than a one-shot read
+// so a membership write refreshes it through `invalidateTagCounts` below;
+// `useTagFilters` publishes the result into the app store.
+export const tagCapturesWithAnyQueryOptions = (caseId: string, tagIds: string[]) =>
+  queryOptions({
+    queryKey: queryKeys.tagCapturesWithAny(caseId, tagIds),
+    queryFn: () => window.birdbrain.tags.capturesWithAnyTag(caseId, tagIds),
+    enabled: !!caseId && tagIds.length > 0
+  })
 
-// Every count derived from tag membership: the Signals coverage strip and both
-// count badges. Module-level so the extension-attach listener invalidates the
-// same list the mutations do rather than a copy of it (#852).
+// Every read derived from tag membership: the Signals coverage strip, both
+// count badges and the capture list's tag filter. Module-level so the
+// extension-attach listener invalidates the same list the mutations do rather
+// than a copy of it (#852).
 export function invalidateTagCounts(client: QueryClient): void {
   client.invalidateQueries({ queryKey: ['tags', 'usageCounts'] })
   client.invalidateQueries({ queryKey: ['tags', 'caseCount'] })
   client.invalidateQueries({ queryKey: ['tags', 'captureMatrix'] })
+  client.invalidateQueries({ queryKey: queryKeys.tagCapturesWithAnyAll })
 }
 
 // What an extension `POST /api/tags/apply` stales in an open case (#852). The

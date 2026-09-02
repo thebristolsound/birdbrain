@@ -3,7 +3,7 @@ import { QueryClient } from '@tanstack/react-query'
 import {
   invalidateAfterTagApply,
   invalidateTagCounts,
-  listCaptureIdsWithAnyTag
+  tagCapturesWithAnyQueryOptions
 } from '@renderer/lib/api/tags'
 import { queryKeys } from '@renderer/lib/api/keys'
 import { fakeBridge } from '../fakeBridge'
@@ -19,7 +19,9 @@ describe('tag cache invalidation', () => {
     return { client, keys }
   }
 
-  it('invalidates every count derived from tag membership', () => {
+  // The capture list's tag filter (#918) is in the list: it is membership
+  // derived, so a write that moves a count also moves what the filter shows.
+  it('invalidates every read derived from tag membership', () => {
     const { client, keys } = spyOnClient()
 
     invalidateTagCounts(client)
@@ -27,7 +29,8 @@ describe('tag cache invalidation', () => {
     expect(keys()).toEqual([
       ['tags', 'usageCounts'],
       ['tags', 'caseCount'],
-      ['tags', 'captureMatrix']
+      ['tags', 'captureMatrix'],
+      ['tags', 'capturesWithAnyTag']
     ])
   })
 
@@ -43,7 +46,8 @@ describe('tag cache invalidation', () => {
       queryKeys.tagsForCapture('cap-1'),
       ['tags', 'usageCounts'],
       ['tags', 'caseCount'],
-      ['tags', 'captureMatrix']
+      ['tags', 'captureMatrix'],
+      ['tags', 'capturesWithAnyTag']
     ])
   })
 
@@ -56,12 +60,28 @@ describe('tag cache invalidation', () => {
   })
 })
 
-describe('listCaptureIdsWithAnyTag (#918)', () => {
+describe('tagCapturesWithAnyQueryOptions (#918)', () => {
+  it('keys under the prefix the membership invalidation clears', () => {
+    const { queryKey } = tagCapturesWithAnyQueryOptions('case1', ['t1', 't2'])
+
+    expect(queryKey).toEqual(['tags', 'capturesWithAnyTag', 'case1', 't1', 't2'])
+    expect(queryKey.slice(0, 2)).toEqual([...queryKeys.tagCapturesWithAnyAll])
+  })
+
+  it('is disabled without a case or without a tag', () => {
+    expect(tagCapturesWithAnyQueryOptions('', ['t1']).enabled).toBe(false)
+    expect(tagCapturesWithAnyQueryOptions('case1', []).enabled).toBe(false)
+    expect(tagCapturesWithAnyQueryOptions('case1', ['t1']).enabled).toBe(true)
+  })
+
   it('asks main for the captures carrying any of the given tags', async () => {
     const capturesWithAnyTag = vi.fn(async () => ['c1', 'c2'])
     fakeBridge({ tags: { capturesWithAnyTag } })
+    const client = new QueryClient()
 
-    await expect(listCaptureIdsWithAnyTag('case1', ['t1', 't2'])).resolves.toEqual(['c1', 'c2'])
+    await expect(
+      client.fetchQuery(tagCapturesWithAnyQueryOptions('case1', ['t1', 't2']))
+    ).resolves.toEqual(['c1', 'c2'])
     expect(capturesWithAnyTag).toHaveBeenCalledWith('case1', ['t1', 't2'])
   })
 })

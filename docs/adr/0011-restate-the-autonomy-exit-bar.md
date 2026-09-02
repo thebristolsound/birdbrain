@@ -7,6 +7,12 @@
 **Amended 2026-08-23 by [ADR-0014](0014-tier-the-evidence-backstop-and-widen-the-dispatch-slot.md):**
 clause 2 keys on the **blocking** tier of the path list, which is now tiered. See the clause itself.
 
+**Amended 2026-09-01 by [ADR-0025](0025-the-evidence-label-serves-two-purposes.md):** the streak is
+withdrawn as an instrument. The #310 pilot verdict of 2026-09-01 withdrew scheduled operation with
+the ledger never operated past 2026-08-16, so no cycle has been scored against these clauses and
+none will be. Clause 2 in particular is recorded withdrawn rather than left keyed to a tier nothing
+reads.
+
 ## Context
 
 Phase 3 of the autonomy plan (`docs/plans/2026-07-31-agent-autonomy.md`) set the exit bar for

@@ -222,7 +222,9 @@ Evidence-affecting PRs are never merged without human review. Do not weaken that
   platform footer after your attribution line is expected; do not fight it and do not report
   it as a rule violation.
 
-- Every agent PR gets human review before merge during the pilot — evidence-affecting or not.
+- An agent PR merges only on a pre-pass `success`. An evidence-affecting PR is merged by a
+  human, never by the dispatcher (ADR-0014); the dispatcher marks either kind ready for review on
+  the approve verdict (ADR-0025).
 - Never push to main/master, never force-push, never merge. If you cannot finish mid-work,
   take the same give-up path as at intake: return exactly where you stopped, what you found,
   and what blocks you, stating that it needs posting to the issue and the `ready-for-agent`

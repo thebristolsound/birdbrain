@@ -1,4 +1,4 @@
-**Reviewer pre-pass (bae47d99): request changes** - 2 of 2 reporters in on this sha
+**Reviewer pre-pass (bae47d99): request changes**
 
 line 1
 line 2

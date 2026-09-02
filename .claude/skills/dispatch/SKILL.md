@@ -319,8 +319,8 @@ not in the set this section iterates, and they merge by human hand. If you find 
    carries none, and its diff hits no **blocking**-tier entry in
    `docs/specs/2026-07-31-evidence-affecting-paths-assessment.md`. An advisory-tier hit does not
    block the merge; it wants a one-line disposition in your report.
-4. **It is not a draft**, or you take it out of draft as the first step of merging. An agent PR
-   opens as a draft, so this is normally an action rather than a check.
+4. **It is not a draft.** Since ADR-0025 the approve verdict in section 4 marks the PR ready, so
+   a draft here means that step was skipped; `merge.sh` marks it ready again as a safeguard.
 
 Read the label with a direct label read, never the search index: the label-filtered issue search
 lags by seconds and is not authoritative for a decision.
@@ -545,9 +545,9 @@ Three rules that matter more than the mechanics:
   minutes because nothing indicated whether more was coming.
 - **`pending` means work is genuinely in flight.** Do not post it speculatively and do not
   leave it up after you stop.
-- **Say what else is outstanding.** If CodeRabbit or another reviewer has not reported on this
-  sha, say so in the comment's first line ("1 of 2 reporters"). A partial picture presented as
-  a whole one is what makes a verdict misleading rather than merely incomplete.
+- **The pre-pass is the only draft-phase reporter (ADR-0025).** CodeRabbit reviews once the PR
+  is marked ready, which the approve verdict below does, so it reports after you and to the
+  human. Do not wait for it, do not count it, and put no reporter tally on the verdict line.
 
 `.github/workflows/pre-pass-gate.yml` seeds the status so non-agent PRs pass automatically and
 agent PRs start `pending`. It never overwrites a verdict you posted.
@@ -627,6 +627,14 @@ stating both shas and the equal hashes, and annotate the body's `## Verification
 sha it was measured at rather than regenerating it. Unequal - review as normal, scoped to what
 changed; a hand-resolved conflict is authored work and lands here.
 
+**A prose-only fix gets a delta pass (ADR-0025).** When the previous verdict's blockers were all
+truth defects and the diff from the reviewed sha to the new head contains no executable change
+(comments, strings the code does not branch on, docs, the PR body), the reviewer does not re-run
+the verify loop. It re-derives every claim the delta makes against the source, confirms every
+required check is green at the new head with the pinned-sha protocol, and says in the verdict
+that the verify loop was not re-run and why. The code verdict carries forward. A delta that
+touches executable code, however small, is a normal round.
+
 A branch is updated from `main` only when GitHub says it needs to be (`mergeable: false`, or a
 `mergeable_state` of `dirty`). The ruleset is non-strict, so being behind `main` is not a reason
 to back-merge, and the dispatcher never does it to a branch it does not own.
@@ -658,7 +666,7 @@ Post the reviewer's verdict as a **PR comment** via the write path (not as a for
 above), in the pre-pass verdict shape from `.claude/skills/post-comment/template.md`:
 
 ```
-**Reviewer pre-pass (<head-sha>): <verdict>** - <k> of <n> reporters in on this sha
+**Reviewer pre-pass (<head-sha>): <verdict>**
 
 | # | severity | file:line | finding |
 |---|---|---|---|
@@ -684,8 +692,10 @@ paragraph belongs in the report and the row says which section.
 Post the status alongside it, per "The verdict is a commit status" above — same sha, same
 round, both or neither.
 
-- **approve for human review** → done; the PR stays in draft for the human back gate. Report
-  and stop.
+- **approve for human review** → mark the PR ready for review via the write path
+  (`agh pr ready <n>`), evidence-affecting or not (ADR-0025). Ready means a human should now
+  look, and it is what wakes CodeRabbit. An evidence-affecting PR then waits for the human back
+  gate; a non-evidence PR proceeds to section 2a. Report and stop.
 - **request changes** → hand the PR back to `birdbrain-implementer` (pointer, not paraphrase)
   for **one** fix round, then re-run the pre-pass. If the second pre-pass still requests
   changes, stop there: report "pre-pass unresolved after one fix round — needs human

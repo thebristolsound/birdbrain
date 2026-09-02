@@ -32,6 +32,7 @@ overrides:
   undici@7: ^7.29.0
   builder-util-runtime: ^9.7.0
   app-builder-lib: ^26.15.0
+  browserslist: ^4.28.7
 
 supportedArchitectures:
   os:

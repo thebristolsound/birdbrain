@@ -129,6 +129,7 @@ const CODE_LABELS: Record<LogCode, string> = {
   'captureServer.selector_create_failed': "Couldn't create the selector",
   'captureServer.tag_apply_failed': "Couldn't apply the tag",
   'captureServer.note_create_failed': "Couldn't create the note",
+  'captureServer.self_test_cleanup_failed': "Couldn't clean up after the pipeline self-test",
   'captureLifecycle.tls_refetch_failed': "Couldn't verify the site's certificate",
   'captureLifecycle.selector_match_failed': "Couldn't check this capture against selectors",
   'captureLifecycle.reprocess_failed': "Couldn't reprocess this capture",

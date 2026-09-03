@@ -301,9 +301,13 @@ Deletion is write-ahead like ingest: the signed `deletion` entry is appended fir
 are unlinked and the row removed, with the manifest rolled back if the side effects fail. Deletes
 within one case are serialised through a per-case queue, because a rollback is a truncation and
 two interleaved deletes could truncate each other's entries. Batch deletion commits a prefix: one
-ordinary entry per capture, in order, halting at the first failure. Non-operator deletions (the
-pipeline self-test's cleanup) record a `reason` on the entry so a chain reader can tell them from
-an operator deleting evidence.
+ordinary entry per capture, in order, halting at the first failure. A deletion entry can also
+carry a `reason`, so that a deletion Birdbrain performed on its own account is distinguishable
+from an operator deleting evidence. Nothing in the app records one today — the only route into
+deletion is the operator's, and the pipeline self-test no longer deletes anything from a case.
+Only chains written while it did — between #580 and #614 — carry that reason; older ones hold
+the self-test's capture entry with no deletion beside it, which the Self-tests section below
+sets out.
 
 ### Unreconciled deletions
 
@@ -353,9 +357,9 @@ Both sides consult the same pattern grammar (`src/shared/urlPatterns.ts`): regex
   `about:`, `data:`, `file:`, and the capture server itself) before anything is sent.
 
 The pipeline self-test route is the one producer the exclusion list deliberately does not cover:
-its URL is a fixed sentinel and its body a literal, so no operator-supplied content enters the
-case, and a broad pattern like `/./` must not be able to break the operator's only proof that the
-pipeline works.
+its URL is a fixed sentinel and its body a literal, so no operator-supplied content reaches it,
+it writes into a throwaway sandbox rather than an investigation, and a broad pattern like `/./`
+must not be able to break the operator's only proof that the pipeline works.
 
 ## 9. Observability
 
@@ -394,13 +398,28 @@ to the list without a refetch.
 ### Self-tests
 
 - **Test Pipeline** (`POST /api/captures/test`): ingests a fixed literal body under the sentinel
-  URL `birdbrain://pipeline-test` through the real lifecycle — manifest entry, files, row — then
-  deletes it through the lifecycle, appending a matching `deletion` entry with reason
-  `pipeline-test`. The residue is bounded and honest: on the happy path the chain gains a
-  capture/deletion pair; cleanup is best-effort, so a matched pair is the normal case, not a
-  guarantee.
+  URL `birdbrain://pipeline-test` through the production ingest — manifest entry, files, row —
+  into a throwaway sandbox, which is a temporary storage root carrying its own manifest plus a
+  case row created for that one request. No investigation's chain gains an entry and no
+  investigation gains a capture row, whatever happens next. The sandbox itself is torn down when
+  the request ends, best-effort in two independent halves that report a failure to the operator
+  rather than swallowing it, so a failed teardown — or a process killed mid-run — can leave the
+  case row, the temporary directory, or both. A leftover case is named
+  `Birdbrain pipeline self-test (temporary)` and is safe to delete like any other; until it is
+  deleted, its sentinel capture verifies as missing, because a capture row's files are resolved
+  against the configured storage root and the sandbox's files were never written there. Because
+  the sandbox root is a temporary directory, a green result does not prove the configured storage
+  volume is writable.
 - **Test HTTP** (`captures:testHttp` IPC): a `fetch` of `GET /api/status` from the main process,
   proving the listener independently of the extension.
+
+Chains written before the sandbox landed hold what the self-test of the day put in the first case
+in the list, and there are two eras of it. The earlier of the two deleted the capture row and its
+artifacts directly and recorded no deletion at all, so those chains hold a bare `capture` entry as
+a matter of course rather than through any failure — these are the entries the export's
+unreconciled-entry disclosure was written to explain. A later self-test routed its cleanup through
+the deletion path with the reason `pipeline-test`, so those chains hold a matching `capture` and
+`deletion` pair, or a bare `capture` entry where that cleanup failed.
 
 ## 10. Connection management
 

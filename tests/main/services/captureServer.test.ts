@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { existsSync, mkdtempSync, rmSync, readFileSync } from 'fs'
+import { existsSync, mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
-import { createCase, setAutoCapturePolicy, updateCase } from '@main/services/db/caseRepo'
+import { createCase, listCases, setAutoCapturePolicy, updateCase } from '@main/services/db/caseRepo'
 import { listCaptures } from '@main/services/db/captureRepo'
 import { createTag, getTagsForCapture, listTags } from '@main/services/db/tagRepo'
 import * as tagRepo from '@main/services/db/tagRepo'
@@ -694,29 +694,29 @@ describe('captureServer', () => {
     expect(data.error).toBeUndefined()
   })
 
-  it('POST /api/captures/test leaves a deletion entry, not an orphan capture entry', async () => {
+  // The self-test used to ingest into `listCases()[0]` and needed a case to
+  // exist; since #614 it makes its own sandbox, so an operator can prove the
+  // pipeline works before opening their first investigation.
+  it('POST /api/captures/test succeeds with no case in the database', async () => {
+    const res = await serverPost('/api/captures/test')
+    const data = await readJson(res)
+    expect(data.success).toBe(true)
+    expect(data.error).toBeUndefined()
+    // And it left no case behind to hold what it ingested.
+    expect(listCases()).toHaveLength(0)
+  })
+
+  it('POST /api/captures/test leaves the real case chain untouched', async () => {
     const testCase = createCase({ name: 'Pipeline Chain Case' })
 
     const res = await serverPost('/api/captures/test')
     expect((await readJson(res)).success).toBe(true)
 
-    const lines = readFileSync(join(tempDir, 'captures', testCase.id, MANIFEST_FILENAME), 'utf-8')
-      .trim()
-      .split('\n')
-      .map((line) => JSON.parse(line) as Record<string, unknown>)
-
-    const captures = lines.filter((e) => e.type === 'capture')
-    const deletions = lines.filter((e) => e.type === 'deletion')
-
-    // The self-test's capture entry is signed into a real case's chain, so the
-    // chain has to explain where it went. Before #580 the row and the files were
-    // deleted directly, leaving a capture entry with no files and no deletion —
-    // a package whose chain claimed more captures than it shipped.
-    expect(captures).toHaveLength(1)
-    expect(captures[0].url).toBe('birdbrain://pipeline-test')
-    expect(deletions).toHaveLength(1)
-    expect(deletions[0].captureId).toBe(captures[0].captureId)
-    expect(deletions[0].reason).toBe('pipeline-test')
+    // Nothing was appended, so nothing was created: before #614 this ingested
+    // into the case and the directory existed with a two-entry manifest in it.
+    const caseDir = join(tempDir, 'captures', testCase.id)
+    expect(existsSync(join(caseDir, MANIFEST_FILENAME))).toBe(false)
+    expect(getManifestHead(caseDir).nextIndex).toBe(0)
     expect(listCaptures(testCase.id)).toHaveLength(0)
   })
 
@@ -734,19 +734,10 @@ describe('captureServer', () => {
     const res = await serverPost('/api/captures/test')
     const data = await readJson(res)
     expect(data.success).toBe(true)
-    // The route ingests into `listCases()[0]`, so `success` alone would be true
-    // just as well from an unexcluded case seeded ahead of this one. Pin that
-    // the self-test really landed in the case carrying the exclusion.
-    const manifestPath = join(tempDir, 'captures', testCase.id, MANIFEST_FILENAME)
-    expect(existsSync(manifestPath)).toBe(true)
-    const entries = readFileSync(manifestPath, 'utf-8')
-      .trim()
-      .split('\n')
-      .map((line) => JSON.parse(line) as Record<string, unknown>)
-    expect(entries.filter((e) => e.type === 'capture').map((e) => e.url)).toEqual([
-      'birdbrain://pipeline-test'
-    ])
-    // And the residue is still cleaned up through the lifecycle.
+    // Since #614 the run is invisible to the case either way, so the exemption
+    // shows up only as the route still succeeding under a pattern that matches
+    // its sentinel — and as the case chain staying empty regardless.
+    expect(existsSync(join(tempDir, 'captures', testCase.id, MANIFEST_FILENAME))).toBe(false)
     expect(listCaptures(testCase.id)).toHaveLength(0)
   })
 

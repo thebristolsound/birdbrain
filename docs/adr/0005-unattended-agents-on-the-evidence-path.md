@@ -9,6 +9,10 @@ the backstop list is tiered (blocking or advisory), the strict-serial slot widen
 three, and non-evidence agent PRs may auto-merge on green plus a pre-pass success. The evidence-
 affecting PR gate and the never-auto-merge rule for evidence-affecting PRs are unchanged.
 
+**Amended 2026-09-01 by [ADR-0025](0025-the-evidence-label-serves-two-purposes.md):** the label
+serves two named purposes, merge routing and claim discipline. An approved agent PR is marked
+ready for review, evidence-affecting or not; the human back gate is unchanged.
+
 Birdbrain is adopting an autonomous agent pipeline: unattended agents work `ready-for-agent`
 issues end-to-end and open draft PRs, eventually dispatched on a schedule
 ([#298](https://github.com/thebristolsound/birdbrain/issues/298)). The obvious reflex for an

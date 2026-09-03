@@ -17,7 +17,7 @@ Cycle release: PR #1125
 ## Pre-pass verdict (20 lines, at most 5 rows)
 
 ```
-**Reviewer pre-pass (bae47d99): request changes** - 2 of 2 reporters in on this sha
+**Reviewer pre-pass (bae47d99): request changes**
 
 | # | severity | file:line | finding |
 |---|---|---|---|

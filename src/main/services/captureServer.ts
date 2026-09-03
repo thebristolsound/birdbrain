@@ -16,6 +16,11 @@ import * as selectorRepo from '@main/services/db/selectorRepo'
 import * as tagRepo from '@main/services/db/tagRepo'
 import { getSettings } from '@main/services/settings'
 import { ingestMhtmlCapture } from '@main/services/captureLifecycle'
+import {
+  createPipelineSelfTestSandbox,
+  PIPELINE_SELF_TEST_URL,
+  type PipelineSelfTestSandbox
+} from '@main/services/pipelineSelfTest'
 import { getInstallationId } from '@main/services/installationId'
 import { getServerToken } from '@main/services/serverToken'
 import type { CaptureEvent } from '@shared/types'
@@ -123,10 +128,6 @@ function emitExtensionAttach(event: ExtensionAttachEvent): void {
 
 // The single source of truth for the pipeline self-test route.
 const CAPTURE_TEST_ROUTE = '/api/captures/test'
-
-// Recorded on the deletion entry the pipeline self-test leaves behind, so a
-// chain reader can tell a self-test cleanup from an operator deleting evidence.
-const PIPELINE_TEST_DELETION_REASON = 'pipeline-test'
 
 function createApp(deps: CaptureServerDeps): Hono {
   const { selectorLifecycle, captureLifecycle, token } = deps
@@ -821,29 +822,19 @@ function createApp(deps: CaptureServerDeps): Hono {
   // Test pipeline endpoint
   app.post(CAPTURE_TEST_ROUTE, async (c) => {
     const startTime = Date.now()
-    let testCaptureId: string | null = null
-    let testCaseId: string | null = null
+    let sandbox: PipelineSelfTestSandbox | null = null
     try {
       const operatorName = getSettings().operatorName?.trim() ?? ''
       if (!operatorName) {
         emitCaptureEvent({
           type: 'failed',
           source: 'manual',
-          url: 'birdbrain://pipeline-test',
+          url: PIPELINE_SELF_TEST_URL,
           timestamp: new Date().toISOString(),
           error: 'Operator name required'
         })
         return c.json({ error: OPERATOR_NAME_REQUIRED_MSG }, 400)
       }
-      const cases = caseRepo.listCases()
-      if (cases.length === 0) {
-        return c.json({
-          success: false,
-          durationMs: 0,
-          error: 'No cases exist - create a case first'
-        })
-      }
-      testCaseId = cases[0].id
       const testBody = Buffer.from('<html><body>test</body></html>')
       const { Readable } = await import('stream')
       const stream = Readable.from([testBody])
@@ -851,49 +842,63 @@ function createApp(deps: CaptureServerDeps): Hono {
       emitCaptureEvent({
         type: 'received',
         source: 'manual',
-        url: 'birdbrain://pipeline-test',
+        url: PIPELINE_SELF_TEST_URL,
         timestamp: new Date().toISOString()
       })
 
-      // The one producer the per-case exclusion list is deliberately not
-      // applied to (#400, #766). Every acquisition route is checked — the
+      // Where this route writes, and why (#614): into a sandbox — a temp
+      // storage root carrying its own manifest, plus a case row created for
+      // this request — and never into an investigation. It used to ingest into
+      // `listCases()[0]`, so a diagnostic left two signed entries and the
+      // retained sentinel URL in an append-only chain the operator never chose.
+      // Nothing about the diagnostic needs a real case: it acquires nothing, so
+      // the only case that can hold it is one that holds nothing else. The
+      // sandbox's `dispose` runs from the `finally` below on every path the
+      // process survives, including the throw, and attempts both halves
+      // whatever the other did.
+      //
+      // It is also the one producer the per-case exclusion list is deliberately
+      // not applied to (#400, #766). Every acquisition route is checked — the
       // extension/manual route above, and both recapture enforcement points —
-      // but this one acquires nothing: the URL is the fixed sentinel below and
-      // the body is a literal, so no page content and no operator-supplied URL
-      // enters the case. What a check would buy is the ability for a broad
+      // but this one acquires nothing: the URL is the fixed sentinel and the
+      // body is a literal, so no page content and no operator-supplied URL
+      // enters any case. What a check would buy is the ability for a broad
       // pattern like `/./` to break the operator's only proof that the capture
       // pipeline works, which is the worse failure for a diagnostic. The
-      // residue is real and bounded: a capture row and a `capture` manifest
-      // entry exist in the case for the duration of the self-test. On the happy
-      // path the `finally` below deletes them through the lifecycle, which
-      // appends the matching `deletion` entry. That cleanup is best-effort: it
-      // discards both a thrown fault and the lifecycle's `false` return, so a
-      // failure there leaves the `capture` entry with no `deletion` beside it.
-      // A matched pair is the normal case, not a guarantee.
-      const { capture } = await ingestMhtmlCapture({
-        caseId: testCaseId,
-        url: 'birdbrain://pipeline-test',
-        title: 'Pipeline Test',
-        timestamp: new Date().toISOString(),
-        stream: stream as unknown as ReadableStream<Uint8Array>,
-        textContent: '',
-        headers: {},
-        browserVersion: '',
-        userAgent: '',
-        httpStatus: 200,
-        extensionVersion: '',
-        operatorId: getInstallationId(),
-        operatorName,
-        toolVersion: getToolVersion()
-      })
-      testCaptureId = capture.id
+      // residue that argument used to weigh against — signed entries in an
+      // investigation's chain — is gone; what a failed teardown can leave is
+      // the sandbox itself.
+      //
+      // The ingest itself is the production one, storage root apart: a
+      // regression in it still fails the diagnostic.
+      sandbox = createPipelineSelfTestSandbox()
+      const { capture } = await ingestMhtmlCapture(
+        {
+          caseId: sandbox.caseId,
+          url: PIPELINE_SELF_TEST_URL,
+          title: 'Pipeline Test',
+          timestamp: new Date().toISOString(),
+          stream: stream as unknown as ReadableStream<Uint8Array>,
+          textContent: '',
+          headers: {},
+          browserVersion: '',
+          userAgent: '',
+          httpStatus: 200,
+          extensionVersion: '',
+          operatorId: getInstallationId(),
+          operatorName,
+          toolVersion: getToolVersion()
+        },
+        undefined,
+        sandbox.store
+      )
 
       const durationMs = Date.now() - startTime
       emitCaptureEvent({
         type: 'stored',
         captureId: capture.id,
         source: 'manual',
-        url: 'birdbrain://pipeline-test',
+        url: PIPELINE_SELF_TEST_URL,
         timestamp: new Date().toISOString(),
         durationMs
       })
@@ -901,18 +906,7 @@ function createApp(deps: CaptureServerDeps): Hono {
     } catch (err) {
       return c.json({ success: false, durationMs: Date.now() - startTime, error: String(err) })
     } finally {
-      if (testCaptureId) {
-        // Route cleanup through the lifecycle so the manifest gets a matching
-        // deletion entry. Deleting the row and the artifacts directly left a
-        // signed `capture` entry in a real case's chain with no files and no
-        // deletion record, so the chain and the exported package disagreed about
-        // how many captures the case has, with nothing to explain the gap (#580).
-        try {
-          await captureLifecycle.delete(testCaptureId, PIPELINE_TEST_DELETION_REASON)
-        } catch {
-          /* best effort */
-        }
-      }
+      sandbox?.dispose()
     }
   })
 

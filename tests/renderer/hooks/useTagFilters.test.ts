@@ -96,6 +96,55 @@ describe('useTagFilters (#918)', () => {
     expect(capturesWithAnyTag).toHaveBeenCalledTimes(2)
   })
 
+  // Fail closed while a newly picked tag set is unresolved: the strip names the
+  // new filter immediately, so publishing the previous union would answer for
+  // the wrong tags and publishing null would show every capture.
+  it('hides every capture until the query for a newly picked tag lands', async () => {
+    store().addTagFilter('t1')
+    let release: (ids: string[]) => void = () => {}
+    const capturesWithAnyTag = vi
+      .fn<() => Promise<string[]>>()
+      .mockResolvedValueOnce(['c1'])
+      .mockImplementationOnce(
+        () =>
+          new Promise<string[]>((resolve) => {
+            release = resolve
+          })
+      )
+    fakeBridge({
+      tags: { capturesWithAnyTag, list: vi.fn(async () => [{ id: 't1' }, { id: 't2' }]) }
+    })
+
+    renderHook(() => useTagFilters('case-1'), { wrapper: withClient(newClient()) })
+    await waitFor(() => expect(store().tagFilteredCaptureIds).toEqual(['c1']))
+
+    act(() => store().addTagFilter('t2'))
+    await waitFor(() => expect(store().tagFilteredCaptureIds).toEqual([]))
+
+    await act(async () => release(['c1', 'c2']))
+    await waitFor(() => expect(store().tagFilteredCaptureIds).toEqual(['c1', 'c2']))
+  })
+
+  // A refetch of the same key keeps its data, so an invalidation must not blank
+  // the list on its way to the same answer.
+  it('keeps the resolved ids while the same tag set refetches', async () => {
+    store().addTagFilter('t1')
+    const capturesWithAnyTag = vi
+      .fn<() => Promise<string[]>>()
+      .mockResolvedValueOnce(['c1'])
+      .mockImplementationOnce(() => new Promise<string[]>(() => {}))
+    fakeBridge({ tags: { capturesWithAnyTag, list: vi.fn(async () => [{ id: 't1' }]) } })
+    const client = newClient()
+
+    renderHook(() => useTagFilters('case-1'), { wrapper: withClient(client) })
+    await waitFor(() => expect(store().tagFilteredCaptureIds).toEqual(['c1']))
+
+    act(() => invalidateTagCounts(client))
+
+    await waitFor(() => expect(capturesWithAnyTag).toHaveBeenCalledTimes(2))
+    expect(store().tagFilteredCaptureIds).toEqual(['c1'])
+  })
+
   // Fail closed: neither hiding every capture nor showing every capture under a
   // strip that still says "1 tag filter" is a claim a failed lookup can make.
   it('drops the filter and tells the operator when the lookup fails', async () => {

@@ -31,7 +31,12 @@ export function useTagFilters(caseId: string | null) {
       store.setTagFilteredCaptureIds(null)
       return
     }
-    if (data) store.setTagFilteredCaptureIds(data)
+    // Fail closed for the same reason the rejected lookup does: until the
+    // query for this exact tag set lands, null would read as "no tag filter"
+    // under a strip already naming one, and the union left by the previous set
+    // would answer for tags that are no longer picked. React Query keeps `data`
+    // across a refetch of the same key, so only a new tag set empties the list.
+    store.setTagFilteredCaptureIds(data ?? [])
   }, [active, data])
 
   // Fail closed. Neither an empty list ("no capture carries this tag") nor

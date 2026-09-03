@@ -117,6 +117,32 @@ describe('CaptureViewer tabs', () => {
     expect(tabs.map((t) => t.textContent)).toEqual(['Screenshot', 'Page', 'Text', 'Wayback'])
   })
 
+  // #466. The narrow viewer pane drops the tab labels for their icons, so the
+  // name a screen reader and the E2E locators read cannot be the text node.
+  it('names every tab independently of the label it may be hiding', async () => {
+    renderViewer()
+    const tabs = await screen.findAllByRole('tab')
+
+    expect(tabs.map((t) => t.getAttribute('aria-label'))).toEqual([
+      'Screenshot',
+      'Page',
+      'Text',
+      'Wayback'
+    ])
+    expect(tabs.map((t) => t.getAttribute('title'))).toEqual([
+      'Screenshot',
+      'Page',
+      'Text',
+      'Wayback'
+    ])
+    // One decorative icon each: it stands in for the label, so it must not
+    // double the name up when the label is showing.
+    for (const tab of tabs) {
+      const icons = tab.querySelectorAll('svg[aria-hidden]')
+      expect(icons.length).toBe(1)
+    }
+  })
+
   it('no longer offers a Source tab — Page is the MHTML', async () => {
     renderViewer()
     await screen.findAllByRole('tab')

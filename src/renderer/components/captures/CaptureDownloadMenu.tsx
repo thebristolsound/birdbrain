@@ -68,6 +68,8 @@ export function CaptureDownloadMenu({ capture }: Props) {
   }
 
   const archiveLabel = capture.format === 'mhtml' ? 'MHTML archive' : 'HTML page'
+  // Says the export is running even where the button is icon-only.
+  const triggerLabel = pdfExporting ? 'Exporting PDF…' : 'Download capture artifacts'
   const itemClass =
     'flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary hover:bg-elevated disabled:opacity-50'
 
@@ -77,7 +79,7 @@ export function CaptureDownloadMenu({ capture }: Props) {
         <span
           data-testid="capture-download-error"
           title={error}
-          className="max-w-40 truncate text-[11px] text-red-500"
+          className="max-w-24 truncate text-[11px] text-red-500 @3xl/viewer:max-w-40"
         >
           {error}
         </span>
@@ -85,15 +87,22 @@ export function CaptureDownloadMenu({ capture }: Props) {
       <button
         ref={anchorRef}
         onClick={() => setOpen((v) => !v)}
-        title="Download capture artifacts"
+        title={triggerLabel}
+        aria-label={triggerLabel}
         aria-haspopup="menu"
         aria-expanded={open}
         data-testid="capture-download-menu-btn"
-        className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium text-accent hover:bg-accent-subtle"
+        className="flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium text-accent hover:bg-accent-subtle"
       >
-        <Download className="h-3.5 w-3.5" />
-        {pdfExporting ? 'Exporting…' : 'Download'}
-        <ChevronDown className="h-3 w-3" />
+        <Download className="h-3.5 w-3.5 shrink-0" />
+        {/* Icon-only below the viewer toolbar's widest tier (#466), where the
+            label is what pushed the capture pager off screen. The container is
+            named on the viewer shell in CaptureViewer, and the aria-label above
+            carries the name the text no longer supplies. */}
+        <span className="hidden @3xl/viewer:inline">
+          {pdfExporting ? 'Exporting…' : 'Download'}
+        </span>
+        <ChevronDown className="h-3 w-3 shrink-0" />
       </button>
       {open && (
         <div

@@ -495,6 +495,31 @@ describe('manifest schema 3 — the too-old verdict is not for sale', () => {
     expect(result.reason).toBe('Invalid signature')
   })
 
+  it('refuses a deeply nested unreadable entry with a verdict, not a stack overflow', () => {
+    // An unreadable entry is the one body canonicalStringify is handed without a
+    // strict-schema parse in front of it, and it recurses per nesting level.
+    // Nesting deep enough to exhaust the stack costs no signing key, so without
+    // the depth guard this line throws out of verifyManifestChainText and every
+    // caller gets an exception where a ChainVerifyResult is the contract — the
+    // standalone verifier prints a generic error instead of a tamper report.
+    // 20000 is chosen to sit well past the depth that actually overflows
+    // (measured at roughly 10000 on Node 20), so the guard and not the stack is
+    // what stops it. The line is assembled as text because JSON.stringify
+    // recurses too.
+    const chain = buildChain([CAPTURE_BODY])
+    const head = JSON.parse(chain.trim().split('\n')[0]) as { index: number; entryHash: string }
+    const nested = '['.repeat(20000) + '0' + ']'.repeat(20000)
+    const planted =
+      `{"type":"exhibit-bundle","caseId":${JSON.stringify(CASE_ID)},` +
+      `"index":${head.index + 1},"prevHash":${JSON.stringify(head.entryHash)},` +
+      `"schemaVersion":4,"nested":${nested},` +
+      `"entryHash":"${'f'.repeat(64)}","signature":"unchecked"}`
+    const result = verify(chain + planted + '\n')
+    expect(result.unsupported).toBeUndefined()
+    expect(result.brokenAt).toBe(1)
+    expect(result.reason).toBe('Entry too deeply nested')
+  })
+
   it('reports a future entry that does not continue the chain as tampering', () => {
     const lines = buildChain([CAPTURE_BODY, { ...EXHIBIT_BODY, schemaVersion: 4 }])
       .trim()

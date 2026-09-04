@@ -81,6 +81,35 @@ function detectUnsupportedEntry(raw: unknown, index: number): UnsupportedEntry |
     : undefined
 }
 
+// `canonicalStringify` recurses once per nesting level, and `verifyUnreadableEntry`
+// below is the ONLY place it is handed a body the strict schema has never seen:
+// every other caller canonicalizes a `ManifestEntrySchema` value, whose shape
+// bounds its own depth. A line nesting a few thousand arrays — bytes anyone can
+// write, no signing key needed — would otherwise exhaust the stack and throw
+// before the hash and signature could reject it, turning a tamper verdict into
+// an exception: a generic error from the standalone verifier, an IpcFailure in
+// process. The depth is measured iteratively, so the guard cannot overflow the
+// stack it exists to protect.
+//
+// This is a stack limit, not a schema rule. The deepest body any schema here
+// declares nests 3 levels (`export`.`verificationResult`), so a newer writer has
+// two orders of magnitude of headroom before this could reject a genuine entry,
+// and the bound sits an order of magnitude below the depth that overflows.
+const MAX_UNREADABLE_ENTRY_DEPTH = 256
+
+function exceedsNestingDepth(value: unknown, limit: number): boolean {
+  const stack: Array<{ node: unknown; depth: number }> = [{ node: value, depth: 1 }]
+  for (let frame = stack.pop(); frame !== undefined; frame = stack.pop()) {
+    const { node, depth } = frame
+    if (node === null || typeof node !== 'object') continue
+    if (depth > limit) return true
+    for (const child of Array.isArray(node) ? node : Object.values(node)) {
+      stack.push({ node: child, depth: depth + 1 })
+    }
+  }
+  return false
+}
+
 // What a "verifier too old" verdict has to survive. These four checks are the
 // ones that do NOT depend on knowing an entry's fields — its position, its link
 // into the chain, the hash over its own canonical body, and a signature over
@@ -94,6 +123,10 @@ function detectUnsupportedEntry(raw: unknown, index: number): UnsupportedEntry |
 // key is never one read from the manifest itself: a key an unverified line
 // supplies could be the tamperer's own (the invariant stated at `tooNew`).
 //
+// One rejection precedes the four and is not a check on the chain: a body nested
+// past MAX_UNREADABLE_ENTRY_DEPTH is refused before it is canonicalized, for the
+// stack reason given above.
+//
 // The signature is required with NO v1 grandfathering, unlike the readable path
 // below: an entry this build cannot read is never a legacy v1 entry — every v1
 // type is one it knows — so it comes from a writer that signs.
@@ -105,6 +138,7 @@ function verifyUnreadableEntry(
   const { entryHash, signature, ...body } = raw
   if (body.index !== expected.index) return 'Index mismatch'
   if (body.prevHash !== expected.prevHash) return 'Chain link broken'
+  if (exceedsNestingDepth(body, MAX_UNREADABLE_ENTRY_DEPTH)) return 'Entry too deeply nested'
   const recomputed = createHash('sha256').update(canonicalStringify(body)).digest('hex')
   if (typeof entryHash !== 'string' || recomputed !== entryHash) return 'Entry hash mismatch'
   if (typeof signature !== 'string' || !verifyEntrySignature(entryHash, signature, publicKeyPem)) {
@@ -239,10 +273,12 @@ export function verifyManifestChainText(
   // SCOPE, NOT NECESSITY (#1199). Two chain shapes still report broken on a
   // genuine chain, and neither is forced by soundness: (1) an unreadable entry
   // whose own key sits beyond it — a newer writer inside an imported segment;
-  // (2) an unreadable `import` boundary whose pem this build cannot extract,
-  // because a newer schema renamed the field or encoded the key in a form
-  // verifyEntrySignature fail-closes on, which leaves the segment before it
-  // resolved to the local key and accused at a genuine entry. A sound
+  // (2) an unreadable `import` boundary whose pem this build cannot use, because
+  // a newer schema renamed the field or encoded the key in a form
+  // verifyEntrySignature fail-closes on, which resolves the segment before it to
+  // a key that is not the segment's own — the local key when the field is
+  // renamed, the unusable pem itself when it is present but rejected — and
+  // accuses a genuine entry either way. A sound
   // alternative exists for both under the forward-compat assumptions phase B
   // already makes: keep the keyless walk going THROUGH unreadable lines to the
   // next boundary with an extractable pem, verify that boundary under its own
@@ -280,9 +316,13 @@ export function verifyManifestChainText(
     if (failure) return broken(tooNew.info.index, failure)
     // Phase C — the preceding entries' signatures. The unreadable entry's pem
     // is verified data now: phase B bound it, via the entry hash the local key
-    // signed, to the writer the chain trusts. When the pem is not extractable
-    // the segment falls back to the local key and is accused under it — shape
-    // (2) above, disclosed and tracked in #1199, not fixed here.
+    // signed, to the writer the chain trusts. Shape (2) above lands here, in
+    // both of its causes and by two different routes: a renamed field fails the
+    // `typeof` guard below, so no boundary is pushed and the segment falls back
+    // to the local key, while a pem that is present but in a form
+    // verifyEntrySignature rejects passes that guard and is used, so the segment
+    // is accused under that unusable pem and never under the local key. Both
+    // accuse a genuine entry. Disclosed and tracked in #1199, not fixed here.
     const anchored = [...boundaries]
     if (tooNew.raw.type === 'import' && typeof tooNew.raw.sourcePublicKeyPem === 'string') {
       anchored.push({ index: tooNew.info.index, pem: tooNew.raw.sourcePublicKeyPem })

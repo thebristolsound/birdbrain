@@ -19,6 +19,8 @@ interface SignalRowProps {
   onShowMatches: () => void
   /** Selectors only: write this selector's matches out as CSV. */
   onExportMatches: () => void
+  /** Tags only: narrow the captures list by this tag and go there (#918). */
+  onFilterCaptures: () => void
   /** Tags only: recolour the tag from the shared palette. */
   onSetColor: (color: string) => void
   /** Tags only: open the merge dialog with this tag as the source. */
@@ -47,6 +49,7 @@ export function SignalRow({
   onDelete,
   onShowMatches,
   onExportMatches,
+  onFilterCaptures,
   onSetColor,
   onMerge,
   onFocusSibling,
@@ -120,6 +123,7 @@ export function SignalRow({
         color: signal.color ?? null,
         palette: TAG_PALETTE_LABELS,
         actions: {
+          filterCaptures: onFilterCaptures,
           rename: beginEdit,
           setColor: onSetColor,
           merge: onMerge,

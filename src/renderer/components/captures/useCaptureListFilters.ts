@@ -19,6 +19,10 @@ export function useCaptureListFilters() {
   const [favoritesOnly, setFavoritesOnly] = useState(false)
   const activeSelectorFilters = useAppStore((s) => s.activeSelectorFilters)
   const clearSelectorFilters = useAppStore((s) => s.clearSelectorFilters)
+  const activeTagFilters = useAppStore((s) => s.activeTagFilters)
+  const addTagFilter = useAppStore((s) => s.addTagFilter)
+  const removeTagFilter = useAppStore((s) => s.removeTagFilter)
+  const clearTagFilters = useAppStore((s) => s.clearTagFilters)
 
   // Memoized so consumers can use `filters` as a useMemo/useEffect dependency:
   // a fresh object literal here would defeat any memo keyed on it.
@@ -26,10 +30,15 @@ export function useCaptureListFilters() {
     () => ({ query, sortBy, formatFilter, dateFilter, favoritesOnly }),
     [query, sortBy, formatFilter, dateFilter, favoritesOnly]
   )
-  const activeFilterCount = countActiveFilters(filters)
+  const activeFilterCount = countActiveFilters(filters, activeTagFilters.length)
   const narrowings = useMemo(
-    () => describeNarrowings({ filters, selectorFilterCount: activeSelectorFilters.length }),
-    [filters, activeSelectorFilters]
+    () =>
+      describeNarrowings({
+        filters,
+        selectorFilterCount: activeSelectorFilters.length,
+        tagFilterCount: activeTagFilters.length
+      }),
+    [filters, activeSelectorFilters, activeTagFilters]
   )
 
   // One handler behind every clear affordance, so the operator can never clear
@@ -40,7 +49,16 @@ export function useCaptureListFilters() {
     setDateFilter('all')
     setFavoritesOnly(false)
     clearSelectorFilters()
-  }, [clearSelectorFilters])
+    clearTagFilters()
+  }, [clearSelectorFilters, clearTagFilters])
+
+  const toggleTagFilter = useCallback(
+    (tagId: string) => {
+      if (useAppStore.getState().activeTagFilters.includes(tagId)) removeTagFilter(tagId)
+      else addTagFilter(tagId)
+    },
+    [addTagFilter, removeTagFilter]
+  )
 
   return {
     filters,
@@ -48,6 +66,8 @@ export function useCaptureListFilters() {
     narrowings,
     isNarrowed: narrowings.length > 0,
     clearNarrowing,
+    activeTagFilters,
+    toggleTagFilter,
     query,
     setQuery,
     sortBy,

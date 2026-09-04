@@ -82,7 +82,13 @@ const tagTarget: TagMenuTarget = {
     { value: '#22c55e', label: 'Green' },
     { value: '#3b82f6', label: 'Blue' }
   ],
-  actions: { rename: vi.fn(), setColor: vi.fn(), merge: vi.fn(), remove: vi.fn() }
+  actions: {
+    filterCaptures: vi.fn(),
+    rename: vi.fn(),
+    setColor: vi.fn(),
+    merge: vi.fn(),
+    remove: vi.fn()
+  }
 }
 
 function labels(entries: MenuEntry[]): string[] {
@@ -293,9 +299,23 @@ describe('note, selector and tag menus', () => {
     expect(tagTarget.actions.setColor).toHaveBeenCalledWith('#3b82f6')
   })
 
-  it('offers merge and delete on a tag, and no capture filter', () => {
+  // First, where the mock puts it, and live since #918 gave the capture list a
+  // tag filter to drive. Duplicate and Export stay absent: the app offers
+  // neither for a tag anywhere.
+  it('leads with the capture filter, then the edits, merge and delete', () => {
     const shown = labels(tagMenuEntries(tagTarget))
-    expect(shown).toEqual(['Rename', 'Change color', 'Merge into…', 'Delete tag…'])
+    expect(shown).toEqual([
+      'Filter captures by tag',
+      'Rename',
+      'Change color',
+      'Merge into…',
+      'Delete tag…'
+    ])
+  })
+
+  it('runs the tag filter action from the first item', () => {
+    actionById(tagMenuEntries(tagTarget), 'tag-filter-captures').run()
+    expect(tagTarget.actions.filterCaptures).toHaveBeenCalledOnce()
   })
 })
 

@@ -123,7 +123,8 @@ centrally, not per check.
       top-level dot-directory (`.claude/`, `.macroscope/`, `.serena/`, `.design-sync/`, and the
       rest), `tests/fixtures/`, lock files, and generated files.
    2. **Extension** decides the kind. `.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`,
-      `.cjs` are `code`. `.md` is `prose`. `package.json` and `pnpm-lock.yaml` are `config`.
+      `.cjs` are `code`. `.md` is `prose`. `package.json` is `config`;
+      `pnpm-lock.yaml` is a lock file, excluded here and read directly into `ctx` in phase 3.
       Everything else (`.css`, `.html`, `.png`, `.woff2`, `.sh`, `.yml`, other `.json`) is
       `other`, which only the path-based `files.*` checks ever see. No `other` file reaches the
       parser.
@@ -340,8 +341,8 @@ wiring (a CI job, a reviewer instruction) is not a phase; see Maintainer decisio
 
 | Phase | Contents | Files |
 | --- | --- | --- |
-| 1. Skeleton | `cli.mjs`, `lib/files.mjs`, `lib/report.mjs`, `checks/index.mjs` (empty registry), `lint:slop` in `package.json`, coverage changes in `vitest.config.ts` and `scripts/diff-coverage.mjs`, tests for `files`, `report`, and `cli`. Ends with `pnpm lint:slop --json` printing an empty envelope with `commit` and `dirty` | 10 |
-| 2. Parser and first objective checks | `lib/ts.mjs` and its test; `suppress.directive`, `test.exit-zero`; registry | 7 |
+| 1. Skeleton | `cli.mjs`, `lib/files.mjs`, `lib/report.mjs`, `lint:slop` in `package.json`, coverage changes in `vitest.config.ts`, `scripts/diff-coverage.mjs` and its test, tests for `files`, `report`, and `cli`. Ends with `pnpm lint:slop --json` printing an empty envelope with `commit` and `dirty`. Plan: `docs/plans/2026-09-04-slop-audit-phase-1.md` | 10 |
+| 2. Parser, registry, first objective checks | `lib/ts.mjs` and its test; `checks/index.mjs`; `suppress.directive`, `test.exit-zero` | 8 |
 | 3. Allowlist, smoke test, dependencies | `lib/allowlist.mjs`, `slop-audit-allowlist.json`, `allowlist.test.ts`, `cli.mjs` (allowlist wiring), the smoke test; `deps.undeclared-import`, `deps.unlocked-package`; registry. Ends with the first-run report over the tree in the PR body | 10 |
 | 4. Stubs and insecure code | `stub.placeholder`, `sec.dynamic-code`, `sec.dangerous-sink`, `sec.weak-random`; registry | 9 |
 | 5. Test gaming | `test.mocks-subject`, `test.literal-branch`, `test.skipped`, `test.weak-assertion`; registry | 9 |

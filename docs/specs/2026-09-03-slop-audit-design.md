@@ -1,7 +1,7 @@
 # Slop audit: a tracked-tree audit for agentic code tells
 
-- Status: draft, revised 2026-09-03 after a design review; awaiting maintainer approval. No
-  code exists yet.
+- Status: approved by the maintainer on 2026-09-04, after a 2026-09-03 design review, with
+  consumer wiring cut from scope. No code exists yet; the implementation plan comes next.
 - Date: 2026-09-03
 - Source research: `docs/specs/2026-09-03-agentic-code-slop-patterns-research.md`, committed on
   branch `t3code/research-agentic-code-slop` (commit 1bd0f82b). Section numbers below (1.1,
@@ -18,8 +18,8 @@ tells on the tracked working tree, reports them with file and line, and exits 0 
 to gate. It reuses the `typescript` compiler already in `devDependencies` for code checks and
 regular expressions only for comments and filenames, because a calibration pass against the
 current tree showed the regular-expression forms of several tells produce false positives.
-The maintainer's decision is whether to approve this design so an implementation plan can be
-written under `docs/plans/`.
+The maintainer approved this design on 2026-09-04 and cut the consumer wiring (a CI job and a
+reviewer instruction) from scope; that decision waits until the tool has run on the real tree.
 
 ## Problem
 
@@ -334,10 +334,9 @@ type checker and are deferred; see Not built.
 
 Each phase is one pull request. Every phase lists its files so that the count against
 ADR-0016 criterion 6 (at most 10 files) is visible before the work starts. A check phase counts
-one module, one test, and the `checks/index.mjs` registration. Phases 1 to 10 meet all six
-ADR-0016 criteria and proceed once this design is approved. Phase 11 touches `ci.yml` and the
-reviewer agent and gets its own review. If a phase cannot fit in ten files, it splits; it does
-not grow.
+one module, one test, and the `checks/index.mjs` registration. All ten phases meet all six
+ADR-0016 criteria. If a phase cannot fit in ten files, it splits; it does not grow. Consumer
+wiring (a CI job, a reviewer instruction) is not a phase; see Maintainer decisions.
 
 | Phase | Contents | Files |
 | --- | --- | --- |
@@ -351,7 +350,6 @@ not grow.
 | 8. Comments | `comments.narration`, `comments.restates-code`, `comments.density-outlier`, `comments.jsdoc-echo`; registry | 9 |
 | 9. Register and files | `comments.marketing`, `files.stray-summary`, `files.emoji`; registry | 7 |
 | 10. Adapters and annotations | `adapters/jscpd.mjs`, `adapters/semgrep.mjs`, `adapters/registry.mjs`, their tests, `cli.mjs` (`--adapter`, `--github`), `lib/report.mjs` (annotations) | 8 |
-| 11. Consumers | An advisory job in `ci.yml`; one line in `birdbrain-reviewer.md` pass 2 telling the reviewer to run `pnpm lint:slop --json --changed-since origin/main` and carry `blocking` findings into the verdict. Whether any check becomes a merge gate is a separate ADR written after phases 1 to 9 have produced data | 2 |
 
 ## Open questions
 
@@ -359,8 +357,6 @@ not grow.
    is already conventional, `defensive.debug-leftover` covers only `debugger` statements. The
    current plan flags `console.log` in `source` files as advisory and lets the first run
    decide.
-2. **Phase 11 scope.** The reviewer-agent wiring and the CI job could be part of this effort or a
-   separate one. The plan treats them as phase 11 of this effort.
 
 ## Decisions taken without asking
 
@@ -376,6 +372,13 @@ These are recommended-option picks under ADR-0015.
 - `semgrep` runs only with an explicit `--semgrep-config`, so the tool never invents a ruleset
   name.
 
+## Maintainer decisions
+
+- 2026-09-04: design approved through phase 10. Consumer wiring (an advisory `ci.yml` job and a
+  line in `birdbrain-reviewer.md` pass 2) is out of scope for this effort; the maintainer will
+  decide on consumers after seeing the tool's output on the real tree. Whether any check
+  becomes a merge gate remains a separate ADR.
+
 ## Changes from the 2026-09-03 design review
 
 | Finding | Change |
@@ -386,4 +389,4 @@ These are recommended-option picks under ADR-0015.
 | Coverage claim was false: `coverage.include` is `src/**` only and diff coverage excludes `scripts/` | Coverage gate bullet now states the current gap and makes the two configuration edits part of phase 1, with a named fallback |
 | One module per family with one `id` and `severity` did not match multi-id families or per-finding severity; per-check allowlist tests crossed a seam | One module per check exporting `{ id, section, run }`; severity lives on the finding; allowlist tested centrally |
 | `PATH` auto-detection made the default run nondeterministic, and `jscpd` replaced a built-in result | Adapters are explicit (`--adapter`), additive (`dup.jscpd-clone` beside `dup.block-clone`), and recorded with versions in an envelope that also carries `schemaVersion` |
-| Phase 1 exceeded ADR-0016's ten-file cap once tests and coverage configuration were counted | Eleven phases, each with its file count in the Delivery phases table |
+| Phase 1 exceeded ADR-0016's ten-file cap once tests and coverage configuration were counted | Ten phases, each with its file count in the Delivery phases table |

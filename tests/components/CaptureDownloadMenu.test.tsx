@@ -47,7 +47,7 @@ describe('CaptureDownloadMenu naming', () => {
     expect(trigger.textContent).toContain('Download')
   })
 
-  it('says an export is running in the name as well as the label', async () => {
+  it('announces a running export without renaming the trigger', async () => {
     let resolvePdf: (path: string) => void = () => {}
     downloadCapturePdf.mockImplementationOnce(
       () => new Promise<string>((resolve) => (resolvePdf = resolve))
@@ -57,14 +57,14 @@ describe('CaptureDownloadMenu naming', () => {
     fireEvent.click(screen.getByTestId('capture-download-menu-btn'))
     fireEvent.click(screen.getByTestId('download-pdf-btn'))
 
-    const trigger = await screen.findByRole('button', { name: 'Exporting PDF…' })
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Exporting PDF'))
+    const trigger = screen.getByRole('button', { name: 'Download capture artifacts' })
     expect(trigger.textContent).toContain('Exporting…')
 
     resolvePdf('/tmp/cap1.pdf')
-    await waitFor(() =>
-      expect(screen.getByTestId('capture-download-menu-btn').getAttribute('aria-label')).toBe(
-        'Download capture artifacts'
-      )
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe(''))
+    expect(screen.getByTestId('capture-download-menu-btn').getAttribute('aria-label')).toBe(
+      'Download capture artifacts'
     )
   })
 })
@@ -77,6 +77,10 @@ describe('CaptureDownloadMenu items', () => {
     expect(screen.getByTestId('download-archive-btn').textContent).toContain('MHTML archive')
     fireEvent.click(screen.getByTestId('download-archive-btn'))
     await waitFor(() => expect(downloadCapture).toHaveBeenCalledWith('cap1'))
+
+    fireEvent.click(screen.getByTestId('capture-download-menu-btn'))
+    fireEvent.click(screen.getByTestId('download-pdf-btn'))
+    await waitFor(() => expect(downloadCapturePdf).toHaveBeenCalledWith('cap1'))
 
     fireEvent.click(screen.getByTestId('capture-download-menu-btn'))
     fireEvent.click(screen.getByTestId('download-screenshot-btn'))
@@ -102,6 +106,11 @@ describe('CaptureDownloadMenu items', () => {
 
     const error = await screen.findByTestId('capture-download-error')
     expect(error.textContent).toBe('disk full')
+    // #466: an error string has no length an operator can predict, so it hangs
+    // below the trigger instead of widening the toolbar row it would push the
+    // capture pager out of.
+    expect(error.className).toContain('absolute')
+    expect(error.getAttribute('role')).toBe('alert')
   })
 
   it('closes on Escape and on a click outside', async () => {

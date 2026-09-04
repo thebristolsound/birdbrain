@@ -68,27 +68,37 @@ export function CaptureDownloadMenu({ capture }: Props) {
   }
 
   const archiveLabel = capture.format === 'mhtml' ? 'MHTML archive' : 'HTML page'
-  // Says the export is running even where the button is icon-only.
-  const triggerLabel = pdfExporting ? 'Exporting PDF…' : 'Download capture artifacts'
   const itemClass =
     'flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary hover:bg-elevated disabled:opacity-50'
 
   return (
     <div className="relative flex shrink-0 items-center gap-1.5">
+      {/* Out of the toolbar row rather than beside the trigger (#466): a
+          download error has no length an operator can predict, and in the row it
+          pushed the capture pager off screen at a narrow pane — 54px of overflow
+          at the 360px panel minimum. Dropped below the trigger like the case
+          ExportMenu's, it costs the row nothing and reads in full. */}
       {error && (
-        <span
+        <div
+          role="alert"
           data-testid="capture-download-error"
-          title={error}
-          className="max-w-24 truncate text-[11px] text-red-500 @3xl/viewer:max-w-40"
+          className="absolute right-0 top-full z-40 mt-1 max-w-64 rounded border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-[11px] text-red-400"
         >
           {error}
-        </span>
+        </div>
       )}
+      {/* The visible "Exporting…" label is hidden below 48rem, so the progress
+          has to reach a screen reader some other way. A live region rather than
+          a swapped aria-label: the button stays addressable by its purpose
+          while the export runs. */}
+      <span role="status" aria-live="polite" className="sr-only">
+        {pdfExporting ? 'Exporting PDF' : ''}
+      </span>
       <button
         ref={anchorRef}
         onClick={() => setOpen((v) => !v)}
-        title={triggerLabel}
-        aria-label={triggerLabel}
+        title="Download capture artifacts"
+        aria-label="Download capture artifacts"
         aria-haspopup="menu"
         aria-expanded={open}
         data-testid="capture-download-menu-btn"

@@ -140,9 +140,11 @@ export function CaptureViewer() {
           Sized against the pane rather than the window (#466): the pane is what
           runs out of room, so a viewport breakpoint would still clip the
           controls whenever the details panel is docked. Below 36rem the tab
-          labels and the Download label give way to their icons, and the method
-          badge waits for 48rem, where the title has room beside it. The title
-          is the only part that flexes, so everything after it stays on screen. */}
+          labels give way to their icons; the Download label and the method
+          badge wait for 48rem, where the title has room beside them. The title
+          is the only item here that flexes and the download error hangs below
+          the trigger rather than sitting in the row, so from 340px up the tab
+          strip, the download trigger and the pager all stay on screen. */}
       <div className="flex h-11 items-center gap-1.5 border-b border-border px-3 @xl/viewer:gap-2.5">
         <Button
           variant="ghost"

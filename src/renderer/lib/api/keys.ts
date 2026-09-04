@@ -22,6 +22,11 @@ export const queryKeys = {
   tagCountForCase: (caseId: string) => ['tags', 'caseCount', caseId] as const,
   tagUsageCounts: (caseId: string) => ['tags', 'usageCounts', caseId] as const,
   tagCaptureMatrix: (caseId: string) => ['tags', 'captureMatrix', caseId] as const,
+  // Prefix over every case and tag set, for invalidating the capture list's
+  // tag filter after a membership write without knowing what it is narrowed by.
+  tagCapturesWithAnyAll: ['tags', 'capturesWithAnyTag'] as const,
+  tagCapturesWithAny: (caseId: string, tagIds: string[]) =>
+    ['tags', 'capturesWithAnyTag', caseId, ...tagIds] as const,
   tagsForNote: (noteId: string) => ['tags', 'note', noteId] as const,
   selectors: (caseId: string) => ['selectors', caseId] as const,
   selectorMatchCounts: (caseId: string) => ['selectors', 'matchCounts', caseId] as const,

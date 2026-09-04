@@ -100,6 +100,7 @@ function emitRematched(event: SelectorRematchedEvent): void {
 beforeEach(() => {
   navigate.mockClear()
   useAppStore.getState().clearSelectorFilters()
+  useAppStore.getState().clearTagFilters()
   rematched = []
   rescan = vi.fn(async () => true)
   fakeBridge({
@@ -224,13 +225,27 @@ describe('SignalDetailRail actions', () => {
     })
   })
 
-  it('does not set a selector filter for a tag', () => {
+  // Until #918 this button navigated for a tag and applied nothing, which read
+  // as a filter that had run and matched every capture.
+  it('filters the captures screen by the selected tag, not by a selector', () => {
     renderRail(tagSignal)
 
     fireEvent.click(screen.getByText('Filter in Captures'))
 
+    expect(useAppStore.getState().activeTagFilters).toEqual(['t1'])
     expect(useAppStore.getState().activeSelectorFilters).toEqual([])
-    expect(navigate).toHaveBeenCalledOnce()
+    expect(navigate).toHaveBeenCalledWith({
+      to: '/cases/$caseId/captures',
+      params: { caseId: 'case-1' }
+    })
+  })
+
+  it('leaves the tag filter alone for a selector', () => {
+    renderRail(selectorSignal)
+
+    fireEvent.click(screen.getByText('Filter in Captures'))
+
+    expect(useAppStore.getState().activeTagFilters).toEqual([])
   })
 
   it('opens a listed capture on the captures screen', () => {

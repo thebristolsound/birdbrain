@@ -148,6 +148,7 @@ export interface TagMenuTarget {
   /** Colours the tag can be set to, paired with the name each is shown under. */
   palette: { value: string; label: string }[]
   actions: {
+    filterCaptures: () => void
     rename: () => void
     setColor: (color: string) => void
     merge: () => void
@@ -428,18 +429,25 @@ export function selectorMenuEntries(target: SelectorMenuTarget): MenuEntry[] {
  * Tag rows on the Signals screen.
  *
  * Missing from the mock's seven: Duplicate and Export, which the app does not
- * offer for a tag anywhere, and "Filter captures by tag" — the capture list
- * filters by selector, search, format, date and favourites, but has no tag
- * filter to drive, and the detail rail's button only navigates.
+ * offer for a tag anywhere. "Filter captures by tag" was the third omission
+ * until the capture list grew a tag filter (#918); it is now the first item,
+ * where the mock puts it, and shares the detail rail's route into the list.
  */
 export function tagMenuEntries(target: TagMenuTarget): MenuEntry[] {
   const { actions, palette, color } = target
   return [
     {
+      id: 'tag-filter-captures',
+      label: 'Filter captures by tag',
+      icon: Search,
+      run: actions.filterCaptures
+    },
+    {
       id: 'tag-rename',
       label: 'Rename',
       icon: Pencil,
       shortcut: 'Enter',
+      separatorBefore: true,
       run: actions.rename
     },
     {

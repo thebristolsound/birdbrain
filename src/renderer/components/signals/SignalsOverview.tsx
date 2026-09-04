@@ -61,6 +61,7 @@ export function SignalsOverview() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const addSelectorFilter = useAppStore((s) => s.addSelectorFilter)
+  const addTagFilter = useAppStore((s) => s.addTagFilter)
 
   const { data: selectors = [] } = useQuery(selectorsQueryOptions(caseId))
   const { data: matchCounts = {} } = useQuery(selectorMatchCountsQueryOptions(caseId))
@@ -180,11 +181,17 @@ export function SignalsOverview() {
     }
   }
 
-  // The two selector actions a row's context menu offers that the row itself
-  // cannot reach: both are the detail rail's buttons, called with the
-  // right-clicked selector rather than the selected one.
+  // The row-menu actions that are the detail rail's buttons, called with the
+  // right-clicked signal rather than the selected one. Both kinds narrow the
+  // captures list before navigating (#918); they are separate handlers because
+  // the two menus name the action differently.
   function showSelectorMatches(signal: Signal) {
     addSelectorFilter(signal.id)
+    navigate({ to: '/cases/$caseId/captures', params: { caseId } })
+  }
+
+  function filterCapturesByTag(signal: Signal) {
+    addTagFilter(signal.id)
     navigate({ to: '/cases/$caseId/captures', params: { caseId } })
   }
 
@@ -232,6 +239,7 @@ export function SignalsOverview() {
         }}
         onShowMatches={() => showSelectorMatches(signal)}
         onExportMatches={() => void exportSignalMatches(signal)}
+        onFilterCaptures={() => filterCapturesByTag(signal)}
         onSetColor={(color) => updateTag.mutate({ id: signal.id, color })}
         onMerge={() => setMergeSource({ id: signal.id, name: signal.name })}
       />

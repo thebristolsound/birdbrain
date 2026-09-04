@@ -105,7 +105,8 @@ const birdbrain = {
     applyToNote: bridge(IPC_CHANNELS.TAGS_APPLY_TO_NOTE),
     removeFromNote: bridge(IPC_CHANNELS.TAGS_REMOVE_FROM_NOTE),
     getForNote: bridge(IPC_CHANNELS.TAGS_GET_FOR_NOTE),
-    merge: bridge(IPC_CHANNELS.TAGS_MERGE)
+    merge: bridge(IPC_CHANNELS.TAGS_MERGE),
+    capturesWithAnyTag: bridge(IPC_CHANNELS.TAGS_CAPTURES_WITH_ANY_TAG)
   },
   selectors: {
     list: bridge(IPC_CHANNELS.SELECTORS_LIST),

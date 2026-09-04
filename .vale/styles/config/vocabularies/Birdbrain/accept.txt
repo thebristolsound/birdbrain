@@ -190,6 +190,8 @@ KATs
 install's
 [Tt]ier(s|ed|ing)?
 [Ss]ha(s)?
+; hash algorithm names, distinct from git shas
+SHA-(1|256|512)
 [Dd]ispatchable
 [Cc]anonicaliz(e|es|ed|ing)
 [Aa]dvisor(y|ies)

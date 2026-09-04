@@ -453,6 +453,9 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.TAGS_CAPTURE_MATRIX, (_, caseId: string, limit: number) =>
     tagRepo.getTagCaptureMatrix(caseId, limit)
   )
+  handle(IPC_CHANNELS.TAGS_CAPTURES_WITH_ANY_TAG, (_, caseId: string, tagIds: string[]) =>
+    tagRepo.getCapturesWithAnyTag(caseId, tagIds)
+  )
   // Note-level tags (#391). A payload channel, so it gets the same shape check
   // the other payload channels get: a missing noteId would otherwise reach the
   // repo and come back as a foreign-key error the renderer cannot interpret.

@@ -13,6 +13,7 @@ import {
 import { useQuery, useQueries } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'motion/react'
 import { capturesQueryOptions, captureMatchingSelectorsQueryOptions } from '@renderer/lib/queries'
+import { tagsQueryOptions, tagUsageCountsForCaseQueryOptions } from '@renderer/lib/api/tags'
 import { Button, Skeleton } from '@renderer/components/ui'
 import { presets, STAGGER_INTERVAL, STAGGER_VISIBLE_CAP } from '@renderer/lib/motion'
 import { useAppStore } from '@renderer/stores/appStore'
@@ -82,6 +83,7 @@ export function CaptureList({
   } = useQuery(capturesQueryOptions(caseId))
   const selectedCaptureId = useAppStore((s) => s.selectedCaptureId)
   const filteredCaptureIds = useAppStore((s) => s.filteredCaptureIds)
+  const tagFilteredCaptureIds = useAppStore((s) => s.tagFilteredCaptureIds)
   const { favorites, toggleFavorite } = useFavorites(caseId)
   // Rows carry relative times; one interval here keeps every row current
   // instead of each owning its own.
@@ -107,6 +109,8 @@ export function CaptureList({
     narrowings,
     isNarrowed,
     clearNarrowing,
+    activeTagFilters,
+    toggleTagFilter,
     query,
     setQuery,
     sortBy,
@@ -130,9 +134,27 @@ export function CaptureList({
   useClickOutside(sortRef, () => setShowSortMenu(false))
   useClickOutside(filterRef, () => setShowFilterMenu(false))
 
+  // The Filter menu's Tags section (#918). Offers the tags this case actually
+  // uses, not every tag in the app — a tag no capture here carries would filter
+  // the list to nothing — plus any already-picked tag, so a filter can never
+  // become unreachable to untick after its last capture loses it.
+  const { data: allTags = [] } = useQuery(tagsQueryOptions)
+  const { data: tagUsage = {} } = useQuery(tagUsageCountsForCaseQueryOptions(caseId))
+  const filterableTags = useMemo(
+    () => allTags.filter((t) => (tagUsage[t.id] ?? 0) > 0 || activeTagFilters.includes(t.id)),
+    [allTags, tagUsage, activeTagFilters]
+  )
+
   const displayedCaptures = useMemo(
-    () => computeDisplayedCaptures({ captures, filteredCaptureIds, favorites, filters }),
-    [captures, filteredCaptureIds, favorites, filters]
+    () =>
+      computeDisplayedCaptures({
+        captures,
+        filteredCaptureIds,
+        tagFilteredCaptureIds,
+        favorites,
+        filters
+      }),
+    [captures, filteredCaptureIds, tagFilteredCaptureIds, favorites, filters]
   )
 
   const displayedIds = useMemo(() => displayedCaptures.map((c) => c.id), [displayedCaptures])
@@ -320,6 +342,43 @@ export function CaptureList({
                       {opt.label}
                     </button>
                   ))}
+                  {/* Divider */}
+                  <div className="my-1 border-t border-border" />
+                  {/* Tags section (#918). Multi-select and a union: ticking a
+                      second tag widens the list to captures carrying either. */}
+                  <div className="px-3 py-1 text-[10px] font-medium uppercase tracking-wider text-text-faint">
+                    Tags
+                  </div>
+                  {filterableTags.length === 0 ? (
+                    <div
+                      data-testid="capture-list-filter-no-tags"
+                      className="px-3 py-1.5 text-[11px] text-text-faint"
+                    >
+                      No tags in this case
+                    </div>
+                  ) : (
+                    <div className="max-h-36 overflow-y-auto">
+                      {filterableTags.map((tag) => {
+                        const active = activeTagFilters.includes(tag.id)
+                        return (
+                          <button
+                            key={tag.id}
+                            onClick={() => toggleTagFilter(tag.id)}
+                            aria-pressed={active}
+                            data-testid={`capture-list-filter-tag-${tag.id}`}
+                            className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] hover:bg-elevated ${
+                              active ? 'text-accent' : 'text-text-secondary'
+                            }`}
+                          >
+                            <Check
+                              className={`h-3 w-3 shrink-0 ${active ? 'opacity-100' : 'opacity-0'}`}
+                            />
+                            <span className="truncate">{tag.name}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
                   {/* Divider */}
                   <div className="my-1 border-t border-border" />
                   {/* Favorites toggle */}

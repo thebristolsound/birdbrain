@@ -1,6 +1,7 @@
 # Slop audit phase 1 implementation plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use `tdd` to implement this plan task by task.
+> Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Land the skeleton of `scripts/slop-audit/`: a `pnpm lint:slop` entry point that inventories the tracked working tree, runs an (empty) list of checks, and prints a versioned JSON envelope or a text report, with the directory under the diff-coverage gate from its first pull request.
 
@@ -14,7 +15,8 @@
 
 - No new dependencies. `package.json` is edited only to add the `lint:slop` script.
 - Style: no semicolons, single quotes, no trailing commas, 100 columns, two-space indent. Run `pnpm exec prettier --check` on every new file before committing.
-- Exported pure functions; `main(argv, deps)` returns an exit code; entry guard is `if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) process.exit(main(process.argv.slice(2)))`.
+- Exported pure functions; `main(argv, deps)` returns an exit code; the entry guard assigns that
+  result to `process.exitCode` so redirected output can flush before Node exits.
 - Tests import the `.mjs` with the exact comment `// @ts-expect-error - build script with no type declarations; the tsconfigs exclude scripts/` on the line before the `from` clause, as `tests/auditCheck.test.ts` does.
 - Exit codes: 0 ran; 1 `--strict` and at least one `blocking` finding; 2 could not run.
 - Input contract: tracked working tree (`git ls-files -z`, read from disk). Never read `HEAD` blobs.
@@ -439,7 +441,7 @@ export const classify = (path) => {
 }
 
 // Minimal glob: `**` spans directories, `*` and `?` stay inside one segment. Node
-// 20 has no path.matchesGlob (that arrived in 22.5), and --path needs no more.
+// 20's path.matchesGlob is experimental and emits a warning; --path needs no more.
 export const globToRegExp = (glob) => {
   let out = ''
   for (let i = 0; i < glob.length; i++) {
@@ -1155,7 +1157,7 @@ export const main = (argv, deps = {}) => {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  process.exit(main(process.argv.slice(2)))
+  process.exitCode = main(process.argv.slice(2))
 }
 ```
 

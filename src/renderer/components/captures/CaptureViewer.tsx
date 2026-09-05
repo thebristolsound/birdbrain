@@ -140,11 +140,16 @@ export function CaptureViewer() {
           Sized against the pane rather than the window (#466): the pane is what
           runs out of room, so a viewport breakpoint would still clip the
           controls whenever the details panel is docked. Below 36rem the tab
-          labels give way to their icons; the Download label and the method
-          badge wait for 48rem, where the title has room beside them. The title
-          is the only item here that flexes and the download error hangs below
-          the trigger rather than sitting in the row, so from 340px up the tab
-          strip, the download trigger and the pager all stay on screen. */}
+          labels give way to their icons; the Download label waits for 48rem,
+          where the title has room beside it. The method badge comes back at
+          42rem: on the Wayback tab the details panel that also carries the
+          method is hidden, and at the default 1200px window that layout leaves
+          the viewer 716px, so a 48rem tier would leave a background or
+          duplicate capture reading as an ordinary one exactly where the
+          operator has no other marker to check. The title is the only item
+          here that flexes and the download error hangs below the trigger
+          rather than sitting in the row, so from 340px up the tab strip, the
+          download trigger and the pager all stay on screen. */}
       <div className="flex h-11 items-center gap-1.5 border-b border-border px-3 @xl/viewer:gap-2.5">
         <Button
           variant="ghost"
@@ -162,7 +167,7 @@ export function CaptureViewer() {
           {CAPTURE_METHOD_LABELS[capture.method] && (
             <span
               data-testid="method-badge"
-              className="hidden shrink-0 rounded-lg bg-surface px-2 py-0.5 text-[11px] text-text-muted @3xl/viewer:inline-block"
+              className="hidden shrink-0 rounded-lg bg-surface px-2 py-0.5 text-[11px] text-text-muted @2xl/viewer:inline-block"
             >
               {CAPTURE_METHOD_LABELS[capture.method]}
             </span>

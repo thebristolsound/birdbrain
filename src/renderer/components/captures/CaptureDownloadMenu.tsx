@@ -77,12 +77,14 @@ export function CaptureDownloadMenu({ capture }: Props) {
           download error has no length an operator can predict, and in the row it
           pushed the capture pager off screen at a narrow pane — 54px of overflow
           at the 360px panel minimum. Dropped below the trigger like the case
-          ExportMenu's, it costs the row nothing and reads in full. */}
+          ExportMenu's, it costs the row nothing and reads in full. The message
+          may be one unbroken token — a destination path — so it wraps at any
+          point rather than running past the box into the shell's clip. */}
       {error && (
         <div
           role="alert"
           data-testid="capture-download-error"
-          className="absolute right-0 top-full z-40 mt-1 max-w-64 rounded border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-[11px] text-red-400"
+          className="absolute right-0 top-full z-40 mt-1 max-w-64 break-words rounded border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-[11px] text-red-400"
         >
           {error}
         </div>

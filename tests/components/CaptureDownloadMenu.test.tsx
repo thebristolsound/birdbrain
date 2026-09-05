@@ -113,6 +113,21 @@ describe('CaptureDownloadMenu items', () => {
     expect(error.getAttribute('role')).toBe('alert')
   })
 
+  it('wraps a long unbroken path in a failed download rather than clipping it', async () => {
+    const path = '/home/operator/cases/' + 'a'.repeat(120) + '/capture.pdf'
+    downloadCapture.mockRejectedValueOnce(new Error(`EACCES: permission denied, open '${path}'`))
+    render(<CaptureDownloadMenu capture={capture} />)
+
+    fireEvent.click(screen.getByTestId('capture-download-menu-btn'))
+    fireEvent.click(screen.getByTestId('download-archive-btn'))
+
+    const error = await screen.findByTestId('capture-download-error')
+    expect(error.textContent).toContain(path)
+    // The viewer shell clips its overflow, so a token wider than the box has
+    // to break inside it or the reason the export failed is unreadable.
+    expect(error.className).toContain('break-words')
+  })
+
   it('closes on Escape and on a click outside', async () => {
     render(<CaptureDownloadMenu capture={capture} />)
 

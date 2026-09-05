@@ -102,6 +102,20 @@ describe('CaptureViewer provenance chrome (#827)', () => {
     expect(screen.queryByTestId('duplicate-link-source')).toBeNull()
   })
 
+  // #466. The Wayback tab hides the details panel, the one other place the
+  // method shows, and at the default 1200px window it leaves the viewer 716px
+  // (1200 - 48px sidebar - 436px Wayback panel). The badge therefore has to be
+  // back by 42rem (672px), not the 48rem the Download label waits for.
+  it('keeps the method badge at the width the Wayback layout leaves the viewer', async () => {
+    const duplicate = { ...capture, method: 'duplicate' as const, duplicateOfCaptureId: 'gone' }
+    fakeBridge({ captures: { list: vi.fn(async () => [duplicate]), getContent } })
+    renderViewer()
+
+    const badge = await screen.findByTestId('method-badge')
+    expect(badge.className).toContain('@2xl/viewer:inline-block')
+    expect(badge.className).not.toContain('@3xl/viewer')
+  })
+
   it('leaves an ordinary extension capture unbadged', async () => {
     renderViewer()
     await screen.findAllByRole('tab')

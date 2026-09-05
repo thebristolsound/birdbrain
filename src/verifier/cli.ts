@@ -66,10 +66,12 @@ authenticity claim. Timestamp checks here are STRUCTURAL (imprint / byte-
 binding) — run the documented \`openssl ts -verify\` (VERIFY.md) for canonical
 TSA authenticity. So binary-PASS is not the same as runbook-PASS.
 
-Exit codes: 0 = PASS, 1 = FAIL, 2 = not a verifiable object. Exit 2 is a
-Birdbrain Working Copy — a deliberately non-evidentiary export that
-self-identifies via WORKING-COPY.json and contains nothing to verify. It is
-neither a PASS nor a FAIL: no integrity claim is made either way.`
+Exit codes: 0 = PASS, 1 = FAIL, 2 = not a verifiable object, 3 = verifier too
+old. Exit 2 is a Birdbrain Working Copy — a deliberately non-evidentiary export
+that self-identifies via WORKING-COPY.json and contains nothing to verify. Exit
+3 means the package's manifest holds an entry written by a newer Birdbrain than
+this verifier was built for, so this build cannot read the chain. Neither is a
+PASS or a FAIL: no integrity claim is made either way.`
 
 function runSelfCheck(): number {
   const actual = canonicalStringify(GOLDEN_BODY)
@@ -104,6 +106,24 @@ function printReport(dir: string, result: PackageVerifyResult): void {
     process.stdout.write(check.reason ? `${line} — ${check.reason}\n` : `${line}\n`)
   }
   process.stdout.write('\n')
+  // Fourth outcome (ADR-0023, X25): this verifier is older than the manifest it
+  // was handed. Reporting FAIL here would accuse a package of tampering on the
+  // strength of this binary's age, so the verdict names the real problem and
+  // the remedy instead.
+  if (result.unsupported) {
+    process.stdout.write(`RESULT: VERIFIER TOO OLD — ${result.unsupported.reason}\n`)
+    process.stdout.write(
+      '\nThis is NOT a tamper verdict, and it is NOT a clean bill of health: this\n' +
+        'build cannot read part of the manifest, so it makes no integrity claim\n' +
+        'about the package either way. What it does say is narrower: the entries\n' +
+        'preceding the unreadable one verified, that entry sits where the chain\n' +
+        'says it does with a hash and a signature under the package signing key\n' +
+        'that hold, and nothing at or after it was read. Obtain the verifier\n' +
+        'from the Birdbrain release named in the package README (or later) and\n' +
+        're-run.\n'
+    )
+    return
+  }
   if (result.pass) {
     process.stdout.write('RESULT: PASS — integrity + internal consistency verified.\n')
   } else {
@@ -141,6 +161,10 @@ export function main(argv: string[]): number {
   // 2, not 1, for a Working Copy: scripts must be able to distinguish
   // nothing-to-verify against failed-verification (#399).
   if (result.notVerifiable) return 2
+  // 3, not 1, for a manifest this build is too old to read: a script that
+  // treated it as FAIL would record a tamper result produced by the verifier's
+  // age (X25).
+  if (result.unsupported) return 3
   return result.pass ? 0 : 1
 }
 

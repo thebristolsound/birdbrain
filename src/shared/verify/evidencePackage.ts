@@ -9,7 +9,7 @@ import {
 } from '@shared/schemas'
 import type { ManifestEntry } from '@shared/schemas'
 import { parseTimestampToken } from '@shared/verify/timestampToken'
-import { verifyManifestChainText } from '@shared/verify/manifestChain'
+import { describeUnsupportedEntry, verifyManifestChainText } from '@shared/verify/manifestChain'
 import { canonicalStringify } from '@shared/verify/canonicalJson'
 import { packageHash } from '@shared/verify/packageHash'
 import { verifyEntrySignature } from '@shared/verify/signature'
@@ -44,7 +44,11 @@ export interface PackageCheck {
 
 export interface PackageVerifyResult {
   // True iff no check has status 'fail' ('skip' is allowed). The verifier runs
-  // EVERY check and collects ALL failures — it never short-circuits.
+  // EVERY check and collects ALL failures rather than short-circuiting on the
+  // first — with the two exceptions below (`notVerifiable`, `unsupported`),
+  // which end verification before the checks they would poison can run and are
+  // reported as outcomes of their own. Both return `pass: false` with no failed
+  // check: false because nothing was verified, not because something failed.
   pass: boolean
   checks: PackageCheck[]
   /**
@@ -56,6 +60,18 @@ export interface PackageVerifyResult {
    * planted marker can never silence a chain.
    */
   notVerifiable?: { reason: string }
+  /**
+   * Fourth outcome (ADR-0023, X25): the manifest holds an entry from a newer
+   * schema than this verifier was built for, so this build cannot say whether
+   * the chain is intact. `pass` stays false — no integrity claim is made — but
+   * this is NOT a tamper verdict, and a caller must not render it as one. The
+   * remedy is a newer verifier, and the reason names the version needed.
+   * Verify-core sets it only once the entries preceding the unreadable one
+   * have verified and that entry's own linkage, hash and signature under the
+   * package signing key hold — nothing at or after it is read — so this
+   * outcome cannot be bought by editing a manifest.
+   */
+  unsupported?: { reason: string }
 }
 
 function sha256File(path: string): string {
@@ -210,6 +226,17 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
 
   // §7.1 chain verification (root of trust).
   const chain = verifyManifestChainText(manifestJsonl, { publicKeyPem })
+  // An entry from a newer schema stops verification here, before any further
+  // check runs. Continuing would derive the active-capture set from the entries
+  // preceding the unreadable one and then report every capture recorded at or
+  // after it as missing from the package and absent from the manifest — a page
+  // of tamper-shaped FAILs produced by this verifier's age, which is the false
+  // accusation X25 exists to prevent.
+  if (chain.unsupported) {
+    const reason = describeUnsupportedEntry(chain.unsupported)
+    add('manifest chain', 'skip', reason)
+    return { pass: false, checks, unsupported: { reason } }
+  }
   if (chain.valid) {
     add('manifest chain', 'pass')
   } else {
@@ -411,6 +438,38 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
           }
         }
       }
+    }
+  }
+
+  // §7.3b Exhibit entries (ADR-0023). This build READS `exhibit` and
+  // `derivation` entries — that is what schema 3 bought — but binds no bytes to
+  // them: the exporter that ships Exhibit files and lists them, and the
+  // verification that hashes them against these entries, are `803e` (#1156).
+  // Saying nothing would let a PASS from this build read as "everything the
+  // chain anchors was verified" over a package whose Exhibits it never looked
+  // at, which is X44's dishonest third option. A SKIP and not a FAIL: the
+  // package is not at fault for being newer than the verifier, and a tamper
+  // verdict on that ground is the false accusation X25 forbids. `entries` is
+  // PARSE-scoped, not brokenAt-scoped: parseManifestEntries stops at the first
+  // line it cannot read, so a chain that FAILs on a signature, hash or linkage
+  // with every line parseable still lists its Exhibit entries here and emits
+  // their SKIPs inside a FAIL report. Rows for entries nothing verified, not a
+  // claim about them — `pass` is false regardless. The scoping itself, and the
+  // comment at the `entries` declaration that still says otherwise, are #691.
+  for (const entry of entries) {
+    if (entry.type === 'exhibit') {
+      add(
+        `exhibit ${entry.exhibitId}`,
+        'skip',
+        `Exhibit ${entry.exhibitNumber} (${entry.kind}) at ${entry.path}: this verifier does not ` +
+          'bind Exhibit bytes to the chain — 803e (#1156) adds it'
+      )
+    } else if (entry.type === 'derivation') {
+      add(
+        `derivation ${entry.derivation} of ${entry.parentExhibitId}`,
+        'skip',
+        'this verifier does not bind Derived File bytes to the chain — 803e (#1156) adds it'
+      )
     }
   }
 
